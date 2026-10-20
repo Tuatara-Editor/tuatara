@@ -1,0 +1,38 @@
+% Created {{{created}}} with Tuatara, template article
+% Intended LaTeX compiler: {{{engine}}}
+%
+% The enhanced export's own look, for a note that sets none of its own
+% (no #+latex_template:, #+setupfile: or #+latex_header:, and #+latex_class:
+% none or one of LaTeX's own, article, report or book): A4
+% with even margins, fonts found on this system (*latex-main-font* and the
+% like choose others), a font for every character the others lack,
+% finer spacing, paragraphs apart rather than indented, black links.
+\documentclass{{{latex_class_options:raw}}}{{{{latex_class:raw}}}}
+\usepackage[a4paper, top=25mm, bottom=25mm, left=28mm, right=28mm]{geometry}
+{{{packages}}}{{{fonts}}}{{{font_fallbacks}}}\usepackage{microtype}
+\usepackage{parskip}
+{{{latex_header}}}{{{#secnumdepth}}}\setcounter{secnumdepth}{{{{secnumdepth}}}}
+{{{/secnumdepth}}}\hypersetup{
+ colorlinks=true,
+ linkcolor=black,
+ urlcolor=black,
+ citecolor=black,
+ pdfauthor={{{{pdfauthor}}}},
+ pdftitle={{{{pdftitle}}}},
+ pdfkeywords={{{{pdfkeywords}}}},
+ pdfsubject={{{{pdfsubject}}}},
+ pdfcreator={Tuatara},
+ pdflang={{{{pdflang}}}}}
+\author{{{{author}}}}
+\date{{{{date}}}}
+\title{{{{title}}}{{{#subtitle}}}\\
+\medskip
+\large {{{subtitle}}}{{{/subtitle}}}}
+\begin{document}
+
+{{{#maketitle}}}\maketitle
+{{{/maketitle}}}{{{#toc}}}{{{#tocdepth}}}\setcounter{tocdepth}{{{{tocdepth}}}}
+{{{/tocdepth}}}\tableofcontents
+
+{{{/toc}}}{{{body}}}
+\end{document}

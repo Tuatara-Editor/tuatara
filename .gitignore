@@ -1,0 +1,24 @@
+# Common Lisp build products
+*.fasl
+*.lx64fsl
+*.dx64fsl
+*.ufasl
+/build/
+/dist/
+*.core
+/.qlot/
+
+# compiled benchmark and C objects
+*.o
+
+# editor droppings
+*~
+\#*\#
+.\#*
+.*.swp
+
+# Python byte code
+__pycache__/
+
+# Project notes, kept out of the repository
+/.project/

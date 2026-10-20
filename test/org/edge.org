@@ -1,0 +1,28 @@
+* Headline with *bold* in its title and a [[link]]
+:PROPERTIES:
+:CUSTOM_ID: custom-id
+:END:
+:DRAWER:
+In a drawer.
+:END:
+:NOTCLOSED:
+not a drawer without its end
+
+* Headline :tag:with:many:tags:
+** Inline-looking :not:tags: text after
+#+begin_src
+#+end_src
+#+begin_example
+#+end_example
+#+begin_quote
+#+end_quote
+
+* Empty sections follow
+*
+** 
+
+*** Three
+* Affiliated at a section's end
+#+name: lonely
+* Affiliated at the end
+#+caption: last

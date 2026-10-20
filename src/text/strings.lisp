@@ -1,0 +1,141 @@
+;;;; src/text/strings.lisp --- Helpers for strings and octets that are not the rope's.
+;;;; Copyright (C) 2026 Michael A Jones.  GPL-3.0-or-later; see LICENSE.
+
+(in-package #:tuatara.text)
+
+(defun octets-latin-1 (octets &key (start 0) end)
+  "OCTETS from START below END (or their end) as Latin-1 text: each octet the
+character of its code, as ASCII and ISO 8859-1 read it."
+  (map 'string #'code-char (subseq octets start end)))
+
+(defun utf-16-text (octets &key (start 0) (end (length octets)) big-endian)
+  "OCTETS from START below END as UTF-16 text, least significant octet first
+unless BIG-ENDIAN or a byte-order mark says otherwise; the mark, a NUL at its
+end and what follows left out."
+  (let* ((end (- end (mod (- end start) 2)))
+         (big (cond ((and (< (1+ start) end) (= (aref octets start) #xFE) (= (aref octets (1+ start)) #xFF)) (incf start 2) t)
+                    ((and (< (1+ start) end) (= (aref octets start) #xFF) (= (aref octets (1+ start)) #xFE)) (incf start 2) nil)
+                    (t big-endian)))
+         (text (or (ignore-errors (sb-ext:octets-to-string (coerce octets '(simple-array (unsigned-byte 8) (*)))
+                                                          :start start :end end
+                                                          :external-format (list (if big :utf-16be :utf-16le) :replacement #\?)))
+                   "")))
+    (subseq text 0 (or (position (code-char 0) text) (length text)))))
+
+(defparameter *charset-aliases*
+  '(("us-ascii" . :latin-1) ("ascii" . :latin-1) ("ansi_x3.4-1968" . :latin-1) ("utf8" . :utf-8) ("latin1" . :latin-1)
+    ("iso-8859-8-i" . :iso-8859-8) ("gb2312" . :gbk) ("x-gbk" . :gbk) ("cp936" . :gbk) ("cp932" . :shift_jis)
+    ("windows-31j" . :shift_jis) ("x-sjis" . :shift_jis) ("unicode" . :utf-16le) ("utf-16" . :utf-16le)
+    ("unicode-1-1-utf-7" . nil) ("utf-7" . nil))
+  "Charsets that mail and web pages name otherwise than the system's
+encodings are named, each (NAME . ENCODING), ENCODING NIL for one read as
+UTF-8.")
+
+(defun charset-encoding (charset)
+  "The encoding the charset named CHARSET (as mail and web pages name one:
+utf-8, iso-8859-1, windows-1252, shift_jis) stands for, a keyword the system
+decodes; NIL for UTF-8 or a charset not known."
+  (when (and charset (plusp (length charset)) (< (length charset) 40))
+    (let* ((name (string-downcase (string-trim " \"'" charset)))
+           (alias (assoc name *charset-aliases* :test #'string=))
+           (encoding (if alias (cdr alias) (find-symbol (string-upcase name) :keyword))))
+      (and encoding (not (eq encoding :utf-8))
+           (ignore-errors (sb-ext:octets-to-string (make-array 0 :element-type '(unsigned-byte 8)) :external-format encoding))
+           encoding))))
+
+(defun charset-text (octets charset &key (start 0) (end (length octets)))
+  "OCTETS from START below END as text in the charset named CHARSET
+\(CHARSET-ENCODING): an octet the charset has no character for as U+FFFD; in
+UTF-8, or a charset not known, as OCTETS-STRING reads them, an octet that is
+not UTF-8 kept as its raw byte."
+  (let ((octets (coerce octets '(simple-array (unsigned-byte 8) (*))))
+        (encoding (charset-encoding charset)))
+    (or (and encoding
+             (ignore-errors (sb-ext:octets-to-string octets :start start :end end
+                                                            :external-format (list encoding :replacement (code-char #xFFFD)))))
+        (octets-string octets :start start :end end))))
+
+(defun split-words (string &optional (separators '(#\Space #\Tab)))
+  "The parts of STRING between SEPARATORS (characters, or a string of them),
+the empty ones left out; NIL for NIL."
+  (and string (remove "" (uiop:split-string string :separator separators) :test #'string=)))
+
+(defun parse-decimal (text &key (most-digits 12))
+  "TEXT, digits with perhaps a point and more digits after (as 595.276), as
+an exact number; NIL when it is anything else or has more than MOST-DIGITS
+digits. Only the digits and the point are read, never anything else."
+  (let ((point (position #\. text)))
+    (and (plusp (length text))
+         (<= (length text) (1+ most-digits))
+         (every (lambda (c) (or (digit-char-p c) (char= c #\.))) text)
+         (= (count #\. text) (if point 1 0))
+         (let ((whole (subseq text 0 (or point (length text))))
+               (part (if point (subseq text (1+ point)) "")))
+           (and (plusp (+ (length whole) (length part)))
+                (+ (if (plusp (length whole)) (parse-integer whole) 0)
+                   (if (plusp (length part)) (/ (parse-integer part) (expt 10 (length part))) 0)))))))
+
+(defun octets-hex (octets &key (start 0) end upper-case separator)
+  "OCTETS from START below END (or their end) written in hexadecimal, two
+digits each, in lower case unless UPPER-CASE, SEPARATOR (a string) between
+each two when given."
+  (with-output-to-string (s)
+    (loop for i from start below (or end (length octets))
+          do (when (and separator (> i start)) (write-string separator s))
+             (format s (if upper-case "~2,'0X" "~(~2,'0x~)") (aref octets i)))))
+
+;;; Hashes of text
+
+(defconstant +fnv-offset+ #xcbf29ce484222325 "FNV-1a's starting value for 64-bit hashes.")
+
+(defun string-hash (text)
+  "A hash of the string TEXT: FNV-1a over its octets in UTF-8, as a fixnum,
+the same in every version of Tuatara and of the Lisp it runs on."
+  (let ((hash +fnv-offset+))
+    (declare (type (unsigned-byte 64) hash))
+    (loop for b across (string-octets text)
+          do (setf hash (ldb (byte 64 0) (* (logxor hash b) 1099511628211))))
+    (ldb (byte 62 0) hash)))
+
+;;; Text on one line
+
+(defun one-line (text)
+  "TEXT on one line: each run of line ends, tabs and other control
+characters in it one space, and the spaces at its ends left out, so that it
+can be shown or written where a line is expected (a name, a value, a reason
+given by a program). NIL for NIL."
+  (and text
+       (let ((out (make-string-output-stream)) (blank nil))
+         (loop for c across text
+               do (if (let ((code (char-code c))) (or (< code 32) (<= 127 code 159)))
+                      (setf blank t)
+                      (progn (when blank (write-char #\Space out) (setf blank nil))
+                             (write-char c out))))
+         (string-trim " " (get-output-stream-string out)))))
+
+;;; Lines of a string
+
+(defun string-line-start (text position)
+  "Where the line of the string TEXT holding POSITION begins: just after the
+newline before POSITION, or 0."
+  (let ((newline (and (plusp position) (position #\Newline text :end (min position (length text)) :from-end t))))
+    (if newline (1+ newline) 0)))
+
+(defun string-line-end (text position)
+  "Where the line of the string TEXT holding POSITION ends: the newline at or
+after POSITION, or the end of TEXT."
+  (or (position #\Newline text :start (min position (length text))) (length text)))
+
+;;; Ranges of octets
+
+(defun merge-ranges (ranges &key (touching t))
+  "RANGES, each (START . END), in any order, put in order of their starts, with
+those that overlap made one, and with TOUCHING (the default) those that touch
+too, one ending where the next starts. RANGES itself is left as it was."
+  (let ((merged '()))
+    (dolist (range (sort (copy-list ranges) #'< :key #'car) (nreverse merged))
+      (if (and merged (if touching
+                          (<= (car range) (cdr (first merged)))
+                          (< (car range) (cdr (first merged)))))
+          (setf (cdr (first merged)) (max (cdr (first merged)) (cdr range)))
+          (push (cons (car range) (cdr range)) merged)))))

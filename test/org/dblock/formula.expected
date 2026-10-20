@@ -1,0 +1,86 @@
+* Writing the report [2/3]
+:LOGBOOK:
+CLOCK: [2026-09-28 Mon 13:00]--[2026-09-28 Mon 15:10] =>  2:10
+:END:
+** Figures
+:LOGBOOK:
+CLOCK: [2026-09-29 Tue 10:00]--[2026-09-29 Tue 11:00] =>  1:00
+:END:
+*** Checking the sums
+:LOGBOOK:
+CLOCK: [2026-09-29 Tue 11:00]--[2026-09-29 Tue 11:25] =>  0:25
+:END:
+* Short
+:LOGBOOK:
+CLOCK: [2026-09-30 Wed 08:00]--[2026-09-30 Wed 08:05] =>  0:05
+:END:
+* Another one
+:LOGBOOK:
+CLOCK: [2026-09-30 Wed 09:00]--[2026-09-30 Wed 10:15] =>  1:15
+:END:
+
+#+BEGIN: clocktable :maxlevel 3 :formula %
+#+CAPTION: Clock summary at [2026-10-02 Fri 20:49]
+| Headline                 |   Time |      |      |     % |
+|--------------------------+--------+------+------+-------|
+| *Total time*             | *4:55* |      |      | 100.0 |
+|--------------------------+--------+------+------+-------|
+| Writing the report [2/3] |   3:35 |      |      |  72.9 |
+| \_  Figures              |        | 1:25 |      |  28.8 |
+| \_    Checking the sums  |        |      | 0:25 |   8.5 |
+| Short                    |   0:05 |      |      |   1.7 |
+| Another one              |   1:15 |      |      |  25.4 |
+#+END:
+
+#+BEGIN: clocktable :maxlevel 2 :formula % :emphasize t
+#+CAPTION: Clock summary at [2026-10-02 Fri 20:49]
+| Headline                   | Time   |        |     % |
+|----------------------------+--------+--------+-------|
+| *Total time*               | *4:55* |        | 100.0 |
+|----------------------------+--------+--------+-------|
+| *Writing the report [2/3]* | *3:35* |        |  72.9 |
+| \_  /Figures/              |        | /1:25/ |  28.8 |
+| *Short*                    | *0:05* |        |   1.7 |
+| *Another one*              | *1:15* |        |  25.4 |
+#+END:
+
+#+BEGIN: clocktable :scope agenda :maxlevel 2 :formula % :fileskip0 t
+#+CAPTION: Clock summary at [2026-10-02 Fri 20:49]
+| File  | Headline                                 | Time   |      |     % |
+|-------+------------------------------------------+--------+------+-------|
+|       | ALL *Total time*                         | *4:35* |      | 100.0 |
+|-------+------------------------------------------+--------+------+-------|
+| a.org | *File time*                              | *2:15* |      |  49.1 |
+|       | Project A                                | 2:15   |      |  49.1 |
+|       | \_  Sub A with a rather long headline... |        | 0:45 |  16.4 |
+|-------+------------------------------------------+--------+------+-------|
+| b.org | *File time*                              | *2:20* |      |  50.9 |
+|       | Project B                                | 2:20   |      |  50.9 |
+|       | \_  Task B1 [1/2]                        |        | 2:20 |  50.9 |
+#+END:
+
+#+BEGIN: clocktable :maxlevel 2 :level t :formula "$1=$1*10"
+#+CAPTION: Clock summary at [2026-10-02 Fri 20:49]
+|  L | Headline                 |   Time |      |
+|----+--------------------------+--------+------|
+|  0 | *Total time*             | *4:55* |      |
+|----+--------------------------+--------+------|
+| 10 | Writing the report [2/3] |   3:35 |      |
+| 20 | \_  Figures              |        | 1:25 |
+| 10 | Short                    |   0:05 |      |
+| 10 | Another one              |   1:15 |      |
+#+TBLFM: $1=$1*10
+#+END:
+
+#+BEGIN: clocktable :maxlevel 2 :level t
+#+CAPTION: Clock summary at [2026-10-02 Fri 20:49]
+| L | Headline                 |   Time |      |
+|---+--------------------------+--------+------|
+| 7 | *Total time*             | *4:55* |      |
+|---+--------------------------+--------+------|
+| 8 | Writing the report [2/3] |   3:35 |      |
+| 9 | \_  Figures              |        | 1:25 |
+| 8 | Short                    |   0:05 |      |
+| 8 | Another one              |   1:15 |      |
+#+TBLFM: $1=$1+7
+#+END:

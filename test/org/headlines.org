@@ -1,0 +1,28 @@
+#+title: Headlines
+#+TODO: TODO NEXT | DONE CANCELLED
+
+Text before the first headline.
+
+* TODO [#A] A task with a priority                                :work:urgent:
+  SCHEDULED: <2026-10-02 Fri> DEADLINE: <2026-10-05 Mon -2d>
+  :PROPERTIES:
+  :ID:       a1b2c3
+  :EFFORT:   1:30
+  :END:
+  :LOGBOOK:
+  CLOCK: [2026-10-01 Thu 09:00]--[2026-10-01 Thu 10:30] =>  1:30
+  - State "DONE"       from "TODO"       [2026-10-01 Thu 10:30]
+  :END:
+Body of the task.
+** NEXT A second level
+*** DONE Third level, done                                            :home:
+    CLOSED: [2026-09-30 Wed 18:00]
+** CANCELLED Cancelled
+* COMMENT A commented headline
+Hidden from export.
+* Plain headline with no keyword
+*Not a headline: no space after the star*
+**** Skipped levels :a:b:c:
+* Archived                                                        :ARCHIVE:
+*
+* TODO

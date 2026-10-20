@@ -1,0 +1,44 @@
+* Writing the report for the board, with the figures for September [2/3]
+:PROPERTIES:
+:Effort:   3:00
+:CLIENT:   Board
+:END:
+:LOGBOOK:
+CLOCK: [2026-09-28 Mon 13:00]--[2026-09-28 Mon 15:10] =>  2:10
+:END:
+** Figures
+:LOGBOOK:
+CLOCK: [2026-09-29 Tue 10:00]--[2026-09-29 Tue 11:00] =>  1:00
+:END:
+*** Checking the sums twice over, line by line, against the ledger
+:LOGBOOK:
+CLOCK: [2026-09-29 Tue 11:00]--[2026-09-29 Tue 11:25] =>  0:25
+:END:
+* Short
+:LOGBOOK:
+CLOCK: [2026-09-30 Wed 08:00]--[2026-09-30 Wed 08:05] =>  0:05
+:END:
+
+#+BEGIN: clocktable :maxlevel 3 :compact t
+#+CAPTION: Clock summary at [2026-10-02 Fri 20:20]
+| Headline                                       |   Time |
+|------------------------------------------------+--------|
+| *Total time*                                   | *3:40* |
+|------------------------------------------------+--------|
+| Writing the report for the board,...           |   3:35 |
+| \_  Figures                                    |   1:25 |
+| \_    Checking the sums twice over, line by... |   0:25 |
+| Short                                          |   0:05 |
+#+END:
+
+#+BEGIN: clocktable :maxlevel 3 :compact t :emphasize t
+#+CAPTION: Clock summary at [2026-10-02 Fri 20:20]
+| Headline                                       | Time   |
+|------------------------------------------------+--------|
+| *Total time*                                   | *3:40* |
+|------------------------------------------------+--------|
+| *Writing the report for the board,...*         | *3:35* |
+| \_  /Figures/                                  | /1:25/ |
+| \_    Checking the sums twice over, line by... | 0:25   |
+| *Short*                                        | *0:05* |
+#+END:

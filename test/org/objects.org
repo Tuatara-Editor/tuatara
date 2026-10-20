@@ -1,0 +1,22 @@
+Text with *bold*, /italic/, _underline_, =verbatim=, ~code~ and +strike+.
+Not bold: a*b*c, 2*3*4 and * spaced *.
+Nested *bold /italic/ inside* and =verb *not bold*= stay.
+Multi-line *bold
+over two lines* here.
+
+Links: [[https://orgmode.org][Org]] and [[https://orgmode.org]] and [[file:notes.org::*Heading][a file]]
+plain https://example.com/path?q=1 and <https://angle.example> and mailto:me@example.com
+an id link [[id:a1b2c3][by id]] and [[*Headlines]] and [[#custom-id]] and [[target]].
+
+Timestamps <2026-10-01 Thu> [2026-10-01 Thu 09:00] <2026-10-01 Thu 09:00-10:00>
+a range <2026-10-01 Thu>--<2026-10-03 Sat> and a repeater <2026-10-01 Thu +1w>.
+A diary <%%(diary-float t 4 2)>.
+
+Entities \alpha and \rightarrow{} and \nbsp;, LaTeX $x^2$ and \(a+b\) and \[c\].
+Footnotes[fn:1] and inline[fn:: an inline note] and named[fn:named:with text].
+Inline src_python{print(1)} and src_sh[:results raw]{ls} and call_hello(name="x").
+Macros {{{date}}} and {{{kbd(C-x C-f)}}}, a <<target>> and a <<<radio>>>.
+Cookies [2/3] and [66%] and [/] and [%].
+Sub_script and super^script and braces a_{bc} and x^{2}.
+A line break\\
+and an export snippet @@html:<br>@@ and a citation [cite:@doe2020 p. 4].

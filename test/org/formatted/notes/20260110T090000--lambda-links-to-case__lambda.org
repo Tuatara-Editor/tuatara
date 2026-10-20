@@ -1,0 +1,5 @@
+#+title: Lambda links to case
+#+filetags: :lambda:
+#+identifier: 20260110T090000
+
+[[denote:20260301T100200][The case]]

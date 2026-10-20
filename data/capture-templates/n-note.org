@@ -1,0 +1,8 @@
+# name: Quick note to the inbox
+# key: n
+# file: ~/org/agenda.org
+# heading: Inbox
+# --
+* %?
+%U
+%a

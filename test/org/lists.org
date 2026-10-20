@@ -1,0 +1,32 @@
+* Lists
+- one
+- two
+  continued
+  - nested
+  - [X] done item
+  - [ ] open item
+  - [-] partial
+- three
+
+1. first
+2) second
+   3. [@3] counted
+10. tenth
+
+- term :: description
+- other term :: other description
+
++ plus bullet
++ another
+
+ * star bullet indented
+ * two
+
+- item
+
+  with a blank line inside
+
+- after blank
+
+Not in the list.
+- [fn:1] not a footnote here

@@ -1,0 +1,64 @@
+#+NAME: hello
+#+begin_src emacs-lisp :results output :exports both
+(message "Hello, %s" "world")
+#+end_src
+
+#+BEGIN_EXAMPLE -n
+An example
+  kept as it is
+#+END_EXAMPLE
+
+#+begin_quote
+A quote with *bold* text.
+
+And a second paragraph.
+#+end_quote
+
+#+begin_center
+Centred.
+#+end_center
+
+#+begin_verse
+  Great clouds overhead
+  Tiny black birds rise and fall
+#+end_verse
+
+#+begin_comment
+Not exported.
+#+end_comment
+
+#+begin_export html
+<b>raw</b>
+#+end_export
+
+#+begin_aside
+A special block.
+#+end_aside
+
+#+begin_src shell
+echo "no end"
+
+: fixed width line
+: another
+
+# a comment line
+#+ also a comment? no
+-----
+------------
+
+\begin{equation}
+x = y^2
+\end{equation}
+
+#+CALL: hello(name="you") :results output
+
+#+BEGIN: clocktable :scope file :maxlevel 2
+| a | b |
+#+END:
+
+%%(diary-anniversary 10 1 1990) An anniversary
+
+#+keyword: value of a keyword
+#+CAPTION: A caption
+#+ATTR_HTML: :width 50%
+[[file:picture.png]]

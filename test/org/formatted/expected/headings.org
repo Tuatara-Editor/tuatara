@@ -1,0 +1,38 @@
+#+title: Case headings
+#+identifier: 20260301T100400
+
+* As headings
+#+BEGIN: denote-files-as-headings :regexp "==1" :sort-by-component signature
+* Alpha root :alpha:meta:
+
+Body of the alpha root, linking to [[denote:20260102T090000][Beta child]].
+
+** Section one
+Some text under it.
+*** Sub section
+​#+begin_src sh
+echo hi
+​#+end_src
+  ​#+caption: indented keyword
+* Beta child :alpha:beta:
+
+Back to [[denote:20260101T090000][Alpha root]], and to its
+[[denote:20260101T090000::*Section one][Alpha root::Section one]].
+* Delta grandchild :delta:
+
+No links here.
+* Gamma, the second child :gamma:
+
+Only an identifier: [[denote:20260101T090000]].
+And the case of backlinks: [[denote:20260301T100200][Case]].
+#+END:
+* With links, no tags
+#+BEGIN: denote-files-as-headings :regexp "beta\\|epsilon\\|_md" :add-links t :exclude-tags t
+* [[denote:20260102T090000][Beta child]] 
+
+Back to [[denote:20260101T090000][Alpha root]], and to its
+[[denote:20260101T090000::*Section one][Alpha root::Section one]].
+A note with no front matter at all.
+** Its only headline :here:
+Text.
+#+END:

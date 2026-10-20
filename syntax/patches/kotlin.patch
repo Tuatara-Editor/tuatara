@@ -1,0 +1,20 @@
+diff --git a/src/scanner.c b/src/scanner.c
+index 64b8182..6f0a74a 100644
+--- a/src/scanner.c
++++ b/src/scanner.c
+@@ -53,13 +53,13 @@ typedef char Delimiter;
+ typedef Array(Delimiter) Stack;
+ 
+ static inline void stack_push(Stack *stack, char chr, bool triple, uint8_t prefix_len) {
+-  if (stack->size + 1 >= TREE_SITTER_SERIALIZATION_BUFFER_SIZE) abort();
++  if (stack->size + 1 >= TREE_SITTER_SERIALIZATION_BUFFER_SIZE) return;
+   array_push(stack, (Delimiter)(triple ? (chr + 1) : chr));
+   array_push(stack, (Delimiter)prefix_len);
+ }
+ 
+ static inline void stack_pop(Stack *stack) {
+-  if (stack->size < 2) abort();
++  if (stack->size < 2) return;
+   stack->size -= 2;
+ }
+ 

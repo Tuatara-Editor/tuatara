@@ -1,0 +1,19 @@
+diff --git a/src/scanner.c b/src/scanner.c
+index e420c69..064cc57 100644
+--- a/src/scanner.c
++++ b/src/scanner.c
+@@ -124,11 +124,13 @@ bool tree_sitter_earthfile_external_scanner_scan(void *payload, TSLexer *lexer,
+           break;
+ 
+         case '\t':
++        case '\v':
+         case ' ':
+           skip(lexer);
+           break;
+       }
+-    } while (!lexer->eof(lexer) && isspace(lexer->lookahead));
++    } while (!lexer->eof(lexer) &&
++             (lexer->lookahead == ' ' || (lexer->lookahead >= '\t' && lexer->lookahead <= '\r')));
+ 
+     if (lexer->eof(lexer)) {
+       return handle_eof(lexer, scanner, valid_symbols);

@@ -1,0 +1,4 @@
+# name: LaTeX line
+# key: <L
+# --
+#+latex: $0

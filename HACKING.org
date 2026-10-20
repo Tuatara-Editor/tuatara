@@ -1,0 +1,112 @@
+#+title: Working on Tuatara
+
+* What you need
+
+- SBCL 2.6 or later, with threads (the Fedora and Debian packages are). The core
+  uses SBCL's threads, foreign calls and compiler, so other Lisps will not build it.
+- Quicklisp, in =~/quicklisp/= (its default), =~/.local/share/quicklisp/=, or
+  where =QUICKLISP_SETUP= names its =setup.lisp=. The Lisp libraries (CFFI,
+  cl-ppcre, Parachute and the rest) are fetched by it on the first build.
+- A C and C++ compiler, git and make, for the tree-sitter grammars.
+- Zig, the version =lisp/terminal/library.pin= names, for the terminal library
+  (from ziglang.org; one directory, no installation).
+- At run time: GTK 4 for the window, ncurses for the terminal; bubblewrap,
+  ImageMagick and poppler's tools for pictures and PDFs; enchant and hunspell
+  for spelling.
+
+On Fedora Atomic (Silverblue, Kinoite), =tools/toolbox-setup.sh= makes a toolbox
+container called =tuatara= with all of these but Zig and Quicklisp, and the
+scripts below run their Lisp and C work in it by themselves when it is there
+(=tools/inside.sh=). Elsewhere they run on the system itself.
+
+=tools/check-updates.sh= reports which pinned dependencies have newer
+versions upstream (tree-sitter and the grammars, Ghostty and Zig, Quicklisp,
+SBCL, and what the AppImage is made with) in =build/bumpcheck.org=, and
+changes nothing; it asks the network for names and versions only.
+=--install= runs it once a week from a systemd user timer, with a notice on
+the desktop when the list changes (=tools/toolbox-setup.sh= asks whether to,
+and does not unless you say yes), and =--remove= stops it.
+
+* Building and running
+
+#+begin_example
+tools/grammars.sh             # fetch and compile tree-sitter and the grammars, at their pinned commits
+tools/terminal-library.sh     # build the terminal library at its pinned commit
+tools/build-image.sh          # build/tuatara: the editor saved as one executable (runs both scripts above)
+tools/tuatara-tui.sh FILE     # build when the sources changed, then run it here
+build/tuatara --gui FILE      # in a window of its own
+#+end_example
+
+Each script does nothing when what it makes is up to date. =tools/release.sh=
+lays out a directory to give to others, its program built from the last commit
+in =/tmp/tuatara-release-build/= so that it names no folder of the machine it
+was built on (it refuses one that names the home folder or the user);
+=tools/appimage.sh= makes an AppImage of
+it (it takes its libraries from Ubuntu 24.04, in a podman container), and
+=tools/distro-packages.sh= Fedora, Ubuntu and Arch packages (each made by its
+system's own tools in a podman container; =--check= installs each in a new
+container and runs it). The images are pinned in =tools/containers.sh=.
+
+* Testing
+
+#+begin_example
+tools/test.sh                 # the whole suite and its benchmarks, about 25 minutes
+#+end_example
+
+One group or one test runs from a Lisp session with the tests loaded:
+=(ql:quickload :tuatara/tests)= then =(parachute:test 'tuatara.tests::terminal)=.
+However the tests run, they keep away from your own files: they have their own
+state, data and trash directories, see no drives mounted, and never read your
+init file (=test/fences.lisp=).
+
+Full compiler warnings fail the suite. Build once with an empty cache too
+(=XDG_CACHE_HOME= pointing at a new directory): a setting used before the file
+that defines it is loaded warns only then. A test that changes a file works on files
+it made itself, in a directory of its own.
+
+* Working in a running editor
+
+=tools/lisp-server.sh= starts SBCL with Tuatara loaded and a Swank (SLIME) or
+Slynk (Sly) server on localhost:4005. In the editor itself, =M-:= evaluates
+Lisp, =M-x ielm= is a REPL, and =M-.= goes to the source of anything.
+
+* How the code is laid out
+
+- =src/= :: the core, which knows nothing of the features: text (the rope),
+  buffers, display layout, the command loop, modes, input and output, the
+  sandbox, background jobs, tree-sitter.
+- =lisp/= :: the editor's features, written on the core: commands, the modal
+  layer, Org, rimu, search, the terminal, help.
+- =frontends/= :: the window (GTK 4), the terminal (ncurses), and a fake one
+  for the tests.
+- =syntax/= :: the grammars' pins and licenses, and the rules that colour,
+  indent and select (from Helix, MPL 2.0).
+- =test/= :: the tests (Parachute), one file per part; =tools/= the scripts.
+
+Tuatara carries no packages of its own: a package is loaded on asking from a
+git repository or a folder, =(load-package "NAME" :source ...)= in the init
+file, and is written, tested and kept where it lives. A package has a Lisp
+package of its own that uses =cl= and =tuatara=: the names =lisp/api.lisp=
+lists, with positions counted in octets from 0, are the ones it may use, and
+its settings are made with =define-package-setting=.
+
+* Conventions
+
+- Every definition has a docstring a user can read in the help: what it does
+  and how to use it, without reference to how another program behaves. Credit
+  for ideas goes in the README and file headers.
+- English, British spelling preferred (colour, behaviour); "license" in the GNU
+  GPL's name, and names already in the code keep their spelling.
+- One way per kind of thing: look for the function that does it before writing
+  another.
+- Nothing slow on the editor's thread: work that takes time runs in the
+  background, and the editor answers keys meanwhile.
+- No colours in code but =lisp/theme.lisp=, which derives every shade from the
+  theme in force.
+- Nothing in a file is ever run: pictures, PDFs and Office documents are drawn in
+  the sandbox, links are followed only when asked.
+- Each source file starts with its name, a one-line description, and the
+  copyright and license line.
+- A new setting: its name in =tuatara-user='s export list (=src/package.lisp=),
+  a =defvar= with a docstring where it is used, and a commented line in the
+  starter init file (=data/init.lisp=, read into =*starter-config*=).

@@ -1,0 +1,6 @@
+* Contents :TOC:
+* A
+:PROPERTIES:
+:CUSTOM_ID: x
+:END:
+* B with [[file:x.org][a file link]] and [[https://y][another]]

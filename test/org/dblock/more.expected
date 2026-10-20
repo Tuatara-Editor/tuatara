@@ -1,0 +1,97 @@
+* Writing the report [2/3]
+:LOGBOOK:
+CLOCK: [2026-09-28 Mon 13:00]--[2026-09-28 Mon 15:10] =>  2:10
+:END:
+** Figures
+:LOGBOOK:
+CLOCK: [2026-09-29 Tue 10:00]--[2026-09-29 Tue 11:00] =>  1:00
+:END:
+*** Checking the sums
+:LOGBOOK:
+CLOCK: [2026-09-29 Tue 11:00]--[2026-09-29 Tue 11:25] =>  0:25
+:END:
+* Short
+:LOGBOOK:
+CLOCK: [2026-09-30 Wed 08:00]--[2026-09-30 Wed 08:05] =>  0:05
+:END:
+* Another one
+:LOGBOOK:
+CLOCK: [2026-09-30 Wed 09:00]--[2026-09-30 Wed 10:15] =>  1:15
+:END:
+
+#+BEGIN: clocktable :maxlevel 3 :tcolumns 1
+#+CAPTION: Clock summary at [2026-10-02 Fri 20:49]
+| Headline                 |   Time |
+|--------------------------+--------|
+| *Total time*             | *4:55* |
+|--------------------------+--------|
+| Writing the report [2/3] |   3:35 |
+| \_  Figures              |   1:25 |
+| \_    Checking the sums  |   0:25 |
+| Short                    |   0:05 |
+| Another one              |   1:15 |
+#+END:
+
+#+BEGIN: clocktable :maxlevel 3 :tcolumns 2
+#+CAPTION: Clock summary at [2026-10-02 Fri 20:49]
+| Headline                 |   Time |      |
+|--------------------------+--------+------|
+| *Total time*             | *4:55* |      |
+|--------------------------+--------+------|
+| Writing the report [2/3] |   3:35 |      |
+| \_  Figures              |        | 1:25 |
+| \_    Checking the sums  |        | 0:25 |
+| Short                    |   0:05 |      |
+| Another one              |   1:15 |      |
+#+END:
+
+#+BEGIN: clocktable :scope agenda :filetitle t :maxlevel 1
+#+CAPTION: Clock summary at [2026-10-02 Fri 20:49]
+| File   | Headline         | Time   |
+|--------+------------------+--------|
+|        | ALL *Total time* | *4:35* |
+|--------+------------------+--------|
+| a.org  | *File time*      | *2:15* |
+|        | Project A        | 2:15   |
+|--------+------------------+--------|
+| B file | *File time*      | *2:20* |
+|        | Project B        | 2:20   |
+|--------+------------------+--------|
+| c.org  | *File time*      | *0:00* |
+#+END:
+
+#+BEGIN: clocktable :header "A header of my own\n" :maxlevel 1
+A header of my own
+| Headline                 |   Time |
+|--------------------------+--------|
+| *Total time*             | *4:55* |
+|--------------------------+--------|
+| Writing the report [2/3] |   3:35 |
+| Short                    |   0:05 |
+| Another one              |   1:15 |
+#+END:
+
+#+BEGIN: clocktable :header "" :maxlevel 1
+| Headline                 |   Time |
+|--------------------------+--------|
+| *Total time*             | *4:55* |
+|--------------------------+--------|
+| Writing the report [2/3] |   3:35 |
+| Short                    |   0:05 |
+| Another one              |   1:15 |
+#+END:
+
+#+BEGIN: clocktable :scope agenda :level t :timestamp t :tags t :properties ("CLIENT") :maxlevel 2 :fileskip0 t
+#+CAPTION: Clock summary at [2026-10-02 Fri 20:49]
+| File  |   L | Timestamp        | Tags | CLIENT | Headline                                 | Time   |      |
+|-------+-----+------------------+------+--------+------------------------------------------+--------+------|
+|       | ALL |                  |      |        | *Total time*                             | *4:35* |      |
+|-------+-----+------------------+------+--------+------------------------------------------+--------+------|
+| a.org |     |                  |      |        | *File time*                              | *2:15* |      |
+|       |   1 |                  | work |        | Project A                                | 2:15   |      |
+|       |   2 |                  | work |        | \_  Sub A with a rather long headline... |        | 0:45 |
+|-------+-----+------------------+------+--------+------------------------------------------+--------+------|
+| b.org |     |                  |      |        | *File time*                              | *2:20* |      |
+|       |   1 |                  |      | Acme   | Project B                                | 2:20   |      |
+|       |   2 | <2026-10-06 Tue> |      |        | \_  Task B1 [1/2]                        |        | 2:20 |
+#+END:

@@ -1,0 +1,6 @@
+# name: Verse
+# key: <v
+# --
+#+begin_verse
+$0
+#+end_verse

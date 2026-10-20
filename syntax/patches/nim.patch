@@ -1,0 +1,24 @@
+diff --git a/src/scanner.c b/src/scanner.c
+index c688b0c..5d9e704 100644
+--- a/src/scanner.c
++++ b/src/scanner.c
+@@ -80,7 +80,8 @@ _nonnull_(1) static void indent_vec_destroy(struct indent_vec* self)
+ _nonnull_(1) _returns_nonnull_ static indent_value* indent_vec_at(
+     struct indent_vec* self, int32_t idx)
+ {
+-  RUNTIME_ASSERT(idx >= 0 && idx < self->len);
++  static indent_value out_of_range;
++  if (!(idx >= 0 && idx < self->len)) return &out_of_range;
+   return &self->data[idx];
+ }
+ 
+@@ -93,7 +94,8 @@ _nonnull_(1) static indent_value
+ _nonnull_(1) _returns_nonnull_ static indent_value* indent_vec_at_capacity(
+     struct indent_vec* self, int32_t idx)
+ {
+-  RUNTIME_ASSERT(idx >= 0 && idx < self->capacity);
++  static indent_value out_of_range;
++  if (!(idx >= 0 && idx < self->capacity)) return &out_of_range;
+   return &self->data[idx];
+ }
+ 

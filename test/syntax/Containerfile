@@ -1,0 +1,19 @@
+# A Containerfile for the colouring and parsing tests.
+FROM registry.fedoraproject.org/fedora:44 AS build
+ARG VERSION=1.2
+ENV LANG=C.UTF-8 \
+    APP_HOME=/app
+WORKDIR /src
+COPY --chown=1000:1000 src/ /src/
+RUN dnf install -y gcc make && \
+    make -C /src install && \
+    dnf clean all
+
+FROM registry.fedoraproject.org/fedora-minimal:44
+LABEL org.opencontainers.image.title="example"
+COPY --from=build /usr/local/bin/app /usr/local/bin/app
+EXPOSE 8080/tcp
+USER 1000
+HEALTHCHECK --interval=30s CMD ["/usr/local/bin/app", "--check"]
+ENTRYPOINT ["/usr/local/bin/app"]
+CMD ["--port", "8080"]

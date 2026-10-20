@@ -1,0 +1,7 @@
+title:      Eta text
+date:       2026-01-07
+tags:       text
+identifier: 20260107T090000
+---------------------------
+
+Links [[denote:20260101T090000][Alpha root]] and [[denote:20260301T100200][the case]].

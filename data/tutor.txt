@@ -1,0 +1,1091 @@
+Tuatara tutor
+==============
+
+This is an ordinary, editable buffer, and the text you are reading is the
+text you will practise on.  Changing it is the point -- nothing here is
+precious, and \[tuatara-tutor] after killing this buffer gives you a fresh
+copy whenever you want one.
+
+Lines beginning with ">>" are things to DO.  Everything else is
+explanation.
+
+Tuatara's modal editing has two states.  In NORMAL state the letter keys
+are commands; in INSERT state they type.  The mode line shows which:
+TUATARA[N] or TUATARA[I].  If a key ever does something you did not
+expect, you are probably in the other state -- press \`C-g' to get back to
+NORMAL.
+
+\`C-g' also cancels a selection, and it is worth pressing at the end of
+any lesson that made one.  A selection left active changes what the next
+lesson's keys do: several of them act on the selection when there is one
+and on the character or line at point when there is not.
+
+To stop, kill this buffer with \`C-x k'.
+
+
+Lesson 1 -- moving around
+-------------------------
+
+Movement sits on the home row:
+
+    \[backward-char] left    \[next-line] down    \[previous-line] up    \[forward-char] right
+
+>> Walk the cursor down to the ----> line, along it, and back, using
+   only those four keys.
+
+   ----> Move along this line and back again before going on.
+
+Bigger jumps:
+
+    \[forward-word] next word     \[backward-word] previous word
+    \[beginning-of-buffer] buffer start   \[end-of-buffer] buffer end
+
+>> Press \[beginning-of-buffer] to jump to the top of this buffer, then come back here.
+
+Big jumps are easy to get wrong, so they are cheap to undo.  \[jump-back]
+returns to where you were before the last one -- reach for \`g l' to get to
+the end of the LINE, slip and hit \`g e' instead, and you are at the end of
+the BUFFER.  One keystroke puts it right.
+
+>> Press \[end-of-buffer] to shoot to the end of this buffer, then \[jump-back] to come
+   straight back to this line.
+
+Press it again to keep walking back through earlier positions.  It is a
+recovery key rather than a filing system.
+
+
+Lesson 2 -- counts
+------------------
+
+A count works wherever "how many" means something, and it always means
+exactly that.  Give it as \`C-u' N before the key.
+
+Every motion takes one, and so does every \`m' key that selects a thing,
+along with \[delete-selection-or-char], \[copy-selection-or-char], \[tuatara-change], \[yank-over-selection], \[tuatara-open-below], \[tuatara-open-above] and \[select-lines].  The keys with no
+"how many" in them -- entering INSERT at the cursor, the other two
+selection toggles, asking for help -- ignore a count rather than
+refusing it, so a guess there costs nothing.
+
+Mind the \`C-u': a count always starts with it.  A bare \`3' does NOT start a
+count here -- digits are unbound in NORMAL state.  Worse than doing
+nothing, \`3' \[next-line] says "3 is undefined" and then runs the \[next-line] on its
+own, so you move ONE line instead of three.  The count is dropped, not
+obeyed.  \`C-u 3' \[next-line] is how it is said.
+
+>> Press \`C-u 3' \[next-line] and watch the cursor move three lines in one go.
+
+>> Put the cursor on "one" below and press \`C-u 5' \[forward-word] -- five words in
+   one go, leaving the cursor just after "five".  \[forward-word] lands at the END
+   of each word, so counting stops there rather than on the next one.
+
+   ----> one two three four five six seven eight nine ten
+
+Counts work the same way on the editing commands you are about to meet.
+Lessons 4 and 5 each end with a line to try one on, once the command
+itself has been introduced -- a count is easier to see when you already
+know what it is counting.
+
+Where the cursor sits matters more for some commands than others, and it
+is worth knowing which is which before you start counting:
+
+  - Counting CHARACTERS counts from the cursor.  Put it on the first
+    character you mean to affect; one place off and you act on the wrong
+    five.
+  - Counting or selecting THINGS -- a word, a sentence, a paragraph --
+    does not care where inside the thing you are.  Anywhere in the word
+    is anywhere in the word.
+
+The second kind is why the exercises for it say "anywhere", and the
+first kind is why the others name an exact character.
+
+
+Lesson 3 -- typing
+------------------
+
+To type, enter INSERT state.  Modal editing then gets out of the way, and the
+keys do what they do without it: letters type themselves.
+
+    \[tuatara-insert] before the cursor      \[tuatara-insert-after] after the cursor
+    \[tuatara-insert-line-start] at the start of the line   \[tuatara-insert-line-end] at the end of the line
+    \[tuatara-open-below] open a line below       \[tuatara-open-above] open a line above
+
+Both open keys take a count: \`C-u 3' \[tuatara-open-below] opens three lines below and
+leaves you on the first of them, with two empty lines under it.
+
+A character that is not on your keyboard has a code of its own, and
+\[list-digraphs] lists them all; Lesson 13 is the short way to type
+one.
+
+>> Put the cursor on the full stop below, press \[tuatara-insert], type the missing
+   word -- it is "dog" -- then press \`C-g' to return to NORMAL.
+
+   ----> The quick brown fox jumps over the lazy .
+
+
+Lesson 4 -- deleting and changing
+---------------------------------
+
+    \[delete-selection-or-char]   delete the character under the cursor, or the selection
+    \[tuatara-change]   change it -- deletes, then drops you into INSERT
+
+>> Fix the doubled letters on the ----> line using \[delete-selection-or-char].
+
+   ----> Thiis liine haas extraa letterss in itt.
+
+>> Put the cursor on the "w" of "wrong" below -- the FIRST character, not
+   just somewhere in the word -- then press \`C-u 5' \[tuatara-change], type "right",
+   and press \`C-g'.
+
+   ----> This word is wrong and needs replacing.
+
+   One character off and you replace the wrong five: starting on the
+   "r" gives "wrightand".  Lesson 5 shows the way round that.
+
+Both take a count, the same one Lesson 2 described.
+
+>> Put the cursor on the first "x" below and press \`C-u 3' \[delete-selection-or-char].
+   All three go at once.
+
+   ----> xxxand the rest of the line stays
+
+
+Lesson 5 -- selecting things
+----------------------------
+
+\[start-selection] drops a mark and starts a selection that grows as you move: press
+it, move, and everything between is selected.  \`C-g' lets go.
+
+Pressing \[start-selection] a second time does not let go.  It drops a fresh mark
+where you are standing and starts a new selection from there, so the
+one you had is gone but you are still selecting.
+
+>> Put the cursor at the start of the ----> line, press \[start-selection], then move
+   right with \[forward-char] and down with \[next-line].  Press \`C-g' to drop the
+   selection.
+
+   ----> Select part of this line by hand before meeting the shortcuts.
+
+That is the manual way.  Usually it is quicker to select the thing you
+mean:
+
+    \[select-word] a word        \[select-symbol] a symbol
+    \[select-sentence] a sentence    \[select-paragraph] a paragraph
+    \[select-whole-buffer] the whole buffer
+
+>> Put the cursor anywhere in the first ----> sentence and press \[select-sentence].  The
+   whole sentence is selected, however long it is.  Press \[select-sentence] again:
+   the selection GROWS to take the second sentence as well.
+
+   ----> Selecting by meaning beats counting characters.  It also reads better.
+
+All four of these grow on a second press, and keep growing until the
+buffer runs out.  A count says the same thing in one go, so \[select-word] \[select-word]
+and \`C-u 2' \[select-word] agree.  Any other key in between ends the run, and
+the next press starts a fresh selection.
+
+All four can grow BACKWARD too: \[select-word-backward] adds the word before the
+selection, \[select-symbol-backward] the symbol, \[select-sentence-backward] the sentence, \[select-paragraph-backward] the paragraph.
+Either direction continues the same run, so \[select-word] \[select-word] \[select-word-backward] takes
+two words forward and then one back.  Pressed fresh on a word, each
+selects the same word its forward partner would; pressed in the gap
+between two, \[select-word] takes the word ahead and \[select-word-backward] the one behind, so
+from one space the two keys are the two words on either side of it.
+Runs mix objects, too: each press adds one object of its own kind at
+its own end, so \[select-word] \[select-sentence] grows the word selection forward to the
+end of its sentence.
+
+\[mark-run-toggle] holds the prefix down for you.  In mark run mode the bare letters
+w W b B s S mark and grow exactly as their m-prefixed keys do, so \`M' \`w' \`b'
+selects what three prefixed presses select, the press itself being
+the first of them.  A reminder of the object keys stays in the echo
+area for as long as the mode is on, and goes when the mode does -- as
+one does for v, V and m v too, each naming what its own selection
+answers to.  It names the keys whose SUBJECT the mode changes and no
+others -- w moves by a word in NORMAL state and marks one here --
+while a key that keeps its subject is left out: h j k l still move,
+J and K still work on lines, \`.' still repeats, u and U still step
+back and forward.  All of them are below.
+
+The press arrives holding a word, that being what nearly every run
+starts from -- so \`M' alone is a selected word, and \`M' \[delete-selection-or-char] takes it.
+Which word is m w's answer exactly: the one under the cursor, or from
+a gap the one ahead of it, so the two keys never disagree.  The word is
+the run's first press, and every letter after it grows: \`M' is m w,
+and \`M' \`w' is two words.
+
+>> Put the cursor on "three" in the ----> line and press \[mark-run-toggle]: one
+   word is selected.  Press \`w': two words, no prefix in sight.  Press
+   \`b' and the word before joins them.  Now press \[delete-selection-or-char] to take all
+   three.
+
+   ----> one two three four five six
+
+J and K grow the selection by lines, J at the bottom end and K at the
+top, each finishing its own end's line first: from a word, \`J' reaches
+the end of its line, newline and all, \`K' the start, and \`J' \`K' is the
+whole line -- so a delete after the pair removes it outright, and
+from a line's first word \`J' alone is enough.  h j k l move point and
+adjust the selection's near end; g h and g l are the two that own an
+end apiece instead, so they add up -- \`M' \`g' \`h' \`g' \`l' takes the whole
+line's text, in either order.  * trades which end the motions hold;
+the object keys trade it back before they grow, so they never need
+thinking about.
+
+\`u' puts the run back where the last press found it and \`U' puts it
+forward again, one press per step, the motions and * included.  A run
+only ever grows, so without them a press that reached further than it
+looked left cancelling and starting again as the only way out.
+Outside the mode those two keys are undo and redo, and inside it they
+are the same idea one level down -- of the run rather than the buffer.
+\`.' repeats the last press, as it does everywhere: \`M' \`w' \`.' is three
+words, and each \`.' is one step for \`u' to take back.
+
+>> Press \[mark-run-toggle] on "three" in the ----> line above, then
+   \`w' \`w' \`w': four words.  Too many?  Press \`u' twice to take two
+   of them back, and \`U' once if you went one step too far.
+
+Paragraphs keep their m prefix there, since p and P stay the paste
+keys inside the mode: m p and m P grow a run just as the bare letters
+do.  A selection you already have -- from \[start-selection], \[select-lines] or the mark keys -- is
+ADOPTED by \[mark-run-toggle] rather than dropped, and the object keys grow it from there.
+
+Any other key returns to NORMAL state and does its ordinary job in the
+same press, so \[mark-run-toggle] \`w' \`w' \[delete-selection-or-char] selects two words and deletes them with
+no explicit exit.  Two presses are held back from that: a key that
+does nothing -- one that is unbound -- leaves the run standing, so a
+mistyped key costs nothing but a message, and \[select-lines] says to
+leave the run first rather than quietly taking it over.  \[mark-run-toggle] again --
+or \`C-g' -- drops the selection and the mode with it.
+
+A word stops at a hyphen or underscore; a symbol runs straight through
+one.  On a name held together by them the two select very different
+things, which is why both keys exist.
+
+>> Put the cursor on the "m" of "mail" in the ----> line and press \[select-word]:
+   only that one word is selected.  Press \`C-g', then press \[select-symbol]
+   from the same spot: the whole name is selected, hyphen, underscore
+   and all.
+
+   ----> Call send-mail_to when the queue drains.
+
+In Lisp, every character a Lisp name can hold is part of a symbol, so
+\[select-symbol] on "foo.bar" there takes the whole of it, and a quote in front
+comes too.  A full stop or comma at the END is always left out, so
+\[select-symbol] on the last name in a sentence gives you the name without the
+full stop.
+
+A selection is something to act ON, so the editing keys from Lesson 4
+follow straight on from it: \[tuatara-change] changes what is selected rather than the
+character under the cursor.
+
+>> Put the cursor on "replace" below, press \[select-word] then \[tuatara-change], type
+   "change", and press \`C-g'.  Selecting first means you never count
+   the characters.
+
+   ----> Words to replace without counting anything.
+
+These take a count too -- the same one Lesson 2 described.
+
+>> Put the cursor on "alpha" below and press \`C-u 2' \[select-word].  Two words
+   are selected instead of one.
+
+   ----> alpha beta gamma delta
+
+You can also select by delimiter.  \[select-inside-pair] asks for a character and selects
+what is INSIDE the nearest pair; \[select-pair] includes the delimiters too.
+
+>> Put the cursor between the parentheses below and press \[select-inside-pair] then \`(' --
+   the text inside is selected.  Try \[select-pair] then \`(' to include the brackets.
+
+   ----> call(this argument here)
+
+Standing ON a delimiter, either end of the pair, nothing is asked: the
+character under the cursor is the answer, so \[select-inside-pair] alone is enough
+there.  A delimiter typed after it is a key of its own and acts at
+once: it wraps what is selected, or takes that pair off again.
+
+>> Put the cursor on the "(" of the ----> line above and press \[select-inside-pair] by
+   itself.  The same text is selected, with no question asked.
+
+>> Press \`(' now.  The parentheses come off, since they are the pair
+   around what you selected.  Press \`(' once more to put them back.
+
+A count means levels out, so \`C-u 2' \[select-inside-pair] \`(' from the inner pair selects the
+outer one.
+
+>> Put the cursor on "deep" below and press \`C-u 2' \[select-inside-pair] then \`('.
+
+   ----> outer (middle (deep) middle) outer
+
+The pairs \[select-inside-pair] and \[select-pair] know are a FIXED list: the brackets, quotes
+straight and curly, and a row of markup characters such as * = ~ and
+_.  They look for the character itself and nothing else, wherever it
+stands -- a "<" is a pair to them in plain text as much as in HTML,
+and a bracket inside a string or a comment counts the same as one
+outside it.
+
+The list is yours to change.  *pair-delimiters* holds the pairs,
+and adding # to it in your init file makes # a delimiter too -- any
+character you like, X included.  \[describe-variable] on it shows the pairs in
+force, and the init file Tuatara writes for you shows the line an
+addition takes.
+
+\[select-sexp-inside] and \[select-sexp] do the same job without asking.  They find the enclosing
+brackets themselves, whatever kind those turn out to be -- useful in
+code, where the nearest pair is as likely to be square or curly as
+round.  In a language with a grammar, a bracket inside a string or a
+comment is no bracket at all to them.
+
+    \[select-inside-pair] and \[select-pair]   you name the delimiter, from a fixed list
+    \[select-sexp-inside] and \[select-sexp]   Tuatara finds the brackets itself
+
+>> Put the cursor on the "2" below and press \[select-sexp-inside].  "1 2 3" is selected
+   without you naming the bracket.  Press \[select-sexp] instead and the square
+   brackets come with it.
+
+   ----> (defun f (a b) [1 2 3])
+
+Counts go outward here too, and cross bracket types on the way out.
+
+>> From that same "2", press \`C-u 2' \[select-sexp-inside].  The selection jumps past the
+   square brackets to what is inside the surrounding parentheses.
+
+
+Lesson 6 -- whole lines
+-----------------------
+
+\[select-lines] starts a line selection anchored on the current line.  \[select-next-line] and
+\[select-previous-line] then grow it a whole line at a time, and they take counts too.
+So does \[select-lines] itself: \`C-u 3' \[select-lines] selects three lines in one press.
+
+>> Put the cursor on the first ----> line, press \[select-lines], then \[select-next-line] twice, then \[delete-selection-or-char].
+   All three lines go, leaving no blank behind.
+
+   ----> first line to remove
+   ----> second line to remove
+   ----> third line to remove
+
+The highlight stops at the end of the last line, so the newline that ends
+it never LOOKS selected -- but \[copy-selection-or-char] and \[delete-selection-or-char] take it anyway.  That
+is why the three lines above go completely, instead of leaving three
+empty ones behind, and why a \[copy-selection-or-char] here pastes back as whole lines rather
+than running into whatever line it lands on.  Worth knowing before you
+report it: the selection is one character shorter than what it takes.
+
+Cutting and copying with \[kill-region] and \[kill-ring-save] takes only what is highlighted,
+the last newline left out, so for whole lines use the modal keys.
+
+Lines can be put back together as well as taken apart.  \[join-selected-lines] pulls the
+line BELOW up onto the one you are on, tidying the whitespace at the
+join -- the direction you want when you are sitting on a line deciding
+to absorb what follows.
+
+>> Put the cursor on the first ----> line below and press \[join-selected-lines].  The
+   second line joins it.  Press it again and the third comes up too.
+
+   ----> a sentence broken
+   ----> across three
+   ----> separate lines
+
+A count joins that many lines at once, so \`C-u 2' \[join-selected-lines] from the first
+line would have done both in one go.
+
+Selected lines join as one.  \[select-lines] \[select-next-line] \[select-next-line] \[join-selected-lines] on the three lines above
+would have made the one line too, and dropped the selection.
+
+
+Lesson 7 -- copy and paste
+--------------------------
+
+    \[copy-selection-or-char] copy    \[delete-selection-or-char] cut    \[yank-over-selection] paste    \[yank-rectangle] paste a rectangle
+
+What you copy or cut is on the system clipboard too, so another program
+can paste it, and what another program copied is what \[yank-over-selection] pastes next.
+
+A count on \[yank-over-selection] pastes that many copies.
+
+>> Copy the word "echo" below with \[select-word] then \[copy-selection-or-char], then press \`C-u 3' \[yank-over-selection] at the
+   end of the line.
+
+   ----> echo
+
+Pasting REPLACES whatever is selected, rather than inserting alongside
+it.  That is worth knowing before the next lesson, where it is how a
+whole set of banked lines gets swapped in one press.
+
+
+Lesson 8 -- banking, which was donkey.el's own idea
+-----------------------------------------------
+
+Most editors make you copy one stretch at a time.  Tuatara lets you set
+aside lines from anywhere in the buffer and act on all of them at once.
+
+    \[bank-selected-lines] bank this line, or every line a selection touches
+        (press it again on a banked line to take it back)
+        (\`C-u 3' \[bank-selected-lines] banks three lines, as selecting them would)
+    \[unbank-line] unbank this line     \[unbank-section] unbank the whole run
+    \[clear-banked-lines] discard every bank
+
+Banked lines stay highlighted while you carry on moving around.  When you
+press \[copy-selection-or-char] or \[delete-selection-or-char], every banked line is taken at once, as a single
+piece, in the order they appear in the buffer -- and \[yank-over-selection] swaps the whole set
+in for whatever you copied.
+
+>> Bank the first and third shopping lines below with \[bank-selected-lines], then press \[copy-selection-or-char].
+   The message reads "Copied 2 lines".  Now put the cursor on the
+   (paste here) line, press \[select-lines] to select it, and press \[yank-over-selection]: both
+   banked lines arrive at once, and the line you had selected is gone.
+
+   The \[select-lines] is what makes the marker line disappear: pasting replaces a
+   selection, as Lesson 7 showed.  Without it the two lines would simply
+   have been inserted, leaving the marker sitting underneath them.
+
+   ----> milk
+   ----> nails
+   ----> bread
+
+   (paste here)
+
+Whatever is selected right now counts as well, so the last piece never has
+to be banked explicitly.
+
+>> Bank the "milk" line again, then select the "bread" line with \[start-selection] and
+   \[forward-char], and press \[copy-selection-or-char].  Both are copied, though only one was banked.
+
+
+Lesson 9 -- columns
+-------------------
+
+\[rectangle-mark-mode] makes the selection a RECTANGLE.  Instead of a run of text it
+covers the same columns on every line it spans -- for editing a column of
+a table, or the leading characters of a block of lines.
+
+    \[rectangle-mark-mode] start a rectangle selection (press it again to cancel)
+
+>> Put the cursor on the first "1" below, press \[rectangle-mark-mode], then \[next-line] twice and
+   \[forward-char] twice.  Only the block of digits is highlighted, not the
+   words.  Press \[delete-selection-or-char] to cut it out.
+
+   Count the presses off the highlight rather than off the characters:
+   the anchor column counts as one, so reaching the third digit takes two
+   presses and not three.
+
+   ----> 111 alpha
+   ----> 222 beta
+   ----> 333 gamma
+
+The selection is released by the cut, so you can put the cursor back on
+the first line and press \[yank-rectangle] straight away -- the block goes back where
+it came from.  A rectangle has its own paste key: \[yank-over-selection] pastes ordinary
+text, \[yank-rectangle] pastes columns, and neither has to guess which you meant.
+
+\[tuatara-change] on a rectangle empties the block on EVERY line it spans and puts
+a cursor on each, in INSERT state: what you type appears on every row
+at once, the cursors of Lesson 16.  \`C-g' comes back to the cursors,
+and \`C-g' again ends them.
+
+>> Put the cursor on the first "7" below, press \[rectangle-mark-mode], then \[next-line] twice
+   and \[forward-char] twice.  Press \[tuatara-change], type "##" and press \`C-g' twice.
+   All three rows lose their digits together.
+
+   ----> 777 red
+   ----> 888 green
+   ----> 999 blue
+
+\[rectangle-mark-mode] on its own selects one CHARACTER on one line, so pressing \[tuatara-change]
+right after it changes that single character -- correct, but rarely
+what you wanted.  \[next-line] gives the block its rows and \[forward-char] its width, and
+both have to happen before \[tuatara-change].
+
+>> Put the cursor on the first "5" below, press \[rectangle-mark-mode], and press \[tuatara-change]
+   immediately -- no \[next-line], no \[forward-char].  One character goes, and you
+   type in its place as \[tuatara-change] always does; \`C-g' once is enough.  That is
+   the whole difference between the two exercises.
+
+   ----> 555 solo
+
+The block does not have to cover any text at all.  A rectangle with NO
+width empties nothing, so what you type is inserted, which is how the
+same text goes at the front, or the end, of a run of lines at once.
+
+\[rectangle-mark-mode] always starts one character wide, so for a prefix take that
+width straight back off with \[backward-char] before going down.
+
+>> Put the cursor on the "r" of "red" below, press \[rectangle-mark-mode] then \[backward-char],
+   then \[next-line] twice.  Press \[tuatara-change], type "// " and press \`C-g' twice.
+   Nothing is replaced; every row simply gains a front.
+
+   ----> red
+   ----> green
+   ----> blue
+
+For a suffix, start from the end of the line instead.  There is nothing
+to the right to widen into, so the rectangle is already zero-width and
+\[backward-char] is not wanted.
+
+>> Put the cursor on the first row below and press \[end-of-line], then
+   \[rectangle-mark-mode], then \[next-line] twice.  Press \[tuatara-change], type " ;" and press
+   \`C-g' twice.
+
+   ----> aaaaa
+   ----> bbbbb
+   ----> ccccc
+
+A suffix lands on a COLUMN, though, not at the end of each line -- the
+column the FIRST row happened to end on.  On rows of equal length, as
+above, those are the same place.  On ragged rows they are not: a short
+row is padded out to the column, and a long one is split at it.  The
+corner of a block can stand past the end of a short line, and \[forward-char] moves
+it on past the end of one rather than onto the next line.
+
+A rectangle's columns are characters: a tab counts as one, as a letter
+does.
+
+Two things worth knowing before you rely on it:
+
+  - A rectangle lives in Tuatara's own store, NOT the system clipboard.
+    \[yank-rectangle] puts it back inside Tuatara; another program will paste
+    whatever was on the clipboard before.  A block of columns has no
+    shape a flat clipboard could carry.
+  - Pasting a rectangle ONTO a rectangle needs the same number of rows.
+    A three-row block over a two-row selection is refused with a message
+    rather than half-applied.
+
+
+Lesson 10 -- changing your mind
+-------------------------------
+
+Four keys start a selection: \`v', \`V', \[mark-run-toggle] and \`m' \`v'.  You can go from any one
+to any other without letting go first, and what becomes of the
+selection you already had is the whole of what there is to know.
+
+    \[mark-run-toggle]     ADOPTS it.  It becomes the run's starting selection,
+          and the object keys grow it from there.
+    \`m' \`v'   REINTERPRETS it.  The region's corners become the block.
+    \`V'     starts FRESH, anchored on the line the cursor is on.
+    \`v'     RE-ANCHORS.  What you had is dropped and a new selection
+          starts, empty, where the cursor stands.
+
+>> Put the cursor on "beta" in the ----> line and press \`v', then \`l' three
+   times, which selects "bet".  Now press \[mark-run-toggle] and then \`w': the run
+   ADOPTED those three characters and grew them to the end of the word
+   they were part of.
+
+   ----> alpha beta gamma delta
+
+Three exceptions are worth knowing.
+
+Inside a mark run, \`v' and \`V' are REFUSED.  Neither can take a run's
+selection over honestly, so Tuatara says how to let go instead:
+\[mark-run-toggle], \`C-g', or any action key.
+
+>> With that run still up, press \`v'.  The selection does not move,
+   and the echo area tells you how to leave.  Press \[mark-run-toggle] to cancel.
+
+A rectangle is the one selection \[mark-run-toggle] will not adopt: a block has no
+forward end for the object keys to own.  So it is dropped, and a fresh
+run starts on the word under the cursor.
+
+>> Draw a rectangle with \`m' \`v' \`j' \`l', then press \[mark-run-toggle].  The block
+   is gone and a single word is selected in its place.
+
+   ----> one two three
+   ----> four five six
+
+And coming to \`m' \`v' FROM \`V' gives a FULL-WIDTH block.  \`V' selects
+whole lines, so the corners the rectangle inherits are the whole line's
+width -- not the narrow block you were drawing.  Start \`m' \`v' from
+nothing, or from a \`v' selection, when you want a narrow one.
+
+The \`m' keys end nothing.  \`m' \`w' inside a run grows the run, and
+outside one it marks and leaves you selecting.  Over a rectangle it
+clears the block first, no mark command being able to act on columns.
+\`%' is the same: inside a run it takes the whole buffer, and the run
+carries on.
+
+Pressing a starter twice cancels it -- \`V' \`V', \`m' \`v' \`m' \`v',
+\[mark-run-toggle] \[mark-run-toggle] -- except \`v', which re-anchors instead.
+
+
+Lesson 11 -- when two selections disagree
+-----------------------------------------
+
+Banked lines are whole lines.  A rectangle is columns.  No command can act
+on both at once, so Tuatara has one rule:
+
+    THE SELECTION YOU ARE LOOKING AT WINS.  THE BANK IS THE FALLBACK.
+
+    with a rectangle drawn    \[copy-selection-or-char] and \[delete-selection-or-char] take the rectangle; banks stay
+    with no rectangle drawn   \[copy-selection-or-char] and \[delete-selection-or-char] take the banked lines
+    with lines banked         \[yank-over-selection] replaces the banked lines
+
+The rule is only needed for TAKING, because only \[copy-selection-or-char] and
+\[delete-selection-or-char] can be pointed at either kind of selection.  Pasting
+needs no rule: \[yank-over-selection] is text and \[yank-rectangle] is columns, and
+they read from different stores.
+
+First give \[yank-over-selection] something to paste.  A rectangle never reaches the kill
+ring, so a rectangle copy on its own leaves \[yank-over-selection] with nothing to insert.
+
+>> Put the cursor on the "col two" line below and press \[select-lines] then \[copy-selection-or-char].
+   That is an ordinary whole-line copy, on the kill ring where \[yank-over-selection] looks.
+
+   ----> keep this banked
+   ----> col one
+   ----> col two
+
+>> Now bank the "keep" line with \[bank-selected-lines], draw a rectangle over the first
+   three characters of both "col" lines, and press \[copy-selection-or-char].  The rectangle
+   is copied -- and the "keep" line is STILL highlighted.  Nothing was
+   spent.
+
+   Copying a rectangle also drops it, the way copying any selection
+   does, so there is no rectangle on screen by the time you press the
+   next key.  Nothing has to be dismissed first.
+
+>> Press \[yank-over-selection].  The banked line is replaced by the copied line: the
+   bank was the selection still on screen, so it won.
+
+>> Press \[yank-rectangle].  The rectangle lands, exactly as it would have
+   before that paste, or an hour later.  It is in its own store, and
+   nothing you do to the kill ring reaches it.
+
+Neither store is ever emptied by work on the other.  Take the rectangle
+and your banks are still waiting; take the banks and the rectangle is
+still in its store.
+
+Acting on banked lines does spend them: \[copy-selection-or-char], \[delete-selection-or-char] and
+\[yank-over-selection] each empty the bank as they use it, the way any selection is
+consumed by the command that acts on it.  \[clear-banked-lines] is
+the one key that clears banks WITHOUT using them, and
+\[unbank-line] drops a single line.
+
+
+Lesson 12 -- wrapping a selection
+---------------------------------
+
+Select something and press a delimiter: it goes around the selection.
+The selection is then dropped, so there is nothing left to cancel --
+and that is the one thing to know about taking a pair off again.
+Select the same text once more and press the same key: this time it
+comes off.  One key, both directions, and what you have selected says
+which of the two you get.
+
+>> Put the cursor on "middle" in the ----> line, press \`m' \`w' to select
+   it, then press \`('.  Now press \`m' \`w' \`(' again and the parentheses
+   come off.
+
+   ----> one middle three
+
+Either half of a pair does the same thing, so \`)' wraps as \`(' does and
+you can reach for whichever is nearer.  The delimiters are the pairs
+\[select-inside-pair] and \[select-pair] already know -- the brackets, the quotes, the curved
+quotes, the guillemets, and \`=' \`*' \`/' \`~' \`|' \`\' \`+' \`_' \`$' -- so whatever those
+two can select, a key can wrap.
+
+Two of them are not wrap keys: \`:' goes to a line and \`>' indents, and
+they go on doing that.  \`<' still wraps, and gives you the
+pair.
+
+Nothing between the two characters is touched.  No backslashes are
+added, in any mode: \[select-pair] \`"' then \`"' gives a plain pair around the pair,
+and selecting what is inside takes one off again.
+
+>> Put the cursor inside the quotes below and press \[select-inside-pair] \`"' -- the
+   word is selected without the quotes.  Press \`"' and they come off.
+
+   ----> she said "probably" and left
+
+After \[select-inside-pair] or \[select-pair] the selection is still live, so the delimiter you
+type next acts at once, with no second press and nothing to select
+again: \[select-inside-pair] \`"' picks what the quotes hold, and the \`"' after it takes them
+off.  Standing ON a delimiter, \[select-inside-pair] alone is enough -- the character
+under the cursor is the answer.
+
+With NOTHING selected these keys do nothing at all, which is the state
+they spend most of their time in.
+
+Under \[rectangle-mark-mode] each line of the block is wrapped at its own columns, and a
+rectangle is never unwrapped: the pair goes on, row by row.
+
+>> Put the cursor on the "a" of "alpha", press \[rectangle-mark-mode], then \`j' and
+   \`l' \`l', and press \`['.  Each row is wrapped where the block stood.
+
+   ----> alpha one
+   ----> bravo two
+
+
+Lesson 13 -- characters your keyboard does not have
+---------------------------------------------------
+
+\[insert-digraph] asks for two keys and inserts one character, with nothing
+turned on and nothing to turn off afterwards.  It works from NORMAL
+state, and a count repeats the character.
+
+>> Put the cursor at the end of the ----> line and press \[insert-digraph], then
+   \`E' \`u'.  A euro sign appears.  Press \`C-u' \`3' \[insert-digraph] \`-' \`M' for three
+   em dashes.
+
+   ----> the price is
+
+The two keys are the character's digraph in RFC 1345, a standard list.
+\[list-digraphs] lists every one of them with what it types, the common
+ones at the top of the chart.
+
+Now the part worth remembering.  With a SELECTION live, \[insert-digraph] WRAPS
+in the character it names instead of inserting it -- which is the only
+way to wrap in a character no key can type.  The closing half is
+looked up the way a wrap key looks it up, so a pair stays a pair.
+
+>> Put the cursor on "quoted" below, press \`m' \`w', then \[insert-digraph] and
+   \`<' \`<'.  The word is wrapped in guillemets.  Press \`m' \`w' and
+   \[insert-digraph] \`"' \`6' for curved double quotes instead.
+
+   ----> make this quoted please
+
+That is the whole of it: two keys for one character, a selection first
+if you want it wrapped.  To type MANY of them, turn digraphs on with
+\[digraph-input-mode] and in INSERT state type \`&' and the two keys as you go;
+\[input-method-off] turns them off again, \[toggle-input-method] off and on.
+
+
+Lesson 14 -- editing every match at once
+----------------------------------------
+
+\[split-selection] asks for a regexp and holds every match in what you have
+selected.  It changes nothing by itself.  It selects, and then waits
+for you to say what to do with all of them at once:
+
+  \`i' types before every match, \`a' after it, \`c' empties them first,
+  \`d' deletes them, \`w' or any delimiter wraps them, and \`C-g' ends it.
+
+A painted match is ONE thing, the way a single character is: \`a' types
+after the whole of it and \`i' before the whole of it, wherever the
+cursor sits.  That is not how a \`v' selection behaves: there \`a'
+types after the character under the cursor and \`i' before it,
+wherever in the selection the cursor is.
+
+While you type, what you write appears at every match together.
+Erase with \`DEL', the Backspace key, and retype as you like: it is
+ordinary INSERT state, and \`C-g' ends it KEEPING what you typed,
+exactly as it does everywhere else.  A \`DEL' just before the
+matches, or a \`C-d' just after them, is made at every one of them
+too.  Once the split has ended, \`u' takes back everything it wrote,
+at every match, in one step.
+
+>> Put the cursor on the first price line below and press \`v' \`j' \`j'
+   \[end-of-line] to select all three.  Press \[split-selection], type price and
+   \`RET'.  Press \`i' and type unit_ -- every price becomes unit_price as
+   you type.  Press \`C-g' when you are done.
+
+   ----> total = price + tax
+   ----> total = price - discount
+   ----> total = price * rate
+
+>> Select the same three lines, press \[split-selection], type total and \`RET',
+   then \`a' and type _cost.  \`C-g'.
+
+>> Once more: \[split-selection], = and \`RET', then \`c' and type :=.  Every =
+   changes at once.  \`C-g'.
+
+What \`c' and \`d' remove reaches the kill ring as ONE kill: a single
+copy when the matches agree, so \[yank-over-selection] pastes what was there rather
+than a column of copies, and every match on a line of its own when they
+differ.
+
+>> Select the three DRAFT lines, press \[split-selection], type DRAFT: and \`SPC'
+   and \`RET', then \`d'.  The label leaves all three lines at once.
+
+   ----> DRAFT: open the window
+   ----> DRAFT: close the door
+   ----> DRAFT: feed the cat
+
+A wrap is the one verb that leaves the split standing: the matches keep
+their highlight and the reminder still offers every verb.  So a second
+pair goes inside the first, the same pair again takes it off, and any
+other verb can follow.
+
+>> Select the three apple lines, press \[split-selection], type apple and \`RET',
+   then press \`(' -- every apple is (apple), and the split is still
+   there.  Press \`[' for ([apple]), and \`[' again to take the brackets
+   off.  Now press \`a' and type s: (apples).  \`C-g'.
+
+   ----> apple pie
+   ----> apple juice
+   ----> apple tree
+
+\`w' does the same with a pair it asks you to name: \`w' then \`"'
+wraps every match in quotes.
+
+A match can be empty, which is how you reach the end of every line:
+\`$' holds a place at each line end whatever the line holds, and \`^'
+holds one at each start.
+
+>> Select the three lines below, press \[split-selection], type $ and \`RET', then
+   \`a' and \`;'.  Every line gains a semicolon, ragged right edge and
+   all.
+
+   ----> int a = 1
+   ----> long bb = 22
+   ----> char ccc = 333
+
+
+Lesson 15 -- choosing what a split holds
+----------------------------------------
+
+What a split searches is what you selected, and no more.  With nothing
+selected it is the line the cursor is on -- there is no whole-buffer
+default, because \[select-whole-buffer] makes the buffer a selection like any other
+and that way you reach it by choosing it.
+
+>> Put the cursor on the first date below, press \[split-selection], type / and
+   \`RET', then \`c' and \`-'.  Only that line's slashes change.  \`C-g'.
+
+   ----> 2026/09/24
+   ----> 2026/09/25
+
+Or type the regexp with % in front, and the whole buffer is searched,
+whatever is selected; the % is not part of the search, and \% at the
+start searches for a percent sign.
+
+>> Press \[split-selection], type %split and \`RET'.  The reminder counts every split
+   in this buffer, not only this line's.  \`C-g' lets them go.
+
+Under \[rectangle-mark-mode] the search stays INSIDE the block; a count before
+\[split-selection] widens it to each row's whole line.
+
+Banked lines, from Lesson 8, reach lines that are not next to each
+other.  Every banked line is searched, and opening the split spends the
+bank, as \[copy-selection-or-char] and \[delete-selection-or-char] do.
+
+>> Bank the two keep lines below with \[bank-selected-lines] on each, leaving the
+   skip lines alone.  Press \[split-selection], type : and \`RET', then \`c' and
+   type \`SPC' and =.  Only the banked lines change, and the bank is gone.
+   \`C-g'.
+
+   ----> keep: red
+   ----> skip: green
+   ----> keep: blue
+   ----> skip: yellow
+
+A \`v' selection made after banking is searched along with the bank,
+exactly as it is selected -- the part you chose, not its whole line.
+
+>> Bank the first pear line.  On the third, put the cursor on the
+   second pear and press \`v' \[end-of-line].  Now press \[split-selection], type pear
+   and \`RET', then \`c' and type fig: both pears on the banked line
+   change, and on the third only the one you selected.  \`C-g'.
+
+   ----> pear, apple, pear
+   ----> pear, apple, pear
+   ----> pear, apple, pear
+
+The regexp is the one \[replace-regexp] and \`C-s' read.  Case is ignored while it
+holds no capital letter, and a capital makes it exact.
+
+>> Select the three lines below, press \[split-selection], type todo and \`RET',
+   then \`i' and type [x] and \`SPC'.  All three are marked, whatever their
+   case.  \`C-g', \`u' to take the marks back, and try Todo instead:
+   only the line written that way is held.
+
+   ----> TODO fix the door
+   ----> Todo paint the fence
+   ----> todo wash the car
+
+The matches do not have to agree.
+
+>> Select the three item lines, press \[split-selection], type [0-9]+ and \`RET',
+   and press \`(': every number is wrapped, whatever its length.  Then
+   \`a' and type \`SPC' and pcs, for (7 pcs), (42 pcs) and (365 pcs).
+   \`C-g'.
+
+   ----> item 7
+   ----> item 42
+   ----> item 365
+
+Where the matches differ, what you type goes at their edges: moving
+into one ends the split, since there is no one text to edit in all of
+them.  And matches that touch are refused -- a over aaa -- since text
+typed where two meet would belong to both.
+
+In a regexp some characters are special: \d is a digit, \s a
+blank, \w a letter or digit, (a|b) is a or b, and x{3} is three x.  A
+bracket, a brace, a dot, a star or a plus that is meant as itself takes
+a backslash first: \. is a full stop.
+
+Some things come with their whole pattern ready, as their standards
+define them, a name in double brackets: [[:ipv4:]] is an IP address,
+[[:email:]] an e-mail address, [[:creditcard:]] a card number whose check
+digit is right, [[:iban:]] a bank account's IBAN.  They work wherever a
+regexp is typed.
+
+
+Lesson 16 -- cursors in a column
+--------------------------------
+
+\[add-cursor-below] puts a second cursor on the line below, at the same column, and
+every press adds one more below the last.  Then every cursor does what
+the cursor does: the motions, the selections, typing, deleting,
+copying and pasting all happen at each of them.
+
+>> Put the cursor at the start of the milk line and press \[add-cursor-below] twice.
+   Press \[tuatara-insert-line-start], type - and \`SPC', and press \`C-g': the three lines are a list,
+   and the cursors are still there.  \`C-g' once more ends them.
+
+   ----> milk
+   ----> eggs
+   ----> bread
+
+With lines selected, \[add-cursor-below] gives every one of them a cursor at once.
+\[add-cursor-above] adds a cursor above instead of below, and \`DEL' takes back
+the one added last.
+
+>> Put the cursor on the mercury line, press \`V' \`j' \`j' to select
+   three lines, and \[add-cursor-below].  Every line starts with a cursor.  Press
+   \`i', type * and \`SPC', and \`C-g' twice.
+
+   ----> mercury
+   ----> venus
+   ----> earth
+
+>> Put the cursor at the start of the neptune line and press
+   \[add-cursor-above] three times: the cursors climb to jupiter.  One is too many, so
+   press \`DEL' and the jupiter cursor goes.  Press \`i', type > and \`SPC',
+   and \`C-g' twice.  Jupiter is left as it was.
+
+   ----> jupiter
+   ----> saturn
+   ----> uranus
+   ----> neptune
+
+Words differ in length, so after a motion the cursors can stand in
+different columns.  \`=' puts every cursor back under the real one.
+
+>> Put the cursor at the start of the one line and press
+   \[add-cursor-below] twice, then \[forward-word]: each cursor stops at the end of
+   its own first word.  Press \`=' and they line up under the real
+   one.  Press \`i', type |, and \`C-g' twice.
+
+   ----> one two three
+   ----> x yy zzz
+   ----> alpha beta
+
+\`C-g' in INSERT state brings you back to the cursors rather than ending
+them, so one set of cursors can do several things in turn.
+
+>> Put the cursor on ada and press \[add-cursor-below] twice.  \[select-word] selects the word at
+   every cursor and \[copy-selection-or-char] copies all three.  Press \[tuatara-insert-line-end], type \`SPC' = \`SPC' and
+   \`C-g', then \[yank-over-selection]: each line gets its own name back, for ada = ada.  \`C-g'.
+
+   ----> ada
+   ----> alan
+   ----> grace
+
+\[mark-run-toggle] at the cursors is the mark run from Lesson 5 at every cursor:
+each cursor selects its word, and the run's keys grow every selection
+at once.
+
+>> Put the cursor at the start of the first fruit line and press
+   \[add-cursor-below] twice.  Press \[mark-run-toggle] and \`w': every cursor holds two
+   words.  Press \`c', type fresh, and \`C-g' twice.
+
+   ----> old red apple
+   ----> old green pear
+   ----> old blue plum
+
+A delimiter wraps what each cursor has selected, and the same key
+takes the pair off again, as it does with one cursor; with nothing
+selected it does nothing.
+
+>> Put the cursor on the first flower below and press \[add-cursor-below] twice,
+   then \[select-word] and \`"': every flower is quoted.  Press \`"' again
+   and the quotes come off.  \`C-g' twice.
+
+   ----> rose
+   ----> iris
+   ----> lily
+
+\[delete-selection-or-char] and \[kill-line] delete at every cursor and keep the
+cursors, \`V' selects every cursor's line, and \[bank-selected-lines] and
+\[unbank-line] bank and unbank those lines.
+
+The case keys work at the cursors too: \`M-u' upcases each selection,
+or the word at each cursor, and \`M-l' and \`M-c' lower it and
+capitalise it.  \[tuatara-open-below] and \[tuatara-open-above] open a line at every cursor, \[indent-selection-or-line] and \[toggle-comment-lines] indent
+and comment every cursor's line, \[repeat] does the last thing again at every
+cursor, and \[undo] takes back an edit at all of them at once and keeps the
+cursors.
+
+What the cursors copy goes on the kill ring one line per cursor, and a
+paste with as many lines as there are cursors gives each its own.
+
+\[split-selection] from the cursors searches only their lines, or only their selections
+when they have them.
+
+>> Put the cursor on the first number line and press \[add-cursor-below] twice.  Press
+   \[split-selection], type , and \`RET', then \`c' and type ;.  The commas change on the
+   three lines and not on the fourth.  \`C-g'.
+
+   ----> 1,2,3
+   ----> 4,5,6
+   ----> 7,8,9
+   ----> 0,0,0
+
+A cursor never leaves its own line: a motion that would cross stops at
+the line's edge.  Cursors that come to share a line become one, and a
+command that fails at one cursor is undone at all of them.  A key the
+cursors do not answer -- \`j' and \`k' among them -- ends them and does its
+ordinary job.
+
+
+The other keys still work
+-------------------------
+
+Modal editing is meant to be an addition, not a replacement.  In BOTH states
+the \`C-x' prefix, \[execute-extended-command], \`C-h', \`C-s', the arrow keys and the Meta
+keys behave as they do without modal editing.  Nothing was taken away to make
+room for the letters above.
+
+A modal editor cannot be entirely free, though, and the price is short
+enough to state in full.
+
+In INSERT state, one key changes: \`C-g' returns to NORMAL state.  It still
+clears the selection, and in the minibuffer it still quits, so the escape
+hatch is where you expect it.
+
+In NORMAL state, four things differ:
+
+  - Letters run commands instead of typing.  That is the whole idea.
+  - Digits are not counts.  \`3 j' says "3 is undefined" and moves one
+    line; \`C-u 3' \[next-line] moves down three.
+  - \`RET' does nothing in a buffer you are editing -- a stray newline in
+    NORMAL state is rarely what was meant.
+  - \`DEL' and \`<delete>' do nothing, so a slip cannot damage the
+    buffer from NORMAL state.  Use \[delete-selection-or-char].
+
+>> Try it: press \`C-x' \`C-s' below, or \[execute-extended-command] and then \`C-g' to abandon it.
+   Neither is a modal key, and both work from NORMAL state as usual.
+
+Searching: \`C-s' forward and \`C-r' back, in every state; the prompt says
+which match you are at and how many there are.  Replacing is on
+\[replace-regexp] (all at once) and \[query-replace-regexp] (asking at each),
+typed as pattern/replacement: the first match on each line of what is
+selected, or of the line you are on, and every match with % in front.
+\`M-r' while typing switches between a pattern and plain text.  The
+word under the cursor is offered as the pattern.  \[split-selection] edits
+every match at once.  \`M-p' brings back what you typed before.
+\[describe-bindings] lists the bindings.
+
+Every buffer a program made for you -- help, *Messages*, the buffer
+list -- is a SUPPORT buffer: \`h' \`j' \`k' \`l' and the \`SPC' leader are
+the modal keys, and every other key is the buffer's own.  The mode line says
+TUATARA[S].
+
+
+That is the working set
+-----------------------
+
+\[describe-bindings] lists every binding whenever you want the full picture.
+Everything above takes a count, and counts always mean the same thing.
+
+Kill this buffer when you are done.

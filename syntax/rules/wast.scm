@@ -1,0 +1,29 @@
+; This Source Code Form is subject to the terms of the Mozilla Public
+; License, v. 2.0. If a copy of the MPL was not distributed with this
+; file, You can obtain one at https://mozilla.org/MPL/2.0/.
+;
+; The colouring rules for wast: runtime/queries/wast/highlights.scm of
+; Helix (https://github.com/YardQuit/helix_editor) at commit 9bcdf4d79d14,
+; unchanged below this notice.
+
+; inherits: wat
+
+[
+  "assert_return"
+  "assert_trap"
+  "assert_exhaustion"
+  "assert_malformed"
+  "assert_invalid"
+  "assert_unlinkable"
+  "assert_trap"
+
+  "invoke"
+  "get"
+
+  "script"
+  "input"
+  "output"
+
+  "binary"
+  "quote"
+] @keyword

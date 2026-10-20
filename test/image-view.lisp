@@ -1,0 +1,192 @@
+;;;; test/image-view.lisp --- An image file visited, shown as its picture.
+;;;; Copyright (C) 2026 Michael A Jones.  GPL-3.0-or-later; see LICENSE.
+
+(in-package #:tuatara.tests)
+
+(define-test image-view
+  :description "Visiting an image file (PNG, JPEG and the like, by its octets) shows its picture,
+drawn in the sandbox, read only; M-x hex-mode opens its octets, safely; where pictures are not shown
+the buffer says what it is. An SVG image is visited as its text; a safe visit opens the octets.")
+
+(defun image-session (file keys &key cell-pixels (width 120) (height 30))
+  "Visit FILE with C-x C-f in an editor session and, once its picture is drawn
+in the background, type KEYS; CELL-PIXELS has the frontend show pictures.
+Returns the frontend and the editor."
+  (let ((f (tuatara.frontend.fake:make-fake-frontend :width width :height height :cell-pixels cell-pixels))
+        (start (get-internal-real-time)))
+    (let ((scratch (tuatara.buffer:find-buffer "*scratch*")))
+      (when scratch (tuatara.buffer:kill-buffer scratch)))
+    (tuatara.buffer:make-buffer "*scratch*" :text "")
+    (tuatara.frontend.fake:fake-queue-keys f (format nil "C-x C-f C-a C-k ~a RET" (rimu-typed (namestring file))))
+    (labels ((busy ()
+               (some #'tuatara.defaults::image-draw-job-p tuatara.runtime:*jobs*))
+             (check ()
+               (if (and (busy) (< (- (get-internal-real-time) start) (* 20 internal-time-units-per-second)))
+                   (progn (sleep 0.02) (tuatara.frontend.fake:fake-queue-action f #'check))
+                   (when keys (tuatara.frontend.fake:fake-queue-keys f keys)))))
+      (tuatara.frontend.fake:fake-queue-action f #'check))
+    (values f (tuatara.command:run-editor f :setup #'tuatara.defaults:install-defaults
+                                            :buffer (tuatara.buffer:find-buffer "*scratch*")))))
+
+(defun image-forget ()
+  "Kill the image buffers earlier sessions left."
+  (dolist (b (copy-list tuatara.defaults::*image-views*))
+    (when (tuatara.buffer:live-buffer-p b) (tuatara.buffer:kill-buffer b))))
+
+(define-test (image-view shown)
+  (with-test-directory (dir)
+    (let ((file (merge-pathnames "photo.png" dir)))
+      (alexandria:write-byte-vector-into-file *tiny-png* file)
+      ;; its picture, read only, with what it is over it; no octets, nothing to save
+      (image-forget)
+      (multiple-value-bind (f editor) (image-session file nil :cell-pixels '(10 20))
+        (let ((buffer (tuatara.display:window-buffer (tuatara.command:editor-window editor))))
+          (is string= "photo.png" (tuatara.buffer:buffer-name buffer))
+          (true (tuatara.defaults::image-view-of buffer))
+          (true (tuatara.frontend.fake:fake-images f))
+          (true (tuatara.frontend.fake:fake-frame-showing f "PNG image, 2 × 2"))
+          (true (tuatara.frontend.fake:fake-frame-showing f "Image"))
+          (true (tuatara.frontend.fake:fake-frame-showing f "Sandboxed"))
+          (false (tuatara.frontend.fake:fake-frame-showing f "Pictures are not shown here"))
+          (false (tuatara.buffer:buffer-modified-p buffer))
+          (false (tuatara.buffer:buffer-file buffer))))
+      ;; M-x hex-mode: its own octets, opened safely
+      (image-forget)
+      (multiple-value-bind (f editor) (image-session file "M-x h e x - m o d e RET" :cell-pixels '(10 20))
+        (let ((buffer (tuatara.display:window-buffer (tuatara.command:editor-window editor))))
+          (true (tuatara.display:hex-view-p buffer))
+          (true (tuatara.io:safe-visit-p buffer))
+          (true (tuatara.frontend.fake:fake-frame-showing f "00000000  89 50 4e 47"))
+          (tuatara.buffer:kill-buffer buffer)))
+      ;; where pictures are not shown: what it is, and how to see its octets
+      (image-forget)
+      (let ((f (image-session file nil)))
+        (true (tuatara.frontend.fake:fake-frame-showing f "photo.png: PNG image, 2 × 2"))
+        (true (tuatara.frontend.fake:fake-frame-showing f "Pictures are not shown here")))
+      ;; a safe visit: its octets
+      (image-forget)
+      (multiple-value-bind (f editor)
+          (run-keys (format nil "C-u C-x C-f C-a C-k ~a RET" (rimu-typed (namestring file))) :width 120 :height 20 :cell-pixels '(10 20))
+        (declare (ignore f))
+        (let ((buffer (tuatara.display:window-buffer (tuatara.command:editor-window editor))))
+          (false (tuatara.defaults::image-view-of buffer))
+          (tuatara.buffer:kill-buffer buffer)))
+      ;; an SVG image is a text: visited as one
+      (alexandria:write-string-into-file "<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"4\" height=\"4\"></svg>"
+                                         (merge-pathnames "drawing.svg" dir))
+      (image-forget)
+      (multiple-value-bind (f editor) (image-session (merge-pathnames "drawing.svg" dir) nil :cell-pixels '(10 20))
+        (declare (ignore f))
+        (let ((buffer (tuatara.display:window-buffer (tuatara.command:editor-window editor))))
+          (false (tuatara.defaults::image-view-of buffer))
+          (true (search "<svg" (tuatara.buffer:buffer-string buffer)))
+          (tuatara.buffer:kill-buffer buffer)))
+      (image-forget))))
+
+(define-test (image-view large-photo)
+  ;; a photo of 108 megapixels (12000 x 9000, a phone's at full size) drawn as any: decoded
+  ;; at a fraction of its size from the start, never refused for want of memory in the sandbox
+  (with-test-directory (dir)
+    (let ((file (namestring (merge-pathnames "large.jpg" dir))))
+      (uiop:run-program (list "magick" "-size" "12000x9000" "xc:#808080" "-quality" "70" file))
+      (image-forget)
+      (multiple-value-bind (f editor) (image-session file nil :cell-pixels '(10 20))
+        (declare (ignore editor))
+        (true (tuatara.frontend.fake:fake-images f))
+        (true (tuatara.frontend.fake:fake-frame-showing f "12000 × 9000"))
+        (false (tuatara.frontend.fake:fake-frame-showing f "failed"))))
+    ;; a PNG, a TIFF with its directory after its pixels, a WebP and an AVIF of 36 megapixels, which no
+    ;; fraction shortens: given the memory their size calls for, read from the file
+    (dolist (name '("large.png" "large.tif" "large.webp" "large.avif"))
+      (let ((file (namestring (merge-pathnames name dir))))
+        (uiop:run-program (list "magick" "-size" "6000x6000" "gradient:#203040-#c0d0e0" file))
+        (image-forget)
+        (multiple-value-bind (f editor) (image-session file nil :cell-pixels '(10 20))
+          (declare (ignore editor))
+          (true (tuatara.frontend.fake:fake-images f) "~a" name)
+          (true (tuatara.frontend.fake:fake-frame-showing f "6000 × 6000") "~a" name)
+          (false (tuatara.frontend.fake:fake-frame-showing f "failed") "~a" name))))
+    ;; one needing more than *picture-memory*: not drawn, and why said
+    (let ((tuatara.defaults::*picture-memory* (* 512 1024 1024)))
+      (image-forget)
+      (let ((f (image-session (namestring (merge-pathnames "large.png" dir)) nil :cell-pixels '(10 20))))
+        (true (tuatara.frontend.fake:fake-frame-showing f "more than *picture-memory* allows"))))))
+
+(define-test (image-view camera-raw-preview)
+  ;; a Fujifilm raw LibRaw cannot develop (here one with no raw data at all): the camera's JPEG
+  ;; it carries, where its header says, drawn in its place
+  (with-test-directory (dir)
+    (let ((jpeg (namestring (merge-pathnames "preview.jpg" dir)))
+          (raf (namestring (merge-pathnames "photo.raf" dir))))
+      (uiop:run-program (list "magick" "-size" "64x48" "xc:#336699" jpeg))
+      (let* ((octets (alexandria:read-file-into-byte-vector jpeg))
+             (header (make-array 256 :element-type '(unsigned-byte 8) :initial-element 0)))
+        (replace header (map 'vector #'char-code "FUJIFILMCCD-RAW 0201FF383501"))
+        (loop for (at value) in (list (list 84 256) (list 88 (length octets)))
+              do (loop for i below 4 do (setf (aref header (+ at i)) (ldb (byte 8 (* 8 (- 3 i))) value))))
+        (with-open-file (out raf :direction :output :element-type '(unsigned-byte 8))
+          (write-sequence header out)
+          (write-sequence octets out)))
+      (image-forget)
+      (multiple-value-bind (f editor) (image-session raf nil :cell-pixels '(10 20))
+        (declare (ignore editor))
+        (true (tuatara.frontend.fake:fake-images f))
+        (true (tuatara.frontend.fake:fake-frame-showing f "Camera raw, Fujifilm RAF"))))))
+
+(define-test (image-view why-not)
+  ;; nothing to draw it with: its octets, and why
+  (with-test-directory (dir)
+    (let ((file (merge-pathnames "photo.png" dir)))
+      (alexandria:write-byte-vector-into-file *tiny-png* file)
+      (image-forget)
+      (let ((tuatara-user:*sandbox-program* nil))
+        (multiple-value-bind (f editor) (image-session file nil :cell-pixels '(10 20))
+          (true (tuatara.frontend.fake:fake-frame-showing f "photo.png opens as octets: decoding is off"))
+          (let ((buffer (tuatara.display:window-buffer (tuatara.command:editor-window editor))))
+            (false (tuatara.defaults::image-view-of buffer))
+            (tuatara.buffer:kill-buffer buffer))))
+      (image-forget)
+      (let ((tuatara.defaults::*image-decoders* '((:name "NoSuchMagick" :program ("no-such-magick-tuatara")))))
+        (multiple-value-bind (f editor) (image-session file nil :cell-pixels '(10 20))
+          (true (tuatara.frontend.fake:fake-frame-showing f "photo.png opens as octets: no program for pictures (install NoSuchMagick)"))
+          (tuatara.buffer:kill-buffer (tuatara.display:window-buffer (tuatara.command:editor-window editor)))))
+      (tuatara.io:sandbox-status :again t)
+      ;; a picture that cannot be drawn says so, and why, where pictures are shown
+      (let ((fake (merge-pathnames "fake.png" dir)))
+        (alexandria:write-byte-vector-into-file
+         (concatenate '(vector (unsigned-byte 8)) #(#x89 80 78 71 13 10 26 10) (map 'vector #'char-code "garbage garbage garbage"))
+         fake)
+        (image-forget)
+        (multiple-value-bind (f editor) (image-session fake nil :cell-pixels '(10 20))
+          (true (tuatara.frontend.fake:fake-frame-showing f "damaged PNG image"))
+          (true (tuatara.frontend.fake:fake-frame-showing f "The picture could not be drawn"))
+          (false (tuatara.frontend.fake:fake-frame-showing f "Pictures are not shown here"))
+          (tuatara.buffer:kill-buffer (tuatara.display:window-buffer (tuatara.command:editor-window editor))))
+        (image-forget))
+      ;; a JPEG cut short: what could be drawn is shown, and said to be damaged
+      (let ((whole (namestring (merge-pathnames "whole.jpg" dir)))
+            (cut (merge-pathnames "cut.jpg" dir)))
+        (uiop:run-program (list "magick" "-size" "400x300" "gradient:red-blue" whole))
+        (let ((octets (alexandria:read-file-into-byte-vector whole)))
+          (alexandria:write-byte-vector-into-file (subseq octets 0 (floor (length octets) 2)) cut))
+        (image-forget)
+        (multiple-value-bind (f editor) (image-session cut nil :cell-pixels '(10 20))
+          (declare (ignore editor))
+          (true (tuatara.frontend.fake:fake-images f))
+          (true (tuatara.frontend.fake:fake-frame-showing f ", damaged: Premature end of JPEG file")))
+        (image-forget)))))
+
+(define-test (image-view listed-with-its-file)
+  ;; the buffer list names the picture's file, counted among the files
+  (with-test-directory (dir)
+    (let ((file (merge-pathnames "photo.png" dir)))
+      (alexandria:write-byte-vector-into-file *tiny-png* file)
+      (image-forget)
+      (multiple-value-bind (f editor) (image-session file "C-x C-b" :cell-pixels '(10 20) :width 200)
+        (declare (ignore f))
+        (let ((row (find-if (lambda (l) (search "photo.png" l :end2 (min 30 (length l))))
+                            (uiop:split-string (session-text editor) :separator '(#\Newline)))))
+          (true row)
+          (true (search (tuatara.command::abbreviated-path (tuatara.io:native file)) row))))
+      (image-forget)
+      (let ((l (tuatara.buffer:find-buffer "*Buffers*"))) (when l (tuatara.buffer:kill-buffer l))))))

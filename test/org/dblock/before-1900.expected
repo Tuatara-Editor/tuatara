@@ -1,0 +1,93 @@
+#+TITLE: Clocks before 1900
+
+* Voyage
+:LOGBOOK:
+CLOCK: [1850-03-04 Mon 09:00]--[1850-03-04 Mon 11:30] =>  2:30
+CLOCK: [1899-12-31 Sun 23:00]--[1900-01-01 Mon 01:00] =>  2:00
+:END:
+** Landing
+:LOGBOOK:
+CLOCK: [1850-03-05 Tue 08:00]--[1850-03-05 Tue 08:45] =>  0:45
+:END:
+* Later
+:LOGBOOK:
+CLOCK: [2026-10-01 Thu 10:00]--[2026-10-01 Thu 11:00] =>  1:00
+:END:
+
+#+BEGIN: clocktable :maxlevel 2 :block 1850
+#+CAPTION: Clock summary at [2026-10-04 Sun 10:38], for the year 1850.
+| Headline     | Time   |      |
+|--------------+--------+------|
+| *Total time* | *3:15* |      |
+|--------------+--------+------|
+| Voyage       | 3:15   |      |
+| \_  Landing  |        | 0:45 |
+#+END:
+
+#+BEGIN: clocktable :maxlevel 2 :block 1850-03
+#+CAPTION: Clock summary at [2026-10-04 Sun 10:38], for March 1850.
+| Headline     | Time   |      |
+|--------------+--------+------|
+| *Total time* | *3:15* |      |
+|--------------+--------+------|
+| Voyage       | 3:15   |      |
+| \_  Landing  |        | 0:45 |
+#+END:
+
+#+BEGIN: clocktable :maxlevel 2 :block 1850-W10
+#+CAPTION: Clock summary at [2026-10-04 Sun 10:38], for week 1850-W10.
+| Headline     | Time   |      |
+|--------------+--------+------|
+| *Total time* | *3:15* |      |
+|--------------+--------+------|
+| Voyage       | 3:15   |      |
+| \_  Landing  |        | 0:45 |
+#+END:
+
+#+BEGIN: clocktable :maxlevel 2 :tstart "<1899-12-31 Sun>" :tend "<1900-01-02 Tue>"
+#+CAPTION: Clock summary at [2026-10-04 Sun 10:38]
+| Headline     | Time   |
+|--------------+--------|
+| *Total time* | *2:00* |
+|--------------+--------|
+| Voyage       | 2:00   |
+#+END:
+
+#+BEGIN: clocktable :maxlevel 2 :tstart "<1899-12-31 Sun 23:30>" :tend "<1900-01-01 Mon 00:30>"
+#+CAPTION: Clock summary at [2026-10-04 Sun 10:38]
+| Headline     | Time   |
+|--------------+--------|
+| *Total time* | *1:00* |
+|--------------+--------|
+| Voyage       | 1:00   |
+#+END:
+
+#+BEGIN: clocktable :maxlevel 2 :block 1850-03 :step day :stepskip0 t
+
+Daily report: [1850-03-04 Mon]
+| Headline     | Time   |
+|--------------+--------|
+| *Total time* | *2:30* |
+|--------------+--------|
+| Voyage       | 2:30   |
+
+Daily report: [1850-03-05 Tue]
+| Headline     | Time   |      |
+|--------------+--------+------|
+| *Total time* | *0:45* |      |
+|--------------+--------+------|
+| Voyage       | 0:45   |      |
+| \_  Landing  |        | 0:45 |
+
+#+END:
+
+#+BEGIN: clocktable :maxlevel 2
+#+CAPTION: Clock summary at [2026-10-04 Sun 10:38]
+| Headline     |   Time |      |
+|--------------+--------+------|
+| *Total time* | *6:15* |      |
+|--------------+--------+------|
+| Voyage       |   5:15 |      |
+| \_  Landing  |        | 0:45 |
+| Later        |   1:00 |      |
+#+END:
