@@ -95,6 +95,13 @@ desktop's applications. Installed so, it uses the system's own GTK and
 libraries; the AppImage's =--dark= and =--light= are not there, and
 =GTK_THEME=Adwaita:dark tuatara --gui= does what =--dark= does.
 
+Tuatara works on any file system, and best on one that shares blocks between
+files: btrfs, XFS, bcachefs or ZFS. There a copy it keeps of a large file
+another program changes, and the scratch files of work on a large buffer, take
+no time and no space, and a save shares the blocks of what did not change
+wherever it can. Elsewhere they are whole copies, kept in Tuatara's cache
+directory when it has room.
+
 To build it from source, and to work on it, see [[file:HACKING.org][HACKING.org]]; to contribute,
 [[file:CONTRIBUTING.md][CONTRIBUTING.md]].
 
