@@ -681,6 +681,30 @@ what marks a project; check-health saying which are installed.")
              (true (member "completionItem/resolve" (told log) :test #'string=)))
         (tuatara.defaults::lsp-stop-all)))))
 
+(define-test (lsp completion-key-in-code)
+  ;; C-M-i, and M-TAB as a terminal sends it, completes from the server's words in any language's buffer
+  (with-test-directory (dir)
+    (ensure-directories-exist (merge-pathnames ".git/" dir))
+    (let* ((log (merge-pathnames "told.log" dir))
+           (file (namestring (merge-pathnames "k.py" dir)))
+           (tuatara.defaults::*modal-editing* nil)
+           (tuatara-user:*language-servers* (stand-in-server-setting log))
+           (tuatara-user:*lsp-trusted-projects* (list (namestring dir)))
+           (tuatara-user:*lsp-sync-delay* 0.05)
+           (texts '()))
+      (alexandria:write-string-into-file (format nil "total = 1~%") file)
+      (flet ((note () (list :until (lambda () (push (tuatara.buffer:buffer-string (tuatara.buffer:find-buffer "k.py")) texts) t))))
+        (unwind-protect
+             (auto-save-session (list (format nil "C-x C-f C-a C-k ~a RET" (rimu-typed file))
+                                      (list :until (lambda () (tuatara.defaults::buffer-servers (tuatara.buffer:find-buffer "k.py"))))
+                                      (list :wait 0.2)
+                                      "M-> t o" "C-M-i" (list :wait 0.3) (note)
+                                      "RET t o" "M-TAB" (list :wait 0.3) (note))
+                                :width 120 :height 20)
+          (tuatara.defaults::lsp-stop-all)))
+      (is equal (format nil "total = 1~%total") (second texts))
+      (is equal (format nil "total = 1~%total~%total") (first texts)))))
+
 (define-test (lsp servers-told-of-files-on-disk)
   ;; a server that asks is told of its project's files made, changed and deleted by other programs,
   ;; those its patterns match, in folders found in the background; folders a build makes never watched

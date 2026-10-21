@@ -559,7 +559,7 @@ in BUFFER opened safely: its text is never run; NIL otherwise."
                command (tuatara.buffer:buffer-name buffer))))
 
 (defun install-lisp-mode (editor)
-  "Bind the evaluation and completion keys in Lisp buffers, and \\`C-j' in
+  "Bind the evaluation keys in Lisp buffers, and \\`C-j' in
 *lisp-scratch*'s mode; have EDITOR show the parameters of the call point is in
 after every other command's work (LISP-ELDOC); refuse evaluating the text of
 a buffer opened safely (SAFE-EVALUATION-REFUSAL)."
@@ -569,10 +569,7 @@ a buffer opened safely (SAFE-EVALUATION-REFUSAL)."
           (append (editor-post-command-functions editor) (list 'lisp-eldoc))))
   (let ((map (mode-keymap 'lisp-mode)))
     (define-key map "C-x C-e" 'eval-last-expression)
-    (define-key map "C-M-x" 'eval-top-level-form)
-    ;; C-M-i reaches a terminal as M-TAB
-    (define-key map "C-M-i" 'completion-at-point)
-    (define-key map "M-TAB" 'completion-at-point))
+    (define-key map "C-M-x" 'eval-top-level-form))
   (define-key (mode-keymap 'lisp-interaction-mode) "C-j" 'eval-print-last-expression))
 
 (defmethod mode-fills-strings-p ((mode lisp-mode))

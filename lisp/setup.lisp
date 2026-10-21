@@ -75,12 +75,17 @@
   (mode-exit (buffer-major-mode buffer) buffer))
 
 (defun install-modes ()
-  "Choose major modes for visited files and let modes colour text and extend the mode line.
+  "Choose major modes for visited files and let modes colour text and extend the mode line;
+bind \\`C-M-i' to complete the word at point in every programming language's buffers.
 Idempotent: the hooks are named functions."
   (pushnew 'set-auto-mode tuatara.buffer:*find-file-functions*)
   (pushnew 'leave-mode-on-kill tuatara.buffer:*kill-buffer-functions*)
   (pushnew 'syntax-highlights-for-window *syntax-highlight-functions*)
-  (pushnew 'mode-line-extra-for-buffer *mode-line-functions*))
+  (pushnew 'mode-line-extra-for-buffer *mode-line-functions*)
+  (let ((map (mode-keymap 'prog-mode)))
+    ;; C-M-i reaches a terminal as M-TAB
+    (define-key map "C-M-i" 'completion-at-point)
+    (define-key map "M-TAB" 'completion-at-point)))
 
 (defun keymaps-for-keys ()
   "The keymaps a command's keys named in help and messages are looked for in,
