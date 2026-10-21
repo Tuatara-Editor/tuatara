@@ -95,8 +95,8 @@ indented view; NIL to show them faint
 
 (defvar *org-link-descriptive* t
   "True for Org links to be shown as their labels, [[target][label]] as label
-and [[target]] as target; NIL to show them as
-written. \\[org-toggle-link-display] changes it for a buffer.")
+and [[target]] as target, and entities as their characters, \\dollar{} as $;
+NIL to show them as written. \\[org-toggle-link-display] changes it for a buffer.")
 
 (defvar *org-log-done* nil
   "What is noted when a task is done: NIL nothing, :TIME a CLOSED: line with

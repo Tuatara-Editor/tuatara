@@ -201,6 +201,26 @@
     (is string= (format nil "See [[https://orgmode.org][Or@g]] here.~%") (org-table-after "C-u 4 l l l l h" text))
     (is string= (format nil "See@ [[https://orgmode.org][Org]] here.~%") (org-table-after "C-u 4 l h" text))))
 
+(define-test (org entity-display)
+  ;; an entity shown as its character, as a Word document's $ is written, with the links shown as
+  ;; their labels; SPC t L shows both as written; the text is not changed
+  (let ((text (format nil "Paid \\dollar{}5,950.00 to \\alpha{}, [[x][Org]].~%")))
+    (flet ((shown (keys)
+             (let ((f (run-keys (format nil "M-x o r g - m o d e RET ~a" keys) :text text :width 80 :height 12)))
+               (values (string-right-trim " " (tuatara.frontend.fake:fake-screen-line f 0))
+                       (tuatara.frontend.fake:fake-cursor f)))))
+      (is string= "Paid $5,950.00 to α, Org." (shown ""))
+      (is string= "Paid \\dollar{}5,950.00 to \\alpha{}, [[x][Org]]." (shown "SPC t L"))
+      ;; point rests on the character, at the entity's start
+      (is equal '(0 . 5) (nth-value 1 (shown "C-u 5 l")))
+      (is equal '(0 . 6) (nth-value 1 (shown "C-u 5 l l")))))
+  ;; point moved into the rest of an entity goes past it, or back onto its character
+  (let ((text (format nil "@Paid \\dollar{}5 now.~%")))
+    (is string= (format nil "Paid @\\dollar{}5 now.~%") (org-table-after "C-u 5 l" text))
+    (is string= (format nil "Paid \\dollar{}@5 now.~%") (org-table-after "C-u 5 l l" text))
+    (is string= (format nil "Paid @\\dollar{}5 now.~%") (org-table-after "C-u 5 l l h" text))
+    (is string= (format nil "Paid \\dollar{}5 now.~%") (remove #\@ (org-table-after "C-u 5 l l h" text)))))
+
 (define-test (org link-display-kept-while-wrapping)
   ;; the window's hidden parts are kept while soft wrap finds where rows start, one line at a time
   (let* ((text (format nil "A [[https://a.org][one]] line.~%B [[https://b.org][two]] line.~%C [[https://c.org][three]] line.~%"))
