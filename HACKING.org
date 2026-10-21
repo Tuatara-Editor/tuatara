@@ -47,6 +47,13 @@ it (it takes its libraries from Ubuntu 24.04, in a podman container), and
 system's own tools in a podman container; =--check= installs each in a new
 container and runs it). The images are pinned in =tools/containers.sh=.
 
+A release carries every grammar's licence (=grammars/licenses/=), and
+=build/release/tuatara-sources.tar.zst= holds what it is made from: Tuatara,
+Ghostty and every grammar at their pinned commits. Publish that archive with
+each release, as the GPL and the grammars' own licences ask. A grammar whose
+repository has no licence file has its licence's text in
+=syntax/licenses/NAME.txt=; =tools/grammars.sh= stops on one with neither.
+
 * Testing
 
 #+begin_example
@@ -79,7 +86,8 @@ Lisp, =M-x ielm= is a REPL, and =M-.= goes to the source of anything.
   layer, Org, rimu, search, the terminal, help.
 - =frontends/= :: the window (GTK 4), the terminal (ncurses), and a fake one
   for the tests.
-- =syntax/= :: the grammars' pins and licenses, and the rules that colour,
+- =syntax/= :: the grammars' pins and licences (=licenses/= for those whose
+  repository has no licence file), and the rules that colour,
   indent and select (from Helix, MPL 2.0).
 - =test/= :: the tests (Parachute), one file per part; =tools/= the scripts.
 

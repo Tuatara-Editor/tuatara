@@ -79,6 +79,7 @@ cp -r data/icons "$stage/usr/share/icons"
 cp LICENSE "$stage/usr/share/licenses/tuatara/LICENSE"
 cp build/release/tuatara/terminal/LICENSE-ghostty "$stage/usr/share/licenses/tuatara/LICENSE-ghostty"
 cp syntax/grammars.tsv "$stage/usr/share/licenses/tuatara/grammars.tsv"
+cp -r build/release/tuatara/grammars/licenses "$stage/usr/share/licenses/tuatara/grammars"
 chmod -R u=rwX,go=rX "$stage"
 
 # $1 a container, $2 a place in it: the staged files copied there
@@ -134,7 +135,7 @@ ubuntu() {
   pinned_container "$container" "$ubuntu_image" 'true'
   put_stage "$container" /tmp/package
   podman exec "$container" sh -c "mkdir -p $deb/DEBIAN $deb/usr/share/doc/tuatara &&
-    cp $deb/usr/share/licenses/tuatara/LICENSE $deb/usr/share/doc/tuatara/copyright"
+    { cat $deb/usr/share/licenses/tuatara/LICENSE; printf '\n%s\n' 'The licences of the terminal library (LICENSE-ghostty) and of each grammar (grammars/NAME/, grammars.tsv) are in /usr/share/licenses/tuatara/.'; } > $deb/usr/share/doc/tuatara/copyright"
   podman exec -i "$container" sh -c "cat > $deb/DEBIAN/control" <<EOF
 Package: tuatara
 Version: $deb_version

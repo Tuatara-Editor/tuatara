@@ -5,7 +5,12 @@
 # program and what it reads beside it, so that the directory runs wherever it
 # is copied, nothing compiled there: grammars/ (tree-sitter and the grammars),
 # terminal/ (the terminal library, its layout and Ghostty's license), syntax/
-# (the grammars' rules), icons/, the license and the README.
+# (the grammars' rules), icons/, the license and the README; grammars/licenses/
+# holds each grammar's licence (tools/grammars.sh). Beside it,
+# build/release/tuatara-sources.tar.zst holds what the release is made from, to
+# go with it wherever it is given: Tuatara at the last commit, Ghostty at the
+# commit of lisp/terminal/library.pin, and tree-sitter and every grammar at
+# the commit of syntax/grammars.tsv, each repository without its history.
 # The program is built from the last commit, copied with Quicklisp into a
 # folder of its own, /tmp/tuatara-release-build/, so that the places of its
 # sources it keeps are that folder's; it is refused when it still names this
@@ -50,6 +55,7 @@ rm -rf "$out"
 mkdir -p "$out/grammars" "$out/terminal" "$out/syntax"
 cp "$program" "$out/"
 cp build/grammars/*.so "$out/grammars/"
+cp -r build/grammars/licenses "$out/grammars/licenses"
 cp build/terminal/libghostty-vt.so build/terminal/libtuatara-terminal.so build/terminal/layout.sexp \
    build/terminal/LICENSE-ghostty "$out/terminal/"
 for kind in rules indents textobjects injections locals tags; do
@@ -60,4 +66,26 @@ cp syntax/grammars.tsv "$out/syntax/"
 cp -r data/icons "$out/icons"
 cp LICENSE README.org "$out/"
 rm -rf "$work"
+
+# the sources, the grammars as tools/grammars.sh left them (patched where
+# syntax/patches/ says); a grammar a grammar requires lives in its node_modules/
+pack="$(mktemp -d)"
+trap 'rm -rf "$pack"' EXIT
+top="$pack/tuatara-sources"
+mkdir -p "$top/grammars"
+git archive --prefix=tuatara-sources/tuatara/ HEAD | tar -x -C "$pack"
+git -C build/terminal-sources archive --prefix=tuatara-sources/ghostty/ HEAD | tar -x -C "$pack"
+while IFS=$'\t' read -r name url commit licence subpath; do
+  [ "$name" = tree-sitter-cli ] && continue
+  mkdir -p "$top/grammars/$name"
+  tar -C "build/grammar-sources/$name" --exclude=.git --exclude=node_modules -cf - . | tar -x -C "$top/grammars/$name"
+done < <(grep -v '^#' syntax/grammars.tsv | grep -v '^[[:space:]]*$')
+cat > "$top/README" <<EOF
+The sources of Tuatara $(sed -n 's/^ *:version "\(.*\)"$/\1/p' tuatara.asd) ($(git rev-parse --short=7 HEAD)) and of what its
+release is built with: tuatara/ (GPL-3.0-or-later), ghostty/ (the terminal
+library, MIT), and grammars/, tree-sitter and each grammar at the commit
+tuatara/syntax/grammars.tsv names, under the licence it names there, patched
+as tuatara/syntax/patches/ says. tuatara/HACKING.org says how to build it.
+EOF
+tar -C "$pack" -cf - tuatara-sources | zstd -19 -T0 -q -f -o "$root/build/release/tuatara-sources.tar.zst"
 echo "$out"
