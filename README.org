@@ -95,15 +95,67 @@ desktop's applications. Installed so, it uses the system's own GTK and
 libraries; the AppImage's =--dark= and =--light= are not there, and
 =GTK_THEME=Adwaita:dark tuatara --gui= does what =--dark= does.
 
-Some features use programs of the system they run on, and say so when one is
-missing: bubblewrap and ImageMagick (pictures), poppler's tools (PDFs),
-LibreOffice (the pages of Word, Excel, PowerPoint and OpenDocument files),
-LuaLaTeX or XeLaTeX (Org's PDF export), gpg (encrypted files), git, enchant and
-its dictionaries (spelling), wl-clipboard or xclip (the clipboard in a
-terminal), tar (archives), diff (files compared).
-
 To build it from source, and to work on it, see [[file:HACKING.org][HACKING.org]]; to contribute,
 [[file:CONTRIBUTING.md][CONTRIBUTING.md]].
+
+** What to install beside it
+
+Tuatara edits text with nothing else installed. Some features use programs of
+the system, each for one thing; without one, that thing is only not there, and
+=M-x check-health= says what is found and what is missing.
+
+In the window and in a terminal alike:
+
+| Program                        | What it gives                                                        |
+|--------------------------------+----------------------------------------------------------------------|
+| bubblewrap                     | the sandbox every program reading a file for Tuatara runs in: without it no PDF, picture or Office document is shown |
+| poppler's tools                | PDFs as pages, their text and attachments                            |
+| ImageMagick                    | pictures of every kind, and their previews                           |
+| LibreOffice (Writer, Calc, Impress) | Word, Excel, PowerPoint and OpenDocument files shown as pages    |
+| enchant and a hunspell dictionary | spelling                                                          |
+| git                            | the git status (=C-x g=), and packages fetched                       |
+| GnuPG                          | =.gpg= files opened and saved encrypted                              |
+| xdg-utils                      | a file opened in the desktop's own program, a link in the browser    |
+| XeLaTeX or LuaLaTeX            | Org documents exported to PDF                                        |
+| a language's server and formatter | completion, errors and layout for that language; =M-x check-health= names the one each language looks for |
+
+In the window, Tuatara takes the desktop's monospaced font (=*gui-font*= sets
+another); one with ligatures shows them. In a terminal, more is up to the
+terminal:
+
+- 24-bit colour, which kitty, Ghostty, WezTerm, foot, Konsole and GNOME's
+  terminal have, for the theme's own colours;
+- the kitty keyboard protocol (kitty, Ghostty, WezTerm, foot), so that
+  Escape, Alt and Control keys arrive at once and whole;
+- the kitty graphics protocol (kitty, Ghostty), for pictures and PDF pages
+  shown in the terminal, not inside tmux or screen;
+- wl-clipboard on Wayland, or xclip or xsel on X11, to copy and paste with
+  other programs;
+- a Nerd Font, only for the signs the init file can give the mode line.
+
+To install them all:
+
+#+begin_example
+# Fedora
+sudo dnf install bubblewrap poppler-utils ImageMagick libreoffice-writer libreoffice-calc \
+  libreoffice-impress enchant2 hunspell-en git gnupg2 xdg-utils wl-clipboard xclip \
+  texlive-xetex 'tex(amsmath.sty)' 'tex(amssymb.sty)' 'tex(booktabs.sty)' 'tex(capt-of.sty)' \
+  'tex(fancyhdr.sty)' 'tex(float.sty)' 'tex(fontspec.sty)' 'tex(fvextra.sty)' 'tex(geometry.sty)' \
+  'tex(graphicx.sty)' 'tex(hyperref.sty)' 'tex(lastpage.sty)' 'tex(longtable.sty)' \
+  'tex(multicol.sty)' 'tex(rotating.sty)' 'tex(titlesec.sty)' 'tex(ulem.sty)' 'tex(wrapfig.sty)' \
+  'tex(xcolor.sty)' 'tex(xltabular.sty)'
+# Ubuntu
+sudo apt install bubblewrap poppler-utils imagemagick libreoffice-writer libreoffice-calc \
+  libreoffice-impress libenchant-2-2 hunspell-en-us git gnupg xdg-utils wl-clipboard xclip \
+  texlive-xetex texlive-latex-extra texlive-plain-generic
+# Arch
+sudo pacman -S bubblewrap poppler imagemagick libreoffice-fresh enchant hunspell-en_us git \
+  gnupg xdg-utils wl-clipboard xclip texlive-xetex texlive-latexextra texlive-plaingeneric
+#+end_example
+
+The LaTeX lines give the export every LaTeX package it uses; a whole TeX Live
+from tug.org does too, found in =~/.texlive/=, =~/texlive/=,
+=/usr/local/texlive/= or =/opt/texlive/= with nothing set.
 
 * Configuration
 
