@@ -115,10 +115,14 @@
       (false (find :current-line-number (aref (tuatara.frontend.fake:fake-spans f) 1) :key #'third))
       (false (find :line-number (aref (tuatara.frontend.fake:fake-spans f) 0) :key #'third))
       (is equal '(1 . 19) (tuatara.frontend.fake:fake-cursor f))))
-  ;; a read-only buffer is not written
+  ;; a read-only buffer is not written; a letter no hex digit is refused as read-only too, not as no digit
   (multiple-value-bind (f editor) (run-keys "C-x C-q M-x h e x - m o d e RET i 4 1 C-g" :text *hex-sample* :width 80)
     (declare (ignore f))
-    (is string= *hex-sample* (session-text editor))))
+    (is string= *hex-sample* (session-text editor)))
+  (multiple-value-bind (f editor) (run-keys "C-x C-q M-x h e x - m o d e RET i x" :text *hex-sample* :width 80)
+    (is string= *hex-sample* (session-text editor))
+    (true (tuatara.frontend.fake:fake-frame-showing f "read-only"))
+    (false (tuatara.frontend.fake:fake-frame-showing f "no hex digit"))))
 
 (define-test (hex-and-sums hex-view-keeps-size)
   ;; the keys that would insert or delete octets do nothing in the hex view, and say why
