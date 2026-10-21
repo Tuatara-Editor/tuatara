@@ -145,8 +145,8 @@ Tuatara says where its ideas come from:
   with its notice); the keys that select by the syntax, the health report, and
   which language servers and formatters go with each language
   (=lisp/lsp/usual-tools.lisp=, made from its languages.toml).
-- tree-sitter and the authors of its grammars :: parsing. Each grammar's license
-  is in =syntax/grammars.tsv=.
+- tree-sitter and the authors of its grammars :: parsing. Each grammar's licence
+  is named in =syntax/grammars.tsv=, and its text goes with every release.
 - Org mode :: the Org format and how Org files behave: the parse as
   org-element makes it, folding and the indented view, links, tables and their
   formulas (worked out as Calc works them out), the agenda, clocking and
@@ -210,9 +210,12 @@ Tuatara says where its ideas come from:
 - RFC 1345 :: the digraphs, as Emacs's rfc1345 input method has them.
 - Ghostty, by Mitchell Hashimoto and its contributors :: the terminal library
   (libghostty-vt, MIT) that =M-x terminal= keeps its screen with, built from the
-  commit =lisp/terminal/library.pin= names; its license goes with it.
+  commit =lisp/terminal/library.pin= names; its licence goes with it.
 - kitty, by Kovid Goyal :: the graphics and keyboard protocols, and the table of
   marks for pictures in text.
 - Ao :: the colour theme, by the same author (github.com/YardQuit/ao).
 - SBCL :: the Common Lisp Tuatara is written in and runs on.
+- alexandria, babel, CFFI, cl-ppcre, trivial-features, ASDF and Quicklisp :: the
+  Common Lisp libraries Tuatara is built with, compiled into its program; each
+  one's licence goes with every release.
 
