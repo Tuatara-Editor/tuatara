@@ -41,7 +41,7 @@ lua	https://github.com/tree-sitter-grammars/tree-sitter-lua	10fe0054734eec830495
 ruby	https://github.com/tree-sitter/tree-sitter-ruby	ad907a69da0c8a4f7a943a7fe012712208da6dee	MIT
 php	https://github.com/tree-sitter/tree-sitter-php	3f2465c217d0a966d41e584b42d75522f2a3149e	MIT	php
 php-only	https://github.com/tree-sitter/tree-sitter-php	3f2465c217d0a966d41e584b42d75522f2a3149e	MIT	php_only
-perl	https://github.com/tree-sitter-perl/tree-sitter-perl	72a08a496a23212f23802490ef6f4700d68cfd0e	ISC
+perl	https://github.com/tree-sitter-perl/tree-sitter-perl	72a08a496a23212f23802490ef6f4700d68cfd0e	Artistic-2.0
 sql	https://github.com/DerekStride/tree-sitter-sql	851e9cb257ba7c66cc8c14214a31c44d2f1e954e	MIT
 make	https://github.com/alemuller/tree-sitter-make	a4b9187417d6be349ee5fd4b6e77b4172c6827dd	MIT
 cmake	https://github.com/uyha/tree-sitter-cmake	c7b2a71e7f8ecb167fad4c97227c838439280175	MIT
@@ -73,7 +73,7 @@ graphql	https://github.com/bkegley/tree-sitter-graphql	5e66e961eee421786bdda8495
 hcl	https://github.com/tree-sitter-grammars/tree-sitter-hcl	64ad62785d442eb4d45df3a1764962dafd5bc98b	Apache-2.0
 svelte	https://github.com/themixednuts/tree-sitter-htmlx	80c3e698ec7379772c7f2aecb9b4b4c4ac52ff0b	MIT	crates/tree-sitter-svelte
 powershell	https://github.com/airbus-cert/tree-sitter-powershell	c9316be0faca5d5b9fd3b57350de650755f42dc0	MIT
-nginx	https://gitlab.com/joncoole/tree-sitter-nginx	f6d13cf6281b25f2ce342a49a41a10a0381e00f0	MIT
+nginx	https://gitlab.com/joncoole/tree-sitter-nginx	f6d13cf6281b25f2ce342a49a41a10a0381e00f0	GPL-3.0-or-later
 ssh_client_config	https://github.com/metio/tree-sitter-ssh-client-config	4abd07dc3884124d60e37e1f2dd98a1676859ae0	CC0-1.0
 dot	https://github.com/rydesun/tree-sitter-dot	917230743aa10f45a408fea2ddb54bbbf5fbe7b7	MIT
 meson	https://github.com/tree-sitter-grammars/tree-sitter-meson	c84f3540624b81fc44067030afce2ff78d6ede05	MIT
@@ -102,7 +102,7 @@ nim	https://github.com/alaviss/tree-sitter-nim	c5f0ce3b65222f5dbb1a12f9fe8945248
 odin	https://github.com/tree-sitter-grammars/tree-sitter-odin	6c6b07e354a52f8f2a9bc776cbc262a74e74fd26	MIT
 verilog	https://github.com/tree-sitter/tree-sitter-verilog	4457145e795b363f072463e697dfe2f6973c9a52	MIT
 v	https://github.com/vlang/v-analyzer	59a8889d84a293d7c0366d14c8dbb0eec24fe889	MIT	tree_sitter_v
-hare	https://git.sr.ht/~ecs/tree-sitter-hare	07035a248943575444aa0b893ffe306e1444c0ab	GPL-3.0
+hare	https://git.sr.ht/~ecs/tree-sitter-hare	07035a248943575444aa0b893ffe306e1444c0ab	GPL-3.0-only
 crystal	https://github.com/crystal-lang-tools/tree-sitter-crystal	50ca9e6fcfb16a2cbcad59203cfd8ad650e25c49	MIT
 purescript	https://github.com/postsolar/tree-sitter-purescript	f541f95ffd6852fbbe88636317c613285bc105af	MIT
 sml	https://github.com/Giorbo/tree-sitter-sml	bd4055d5554614520d4a0706b34dc0c317c6b608	MIT
@@ -121,7 +121,7 @@ nu	https://github.com/nushell/tree-sitter-nu	cc4624fbc6ec3563d98fbe8f215a8b8e10b
 elvish	https://github.com/ckafi/tree-sitter-elvish	e50787cadd3bc54f6d9c0704493a79078bb8a4e5	0BSD
 forth	https://github.com/alexanderbrevig/tree-sitter-forth	360ef13f8c609ec6d2e80782af69958b84e36cd0	MIT
 llvm	https://github.com/benwilliamgraham/tree-sitter-llvm	c14cb839003348692158b845db9edda201374548	MIT
-gas	https://github.com/sirius94/tree-sitter-gas	60f443646b20edee3b7bf18f3a4fb91dc214259a	GPL-3.0
+gas	https://github.com/sirius94/tree-sitter-gas	60f443646b20edee3b7bf18f3a4fb91dc214259a	GPL-3.0-only
 nasm	https://github.com/naclsn/tree-sitter-nasm	570f3d7be01fffc751237f4cfcf52d04e20532d1	MIT
 wat	https://github.com/wasm-lsp/tree-sitter-wasm	2ca28a9f9d709847bf7a3de0942a84e912f59088	Apache-2.0 WITH LLVM-exception	wat
 glsl	https://github.com/theHamsta/tree-sitter-glsl	24a6c8ef698e4480fecf8340d771fbcb5de8fbb4	MIT
@@ -169,7 +169,7 @@ robots-txt	https://github.com/opa-oz/tree-sitter-robots-txt	0c066107e3548de79316
 requirements	https://github.com/tree-sitter-grammars/tree-sitter-requirements	2c3bb291f497258ba417d052faa14a2dfee6d401	MIT
 hyprlang	https://github.com/tree-sitter-grammars/tree-sitter-hyprlang	27af9b74acf89fa6bed4fb8cb8631994fcb2e6f3	MIT
 caddyfile	https://github.com/caddyserver/tree-sitter-caddyfile	683332a6430675abfd9867201ef47b2b99bdb266	MIT
-jinja2	https://github.com/varpeti/tree-sitter-jinja2	a533cd3c33aea6acb0f9bf9a56f35dcfe6a8eb53	GPL-3.0
+jinja2	https://github.com/varpeti/tree-sitter-jinja2	a533cd3c33aea6acb0f9bf9a56f35dcfe6a8eb53	GPL-3.0-or-later
 twig	https://github.com/gbprod/tree-sitter-twig	0afd9a6d808944e65a7be393e31868b85345735f	WTFPL
 less	https://github.com/jimliang/tree-sitter-less	e5ae6245f841b5778c79ac93b28fa4f56b679c5d	MIT
 pug	https://github.com/zealot128/tree-sitter-pug	13e9195370172c86a8b88184cc358b23b677cc46	MIT
@@ -186,7 +186,7 @@ basic	https://github.com/Ra77a3l3-jar/tree-sitter-basic	a98449c11d6c688b54c1ca13
 bass	https://github.com/vito/tree-sitter-bass	501133e260d768ed4e1fd7374912ed5c86d6fd90	MIT
 bicep	https://github.com/tree-sitter-grammars/tree-sitter-bicep	bff59884307c0ab009bd5e81afd9324b46a6c0f9	MIT
 blade	https://github.com/EmranMR/tree-sitter-blade	5dbdcb0ccbe91e64b038b41545d3acc26c74907a	MIT
-blueprint	https://gitlab.com/gabmus/tree-sitter-blueprint	355ef84ef8a958ac822117b652cf4d49bac16c79	GPL-3.0
+blueprint	https://gitlab.com/gabmus/tree-sitter-blueprint	355ef84ef8a958ac822117b652cf4d49bac16c79	GPL-3.0-only
 c3	https://github.com/c3lang/tree-sitter-c3	15d3502510af0a6c888c663ec8d6aca8791216ce	MIT
 cairo	https://github.com/starkware-libs/tree-sitter-cairo	4c6a25680546761b80a710ead1dd34e76c203125	Apache-2.0
 cel	https://github.com/bufbuild/tree-sitter-cel	9f2b65da14c216df53933748e489db0f11121464	Apache-2.0
