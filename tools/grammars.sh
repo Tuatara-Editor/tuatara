@@ -6,7 +6,10 @@
 # written in C++ with the C++ compiler, the grammar linked with its library) into
 # build/grammars/: libtuatara-syntax.so (tree-sitter with syntax/syntax.c) and
 # one NAME.so per grammar, from the directory the manifest's fifth column
-# names in its repository when it has one. A grammar with syntax/patches/NAME.patch is patched
+# names in its repository when it has one, and build/grammars/licenses/NAME/
+# with its licence: its own licence files (LICENSE, COPYING, a LICENSES/
+# folder; in that directory, else at the top of its repository), else syntax/licenses/NAME.txt for one that has none; a
+# grammar with neither stops it. A grammar with syntax/patches/NAME.patch is patched
 # and its parser generated again with the pinned tree-sitter program first;
 # tree-sitter itself is patched with syntax/patches/tree-sitter.patch.
 # Nothing is fetched or compiled while Tuatara runs.
@@ -16,7 +19,7 @@ root="$(cd "$(dirname "$0")/.." && pwd)"
 out="$root/build/grammars"
 sources="$root/build/grammar-sources"
 stamp="$out/.built-from"
-wanted="$(cat "$root/syntax/grammars.tsv" "$root/syntax/syntax.c" "$root/syntax/safe-ctype.h" "$root"/syntax/patches/*.patch "$0" "$root/tools/grammar-build.sh" 2>/dev/null | sha256sum | cut -c1-16)"
+wanted="$(cat "$root/syntax/grammars.tsv" "$root/syntax/syntax.c" "$root/syntax/safe-ctype.h" "$root"/syntax/patches/*.patch "$root"/syntax/licenses/*.txt "$0" "$root/tools/grammar-build.sh" 2>/dev/null | sha256sum | cut -c1-16)"
 if [ -f "$stamp" ] && [ "$(cat "$stamp")" = "$wanted" ]; then exit 0; fi
 mkdir -p "$out" "$sources" "$root/build/tools"
 . "$root/tools/inside.sh"
@@ -49,6 +52,32 @@ while IFS=$'"'"'\t'"'"' read -r name url commit license subpath; do
     *) fetch "$name" "$url" "$commit" ;;
   esac
 done < <(manifest)
+# then the licences, to go with the release: the licence files of the grammar
+# itself, else those at the top of its repository, else the text in
+# syntax/licenses/ for a repository that has none; nothing compiled without one
+rm -rf "$out/licenses"; unlicensed=""
+while IFS=$'"'"'\t'"'"' read -r name url commit license subpath; do
+  [ "$name" = tree-sitter-cli ] && continue
+  dir="$sources/$name"; kept="$out/licenses/$name"; found=""
+  for place in "$dir${subpath:+/$subpath}" "$dir"; do
+    # LICENSE, COPYING and the like, and the texts of a LICENSES/ folder (REUSE)
+    found=$({ find "$place" -maxdepth 1 -type f -iregex ".*/\(licen[cs]e\|copying\|unlicense\)[^/]*"
+              if [ -d "$place/LICENSES" ]; then find "$place/LICENSES" -maxdepth 1 -type f; fi; } | sort)
+    [ -n "$found" ] && break
+  done
+  if [ -n "$found" ]; then
+    mkdir -p "$kept"
+    while IFS= read -r file; do cp "$file" "$kept/"; done <<< "$found"
+  elif [ -f "$root/syntax/licenses/$name.txt" ]; then
+    mkdir -p "$kept"; cp "$root/syntax/licenses/$name.txt" "$kept/LICENSE"
+  else
+    unlicensed="$unlicensed $name"
+  fi
+done < <(manifest)
+if [ -n "$unlicensed" ]; then
+  echo "tools/grammars.sh: no licence for:$unlicensed. Its text goes in syntax/licenses/NAME.txt, or the grammar is left out." >&2
+  exit 1
+fi
 # then the library and the grammars are compiled, each grammar as
 # tools/grammar-build.sh says
 . "$root/tools/grammar-build.sh"
