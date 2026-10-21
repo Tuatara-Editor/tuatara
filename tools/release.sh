@@ -6,9 +6,11 @@
 # is copied, nothing compiled there: grammars/ (tree-sitter and the grammars),
 # terminal/ (the terminal library, its layout and Ghostty's license), syntax/
 # (the grammars' rules), icons/, the license and the README; grammars/licenses/
-# holds each grammar's licence (tools/grammars.sh). Beside it,
+# holds each grammar's licence (tools/grammars.sh), licenses/ those of SBCL and
+# of the Lisp libraries the program carries. Beside it,
 # build/release/tuatara-sources.tar.zst holds what the release is made from, to
-# go with it wherever it is given: Tuatara at the last commit, Ghostty at the
+# go with it wherever it is given: Tuatara at the last commit, the Lisp
+# libraries as Quicklisp gave them, Ghostty at the
 # commit of lisp/terminal/library.pin, and tree-sitter and every grammar at
 # the commit of syntax/grammars.tsv, each repository without its history.
 # The program is built from the last commit, copied with Quicklisp into a
@@ -55,6 +57,48 @@ out="$root/build/release/tuatara"
 rm -rf "$out"
 mkdir -p "$out/grammars" "$out/terminal" "$out/syntax"
 cp "$program" "$out/"
+# the sources go with the release (tuatara-sources.tar.zst, put together below)
+pack="$(mktemp -d)"
+trap 'rm -rf "$pack"' EXIT
+top="$pack/tuatara-sources"
+mkdir -p "$top/grammars" "$top/lisp"
+# the licence of every Lisp system the program carries (tools/build-image.lisp
+# lists them), from its sources, else from data/licenses/ for one SBCL carries
+# compiled; the sources of each that is neither Tuatara nor part of SBCL
+mkdir -p "$out/licenses/lisp" "$out/licenses/sbcl"
+inside sh -c 'cat /usr/share/licenses/sbcl/COPYING 2>/dev/null || cat /usr/share/doc/sbcl/COPYING' > "$out/licenses/sbcl/COPYING"
+[ -s "$out/licenses/sbcl/COPYING" ] || { echo "tools/release.sh: SBCL's licence (COPYING) is not found" >&2; exit 1; }
+unlicensed=""
+while IFS=$'\t' read -r name directory; do
+  case "$name" in
+    tuatara|sb-*) continue ;;  # Tuatara's own, and SBCL's under its licence
+    asdf|uiop|asdf-package-system) text=asdf ;;
+    *) text="$name" ;;
+  esac
+  kept="$out/licenses/lisp/$text"
+  if [ ! -d "$kept" ]; then
+    found=""
+    if [ -n "$directory" ]; then
+      found=$(find "$directory" -maxdepth 1 -type f -iregex '.*/\(licen[cs]e\|copying\|copyright\)[^/]*' | sort)
+    fi
+    if [ -n "$found" ]; then
+      mkdir -p "$kept"
+      while IFS= read -r file; do cp "$file" "$kept/"; done <<< "$found"
+    elif [ -f "data/licenses/$text.txt" ]; then
+      mkdir -p "$kept"; cp "data/licenses/$text.txt" "$kept/LICENSE"
+    else
+      unlicensed="$unlicensed $name"
+    fi
+  fi
+  if [ -n "$directory" ]; then
+    mkdir -p "$top/lisp/$name"
+    tar -C "$directory" --exclude=.git -cf - . | tar -x -C "$top/lisp/$name"
+  fi
+done < "$work/src/build/lisp-systems.tsv"
+if [ -n "$unlicensed" ]; then
+  echo "tools/release.sh: no licence for the Lisp systems:$unlicensed. Its text goes in data/licenses/NAME.txt." >&2
+  exit 1
+fi
 cp build/grammars/*.so "$out/grammars/"
 cp -r build/grammars/licenses "$out/grammars/licenses"
 cp build/terminal/libghostty-vt.so build/terminal/libtuatara-terminal.so build/terminal/layout.sexp \
@@ -79,12 +123,8 @@ if [ "$named" = 1 ]; then
 fi
 rm -rf "$work"
 
-# the sources, the grammars as tools/grammars.sh left them (patched where
-# syntax/patches/ says); a grammar a grammar requires lives in its node_modules/
-pack="$(mktemp -d)"
-trap 'rm -rf "$pack"' EXIT
-top="$pack/tuatara-sources"
-mkdir -p "$top/grammars"
+# the rest of the sources, the grammars as tools/grammars.sh left them (patched
+# where syntax/patches/ says); a grammar a grammar requires lives in its node_modules/
 git archive --prefix=tuatara-sources/tuatara/ HEAD | tar -x -C "$pack"
 git -C build/terminal-sources archive --prefix=tuatara-sources/ghostty/ HEAD | tar -x -C "$pack"
 while IFS=$'\t' read -r name url commit licence subpath; do
@@ -94,8 +134,9 @@ while IFS=$'\t' read -r name url commit licence subpath; do
 done < <(grep -v '^#' syntax/grammars.tsv | grep -v '^[[:space:]]*$')
 cat > "$top/README" <<EOF
 The sources of Tuatara $(sed -n 's/^ *:version "\(.*\)"$/\1/p' tuatara.asd) ($(git rev-parse --short=7 HEAD)) and of what its
-release is built with: tuatara/ (GPL-3.0-or-later), ghostty/ (the terminal
-library, MIT), and grammars/, tree-sitter and each grammar at the commit
+release is built with: tuatara/ (GPL-3.0-or-later), lisp/ (the Lisp libraries
+compiled into the program, each under the licence in its folder), ghostty/
+(the terminal library, MIT), and grammars/, tree-sitter and each grammar at the commit
 tuatara/syntax/grammars.tsv names, under the licence it names there, patched
 as tuatara/syntax/patches/ says. tuatara/HACKING.org says how to build it.
 EOF

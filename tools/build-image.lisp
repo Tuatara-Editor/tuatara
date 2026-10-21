@@ -15,6 +15,14 @@
             (mapcar #'sb-thread:thread-name threads))
     (sb-ext:exit :code 1)))
 (ensure-directories-exist "build/")
+;; every Lisp system the program carries and the folder of its sources (none
+;; for those SBCL carries compiled), for tools/release.sh to give their licences
+(with-open-file (out "build/lisp-systems.tsv" :direction :output :if-exists :supersede)
+  (dolist (name (sort (remove-duplicates (mapcar #'asdf:primary-system-name (asdf:already-loaded-systems))
+                                         :test #'string=)
+                      #'string<))
+    (let ((directory (asdf:system-source-directory (asdf:find-system name))))
+      (format out "~a~c~@[~a~]~%" name #\Tab (and directory (uiop:native-namestring directory))))))
 (sb-ext:gc :full t)
 ;; the heap and stack sizes this process was started with are kept, as the
 ;; defaults; the executable still takes --dynamic-space-size and
