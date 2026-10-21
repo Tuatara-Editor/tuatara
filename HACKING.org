@@ -47,12 +47,15 @@ it (it takes its libraries from Ubuntu 24.04, in a podman container), and
 system's own tools in a podman container; =--check= installs each in a new
 container and runs it). The images are pinned in =tools/containers.sh=.
 
-A release carries every grammar's licence (=grammars/licenses/=), and
+A release carries every grammar's licence (=grammars/licenses/=), and SBCL's
+and those of the Lisp libraries compiled into the program (=licenses/=); and
 =build/release/tuatara-sources.tar.zst= holds what it is made from: Tuatara,
-Ghostty and every grammar at their pinned commits. Publish that archive with
-each release, as the GPL and the grammars' own licences ask. A grammar whose
-repository has no licence file has its licence's text in
-=syntax/licenses/NAME.txt=; =tools/grammars.sh= stops on one with neither.
+the Lisp libraries, Ghostty and every grammar at their pinned commits. Publish
+that archive with each release, as the GPL and the others' licences ask. A
+grammar whose repository has no licence file has its licence's text in
+=syntax/licenses/NAME.txt=, and a Lisp system SBCL carries compiled in
+=data/licenses/NAME.txt=; =tools/grammars.sh= and =tools/release.sh= stop on
+one with neither.
 
 * Testing
 
