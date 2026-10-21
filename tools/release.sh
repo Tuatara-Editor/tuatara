@@ -21,22 +21,40 @@
 # built here first and copied there, never compiled again. build/tuatara, the
 # program of this checkout, is left as it is. tools/appimage.sh and
 # tools/distro-packages.sh make their packages of the release.
-# Usage: tools/release.sh
+# Usage: tools/release.sh  (does nothing when the release is up to date)
 set -euo pipefail
 root="$(cd "$(dirname "$0")/.." && pwd)"
 cd "$root"
 . tools/inside.sh
+# Quicklisp's setup.lisp where tools/quicklisp.lisp finds it
+find_quicklisp_setup() {
+  local setup
+  for setup in "${QUICKLISP_SETUP:-}" "$HOME/quicklisp/setup.lisp" "$HOME/.local/share/quicklisp/setup.lisp"; do
+    if [ -n "$setup" ] && [ -f "$setup" ]; then echo "$setup"; return; fi
+  done
+  echo "tools/release.sh: Quicklisp is not installed: see HACKING.org" >&2
+  exit 1
+}
+find_quicklisp_setup >/dev/null
 if [ -n "$(git status --porcelain --untracked-files=no)" ]; then
   echo "tools/release.sh: changes not committed are left out of the release" >&2
 fi
 tools/grammars.sh
 tools/terminal-library.sh
-# Quicklisp where tools/quicklisp.lisp finds it
-quicklisp=""
-for setup in "${QUICKLISP_SETUP:-}" "$HOME/quicklisp/setup.lisp" "$HOME/.local/share/quicklisp/setup.lisp"; do
-  if [ -n "$setup" ] && [ -f "$setup" ]; then quicklisp="$(dirname "$setup")"; break; fi
-done
-[ -n "$quicklisp" ] || { echo "tools/release.sh: Quicklisp is not installed: see HACKING.org" >&2; exit 1; }
+# nothing to do when the release there was made from this commit, nothing
+# changed since it, with these scripts, the same grammars and terminal
+# library, and the same Lisp libraries
+stamp="$root/build/release/.built-from"
+wanted="$(git rev-parse HEAD) $(cat "$0" tools/build-image.lisp tools/build-image.sh tools/inside.sh build/grammars/.built-from \
+            build/terminal/.built-from "$(dirname "$(find_quicklisp_setup)")/dists/quicklisp/distinfo.txt" | sha256sum | cut -c1-16)"
+if [ -z "$(git status --porcelain --untracked-files=no)" ] &&
+   [ -f "$stamp" ] && [ "$(cat "$stamp")" = "$wanted" ] && [ -x build/release/tuatara/tuatara ] &&
+   [ -f build/release/tuatara-sources.tar.zst ]; then
+  echo "$root/build/release/tuatara"
+  exit 0
+fi
+rm -f "$stamp"
+quicklisp="$(dirname "$(find_quicklisp_setup)")"
 # a folder the toolbox sees at the same path
 work=/tmp/tuatara-release-build
 rm -rf "$work"
@@ -66,7 +84,11 @@ mkdir -p "$top/grammars" "$top/lisp"
 # lists them), from its sources, else from data/licenses/ for one SBCL carries
 # compiled; the sources of each that is neither Tuatara nor part of SBCL
 mkdir -p "$out/licenses/lisp" "$out/licenses/sbcl"
-inside sh -c 'cat /usr/share/licenses/sbcl/COPYING 2>/dev/null || cat /usr/share/doc/sbcl/COPYING' > "$out/licenses/sbcl/COPYING"
+# beside the SBCL that built it: a system's package (share/licenses/) or SBCL's own installer (share/doc/)
+inside sh -c 'top="$(dirname "$(command -v sbcl)")/.."
+  for file in "$top/share/licenses/sbcl/COPYING" "$top/share/doc/sbcl/COPYING"; do
+    [ -f "$file" ] && exec cat "$file"
+  done' > "$out/licenses/sbcl/COPYING" || true
 [ -s "$out/licenses/sbcl/COPYING" ] || { echo "tools/release.sh: SBCL's licence (COPYING) is not found" >&2; exit 1; }
 unlicensed=""
 while IFS=$'\t' read -r name directory; do
@@ -141,4 +163,5 @@ tuatara/syntax/grammars.tsv names, under the licence it names there, patched
 as tuatara/syntax/patches/ says. tuatara/HACKING.org says how to build it.
 EOF
 tar -C "$pack" -cf - tuatara-sources | zstd -19 -T0 -q -f -o "$root/build/release/tuatara-sources.tar.zst"
+echo "$wanted" > "$stamp"
 echo "$out"

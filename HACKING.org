@@ -57,6 +57,18 @@ grammar whose repository has no licence file has its licence's text in
 =data/licenses/NAME.txt=; =tools/grammars.sh= and =tools/release.sh= stop on
 one with neither.
 
+A release is made on GitHub, from a version tag (=git tag -s VERSION=, pushed to
+=Tuatara-Editor/tuatara=): =.github/workflows/release.yml= checks that the tag
+is =tuatara.asd='s version and the README's, builds every file as the scripts
+above do (=tools/ci-setup.sh= installing SBCL, Zig and Quicklisp, each pinned
+and checked), installs and runs each package, and makes a draft release with
+=SHA256SUMS= and the notes of =.github/release-notes.md=; "What changed" is
+written there before it is published. Run by hand from the Actions tab, it
+builds the files of a branch without releasing them. The Lisp libraries are
+checked against =tools/lisp-archives.sha256=: when your Quicklisp's set
+changes, make it again from your own archives, as its first lines say, and
+the Quicklisp set =tools/ci-setup.sh= names with it.
+
 * Testing
 
 #+begin_example

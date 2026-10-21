@@ -46,7 +46,8 @@ version=$(sed -n 's/^ *:version "\(.*\)"$/\1/p' tuatara.asd)
 commit=$(git rev-parse --short=7 HEAD)
 day=$(git log -1 --format=%cd --date=format:%Y%m%d HEAD)
 changelog_day=$(LC_ALL=C git log -1 --format=%cd --date=format:'%a %b %d %Y' HEAD)
-packager="$(git config user.name) <$(git config user.email)>"
+# who made the packages: git's name and address here, else the commit's author's
+packager="$(git config user.name || git log -1 --format=%an HEAD) <$(git config user.email || git log -1 --format=%ae HEAD)>"
 # each system's way of writing a snapshot's version, and the file named by it
 rpm_release="0.${day}git$commit"
 deb_version="$version~git$day.$commit"
