@@ -52,7 +52,8 @@ rpm_release="0.${day}git$commit"
 deb_version="$version~git$day.$commit"
 arch_version="$version.r$day.g$commit"
 rpm_file="tuatara-$version-$rpm_release.x86_64.rpm"
-deb_file="tuatara_${deb_version}_amd64.deb"
+# the file's name with . for the ~, which GitHub takes out of the names of a release's files
+deb_file="tuatara_${deb_version//\~/.}_amd64.deb"
 arch_file="tuatara-$arch_version-1-x86_64.pkg.tar.zst"
 package_file() { case "$1" in fedora) echo "$rpm_file" ;; ubuntu) echo "$deb_file" ;; arch) echo "$arch_file" ;; esac; }
 summary="Text editor for the terminal and the desktop"
