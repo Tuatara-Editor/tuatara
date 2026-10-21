@@ -14,7 +14,8 @@
 # The program is built from the last commit, copied with Quicklisp into a
 # folder of its own, /tmp/tuatara-release-build/, so that the places of its
 # sources it keeps are that folder's; it is refused when it still names this
-# machine's home folder or user. The grammars and the terminal library are
+# machine's home folder or user, as is the release when any file of it does.
+# The grammars and the terminal library are
 # built here first and copied there, never compiled again. build/tuatara, the
 # program of this checkout, is left as it is. tools/appimage.sh and
 # tools/distro-packages.sh make their packages of the release.
@@ -58,6 +59,8 @@ cp build/grammars/*.so "$out/grammars/"
 cp -r build/grammars/licenses "$out/grammars/licenses"
 cp build/terminal/libghostty-vt.so build/terminal/libtuatara-terminal.so build/terminal/layout.sexp \
    build/terminal/LICENSE-ghostty "$out/terminal/"
+# their debugging information names the folders they were built in
+strip --strip-debug "$out/terminal/libghostty-vt.so" "$out/terminal/libtuatara-terminal.so"
 for kind in rules indents textobjects injections locals tags; do
   cp -r "syntax/$kind" "$out/syntax/$kind"
 done
@@ -65,6 +68,15 @@ done
 cp syntax/grammars.tsv "$out/syntax/"
 cp -r data/icons "$out/icons"
 cp LICENSE README.org "$out/"
+# nothing given to others names this machine, the program checked above
+named=0
+while IFS= read -r -d '' file; do
+  if names_this_machine "$file"; then named=1; fi
+done < <(find "$out" -type f ! -path "$out/tuatara" -print0)
+if [ "$named" = 1 ]; then
+  echo "tools/release.sh: files of $out name this machine's home folder or user, where shown above: not released" >&2
+  exit 1
+fi
 rm -rf "$work"
 
 # the sources, the grammars as tools/grammars.sh left them (patched where
