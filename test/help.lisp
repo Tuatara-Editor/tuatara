@@ -149,6 +149,28 @@
       (declare (ignore f))
       (true (search (format nil "Tuatara ~a" (tuatara:version)) (session-text editor))))))
 
+(defun readme-credit-names ()
+  "The names the README's Credits credit, each the words of an item before its ::."
+  (let ((lines (uiop:read-file-lines (asdf:system-relative-pathname :tuatara "README.org")))
+        (items '()))
+    (loop for line in (rest (member "* Credits" lines :test #'string=))
+          until (uiop:string-prefix-p "* " line)
+          do (cond ((uiop:string-prefix-p "- " line) (push (subseq line 2) items))
+                   ((and items (uiop:string-prefix-p "  " line))
+                    (setf (first items) (format nil "~a ~a" (first items) (string-trim " " line))))))
+    (mapcar (lambda (item) (subseq item 0 (search " ::" item))) (nreverse items))))
+
+(define-test (help credits-as-in-the-readme)
+  ;; M-x credits and the README's Credits name the same projects, in the same order
+  (is equal (readme-credit-names) (mapcar #'first tuatara.defaults::*credits*))
+  ;; a name too long for its column has its lines below it, never run into them
+  (multiple-value-bind (f editor) (run-keys "M-x c r e d i t s RET" :text "x" :width 120 :height 40)
+    (declare (ignore f))
+    (let ((text (tuatara.buffer:buffer-string
+                 (tuatara.display:window-buffer (tuatara.command:editor-window editor)))))
+      (true (search (format nil "  dired-du, by Tino Calancha; dired-git-info, by Clemens Radermacher; and dired-duplicates, by Harald Judt~%                        Rimu's sizes") text))
+      (true (search (format nil "  SBCL                  the Common Lisp") text)))))
+
 (define-test (help about-and-license)
   ;; C-h C-a: *About Tuatara*, the version, the license and the ways in, each a
   ;; button: RET on one opens what it names, TAB goes to the next

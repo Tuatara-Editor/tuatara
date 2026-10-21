@@ -176,45 +176,49 @@ version)."
     ("Helix" "each language's rules for colours, indentation, selections and"
              "outlines (under the MPL 2.0), the keys that select by the syntax,"
              "the health report, and each language's servers and formatters")
-    ("tree-sitter" "parsing, with the grammars of their many authors")
+    ("tree-sitter and the authors of its grammars" "parsing; each grammar's licence goes with every release")
     ("Org mode" "the Org format and how Org files behave: folding, links,"
                 "tables, the agenda, clocking, source blocks, dynamic blocks,"
                 "and Org documents written as LaTeX for a PDF")
-    ("toc-org" "tables of contents of Org and Markdown files, by Sergei Nosov")
-    ("markdown-mode" "how a Markdown link is read, by Jason Blevins")
-    ("org-bullets" "signs in place of headlines' stars and lists' bullets,"
-                   "with org-superstar")
-    ("Denote" "the names of files with formatted names, by Protesilaos Stavrou")
-    ("denote-org" "the dynamic blocks of files with formatted names, with"
-                  "denote-sequence, also by Protesilaos Stavrou")
-    ("vertico, orderless" "the list of completions, matched by words in any order")
-    ("marginalia" "what is shown beside each completion")
-    ("consult" "the outline of a buffer, and its preview")
-    ("Corfu" "completion beside the cursor")
-    ("eglot" "how language servers look and feel, with Flymake and ElDoc:"
-             "problems marked and shown under the cursor, a call's"
-             "parameters in the echo area")
+    ("toc-org, by Sergei Nosov" "tables of contents of Org and Markdown files")
+    ("markdown-mode, by Jason Blevins" "how a Markdown link is read")
+    ("org-bullets and org-superstar" "signs in place of headlines' stars and lists' bullets")
+    ("Denote, by Protesilaos Stavrou" "the names of files with formatted names")
+    ("denote-org and denote-sequence, also by Protesilaos Stavrou" "the dynamic blocks of files with formatted names")
+    ("consult, vertico, orderless, marginalia and Corfu" "the look and feel of completion: the list, matched by words"
+                                                         "in any order, what is shown beside each, completion beside"
+                                                         "the cursor; the outline of a buffer and its preview")
+    ("eglot, Flymake and ElDoc" "how language servers look and feel: problems marked and"
+                                "shown under the cursor, a call's parameters in the echo area")
     ("Magit" "the state of a git repository, staging, commits and the log")
     ("EasyPG" "the GnuPG commands, and .gpg files opened and saved")
-    ("jinx" "checking the spelling of only the words shown, with enchant"
-            "called directly, by Daniel Mendler")
-    ("olivetti" "text centred in its window, by Paul W. Rankin; soft wrap at"
-                "the fill column, as visual-fill-column wraps")
+    ("jinx, by Daniel Mendler" "checking the spelling of only the words shown, with enchant"
+                               "called directly")
+    ("olivetti, by Paul W. Rankin, and visual-fill-column" "text centred in its window, and soft wrap at the fill column")
     ("use-package" "the keywords of load-package in the init file")
     ("ibuffer" "the buffer list")
+    ("dired" "how Rimu lists a folder and acts on the entries marked")
+    ("dired-du, by Tino Calancha; dired-git-info, by Clemens Radermacher; and dired-duplicates, by Harald Judt" "Rimu's sizes of folders, each entry's last commit, and the files"
+                                                                                                                "that are the same as another")
+    ("git-timemachine, by Peter Stiernström" "going back through a file's history, a commit at a time")
+    ("doc-view and pdf-tools, by Andreas Politz" "PDFs shown as pictures of their pages")
+    ("SLIME" "the keys that expand Common Lisp's macros")
+    ("csv-mode, by Francis J. Wright" "CSV's colours, only the separators and what is quoted")
+    ("Howard Hinnant's chrono algorithms" "days as numbers and back, for any date")
     ("Vim" "replacing typed at the search prompt, digraphs, the line"
            "selection and the cursor column")
+    ("Eugene W. Myers's difference algorithm" "the gutter's changes since the file was saved or committed")
+    ("Unicode's text segmentation (UAX #29)" "a letter and its accents, or an emoji, taken as one character")
+    ("freedesktop.org's trash specification" "the trash Rimu puts files in and lists")
+    ("The file program" "a file's kind told by its first octets, never by its name")
     ("RFC 1345" "the digraphs, as Emacs's rfc1345 input method has them")
-    ("Howard Hinnant" "days as numbers and back, for any date (chrono's algorithms)")
-    ("Eugene W. Myers" "the difference algorithm the gutter's changes come from")
-    ("Unicode UAX #29" "a letter and its accents, or an emoji, taken as one character")
-    ("freedesktop.org" "the trash Rimu puts files in and lists")
-    ("file" "a file's kind told by its first octets, never by its name")
-    ("Ghostty" "the terminal library M-x terminal keeps its screen with"
-               "(libghostty-vt), by Mitchell Hashimoto and its contributors")
-    ("kitty" "the graphics and keyboard protocols, by Kovid Goyal")
+    ("Ghostty, by Mitchell Hashimoto and its contributors" "the terminal library M-x terminal keeps its screen with"
+                                                           "(libghostty-vt)")
+    ("kitty, by Kovid Goyal" "the graphics and keyboard protocols")
     ("Ao" "the colour theme, by the same author (github.com/YardQuit/ao)")
-    ("SBCL" "the Common Lisp Tuatara is written in and runs on"))
+    ("SBCL" "the Common Lisp Tuatara is written in and runs on")
+    ("alexandria, babel, CFFI, cl-ppcre, trivial-features, ASDF and Quicklisp" "the Common Lisp libraries Tuatara is built with; each one's"
+                                                                               "licence goes with every release"))
   "Where Tuatara's ideas come from, as \\[credits] shows them: each a name and
 the lines saying what came from it.")
 
@@ -227,7 +231,9 @@ from each."
                            (list (format nil "  Tuatara says where its ideas come from.~2%")))
                      (loop for (name . lines) in *credits*
                            collect (list (format nil "  ~22a" name) :about-heading)
-                           collect (list (format nil "~{~a~^~%                        ~}~%" lines))))))
+                           ;; a name too long for its column has the lines below it
+                           collect (list (format nil "~:[~*~;~%~24@a~]~{~a~^~%                        ~}~%"
+                                                 (> (length name) 21) "" lines))))))
       (render-pieces buffer #'credits-pieces :point :button))
     (show-buffer buffer)))
 
