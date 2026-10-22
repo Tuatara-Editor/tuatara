@@ -211,7 +211,8 @@ keyword with its value, or for the last four with any number of them:
          package's or a mode's is taken for a mistyping of it: an error,
          saying which.
 :version the tag, branch or commit fetched: the repository's newest tag by
-         date when not given or \"release\", its newest commit for \"latest\".
+         date when not given or \"release\", its newest commit for \"latest\"
+         or when not given and it has no tag yet.
 :folder  its folder in the repository or source folder, when not NAME.
 :file    its first file, when not NAME.lisp or load.lisp.
 :disabled t to leave the whole block out, as if it were not there.
@@ -920,26 +921,31 @@ one (hexadecimal, 7 to 64 digits); an error otherwise."
 (defun package-commit (directory where version)
   "The commit, and its tag or NIL, VERSION of the repository at WHERE is,
 asking it from DIRECTORY, a repository of no commit made for it: \"latest\",
-its main branch's newest commit; NIL or \"release\", its newest tag by date,
-its name never read; else that tag, branch or commit as written. Every
-commit's name is checked to be one (PACKAGE-COMMIT-NAME)."
-  (flet ((first-word (text) (first (uiop:split-string (string-trim '(#\Newline #\Space) text) :separator '(#\Space #\Tab)))))
-    (cond ((equal version "latest")
-           (values (package-commit-name (or (first-word (package-git directory "ls-remote" where "HEAD"))
-                                            (error "~a has no main branch" where))
-                                        where)
-                   nil))
-          ((member version '(nil "release") :test #'equal)
-           ;; the tags' commits alone, to find the newest by date
-           (package-git directory "fetch" "--quiet" "--depth=1" "--filter=tree:0" where "+refs/tags/*:refs/tags/*")
-           (let ((line (string-trim '(#\Newline #\Space)
-                                    (package-git directory "for-each-ref" "--sort=-creatordate" "--count=1"
-                                                 "--format=%(if)%(*objectname)%(then)%(*objectname)%(else)%(objectname)%(end) %(refname:strip=2)"
-                                                 "refs/tags"))))
-             (when (zerop (length line))
-               (error "~a has no tagged version; :version \"latest\" takes its newest commit" where))
-             (let ((space (position #\Space line)))
+its main branch's newest commit; \"release\", its newest tag by date, its
+name never read; NIL, the same, or its newest commit when it has no tag; else
+that tag, branch or commit as written. Every commit's name is checked to be
+one (PACKAGE-COMMIT-NAME)."
+  (labels ((first-word (text) (first (uiop:split-string (string-trim '(#\Newline #\Space) text) :separator '(#\Space #\Tab))))
+           (newest-commit ()
+             (values (package-commit-name (or (first-word (package-git directory "ls-remote" where "HEAD"))
+                                              (error "~a has no main branch" where))
+                                          where)
+                     nil))
+           (newest-tag ()
+             ;; the tags' commits alone, to find the newest by date
+             (package-git directory "fetch" "--quiet" "--depth=1" "--filter=tree:0" where "+refs/tags/*:refs/tags/*")
+             (let* ((line (string-trim '(#\Newline #\Space)
+                                       (package-git directory "for-each-ref" "--sort=-creatordate" "--count=1"
+                                                    "--format=%(if)%(*objectname)%(then)%(*objectname)%(else)%(objectname)%(end) %(refname:strip=2)"
+                                                    "refs/tags")))
+                    (space (position #\Space line)))
                (values (package-commit-name (subseq line 0 space) where) (subseq line (1+ space))))))
+    (cond ((equal version "latest") (newest-commit))
+          ((member version '(nil "release") :test #'equal)
+           (cond ((plusp (length (string-trim '(#\Newline #\Space) (package-git directory "ls-remote" "--tags" where))))
+                  (newest-tag))
+                 ((null version) (newest-commit))
+                 (t (error "~a has no tagged version; :version \"latest\" takes its newest commit" where))))
           (t
            (let* ((listed (package-git directory "ls-remote" where
                                        (format nil "refs/tags/~a" version) (format nil "refs/tags/~a^{}" version)

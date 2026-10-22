@@ -118,6 +118,20 @@ WHERE its file:// address, all of it forgotten afterwards."
         (is equal "alpha" (symbol-value 'tuatara-user::*package-test-two*))
         (true (tuatara.frontend.fake:fake-frame-showing f "has no tag, branch or commit called omega"))))))
 
+(define-test (packages untagged-newest-commit)
+  ;; a repository of no tag yet: no version asked for takes its newest commit; "release" says it has none
+  (with-package-repository (dir where)
+    (git-output dir "tag" "-d" "zeta" "alpha")
+    (let ((tuatara-user:*package-ask-before-loading* nil))
+      (let ((f (auto-save-session
+                (list (list :until (lambda () (tuatara-user:load-package "pkgone" :source where) t))
+                      (list :until (lambda () (package-test-version)))
+                      (list :until (lambda () (tuatara-user:load-package "pkgtwo" :source where :version "release") t))
+                      (list :until (lambda () (search "tagged" (or (tuatara.command:editor-message tuatara.command:*editor*) "")))))
+                :width 200)))
+        (is equal "newest" (package-test-version))
+        (true (tuatara.frontend.fake:fake-frame-showing f "has no tagged version"))))))
+
 (define-test (packages asked-first)
   ;; asked before compiling: n leaves it, and y at the next start loads it and remembers so
   (with-package-repository (dir where)
