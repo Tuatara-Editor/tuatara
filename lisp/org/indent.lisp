@@ -148,7 +148,8 @@ only where the text still holds what it stands for."
 headline's last star as its level's sign, in its level's face; list items' bullets and checkboxes
 as signs (*ORG-LIST-BULLETS*, *ORG-CHECKBOX-SIGNS*); while links are shown as
 their labels (\\[org-toggle-link-display]), what is around each label hidden,
-and the braces around what redact and protect hide, but in the call point is in."
+each entity shown as its character, and the braces around what redact and
+protect hide, but in the call point is in."
   (let ((found (merge 'list
                       (and *org-bullets* (org-headline-signs buffer start end))
                       (and (or *org-list-bullets* *org-checkbox-signs*) (org-item-signs buffer start end))

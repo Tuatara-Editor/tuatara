@@ -1239,8 +1239,8 @@
   ;; TAB never folds a list item. Not set: t: as a headline.
   ;; (setf *org-cycle-include-plain-lists* nil)
 
-  ;; Links shown as written, [[target][label]]. Not set: t: as their labels; C-c
-  ;; C-x L.
+  ;; Links and entities shown as written, [[target][label]], \dollar{}. Not set:
+  ;; t: links as their labels, entities as their characters; C-c C-x L.
   ;; (setf *org-link-descriptive* nil)
 
   ;; RET on a link a new line. Not set: t: follows it; C-c C-o still does.

@@ -27,7 +27,9 @@
 as their labels, as (START . END) characters, in order: of a bracket link,
 [[target][ and ]] around a label, [[ and ]] around a target alone; of a call
 of a macro with arguments, {{{name( and )}}} around them (redact and protect
-among them). As a second value, the calls' own (START . END)."
+among them); and each entity, \\dollar{}, as (START END TEXT), TEXT the
+character it stands for, shown in its place. As a second value, the calls'
+own (START . END)."
   (let ((found '()) (calls '()))
     (labels ((walk (node)
                (when (and (< (org-node-begin node) to) (> (max (org-node-end node) (1+ (org-node-begin node))) from))
@@ -39,6 +41,8 @@ among them). As a second value, the calls' own (START . END)."
                                      (push (cons (org-node-contents-end node) end) found))
                               (progn (push (cons begin (+ begin 2)) found)
                                      (push (cons (- end 2) end) found))))
+                         ((eq (org-node-type node) 'entity)
+                          (push (list begin end (gethash (org-property node :name) *org-entities*)) found))
                          ((and (eq (org-node-type node) 'macro) (org-property node :args))
                           (let ((open (+ begin 3 (length (org-property node :key)) 1)))
                             (when (< open (- end 4))
@@ -85,16 +89,19 @@ window's own."
                       (end (min end (tuatara.text:rope-bytes rope))))
                   (multiple-value-bind (pieces calls) (org-hidden-chars tree (org-byte->char buffer start) (org-byte->char buffer end))
                     (let ((ranges (loop for (s . e) in pieces
-                                        collect (list (org-char->byte buffer s) (org-char->byte buffer e) "" nil)))
+                                        collect (if (consp e)
+                                                    (list (org-char->byte buffer s) (org-char->byte buffer (first e)) (second e) nil)
+                                                    (list (org-char->byte buffer s) (org-char->byte buffer e) "" nil))))
                           (calls (loop for (s . e) in calls
                                        collect (cons (org-char->byte buffer s) (org-char->byte buffer e)))))
                       ;; what a row's start is found with stays aside, the window's own kept
                       (when (and cache (not tuatara.display:*layout-probe*))
                         (setf (tuatara.buffer:buffer-local buffer 'org-hidden) (list key ranges calls)
                               (tuatara.buffer:buffer-local buffer 'org-hidden-anchors)
-                              (loop for (s e) in ranges
-                                    collect (cons (tuatara.text:make-anchor version s :bias :after)
-                                                  (tuatara.text:make-anchor version e :bias :before)))))
+                              (loop for (s e text) in ranges
+                                    collect (list (tuatara.text:make-anchor version s :bias :after)
+                                                  (tuatara.text:make-anchor version e :bias :before)
+                                                  text))))
                       (values ranges calls)))))))))))
 
 (defun org-hidden-ranges-shown (buffer start end &key (cache t))
@@ -113,35 +120,39 @@ that it can be edited."
 them, those from octet START below END, as ORG-HIDDEN-RANGES gives them; one
 an edit emptied left out."
   (let ((version (tuatara.buffer:buffer-version buffer)))
-    (loop for (from . to) in (tuatara.buffer:buffer-local buffer 'org-hidden-anchors)
+    (loop for (from to text) in (tuatara.buffer:buffer-local buffer 'org-hidden-anchors)
           for s = (ignore-errors (tuatara.text:anchor-position from version))
           for e = (ignore-errors (tuatara.text:anchor-position to version))
           when (and s e (< s e) (< s end) (> e start))
-            collect (list s e "" nil))))
+            collect (list s e text nil))))
 
 (defun keep-point-out-of-hidden-markup (editor)
   "Post-command function: in an Org buffer showing links as their labels, a
 point the command moved into a hidden part of a link goes past it the way it
 was going, so that point never rests in what is not shown; into a macro
-call, it shows that call's braces instead."
+call, it shows that call's braces instead. On an entity shown as its
+character, point rests at its start, the character, and goes past the rest."
   (let ((buffer (tuatara.display:window-buffer (editor-window editor))))
     (when (and (typep (buffer-major-mode buffer) 'org-mode) (org-links-descriptive-p buffer))
       (let* ((point (tuatara.buffer:buffer-point buffer))
              (line (tuatara.buffer:buffer-line-start buffer point))
-             (hidden (find-if (lambda (r) (and (<= (first r) point) (< point (second r))))
+             (hidden (find-if (lambda (r) (and (if (plusp (length (third r))) (< (first r) point) (<= (first r) point))
+                                               (< point (second r))))
                               (org-hidden-ranges-shown buffer line (1+ (tuatara.buffer:buffer-line-end buffer point)) :cache nil)))
              (before (and (eq (car *point-before-command*) buffer) (cdr *point-before-command*))))
         (when hidden
           (let ((start (first hidden)) (end (second hidden)))
             (setf (tuatara.buffer:buffer-point buffer)
-                  (if (and before (> before point) (> start line))
-                      ;; going back: onto what comes before it
-                      (1- start)
-                      end))))))))
+                  (cond ((not (and before (> before point))) end)
+                        ;; going back: onto an entity's character, or what comes before a hidden part
+                        ((plusp (length (third hidden))) start)
+                        ((> start line) (1- start))
+                        (t end)))))))))
 
 (define-command org-toggle-link-display ()
-  "Show this Org buffer's links as written, [[target][label]], or as their
-labels again (\\`C-c C-x L'). The text is not changed."
+  "Show this Org buffer's links as written, [[target][label]], and its
+entities as written, \\dollar{}, or the links as their labels and the
+entities as their characters again (\\`C-c C-x L'). The text is not changed."
   (let ((buffer (current-buffer)))
     (if (not (typep (buffer-major-mode buffer) 'org-mode))
         (message "Only Org buffers show links as their labels")
