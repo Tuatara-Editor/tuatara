@@ -87,6 +87,25 @@
       (is string= "*Apropos*" (tuatara.buffer:buffer-name (shown editor)))
       (true (search "is a command" (tuatara.buffer:buffer-string (tuatara.buffer:find-buffer "*Help*")))))))
 
+(define-test (help source-file-a-link)
+  ;; where a command, a key's command or a variable is defined is a link: RET on it shows the
+  ;; definition in another window, the cursor on it, as M-. does
+  (let ((tuatara.defaults::*help-window-select* t))
+    (flet ((followed (keys)
+             (let* ((editor (nth-value 1 (run-keys (format nil "~a TAB RET" keys) :text "" :width 100 :height 30)))
+                    (b (tuatara.display:window-buffer (tuatara.command:editor-window editor)))
+                    (point (tuatara.buffer:buffer-point b))
+                    (line (tuatara.buffer:buffer-string b :start point :end (tuatara.buffer:buffer-line-end b point))))
+               (list (tuatara.buffer:buffer-name b) line))))
+      (destructuring-bind (name line) (followed "C-h x d e s c r i b e - c o m m a n d RET")
+        (is string= "help.lisp" name)
+        (true (uiop:string-prefix-p "(define-command describe-command " line) "~a" line))
+      (destructuring-bind (name line) (followed "C-h k C-x C-f")
+        (is string= "visiting.lisp" name)
+        (true (uiop:string-prefix-p "(define-command find-file " line) "~a" line))
+      (destructuring-bind (name line) (followed "C-h v t u a t a r a . d e f a u l t s : : * h e l p - c o l u m n * RET")
+        (true (search "(defparameter *help-column* " line) "~a ~a" name line)))))
+
 (define-test (help what-is-at-point)
   ;; C-x =: the character at point, its codes, and where point is
   (multiple-value-bind (f editor) (run-keys "C-x =" :text "héllo" :width 100)
@@ -277,10 +296,10 @@
   ;; a command's or a variable's documentation is filled to *help-column*, as the
   ;; settings' help is: no line past it, a key written in never split over two lines
   (let ((tuatara.command:*editor* (nth-value 1 (run-keys "" :text ""))))
-    (flet ((widest (text) (reduce #'max (mapcar #'length (uiop:split-string (tuatara.command:unmark-keys text) :separator '(#\Newline))))))
-      (true (<= (widest (tuatara.defaults::describe-function-text 'tuatara.defaults::org-insert-link)) tuatara.defaults::*help-column*))
-      (true (<= (widest (tuatara.defaults::describe-variable-text 'tuatara-user::*auto-save-directory*)) tuatara.defaults::*help-column*))
-      (true (search "C-x a l" (tuatara.command:unmark-keys (tuatara.defaults::describe-function-text 'tuatara.defaults::org-insert-link))))))
+    (flet ((widest (pieces) (reduce #'max (mapcar #'length (uiop:split-string (tuatara.defaults::pieces-text pieces :keys t) :separator '(#\Newline))))))
+      (true (<= (widest (tuatara.defaults::describe-function-pieces 'tuatara.defaults::org-insert-link)) tuatara.defaults::*help-column*))
+      (true (<= (widest (tuatara.defaults::describe-variable-pieces 'tuatara-user::*auto-save-directory*)) tuatara.defaults::*help-column*))
+      (true (search "C-x a l" (tuatara.defaults::pieces-text (tuatara.defaults::describe-function-pieces 'tuatara.defaults::org-insert-link) :keys t)))))
   ;; a list item's lines filled under its words; a line set in kept as written
   (is string= (format nil "Text one two.~%- an item that~%  goes on~%    | kept |  as is~%")
       (with-output-to-string (out)
@@ -320,7 +339,7 @@
 (define-test (help source-paths-from-the-tree)
   ;; where a command is defined is named within the source tree, never by the folders the
   ;; program was built in, and the license is found or said missing without the tree known
-  (let ((words (tuatara.defaults::source-location-text 'tuatara.defaults::search-again)))
+  (let ((words (tuatara.defaults::pieces-text (tuatara.defaults::source-location-pieces 'tuatara.defaults::search-again :function))))
     (true (search "Defined in lisp/search/incremental.lisp" words) "~a" words)
     (false (search "//" words)))
   (is string= "src/syntax/search.lisp" (tuatara.defaults::source-file-words "/home/ann/work/tuatara/src/syntax/search.lisp"))

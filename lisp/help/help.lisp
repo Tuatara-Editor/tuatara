@@ -104,27 +104,42 @@ source tree (lisp/search/files.lisp), never the folders above it."
                            directory)))
     (format nil "~{~a/~}~a" (if top (subseq directory top) '()) (file-namestring path))))
 
-(defun source-location-text (symbol)
-  "Where SYMBOL's function is defined, from SBCL's source records
-\(SOURCE-FILE-WORDS), or an empty string."
-  (let* ((sources (ignore-errors (sb-introspect:find-definition-sources-by-name symbol :function)))
-         (file (and sources (sb-introspect:definition-source-pathname (first sources)))))
-    (if file
-        (format nil "~%Defined in ~a" (source-file-words file))
-        "")))
+(defun visit-source (symbol)
+  "Show where SYMBOL is defined in another window, the cursor on the
+definition, as \\[xref-find-definitions] finds it; defined in more than one
+place, list them in *xref*."
+  (let ((definitions (lisp-definitions symbol)))
+    (cond ((null definitions) (message "No definitions found for: ~a" (lisp-name-text symbol)))
+          ((rest definitions) (show-definitions (qualified-name symbol) definitions))
+          (t (multiple-value-bind (b position) (funcall (definition-locate (first definitions)))
+               (if (typep b 'tuatara.buffer:buffer)
+                   (progn (pop-to-buffer b :other t) (goto position))
+                   (message "~a" position)))))))
 
-(defun describe-command-text (symbol)
-  "The help text for command SYMBOL."
-  (format nil "~(~a~) is a command.~%~%Keys: ~a~%~a~%~a~%"
-          symbol (command-bindings-text symbol) (source-location-text symbol)
-          (documentation-text symbol 'function)))
+(defun source-location-pieces (symbol kind)
+  "Where SYMBOL's definition of KIND (:function, :variable) is, from SBCL's
+source records, as help pieces: Defined in, then its file within the source
+tree (SOURCE-FILE-WORDS) as a link that shows it there (VISIT-SOURCE); NIL
+when it is not known."
+  (let* ((sources (ignore-errors (sb-introspect:find-definition-sources-by-name symbol kind)))
+         (file (and sources (sb-introspect:definition-source-pathname (first sources)))))
+    (when file
+      (list (format nil "~%Defined in ")
+            (list (source-file-words file) :button (lambda () (visit-source symbol)))))))
+
+(defun describe-command-pieces (symbol)
+  "The help for command SYMBOL, as pieces (SHOW-HELP-PIECES)."
+  (append (list (format nil "~(~a~) is a command.~%~%Keys: ~a~%" symbol (command-bindings-text symbol)))
+          (source-location-pieces symbol :function)
+          (list (format nil "~%~a~%" (documentation-text symbol 'function)))))
 
 (define-command describe-command ()
-  "Show what a command does, which keys run it and where it is defined. Every
-command is offered, those made for another kind of buffer too."
+  "Show what a command does, which keys run it and where it is defined, the
+file a link that shows the definition. Every command is offered, those made
+for another kind of buffer too."
   (let ((chosen (completing-read "Describe command: " (command-candidates :everywhere t) :require-match t)))
     (when (symbolp chosen)
-      (show-help (describe-command-text chosen)))))
+      (show-help-pieces (describe-command-pieces chosen)))))
 
 (defun function-kind (symbol)
   "What SYMBOL names as an operator, in words: a command, a special operator, a
@@ -168,23 +183,24 @@ first sentence of its documentation beside it."
               (add s (format nil "~(~a:~a~)" (package-name p) (symbol-name s))))))))
     (sort candidates #'string< :key #'candidate-string)))
 
-(defun describe-function-text (symbol)
-  "The help text for the operator SYMBOL: what it is and where, its parameters,
-what it does, and its source file; a command's as describe-command gives it,
-with its keys."
-  (let ((kind (function-kind symbol)))
-    (when (gethash symbol *commands*)
-      (return-from describe-function-text (describe-command-text symbol)))
-    (format nil "~(~a~) is a~:[~;n~] ~a in ~a.~%~%~@[~a~%~%~]~a~%~a~%"
-            symbol (find (char kind 0) "aeiou") kind (package-name (symbol-package symbol))
-            (lisp-signature symbol)
-            (documentation-text symbol 'function)
-            (source-location-text symbol))))
+(defun describe-function-pieces (symbol)
+  "The help for the operator SYMBOL, as pieces (SHOW-HELP-PIECES): what it is
+and where, its parameters, what it does, and its source file; a command's as
+describe-command gives it, with its keys."
+  (if (gethash symbol *commands*)
+      (describe-command-pieces symbol)
+      (let ((kind (function-kind symbol)))
+        (append (list (format nil "~(~a~) is a~:[~;n~] ~a in ~a.~%~%~@[~a~%~%~]~a~%"
+                              symbol (find (char kind 0) "aeiou") kind (package-name (symbol-package symbol))
+                              (lisp-signature symbol)
+                              (documentation-text symbol 'function)))
+                (source-location-pieces symbol :function)
+                (list (string #\Newline))))))
 
 (define-command describe-function ()
   "Show what a function, macro or command does: its parameters, its
 documentation, the keys that run it when it is a command, and where it is
-defined. The one named at point in a Lisp buffer is the default, offered
+defined, the file a link that shows the definition. The one named at point in a Lisp buffer is the default, offered
 first: \\<minibuffer>\\[minibuffer-done] alone describes it."
   (let* ((b (current-buffer))
          (here (and (typep (buffer-major-mode b) 'lisp-mode)
@@ -194,7 +210,7 @@ first: \\<minibuffer>\\[minibuffer-done] alone describes it."
          (chosen (completing-read "Describe function: " (function-candidates)
                                   :require-match t :default here)))
     (when (and (symbolp chosen) chosen)
-      (show-help (describe-function-text chosen)))))
+      (show-help-pieces (describe-function-pieces chosen)))))
 
 (define-command describe-key ()
   "Read a key sequence and show the command it runs and that command's documentation."
@@ -209,10 +225,10 @@ first: \\<minibuffer>\\[minibuffer-done] alone describes it."
                (show-help (format nil "~a is undefined.~%"
                                   (mark-key (tuatara.frontend:key-sequence-description specs))))
                (return))
-              (t (show-help (format nil "~a runs the command ~(~a~).~%~%~a"
-                                    (mark-key (tuatara.frontend:key-sequence-description specs))
-                                    binding
-                                    (describe-command-text binding)))
+              (t (show-help-pieces (cons (format nil "~a runs the command ~(~a~).~%~%"
+                                                 (mark-key (tuatara.frontend:key-sequence-description specs))
+                                                 binding)
+                                         (describe-command-pieces binding)))
                  (return)))))))
 
 (defun tuatara-variables ()
@@ -248,17 +264,22 @@ cut short said to be."
         (format nil "~a ... (cut short)" (subseq text 0 *variable-value-shown*))
         text)))
 
-(defun describe-variable-text (symbol)
-  "The help text for the variable SYMBOL: its value (VARIABLE-VALUE-TEXT) and its documentation."
-  (format nil "~(~a::~a~) is a variable.~%~%Value: ~a~%~%~a~%"
-          (package-name (symbol-package symbol)) symbol (variable-value-text (symbol-value symbol))
-          (documentation-text symbol 'variable)))
+(defun describe-variable-pieces (symbol)
+  "The help for the variable SYMBOL, as pieces (SHOW-HELP-PIECES): its value
+\(VARIABLE-VALUE-TEXT), its documentation and its source file."
+  (let ((source (source-location-pieces symbol :variable)))
+    (append (list (format nil "~(~a::~a~) is a variable.~%~%Value: ~a~%~%~a~%"
+                          (package-name (symbol-package symbol)) symbol (variable-value-text (symbol-value symbol))
+                          (documentation-text symbol 'variable)))
+            source
+            (and source (list (string #\Newline))))))
 
 (define-command describe-variable ()
-  "Show a variable's value and documentation."
+  "Show a variable's value and documentation, and where it is defined, the
+file a link that shows the definition."
   (let ((chosen (completing-read "Describe variable: " (variable-candidates) :require-match t)))
     (when (symbolp chosen)
-      (show-help (lambda () (describe-variable-text chosen))))))
+      (show-help-pieces (lambda () (describe-variable-pieces chosen))))))
 
 (define-command apropos-command ()
   "List the commands and variables whose names or documentation match the
@@ -280,7 +301,7 @@ words typed, in *Apropos*. Each name is a link to its description:
            (dolist (s (sort commands #'string< :key #'symbol-name))
              (let ((s s) (name (string-downcase (symbol-name s))))
                (put "  ")
-               (put name :button (lambda () (show-help (describe-command-text s))))
+               (put name :button (lambda () (show-help-pieces (describe-command-pieces s))))
                ;; the keys from the 31st column
                (put (format nil "~va~a~%    ~a~%" (max 1 (- 28 (length name))) "" (command-bindings-text s)
                             (first-sentence (documentation-text s 'function))))))
@@ -289,7 +310,7 @@ words typed, in *Apropos*. Each name is a link to its description:
              (let ((s s))
                (put "  ")
                (put (format nil "~(~a::~a~)" (package-name (symbol-package s)) s) :button
-                    (lambda () (show-help (lambda () (describe-variable-text s)))))
+                    (lambda () (show-help-pieces (lambda () (describe-variable-pieces s)))))
                (put (format nil "~%    ~a~%" (first-sentence (documentation-text s 'variable)))))))
          :name "*Apropos*")))))
 
