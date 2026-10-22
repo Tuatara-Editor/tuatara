@@ -585,6 +585,40 @@ DIR is visited and its status read, the project trusted. Returns the frontend."
         (false (search "b.txt" reworded))
         (true (search "b.txt" (git-output dir "show" "--stat" "HEAD~2")))))))
 
+(define-test (git commit-message-typed-at-once)
+  ;; with modal editing, a new commit's message, shown when git has read what is staged (work
+  ;; from the background), begins in INSERT state, its very first key typed; amending, the
+  ;; message there already, begins in NORMAL
+  (with-test-directory (dir)
+    (scratch-repository dir)
+    (put-file (merge-pathnames "a.txt" dir) (format nil "one~%two~%"))
+    (git-output dir "add" "a.txt")
+    (let ((tuatara.defaults::*modal-editing* t)
+          (tuatara-user:*lsp-trusted-projects* (list (namestring dir)))
+          (states '()))
+      (flet ((commit-buffer () (tuatara.defaults::git-buffer-of (tuatara.defaults::repository-top (namestring dir)) 'tuatara.defaults::git-commit-mode))
+             (committed-p (subject) (lambda () (equal subject (first (git-log-subjects dir))))))
+        (auto-save-session (list (format nil "C-x C-f C-a C-k ~a RET" (rimu-typed (native-in dir "a.txt")))
+                                 "C-x g" (list :until #'git-state-here)
+                                 "c c" (list :until #'commit-buffer)
+                                 (list :until (lambda () (push (tuatara.defaults::modal-state (commit-buffer)) states)))
+                                 "S e c o n d C-c C-c" (list :until (committed-p "Second"))
+                                 "c a" (list :until #'commit-buffer)
+                                 (list :until (lambda () (push (tuatara.defaults::modal-state (commit-buffer)) states)))
+                                 "C-c C-k")
+                           :width 120 :height 30)
+        (is equal '(:normal :insert) states)
+        (is equal '("Second" "First") (git-log-subjects dir)))))
+  ;; the message git in a terminal asks for, opened as a file: typed at once too
+  (with-test-directory (dir)
+    (let ((path (merge-pathnames "COMMIT_EDITMSG" dir))
+          (tuatara.defaults::*modal-editing* t))
+      (put-file path (format nil "~%# Please enter the commit message.~%"))
+      (let* ((editor (nth-value 1 (run-keys "T h i r d" :file (namestring path))))
+             (b (tuatara.display:window-buffer (tuatara.command:editor-window editor))))
+        (is string= (format nil "Third~%# Please enter the commit message.~%") (tuatara.buffer:buffer-string b))
+        (tuatara.buffer:kill-buffer b)))))
+
 (define-test (git stash-menu)
   ;; z z puts changes aside with a message; the status lists the stash; RET
   ;; shows it; z p brings it back and drops it; z d drops one, asked
@@ -1048,24 +1082,6 @@ DIR is visited and its status read, the project trusted. Returns the frontend."
                            (lambda () (git-commit-file dir "b.txt" "b" "Made in a terminal"))
                            (list :until (lambda () (search "Made in a terminal" (status-text))))))
         (true (search "Made in a terminal" (status-text)))))))
-
-(define-test (git message-buffer-takes-keys-at-once)
-  ;; a commit's message, shown when git has read what is staged (work from the
-  ;; background), is in its own modal state for the very first key: i inserts
-  (with-test-directory (dir)
-    (scratch-repository dir)
-    (put-file (merge-pathnames "a.txt" dir) (format nil "one~%two~%"))
-    (git-output dir "add" "a.txt")
-    (let ((tuatara.defaults::*modal-editing* t)
-          (tuatara-user:*lsp-trusted-projects* (list (namestring dir))))
-      (auto-save-session (list (format nil "C-x C-f C-a C-k ~a RET" (rimu-typed (native-in dir "a.txt")))
-                               "C-x g" (list :until #'git-state-here)
-                               "c c" (list :until (lambda () (tuatara.defaults::git-buffer-of (tuatara.defaults::repository-top (namestring dir)) 'tuatara.defaults::git-commit-mode)))
-                               (list :wait 0.2)
-                               "i S e c o n d C-g C-c C-c"
-                               (list :until (lambda () (search "Second" (git-output dir "log" "--format=%s")))))
-                         :width 100 :height 24)
-      (is equal "Second" (first (git-log-subjects dir))))))
 
 (define-test (git shown-text-closes-with-q)
   ;; a commit shown in a buffer of its own is read in SUPPORT state, and closes

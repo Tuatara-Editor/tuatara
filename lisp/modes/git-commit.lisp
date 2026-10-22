@@ -17,6 +17,9 @@ with # is a comment, which git leaves out."
 the body; the summary on the first line is best kept to 50.")
 
 (defmethod mode-enter ((mode git-commit-mode) buffer)
-  "Fill BUFFER's message at *GIT-COMMIT-FILL-COLUMN*."
+  "Fill BUFFER's message at *GIT-COMMIT-FILL-COLUMN*; with no message written
+yet, begin in INSERT state, for typing it at once."
   (call-next-method)
-  (setf (tuatara.buffer:buffer-local buffer :fill-column) *git-commit-fill-column*))
+  (setf (tuatara.buffer:buffer-local buffer :fill-column) *git-commit-fill-column*)
+  (when (and *editor* (member (tuatara.buffer:buffer-char-at buffer 0) '(nil #\Newline)))
+    (set-modal-state :insert buffer)))
