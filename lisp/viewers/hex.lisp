@@ -87,8 +87,10 @@ over the octets. \\`TAB' in the hex view."
   "Type STRING over the octets at the hex point of the current buffer: in the
 text, its characters' octets; in the hex digits, its hex digits, the first of
 two the octet's high half, the second its low half, then on to the next: each
-octet so typed one step to undo."
+octet so typed one step to undo. Refused in a buffer that may not be written
+\(CHECK-WRITABLE)."
   (let ((b (current-buffer)))
+    (check-writable b)
     (if (hex-text-column-p b)
         (hex-overwrite (tuatara.text:string-octets string))
         (loop for c across string
