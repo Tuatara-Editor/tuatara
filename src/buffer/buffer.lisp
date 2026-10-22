@@ -124,7 +124,10 @@ elsewhere (BUFFER-LENT-P) is released once nothing reads it any more."
 
 (declaim (inline buffer-text))
 (defun buffer-text (buffer)
-  "The rope holding BUFFER's current text."
+  "BUFFER's text as it is now, a rope. A change to BUFFER makes a new rope
+and leaves this one as it is, so work in the background may read it
+\(ROPE-OCTET, ROPE-COPY-INTO and the rest) while BUFFER is edited, the text
+it reads being the text as it was when it was taken."
   (tuatara.text:version-rope (buffer-version buffer)))
 
 (defun buffer-size (buffer)

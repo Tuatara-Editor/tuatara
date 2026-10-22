@@ -574,7 +574,10 @@ them, again where the system wrote fewer or was interrupted."
                      (t (fail "write" path)))))))
 
 (defun write-octets (fd octets &key (start 0) (end (length octets)) (path "a file"))
-  "Write OCTETS from START below END to the open file FD at its current offset (WRITE-SAP)."
+  "Write OCTETS from START below END to the open file FD at its current
+offset, all of them, again where the system wrote fewer or was interrupted;
+signals FILE-SYSTEM-ERROR, naming PATH, when the system refuses, as when a
+program reading from a pipe has ended."
   (with-octets-sap (sap octets)
     (write-sap fd (sb-sys:sap+ sap start) (- end start) :path path)))
 

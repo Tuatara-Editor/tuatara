@@ -7,7 +7,9 @@
 
 (defun buffer-banks (buffer)
   "BUFFER's banks, each (START END LAST): anchors at the start of its first
-line, past its last line's newline, and at the end of its last line's text."
+line, past its last line's newline, and at the end of its last line's text.
+BANKED-SPANS says where the banked lines are now; setting this to NIL lets
+go of every one of them, the text left as it is."
   (tuatara.buffer:buffer-local buffer 'banked-lines))
 
 (defun (setf buffer-banks) (banks buffer)
