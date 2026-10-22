@@ -230,9 +230,10 @@ MODE completes nothing.")
 (define-command completion-at-point ()
   "Complete the word at point from a list beside it: in Lisp, the operators
 after an open bracket, the variables, operators and classes elsewhere, the
-keywords after a colon and a package's names after its name and a colon, with
-what each is beside it and the chosen one's parameters and documentation
-beside the list. Typing narrows the list, words in any order;
+keywords after a colon and a package's names after its name and a colon; in a
+buffer open in a language server, what the server offers; with what each is
+beside it and the chosen one's parameters and documentation beside the list.
+Typing narrows the list, words in any order;
 \\<popup>\\[popup-next] and \\[popup-previous] choose, \\[popup-insert] or
 \\`TAB' put the chosen one in, \\[popup-quit] closes it. When one name alone
 fits, it goes in at once."
