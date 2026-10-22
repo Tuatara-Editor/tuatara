@@ -9,7 +9,7 @@
   "The Tuatara version string, taken from the ASDF system definition at load time.")
 
 (defun version ()
-  "Return the Tuatara version as a string, for example \"0.90\".
+  "Return the Tuatara version as a string, for example \"0.90.1\".
 Complexity: O(1)."
   *version*)
 
