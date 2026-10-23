@@ -1128,10 +1128,6 @@ on; year, the next year's first day."
               ((string-equal step "quarter") (at mstart (+ 3 m) y))
               (t (at 1 1 (1+ y))))))))
 
-(defun clocktable-day-stamp (time)
-  "The day of the universal TIME as an inactive timestamp without a time: [2026-09-28 Mon]."
-  (format-time "[%F %a]" time))
-
 (defun clocktable-steps (params)
   "The clock tables of PARAMS one for each :step (day, week, semimonth, month,
 quarter, year) of its :block, or from its :tstart to its :tend: each under a
@@ -1174,7 +1170,7 @@ block's old text when it has neither a block nor both times."
                                          (let ((next (clocktable-step-next start step wstart mstart)))
                                            ;; a step that gets nowhere would go on for ever
                                            (when (<= next start)
-                                             (message "The clock table's steps go nowhere from ~a" (clocktable-day-stamp start))
+                                             (message "The clock table's steps go nowhere from ~a" (org-timestamp-text start :clock nil))
                                              (return))
                                            (multiple-value-bind (text total)
                                                (clocktable-one (list* :header "" :step nil :block nil
@@ -1182,7 +1178,7 @@ block's old text when it has neither a block nor both times."
                                                                       params))
                                              (setf last-skipped (and skip0 (zerop total)))
                                              (unless last-skipped
-                                               (format out "~%~a~a~%~a" title (clocktable-day-stamp start) text)))
+                                               (format out "~%~a~a~%~a" title (org-timestamp-text start :clock nil) text)))
                                            (setf start next))))))
                  (cond ((zerop (length written)) (string #\Newline))
                        (last-skipped (concatenate 'string written (string #\Newline)))

@@ -1394,3 +1394,14 @@ help left out."
                   (org-text-after "C-c C-t" (format nil "* TODO Team meeting~%SCHEDULED: <%%(diary-float t 1 1) 10:00>~%#+begin_example~%:LAST_REPEAT: [2027-01-04 Mon]~%#+end_example~%"))))
     (true (search ":LAST_REPEAT: [2026-12-07 Mon 10:00]"
                   (org-text-after "C-c C-t" (format nil "* TODO Team meeting~%SCHEDULED: <%%(diary-float t 1 1) 10:00>~%:PROPERTIES:~%:LAST_REPEAT: [2026-11-02 Mon 10:00]~%:END:~%"))))))
+
+(define-test (org timestamps-written-one-way)
+  ;; a timestamp of a time or a day, any year, with its time or without, written one way
+  (let ((time (encode-universal-time 0 30 17 1 10 2026)) (day (tuatara.dates:day-number 2026 10 1)))
+    (is string= "[2026-10-01 Thu 17:30]" (tuatara.defaults::org-timestamp-text time))
+    (is string= "<2026-10-01 Thu 17:30>" (tuatara.defaults::org-timestamp-text time :active t))
+    (is string= "[2026-10-01 Thu]" (tuatara.defaults::org-timestamp-text time :clock nil))
+    (is string= "<2026-10-01 Thu>" (tuatara.defaults::org-timestamp-text time :active t :clock nil))
+    (is string= "[2026-10-01 Thu]" (tuatara.defaults::org-day-timestamp-text day))
+    (is string= "[2026-10-01 Thu 09:05]" (tuatara.defaults::org-day-timestamp-text day :hour 9 :minute 5))
+    (is string= "[1899-12-31 Sun]" (tuatara.defaults::org-day-timestamp-text -1))))

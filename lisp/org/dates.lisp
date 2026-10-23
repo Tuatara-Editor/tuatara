@@ -124,10 +124,18 @@ the day of the month, a date past the month's end counted on into the next:
                (format nil "~a~d~c" (if (eq (org-ts-warning ts) :first) "--" "-") (org-ts-warning-value ts) (org-ts-warning-unit ts)))
           (org-ts-active ts)))
 
-(defun org-timestamp-text (time &key (active nil))
+(defun org-day-timestamp-text (day &key active hour minute)
+  "The day number DAY as an Org timestamp, any year: [2026-10-01 Thu], or
+<2026-10-01 Thu> when ACTIVE, with HOUR and MINUTE when HOUR is given:
+[2026-10-01 Thu 17:30]."
+  (format nil (if active "<~a>" "[~a]") (date-time-text day hour minute)))
+
+(defun org-timestamp-text (time &key active (clock t))
   "The Org timestamp of the universal TIME to the minute, any year: [2026-10-01
-Thu 17:30], or <2026-10-01 Thu 17:30> when ACTIVE."
-  (format-time (if active "<%F %a %R>" "[%F %a %R]") time))
+Thu 17:30], or <2026-10-01 Thu 17:30> when ACTIVE; without CLOCK, its day
+alone, [2026-10-01 Thu]."
+  (multiple-value-bind (day hour minute) (time-day time)
+    (org-day-timestamp-text day :active active :hour (and clock hour) :minute minute)))
 
 (defun org-ts-repeat (ts now)
   "Move TS, a timestamp with a repeater, to its next time after it is done at
@@ -466,5 +474,4 @@ or NIL): the day it is done for (ORG-RULE-DONE-DAY) as an inactive
 timestamp, with the time RULE gives; NIL when RULE takes no day near."
   (let* ((last (let ((ts (and last-repeat (org-read-ts last-repeat)))) (and ts (org-ts-day-number ts))))
          (day (org-rule-done-day rule last (org-today now))))
-    (and day (format-day (if (org-rule-hour rule) "[%F %a %R]" "[%F %a]") day
-                         (or (org-rule-hour rule) 0) (or (org-rule-minute rule) 0)))))
+    (and day (org-day-timestamp-text day :hour (org-rule-hour rule) :minute (org-rule-minute rule)))))
