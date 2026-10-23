@@ -332,21 +332,30 @@ key:value tags of BUFFER's first tasks (FIRST-RECORDS)."
   (declare (ignore buffer))
   (make-record-fields :each #'todotxt-each :keys #'todotxt-keys))
 
-(defun json-line-each (text length field fn)
-  "The value of key FIELD, or of a path of keys apart by dots (user.id), of
-the JSON object a line of JSON Lines holds: a string as it reads, escapes
-undone; anything else as JSON. NIL for a line that is no JSON, or a key it
-lacks or that holds null."
-  (let* ((object (handler-case (tuatara.text:json-read text :end length)
-                   (tuatara.text:json-error () nil)))
-         (value (and (hash-table-p object)
-                     (multiple-value-bind (whole found) (gethash field object)
-                       (if found
-                           (tuatara.text:json-get whole)
-                           (apply #'tuatara.text:json-get object (uiop:split-string field :separator ".")))))))
-    (when value
-      (let ((string (if (stringp value) value (tuatara.text:json-write value))))
-        (funcall fn string 0 (length string))))))
+(defun json-line-each ()
+  "A RECORD-FIELDS-EACH for JSON Lines: the value of key FIELD, or of a path
+of keys apart by dots (user.id), of the JSON object a line holds: a string as
+it reads, escapes undone; anything else as JSON. NIL for a line that is no
+JSON, or a key it lacks or that holds null. The path of the field last asked
+for is kept, cut once for all the lines it is tried on."
+  (let ((cut (cons nil nil)))
+    (lambda (text length field fn)
+      (let* ((object (handler-case (tuatara.text:json-read text :end length)
+                       (tuatara.text:json-error () nil)))
+             (value (and (hash-table-p object)
+                         (multiple-value-bind (whole found) (gethash field object)
+                           (if found
+                               (tuatara.text:json-get whole)
+                               (let ((path (let ((last cut))
+                                             (if (equal (car last) field)
+                                                 (cdr last)
+                                                 (let ((path (uiop:split-string field :separator ".")))
+                                                   (setf cut (cons field path))
+                                                   path)))))
+                                 (apply #'tuatara.text:json-get object path)))))))
+        (when value
+          (let ((string (if (stringp value) value (tuatara.text:json-write value))))
+            (funcall fn string 0 (length string))))))))
 
 (defun json-line-keys (buffer)
   "The keys of the objects BUFFER's first lines hold (FIRST-RECORDS), in the
@@ -361,4 +370,4 @@ order they first come."
 (defmethod mode-record-fields ((mode jsonl-mode) buffer)
   "A JSON Lines record's keys."
   (declare (ignore buffer))
-  (make-record-fields :each #'json-line-each :keys #'json-line-keys))
+  (make-record-fields :each (json-line-each) :keys #'json-line-keys))

@@ -1154,3 +1154,20 @@ for, and anchors, empty matches and line ends.")
                                       n))))
              (filter-time (least-seconds (lambda () (tuatara.defaults::lines-matching (list filter) rope all nil)))))
         (true (< filter-time (+ 0.002 (* 3 scan))) "~a: filtered in ~,4fs, scanned in ~,4fs" pattern filter-time scan)))))
+
+(define-test (search-filters json-path-cut-once)
+  ;; a JSON Lines filter by a path of keys cuts the path once, not on every line
+  (let* ((fields (tuatara.defaults::mode-record-fields (make-instance 'tuatara.defaults::jsonl-mode) nil))
+         (each (tuatara.defaults::record-fields-each fields))
+         (line "{\"user\": {\"id\": 7, \"name\": \"Hēmi \\\"H\\\"\"}}")
+         (cuts 0))
+    (sb-int:encapsulate 'uiop:split-string 'counted (lambda (function &rest arguments) (incf cuts) (apply function arguments)))
+    (unwind-protect
+         (progn
+           (dotimes (i 100)
+             (is string= "7" (funcall each line (length line) "user.id" (lambda (s a z) (subseq s a z)))))
+           (dotimes (i 100)
+             (is string= "Hēmi \"H\"" (funcall each line (length line) "user.name" (lambda (s a z) (subseq s a z))))))
+      (sb-int:unencapsulate 'uiop:split-string 'counted))
+    (true (<= cuts 2) "two paths cut ~d times for 200 lines" cuts)
+    (false (funcall each "{\"user\": " 9 "user.id" (lambda (s a z) (subseq s a z))))))
