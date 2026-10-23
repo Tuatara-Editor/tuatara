@@ -7,8 +7,9 @@
 ;;;; changed from the edit batches, which costs nothing per keystroke. A file,
 ;;;; or its committed text, above *VC-GUTTER-MAX-BYTES* is not compared.
 ;;;;
-;;;; Git is only asked for the committed text (cat-file, which runs no filter),
-;;;; once for each look at a file, never outside a repository, never to look at
+;;;; Git is only asked for the id of the committed text (rev-parse) once for
+;;;; each look at a file, and for that text (cat-file, which runs no filter)
+;;;; once for each id, never outside a repository, never to look at
 ;;;; the file itself, and never to fetch or to run a file-system monitor: a
 ;;;; repository's own settings can name programs for those, and a repository
 ;;;; from an archive or a download is not to be trusted (RUN-GIT, which every
@@ -40,15 +41,50 @@ or narrow it; KIND :added, :changed or :deleted."
   "The name of the file at PATH from its folder, as git is given it there (GIT-OBJECT-NAME)."
   (concatenate 'string "./" (tuatara.io:native-file-name path)))
 
-(defun committed-text (path &key cancel)
-  "The text of the file at PATH as git has it in HEAD, as octets, by one git
-process (GIT-BLOB-OCTETS); NIL when git has no such file, and no process at all
-outside a repository. A text larger than *VC-GUTTER-MAX-BYTES* is not read:
-NIL, and true as a second value."
+(defun committed-id (path &key cancel)
+  "The id git gives the text of the file at PATH in HEAD, asked by one git
+process (RUN-GIT) that reads nothing of it; NIL when git has no such file,
+and no process at all outside a repository."
+  (multiple-value-bind (octets ok)
+      (run-git (tuatara.io:parent-path path) (list "rev-parse" "--verify" "--quiet" (git-object-name "HEAD" (committed-name path)))
+               :cancel cancel :seconds *git-look-seconds*)
+    (let ((id (and ok octets (string-trim '(#\Newline) (tuatara.text:lenient-string octets)))))
+      (and (git-hash-p id) id))))
+
+(defun committed-text (path &key cancel id)
+  "The text of the file at PATH as git has it in HEAD, or the text whose id
+is ID, as octets, by one git process (GIT-BLOB-OCTETS); NIL when git has no
+such file, and no process at all outside a repository. A text larger than
+*VC-GUTTER-MAX-BYTES* is not read: NIL, and true as a second value."
   (multiple-value-bind (octets ok too-large)
-      (git-blob-octets (tuatara.io:parent-path path) "HEAD" (committed-name path)
+      (git-blob-octets (tuatara.io:parent-path path) (or id "HEAD") (and (not id) (committed-name path))
                        :cancel cancel :seconds *git-look-seconds* :limit *vc-gutter-max-bytes*)
     (values (and ok octets) too-large)))
+
+(sb-ext:defglobal **committed-lines** (make-hash-table :test 'equal :synchronized t)
+  "The line hashes (LINE-HASHES) of the texts git has that the gutter compared
+files with last, by the texts' ids: a file saved again and again is read
+from git and its lines hashed once while what HEAD has of it stays the same.")
+
+(defparameter *committed-lines-kept* 32
+  "How many committed texts' line hashes the gutter keeps (**COMMITTED-LINES**).")
+
+(defun committed-line-hashes (path &key cancel)
+  "The line hashes (LINE-HASHES) of the text of the file at PATH as git has it
+in HEAD: worked out once for each text git has (COMMITTED-ID), read from git
+the first time (COMMITTED-TEXT). NIL when git has no such file; NIL and true
+as a second value for a text larger than *VC-GUTTER-MAX-BYTES*."
+  (let ((id (committed-id path :cancel cancel)))
+    (when id
+      (or (gethash id **committed-lines**)
+          (multiple-value-bind (committed too-large) (committed-text path :cancel cancel :id id)
+            (if (not committed)
+                (values nil too-large)
+                (let ((hashes (line-hashes committed)))
+                  (sb-ext:with-locked-hash-table (**committed-lines**)
+                    (when (>= (hash-table-count **committed-lines**) *committed-lines-kept*)
+                      (clrhash **committed-lines**))
+                    (setf (gethash id **committed-lines**) hashes)))))))))
 
 (defun git-tracked-p (path &key cancel)
   "True when git has the file at PATH in HEAD, asked by one git process
@@ -107,8 +143,8 @@ HUNKS) as VC-START-REFRESH says."
 
 (defun vc-start-refresh (buffer)
   "Work out in the background whether BUFFER's file is in git and its marks,
-a job (VC-JOB): git asked once (COMMITTED-TEXT, or GIT-TRACKED-P for a file
-too large to compare) and the texts compared on a thread of their own, from
+a job (VC-JOB): git asked for the committed text's lines (COMMITTED-LINE-HASHES,
+or GIT-TRACKED-P for a file too large to compare) and the texts compared on a thread of their own, from
 the buffer's text as it is now, which never changes, so that nothing waits
 for it; the result put in as the job is taken in. A refresh started before
 for BUFFER is stopped. The text of a file mapped from disk is read as a
@@ -130,9 +166,9 @@ slice (BUFFER-SLICE), which keeps the mapping while the job reads it."
              (let ((cancel (tuatara.runtime:job-cancel job)))
                (setf (vc-job-result job)
                      (if compare
-                         (multiple-value-bind (committed too-large) (committed-text path :cancel cancel)
+                         (multiple-value-bind (committed too-large) (committed-line-hashes path :cancel cancel)
                            (list (and (or committed too-large) t)
-                                 (and committed (diff-hunks (line-hashes committed) (rope-line-hashes rope)))))
+                                 (and committed (diff-hunks committed (rope-line-hashes rope)))))
                          (list (git-tracked-p path :cancel cancel) nil)))))
            :name "tuatara version control"))))
 

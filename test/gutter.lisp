@@ -130,6 +130,33 @@ background, are in; return the frontend and the editor."
       (let ((tuatara.defaults::*vc-gutter-max-bytes* 10000))
         (is = 5000 (length (tuatara.defaults::committed-text file)))))))
 
+(define-test (gutter committed-lines-read-once)
+  ;; the committed text is read and its lines hashed once while HEAD holds the same text;
+  ;; a commit changing it has it read again
+  (with-test-directory (dir)
+    (let ((file (merge-pathnames "data.txt" dir))
+          (read 0))
+      (git dir "init" "-q")
+      (git dir "config" "user.email" "t@example.com") (git dir "config" "user.name" "t")
+      (git dir "config" "commit.gpgsign" "false")
+      (put-file file (format nil "one~%two~%"))
+      (git dir "add" "data.txt") (git dir "commit" "-q" "-m" "base")
+      (sb-int:encapsulate 'tuatara.defaults::run-git 'counted
+                          (lambda (function directory arguments &rest keys)
+                            (when (equal (first arguments) "cat-file") (incf read))
+                            (apply function directory arguments keys)))
+      (unwind-protect
+           (let ((first (tuatara.defaults::committed-line-hashes file)))
+             (is = 2 (length first))
+             (is equalp first (tuatara.defaults::committed-line-hashes file))
+             (is equalp first (tuatara.defaults::committed-line-hashes file))
+             (is = 1 read)
+             (put-file file (format nil "one~%two~%three~%"))
+             (git dir "commit" "-q" "-a" "-m" "more")
+             (is = 3 (length (tuatara.defaults::committed-line-hashes file)))
+             (is = 2 read))
+        (sb-int:unencapsulate 'tuatara.defaults::run-git 'counted)))))
+
 (define-test (gutter vc-marks-after-a-save)
   ;; a save has the marks worked out again: a line edited back to what git has is unmarked
   (with-test-directory (dir)

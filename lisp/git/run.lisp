@@ -77,11 +77,12 @@ runs in when it begins with ./."
 (defun git-blob-octets (top hash path &key job limit cancel seconds)
   "What the file PATH (from TOP, or from the folder TOP when it begins with
 ./) held as the commit HASH (or HEAD) of the repository at TOP left it, as
-octets, read by git cat-file: with JOB, on its thread, as GIT-JOB-OCTETS reads
-it, JOB ending there when git failed; else on the thread calling it as
-RUN-GIT gives it, CANCEL and SECONDS as it takes them, true as a second value
-when it was read and as a third when it was more than LIMIT octets."
-  (let ((arguments (list "cat-file" "blob" (git-object-name hash path))))
+octets, read by git cat-file; with PATH NIL, the text whose own id HASH is:
+with JOB, on its thread, as GIT-JOB-OCTETS reads it, JOB ending there when
+git failed; else on the thread calling it as RUN-GIT gives it, CANCEL and
+SECONDS as it takes them, true as a second value when it was read and as a
+third when it was more than LIMIT octets."
+  (let ((arguments (list "cat-file" "blob" (if path (git-object-name hash path) hash))))
     (if job
         (git-job-octets job top arguments :limit limit)
         (run-git top arguments :limit limit :cancel cancel :seconds seconds))))
