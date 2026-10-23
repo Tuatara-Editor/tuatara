@@ -1697,3 +1697,28 @@ DIR is visited and its status read, the project trusted. Returns the frontend."
              (true (tuatara.defaults::git-hash-p (tuatara.defaults::git-state-commit state)))
              (is equal "main" (tuatara.defaults::git-state-branch state)))
         (sb-posix:chmod locked #o700)))))
+
+(define-test (git status-read-in-one-walk)
+  ;; the repository read for its status walks its tree once, the files ignored found by that
+  ;; same walk, and runs git no more than needed: no stash list with no stash
+  (with-test-directory (dir)
+    (scratch-repository dir)
+    (put-file (merge-pathnames ".gitignore" dir) (format nil "*.log~%build/~%"))
+    (git-output dir "add" ".gitignore")
+    (git-output dir "commit" "-q" "-m" "Ignore")
+    (put-file (merge-pathnames "debug.log" dir) "x")
+    (ensure-directories-exist (merge-pathnames "build/deep/" dir))
+    (put-file (merge-pathnames "build/deep/out.o" dir) "x")
+    (let ((runs '()) (top (namestring dir)))
+      (sb-int:encapsulate 'tuatara.defaults::run-git-program 'count-runs
+                          (lambda (function git directory arguments &rest keys)
+                            (push (first arguments) runs)
+                            (apply function git directory arguments keys)))
+      (unwind-protect
+           (let ((state (catch 'tuatara.defaults::git-failed
+                          (tuatara.defaults::git-read-state (tuatara.defaults::%make-hash-job :what "git") top
+                                                            (concatenate 'string top ".git/")))))
+             (is equal '("build/" "debug.log") (sort (mapcar #'first (tuatara.defaults::git-state-ignored state)) #'string<))
+             (is equal 1 (count "status" runs :test #'string=))
+             (true (<= (length runs) 3) "git ran ~d times: ~{~a~^, ~}" (length runs) (reverse runs)))
+        (sb-int:unencapsulate 'tuatara.defaults::run-git-program 'count-runs)))))

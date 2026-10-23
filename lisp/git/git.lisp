@@ -354,12 +354,13 @@ commits not pushed, UNPUSHED, each (HASH SUBJECT), the latest first, at most
 *GIT-RECENT-COMMITS* of UNPUSHED-COUNT, and UNPUSHED-TO, the upstream they
 are not in, or NIL for those on no remote at all, a branch with none; and
 DOING, what git is in the middle of: :AM, :MERGE, :REBASE, :CHERRY-PICK, :REVERT,
-:BISECT, or NIL; its SUBMODULES, each (PATH STATE); and the files it IGNORES,
+:BISECT, or NIL; its SUBMODULES, each (PATH STATE); the files it IGNORES,
 each (PATH KIND), KIND the word ignored, a folder ignored whole one entry
-ending in /, or :UNREAD when there are some not listed."
+ending in /; and STASH-STAMP, the stamp of git's list of stashes when they
+were read, NIL when there was none."
   branch commit upstream (ahead 0) (behind 0)
   (untracked '()) (unstaged '()) (staged '()) (stashes '()) (recent '()) (unpushed '()) (unpushed-count 0) unpushed-to
-  doing (submodules '()) (ignored '()))
+  doing (submodules '()) (ignored '()) stash-stamp)
 
 (defun git-state-unborn-p (state)
   "True when the repository STATE is of has no commit yet."
@@ -373,7 +374,7 @@ ending in /, or :UNREAD when there are some not listed."
 
 (defun parse-git-status (text)
   "TEXT, what git status --porcelain=v2 --branch -z printed, as a GIT-STATE; a
-submodule's KIND is submodule."
+submodule's KIND is submodule; the files ignored, with --ignored, ignored."
   (let ((state (make-git-state))
         (fields (uiop:split-string text :separator (list (code-char 0)))))
     (loop while fields
@@ -391,6 +392,8 @@ submodule's KIND is submodule."
                               (git-state-behind state) (abs (or (parse-integer (or (second counts) "0") :junk-allowed t) 0)))))
                      ((uiop:string-prefix-p "? " entry)
                       (push (list (subseq entry 2) "untracked") (git-state-untracked state)))
+                     ((uiop:string-prefix-p "! " entry)
+                      (push (list (subseq entry 2) "ignored") (git-state-ignored state)))
                      ((or (uiop:string-prefix-p "1 " entry) (uiop:string-prefix-p "2 " entry) (uiop:string-prefix-p "u " entry))
                       ;; the path is the last field; a rename's original comes after, on its own
                       (let* ((parts (uiop:split-string entry :separator '(#\Space)))
@@ -406,6 +409,7 @@ submodule's KIND is submodule."
                                     (push (list* path (kind (char xy 0)) (and original (list original))) (git-state-staged state)))
                                   (unless (char= (char xy 1) #\.) (push (list path (kind (char xy 1))) (git-state-unstaged state))))))))))))
     (setf (git-state-untracked state) (nreverse (git-state-untracked state))
+          (git-state-ignored state) (nreverse (git-state-ignored state))
           (git-state-unstaged state) (nreverse (git-state-unstaged state))
           (git-state-staged state) (nreverse (git-state-staged state)))
     state))
@@ -424,6 +428,11 @@ the lists of their fields; a line of another count of fields left out."
 (defun git-stashes (job top)
   "On JOB's thread: the stashes of the repository at TOP, the latest first, each (NAME SUBJECT)."
   (git-records (git-job-output job top (list "stash" "list" "--format=%gd%x00%gs")) 2))
+
+(defun git-stash-stamp (folder)
+  "The stamp of the list of stashes in git's own FOLDER, NIL when there is none:
+no stash."
+  (ignore-errors (tuatara.io:path-stamp (concatenate 'string folder "logs/refs/stash") :follow nil)))
 
 (defun git-uncommented-lines (text)
   "The lines of TEXT, those beginning with # left out, joined again by newlines."
@@ -446,38 +455,25 @@ that say so, in the order they are looked for.")
         when (some (lambda (file) (tuatara.io:path-kind (concatenate 'string folder file) :follow nil)) files)
           return operation))
 
-(defparameter *git-ignored-arguments* (list "ls-files" "--others" "--ignored" "--exclude-standard" "--directory")
-  "The arguments of git listing the files it ignores, a folder ignored whole once.")
-
-(defun git-ignored-files (job top)
-  "On JOB's thread: the files git ignores at TOP, each (PATH KIND), KIND the
-word ignored, a folder ignored whole one entry ending in / (its files not
-listed)."
-  (mapcar (lambda (path) (list path "ignored"))
-          (tuatara.text:split-words (git-job-output job top (append *git-ignored-arguments* (list "-z"))) (list (code-char 0)))))
-
-(defun git-ignores-any-p (job top)
-  "On JOB's thread: true when git ignores a file at TOP, git ended at the first."
-  (let ((found nil))
-    (run-git top *git-ignored-arguments* :cancel (tuatara.runtime:job-cancel job)
-                                         :line (lambda (line) (declare (ignore line)) (setf found t)))
-    found))
-
-(defun git-read-state (job top folder &key ignored)
+(defun git-read-state (job top folder &key previous)
   "On JOB's thread: the repository at TOP, git's own FOLDER, as a GIT-STATE,
-read by git status (taking no lock that git run elsewhere would meet), its
-latest commits by git log and its stashes by git stash list once it has a
-commit; with IGNORED the files it ignores listed, else :UNREAD when there is
-one, NIL when none."
-  (let ((state (parse-git-status (git-job-output job top (list "status" "--porcelain=v2" "--branch" "-z" "--untracked-files=normal")
-                                                 :environment (list "GIT_OPTIONAL_LOCKS=0")))))
+read by git status (taking no lock that git run elsewhere would meet), the
+files it ignores found in the same walk of its tree, a folder ignored whole
+one entry; its latest commits by git log, and its stashes by git stash list
+when it has any, kept from PREVIOUS, the state read before, while their list
+is as it was then."
+  (let ((state (parse-git-status (git-job-output job top (list "status" "--porcelain=v2" "--branch" "-z" "--untracked-files=normal"
+                                                               "--ignored=traditional")
+                                                 :environment (list "GIT_OPTIONAL_LOCKS=0"))))
+        (stamp (git-stash-stamp folder)))
     (setf (git-state-doing state) (git-operation folder)
           (git-state-submodules state) (git-submodules job top)
-          (git-state-ignored state) (if ignored
-                                        (git-ignored-files job top)
-                                        (and (git-ignores-any-p job top) :unread)))
-    (unless (git-state-unborn-p state)
-      (setf (git-state-stashes state) (git-stashes job top)))
+          (git-state-stash-stamp state) stamp)
+    (when (and stamp (not (git-state-unborn-p state)))
+      (setf (git-state-stashes state)
+            (if (and previous (equalp stamp (git-state-stash-stamp previous)))
+                (git-state-stashes previous)
+                (git-stashes job top))))
     (unless (git-state-unborn-p state)
       (setf (git-state-recent state)
             (mapcar (lambda (commit) (list (first commit) (fourth commit)))
@@ -660,7 +656,7 @@ subject. \\<git-log-mode>\\[git-log-show] shows the commit on the line; \\[quit-
     (:untracked (git-state-untracked state))
     (:unstaged (git-state-unstaged state))
     (:staged (git-state-staged state))
-    (:ignored (let ((ignored (git-state-ignored state))) (if (listp ignored) ignored '())))))
+    (:ignored (git-state-ignored state))))
 
 (defun git-diff-face (line)
   "The face a line of a difference is shown in."
@@ -722,7 +718,7 @@ there are, as two values."
 MEMBERS), those with nothing in them left out: the files not tracked,
 changed and staged, as many as GIT-SECTION-SHOWN lists, its submodules, its
 stashes, its commits not pushed, its latest commits, and the files it
-ignores, listed once they are read."
+ignores."
   (flet ((section (name members) (and members (list (cons name members)))))
     (append (loop for (section) in *git-sections*
                   append (section section (git-section-shown (git-section-files state section) section limits)))
@@ -730,8 +726,7 @@ ignores, listed once they are read."
             (section :stashes (git-state-stashes state))
             (section :unpushed (git-state-unpushed state))
             (section :recent (git-state-recent state))
-            (let ((ignored (git-state-ignored state)))
-              (and ignored (list (cons :ignored (if (listp ignored) (git-section-shown ignored :ignored limits) '()))))))))
+            (section :ignored (git-section-shown (git-state-ignored state) :ignored limits)))))
 
 (defun git-status-section-title (state section)
   "The title of SECTION of a status of STATE."
@@ -745,11 +740,10 @@ ignores, listed once they are read."
 
 (defun git-status-section-count (state section members)
   "How many SECTION of a status of STATE holds, MEMBERS of them shown: all
-its files, all its commits not pushed; NIL for files ignored not yet read."
+its files, all its commits not pushed."
   (case section
     (:unpushed (git-state-unpushed-count state))
-    (:ignored (let ((ignored (git-state-ignored state))) (and (listp ignored) (length ignored))))
-    ((:untracked :unstaged :staged) (length (git-section-files state section)))
+    ((:untracked :unstaged :staged :ignored) (length (git-section-files state section)))
     (t (length members))))
 
 (defun git-status-row (member section shown limits)
@@ -834,25 +828,13 @@ it holds and folded as in any list in sections (SECTIONED-PIECES)."
         (render-pieces buffer (append head-pieces pieces) :point point
                                                            :entries (concatenate 'vector head-entries entries)
                                                            :refill (lambda (b) (git-refresh-status b))
-                                                           :redraw 'git-status-redraw)))))
+                                                           :redraw 'git-status-render)))))
 
-(defun git-ignored-open-p (buffer)
-  "True when the status BUFFER shows the files its repository ignores: their section is not folded."
-  (not (member :ignored (list-folded buffer))))
-
-(defun git-status-redraw (buffer)
-  "Draw the status BUFFER again from what was last read, its sections folded
-as they are now; the files ignored are read once their section is opened."
-  (git-status-render buffer)
-  (let ((state (tuatara.buffer:buffer-local buffer 'git-state)))
-    (when (and state (eq (git-state-ignored state) :unread) (git-ignored-open-p buffer))
-      (git-refresh-status buffer))))
-
-(defparameter *git-watched-files* '("index" "HEAD" "logs/HEAD")
+(defparameter *git-watched-files* '("index" "HEAD" "logs/HEAD" "logs/refs/stash")
   "The files in git's own folder whose change means the repository changed:
-what is staged, the commit checked out, and where HEAD has been. Git changes
-them whenever it commits, stages, checks out, resets or stashes, run from
-the editor or from anywhere else.")
+what is staged, the commit checked out, where HEAD has been, and the
+stashes. Git changes them whenever it commits, stages, checks out, resets or
+stashes, run from the editor or from anywhere else.")
 
 (defun git-stamps (folder)
   "The stamps of *GIT-WATCHED-FILES* in git's own FOLDER, NIL for one not there."
@@ -873,12 +855,13 @@ GIT-WATCH-TICK to see when the repository changes."
   (let ((top (tuatara.buffer:buffer-local buffer 'git-top))
         (shown (mapcar (lambda (key) (cons key (git-shown-paths buffer key)))
                        (alexandria:hash-table-keys (tuatara.buffer:buffer-local buffer 'git-shown))))
-        (ignored (git-ignored-open-p buffer)))
+        (folder (tuatara.buffer:buffer-local buffer 'git-folder))
+        (previous (tuatara.buffer:buffer-local buffer 'git-state)))
     (setf (tuatara.buffer:buffer-local buffer 'git-reading) t)
     (start-git-job "Reading the repository"
                    (lambda (job)
-                     (let* ((folder (git-folder job top))
-                            (state (git-read-state job top folder :ignored ignored))
+                     (let* ((folder (or folder (git-folder job top)))
+                            (state (git-read-state job top folder :previous previous))
                             (diffs (loop for (key . paths) in shown
                                          collect (cons key (git-read-diff job top (car key) paths)))))
                        (values state diffs folder (git-stamps folder))))
