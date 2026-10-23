@@ -185,8 +185,8 @@ redefine any of it.
 
 * Status
 
-Version 0.90.1, a pre-release: in daily use by its author, its parts tested
-(=tools/test.sh=, about 198,000 checks), its interfaces still changing until
+Version 0.90.2, a pre-release: in daily use by its author, its parts tested
+(=tools/test.sh=, about 225,000 checks), its interfaces still changing until
 1.0.0, the first stable release.
 
 * Credits
@@ -196,7 +196,10 @@ Tuatara says where its ideas come from:
 - GNU Emacs :: the five ideas above, the standard key bindings and the behaviour
   of most base commands. Many test cases are Emacs's own (GPL-3.0-or-later),
   written again for Common Lisp. The input methods' rules are Emacs's Quail
-  tables, written out as data (=lisp/selecting/input-method-table.lisp=).
+  tables, written out as data (=lisp/selecting/input-method-table.lisp=). The
+  calendar is laid out as Emacs's, and dates by rule are written in its
+  diary's forms (=diary-float=, =diary-cyclic=, =diary-block=), read as data
+  (=lisp/org/dates.lisp=).
 - DONKEY :: the modal keys, from donkey.el (github.com/YardQuit/donkey), by the
   same author.
 - Helix :: the rules that colour, indent and select in each language, and the
@@ -264,9 +267,13 @@ Tuatara says where its ideas come from:
   emoji and its modifiers, moved over and drawn as one character.
 - freedesktop.org's trash specification :: the trash Rimu puts files in and
   lists, yours and each drive's.
+- freedesktop.org's desktop notifications :: entries tagged =:notify:= told on
+  the desktop, through libnotify's notify-send (=lisp/org/notify.lisp=).
 - The file program :: a file's kind told by its first octets, never by its
   name (=src/io/kinds.lisp=).
 - RFC 1345 :: the digraphs, as Emacs's rfc1345 input method has them.
+- RFC 3339 :: dates and times as the named date patterns read and compare them
+  (=src/syntax/named-patterns.lisp=).
 - Ghostty, by Mitchell Hashimoto and its contributors :: the terminal library
   (libghostty-vt, MIT) that =M-x terminal= keeps its screen with, built from the
   commit =lisp/terminal/library.pin= names; its licence goes with it.
