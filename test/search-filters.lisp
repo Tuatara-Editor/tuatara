@@ -1171,3 +1171,46 @@ for, and anchors, empty matches and line ends.")
       (sb-int:unencapsulate 'uiop:split-string 'counted))
     (true (<= cuts 2) "two paths cut ~d times for 200 lines" cuts)
     (false (funcall each "{\"user\": " 9 "user.id" (lambda (s a z) (subseq s a z))))))
+
+(defun json-line-value-read-whole (text field)
+  "What a JSON Lines line TEXT gives for FIELD when the whole line is read as
+JSON and the value looked up in what is read: the oracle of the JSON Lines filters."
+  (let* ((object (handler-case (tuatara.text:json-read text) (tuatara.text:json-error () nil)))
+         (value (and (hash-table-p object)
+                     (multiple-value-bind (whole found) (gethash field object)
+                       (if found
+                           (tuatara.text:json-get whole)
+                           (apply #'tuatara.text:json-get object (uiop:split-string field :separator ".")))))))
+    (and value (if (stringp value) value (tuatara.text:json-write value)))))
+
+(define-test (search-filters json-value-found-in-place)
+  ;; a JSON Lines field is what reading the whole line finds, for every kind of value and line;
+  ;; a string or a whole number is found in the line itself, nothing made for it
+  (let* ((each (tuatara.defaults::record-fields-each
+                (tuatara.defaults::mode-record-fields (make-instance 'tuatara.defaults::jsonl-mode) nil)))
+         (lines (list "{\"id\": 7, \"name\": \"Hēmi\", \"ok\": true, \"no\": false, \"gone\": null}"
+                      "{\"id\": -12, \"name\": \"tab\\there \\\"q\\\" \\u0041\\u00e9\\ud83d\\ude00 \\ud800x\"}"
+                      "{\"id\": 1.50, \"size\": 2e3, \"neg\": -0, \"big\": 12345678901234567890}"
+                      "{\"user\": {\"id\": 3, \"name\": {\"first\": \"Aroha\"}, \"tags\": [1, \"two\", {\"id\": 9}]}}"
+                      "{\"user.id\": \"dotted key\", \"user\": {\"id\": 4}}"
+                      "{\"user.id\": null, \"user\": {\"id\": 5}}"
+                      "{\"id\": 1, \"id\": 2, \"user\": {\"id\": 6}, \"user\": 7}"
+                      "{\"user\": 7, \"user\": {\"id\": 8}}"
+                      "{\"n\\u0061me\": \"escaped key\", \"list\": [], \"obj\": {}, \"arr\": [1, [2, 3], {\"a\": null}]}"
+                      "  {\"id\" : 10 ,\"name\":\"spaced\"}  "
+                      "[1, 2, 3]" "7" "\"text\"" "" "{" "{\"id\": 1,}" "{\"id\": 01}" "{\"id\": 1} x"
+                      "{\"id\": tru}" "{\"name\": \"bad \\x escape\"}" "{\"id\": 1.}" "{\"id\": -}" "{\"id\": 1e}"
+                      (format nil "{\"name\": \"control ~c\"}" (code-char 1))
+                      (format nil "{\"deep\": ~a1~a}" (make-string 600 :initial-element #\[) (make-string 600 :initial-element #\]))
+                      (format nil "{\"long\": ~a}" (make-string 1200 :initial-element #\7))))
+         (fields '("id" "name" "ok" "no" "gone" "size" "neg" "big" "user" "user.id" "user.name.first" "user.tags"
+                   "user.name" "list" "obj" "arr" "deep" "long" "missing" "user.missing" "" "id.x")))
+    (dolist (line lines)
+      (dolist (field fields)
+        (is equal (json-line-value-read-whole line field)
+            (funcall each line (length line) field (lambda (s a z) (subseq s a z)))
+            "~s of ~s" field line)))
+    (let ((line "{\"id\": 1234, \"name\": \"Aroha Ngata\", \"user\": {\"id\": 42, \"city\": \"Ōtautahi\"}, \"ok\": true}"))
+      (dolist (field '("id" "name" "user.id" "user.city" "ok"))
+        (let ((made (least-bytes (lambda () (funcall each line (length line) field (lambda (s a z) (declare (ignore s a z)) t))) 1000)))
+          (true (< made 16) "~,1f octets made for ~a of a line" made field))))))
