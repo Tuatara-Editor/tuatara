@@ -77,46 +77,69 @@ sentence after all, written as they are there: '(\"St.\" \"No.\").")
                                     *sentence-abbreviations*)
                          *extra-sentence-abbreviations*)))
 
-(defvar *abbreviation-scanner* nil
-  "The abbreviations in force as one pattern, with the three lists it was made
-of and how many characters the longest reaches back, (SCANNER LISTS REACH);
-made again when one of the lists is another.")
+(defvar *abbreviations-read-back* nil
+  "The abbreviations in force as ABBREVIATIONS-READ-BACK makes them, with the
+three lists they were made of: (TREE LISTS REACH); made again when one of
+the lists is another.")
 
-(defun abbreviation-scanner ()
-  "Two values: a pattern matching text that ends in an abbreviation in force
-\(SENTENCE-ABBREVIATIONS-IN-FORCE), after a character that is not part of a
-word, and how many characters back the longest reaches, that character
-included."
+(defun abbreviations-read-back ()
+  "Two values: the abbreviations in force (SENTENCE-ABBREVIATIONS-IN-FORCE),
+and capitalised those beginning with a small letter, as a tree read from
+their last character back, each node (END . NEXT), END true where an
+abbreviation begins and NEXT a table of the character before to the next
+node; and how many characters back the longest reaches, the character before
+it included."
   (let ((lists (list *sentence-abbreviations* *extra-sentence-abbreviations* *removed-sentence-abbreviations*))
-        (made *abbreviation-scanner*))
+        (made *abbreviations-read-back*))
     (unless (and made (every #'eq lists (second made)))
       (let* ((in-force (sentence-abbreviations-in-force))
              (all (append in-force
                           (loop for a in in-force
                                 when (lower-case-p (char a 0))
-                                  collect (concatenate 'string (string (char-upcase (char a 0))) (subseq a 1))))))
-        (setf made (list (and all (cl-ppcre:create-scanner
-                                   (format nil "\\W(?:~{~a~^|~})$" (mapcar #'cl-ppcre:quote-meta-chars all))))
-                         lists
-                         (1+ (reduce #'max all :key #'length :initial-value 0)))
-              *abbreviation-scanner* made)))
+                                  collect (concatenate 'string (string (char-upcase (char a 0))) (subseq a 1)))))
+             (root (cons nil (make-hash-table))))
+        (dolist (abbreviation all)
+          (let ((node root))
+            (loop for i from (1- (length abbreviation)) downto 0
+                  do (let ((c (char abbreviation i)))
+                       (setf node (or (gethash c (cdr node))
+                                      (setf (gethash c (cdr node)) (cons nil (make-hash-table)))))))
+            (setf (car node) t)))
+        (setf made (list root lists (1+ (reduce #'max all :key #'length :initial-value 0)))
+              *abbreviations-read-back* made)))
     (values (first made) (third made))))
+
+(defun abbreviation-ends-p (char-at end)
+  "True when the text before END ends in an abbreviation in force
+\(SENTENCE-ABBREVIATIONS-IN-FORCE) after a character that is no part of a
+word (no letter, digit or _), or the start of the text: CHAR-AT, a function
+of an index, gives the character there, NIL before the text. Reads no
+further back than the longest abbreviation, and makes nothing."
+  (declare (type function char-at) (type fixnum end))
+  (let ((node (abbreviations-read-back)) (i (1- end)))
+    (declare (type fixnum i))
+    (loop
+      (let* ((c (funcall char-at i))
+             (next (and c (gethash c (cdr node)))))
+        (unless next (return nil))
+        (setf node next)
+        (decf i)
+        (when (car node)
+          (let ((before (funcall char-at i)))
+            (unless (and before (or (alphanumericp before) (char= before #\_)))
+              (return t))))))))
 
 (defun abbreviation-ending-p (text)
   "True when TEXT, a word or a line's text up to a full stop, ends in an
-abbreviation in force (SENTENCE-ABBREVIATIONS-IN-FORCE)."
-  (multiple-value-bind (scanner reach) (abbreviation-scanner)
-    (and scanner
-         (let ((from (max 0 (- (length text) reach))))
-           (cl-ppcre:scan scanner (concatenate 'string " " (subseq text from))))
-         t)))
+abbreviation in force (SENTENCE-ABBREVIATIONS-IN-FORCE: ABBREVIATION-ENDS-P)."
+  (abbreviation-ends-p (lambda (i) (and (>= i 0) (char text i))) (length text)))
 
 (defun abbreviation-before-p (buffer position)
   "True when the text of BUFFER's line before POSITION, just after a full stop,
 ends in an abbreviation in force (SENTENCE-ABBREVIATIONS-IN-FORCE)."
   (let* ((line (tuatara.buffer:buffer-line-start buffer position))
          (from (loop with p = position
-                     repeat (nth-value 1 (abbreviation-scanner))
+                     repeat (nth-value 1 (abbreviations-read-back))
                      while (> p line)
                      do (setf p (tuatara.buffer:buffer-forward-char buffer p -1))
                      finally (return p))))

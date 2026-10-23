@@ -31,3 +31,15 @@ value names, capitalising, and the case of a small region and a large one.")
                (nth-value 2 (tuatara.defaults::count-text (tuatara.buffer:buffer-text buffer) 0 (tuatara.buffer:buffer-size buffer)))
                "~s" text)
         (tuatara.buffer:kill-buffer buffer)))))
+
+(define-test (editing-words counted-at-speed)
+  ;; count-words reads text with many full stops and abbreviations within a few times what
+  ;; decoding it takes, the same counts as before
+  (let* ((text (with-output-to-string (o)
+                 (dotimes (i 30000) (format o "Dr. Smith went to St. Kilda, e.g. by tram. Then Mr. Ōtaki said kia ora. 3.5 km!~%"))))
+         (octets (tuatara.text:string-octets text))
+         (rope (tuatara.text:octets->rope octets))
+         (count (least-seconds (lambda () (tuatara.defaults::count-text rope 0 (length octets)))))
+         (decode (least-seconds (lambda () (tuatara.text:lenient-string octets)))))
+    (is equal '(30000 90000 570000 2400000) (multiple-value-list (tuatara.defaults::count-text rope 0 (length octets))))
+    (true (< count (+ 0.01 (* 8 decode))) "counted in ~,3fs, decoded in ~,3fs" count decode)))
