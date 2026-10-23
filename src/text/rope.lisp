@@ -313,10 +313,28 @@ Complexity: O(END - START)."
   (sb-sys:with-pinned-objects (octets)
     (summarise-sap (sb-sys:vector-sap octets) start end)))
 
-(defun octets-string (octets &key (start 0) (end (length octets)))
+(defun unfinished-sequence-length (octets i end)
+  "How many octets at index I of OCTETS, whose text ends at END, make one
+piece of what is not UTF-8: a sequence well begun and cut short, its octets
+up to where it goes wrong; else the one octet at I."
+  (declare (type octets octets) (type fixnum i end) (optimize speed (safety 0)))
+  (let ((state (aref **utf8-next** (aref **utf8-classes** (aref octets i)))) (k 1))
+    (declare (type (unsigned-byte 8) state) (type fixnum k))
+    (if (or (zerop state) (= state 9))
+        1
+        (loop (when (>= (+ i k) end) (return k))
+              (let ((next (aref **utf8-next** (+ (* state 12) (aref **utf8-classes** (aref octets (+ i k)))))))
+                (declare (type (unsigned-byte 8) next))
+                (when (= next 8) (return k))
+                (incf k)
+                (setf state next))))))
+
+(defun octets-string (octets &key (start 0) (end (length octets)) replacement)
   "OCTETS from START below END as a string: well-formed UTF-8 decoded, every
-other octet as its raw byte's character (U+DC80..U+DCFF)."
-  (declare (type octets octets) (type fixnum start end))
+other octet as its raw byte's character (U+DC80..U+DCFF); with REPLACEMENT, a
+character, each piece of what is not UTF-8 as that character instead: a
+sequence cut short as one, any other octet as one each."
+  (declare (type octets octets) (type fixnum start end) (type (or null character) replacement))
   (let ((out (make-string (- end start))) (n 0) (i start))
     (declare (type fixnum n i))
     (loop while (< i end)
@@ -324,14 +342,19 @@ other octet as its raw byte's character (U+DC80..U+DCFF)."
                (if (< b #x80)
                    (progn (setf (schar out n) (code-char b)) (incf n) (incf i))
                    (multiple-value-bind (code length) (octets-decode octets i end)
-                     (setf (schar out n) (code-char code)) (incf n) (incf i length)))))
+                     (cond ((not (and replacement (raw-byte-code-p code)))
+                            (setf (schar out n) (code-char code)) (incf n) (incf i length))
+                           (t (setf (schar out n) replacement) (incf n)
+                              (incf i (unfinished-sequence-length octets i end))))))))
     (if (= n (length out)) out (subseq out 0 n))))
 
 (defun lenient-string (octets &key (start 0) (end (length octets)) (replacement #\?))
   "OCTETS from START below END read as UTF-8 text, what is not UTF-8 as
 REPLACEMENT, a character or string: a program's output, a part of a file read
 to be shown."
-  (sb-ext:octets-to-string octets :start start :end end :external-format (list :utf-8 :replacement replacement)))
+  (if (and (typep octets 'octets) (characterp replacement))
+      (octets-string octets :start start :end end :replacement replacement)
+      (sb-ext:octets-to-string octets :start start :end end :external-format (list :utf-8 :replacement replacement))))
 
 (declaim (inline char-octet-length))
 (defun char-octet-length (char)

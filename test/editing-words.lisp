@@ -40,7 +40,7 @@ value names, capitalising, and the case of a small region and a large one.")
          (octets (tuatara.text:string-octets text))
          (rope (tuatara.text:octets->rope octets))
          (count (least-seconds (lambda () (tuatara.defaults::count-text rope 0 (length octets)))))
-         (decode (least-seconds (lambda () (tuatara.text:lenient-string octets)))))
+         (decode (least-seconds (lambda () (sb-ext:octets-to-string octets :external-format :utf-8)))))
     (is equal '(30000 90000 570000 2400000) (multiple-value-list (tuatara.defaults::count-text rope 0 (length octets))))
     (true (< count (+ 0.01 (* 8 decode))) "counted in ~,3fs, decoded in ~,3fs" count decode)))
 
