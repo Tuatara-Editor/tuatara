@@ -573,7 +573,6 @@ says both."
                               (push (list :clock from (and stopped duration) stopped) logs)))))))
              (unless (org-planning-line-p text :start line-start :end line-end)
                (cl-ppcre:do-scans (s e range-starts range-ends *org-agenda-stamp-scanner* text nil :start line-start :end line-end)
-                 (declare (ignore range-ends))
                  (if (aref range-starts 0)
                      (let ((dash (search ">--<" text :start2 s :end2 e)))
                        (push (list (subseq text s (1+ dash)) (subseq text (+ dash 3) e)) ranges))

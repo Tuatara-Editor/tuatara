@@ -249,7 +249,6 @@ TEXT is no repeat in words (every, each, daily ...) or says none of them."
     (let ((from (cl-ppcre:scan "(?i)(?:^|\\s)from(?:\\s|$)" text)) (place nil))
       (cl-ppcre:do-scans (s e rs re (if from "(?i)(?:^|\\s)(?:from|to|until|till)(?:\\s|$)" "(?i)(?:^|\\s)(?:until|till)(?:\\s|$)")
                           text nil :start (or from 0))
-        (declare (ignore s rs re))
         (setf place e))
       place)))
 
