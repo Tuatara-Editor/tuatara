@@ -484,8 +484,13 @@ is a bar.")
 
 (defvar *point-marked-functions* '()
   "Functions of a buffer, true when it shows where point is in a look of its
-own (the calendar its day): a window of it the typing does not go to then
-draws no cursor over that.")
+own (the calendar its day): no cursor is then drawn over it, in its window
+selected or not.")
+
+(defun point-marked-p (buffer)
+  "True when BUFFER shows where point is in a look of its own
+\(*POINT-MARKED-FUNCTIONS*), so that no cursor is drawn over it."
+  (some (lambda (function) (funcall function buffer)) *point-marked-functions*))
 
 (defun row-at (rows position)
   "The index of the row of ROWS showing POSITION, or at whose end it stands;
@@ -518,7 +523,7 @@ point in its own way (*POINT-MARKED-FUNCTIONS*)."
   (let* ((buffer (tuatara.display:window-buffer window))
          (point (and (cursor-elsewhere-p editor window)
                      (not (tuatara.display:hex-view-p buffer))
-                     (notany (lambda (function) (funcall function buffer)) *point-marked-functions*)
+                     (not (point-marked-p buffer))
                      (tuatara.display:window-point window))))
     (when (and (or point *other-cursor-functions*) (plusp (length rows)))
       (let* ((from (tuatara.display:row-start (aref rows 0)))
@@ -870,8 +875,10 @@ counted: what needs them shows without them meanwhile."
                   (+ (tuatara.display:window-text-top selected) row)
                   (+ (tuatara.display:area-left selected) (tuatara.display:window-margin selected)
                      (cursor-column-past-line selected column (tuatara.display:row-scale (aref (tuatara.display:window-rows selected) row))))
-                  ;; no cursor over a picture shown in place of the text, nor while one is on its way
-                  (if (shown-as-picture-p frontend (tuatara.display:window-buffer selected)) :hidden shape)
+                  ;; no cursor over a picture shown in place of the text, nor while one is on its
+                  ;; way, nor where the buffer marks point itself (the calendar's day)
+                  (let ((buffer (tuatara.display:window-buffer selected)))
+                    (if (or (shown-as-picture-p frontend buffer) (point-marked-p buffer)) :hidden shape))
                   colour)
                  ;; point is under the panel for now: the cursor waits after the echo row's text
                  (tuatara.frontend:frontend-set-cursor

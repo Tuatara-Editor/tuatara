@@ -195,6 +195,9 @@ calendar."
                                                   :key (lambda (w) (tuatara.buffer:buffer-name (tuatara.display:window-buffer w)))
                                                   :test #'string=))))
   (is = 1 (length (tuatara.command:editor-windows (nth-value 1 (calendar-keys "q")))))
+  ;; no cursor drawn over the day at point, which the calendar marks itself; back once it is closed
+  (is eq :hidden (tuatara.frontend.fake:fake-cursor-shape (calendar-keys "C-f")))
+  (isnt eq :hidden (tuatara.frontend.fake:fake-cursor-shape (calendar-keys "q")))
   ;; SPC c below, SPC C in the window you are in, q bringing its buffer back
   (let ((tuatara.defaults::*org-now* (encode-universal-time 0 0 12 3 10 2026)))
     (let ((editor (nth-value 1 (run-keys "SPC c" :width 100 :height 24))))

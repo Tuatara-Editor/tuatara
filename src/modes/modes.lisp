@@ -192,8 +192,7 @@ installed and before its hooks run. Methods should call CALL-NEXT-METHOD.")
 
 (defgeneric mode-marks-point-p (mode)
   (:documentation "True when MODE shows where point is in a look of its own (the calendar
-its day), so that a window of it the typing does not go to draws no cursor
-over that.")
+its day), so that no cursor is drawn over it.")
   (:method (mode) (declare (ignore mode)) nil))
 
 (defun mode-comment-syntax (mode)
