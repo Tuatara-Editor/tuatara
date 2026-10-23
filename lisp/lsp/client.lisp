@@ -203,7 +203,8 @@ anything not framed as the protocol frames it, is an error."
         (let ((octets (make-array length :element-type '(unsigned-byte 8))))
           (unless (= length (read-sequence octets stream))
             (return-from lsp-read-message nil))
-          (let ((text (tuatara.text:lenient-string octets)))
+          ;; an octet that is not UTF-8 as its raw byte's character, as in a file's text
+          (let ((text (tuatara.text:octets-string octets)))
             (values (tuatara.text:json-read text) text))))))
 
 (defun lsp-arrive (server message)

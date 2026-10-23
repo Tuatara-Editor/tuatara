@@ -1217,3 +1217,21 @@ what marks a project; check-health saying which are installed.")
     (false (tuatara.text:json-get text-document "rename" "prepareSupport") "rename is claimed to be prepared")
     (is equalp (map 'vector #'car tuatara.defaults::*lsp-semantic-faces*)
         (tuatara.text:json-get text-document "semanticTokens" "tokenTypes"))))
+
+(define-test (lsp messages-read-with-little-garbage)
+  ;; a message of 2 MB (a long hover) read and decoded once: some 19 octets made for each of
+  ;; its octets went to decoding it alone, as text that took what was not UTF-8 for a ?
+  (with-test-directory (dir)
+    (let* ((path (namestring (merge-pathnames "message" dir)))
+           (body (tuatara.text:string-octets (format nil "{\"jsonrpc\":\"2.0\",\"id\":1,\"result\":{\"contents\":\"~a\"}}"
+                                                     (make-string (* 2 1024 1024) :initial-element #\x)))))
+      (with-open-file (out path :direction :output :element-type '(unsigned-byte 8))
+        (write-sequence (tuatara.text:string-octets (format nil "Content-Length: ~d~c~c~c~c" (length body) #\Return #\Newline #\Return #\Newline)) out)
+        (write-sequence body out))
+      (let ((consed (loop repeat 3
+                          minimize (with-open-file (in path :element-type :default :external-format :latin-1)
+                                     (let ((before (sb-ext:get-bytes-consed)))
+                                       (is equal (* 2 1024 1024)
+                                           (length (tuatara.text:json-get (tuatara.defaults::lsp-read-message in) "result" "contents")))
+                                       (- (sb-ext:get-bytes-consed) before))))))
+        (true (< consed (* 16 (length body))) "~,1f octets made for each octet" (/ consed (length body)))))))
