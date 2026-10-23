@@ -724,3 +724,26 @@ before loading it again."
                (funcall (find-symbol "FILTERUSER-RUN" "FILTERUSER") "tr 'a-z,' \"A-Z,\"" "a,b c")))
       (when (find-package "FILTERUSER")
         (tuatara.defaults::forget-package-code (list (find-package "FILTERUSER")))))))
+
+(define-test (packages api-names-used)
+  ;; informative: the names of the API no package of ours uses, said in the test's output, so
+  ;; that they can be weighed; none is taken away for it, other packages may use them
+  (let ((sources (find-if #'uiop:directory-exists-p
+                          (list (merge-pathnames "../tuatara-packages/" (asdf:system-source-directory :tuatara))
+                                (merge-pathnames "../../../../tuatara-packages/" (asdf:system-source-directory :tuatara))))))
+    (if (null sources)
+        (skip "the packages' sources are not beside the editor's" (true nil))
+        (let* ((words (make-hash-table :test 'equal))
+               (unused '()))
+          ;; every word of the packages' code that could name a symbol, without its package
+          (dolist (file (directory (merge-pathnames "**/*.lisp" sources)))
+            (dolist (word (tuatara.text:split-words (string-downcase (uiop:read-file-string file))
+                                                    (coerce (format nil " ~c~c~c()'`,\";#|" #\Tab #\Newline #\Return) 'list)))
+              (setf (gethash (subseq word (1+ (or (position #\: word :from-end t) -1))) words) t)))
+          (setf unused (loop for symbol in tuatara.defaults::*api*
+                             for name = (string-downcase (symbol-name symbol))
+                             unless (gethash name words)
+                               collect name))
+          (format t "~&~d of the API's ~d names are used by no package of ours:~%~{  ~a~%~}"
+                  (length unused) (length tuatara.defaults::*api*) unused)
+          (true (listp unused))))))
