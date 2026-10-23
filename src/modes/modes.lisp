@@ -15,7 +15,9 @@ LIGHTER shown in the mode line, its KEYMAP, the MODAL-CLASS it gives modal editi
 language writes comments: COMMENT, the marker a commented line starts with and
 what commenting a line puts there, and BLOCK-COMMENT, what begins and ends a
 comment that has an end, each a list of two strings or NIL to inherit; and
-LARGEST, the most octets a file opened in the mode may have (LARGEST-FILE)."
+LARGEST, the most octets a file opened in the mode may have (LARGEST-FILE);
+and KNOWN-MODAL-CLASS, the modal class it gives its buffers once worked out
+along its inheritance, NIL until then."
   (name nil :read-only t)
   (parent nil)
   (doc "")
@@ -25,7 +27,8 @@ LARGEST, the most octets a file opened in the mode may have (LARGEST-FILE)."
   (hooks '())
   (comment nil)
   (block-comment nil)
-  (largest nil))
+  (largest nil)
+  (known-modal-class nil))
 
 (setf (documentation 'mode-info-p 'function) "True when OBJECT is a MODE-INFO."
       (documentation 'mode-info-name 'function) "The mode's name, a symbol naming its class."
@@ -34,6 +37,7 @@ LARGEST, the most octets a file opened in the mode may have (LARGEST-FILE)."
       (documentation 'mode-info-lighter 'function) "The name shown in the mode line."
       (documentation 'mode-info-keymap 'function) "The mode's keymap; its parent is the parent mode's keymap."
       (documentation 'mode-info-modal-class 'function) "The modal class the mode sets, or NIL to inherit."
+      (documentation 'mode-info-known-modal-class 'function) "The modal class the mode gives its buffers once worked out, or NIL until then."
       (documentation 'mode-info-largest 'function) "The most octets a file opened in the mode may have, a number or a variable holding one; NIL for no limit."
       (documentation 'mode-info-hooks 'function) "Functions called with the buffer when the mode is entered."
       (documentation 'mode-info-comment 'function) "The marker of the mode's comments at the start of a line and what commenting a line puts there, as a list of two strings; NIL to inherit."
@@ -103,7 +107,15 @@ whole path."
 longer listed; a buffer in it stays so. Its command is forgotten apart
 \(FORGET-COMMAND)."
   (drop-auto-mode-rules name)
-  (remhash name *modes*))
+  (remhash name *modes*)
+  (forget-modal-classes))
+
+(defun forget-modal-classes ()
+  "Make every mode work out its modal class again when next asked, after a
+mode is defined again or forgotten: a mode's class follows the modes it is
+made from."
+  (loop for info being the hash-values of *modes*
+        do (setf (mode-info-known-modal-class info) nil)))
 
 (defun register-major-mode (name parent doc &key lighter modal-class comment block-comment extensions file-names interpreters patterns largest-file)
   "Record major mode NAME with PARENT, DOC and the rest, creating its keymap
@@ -117,6 +129,7 @@ replacing its auto-mode rules. Called by DEFINE-MAJOR-MODE."
           (mode-info-comment info) (if (stringp comment) (list comment comment) comment)
           (mode-info-block-comment info) block-comment
           (mode-info-largest info) largest-file)
+    (forget-modal-classes)
     (unless (mode-info-keymap info)
       (setf (mode-info-keymap info) (tuatara.command:make-keymap :name (string-downcase (symbol-name name)))))
     (setf (tuatara.command:keymap-parent (mode-info-keymap info)) (and parent (mode-keymap parent)))
@@ -274,10 +287,17 @@ or the nearest mode that mode is made from (MODE-SETTING); else GLOBAL."
 
 (defun mode-modal-class (mode)
   "The modal class MODE gives its buffers: the nearest modal class set along
-its inheritance, :editing when none is."
-  (or (loop for name in (mode-precedence mode)
-            thereis (mode-info-modal-class (find-mode name)))
-      :editing))
+its inheritance, :editing when none is. Worked out once a mode, until a mode is
+defined again."
+  (flet ((worked-out ()
+           (or (loop for name in (mode-precedence mode)
+                     thereis (mode-info-modal-class (find-mode name)))
+               :editing)))
+    (let ((info (find-mode (if (symbolp mode) mode (class-name (class-of mode))))))
+      (if info
+          (or (mode-info-known-modal-class info)
+              (setf (mode-info-known-modal-class info) (worked-out)))
+          (worked-out)))))
 
 ;;; Buffers and modes
 

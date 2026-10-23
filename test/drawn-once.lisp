@@ -35,3 +35,25 @@ modal mode line makes nothing while it stays the same.")
             (default (least-bytes (lambda () (tuatara.defaults::default-mode-line editor window)) 2000)))
         (true (< modal (+ default 32)) "~,1f octets a mode line, ~,1f for the default under it" modal default)
         (is eq (tuatara.defaults::modal-mode-line editor window) (tuatara.defaults::modal-mode-line editor window))))))
+
+(tuatara.modes:define-major-mode modal-kept-mode tuatara.defaults::text-mode
+  "A mode for the tests: a parent whose modal class the test changes."
+  :interactive nil)
+
+(tuatara.modes:define-major-mode modal-kept-child-mode modal-kept-mode
+  "A mode for the tests: a child that inherits its parent's modal class."
+  :interactive nil)
+
+(define-test (drawn-once modal-class-known-once)
+  (let ((mode (make-instance 'modal-kept-child-mode)))
+    (is eq :editing (tuatara.modes:mode-modal-class mode))
+    (true (< (least-bytes (lambda () (tuatara.modes:mode-modal-class mode)) 2000) 1)
+          "a mode's modal class is looked up, not worked out again")
+    (unwind-protect
+         (progn
+           (tuatara.modes:register-major-mode 'modal-kept-mode 'tuatara.defaults::text-mode "Changed."
+                                              :modal-class :support)
+           (is eq :support (tuatara.modes:mode-modal-class mode)))
+      (tuatara.modes:register-major-mode 'modal-kept-mode 'tuatara.defaults::text-mode
+                                         "A mode for the tests: a parent whose modal class the test changes."))
+    (is eq :editing (tuatara.modes:mode-modal-class mode))))
