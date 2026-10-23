@@ -76,6 +76,13 @@ tells which."
         (tuatara.syntax:*regex-thorough* "thorough regex")
         (t "regex")))
 
+(defun pattern-prompt (regex words &optional note)
+  "The prompt of a question that takes a pattern: its kind first, as REGEX
+says (PATTERN-KIND-WORDS), then WORDS saying what is done with it, and NOTE
+in brackets when given, why the pattern cannot be used: Regex keep lines
+[incomplete]: ."
+  (format nil "~a ~a~@[ [~a]~]: " (string-capitalize (pattern-kind-words regex) :end 1) words note))
+
 (defun pattern-problem (text regex)
   "Why TEXT cannot be used as a pattern, a regular expression when REGEX is
 true, else literal text; NIL when it can, or is empty."
@@ -116,12 +123,11 @@ and as a second value whether it is a regular expression."
                      (cdr (setf checked (cons key (pattern-problem text regex)))))))
              (prompt (text)
                (let ((problem (problem text)))
-                 (format nil "~a ~a~@[ [~a]~]: "
-                         (string-capitalize (pattern-kind-words regex) :end 1) words
-                         (and problem
-                              (if refused
-                                  (refused-pattern-words problem (substitute-command-keys "\\<minibuffer>\\[minibuffer-abort]"))
-                                  problem))))))
+                 (pattern-prompt regex words
+                                 (and problem
+                                      (if refused
+                                          (refused-pattern-words problem (substitute-command-keys "\\<minibuffer>\\[minibuffer-abort]"))
+                                          problem))))))
       (let ((text (let ((*toggle-pattern-kind* (lambda () (setf regex (not regex) refused nil)))
                         (*pattern-done* (lambda ()
                                           (if (problem (typed))

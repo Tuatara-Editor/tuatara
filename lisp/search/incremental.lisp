@@ -394,7 +394,7 @@ and how many there are shows before it (SEARCH-COUNT-WORDS)."
                                      (and scope (list scope)))))))
          (asking (and replacing (find #\c flags) (not (find #\n flags)))))
     (when (search-state-filtering state)
-      (setf words (list (if (search-state-regex state) "regex filter" "literal filter"))))
+      (setf words (list (pattern-kind-words (search-state-regex state)) "filter")))
     (format nil "~@(~{~a~^ ~}~)~:[~;, asking at each~]~@[ [~a]~]: "
             words asking
             (or doing

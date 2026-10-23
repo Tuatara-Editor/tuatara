@@ -86,10 +86,14 @@ so that a search of many files makes them once, not once a file.")
 
 (defun search-word-matcher (word &optional crlf)
   "A matcher for WORD as a regular expression (MAKE-PATTERN-MATCHER, as a
-search makes it), or for WORD's own characters when it is not one; with CRLF,
-for text whose lines end with a carriage return and a newline."
-  (or (make-pattern-matcher word :regex t :crlf crlf)
-      (make-pattern-matcher word :regex nil)))
+search makes it), NIL when it is not one (SEARCH-INPUT-PROBLEM says why);
+with CRLF, for text whose lines end with a carriage return and a newline."
+  (make-pattern-matcher word :regex t :crlf crlf))
+
+(defun search-input-problem (input regex)
+  "Why INPUT cannot be searched for, as PATTERN-PROBLEM says it of a word
+that is no regular expression, with REGEX; NIL when it can."
+  (and regex (some (lambda (word) (pattern-problem word t)) (tuatara.text:split-words input " "))))
 
 (defun search-input-matchers (input regex &optional crlf)
   "The matchers of INPUT, the longest first: with REGEX, one for each of its
@@ -107,7 +111,7 @@ same input is searched in, from any thread."
       (or (svref (cdr last) slot)
           (setf (svref (cdr last) slot)
                 (if regex
-                    (mapcar (lambda (word) (search-word-matcher word crlf))
+                    (mapcan (lambda (word) (let ((matcher (search-word-matcher word crlf))) (and matcher (list matcher))))
                             (stable-sort (tuatara.text:split-words input " ")
                                          ;; the longest word, likely the rarest, finds the lines to look at
                                          #'> :key #'length))
@@ -514,8 +518,15 @@ opened safely (CALL-WITH-WINDOW-PREVIEW)."
            ;; true until the search of the input typed last has given lines: the lines of
            ;; the input before stay shown meanwhile, so that the list and the preview do
            ;; not empty and fill again at every key
-           (fresh nil))
+           (fresh nil)
+           ;; the input and kind last looked at, and why it cannot be searched for: worked out once
+           (checked (list nil)))
       (labels ((files-read () (loop for corpus in corpora sum (length (file-corpus-paths corpus))))
+               (problem (input)
+                 (let ((key (cons input regex)))
+                   (if (equal (car checked) key)
+                       (cdr checked)
+                       (cdr (setf checked (cons key (search-input-problem input regex)))))))
                (piece (i)
                  ;; the I-th piece once read, :WAIT while more may come, NIL when there are no more
                  (sb-thread:with-mutex (lock)
@@ -585,7 +596,8 @@ opened safely (CALL-WITH-WINDOW-PREVIEW)."
                    ;; while files are read: how many so far
                    (values changed working (and (not read-all) (files-read)))))
                (lines (input)
-                 (cond ((< (length (string-trim " " input)) *search-files-min-input*)
+                 (cond ((or (< (length (string-trim " " input)) *search-files-min-input*)
+                           (problem input))
                         (when searching (stop-gathering searching) (setf searching nil))
                         (setf searched-input nil found '() fresh nil)
                         '())
@@ -603,8 +615,8 @@ opened safely (CALL-WITH-WINDOW-PREVIEW)."
                                     (values buffer (+ (tuatara.buffer:buffer-goto-line buffer (1- line)) offset))))))
                             (lambda (show)
                               (completing-read (lambda ()
-                                                 (let ((shown (format nil "~a ~a" (pattern-kind-words regex) prompt)))
-                                                   (string-upcase shown :end 1)))
+                                                 (pattern-prompt regex prompt
+                                                                 (problem (editor-minibuffer-text *editor*))))
                                                #'lines
                                                :separator (code-char 0) :filter nil :require-match t
                                                :source #'take :keymap *pattern-keymap*
@@ -654,7 +666,7 @@ out; the access times of those read are not changed."
          (root (if (prefix-argument)
                    (read-directory-path "Search files in: " :initial (abbreviated-path here))
                    (or (project-root here) here))))
-    (search-files-as-read root (format nil "search files in ~a: " (abbreviated-path (directory-name root)))
+    (search-files-as-read root (format nil "search files in ~a" (abbreviated-path (directory-name root)))
                           :left-out-words (format nil "Searched the first ~~:d files only (~:d MB)"
                                                   (floor *search-files-limit* (* 1024 1024)))
                           :preview *preview-file-search*)))
@@ -667,6 +679,6 @@ background meanwhile, \\<pattern>\\[search-toggle-regex] switching to literal te
 and \\<minibuffer>\\[minibuffer-done] visits one. With
 *preview-formatted-search*, the file of the line selected is shown meanwhile,
 at that line, opened safely."
-  (search-files-as-read *formatted-file-directory* "search formatted files: "
+  (search-files-as-read *formatted-file-directory* "search formatted files"
                         :left-out-words "Searched the first ~:d files only"
                         :preview *preview-formatted-search*))
