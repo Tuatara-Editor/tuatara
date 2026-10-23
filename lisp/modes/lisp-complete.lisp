@@ -139,11 +139,6 @@ package."
   "Complete the Lisp name at the minibuffer's cursor, read in PACKAGE, from a
 list over the prompt (COMPLETE-IN-TEXT): \\<minibuffer>\\[minibuffer-complete] and
 \\`C-M-i' at \\[eval-expression]."
-  (let ((editor *editor*))
-    (multiple-value-bind (start end candidates)
-        (lisp-completion (editor-minibuffer-text editor) (editor-minibuffer-point editor) package)
-      (if (null start)
-          (message "Nothing to complete here")
-          (complete-in-text :minibuffer start end candidates
-                            :annotate #'lisp-candidate-kind :document #'lisp-candidate-documentation
-                            :constituent #'lisp-name-part-p)))))
+  (complete-in-minibuffer (lambda (text point) (lisp-completion text point package))
+                          :annotate #'lisp-candidate-kind :document #'lisp-candidate-documentation
+                          :constituent #'lisp-name-part-p))

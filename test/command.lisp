@@ -1051,6 +1051,94 @@ CHANGED, every word back on \\`C-g'.")
       (tuatara.command:forget-command (find-symbol "LIVE-NARROW-WORDS" package))
       (delete-package package))))
 
+(defparameter *option-completion-package-code*
+  "(define-command read-some-options ()
+     \"Ask for options, TAB completing the one at the cursor.\"
+     (message \"Options: ~a\"
+              (read-string \"Options: \"
+                           :complete (lambda ()
+                                       (complete-in-minibuffer
+                                        (lambda (text point)
+                                          (let ((start (1+ (or (position #\\Space text :end point :from-end t) -1))))
+                                            (and (< start point)
+                                                 (values start point '(\"--has-header\" \"--print-header\" \"--utc\")))))
+                                        :keep-order t)))))"
+  "A stand-in package's code, read in a package that uses only CL and
+TUATARA: a command whose question completes the word at the cursor from a
+list of options.")
+
+(define-test (command completion-in-the-minibuffer-from-a-package)
+  ;; a package completes the word at the minibuffer's cursor from a list of its own
+  (let ((package (make-package "TUATARA-TEST-OPTION-COMPLETION" :use '(#:cl #:tuatara))))
+    (unwind-protect
+         (let ((*package* package))
+           (eval (read-from-string *option-completion-package-code*))
+           (flet ((typed (keys) (format nil "M-x ~{~a~^ ~} RET ~a" (coerce "read-some-options" 'list) keys)))
+             ;; a lone match goes in at once, the word before it left as it is
+             (true (tuatara.frontend.fake:fake-frame-showing (run-keys (typed "- H SPC - - u TAB RET") :width 60)
+                                                             "Options: -H --utc"))
+             ;; more than one match is listed beside the cursor, the first taken with RET
+             (true (tuatara.frontend.fake:fake-frame-showing (run-keys (typed "- - h TAB RET RET") :width 60)
+                                                             "Options: --has-header"))
+             ;; after a space there is no word: nothing to complete, said in *Messages*
+             (run-keys (typed "- H SPC TAB") :width 60)
+             (true (search "Nothing to complete here"
+                           (let ((log (tuatara.command:messages-buffer)))
+                             (tuatara.buffer:buffer-string log))))))
+      (tuatara.command:forget-command (find-symbol "READ-SOME-OPTIONS" package))
+      (delete-package package))))
+
+(defparameter *text-snapshot-package-code*
+  "(defun text-as-taken (buffer)
+     \"BUFFER's banked lines and its text, as they are now: the text read
+from a rope later changes leave as it is.\"
+     (let ((rope (buffer-text buffer)))
+       (list (banked-spans buffer)
+             (lambda ()
+               (let ((octets (make-array (rope-bytes rope) :element-type '(unsigned-byte 8))))
+                 (rope-copy-into rope 0 (rope-bytes rope) octets)
+                 (lenient-string octets)))
+             (rope-find-octet rope 10)
+             (rope-line-start rope 5)
+             (rope-line-end rope 5)
+             (rope-octet rope 0))))"
+  "A stand-in package's code, read in a package that uses only CL and
+TUATARA: what a job of its own would take from a buffer before it starts.")
+
+(define-test (command text-snapshot-from-a-package)
+  ;; a package reads a buffer's text as it was taken, its banked lines and its selection
+  (let ((package (make-package "TUATARA-TEST-TEXT-SNAPSHOT" :use '(#:cl #:tuatara))))
+    (unwind-protect
+         (let ((*package* package))
+           (eval (read-from-string *text-snapshot-package-code*))
+           (let ((b (tuatara.buffer:make-buffer (tuatara.buffer:unique-buffer-name "*snapshot*") :text (format nil "abc~%def~%ghi~%"))))
+             (unwind-protect
+                  (progn
+                    (tuatara.defaults::bank-lines b (cons 4 8))
+                    (destructuring-bind (banked text newline start end first)
+                        (funcall (find-symbol "TEXT-AS-TAKEN" package) b)
+                      (is equal '((4 . 8)) banked)
+                      (is = 3 newline)
+                      (is = 4 start)
+                      (is = 7 end)
+                      (is = 97 first)
+                      ;; the buffer changed after the text was taken: the text taken stays
+                      (tuatara.buffer:buffer-replace b 0 3 "xyz")
+                      (is string= (format nil "abc~%def~%ghi~%") (funcall text))
+                      ;; letting go of the banks
+                      (setf (tuatara.defaults::buffer-banks b) '())
+                      (is eq nil (tuatara.defaults::banked-spans b))))
+               (tuatara.buffer:kill-buffer b))))
+      (delete-package package))))
+
+(define-test (command names-for-work-on-text-exported)
+  ;; what a package running a program over a buffer's text needs, in the API
+  (dolist (name '("BUFFER-TEXT" "ROPE-BYTES" "ROPE-OCTET" "ROPE-COPY-INTO" "ROPE-FIND-OCTET" "ROPE-LINE-START"
+                  "ROPE-LINE-END" "FIND-OR-MAKE-BUFFER" "COMPLETE-IN-MINIBUFFER" "JOB-PROGRAM-STARTED" "RUNNING-JOB"
+                  "TAKE-IN-SOON" "WRITE-OCTETS" "FILE-SYSTEM-ERROR" "LENIENT-STRING" "MERGE-RANGES"
+                  "SELECTION-RANGE" "BANKED-SPANS" "SPAN-LINE-COUNT" "BUFFER-BANKS"))
+    (is eq :external (nth-value 1 (find-symbol name :tuatara)) "~a is not exported" name)))
+
 (define-test (command start-up-garbage-collected-when-idle)
   ;; the garbage of starting is collected once, in the first second nothing is
   ;; typed, rather than between keys later on

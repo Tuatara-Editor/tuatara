@@ -29,8 +29,13 @@
     tuatara.buffer:buffer-mark-active-p tuatara.buffer:buffer-version tuatara.buffer:buffer-local delete-spans
     tuatara.modes:buffer-major-mode tuatara.modes:set-major-mode buffer-in-mode
     tuatara.command:show-buffer tuatara.command:display-buffer tuatara.command:pop-to-buffer tuatara.command:abbreviated-path
+    tuatara.modes:find-or-make-buffer
+    ;; a buffer's text as it stands, unchanged by later edits, for work in the background
+    tuatara.buffer:buffer-text tuatara.text:rope-bytes tuatara.text:rope-octet tuatara.text:rope-copy-into
+    tuatara.text:rope-find-octet tuatara.text:rope-line-start tuatara.text:rope-line-end
     ;; asking and waiting
     tuatara.command:read-string tuatara.command:finish-minibuffer tuatara.command:quit tuatara.command:completing-read tuatara.command:completing-read-value tuatara.command:make-candidate tuatara.command:yes-or-no-p*
+    tuatara.command:complete-in-minibuffer
     read-date tuatara.dates:read-date-text
     read-path read-file-path read-native-path read-new-native-path read-whole-number tuatara.command:wait-interruptibly tuatara.command:wait-until-interruptibly
     tuatara.command:first-line tuatara.text:one-line
@@ -50,6 +55,7 @@
     tuatara.runtime:job-buffer tuatara.runtime:job-running-p tuatara.runtime:job-ending-words tuatara.runtime:running-percent
     tuatara.runtime:jobs-of tuatara.runtime:make-guarded-thread tuatara.runtime:deadline-in tuatara.runtime:deadline-passed-p
     tuatara.runtime:job-take-in tuatara.runtime:job-percent tuatara.runtime:job-state-words tuatara.runtime:job-status
+    tuatara.runtime:job-program-started tuatara.runtime:running-job take-in-soon
     ;; hooks, each a list a package adds its function to
     *post-self-insert-functions* tuatara.buffer:*kill-buffer-functions* *kill-buffer-query-functions* tuatara.command:*mode-line-functions*
     *health-decoder-functions* *preview-text-functions* *file-local-setting-functions* *file-local-taken-functions* *file-views*
@@ -60,13 +66,14 @@
     tuatara.io:native tuatara.io:native-file-name tuatara.io:native-file-stem tuatara.io:native-file-type tuatara.io:expand-path tuatara.io:parent-path
     tuatara.io:slash-ended tuatara.io:path-within-p tuatara.io:real-path-or-parent tuatara.io:path-join tuatara.io:path-kind tuatara.io:path-stamp tuatara.io:stamp-size tuatara.io:free-bytes
     tuatara.io:directory-entries walk-directory tuatara.io:call-with-file tuatara.io:file-head tuatara.io:binary-head-p tuatara.io:read-fd-start
-    tuatara.io:read-fd-octets tuatara.io:copy-regular-file tuatara.io:write-new-file tuatara.io:make-directory tuatara.io:remove-file tuatara.io:delete-tree
+    tuatara.io:read-fd-octets tuatara.io:write-octets tuatara.io:file-system-error tuatara.io:copy-regular-file tuatara.io:write-new-file tuatara.io:make-directory tuatara.io:remove-file tuatara.io:delete-tree
     tuatara.io:percent-decoded-octets file-kind tuatara.io:octets-kind tuatara.io:kind-name-disagrees-p
     tuatara.io:+binary-sample+ tuatara.io:*compound-file-signature*
     ;; octets, text and dates
     tuatara.text:octets tuatara.io:octets-at-p tuatara.io:octets-le tuatara.io:octets-signed tuatara.io:base64-octets tuatara.io:octets-words
     tuatara.text:octets-string tuatara.text:octets-latin-1 tuatara.text:charset-text tuatara.text:utf-16-text tuatara.text:string-octets
     tuatara.text:string-octet-length tuatara.text:string-line-start tuatara.text:parse-decimal
+    tuatara.text:lenient-string tuatara.text:merge-ranges
     tuatara.text:xml-entity tuatara.text:xml-tag-end tuatara.text:xml-text-value tuatara.io:fd-octets tuatara.io:file-octets tuatara.text:xml-escape
     tuatara.text:xml-name tuatara.text:xml-attribute tuatara.text:xml-children tuatara.text:xml-child tuatara.text:xml-root
     tuatara.text:xml-local-name tuatara.text:xml-local-children tuatara.text:xml-find-all tuatara.text:xml-all-text
@@ -101,8 +108,8 @@
     *sentence-closers* sentence-end-double-space-p *sentence-abbreviations* *extra-sentence-abbreviations*
     *removed-sentence-abbreviations* sentence-abbreviations-in-force abbreviation-before-p
     switched-by-count too-large-here-p
-    ;; the selection, and whether a buffer may be changed
-    selected-region check-writable
+    ;; the selection, banked lines, and whether a buffer may be changed
+    selected-region selection-range banked-spans span-line-count buffer-banks check-writable
     file-declares set-file-local-setting *file-local-variables*)
   "The names a package may use, exported from TUATARA: each keeps its meaning
 from one version of Tuatara to the next.")

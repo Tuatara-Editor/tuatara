@@ -166,6 +166,25 @@ CONSTITUENT and KEEP-ORDER as POPUP has them."
                 ((and only (not auto)) (popup-put popup only))
                 (t (setf (editor-popup editor) popup)))))))
 
+(defun complete-in-minibuffer (finder &rest keys &key annotate document constituent keep-order)
+  "Complete the word at the minibuffer's cursor: what the function given to
+READ-STRING as COMPLETE calls. FINDER, a function of the minibuffer's text and
+the cursor's index in it, returns three values: where the word to complete
+starts and ends, as indices of that text, and the candidates that may take
+its place (strings, or CANDIDATE from MAKE-CANDIDATE); or NIL when there is
+nothing to complete there, and then this says so. The candidates are listed
+beside the cursor as COMPLETE-IN-TEXT lists them, with ANNOTATE, DOCUMENT,
+CONSTITUENT and KEEP-ORDER as it has them."
+  (declare (ignore annotate document constituent keep-order))
+  (let ((editor *editor*))
+    (multiple-value-bind (start end candidates)
+        (funcall finder (editor-minibuffer-text editor) (editor-minibuffer-point editor))
+      (if (null start)
+          (message "Nothing to complete here")
+          (apply #'complete-in-text :minibuffer start end
+                 (mapcar (lambda (c) (if (stringp c) (make-candidate c) c)) candidates)
+                 keys)))))
+
 (defvar *popup-insert-functions* '()
   "Functions called with a buffer, the candidate just put in it from the list
 beside the cursor and where its text starts and ends: what a candidate stands

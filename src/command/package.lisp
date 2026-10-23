@@ -51,5 +51,5 @@
            #:*this-command-keys* #:*command-undo-since* #:*command-notes* #:editor-transient-fresh #:*dropped*
            #:*debug-on-error* #:*backtrace-function* #:*backtrace-frames* #:capture-backtrace
            ;; completing a word in the text
-           #:complete-in-text #:popup-insert #:*popup-insert-functions* #:close-popup #:show-note #:close-note #:editor-note #:*note-limits* #:editor-popup #:popup-p #:popup-target #:popup-candidates #:popup-index
+           #:complete-in-text #:complete-in-minibuffer #:popup-insert #:*popup-insert-functions* #:close-popup #:show-note #:close-note #:editor-note #:*note-limits* #:editor-popup #:popup-p #:popup-target #:popup-candidates #:popup-index
            #:*popup-keymap* #:*popup-chosen-keymap* #:*popup-rows* #:*popup-reach* #:editor-minibuffer-completer #:splice-row #:lay-boxes-over))
