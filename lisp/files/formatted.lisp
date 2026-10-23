@@ -240,7 +240,7 @@ OpenPGP message, its tag and version as gpg writes them
 \(TUATARA.IO:OPENPGP-PACKET-P)."
   (flet ((octet (i) (and (< i (length head))
                          (let ((x (elt head i))) (if (characterp x) (char-code x) x)))))
-    (let* ((start (position-if-not (lambda (x) (member (if (characterp x) (char-code x) x) '(9 10 13 32))) head))
+    (let* ((start (position-if-not (lambda (x) (member (if (characterp x) (char-code x) x) tuatara.text:*blank-octets*)) head))
            (text (map 'string (lambda (x) (if (characterp x) x (code-char x)))
                       (subseq head (or start 0) (min (length head) (+ (or start 0) 40))))))
       (or (some (lambda (header) (uiop:string-prefix-p header text)) *encrypted-text-headers*)

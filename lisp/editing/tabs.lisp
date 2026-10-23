@@ -78,7 +78,7 @@ columns apart, as three values."
 no further than its blanks: how many octets of blanks it begins with, whether
 it holds nothing else, and the column its text starts at, as three values."
   (let* ((end (tuatara.text:rope-line-end rope line))
-         (p (tuatara.text:rope-skip-octets rope line '(32 9 13) :bound end)))
+         (p (tuatara.text:rope-skip-octets rope line tuatara.text:*blank-line-octets* :bound end)))
     (multiple-value-bind (count blank column) (line-blanks (tuatara.text:rope-octets rope :start line :end p) width)
       (declare (ignore blank))
       (values count (= p end) column))))

@@ -1848,16 +1848,18 @@ back to just after the last octet before it that is not one of them, or BOUND
                 when (zerop (sbit skipped (aref block i))) do (return-from rope-skip-octets (+ low i)))))
     bound))
 
+(defparameter *blank-line-octets* (remove 10 *blank-octets*)
+  "The octets a blank line may hold: the blanks (*BLANK-OCTETS*) but the newline.")
+
 (sb-ext:define-load-time-global **blank-line-octets**
     (let ((table (make-array 256 :element-type 'bit :initial-element 0)))
-      (dolist (octet *blank-octets* table)
-        (unless (= octet 10) (setf (sbit table octet) 1))))
-  "One bit for each octet, 1 for those a blank line may hold: the blanks
-\(*BLANK-OCTETS*) but the newline.")
+      (dolist (octet *blank-line-octets* table)
+        (setf (sbit table octet) 1)))
+  "One bit for each octet, 1 for those a blank line may hold (*BLANK-LINE-OCTETS*).")
 
 (declaim (inline blank-line-octet-p))
 (defun blank-line-octet-p (octet)
-  "True for an octet a blank line may hold: a blank (*BLANK-OCTETS*) but the newline."
+  "True for an octet a blank line may hold (*BLANK-LINE-OCTETS*)."
   (= 1 (sbit (the simple-bit-vector **blank-line-octets**) octet)))
 
 (defun map-line-slices (function rope start end left right &key crlf octets width block)

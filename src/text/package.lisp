@@ -28,7 +28,7 @@
    #:rope-line-downward #:rope-line-upward #:map-line-slices #:rope-count-chars #:*text-octets*
    #:tally #:tally-p #:make-tally #:tally-line-number #:tally-line-start #:tally-counted-lines
    #:rope-count-newlines #:rope-nth-newline
-   #:rope-line-start #:rope-line-end #:rope-line-pieces #:blank-line-octet-p
+   #:rope-line-start #:rope-line-end #:rope-line-pieces #:blank-line-octet-p #:*blank-line-octets*
    #:rope-pieces #:rope-slice #:splice-rope
    ;; edits
    #:edit #:edit-p #:make-edit #:edit-start #:edit-end #:edit-insert #:edit-deleted

@@ -230,7 +230,7 @@ line is no headline."
           for octet = (tuatara.text:rope-octet rope i)
           while (= octet 42)
           finally (return (and (> i line)
-                               (or (>= i size) (member (tuatara.text:rope-octet rope i) '(32 9 10 13)))
+                               (or (>= i size) (member (tuatara.text:rope-octet rope i) tuatara.text:*blank-octets*))
                                (- i line))))))
 
 (defun org-line-folds-p (buffer line)
@@ -267,7 +267,7 @@ end), or FROM."
           do (let* ((line (max from (tuatara.buffer:buffer-line-start buffer (1- p))))
                     (end (min p (tuatara.buffer:buffer-line-end buffer line))))
                (when (loop for i from line below end
-                           thereis (not (member (tuatara.text:rope-octet rope i) '(32 9 10 13))))
+                           thereis (not (member (tuatara.text:rope-octet rope i) tuatara.text:*blank-octets*)))
                  (return end))
                (setf p line))
           finally (return from))))

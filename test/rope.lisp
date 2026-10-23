@@ -540,6 +540,7 @@ cd")
 (define-test (rope shared-character-sets)
   ;; the sets of octets every part of the editor goes by, each written once
   (is equal '(32 9 13) (remove-if-not #'tuatara.text:blank-line-octet-p '(32 9 10 13 65 12)))
+  (is equal '(32 9 13) tuatara.text:*blank-line-octets*)
   (is = (- 256 (length tuatara.text:*blank-octets*)) (length tuatara.text:*text-octets*))
   (true (notany (lambda (o) (member o tuatara.text:*blank-octets*)) tuatara.text:*text-octets*))
   (is equal '(40 91 123 41 93 125) tuatara.text:*bracket-octets*)

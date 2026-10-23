@@ -139,7 +139,7 @@ FIXUP-WHITESPACE-AT would leave none (PREFIXES are the quote marks of Lisp)."
                   (let* ((bound (or bound (setf bound (tuatara.text:rope-line-end rope bottom))))
                          (after (loop for p from next below bound
                                       for b = (octet p)
-                                      unless (member b '(32 9 10 13)) return b))
+                                      unless (member b tuatara.text:*blank-octets*) return b))
                          (before (octet (1- end))))
                     (funcall function end next nil
                              (if (and after
