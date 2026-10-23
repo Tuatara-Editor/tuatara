@@ -15,7 +15,7 @@
            #:buffer-indexed-p #:buffer-adopt-text #:ensure-indexed #:*index-wait-function*
            #:buffer-splice #:buffer-splice-spans #:buffer-slice #:buffer-lent-p #:*large-edit-octets*
            #:buffer-scan-line #:*line-scan-limit* #:buffer-known-line-number #:*counted-line-function*
-           #:buffer-goto-line #:buffer-column #:buffer-move-to-column #:line-column-position
+           #:buffer-goto-line #:buffer-column
            #:buffer-local #:with-read-only-lifted #:buffer-mapping #:buffer-saved-number #:buffer-content-number #:buffer-mark-saved
            #:unique-buffer-name
            #:buffer-line-ending #:buffer-crlf-p #:buffer-newline #:detect-line-ending

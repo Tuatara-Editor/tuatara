@@ -865,24 +865,6 @@ before BYTE, so that no more than that is read."
                (cond (newline (tuatara.text:rope-count-chars rope (1+ newline) byte))
                      ((zerop near) (tuatara.text:rope-count-chars rope 0 byte))))))))
 
-(defun line-column-position (rope line column crlf)
-  "The position COLUMN characters into the line of ROPE starting at LINE, or
-the line's end where it is shorter (CRLF when a carriage return before a newline
-ends it), reading no more of the line than that."
-  (let ((total (tuatara.text:rope-bytes rope)) (p line))
-    (loop repeat column
-          while (and (< p total)
-                     (let ((octet (tuatara.text:rope-octet rope p)))
-                       (not (or (= octet 10)
-                                (and crlf (= octet 13) (< (1+ p) total) (= 10 (tuatara.text:rope-octet rope (1+ p))))))))
-          do (setf p (tuatara.text:rope-next-boundary rope p)))
-    p))
-
-(defun buffer-move-to-column (buffer line-start column)
-  "Byte offset of COLUMN characters after LINE-START, or the line end if the
-line is shorter; no more of a long line read than that (LINE-COLUMN-POSITION)."
-  (line-column-position (buffer-text buffer) line-start column (buffer-crlf-p buffer)))
-
 ;;; Buffer-local variables
 
 (defun buffer-local (buffer name &optional default)

@@ -294,6 +294,15 @@ them, and the fixnum vector of byte positions APPLY-EDITS should return."
     (is = 5 (tuatara.text:rope-find-any-octet rope (list (char-code #\?)) :start 3))
     (false (tuatara.text:rope-find-any-octet rope (list (char-code #\!))))))
 
+(defun column-by-steps (buffer line column)
+  "The position COLUMN characters into BUFFER's line starting at LINE, or the
+line's end where it is shorter, found a character at a time."
+  (let ((end (tuatara.buffer:buffer-line-end buffer line)) (p line))
+    (loop repeat column
+          while (< p end)
+          do (setf p (tuatara.text:rope-next-boundary (tuatara.buffer:buffer-text buffer) p)))
+    p))
+
 (defun line-slices-by-steps (buffer left right)
   "Each line's rectangle slice of BUFFER between the columns LEFT and RIGHT,
 found a line at a time by the buffer's own steps, as the rows of a rectangle
@@ -302,8 +311,8 @@ were before MAP-LINE-SLICES: (LINE START END START-COLUMN END-COLUMN LINE-END)."
     (loop for line = 0 then (let ((end (tuatara.buffer:buffer-line-end buffer line)))
                               (if (>= end size) nil (tuatara.buffer:buffer-forward-char buffer end)))
           while line
-          do (let ((s (tuatara.buffer:buffer-move-to-column buffer line left))
-                   (e (tuatara.buffer:buffer-move-to-column buffer line right)))
+          do (let ((s (column-by-steps buffer line left))
+                   (e (column-by-steps buffer line right)))
                (push (list line s e (tuatara.buffer:buffer-column buffer s) (tuatara.buffer:buffer-column buffer e)
                            (tuatara.buffer:buffer-line-end buffer line))
                      rows)))

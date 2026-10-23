@@ -91,8 +91,8 @@
     (is = 9 (tuatara.buffer:buffer-line-end b 4))
     (is = 15 (tuatara.buffer:buffer-line-end b 12))
     (is = 4 (tuatara.buffer:buffer-column b 9))             ; t w o é -> byte 9 is after é, column 4
-    (is = 7 (tuatara.buffer:buffer-move-to-column b 4 3))
-    (is = 9 (tuatara.buffer:buffer-move-to-column b 4 50))))
+    (is = 7 (column-by-steps b 4 3))
+    (is = 9 (column-by-steps b 4 50))))
 
 (define-test (buffer file-round-trip)
   (let* ((s (random-text 30000)) (octets (to-octets s)))
