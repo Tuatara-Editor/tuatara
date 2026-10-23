@@ -140,6 +140,7 @@
                (:file "line-endings")
                (:file "sort")
                (:file "sentences")
+               (:file "csv-records")
                (:file "hex")
                (:file "gutter")
                (:file "toggles")

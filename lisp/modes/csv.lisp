@@ -53,19 +53,42 @@ a longer line is coloured up to here.")
 
 (defconstant +quote-octet+ 34 "The octet of the double quote that encloses fields.")
 
+(defmacro do-csv-octets ((octet position quoted) (rope start end) &body body)
+  "Run BODY for each octet of ROPE from START below END, read where the text is
+kept and nothing copied: OCTET bound to it and POSITION to where it is.
+QUOTED names a variable of the caller's, true inside double quotes: BODY sees
+it as it was before the octet, and a double quote turns it over after. BODY
+leaves the whole with RETURN, whose value the form then has; else NIL."
+  (let ((node (gensym "NODE")) (from (gensym "FROM")) (to (gensym "TO")) (at (gensym "AT"))
+        (i (gensym "I")) (visit (gensym "VISIT")))
+    `(block nil
+       (let ((,at ,start))
+         (declare (type fixnum ,at))
+         (flet ((,visit (,node ,from ,to)
+                  (declare (type fixnum ,from ,to))
+                  (loop for ,i of-type fixnum from ,from below ,to
+                        do (let ((,octet (tuatara.text:piece-octet ,node ,i))
+                                 (,position (+ ,at (- ,i ,from))))
+                             (declare (type (unsigned-byte 8) ,octet) (type fixnum ,position) (ignorable ,position))
+                             ,@body
+                             (when (= ,octet +quote-octet+) (setf ,quoted (not ,quoted)))))
+                  (incf ,at (- ,to ,from))))
+           (declare (dynamic-extent #',visit))
+           (when (< ,at ,end)
+             (tuatara.text:map-leaf-pieces #',visit ,rope :start ,at :end ,end))))
+       nil)))
+
 (defun detect-delimiter (rope)
   "The octet that separates fields in ROPE: whichever of comma, semicolon, tab
 and pipe occurs most often outside quotes in the first line (up to 64 KB);
 comma when none does. True as a second value when one does."
   (let* ((reach (min (tuatara.text:rope-bytes rope) 65536))
          (end (or (tuatara.text:rope-find-octet rope 10 :end reach) reach))
-         (octets (tuatara.text:rope-octets rope :start 0 :end end))
          (counts (list (cons 44 0) (cons 59 0) (cons 9 0) (cons 124 0)))
          (quoted nil))
-    (loop for b across octets
-          until (= b 10)
-          do (cond ((= b +quote-octet+) (setf quoted (not quoted)))
-                   ((not quoted) (let ((entry (assoc b counts))) (when entry (incf (cdr entry)))))))
+    (do-csv-octets (b at quoted) (rope 0 end)
+      (unless quoted
+        (let ((entry (assoc b counts))) (when entry (incf (cdr entry))))))
     (let ((best (reduce (lambda (a b) (if (> (cdr b) (cdr a)) b a)) counts)))
       (if (plusp (cdr best)) (values (car best) t) 44))))
 
@@ -169,17 +192,9 @@ again while it is open."
 END (at most +CSV-SCAN-LIMIT+ of them), FIELD and QUOTED being those at START,
 as CSV-SCAN gives them: read where the text is kept, nothing copied."
   (declare (type fixnum start end field))
-  (let ((stop (min end (+ start +csv-scan-limit+))))
-    (when (< start stop)
-      (tuatara.text:map-leaf-pieces
-       (lambda (node from to)
-         (declare (type fixnum from to))
-         (loop for i of-type fixnum from from below to
-               for b = (tuatara.text:piece-octet node i)
-               do (cond ((= b +quote-octet+) (setf quoted (not quoted)))
-                        ((and (= b delimiter) (not quoted)) (incf field)))))
-       rope :start start :end stop))
-    (values field quoted)))
+  (do-csv-octets (b at quoted) (rope start (min end (+ start +csv-scan-limit+)))
+    (when (and (= b delimiter) (not quoted)) (incf field)))
+  (values field quoted))
 
 (defun csv-scan (rope start end delimiter field quoted &key (ranges t))
   "Scan ROPE from byte START below END (at most +CSV-SCAN-LIMIT+ octets) as
@@ -191,20 +206,16 @@ and the column index and quoting at the end of the scan."
     (multiple-value-bind (field quoted) (csv-count-fields rope start end delimiter field quoted)
       (return-from csv-scan (values '() field quoted))))
   (let* ((stop (min end (+ start +csv-scan-limit+)))
-         (octets (tuatara.text:rope-octets rope :start start :end stop))
          (out '())
          (field-start start))
-    (declare (type fixnum field-start))
-    (loop for i of-type fixnum from 0 below (length octets)
-          for b = (aref octets i)
-          do (cond ((= b +quote-octet+) (setf quoted (not quoted)))
-                   ((and (= b delimiter) (not quoted))
-                    (let ((here (+ start i)))
-                      (when (and ranges (> here field-start))
-                        (push (list field-start here (aref *csv-faces* (mod field 8))) out))
-                      (incf field)
-                      (setf field-start (1+ here))))))
-    (when (and ranges (> stop field-start))
+    (declare (type fixnum stop field-start))
+    (do-csv-octets (b here quoted) (rope start stop)
+      (when (and (= b delimiter) (not quoted))
+        (when (> here field-start)
+          (push (list field-start here (aref *csv-faces* (mod field 8))) out))
+        (incf field)
+        (setf field-start (1+ here))))
+    (when (> stop field-start)
       (push (list field-start stop (aref *csv-faces* (mod field 8))) out))
     (values (nreverse out) field quoted)))
 
@@ -215,19 +226,16 @@ two values: the ranges (START END FACE) of its quoted fields, in :string, and of
 its separators, in :csv-separator; and the quoting at the end of the scan."
   (declare (type fixnum start end))
   (let* ((stop (min end (+ start +csv-scan-limit+)))
-         (octets (tuatara.text:rope-octets rope :start start :end stop))
          (out '())
          (opened (and quoted start)))
-    (loop for i of-type fixnum from 0 below (length octets)
-          for b = (aref octets i)
-          do (cond ((= b +quote-octet+)
-                    (if quoted
-                        (progn (push (list opened (+ start i 1) :string) out)
-                               (setf opened nil))
-                        (setf opened (+ start i)))
-                    (setf quoted (not quoted)))
-                   ((and (= b delimiter) (not quoted))
-                    (push (list (+ start i) (+ start i 1) :csv-separator) out))))
+    (do-csv-octets (b at quoted) (rope start stop)
+      (cond ((= b +quote-octet+)
+             (if quoted
+                 (progn (push (list opened (1+ at) :string) out)
+                        (setf opened nil))
+                 (setf opened at)))
+            ((and (= b delimiter) (not quoted))
+             (push (list at (1+ at) :csv-separator) out))))
     (when (and opened (< opened stop))
       (push (list opened stop :string) out))
     (values (nreverse out) quoted)))
@@ -253,37 +261,48 @@ values, the last line start at or before LINE-START outside quotes, which
 begins the record holding that line, and the record starts met every
 +CSV-RECORD-CHECKPOINT+ octets on the way, the last first."
   (declare (type fixnum anchor line-start))
-  (let ((start anchor) (quoted nil) (found '()))
-    (declare (type fixnum start))
-    (when (< anchor line-start)
-      (let ((block (tuatara.text:make-octets (min 4096 (- line-start anchor))))
-            (checkpoint (+ anchor +csv-record-checkpoint+)))
-        (declare (type fixnum checkpoint))
-        (loop for low of-type fixnum from anchor below line-start by (length block)
-              do (let ((high (min line-start (+ low (length block)))))
-                   (tuatara.text:rope-copy-into rope low high block)
-                   (loop for i of-type fixnum from 0 below (- high low)
-                         for b = (aref block i)
-                         do (cond ((= b +quote-octet+) (setf quoted (not quoted)))
-                                  ((and (= b 10) (not quoted))
-                                   (setf start (+ low i 1))
-                                   (when (>= start checkpoint)
-                                     (push start found)
-                                     (setf checkpoint (+ start +csv-record-checkpoint+))))))))))
+  (let ((start anchor) (quoted nil) (found '()) (checkpoint (+ anchor +csv-record-checkpoint+)))
+    (declare (type fixnum start checkpoint))
+    (do-csv-octets (b at quoted) (rope anchor line-start)
+      (when (and (= b 10) (not quoted))
+        (setf start (1+ at))
+        (when (>= start checkpoint)
+          (push start found)
+          (setf checkpoint (+ start +csv-record-checkpoint+)))))
     (values start found)))
+
+(defun unchanged-before (version now)
+  "How far into the text the changes from VERSION, a version of a text, to
+NOW, a later one, leave it as it was: the start of the first change (the
+text's end when there is none, MOST-POSITIVE-FIXNUM); NIL when that is not
+known, VERSION not before NOW or the text swapped whole."
+  (let ((v version) (low most-positive-fixnum))
+    (loop
+      (when (eq v now) (return low))
+      (let ((next (tuatara.text:version-next v)))
+        (unless next (return nil))
+        (let ((batch (tuatara.text:version-batch next)))
+          (when (tuatara.text:batch-swap batch) (return nil))
+          (loop for edit across (tuatara.text:batch-edits batch)
+                do (setf low (min low (tuatara.text:edit-start edit)))))
+        (setf v next)))))
 
 (defun csv-record-start (buffer line-start)
   "Where the record holding the line of BUFFER starting at LINE-START begins: a
 quoted field may hold line breaks, so the last line start at or before it
 outside quotes. Read from the nearest record start found before, for the
-buffer's text as it is, at most +CSV-SCAN-LIMIT+ octets back; else from where
+buffer's text, or before the first change made since, at most
++CSV-SCAN-LIMIT+ octets back; else from where
 RECORD-SCAN-ANCHOR says. The record starts met every +CSV-RECORD-CHECKPOINT+
 octets on the way are kept too (the last 512 found), so that moving a line at
 a time reads a line or so going down and no more than that many octets going
 up. Complexity: O(the octets read)."
   (let* ((version (tuatara.buffer:buffer-version buffer))
          (kept (let ((kept (tuatara.buffer:buffer-local buffer 'csv-record-start)))
-                 (if (and kept (eq (car kept) version)) (cdr kept) '())))
+                 (and kept
+                      (let ((unchanged (unchanged-before (car kept) version)))
+                        ;; the starts before the first change since stand
+                        (and unchanged (remove-if (lambda (k) (>= k unchanged)) (cdr kept)))))))
          (known (let ((best nil))
                   (dolist (k kept best)
                     (when (and (<= k line-start) (<= (- line-start k) +csv-scan-limit+)
@@ -313,21 +332,10 @@ not ended within them ends with its first line."
   (declare (type fixnum start))
   (let* ((size (tuatara.text:rope-bytes rope))
          (stop (min size (+ start +csv-scan-limit+)))
-         (quoted nil)
-         (at start))
-    (declare (type fixnum at))
-    (when (< start stop)
-      (tuatara.text:map-leaf-pieces
-       (lambda (node from to)
-         (declare (type fixnum from to))
-         (loop for i of-type fixnum from from below to
-               for b = (tuatara.text:piece-octet node i)
-               do (cond ((= b +quote-octet+) (setf quoted (not quoted)))
-                        ((and (= b 10) (not quoted))
-                         (let ((newline (+ at (- i from))))
-                           (return-from csv-record-end (values newline (1+ newline)))))))
-         (incf at (- to from)))
-       rope :start start :end stop))
+         (quoted nil))
+    (do-csv-octets (b at quoted) (rope start stop)
+      (when (and (= b 10) (not quoted))
+        (return-from csv-record-end (values at (1+ at)))))
     (if (= stop size)
         (values size size)
         (let ((line-end (tuatara.text:rope-line-end rope start)))
@@ -377,14 +385,17 @@ COLOURING* says."
                           (setf ranges (nconc ranges row-ranges) field f quoted q carried t))))))
       ranges)))
 
-(defun csv-field-spans (text start end delimiter spans &optional (first 0))
+(defun csv-field-spans (text start end delimiter spans &optional (first 0) last)
   "Put where the fields of the record in TEXT, a string, from START below END
 begin and end, as written, quotes kept, into SPANS, a vector of fixnums with
 two places to a field: from field FIRST (from 0) on, as many as it has room
 for. A DELIMITER (a character, or its code) inside double quotes is no
-field's end. How many fields the record has. Makes nothing, for work on
-every line of a large file."
+field's end. How many fields the record has; with LAST, a field's number,
+the record is read no further than that field's end, and one more than LAST
+is the answer when the record has it. Makes nothing, for work on every line
+of a large file."
   (declare (type simple-string text) (type fixnum start end first)
+           (type (or null fixnum) last)
            (type (simple-array fixnum (*)) spans) (optimize speed))
   (let ((delimiter (if (characterp delimiter) delimiter (code-char delimiter)))
         (room (length spans)) (field 0) (field-start start) (quoted nil))
@@ -399,6 +410,7 @@ every line of a large file."
             do (cond ((char= c #\") (setf quoted (not quoted)))
                      ((and (char= c delimiter) (not quoted))
                       (put i)
+                      (when (eql field last) (return-from csv-field-spans (1+ field)))
                       (incf field)
                       (setf field-start (1+ i)))))
       (put end)
@@ -407,11 +419,11 @@ every line of a large file."
 (defun csv-field-bounds (text start end delimiter index)
   "Where field INDEX (from 0) of the record in TEXT, a string, from START
 below END, begins and ends, as written, quotes kept: two values; when the
-record has fewer fields, NIL and how many it has (CSV-FIELD-SPANS). Makes
-nothing."
+record has fewer fields, NIL and how many it has (CSV-FIELD-SPANS). Reads
+no further than that field, and makes nothing."
   (let ((spans (make-array 2 :element-type 'fixnum :initial-element 0)))
     (declare (dynamic-extent spans))
-    (let ((count (csv-field-spans text start end delimiter spans index)))
+    (let ((count (csv-field-spans text start end delimiter spans index index)))
       (if (< index count) (values (aref spans 0) (aref spans 1)) (values nil count)))))
 
 (defun csv-fields (text start end delimiter)
@@ -450,11 +462,11 @@ new string, a doubled quote inside a quoted value read as one."
   "The names of the columns of BUFFER, a CSV or TSV buffer, as its first line,
 the header, gives them, in order, without enclosing quotes (CSV-FIELD-VALUE);
 of a first line longer than a megabyte, only the fields of its first
-megabyte. A byte-order mark the file begins with is no part of the first
-name."
+megabyte. A quoted name may hold a line break, the header then going on over
+it (CSV-RECORD-END). A byte-order mark the file begins with is no part of
+the first name."
   (let* ((rope (tuatara.buffer:buffer-text buffer))
-         (end (let ((near (min (tuatara.text:rope-bytes rope) +csv-scan-limit+)))
-                (or (tuatara.text:rope-find-octet rope 10 :end near) near)))
+         (end (record-text-end rope (min (csv-record-end rope 0) +csv-scan-limit+) (buffer-crlf-p buffer)))
          (text (tuatara.text:lenient-string (tuatara.text:rope-octets rope :start 0 :end end)))
          (start (if (and (plusp (length text)) (char= (char text 0) (code-char #xfeff))) 1 0)))
     (map 'list (lambda (field) (csv-field-value text (car field) (cdr field)))
@@ -484,16 +496,16 @@ them, or NIL; the names kept for BUFFER's text as it is."
   "A CSV's fields, apart by its separator, each value without its quotes (a
 doubled quote in it read as one); named by the header when the first line is
 one."
-  (let ((delimiter (csv-delimiter buffer)))
-    (make-record-fields
-     :each (lambda (text length field fn)
-             (multiple-value-bind (field-start field-end) (csv-field-bounds text 0 length delimiter field)
-               (when field-start
-                 (multiple-value-bind (start end quoted) (csv-value-bounds text field-start field-end)
-                   (if (and quoted (search "\"\"" text :start2 start :end2 end))
-                       (let ((value (csv-field-value text field-start field-end)))
-                         (funcall fn value 0 (length value)))
-                       (funcall fn text start end)))))))))
+  (make-record-fields
+   ;; the separator as it is when a record is tried, after csv-define-separator too
+   :each (lambda (text length field fn)
+           (multiple-value-bind (field-start field-end) (csv-field-bounds text 0 length (csv-delimiter buffer) field)
+             (when field-start
+               (multiple-value-bind (start end quoted) (csv-value-bounds text field-start field-end)
+                 (if (and quoted (search "\"\"" text :start2 start :end2 end))
+                     (let ((value (csv-field-value text field-start field-end)))
+                       (funcall fn value 0 (length value)))
+                     (funcall fn text start end))))))))
 
 (defmethod mode-line-extra ((mode csv-mode) buffer)
   "What the mode line says of the column point is in (CSV-COLUMN-WORDS),

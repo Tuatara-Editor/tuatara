@@ -90,7 +90,7 @@ header left out (LIST-HEADER-P)."
          (size (tuatara.text:rope-bytes rope))
          (ends (record-ends buffer)))
     (loop repeat *record-keys-looked-at*
-          for at = (records-start rope (if (list-header-p buffer) 1 0)) then (nth-value 1 (record-bounds rope at ends))
+          for at = (records-start rope (if (list-header-p buffer) 1 0) ends) then (nth-value 1 (record-bounds rope at ends))
           while (< at size)
           collect (record-line buffer at))))
 
@@ -107,16 +107,18 @@ number, SAMPLE the first record's value. Named by FIELDS, else by the header
 when the first line is one (LIST-HEADER-P)."
   (let* ((header (list-header-p buffer))
          (top (record-line buffer 0))
-         (sample (if header (record-line buffer (records-start (tuatara.buffer:buffer-text buffer) 1)) top))
+         (sample (if header (record-line buffer (records-start (tuatara.buffer:buffer-text buffer) 1 (record-ends buffer))) top))
          (keys (record-fields-keys fields)))
     (flet ((value (text field) (let ((v (record-field-value fields text field))) (and v (plusp (length v)) v))))
       (if keys
           (mapcar (lambda (key) (list key key (value sample key))) (funcall keys buffer))
           (let ((names (record-fields-names fields)))
             (loop for n from 0 below *record-fields-offered*
-                  for name = (or (nth n names) (and header (value top n)))
-                  while (or (< n (length names)) (value sample n) (and header (value top n)))
-                  collect (list name n (value sample n))))))))
+                  for heading = (and header (value top n))
+                  for name = (or (nth n names) heading)
+                  for given = (value sample n)
+                  while (or (< n (length names)) given heading)
+                  collect (list name n given)))))))
 
 (defun answered-field (answer offered keyed)
   "The field ANSWER names among OFFERED (as OFFERED-FIELDS gives them): a

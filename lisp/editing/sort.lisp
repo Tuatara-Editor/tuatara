@@ -1417,7 +1417,7 @@ when it is a regular expression, the matcher, words naming what of a line it
 tries or NIL, and the first line that may change, the one after a file of
 records' header (LIST-HEADER-P), or NIL."
   (multiple-value-bind (matcher what) (filter-line-matcher buffer)
-    (let ((first (and (records-file-p buffer) (list-header-p buffer) (records-start (tuatara.buffer:buffer-text buffer) 1))))
+    (let ((first (and (records-file-p buffer) (list-header-p buffer) (records-start (tuatara.buffer:buffer-text buffer) 1 (record-ends buffer)))))
       (multiple-value-bind (pattern regex)
           (let ((counter (make-pattern-count))
                 (lines (list (cons (max start (or first 0)) end))))

@@ -406,12 +406,14 @@ nothing changed since, only more learnt of it (its lines counted)."
           (return nil))
         (setf v next)))))
 
-(defun records-start (rope header)
-  "Where the records of ROPE begin, after its first HEADER lines: its start
-when it has none, its end when it has no more lines than that."
+(defun records-start (rope header &optional ends)
+  "Where the records of ROPE begin, after its first HEADER records, a line
+each or as ENDS ends them (RECORD-ENDS: a CSV's header may hold a quoted
+line break): its start when it has none, its end when it has no more than
+that."
   (let ((start 0) (total (tuatara.text:rope-bytes rope)))
     (dotimes (i header start)
-      (setf start (min total (1+ (tuatara.text:rope-line-end rope start)))))))
+      (setf start (min total (nth-value 1 (record-bounds rope start ends)))))))
 
 (defun add-run (runs from to)
   "Add the lines from FROM below TO to RUNS (LINES-MATCHING), made one with
@@ -680,14 +682,15 @@ ENDS says (RECORD-ENDS)."
   "How many octets of the text RUNS (LINES-MATCHING) take."
   (loop for i from 0 below (length runs) by 2 sum (- (aref runs (1+ i)) (aref runs i))))
 
-(defun all-records (rope header)
-  "Every record of ROPE as LINES-MATCHING takes stretches: from the line after
-its first HEADER lines to its end."
-  (make-array 2 :element-type 'fixnum :initial-contents (list (records-start rope header) (tuatara.text:rope-bytes rope))))
+(defun all-records (rope header &optional ends)
+  "Every record of ROPE as LINES-MATCHING takes stretches: from after its
+first HEADER records, ending as ENDS says (RECORDS-START), to its end."
+  (make-array 2 :element-type 'fixnum :initial-contents (list (records-start rope header ends) (tuatara.text:rope-bytes rope))))
 
-(defun hidden-lines-bounds (rope runs crlf header)
+(defun hidden-lines-bounds (rope runs crlf header &optional ends)
   "What to hide of ROPE (TUATARA.DISPLAY:HIDE-RANGES) so that only its first
-HEADER lines and the lines of RUNS (LINES-MATCHING) are shown: from the
+HEADER records (RECORDS-START, ENDS as it takes it) and the lines of RUNS
+\(LINES-MATCHING) are shown: from the
 newline ending each line shown to the one ending the last line hidden after
 it, from the carriage return before each when CRLF; the lines hidden at the
 very start, before any line shown, from the start to the first line shown.
@@ -695,7 +698,7 @@ O(runs)."
   (let* ((total (tuatara.text:rope-bytes rope))
          (cr (if crlf 1 0))
          (out (make-array (+ 2 (length runs)) :element-type 'fixnum :fill-pointer 0))
-         (shown-end (records-start rope header)))
+         (shown-end (records-start rope header ends)))
     (flet ((hide (from to)
              ;; the lines from FROM, a line's start, to TO, the end of the last of them
              (let ((start (max 0 (- from 1 cr))))
@@ -729,7 +732,7 @@ of CHAIN matches, as many as fill the window, or as are found within
 many lines they hold."
   (let* ((rope (tuatara.buffer:buffer-text buffer))
          (window (and *editor* (buffer-window buffer)))
-         (top (max (records-start rope (list-filtering-lines (list-filtering buffer)))
+         (top (max (records-start rope (list-filtering-lines (list-filtering buffer)) (record-ends buffer))
                    (if window (tuatara.buffer:buffer-line-start buffer (tuatara.display:window-start window)) 0)))
          (deadline (screen-deadline)))
     (multiple-value-bind (runs count)
@@ -890,7 +893,7 @@ in it (KEEP-WORKED-OUT), and returned."
   (if (list-filtering-lines filtering)
       (let ((rope (tuatara.text:version-rope source)))
         (multiple-value-bind (runs count looked)
-            (lines-matching (list filter) rope (or previous (all-records rope (list-filtering-lines filtering)))
+            (lines-matching (list filter) rope (or previous (all-records rope (list-filtering-lines filtering) (record-ends buffer)))
                            (buffer-crlf-p buffer) :ends (record-ends buffer))
           (unless previous (setf (list-filtering-total filtering) looked))
           (keep-worked-out filter source runs count)))
@@ -941,7 +944,7 @@ is done."
           (setf (search-filter-job-passes job) (length left) (search-filter-job-whole job) (null previous))
           (tuatara.runtime:start-job-thread
            job (lambda (job)
-                 (let ((ranges (or previous (all-records rope header)))
+                 (let ((ranges (or previous (all-records rope header ends)))
                        (cancel (tuatara.runtime:job-cancel job)))
                    (dolist (filter left)
                      (setf (search-filter-job-progress job) (cons 0 (max 1 (runs-octets ranges))))
@@ -1275,7 +1278,7 @@ worked out yet."
          (shown (list-filtering-shown filtering)))
     (tuatara.display:hide-ranges
      buffer (and source shown (hidden-lines-bounds (tuatara.text:version-rope source) shown (buffer-crlf-p buffer)
-                                                   (list-filtering-lines filtering)))
+                                                   (list-filtering-lines filtering) (record-ends buffer)))
      :version source)))
 
 (defun refilter-lines (buffer)
