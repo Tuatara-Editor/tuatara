@@ -34,6 +34,13 @@ arguments that a thread of its own calls, returning the days to mark: day
 numbers (the agenda's: the days with entries), shown in :calendar-marked, or
 \(DAY . FACE) for a face of its own (the journal's days, :calendar-journal).")
 
+(defvar *calendar-day-openers* '()
+  "What \\<calendar-mode>\\[calendar-open-day] opens on a day the calendar marks: each (FACE COMMAND
+WHAT), COMMAND a calendar command opening what the days marked in FACE have,
+asked for by its own key and named WHAT when a day is marked for more than
+one (the journal's days, :calendar-journal, opened by
+CALENDAR-JOURNAL-ENTRY, named \"journal entry\").")
+
 (defvar *calendar-mark-days* t
   "True for the calendar to mark the days *CALENDAR-MARK-FUNCTIONS* name (the
 days with agenda entries) as soon as it shows them; NIL to wait for \\<calendar-mode>\\[calendar-mark-days].")
@@ -555,6 +562,29 @@ others are worked out for it since, or marks were taken off meanwhile."
   (calendar-start-marks (current-buffer))
   (message "Marking the days with entries"))
 
+(define-command calendar-open-day ()
+  "Open what the day at point is marked for: its agenda, its journal entry,
+whichever it has (*CALENDAR-DAY-OPENERS*); with more than one, asked which, each
+by the key that opens it alone."
+  (let* ((day (calendar-cursor-date))
+         (marked (tuatara.buffer:buffer-local (current-buffer) 'calendar-marked))
+         (openers (loop for opener in (reverse *calendar-day-openers*)
+                        when (member (first opener) (and marked (gethash day marked))) collect opener)))
+    (cond ((null marked)
+           (message (substitute-command-keys "No days are marked yet: \\<calendar-mode>\\[calendar-mark-days] marks them")))
+          ((null openers) (message "Nothing is marked on ~a" (calendar-date-words day)))
+          ((null (rest openers)) (funcall (second (first openers))))
+          (t (let* ((keymaps (list (mode-keymap 'calendar-mode)))
+                    (keys (loop for (nil command) in openers collect (first (where-is command keymaps))))
+                    (key (tuatara.frontend:key-description
+                          (tuatara.frontend:key-spec (read-key (format nil "Open on ~a: ~{~{~a ~a~}~^, ~}"
+                                            (calendar-date-words day)
+                                            (loop for k in keys for (nil nil what) in openers collect (list k what)))))))
+                    (chosen (position key keys :test #'equal)))
+               (if chosen
+                   (funcall (second (nth chosen openers)))
+                   (message "~a opens none of them" key)))))))
+
 (define-command calendar-unmark ()
   "Take the marks off the calendar's days, until \\<calendar-mode>\\[calendar-mark-days] puts them back."
   (setf (tuatara.buffer:buffer-local (current-buffer) 'calendar-marking) nil
@@ -583,6 +613,10 @@ bold and underline in that colour)."
               (loop for (day start end) across (calendar-days-of buffer)
                     when (and (< start to) (> end from) (= day today))
                       collect (list start end :calendar-today))))))
+
+(defmethod mode-marks-point-p ((mode calendar-mode))
+  "The calendar marks the day at point itself (CALENDAR-POINT-HIGHLIGHTS)."
+  t)
 
 (defun calendar-cursor-face (editor buffer)
   "Make :calendar-selected look as the cursor does in BUFFER, a calendar: its
@@ -650,14 +684,14 @@ colour."
                           ("M-v" calendar-scroll-right-three-months) ("<prior>" calendar-scroll-right-three-months)
                           ("." calendar-goto-today) ("g d" calendar-goto-date) ("o" calendar-other-month)
                           ("p d" calendar-print-day-of-year) ("p c" calendar-iso-print-date)
-                          ("m" calendar-mark-days) ("u" calendar-unmark))))
+                          ("m" calendar-mark-days) ("u" calendar-unmark) ("RET" calendar-open-day))))
   (commands-for-mode 'calendar-mode "the calendar (\\[calendar])"
                      'calendar-forward-day 'calendar-backward-day 'calendar-forward-week 'calendar-backward-week
                      'calendar-forward-month 'calendar-backward-month 'calendar-forward-year 'calendar-backward-year
                      'calendar-beginning-of-week 'calendar-end-of-week 'calendar-beginning-of-month 'calendar-end-of-month
                      'calendar-beginning-of-year 'calendar-end-of-year 'calendar-scroll-left 'calendar-scroll-right
                      'calendar-scroll-left-three-months 'calendar-scroll-right-three-months 'calendar-goto-today 'calendar-jump-back
-                     'calendar-goto-date 'calendar-other-month 'calendar-print-day-of-year 'calendar-iso-print-date
+                     'calendar-goto-date 'calendar-open-day 'calendar-other-month 'calendar-print-day-of-year 'calendar-iso-print-date
                      'calendar-mark-days 'calendar-unmark)
   (place-buffers 'calendar-mode :below :size :fit :keep t :select t)
   (pushnew 'calendar-mode-line *mode-line-functions*)

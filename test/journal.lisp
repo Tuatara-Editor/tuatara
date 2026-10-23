@@ -185,3 +185,29 @@ buffers of its files killed after."
       (declare (ignore f))
       (is string= "20261001T120000--thursday-1-october-2026__journal.org" (current-file-name editor)))
     (is = 2 (length (journal-files dir)))))
+
+(define-test (journal opened-from-a-marked-day)
+  (with-journal (dir)
+    (let ((tuatara.defaults::*org-now* (encode-universal-time 0 0 12 1 10 2026)))
+      (run-keys "SPC d j" :width 100 :height 24))
+    (forget-file-buffers)
+    (let ((tasks (merge-pathnames "tasks.org" dir)))
+      (alexandria:write-string-into-file (format nil "* Meeting <2026-10-01 Thu>~%* Dentist <2026-10-02 Fri>~%") tasks)
+      (let ((tuatara-user:*org-agenda-files* (list (namestring tasks))))
+        (flet ((on-day (keys)
+                 (calendar-keys (list #'wait-for-calendar-marks :tick keys))))
+          ;; RET on a day with agenda entries alone: the agenda, on that day
+          (on-day "C-b RET")
+          (let ((agenda (tuatara.buffer:find-buffer "*Org Agenda*")))
+            (true agenda)
+            (when agenda
+              (is = (calendar-day 2026 10 2) (tuatara.defaults::org-agenda-day-at-point agenda))))
+          ;; on a day with both: asked which, each by its own key; n the journal entry
+          (multiple-value-bind (f editor) (on-day "C-b C-b RET n")
+            (true (tuatara.frontend.fake:fake-frame-showing f "a agenda" "n journal entry"))
+            (is string= "20261001T120000--thursday-1-october-2026__journal.org" (current-file-name editor)))
+          (forget-file-buffers)
+          ;; on a day with neither: said so, nothing opened
+          (multiple-value-bind (f editor) (on-day "RET")
+            (declare (ignore editor))
+            (true (tuatara.frontend.fake:fake-frame-showing f "Nothing is marked on Sat 2026-10-03"))))))))

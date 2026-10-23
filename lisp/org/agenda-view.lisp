@@ -1037,6 +1037,7 @@ day; the agendas EDITOR shows are kept up to date (ORG-AGENDA-FOLLOW)."
                                      ("C-c C-q" org-agenda-set-tags) ("C-c C-z" org-agenda-add-note) ("C-c C-w" org-agenda-refile)
                                      ("s" org-agenda-save-all-buffers) ("c" org-agenda-goto-calendar)))
   (pushnew 'org-calendar-mark-source *calendar-mark-functions*)
+  (pushnew '(:calendar-marked org-calendar-goto-agenda "agenda") *calendar-day-openers* :test #'equal)
   (define-key (mode-keymap 'calendar-mode) "a" 'org-calendar-goto-agenda))
 
 (commands-for-mode 'org-agenda-mode "The agenda (\\[org-agenda])"
