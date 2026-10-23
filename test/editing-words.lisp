@@ -43,3 +43,11 @@ value names, capitalising, and the case of a small region and a large one.")
          (decode (least-seconds (lambda () (tuatara.text:lenient-string octets)))))
     (is equal '(30000 90000 570000 2400000) (multiple-value-list (tuatara.defaults::count-text rope 0 (length octets))))
     (true (< count (+ 0.01 (* 8 decode))) "counted in ~,3fs, decoded in ~,3fs" count decode)))
+
+(define-test (editing-words case-small-and-large-alike)
+  ;; a region's case changed at once and a large one's changed in the background, line by
+  ;; line with ASCII read octet by octet, come out the same: ASCII, ß, ﬁ, the Turkish i
+  (dolist (text (list (format nil "hello WORLD_wide 3rd~%x-ray o'neil") (format nil "straße ﬁle~%İstanbul ıdır") (format nil "ǆungla éCOLE~%mIxEd ascii")))
+    (dolist (command '("u p c a s e - r e g i o n" "d o w n c a s e - r e g i o n" "c a p i t a l i z e - r e g i o n"))
+      (dolist (keys (list (format nil "% M-x ~a RET" command) (format nil "M-> C-SPC M-< C-f C-f M-x ~a RET" command)))
+        (is string= (small-text (list keys) text) (large-text (list keys) text) "~a on ~s" keys text)))))
