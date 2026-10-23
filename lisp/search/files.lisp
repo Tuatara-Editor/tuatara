@@ -97,8 +97,9 @@ that is no regular expression, with REGEX; NIL when it can."
 
 (defun search-input-matchers (input regex &optional crlf)
   "The matchers of INPUT, the longest first: with REGEX, one for each of its
-words (separated by spaces, SEARCH-WORD-MATCHER); else one for the whole of it
-as literal text, spaces and all. With CRLF, for files whose lines end with a
+words (separated by spaces, SEARCH-WORD-MATCHER), none when a word is no
+regular expression; else one for the whole of it as literal text, spaces and
+all. With CRLF, for files whose lines end with a
 carriage return and a newline. Made once however many pieces and files the
 same input is searched in, from any thread."
   (let ((key (list input regex))
@@ -111,10 +112,12 @@ same input is searched in, from any thread."
       (or (svref (cdr last) slot)
           (setf (svref (cdr last) slot)
                 (if regex
-                    (mapcan (lambda (word) (let ((matcher (search-word-matcher word crlf))) (and matcher (list matcher))))
-                            (stable-sort (tuatara.text:split-words input " ")
-                                         ;; the longest word, likely the rarest, finds the lines to look at
-                                         #'> :key #'length))
+                    ;; a word that is no regular expression finds nothing, so neither do they all
+                    (let ((matchers (mapcar (lambda (word) (search-word-matcher word crlf))
+                                            (stable-sort (tuatara.text:split-words input " ")
+                                                         ;; the longest word, likely the rarest, finds the lines to look at
+                                                         #'> :key #'length))))
+                      (and (notany #'null matchers) matchers))
                     (list (make-pattern-matcher input :regex nil))))))))
 
 (sb-ext:defglobal **corpus-line-endings** (make-hash-table :test 'eq :weakness :key :synchronized t)
@@ -172,11 +175,12 @@ true then."
                                            (length starts)))
                                  (stretch-end (if (< next (length starts)) (min to (aref starts next)) to))
                                  (matchers (search-input-matchers input regex (= ending 1))))
-                            (scan-stretch from stretch-end (first matchers) (rest matchers) (= ending 1)
+                            (when matchers
+                              (scan-stretch from stretch-end (first matchers) (rest matchers) (= ending 1)
                                           (lambda (line) (push line lines) (incf count) (>= count most))
                                           (lambda (line-start)
                                             (prog1 (/= line-start last-line) (setf last-line line-start)))
-                                          halt)
+                                          halt))
                             (setf from stretch-end index next)))
                  (values (nreverse lines) stopped)))
              (scan-stretch (from to first others crlf give fresh-line-p halt)

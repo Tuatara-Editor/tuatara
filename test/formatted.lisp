@@ -241,6 +241,7 @@ file sets them."
              (is equal '((0 3 0 "foo alone")) (tuatara.defaults::corpus-lines corpus "^f.o al"))
              ;; not a regular expression: its characters
              (is equal '() (tuatara.defaults::corpus-lines corpus "foo("))
+             (is equal '() (tuatara.defaults::corpus-lines corpus "foo( bar"))
              ;; literal text: the whole input as it stands, spaces and all, nothing in it special
              (is equal '((0 2 4 "the foo and the bar")) (tuatara.defaults::corpus-lines corpus "foo and" :regex nil))
              (is equal '() (tuatara.defaults::corpus-lines corpus "bar foo" :regex nil))
