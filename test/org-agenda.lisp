@@ -1251,3 +1251,24 @@ help left out."
     (is = (search "C-d org-deadline" deadline) (search "= org-table-eval-formula" formula))
     (true (find-if (lambda (row) (search "C-x +clock, blocks and more" row)) rows))
     (true (find-if (lambda (row) (search "C-v +code files" row)) rows))))
+
+(define-test (org rules-worked-out-once-per-agenda)
+  ;; a task by rule: when it is open is worked out once for an agenda of many days, not each day
+  (uiop:with-temporary-file (:pathname path :type "org")
+    (with-open-file (o path :direction :output :if-exists :supersede :external-format :utf-8)
+      (format o "* TODO Meeting~%SCHEDULED: <%%(diary-float t 1 1) 10:00>~%~
+                 * TODO Review~%DEADLINE: <%%(diary-float '(1 4 7 10) 5 -1)>~%~
+                 * TODO Water~%SCHEDULED: <%%(diary-cyclic 3 2026 10 1)>~%"))
+    (let ((tuatara.defaults::*org-now* (encode-universal-time 0 0 12 22 10 2026))
+          (files (list (namestring path)))
+          (calls 0))
+      (sb-int:encapsulate 'tuatara.defaults::org-rule-next 'counted
+                          (lambda (f &rest arguments) (incf calls) (apply f arguments)))
+      (unwind-protect
+           (let ((rows (org-agenda-test-rows (tuatara.defaults::org-agenda-span (tuatara.dates:day-number 2026 10 1) 60
+                                                                                :files files :log nil))))
+             (is equal '("2026-10-05" "scheduled" "Scheduled:" 1000 "TODO" "Meeting")
+                 (subseq (find "Meeting" rows :key #'sixth :test #'string=) 0 6))
+             (true (find "Review" rows :key #'sixth :test #'string=))
+             (true (<= calls 3) "~d calls for 3 rules over 60 days" calls))
+        (sb-int:unencapsulate 'tuatara.defaults::org-rule-next 'counted)))))

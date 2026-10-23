@@ -37,7 +37,8 @@ own -3d says otherwise.")
 ;;; Days
 
 (defvar *org-agenda-ts-memo* nil
-  "While an agenda is made, a table of the timestamps read so far, by their text.")
+  "While an agenda is made, a table of the timestamps read so far, by their
+text, and of the days each rule opens on (ORG-AGENDA-RULE-OPEN), by the rule.")
 
 (defun memo-values (table key function)
   "The values FUNCTION, of no arguments, gives: kept in TABLE, a hash table,
@@ -616,6 +617,19 @@ TODAY."
                               (= current day))
                        collect (org-agenda-item entry current "timestamp" "" text (agenda-entry-priority entry)))))
 
+(defun org-agenda-rule-open (rule from)
+  "The first day at or after the day FROM that RULE takes (ORG-RULE-NEXT),
+worked out once for each rule and day while an agenda is made."
+  (let ((table *org-agenda-ts-memo*))
+    (if (null table)
+        (org-rule-next rule from)
+        (let ((known (assoc from (gethash rule table))))
+          (if known
+              (cdr known)
+              (let ((open (org-rule-next rule from)))
+                (push (cons from open) (gethash rule table))
+                open))))))
+
 (defun org-agenda-rules (entries current today)
   "The lines of the dates by rule of ENTRIES on the day CURRENT, today being
 TODAY. A timestamp in the text is listed on each day its rule takes. A
@@ -634,9 +648,9 @@ done, a task's days before today are not past due."
                      (if (eq kind :stamp)
                          (and (org-rule-matches-p rule current)
                               (list (org-agenda-item entry current "timestamp" "" text priority)))
-                         (let* ((open (org-rule-next rule (if last-done (1+ last-done) today)))
+                         (let* ((open (org-agenda-rule-open rule (if last-done (1+ last-done) today)))
                                 (deadline (eq kind :deadline))
-                                (warning (org-warning-days text *org-deadline-warning-days*)))
+                                (warning *org-deadline-warning-days*))
                            (cond ((or (org-done-p entry) (null open)) '())
                                  ((= current today)
                                   (let ((diff (- today open)))
