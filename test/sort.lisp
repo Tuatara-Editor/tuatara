@@ -177,6 +177,32 @@ are rewritten at once."
     (is string= (lines-text "ERROR disk" "ERROR net")
         (sorted-text "M-x k e e p - l i n e s RET E R R O R RET u C-x h M-x k e e p - l i n e s RET M-p RET" text :here t))))
 
+;; the count before keep-lines' prompt is how many lines the filter leaves, LF and CRLF,
+;; for every construct of the patterns
+(define-test (sorting count-agrees-with-filter)
+  (dolist (crlf '(nil t))
+    (dolist (section *search-constructs*)
+      (dolist (row (third section))
+        (destructuring-bind (written means pattern &optional text finds &rest more) row
+          (declare (ignore means more))
+          (unless (or (eq written :replace) (eq (first finds) :refused))
+            (let* ((text (if crlf (cl-ppcre:regex-replace-all (string #\Newline) text (format nil "~c~%" #\Return)) text))
+                   (buffer (tuatara.buffer:make-buffer (tuatara.buffer:unique-buffer-name "count") :text text))
+                   (rope (tuatara.buffer:buffer-text buffer))
+                   (filter (tuatara.defaults::make-search-filter pattern :crlf crlf)))
+              (when crlf (setf (tuatara.buffer:buffer-local buffer :line-ending) :crlf))
+              (unwind-protect
+                   ;; a pattern no filter can use is counted by none
+                   (is eql (and filter (length (scan-kept-starts rope (tuatara.defaults::search-filter-matcher filter) crlf)))
+                       (tuatara.defaults::stretch-count buffer (list (cons 0 (tuatara.text:rope-bytes rope))) pattern t)
+                       "~a: ~a on ~s~:[~;, CRLF~]" written pattern text crlf)
+                (tuatara.buffer:kill-buffer buffer))))))))
+  (let ((buffer (tuatara.buffer:make-buffer (tuatara.buffer:unique-buffer-name "count")
+                                            :text (format nil "foo~c~%bar~c~%foo~c~%" #\Return #\Return #\Return))))
+    (setf (tuatara.buffer:buffer-local buffer :line-ending) :crlf)
+    (unwind-protect (is = 2 (tuatara.defaults::stretch-count buffer (list (cons 0 15)) "foo$" t))
+      (tuatara.buffer:kill-buffer buffer))))
+
 (define-test (sorting sort-stands-where-begun)
   ;; a sort in the background stands in the undo history where it began: an edit made
   ;; elsewhere while it ran is undone first, then the sort

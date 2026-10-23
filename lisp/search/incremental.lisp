@@ -184,6 +184,34 @@ one (COUNT-LINE-MATCHES), or without EVERY the first on each line
                     (count-first-per-line rope matcher start end :stop stop))
               (if status (return nil) count))))
 
+(defun stretch-count (buffer stretches text regex &key every ends stop)
+  "How many matches TEXT has in STRETCHES of BUFFER, (START . END) each: with
+EVERY each match, else the lines a filter by it leaves (LINES-MATCHING),
+records ending as ENDS says (RECORD-ENDS); NIL for a pattern that cannot be
+used, or once STOP answers true. REGEX tells whether TEXT is a regular
+expression; $ matches before a carriage return where BUFFER's lines end with
+one and a newline. Counted on every core."
+  (let* ((crlf (buffer-crlf-p buffer))
+         (filter (and (plusp (length text)) (make-search-filter text :regex regex :crlf crlf)))
+         (rope (tuatara.buffer:buffer-text buffer)))
+    (when filter
+      (if every
+          (count-in-stretches rope (search-filter-matcher filter) stretches :every t :stop stop)
+          (let ((count (nth-value 1 (lines-matching-everywhere
+                                     filter rope
+                                     (coerce (loop for (start . end) in stretches collect start collect end) '(simple-array fixnum (*)))
+                                     crlf nil stop nil ends))))
+            (and (not (and stop (funcall stop))) count))))))
+
+(defun stretch-pattern-count (counter buffer stretches text regex &key every ends)
+  "STRETCH-COUNT of TEXT in STRETCHES of BUFFER as it is typed at a question,
+kept up to date by COUNTER as PATTERN-COUNT-UPDATE counts: its two values,
+for READ-PATTERN's COUNT. Nothing is counted for a pattern that cannot be
+used."
+  (pattern-count-update counter (and (plusp (length text)) (list text regex every stretches (tuatara.buffer:buffer-text buffer)))
+                        (loop for (start . end) in stretches sum (- end start))
+                        (lambda (stop) (stretch-count buffer stretches text regex :every every :ends ends :stop stop))))
+
 (defvar *search-in-loop* nil
   "True while the search's question reads keys, which takes in what a search
 in the background finds; a search outside it (the next match after it ended)

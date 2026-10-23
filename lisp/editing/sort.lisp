@@ -1330,17 +1330,6 @@ hold line breaks are kept or deleted whole."
              (message "~a" (funcall report (car gone)))
              nil)))))
 
-(defun matching-lines-count (counter buffer lines text regex)
-  "How many lines of BUFFER in LINES, (START . END) each, TEXT matches, a
-regular expression when REGEX is true, else literal text, counted by COUNTER
-as PATTERN-COUNT-UPDATE counts, its two values for READ-PATTERN's COUNT;
-nothing for a pattern that cannot be used."
-  (let ((matcher (and (plusp (length text)) (make-pattern-matcher text :regex regex)))
-        (rope (tuatara.buffer:buffer-text buffer)))
-    (pattern-count-update counter (and matcher (list text regex lines rope))
-                          (loop for (start . end) in lines sum (- end start))
-                          (lambda (stop) (count-in-stretches rope matcher lines :stop stop)))))
-
 (defun read-line-filter (buffer words start end)
   "Ask how to filter the lines of BUFFER from START below END, WORDS (keep
 lines) heading the question: what of a line the pattern is tried on
@@ -1358,7 +1347,10 @@ records' header (LIST-HEADER-P), or NIL."
             (unwind-protect
                  (read-pattern (format nil "~a~@[ whose ~a holds~]" words what)
                                ;; how many lines the pattern matches, when it is tried on the whole line
-                               :count (and (null what) (lambda (text regex) (matching-lines-count counter buffer lines text regex))))
+                               :count (and (null what)
+                                           (lambda (text regex)
+                                             (stretch-pattern-count counter buffer lines text regex
+                                                                    :ends (and (records-file-p buffer) (record-ends buffer))))))
               (stop-pattern-count counter)))
         (values pattern regex matcher what first)))))
 

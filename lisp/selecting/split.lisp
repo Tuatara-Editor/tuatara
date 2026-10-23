@@ -693,21 +693,6 @@ it as a regular expression (REGEX tells whether it was typed as one)."
   (let ((whole (and (plusp (length text)) (char= (char text 0) #\%))))
     (values whole (pattern-regex (if whole (subseq text 1) text) regex))))
 
-(defun split-count-update (counter buffer selected text regex)
-  "How many matches TEXT, typed at the question of \\<normal>\\[split-selection], has
-in what the split searches, SELECTED or the whole of BUFFER after a leading
-%, counted by COUNTER as PATTERN-COUNT-UPDATE counts, its two values for
-READ-PATTERN's COUNT; none for a rectangle's block, whose rows are searched
-as the split comes to them, or a regexp that does not compile. REGEX tells
-whether TEXT is a regular expression."
-  (multiple-value-bind (whole regexp) (split-input text regex)
-    (let* ((scope (if whole (list (cons 0 (tuatara.buffer:buffer-size buffer))) selected))
-           (matcher (and (plusp (length regexp)) (not (block-scope-p scope))
-                         (ignore-errors (split-matcher regexp nil buffer))))
-           (rope (tuatara.buffer:buffer-text buffer)))
-      (pattern-count-update counter (and matcher (list regexp scope rope)) (scope-extent scope)
-                            (lambda (stop) (count-in-stretches rope matcher scope :every t :stop stop))))))
-
 (define-command split-selection ()
   "Hold every match of a regexp in the selection, then wait for a verb:
 \\<*split-chooser-keymap*>\\[split-insert] types before every match and
@@ -747,7 +732,13 @@ can be missed; \\[split-selection-thorough] finds every match of up to a megabyt
         (multiple-value-call #'split-input
           (unwind-protect
                (read-pattern "split on"
-                             :count (lambda (text regex) (split-count-update counter b selected text regex)))
+                             :count (lambda (text regex)
+                                      (multiple-value-bind (whole regexp) (split-input text regex)
+                                        (let ((scope (if whole (list (cons 0 (tuatara.buffer:buffer-size b))) selected)))
+                                          ;; a rectangle's block is searched row by row as the split comes to it
+                                          (if (block-scope-p scope)
+                                              (stretch-pattern-count counter b '() "" t)
+                                              (stretch-pattern-count counter b scope regexp t :every t))))))
             (stop-pattern-count counter)))
       (if (zerop (length regexp))
           (message "Nothing to split on")
