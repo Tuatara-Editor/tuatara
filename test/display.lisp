@@ -818,3 +818,27 @@
         (tuatara.buffer:buffer-insert b (tuatara.buffer:buffer-goto-line b 395) "new line")
         (tuatara.display:window-layout w)
         (same-as-anew)))))
+
+(define-test (display columns-agree-with-what-is-shown)
+  ;; the columns a character is counted as taking are those of the text it is shown as
+  (flet ((agree (code &optional invisible)
+           (let ((c (code-char code)))
+             (multiple-value-bind (text own) (tuatara.display:char-display c 0 8 invisible)
+               (when (stringp text)
+                 (is = (length text) own "~x shown as ~s" code text)
+                 (is = (length text) (tuatara.display:code-columns code invisible) "~x counted" code)
+                 (is = (length text) (tuatara.display:advance-column code 0 0 8 invisible) "~x advanced" code))))))
+    (loop for code from 0 below #x300 unless (= code 9) do (agree code))
+    (loop for code from #xDC80 to #xDCFF do (agree code))
+    (loop for (low . high) in tuatara.display:*invisible-characters*
+          do (loop for code from low to high do (agree code t)))
+    ;; a character that draws nothing past the planes of four digits and one more
+    (let ((tuatara.display:*invisible-characters* (list (cons #x10FFFD #x10FFFD))))
+      (agree #x10FFFD t)))
+  ;; a tab reaches its stop, wherever it stands
+  (is = 3 (tuatara.display:advance-column 9 5 0 8 nil))
+  (is = 8 (tuatara.display:advance-column 9 8 0 8 nil))
+  ;; a control character takes one column in the panel, as the sign it is shown as there
+  (loop for code from 0 below 160
+        do (is = (length (tuatara.display:displayable (string (code-char code))))
+               (tuatara.command::panel-char-columns (code-char code)))))

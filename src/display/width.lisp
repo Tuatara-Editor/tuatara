@@ -116,6 +116,11 @@ its buffer shows such characters: its code in hexadecimal between angle
 brackets, four digits at least, as <FEFF> or <E0020>."
   (format nil "<~4,'0X>" code))
 
+(defun invisible-code-columns (code)
+  "The columns INVISIBLE-CODE-DISPLAY's text for CODE takes: its hexadecimal
+digits, four at least, and the two angle brackets."
+  (+ 2 (max 4 (ceiling (integer-length code) 4))))
+
 (defun mark-code-p (code)
   "True when the character of CODE is a mark that combines with the character
 before it (an accent, a vowel sign), one shown on *MARK-BASE* where nothing
@@ -148,10 +153,10 @@ for. Loading this file again starts it afresh.")
   "Number of columns the character of CODE occupies in the grid (CHAR-COLUMNS);
 with INVISIBLE, a character that draws nothing takes those of its code
 \(INVISIBLE-CODE-DISPLAY)."
-  (cond ((< code 32) 2)
-        ((= code 127) 2)
+  (cond ((< code 32) 2)                  ; ^X
+        ((= code 127) 2)                 ; ^?
         ((< code 160) (if (< code 128) 1 4)) ; C1 controls shown as \xNN
-        ((and invisible (invisible-code-p code)) (if (> code #xFFFF) 7 6))
+        ((and invisible (invisible-code-p code)) (invisible-code-columns code))
         ((< code #x40000)
          (let ((table *plane-columns*))
            (declare (type (simple-array (unsigned-byte 8) (#x40000)) table))
@@ -335,6 +340,21 @@ U+DC80..U+DCFF), is shown as: \\x80 for the octet #x80."
   (declare (type fixnum column width))
   (* width (1+ (floor column width))))
 
+(declaim (inline advance-column))
+(defun advance-column (code column before tab-width invisible)
+  "Two values: the columns the character of CODE takes on the screen where it
+stands at COLUMN after the character of code BEFORE (0 at a line's start),
+and the code to give as BEFORE for the character after it. A tab reaches the
+next of every TAB-WIDTH columns, a control character takes two (^X), any
+other what CODE-COLUMNS says (with INVISIBLE, a character that draws nothing
+the columns of its code shown), and a grapheme cluster the columns of its
+first character (CLUSTER-COLUMNS). Every count of columns along a line goes
+by this."
+  (declare (type fixnum code column before tab-width))
+  (cond ((= code 9) (values (- (next-tab-stop column tab-width) column) code))
+        ((< code 128) (values (if (tuatara.text:control-code-p code) 2 1) code))
+        (t (cluster-columns code before (code-columns code invisible) invisible))))
+
 (defun char-display (char column tab-width &optional invisible)
   "How CHAR, at COLUMN, is shown, as three values: the text shown (CHAR
 itself when it is shown as itself, else a string), the columns it takes, and
@@ -347,7 +367,7 @@ that draws nothing as its code (INVISIBLE-CODE-DISPLAY)."
     (cond ((char= char #\Tab)
            (let ((n (- (next-tab-stop column tab-width) column)))
              (values (make-string n :initial-element #\Space) n nil)))
-          ((or (< code 32) (<= 127 code 159))
+          ((tuatara.text:control-code-p code)
            (let ((text (control-char-display char))) (values text (length text) nil)))
           ((tuatara.text:raw-byte-code-p code)
            (values (raw-byte-display code) 4 :raw-byte))
@@ -366,7 +386,7 @@ draws a piece of a picture. STRING itself when nothing needs it."
   (flet ((unsafe (c)
            (let ((code (char-code c)))
              (or (<= #xD800 code #xDFFF)
-                 (and controls (or (< code 32) (<= 127 code 159)
+                 (and controls (or (tuatara.text:control-code-p code)
                                    (= code tuatara.frontend:+kitty-placeholder+)
                                    (in-ranges-p code *direction-controls*)))))))
     (if (find-if #'unsafe string)

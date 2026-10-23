@@ -371,8 +371,7 @@ were before MAP-LINE-SLICES: (LINE START END START-COLUMN END-COLUMN LINE-END)."
          (total (tuatara.text:rope-bytes rope))
          (found '()))
     (tuatara.text:map-line-slices (lambda (&rest slice) (push slice found)) rope 0 1 0 10
-                                  :tab-width 8
-                                  :width (lambda (code before) (declare (ignore before)) (values (if (= code #x200B) 0 1) code)))
+                                  :width (lambda (code column before) (declare (ignore column before)) (values (if (= code #x200B) 0 1) code)))
     (destructuring-bind (line start end start-column end-column line-end) (first found)
       (is = 0 line)
       (is = 0 start)

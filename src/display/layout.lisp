@@ -304,10 +304,8 @@ still being counted), so that a line of a gigabyte costs no wait.")
 
 (defun scan-columns (rope from to tab-width &key (column 0) (limit most-positive-fixnum) crlf invisible)
   "Walk ROPE's characters from FROM, a character's start, counting the columns
-they take on the screen from COLUMN on: a tab to the next multiple of
-TAB-WIDTH, a control character two, any other as CODE-COLUMNS says (with
-INVISIBLE, a character that draws nothing as its code shown), a grapheme
-cluster as its first character (CLUSTER-COLUMNS). Stops at
+they take on the screen from COLUMN on, as ADVANCE-COLUMN does with TAB-WIDTH
+and INVISIBLE. Stops at
 the first character's start at or after TO, at the first where the count has
 reached LIMIT (past the marks and joined emoji of the cluster there), or
 before the line's end (a newline, or with CRLF a carriage
@@ -336,24 +334,20 @@ read a block at a time, an ASCII octet looked at once."
           (tuatara.text:rope-copy-into rope pos have block)
           (loop while (< i cut)
                 do (let ((b (aref block i)))
-                     (cond ((or (= b 10)
-                                (and crlf (= b 13) (< (1+ i) avail) (= (aref block (1+ i)) 10)))
-                            (return-from scan-columns (values (+ pos i) column t)))
-                           ((< b 128)
-                            (when (>= column limit) (return))
-                            (incf column (cond ((= b 9) (- (next-tab-stop column tab-width) column))
-                                               ((or (< b 32) (= b 127)) 2)
-                                               (t 1)))
-                            (setf before b)
-                            (incf i))
-                           (t (multiple-value-bind (code length) (tuatara.text:octets-decode block i avail)
-                                (multiple-value-bind (more next) (cluster-columns code before (code-columns code invisible) invisible)
-                                  (declare (type fixnum more))
-                                  ;; at LIMIT, on past what goes with the cluster before
-                                  (when (and (>= column limit) (plusp more) (/= code #xFE0F)) (return))
-                                  (incf column more)
-                                  (setf before next))
-                                (incf i (the fixnum length)))))))
+                     (when (or (= b 10)
+                               (and crlf (= b 13) (< (1+ i) avail) (= (aref block (1+ i)) 10)))
+                       (return-from scan-columns (values (+ pos i) column t)))
+                     (multiple-value-bind (code length)
+                         (if (< b 128) (values b 1) (tuatara.text:octets-decode block i avail))
+                       (declare (type fixnum code length))
+                       (multiple-value-bind (more next) (advance-column code column before tab-width invisible)
+                         (declare (type fixnum more next))
+                         ;; at LIMIT; past it, on past what goes with the cluster before
+                         (when (and (>= column limit) (or (< code 128) (and (plusp more) (/= code #xFE0F))))
+                           (return))
+                         (incf column more)
+                         (setf before next))
+                       (incf i length))))
           (incf pos i)
           (setf size (min +scan-block+ (* 2 size))))))))
 
@@ -583,7 +577,8 @@ O(*SCREEN-COLUMN-REACH* + log n) however long its line (SKIP-COLUMNS)."
                            (t
                             (multiple-value-bind (string own shown)
                                 (char-display char (+ skipped (row-columns row)) tab-width invisible)
-                              (multiple-value-bind (columns next) (cluster-columns (char-code char) before own invisible)
+                              (multiple-value-bind (columns next)
+                                  (advance-column (char-code char) (+ skipped (row-columns row)) before tab-width invisible)
                                 (declare (type fixnum columns))
                                 (setf before next)
                                 (when (and (= columns 1) (zerop own))

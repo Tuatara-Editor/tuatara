@@ -107,7 +107,7 @@ given by a program). NIL for NIL."
   (and text
        (let ((out (make-string-output-stream)) (blank nil))
          (loop for c across text
-               do (if (let ((code (char-code c))) (or (< code 32) (<= 127 code 159)))
+               do (if (control-code-p (char-code c))
                       (setf blank t)
                       (progn (when blank (write-char #\Space out) (setf blank nil))
                              (write-char c out))))

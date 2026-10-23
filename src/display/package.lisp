@@ -18,7 +18,7 @@
            #:reader #:make-reader #:reader-next #:reader-position
            #:window #:make-window #:window-buffer #:window-start #:call-keeping-window-starts #:call-keeping-window-lines #:window-width #:window-height #:window-wrap
            #:window-hscroll #:line-prefix-columns #:*layout-probe* #:window-goal-column #:window-rows #:window-margin #:window-layout #:window-point-position #:large-column #:window-line-scale #:window-text-width #:window-rows-drawn
-           #:window-ensure-point-visible #:step-lines #:window-scroll #:window-recenter #:display-column #:code-columns #:screen-slice-keys #:buffer-slice-keys #:buffer-screen-column #:buffer-move-to-screen-column #:buffer-screen-slice #:scroll-lines
+           #:window-ensure-point-visible #:step-lines #:window-scroll #:window-recenter #:display-column #:code-columns #:advance-column #:screen-slice-keys #:buffer-slice-keys #:buffer-screen-column #:buffer-move-to-screen-column #:buffer-screen-slice #:scroll-lines
            #:*tab-width-function* #:sensible-tab-width #:tab-width-of #:*soft-wrap-function* #:soft-wrap-of #:window-wraps-p
            #:window-layout-rows #:window-row-start #:rows-back
            #:window-point #:window-point-anchor #:window-start-anchor #:window-divider #:window-use-time #:window-full-height

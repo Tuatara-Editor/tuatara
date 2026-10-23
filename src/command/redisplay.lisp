@@ -758,7 +758,7 @@ match."
            (let ((code (char-code c)))
              (if (eq which :raw-bytes)
                  (and (tuatara.text:raw-byte-code-p code) (tuatara.display:raw-byte-display code))
-                 (cond ((or (< code 32) (<= 127 code 159)) (tuatara.display:control-char-display c))
+                 (cond ((tuatara.text:control-code-p code) (tuatara.display:control-char-display c))
                        ((and (>= code #x61C)
                              (or (tuatara.display:in-ranges-p code tuatara.display:*direction-controls*)
                                  (tuatara.display:in-ranges-p code *escaped-invisibles*)))

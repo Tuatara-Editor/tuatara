@@ -106,6 +106,11 @@ for a size larger than a megabyte, new octets. BODY must not keep it."
   "True when CODE is the code of a raw byte's character, U+DC80..U+DCFF."
   (<= #xDC80 code #xDCFF))
 
+(declaim (inline control-code-p))
+(defun control-code-p (code)
+  "True when CODE is a control character's: 0 to 31, 127 to 159."
+  (or (< code 32) (<= 127 code 159)))
+
 (sb-ext:defglobal **utf8-classes**
     (let ((table (make-array 256 :element-type '(unsigned-byte 8))))
       (dotimes (b 256 table)
@@ -1773,7 +1778,7 @@ back to just after the last octet before it that is not one of them, or BOUND
   "True for an octet a blank line may hold: a space, a tab or a carriage return."
   (or (= octet 32) (= octet 9) (= octet 13)))
 
-(defun map-line-slices (function rope start end left right &key crlf octets tab-width width block)
+(defun map-line-slices (function rope start end left right &key crlf octets width block)
   "Call FUNCTION for each line of ROPE that starts at a byte offset in [START,
 END), START being a line start: with the line's start, the byte offsets of its
 LEFT-th and RIGHT-th characters (its end, where it is shorter), the columns
@@ -1782,13 +1787,13 @@ line's end: its newline, with CRLF the carriage return before one, or the
 text's end. With OCTETS, three more: the block of octets read, where in the
 text it starts and where it ends; a line shorter than a block is in it whole,
 its newline too. Columns count characters, as TUATARA.BUFFER:BUFFER-COLUMN
-does: a raw byte is one. With TAB-WIDTH, they are columns on the screen
-instead: a tab to its next stop, a control character two, any other
-character what WIDTH says, a function of its code and of what it gave as
-its second value for the character before (that character's code for an
-ASCII one, 0 at the line's start) returning the columns and that second
-value, so that a grapheme cluster can take the columns of its first
-character; a tab across LEFT or
+does: a raw byte is one. With WIDTH, they are columns on the screen
+instead: a printable ASCII character takes one, any other what WIDTH says, a
+function of its code, the column it stands at and what it gave as its second
+value for the character before (that character's code for a printable ASCII
+one, 0 at the line's start) returning the columns and that second value, so
+that a tab can reach its stop and a grapheme cluster take the columns of its
+first character; a tab across LEFT or
 RIGHT is in the slice (its start or end column then outside them), another
 character across one out of it, and a character of no width (a combining
 mark) goes with the one before it. The text is read once, a block at a time:
@@ -1809,7 +1814,7 @@ each octet. Complexity: O(END - START + the length of the last line)."
       (return-from map-line-slices
         (with-octet-block (kept size)
           (map-line-slices function rope start end left right
-                           :crlf crlf :octets octets :tab-width tab-width :width width :block kept))))
+                           :crlf crlf :octets octets :width width :block kept))))
     (let ((block block))
       (declare (type octets block))
       (flet ((fill-from (at)
@@ -1825,7 +1830,7 @@ each octet. Complexity: O(END - START + the length of the last line)."
                        (avail (- block-end block-start))
                        (column 0) (slice-start -1) (start-column 0) (before 0))
                    (declare (type fixnum i avail column slice-start start-column before))
-                   (if (null tab-width)
+                   (if (null width)
                        (loop
                          (when (and (= column left) (< slice-start 0))
                            (setf slice-start (+ block-start i) start-column column))
@@ -1856,12 +1861,11 @@ each octet. Complexity: O(END - START + the length of the last line)."
                                      (and crlf (= b 13) (< (1+ i) avail) (= (aref block (1+ i)) 10)))
                              (return))
                            (multiple-value-bind (w len next)
-                               (cond (tab (values (- (* (1+ (floor column (the fixnum tab-width))) (the fixnum tab-width)) column) 1 b))
-                                     ((or (< b 32) (= b 127)) (values 2 1 b))
-                                     ((< b 128) (values 1 1 b))
-                                     (t (multiple-value-bind (code length) (octets-decode block i avail)
-                                          (multiple-value-bind (w next) (funcall (the function width) code before)
-                                            (values w length next)))))
+                               (if (< 31 b 127)
+                                   (values 1 1 b)
+                                   (multiple-value-bind (code length) (if (< b 128) (values b 1) (octets-decode block i avail))
+                                     (multiple-value-bind (w next) (funcall (the function width) code column before)
+                                       (values w length next))))
                              (declare (type fixnum w len next))
                              (setf before next)
                              (when (and (< slice-start 0) (plusp w)
