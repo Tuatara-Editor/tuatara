@@ -152,10 +152,21 @@ agenda keeps them (ORG-AGENDA-ENTRIES), never opened for it."
     (* 1000 (- (char-code #\C) (char-code (if match (char (aref groups 0) 0) #\B))))))
 
 (defun org-file-keyword (text name)
-  "The value of TEXT's first #+NAME: line, or NIL."
-  (multiple-value-bind (match groups)
-      (cl-ppcre:scan-to-strings (format nil "(?im)^[ \\t]*#\\+~a:[ \\t]*(.*?)[ \\t]*$" name) text)
-    (and match (plusp (length (aref groups 0))) (aref groups 0))))
+  "The value of TEXT's first #+NAME: line, NAME in any case, blanks about it
+left out; NIL when it has none or that line's is empty."
+  (flet ((blank-p (c) (or (char= c #\Space) (char= c #\Tab))))
+    (let ((length (length text)) (size (length name)))
+      (loop for start = 0 then (1+ end)
+            for end = (or (position #\Newline text :start start) length)
+            do (let ((at (or (position-if-not #'blank-p text :start start :end end) end)))
+                 (when (and (< (+ at 2 size) end)
+                            (string= "#+" text :start2 at :end2 (+ at 2))
+                            (string-equal name text :start2 (+ at 2) :end2 (+ at 2 size))
+                            (char= (char text (+ at 2 size)) #\:))
+                   (let* ((from (or (position-if-not #'blank-p text :start (+ at 3 size) :end end) end))
+                          (to (if (< from end) (1+ (position-if-not #'blank-p text :start from :end end :from-end t)) from)))
+                     (return (and (< from to) (subseq text from to))))))
+            until (>= end length)))))
 
 (defun org-file-tags (text)
   "The tags TEXT's #+FILETAGS: line gives every headline of it, in order."
