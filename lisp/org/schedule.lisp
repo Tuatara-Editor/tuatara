@@ -103,11 +103,6 @@ their number, 0 for Sunday: sun, mon and so on.")
     ("eleven" . 11) ("twelve" . 12))
   "The words for how often a repeat comes round: every other week, every third month.")
 
-(defparameter *org-repeat-ordinals*
-  '(("first" . 1) ("1st" . 1) ("second" . 2) ("2nd" . 2) ("third" . 3) ("3rd" . 3) ("fourth" . 4) ("4th" . 4)
-    ("fifth" . 5) ("5th" . 5) ("last" . -1))
-  "The words for which weekday of a month: the first Monday, the last Friday.")
-
 (defun org-repeat-weekday-set (words)
   "The days of the week WORDS name, 0 for Sunday to 6 for Saturday, in
 order, or NIL when they name anything else: weekday or workday (Monday to
@@ -223,7 +218,7 @@ arguments for it, which are the second value."
                  ;; the Nth or last weekday of every month, or of every N months, from the next time it comes
                  ((and (= (length before) 2) (= (length after) 1)
                        (string= (string-right-trim "s" (first after)) "month"))
-                  (let ((n (cdr (assoc (first before) *org-repeat-ordinals* :test #'string=)))
+                  (let ((n (if (string= (first before) "last") -1 (ordinal-of-word (first before))))
                         (dayname (weekday-of-word (second before))))
                     (when (and n dayname)
                       (setf start (org-rule-next (make-org-rule :kind :float :arguments (list t dayname n nil)) today))

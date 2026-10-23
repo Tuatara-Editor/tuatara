@@ -287,3 +287,16 @@
     (is = (tuatara.dates:day-number 2027 3 1) (tuatara.defaults::calendar-read-month "mar 2027"))
     (false (tuatara.defaults::calendar-read-month "marching 2027")))
   (is equal '(1 3) (tuatara.defaults::org-repeat-weekday-set '("mondays" "and" "wed"))))
+
+(define-test (dates ordinals-as-words)
+  ;; the first five as words, read and written one way
+  (is equal '(1 2 3 4 5 1 2 3 5) (mapcar #'tuatara.dates:ordinal-of-word '("first" "Second" "third" "fourth" "fifth" "1st" "2nd" "3rd" "5th")))
+  (false (tuatara.dates:ordinal-of-word "2st"))
+  (false (tuatara.dates:ordinal-of-word "sixth"))
+  (let ((now (encode-universal-time 0 0 12 23 10 2026)))
+    (is equal "<%%(diary-float t 2 2)>" (tuatara.defaults::org-words-repeat "2nd tuesday every month" now))
+    (is equal "Every month on the second Tuesday, from Tue 10 Nov 2026"
+        (tuatara.defaults::repeat-words '("start=2026-11-10" "repeats=monthly-nth")))
+    (is equal '(2 nil) (multiple-value-list (tuatara.defaults::repeat-nth (tuatara.dates:day-number 2026 11 10))))
+    (is equal '(5 t) (multiple-value-list (tuatara.defaults::repeat-nth (tuatara.dates:day-number 2026 10 30))))
+    (is equal '(4 t) (multiple-value-list (tuatara.defaults::repeat-nth (tuatara.dates:day-number 2026 2 28))))))

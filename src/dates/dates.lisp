@@ -195,6 +195,19 @@ least (sep, sept, september); NIL for none."
   (let ((index (name-of-word word *month-names*)))
     (and index (1+ index))))
 
+(defparameter *ordinal-words* '("first" "second" "third" "fourth" "fifth")
+  "The words for the first five of anything, first at 0: which of its
+weekday in a month a day is, the first Monday to the fifth.")
+
+(defun ordinal-of-word (word)
+  "The place WORD names, 1 to 5: first or 1st, second or 2nd, up to fifth or
+5th (*ORDINAL-WORDS*); NIL for none."
+  (let ((place (position word *ordinal-words* :test #'string-equal)))
+    (if place
+        (1+ place)
+        (let ((n (and (= (length word) 3) (digit-char-p (char word 0)))))
+          (and n (<= 1 n 5) (string-equal (subseq word 1) (case n (1 "st") (2 "nd") (3 "rd") (t "th"))) n)))))
+
 ;;; Times written in a pattern
 
 (defun format-day (pattern day &optional (hour 0) (minute 0) (second 0) offset)

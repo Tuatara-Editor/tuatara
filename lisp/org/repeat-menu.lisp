@@ -36,16 +36,16 @@ none is given, and the text of a time given with it, or NIL."
 
 (defun repeat-nth (day)
   "Which of its weekday in its month the day number DAY is, 1 to 5, and
-whether it is the last of them, as two values."
+whether it is the last of them (ORG-FLOAT-DAY), as two values."
   (multiple-value-bind (year month date) (day-date day)
-    (values (ceiling date 7) (> (+ date 7) (month-length year month)))))
+    (values (ceiling date 7) (eql day (org-float-day year month (weekday day) -1 nil)))))
 
 (defun repeat-kinds (start)
   "The ways a repeat starting on the day number START may go, each (KEY
 WORDS), WORDS what the menu says, named from START."
   (multiple-value-bind (nth last) (repeat-nth start)
     (let ((weekday (aref *weekday-names* (weekday start)))
-          (ordinal (nth (1- nth) '("first" "second" "third" "fourth" "fifth"))))
+          (ordinal (nth (1- nth) *ordinal-words*)))
       (remove nil
               (list '("none" "Does not repeat")
                     '("daily" "Daily")
@@ -218,7 +218,7 @@ Wednesday, 18:00, until Mon 21 Dec 2026."
                     ((string= kind "monthly-day") (format nil "~a on day ~d" (every-of "month" "months") (nth-value 2 (day-date start))))
                     ((string= kind "monthly-nth")
                      (format nil "~a on the ~a ~a" (every-of "month" "months")
-                             (nth (1- (repeat-nth start)) '("first" "second" "third" "fourth" "fifth")) weekday))
+                             (nth (1- (repeat-nth start)) *ordinal-words*) weekday))
                     ((string= kind "monthly-last") (format nil "~a on the last ~a" (every-of "month" "months") weekday))
                     (t (format nil "~a on ~a" (every-of "year" "years") (repeat-day-words "%e %B" start))))
               (repeat-time arguments)
