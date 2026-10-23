@@ -234,6 +234,16 @@ ends, and the repeaters and warnings together are groups, in that order
             (g "\\d{1,2}") (g "\\d{2}") (g "\\d{1,2}") (g "\\d{2}")
             (g "(?: +(?:\\.\\+|\\+\\+|\\+|--|-)\\d+[hdwmy](?:/\\d+[hdwmy])?)*"))))
 
+(defun org-rule-timestamp-body (&optional groups)
+  "What a timestamp by rule holds between its brackets, as a pattern: %%, its
+form in parentheses, and a time of day or a range of two after it, an hour
+to 23 and minutes to 59, a range ending at 24:00 too
+\(%%(diary-float t 1 1) 10:00-11:00). With GROUPS, the form within its
+parentheses and the time are groups, in that order (ORG-READ-RULE)."
+  (let ((hour "(?:[01]?[0-9]|2[0-3]):[0-5][0-9]"))
+    (format nil (if groups "%%\\(([^>\\n]*)\\)(?: +(~a(?:-~a)?))?" "%%\\((?:[^>\\n]*)\\)(?: +(?:~a(?:-~a)?))?")
+            hour (format nil "(?:~a|24:00)" hour))))
+
 (defparameter *org-headline-re* "\\*+[ \\t]"
   "A headline's start: stars, then a space.")
 
@@ -1429,7 +1439,7 @@ and what is between its parentheses as its two groups.")
 
 (defparameter *org-timestamp-re*
   (let ((stamp (org-timestamp-body)))
-    (format nil "(?:<~a>(?:--<~a>)?|\\[~a\\](?:--\\[~a\\])?|<%%\\([^>\\n]*\\)(?: +\\d{1,2}:\\d{2}(?:-\\d{1,2}:\\d{2})?)?>)" stamp stamp stamp stamp))
+    (format nil "(?:<~a>(?:--<~a>)?|\\[~a\\](?:--\\[~a\\])?|<~a>)" stamp stamp stamp stamp (org-rule-timestamp-body)))
   "A timestamp, active or inactive, a range, or a diary sexp, a time or a
 time range after it too (<%%(diary-float t 1 1) 10:00>).")
 
@@ -1442,7 +1452,7 @@ time range after it too (<%%(diary-float t 1 1) 10:00>).")
   "One active timestamp: each date of a range alone.")
 
 (defparameter *org-rule-timestamp-scanner*
-  (cl-ppcre:create-scanner "<%%\\([^>\\n]*\\)(?: +\\d{1,2}:\\d{2}(?:-\\d{1,2}:\\d{2})?)?>")
+  (cl-ppcre:create-scanner (format nil "<~a>" (org-rule-timestamp-body)))
   "One timestamp by rule, <%%(diary-float t 1 1) 10:00> (ORG-READ-RULE).")
 
 (defparameter *org-active-range-scanner*

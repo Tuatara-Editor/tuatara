@@ -192,13 +192,9 @@ as ORG-READ-RULE reads them; and HOUR, MINUTE, END-HOUR and END-MINUTE of
 the time written after it, or NIL."
   kind arguments hour minute end-hour end-minute)
 
-(defparameter *org-rule-pattern*
-  "^<%%\\(([^>\\n]*)\\)(?: +(\\d{1,2}:\\d{2}(?:-\\d{1,2}:\\d{2})?))?>$"
-  "A timestamp by rule: <%%( its form ) and a time or a time range after it,
-each a group.")
-
-(defparameter *org-rule-scanner* (cl-ppcre:create-scanner *org-rule-pattern*)
-  "*ORG-RULE-PATTERN* made ready to match once, not again at each rule read.")
+(defparameter *org-rule-scanner* (cl-ppcre:create-scanner (format nil "^<~a>$" (org-rule-timestamp-body t)))
+  "A timestamp by rule, whole (ORG-RULE-TIMESTAMP-BODY): its form and its
+time or range of times, each a group.")
 
 (defun org-read-rule-data (text start end)
   "What TEXT holds from START below END read as data, never run: numbers,

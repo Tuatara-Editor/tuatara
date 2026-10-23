@@ -204,6 +204,21 @@ help left out."
     (dolist (other others)
       (false (tuatara.defaults::org-read-ts other) "~a not read" other)
       (false (cl-ppcre:scan tuatara.defaults::*org-one-timestamp-scanner* other) "~a not found" other)))
+  ;; timestamps by rule likewise: found whole by each pattern that finds them, and read
+  (dolist (stamp '("<%%(diary-float t 1 1)>" "<%%(diary-float t 1 1) 10:00>" "<%%(diary-cyclic 2 2026 10 1) 9:05-10:30>"
+                   "<%%(diary-cyclic 2 2026 10 1) 22:00-24:00>" "<%%(memq (calendar-day-of-week date) '(1 2 3 4 5))>"
+                   "<%%(and (diary-block 2026 11 1 2026 11 10) (memq (calendar-day-of-week date) '(1)))>"
+                   "<%%(or (diary-cyclic 14 2026 11 2) (diary-cyclic 14 2026 11 4)) 18:00>"))
+    (let ((line (format nil "Meet ~a then" stamp)))
+      (true (tuatara.defaults::org-read-rule stamp) "~a read" stamp)
+      (is equal (list stamp) (cl-ppcre:all-matches-as-strings tuatara.defaults::*org-timestamp-re* line) "~a found" stamp)
+      (is equal (list stamp) (cl-ppcre:all-matches-as-strings tuatara.defaults::*org-rule-timestamp-scanner* line))
+      (is equal (list stamp) (cl-ppcre:register-groups-bind (k text) (tuatara.defaults::*org-planning-item-scanner* (format nil "SCHEDULED: ~a" stamp))
+                               (declare (ignore k)) (list text)))))
+  (dolist (other '("<%%(diary-float t 1 1) 25:00>" "<%%(diary-float t 1 1) 10:00-25:00>" "<%%(diary-float t 1 1) 9:60>"))
+    (false (tuatara.defaults::org-read-rule other) "~a not read" other)
+    (false (cl-ppcre:scan tuatara.defaults::*org-timestamp-re* other) "~a not found" other)
+    (false (cl-ppcre:scan tuatara.defaults::*org-rule-timestamp-scanner* other) "~a not found" other))
   ;; what is read of one
   (let ((ts (tuatara.defaults::org-read-ts "<2026-10-05 Mon 09:00-10:30 .+1d -3d>")))
     (is equal '(2026 10 5 9 0 10 30 :restart 1 #\d :all 3 #\d)
