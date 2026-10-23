@@ -49,13 +49,6 @@ property, a whole number, else *ORG-NOTIFY-BEFORE*; 0 for none."
         (and (integerp *org-notify-before*) (max 0 *org-notify-before*))
         0)))
 
-(defun org-notify-hour-minute (text)
-  "TEXT, a time of day (08:00), as two values, its hour and minute; NIL when it is none."
-  (multiple-value-bind (match groups) (cl-ppcre:scan-to-strings "^(\\d{1,2}):(\\d{2})$" (or text ""))
-    (when match
-      (let ((hour (parse-integer (aref groups 0))) (minute (parse-integer (aref groups 1))))
-        (and (<= hour 23) (<= minute 59) (values hour minute))))))
-
 (defun org-notify-due (items now)
   "The notifications due at the universal time NOW of ITEMS, today's agenda
 lines, each (KEY TITLE WORDS) (KEY as **ORG-NOTIFY-SENT** keeps them): for a
@@ -94,13 +87,13 @@ day. Those told already are left out."
                 (if time
                     (let* ((event (day-universal-time today (floor time 100) (mod time 100)))
                            (before (* 60 (org-notify-minutes-before entry)))
-                           (clock (format nil "~2,'0d:~2,'0d" (floor time 100) (mod time 100))))
+                           (clock (time-range-text (floor time 100) (mod time 100))))
                       (cond ((and (plusp before) (<= (- event before) now) (< now event))
                              (add :before (format nil "~a, in ~d min" clock (ceiling (- event now) 60))))
                             ((and (<= event now) (< now (+ event 300)))
                              (add :at (format nil "~a, now" clock)))))
-                    (multiple-value-bind (hour minute) (org-notify-hour-minute *org-notify-day-time*)
-                      (when (and hour (<= (day-universal-time today hour minute) now))
+                    (multiple-value-bind (hour minute end-hour) (read-time-range (or *org-notify-day-time* ""))
+                      (when (and hour (null end-hour) (<= (day-universal-time today hour minute) now))
                         (add :day "Today"))))))))))))
 
 (defun org-notify-arguments (title words)

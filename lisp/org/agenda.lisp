@@ -432,17 +432,13 @@ and its URGENCY, by which it is ordered (ORG-AGENDA-SORT)."
   day type extra time end entry title urgency)
 
 (defun org-time-of-day (text)
-  "The time of day TEXT holds first (09:30, 9:30-10:00, 3pm) as a number of
-hours and minutes: 930, or NIL; and the part it was found in, as a second value."
-  (multiple-value-bind (start end starts ends)
-      (cl-ppcre:scan "(?i)(?<![\\d:])(\\d{1,2}):(\\d{2})(?:-\\d{1,2}:\\d{2})?(?![\\d:])|(?<![\\d:])(\\d{1,2})(?::(\\d{2}))?([ap]m)\\b" text)
+  "The time of day TEXT holds first (09:30, 9:30-10:00, 3pm, as
+FIND-TIME-RANGE finds it) as a number of hours and minutes: 930, or NIL; the
+part it was found in, and the end of its range (1000) or NIL, as the second
+and third values."
+  (multiple-value-bind (start end hour minute end-hour end-minute) (find-time-range text)
     (when start
-      (flet ((group (i) (and (aref starts i) (subseq text (aref starts i) (aref ends i)))))
-        (values (if (group 0)
-                    (+ (* 100 (parse-integer (group 0))) (parse-integer (group 1)))
-                    (+ (* 100 (+ (mod (parse-integer (group 2)) 12) (if (string-equal (group 4) "pm") 12 0)))
-                       (if (group 3) (parse-integer (group 3)) 0)))
-                (subseq text start end))))))
+      (values (+ (* 100 hour) minute) (subseq text start end) (and end-hour (+ (* 100 end-hour) end-minute))))))
 
 (defvar *org-agenda-time-memo* nil
   "While an agenda is made, a table of the times of day read so far, by the text they were read from.")
@@ -451,18 +447,13 @@ hours and minutes: 930, or NIL; and the part it was found in, as a second value.
   "ORG-TIME-OF-DAY of TEXT, read once while an agenda is made."
   (memo-values *org-agenda-time-memo* text (lambda () (org-time-of-day text))))
 
-(defun org-range-end (part)
-  "The end of the time range PART (14:00-15:00) as a time of day, 1500; NIL when it is no range."
-  (multiple-value-bind (match groups) (cl-ppcre:scan-to-strings "-(\\d{1,2}):(\\d{2})$" part)
-    (and match (+ (* 100 (parse-integer (aref groups 0))) (parse-integer (aref groups 1))))))
-
 (defun org-agenda-item (entry day type extra time urgency &key (search-heading t) (title (agenda-entry-title entry)) keep-title end)
   "An agenda line for ENTRY: TIME the timestamp text its time of day is read
 from (or :HEADING, its title's), NIL for none; with SEARCH-HEADING a title
 holding a time gives it when the timestamp has none, the time taken out of
 the title (unless KEEP-TITLE). END, when given, is the
 end of its time range; else the range's end where the time is one."
-  (multiple-value-bind (of-day found)
+  (multiple-value-bind (of-day found range-end)
       (cond ((null time) nil)
             ((and (stringp time) (org-agenda-time-of-day time)) (org-agenda-time-of-day time))
             (search-heading (multiple-value-bind (value part) (org-agenda-time-of-day title) (values value (and part (list part))))))
@@ -475,7 +466,7 @@ end of its time range; else the range's end where the time is one."
                      title))
           (part (if (consp found) (first found) found)))
       (make-org-agenda-item :day day :type type :extra extra :time of-day :entry entry :title title :urgency urgency
-                            :end (or end (and of-day (stringp part) (org-range-end part)))))))
+                            :end (or end (and of-day (stringp part) range-end))))))
 
 (defun agenda-entry-read-text (entry)
   "Fill ENTRY's STAMPS, RANGES and LOGS from its own text, not its planning

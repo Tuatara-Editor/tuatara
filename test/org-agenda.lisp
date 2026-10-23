@@ -1282,3 +1282,21 @@ help left out."
   (is = 0 (least-consed (lambda () (tuatara.defaults::org-read-rule "<2026-10-05 Mon 09:00>"))))
   (let ((consed (least-consed (lambda () (tuatara.defaults::org-read-rule "<%%(diary-float t 1 1) 10:00>")))))
     (true (< consed 4000) "~d bytes to read a rule" consed)))
+
+(define-test (org agenda-times-of-day-read-one-way)
+  ;; the agenda, timestamps and rules read a time of day as a date question does
+  (is equal '(1530 "3:30pm" nil) (multiple-value-list (tuatara.defaults::org-time-of-day "Call 3:30pm")))
+  (is equal '(930 "9:30-10:00" 1000) (multiple-value-list (tuatara.defaults::org-time-of-day "<2026-10-05 Mon 9:30-10:00>")))
+  (false (tuatara.defaults::org-time-of-day "25:00"))
+  (false (tuatara.defaults::org-time-of-day "13pm"))
+  (false (tuatara.defaults::org-read-rule "<%%(diary-float t 1 1) 10:00-25:00>"))
+  (false (tuatara.defaults::org-read-ts "<2026-10-05 Mon 25:00>"))
+  (is string= "<2026-10-05 Mon 22:00-24:00>" (tuatara.defaults::org-ts-text (tuatara.defaults::org-read-ts "<2026-10-05 Mon 22:00-24:00>")))
+  ;; a title's time in the afternoon sorts after a morning's
+  (uiop:with-temporary-file (:pathname path :type "org")
+    (with-open-file (o path :direction :output :if-exists :supersede :external-format :utf-8)
+      (format o "* Call 3:30pm~%<2026-10-05 Mon>~%* Standup~%<2026-10-05 Mon 09:00>~%"))
+    (is equal '(("Standup" 900) ("Call" 1530))
+        (mapcar (lambda (row) (list (sixth row) (fourth row)))
+                (org-agenda-test-rows (tuatara.defaults::org-agenda-day (tuatara.dates:day-number 2026 10 5)
+                                                                        :files (list (namestring path)) :log nil))))))

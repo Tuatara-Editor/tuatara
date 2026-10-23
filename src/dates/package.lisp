@@ -13,5 +13,6 @@ pattern of % specifiers, and dates and times read where a text writes them.")
            #:day-universal-time #:time-day #:local-offset #:+unix-epoch+ #:mtime-universal-time
            #:*weekday-names* #:*short-weekday-names* #:*month-names* #:*short-month-names*
            #:format-day #:format-time #:short-time-words #:read-date-text #:pdf-date-words #:iso-date-time
-           #:+day-nanoseconds+ #:ascii-digit #:fixed-digits #:short-digits #:char-at-p #:clock-at #:zone-at
+           #:+day-nanoseconds+ #:ascii-digit #:fixed-digits #:short-digits #:char-at-p #:hour-minute-at #:meridiem-at #:meridiem-hour #:time-at #:time-range-at #:find-time-range
+           #:read-time-range #:time-range-text #:date-time-text #:clock-at #:zone-at
            #:written-date-at #:date-time-at #:utc-moment #:moment< #:moment-after))

@@ -449,14 +449,7 @@ year."
 
 ;;; A date asked for
 
-(defun date-words (day hour minute end-hour end-minute)
-  "The day number DAY written as a date asked for is shown: 2026-12-24 Thu,
-with HOUR and MINUTE when given, 14:00, and END-HOUR and END-MINUTE for a
-range, 14:00-15:30."
-  (format nil "~a~@[-~a~]" (format-day (if hour "%F %a %R" "%F %a") day (or hour 0) (or minute 0))
-          (and hour end-hour (format-day "%R" 0 end-hour end-minute))))
-
-(defun read-date (prompt &key (now (get-universal-time)) (shown #'date-words) follow none also keymap)
+(defun read-date (prompt &key (now (get-universal-time)) (shown #'date-time-text) follow none also keymap)
   "Ask PROMPT for a date, read as READ-DATE-TEXT reads it (tomorrow, fri, +3d,
 sep 30, 2026-12-24 14:00, 3pm), the date it reads shown below as it is
 typed, as SHOWN, a function of its day number, hour, minute, end hour and

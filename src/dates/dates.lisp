@@ -266,9 +266,7 @@ none, or one that cannot be written."
   (let ((months (format nil "~{~a~^|~}" (map 'list #'string-downcase *short-month-names*)))
         (weekdays (format nil "~{~a~^|~}" (map 'list #'string-downcase *short-weekday-names*))))
     (flet ((scanner (pattern &rest arguments) (cl-ppcre:create-scanner (apply #'format nil pattern arguments))))
-      (list :range (scanner "(?<![\\d-])(\\d{1,2}):(\\d{2})(?:-(\\d{1,2}):(\\d{2}))?")
-            :clock (scanner "\\b(\\d{1,2})(am|pm)\\b")
-            :iso (scanner "\\b(\\d{4})-(\\d{1,2})-(\\d{1,2})\\b")
+      (list :iso (scanner "\\b(\\d{4})-(\\d{1,2})-(\\d{1,2})\\b")
             :month-day (scanner "\\b(\\d{1,2})-(\\d{1,2})\\b")
             :month-name-day (scanner "\\b(~a)[a-z]*\\.? +(\\d{1,2})\\b(?: +(\\d{4})\\b)?" months)
             :day-month-name (scanner "\\b(\\d{1,2}) +(~a)[a-z]*\\b(?: +(\\d{4})\\b)?" months)
@@ -289,15 +287,16 @@ when INPUT names no date. Read: nothing, . or today for today, tomorrow and
 yesterday; fri, the Friday to come (a week on when today is one); +3d, -1w,
 +1m, +1y from today, or from the date before it (2026-10-20 +3d); 5, the 5th
 of this month or the next; 10-15 and sep 30 (or 30 sep), that day of this
-year or the next; 2026-12-24; 2027, this day in that year; and a time,
-14:00, 10:00-11:30, 3pm. Case does not count. A month or year on keeps the
+year or the next; 2026-12-24; 2027, this day in that year; and a time or a
+range of two as TIME-RANGE-AT reads them, 14:00, 10:00-11:30, 3pm, 3:30 pm.
+Case does not count. A month or year on keeps the
 day of the month, a day past the month's end counted on into the next: 31
 January a month on is 3 March. A day or a time that does not exist (31 in a
 month of 30 days, 13pm, 10:00-25:00) names no date. O(length of INPUT)."
   (multiple-value-bind (year month day) (day-date today)
     (let ((weekday (weekday today))
           (text (string-downcase (string-trim '(#\Space #\Tab) input)))
-          (y year) (m month) (d day) hour minute end-hour end-minute (wrong nil))
+          (y year) (m month) (d day) hour minute end-hour end-minute)
       (labels ((take (part)
                  ;; the first match of PART's pattern as its groups, taken out of TEXT
                  (multiple-value-bind (start end starts ends) (cl-ppcre:scan (getf *date-text-scanners* part) text)
@@ -307,18 +306,11 @@ month of 30 days, 13pm, 10:00-25:00) names no date. O(length of INPUT)."
                (date (new-y new-m new-d) (setf y new-y m new-m d new-d))
                (to-day (number) (multiple-value-bind (new-y new-m new-d) (day-date number) (date new-y new-m new-d)))
                (past-p (py pm pd) (< (+ (* 10000 py) (* 100 pm) pd) (+ (* 10000 year) (* 100 month) day))))
-        ;; times
-        (let ((range (take :range)))
-          (when range
-            (setf hour (parse-integer (first range)) minute (parse-integer (second range)))
-            (when (third range)
-              (setf end-hour (parse-integer (third range)) end-minute (parse-integer (fourth range))))))
-        (let ((clock (take :clock)))
-          (when clock
-            (let ((h (parse-integer (first clock))))
-              (unless (<= 1 h 12) (setf wrong t))
-              (setf hour (+ (mod h 12) (if (string= (second clock) "pm") 12 0))
-                    minute 0))))
+        ;; a time, or a range of two
+        (multiple-value-bind (start end h mi eh em) (find-time-range text)
+          (when start
+            (setf hour h minute mi end-hour eh end-minute em
+                  text (concatenate 'string (subseq text 0 start) " " (subseq text end)))))
         ;; dates
         (let ((iso (take :iso)))
           (when iso (date (parse-integer (first iso)) (parse-integer (second iso)) (parse-integer (third iso)))))
@@ -359,9 +351,6 @@ month of 30 days, 13pm, 10:00-25:00) names no date. O(length of INPUT)."
         (take :today)
         (and (string= (string-trim '(#\Space #\Tab) text) "")
              (valid-date-p y m d)
-             (not wrong)
-             (or (null hour) (and (< hour 24) (< minute 60)))
-             (or (null end-hour) (and (< end-hour 24) (< end-minute 60)))
              (values (day-number y m d) hour minute end-hour end-minute))))))
 
 ;;; Dates and times as text writes them, read where they stand without
@@ -398,42 +387,129 @@ and the index after them; NIL when there is no digit."
   "True when the character at index I of TEXT, before END, is one of CHARS."
   (and (< i end) (find (char text i) chars)))
 
-(defun clock-at (text start end &key two-digit-hour (separators ":") (fraction-marks ".,"))
-  "A time of day at START of TEXT, hours and minutes, then seconds and parts
-of a second if written: H:MM, HH:MM:SS, HH:MM:SS.123 and the like, the
-minutes and seconds apart by one of SEPARATORS, the same each time, the
-parts of a second after one of FRACTION-MARKS other than that one. Three
-values: the index after it, the nanoseconds since midnight, and the
-nanoseconds the last figure written counts in (a minute, a second, a tenth
-...); NIL when no time of day is there."
+(defun hour-minute-at (text start end &key two-digit-hour (separators ":") (last 23))
+  "An hour and minute of a day at START of TEXT, H:MM or HH:MM (two digits
+of hour with TWO-DIGIT-HOUR), apart by one of SEPARATORS, the hour 0 to LAST
+and the minute 0 to 59. Four values: the index after it, the hour, the
+minute and the separator; NIL when none is there."
   (multiple-value-bind (hour at)
       (if two-digit-hour
           (let ((h (fixed-digits text start 2 end))) (and h (values h (+ start 2))))
           (short-digits text start end))
-    (when (and hour (<= hour 23) (char-at-p text at end separators))
-      (let* ((separator (char text at))
-             (minute (fixed-digits text (1+ at) 2 end)))
+    (when (and hour (<= hour last) (char-at-p text at end separators))
+      (let ((minute (fixed-digits text (1+ at) 2 end)))
         (when (and minute (<= minute 59))
-          (let ((at (+ at 3))
-                (nanos (* (+ (* hour 3600) (* minute 60)) 1000000000))
-                (unit (* 60 1000000000)))
-            (when (and (< at end) (char= (char text at) separator))
-              (let ((second (fixed-digits text (1+ at) 2 end)))
-                ;; 60: a leap second, as RFC 3339 allows
-                (when (and second (<= second 60))
-                  (setf at (+ at 3)
-                        nanos (+ nanos (* second 1000000000))
-                        unit 1000000000)
-                  (when (and (char-at-p text at end fraction-marks) (char/= (char text at) separator) (ascii-digit text (1+ at) end))
-                    (incf at)
-                    (let ((scale 100000000))
-                      (loop for d = (ascii-digit text at end)
-                            while d
-                            do (when (plusp scale)
-                                 (incf nanos (* d scale))
-                                 (setf unit scale scale (floor scale 10)))
-                               (incf at)))))))
-            (values at nanos unit)))))))
+          (values (+ at 3) hour minute (char text at)))))))
+
+(defun meridiem-at (text start end)
+  "AM or PM at START of TEXT, after one space or none, its two letters of one
+case (am, PM), no letter right after. Two values: the index after it, and
+:AM or :PM; NIL when neither is there."
+  (let ((at (if (char-at-p text start end " ") (1+ start) start)))
+    (when (and (char-at-p text at end "AaPp") (char-at-p text (1+ at) end "Mm")
+               (eq (upper-case-p (char text at)) (upper-case-p (char text (1+ at))))
+               (not (and (< (+ at 2) end) (alpha-char-p (char text (+ at 2))))))
+      (values (+ at 2) (if (char-equal (char text at) #\a) :am :pm)))))
+
+(defun meridiem-hour (hour half)
+  "HOUR of a twelve-hour clock, 1 to 12, in HALF of the day, :AM or :PM, as
+an hour of the day, 0 to 23: 12 AM is 0, 12 PM is 12; NIL when HOUR is not 1
+to 12."
+  (and (<= 1 hour 12) (+ (mod hour 12) (if (eq half :pm) 12 0))))
+
+(defun time-at (text start end &key (last 23))
+  "A time of day at START of TEXT: 9:30, 09:30, 9:30pm, 9:30 PM, 3pm or 3 PM,
+AM or PM as MERIDIEM-AT reads it, the hour up to LAST (24 lets 24:00 end a
+day). Three values: the index after it, the hour 0 to LAST and the minute;
+NIL when none is there."
+  (multiple-value-bind (at hour minute) (hour-minute-at text start end :last last)
+    (if at
+        (multiple-value-bind (after half) (meridiem-at text at end)
+          (cond (half (let ((hour (meridiem-hour hour half))) (and hour (values after hour minute))))
+                ((or (< hour 24) (zerop minute)) (values at hour minute))))
+        (multiple-value-bind (hour at) (short-digits text start end)
+          (when hour
+            (multiple-value-bind (after half) (meridiem-at text at end)
+              (let ((hour (and half (meridiem-hour hour half))))
+                (and hour (values after hour 0)))))))))
+
+(defun time-range-at (text start end)
+  "A time of day or a range of two at START of TEXT, each as TIME-AT reads
+it: 14:00, 3pm, 9:30-10:00, 10am-11:30am, the end 24:00 too; no digit or
+colon right after. Five values: the index after it, the hour and minute it
+begins at, and the hour and minute it ends at, NIL for no range; NIL when
+no time of day is there, or a range's end is none (10:00-25:00)."
+  (multiple-value-bind (at hour minute) (time-at text start end)
+    (when at
+      (multiple-value-bind (after end-hour end-minute)
+          (and (char-at-p text at end "-") (ascii-digit text (1+ at) end) (time-at text (1+ at) end :last 24))
+        (when (and (null after) (char-at-p text at end "-") (ascii-digit text (1+ at) end))
+          (return-from time-range-at nil))
+        (let ((at (or after at)))
+          (unless (or (ascii-digit text at end) (char-at-p text at end ":"))
+            (values at hour minute end-hour end-minute)))))))
+
+(defun find-time-range (text &key (start 0) (end (length text)))
+  "The first time of day or range of two in TEXT from START below END that
+TIME-RANGE-AT reads, not right after a digit, colon or hyphen. Six values:
+where it begins and ends, the hour and minute it begins at, and the hour and
+minute it ends at, NIL for no range; NIL when there is none."
+  (loop for i from start below end
+        when (and (ascii-digit text i end)
+                  (not (and (> i start) (find (char text (1- i)) "0123456789:-"))))
+          do (multiple-value-bind (at hour minute end-hour end-minute) (time-range-at text i end)
+               (when at (return (values i at hour minute end-hour end-minute))))))
+
+(defun read-time-range (text)
+  "TEXT, a time of day or a range of two and nothing else but spaces around
+it (TIME-RANGE-AT), as four values: the hour and minute it begins at, and
+the hour and minute it ends at, NIL for no range; NIL when it is none."
+  (let* ((end (or (position #\Space text :from-end t :test-not #'char=) -1))
+         (start (or (position #\Space text :test-not #'char=) 0)))
+    (multiple-value-bind (at hour minute end-hour end-minute) (time-range-at text start (1+ end))
+      (and at (= at (1+ end)) (values hour minute end-hour end-minute)))))
+
+(defun time-range-text (hour minute &optional end-hour end-minute)
+  "HOUR:MINUTE written as a timestamp writes a time, 09:30, and the range to
+END-HOUR:END-MINUTE when it is given, 09:30-10:00; NIL when HOUR is NIL."
+  (and hour (format nil "~2,'0d:~2,'0d~@[-~2,'0d~]~@[:~2,'0d~]" hour minute end-hour (and end-hour end-minute))))
+
+(defun date-time-text (day &optional hour minute end-hour end-minute)
+  "The day number DAY as a timestamp writes it between its brackets, its date
+and weekday, 2026-12-24 Thu, and the time or range of times when HOUR is
+given (TIME-RANGE-TEXT): 2026-12-24 Thu 14:00-15:30."
+  (format nil "~a~@[ ~a~]" (format-day "%F %a" day) (time-range-text hour minute end-hour end-minute)))
+
+(defun clock-at (text start end &key two-digit-hour (separators ":") (fraction-marks ".,"))
+  "A time of day at START of TEXT, hours and minutes (HOUR-MINUTE-AT), then
+seconds and parts of a second if written: H:MM, HH:MM:SS, HH:MM:SS.123 and
+the like, the minutes and seconds apart by one of SEPARATORS, the same each
+time, the parts of a second after one of FRACTION-MARKS other than that one.
+Three values: the index after it, the nanoseconds since midnight, and the
+nanoseconds the last figure written counts in (a minute, a second, a tenth
+...); NIL when no time of day is there."
+  (multiple-value-bind (at hour minute separator)
+      (hour-minute-at text start end :two-digit-hour two-digit-hour :separators separators)
+    (when at
+      (let ((nanos (* (+ (* hour 3600) (* minute 60)) 1000000000))
+            (unit (* 60 1000000000)))
+        (when (and (< at end) (char= (char text at) separator))
+          (let ((second (fixed-digits text (1+ at) 2 end)))
+            ;; 60: a leap second, as RFC 3339 allows
+            (when (and second (<= second 60))
+              (setf at (+ at 3)
+                    nanos (+ nanos (* second 1000000000))
+                    unit 1000000000)
+              (when (and (char-at-p text at end fraction-marks) (char/= (char text at) separator) (ascii-digit text (1+ at) end))
+                (incf at)
+                (let ((scale 100000000))
+                  (loop for d = (ascii-digit text at end)
+                        while d
+                        do (when (plusp scale)
+                             (incf nanos (* d scale))
+                             (setf unit scale scale (floor scale 10)))
+                           (incf at)))))))
+        (values at nanos unit)))))
 
 (defun zone-at (text start end)
   "An offset from UTC at START of TEXT: Z, +02:00, +0200 or +02 (or - for
@@ -513,18 +589,12 @@ in, a day's for a date alone. NIL when no date is there."
              (let ((from (cond ((char-at-p text at end " ") (1+ at))
                                ((and (char-at-p text at end ",") (char-at-p text (1+ at) end " ")) (+ at 2)))))
                (when (and from (take-clock from))
-                 ;; AM or PM after it, a space between or not
-                 (let* ((space (if (char-at-p text at end " ") 1 0))
-                        (half (and (char-at-p text (+ at space) end "AaPp")
-                                   (char-at-p text (+ at space 1) end "Mm")
-                                   (eq (upper-case-p (char text (+ at space))) (upper-case-p (char text (+ at space 1))))
-                                   (char text (+ at space)))))
-                   (when (and half (not (and (< (+ at space 2) end) (alpha-char-p (char text (+ at space 2))))))
-                     (let ((hour (floor nanos (* 3600 1000000000))))
-                       (unless (<= 1 hour 12) (return-from date-time-at nil))
-                       (let ((afternoon (char-equal half #\p)))
-                         (incf nanos (* 3600 1000000000 (- (if afternoon (if (= hour 12) 12 (+ hour 12)) (if (= hour 12) 0 hour)) hour)))))
-                     (incf at (+ space 2)))))))))
+                 (multiple-value-bind (after half) (meridiem-at text at end)
+                   (when after
+                     (let* ((hour (floor nanos (* 3600 1000000000)))
+                            (day-hour (or (meridiem-hour hour half) (return-from date-time-at nil))))
+                       (incf nanos (* 3600 1000000000 (- day-hour hour))))
+                     (setf at after))))))))
         (when (< unit +day-nanoseconds+)
           (multiple-value-bind (after minutes) (zone-at text at end)
             (when after (setf at after zone minutes))))

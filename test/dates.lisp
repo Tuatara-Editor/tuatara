@@ -239,3 +239,27 @@
                   (tuatara.dates:day-universal-time (tuatara.dates:day-number 2026 10 6)))
       (subseq (multiple-value-list (tuatara.defaults::clocktable-block "2026-10-05" 0)) 0 2))
   (false (tuatara.defaults::clocktable-block "2026-02-31" 0)))
+
+(define-test (dates times-of-day-read-one-way)
+  ;; a time of day, or a range of two, read and written the one way everywhere
+  (flet ((range (text) (multiple-value-list (tuatara.dates:read-time-range text))))
+    (is equal '(9 30 nil nil) (range "9:30"))
+    (is equal '(15 30 nil nil) (range "3:30pm"))
+    (is equal '(15 30 nil nil) (range "3:30 PM"))
+    (is equal '(0 15 nil nil) (range "12:15am"))
+    (is equal '(12 0 nil nil) (range "12pm"))
+    (is equal '(10 0 11 30) (range "10am-11:30am"))
+    (is equal '(22 0 24 0) (range "22:00-24:00"))
+    (dolist (none '("25:00" "13pm" "0am" "9:60" "10:00-25:00" "24:00" "3:30pM" "3pmx" "10:00:30" "3"))
+      (is equal '(nil) (range none) "~s is no time" none)))
+  (is string= "09:05" (tuatara.dates:time-range-text 9 5))
+  (is string= "09:05-10:00" (tuatara.dates:time-range-text 9 5 10 0))
+  (is string= "2026-12-24 Thu 14:00-15:30" (tuatara.dates:date-time-text (tuatara.dates:day-number 2026 12 24) 14 0 15 30))
+  ;; found in text: not inside a date, nor right after a digit
+  (is equal '(5 11 15 30 nil nil) (multiple-value-list (tuatara.dates:find-time-range "Call 3:30pm Bob")))
+  (is equal '(nil) (multiple-value-list (tuatara.dates:find-time-range "2026-10-20 and 25:00")))
+  ;; typed at a date question
+  (let ((today (tuatara.dates:day-number 2026 10 3)))
+    (is equal (list today 15 30 nil nil) (multiple-value-list (tuatara.dates:read-date-text "3:30pm" today)))
+    (is equal (list (1+ today) 17 0 nil nil) (multiple-value-list (tuatara.dates:read-date-text "tomorrow 5 pm" today)))
+    (is equal '(nil) (multiple-value-list (tuatara.dates:read-date-text "10:00-25:00" today)))))

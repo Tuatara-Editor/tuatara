@@ -31,9 +31,7 @@ ORG-TS, or the text of a timestamp by rule.")
 none is given, and the text of a time given with it, or NIL."
   (let ((start (repeat-argument arguments "start")))
     (multiple-value-bind (day hour minute end-hour end-minute) (and start (read-date-text start (org-today)))
-      (values (or day (org-today))
-              (and hour (format nil "~2,'0d:~2,'0d~@[-~a~]" hour minute
-                                (and end-hour (format nil "~2,'0d:~2,'0d" end-hour end-minute))))))))
+      (values (or day (org-today)) (time-range-text hour minute end-hour end-minute)))))
 
 (defun repeat-time (arguments)
   "The time of the repeat of ARGUMENTS as a timestamp writes it, 10:00 or
@@ -100,7 +98,7 @@ saying why not."
     (multiple-value-bind (year month date) (day-date start)
       (flet ((repeater (value unit)
                (let ((ts (org-date-ts start nil nil nil nil)))
-                 (multiple-value-bind (hour minute end-hour end-minute) (repeat-time-parts time)
+                 (multiple-value-bind (hour minute end-hour end-minute) (read-time-range (or time ""))
                    (setf (org-ts-hour ts) hour (org-ts-minute ts) minute
                          (org-ts-end-hour ts) end-hour (org-ts-end-minute ts) end-minute))
                  (when value
@@ -140,14 +138,6 @@ saying why not."
                       (format nil "diary-date ~d ~d '~a" month date
                               (loop for y from year to last by every collect y)))))))))))
 
-(defun repeat-time-parts (time)
-  "TIME, 10:00 or 10:00-11:00, as four values: hour, minute, end hour, end minute; NILs for none."
-  (multiple-value-bind (match groups) (cl-ppcre:scan-to-strings "^(\\d{1,2}):(\\d{2})(?:-(\\d{1,2}):(\\d{2}))?$" (or time ""))
-    (if match
-        (flet ((int (k) (and (aref groups k) (parse-integer (aref groups k)))))
-          (values (int 0) (int 1) (int 2) (int 3)))
-        (values nil nil nil nil))))
-
 (defun repeat-days (value from count)
   "The first COUNT days, at or after the day number FROM, that VALUE (an
 ORG-TS or the text of a timestamp by rule) comes on, as day numbers."
@@ -179,7 +169,7 @@ when it is a rule, so that it comes no sooner."
          (time (repeat-time arguments)))
     (when (and ends (not count) (not end-day))
       (return-from repeat-value (values nil (format nil "The end, ~a, is no date" ends))))
-    (when (and time (null (repeat-time-parts time)))
+    (when (and time (null (read-time-range time)))
       (return-from repeat-value (values nil (format nil "The time, ~a, is none: write 10:00 or 10:00-11:00" time))))
     (flet ((written (end)
              (multiple-value-bind (form why) (repeat-form arguments start end)
@@ -270,9 +260,7 @@ asked for, the calendar below (READ-ORG-DATE); 2026-11-02, or 2026-11-02 10:00,
 or CURRENT when nothing is read."
   (let ((ts (read-org-date prompt)))
     (if (org-ts-p ts)
-        (format nil "~a~@[ ~a~]" (format-day "%F" (org-ts-day-number ts))
-                (and (org-ts-hour ts) (format nil "~2,'0d:~2,'0d~@[-~a~]" (org-ts-hour ts) (org-ts-minute ts)
-                                              (and (org-ts-end-hour ts) (format nil "~2,'0d:~2,'0d" (org-ts-end-hour ts) (org-ts-end-minute ts))))))
+        (format nil "~a~@[ ~a~]" (format-day "%F" (org-ts-day-number ts)) (org-ts-time-text ts))
         (or current ""))))
 
 (defun read-repeat-time (prompt &optional current)
@@ -344,9 +332,7 @@ the menu from its next day."
   (cond ((org-ts-p value)
          (let ((n (org-ts-repeat-value value)) (unit (org-ts-repeat-unit value)))
            (append (list (format nil "start=~a" (format-day "%F" (org-ts-day-number value))))
-                   (and (org-ts-hour value)
-                        (list (format nil "time=~2,'0d:~2,'0d~@[-~a~]" (org-ts-hour value) (org-ts-minute value)
-                                      (and (org-ts-end-hour value) (format nil "~2,'0d:~2,'0d" (org-ts-end-hour value) (org-ts-end-minute value))))))
+                   (and (org-ts-hour value) (list (format nil "time=~a" (org-ts-time-text value))))
                    (and (org-repeating-ts-p value) (member unit '(#\d #\w #\m #\y))
                         (list (format nil "repeats=~a" (ecase unit (#\d "daily") (#\w "weekly") (#\m "monthly-day") (#\y "yearly")))))
                    (and (org-repeating-ts-p value) (> n 1) (list (format nil "every=~d" n))))))

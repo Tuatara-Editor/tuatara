@@ -38,21 +38,26 @@ times, and its repeaters and warnings, each a group.")
   "*ORG-TIMESTAMP-PATTERN* made ready to match once, not again at each timestamp read.")
 
 (defun org-read-ts (text)
-  "TEXT, one timestamp (<2026-10-05 Mon 09:00 +1w -3d>), read as an ORG-TS, or NIL."
-  (multiple-value-bind (match groups) (cl-ppcre:scan-to-strings *org-timestamp-scanner* text)
+  "TEXT, one timestamp (<2026-10-05 Mon 09:00 +1w -3d>), read as an ORG-TS, or
+NIL; one whose time is none (25:00, a range ending 10:00-24:30) is none."
+  (multiple-value-bind (match end starts ends) (cl-ppcre:scan *org-timestamp-scanner* text)
+    (declare (ignore end))
     (when match
-      (flet ((int (i) (and (aref groups i) (parse-integer (aref groups i)))))
-        (let ((ts (make-org-ts :active (string= (aref groups 0) "<")
-                               :year (int 1) :month (int 2) :day (int 3)
-                               :hour (int 4) :minute (int 5) :end-hour (int 6) :end-minute (int 7))))
-          (cl-ppcre:do-register-groups (mark value unit) ("(\\.\\+|\\+\\+|\\+|--|-)(\\d+)([hdwmy])" (or (aref groups 8) ""))
-            (let ((value (parse-integer value)) (unit (char unit 0)))
-              (cond ((member mark '("+" "++" ".+") :test #'string=)
-                     (setf (org-ts-repeater ts) (cond ((string= mark "+") :cumulate) ((string= mark "++") :catch-up) (t :restart))
-                           (org-ts-repeat-value ts) value (org-ts-repeat-unit ts) unit))
-                    (t (setf (org-ts-warning ts) (if (string= mark "--") :first :all)
-                             (org-ts-warning-value ts) value (org-ts-warning-unit ts) unit)))))
-          ts)))))
+      (flet ((int (i) (and (aref starts i) (parse-integer text :start (aref starts i) :end (aref ends i)))))
+        (multiple-value-bind (at hour minute end-hour end-minute)
+            (and (aref starts 4) (time-range-at text (aref starts 4) (length text)))
+          (when (or at (null (aref starts 4)))
+            (let ((ts (make-org-ts :active (char= (char text 0) #\<)
+                                   :year (int 1) :month (int 2) :day (int 3)
+                                   :hour hour :minute minute :end-hour end-hour :end-minute end-minute)))
+              (cl-ppcre:do-register-groups (mark value unit) ("(\\.\\+|\\+\\+|\\+|--|-)(\\d+)([hdwmy])" text nil :start (aref starts 8) :end (aref ends 8))
+                (let ((value (parse-integer value)) (unit (char unit 0)))
+                  (cond ((member mark '("+" "++" ".+") :test #'string=)
+                         (setf (org-ts-repeater ts) (cond ((string= mark "+") :cumulate) ((string= mark "++") :catch-up) (t :restart))
+                               (org-ts-repeat-value ts) value (org-ts-repeat-unit ts) unit))
+                        (t (setf (org-ts-warning ts) (if (string= mark "--") :first :all)
+                                 (org-ts-warning-value ts) value (org-ts-warning-unit ts) unit)))))
+              ts)))))))
 
 (defun org-ts-day-number (ts)
   "The day of the timestamp TS as a day number, a date past its month's end
@@ -76,7 +81,6 @@ that is not (2026-02-31, 25:00)."
   (let ((ts (org-read-ts text)))
     (and ts (org-ts-hour ts)
          (valid-date-p (org-ts-year ts) (org-ts-month ts) (org-ts-day ts))
-         (<= (org-ts-hour ts) 23) (<= (org-ts-minute ts) 59)
          (org-ts-time ts))))
 
 (defun org-ts-set-time (ts time)
@@ -103,12 +107,16 @@ the day of the month, a date past the month's end counted on into the next:
     (t (org-ts-set-day ts (+ (org-ts-day-number ts) (* value (if (char= unit #\w) 7 1))))))
   ts)
 
+(defun org-ts-time-text (ts)
+  "The time or range of times of TS as a timestamp writes it, 09:00 or
+09:00-10:00 (TIME-RANGE-TEXT); NIL when it has none."
+  (time-range-text (org-ts-hour ts) (org-ts-minute ts) (org-ts-end-hour ts) (org-ts-end-minute ts)))
+
 (defun org-ts-text (ts)
   "TS written as a note writes a timestamp: <2026-10-05 Mon 09:00-10:00 +1w -3d>."
-  (format nil "~:[[~;<~]~a~@[-~a~]~@[ ~a~]~@[ ~a~]~:[]~;>~]"
+  (format nil "~:[[~;<~]~a~@[ ~a~]~@[ ~a~]~:[]~;>~]"
           (org-ts-active ts)
-          (format-day (if (org-ts-hour ts) "%F %a %R" "%F %a") (org-ts-day-number ts) (or (org-ts-hour ts) 0) (or (org-ts-minute ts) 0))
-          (and (org-ts-hour ts) (org-ts-end-hour ts) (format-day "%R" 0 (org-ts-end-hour ts) (org-ts-end-minute ts)))
+          (date-time-text (org-ts-day-number ts) (org-ts-hour ts) (org-ts-minute ts) (org-ts-end-hour ts) (org-ts-end-minute ts))
           (and (org-ts-repeater ts)
                (format nil "~a~d~c" (ecase (org-ts-repeater ts) (:cumulate "+") (:catch-up "++") (:restart ".+"))
                        (org-ts-repeat-value ts) (org-ts-repeat-unit ts)))
@@ -185,7 +193,7 @@ the time written after it, or NIL."
   kind arguments hour minute end-hour end-minute)
 
 (defparameter *org-rule-pattern*
-  "^<%%\\(([^>\\n]*)\\)(?: +(\\d{1,2}):(\\d{2})(?:-(\\d{1,2}):(\\d{2}))?)?>$"
+  "^<%%\\(([^>\\n]*)\\)(?: +(\\d{1,2}:\\d{2}(?:-\\d{1,2}:\\d{2})?))?>$"
   "A timestamp by rule: <%%( its form ) and a time or a time range after it,
 each a group.")
 
@@ -288,12 +296,14 @@ ORG-RULE-FROM-DATA knows."
     (when match
       (let* ((form (aref groups 0))
              (rule (org-rule-from-data (org-read-rule-data form 0 (length form)))))
-        (flet ((int (k) (and (aref groups k) (parse-integer (aref groups k)))))
-          (when rule
-            (setf (org-rule-hour rule) (int 1) (org-rule-minute rule) (int 2)
-                  (org-rule-end-hour rule) (int 3) (org-rule-end-minute rule) (int 4))
-            (and (or (null (org-rule-hour rule)) (and (<= (org-rule-hour rule) 23) (<= (org-rule-minute rule) 59)))
-                 rule)))))))
+        (when rule
+          (if (null (aref groups 1))
+              rule
+              (multiple-value-bind (hour minute end-hour end-minute) (read-time-range (aref groups 1))
+                (when hour
+                  (setf (org-rule-hour rule) hour (org-rule-minute rule) minute
+                        (org-rule-end-hour rule) end-hour (org-rule-end-minute rule) end-minute)
+                  rule))))))))
 
 (defun org-rule-part-has-p (part value)
   "True when PART of a rule (T, a number or a list of numbers) takes VALUE."
@@ -380,9 +390,7 @@ does within *ORG-RULE-REACH* days or its range of days (ORG-RULE-SPAN)."
 
 (defun org-rule-time-text (rule)
   "The time RULE says, as a timestamp writes it (10:00, 10:00-11:00), or NIL."
-  (and (org-rule-hour rule)
-       (format nil "~2,'0d:~2,'0d~@[-~a~]" (org-rule-hour rule) (org-rule-minute rule)
-               (and (org-rule-end-hour rule) (format nil "~2,'0d:~2,'0d" (org-rule-end-hour rule) (org-rule-end-minute rule))))))
+  (time-range-text (org-rule-hour rule) (org-rule-minute rule) (org-rule-end-hour rule) (org-rule-end-minute rule)))
 
 (defun org-rule-done-day (rule last-done today)
   "The day RULE's task is done for when it is marked done today, TODAY:
