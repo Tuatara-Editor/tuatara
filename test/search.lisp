@@ -275,6 +275,14 @@ newlines and some multibyte characters."
                                    (- (tuatara.bench::bytes-consed) before)))))
       (true (< consed 4096) "compiling it again consed ~:d octets" consed))))
 
+(define-test (search crlf-plain-text-kept-plain)
+  ;; a pattern of plain text alone, its special characters escaped, means the same in CRLF text
+  (let ((text (format nil "~c[1m 1.5 1x5 (a+b) aab~c~%" (code-char 27) #\Return)))
+    (dolist (pattern '("\\e\\[" "1\\.5" "\\(a\\+b\\)" "\\Q(a+b)\\E"))
+      (is equal (cl-ppcre:all-matches-as-strings (tuatara.syntax:compile-regex pattern) text)
+          (cl-ppcre:all-matches-as-strings (tuatara.syntax:compile-regex pattern :crlf t) text)
+          "~s, CRLF" pattern))))
+
 (define-test (search regex-tries-lines-holding-text)
   ;; a pattern whose matches lie within a line and hold text not at their start is
   ;; tried on the lines holding that text alone, and finds what a whole-text scan finds

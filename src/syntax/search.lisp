@@ -1128,7 +1128,8 @@ matches may cross lines; the same for one kept within a line.")
   "TREE, a cl-ppcre parse tree, for text whose lines end with a carriage return
 and a newline, as the Rust regex crate reads a pattern in its CRLF mode: $
 matches before the carriage return, as before a newline alone, and . matches
-neither a carriage return nor a newline, but in single-line mode ((?s))."
+neither a carriage return nor a newline, but in single-line mode ((?s)).
+Plain text stays plain: a tree that is a string alone is given as a sequence."
   (labels ((single-after (flags single)
              (cond ((member :single-line-mode-p flags) t)
                    ((member :not-single-line-mode-p flags) nil)
@@ -1154,7 +1155,8 @@ neither a carriage return nor a newline, but in single-line mode ((?s))."
                    ((member (first node) '(:char-class :inverted-char-class :property :inverted-property :back-reference :filter))
                     node)
                    (t (cons (first node) (mapcar (lambda (child) (walk child single)) (rest node)))))))
-    (walk tree nil)))
+    (let ((walked (walk tree nil)))
+      (if (stringp walked) (list :sequence walked) walked))))
 
 (defun tree-max-octets (tree)
   "The most octets a match of TREE, a cl-ppcre parse tree, and the text it
