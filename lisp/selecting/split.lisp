@@ -843,24 +843,23 @@ it."
         (declare (type fixnum rows))
         (block each-row
           (tuatara.syntax:with-decoder (decoder)
-           (call-with-line-block
-            (lambda (reused)
-              (apply
-               #'tuatara.text:map-line-slices
-               (lambda (line s e start-column end-column line-end)
-                 (declare (ignore start-column end-column))
-                 (when (and halt (zerop (logand (incf rows) 1023)) (funcall halt)) (return-from each-row nil))
-                 (let ((s (if wide line s)) (e (if wide line-end e)))
-                   ;; the empty line after the last newline holds no match
-                   (unless (and (= s e size) (plusp size))
-                     (when (tuatara.syntax:map-slice-matches function rope (matcher-scanner matcher) line s e :decoder decoder :texts texts)
-                       (return-from each-row t)))))
-               ;; from the start of the line FROM is in: the rows are read whole, and a
-               ;; walk over the matches may begin just after one
-               rope (tuatara.text:rope-line-start rope from) to
-               (if wide 0 (block-scope-left scope)) (if wide 0 (block-scope-right scope))
-               :block reused
-               (tuatara.display:screen-slice-keys (block-scope-crlf scope) (block-scope-tab-width scope))))))
+           (tuatara.text:with-octet-block (reused (* 1024 1024))
+             (apply
+              #'tuatara.text:map-line-slices
+              (lambda (line s e start-column end-column line-end)
+                (declare (ignore start-column end-column))
+                (when (and halt (zerop (logand (incf rows) 1023)) (funcall halt)) (return-from each-row nil))
+                (let ((s (if wide line s)) (e (if wide line-end e)))
+                  ;; the empty line after the last newline holds no match
+                  (unless (and (= s e size) (plusp size))
+                    (when (tuatara.syntax:map-slice-matches function rope (matcher-scanner matcher) line s e :decoder decoder :texts texts)
+                      (return-from each-row t)))))
+              ;; from the start of the line FROM is in: the rows are read whole, and a
+              ;; walk over the matches may begin just after one
+              rope (tuatara.text:rope-line-start rope from) to
+              (if wide 0 (block-scope-left scope)) (if wide 0 (block-scope-right scope))
+              :block reused
+              (tuatara.display:screen-slice-keys (block-scope-crlf scope) (block-scope-tab-width scope)))))
           nil))
       (let ((range (car (find-if (lambda (group)
                                    (let ((stretch (car group)))
