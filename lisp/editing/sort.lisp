@@ -364,27 +364,47 @@ octet vector with a fill pointer, made larger when it has no room; OUT."
 
 ;;; Marking lines to delete
 
+(defun octet-run-hash (octets start end)
+  "A hash of OCTETS from START below END, the same for the same octets."
+  (declare (type tuatara.text:octets octets) (type fixnum start end) (optimize speed))
+  (let ((hash 2166136261))
+    (declare (type (unsigned-byte 32) hash))
+    (loop for i of-type fixnum from start below end
+          do (setf hash (logand #xffffffff (* 16777619 (logxor hash (aref octets i))))))
+    hash))
+
 (defun duplicate-marks (octets starts ends reverse adjacent keep-blanks)
   "A bit vector marking the lines of OCTETS that delete-duplicate-lines deletes:
 all but the first of identical lines (the last with REVERSE); with ADJACENT only
 a line identical to the one before it; never an empty line with KEEP-BLANKS.
-Returns it and how many are marked."
+Returns it and how many are marked. Lines are compared, and kept to compare,
+as the octets they are: nothing is made for a line."
+  (declare (type tuatara.text:octets octets) (type (simple-array fixnum (*)) starts ends))
   (let* ((n (length starts)) (marks (make-array n :element-type 'bit :initial-element 0)) (count 0)
-         (seen (unless adjacent (make-hash-table :test 'equal :size (max 16 (min n 100000)))))
-         (previous nil))
+         (seen (unless adjacent
+                 ;; a line by its index, compared and hashed by its octets
+                 (make-hash-table :test (lambda (i j)
+                                          (declare (type fixnum i j))
+                                          (zerop (octet-runs-compare octets (aref starts i) (aref ends i)
+                                                                     (aref starts j) (aref ends j) nil)))
+                                  :hash-function (lambda (i)
+                                                   (declare (type fixnum i))
+                                                   (octet-run-hash octets (aref starts i) (aref ends i)))
+                                  :size (max 16 (min n 100000)))))
+         (previous-start -1) (previous-end -1))
+    (declare (type fixnum n count previous-start previous-end))
     (flet ((visit (i)
              (let ((s (aref starts i)) (e (aref ends i)))
                (unless (and keep-blanks (= s e))
                  (if adjacent
                      (progn
-                       (when (and previous (zerop (octet-runs-compare octets s e (car previous) (cdr previous) nil)))
+                       (when (and (>= previous-start 0) (zerop (octet-runs-compare octets s e previous-start previous-end nil)))
                          (setf (sbit marks i) 1)
                          (incf count))
-                       (setf previous (cons s e)))
-                     (let ((text (tuatara.text:octets-string octets :start s :end e)))
-                       (if (gethash text seen)
-                           (progn (setf (sbit marks i) 1) (incf count))
-                           (setf (gethash text seen) t))))))))
+                       (setf previous-start s previous-end e))
+                     (if (gethash i seen)
+                         (progn (setf (sbit marks i) 1) (incf count))
+                         (setf (gethash i seen) t)))))))
       (if reverse
           (loop for i from (1- n) downto 0 do (visit i))
           (dotimes (i n) (visit i))))

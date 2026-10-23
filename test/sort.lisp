@@ -477,3 +477,17 @@ are rewritten at once."
                 :text (lines-text "ab" "" "cd") :width 100)
     (true (tuatara.frontend.fake:fake-frame-showing f "1 gone, 2 changed"))
     (is string= (lines-text "AB" "CD") (session-text editor))))
+
+(define-test (sorting duplicates-make-nothing-a-line)
+  ;; delete-duplicate-lines compares lines as the octets they are: nothing is made for a
+  ;; line but its place among those seen, none at all for lines next to each other
+  (let* ((octets (tuatara.text:string-octets
+                  (with-output-to-string (o) (dotimes (i 20000) (format o "a line of the log, number ~d, said twice~%" (floor i 2))))))
+         (lines (multiple-value-list (tuatara.defaults::scan-lines octets nil)))
+         (starts (first lines)) (ends (second lines)))
+    (is = 10000 (nth-value 1 (tuatara.defaults::duplicate-marks octets starts ends nil nil nil)))
+    (is = 10000 (nth-value 1 (tuatara.defaults::duplicate-marks octets starts ends nil t nil)))
+    (let ((all (least-bytes (lambda () (tuatara.defaults::duplicate-marks octets starts ends nil nil nil)) 3))
+          (adjacent (least-bytes (lambda () (tuatara.defaults::duplicate-marks octets starts ends nil t nil)) 3)))
+      (true (< (/ all 20000) 48) "~,1f octets a line" (/ all 20000))
+      (true (< (/ adjacent 20000) 1) "~,1f octets a line next to each other" (/ adjacent 20000)))))
