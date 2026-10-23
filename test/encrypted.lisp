@@ -423,3 +423,23 @@ scratch file, given to the clipboard unasked, nor exported unasked; no core dump
           (tuatara.buffer:kill-buffer buffer)
           (tuatara.defaults::decrypted-in buffer "/nowhere/gone.txt.gpg" text (list :keys '()) nil)
           (true (every #'zerop text))))))
+
+(define-test (encrypted files-given-in-blocks)
+  ;; a file given to gpg goes through its pipe a block at a time, never read whole into memory
+  (if (null (tuatara.defaults::gpg-path))
+      (skip "gpg is not installed here" (true nil))
+      (with-test-directory (dir)
+        (let ((file (namestring (merge-pathnames "large.bin" dir)))
+              (size (* 32 1024 1024)))
+          (with-open-file (out file :direction :output :element-type '(unsigned-byte 8))
+            (let ((block (make-array 65536 :element-type '(unsigned-byte 8) :initial-element 7)))
+              (dotimes (i (/ size 65536)) (write-sequence block out))))
+          (let ((consed (loop repeat 3
+                              minimize (let ((before (sb-ext:get-bytes-consed)))
+                                         (multiple-value-bind (output statuses ok)
+                                             (tuatara.defaults::gpg-run (list "--print-md" "SHA256") :input-path file :asker :agent)
+                                           (declare (ignore statuses))
+                                           (true ok)
+                                           (true (plusp (length output))))
+                                         (- (sb-ext:get-bytes-consed) before)))))
+            (true (< consed (/ size 4)) "~:d octets made for a file of ~:d" consed size))))))

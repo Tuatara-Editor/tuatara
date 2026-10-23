@@ -70,11 +70,11 @@ as it takes them). PASSPHRASE, for the minibuffer's loopback, is wiped once
 gpg has it."
   (gpg-in-background words
                      (lambda (cancel)
-                       (let ((input (or input (and input-path (tuatara.io:file-octets input-path))))
-                             (second (and second-path (tuatara.io:file-octets second-path))))
-                         (unwind-protect (gpg-run arguments :input input :passphrase passphrase :cancel cancel
-                                                            :second-input second :asker asker)
-                           (wipe-string passphrase))))
+                       ;; the files read by gpg's pipes a block at a time, never whole in memory
+                       (unwind-protect (gpg-run arguments :input input :input-path (and (null input) input-path)
+                                                          :passphrase passphrase :cancel cancel
+                                                          :second-path second-path :asker asker)
+                         (wipe-string passphrase)))
                      then :asker asker :buffer buffer :quiet quiet))
 
 (defun gpg-own-passphrase (what)

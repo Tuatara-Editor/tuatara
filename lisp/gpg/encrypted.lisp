@@ -116,21 +116,36 @@ meanwhile; else just call it."
 (defparameter *gpg-least-output-limit* (* 64 1024 1024)
   "The most octets gpg may write however little it is given (GPG-MOST-OUTPUT).")
 
-(defun gpg-most-output (input)
-  "The most octets gpg may write for INPUT, octets or NIL: 32 times INPUT's
-size, at least *GPG-LEAST-OUTPUT-LIMIT*; a file that would decompress to more
-is refused."
-  (max *gpg-least-output-limit* (* 32 (length input))))
+(defun gpg-most-output (size)
+  "The most octets gpg may write for an input of SIZE octets: 32 times SIZE,
+at least *GPG-LEAST-OUTPUT-LIMIT*; a file that would decompress to more is
+refused."
+  (max *gpg-least-output-limit* (* 32 size)))
 
-(defun gpg-run (arguments &key input passphrase cancel (asker (gpg-asker)) second-input)
-  "Run gpg with ARGUMENTS, never through a shell, giving it INPUT (octets)
-through a pipe and taking what it writes the same way, so that nothing it
-reads or writes touches the disk; PASSPHRASE, when given, through a pipe of
-its own. CANCEL, a cons, stops it when its car turns true. ASKER (GPG-ASKER)
-says how a passphrase gpg needs is asked for: by the minibuffer (loopback,
-PASSPHRASE given), by gpg-agent in the terminal lent it (call it within
-WITH-GPG-TERMINAL), or by its window. SECOND-INPUT, more octets (a detached
-signature), reach gpg through a pipe of their own, named in ARGUMENTS by
+(defun gpg-feed (fd octets path)
+  "Write to FD, a pipe gpg reads, OCTETS, or the file at PATH a block at a
+time (FILE-SOURCE), never read whole into memory."
+  (if path
+      (tuatara.io:call-with-file path
+                                 (lambda (in name size)
+                                   (declare (ignore size))
+                                   (let ((source (file-source in name))
+                                         (buffer (make-array 65536 :element-type '(unsigned-byte 8))))
+                                     (loop for n = (funcall source buffer)
+                                           while (plusp n)
+                                           do (tuatara.io:write-octets fd buffer :end n :path "gpg")))))
+      (tuatara.io:write-octets fd octets :path "gpg")))
+
+(defun gpg-run (arguments &key input input-path passphrase cancel (asker (gpg-asker)) second-input second-path)
+  "Run gpg with ARGUMENTS, never through a shell, giving it INPUT (octets),
+or the file at INPUT-PATH a block at a time, through a pipe and taking what
+it writes the same way, so that nothing it reads or writes touches the disk;
+PASSPHRASE, when given, through a pipe of its own. CANCEL, a cons, stops it
+when its car turns true. ASKER (GPG-ASKER) says how a passphrase gpg needs
+is asked for: by the minibuffer (loopback, PASSPHRASE given), by gpg-agent
+in the terminal lent it (call it within WITH-GPG-TERMINAL), or by its window.
+SECOND-INPUT, more octets (a detached signature), or the file at
+SECOND-PATH, reach gpg through a pipe of their own, named in ARGUMENTS by
 :SECOND-INPUT (made -&N, gpg's name for a descriptor). Its status lines come
 through a pipe of their own too, apart from what it says, which a file could
 put words in. More output than GPG-MOST-OUTPUT stops it. Four values: the
@@ -139,9 +154,11 @@ and what it said besides. An error meanwhile writes no passphrase or text
 to the debug log (*SECRET-AT-HAND*)."
   (let* ((tuatara.runtime:*secret-at-hand* t)
          (program (or (gpg-path) (tuatara.io:program-missing "gpg" :why (outside-program-install-words :gpg))))
-         (most (gpg-most-output input))
+         (most (gpg-most-output (if input-path
+                                    (or (ignore-errors (tuatara.io:stamp-size (tuatara.io:path-stamp input-path))) 0)
+                                    (length input))))
          (pipe (and passphrase (multiple-value-list (sb-posix:pipe))))
-         (second (and second-input (multiple-value-list (sb-posix:pipe))))
+         (second (and (or second-input second-path) (multiple-value-list (sb-posix:pipe))))
          (status (multiple-value-list (sb-posix:pipe)))
          (process nil) (statuses '()) (said '()) (output nil) (too-much nil))
     (unwind-protect
@@ -171,15 +188,14 @@ to the debug log (*SECRET-AT-HAND*)."
                 (let ((fd (shiftf (second second) nil)))
                   (tuatara.runtime:make-guarded-thread
                    (lambda ()
-                     (let ((stream (sb-sys:make-fd-stream fd :output t :element-type '(unsigned-byte 8) :buffering :full)))
-                       (ignore-errors (write-sequence second-input stream))
-                       (ignore-errors (close stream))))
+                     (unwind-protect (ignore-errors (gpg-feed fd second-input second-path))
+                       (ignore-errors (sb-posix:close fd))))
                    :name "tuatara gpg second input")))
               (let* ((status-fd (shiftf (first status) nil))
-                     (writer (and input
+                     (writer (and (or input input-path)
                                   (tuatara.runtime:make-guarded-thread
                                    (lambda ()
-                                     (ignore-errors (write-sequence input (sb-ext:process-input process)))
+                                     (ignore-errors (gpg-feed (sb-sys:fd-stream-fd (sb-ext:process-input process)) input input-path))
                                      (ignore-errors (close (sb-ext:process-input process))))
                                    :name "tuatara gpg input")))
                      (reader (tuatara.runtime:make-guarded-thread
@@ -214,7 +230,7 @@ to the debug log (*SECRET-AT-HAND*)."
                 (sb-ext:process-wait process)
                 (when too-much
                   (push (format nil "it gave more than ~a, far more than this holds: stopped" (octets-words most)) said))))
-            :input (if input :stream nil) :output :stream :error :stream :external-format :latin-1
+            :input (if (or input input-path) :stream nil) :output :stream :error :stream :external-format :latin-1
             :preserve-fds (append (list (second status)) (and pipe (list (first pipe))) (and second (list (first second))))
             :environment (let ((device (and (eq asker :terminal) (gpg-terminal))))
                            (if device
