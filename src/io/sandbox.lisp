@@ -92,7 +92,15 @@ put a sandbox in a scope of its own whose memory is limited; NIL when not.")
 (sb-ext:defglobal **sandbox-lock** (sb-thread:make-mutex :name "sandbox")
   "Held while the sandbox is tried, so that two threads needing it at once try it once.")
 
-(defun find-program (name &optional (search (or (sb-posix:getenv "PATH") "/usr/bin:/bin")))
+(defparameter *default-program-path* "/usr/bin:/bin"
+  "Where programs are looked for when the editor was started with no PATH.")
+
+(defun program-search-path ()
+  "The directories programs are looked for in, as the PATH lists them:
+the editor's own PATH, or *DEFAULT-PROGRAM-PATH* when it has none."
+  (or (sb-posix:getenv "PATH") *default-program-path*))
+
+(defun find-program (name &optional (search (program-search-path)))
   "The full path of the program NAME in the directories SEARCH lists (the
 PATH), or NAME itself when it has a slash and can be run; NIL when there is no
 such program. Only directories named from the root (starting with /) are
@@ -128,82 +136,74 @@ looked for again; PROGRAM is left as it is when it is not found."
         (values program arguments))))
 
 (defparameter *program-output-limit* (* 64 1024 1024)
-  "The most characters PROGRAM-OUTPUT takes of what a program writes (64 MB):
+  "The most octets PROGRAM-OUTPUT takes of what a program writes (64 MB):
 one that writes more, a clipboard of a huge copy or a program gone wrong, is
 stopped and its output not taken, so that it cannot fill memory.")
 
-(defun program-output (command &key input (capture t) (seconds 1) wait (environment nil environment-p) directory
-                                    (most *program-output-limit*))
-  "Run COMMAND, a program's full name and its arguments (never through a
-shell), giving it INPUT (a string, through a pipe: never written to a file)
-and, with CAPTURE, taking what it writes, MOST characters of it at most (a
-program writing more is stopped, its output not taken); SECONDS at most, then
-it is stopped. WAIT, when given, does the waiting instead of this thread
-blocking: a function of the thread doing the work and SECONDS (the editor's
-interruptible wait, say). ENVIRONMENT, when given, is all the program sees of
-one; DIRECTORY, where it runs. Two values: its output (with CAPTURE) and true
-when it ended well. A program that stays behind (wl-copy, serving the
-clipboard) is not waited for: only the one started."
-  (let ((process (ignore-errors
-                  (apply #'sb-ext:run-program (first command) (rest command)
-                         :input (if input :stream nil) :output (if capture :stream nil) :error nil
-                         :wait nil :external-format '(:utf-8 :replacement #\?)
-                         (append (and environment-p (list :environment environment))
-                                 (and directory (list :directory directory)))))))
-    (when process
-      (let* ((too-much nil)
-             (worker (tuatara.runtime:make-guarded-thread
-                      (lambda ()
-                        ;; the program closed here, by its own thread, once it is over: none is left waiting on it
-                        (unwind-protect
-                             (progn
-                               (when input
-                                 (ignore-errors (write-string input (sb-ext:process-input process)))
-                                 (ignore-errors (close (sb-ext:process-input process))))
-                               (prog1 (and capture
-                                           (let ((out (make-string-output-stream)) (count 0))
-                                             (ignore-errors
-                                              (loop for char = (read-char (sb-ext:process-output process) nil)
-                                                    while char
-                                                    do (when (> (incf count) most)
-                                                         (ignore-errors (sb-ext:process-kill process 15))
-                                                         (setf too-much t)
-                                                         (return))
-                                                       (write-char char out)))
-                                             (and (not too-much) (get-output-stream-string out))))
-                                 (loop repeat 600 while (sb-ext:process-alive-p process) do (sleep 0.05))))
-                          (ignore-errors (sb-ext:process-close process))))
-                      :name "program")))
-        (if wait
-            (funcall wait worker seconds)
-            (sb-thread:join-thread worker :timeout seconds :default nil))
-        (if (sb-thread:thread-alive-p worker)
-            (progn (ignore-errors (sb-ext:process-kill process 15))
-                   (values nil nil))
-            (values (sb-thread:join-thread worker :default nil)
-                    (and (not too-much) (eql 0 (sb-ext:process-exit-code process)))))))))
-
 (defun call-with-program (command function &key job input output error directory (environment nil environment-p)
-                                               (external-format '(:utf-8 :replacement #\?)))
+                                               preserve-fds (external-format '(:utf-8 :replacement #\?)))
   "Start COMMAND, a program's full name and its arguments (never through a
 shell), and call FUNCTION with its process, returning what FUNCTION returns:
 INPUT, OUTPUT and ERROR say what the program reads and writes, as
 SB-EXT:RUN-PROGRAM takes them (:STREAM for a pipe FUNCTION uses, NIL for
 none, :OUTPUT for its errors with what it writes); DIRECTORY is where it
-runs, ENVIRONMENT, when given, all it sees of one. With JOB, it is the
-program the job runs (TUATARA.RUNTIME:JOB-PROGRAM-STARTED): stopping the job
-ends it. However FUNCTION ends, the program is ended when it still runs,
-waited for and closed, so that none is left behind."
+runs, ENVIRONMENT, when given, all it sees of one; PRESERVE-FDS, descriptors
+it is given besides (pipes of its own, named in its arguments). With JOB, it
+is the program the job runs (TUATARA.RUNTIME:JOB-PROGRAM-STARTED): stopping
+the job ends it. However FUNCTION ends, the program is ended when it still
+runs, waited for and closed, so that none is left behind."
   (let ((process (apply #'sb-ext:run-program (first command) (rest command)
                         :wait nil :input input :output output :error error :external-format external-format
                         (append (and directory (list :directory directory))
-                                (and environment-p (list :environment environment))))))
+                                (and environment-p (list :environment environment))
+                                (and preserve-fds (list :preserve-fds preserve-fds))))))
     (when job (tuatara.runtime:job-program-started job process))
     (unwind-protect (funcall function process)
       (when (sb-ext:process-alive-p process)
         (ignore-errors (sb-ext:process-kill process 15)))
       (ignore-errors (sb-ext:process-wait process))
       (ignore-errors (sb-ext:process-close process)))))
+
+(defun program-output (command &key input (capture t) (seconds 1) wait (environment nil environment-p) directory
+                                    (most *program-output-limit*))
+  "Run COMMAND, a program's full name and its arguments (never through a
+shell), giving it INPUT (a string, through a pipe: never written to a file)
+and, with CAPTURE, taking what it writes, as UTF-8 text (an octet that is
+not UTF-8 as its raw byte's character), MOST octets of it at most (a program writing more is stopped, its output not taken); SECONDS at
+most, then it is stopped. WAIT, when given, does the waiting instead of this
+thread blocking: a function of the thread doing the work and SECONDS (the
+editor's interruptible wait, say). ENVIRONMENT, when given, is all the
+program sees of one; DIRECTORY, where it runs. Two values: its output (with
+CAPTURE) and true when it ended well. A program that stays behind (wl-copy,
+serving the clipboard) is not waited for: only the one started."
+  (let* ((started (list nil))
+         (worker (tuatara.runtime:make-guarded-thread
+                  (lambda ()
+                    (ignore-errors
+                     (call-with-program
+                      command
+                      (lambda (process)
+                        (setf (car started) process)
+                        (when input
+                          (ignore-errors (write-string input (sb-ext:process-input process)))
+                          (ignore-errors (close (sb-ext:process-input process))))
+                        (multiple-value-bind (octets too-much)
+                            (and capture (ignore-errors (read-stream-octets (sb-ext:process-output process) :limit most)))
+                          (unless too-much (sb-ext:process-wait process))
+                          (list (and octets (tuatara.text:octets-string octets))
+                                (and (not too-much) (eql 0 (sb-ext:process-exit-code process))))))
+                      :input (and input :stream) :output (and capture :stream)
+                      :directory directory
+                      :environment (if environment-p environment (sb-ext:posix-environ)))))
+                  :name "program")))
+    (if wait
+        (funcall wait worker seconds)
+        (sb-thread:join-thread worker :timeout seconds :default nil))
+    (if (sb-thread:thread-alive-p worker)
+        (progn (let ((process (car started)))
+                 (when process (ignore-errors (sb-ext:process-kill process 15))))
+               (values nil nil))
+        (values-list (sb-thread:join-thread worker :default nil)))))
 
 (defun system-directory-arguments ()
   "bwrap's arguments showing the program the system's directories, read only:
@@ -479,16 +479,6 @@ not UTF-8 shown as ?."
   (string-trim '(#\Space #\Newline #\Return #\Tab)
                (tuatara.text:lenient-string octets)))
 
-(defun read-some (fd octets)
-  "Read what the pipe FD has into OCTETS: how many octets, 0 at its end."
-  (loop (let ((got (with-octets-sap (sap octets)
-                     (sb-alien:alien-funcall
-                      (sb-alien:extern-alien "read" (function sb-alien:long sb-alien:int sb-sys:system-area-pointer
-                                                              sb-alien:unsigned-long))
-                      fd sap (length octets)))))
-          (cond ((>= got 0) (return got))
-                ((/= (sb-alien:get-errno) sb-posix:eintr) (fail "read" "a program's output"))))))
-
 (defun scope-environment ()
   "What systemd-run needs of the environment to reach your own service
 manager, and nothing else."
@@ -556,21 +546,15 @@ ends well with an exit code among ENDED-WELL. See SANDBOX-RUN."
          (err (sb-sys:fd-stream-fd (sb-ext:process-error process)))
          (open (list out err))
          (piece (make-array 65536 :element-type '(unsigned-byte 8)))
-         ;; what it printed and said, each (SIZE . PIECES), its pieces latest first
-         (output (list 0)) (said (list 0))
+         ;; what it printed and said
+         (output (make-octet-pieces)) (said (make-octet-pieces))
          (deadline (tuatara.runtime:deadline-in seconds))
          (outcome nil))
     (flet ((left () (tuatara.runtime:seconds-left deadline))
            (take (into octets n limit)
-             (let ((n (min n (- limit (car into)))))
+             (let ((n (min n (- limit (octet-pieces-size into)))))
                (when (plusp n)
-                 (push (subseq octets 0 n) (cdr into))
-                 (incf (car into) n))))
-           (joined (into)
-             (let ((all (make-array (car into) :element-type '(unsigned-byte 8))) (at (car into)))
-               (dolist (part (cdr into) all)
-                 (decf at (length part))
-                 (replace all part :start1 at)))))
+                 (add-octet-piece into (subseq octets 0 n))))))
       (unwind-protect
            (progn
              ;; what it prints, until both its outputs end
@@ -580,11 +564,11 @@ ends well with an exit code among ENDED-WELL. See SANDBOX-RUN."
                             (t (let ((ready (wait-for-fds open (min 0.1 (left)))))
                                  (when (listp ready)
                                    (dolist (fd ready)
-                                     (let ((n (read-some fd piece)))
+                                     (let ((n (read-fd-into fd piece :path "a program's output")))
                                        (cond ((zerop n) (setf open (remove fd open)))
                                              ((and (= fd out) (null output-limit)))   ; read and let go
                                              ((= fd out)
-                                              (if (> (+ (car output) n) output-limit)
+                                              (if (> (+ (octet-pieces-size output) n) output-limit)
                                                   (setf outcome :too-much)
                                                   (take output piece n output-limit)))
                                              (t (take said piece n *sandbox-said-limit*))))))))))
@@ -603,7 +587,7 @@ ends well with an exit code among ENDED-WELL. See SANDBOX-RUN."
           (ignore-errors (sb-ext:process-kill process sb-unix:sigkill))
           (ignore-errors (sb-ext:process-wait process)))
         (ignore-errors (sb-ext:process-close process)))
-      (values (joined output) outcome (said-text (joined said))))))
+      (values (joined-octets output) outcome (said-text (joined-octets said))))))
 
 (defun try-sandbox ()
   "Find bwrap and try it, as a list (STATUS DETAIL PATH): see SANDBOX-STATUS."

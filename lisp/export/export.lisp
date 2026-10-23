@@ -552,7 +552,7 @@ with no network. Where there is no sandbox (bwrap missing, or turned off by
          ;; (xdvipdfmx); TEX's directory searched for what it names; what it writes kept to
          ;; where it runs, never a parent directory or a full name elsewhere
          (environment (list (format nil "PATH=~a:~a" (string-right-trim "/" (tuatara.io:parent-path path))
-                                    (or (sb-posix:getenv "PATH") "/usr/bin:/bin"))
+                                    (tuatara.io:program-search-path))
                             (format nil "TEXINPUTS=~a:" (tuatara.io:parent-path tex))
                             "openout_any=p"))
          (arguments (list "-interaction=nonstopmode" "-halt-on-error" "-file-line-error" "-no-shell-escape"

@@ -867,22 +867,15 @@ stops reading when its car turns true: what was read so far, and true as a
 third value. With WIPE, every piece read is filled with zeros once the vector
 holds it, or once it is let go, so that what was read is left only in the
 vector given."
-  (let ((pieces '()) (total 0) (too-large nil) (cancelled nil))
+  (let ((pieces (make-octet-pieces)) (too-large nil) (cancelled nil))
     (loop (when (and cancel (car cancel)) (setf cancelled t) (return))
           (let* ((piece (make-array 65536 :element-type '(unsigned-byte 8)))
                  (n (read-sequence piece stream)))
-            (push (cons piece n) pieces)
-            (incf total n)
-            (when (and limit (> total limit)) (setf too-large t) (return))
+            (add-octet-piece pieces piece n)
+            (when (and limit (> (octet-pieces-size pieces) limit)) (setf too-large t) (return))
             (when (< n (length piece)) (return))))
-    (setf pieces (nreverse pieces))
-    (let ((octets (and (not too-large)
-                       (let ((octets (make-array total :element-type '(unsigned-byte 8))) (at 0))
-                         (loop for (piece . n) in pieces
-                               do (replace octets piece :start1 at :end2 n)
-                                  (incf at n))
-                         octets))))
-      (when wipe (loop for (piece) in pieces do (fill piece 0)))
+    (let ((octets (and (not too-large) (joined-octets pieces))))
+      (when wipe (wipe-octet-pieces pieces))
       (values octets too-large cancelled))))
 
 (defun visit-file (path &key safe)

@@ -360,3 +360,15 @@ cat ~a/l.txt; echo; echo new > ~a/n.txt && cat ~a/n.txt; cat ~a/h.txt 2>/dev/nul
           (tuatara.io::real-path-so-far (concatenate 'string safe "/link/new/file")))
       (is string= (concatenate 'string outside "/file")
           (tuatara.io::real-path-so-far (concatenate 'string safe "/new/../link/file"))))))
+
+(define-test (sandbox program-output-read-in-blocks)
+  ;; a program's output read a block at a time: little made besides the text given back
+  ;; (4 octets a character); 9 octets a character when it was read a character at a time
+  (let* ((size (* 8 1024 1024))
+         (consed (loop repeat 3
+                       minimize (let ((before (sb-ext:get-bytes-consed)))
+                                  (let ((text (tuatara.io:program-output (list (tuatara.io:find-program "head") "-c" (princ-to-string size) "/dev/zero")
+                                                                         :seconds 30)))
+                                    (is = size (length text)))
+                                  (- (sb-ext:get-bytes-consed) before)))))
+    (true (< (- consed (* 4 size)) (* 3 size)) "~,1f octets made for each octet of output" (/ consed size))))

@@ -151,79 +151,79 @@ to the debug log (*SECRET-AT-HAND*)."
              (let ((stream (sb-sys:make-fd-stream (second pipe) :output t :external-format :utf-8 :buffering :full)))
                (write-string passphrase stream) (terpri stream) (close stream)
                (setf (second pipe) nil)))
-           (setf process
-                 (sb-ext:run-program program
-                                     (append (list "--yes" "--status-fd" (princ-to-string (second status))
-                                                   "--max-output" (princ-to-string most))
-                                             (and (not (eq asker :terminal)) (list "--no-tty"))
-                                             (and (eq asker :minibuffer) (list "--pinentry-mode" "loopback"))
-                                             (and pipe (list "--batch" "--passphrase-fd" (princ-to-string (first pipe))))
-                                             (and (eq asker :minibuffer) (not pipe) (list "--batch"))
-                                             (and second (list "--enable-special-filenames"))
-                                             (substitute (and second (format nil "-&~d" (first second))) :second-input arguments))
-                                     :search nil :wait nil :input (if input :stream nil) :output :stream :error :stream
-                                     :external-format :latin-1
-                                     :preserve-fds (append (list (second status)) (and pipe (list (first pipe))) (and second (list (first second))))
-                                     :environment (let ((device (and (eq asker :terminal) (gpg-terminal))))
-                                                    (if device
-                                                        (cons (format nil "GPG_TTY=~a" device)
-                                                              (remove-if (lambda (e) (uiop:string-prefix-p "GPG_TTY=" e)) (sb-ext:posix-environ)))
-                                                        (sb-ext:posix-environ)))))
-           (sb-posix:close (second status)) (setf (second status) nil)
-           (when pipe (sb-posix:close (first pipe)) (setf (first pipe) nil))
-           (when second
-             ;; the second input written on a thread of its own, gpg reading it as it goes
-             (sb-posix:close (first second)) (setf (first second) nil)
-             (let ((fd (shiftf (second second) nil)))
-               (tuatara.runtime:make-guarded-thread
-                (lambda ()
-                  (let ((stream (sb-sys:make-fd-stream fd :output t :element-type '(unsigned-byte 8) :buffering :full)))
-                    (ignore-errors (write-sequence second-input stream))
-                    (ignore-errors (close stream))))
-                :name "tuatara gpg second input")))
-           (let* ((status-fd (shiftf (first status) nil))
-                  (writer (and input
-                               (tuatara.runtime:make-guarded-thread
+           (tuatara.io:call-with-program
+            (list* program
+                   (append (list "--yes" "--status-fd" (princ-to-string (second status))
+                                 "--max-output" (princ-to-string most))
+                           (and (not (eq asker :terminal)) (list "--no-tty"))
+                           (and (eq asker :minibuffer) (list "--pinentry-mode" "loopback"))
+                           (and pipe (list "--batch" "--passphrase-fd" (princ-to-string (first pipe))))
+                           (and (eq asker :minibuffer) (not pipe) (list "--batch"))
+                           (and second (list "--enable-special-filenames"))
+                           (substitute (and second (format nil "-&~d" (first second))) :second-input arguments)))
+            (lambda (started)
+              (setf process started)
+              (sb-posix:close (second status)) (setf (second status) nil)
+              (when pipe (sb-posix:close (first pipe)) (setf (first pipe) nil))
+              (when second
+                ;; the second input written on a thread of its own, gpg reading it as it goes
+                (sb-posix:close (first second)) (setf (first second) nil)
+                (let ((fd (shiftf (second second) nil)))
+                  (tuatara.runtime:make-guarded-thread
+                   (lambda ()
+                     (let ((stream (sb-sys:make-fd-stream fd :output t :element-type '(unsigned-byte 8) :buffering :full)))
+                       (ignore-errors (write-sequence second-input stream))
+                       (ignore-errors (close stream))))
+                   :name "tuatara gpg second input")))
+              (let* ((status-fd (shiftf (first status) nil))
+                     (writer (and input
+                                  (tuatara.runtime:make-guarded-thread
+                                   (lambda ()
+                                     (ignore-errors (write-sequence input (sb-ext:process-input process)))
+                                     (ignore-errors (close (sb-ext:process-input process))))
+                                   :name "tuatara gpg input")))
+                     (reader (tuatara.runtime:make-guarded-thread
+                              (lambda ()
+                                (let ((lines (sb-sys:make-fd-stream status-fd :input t :external-format :latin-1 :buffering :full)))
+                                  (unwind-protect
+                                       (ignore-errors
+                                        (loop for line = (tuatara.io:read-line-bounded lines 4096)
+                                              for count from 0
+                                              while line
+                                              when (and (< count 10000) (uiop:string-prefix-p "[GNUPG:] " line))
+                                                do (push (subseq line 9) statuses)))
+                                    (close lines))))
+                              :name "tuatara gpg status"))
+                     (listener (tuatara.runtime:make-guarded-thread
                                 (lambda ()
-                                  (ignore-errors (write-sequence input (sb-ext:process-input process)))
-                                  (ignore-errors (close (sb-ext:process-input process))))
-                                :name "tuatara gpg input")))
-                  (reader (tuatara.runtime:make-guarded-thread
-                           (lambda ()
-                             (let ((lines (sb-sys:make-fd-stream status-fd :input t :external-format :latin-1 :buffering :full)))
-                               (unwind-protect
-                                    (ignore-errors
-                                     (loop for line = (tuatara.io:read-line-bounded lines 4096)
-                                           for count from 0
-                                           while line
-                                           when (and (< count 10000) (uiop:string-prefix-p "[GNUPG:] " line))
-                                             do (push (subseq line 9) statuses)))
-                                 (close lines))))
-                           :name "tuatara gpg status"))
-                  (listener (tuatara.runtime:make-guarded-thread
-                             (lambda ()
-                               (ignore-errors
-                                (loop for line = (tuatara.io:read-line-bounded (sb-ext:process-error process) 1024)
-                                      for count from 0
-                                      while line
-                                      when (< count 200) do (push line said))))
-                             :name "tuatara gpg messages"))
-                  (cancelled nil))
-             ;; what was decrypted is kept only in OUTPUT
-             (setf (values output too-much cancelled)
-                   (tuatara.io:read-stream-octets (sb-ext:process-output process) :limit most :cancel cancel :wipe t))
-             (when (or too-much cancelled) (sb-ext:process-kill process 15))
-             (unless output (setf output (make-array 0 :element-type '(unsigned-byte 8))))
-             (when writer (sb-thread:join-thread writer :default nil))
-             (sb-thread:join-thread reader :default nil)
-             (sb-thread:join-thread listener :default nil)
-             (sb-ext:process-wait process)
-             (when too-much
-               (push (format nil "it gave more than ~a, far more than this holds: stopped" (octets-words most)) said))))
+                                  (ignore-errors
+                                   (loop for line = (tuatara.io:read-line-bounded (sb-ext:process-error process) 1024)
+                                         for count from 0
+                                         while line
+                                         when (< count 200) do (push line said))))
+                                :name "tuatara gpg messages"))
+                     (cancelled nil))
+                ;; what was decrypted is kept only in OUTPUT
+                (setf (values output too-much cancelled)
+                      (tuatara.io:read-stream-octets (sb-ext:process-output process) :limit most :cancel cancel :wipe t))
+                (when (or too-much cancelled) (sb-ext:process-kill process 15))
+                (unless output (setf output (make-array 0 :element-type '(unsigned-byte 8))))
+                (when writer (sb-thread:join-thread writer :default nil))
+                (sb-thread:join-thread reader :default nil)
+                (sb-thread:join-thread listener :default nil)
+                (sb-ext:process-wait process)
+                (when too-much
+                  (push (format nil "it gave more than ~a, far more than this holds: stopped" (octets-words most)) said))))
+            :input (if input :stream nil) :output :stream :error :stream :external-format :latin-1
+            :preserve-fds (append (list (second status)) (and pipe (list (first pipe))) (and second (list (first second))))
+            :environment (let ((device (and (eq asker :terminal) (gpg-terminal))))
+                           (if device
+                               (cons (format nil "GPG_TTY=~a" device)
+                                     (remove-if (lambda (e) (uiop:string-prefix-p "GPG_TTY=" e)) (sb-ext:posix-environ)))
+                               (sb-ext:posix-environ)))))
       (when pipe (dolist (fd pipe) (when fd (ignore-errors (sb-posix:close fd)))))
       (when second (dolist (fd second) (when fd (ignore-errors (sb-posix:close fd)))))
-      (dolist (fd status) (when fd (ignore-errors (sb-posix:close fd))))
-      (when process (ignore-errors (sb-ext:process-close process))))
+      (dolist (fd status) (when fd (ignore-errors (sb-posix:close fd)))))
     (values output (nreverse statuses)
             (and process (not too-much) (eql 0 (sb-ext:process-exit-code process)) (not (and cancel (car cancel))))
             (format nil "~{~a~^; ~}" (nreverse said)))))
