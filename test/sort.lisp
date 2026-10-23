@@ -194,13 +194,13 @@ are rewritten at once."
               (unwind-protect
                    ;; a pattern no filter can use is counted by none
                    (is eql (and filter (length (scan-kept-starts rope (tuatara.defaults::search-filter-matcher filter) crlf)))
-                       (tuatara.defaults::stretch-count buffer (list (cons 0 (tuatara.text:rope-bytes rope))) pattern t)
+                       (and filter (tuatara.defaults::stretch-count buffer (list (cons 0 (tuatara.text:rope-bytes rope))) filter))
                        "~a: ~a on ~s~:[~;, CRLF~]" written pattern text crlf)
                 (tuatara.buffer:kill-buffer buffer))))))))
   (let ((buffer (tuatara.buffer:make-buffer (tuatara.buffer:unique-buffer-name "count")
                                             :text (format nil "foo~c~%bar~c~%foo~c~%" #\Return #\Return #\Return))))
     (setf (tuatara.buffer:buffer-local buffer :line-ending) :crlf)
-    (unwind-protect (is = 2 (tuatara.defaults::stretch-count buffer (list (cons 0 15)) "foo$" t))
+    (unwind-protect (is = 2 (tuatara.defaults::stretch-count buffer (list (cons 0 15)) (tuatara.defaults::make-search-filter "foo$" :crlf t)))
       (tuatara.buffer:kill-buffer buffer))))
 
 (define-test (sorting sort-stands-where-begun)
@@ -451,3 +451,17 @@ are rewritten at once."
       ;; a lone newline among carriage returns and newlines stays where it was
       (is string= (format nil "a~%b~a" crlf) (run "M-x s o r t - l i n e s RET" (format nil "b~%a~a" crlf) t))
       (is string= (format nil "a~%b~a" crlf) (run "M-x r e v e r s e - r e g i o n RET" (format nil "b~%a~a" crlf) t)))))
+
+(define-test (sorting pattern-compiled-once)
+  ;; the question compiles what is typed once, not again at every redraw of its prompt
+  (let ((calls 0))
+    (sb-int:encapsulate 'tuatara.defaults::make-pattern-matcher 'counted
+                        (lambda (function pattern &rest more)
+                          (when (equal pattern "a(b") (incf calls))
+                          (apply function pattern more)))
+    (unwind-protect
+         (run-keys (append (list "C-x h M-x k e e p - l i n e s RET a ( b") (make-list 16 :initial-element :tick) (list "C-g"))
+                   :text (format nil "a(b~%x~%") :width 100)
+      (sb-int:unencapsulate 'tuatara.defaults::make-pattern-matcher 'counted))
+    ;; once for the prompt, once for the count, however often the prompt is drawn
+    (true (<= calls 2) "compiled ~d times" calls)))

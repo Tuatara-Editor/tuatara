@@ -122,15 +122,18 @@ over, or at once for no more than *TYPING-PAUSE-OCTETS*."
 (defstruct (pattern-count (:constructor make-pattern-count ()) (:copier nil))
   "How many matches a pattern being typed has, counted in the background:
 KEY, what was counted for, and TOTAL, how many; JOB, while counting, (KEY
-RESULT CANCEL); WORDS, what was shown last."
-  (key nil) (total nil) (job nil) (words nil))
+RESULT CANCEL); WORDS, what was shown last; FILTER, the pattern last typed,
+what it was typed as and its filter, (TEXT REGEX FILTER), made once
+\(STRETCH-PATTERN-COUNT)."
+  (key nil) (total nil) (job nil) (words nil) (filter nil))
 
 (setf (documentation 'make-pattern-count 'function) "Return a PATTERN-COUNT that has counted nothing yet."
       (documentation 'pattern-count-p 'function) "True when OBJECT is a PATTERN-COUNT."
       (documentation 'pattern-count-key 'function) "What a PATTERN-COUNT counted for, or NIL."
       (documentation 'pattern-count-total 'function) "How many matches a PATTERN-COUNT found for its KEY, or NIL."
       (documentation 'pattern-count-job 'function) "While a PATTERN-COUNT counts, (KEY RESULT CANCEL); else NIL."
-      (documentation 'pattern-count-words 'function) "What a PATTERN-COUNT showed last, kept while it counts again.")
+      (documentation 'pattern-count-words 'function) "What a PATTERN-COUNT showed last, kept while it counts again."
+      (documentation 'pattern-count-filter 'function) "The pattern a PATTERN-COUNT last counted, as (TEXT REGEX FILTER).")
 
 (defun stop-pattern-count (counter)
   "Stop COUNTER's count in the background, when one goes on."
@@ -184,33 +187,36 @@ one (COUNT-LINE-MATCHES), or without EVERY the first on each line
                     (count-first-per-line rope matcher start end :stop stop))
               (if status (return nil) count))))
 
-(defun stretch-count (buffer stretches text regex &key every ends stop)
-  "How many matches TEXT has in STRETCHES of BUFFER, (START . END) each: with
-EVERY each match, else the lines a filter by it leaves (LINES-MATCHING),
-records ending as ENDS says (RECORD-ENDS); NIL for a pattern that cannot be
-used, or once STOP answers true. REGEX tells whether TEXT is a regular
-expression; $ matches before a carriage return where BUFFER's lines end with
-one and a newline. Counted on every core."
-  (let* ((crlf (buffer-crlf-p buffer))
-         (filter (and (plusp (length text)) (make-search-filter text :regex regex :crlf crlf)))
-         (rope (tuatara.buffer:buffer-text buffer)))
-    (when filter
-      (if every
-          (count-in-stretches rope (search-filter-matcher filter) stretches :every t :stop stop)
-          (let ((count (nth-value 1 (lines-matching-everywhere
-                                     filter rope
-                                     (coerce (loop for (start . end) in stretches collect start collect end) '(simple-array fixnum (*)))
-                                     crlf nil stop nil ends))))
-            (and (not (and stop (funcall stop))) count))))))
+(defun stretch-count (buffer stretches filter &key every ends stop)
+  "How many matches FILTER's pattern has in STRETCHES of BUFFER, (START .
+END) each: with EVERY each match, else the lines FILTER leaves
+\(LINES-MATCHING), records ending as ENDS says (RECORD-ENDS); NIL once STOP
+answers true. Counted on every core."
+  (let ((rope (tuatara.buffer:buffer-text buffer)))
+    (if every
+        (count-in-stretches rope (search-filter-matcher filter) stretches :every t :stop stop)
+        (let ((count (nth-value 1 (lines-matching-everywhere
+                                   filter rope
+                                   (coerce (loop for (start . end) in stretches collect start collect end) '(simple-array fixnum (*)))
+                                   (buffer-crlf-p buffer) nil stop nil ends))))
+          (and (not (and stop (funcall stop))) count)))))
 
 (defun stretch-pattern-count (counter buffer stretches text regex &key every ends)
   "STRETCH-COUNT of TEXT in STRETCHES of BUFFER as it is typed at a question,
 kept up to date by COUNTER as PATTERN-COUNT-UPDATE counts: its two values,
-for READ-PATTERN's COUNT. Nothing is counted for a pattern that cannot be
-used."
-  (pattern-count-update counter (and (plusp (length text)) (list text regex every stretches (tuatara.buffer:buffer-text buffer)))
-                        (loop for (start . end) in stretches sum (- end start))
-                        (lambda (stop) (stretch-count buffer stretches text regex :every every :ends ends :stop stop))))
+for READ-PATTERN's COUNT. REGEX tells whether TEXT is a regular expression;
+$ matches before a carriage return where BUFFER's lines end with one and a
+newline. Nothing is counted for a pattern that cannot be used; a pattern is
+compiled once, however often it is asked about."
+  (let ((filter (let ((last (pattern-count-filter counter)))
+                  (if (and last (string= (first last) text) (eq (second last) regex))
+                      (third last)
+                      (third (setf (pattern-count-filter counter)
+                                   (list text regex (and (plusp (length text))
+                                                         (make-search-filter text :regex regex :crlf (buffer-crlf-p buffer))))))))))
+    (pattern-count-update counter (and filter (list text regex every stretches (tuatara.buffer:buffer-text buffer)))
+                          (loop for (start . end) in stretches sum (- end start))
+                          (lambda (stop) (stretch-count buffer stretches filter :every every :ends ends :stop stop)))))
 
 (defvar *search-in-loop* nil
   "True while the search's question reads keys, which takes in what a search
