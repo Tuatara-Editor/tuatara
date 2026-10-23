@@ -104,13 +104,6 @@ was typed is no date."
     ("fifth" . 5) ("5th" . 5) ("last" . -1))
   "The words for which weekday of a month: the first Monday, the last Friday.")
 
-(defun org-repeat-weekday (word)
-  "The weekday WORD names, 0 for Sunday to 6 for Saturday, its first three
-letters or more, a plural too (mondays); NIL for none."
-  (let ((word (string-right-trim "s" word)))
-    (and (>= (length word) 3)
-         (position-if (lambda (name) (uiop:string-prefix-p word (string-downcase name))) *weekday-names*))))
-
 (defun org-repeat-weekday-set (words)
   "The days of the week WORDS name, 0 for Sunday to 6 for Saturday, in
 order, or NIL when they name anything else: weekday or workday (Monday to
@@ -122,9 +115,9 @@ and between them passed over."
           ((and (= (length words) 1) (member (first words) '("weekend" "weekends") :test #'string=))
            (list 0 6))
           ((and (= (length words) 3) (string= (second words) "to"))
-           (let ((from (org-repeat-weekday (first words))) (to (org-repeat-weekday (third words))))
+           (let ((from (weekday-of-word (first words))) (to (weekday-of-word (third words))))
              (and from to (sort (loop for k from 0 to (mod (- to from) 7) collect (mod (+ from k) 7)) #'<))))
-          (t (let ((days (mapcar #'org-repeat-weekday words)))
+          (t (let ((days (mapcar #'weekday-of-word words)))
                (and days (every #'identity days) (sort (remove-duplicates days) #'<)))))))
 
 (defun org-repeat-range (input)
@@ -237,7 +230,7 @@ everyday and daily are every day, weekly, monthly and yearly likewise."
             ;; every N days, weeks, months, years, or weekdays
             ((and (null before) (= (length after) 1) (plusp count))
              (let* ((unit (string-right-trim "s" (first after)))
-                    (weekday (org-repeat-weekday (first after)))
+                    (weekday (weekday-of-word (first after)))
                     (letter (cond (weekday #\w)
                                   ((string= unit "day") #\d) ((string= unit "week") #\w)
                                   ((string= unit "month") #\m) ((string= unit "year") #\y))))
@@ -251,7 +244,7 @@ everyday and daily are every day, weekly, monthly and yearly likewise."
                   (member (string-right-trim "s" (first after)) '("month") :test #'string=)
                   (member count '(1 2 3 4 6 12)))
              (let ((n (cdr (assoc (first before) *org-repeat-ordinals* :test #'string=)))
-                   (dayname (org-repeat-weekday (second before))))
+                   (dayname (weekday-of-word (second before))))
                (when (and n dayname)
                  (multiple-value-bind (year month) (day-date today)
                    (let* ((this (org-float-day year month dayname n nil))

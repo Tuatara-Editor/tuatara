@@ -171,6 +171,30 @@ system gives the times files were changed, to the second."
 (defparameter *short-month-names* #("Jan" "Feb" "Mar" "Apr" "May" "Jun" "Jul" "Aug" "Sep" "Oct" "Nov" "Dec")
   "The months in three letters, January first: month M is at M - 1.")
 
+(defun name-of-word (word names &key plural)
+  "The index in NAMES of the name WORD begins, case not counting, WORD three
+letters at least; with PLURAL, an s after the name or a beginning of it too
+\(mondays, tues). NIL for none."
+  (flet ((index (word)
+           (and (>= (length word) 3)
+                (position-if (lambda (name) (and (<= (length word) (length name)) (string-equal word name :end2 (length word))))
+                             names))))
+    (or (index word)
+        (and plural (> (length word) 3) (char-equal (char word (1- (length word))) #\s)
+             (index (subseq word 0 (1- (length word))))))))
+
+(defun weekday-of-word (word)
+  "The day of the week WORD names, 0 for Sunday to 6 for Saturday: the
+beginning of its name, three letters at least, or a plural (fri, thurs,
+mondays); NIL for none."
+  (name-of-word word *weekday-names* :plural t))
+
+(defun month-of-word (word)
+  "The month WORD names, 1 to 12: the beginning of its name, three letters at
+least (sep, sept, september); NIL for none."
+  (let ((index (name-of-word word *month-names*)))
+    (and index (1+ index))))
+
 ;;; Times written in a pattern
 
 (defun format-day (pattern day &optional (hour 0) (minute 0) (second 0) offset)
@@ -263,19 +287,17 @@ none, or one that cannot be written."
 ;;; Dates as typed
 
 (defparameter *date-text-scanners*
-  (let ((months (format nil "~{~a~^|~}" (map 'list #'string-downcase *short-month-names*)))
-        (weekdays (format nil "~{~a~^|~}" (map 'list #'string-downcase *short-weekday-names*))))
-    (flet ((scanner (pattern &rest arguments) (cl-ppcre:create-scanner (apply #'format nil pattern arguments))))
-      (list :iso (scanner "\\b(\\d{4})-(\\d{1,2})-(\\d{1,2})\\b")
-            :month-day (scanner "\\b(\\d{1,2})-(\\d{1,2})\\b")
-            :month-name-day (scanner "\\b(~a)[a-z]*\\.? +(\\d{1,2})\\b(?: +(\\d{4})\\b)?" months)
-            :day-month-name (scanner "\\b(\\d{1,2}) +(~a)[a-z]*\\b(?: +(\\d{4})\\b)?" months)
-            :word (scanner "\\b(today|tomorrow|yesterday)\\b")
-            :weekday (scanner "\\b(~a)[a-z]*\\b" weekdays)
-            :relative (scanner "(?:^|\\s)([+-]{1,2})(\\d+)([dwmy]?)(?=\\s|$)")
-            :year (scanner "\\b(\\d{4})\\b")
-            :day (scanner "\\b(\\d{1,2})\\b")
-            :today (scanner "^\\s*\\.\\s*$"))))
+  (flet ((scanner (pattern) (cl-ppcre:create-scanner pattern)))
+    (list :iso (scanner "\\b(\\d{4})-(\\d{1,2})-(\\d{1,2})\\b")
+          :month-day (scanner "\\b(\\d{1,2})-(\\d{1,2})\\b")
+          :month-name-day (scanner "\\b([a-z]+)\\.? +(\\d{1,2})\\b(?: +(\\d{4})\\b)?")
+          :day-month-name (scanner "\\b(\\d{1,2}) +([a-z]+)\\b(?: +(\\d{4})\\b)?")
+          :word (scanner "\\b(today|tomorrow|yesterday)\\b")
+          :weekday (scanner "\\b([a-z]+)\\b")
+          :relative (scanner "(?:^|\\s)([+-]{1,2})(\\d+)([dwmy]?)(?=\\s|$)")
+          :year (scanner "\\b(\\d{4})\\b")
+          :day (scanner "\\b(\\d{1,2})\\b")
+          :today (scanner "^\\s*\\.\\s*$")))
   "The patterns READ-DATE-TEXT reads a date as typed with, each made once, by
 the part of a date it reads.")
 
@@ -297,12 +319,13 @@ month of 30 days, 13pm, 10:00-25:00) names no date. O(length of INPUT)."
     (let ((weekday (weekday today))
           (text (string-downcase (string-trim '(#\Space #\Tab) input)))
           (y year) (m month) (d day) hour minute end-hour end-minute)
-      (labels ((take (part)
-                 ;; the first match of PART's pattern as its groups, taken out of TEXT
-                 (multiple-value-bind (start end starts ends) (cl-ppcre:scan (getf *date-text-scanners* part) text)
-                   (when start
-                     (prog1 (map 'list (lambda (s e) (and s (subseq text s e))) starts ends)
-                       (setf text (concatenate 'string (subseq text 0 start) " " (subseq text end)))))))
+      (labels ((take (part &optional (wanted (constantly t)))
+                 ;; the first match of PART's pattern whose groups are WANTED, as its groups, taken out of TEXT
+                 (cl-ppcre:do-scans (start end starts ends (getf *date-text-scanners* part) text)
+                   (let ((groups (map 'list (lambda (s e) (and s (subseq text s e))) starts ends)))
+                     (when (funcall wanted groups)
+                       (setf text (concatenate 'string (subseq text 0 start) " " (subseq text end)))
+                       (return groups)))))
                (date (new-y new-m new-d) (setf y new-y m new-m d new-d))
                (to-day (number) (multiple-value-bind (new-y new-m new-d) (day-date number) (date new-y new-m new-d)))
                (past-p (py pm pd) (< (+ (* 10000 py) (* 100 pm) pd) (+ (* 10000 year) (* 100 month) day))))
@@ -318,18 +341,18 @@ month of 30 days, 13pm, 10:00-25:00) names no date. O(length of INPUT)."
           (when month-day
             (let ((md (parse-integer (first month-day))) (dd (parse-integer (second month-day))))
               (date (if (past-p year md dd) (1+ year) year) md dd))))
-        (let ((named (or (take :month-name-day)
-                         (let ((other (take :day-month-name)))
+        (let ((named (or (take :month-name-day (lambda (groups) (month-of-word (first groups))))
+                         (let ((other (take :day-month-name (lambda (groups) (month-of-word (second groups))))))
                            (and other (list (second other) (first other) (third other)))))))
           (when named
-            (let ((nm (1+ (position (first named) *short-month-names* :test #'string-equal))) (nd (parse-integer (second named))))
+            (let ((nm (month-of-word (first named))) (nd (parse-integer (second named))))
               (date (cond ((third named) (parse-integer (third named))) ((past-p year nm nd) (1+ year)) (t year)) nm nd))))
         (let ((word (take :word)))
           (when word
             (to-day (+ (day-number y m d) (cond ((string= (first word) "tomorrow") 1) ((string= (first word) "yesterday") -1) (t 0))))))
-        (let ((weekday-name (take :weekday)))
+        (let ((weekday-name (take :weekday (lambda (groups) (weekday-of-word (first groups))))))
           (when weekday-name
-            (let ((ahead (mod (- (position (first weekday-name) *short-weekday-names* :test #'string-equal) weekday) 7)))
+            (let ((ahead (mod (- (weekday-of-word (first weekday-name)) weekday) 7)))
               (to-day (+ (day-number y m d) (if (zerop ahead) 7 ahead))))))
         (let ((relative (take :relative)))
           (when relative
