@@ -53,6 +53,10 @@ when TABLE is NIL."
 timestamp is shared: it is not to be changed."
   (memo-values *org-agenda-ts-memo* text (lambda () (org-read-ts text))))
 
+(defun org-agenda-rule (text)
+  "TEXT read as ORG-READ-RULE reads it, once while an agenda is made."
+  (memo-values *org-agenda-ts-memo* (cons :rule text) (lambda () (org-read-rule text))))
+
 (defun org-repeater-of (text)
   "The repeater the agenda finds in the timestamp TEXT, read once: (TS VALUE
 UNIT START), TS the timestamp read and START its day; NIL when it has none
@@ -503,7 +507,9 @@ says both."
                        (push (list (subseq line s (1+ dash)) (subseq line (+ dash 3) e)) ranges))
                      (setf blanked (concatenate 'string (subseq blanked 0 s) (make-string (- e s) :initial-element #\Space) (subseq blanked e))))
                    (cl-ppcre:do-matches (s e *org-active-timestamp-scanner* blanked)
-                     (when (org-agenda-ts (subseq blanked s e)) (push (subseq blanked s e) stamps))))))
+                     (when (org-agenda-ts (subseq blanked s e)) (push (subseq blanked s e) stamps)))
+                   (cl-ppcre:do-matches (s e *org-rule-timestamp-scanner* blanked)
+                     (when (org-agenda-rule (subseq blanked s e)) (push (subseq blanked s e) stamps))))))
              (when (>= line-end end) (loop-finish)))
     (setf (agenda-entry-stamps entry) (nreverse stamps)
           (agenda-entry-ranges entry) (remove-if-not (lambda (r) (and (org-agenda-ts (first r)) (org-agenda-ts (second r)))) (nreverse ranges))
@@ -516,7 +522,9 @@ says both."
 :DEADLINE (DAY WARNING REPEATS) and :SCHEDULED (DAY DELAY REPEATS) for its
 active planning timestamps, WARNING its own -3d or NIL; :STAMPS, each (TEXT
 DAY REPEATS), REPEATS its repeater (ORG-REPEATER-OF), or NIL; :RANGES, each
-(FROM TO FIRST-DAY LAST-DAY)."
+\(FROM TO FIRST-DAY LAST-DAY); and for its dates by rule (ORG-READ-RULE)
+:RULES, each (KIND TEXT RULE), KIND :SCHEDULED, :DEADLINE or :STAMP, with
+:LAST-DONE, the day of its LAST_REPEAT, the last day it was done for, or NIL."
   (flet ((planned (text delay)
            (let ((ts (and text (char= (char text 0) #\<) (org-agenda-ts text))))
              (and ts (list (org-ts-day-number ts)
@@ -526,11 +534,19 @@ DAY REPEATS), REPEATS its repeater (ORG-REPEATER-OF), or NIL; :RANGES, each
     (list :deadline (planned (agenda-entry-deadline entry) nil)
           :scheduled (planned (agenda-entry-scheduled entry) t)
           :stamps (loop for text in (agenda-entry-stamps entry)
+                        unless (org-agenda-rule text)
                         collect (list text (org-ts-day-number (org-agenda-ts text))
                                       (and (cl-ppcre:scan "^<\\d+-\\d+-\\d+[^>\\n]+?\\+\\d+[hdwmy]>$" text)
                                            (org-repeater-of text))))
           :ranges (loop for (from to) in (agenda-entry-ranges entry)
-                        collect (list from to (org-ts-day-number (org-agenda-ts from)) (org-ts-day-number (org-agenda-ts to)))))))
+                        collect (list from to (org-ts-day-number (org-agenda-ts from)) (org-ts-day-number (org-agenda-ts to))))
+          :rules (loop for (kind text) in (list* (list :scheduled (agenda-entry-scheduled entry))
+                                                 (list :deadline (agenda-entry-deadline entry))
+                                                 (loop for text in (agenda-entry-stamps entry) collect (list :stamp text)))
+                       for rule = (and text (org-agenda-rule text))
+                       when rule collect (list kind text rule))
+          :last-done (let ((ts (org-agenda-ts (or (cdr (assoc "LAST_REPEAT" (agenda-entry-properties entry) :test #'string-equal)) ""))))
+                       (and ts (org-ts-day-number ts))))))
 
 (defun org-done-p (entry)
   "True when ENTRY's TODO keyword is a done one."
@@ -600,6 +616,46 @@ TODAY."
                               (= current day))
                        collect (org-agenda-item entry current "timestamp" "" text (agenda-entry-priority entry)))))
 
+(defun org-agenda-rules (entries current today)
+  "The lines of the dates by rule of ENTRIES on the day CURRENT, today being
+TODAY. A timestamp in the text is listed on each day its rule takes. A
+scheduled or deadline task by rule is open from the first of its days after
+the last it was done for (its LAST_REPEAT, ORG-RULE-DONE-DAY): today that one
+is listed when it has come or is past, as a repeating task's is, a deadline's
+too while it is near; on the days after today, each day the rule takes from
+then; on the days before, those the rule takes after the last done for. Never
+done, a task's days before today are not past due."
+  (loop for entry in entries
+        for facts = (agenda-entry-facts entry)
+        for last-done = (getf facts :last-done)
+        append (loop for (kind text rule) in (getf facts :rules)
+                     for priority = (agenda-entry-priority entry)
+                     append
+                     (if (eq kind :stamp)
+                         (and (org-rule-matches-p rule current)
+                              (list (org-agenda-item entry current "timestamp" "" text priority)))
+                         (let* ((open (org-rule-next rule (if last-done (1+ last-done) today)))
+                                (deadline (eq kind :deadline))
+                                (warning (org-warning-days text *org-deadline-warning-days*)))
+                           (cond ((or (org-done-p entry) (null open)) '())
+                                 ((= current today)
+                                  (let ((diff (- today open)))
+                                    (cond ((and (not deadline) (>= diff 0))
+                                           (list (org-agenda-item entry current (if (plusp diff) "past-scheduled" "scheduled")
+                                                                  (if (plusp diff) (format nil "Sched.~2dx: " diff) "Scheduled: ")
+                                                                  text (+ 99 diff priority))))
+                                          ((and deadline (or (>= diff 0) (<= (- diff) warning)))
+                                           (list (org-agenda-item entry current (if (minusp diff) "upcoming-deadline" "deadline")
+                                                                  (cond ((plusp diff) (format nil "~2d d. ago: " diff))
+                                                                        ((minusp diff) (format nil "In ~3d d.: " (- diff)))
+                                                                        (t "Deadline:  "))
+                                                                  text (+ diff priority)))))))
+                                 ((and (org-rule-matches-p rule current)
+                                       (if (> current today) (>= current open) (or (null last-done) (> current last-done))))
+                                  (list (org-agenda-item entry current (if deadline "deadline" "scheduled")
+                                                         (if deadline "Deadline:  " "Scheduled: ")
+                                                         text (+ 99 priority))))))))))
+
 (defun org-agenda-progress (entries current)
   "In log mode, the lines of what ENTRIES closed and clocked on the day CURRENT."
   (let ((day (format-day "%F" current)))
@@ -636,7 +692,8 @@ ENTRIES-BY-FILE, when given, the entries of each file, read before."
                         (and log (org-agenda-progress entries day))
                         (org-agenda-scheduled entries day today)
                         (org-agenda-blocks entries day)
-                        (org-agenda-timestamps entries day today)))
+                        (org-agenda-timestamps entries day today)
+                        (org-agenda-rules entries day today)))
    '(:time :urgency)))
 
 (defun org-agenda-span (first count &rest arguments)

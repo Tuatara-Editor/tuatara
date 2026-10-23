@@ -456,29 +456,39 @@ range, 14:00-15:30."
   (format nil "~a~@[-~a~]" (format-day (if hour "%F %a %R" "%F %a") day (or hour 0) (or minute 0))
           (and hour end-hour (format-day "%R" 0 end-hour end-minute))))
 
-(defun read-date (prompt &key (now (get-universal-time)) (shown #'date-words) follow none)
+(defun read-date (prompt &key (now (get-universal-time)) (shown #'date-words) follow none also keymap)
   "Ask PROMPT for a date, read as READ-DATE-TEXT reads it (tomorrow, fri, +3d,
 sep 30, 2026-12-24 14:00, 3pm), the date it reads shown below as it is
 typed, as SHOWN, a function of its day number, hour, minute, end hour and
 end minute, writes it (2026-12-24 Thu 14:00 unless given), \\`RET' taking it;
 FOLLOW, when given, a function of the same, is called as each is read. NOW
-is the universal time taken as now. Returns the universal time of the date
-in local time, at midnight when no time is given, and as the values after
-it its day number, hour, minute, end hour and end minute; when what was
-typed is no date, what NONE, a function of it, gives (NIL unless given)."
+is the universal time taken as now. ALSO, when given, reads what is typed
+when it is no date: a function of it giving what it reads and the words
+shown for it, or NIL. KEYMAP, when given, holds keys of the question's own.
+Returns the universal time of the date in local time,
+at midnight when no time is given, and as the values after it its day
+number, hour, minute, end hour and end minute; when what was typed is no
+date, what NONE, a function of it or of what ALSO read, gives (NIL unless
+given)."
   (let* ((today (nth-value 0 (time-day now)))
          (chosen (completing-read prompt
                                   (lambda (input)
                                     (let ((parts (multiple-value-list (read-date-text input today))))
-                                      (when (first parts)
-                                        (when follow (apply follow parts))
-                                        (list (make-candidate (apply shown parts) :value parts :annotation "RET takes it")))))
-                                  :filter nil))
-         (parts (if (consp chosen) chosen (multiple-value-list (read-date-text chosen today)))))
+                                      (cond ((first parts)
+                                             (when follow (apply follow parts))
+                                             (list (make-candidate (apply shown parts) :value parts :annotation "RET takes it")))
+                                            (also
+                                             (multiple-value-bind (value words) (funcall also input)
+                                               (and value (list (make-candidate words :value (list :also value)
+                                                                                      :annotation "RET takes it"))))))))
+                                  :filter nil :keymap keymap))
+         (parts (cond ((and (consp chosen) (eq (first chosen) :also)) (list nil))
+                      ((consp chosen) chosen)
+                      (t (multiple-value-list (read-date-text chosen today))))))
     (if (first parts)
         (destructuring-bind (day hour minute end-hour end-minute) parts
           (values (day-universal-time day (or hour 0) (or minute 0)) day hour minute end-hour end-minute))
-        (and none (funcall none chosen)))))
+        (and none (funcall none (if (and (consp chosen) (eq (first chosen) :also)) (second chosen) chosen))))))
 
 ;;; Marks
 

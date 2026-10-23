@@ -288,7 +288,9 @@ LINE-END, its line's end, at the latest."
 that repeat, as it goes from OLD to the done keyword DONE at the universal
 time NOW: those timestamps moved to their next time, its keyword the first of
 its sequence again, and with *ORG-LOG-REPEAT* LAST_REPEAT set and the change
-of state logged; in one step to undo."
+of state logged; in one step to undo. A task by rule (ORG-RULE-TIMESTAMP-IN)
+keeps its rule, LAST_REPEAT, set whatever *ORG-LOG-REPEAT* says, saying the
+day it is done for (ORG-RULE-DONE-TEXT)."
   (let* ((begin (org-node-begin headline))
          (line-end (string-line-end text begin))
          (end (org-entry-end headline text))
@@ -301,13 +303,21 @@ of state logged; in one step to undo."
          (headline-text (concatenate 'string (subseq entry 0 (- keyword-at begin)) first-todo " " (subseq entry (- old-end begin) entry-line-end)))
          (body (if (< entry-line-end (length entry)) (subseq entry (1+ entry-line-end)) ""))
          (moved (org-repeat-timestamps body now))
+         (rule (org-rule-timestamp-in body 0 (length body)))
+         (done-for (and rule (org-rule-done-text rule body now)))
          (lines (org-text-lines moved))
-         (lines (if *org-log-repeat* (org-entry-lines-with lines "LAST_REPEAT" (org-timestamp-text now)) lines))
+         (lines (cond (done-for (org-entry-lines-with lines "LAST_REPEAT" done-for))
+                      (*org-log-repeat* (org-entry-lines-with lines "LAST_REPEAT" (org-timestamp-text now)))
+                      (t lines)))
          (new (org-entry-from-lines headline-text lines (or (org-ends-with-newline-p moved)
                                                             (and (null lines) (< entry-line-end (length entry)))))))
     (org-replace-chars buffer begin end new
                        :point (if (<= position line-end) (min position (+ begin (length headline-text))) begin))
-    (message "Entry repeats: ~a" first-todo)))
+    (if done-for
+        (let ((next (org-rule-next rule (1+ (org-ts-day-number (org-read-ts done-for))))))
+          (message "Done for ~a~@[; next ~a~]: ~a" (subseq done-for 1 (1- (length done-for)))
+                   (and next (format-day "%F %a" next)) first-todo))
+        (message "Entry repeats: ~a" first-todo))))
 
 (defun org-set-todo (step)
   "Set the TODO keyword of the headline point is in to the one STEP (1 or -1)
@@ -334,7 +344,8 @@ keyword from one not done notes when (CLOSED:), leaving it takes that away."
                  (position (if (>= position old-end) (+ position (- (length inserted) (- old-end keyword-at))) position))
                  (now (org-now)))
             (when (and now-done (not was-done)
-                       (org-repeating-timestamp-in-p text line-end (org-entry-end headline text)))
+                       (or (org-repeating-timestamp-in-p text line-end (org-entry-end headline text))
+                           (org-rule-timestamp-in text line-end (org-entry-end headline text))))
               (return-from org-set-todo (org-repeat-entry buffer headline text (org-point-char buffer) old new now)))
             ;; the planning line under the headline: CLOSED: added or taken away
             (let* ((next-line (min (length text) (1+ line-end)))

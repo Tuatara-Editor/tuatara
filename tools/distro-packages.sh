@@ -109,7 +109,7 @@ Packager: $packager
 ExclusiveArch: x86_64
 AutoProv: no
 Requires: gtk4 ncurses-libs openssl-libs libzstd libstdc++
-Recommends: enchant2 bubblewrap ImageMagick poppler-utils git-core
+Recommends: enchant2 bubblewrap ImageMagick poppler-utils git-core libnotify
 
 %description
 $description
@@ -146,7 +146,7 @@ Architecture: amd64
 Maintainer: $packager
 Installed-Size: $(du -sk "$stage" | cut -f1)
 Depends: libc6 (>= 2.38), libgtk-4-1, libncursesw6, libssl3t64 | libssl3, libzstd1, libstdc++6
-Recommends: libenchant-2-2, bubblewrap, imagemagick, poppler-utils, git
+Recommends: libenchant-2-2, bubblewrap, imagemagick, poppler-utils, git, libnotify-bin
 Section: editors
 Priority: optional
 Description: $summary
@@ -174,7 +174,8 @@ optdepends=('enchant: spelling'
             'bubblewrap: pictures and programs run shut in'
             'imagemagick: pictures'
             'poppler: PDF files'
-            'git: the git interface')
+            'git: the git interface'
+            'libnotify: agenda entries told on the desktop')
 options=('!strip' '!debug')
 
 package() {

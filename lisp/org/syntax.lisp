@@ -1429,8 +1429,9 @@ and what is between its parentheses as its two groups.")
 
 (defparameter *org-timestamp-re*
   (let ((stamp (org-timestamp-body)))
-    (format nil "(?:<~a>(?:--<~a>)?|\\[~a\\](?:--\\[~a\\])?|<%%\\([^>\\n]*\\)>)" stamp stamp stamp stamp))
-  "A timestamp, active or inactive, a range, or a diary sexp.")
+    (format nil "(?:<~a>(?:--<~a>)?|\\[~a\\](?:--\\[~a\\])?|<%%\\([^>\\n]*\\)(?: +\\d{1,2}:\\d{2}(?:-\\d{1,2}:\\d{2})?)?>)" stamp stamp stamp stamp))
+  "A timestamp, active or inactive, a range, or a diary sexp, a time or a
+time range after it too (<%%(diary-float t 1 1) 10:00>).")
 
 (defparameter *org-one-timestamp-scanner*
   (let ((stamp (org-timestamp-body))) (cl-ppcre:create-scanner (format nil "<~a>|\\[~a\\]" stamp stamp)))
@@ -1439,6 +1440,10 @@ and what is between its parentheses as its two groups.")
 (defparameter *org-active-timestamp-scanner*
   (cl-ppcre:create-scanner (format nil "<~a>" (org-timestamp-body)))
   "One active timestamp: each date of a range alone.")
+
+(defparameter *org-rule-timestamp-scanner*
+  (cl-ppcre:create-scanner "<%%\\([^>\\n]*\\)(?: +\\d{1,2}:\\d{2}(?:-\\d{1,2}:\\d{2})?)?>")
+  "One timestamp by rule, <%%(diary-float t 1 1) 10:00> (ORG-READ-RULE).")
 
 (defparameter *org-active-range-scanner*
   (let ((stamp (org-timestamp-body))) (cl-ppcre:create-scanner (format nil "<~a>--<~a>" stamp stamp)))

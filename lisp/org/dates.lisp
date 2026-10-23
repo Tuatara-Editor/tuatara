@@ -168,3 +168,244 @@ nothing."
                                                 match)))
                                         :simple-calls t)
             count)))
+
+;;; Dates by rule: <%%(diary-float t 1 1) 10:00>, the first Monday of every
+;;; month, as Emacs's Org writes them. The rule between the brackets is read as
+;;; data, a few forms of Emacs's diary that say which days, and never run.
+
+(defstruct (org-rule (:conc-name org-rule-))
+  "A date by rule, read from a timestamp <%%(...)>: KIND, one of :FLOAT
+\(the Nth or last weekday of a month), :CYCLIC (every N days), :BLOCK (every
+day from one date to another), :ANNIVERSARY (a day each year), :DATE (the
+days whose year, month and day are as given), :WEEKDAYS (the days of the
+week listed, 0 for Sunday to 6 for Saturday), :ALL (the days all its rules
+take, from one date to another say) or :ANY (the days any of them takes); ARGUMENTS, what its form says,
+as ORG-READ-RULE reads them; and HOUR, MINUTE, END-HOUR and END-MINUTE of
+the time written after it, or NIL."
+  kind arguments hour minute end-hour end-minute)
+
+(defparameter *org-rule-pattern*
+  "^<%%\\(([^>\\n]*)\\)(?: +(\\d{1,2}):(\\d{2})(?:-(\\d{1,2}):(\\d{2}))?)?>$"
+  "A timestamp by rule: <%%( its form ) and a time or a time range after it,
+each a group.")
+
+(defun org-read-rule-data (text start end)
+  "What TEXT holds from START below END read as data, never run: numbers,
+t and nil, names (as strings), and lists of them in brackets, a quote before
+one passed over. Two values: the list of what it holds, and the index after
+it; NIL for anything else."
+  (let ((i start) (stack (list '())))
+    (loop
+      (loop while (and (< i end) (member (char text i) '(#\Space #\Tab))) do (incf i))
+      (when (>= i end)
+        (return (and (null (rest stack)) (values (reverse (first stack)) i))))
+      (let ((c (char text i)))
+        (cond ((char= c #\') (incf i))
+              ((char= c #\()
+               (when (> (length stack) 3) (return nil))
+               (push '() stack) (incf i))
+              ((char= c #\))
+               (when (null (rest stack)) (return nil))
+               (let ((list (reverse (pop stack)))) (push list (first stack)))
+               (incf i))
+              (t (let* ((stop (or (position-if (lambda (ch) (member ch '(#\Space #\Tab #\( #\) #\'))) text :start i :end end) end))
+                        (word (subseq text i stop))
+                        (value (cond ((cl-ppcre:scan "^-?[0-9]{1,6}$" word) (parse-integer word))
+                                     ((string= word "t") t)
+                                     ((string= word "nil") nil)
+                                     ((cl-ppcre:scan "^[a-z][a-z-]*$" word) word)
+                                     (t (return nil)))))
+                   (push value (first stack))
+                   (setf i stop))))))))
+
+(defun org-rule-date (a b c)
+  "A date of a rule's form, its parts A B C read as year, month, day when A
+is a year (more than 31), else as month, day, year, the order the diary forms
+take by default. Three values: year, month and day, each a number, T for
+any, or a list of numbers."
+  (if (and (integerp a) (> a 31)) (values a b c) (values c a b)))
+
+(defun org-rule-part-p (part)
+  "True when PART of a rule's form is T, a number or a list of numbers."
+  (or (eq part t) (integerp part) (and (consp part) (every #'integerp part))))
+
+(defun org-rule-from-data (data)
+  "DATA, a rule's form as ORG-READ-RULE-DATA reads it, as an ORG-RULE with no
+time, or NIL when it is not one of those known: diary-float, diary-cyclic,
+diary-block, diary-anniversary and diary-date, with numbers, t and lists of
+numbers as their arguments; (memq (calendar-day-of-week date) '(1 2 3 4 5)),
+the days of the week listed; (and FORM ...), the days all its forms take,
+and (or FORM ...), the days any of them takes, of these."
+  (let ((name (first data)) (args (rest data)))
+    (flet ((date (a b c)
+             (multiple-value-bind (y m d) (org-rule-date a b c)
+               (and (integerp y) (integerp m) (integerp d) (valid-date-p y m d) (day-number y m d)))))
+      (cond ((not (stringp name)) nil)
+            ((string= name "diary-float")
+             (destructuring-bind (&optional month dayname n day &rest more) args
+               (and (null more) (org-rule-part-p month) (org-rule-part-p dayname)
+                    (integerp n) (<= 1 (abs n) 5) (or (null day) (and (integerp day) (<= 1 day 31)))
+                    (every (lambda (d) (<= 0 d 6)) (if (integerp dayname) (list dayname) (if (consp dayname) dayname '())))
+                    (make-org-rule :kind :float :arguments (list month dayname n day)))))
+            ((string= name "diary-cyclic")
+             (destructuring-bind (&optional n a b c &rest more) args
+               (let ((start (and (integerp n) (plusp n) (null more) (date a b c))))
+                 (and start (make-org-rule :kind :cyclic :arguments (list n start))))))
+            ((string= name "diary-block")
+             (destructuring-bind (&optional a b c d e f &rest more) args
+               (let ((from (and (null more) (date a b c))) (to (date d e f)))
+                 (and from to (<= from to) (make-org-rule :kind :block :arguments (list from to))))))
+            ((string= name "diary-anniversary")
+             (destructuring-bind (&optional a b c &rest more) args
+               (when (and (null more) (integerp a) (integerp b) (or (null c) (integerp c)))
+                 (multiple-value-bind (y m d) (if c (org-rule-date a b c) (values nil a b))
+                   (and (integerp m) (integerp d) (<= 1 m 12) (<= 1 d (month-length 2000 m))
+                        (make-org-rule :kind :anniversary :arguments (list m d y)))))))
+            ((string= name "memq")
+             (destructuring-bind (&optional of days &rest more) args
+               (and (null more) (equal of '("calendar-day-of-week" "date"))
+                    (consp days) (every (lambda (d) (and (integerp d) (<= 0 d 6))) days)
+                    (make-org-rule :kind :weekdays :arguments (list (remove-duplicates days))))))
+            ((string= name "diary-date")
+             (destructuring-bind (&optional a b c &rest more) args
+               (when (and (null more) (org-rule-part-p a) (org-rule-part-p b) (org-rule-part-p c))
+                 (multiple-value-bind (y m d) (org-rule-date a b c)
+                   (make-org-rule :kind :date :arguments (list y m d))))))
+            ((member name '("and" "or") :test #'string=)
+             (let ((parts (mapcar (lambda (part) (and (consp part) (org-rule-from-data part))) args)))
+               (and parts (every #'identity parts)
+                    (make-org-rule :kind (if (string= name "and") :all :any) :arguments (list parts)))))))))
+
+(defun org-read-rule (text)
+  "TEXT, a timestamp by rule (<%%(diary-float t 1 1) 10:00>), read as an
+ORG-RULE, or NIL when it is none or its form is not one of those
+ORG-RULE-FROM-DATA knows."
+  (multiple-value-bind (match groups) (cl-ppcre:scan-to-strings *org-rule-pattern* text)
+    (when match
+      (let* ((form (aref groups 0))
+             (rule (org-rule-from-data (org-read-rule-data form 0 (length form)))))
+        (flet ((int (k) (and (aref groups k) (parse-integer (aref groups k)))))
+          (when rule
+            (setf (org-rule-hour rule) (int 1) (org-rule-minute rule) (int 2)
+                  (org-rule-end-hour rule) (int 3) (org-rule-end-minute rule) (int 4))
+            (and (or (null (org-rule-hour rule)) (and (<= (org-rule-hour rule) 23) (<= (org-rule-minute rule) 59)))
+                 rule)))))))
+
+(defun org-rule-part-has-p (part value)
+  "True when PART of a rule (T, a number or a list of numbers) takes VALUE."
+  (or (eq part t) (eql part value) (and (consp part) (member value part))))
+
+(defun org-float-day (year month dayname n day)
+  "The day number of the Nth DAYNAME (0 Sunday to 6 Saturday) of MONTH of
+YEAR, counted from its DAY (the first when NIL), or with N below 0 the -Nth
+last, counted back from its DAY (its last day when NIL); NIL when that day is
+not in MONTH and no DAY was given."
+  (let* ((length (month-length year month))
+         (occurrence (if (plusp n)
+                         (let ((from (day-number year month (or day 1))))
+                           (+ from (mod (- dayname (weekday from)) 7) (* 7 (1- n))))
+                         (let ((to (day-number year month (or day length))))
+                           (- to (mod (- (weekday to) dayname) 7) (* 7 (1- (- n))))))))
+    (if (or day (multiple-value-bind (y m) (day-date occurrence) (and (= y year) (= m month))))
+        occurrence
+        nil)))
+
+(defun org-rule-matches-p (rule day)
+  "True when RULE (an ORG-RULE) takes the day number DAY."
+  (destructuring-bind (a &optional b c d) (org-rule-arguments rule)
+    (ecase (org-rule-kind rule)
+      (:float
+       (let ((dayname b) (n c) (from d))
+         (and (org-rule-part-has-p dayname (weekday day))
+              (multiple-value-bind (year month) (day-date day)
+                ;; counted from a day of the month, the Nth may fall in the month before or after
+                (loop for shift in (if from '(0 -1 1) '(0))
+                      thereis (multiple-value-bind (y m) (floor (+ (* 12 year) (1- month) shift) 12)
+                                (let ((m (1+ m)))
+                                  (and (org-rule-part-has-p a m)
+                                       (eql day (org-float-day y m (weekday day) n from))))))))))
+      (:cyclic (and (>= day b) (zerop (mod (- day b) a))))
+      (:weekdays (and (member (weekday day) a) t))
+      (:all (every (lambda (part) (org-rule-matches-p part day)) a))
+      (:any (some (lambda (part) (org-rule-matches-p part day)) a))
+      (:block (<= a day b))
+      (:anniversary (multiple-value-bind (y m dd) (day-date day)
+                      (and (= m a) (= dd b) (or (null c) (>= y c)))))
+      (:date (multiple-value-bind (y m dd) (day-date day)
+               (and (org-rule-part-has-p a y) (org-rule-part-has-p b m) (org-rule-part-has-p c dd)))))))
+
+(defparameter *org-rule-reach* (* 8 366)
+  "The most days looked through for a rule's next or last day: a day each
+eight years, 29 February in a year that leaves one out, is still found.")
+
+(defun org-rule-span (rule)
+  "The first and last day RULE can take, as two values, each NIL for none:
+those of a range of days in it, every other day open."
+  (case (org-rule-kind rule)
+    (:block (values-list (org-rule-arguments rule)))
+    (:all (let ((first nil) (last nil))
+            (dolist (part (first (org-rule-arguments rule)) (values first last))
+              (multiple-value-bind (a b) (org-rule-span part)
+                (when a (setf first (if first (max first a) a)))
+                (when b (setf last (if last (min last b) b)))))))
+    (t (values nil nil))))
+
+(defun org-rule-next (rule day)
+  "The first day number at or after DAY that RULE takes, or NIL when none
+does within *ORG-RULE-REACH* days or its range of days (ORG-RULE-SPAN)."
+  (case (org-rule-kind rule)
+    (:cyclic (destructuring-bind (n start) (org-rule-arguments rule)
+               (if (<= day start) start (+ start (* n (ceiling (- day start) n))))))
+    (:block (destructuring-bind (from to) (org-rule-arguments rule)
+              (cond ((<= day from) from) ((<= day to) day))))
+    (t (multiple-value-bind (first last) (org-rule-span rule)
+         (loop for k from (max day (or first day)) to (min (+ day *org-rule-reach*) (or last (+ day *org-rule-reach*)))
+               when (org-rule-matches-p rule k) return k)))))
+
+(defun org-rule-previous (rule day)
+  "The last day number at or before DAY that RULE takes, or NIL when none
+does within *ORG-RULE-REACH* days or its range of days (ORG-RULE-SPAN)."
+  (case (org-rule-kind rule)
+    (:cyclic (destructuring-bind (n start) (org-rule-arguments rule)
+               (and (>= day start) (- day (mod (- day start) n)))))
+    (:block (destructuring-bind (from to) (org-rule-arguments rule)
+              (cond ((>= day to) to) ((>= day from) day))))
+    (t (multiple-value-bind (first last) (org-rule-span rule)
+         (loop for k downfrom (min day (or last day)) to (max (- day *org-rule-reach*) (or first (- day *org-rule-reach*)))
+               when (org-rule-matches-p rule k) return k)))))
+
+(defun org-rule-time-text (rule)
+  "The time RULE says, as a timestamp writes it (10:00, 10:00-11:00), or NIL."
+  (and (org-rule-hour rule)
+       (format nil "~2,'0d:~2,'0d~@[-~a~]" (org-rule-hour rule) (org-rule-minute rule)
+               (and (org-rule-end-hour rule) (format nil "~2,'0d:~2,'0d" (org-rule-end-hour rule) (org-rule-end-minute rule))))))
+
+(defun org-rule-done-day (rule last-done today)
+  "The day RULE's task is done for when it is marked done today, TODAY:
+the first of its days after LAST-DONE (a day number, or NIL when it has
+never been done), or the last up to today when that is later, missed days
+passed over; never done before, the one of its days nearest today."
+  (let ((before (org-rule-previous rule today))
+        (after (org-rule-next rule (if last-done (1+ last-done) today))))
+    (cond (last-done (if (and before after) (max before after) (or after before)))
+          ((and before after) (if (<= (- today before) (- after today)) before after))
+          (t (or before after)))))
+
+(defun org-rule-timestamp-in (text start end)
+  "The first timestamp by rule (ORG-READ-RULE) in TEXT from START below END:
+its ORG-RULE, or NIL; its text as a second value."
+  (cl-ppcre:do-matches (s e *org-rule-timestamp-scanner* text nil :start start :end end)
+    (let ((rule (org-read-rule (subseq text s e))))
+      (when rule (return (values rule (subseq text s e)))))))
+
+(defun org-rule-done-text (rule body now)
+  "What LAST_REPEAT says once a task by RULE is done at the universal time
+NOW, its BODY (its text after the headline) saying when it was last done
+for: the day it is done for (ORG-RULE-DONE-DAY) as an inactive timestamp,
+with the time RULE gives; NIL when RULE takes no day near."
+  (let* ((last (multiple-value-bind (match groups)
+                   (cl-ppcre:scan-to-strings "(?mi)^[ \\t]*:LAST_REPEAT:[ \\t]*(\\[[^]\\n]*\\])" body)
+                 (and match (let ((ts (org-read-ts (aref groups 0)))) (and ts (org-ts-day-number ts))))))
+         (day (org-rule-done-day rule last (org-today now))))
+    (and day (format-day (if (org-rule-hour rule) "[%F %a %R]" "[%F %a]") day
+                         (or (org-rule-hour rule) 0) (or (org-rule-minute rule) 0)))))

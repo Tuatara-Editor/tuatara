@@ -268,7 +268,7 @@ so that \\`C-c' shows, and runs, what the buffer at hand can do in every mode
     (install-org-folding editor)
     (install-org-editing)
     (install-org-links editor) (install-markdown-links) (install-org-linking) (install-org-clock) (install-org-schedule)
-    (install-org-items) (install-org-tables) (install-org-formulas) (install-code-files) (install-org-agenda-view editor)
+    (install-org-items) (install-org-tables) (install-org-formulas) (install-code-files) (install-org-agenda-view editor) (install-org-notify)
     (install-display-toggles)
     (install-hl-line)
     (install-cursor-column)

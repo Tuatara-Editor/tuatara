@@ -64,6 +64,7 @@ available unqualified, and the public API of TUATARA is used.")
            #:*org-deadline-warning-days* #:*org-agenda-log-mode* #:*org-agenda-span*
            #:*org-agenda-start-on-weekday* #:*org-agenda-time-grid* #:*org-agenda-current-time-string*
            #:*org-agenda-custom-commands* #:*org-tags-column* #:*org-agenda-autosave-files*
+           #:*org-notify-tag* #:*org-notify-before* #:*org-notify-day-time* #:*org-notify-program*
            #:*org-toc-on-save* #:*org-read-date-popup-calendar* #:*org-toc-max-depth* #:*org-toc-style* #:*org-deepest* #:*org-formula-deepest*
            #:define-dblock-writer #:define-clocktable-formatter
            ;; Markdown

@@ -1310,6 +1310,22 @@
   ;; Deadlines listed today from 7 days before. Not set: 14.
   ;; (setf *org-deadline-warning-days* 7)
 
+  ;; Agenda entries with this tag are told on the desktop as their time comes,
+  ;; while Tuatara runs; nil tells none. Not set: "notify".
+  ;; (setf *org-notify-tag* "remind")
+
+  ;; Minutes before its time an entry tagged :notify: is told, as well as at
+  ;; it; 0 for only at it. A NOTIFY_BEFORE property says otherwise for one
+  ;; entry. Not set: 10.
+  ;; (setf *org-notify-before* 15)
+
+  ;; When an entry tagged :notify: with a date and no time is told that day;
+  ;; nil never. Not set: "08:00".
+  ;; (setf *org-notify-day-time* "07:30")
+
+  ;; The program that shows the notification. Not set: "notify-send".
+  ;; (setf *org-notify-program* "/usr/bin/notify-send")
+
   ;; C-x a a a shows one day: :day :week :month :year or a number of days. Not
   ;; set: :week.
   ;; (setf *org-agenda-span* :day)
