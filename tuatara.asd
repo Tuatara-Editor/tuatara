@@ -141,6 +141,7 @@
                (:file "sort")
                (:file "sentences")
                (:file "csv-records")
+               (:file "selecting-lines")
                (:file "hex")
                (:file "gutter")
                (:file "toggles")

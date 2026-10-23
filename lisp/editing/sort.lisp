@@ -57,17 +57,15 @@ works on as they are on the editor's when it starts (TUATARA.RUNTIME:CARRY-SETTI
 (defun selected-lines (buffer &key columns)
   "The start and end of the whole lines BUFFER's selection touches, or NIL
 without a selection: from the start of its first line to the start of the line
-after its last, or the text's end. The last line is the one its end is in,
-except that an end at the start of a line leaves that line out, unless COLUMNS
-is true (sort-columns counts it)."
+after its last, or the text's end. Lines are those a window shows, as a
+line selection takes them (WHOLE-LINES): a folded headline's line is whole
+with all the fold hides. The last line is the one its end is in, except that
+an end at the start of a line leaves that line out, unless COLUMNS is true
+\(sort-columns counts it)."
   (when (tuatara.buffer:buffer-mark-active-p buffer)
     (multiple-value-bind (start end) (tuatara.buffer:buffer-region buffer)
       (when (and start (< start end))
-        (let* ((rope (tuatara.buffer:buffer-text buffer))
-               (first (tuatara.text:rope-line-start rope start))
-               (last (if columns end (range-last-place buffer start end)))
-               (newline (tuatara.text:rope-find-octet rope 10 :start last)))
-          (values first (if newline (1+ newline) (tuatara.text:rope-bytes rope))))))))
+        (whole-lines buffer start end :visible t :columns columns)))))
 
 (defvar *sort-descending* nil
   "True while one of the reverse sort commands runs (\\[sort-lines-reverse] and

@@ -108,7 +108,7 @@ changed octet by octet, another read as text."
             ((large-for-here-p start end)
              (check-writable b)
              (setf (tuatara.buffer:buffer-mark-active-p b) nil)
-             (start-line-job b (tuatara.buffer:buffer-line-start b start) (tuatara.buffer:buffer-line-end b end)
+             (start-line-job b (tuatara.buffer:buffer-line-start b start) (tuatara.buffer:buffer-line-end b (range-last-place b start end))
                              (case-line how start end)
                              :doing "Changing case" :what "Changing the case of the region"
                              :verb "change the case" :leaves "the case is as it was"

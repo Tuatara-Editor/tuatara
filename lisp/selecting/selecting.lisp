@@ -127,18 +127,26 @@ of those."
         (tuatara.buffer:buffer-forward-char buffer line-end)
         line-end)))
 
-(defun whole-lines-span (buffer start end)
-  "The whole lines from START to END of BUFFER as (START . END): from the start
-of the first to after the newline of the last, or to the text's end. END at
-the start of a line past START belongs to the line before it. Lines are those
-a window shows: a line whose end a fold hides is whole with all the fold
-hides, as a folded headline with its body; a line shown is whole without the
-lines search filters hide after it."
+(defun whole-lines (buffer start end &key visible columns)
+  "Two values, the start and end of the whole lines from START to END of
+BUFFER: from the start of the first to after the newline of the last, or to
+the text's end. END at the start of a line past START belongs to the line
+before it (RANGE-LAST-PLACE), unless COLUMNS, when that line is taken too.
+With VISIBLE, lines are those a window shows: a line whose end a fold hides
+is whole with all the fold hides, as a folded headline with its body; a line
+shown is whole without the lines search filters hide after it."
   (let* ((low (min start end)) (high (max start end))
-         (last (if (and (> high low) (= high (tuatara.buffer:buffer-line-start buffer high)))
-                   (tuatara.buffer:buffer-forward-char buffer high -1)
-                   high)))
-    (cons (tuatara.display:visible-line-start buffer low :hidden nil) (line-after buffer last))))
+         (last (if columns high (range-last-place buffer low high))))
+    (if visible
+        (values (tuatara.display:visible-line-start buffer low :hidden nil) (line-after buffer last))
+        (let* ((rope (tuatara.buffer:buffer-text buffer))
+               (newline (tuatara.text:rope-find-octet rope 10 :start last)))
+          (values (tuatara.text:rope-line-start rope low) (if newline (1+ newline) (tuatara.text:rope-bytes rope)))))))
+
+(defun whole-lines-span (buffer start end)
+  "The whole lines a window shows from START to END of BUFFER (WHOLE-LINES,
+VISIBLE) as (START . END)."
+  (multiple-value-call #'cons (whole-lines buffer start end :visible t)))
 
 (defun selection-range (&key widen)
   "Two values, the start and end of the active selection, or NIL. With WIDEN
