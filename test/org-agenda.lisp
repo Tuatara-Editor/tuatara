@@ -1372,3 +1372,17 @@ help left out."
       (unwind-protect (tuatara.defaults::org-rule-next leap (tuatara.dates:day-number 2097 3 1))
         (sb-int:unencapsulate 'tuatara.defaults::org-rule-matches-p 'counted))
       (true (< looks 20) "~d looks" looks))))
+
+(define-test (org agenda-line-kinds-agree)
+  ;; every kind of line the agenda makes is one of those named, and a kind not named is refused
+  (let* ((directory (asdf:system-relative-pathname :tuatara "test/org/agenda/"))
+         (files (list (namestring (merge-pathnames "tasks.org" directory)) (namestring (merge-pathnames "notes.org" directory))))
+         (tuatara.defaults::*org-now* (encode-universal-time 0 0 18 1 10 2026))
+         (items (append (tuatara.defaults::org-agenda-span (tuatara.dates:day-number 2026 9 20) 20 :files files :log t)
+                        (tuatara.defaults::org-agenda-todo-list :files files)
+                        (tuatara.defaults::org-agenda-match "work" :files files)))
+         (kinds (remove-duplicates (mapcar #'tuatara.defaults::org-item-type items) :test #'string=)))
+    (true (>= (length kinds) 9) "~s" kinds)
+    (dolist (kind kinds)
+      (true (member kind tuatara.defaults::*org-agenda-item-types* :test #'string=) "~s named" kind)))
+  (fail (macroexpand-1 '(tuatara.defaults::org-item-type-in item "sheduled"))))

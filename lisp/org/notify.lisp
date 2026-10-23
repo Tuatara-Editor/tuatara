@@ -63,17 +63,17 @@ day. Those told already are left out."
       (let ((entry (org-item-entry item)))
         (when (and *org-notify-tag*
                    (eql (org-item-day item) today)
-                   (or (member (org-item-type item) '("scheduled" "deadline" "timestamp" "block") :test #'string=)
+                   (or (org-item-type-in item "scheduled" "deadline" "timestamp" "block")
                        ;; a repeating task left undone is due again at its time each day
-                       (and (string= (org-item-type item) "past-scheduled")
+                       (and (org-item-type-in item "past-scheduled")
                             (let ((facts (agenda-entry-facts entry)))
                               (or (third (getf facts :scheduled))
                                   (find :scheduled (getf facts :rules) :key #'first)))))
                    (member *org-notify-tag* (agenda-entry-tags entry) :test #'string=)
                    (not (org-done-p entry)))
           (let ((title (org-item-title item))
-                (kind (cond ((string= (org-item-type item) "deadline") "Deadline")
-                            ((member (org-item-type item) '("scheduled" "past-scheduled") :test #'string=) "Scheduled")
+                (kind (cond ((org-item-type-in item "deadline") "Deadline")
+                            ((org-item-type-in item "scheduled" "past-scheduled") "Scheduled")
                             (t nil))))
             (flet ((add (which words)
                      (let ((key (list (agenda-entry-file entry) title today which (org-item-time item))))
@@ -82,7 +82,7 @@ day. Those told already are left out."
                                due)))))
               (let ((time (or (org-item-time item)
                               ;; past due, the line has no time: its date's is the one
-                              (and (string= (org-item-type item) "past-scheduled")
+                              (and (org-item-type-in item "past-scheduled")
                                    (org-time-of-day (or (agenda-entry-scheduled entry) ""))))))
                 (if time
                     (let* ((event (day-universal-time today (floor time 100) (mod time 100)))

@@ -422,10 +422,28 @@ one of them changed (*ORG-AGENDA-PATHS-KEPT*)."
 
 ;;; Items
 
+(eval-when (:compile-toplevel :load-toplevel :execute)
+  (defparameter *org-agenda-item-types*
+    '("scheduled" "past-scheduled" "deadline" "upcoming-deadline" "timestamp" "block"
+      "closed" "clock" "todo" "tagsmatch" "grid" "now")
+    "The kinds of line the agenda lists: a task scheduled for its day, one
+scheduled before and not done, a deadline on its day or past, one to come, a
+timestamp, a day of a range of days, what was closed and clocked (in log
+mode), a task of the TODO list, an entry a match selects, and the time grid's
+lines and the line of now."))
+
+(defmacro org-item-type-in (item &rest types)
+  "True when the agenda line ITEM is of one of TYPES, each one of
+*ORG-AGENDA-ITEM-TYPES*; a type not among them is refused as this is
+compiled."
+  (dolist (type types)
+    (unless (member type *org-agenda-item-types* :test #'equal)
+      (error "~s is no kind of agenda line: ~{~a~^, ~}" type *org-agenda-item-types*)))
+  `(member (org-item-type ,item) ',types :test #'string=))
+
 (defstruct (org-agenda-item (:conc-name org-item-))
   "A line of the agenda: the DAY it is listed on (a day number, NIL in a list
-of tasks), its TYPE (scheduled, past-scheduled, deadline, upcoming-deadline,
-timestamp, block, closed, clock, todo, tagsmatch), its EXTRA (Scheduled:,
+of tasks), its TYPE (one of *ORG-AGENDA-ITEM-TYPES*), its EXTRA (Scheduled:,
 Sched. 2x:, In   3 d.:, (1/3):), its TIME of day (930 for 09:30, or NIL) and
 the END of its time range (1500 for 14:00-15:00, or NIL), its ENTRY and TITLE,
 and its URGENCY, by which it is ordered (ORG-AGENDA-SORT)."

@@ -129,7 +129,7 @@ column shows it."
   (let* ((entry (org-item-entry item))
          (heading (cl-ppcre:regex-replace "[ \\t]+:[\\w@#%:]+:[ \\t]*$" (agenda-entry-heading entry) ""))
          (raw (agenda-entry-title entry)))
-    (cond ((member (org-item-type item) '("closed" "clock") :test #'string=) heading)
+    (cond ((org-item-type-in item "closed" "clock") heading)
           ((and (<= (length raw) (length heading)) (string= raw heading :start2 (- (length heading) (length raw))))
            (concatenate 'string (subseq heading 0 (- (length heading) (length raw))) (org-item-title item)))
           (t (org-item-title item)))))
@@ -150,15 +150,14 @@ second half of its warning, distant before."
 (defun org-agenda-item-face (item today)
   "The face of the agenda line ITEM, today being TODAY, by what it is: done,
 scheduled, a deadline, an event."
-  (let ((type (org-item-type item)) (done (org-done-p (org-item-entry item))))
-    (cond ((string= type "closed") :org-agenda-done)
-          ((string= type "clock") :org-agenda-calendar-event)
-          ((member type '("todo" "tagsmatch") :test #'string=) nil)
-          (done :org-agenda-done)
-          ((string= type "past-scheduled") :org-scheduled-previously)
-          ((string= type "scheduled") (if (eql (org-item-day item) today) :org-scheduled-today :org-scheduled))
-          ((member type '("deadline" "upcoming-deadline") :test #'string=) (org-agenda-deadline-face item))
-          (t :org-agenda-calendar-event))))
+  (cond ((org-item-type-in item "closed") :org-agenda-done)
+        ((org-item-type-in item "clock") :org-agenda-calendar-event)
+        ((org-item-type-in item "todo" "tagsmatch") nil)
+        ((org-done-p (org-item-entry item)) :org-agenda-done)
+        ((org-item-type-in item "past-scheduled") :org-scheduled-previously)
+        ((org-item-type-in item "scheduled") (if (eql (org-item-day item) today) :org-scheduled-today :org-scheduled))
+        ((org-item-type-in item "deadline" "upcoming-deadline") (org-agenda-deadline-face item))
+        (t :org-agenda-calendar-event)))
 
 (defun org-agenda-pieces-text (pieces)
   "The text of PIECES, each (TEXT . FACE), one after the other."
@@ -250,7 +249,7 @@ TODAY and the time of day now NOW (1427), in an agenda of DAYS days, as
 
 (defun org-agenda-grid-pieces (item)
   "The line of the time grid's ITEM as pieces: its time and the grid's line, or the time now."
-  (let ((face (if (string= (org-item-type item) "now") :org-agenda-current-time :org-time-grid)))
+  (let ((face (if (org-item-type-in item "now") :org-agenda-current-time :org-time-grid)))
     (list (cons "  " nil)
           (cons (concatenate 'string (make-string 12 :initial-element #\Space)
                              (org-agenda-time-column (org-item-time item) nil) (org-item-title item))
@@ -304,7 +303,7 @@ the time grid, or NIL."
                                               (t :org-agenda-date))))
                             (list :day day))
                       (dolist (item all)
-                        (if (member (org-item-type item) '("grid" "now") :test #'string=)
+                        (if (org-item-type-in item "grid" "now")
                             (line (org-agenda-grid-pieces item) (list :grid (org-item-time item)))
                             (line (org-agenda-item-pieces item width today) item)))))))
         (:todo
