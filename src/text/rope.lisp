@@ -1675,6 +1675,26 @@ Complexity: O(log n) for each backslash before it."
     (loop while (and (plusp q) (= 92 (rope-octet rope (1- q)))) do (incf count) (decf q))
     (oddp count)))
 
+(defparameter *openers* "([{"
+  "The brackets that open a pair, each in the place of the one that closes it in *CLOSERS*.")
+
+(defparameter *closers* ")]}"
+  "The brackets that close a pair, each in the place of the one that opens it in *OPENERS*.")
+
+(defparameter *bracket-octets* (map 'list #'char-code (concatenate 'string *openers* *closers*))
+  "The octets of the brackets (*OPENERS* and *CLOSERS*).")
+
+(defun bracket-weights (openers closers)
+  "A table of 256 by octet: 1 for each bracket in OPENERS, -1 for each in CLOSERS, 0 for the rest."
+  (let ((weight (make-array 256 :element-type '(signed-byte 8) :initial-element 0)))
+    (loop for c across openers do (setf (aref weight (char-code c)) 1))
+    (loop for c across closers do (setf (aref weight (char-code c)) -1))
+    weight))
+
+(sb-ext:define-load-time-global **bracket-weights**
+    (list *openers* *closers* (bracket-weights *openers* *closers*))
+  "*OPENERS*, *CLOSERS* and their BRACKET-WEIGHTS, made once.")
+
 (defun rope-bracket-match (rope position &key backward inside (openers *openers*) (closers *closers*)
                                               (limit most-positive-fixnum) (start 0) (end (rope-bytes rope))
                                               (spans #()) escapes)
@@ -1696,14 +1716,15 @@ there is no such bracket at POSITION, or no partner there.
 Complexity: O(log n + distance scanned + spans before POSITION)."
   (declare (type fixnum position start end) (type simple-vector spans))
   (check-byte-offset rope position)
-  (let ((weight (make-array 256 :element-type '(signed-byte 8) :initial-element 0))
+  (let ((weight (destructuring-bind (kept-openers kept-closers table) **bracket-weights**
+                  (if (and (string= openers kept-openers) (string= closers kept-closers))
+                      table
+                      (bracket-weights openers closers))))
         (depth (if inside 1 0))
         (total (rope-bytes rope))
         (count (length spans))
         (own nil))
-    (declare (type fixnum depth total count))
-    (loop for c across openers do (setf (aref weight (char-code c)) 1))
-    (loop for c across closers do (setf (aref weight (char-code c)) -1))
+    (declare (type fixnum depth total count) (type (simple-array (signed-byte 8) (256)) weight))
     (labels ((kind (octet)
                (let ((c (code-char octet))) (or (position c openers) (position c closers))))
              (same-kind-p (octet) (or inside (eql (kind octet) own))))
@@ -1778,15 +1799,6 @@ and a carriage return.")
 
 (defparameter *text-octets* (loop for octet below 256 unless (member octet *blank-octets*) collect octet)
   "The octets that make a line more than blank: all but the blanks (*BLANK-OCTETS*).")
-
-(defparameter *openers* "([{"
-  "The brackets that open a pair, each in the place of the one that closes it in *CLOSERS*.")
-
-(defparameter *closers* ")]}"
-  "The brackets that close a pair, each in the place of the one that opens it in *OPENERS*.")
-
-(defparameter *bracket-octets* (map 'list #'char-code (concatenate 'string *openers* *closers*))
-  "The octets of the brackets (*OPENERS* and *CLOSERS*).")
 
 (defun rope-skip-octets (rope position octets &key backward (bound (if backward 0 (rope-bytes rope))))
   "POSITION of ROPE moved over the octets in OCTETS, a list of them (such as

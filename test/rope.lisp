@@ -544,3 +544,15 @@ cd")
       (true (tuatara.text:rope-crlf-p rope 2))
       (false (tuatara.text:rope-crlf-p rope 5))
       (false (tuatara.text:rope-crlf-p rope -1)))))
+
+(define-test (rope bracket-match-makes-nothing)
+  ;; matching a bracket, as each move of point shows its partner, makes no table of its own
+  (let ((rope (tuatara.text:string->rope "(defun f (x) [x {y}])")))
+    (is = 21 (tuatara.text:rope-bracket-match rope 0))
+    (is = 13 (tuatara.text:rope-bracket-match rope 20 :backward t))
+    (is = 20 (tuatara.text:rope-bracket-match rope 13 :openers "[" :closers "]"))
+    (let ((consed (loop repeat 3
+                        minimize (let ((before (tuatara.bench::bytes-consed)))
+                                   (tuatara.text:rope-bracket-match rope 0)
+                                   (- (tuatara.bench::bytes-consed) before)))))
+      (true (< consed 256) "a match consed ~:d octets" consed))))
