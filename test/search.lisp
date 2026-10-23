@@ -263,6 +263,53 @@ newlines and some multibyte characters."
                   "~a over 4 MB took ~,1f ms, text ~,1f ms" pattern
                   (/ (* 1000 time) internal-time-units-per-second) (/ (* 1000 text) internal-time-units-per-second))))))))
 
+(define-test (search regex-compiled-once)
+  ;; a pattern compiled again the same way is the scanner made before: nothing is built anew
+  (let ((scanner (tuatara.syntax:compile-regex "kea error")))
+    (is eq scanner (tuatara.syntax:compile-regex (copy-seq "kea error")))
+    (isnt eq scanner (tuatara.syntax:compile-regex "kea error" :case-fold nil))
+    (isnt eq scanner (tuatara.syntax:compile-regex "kea error" :crlf t))
+    (let ((consed (loop repeat 3
+                        minimize (let ((before (sb-ext:get-bytes-consed)))
+                                   (tuatara.syntax:compile-regex "kea error")
+                                   (- (sb-ext:get-bytes-consed) before)))))
+      (true (< consed 4096) "compiling it again consed ~:d octets" consed))))
+
+(define-test (search regex-tries-lines-holding-text)
+  ;; a pattern whose matches lie within a line and hold text not at their start is
+  ;; tried on the lines holding that text alone, and finds what a whole-text scan finds
+  (let ((s (with-output-to-string (o)
+             (dotimes (i 3000)
+               (format o "~a~%" (case (mod i 5)
+                                  (0 "12 kea Error at the door, kea error again")
+                                  (1 "é中 kea error")
+                                  (2 "kea erro r and errorless")
+                                  (3 (format nil "~a~c" "77 kea error" #\Return))
+                                  (t "nothing here"))))))
+        (patterns '("\\d+ kea error" "[a-z]+ again$" "\\w+ error\\b" "o[a-z]* the door" "\\S+ kea error$")))
+    (let ((rope (tuatara.text:string->rope s)))
+      (dolist (p patterns)
+        (is equal (regex-oracle s p) (triples (tuatara.syntax:regex-search-all rope p)) "~a" p))))
+  ;; and goes at near the speed of a pattern that begins with its text
+  (let* ((lines '("2026-10-23 12:00:01 kea INFO all good here on the mountain, nothing to report at all"
+                  "2026-10-23 12:00:03 kea Error the door would not open, tried again with the key"))
+         (rope (tuatara.text:string->rope
+                (with-output-to-string (o) (dotimes (i 40000) (write-line (nth (mod i 2) lines) o))))))
+    (flet ((fastest (pattern)
+             (let ((scanner (tuatara.syntax:compile-regex pattern)))
+               (loop repeat 3
+                     minimize (let ((start (get-internal-real-time)))
+                                (tuatara.syntax:map-regex-matches (lambda (s e m g) (declare (ignore s e m g)) nil)
+                                                                  rope scanner 0 (tuatara.text:rope-bytes rope)
+                                                                  :texts nil)
+                                (- (get-internal-real-time) start))))))
+      (let ((begun (fastest "kea error the")))
+        (dolist (pattern '("\\d+ kea error" "[Ee]rror the"))
+          (let ((time (fastest pattern)))
+            (true (<= time (max (* 3 begun) (* 10 (/ internal-time-units-per-second 1000))))
+                  "~a took ~,1f ms, kea error the ~,1f ms" pattern
+                  (/ (* 1000 time) internal-time-units-per-second) (/ (* 1000 begun) internal-time-units-per-second))))))))
+
 (define-test (search collect)
   ;; gathered in parallel pieces, the matches are exactly those of one serial scan,
   ;; also where a match runs across a piece boundary

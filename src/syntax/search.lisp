@@ -766,6 +766,7 @@ example, commented out."
   (unless (stringp pattern)
     (error "The pattern of [[:~a:]] is a string, not ~s." name pattern))
   (let ((before (multiple-value-list (gethash name **own-named-patterns**))))
+    (forget-compiled-regexes)
     (setf (gethash name **own-named-patterns**) (cons (princ-to-string words) pattern))
     (handler-case
         (with-pattern-syntax
@@ -785,6 +786,7 @@ example, commented out."
         (if (second before)
             (setf (gethash name **own-named-patterns**) (first before))
             (remhash name **own-named-patterns**))
+        (forget-compiled-regexes)
         (error "[[:~a:]] is not defined: ~a" name e))))
   name)
 
@@ -1142,6 +1144,25 @@ repetition with no most, a back-reference)."
                         (t nil))))))
     (walk tree)))
 
+(sb-ext:defglobal **compiled-regexes** (make-hash-table :test 'equal :weakness :value :synchronized t)
+  "The scanners COMPILE-REGEX made that are still in use, by the pattern and
+how it was compiled (case folding, CRLF, thoroughness): the same pattern is
+compiled once while its scanner is kept.")
+
+(sb-ext:defglobal **recent-regexes** (make-array 4 :initial-element nil)
+  "The scanners COMPILE-REGEX made last, kept so that a pattern compiled again
+soon after, as a prompt is drawn again, is not compiled anew.")
+
+(sb-ext:defglobal **recent-regex-count** 0
+  "How many scanners COMPILE-REGEX has made, which place of **RECENT-REGEXES** the next goes in.")
+(declaim (type fixnum **recent-regex-count**))
+
+(defun forget-compiled-regexes ()
+  "Compile every pattern anew from now on: what a named pattern stands for changed."
+  (sb-ext:with-locked-hash-table (**compiled-regexes**)
+    (clrhash **compiled-regexes**)
+    (fill **recent-regexes** nil)))
+
 (defun compile-regex (regex &key (case-fold (regex-case-fold-p regex)) crlf (thorough *regex-thorough*))
   "A cl-ppcre scanner for REGEX (PCRE-style syntax) in which ^ and $ match
 at line boundaries. CASE-FOLD ignores case; by default when REGEX has no
@@ -1155,10 +1176,19 @@ before the carriage return and . matches neither (CRLF-TREE). THOROUGH, by
 default *REGEX-THOROUGH*, has a scan find every match of up to
 *REGEX-LONGEST-MATCH* octets whole, looking as far as the pattern can reach
 (TREE-MAX-OCTETS). What the pattern allows a scan to skip (REGEX-TRAITS) is
-registered with the scanner. Signals PATTERN-REFUSED, or cl-ppcre's
-syntax error, for a pattern that cannot be used (REGEX-PROBLEM words why)."
-  (with-pattern-syntax
-    (compile-engine-pattern (engine-pattern regex) case-fold crlf thorough)))
+registered with the scanner. The same REGEX compiled the same way gives the
+same scanner while one is kept, or soon after. Signals PATTERN-REFUSED, or
+cl-ppcre's syntax error, for a pattern that cannot be used (REGEX-PROBLEM
+words why)."
+  (let ((key (list regex (and case-fold t) (and crlf t) (and thorough t))))
+    (or (gethash key **compiled-regexes**)
+        (let ((scanner (with-pattern-syntax
+                         (compile-engine-pattern (engine-pattern regex) case-fold crlf thorough))))
+          (setf (first key) (copy-seq regex))
+          (sb-ext:with-locked-hash-table (**compiled-regexes**)
+            (setf (gethash key **compiled-regexes**) scanner
+                  (svref **recent-regexes** (mod (incf **recent-regex-count**) (length **recent-regexes**)))
+                  scanner))))))
 
 (defun compile-engine-pattern (regex case-fold crlf thorough)
   "COMPILE-REGEX's work on REGEX, as ENGINE-PATTERN gives it."
@@ -1355,6 +1385,22 @@ one does (WITH-DECODER)."
             (when result (return result))
             (setf from (if (= ms me) (1+ ms) me))))))))
 
+(defun needle-line (octets filled needle fold from)
+  "The line of the first occurrence of NEEDLE (folded when FOLD) in the
+first FILLED octets of OCTETS at or after FROM, as two offsets: where it
+starts, FROM at the earliest, and where it ends, after its newline or at
+FILLED; NIL when NEEDLE is not there."
+  (declare (type tuatara.text:octets octets needle) (type fixnum filled from) (optimize speed))
+  (let ((at (scan-chunk octets needle fold from filled filled)))
+    (when at
+      (let ((start (loop for i of-type fixnum from (1- (the fixnum at)) downto from
+                         when (= (aref octets i) 10) return (1+ i)
+                         finally (return from)))
+            (end (loop for i of-type fixnum from at below filled
+                       when (= (aref octets i) 10) return (1+ i)
+                       finally (return filled))))
+        (values start end)))))
+
 (defun line-start-within (rope position floor)
   "Where the line holding POSITION of ROPE starts, or FLOOR when that is
 later. Complexity: O(log n + POSITION - FLOOR)."
@@ -1379,7 +1425,8 @@ skipped at literal speed; a pattern
 whose matches lie within a line gets windows that end after a line and are
 looked for from the start of the line its fixed text is on, so its matches
 are found whole and from where they begin on lines up to
-*REGEX-LONGEST-MATCH* octets; \\z and \\Z are looked for at the end only.
+*REGEX-LONGEST-MATCH* octets, and when the fixed text does not begin them,
+only the lines holding it are tried; \\z and \\Z are looked for at the end only.
 Otherwise a match needing text more than
 the pattern's reach (REGEX-TRAITS: +REGEX-OVERLAP+ octets, a thorough
 scanner's *REGEX-LONGEST-MATCH*) past the stretch it starts in may be cut short
@@ -1403,6 +1450,8 @@ new buffers."
          (needle-length (cond (needle (length needle)) (shape (length shape)) (t 0)))
          (prefix-p (and traits (regex-traits-prefix traits)))
          (line-bound (and traits (regex-traits-line-bound traits)))
+         ;; each match lies within a line holding NEEDLE: only those lines are tried
+         (lines (and needle line-bound (not prefix-p) (plusp (length needle))))
          (overlap (if traits (regex-traits-reach traits) +regex-overlap+))
          ;; the window a filter may read the rope around (*WINDOW-ROPE*): one list, set for each window
          (window (list rope 0 0 bound))
@@ -1464,43 +1513,56 @@ new buffers."
                        (declare (type fixnum from))
                        (when (loop
                                (when (> from count) (return t))
-                               (multiple-value-bind (ms me group-starts group-ends reached)
-                                   (tuatara.runtime:stoppable
-                                     (let ((*window-open* (< window-end bound))
-                                           (*window-rope* window)
-                                           (*window-reached* nil))
-                                       (multiple-value-bind (ms me group-starts group-ends)
-                                           (cl-ppcre:scan scanner string :start from :end count :real-start-pos 0)
-                                         (values ms me group-starts group-ends *window-reached*))))
-                                 (unless ms (return t))
-                                 (let ((bs (+ context-start (index-octet table ms))))
-                                   (when (>= bs limit) (return t))
-                                   (when (and reached (= me count) (> me ms))
-                                     ;; a filter read the match on past the window: it ends there
-                                     (let* ((whole (and texts (rope-text rope bs reached)))
-                                            (result (funcall function bs reached
-                                                             (and whole (matched-text texts whole 0 (length whole)))
-                                                             (matched-groups texts string group-starts group-ends))))
-                                       (when result (return-from map-regex-matches result))
-                                       (setf last-end reached)
-                                       (return t)))
-                                   (when (and (= me count) (< window-end bound)
-                                              (< (- window-end context-start) *regex-longest-match*))
-                                     ;; the match may go on past the window: look again in a larger one
-                                     (setf resume (+ context-start (index-octet table from))
-                                           reach (+ window-end (- window-end context-start)))
-                                     (return nil))
-                                   (if (= ms me)
-                                       (progn ; an empty match: reported when asked for, then look further on
-                                         (when empty
-                                           (let ((result (funcall function bs bs (matched-text texts "" 0 0) nil)))
-                                             (when result (return-from map-regex-matches result))))
-                                         (setf from (1+ ms)))
-                                       (let* ((be (+ context-start (index-octet table me)))
-                                              (result (funcall function bs be (matched-text texts string ms me)
-                                                               (matched-groups texts string group-starts group-ends))))
-                                         (when result (return-from map-regex-matches result))
-                                         (setf last-end be from me))))))
+                               (let ((scan-end count))
+                                 (declare (type fixnum scan-end))
+                                 (when lines
+                                   ;; the pattern is tried on the next line holding its text alone
+                                   (multiple-value-bind (line-start line-end)
+                                       (needle-line (decoder-octets decoder) (- window-end context-start) needle
+                                                    (regex-traits-fold traits) (index-octet table from))
+                                     (unless line-start (return t))
+                                     (setf from (max from (octet-index table line-start count))
+                                           scan-end (octet-index table line-end count))))
+                                 (multiple-value-bind (ms me group-starts group-ends reached)
+                                     (tuatara.runtime:stoppable
+                                       (let ((*window-open* (and (= scan-end count) (< window-end bound)))
+                                             (*window-rope* window)
+                                             (*window-reached* nil))
+                                         (multiple-value-bind (ms me group-starts group-ends)
+                                             (cl-ppcre:scan scanner string :start from :end scan-end :real-start-pos 0)
+                                           (values ms me group-starts group-ends *window-reached*))))
+                                   (if (null ms)
+                                       (if (= scan-end count)
+                                           (return t)
+                                           (setf from scan-end))
+                                       (let ((bs (+ context-start (index-octet table ms))))
+                                         (when (>= bs limit) (return t))
+                                         (when (and reached (= me count) (> me ms))
+                                           ;; a filter read the match on past the window: it ends there
+                                           (let* ((whole (and texts (rope-text rope bs reached)))
+                                                  (result (funcall function bs reached
+                                                                   (and whole (matched-text texts whole 0 (length whole)))
+                                                                   (matched-groups texts string group-starts group-ends))))
+                                             (when result (return-from map-regex-matches result))
+                                             (setf last-end reached)
+                                             (return t)))
+                                         (when (and (= me count) (< window-end bound)
+                                                    (< (- window-end context-start) *regex-longest-match*))
+                                           ;; the match may go on past the window: look again in a larger one
+                                           (setf resume (+ context-start (index-octet table from))
+                                                 reach (+ window-end (- window-end context-start)))
+                                           (return nil))
+                                         (if (= ms me)
+                                             (progn ; an empty match: reported when asked for, then look further on
+                                               (when empty
+                                                 (let ((result (funcall function bs bs (matched-text texts "" 0 0) nil)))
+                                                   (when result (return-from map-regex-matches result))))
+                                               (setf from (1+ ms)))
+                                             (let* ((be (+ context-start (index-octet table me)))
+                                                    (result (funcall function bs be (matched-text texts string ms me)
+                                                                     (matched-groups texts string group-starts group-ends))))
+                                               (when result (return-from map-regex-matches result))
+                                               (setf last-end be from me))))))))
                          (return))))))
                (setf pos (max limit last-end)))))
     nil))
