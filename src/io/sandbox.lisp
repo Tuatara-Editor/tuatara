@@ -221,9 +221,9 @@ makes WRITE's next write fail (FILE-SYSTEM-ERROR), which WRITE may take as
 the end. With JOB, it is the program the job runs: stopping the job ends it.
 DIRECTORY is where it runs, ENVIRONMENT, when given, all it sees of one.
 Four values: what it printed, as octets (NIL when it printed more than
-LIMIT octets: it is ended then); what it said, as text, its first
-*PROGRAM-SAID-LIMIT* octets; its exit code, NIL when it did not exit of
-itself; and true when it printed more than LIMIT."
+LIMIT octets: it is ended then; a LIMIT of NIL takes all it prints); what
+it said, as text, its first *PROGRAM-SAID-LIMIT* octets; its exit code, NIL
+when it did not exit of itself; and true when it printed more than LIMIT."
   (apply #'call-with-program command
          (lambda (process)
            (flet ((reader (stream most drain name)
