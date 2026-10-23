@@ -51,13 +51,13 @@ node."
   "True when NODE is a literal token of opening brackets only: ( [ { or [[ and the like."
   (let ((name (tree-node-name node)))
     (and (not (tree-node-named node)) (plusp (length name))
-         (every (lambda (c) (find c "([{")) name))))
+         (every (lambda (c) (find c tuatara.text:*openers*)) name))))
 
 (defun closing-bracket-node-p (node)
   "True when NODE is a literal token of closing brackets only: ) ] } or ]] and the like."
   (let ((name (tree-node-name node)))
     (and (not (tree-node-named node)) (plusp (length name))
-         (every (lambda (c) (find c ")]}")) name))))
+         (every (lambda (c) (find c tuatara.text:*closers*)) name))))
 
 (defun comment-type-p (name)
   "True when node type NAME is a comment's."
@@ -93,7 +93,7 @@ bracket or quote mark: text that reads as part of one expression."
   (and (<= (- end start) 256)
        (loop for i from start below end
              for o = (tuatara.text:rope-octet rope i)
-             never (or (whitespace-octet-p o) (member o '(40 41 91 93 123 125 34))))))
+             never (or (whitespace-octet-p o) (member o tuatara.text:*bracket-octets*) (= o 34)))))
 
 (defun prefix-text-p (rope start end)
   "True when the octets of ROPE from START below END are a few marks put before
@@ -101,7 +101,7 @@ an expression (Lisp's quote and #', Rust's &): no blank, bracket, letter or digi
   (and (< start end) (<= (- end start) 8)
        (loop for i from start below end
              for o = (tuatara.text:rope-octet rope i)
-             never (or (whitespace-octet-p o) (member o '(40 41 91 93 123 125 34))
+             never (or (whitespace-octet-p o) (member o tuatara.text:*bracket-octets*) (= o 34)
                        (<= 48 o 57) (<= 65 o 90) (<= 97 o 122) (= o 95)))))
 
 ;;; Expressions
@@ -247,11 +247,8 @@ others left out: text whose brackets do not count."
         (unless (and kept (<= (cdr span) (cdr (first kept))))
           (push span kept))))))
 
-(defparameter *bracket-pairs* '((40 . 41) (91 . 93) (123 . 125))
+(defparameter *bracket-pairs* (mapcar #'cons tuatara.text:*opening-octets* tuatara.text:*closing-octets*)
   "The octets of the brackets that pair: ( ), [ ] and { }.")
-
-(defparameter *bracket-octets* '(40 41 91 93 123 125)
-  "The octets of the brackets of *BRACKET-PAIRS*, opening and closing.")
 
 (defconstant +bracket-reach+ (* 256 1024)
   "The most octets looked through for a bracket's partner, or for the brackets around a place.")
@@ -369,7 +366,7 @@ before the end of the scan."
   (let ((rope (bracket-scan-rope scan)) (q position))
     (loop
       (let ((at (and (< q (bracket-scan-to scan))
-                     (tuatara.text:rope-find-any-octet rope *bracket-octets* :start q :end (bracket-scan-to scan)))))
+                     (tuatara.text:rope-find-any-octet rope tuatara.text:*bracket-octets* :start q :end (bracket-scan-to scan)))))
         (unless at (return nil))
         (let ((span (scan-span-at scan at)))
           (if span
@@ -383,7 +380,7 @@ the start of the scan."
   (let ((rope (bracket-scan-rope scan)) (q position))
     (loop
       (let ((at (and (> q (bracket-scan-from scan))
-                     (tuatara.text:rope-find-any-octet rope *bracket-octets* :start (bracket-scan-from scan) :end q
+                     (tuatara.text:rope-find-any-octet rope tuatara.text:*bracket-octets* :start (bracket-scan-from scan) :end q
                                                                              :from-end t))))
         (unless at (return nil))
         (let ((span (scan-span-at scan at)))

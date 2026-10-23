@@ -72,8 +72,8 @@ the space left after it."
     (when (< start end) (tuatara.buffer:buffer-delete buffer start end))
     (let ((after (tuatara.buffer:buffer-char-at buffer start))
           (before (and (plusp start) (tuatara.buffer:buffer-char-at buffer (1- start)))))
-      (unless (or (null after) (member after '(#\Newline #\Return)) (find after ")]}")
-                  (null before) (char= before #\Newline) (find before "([{")
+      (unless (or (null after) (member after '(#\Newline #\Return)) (find after tuatara.text:*closers*)
+                  (null before) (char= before #\Newline) (find before tuatara.text:*openers*)
                   (lisp-prefix-char-p buffer before))
         (tuatara.buffer:buffer-insert buffer start " "))
       start)))
@@ -143,8 +143,8 @@ FIXUP-WHITESPACE-AT would leave none (PREFIXES are the quote marks of Lisp)."
                          (before (octet (1- end))))
                     (funcall function end next nil
                              (if (and after
-                                      (not (find (code-char after) ")]}"))
-                                      (not (find (code-char before) "([{"))
+                                      (not (member after tuatara.text:*closing-octets*))
+                                      (not (member before tuatara.text:*opening-octets*))
                                       (not (find (code-char before) prefixes)))
                                  space
                                  none)))))))))))

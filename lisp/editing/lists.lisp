@@ -337,7 +337,7 @@ a definition: it is in no string or comment of SYNTAX's tree, where there is one
       (notany (lambda (node) (or (tuatara.syntax:string-node-p node) (tuatara.syntax:comment-node-p node)))
               (tuatara.syntax:node-ancestry syntax position (1+ position)))))
 
-(defun line-opener-before (rope position &key (openers '(40 91 123)) (reach most-positive-fixnum) test block)
+(defun line-opener-before (rope position &key (openers tuatara.text:*opening-octets*) (reach most-positive-fixnum) test block)
   "The last octet before POSITION of ROPE that is one of OPENERS (an opening
 bracket) at the start of a line, and for which TEST, a function of its
 offset, is true when given; looked for no further than REACH octets back. NIL
@@ -367,7 +367,7 @@ blocks growing from a kilobyte."
                      size (min 65536 (* 2 size)))))
     (values nil (and (plusp floor) :far))))
 
-(defun line-opener-after (rope position &key (openers '(40 91 123)) (reach most-positive-fixnum) test)
+(defun line-opener-after (rope position &key (openers tuatara.text:*opening-octets*) (reach most-positive-fixnum) test)
   "The first octet after POSITION of ROPE that is one of OPENERS (an opening
 bracket) at the start of a line, and for which TEST, a function of its
 offset, is true when given; looked for no further than REACH octets on. NIL

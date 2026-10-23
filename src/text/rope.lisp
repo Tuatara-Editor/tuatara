@@ -1704,7 +1704,13 @@ Complexity: O(log n) for each backslash before it."
 (defparameter *closers* ")]}"
   "The brackets that close a pair, each in the place of the one that opens it in *OPENERS*.")
 
-(defparameter *bracket-octets* (map 'list #'char-code (concatenate 'string *openers* *closers*))
+(defparameter *opening-octets* (map 'list #'char-code *openers*)
+  "The octets of the brackets that open a pair (*OPENERS*).")
+
+(defparameter *closing-octets* (map 'list #'char-code *closers*)
+  "The octets of the brackets that close a pair (*CLOSERS*), each in the place of the one that opens it.")
+
+(defparameter *bracket-octets* (append *opening-octets* *closing-octets*)
   "The octets of the brackets (*OPENERS* and *CLOSERS*).")
 
 (defun bracket-weights (openers closers)
