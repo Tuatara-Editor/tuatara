@@ -68,7 +68,9 @@ For the commands of a question's own keys (READ-STRING's KEYMAP) that end it."
 (defun read-string (prompt &key (initial "") complete select-initial changed update keymap history)
   "Read a line of text with PROMPT in the echo area. Returns the
 string; signals QUIT when it is given up with \\<minibuffer>\\[minibuffer-abort]. Runs a
-nested command loop with the minibuffer keymap. COMPLETE, when given, is a
+nested command loop with the minibuffer keymap. A message a key says while it
+reads is shown after the text typed, in brackets, until the next key; one
+said before is not shown. COMPLETE, when given, is a
 function of no arguments that \\[minibuffer-complete] and \\`C-M-i' call to complete the
 word at the minibuffer's cursor (COMPLETE-IN-TEXT). With SELECT-INITIAL, the
 text INITIAL offers is selected, to be taken with \\[minibuffer-done] or typed over.
@@ -110,7 +112,9 @@ HISTORY, a list of earlier answers, newest first, is gone back through with
           (editor-minibuffer-point editor) (length initial)
           (editor-minibuffer-count editor) nil
           (editor-minibuffer-active editor) :reading
-          (editor-minibuffer-completer editor) complete)
+          (editor-minibuffer-completer editor) complete
+          ;; what was said before the question is not shown in it
+          (editor-message editor) nil)
     (unwind-protect
          (prog1 (block reading
                   (let ((*minibuffer-finish* (lambda () (return-from reading (editor-minibuffer-text editor)))))
@@ -170,6 +174,9 @@ HISTORY, a list of earlier answers, newest first, is gone back through with
                                          (read-event editor :ticks t :pastes t :timeout (and (completion-working completion) 1/20)))
                                        (read-event editor :ticks working :pastes t :timeout (and (realp working) working))))
                             (before (editor-minibuffer-text editor)))
+                      ;; what a key said is shown until the next one is typed
+                      (when (member (tuatara.frontend:event-kind event) '(:key :paste))
+                        (setf (editor-message editor) nil))
                       (case (tuatara.frontend:event-kind event)
                         (:quit (keyboard-quit-signal))
                         (:tick (when completion (take-in)))
