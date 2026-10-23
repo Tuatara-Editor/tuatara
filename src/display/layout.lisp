@@ -214,9 +214,9 @@ where the next glyph stands when there is none before it in the row."
          (row-columns row))
         (t nil)))
 
-(defstruct (reader (:constructor %make-reader (rope position end)) (:copier nil))
+(defstruct (reader (:constructor %make-reader (rope position end chunk)) (:copier nil))
   "A sequential UTF-8 reader over a rope: decodes characters from POSITION below
-END, fetching leaf pieces one chunk at a time."
+END, reading the text into CHUNK +READER-CHUNK+ octets at a time."
   (rope nil :type tuatara.text:rope :read-only t)
   (position 0 :type fixnum)
   (end 0 :type fixnum :read-only t)
@@ -229,9 +229,10 @@ END, fetching leaf pieces one chunk at a time."
 
 (defconstant +reader-chunk+ 4096 "Octets a READER fetches from the rope at a time.")
 
-(defun make-reader (rope position &optional (end (tuatara.text:rope-bytes rope)))
-  "Return a reader over ROPE from byte POSITION below END."
-  (%make-reader rope position end))
+(defun make-reader (rope position &optional (end (tuatara.text:rope-bytes rope)) chunk)
+  "Return a reader over ROPE from byte POSITION below END, reading into CHUNK,
+octets at least +READER-CHUNK+ long (new ones when not given)."
+  (%make-reader rope position end (or chunk (tuatara.text:make-octets +reader-chunk+))))
 
 (defun reader-fill (reader)
   "Ensure the reader's chunk covers its position; return NIL at END."
@@ -240,8 +241,8 @@ END, fetching leaf pieces one chunk at a time."
           ((and (<= (reader-chunk-start reader) pos) (< pos (reader-chunk-end reader))) t)
           (t (let* ((start pos)
                     (end (min (reader-end reader) (+ start +reader-chunk+))))
-               (setf (reader-chunk reader) (tuatara.text:rope-octets (reader-rope reader) :start start :end end)
-                     (reader-chunk-start reader) start
+               (tuatara.text:rope-copy-into (reader-rope reader) start end (reader-chunk reader))
+               (setf (reader-chunk-start reader) start
                      (reader-chunk-end reader) end)
                t)))))
 
@@ -268,8 +269,10 @@ that are not UTF-8 come as raw bytes' characters, one each."
             (multiple-value-bind (code length)
                 (if (<= end (reader-chunk-end reader))
                     (tuatara.text:octets-decode (reader-chunk reader) (- pos start) (- end start))
-                    (let ((window (tuatara.text:rope-octets (reader-rope reader) :start pos :end end)))
-                      (tuatara.text:octets-decode window 0 (length window))))
+                    (let ((window (make-array 4 :element-type '(unsigned-byte 8))))
+                      (declare (dynamic-extent window))
+                      (tuatara.text:rope-copy-into (reader-rope reader) pos end window)
+                      (tuatara.text:octets-decode window 0 (- end pos))))
               (incf (reader-position reader) length)
               (code-char code)))))))
 
@@ -316,45 +319,43 @@ read a block at a time, an ASCII octet looked at once."
          (to (min to total))
          (pos from)
          (before 0)
-         ;; a block about the size the columns left need, larger each time more is read
+         ;; read about as much as the columns left need, more each time more is read
          (size (min +scan-block+ (max 0 (- to from))
-                    (if (< (- limit column) +scan-block+) (+ 64 (* 4 (- limit column))) +scan-block+)))
-         (block (make-array (+ size 8) :element-type '(unsigned-byte 8))))
-    (declare (type fixnum total to pos before size) (type tuatara.text:octets block))
-    (loop
-      (when (or (>= pos to) (>= column limit)) (return (values pos column nil)))
-      (when (< (- (length block) 8) size)
-        (setf block (make-array (+ size 8) :element-type '(unsigned-byte 8))))
-      (let* ((stop (min to (+ pos size)))
-             ;; four octets more, to decode a character begun before STOP and see past a return
-             (have (min total (+ stop 5)))
-             (avail (- have pos))
-             (cut (- stop pos))
-             (i 0))
-        (declare (type fixnum stop have avail cut i))
-        (tuatara.text:rope-copy-into rope pos have block)
-        (loop while (< i cut)
-              do (let ((b (aref block i)))
-                   (cond ((or (= b 10)
-                              (and crlf (= b 13) (< (1+ i) avail) (= (aref block (1+ i)) 10)))
-                          (return-from scan-columns (values (+ pos i) column t)))
-                         ((< b 128)
-                          (when (>= column limit) (return))
-                          (incf column (cond ((= b 9) (- (next-tab-stop column tab-width) column))
-                                             ((or (< b 32) (= b 127)) 2)
-                                             (t 1)))
-                          (setf before b)
-                          (incf i))
-                         (t (multiple-value-bind (code length) (tuatara.text:octets-decode block i avail)
-                              (multiple-value-bind (more next) (cluster-columns code before (code-columns code invisible) invisible)
-                                (declare (type fixnum more))
-                                ;; at LIMIT, on past what goes with the cluster before
-                                (when (and (>= column limit) (plusp more) (/= code #xFE0F)) (return))
-                                (incf column more)
-                                (setf before next))
-                              (incf i (the fixnum length)))))))
-        (incf pos i)
-        (setf size (min +scan-block+ (* 2 size)))))))
+                    (if (< (- limit column) +scan-block+) (+ 64 (* 4 (- limit column))) +scan-block+))))
+    (declare (type fixnum total to pos before size))
+    (tuatara.text:with-octet-block (block (+ +scan-block+ 8))
+      (loop
+        (when (or (>= pos to) (>= column limit)) (return (values pos column nil)))
+        (let* ((stop (min to (+ pos size)))
+               ;; four octets more, to decode a character begun before STOP and see past a return
+               (have (min total (+ stop 5)))
+               (avail (- have pos))
+               (cut (- stop pos))
+               (i 0))
+          (declare (type fixnum stop have avail cut i))
+          (tuatara.text:rope-copy-into rope pos have block)
+          (loop while (< i cut)
+                do (let ((b (aref block i)))
+                     (cond ((or (= b 10)
+                                (and crlf (= b 13) (< (1+ i) avail) (= (aref block (1+ i)) 10)))
+                            (return-from scan-columns (values (+ pos i) column t)))
+                           ((< b 128)
+                            (when (>= column limit) (return))
+                            (incf column (cond ((= b 9) (- (next-tab-stop column tab-width) column))
+                                               ((or (< b 32) (= b 127)) 2)
+                                               (t 1)))
+                            (setf before b)
+                            (incf i))
+                           (t (multiple-value-bind (code length) (tuatara.text:octets-decode block i avail)
+                                (multiple-value-bind (more next) (cluster-columns code before (code-columns code invisible) invisible)
+                                  (declare (type fixnum more))
+                                  ;; at LIMIT, on past what goes with the cluster before
+                                  (when (and (>= column limit) (plusp more) (/= code #xFE0F)) (return))
+                                  (incf column more)
+                                  (setf before next))
+                                (incf i (the fixnum length)))))))
+          (incf pos i)
+          (setf size (min +scan-block+ (* 2 size))))))))
 
 (defun display-column (rope line-start byte &key (tab-width 8) invisible)
   "Number of columns between LINE-START and BYTE on the same line, counting
@@ -488,186 +489,187 @@ fill pointer of rows no longer shown (MAKE-ROW). Returns a simple-vector of ROW.
 Complexity: O(WIDTH × HEIGHT), and for each row scrolled sideways
 O(*SCREEN-COLUMN-REACH* + log n) however long its line (SKIP-COLUMNS)."
   (declare (type fixnum start width height hscroll))
-  (let ((rows (make-array 0 :adjustable t :fill-pointer 0))
-        (total (tuatara.text:rope-bytes rope))
-        (reader (make-reader rope start))
-        (position start)
-        (line-start (tuatara.text:rope-line-start rope start))
-        (continuation nil)
-        ;; the code of the character before on the line (CLUSTER-COLUMNS), 0 at its start
-        (before 0)
-        (anchor nil)
-        (line-scale 1)
-        (used 0)
-        (full-limit (if (and wrap wrap-column) (max 1 (min width wrap-column)) width)))
-    (declare (type fixnum position total full-limit before) (type rational line-scale used))
-    ;; a window beginning inside a line, where lines wrap, begins with a row that continues it
-    (when (/= start line-start)
-      (setf continuation (and wrap t) before -1))
-    (loop while (and (< used height) (<= position total) (or (null until) (<= position until)))
-          do (unless (and continuation (plusp (length rows)))
-               (setf line-scale (if scale (max 1 (or (funcall scale (tuatara.text:rope-line-start rope position)) 1)) 1)))
-             ;; a large row fits, or nothing more is laid out (but a first row, made to fit)
-             (let ((room (- height used)))
-               (when (> line-scale room)
-                 (if (plusp (length rows)) (return) (setf line-scale room))))
-             (let ((row (make-row position width spares))
-                   (limit (max 1 (floor full-limit line-scale)))
-                   (skipped 0)         ; columns consumed before the hscroll offset (truncate mode)
-                   (wrapped nil)
-                   (finished nil)
-                   ;; with WORD-WRAP, where the row could end: after its last blank
-                   (break-byte -1) (break-chars 0) (break-columns 0))
-               (declare (type fixnum skipped break-byte break-chars break-columns))
-               (setf (row-continuation-p row) continuation)
-               (unless (or continuation (zerop (length rows))) (setf line-start position before 0))
-               (setf anchor (and wrap (next-wrap-anchor rope line-start position)))
-               (when prefix
-                 (multiple-value-bind (text face) (funcall prefix line-start continuation)
-                   (when (and text (plusp (length text)))
-                     (loop for c across text
-                           do (vector-push-extend c (row-string row))
-                              (vector-push-extend face (row-faces row))
-                              (vector-push-extend -1 (row-char-bytes row))
-                              (vector-push-extend -1 (row-bytes row)))
-                     (incf (row-columns row) (length text)))))
-               (loop
-                 ;; the columns scrolled off, walked over at once as far as the next fold
-                 (when (< skipped hscroll)
+  (tuatara.text:with-octet-block (chunk +reader-chunk+)
+    (let ((rows (make-array 0 :adjustable t :fill-pointer 0))
+          (total (tuatara.text:rope-bytes rope))
+          (reader (make-reader rope start (tuatara.text:rope-bytes rope) chunk))
+          (position start)
+          (line-start (tuatara.text:rope-line-start rope start))
+          (continuation nil)
+          ;; the code of the character before on the line (CLUSTER-COLUMNS), 0 at its start
+          (before 0)
+          (anchor nil)
+          (line-scale 1)
+          (used 0)
+          (full-limit (if (and wrap wrap-column) (max 1 (min width wrap-column)) width)))
+      (declare (type fixnum position total full-limit before) (type rational line-scale used))
+      ;; a window beginning inside a line, where lines wrap, begins with a row that continues it
+      (when (/= start line-start)
+        (setf continuation (and wrap t) before -1))
+      (loop while (and (< used height) (<= position total) (or (null until) (<= position until)))
+            do (unless (and continuation (plusp (length rows)))
+                 (setf line-scale (if scale (max 1 (or (funcall scale (tuatara.text:rope-line-start rope position)) 1)) 1)))
+               ;; a large row fits, or nothing more is laid out (but a first row, made to fit)
+               (let ((room (- height used)))
+                 (when (> line-scale room)
+                   (if (plusp (length rows)) (return) (setf line-scale room))))
+               (let ((row (make-row position width spares))
+                     (limit (max 1 (floor full-limit line-scale)))
+                     (skipped 0)         ; columns consumed before the hscroll offset (truncate mode)
+                     (wrapped nil)
+                     (finished nil)
+                     ;; with WORD-WRAP, where the row could end: after its last blank
+                     (break-byte -1) (break-chars 0) (break-columns 0))
+                 (declare (type fixnum skipped break-byte break-chars break-columns))
+                 (setf (row-continuation-p row) continuation)
+                 (unless (or continuation (zerop (length rows))) (setf line-start position before 0))
+                 (setf anchor (and wrap (next-wrap-anchor rope line-start position)))
+                 (when prefix
+                   (multiple-value-bind (text face) (funcall prefix line-start continuation)
+                     (when (and text (plusp (length text)))
+                       (loop for c across text
+                             do (vector-push-extend c (row-string row))
+                                (vector-push-extend face (row-faces row))
+                                (vector-push-extend -1 (row-char-bytes row))
+                                (vector-push-extend -1 (row-bytes row)))
+                       (incf (row-columns row) (length text)))))
+                 (loop
+                   ;; the columns scrolled off, walked over at once as far as the next fold
+                   (when (< skipped hscroll)
+                     (let ((at (reader-position reader)))
+                       (loop while (and hidden (hidden-passed-p (first hidden) at)) do (pop hidden))
+                       (multiple-value-bind (to column)
+                           (skip-columns rope line-start at skipped hscroll
+                                         (if hidden (min total (max at (car (first hidden)))) total)
+                                         :tab-width tab-width :crlf crlf :invisible invisible)
+                         (setf (reader-position reader) to skipped column before -1))))
+                   ;; what of a wide character or a tab the left edge cuts off is left blank
+                   (when (> skipped hscroll)
+                     (row-add row (make-string (- skipped hscroll) :initial-element #\Space) -1 (- skipped hscroll))
+                     (setf skipped hscroll))
+                   ;; a fold: its ellipsis, then on after it
                    (let ((at (reader-position reader)))
                      (loop while (and hidden (hidden-passed-p (first hidden) at)) do (pop hidden))
-                     (multiple-value-bind (to column)
-                         (skip-columns rope line-start at skipped hscroll
-                                       (if hidden (min total (max at (car (first hidden)))) total)
-                                       :tab-width tab-width :crlf crlf :invisible invisible)
-                       (setf (reader-position reader) to skipped column before -1))))
-                 ;; what of a wide character or a tab the left edge cuts off is left blank
-                 (when (> skipped hscroll)
-                   (row-add row (make-string (- skipped hscroll) :initial-element #\Space) -1 (- skipped hscroll))
-                   (setf skipped hscroll))
-                 ;; a fold: its ellipsis, then on after it
-                 (let ((at (reader-position reader)))
-                   (loop while (and hidden (hidden-passed-p (first hidden) at)) do (pop hidden))
-                   (when (and hidden (>= at (car (first hidden))))
-                     (let ((entry (pop hidden)))
-                       (when (>= skipped hscroll)
-                         (multiple-value-bind (text face) (if (consp (cdr entry))
-                                                              (values (third entry) (fourth entry))
-                                                              (values *fold-ellipsis* :fold-ellipsis))
-                           (let ((from (length (row-string row))))
-                             (row-add row text at (string-columns text) face)
-                             ;; text standing where nothing is hidden keeps its own face
-                             (when (= (car entry) (hidden-end entry))
-                               (push (cons from (length (row-string row))) (row-set-in row))))))
-                       (setf (reader-position reader) (min total (hidden-end entry))))))
-                 ;; a long line's row begins where its rows are worked out from
-                 (let ((at (reader-position reader)))
-                   (when (and anchor (>= at anchor) (> at (row-start row)))
-                     (setf (row-end row) at (row-shown-end row) at wrapped t)
-                     (return)))
-                 (let ((byte (reader-position reader))
-                       (char (reader-next reader)))
-                   (cond ((null char)
-                          (setf (row-end row) total (row-shown-end row) total (row-last-p row) t finished t)
-                          (return))
-                         ((char= char #\Newline)
-                          (setf (row-end row) (reader-position reader) (row-shown-end row) byte)
-                          (return))
-                         ((and crlf (char= char #\Return) (eql (reader-octet reader (reader-position reader)) 10))
-                          ;; the line ends here, unseen: point at the return shows after the last glyph
-                          (incf (reader-position reader))
-                          (setf (row-end row) (reader-position reader) (row-shown-end row) byte)
-                          (return))
-                         (t
-                          (multiple-value-bind (string own shown)
-                              (char-display char (+ skipped (row-columns row)) tab-width invisible)
-                            (multiple-value-bind (columns next) (cluster-columns (char-code char) before own invisible)
-                              (declare (type fixnum columns))
-                              (setf before next)
-                              (when (and (= columns 1) (zerop own))
-                                (if (char= char (code-char #xFE0F))
-                                    ;; a picture's second column that does not fit: kept with it
-                                    (when (> (+ (row-columns row) 1) limit) (setf columns 0))
-                                    ;; a mark with nothing before it, on a dotted circle, in a column of its own
-                                    (setf string (coerce (list *mark-base* char) 'string) own 1)))
-                            (cond ((< skipped hscroll)
-                                   (incf skipped columns))
-                                  ((> (+ (row-columns row) columns) limit)
-                                   (cond ((and wrap word-wrap (char= char #\Space))
-                                          ;; the blank that does not fit ends the row, unseen
-                                          (setf (row-end row) (reader-position reader)
-                                                (row-shown-end row) byte
-                                                wrapped t)
-                                          (return))
-                                         ((and wrap word-wrap (> break-byte (row-start row)))
-                                          ;; the row ends after its last blank; the word goes on the next
-                                          (setf (fill-pointer (row-string row)) break-chars
-                                                (fill-pointer (row-faces row)) break-chars
-                                                (fill-pointer (row-char-bytes row)) break-chars
-                                                (fill-pointer (row-bytes row)) break-columns
-                                                (row-columns row) break-columns
-                                                (reader-position reader) break-byte
-                                                (row-end row) break-byte
-                                                (row-shown-end row) break-byte
-                                                wrapped t)
-                                          (return))
-                                         ((and wrap (= byte (row-start row)))
-                                          ;; too wide for the whole row: cut to it, so that every row takes a character
-                                          (let ((room (max 1 (- limit (row-columns row)))))
-                                            (row-add row (if (char= char #\Tab)
-                                                             (make-string room :initial-element #\Space)
-                                                             *cut-glyph*)
-                                                     byte (if (char= char #\Tab) room 1) shown))
-                                          (setf (row-end row) (reader-position reader)
-                                                (row-shown-end row) (reader-position reader)
-                                                wrapped t)
-                                          (return))
-                                         (wrap
-                                          (setf (reader-position reader) byte
-                                                (row-end row) byte
-                                                (row-shown-end row) byte
-                                                wrapped t)
-                                          (return))
-                                         (t
-                                          (let ((nl (let ((end (tuatara.text:rope-line-end rope byte)))
-                                                      ;; however long the line, found by its number
-                                                      (and (< end total) end))))
-                                            (setf (row-shown-end row) byte (row-truncated-p row) t)
-                                            (cond (nl (setf (reader-position reader) (1+ nl)
-                                                            (row-end row) (1+ nl)))
-                                                  (t (setf (reader-position reader) total
-                                                           (row-end row) total
-                                                           (row-last-p row) t
-                                                           finished t)))
-                                            (return)))))
-                                  ((and (= columns 1) (zerop own))
-                                   ;; U+FE0F: the picture's second column, standing for the character before
-                                   (let ((bytes (row-bytes row)))
-                                     (vector-push-extend char (row-string row))
-                                     (vector-push-extend nil (row-faces row))
-                                     (vector-push-extend byte (row-char-bytes row))
-                                     (vector-push-extend (if (plusp (length bytes)) (aref bytes (1- (length bytes))) byte) bytes)
-                                     (incf (row-columns row))))
-                                  ((zerop columns)
-                                   ;; the rest of a cluster scrolled off the left is not shown
-                                   (let ((bytes (row-char-bytes row)))
-                                     (unless (and (plusp hscroll)
-                                                  (or (zerop (length bytes)) (minusp (aref bytes (1- (length bytes))))))
-                                       (row-add row string byte 0))))
-                                  (t (row-add row string byte columns shown)
-                                     (when (and word-wrap (or (char= char #\Space) (char= char #\Tab)))
-                                       (setf break-byte (reader-position reader)
-                                             break-chars (length (row-string row))
-                                             break-columns (row-columns row)))))))))))
-               (setf (row-scale row) line-scale)
-               (vector-push-extend row rows)
-               (incf used line-scale)
-               (setf position (row-end row)
-                     continuation wrapped)
-               (when finished (return))))
-    (let ((result (coerce rows 'simple-vector)))
-      (when highlights (apply-highlights result highlights))
-      result)))
+                     (when (and hidden (>= at (car (first hidden))))
+                       (let ((entry (pop hidden)))
+                         (when (>= skipped hscroll)
+                           (multiple-value-bind (text face) (if (consp (cdr entry))
+                                                                (values (third entry) (fourth entry))
+                                                                (values *fold-ellipsis* :fold-ellipsis))
+                             (let ((from (length (row-string row))))
+                               (row-add row text at (string-columns text) face)
+                               ;; text standing where nothing is hidden keeps its own face
+                               (when (= (car entry) (hidden-end entry))
+                                 (push (cons from (length (row-string row))) (row-set-in row))))))
+                         (setf (reader-position reader) (min total (hidden-end entry))))))
+                   ;; a long line's row begins where its rows are worked out from
+                   (let ((at (reader-position reader)))
+                     (when (and anchor (>= at anchor) (> at (row-start row)))
+                       (setf (row-end row) at (row-shown-end row) at wrapped t)
+                       (return)))
+                   (let ((byte (reader-position reader))
+                         (char (reader-next reader)))
+                     (cond ((null char)
+                            (setf (row-end row) total (row-shown-end row) total (row-last-p row) t finished t)
+                            (return))
+                           ((char= char #\Newline)
+                            (setf (row-end row) (reader-position reader) (row-shown-end row) byte)
+                            (return))
+                           ((and crlf (char= char #\Return) (eql (reader-octet reader (reader-position reader)) 10))
+                            ;; the line ends here, unseen: point at the return shows after the last glyph
+                            (incf (reader-position reader))
+                            (setf (row-end row) (reader-position reader) (row-shown-end row) byte)
+                            (return))
+                           (t
+                            (multiple-value-bind (string own shown)
+                                (char-display char (+ skipped (row-columns row)) tab-width invisible)
+                              (multiple-value-bind (columns next) (cluster-columns (char-code char) before own invisible)
+                                (declare (type fixnum columns))
+                                (setf before next)
+                                (when (and (= columns 1) (zerop own))
+                                  (if (char= char (code-char #xFE0F))
+                                      ;; a picture's second column that does not fit: kept with it
+                                      (when (> (+ (row-columns row) 1) limit) (setf columns 0))
+                                      ;; a mark with nothing before it, on a dotted circle, in a column of its own
+                                      (setf string (coerce (list *mark-base* char) 'string) own 1)))
+                              (cond ((< skipped hscroll)
+                                     (incf skipped columns))
+                                    ((> (+ (row-columns row) columns) limit)
+                                     (cond ((and wrap word-wrap (char= char #\Space))
+                                            ;; the blank that does not fit ends the row, unseen
+                                            (setf (row-end row) (reader-position reader)
+                                                  (row-shown-end row) byte
+                                                  wrapped t)
+                                            (return))
+                                           ((and wrap word-wrap (> break-byte (row-start row)))
+                                            ;; the row ends after its last blank; the word goes on the next
+                                            (setf (fill-pointer (row-string row)) break-chars
+                                                  (fill-pointer (row-faces row)) break-chars
+                                                  (fill-pointer (row-char-bytes row)) break-chars
+                                                  (fill-pointer (row-bytes row)) break-columns
+                                                  (row-columns row) break-columns
+                                                  (reader-position reader) break-byte
+                                                  (row-end row) break-byte
+                                                  (row-shown-end row) break-byte
+                                                  wrapped t)
+                                            (return))
+                                           ((and wrap (= byte (row-start row)))
+                                            ;; too wide for the whole row: cut to it, so that every row takes a character
+                                            (let ((room (max 1 (- limit (row-columns row)))))
+                                              (row-add row (if (char= char #\Tab)
+                                                               (make-string room :initial-element #\Space)
+                                                               *cut-glyph*)
+                                                       byte (if (char= char #\Tab) room 1) shown))
+                                            (setf (row-end row) (reader-position reader)
+                                                  (row-shown-end row) (reader-position reader)
+                                                  wrapped t)
+                                            (return))
+                                           (wrap
+                                            (setf (reader-position reader) byte
+                                                  (row-end row) byte
+                                                  (row-shown-end row) byte
+                                                  wrapped t)
+                                            (return))
+                                           (t
+                                            (let ((nl (let ((end (tuatara.text:rope-line-end rope byte)))
+                                                        ;; however long the line, found by its number
+                                                        (and (< end total) end))))
+                                              (setf (row-shown-end row) byte (row-truncated-p row) t)
+                                              (cond (nl (setf (reader-position reader) (1+ nl)
+                                                              (row-end row) (1+ nl)))
+                                                    (t (setf (reader-position reader) total
+                                                             (row-end row) total
+                                                             (row-last-p row) t
+                                                             finished t)))
+                                              (return)))))
+                                    ((and (= columns 1) (zerop own))
+                                     ;; U+FE0F: the picture's second column, standing for the character before
+                                     (let ((bytes (row-bytes row)))
+                                       (vector-push-extend char (row-string row))
+                                       (vector-push-extend nil (row-faces row))
+                                       (vector-push-extend byte (row-char-bytes row))
+                                       (vector-push-extend (if (plusp (length bytes)) (aref bytes (1- (length bytes))) byte) bytes)
+                                       (incf (row-columns row))))
+                                    ((zerop columns)
+                                     ;; the rest of a cluster scrolled off the left is not shown
+                                     (let ((bytes (row-char-bytes row)))
+                                       (unless (and (plusp hscroll)
+                                                    (or (zerop (length bytes)) (minusp (aref bytes (1- (length bytes))))))
+                                         (row-add row string byte 0))))
+                                    (t (row-add row string byte columns shown)
+                                       (when (and word-wrap (or (char= char #\Space) (char= char #\Tab)))
+                                         (setf break-byte (reader-position reader)
+                                               break-chars (length (row-string row))
+                                               break-columns (row-columns row)))))))))))
+                 (setf (row-scale row) line-scale)
+                 (vector-push-extend row rows)
+                 (incf used line-scale)
+                 (setf position (row-end row)
+                       continuation wrapped)
+                 (when finished (return))))
+      (let ((result (coerce rows 'simple-vector)))
+        (when highlights (apply-highlights result highlights))
+        result))))
 
 (defun point-row-column (rows byte)
   "Two values: the row index and column where byte offset BYTE is shown in ROWS,

@@ -785,7 +785,8 @@
 
 (define-test (display rows-filled-again)
   ;; a window's layout after a key fills the rows it no longer shows again, rather than
-  ;; making rows the window's width, and shows what a layout made anew shows
+  ;; making rows the window's width, reads the text into a kept block, and shows what
+  ;; a layout made anew shows
   (with-test-buffer (b "*rows*" :text (format nil "~{~a~%~}" (loop for i below 400 collect (format nil "line ~d ~a~c~a" i (make-string (mod (* i 37) 150) :initial-element #\x) #\Tab "é中"))))
     (let ((w (tuatara.display:make-window b :width 200 :height 50)))
       (flet ((same-as-anew ()
@@ -805,7 +806,7 @@
         (let ((consed (loop repeat 3
                             minimize (progn (tuatara.buffer:buffer-insert b 10 "z")
                                             (nth-value 2 (tuatara.bench::measuring (tuatara.display:window-layout w)))))))
-          (true (< consed (* 64 1024)) "a layout after a key consed ~:d octets" consed))
+          (true (< consed (* 6 1024)) "a layout after a key consed ~:d octets" consed))
         (same-as-anew)
         ;; scrolled, then the end of the text, then edited again
         (setf (tuatara.display:window-start w) (tuatara.buffer:buffer-goto-line b 100))

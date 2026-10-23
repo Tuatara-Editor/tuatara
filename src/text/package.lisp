@@ -12,7 +12,7 @@
    ;; JSON
    #:json-read #:json-write #:json-object #:json-get #:json-integer #:json-text #:json-items #:json-true-p #:json-error #:json-error-position #:json-error-text #:*json-deepest*
    ;; types and tunables
-   #:octets #:make-octets #:fixvec #:+max-leaf+ #:+target-leaf+ #:+min-leaf+ #:+max-fanout+ #:+span-size+
+   #:octets #:make-octets #:with-octet-block #:fixvec #:+max-leaf+ #:+target-leaf+ #:+min-leaf+ #:+max-fanout+ #:+span-size+
    ;; mapped files
    #:mapping #:mapping-p #:map-file #:map-fd #:close-mapping #:retarget-mapping
    #:mapping-path #:mapping-length #:mapping-live #:mapping-fd #:mapping-sap #:mapping-rope #:map-rope-sources

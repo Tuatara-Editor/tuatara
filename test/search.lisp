@@ -270,9 +270,9 @@ newlines and some multibyte characters."
     (isnt eq scanner (tuatara.syntax:compile-regex "kea error" :case-fold nil))
     (isnt eq scanner (tuatara.syntax:compile-regex "kea error" :crlf t))
     (let ((consed (loop repeat 3
-                        minimize (let ((before (sb-ext:get-bytes-consed)))
+                        minimize (let ((before (tuatara.bench::bytes-consed)))
                                    (tuatara.syntax:compile-regex "kea error")
-                                   (- (sb-ext:get-bytes-consed) before)))))
+                                   (- (tuatara.bench::bytes-consed) before)))))
       (true (< consed 4096) "compiling it again consed ~:d octets" consed))))
 
 (define-test (search regex-tries-lines-holding-text)
@@ -309,6 +309,24 @@ newlines and some multibyte characters."
             (true (<= time (max (* 3 begun) (* 10 (/ internal-time-units-per-second 1000))))
                   "~a took ~,1f ms, kea error the ~,1f ms" pattern
                   (/ (* 1000 time) internal-time-units-per-second) (/ (* 1000 begun) internal-time-units-per-second))))))))
+
+(define-test (search searches-read-into-kept-blocks)
+  ;; a search, and a walk over a line's columns, read the text into blocks kept for that,
+  ;; not into new ones each time: a key of an incremental search makes next to nothing
+  (let ((rope (tuatara.text:string->rope (format nil "~{~a~%~}" (loop for i below 3000 collect (format nil "line ~d of the kea" i))))))
+    (flet ((consed (function)
+             (funcall function)
+             (loop repeat 3
+                   minimize (let ((before (tuatara.bench::bytes-consed)))
+                              (funcall function)
+                              (- (tuatara.bench::bytes-consed) before)))))
+      (dolist (way (list (lambda () (tuatara.syntax:search-forward rope "zzzq"))
+                         (lambda () (tuatara.syntax:search-backward rope "zzzq"))
+                         (lambda () (tuatara.text:map-line-slices (lambda (&rest line) (declare (ignore line))) rope 0 1 0 10))))
+        (let ((consed (consed way)))
+          (true (< consed 1024) "consed ~:d octets" consed)))
+      (let ((consed (consed (lambda () (tuatara.syntax:search-all rope "zzzq")))))
+        (true (< consed (* 16 1024)) "search-all consed ~:d octets" consed)))))
 
 (define-test (search collect)
   ;; gathered in parallel pieces, the matches are exactly those of one serial scan,

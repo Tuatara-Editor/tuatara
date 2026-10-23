@@ -1108,16 +1108,12 @@ when it holds it, else the text read now."
       (values block (- line block-start))
       (values (tuatara.text:rope-octets rope :start line :end line-end) 0)))
 
-(sb-ext:defglobal **line-blocks** (tuatara.runtime:make-spares (lambda () (tuatara.text:make-octets (* 1024 1024))))
-  "Blocks of a megabyte that pieces of a text are read into a line at a time,
-kept to be read into again: the work on every core over a text of gigabytes
-then makes no more of them than it has pieces at once.")
-
 (defun call-with-line-block (function)
   "Call FUNCTION with a block of a megabyte to read a piece of text into, one
-kept (**LINE-BLOCKS**) or a new one, kept again once FUNCTION returns.
-FUNCTION must not keep it."
-  (tuatara.runtime:with-spare (block **line-blocks**)
+kept for reading into (TUATARA.TEXT:WITH-OCTET-BLOCK), kept again once
+FUNCTION returns: the work on every core over a text of gigabytes then makes
+no more of them than it has pieces at once. FUNCTION must not keep it."
+  (tuatara.text:with-octet-block (block (* 1024 1024))
     (funcall function block)))
 
 (defun map-piece-lines (function rope start end crlf &optional halt)
