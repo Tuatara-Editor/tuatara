@@ -42,7 +42,7 @@
     ("M-^" delete-indentation) ("M-\\" delete-horizontal-space) ("M-SPC" cycle-spacing) ("C-o" open-line)
     ("M-m" back-to-indentation) ("C-x C-o" delete-blank-lines)
     ("C-t" transpose-chars) ("M-t" transpose-words) ("C-x C-t" transpose-lines) ("C-M-t" transpose-sexps)
-    ("C-S-<backspace>" kill-whole-line) ("M-z" zap-to-char) ("M-=" count-words-region)
+    ("C-S-<backspace>" kill-whole-line) ("M-z" zap-up-to-char) ("M-=" count-words-region)
     ("C-M-f" forward-sexp) ("C-M-b" backward-sexp) ("C-x h" mark-whole-buffer)
     ("C-M-n" forward-list) ("C-M-p" backward-list) ("C-M-u" backward-up-list) ("C-M-d" down-list)
     ("C-M-a" beginning-of-defun) ("C-M-e" end-of-defun) ("C-M-SPC" mark-sexp) ("C-M-@" mark-sexp)
