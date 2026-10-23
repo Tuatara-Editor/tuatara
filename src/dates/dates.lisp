@@ -262,6 +262,25 @@ none, or one that cannot be written."
 
 ;;; Dates as typed
 
+(defparameter *date-text-scanners*
+  (let ((months (format nil "~{~a~^|~}" (map 'list #'string-downcase *short-month-names*)))
+        (weekdays (format nil "~{~a~^|~}" (map 'list #'string-downcase *short-weekday-names*))))
+    (flet ((scanner (pattern &rest arguments) (cl-ppcre:create-scanner (apply #'format nil pattern arguments))))
+      (list :range (scanner "(?<![\\d-])(\\d{1,2}):(\\d{2})(?:-(\\d{1,2}):(\\d{2}))?")
+            :clock (scanner "\\b(\\d{1,2})(am|pm)\\b")
+            :iso (scanner "\\b(\\d{4})-(\\d{1,2})-(\\d{1,2})\\b")
+            :month-day (scanner "\\b(\\d{1,2})-(\\d{1,2})\\b")
+            :month-name-day (scanner "\\b(~a)[a-z]*\\.? +(\\d{1,2})\\b(?: +(\\d{4})\\b)?" months)
+            :day-month-name (scanner "\\b(\\d{1,2}) +(~a)[a-z]*\\b(?: +(\\d{4})\\b)?" months)
+            :word (scanner "\\b(today|tomorrow|yesterday)\\b")
+            :weekday (scanner "\\b(~a)[a-z]*\\b" weekdays)
+            :relative (scanner "(?:^|\\s)([+-]{1,2})(\\d+)([dwmy]?)(?=\\s|$)")
+            :year (scanner "\\b(\\d{4})\\b")
+            :day (scanner "\\b(\\d{1,2})\\b")
+            :today (scanner "^\\s*\\.\\s*$"))))
+  "The patterns READ-DATE-TEXT reads a date as typed with, each made once, by
+the part of a date it reads.")
+
 (defun read-date-text (input today)
   "The day INPUT, a date as typed, names, TODAY being the day number of
 today, as five values: its day number, the hour and minute when INPUT names
@@ -279,9 +298,9 @@ month of 30 days, 13pm, 10:00-25:00) names no date. O(length of INPUT)."
     (let ((weekday (weekday today))
           (text (string-downcase (string-trim '(#\Space #\Tab) input)))
           (y year) (m month) (d day) hour minute end-hour end-minute (wrong nil))
-      (labels ((take (pattern)
-                 ;; the first match of PATTERN as its groups, taken out of TEXT
-                 (multiple-value-bind (start end starts ends) (cl-ppcre:scan pattern text)
+      (labels ((take (part)
+                 ;; the first match of PART's pattern as its groups, taken out of TEXT
+                 (multiple-value-bind (start end starts ends) (cl-ppcre:scan (getf *date-text-scanners* part) text)
                    (when start
                      (prog1 (map 'list (lambda (s e) (and s (subseq text s e))) starts ends)
                        (setf text (concatenate 'string (subseq text 0 start) " " (subseq text end)))))))
@@ -289,38 +308,38 @@ month of 30 days, 13pm, 10:00-25:00) names no date. O(length of INPUT)."
                (to-day (number) (multiple-value-bind (new-y new-m new-d) (day-date number) (date new-y new-m new-d)))
                (past-p (py pm pd) (< (+ (* 10000 py) (* 100 pm) pd) (+ (* 10000 year) (* 100 month) day))))
         ;; times
-        (let ((range (take "(?<![\\d-])(\\d{1,2}):(\\d{2})(?:-(\\d{1,2}):(\\d{2}))?")))
+        (let ((range (take :range)))
           (when range
             (setf hour (parse-integer (first range)) minute (parse-integer (second range)))
             (when (third range)
               (setf end-hour (parse-integer (third range)) end-minute (parse-integer (fourth range))))))
-        (let ((clock (take "\\b(\\d{1,2})(am|pm)\\b")))
+        (let ((clock (take :clock)))
           (when clock
             (let ((h (parse-integer (first clock))))
               (unless (<= 1 h 12) (setf wrong t))
               (setf hour (+ (mod h 12) (if (string= (second clock) "pm") 12 0))
                     minute 0))))
         ;; dates
-        (let ((iso (take "\\b(\\d{4})-(\\d{1,2})-(\\d{1,2})\\b")))
+        (let ((iso (take :iso)))
           (when iso (date (parse-integer (first iso)) (parse-integer (second iso)) (parse-integer (third iso)))))
-        (let ((month-day (take "\\b(\\d{1,2})-(\\d{1,2})\\b")))
+        (let ((month-day (take :month-day)))
           (when month-day
             (let ((md (parse-integer (first month-day))) (dd (parse-integer (second month-day))))
               (date (if (past-p year md dd) (1+ year) year) md dd))))
-        (let ((named (or (take "\\b(jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec)[a-z]*\\.? +(\\d{1,2})\\b(?: +(\\d{4})\\b)?")
-                         (let ((other (take "\\b(\\d{1,2}) +(jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec)[a-z]*\\b(?: +(\\d{4})\\b)?")))
+        (let ((named (or (take :month-name-day)
+                         (let ((other (take :day-month-name)))
                            (and other (list (second other) (first other) (third other)))))))
           (when named
             (let ((nm (1+ (position (first named) *short-month-names* :test #'string-equal))) (nd (parse-integer (second named))))
               (date (cond ((third named) (parse-integer (third named))) ((past-p year nm nd) (1+ year)) (t year)) nm nd))))
-        (let ((word (take "\\b(today|tomorrow|yesterday)\\b")))
+        (let ((word (take :word)))
           (when word
             (to-day (+ (day-number y m d) (cond ((string= (first word) "tomorrow") 1) ((string= (first word) "yesterday") -1) (t 0))))))
-        (let ((weekday-name (take "\\b(mon|tue|wed|thu|fri|sat|sun)[a-z]*\\b")))
+        (let ((weekday-name (take :weekday)))
           (when weekday-name
             (let ((ahead (mod (- (position (first weekday-name) *short-weekday-names* :test #'string-equal) weekday) 7)))
               (to-day (+ (day-number y m d) (if (zerop ahead) 7 ahead))))))
-        (let ((relative (take "(?:^|\\s)([+-]{1,2})(\\d+)([dwmy]?)(?=\\s|$)")))
+        (let ((relative (take :relative)))
           (when relative
             (let ((value (* (parse-integer (second relative)) (if (char= (char (first relative) 0) #\-) -1 1)))
                   (unit (if (plusp (length (third relative))) (char (third relative) 0) #\d)))
@@ -328,16 +347,16 @@ month of 30 days, 13pm, 10:00-25:00) names no date. O(length of INPUT)."
                         (#\m (day-number y (+ m value) d))
                         (#\y (day-number (+ y value) m d))
                         (t (+ (day-number y m d) (* value (if (char= unit #\w) 7 1)))))))))
-        (let ((year-only (take "\\b(\\d{4})\\b")))
+        (let ((year-only (take :year)))
           (when year-only
             (to-day (day-number (parse-integer (first year-only)) m d))))
-        (let ((day-only (take "\\b(\\d{1,2})\\b")))
+        (let ((day-only (take :day)))
           (when day-only
             (let ((dd (parse-integer (first day-only))))
               (if (>= dd day)
                   (date year month dd)
                   (date (if (= month 12) (1+ year) year) (1+ (mod month 12)) dd)))))
-        (take "^\\s*\\.\\s*$")
+        (take :today)
         (and (string= (string-trim '(#\Space #\Tab) text) "")
              (valid-date-p y m d)
              (not wrong)

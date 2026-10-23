@@ -201,3 +201,12 @@
   ;; a time as the lists show it, in local time to the minute
   (is string= "2026-10-07 09:15" (tuatara.dates:short-time-words (encode-universal-time 30 15 9 7 10 2026)))
   (false (tuatara.dates:short-time-words nil)))
+
+(define-test (dates read-as-typed-without-making-patterns)
+  ;; each key at a date question reads what is typed: its patterns are made once, not at each read
+  (let ((today (tuatara.dates:day-number 2026 10 3)))
+    (flet ((consed (text)
+             (loop repeat 3 minimize (nth-value 2 (tuatara.bench::measuring (tuatara.dates:read-date-text text today))))))
+      (dolist (text '("fri 10:00" "sep 30 3pm" "2026-10-20 +3d" "tomorrow"))
+        (let ((bytes (consed text)))
+          (true (< bytes 8000) "~d bytes to read ~s" bytes text))))))
