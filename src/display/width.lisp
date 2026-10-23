@@ -322,17 +322,37 @@ for no words."
     (when line (push line lines))
     (nreverse lines)))
 
+(sb-ext:define-load-time-global **octet-escapes**
+    (let ((texts (make-array 256)))
+      (dotimes (octet 256 texts)
+        (setf (svref texts octet) (concatenate 'string "\\x" (string-upcase (svref tuatara.text:*hex-pairs* octet))))))
+  "The text \\xNN of each octet, by its value, made once.")
+
+(sb-ext:define-load-time-global **control-displays**
+    (let ((texts (make-array 160 :initial-element nil)))
+      (dotimes (code 160 texts)
+        (setf (svref texts code)
+              (cond ((< code 32) (coerce (list #\^ (code-char (+ code 64))) 'string))
+                    ((= code 127) "^?")
+                    ((>= code 128) (svref **octet-escapes** code))))))
+  "The text each control character is shown as, by its code below 160, made once.")
+
 (defun control-char-display (char)
-  "The text a control character is shown as: ^A for code 1, ^? for 127, \\x85 for C1 controls."
-  (let ((code (char-code char)))
-    (cond ((< code 32) (format nil "^~c" (code-char (+ code 64))))
-          ((= code 127) "^?")
-          (t (format nil "\\x~2,'0X" code)))))
+  "The text a control character is shown as: ^A for code 1, ^? for 127, \\x85 for C1 controls.
+The text is shared: it must not be changed."
+  (svref **control-displays** (char-code char)))
 
 (defun raw-byte-display (code)
   "The text the character of CODE, a raw byte's (an octet that is not UTF-8,
-U+DC80..U+DCFF), is shown as: \\x80 for the octet #x80."
-  (format nil "\\x~2,'0X" (logand code #xFF)))
+U+DC80..U+DCFF), is shown as: \\x80 for the octet #x80. The text is shared:
+it must not be changed."
+  (svref **octet-escapes** (logand code #xFF)))
+
+(sb-ext:define-load-time-global **spaces**
+    (let ((texts (make-array 65)))
+      (dotimes (n 65 texts)
+        (setf (svref texts n) (make-string n :initial-element #\Space))))
+  "Strings of spaces of each length up to 64, the most a tab can take, made once.")
 
 (declaim (inline next-tab-stop))
 (defun next-tab-stop (column width)
@@ -359,14 +379,16 @@ by this."
   "How CHAR, at COLUMN, is shown, as three values: the text shown (CHAR
 itself when it is shown as itself, else a string), the columns it takes, and
 :RAW-BYTE or :INVISIBLE-CHARACTER when that text stands for a character that
-cannot be shown as itself, else NIL. A tab is shown as spaces
+cannot be shown as itself, else NIL; text it gives is shared and must not be
+changed. A tab is shown as spaces
 up to the next of every TAB-WIDTH columns, a control character as ^X or \\xNN
 \(CONTROL-CHAR-DISPLAY), a raw byte as \\xNN, and with INVISIBLE a character
 that draws nothing as its code (INVISIBLE-CODE-DISPLAY)."
   (let ((code (char-code char)))
     (cond ((char= char #\Tab)
            (let ((n (- (next-tab-stop column tab-width) column)))
-             (values (make-string n :initial-element #\Space) n nil)))
+             (values (if (< n (length **spaces**)) (svref **spaces** n) (make-string n :initial-element #\Space))
+                     n nil)))
           ((tuatara.text:control-code-p code)
            (let ((text (control-char-display char))) (values text (length text) nil)))
           ((tuatara.text:raw-byte-code-p code)

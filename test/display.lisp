@@ -842,3 +842,28 @@
   (loop for code from 0 below 160
         do (is = (length (tuatara.display:displayable (string (code-char code))))
                (tuatara.command::panel-char-columns (code-char code)))))
+
+(define-test (display stand-ins-made-once)
+  ;; a tab, a control character and a raw byte are shown as text made once, not for each
+  ;; character of each frame; octets written in hex take one string
+  (flet ((consed (function)
+           (funcall function)
+           (loop repeat 3
+                 minimize (let ((before (tuatara.bench::bytes-consed)))
+                            (funcall function)
+                            (- (tuatara.bench::bytes-consed) before)))))
+    (is = 0 (consed (lambda () (dotimes (i 100)
+                                 (tuatara.display:char-display #\Tab (mod i 8) 8)
+                                 (tuatara.display:char-display (code-char 1) 0 8)
+                                 (tuatara.display:char-display (code-char #x85) 0 8)
+                                 (tuatara.display:char-display (code-char #xDCA9) 0 8)))))
+    (let ((octets (coerce (loop for i below 32 collect (* i 8)) 'tuatara.text:octets)))
+      (true (< (consed (lambda () (tuatara.text:octets-hex octets))) 512))
+      (is string= "0008101820" (tuatara.text:octets-hex octets :end 5))
+      (is string= "F0:F8" (tuatara.text:octets-hex octets :start 30 :upper-case t :separator ":"))
+      (is string= "" (tuatara.text:octets-hex octets :start 3 :end 3))))
+  (is string= "^A" (tuatara.display:control-char-display (code-char 1)))
+  (is string= "^?" (tuatara.display:control-char-display (code-char 127)))
+  (is string= "\\x85" (tuatara.display:control-char-display (code-char #x85)))
+  (is string= "\\xA9" (tuatara.display:raw-byte-display #xDCA9))
+  (is string= "        " (tuatara.display:char-display #\Tab 0 8)))
