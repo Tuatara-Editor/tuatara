@@ -293,19 +293,28 @@ or after from, put at the end, when it says none."
   (org-date-calendar-step -7 0))
 
 (define-command org-calendar-forward-month ()
-  "In Org's date prompt: the calendar's day a month on, written at the prompt."
+  "In Org's date prompt: the calendar's day a month on, written at the prompt:
+the same day of the month, or the month's last when it has fewer (31 January
+a month on is 28 February), as the calendar moves; +1m typed counts on past
+the month's end instead (3 March)."
   (org-date-calendar-step 0 1))
 
 (define-command org-calendar-backward-month ()
-  "In Org's date prompt: the calendar's day a month back, written at the prompt."
+  "In Org's date prompt: the calendar's day a month back, written at the
+prompt: the same day of the month, or the month's last when it has fewer, as
+the calendar moves; -1m typed counts on past the month's end instead."
   (org-date-calendar-step 0 -1))
 
 (define-command org-calendar-forward-year ()
-  "In Org's date prompt: the calendar's day a year on, written at the prompt."
+  "In Org's date prompt: the calendar's day a year on, written at the prompt:
+29 February a year on is 28 February, as the calendar moves; +1y typed is
+1 March."
   (org-date-calendar-step 0 12))
 
 (define-command org-calendar-backward-year ()
-  "In Org's date prompt: the calendar's day a year back, written at the prompt."
+  "In Org's date prompt: the calendar's day a year back, written at the
+prompt: 29 February a year back is 28 February, as the calendar moves; -1y
+typed is 1 March."
   (org-date-calendar-step 0 -12))
 
 (define-command org-calendar-goto-today ()
