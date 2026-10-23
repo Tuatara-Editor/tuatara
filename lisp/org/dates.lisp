@@ -291,12 +291,16 @@ and (or FORM ...), the days any of them takes, of these."
                (and parts (every #'identity parts)
                     (make-org-rule :kind (if (string= name "and") :all :any) :arguments (list parts)))))))))
 
+(defun org-rule-text-p (text)
+  "True when TEXT begins as a timestamp by rule does, <%%(."
+  (and (> (length text) 4) (string= "<%%(" text :end2 4)))
+
 (defun org-read-rule (text)
   "TEXT, a timestamp by rule (<%%(diary-float t 1 1) 10:00>), read as an
 ORG-RULE, or NIL when it is none or its form is not one of those
 ORG-RULE-FROM-DATA knows."
   (multiple-value-bind (match groups)
-      (and (> (length text) 4) (string= "<%%(" text :end2 4) (cl-ppcre:scan-to-strings *org-rule-scanner* text))
+      (and (org-rule-text-p text) (cl-ppcre:scan-to-strings *org-rule-scanner* text))
     (when match
       (let* ((form (aref groups 0))
              (rule (org-rule-from-data (org-read-rule-data form 0 (length form)))))

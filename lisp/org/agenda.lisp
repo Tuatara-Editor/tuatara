@@ -16,6 +16,12 @@
   (cl-ppcre:create-scanner (format nil "- State \"DONE\"[^[\\n]*(\\[~a\\])" (org-timestamp-body)))
   "A note of an entry's state becoming DONE, the time it was noted a group.")
 
+(defparameter *org-agenda-stamp-scanner*
+  (let ((stamp (org-timestamp-body)))
+    (cl-ppcre:create-scanner (format nil "(<~a>--<~a>)|<~a>|<~a>" stamp stamp stamp (org-rule-timestamp-body))))
+  "What the agenda takes from an entry's text, in one look: a range of two
+active timestamps (a group), one active timestamp, or a timestamp by rule.")
+
 (defparameter *org-closed-or-clock-scanner*
   (cl-ppcre:create-scanner (format nil "\\b(?:(CLOSED)|CLOCK): *(\\[~a\\])" (org-timestamp-body)))
   "A CLOSED: or CLOCK: and the inactive timestamp after it: CLOSED a group when
@@ -52,11 +58,13 @@ when TABLE is NIL."
 (defun org-agenda-ts (text)
   "TEXT read as ORG-READ-TS reads it, once while an agenda is made. The
 timestamp is shared: it is not to be changed."
-  (memo-values *org-agenda-ts-memo* text (lambda () (org-read-ts text))))
+  (and (not (org-rule-text-p text))
+       (memo-values *org-agenda-ts-memo* text (lambda () (org-read-ts text)))))
 
 (defun org-agenda-rule (text)
   "TEXT read as ORG-READ-RULE reads it, once while an agenda is made."
-  (memo-values *org-agenda-ts-memo* (cons :rule text) (lambda () (org-read-rule text))))
+  (and (org-rule-text-p text)
+       (memo-values *org-agenda-ts-memo* text (lambda () (org-read-rule text)))))
 
 (defun org-repeater-of (text)
   "The repeater the agenda finds in the timestamp TEXT, read once: (TS VALUE
@@ -513,26 +521,23 @@ says both."
           ;; the lines of its checkbox items are theirs
           unless (or (find-if (lambda (range) (and (<= (car range) line-start) (< line-start (cdr range)))) (agenda-entry-skip entry))
                      (cl-ppcre:scan "^[ \\t]*#(?: |$)" text :start line-start :end line-end))
-          do (let ((line (subseq text line-start line-end)))
-               (multiple-value-bind (match match-end starts ends)
-                   (cl-ppcre:scan *org-closed-or-clock-scanner* line)
-                 (declare (ignore match-end))
-                 (cond ((null match))
-                       ((aref starts 0) (push (list :closed (subseq line (aref starts 1) (aref ends 1)) nil nil) logs))
-                       (t (multiple-value-bind (from to duration) (org-read-clock-line line match)
-                            (when from
-                              (let ((stopped (and to duration (cl-ppcre:scan-to-strings "\\d{1,2}:\\d{2}(?=\\]$)" to))))
-                                (push (list :clock from (and stopped duration) stopped) logs)))))))
-               (unless (org-planning-line-p line)
-                 (let ((blanked line))
-                   (cl-ppcre:do-matches (s e *org-active-range-scanner* line)
-                     (let ((dash (search ">--<" line :start2 s)))
-                       (push (list (subseq line s (1+ dash)) (subseq line (+ dash 3) e)) ranges))
-                     (setf blanked (concatenate 'string (subseq blanked 0 s) (make-string (- e s) :initial-element #\Space) (subseq blanked e))))
-                   (cl-ppcre:do-matches (s e *org-active-timestamp-scanner* blanked)
-                     (when (org-agenda-ts (subseq blanked s e)) (push (subseq blanked s e) stamps)))
-                   (cl-ppcre:do-matches (s e *org-rule-timestamp-scanner* blanked)
-                     (when (org-agenda-rule (subseq blanked s e)) (push (subseq blanked s e) stamps))))))
+          do (multiple-value-bind (match match-end starts ends)
+                 (cl-ppcre:scan *org-closed-or-clock-scanner* text :start line-start :end line-end)
+               (declare (ignore match-end))
+               (cond ((null match))
+                     ((aref starts 0) (push (list :closed (subseq text (aref starts 1) (aref ends 1)) nil nil) logs))
+                     (t (multiple-value-bind (from to duration) (org-read-clock-line text match line-end)
+                          (when from
+                            (let ((stopped (and to duration (cl-ppcre:scan-to-strings "\\d{1,2}:\\d{2}(?=\\]$)" to))))
+                              (push (list :clock from (and stopped duration) stopped) logs)))))))
+             (unless (org-planning-line-p text :start line-start :end line-end)
+               (cl-ppcre:do-scans (s e range-starts range-ends *org-agenda-stamp-scanner* text nil :start line-start :end line-end)
+                 (declare (ignore range-ends))
+                 (if (aref range-starts 0)
+                     (let ((dash (search ">--<" text :start2 s :end2 e)))
+                       (push (list (subseq text s (1+ dash)) (subseq text (+ dash 3) e)) ranges))
+                     (let ((stamp (subseq text s e)))
+                       (when (or (org-agenda-ts stamp) (org-agenda-rule stamp)) (push stamp stamps))))))
              (when (>= line-end end) (loop-finish)))
     (setf (agenda-entry-stamps entry) (nreverse stamps)
           (agenda-entry-ranges entry) (remove-if-not (lambda (r) (and (org-agenda-ts (first r)) (org-agenda-ts (second r)))) (nreverse ranges))
