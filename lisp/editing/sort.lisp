@@ -1026,24 +1026,93 @@ does nothing and says so."
   (with-selected-lines (b start end 'reverse-region)
     (sort-lines-by b start end (list :index) t "Reversing" "Reversed")))
 
+(defun record-field-order (octets ends crlf each field numeric reverse fold)
+  "The records of OCTETS, whole records ending as ENDS says (RECORD-ENDS), and
+their order by FIELD (EACH: a RECORD-FIELDS-EACH; NIL for the whole record),
+as text, or with NUMERIC by the number its value begins with (FIELD-NUMBER),
+a record without the field taking an empty value: two values, the records as
+\(START END) and the order, as KEY-ORDER gives it."
+  (let* ((rope (tuatara.text:octets->rope octets))
+         (size (length octets))
+         (holder (list (make-string 256)))
+         (keys (make-array 1024 :element-type '(unsigned-byte 8) :adjustable t :fill-pointer 0))
+         (records '()) (starts '()) (finishes '()) (numbers '()))
+    (loop with at = 0
+          while (< at size)
+          do (multiple-value-bind (text-end after) (record-bounds rope at ends)
+               (let* ((length (decode-into octets at (record-text-end rope text-end crlf) holder))
+                      (value (if field
+                                 (or (funcall each (car holder) length field (lambda (string from to) (subseq string from to))) "")
+                                 (subseq (car holder) 0 length)))
+                      (key (tuatara.text:string-octets value)))
+                 (push (list at after) records)
+                 (push (fill-pointer keys) starts)
+                 (loop for octet across key do (vector-push-extend octet keys))
+                 (push (fill-pointer keys) finishes)
+                 (when numeric (push (field-number key 0 (length key)) numbers))
+                 (setf at after))))
+    (let ((key-octets (coerce keys 'tuatara.text:octets)))
+      (values (nreverse records)
+              (key-order key-octets (coerce (nreverse starts) '(simple-array fixnum (*))) (coerce (nreverse finishes) '(simple-array fixnum (*)))
+                         (and numeric (coerce (nreverse numbers) '(simple-array double-float (*))))
+                         (list :field) reverse fold)))))
+
+(defun sort-records-by-field (buffer start end command numeric)
+  "Sort the records of BUFFER, a file of records, that the lines from START
+below END touch, its header aside, by a field asked for (READ-RECORD-FIELD),
+as text, or with NUMERIC by number: each record whole, though it holds line
+breaks (RECORD-ENDS). Worked in memory (SORT-IN-MEMORY-ONLY). COMMAND names
+the command in messages."
+  (let* ((rope (tuatara.buffer:buffer-text buffer))
+         (ends (record-ends buffer))
+         (crlf (buffer-crlf-p buffer))
+         (fields (mode-record-fields (buffer-major-mode buffer) buffer))
+         (field (and fields (read-record-field buffer fields "Sort by the column: ")))
+         (each (and fields (record-fields-each fields)))
+         (reverse (sort-descending-p)) (fold *sort-fold-case*)
+         (newline (tuatara.text:string-octets (tuatara.buffer:buffer-newline buffer)))
+         (memo (make-record-memo))
+         (first (if (list-header-p buffer) (records-start rope 1 ends) 0))
+         ;; the whole records the lines touch
+         (low (max first (line-record memo rope start (min (tuatara.text:rope-bytes rope) (1+ (tuatara.text:rope-line-end rope start))) ends)))
+         (high (max low (nth-value 2 (line-record memo rope (tuatara.text:rope-line-start rope (max start (1- end))) end ends)))))
+    (if (>= low high)
+        (message "No records to sort but the header: ~(~a~) was not run" (sort-command-name command))
+        (sort-in-memory-only buffer low high command "Sorting"
+                             (lambda (octets)
+                               (multiple-value-bind (records order)
+                                   (record-field-order octets ends crlf each field numeric reverse fold)
+                                 (values (arrange-records octets records order newline)
+                                         (format nil "Sorted ~:d record~:p" (length records)))))))))
+
 (define-command sort-fields ()
   "Sort the lines the selection touches by one field of each, as text: fields
 are separated by spaces and tabs, and the prefix argument names the field (the
 first by default; a negative one counts from the end of the line). A line with
-too few fields stops the sort. Without a selection, does nothing and says so."
+too few fields stops the sort. In a file of records, a CSV, a log, JSON Lines
+and the others \\[list-show-records] names, the records are sorted instead by
+the column asked for, as \\[list-show-records] asks for it, each record whole
+and the header line staying first; a record without the column sorts as
+empty. Without a selection, does nothing and says so."
   (let ((field (field-argument)))
     (with-selected-lines (b start end 'sort-fields)
-      (sort-lines-by b start end (list :field field) *sort-descending* "Sorting" "Sorted"))))
+      (if (records-file-p b)
+          (sort-records-by-field b start end 'sort-fields nil)
+          (sort-lines-by b start end (list :field field) *sort-descending* "Sorting" "Sorted")))))
 
 (define-command sort-numeric-fields ()
   "Sort the lines the selection touches by the number at the start of one
 field of each (the prefix argument's, as for sort-fields): 0x and hexadecimal
 digits, or a number in *SORT-NUMERIC-BASE*, decimal by default and then with a
 fraction and exponent; a field without a number counts as 0. A leading zero
-does not make a number octal. Without a selection, does nothing and says so."
+does not make a number octal. In a file of records, the column is asked for
+and the records sorted whole, as sort-fields sorts them. Without a
+selection, does nothing and says so."
   (let ((field (field-argument)))
     (with-selected-lines (b start end 'sort-numeric-fields)
-      (sort-lines-by b start end (list :numeric field) *sort-descending* "Sorting" "Sorted"))))
+      (if (records-file-p b)
+          (sort-records-by-field b start end 'sort-numeric-fields t)
+          (sort-lines-by b start end (list :numeric field) *sort-descending* "Sorting" "Sorted")))))
 
 (define-command sort-columns ()
   "Sort the lines from the one where the selection starts to the one where it

@@ -111,3 +111,17 @@ newline outside double quotes, or the end."
     (let ((fields (tuatara.defaults::mode-record-fields (tuatara.modes:buffer-major-mode buffer) buffer)))
       (setf (tuatara.buffer:buffer-local buffer :csv-delimiter) 59)
       (is string= "x" (tuatara.defaults::record-field-value fields "1;x" 1)))))
+
+(define-test (csv-records sorted-by-a-column)
+  ;; sort-fields in a file of records asks for the column and sorts whole records, a
+  ;; quoted line break and all, the header staying first
+  (is string= (format nil "NAME,CITY~%Amy,Auckland~%Bob,Nelson~%Zed,\"Nelson~%North\"~%")
+      (list-records-after "C-x h M-x s o r t - f i e l d s RET C I T Y RET"
+                          (format nil "NAME,CITY~%Zed,\"Nelson~%North\"~%Amy,Auckland~%Bob,Nelson~%")))
+  (is string= (format nil "N,V~%a,9~%b,10~%c,\"100\"~%")
+      (list-records-after "C-x h M-x s o r t - n u m e r i c - f i e l d s RET 1 RET" (format nil "N,V~%b,10~%c,\"100\"~%a,9~%")))
+  (is string= (format nil "N,V~%c,\"100\"~%b,10~%a,9~%")
+      (list-records-after "C-x h M-x s o r t - n u m e r i c - f i e l d s - r e v e r s e RET V RET"
+                          (format nil "N,V~%b,10~%c,\"100\"~%a,9~%")))
+  ;; elsewhere the fields are apart by blanks, from 1
+  (is string= (lines-text "x 1" "y 2") (sorted-text "M-x s o r t - f i e l d s RET" (lines-text "y 2" "x 1"))))
