@@ -170,7 +170,8 @@ version)."
 (defparameter *credits*
   '(("GNU Emacs" "the design: buffers for everything, text properties, every key"
                  "a named command, self-documentation; the standard keys, the"
-                 "behaviour of most base commands, and many of their test cases")
+                 "behaviour of most base commands, and many of their test cases;"
+                 "the calendar, and the diary's forms of dates by rule")
     ("DONKEY" "the modal keys: donkey.el, by the same author"
               "(github.com/YardQuit/donkey)")
     ("Helix" "each language's rules for colours, indentation, selections and"
@@ -210,8 +211,11 @@ version)."
     ("Eugene W. Myers's difference algorithm" "the gutter's changes since the file was saved or committed")
     ("Unicode's text segmentation (UAX #29)" "a letter and its accents, or an emoji, taken as one character")
     ("freedesktop.org's trash specification" "the trash Rimu puts files in and lists")
+    ("freedesktop.org's desktop notifications" "entries tagged :notify: told on the desktop, through"
+                                               "libnotify's notify-send")
     ("The file program" "a file's kind told by its first octets, never by its name")
     ("RFC 1345" "the digraphs, as Emacs's rfc1345 input method has them")
+    ("RFC 3339" "dates and times as the named date patterns read and compare them")
     ("Ghostty, by Mitchell Hashimoto and its contributors" "the terminal library M-x terminal keeps its screen with"
                                                            "(libghostty-vt)")
     ("kitty, by Kovid Goyal" "the graphics and keyboard protocols")
