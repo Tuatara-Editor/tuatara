@@ -14,6 +14,8 @@ value names, capitalising, and the case of a small region and a large one.")
 
 (define-test (editing-words one-definition)
   ;; a double click's word and a snippet's value name are the letters, digits and _ a name holds
+  (is eq 'tuatara.text:word-char-p 'tuatara.defaults::word-char-p)
+  (is eq 'tuatara.text:name-char-p 'tuatara.defaults::name-char-p)
   (dolist (char *word-test-chars*)
     (unless (member char '(#\Newline #\Return))
       (is eq (and (tuatara.defaults::name-char-p char) t) (eq :word (tuatara.defaults::click-class char)) "~s" char))

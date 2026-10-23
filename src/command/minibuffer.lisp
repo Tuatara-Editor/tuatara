@@ -560,9 +560,8 @@ minibuffer in place of the text typed; past the newest, what was typed."
   "Delete the word before the minibuffer cursor: back over what is not a
 letter or a digit, then over the letters and digits before it."
   (let* ((editor *editor*) (text (editor-minibuffer-text editor)) (p (editor-minibuffer-point editor)) (q p))
-    (flet ((word-char-p (c) (or (alpha-char-p c) (digit-char-p c))))
-      (loop while (and (plusp q) (not (word-char-p (char text (1- q))))) do (decf q))
-      (loop while (and (plusp q) (word-char-p (char text (1- q)))) do (decf q)))
+    (loop while (and (plusp q) (not (tuatara.text:word-char-p (char text (1- q))))) do (decf q))
+    (loop while (and (plusp q) (tuatara.text:word-char-p (char text (1- q)))) do (decf q))
     (replace-minibuffer-text q p "" editor)))
 
 (defun install-minibuffer-keys (keymap)

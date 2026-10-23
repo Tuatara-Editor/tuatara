@@ -55,6 +55,15 @@ not UTF-8 kept as its raw byte."
                                                             :external-format (list encoding :replacement (code-char #xFFFD)))))
         (octets-string octets :start start :end end))))
 
+(defun word-char-p (char)
+  "True for characters that make up words: letters and digits."
+  (and char (or (alpha-char-p char) (digit-char-p char))))
+
+(defun name-char-p (char)
+  "True for characters that make up a name, a word with _ in it as well:
+letters, digits and _."
+  (or (word-char-p char) (eql char #\_)))
+
 (defun split-words (string &optional (separators '(#\Space #\Tab)))
   "The parts of STRING between SEPARATORS (characters, or a string of them),
 the empty ones left out; NIL for NIL."
