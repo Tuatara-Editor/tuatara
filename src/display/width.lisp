@@ -324,6 +324,54 @@ for no words."
     (when line (push line lines))
     (nreverse lines)))
 
+(defun list-item-head (line)
+  "The length of what begins LINE as an item of a list, - or * or a number and
+a full stop, with the blanks after it; NIL when LINE begins no item."
+  (let* ((n (length line))
+         (after (cond ((zerop n) nil)
+                      ((find (char line 0) "-*") 1)
+                      (t (let ((digits (or (position-if-not #'digit-char-p line) n)))
+                           (and (plusp digits) (< digits n) (char= (char line digits) #\.) (1+ digits))))))
+         (words (and after (position-if-not (lambda (c) (member c '(#\Space #\Tab #\Newline #\Return #\Page))) line
+                                            :start after))))
+    (and after (> (or words n) after) (or words n))))
+
+(defun docstring-paragraphs (doc)
+  "DOC, a docstring, cut into its parts in order, for its text to be filled
+and the rest kept as written: (:BLANK) for a blank line; (:AS-IS LINE) for a
+line set in (a table, an example; under an item of a list, set in further
+than its words); (:FILLED HEAD INDENT WORDS LINES) for lines whose words are
+filled: HEAD what begins them (an item's - or * or number and full stop with
+the blanks after it, else \"\"), INDENT the columns the lines after the first
+are set in by, WORDS their words, a list, and LINES the lines they were
+written in. An item's lines go on until a blank line or the next item; any
+other lines run on into one paragraph."
+  (let ((parts '()) (head nil) (indent 0) (words '()) (lines '()))
+    (flet ((flush ()
+             (when head
+               (push (list :filled head indent (reverse words) (reverse lines)) parts))
+             (setf head nil words '() lines '()))
+           (add (line from)
+             (setf words (revappend (remove "" (uiop:split-string (subseq line from) :separator '(#\Space #\Tab))
+                                            :test #'string=)
+                                    words))
+             (push line lines)))
+      (dolist (line (uiop:split-string doc :separator '(#\Newline)))
+        (let ((item (list-item-head line)))
+          (cond ((every (lambda (c) (member c '(#\Space #\Tab))) line)
+                 (flush) (push (list :blank) parts))
+                (item (flush)
+                      (setf head (subseq line 0 item) indent item)
+                      (add line item))
+                ((and head (plusp indent) (<= (or (position #\Space line :test-not #'char=) 0) indent))
+                 (add line 0))
+                ((char= (char line 0) #\Space)
+                 (flush) (push (list :as-is line) parts))
+                (t (unless head (setf head "" indent 0))
+                   (add line 0)))))
+      (flush))
+    (nreverse parts)))
+
 (sb-ext:define-load-time-global **octet-escapes**
     (let ((texts (make-array 256)))
       (dotimes (octet 256 texts)

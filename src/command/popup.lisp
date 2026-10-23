@@ -357,29 +357,29 @@ Returns the rows and the box's width."
      width)))
 
 (defun wrap-text (text width)
-  "TEXT, a docstring, as lines of at most WIDTH columns, broken between words
-\(TUATARA.DISPLAY:FILL-WORDS), a word longer than a line cut. Its lines run
-on into one paragraph, filled anew; a blank line ends a paragraph and is
-kept, and an indented line, as an example is, stands on its own, as it is
-where it fits."
-  (let ((lines '()) (words '()))
-    (flet ((flush ()
-             (when words
-               (setf lines (revappend (tuatara.display:fill-words (nreverse words) width :width #'panel-char-columns :cut t)
-                                      lines)
-                     words '()))))
-      (dolist (line (uiop:split-string text :separator '(#\Newline)))
-        (let ((line-words (remove "" (uiop:split-string line :separator '(#\Space)) :test #'string=)))
-          (cond ((null line-words) (flush) (push "" lines))
-                ((member (char line 0) '(#\Space #\Tab))
-                 ;; as it is where it fits, else filled
-                 (flush)
-                 (if (<= (panel-columns line) width)
-                     (push line lines)
-                     (progn (setf words (reverse line-words)) (flush))))
-                (t (setf words (revappend line-words words))))))
-      (flush))
-    (or (nreverse lines) (list ""))))
+  "TEXT, a docstring, as lines of at most WIDTH columns, its parts as
+TUATARA.DISPLAY:DOCSTRING-PARAGRAPHS finds them: a paragraph's words filled
+anew between words (TUATARA.DISPLAY:FILL-WORDS), a word longer than a line
+cut, an item of a list under its first word; a blank line kept, and a line
+set in, as an example is, as it is where it fits, else filled."
+  (flet ((filled (words head indent)
+           (let ((lines (tuatara.display:fill-words words width :start (length head) :indent indent
+                                                                 :width #'panel-char-columns :cut t)))
+             (cons (concatenate 'string head (or (first lines) ""))
+                   (mapcar (lambda (line) (concatenate 'string (make-string indent :initial-element #\Space) line))
+                           (rest lines))))))
+    (or (loop for part in (tuatara.display:docstring-paragraphs text)
+              append (ecase (first part)
+                       (:blank (list ""))
+                       (:as-is (let ((line (second part)))
+                                 (if (<= (panel-columns line) width)
+                                     (list line)
+                                     (filled (remove "" (uiop:split-string line :separator '(#\Space)) :test #'string=)
+                                             "" 0))))
+                       (:filled (destructuring-bind (head indent words lines) (rest part)
+                                  (declare (ignore lines))
+                                  (filled words head indent)))))
+        (list ""))))
 
 (defun boxed-lines (paragraphs room-columns limits)
   "PARAGRAPHS, each (TEXT . FACE), as the lines of a box at most ROOM-COLUMNS
