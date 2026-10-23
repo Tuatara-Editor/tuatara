@@ -1032,3 +1032,125 @@ tiny pieces, a few lines each, so that a small text exercises it."
       (setf tuatara.defaults::*search-lit* nil tuatara.defaults::*search-lit-shown* nil)
       (tuatara.buffer:kill-buffer other)))
   (is string= "(?<y>a)\\3\\\\1" (tuatara.defaults::shift-group-references "(?<y>a)\\1\\\\1" 2)))
+
+;;; What a filter of records leaves, held against one scan of the whole text
+
+(defun filter-units (rope crlf ends)
+  "Every record of ROPE, a line each or as ENDS ends them (RECORD-ENDS), as
+\(START TEXT-END AFTER): where it starts, where its text ends (before a
+carriage return too with CRLF) and where the next starts."
+  (let ((total (tuatara.text:rope-bytes rope)))
+    (loop for at = 0 then after
+          while (< at total)
+          for (text-end after) = (multiple-value-list (tuatara.defaults::record-bounds rope at ends))
+          collect (list at (tuatara.defaults::record-text-end rope text-end crlf) after))))
+
+(defun scan-kept-starts (rope matcher crlf &key ends ranges hide)
+  "The starts of the records of ROPE a filter by MATCHER leaves, worked out
+from one scan of the whole text: a record is matched when a match starts in
+it before the end of its text, or is empty just there. Only the records
+starting in RANGES, a list of (START END), when given; with HIDE, those not
+matched."
+  (let ((matches (tuatara.defaults::line-matches rope matcher t 0 (tuatara.text:rope-bytes rope))))
+    (loop for (start text-end) in (filter-units rope crlf ends)
+          when (and (or (null ranges) (loop for (a b) in ranges thereis (<= a start (1- b))))
+                    (eq (not hide)
+                        (loop for (s e) in matches
+                              thereis (or (and (<= start s) (< s text-end)) (= s e text-end)))))
+            collect start)))
+
+(defun runs-starts (rope runs crlf ends)
+  "The starts of the records of ROPE that RUNS (LINES-MATCHING) hold."
+  (loop for (start) in (filter-units rope crlf ends)
+        when (loop for i from 0 below (length runs) by 2
+                   thereis (<= (aref runs i) start (1- (aref runs (1+ i)))))
+          collect start))
+
+(defun runs-of (ranges)
+  "RANGES, a list of (START END), as LINES-MATCHING takes them."
+  (coerce (loop for (a b) in ranges collect a collect b) '(simple-array fixnum (*))))
+
+(defun filter-scan-agrees (text pattern &key crlf ends ranges hide (everywhere nil))
+  "True when a filter for PATTERN on TEXT leaves the records one scan of the
+whole text finds (SCAN-KEPT-STARTS), and counts them; with EVERYWHERE, worked
+out in small pieces on every core. Else what each found, for the report."
+  (let* ((rope (tuatara.text:string->rope text))
+         (filter (tuatara.defaults::make-search-filter pattern :crlf crlf :hide hide))
+         (matcher (tuatara.defaults::search-filter-matcher filter))
+         (ranges (or ranges (list (list 0 (tuatara.text:rope-bytes rope)))))
+         (oracle (scan-kept-starts rope matcher crlf :ends ends :ranges ranges :hide hide)))
+    (multiple-value-bind (runs count)
+        (if everywhere
+            (let ((tuatara.defaults::*filter-piece* 700))
+              (tuatara.defaults::lines-matching-everywhere filter rope (runs-of ranges) crlf nil nil nil ends))
+            (tuatara.defaults::lines-matching (list filter) rope (runs-of ranges) crlf :ends ends))
+      (let ((found (runs-starts rope runs crlf ends)))
+        (or (and (equal oracle found) (= count (length oracle)))
+            (list :pattern pattern :scan oracle :filter found :count count))))))
+
+(defparameter *filter-agreement-patterns*
+  (append *agreement-patterns*
+          '("^$" "$" "^" "x*" "a\\s" "\\s" "\\z" "\\A2026" "(?<=\\n)2026" "(?<!\\d)\\d{2}$" "\\r" "\\n"))
+  "The patterns filters are held against one scan with: every kind searched
+for, and anchors, empty matches and line ends.")
+
+(defparameter *line-bound-filter-patterns*
+  '("login" "ERROR" "[0-9]+" "\\d$" "^2026-0[1-6]" "^$" "$" "(?<=user=)\\w+" "kōrero" "x*")
+  "Patterns whose matches stay within a line, for filters worked out in pieces.")
+
+(define-test (search-filters filters-agree-with-a-scan)
+  ;; a filter of records leaves the lines in which a scan of the whole text finds a match,
+  ;; LF and CRLF, as the search finds it: the same lines a search lights
+  (with-evidence-seed
+    (dolist (crlf '(nil t))
+      (let ((text (evidence-text 300 :crlf crlf)))
+        (dolist (pattern *filter-agreement-patterns*)
+          (is eq t (filter-scan-agrees text pattern :crlf crlf)))
+        (dolist (pattern '("login" "\\d$" "^$" "a\\s"))
+          (is eq t (filter-scan-agrees text pattern :crlf crlf :hide t)))
+        (dolist (pattern *line-bound-filter-patterns*)
+          (is eq t (filter-scan-agrees text pattern :crlf crlf :everywhere t)))
+        ;; lines a filter before left: the runs it leaves, others hidden
+        (let* ((rope (tuatara.text:string->rope text))
+               (runs (tuatara.defaults::lines-matching (list (tuatara.defaults::make-search-filter "e" :crlf crlf)) rope
+                                                      (runs-of (list (list 0 (tuatara.text:rope-bytes rope)))) crlf))
+               (ranges (loop for i from 0 below (length runs) by 2 collect (list (aref runs i) (aref runs (1+ i))))))
+          (dolist (pattern *line-bound-filter-patterns*)
+            (is eq t (filter-scan-agrees text pattern :crlf crlf :ranges ranges))
+            (is eq t (filter-scan-agrees text pattern :crlf crlf :ranges ranges :everywhere t)))))))
+  ;; records over several lines, quoted line breaks in a CSV: a record matched anywhere is
+  ;; left whole, its line breaks part of it
+  (dolist (crlf '(nil t))
+    (let ((text (format nil (if crlf "n,a~c~%kiwi,\"one~c~%two\"~c~%tui,\"x~c~%kea\"~c~%weka,y~c~%" "n,a~*~%kiwi,\"one~*~%two\"~*~%tui,\"x~*~%kea\"~*~%weka,y~*~%")
+                        #\Return #\Return #\Return #\Return #\Return #\Return)))
+      (dolist (pattern '("kiwi" "two" "kea" "^kea" "one\\s+two" "\\n" "y$" "$" "^" "zzz"))
+        (is eq t (filter-scan-agrees text pattern :crlf crlf :ends #'tuatara.defaults::csv-record-end))
+        (is eq t (filter-scan-agrees text pattern :crlf crlf :ends #'tuatara.defaults::csv-record-end :hide t))
+        (is eq t (filter-scan-agrees text pattern :crlf crlf :ends #'tuatara.defaults::csv-record-end :everywhere t))))))
+
+(defun least-seconds (function)
+  "The least of three runs' seconds of FUNCTION, called with none."
+  (loop repeat 3
+        minimize (let ((start (get-internal-real-time)))
+                   (funcall function)
+                   (/ (- (get-internal-real-time) start) internal-time-units-per-second))))
+
+(define-test (search-filters filters-at-search-speed)
+  ;; a filter of a large log finds its lines as fast as a search finds its matches, not
+  ;; reading every line as text: within a few times one scan's time
+  (let* ((text (with-output-to-string (o)
+                 (dotimes (i 120000)
+                   (format o "2026-10-01 10:~2,'0d:~2,'0d ~a request ~d took ~dms~%"
+                           (mod i 60) (mod (* 7 i) 60) (if (zerop (mod i 97)) "ERROR" "INFO") i (mod (* 13 i) 1000)))))
+         (rope (tuatara.text:string->rope text))
+         (all (runs-of (list (list 0 (tuatara.text:rope-bytes rope))))))
+    (dolist (pattern '("ERROR" "error" "took 9\\d\\dms"))
+      (let* ((filter (tuatara.defaults::make-search-filter pattern))
+             (matcher (tuatara.defaults::search-filter-matcher filter))
+             (scan (least-seconds (lambda ()
+                                    (let ((n 0))
+                                      (tuatara.defaults::map-matcher-matches (lambda (s e m g) (declare (ignore s e m g)) (incf n) nil)
+                                                                             rope matcher 0 (tuatara.text:rope-bytes rope))
+                                      n))))
+             (filter-time (least-seconds (lambda () (tuatara.defaults::lines-matching (list filter) rope all nil)))))
+        (true (< filter-time (+ 0.002 (* 3 scan))) "~a: filtered in ~,4fs, scanned in ~,4fs" pattern filter-time scan)))))

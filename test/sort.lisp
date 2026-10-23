@@ -247,21 +247,21 @@ are rewritten at once."
       (is string= text (session-text editor)))))
 
 (define-test (sorting lines-too-long-to-read)
-  ;; a line longer than *rewrite-line-limit* is left as it is, not given to the
-  ;; pattern, and said; at once and in the background alike
+  ;; a pattern tried on the whole line is found in a line however long, as a search
+  ;; finds it, past *rewrite-line-limit* too; at once and in the background alike
   (let ((tuatara.defaults::*rewrite-line-limit* 10)
         (text (lines-text "drop" "a long line to drop" "keep")))
     (loop for (on-disk here) in '((nil t) (nil nil) (t nil))
-          do (is string= (lines-text "a long line to drop" "keep")
+          do (is string= (lines-text "keep")
                  (sorted-text "M-x f l u s h - l i n e s RET d r o p RET" text :on-disk on-disk :here here)))
     (true (tuatara.frontend.fake:fake-frame-showing
            (run-keys "C-x h M-x f l u s h - l i n e s RET d r o p RET" :text text :width 120)
-           "Deleted 1 matching line in" "1 line too long to look at left as it is"))
+           "Deleted 2 matching lines in"))
     (true (tuatara.frontend.fake:fake-frame-showing
            (run-keys (list (lambda () (setf (tuatara.buffer:buffer-local (tuatara.buffer:find-buffer "*scratch*") :plaintext) t))
                            "C-x h M-x f l u s h - l i n e s RET d r o p RET")
                      :text text :width 120)
-           "Deleted 1 matching line; 1 line too long to look at left as it is")))
+           "Deleted 2 matching lines")))
   ;; a line's text is read whole however long, up to the limit, a character of two octets one character
   (let ((long (format nil "~a é ~a" (make-string 3000 :initial-element #\a) (make-string 3000 :initial-element #\b))))
     (is string= (lines-text long)

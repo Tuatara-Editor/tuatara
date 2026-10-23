@@ -29,10 +29,12 @@
 
 (in-package #:tuatara.defaults)
 
-(defstruct (search-filter (:constructor %make-search-filter (string kind fold scanner where test part hide)) (:copier nil))
+(defstruct (search-filter (:constructor %make-search-filter (string kind fold matcher where test part hide)) (:copier nil))
   "A pattern narrowing a list: STRING as typed; KIND :REGEX for a regular
-expression, :LITERAL for literal text; FOLD true when it ignores case; SCANNER, it
-compiled; WHERE, the part of each entry it looks at as the list names parts
+expression, :LITERAL for literal text; FOLD true when it ignores case; MATCHER,
+how it is found in a text (MAKE-PATTERN-MATCHER), and SCANNER, it compiled to
+try on a string, made when first asked for (SEARCH-FILTER-SCANNER); WHERE, the
+part of each entry it looks at as the list names parts
 \(NIL for the line and all the list gives of the entry). In a file of
 records, TEST, when given, tries SCANNER on a record's line in its own way
 \(FILTER-LINE-MATCHER: a column), PART the words naming what it tries
@@ -40,13 +42,14 @@ records, TEST, when given, tries SCANNER on a record's line in its own way
 which of the list's entries it and the filters before it leave, a bit for
 each, worked out for the whole list SOURCE; COUNT, how many entries that is,
 headings aside."
-  string kind fold scanner where test part hide (kept nil) (source nil) (count 0))
+  string kind fold matcher (compiled nil) where test part hide (kept nil) (source nil) (count 0))
 
 (setf (documentation 'search-filter-p 'function) "True when OBJECT is a SEARCH-FILTER."
       (documentation 'search-filter-string 'function) "The pattern of a search filter, as typed."
       (documentation 'search-filter-kind 'function) "How a search filter's pattern is read: :REGEX or :LITERAL."
       (documentation 'search-filter-fold 'function) "True when a search filter ignores case."
-      (documentation 'search-filter-scanner 'function) "A search filter's pattern, compiled."
+      (documentation 'search-filter-matcher 'function) "How a search filter's pattern is found in a text, a MATCHER."
+      (documentation 'search-filter-compiled 'function) "A search filter's pattern compiled for strings, once asked for, or NIL."
       (documentation 'search-filter-where 'function) "The part of an entry a search filter looks at, or NIL for all of it."
       (documentation 'search-filter-test 'function) "How a search filter tries its pattern on a record's line (a column), or NIL for the whole line."
       (documentation 'search-filter-part 'function) "Words naming what of a record a search filter tries (\"$2\"), or NIL for the whole line."
@@ -55,21 +58,32 @@ headings aside."
       (documentation 'search-filter-source 'function) "The whole list a search filter's KEPT was worked out for."
       (documentation 'search-filter-count 'function) "How many entries a search filter and those before it leave.")
 
-(defun make-search-filter (string &key (regex t) where test part hide)
+(defun search-filter-scanner (filter)
+  "FILTER's pattern compiled to try on a string: its matcher's regular
+expression, or for literal text one made the first time it is asked for."
+  (or (search-filter-compiled filter)
+      (setf (search-filter-compiled filter)
+            (let ((matcher (search-filter-matcher filter)))
+              (if (eq (matcher-kind matcher) :regex)
+                  (matcher-scanner matcher)
+                  (tuatara.syntax:compile-pattern (matcher-pattern matcher) :regex nil :case-fold (matcher-fold matcher)))))))
+
+(defun make-search-filter (string &key (regex t) where test part hide crlf matcher)
   "A SEARCH-FILTER for STRING, a regular expression when REGEX is true, else
-literal text, nothing in it special; case
-ignored when it has no capital letter, as a search ignores it. WHERE names
-the part of each entry it looks at; TEST and PART how and what of a record's
-line it tries; HIDE true to leave what it does not match. Returns NIL and
-why when the pattern does not compile."
+literal text, nothing in it special; case ignored when it has no capital
+letter, as a search ignores it. MATCHER, when given, is how it is found
+\(SEARCH-MATCHER, made for it already); else one is made, $ matching before
+a carriage return with CRLF. WHERE names the part of each entry it looks at;
+TEST and PART how and what of a record's line it tries; HIDE true to leave
+what it does not match. Returns NIL and why when the pattern does not
+compile."
   (let* ((line (make-search-line :pattern string))
-         (fold (search-line-fold line regex))
-         (pattern (search-line-pattern line)))
-    (handler-case
-        (%make-search-filter string (if regex :regex :literal) fold
-                             (tuatara.syntax:compile-pattern pattern :regex regex :case-fold fold)
-                             where test part hide)
-      (error (e) (values nil (regex-problem e))))))
+         (fold (search-line-fold line regex)))
+    (multiple-value-bind (matcher why)
+        (or matcher (make-pattern-matcher (search-line-pattern line) :regex regex :fold fold :crlf crlf))
+      (if matcher
+          (%make-search-filter string (if regex :regex :literal) fold matcher where test part hide)
+          (values nil why)))))
 
 (defun search-filter-match-p (filter text)
   "True when the pattern of FILTER, a SEARCH-FILTER, matches somewhere in TEXT, a string."
@@ -399,21 +413,130 @@ when it has none, its end when it has no more lines than that."
     (dotimes (i header start)
       (setf start (min total (1+ (tuatara.text:rope-line-end rope start)))))))
 
-(defun lines-matching (filters rope ranges crlf &key progress halt most ends)
-  "The lines of ROPE starting in RANGES (a vector of fixnums, the start and
-end of each stretch in turn, each starting at a line's start) that every
-one of FILTERS matches, each line decoded and tried as it stands (a line
-longer than *REWRITE-LINE-LIMIT* octets on its first that many): three
-values, the runs of lines matched, a vector of fixnums holding the start of
-each run's first line and the start of the line after its last; how many
-lines matched; and how many were looked at. PROGRESS, a cons, has the
-octets looked at added to its car now and then; HALT, a function of none,
-stops the work when it answers true, asked every thousand lines or so;
-MOST, when given, stops it once that many lines matched. With ENDS
-(RECORD-ENDS), the lines are those of records that may hold line breaks: a
-record over several lines is tried whole, its lines matched or not with it,
-and counted once. Reads a block of the text at a time, a short stretch whole,
-and makes nothing for a line that does not match."
+(defun add-run (runs from to)
+  "Add the lines from FROM below TO to RUNS (LINES-MATCHING), made one with
+the run before when it ends at FROM; nothing when FROM is not before TO."
+  (declare (type fixnum from to))
+  (when (< from to)
+    (let ((fill (fill-pointer runs)))
+      (if (and (plusp fill) (= from (aref runs (1- fill))))
+          (setf (aref runs (1- fill)) to)
+          (progn (vector-push-extend from runs) (vector-push-extend to runs))))))
+
+(defun runs-turned-round (runs first low high)
+  "Make the runs of RUNS from its FIRST place on, all within LOW below HIGH,
+the lines between them there instead."
+  (declare (type fixnum first low high))
+  (let ((kept (subseq runs first)) (at low))
+    (declare (type fixnum at))
+    (setf (fill-pointer runs) first)
+    (loop for i from 0 below (length kept) by 2
+          do (add-run runs at (aref kept i))
+             (setf at (aref kept (1+ i))))
+    (add-run runs at high)))
+
+(defun line-holding (rope at from crlf)
+  "Three values for the line of ROPE holding octet AT: where it starts, where
+its text ends (before its newline, and before a carriage return there with
+CRLF) and where the line after it starts. FROM is a line's start at or before
+AT, from which the text is read: a line holding many matches is read once."
+  (declare (type fixnum at from))
+  (let* ((total (tuatara.text:rope-bytes rope))
+         (first (tuatara.text:rope-find-octet rope 10 :start from))
+         (start from) (newline first))
+    (when (and first (< first at))
+      (setf start (1+ (or (tuatara.text:rope-find-octet-backward rope 10 :start (1+ first) :end at) first))
+            newline (tuatara.text:rope-find-octet rope 10 :start at)))
+    (if newline
+        (values start
+                (if (and crlf (> newline start) (= 13 (tuatara.text:rope-octet rope (1- newline)))) (1- newline) newline)
+                (1+ newline))
+        (values start total total))))
+
+(defun lines-found (matcher rope ranges crlf &key progress halt most ends hide)
+  "LINES-MATCHING for one filter tried on whole lines, found by MATCHER as a
+search finds it: a line is matched when a match of one scan of the stretch
+starts in it before the end of its text, or is empty just there. With ENDS,
+the records that may hold line breaks are matched the same way, whole, and
+each of their lines kept with them; with HIDE, the lines not matched are
+those left. Nothing is decoded but where a regular expression is tried."
+  (let* ((total (tuatara.text:rope-bytes rope))
+         (runs (make-array 16 :element-type 'fixnum :adjustable t :fill-pointer 0))
+         (count 0) (looked 0)
+         ;; with ENDS, the record walked to: its start (-1 before any), its text's end, the next one's start
+         (at -1) (at-end 0) (at-after 0))
+    (declare (type fixnum total count looked at at-end at-after))
+    (block finding
+      (loop for i from 0 below (length ranges) by 2
+            when (< (aref ranges i) (aref ranges (1+ i)))
+            do (let ((low (aref ranges i)) (high (aref ranges (1+ i)))
+                     (first (fill-pointer runs))
+                     (marked 0) (matched 0) (units 0) (told 0))
+                 (declare (type fixnum low high first marked matched units told))
+                 (labels ((read-record ()
+                            (multiple-value-bind (text-end after) (funcall ends rope at)
+                              (setf at-end (record-text-end rope text-end crlf) at-after after)))
+                          (next-record ()
+                            (when (>= at low) (incf units))
+                            (setf at at-after)
+                            (when (< at total) (read-record)))
+                          (unit-holding (s)
+                            (if ends
+                                (progn (loop while (and (<= at-after s) (< at total)) do (next-record))
+                                       (values at at-end at-after))
+                                (line-holding rope s marked crlf)))
+                          (try (s e m g)
+                            (declare (ignore m g) (type fixnum s e))
+                            (when (>= s marked)
+                              (multiple-value-bind (start text-end after) (unit-holding s)
+                                (declare (type fixnum start text-end after))
+                                (setf marked after)
+                                (when (or (< s text-end) (= s e text-end))
+                                  (add-run runs (max start low) (min after high))
+                                  (when (>= start low)
+                                    (incf matched)
+                                    (when (and most (not hide) (>= (+ count matched) most))
+                                      (incf count matched)
+                                      (return-from finding))))))
+                            (when (and progress (> (- s told) 262144))
+                              (sb-ext:atomic-incf (car progress) (- s told))
+                              (setf told s))
+                            nil))
+                   (setf told low marked low)
+                   (when ends
+                     ;; the record holding the stretch's first line: walked to from the last one
+                     ;; when that is before it, else looked for
+                     (if (<= 0 at low)
+                         (loop while (and (<= at-after low) (< at total)) do (next-record))
+                         (progn (setf at (line-record (make-record-memo) rope low
+                                                      (min total (1+ (tuatara.text:rope-line-end rope low))) ends))
+                                (read-record)))
+                     (setf marked at))
+                   (stretch-matches #'try rope matcher marked high (= high total) nil halt total)
+                   (when ends
+                     ;; the records to the stretch's end counted; one going on past it matched whole
+                     (loop while (and (< at high) (< at-after high)) do (next-record))
+                     (when (and (< at high) (> at-after high) (< marked at-after))
+                       (stretch-matches #'try rope matcher (max high marked) at-after (= at-after total) nil halt total))
+                     (when (< at high) (next-record)))
+                   (when progress (sb-ext:atomic-incf (car progress) (max 0 (- high told))))
+                   (unless ends
+                     (setf units (+ (tuatara.text:rope-count-newlines rope low high)
+                                    (if (and (< low high) (= high total) (/= 10 (tuatara.text:rope-octet rope (1- high)))) 1 0))))
+                   (incf looked units)
+                   (if hide
+                       (progn (runs-turned-round runs first low high) (incf count (- units matched)))
+                       (incf count matched))
+                   (when (and halt (funcall halt)) (return-from finding))))))
+    (values (coerce runs '(simple-array fixnum (*))) count looked)))
+
+(defun lines-decoded (filter rope ranges crlf &key progress halt most ends)
+  "LINES-MATCHING for one FILTER that tries its pattern in its own way (a
+column, SEARCH-FILTER-TEST): each line decoded and tried as it stands, a line
+longer than *REWRITE-LINE-LIMIT* octets on its first that many; with ENDS a
+record over several lines tried once, whole, its lines left or not with it.
+Reads a block of the text at a time, and makes nothing for a line that does
+not match."
   (let* ((total (tuatara.text:rope-bytes rope))
          (holder (list (make-string 256)))
          (runs (make-array 16 :element-type 'fixnum :adjustable t :fill-pointer 0))
@@ -423,11 +546,10 @@ and makes nothing for a line that does not match."
     (block matching
       (labels ((leaves-p (octets from to)
                  (let ((length (decode-into octets from to holder)))
-                   (every (lambda (filter) (search-filter-leaves-line-p filter (car holder) length)) filters)))
+                   (search-filter-leaves-line-p filter (car holder) length)))
                (try (line end next octets at)
-               ;; the line from LINE, its text to END, the next from NEXT; its octets in OCTETS from AT
-               (declare (type fixnum line end next at))
-               (let ((end (min end (+ line limit))))
+                 ;; the line from LINE, its text to END, the next from NEXT; its octets in OCTETS from AT
+                 (declare (type fixnum line end next at))
                  (incf since (- next line))
                  (when (and progress (> since 262144))
                    (sb-ext:atomic-incf (car progress) since)
@@ -436,7 +558,7 @@ and makes nothing for a line that does not match."
                      (if ends (line-record memo rope line next ends) (values line end next))
                    (let* ((first (= start line))
                           (leaves (if (and first (= after next))
-                                      (leaves-p octets at (+ at (- end line)))
+                                      (leaves-p octets at (+ at (- (min end (+ line limit)) line)))
                                       ;; a line of a record over several lines: the record tried once, whole
                                       (if (eq (svref memo 4) :unknown)
                                           (setf (svref memo 4)
@@ -448,39 +570,69 @@ and makes nothing for a line that does not match."
                      (when first (incf looked))
                      (when leaves
                        (when first (incf count))
-                       (let ((fill (fill-pointer runs)))
-                         (if (and (plusp fill) (= line (aref runs (1- fill))))
-                             (setf (aref runs (1- fill)) next)
-                             (progn (vector-push-extend line runs) (vector-push-extend next runs))))
+                       (add-run runs line next)
                        (when (and most (>= count most)) (return-from matching)))))
                  ;; a string grown for a long line is not kept for the short ones after it
                  (when (> (length (the string (car holder))) 1048576)
                    (setf (car holder) (make-string 256)))
                  (when (and halt (zerop (logand looked 1023)) (funcall halt))
-                   (return-from matching)))))
+                   (return-from matching))))
         (loop for i from 0 below (length ranges) by 2
-              for start = (aref ranges i) and end = (aref ranges (1+ i))
-              do (if (< (- end start) 1048576)
-                     ;; a short stretch, as a run a filter before left: read whole, at once
-                     (let ((octets (tuatara.text:rope-octets rope :start start :end end)) (at 0))
-                       (declare (type fixnum at))
-                       (loop while (< at (length octets))
-                             do (let* ((newline (position 10 octets :start at))
-                                       (stop (or newline (length octets)))
-                                       (text-end (if (and crlf newline (> newline at) (= 13 (aref octets (1- newline))))
-                                                     (1- newline)
-                                                     stop))
-                                       (next (if newline (1+ newline) stop)))
-                                  (try (+ start at) (+ start text-end) (+ start next) octets at)
-                                  (setf at next))))
-                     (map-piece-lines
-                      (lambda (line line-end rope block block-start block-end)
-                        (declare (type fixnum line line-end))
-                        (multiple-value-bind (octets at) (line-octets rope line (min line-end (+ line limit)) block block-start block-end)
-                          (try line line-end (slice-next-line rope total crlf line-end block block-start block-end) octets at)))
-                      rope start end crlf)))))
+              do (map-piece-lines
+                  (lambda (line line-end rope block block-start block-end)
+                    (declare (type fixnum line line-end))
+                    (multiple-value-bind (octets at) (line-octets rope line (min line-end (+ line limit)) block block-start block-end)
+                      (try line line-end (slice-next-line rope total crlf line-end block block-start block-end) octets at)))
+                  rope (aref ranges i) (aref ranges (1+ i)) crlf))))
     (when progress (sb-ext:atomic-incf (car progress) since))
     (values (coerce runs '(simple-array fixnum (*))) count looked)))
+
+(defun filter-lines-of (filter rope ranges crlf &key progress halt most ends)
+  "LINES-MATCHING for FILTER alone: found as a search finds its pattern
+\(LINES-FOUND), or each line decoded for a filter that tries it in its own
+way (LINES-DECODED)."
+  (if (search-filter-test filter)
+      (lines-decoded filter rope ranges crlf :progress progress :halt halt :most most :ends ends)
+      (lines-found (search-filter-matcher filter) rope ranges crlf :progress progress :halt halt :most most :ends ends
+                                                              :hide (search-filter-hide filter))))
+
+(defun lines-matching (filters rope ranges crlf &key progress halt most ends)
+  "The lines of ROPE starting in RANGES (a vector of fixnums, the start and
+end of each stretch in turn, each starting at a line's start) that every
+one of FILTERS leaves: three values, the runs of lines left, a vector of
+fixnums holding the start of each run's first line and the start of the
+line after its last; how many lines they are; and how many were looked at
+by the first filter. A filter tried on the whole line leaves the lines in
+which a scan of the stretch finds a match, as a search finds it, starting
+before the line's end or empty just at it (with CRLF, before its carriage
+return); its pattern's text is skipped to at the speed of a search, and no
+line is read as text but where a regular expression is tried. A filter
+trying a column decodes each line (LINES-DECODED). PROGRESS, a cons, has the
+octets looked at added to its car now and then; HALT, a function of none,
+stops the work when it answers true, asked now and then; MOST, when given,
+stops it once that many lines are left, the stretches then taken a megabyte
+at a time. With ENDS (RECORD-ENDS), the lines are those of records that may
+hold line breaks: a record over several lines is matched whole, its lines
+left or not with it, and counted once."
+  (flet ((through (ranges most)
+           ;; every filter in turn, each on what the one before left
+           (let ((count 0) (looked nil))
+             (loop for (filter . more) on filters
+                   do (multiple-value-bind (runs left seen)
+                          (filter-lines-of filter rope ranges crlf :progress progress :halt halt :most (and (null more) most)
+                                                                   :ends ends)
+                        (setf ranges runs count left looked (or looked seen))))
+             (values ranges count (or looked 0)))))
+    (if (null most)
+        (through ranges nil)
+        (let ((parts '()) (count 0) (looked 0))
+          (dolist (piece (line-pieces rope ranges 1048576))
+            (multiple-value-bind (runs left seen) (through piece (- most count))
+              (push runs parts)
+              (incf count left)
+              (incf looked seen))
+            (when (or (>= count most) (and halt (funcall halt))) (return)))
+          (values (join-runs (nreverse parts)) count looked)))))
 
 (defun line-pieces (rope ranges size)
   "RANGES, as LINES-MATCHING takes them, cut and gathered into pieces of
@@ -1258,7 +1410,8 @@ filters kept narrow it."
              (refilter buffer)))
           ((and typing (string= string (search-filter-string typing))
                 (eq (and (search-state-regex state) t) (search-filter-regex-p typing))))
-          (t (setf (list-filtering-typing filtering) (make-search-filter string :regex (search-state-regex state)))
+          (t (setf (list-filtering-typing filtering)
+                   (make-search-filter string :regex (search-state-regex state) :matcher (search-matcher state)))
              (let ((*filter-as-typed* t))
                (refilter buffer))))))
 
@@ -1447,7 +1600,8 @@ messages."
                 (message "No pattern: ~(~a~) was not run" command)
                 (multiple-value-bind (filter why)
                     (make-search-filter pattern :regex regex :test (and what matcher) :part what :hide hide
-                                                :where (and column (list :column column buffer)))
+                                                :where (and column (list :column column buffer))
+                                                :crlf (buffer-crlf-p buffer))
                   (if (null filter)
                       (message "~a: ~(~a~) was not run" (string-capitalize why :end 1) command)
                       (progn (setf (list-filtering-typing filtering) filter)

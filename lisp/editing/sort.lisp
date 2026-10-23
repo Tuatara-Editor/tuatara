@@ -1207,9 +1207,9 @@ says so; a large selection is handled in the background."
 ;;; Lines given a new text or none
 
 (defvar *rewrite-line-limit* (* 16 1024 1024)
-  "Octets a line may hold and still be read for REWRITE-LINES: a longer line
-is left as it is, and counted in what is said once done, so that a line of
-gigabytes is never held in memory whole.")
+  "Octets of a line a filter trying a column reads (LINES-DECODED): a longer
+line is tried on its first that many, so that a line of gigabytes is never
+held in memory whole.")
 
 (defun decode-into (octets start end holder)
   "Decode OCTETS from START below END into the string in the car of HOLDER,
@@ -1232,79 +1232,47 @@ characters."
                  (incf n)))
       n)))
 
-(defun thread-holder (holders)
-  "This thread's holder for DECODE-INTO among HOLDERS, a cons whose car lists
-\(THREAD . HOLDER): made the first time a thread asks."
+(defun thread-own (owned make)
+  "This thread's own thing among OWNED, a cons whose car lists (THREAD .
+THING): made by calling MAKE the first time a thread asks."
   (let ((thread sb-thread:*current-thread*))
-    (or (cdr (assoc thread (car holders) :test #'eq))
-        (let ((holder (list (make-string 256))))
-          (sb-ext:atomic-push (cons thread holder) (car holders))
-          holder))))
+    (or (cdr (assoc thread (car owned) :test #'eq))
+        (let ((thing (funcall make)))
+          (sb-ext:atomic-push (cons thread thing) (car owned))
+          thing))))
 
-(defun fate-line (fate limit gone changed long &key ends crlf)
-  "A function changing each line for START-LINE-JOB as FATE decides
-\(REWRITE-LINES): the line's text decoded into a string each thread keeps,
-FATE called on it, and the line deleted with its line end, given its new
-text, or left as it is. A line of more than LIMIT octets is left as it is,
-unread. The cars of GONE, CHANGED and LONG count the lines deleted, changed
-and too long, but not while a job is taken in, when its lines are read again
-to follow positions onto its result. With ENDS (RECORD-ENDS), the lines are
-those of records that may hold line breaks: FATE, which then keeps or deletes
-and changes nothing, is called on each record's whole text (its line ends
-CRLF when CRLF is true), and each of its lines is kept or deleted with it,
-the record counted once."
-  (let ((holders (list '()))
-        (memos (list '()))
+(defun filtered-line (filter keep gone &key ends crlf)
+  "A function deleting each line for START-LINE-JOB that FILTER leaves, or
+with KEEP each it does not (LINES-MATCHING): what it leaves is worked out a
+megabyte of lines at a time on each thread, from the line asked about on.
+The car of GONE counts the lines deleted, but not while a job is taken in,
+when its lines are read again to follow positions onto its result. With
+ENDS (RECORD-ENDS), the lines are those of records that may hold line
+breaks, each kept or deleted with its record, the record counted once."
+  (let ((windows (list '()))
         (none (tuatara.text:make-octets 0)))
     (lambda (function line line-end next rope block block-start block-end)
-      (declare (type fixnum line line-end next))
-      (let ((counting (not tuatara.runtime:*job-taken-in*)))
-        (multiple-value-bind (start text-end after)
-            (if ends
-                (line-record (thread-memo memos) rope line next ends)
-                (values line line-end next))
-          (if (and (= start line) (= after next))
-              (if (> (- line-end line) limit)
-                  (when counting (sb-ext:atomic-incf (car long)))
-                  (let ((holder (thread-holder holders)))
-                    (multiple-value-bind (octets at) (line-octets rope line line-end block block-start block-end)
-                      (let* ((length (decode-into octets at (+ at (- line-end line)) holder))
-                             (new (funcall fate (car holder) length)))
-                        ;; a string grown for a long line is not kept for the short ones after it
-                        (when (> (length (car holder)) 1048576)
-                          (setf (car holder) (make-string 256)))
-                        (cond ((null new)
-                               (when counting (sb-ext:atomic-incf (car gone)))
-                               (funcall function line next nil none))
-                              ((stringp new)
-                               (when counting (sb-ext:atomic-incf (car changed)))
-                               (funcall function line line-end nil (tuatara.text:string-octets new))))))))
-              ;; a line of a record over several lines: the record decided once, whole
-              (let* ((memo (thread-memo memos))
-                     (keep (if (eq (svref memo 4) :unknown)
-                               (setf (svref memo 4)
-                                     (let* ((holder (thread-holder holders))
-                                            (end (record-text-end rope text-end crlf))
-                                            (octets (tuatara.text:rope-octets rope :start start :end end)))
-                                       (and (funcall fate (car holder) (decode-into octets 0 (length octets) holder)) t)))
-                               (svref memo 4))))
-                (unless keep
-                  (when (and counting (= start line)) (sb-ext:atomic-incf (car gone)))
-                  (funcall function line next nil none)))))))))
-
-(defun thread-memo (memos)
-  "This thread's record memo (MAKE-RECORD-MEMO) among MEMOS, a cons whose car
-lists (THREAD . MEMO): made the first time a thread asks."
-  (let ((thread sb-thread:*current-thread*))
-    (or (cdr (assoc thread (car memos) :test #'eq))
-        (let ((memo (make-record-memo)))
-          (sb-ext:atomic-push (cons thread memo) (car memos))
-          memo))))
-
-(defun too-long-words (count)
-  "What is said of COUNT lines too long to read, after what was done to the
-others: \"; N lines too long to look at left as they are\", or \"\" for none."
-  (format nil "~[~:;; ~:*~:d line~:p too long to look at left as ~:*~[~;it is~:;they are~]~]" count))
+      (declare (ignore line-end block block-start block-end) (type fixnum line next))
+      ;; ROPE, the stretch worked out, what it leaves, where in that the last line was, a record memo
+      (let ((window (thread-own windows (lambda () (vector nil 0 0 nil 0 (make-record-memo))))))
+        (unless (and (eq rope (svref window 0)) (<= (svref window 1) line) (< line (svref window 2)))
+          (let* ((total (tuatara.text:rope-bytes rope))
+                 (cut (+ line 1048576))
+                 (high (max next (if (>= cut total) total (min total (1+ (tuatara.text:rope-line-end rope cut)))))))
+            (setf (svref window 0) rope (svref window 1) line (svref window 2) high (svref window 4) 0
+                  (svref window 3) (lines-matching (list filter) rope
+                                                   (make-array 2 :element-type 'fixnum :initial-contents (list line high))
+                                                   crlf :ends ends))))
+        (let ((runs (svref window 3)) (k (svref window 4)))
+          (declare (type (simple-array fixnum (*)) runs) (type fixnum k))
+          (when (and (plusp k) (< line (aref runs (1- k)))) (setf k 0))
+          (loop while (and (< k (length runs)) (<= (aref runs (1+ k)) line)) do (incf k 2))
+          (setf (svref window 4) k)
+          (unless (eq keep (and (< k (length runs)) (<= (aref runs k) line)))
+            (when (and (not tuatara.runtime:*job-taken-in*)
+                       (or (null ends) (= line (line-record (svref window 5) rope line next ends))))
+              (sb-ext:atomic-incf (car gone)))
+            (funcall function line next nil none)))))))
 
 (defun rewrite-lines-here (buffer start end per-line)
   "Change the lines of BUFFER from START below END as PER-LINE says
@@ -1327,29 +1295,23 @@ others: \"; N lines too long to look at left as they are\", or \"\" for none."
       (unless (equalp result octets)
         (tuatara.buffer:buffer-replace buffer start end result)))))
 
-(defun rewrite-lines (buffer start end words fate report &key ends)
-  "Give each line of BUFFER from START below END, octets at line starts, what
-FATE gives it: FATE, a function of a string and how many of its first
-characters are the line's text (without its line end), gives NIL to delete
-the line, T to keep it, or a string, its new text; the string it is given is
-used again for the next line. A line of more than *REWRITE-LINE-LIMIT* octets
-is left as it is, FATE never asked. The lines are done in the background on
-every core (START-LINE-JOB), waited for *SORT-WAIT* seconds so that quick
-work looks done at once; edits made to them meanwhile are kept. A buffer
-whose text never goes to disk (an encrypted file's) is done at once instead,
-up to *REWRITE-THRESHOLD* octets. One step to undo either way. FATE runs on
-other threads, several at once, so it changes nothing outside itself. REPORT,
-a function of how many lines went and how many changed, gives what is said
-once done, followed by how many were too long to look at. WORDS names the
-work (\"Filtering\"). Returns the job, :QUEUED (QUEUE-IF-BUSY), or NIL.
-Refused when search filters hide any of those lines (CHECK-HIDDEN-LINES).
-With ENDS (RECORD-ENDS), FATE keeps or deletes records that may hold line
-breaks, each whole (FATE-LINE)."
+(defun delete-filtered-lines (buffer start end words filter keep report &key ends)
+  "Delete each line of BUFFER from START below END, octets at line starts,
+that FILTER leaves, or with KEEP each it does not (FILTERED-LINE). The lines
+are done in the background on every core (START-LINE-JOB), waited for
+*SORT-WAIT* seconds so that quick work looks done at once; edits made to them
+meanwhile are kept. A buffer whose text never goes to disk (an encrypted
+file's) is done at once instead, up to *REWRITE-THRESHOLD* octets. One step
+to undo either way. REPORT, a function of how many lines went, gives what is
+said once done. WORDS names the work (\"Filtering\"). Returns the job,
+:QUEUED (QUEUE-IF-BUSY), or NIL. Refused when search filters hide any of
+those lines (CHECK-HIDDEN-LINES). With ENDS (RECORD-ENDS), records that may
+hold line breaks are kept or deleted whole."
   (check-writable buffer)
   (check-hidden-lines buffer start end)
   (when (< start end)
-    (let* ((gone (list 0)) (changed (list 0)) (long (list 0))
-           (per-line (fate-line fate *rewrite-line-limit* gone changed long :ends ends :crlf (buffer-crlf-p buffer)))
+    (let* ((gone (list 0))
+           (per-line (filtered-line filter keep gone :ends ends :crlf (buffer-crlf-p buffer)))
            (what (lines-done-words words buffer start end)))
       (setf (tuatara.buffer:buffer-mark-active-p buffer) nil)
       (cond ((tuatara.io:buffer-scratch-directory buffer)
@@ -1360,14 +1322,12 @@ breaks, each whole (FATE-LINE)."
                                         :report (lambda (job status changes seconds kept)
                                                   (declare (ignore job changes))
                                                   (unless (eq status :stopped)
-                                                    (format nil "~a ~a~a"
-                                                            (funcall report (car gone) (car changed)) (job-done-words seconds kept)
-                                                            (too-long-words (car long))))))))
+                                                    (format nil "~a ~a" (funcall report (car gone)) (job-done-words seconds kept)))))))
                (unless (eq job :queued) (take-in-soon job *sort-wait* what))
                job))
             ((not (too-large-here-p start end words))
              (rewrite-lines-here buffer start end per-line)
-             (message "~a~a" (funcall report (car gone) (car changed)) (too-long-words (car long)))
+             (message "~a" (funcall report (car gone)))
              nil)))))
 
 (defun matching-lines-count (counter buffer lines text regex)
@@ -1416,27 +1376,23 @@ NOUN what a line is called in them."
       (if (null start)
           (message "No selection: ~(~a~) was not run" command)
           (multiple-value-bind (pattern regex matcher what first) (read-line-filter b words start end)
-            (declare (ignore what))
-            (let* ((scanner (and (plusp (length pattern))
-                                 (handler-case (tuatara.syntax:compile-pattern pattern :regex regex)
-                                   (error (e) (regex-problem e)))))
-                   (start (max start (or first 0))))
-              (cond ((zerop (length pattern)) (message "No pattern: ~(~a~) was not run" command))
-                    ((stringp scanner) (message "~a: ~(~a~) was not run" (string-capitalize scanner :end 1) command))
-                    ((>= start end) (message "No lines to filter but the header: ~(~a~) was not run" command))
-                    (t (rewrite-lines b start end "Filtering"
-                                      (lambda (text length)
-                                        (let ((matches (funcall matcher scanner text length)))
-                                          (if keep matches (not matches))))
-                                      (lambda (gone changed)
-                                        (declare (ignore changed))
-                                        (format nil "Deleted ~:d ~:[matching~;non-matching~] ~a~p" gone keep noun gone))
-                                      :ends (and (records-file-p b) (record-ends b)))))))))))
+            (multiple-value-bind (filter why)
+                (and (plusp (length pattern))
+                     (make-search-filter pattern :regex regex :test (and what matcher) :crlf (buffer-crlf-p b)))
+              (let ((start (max start (or first 0))))
+                (cond ((zerop (length pattern)) (message "No pattern: ~(~a~) was not run" command))
+                      ((null filter) (message "~a: ~(~a~) was not run" (string-capitalize why :end 1) command))
+                      ((>= start end) (message "No lines to filter but the header: ~(~a~) was not run" command))
+                      (t (delete-filtered-lines b start end "Filtering" filter keep
+                                                (lambda (gone)
+                                                  (format nil "Deleted ~:d ~:[matching~;non-matching~] ~a~p" gone keep noun gone))
+                                                :ends (and (records-file-p b) (record-ends b))))))))))))
 
 (define-command flush-lines ()
   "Delete the lines the selection touches in which a regular expression, asked
-for in the minibuffer, finds a match. The pattern is tried on each line alone,
-so ^ and $ are its start and end: ^$ deletes the empty lines. Smart case, as in
+for in the minibuffer, finds a match: a line in which a match starts, as a
+search finds it, ^ and $ its start and end, so that ^$ deletes the empty
+lines. Smart case, as in
 search: a pattern with a capital letter, or naming a case ([[:upper:]],
 \\p{Lu}), heeds case. Says how many were deleted.
 In a file of records cut into columns, a CSV, a log, JSON Lines and the
@@ -1449,7 +1405,7 @@ and says so; a large selection is handled in the background."
 (define-command keep-lines ()
   "Delete the lines the selection touches in which a regular expression, asked
 for in the minibuffer, finds no match, keeping those it matches. The pattern is
-tried on each line alone, as for flush-lines, in a file of records on the
+found as for flush-lines, in a file of records on the
 column asked for. Says how many were deleted. Without a selection, does nothing and says
 so; a large selection is handled in the background."
   (filter-lines 'keep-lines t))
