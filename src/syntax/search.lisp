@@ -47,6 +47,16 @@ by the pattern of STRING's text (LITERAL-SCANNER)."
   "A scanner for STRING's text, nothing in it special, ignoring case (COMPILE-REGEX)."
   (compile-regex (cl-ppcre:quote-meta-chars string) :case-fold t))
 
+(declaim (inline needle-at-p))
+(defun needle-at-p (chunk i needle case-fold)
+  "True when NEEDLE, its octets ASCII case folded when CASE-FOLD, stands in
+CHUNK at index I, whose octet matches its first already."
+  (declare (type tuatara.text:octets chunk needle) (type fixnum i) (optimize speed (safety 0)))
+  (let ((table *fold-table*))
+    (loop for k of-type fixnum from 1 below (length needle)
+          always (= (if case-fold (aref table (aref chunk (+ i k))) (aref chunk (+ i k)))
+                    (aref needle k)))))
+
 (defun scan-chunk (chunk needle case-fold from below &optional (filled (length chunk)))
   "Index of the first occurrence of NEEDLE in the first FILLED octets of CHUNK
 starting at or after FROM and before BELOW (the start index limit), or NIL.
@@ -58,11 +68,9 @@ Both are octet vectors."
     (let ((first (aref needle 0)) (limit (min below (- (1+ filled) n))))
       (declare (type fixnum limit))
       (loop for i of-type fixnum from from below limit
-            do (when (= (if case-fold (aref table (aref chunk i)) (aref chunk i)) first)
-                 (when (loop for k of-type fixnum from 1 below n
-                             always (= (if case-fold (aref table (aref chunk (+ i k))) (aref chunk (+ i k)))
-                                       (aref needle k)))
-                   (return i)))
+            do (when (and (= (if case-fold (aref table (aref chunk i)) (aref chunk i)) first)
+                          (needle-at-p chunk i needle case-fold))
+                 (return i))
             finally (return nil)))))
 
 (defun scan-chunk-backward (chunk needle case-fold from &optional (filled (length chunk)))
@@ -74,11 +82,9 @@ starting at or before FROM, or NIL."
     (when (zerop n) (return-from scan-chunk-backward from))
     (let ((first (aref needle 0)))
       (loop for i of-type fixnum from (min from (- filled n)) downto 0
-            do (when (= (if case-fold (aref table (aref chunk i)) (aref chunk i)) first)
-                 (when (loop for k of-type fixnum from 1 below n
-                             always (= (if case-fold (aref table (aref chunk (+ i k))) (aref chunk (+ i k)))
-                                       (aref needle k)))
-                   (return i)))
+            do (when (and (= (if case-fold (aref table (aref chunk i)) (aref chunk i)) first)
+                          (needle-at-p chunk i needle case-fold))
+                 (return i))
             finally (return nil)))))
 
 (defvar *serial-window* (* 4 1024 1024)
@@ -131,16 +137,27 @@ pool's workers take every piece."
           (values nil :stopped)
           (find-if-not #'null results)))))
 
-(defun scan-range-forward (rope needle case-fold start end chunk)
-  "First occurrence of NEEDLE starting in [START, END) of ROPE, reading through CHUNK; NIL when none."
-  (declare (type fixnum start end) (type tuatara.text:octets needle chunk))
-  (let ((n (length needle)) (total (tuatara.text:rope-bytes rope)))
+(defun scan-chunks-forward (rope start end chunk n look)
+  "The first place starting in [START, END) of ROPE that LOOK finds, reading
+ROPE into CHUNK +SEARCH-CHUNK+ octets at a time and N - 1 more, for what is
+looked for to be seen whole across the edge: LOOK, a function of the octets
+filled and the index below which a place must start, gives the index in
+CHUNK of the first, or NIL. NIL when none."
+  (declare (type fixnum start end n) (type tuatara.text:octets chunk) (type function look))
+  (let ((total (tuatara.text:rope-bytes rope)))
     (loop for pos of-type fixnum from start below end by +search-chunk+
           do (let* ((chunk-end (min total (+ pos +search-chunk+ (1- n))))
                     (filled (tuatara.text:rope-copy-into rope pos chunk-end chunk))
-                    (hit (scan-chunk chunk needle case-fold 0 (min filled +search-chunk+ (- end pos)) filled)))
+                    (hit (funcall look filled (min filled +search-chunk+ (- end pos)))))
                (when hit (return (+ pos hit))))
           finally (return nil))))
+
+(defun scan-range-forward (rope needle case-fold start end chunk)
+  "First occurrence of NEEDLE starting in [START, END) of ROPE, reading through CHUNK; NIL when none."
+  (declare (type fixnum start end) (type tuatara.text:octets needle chunk))
+  (flet ((look (filled below) (scan-chunk chunk needle case-fold 0 below filled)))
+    (declare (dynamic-extent #'look))
+    (scan-chunks-forward rope start end chunk (length needle) #'look)))
 
 (defun scan-shape-chunk (chunk shape from below filled)
   "Index of the first place from FROM below BELOW in the first FILLED octets
@@ -162,13 +179,9 @@ NIL when none."
   "First place starting in [START, END) of ROPE where SHAPE, a vector of octet
 sets, stands whole, reading through CHUNK; NIL when none."
   (declare (type fixnum start end) (type simple-vector shape) (type tuatara.text:octets chunk))
-  (let ((n (length shape)) (total (tuatara.text:rope-bytes rope)))
-    (loop for pos of-type fixnum from start below end by +search-chunk+
-          do (let* ((chunk-end (min total (+ pos +search-chunk+ (1- n))))
-                    (filled (tuatara.text:rope-copy-into rope pos chunk-end chunk))
-                    (hit (scan-shape-chunk chunk shape 0 (min filled +search-chunk+ (- end pos)) filled)))
-               (when hit (return (+ pos hit))))
-          finally (return nil))))
+  (flet ((look (filled below) (scan-shape-chunk chunk shape 0 below filled)))
+    (declare (dynamic-extent #'look))
+    (scan-chunks-forward rope start end chunk (length shape) #'look)))
 
 (defun search-forward (rope string &key (start 0) (end (tuatara.text:rope-bytes rope)) (case-fold (case-fold-p string))
                                         (threads (tuatara.runtime:cpu-count)) stop)
