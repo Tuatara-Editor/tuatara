@@ -152,15 +152,13 @@ ORG-TS or the text of a timestamp by rule) comes on, as day numbers."
         (loop with day = from repeat count
               for next = (and rule (org-rule-next rule day))
               while next collect next do (setf day (1+ next))))
-      (let ((ts (copy-org-ts value)))
-        (if (org-repeating-ts-p ts)
-            (loop repeat (* 4 count)
-                  for day = (org-ts-day-number ts)
-                  when (>= day from) collect day into days
-                  until (>= (length days) count)
-                  do (org-ts-shift ts (org-ts-repeat-value ts) (org-ts-repeat-unit ts))
-                  finally (return days))
-            (let ((day (org-ts-day-number ts))) (and (>= day from) (list day)))))))
+      (let ((day (org-ts-day-number value)))
+        (if (org-repeating-ts-p value)
+            (let ((repeater (list value (org-ts-repeat-value value) (org-ts-repeat-unit value) day)))
+              (loop repeat count
+                    for next = (org-repeat-day repeater from :future) then (org-repeat-day repeater (1+ next) :future)
+                    collect next))
+            (and (>= day from) (list day))))))
 
 (defun repeat-value (arguments)
   "What the repeat menu's ARGUMENTS write, as two values: an ORG-TS, or the

@@ -1319,3 +1319,13 @@ help left out."
       ;; a weekly repeat on one day from a day before it: a repeater from that day, in words or the menu
       (is equal "<2026-10-26 Mon +1w>" (menu "start=2026-10-23" "repeats=weekly" "mon"))
       (is equal "<2026-10-26 Mon +1w>" (words "every monday")))))
+
+(define-test (org repeat-days-long-after-the-start)
+  ;; the days to come of a repeat that began long ago: found at once, not stepped to
+  (let* ((today (tuatara.dates:day-number 2026 10 23))
+         (daily (tuatara.defaults::org-read-ts "<2025-01-01 Wed +1d>"))
+         (monthly (tuatara.defaults::org-read-ts "<2026-01-31 Sat +1m>")))
+    (is equal (loop for k below 5 collect (+ today k)) (tuatara.defaults::repeat-days daily today 5))
+    (is equal (mapcar (lambda (m) (tuatara.dates:day-number 2026 m 31)) '(10 11 12 13))
+        (tuatara.defaults::repeat-days monthly today 4))
+    (is equal (list (tuatara.dates:day-number 2025 1 1)) (tuatara.defaults::repeat-days daily 0 1))))
