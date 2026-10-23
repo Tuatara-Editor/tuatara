@@ -48,8 +48,8 @@ and fourth values."
         (let ((red (find 6 (aref looks row) :key #'first)))
           (true red)
           (is = 9 (second red))
-          (true (member :bold (cddr (third red))))
-          (is eql 1 (first (third red))))))))
+          (true (member :bold (cddr (tuatara.defaults::look-list (third red)))))
+          (is eql 1 (first (tuatara.defaults::look-list (third red)))))))))
 
 (define-test (emulator typing)
   ;; what is typed reaches the program, which answers in capitals
@@ -250,3 +250,24 @@ the octets it consed."
                  (least-of-three (compile nil `(lambda () (dotimes (i 1000000) (tuatara.defaults::vt ,key))))))))
     (let ((first (funcall time (first layout))) (last (funcall time (car (last layout 2)))))
       (true (< (max last 1000) (* 3 (max first 1000))) "the last key ~d, the first ~d" last first))))
+
+(define-test (emulator frame-garbage-per-cell)
+  ;; a whole frame of 200 by 50 cells in colours a program chose, eight cells a run, or blank:
+  ;; a few octets a cell, the row's text and its runs of looks; 1,050 octets a cell of colours
+  ;; and 42 a blank one when each cell's look was made a list and its colours strings
+  (with-test-directory (dir)
+    (let ((file (namestring (merge-pathnames "screen.txt" dir))))
+      (dolist (coloured '(t nil))
+        (with-open-file (out file :direction :output :if-exists :supersede)
+          (dotimes (row 49)
+            (dotimes (column 200)
+              (if coloured
+                  (format out "~c[1;38;2;~d;~d;~dm~c[48;2;~d;~d;7mx" #\Escape (mod row 256) row (floor column 8) #\Escape (floor column 8) row)
+                  (write-char #\Space out)))
+            (format out "~c[0m~c~%" #\Escape #\Return)))
+        (with-emulator (e "sh" (list "-c" (format nil "cat '~a'; echo; echo shown; sleep 30" file)) :columns 200 :rows 50)
+          (true (find-if (lambda (r) (search "shown" r)) (emulator-screen e :until (screen-has "shown"))))
+          (let ((each (/ (least-of-three (lambda () (tuatara.defaults::emulator-frame e (lambda (&rest row) (declare (ignore row))) :all t))
+                                         :bytes t)
+                         (* 200 50))))
+            (true (< each 24) "~:[blank~;coloured~] cells: ~,1f octets a cell" coloured (float each))))))))

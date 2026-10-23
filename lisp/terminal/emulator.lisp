@@ -548,19 +548,81 @@ tried again."
     (unless (emulator-closed emulator) (set-window-size (emulator-fd emulator) columns rows cell-width cell-height))
     t))
 
-(defun rgb-hex (sap)
-  "The colour of three octets at SAP, red, green and blue, as #rrggbb."
-  (tuatara.display:colour-hex (list (sb-sys:sap-ref-8 sap 0) (sb-sys:sap-ref-8 sap 1) (sb-sys:sap-ref-8 sap 2))))
+;;; A cell's look, as a number
+
+(defconstant +colour-given+ #x2000000
+  "The bit of a colour code set when it gives a colour at all: 0 is the
+terminal's own colour.")
+
+(defconstant +colour-palette+ #x1000000
+  "The bit of a colour code set when its low octet is an index of the
+256-colour palette; clear when its low three octets are red, green and blue.")
+
+(defconstant +look-bg-shift+ 26
+  "Where a look's ground colour starts among its bits, its text's colour the bits below.")
+
+(defconstant +look-attributes-shift+ 52
+  "Where a look's attributes start among its bits, each its bit by its place
+in *LOOK-ATTRIBUTES*.")
+
+(eval-when (:compile-toplevel :load-toplevel :execute)
+  (defparameter *look-attributes* '(:bold :italic :faint :inverse :invisible :strike :underline :link)
+    "The attributes a cell's look may have, in the order of their bits."))
+
+(defmacro look-bit (attribute)
+  "The bit of a look standing for ATTRIBUTE, one of *LOOK-ATTRIBUTES*."
+  (ash 1 (+ +look-attributes-shift+ (or (position attribute *look-attributes*)
+                                         (error "~s is not an attribute of a look" attribute)))))
+
+(declaim (inline rgb-code palette-code sap-rgb-code style-colour))
+(defun rgb-code (red green blue)
+  "The colour code of RED, GREEN and BLUE, each 0 to 255."
+  (logior +colour-given+ (ash red 16) (ash green 8) blue))
+
+(defun palette-code (index)
+  "The colour code of INDEX of the 256-colour palette."
+  (logior +colour-given+ +colour-palette+ (logand index #xff)))
+
+(defun code-colour (code)
+  "The colour CODE stands for: an index of the 256-colour palette, #rrggbb, or
+NIL for the terminal's own."
+  (cond ((zerop code) nil)
+        ((logtest code +colour-palette+) (logand code #xff))
+        (t (tuatara.display:colour-hex (list (ldb (byte 8 16) code) (ldb (byte 8 8) code) (ldb (byte 8 0) code))))))
+
+(declaim (inline make-look))
+(defun make-look (fg bg &optional (attributes 0))
+  "A cell's look as a number: FG and BG colour codes, the text's and the
+ground's (RGB-CODE, PALETTE-CODE, 0 for none), ATTRIBUTES their bits
+\(LOOK-BIT); 0 is no look."
+  (logior fg (ash bg +look-bg-shift+) attributes))
+
+(defun look-list (look)
+  "LOOK, a number (MAKE-LOOK), as a list (FG BG . ATTRIBUTES): FG and BG an
+index of the palette, #rrggbb, or NIL for the terminal's own, ATTRIBUTES among
+*LOOK-ATTRIBUTES*; NIL for no look."
+  (unless (zerop look)
+    (list* (code-colour (ldb (byte +look-bg-shift+ 0) look))
+           (code-colour (ldb (byte +look-bg-shift+ +look-bg-shift+) look))
+           (loop for attribute in *look-attributes*
+                 for bit from +look-attributes-shift+
+                 when (logbitp bit look) collect attribute))))
+
+(defun sap-rgb-code (sap)
+  "The colour code of three octets at SAP, red, green and blue."
+  (rgb-code (sb-sys:sap-ref-8 sap 0) (sb-sys:sap-ref-8 sap 1) (sb-sys:sap-ref-8 sap 2)))
 
 (defun style-colour (style offset)
-  "The colour of the style at STYLE whose colour starts at OFFSET: an index of
-the 256-colour palette (the terminal's own, as the frontend shows it), #rrggbb,
-or NIL for none."
+  "The colour code of the style at STYLE whose colour starts at OFFSET: of an
+index of the 256-colour palette (the terminal's own, as the frontend shows it),
+of red, green and blue, or 0 for none."
   (let ((tag (sb-sys:signed-sap-ref-32 style (+ offset (vt :color-tag))))
         (value (sb-sys:sap+ style (+ offset (vt :color-value)))))
-    (cond ((= tag (vt :color-palette)) (sb-sys:sap-ref-8 value 0))
-          ((= tag (vt :color-rgb)) (rgb-hex value)))))
+    (cond ((= tag (vt :color-palette)) (palette-code (sb-sys:sap-ref-8 value 0)))
+          ((= tag (vt :color-rgb)) (sap-rgb-code value))
+          (t 0))))
 
+(declaim (inline cells-get cell-look))
 (defun cells-get (cells what place)
   "Have the terminal library put in PLACE what WHAT (a :cell- value of its
 layout) is of the cell CELLS, its iterator over a row's cells, stands at;
@@ -569,29 +631,31 @@ true when it did."
                                    (sb-alien:int what) (sb-sys:system-area-pointer place))))
 
 (defun cell-look (cells style colour)
-  "The look of the cell CELLS stands at: a list (FG BG . ATTRIBUTES), FG and BG
-an index of the palette, #rrggbb, or NIL for the terminal's own, ATTRIBUTES
-among :bold :italic :faint :inverse :invisible :strike and :underline
-\(EMULATOR-FRAME adds :link for a cell with a link); NIL for a cell of no look. STYLE and COLOUR are places for the library to fill."
-  (let ((fg nil) (bg nil) (attributes '()))
+  "The look of the cell CELLS stands at, as a number (MAKE-LOOK, LOOK-LIST):
+its colours and its attributes among :bold :italic :faint :inverse :invisible
+:strike and :underline (EMULATOR-FRAME adds :link for a cell with a link); 0
+for a cell of no look. STYLE and COLOUR are places for the library to fill."
+  (let ((fg 0) (bg 0) (attributes 0))
     (setf (sb-sys:sap-ref-8 colour 0) 0)
     (when (and (cells-get cells (vt :cell-has-styling) colour) (/= 0 (sb-sys:sap-ref-8 colour 0)))
       (setf (sb-sys:sap-ref-64 style 0) (vt :style-size))
       (when (cells-get cells (vt :cell-style) style)
         (setf fg (style-colour style (vt :style-fg))
               bg (style-colour style (vt :style-bg)))
-        (flet ((on (offset) (/= 0 (sb-sys:sap-ref-8 style offset))))
-          (when (on (vt :style-bold)) (push :bold attributes))
-          (when (on (vt :style-italic)) (push :italic attributes))
-          (when (on (vt :style-faint)) (push :faint attributes))
-          (when (on (vt :style-inverse)) (push :inverse attributes))
-          (when (on (vt :style-invisible)) (push :invisible attributes))
-          (when (on (vt :style-strikethrough)) (push :strike attributes))
-          (when (/= 0 (sb-sys:signed-sap-ref-32 style (vt :style-underline))) (push :underline attributes)))))
+        (macrolet ((on (offset attribute)
+                     `(when (/= 0 (sb-sys:sap-ref-8 style ,offset)) (setf attributes (logior attributes (look-bit ,attribute))))))
+          (on (vt :style-bold) :bold)
+          (on (vt :style-italic) :italic)
+          (on (vt :style-faint) :faint)
+          (on (vt :style-inverse) :inverse)
+          (on (vt :style-invisible) :invisible)
+          (on (vt :style-strikethrough) :strike))
+        (when (/= 0 (sb-sys:signed-sap-ref-32 style (vt :style-underline)))
+          (setf attributes (logior attributes (look-bit :underline))))))
     ;; a ground given to the cell itself, as erasing with a colour leaves it
-    (when (and (null bg) (cells-get cells (vt :cell-bg-color) colour))
-      (setf bg (rgb-hex colour)))
-    (and (or fg bg attributes) (list* fg bg attributes))))
+    (when (and (zerop bg) (cells-get cells (vt :cell-bg-color) colour))
+      (setf bg (sap-rgb-code colour)))
+    (make-look fg bg attributes)))
 
 (defconstant +cell-codes-room+ 128
   "The most code points of one cell the frame reads: a character and the marks
@@ -622,7 +686,7 @@ once, else nothing is taken and the value is :BUSY."
            (cells (emulator-cells emulator)))
       (tuatara.io:with-foreign-memory (scratch (+ 64 (vt :style-size) 64))
         (tuatara.io:with-foreign-memory (codes (* 4 +cell-codes-room+))
-          (let ((style (sb-sys:sap+ scratch 16)))
+          (let ((style (sb-sys:sap+ scratch 16)) (colour (sb-sys:sap+ scratch 32)) (text (make-string-output-stream)))
              (foreign-call "ghostty_render_state_update" sb-alien:int (sb-sys:system-area-pointer rs)
                       (sb-sys:system-area-pointer (emulator-terminal emulator)))
              (setf (sb-sys:sap-ref-sap scratch 0) iterator)
@@ -649,7 +713,7 @@ once, else nothing is taken and the value is :BUSY."
                                     (_ (progn (setf (sb-sys:sap-ref-sap scratch 0) cells)
                                               (foreign-call "ghostty_render_state_row_get" sb-alien:int (sb-sys:system-area-pointer iterator)
                                                        (sb-alien:int (vt :row-cells)) (sb-sys:system-area-pointer scratch))))
-                                    (text (make-string-output-stream)) (looks '()) (column 0) (look nil) (from 0)
+                                    (looks '()) (column 0) (look 0) (from 0)
                                     (at (if all row y)) (placeholders '()) (marks nil) (cell -1) (shown 1))
                                (declare (ignore _))
                                (loop while (foreign-call "ghostty_render_state_row_cells_next" (sb-alien:boolean 8) (sb-sys:system-area-pointer cells))
@@ -665,7 +729,8 @@ once, else nothing is taken and the value is :BUSY."
                                                                 (setf (sb-sys:sap-ref-32 scratch 8) 0)
                                                                 (foreign-call "ghostty_cell_get" sb-alien:int ((sb-alien:unsigned 64) raw)
                                                                          (sb-alien:int (vt :raw-wide)) (sb-sys:system-area-pointer (sb-sys:sap+ scratch 8)))
-                                                                (member (sb-sys:sap-ref-32 scratch 8) (list (vt :wide-spacer-tail) (vt :wide-spacer-head))))))
+                                                                (let ((wide (sb-sys:sap-ref-32 scratch 8)))
+                                                                  (or (= wide (vt :wide-spacer-tail)) (= wide (vt :wide-spacer-head)))))))
                                             (setf shown 1)
                                             (cond
                                               ((zerop n) (write-char #\Space text))
@@ -686,7 +751,7 @@ once, else nothing is taken and the value is :BUSY."
                                                         (dotimes (i shown)
                                                           (let ((code (sb-sys:sap-ref-32 codes (* 4 i))))
                                                             (write-char (if (< code char-code-limit) (code-char code) (code-char #xfffd)) text)))))))
-                                            (let ((now (cell-look cells style (sb-sys:sap+ scratch 32)))
+                                            (let ((now (cell-look cells style colour))
                                                   (end (+ column shown)))
                                               (when (and links
                                                          (progn (setf (sb-sys:sap-ref-64 scratch 0) 0 (sb-sys:sap-ref-8 scratch 8) 0)
@@ -694,15 +759,15 @@ once, else nothing is taken and the value is :BUSY."
                                                                 (foreign-call "ghostty_cell_get" sb-alien:int ((sb-alien:unsigned 64) (sb-sys:sap-ref-64 scratch 0))
                                                                          (sb-alien:int (vt :raw-has-link)) (sb-sys:system-area-pointer (sb-sys:sap+ scratch 8)))
                                                                 (/= 0 (sb-sys:sap-ref-8 scratch 8))))
-                                                (setf now (if now (append now '(:link)) (list nil nil :link))))
+                                                (setf now (logior now (look-bit :link))))
                                               (when marks
-                                                (push (list cell (first now) (rest marks)) placeholders)
+                                                (push (list cell (ldb (byte +look-bg-shift+ 0) now) (rest marks)) placeholders)
                                                 (setf marks nil))
-                                              (unless (equal now look)
-                                                (when look (push (list from column look) looks))
+                                              (unless (= now look)
+                                                (when (/= look 0) (push (list from column look) looks))
                                                 (setf look now from column))
                                               (setf column end)))))
-                               (when look (push (list from column look) looks))
+                               (when (/= look 0) (push (list from column look) looks))
                                (let ((kept (emulator-placeholders emulator)))
                                  (when (and kept (< -1 at (length kept)))
                                    (setf (aref kept at) (row-placeholders (nreverse placeholders)))))
@@ -1019,8 +1084,7 @@ alone. Pictures are made once for each picture the program sends and kept
 
 (defun row-placeholders (cells)
   "The cells of a row standing for parts of pictures, as the frame found them,
-each (COLUMN COLOUR MARKS): COLOUR the cell's (an index of the palette or
-#rrggbb), MARKS the code points after U+10EEEE. As a list of (COLUMN PICTURE
+each (COLUMN COLOUR MARKS): COLOUR the code of the cell's colour (STYLE-COLOUR), MARKS the code points after U+10EEEE. As a list of (COLUMN PICTURE
 ROW PART-COLUMN): PICTURE the picture's number (its colour, the third mark its
 highest octet), ROW and PART-COLUMN the cell's of the picture, from its
 marks, or, those left out, from the cell before it: its row, and the column
@@ -1029,9 +1093,7 @@ after its column."
     (dolist (cell cells (nreverse out))
       (destructuring-bind (column colour marks) cell
         (let* ((numbers (mapcar (lambda (code) (gethash code *kitty-mark-numbers*)) marks))
-               (low (cond ((integerp colour) colour)
-                          ((stringp colour) (parse-integer colour :start 1 :radix 16))
-                          (t 0)))
+               (low (logand colour #xffffff))
                (id (logior low (ash (or (third numbers) 0) 24)))
                ;; the cell before, of the same picture, just left of it
                (follows (and before (= (first before) (1- column)) (= (second before) id)))

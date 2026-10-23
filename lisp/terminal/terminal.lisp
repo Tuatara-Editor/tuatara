@@ -80,9 +80,9 @@ and its keys work as anywhere."
   "The terminal buffers there are, newest first.")
 
 (defun terminal-faces (look)
-  "The faces a cell of LOOK (EMULATOR-FRAME's: (FG BG . ATTRIBUTES)) is shown
+  "The faces a cell of LOOK (EMULATOR-FRAME's, a number: LOOK-LIST) is shown
 in: its colours, then bold, italic, underlined, dim and reversed."
-  (destructuring-bind (fg bg &rest attributes) look
+  (destructuring-bind (&optional fg bg &rest attributes) (look-list look)
     (remove nil (list* (and fg (terminal-colour-face :fg fg))
                        (and bg (terminal-colour-face :bg bg))
                        (mapcar (lambda (attribute)
@@ -130,13 +130,14 @@ programs' colours were last coloured for.")
 ;;; A terminal's text with its escape sequences, its colours made faces
 
 (defun sgr-colour (codes)
-  "The colour the SGR CODES (a list, from just after 38 or 48) begin with, and
-the codes after it: 5;N an index of the 256, 2;R;G;B #rrggbb."
-  (case (first codes)
-    (5 (values (second codes) (cddr codes)))
-    (2 (values (tuatara.display:colour-hex (mapcar (lambda (c) (min 255 (or c 0))) (list (second codes) (third codes) (fourth codes))))
-               (nthcdr 4 codes)))
-    (t (values nil (rest codes)))))
+  "The colour code (MAKE-LOOK) the SGR CODES (a list, from just after 38 or 48)
+begin with, and the codes after it: 5;N an index of the 256, 2;R;G;B red,
+green and blue; 0 for none."
+  (flet ((part (c) (min 255 (max 0 (or c 0)))))
+    (case (first codes)
+      (5 (values (palette-code (part (second codes))) (cddr codes)))
+      (2 (values (rgb-code (part (second codes)) (part (third codes)) (part (fourth codes))) (nthcdr 4 codes)))
+      (t (values 0 (rest codes))))))
 
 (defun sgr-colour-parts (parts)
   "The parts of a colour written with colons (2::R:G:B, 2:R:G:B or 5:N, after
@@ -148,13 +149,13 @@ the codes after it: 5;N an index of the 256, 2;R;G;B #rrggbb."
 FACES a list, or plain strings:
 SGR colours, bold, italic and underline as faces, every other sequence (a
 cursor's move, a shell's marks) left out."
-  (let ((pieces '()) (fg nil) (bg nil) (bold nil) (italic nil) (underline nil)
+  (let ((pieces '()) (fg 0) (bg 0) (bold nil) (italic nil) (underline nil)
         (out (make-string-output-stream)) (i 0) (n (length text)))
     (flet ((flush ()
              (let ((s (get-output-stream-string out)))
                (when (plusp (length s))
-                 (let ((faces (terminal-faces (list* fg bg (remove nil (list (and bold :bold) (and italic :italic)
-                                                                              (and underline :underline)))))))
+                 (let ((faces (terminal-faces (make-look fg bg (logior (if bold (look-bit :bold) 0) (if italic (look-bit :italic) 0)
+                                                                       (if underline (look-bit :underline) 0))))))
                    (push (if faces (list s faces) s) pieces))))))
       (loop while (< i n)
             do (let ((c (char text i)))
@@ -185,17 +186,17 @@ cursor's move, a shell's marks) left out."
                                                     (t nil))))
                                      (case (or code :none)
                                        (:none nil)
-                                       (0 (setf fg nil bg nil bold nil italic nil underline nil))
+                                       (0 (setf fg 0 bg 0 bold nil italic nil underline nil))
                                        (1 (setf bold t)) (3 (setf italic t)) (4 (setf underline t))
                                        ((21 22) (setf bold nil)) (23 (setf italic nil)) (24 (setf underline nil))
-                                       (39 (setf fg nil)) (49 (setf bg nil))
+                                       (39 (setf fg 0)) (49 (setf bg 0))
                                        (38 (multiple-value-setq (fg codes) (sgr-colour codes)))
                                        (48 (multiple-value-setq (bg codes) (sgr-colour codes)))
                                        ;; the sixteen colours by their numbers in the palette
-                                       (t (cond ((<= 30 code 37) (setf fg (- code 30)))
-                                                ((<= 40 code 47) (setf bg (- code 40)))
-                                                ((<= 90 code 97) (setf fg (+ 8 (- code 90))))
-                                                ((<= 100 code 107) (setf bg (+ 8 (- code 100)))))))))))
+                                       (t (cond ((<= 30 code 37) (setf fg (palette-code (- code 30))))
+                                                ((<= 40 code 47) (setf bg (palette-code (- code 40))))
+                                                ((<= 90 code 97) (setf fg (palette-code (+ 8 (- code 90)))))
+                                                ((<= 100 code 107) (setf bg (palette-code (+ 8 (- code 100))))))))))))
                       (setf i (1+ end))))
                    ((and (char= c #\Escape) (< (1+ i) n) (char= (char text (1+ i)) #\]))
                     ;; OSC: up to its BEL or ST (ESC \)
