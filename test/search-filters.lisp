@@ -395,7 +395,7 @@ ITEMS and OPTIONS, the buffer killed and its file deleted after."
      (unwind-protect (progn ,@body)
        (kill-records ,buffer ,path))))
 
-(define-test (search-filters csv-records)
+(define-test (search-filters csv-records-shown-and-hidden)
   ;; C-x / s in a CSV hides the records the pattern does not match, the header kept, the text whole
   (with-records (f buffer path) ('("C-x / s k i w i RET"))
     (is equal '("name,place,count" "kiwi,Akaroa,3" "kiwi,Raglan,7") (records-shown buffer))

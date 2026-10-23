@@ -1348,7 +1348,7 @@ DIR is visited and its status read, the project trusted. Returns the frontend."
   (is string= "file:///a%20b/c~-._%25" (tuatara.defaults::path-uri "/a b/c~-._%"))
   (is string= "/a%20b/c~-._%25" (tuatara.io:url-path "/a b/c~-._%")))
 
-(define-test (git command-words)
+(define-test (git run-words-split)
   ;; the words of ! are split as a shell splits them, though no shell runs
   (is equal '("log" "-1" "--format=[%s] two words")
       (tuatara.io:command-words "log -1 \"--format=[%s] two words\""))
