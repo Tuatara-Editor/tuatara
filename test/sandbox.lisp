@@ -372,3 +372,37 @@ cat ~a/l.txt; echo; echo new > ~a/n.txt && cat ~a/n.txt; cat ~a/h.txt 2>/dev/nul
                                     (is = size (length text)))
                                   (- (sb-ext:get-bytes-consed) before)))))
     (true (< (- consed (* 4 size)) (* 3 size)) "~,1f octets made for each octet of output" (/ consed size))))
+
+(define-test (sandbox command-words)
+  ;; a command line split as a shell splits it, no shell running; with :escapes a backslash
+  ;; outside quotes is itself, and within double quotes begins one of a few escapes
+  (is equal '("-H" "-a" "1,0" " " "#" "'" "\"") (tuatara.io:command-words "-H -a 1,0 \" \" '#' \"'\" '\"'" :backslash :escapes))
+  (is equal (list (string #\Tab)) (tuatara.io:command-words "\"\\t\"" :backslash :escapes))
+  (is equal '("C:\\data") (tuatara.io:command-words "'C:\\data'" :backslash :escapes))
+  (is equal '("C:\\Users\\x") (tuatara.io:command-words "C:\\Users\\x" :backslash :escapes))
+  (false (nth-value 1 (tuatara.io:command-words "\"C:\\data\"" :backslash :escapes)))
+  (true (search "\\d" (nth-value 2 (tuatara.io:command-words "\"C:\\data\"" :backslash :escapes))))
+  (is equal '("-H" "--arr") (tuatara.io:command-words (format nil "-H~%--arr~%")))
+  (is equal '("") (tuatara.io:command-words "''"))
+  (false (nth-value 1 (tuatara.io:command-words "-H \"open" :backslash :escapes))))
+
+(define-test (sandbox filtered-through-a-program)
+  ;; text written to a program a piece at a time, what it prints and says read meanwhile
+  (let ((text (tuatara.text:string-octets (with-output-to-string (out) (dotimes (i 50000) (format out "line ~d~%" i))))))
+    (multiple-value-bind (output said exit too-much)
+        (tuatara.io:filter-through-program
+         (list (tuatara.io:find-program "sh") "-c" "tr a-z A-Z; echo done >&2")
+         (lambda (fd) (loop for at from 0 below (length text) by 4096
+                            do (tuatara.io:write-octets fd text :start at :end (min (length text) (+ at 4096)) :path "a test"))))
+      (is = (length text) (length output))
+      (true (search "LINE 49999" (tuatara.text:octets-string output)))
+      (is string= "done" (string-trim '(#\Newline) said))
+      (is eql 0 exit)
+      (false too-much)))
+  ;; printing more than the limit: ended, nothing taken
+  (multiple-value-bind (output said exit too-much)
+      (tuatara.io:filter-through-program (list (tuatara.io:find-program "yes")) (lambda (fd) (declare (ignore fd))) :limit 100000)
+    (declare (ignore said))
+    (false output)
+    (false exit)
+    (true too-much)))

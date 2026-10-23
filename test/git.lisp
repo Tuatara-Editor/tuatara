@@ -1338,11 +1338,11 @@ DIR is visited and its status read, the project trusted. Returns the frontend."
 (define-test (git command-words)
   ;; the words of ! are split as a shell splits them, though no shell runs
   (is equal '("log" "-1" "--format=[%s] two words")
-      (tuatara.defaults::git-command-words "log -1 \"--format=[%s] two words\""))
+      (tuatara.io:command-words "log -1 \"--format=[%s] two words\""))
   (is equal '("a b" "c\"d" "e f" "$HOME")
-      (tuatara.defaults::git-command-words "'a b' \"c\\\"d\" e\\ f $HOME"))
-  (is equal '(nil nil) (multiple-value-list (tuatara.defaults::git-command-words "log 'open")))
-  (is equal '(nil t) (multiple-value-list (tuatara.defaults::git-command-words "   "))))
+      (tuatara.io:command-words "'a b' \"c\\\"d\" e\\ f $HOME"))
+  (is equal '(nil nil) (subseq (multiple-value-list (tuatara.io:command-words "log 'open")) 0 2))
+  (is equal '(nil t) (multiple-value-list (tuatara.io:command-words "   "))))
 
 (define-test (git pull-detached)
   ;; a pull with HEAD detached says so, git not run

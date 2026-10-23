@@ -205,6 +205,88 @@ serving the clipboard) is not waited for: only the one started."
                (values nil nil))
         (values-list (sb-thread:join-thread worker :default nil)))))
 
+(defparameter *program-said-limit* (* 64 1024)
+  "The most octets kept of what a program says on its error output
+\(FILTER-THROUGH-PROGRAM); the rest is read and let go.")
+
+(defun filter-through-program (command write &key job directory (environment nil environment-p)
+                                                 (limit *program-output-limit*))
+  "Run COMMAND, a program's full name and its arguments (never through a
+shell), calling WRITE with the descriptor of its standard input to give it
+what it reads, a piece at a time (WRITE-OCTETS; a buffer's text from
+BUFFER-TEXT, say), its input closed once WRITE returns; what it prints and
+what it says on its error output are read meanwhile on threads of their own,
+so that none waits on another. A program that ends before it has read all
+makes WRITE's next write fail (FILE-SYSTEM-ERROR), which WRITE may take as
+the end. With JOB, it is the program the job runs: stopping the job ends it.
+DIRECTORY is where it runs, ENVIRONMENT, when given, all it sees of one.
+Four values: what it printed, as octets (NIL when it printed more than
+LIMIT octets: it is ended then); what it said, as text, its first
+*PROGRAM-SAID-LIMIT* octets; its exit code, NIL when it did not exit of
+itself; and true when it printed more than LIMIT."
+  (apply #'call-with-program command
+         (lambda (process)
+           (flet ((reader (stream most drain name)
+                    (tuatara.runtime:make-guarded-thread
+                     (lambda ()
+                       (multiple-value-bind (octets too-much) (ignore-errors (read-stream-octets stream :limit most :drain drain))
+                         ;; ended, so that it waits on no one reading what it prints
+                         (when (and too-much (not drain)) (ignore-errors (sb-ext:process-kill process 15)))
+                         (list octets too-much)))
+                     :name name)))
+             (let ((output (reader (sb-ext:process-output process) limit nil "program output"))
+                   (said (reader (sb-ext:process-error process) *program-said-limit* t "program messages")))
+               (unwind-protect (funcall write (sb-sys:fd-stream-fd (sb-ext:process-input process)))
+                 (ignore-errors (close (sb-ext:process-input process))))
+               (destructuring-bind (&optional octets too-much) (sb-thread:join-thread output :default nil)
+                 (let ((spoken (first (sb-thread:join-thread said :default nil))))
+                   (sb-ext:process-wait process)
+                   (values (and (not too-much) octets)
+                           (if spoken (tuatara.text:lenient-string spoken) "")
+                           (and (eq (sb-ext:process-status process) :exited) (sb-ext:process-exit-code process))
+                           too-much))))))
+         :job job :input :stream :output :stream :error :stream :directory directory
+         (and environment-p (list :environment environment))))
+
+(defun command-words (text &key (backslash :shell))
+  "TEXT split into a program's arguments as a shell splits a command line,
+though no shell runs: at spaces, tabs and line ends, but within '...', which
+keeps all it holds as it is, or \"...\", either quote holding the other.
+BACKSLASH says what a backslash does: :SHELL, outside quotes it keeps the
+character after it as it is, within \"...\" the \" or \\ after it, and is
+itself before any other; :ESCAPES, outside quotes it is itself (a Windows
+path comes through whole), within \"...\" it begins one of \\t \\n \\r \\\\ and
+\\\", a tab, a line end, a carriage return, a backslash and a quote, and any
+other is refused. Two values, the words and T; or NIL, NIL and why as a third
+when a quote is left open or an escape is refused."
+  (let ((words '()) (word (make-string-output-stream)) (in-word nil) (quote-char nil) (i 0) (n (length text)))
+    (flet ((end-word () (when in-word (push (get-output-stream-string word) words) (setf in-word nil)))
+           (next () (and (< (1+ i) n) (char text (1+ i)))))
+      (loop while (< i n)
+            do (let ((c (char text i)))
+                 (cond ((eql quote-char #\')
+                        (if (char= c #\') (setf quote-char nil) (write-char c word)))
+                       ((eql quote-char #\")
+                        (cond ((char= c #\") (setf quote-char nil))
+                              ((char/= c #\\) (write-char c word))
+                              ((eq backslash :escapes)
+                               (let ((escaped (case (next) (#\t #\Tab) (#\n #\Newline) (#\r #\Return) (#\\ #\\) (#\" #\"))))
+                                 (unless escaped
+                                   (return-from command-words
+                                     (values nil nil (format nil "within double quotes a backslash begins an escape, and only \\t \\n \\r \\\\ \\\" are taken: ~a; single quotes take a backslash as it is"
+                                                             (subseq text i (min n (+ i 2)))))))
+                                 (incf i) (write-char escaped word)))
+                              ((member (next) '(#\" #\\)) (incf i) (write-char (char text i) word))
+                              (t (write-char c word))))
+                       ((member c '(#\Space #\Tab #\Newline #\Return #\Page #.(code-char 11))) (end-word))
+                       ((member c '(#\' #\")) (setf quote-char c in-word t))
+                       ((and (char= c #\\) (eq backslash :shell) (next)) (incf i) (write-char (char text i) word) (setf in-word t))
+                       (t (write-char c word) (setf in-word t))))
+               (incf i))
+      (if quote-char
+          (values nil nil "a quote is left open")
+          (progn (end-word) (values (nreverse words) t))))))
+
 (defun system-directory-arguments ()
   "bwrap's arguments showing the program the system's directories, read only:
 /usr, the directories beside it that are links into it on most systems (made

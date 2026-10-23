@@ -713,6 +713,9 @@ once all have come (JOINED-OCTETS): SIZE octets in all, PIECES each (VECTOR
   (size 0 :type fixnum)
   (pieces '() :type list))
 
+(setf (documentation 'make-octet-pieces 'function) "A new OCTET-PIECES, holding no octets yet."
+      (documentation 'octet-pieces-size 'function) "How many octets an OCTET-PIECES holds in all.")
+
 (defun add-octet-piece (pieces octets &optional (n (length octets)))
   "Add the first N octets of OCTETS to PIECES (OCTET-PIECES), OCTETS itself
 kept, not copied: it is not to be changed after. Returns PIECES."

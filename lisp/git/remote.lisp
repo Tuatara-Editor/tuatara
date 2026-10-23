@@ -204,38 +204,12 @@ hooks. \\`C-h' there lists every action."
 
 ;;; Any git command
 
-(defun git-command-words (text)
-  "TEXT split into words as a shell splits a command's, though no shell
-runs: at spaces and tabs, except within '...', which keeps all it holds as
-it is, or \"...\", where a backslash keeps the \" or \\ after it; outside
-quotes a backslash keeps the character after it. NIL and NIL when a quote
-is left open, else the words and T."
-  (let ((words '()) (word (make-string-output-stream)) (in-word nil) (quote-char nil) (i 0) (n (length text)))
-    (flet ((end-word () (when in-word (push (get-output-stream-string word) words) (setf in-word nil))))
-      (loop while (< i n)
-            do (let ((c (char text i)))
-                 (cond ((eql quote-char #\')
-                        (if (char= c #\') (setf quote-char nil) (write-char c word)))
-                       ((eql quote-char #\")
-                        (cond ((char= c #\") (setf quote-char nil))
-                              ((and (char= c #\\) (< (1+ i) n) (member (char text (1+ i)) '(#\" #\\)))
-                               (incf i) (write-char (char text i) word))
-                              (t (write-char c word))))
-                       ((member c '(#\Space #\Tab)) (end-word))
-                       ((member c '(#\' #\")) (setf quote-char c in-word t))
-                       ((and (char= c #\\) (< (1+ i) n)) (incf i) (write-char (char text i) word) (setf in-word t))
-                       (t (write-char c word) (setf in-word t))))
-               (incf i))
-      (if quote-char
-          (values nil nil)
-          (progn (end-word) (values (nreverse words) t))))))
-
 (define-command git-run-command ()
   "Run git with the words asked for (log --oneline -5, say; quotes group
 words as in a shell) in the repository at hand, no shell between, and show
 what it printed; for what the menus have no action for."
   (with-git-repository (top)
-    (multiple-value-bind (words ok) (git-command-words (read-string "Run git: "))
+    (multiple-value-bind (words ok) (tuatara.io:command-words (read-string "Run git: "))
       (cond ((not ok) (message "A quote is left open: nothing run"))
             ((null words) (message "Nothing to run"))
             (t (git-show-output (format nil "Running git ~a" (first words)) top words "*git output*"

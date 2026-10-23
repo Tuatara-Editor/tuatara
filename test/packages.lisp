@@ -701,3 +701,26 @@ before loading it again."
     (true (search (format nil "(~a marked, ~a marked for deletion)"
                           (tuatara.defaults::list-mark-sign :marked) (tuatara.defaults::list-mark-sign :deletion))
                   help))))
+
+(define-test (packages api-runs-a-program-on-text)
+  ;; a package splits a command line and runs a program of its own over text through a pipe,
+  ;; with the API's names alone
+  (with-folder-packages (dir)
+    (aged-package dir "filteruser"
+                  "(defpackage #:filteruser (:use #:cl #:tuatara))
+(in-package #:filteruser)
+(defun filteruser-run (line text)
+  (let ((words (command-words line :backslash :escapes))
+        (octets (string-octets text)))
+    (multiple-value-bind (output said exit)
+        (filter-through-program (cons (find-program (first words)) (rest words))
+                                (lambda (fd) (write-octets fd octets :path \"filteruser\")))
+      (list (lenient-string output) said exit))))")
+    (unwind-protect
+         (progn
+           (true (tuatara-user:load-package "filteruser" :source (namestring dir)))
+           (false (package-failure "filteruser"))
+           (is equal '("A,B C" "" 0)
+               (funcall (find-symbol "FILTERUSER-RUN" "FILTERUSER") "tr 'a-z,' \"A-Z,\"" "a,b c")))
+      (when (find-package "FILTERUSER")
+        (tuatara.defaults::forget-package-code (list (find-package "FILTERUSER")))))))
