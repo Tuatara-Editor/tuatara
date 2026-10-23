@@ -25,7 +25,25 @@ tree's build/terminal/.")
 
 (defvar *terminal-layout* nil
   "What the terminal library's headers say (layout.sexp), a property list of
-values and offsets, once the library is loaded; NIL before.")
+values and offsets, once the library is loaded; NIL before. Set it with
+SET-TERMINAL-LAYOUT, which keeps VT's cells in step.")
+
+(defvar *layout-cells* (make-hash-table :test 'eq :synchronized t)
+  "A cell (KEY . VALUE) for each key of the layout VT has been asked for, its
+value as *TERMINAL-LAYOUT* gives it, so that a key named in the code is read
+without looking through the layout.")
+
+(defun layout-cell (key)
+  "The cell of *LAYOUT-CELLS* for KEY, made the first time."
+  (or (gethash key *layout-cells*)
+      (setf (gethash key *layout-cells*) (cons key (getf *terminal-layout* key)))))
+
+(defun set-terminal-layout (layout)
+  "Make LAYOUT, a property list read from layout.sexp, the terminal library's
+layout, and every cell of *LAYOUT-CELLS* hold its value there."
+  (setf *terminal-layout* layout)
+  (maphash (lambda (key cell) (setf (cdr cell) (getf layout key))) *layout-cells*)
+  layout)
 
 (defun terminal-library-directories ()
   "The directories searched for the terminal library."
@@ -40,14 +58,25 @@ layout the first time it is needed."
                                 (terminal-library-directories))))
         (when (and directory (foreign-library-p (namestring (merge-pathnames "libghostty-vt.so" directory)))
                    (foreign-library-p (namestring (merge-pathnames "libtuatara-terminal.so" directory))))
-          (setf *terminal-layout*
-                (with-open-file (in (merge-pathnames "layout.sexp" directory))
-                  (let ((*read-eval* nil) (*package* (find-package :keyword))) (read in))))
+          (set-terminal-layout
+           (with-open-file (in (merge-pathnames "layout.sexp" directory))
+             (let ((*read-eval* nil) (*package* (find-package :keyword))) (read in))))
           t))))
+
+(declaim (inline layout-cell-value))
+(defun layout-cell-value (cell)
+  "The value CELL, one of *LAYOUT-CELLS*, holds; an error when the layout has none."
+  (or (cdr cell) (error "The terminal library's layout says nothing of ~s" (car cell))))
 
 (defun vt (key)
   "The value KEY has in the terminal library's layout (*TERMINAL-LAYOUT*)."
-  (or (getf *terminal-layout* key) (error "The terminal library's layout says nothing of ~s" key)))
+  (layout-cell-value (layout-cell key)))
+
+(define-compiler-macro vt (&whole form key)
+  "A key written as a keyword read from its cell, found once when the code is loaded."
+  (if (keywordp key)
+      `(layout-cell-value (load-time-value (layout-cell ,key)))
+      form))
 
 ;;; An emulator
 
@@ -551,13 +580,13 @@ among :bold :italic :faint :inverse :invisible :strike and :underline
       (when (cells-get cells (vt :cell-style) style)
         (setf fg (style-colour style (vt :style-fg))
               bg (style-colour style (vt :style-bg)))
-        (flet ((on (key) (/= 0 (sb-sys:sap-ref-8 style (vt key)))))
-          (when (on :style-bold) (push :bold attributes))
-          (when (on :style-italic) (push :italic attributes))
-          (when (on :style-faint) (push :faint attributes))
-          (when (on :style-inverse) (push :inverse attributes))
-          (when (on :style-invisible) (push :invisible attributes))
-          (when (on :style-strikethrough) (push :strike attributes))
+        (flet ((on (offset) (/= 0 (sb-sys:sap-ref-8 style offset))))
+          (when (on (vt :style-bold)) (push :bold attributes))
+          (when (on (vt :style-italic)) (push :italic attributes))
+          (when (on (vt :style-faint)) (push :faint attributes))
+          (when (on (vt :style-inverse)) (push :inverse attributes))
+          (when (on (vt :style-invisible)) (push :invisible attributes))
+          (when (on (vt :style-strikethrough)) (push :strike attributes))
           (when (/= 0 (sb-sys:signed-sap-ref-32 style (vt :style-underline))) (push :underline attributes)))))
     ;; a ground given to the cell itself, as erasing with a colour leaves it
     (when (and (null bg) (cells-get cells (vt :cell-bg-color) colour))

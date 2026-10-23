@@ -232,3 +232,21 @@ and fourth values."
       (sb-thread:join-thread holder)
       (is eq t (tuatara.defaults::emulator-resize e 50 8))
       (is = 50 (tuatara.defaults::emulator-columns e)))))
+
+(defun least-of-three (function &key bytes)
+  "The least of three runs of FUNCTION: its internal real time, or with BYTES
+the octets it consed."
+  (loop repeat 3
+        minimize (if bytes
+                     (let ((before (sb-ext:get-bytes-consed))) (funcall function) (- (sb-ext:get-bytes-consed) before))
+                     (let ((before (get-internal-real-time))) (funcall function) (- (get-internal-real-time) before)))))
+
+(define-test (emulator layout-read-at-once)
+  ;; a key of the library's layout named in the code costs the same wherever it is in the
+  ;; layout: 0.4 µs for one near its end when each was looked for through the layout
+  (true (tuatara.defaults::terminal-library-p))
+  (let* ((layout tuatara.defaults::*terminal-layout*)
+         (time (lambda (key)
+                 (least-of-three (compile nil `(lambda () (dotimes (i 1000000) (tuatara.defaults::vt ,key))))))))
+    (let ((first (funcall time (first layout))) (last (funcall time (car (last layout 2)))))
+      (true (< (max last 1000) (* 3 (max first 1000))) "the last key ~d, the first ~d" last first))))
