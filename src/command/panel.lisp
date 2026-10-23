@@ -493,7 +493,8 @@ index of the minibuffer or echo row among them: while the minibuffer reads,
 the prompt row (its prompt in :minibuffer-prompt) and the candidates of a
 completing read, the selected one in :completion-selected, above or below the
 prompt as *PROMPT-ABOVE-CANDIDATES* says, as many rows as the most it has
-shown for the question (COMPLETION-TALLEST), at most CANDIDATE-ROOM; the menu
+shown for the question (COMPLETION-TALLEST), at most CANDIDATE-ROOM, and
+after the text typed what a key in it said, in brackets; the menu
 open (OPEN-MENU), while no key of it is half typed; the key hints under a
 pending prefix key; else the echo row."
   (let ((width (editor-width editor)))
@@ -518,8 +519,9 @@ pending prefix key; else the echo row."
                     (multiple-value-bind (whole typed hidden) (minibuffer-row editor)
                       (let* ((prompt-start (max 0 (- (length (completion-count-prefix editor)) hidden)))
                              (prompt-end (max 0 (- typed hidden)))
-                             (row (subseq whole hidden)))
-                        (list row
+                             (row (subseq whole hidden))
+                             (said (editor-message editor)))
+                        (list (if said (concatenate 'string row " [" said "]") row)
                               nil
                               (append
                                (and (< prompt-start prompt-end)
@@ -531,7 +533,11 @@ pending prefix key; else the echo row."
                                (and completion (= (completion-index completion) -1)
                                     (plusp (length (completion-candidates completion)))
                                     (< prompt-end (length row))
-                                    (list (list prompt-end (length row) :completion-selected)))))))))
+                                    (list (list prompt-end (length row) :completion-selected)))
+                               ;; the keys in what a key said, coloured as in the echo area
+                               (let ((offset (+ (length row) 2)))
+                                 (loop for (start end face) in (text-spans said)
+                                       collect (list (+ start offset) (+ end offset) face)))))))))
              (if *prompt-above-candidates*
                  (values (append head (list prompt-row) rows) (length head))
                  (values (append rows head (list prompt-row)) (+ (length rows) (length head))))))

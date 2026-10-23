@@ -1088,6 +1088,15 @@ list of options.")
       (tuatara.command:forget-command (find-symbol "READ-SOME-OPTIONS" package))
       (delete-package package))))
 
+(define-test (command message-in-an-open-question)
+  ;; what a key in a question says is shown after the text typed, in brackets, until the next key
+  (true (tuatara.frontend.fake:fake-frame-showing (run-keys "M-x q q z z q RET" :width 60) "qqzzq [No match]"))
+  (false (screen-showing (run-keys "M-x q q z z q RET DEL" :width 60) "No match"))
+  ;; a message said before the question opens is not carried into it
+  (false (screen-showing (run-keys (list (lambda () (tuatara.command:message "Said before the question")) "M-x q")
+                                   :width 60)
+                         "Said before")))
+
 (defparameter *text-snapshot-package-code*
   "(defun text-as-taken (buffer)
      \"BUFFER's banked lines and its text, as they are now: the text read
