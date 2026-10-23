@@ -12,19 +12,24 @@
 
 (in-package #:tuatara.command)
 
-(defstruct (menu-entry (:constructor make-menu-entry (key label &key command switch option reader)) (:copier nil))
+(defstruct (menu-entry (:constructor make-menu-entry (key label &key command switch option reader replace)) (:copier nil))
   "One line of a menu: KEY, as keys are written (- f), and LABEL, what it
 says; then either COMMAND, the action the key runs, or SWITCH, an argument
 the key turns on and off (--force), or OPTION, an argument given a value
-\(--depth=), which READER, a function of a prompt, reads."
+\(--depth=), which READER, a function of a prompt, reads. An option with
+REPLACE true is asked again when it has a value, READER then given that
+value as well, and what it reads takes its place; an empty answer takes it
+away."
   (key "" :type string :read-only t)
   (label "" :type string :read-only t)
   (command nil :read-only t)
   (switch nil :read-only t)
   (option nil :read-only t)
-  (reader nil :read-only t))
+  (reader nil :read-only t)
+  (replace nil :read-only t))
 
-(setf (documentation 'make-menu-entry 'function) "A MENU-ENTRY of KEY and LABEL, with a COMMAND, a SWITCH or an OPTION and its READER."
+(setf (documentation 'make-menu-entry 'function) "A MENU-ENTRY of KEY and LABEL, with a COMMAND, a SWITCH or an OPTION, its READER and whether it is REPLACEd."
+      (documentation 'menu-entry-replace 'function) "True when the option is asked again, its value given, rather than taken away."
       (documentation 'menu-entry-p 'function) "True when OBJECT is a MENU-ENTRY."
       (documentation 'menu-entry-key 'function) "The keys of the entry, as keys are written."
       (documentation 'menu-entry-label 'function) "What the entry says in the menu."
@@ -33,19 +38,23 @@ the key turns on and off (--force), or OPTION, an argument given a value
       (documentation 'menu-entry-option 'function) "The argument the entry gives a value, ending in =, or NIL."
       (documentation 'menu-entry-reader 'function) "The function of a prompt reading an option's value.")
 
-(defstruct (menu (:constructor make-menu (name title groups &key show note)) (:copier nil))
+(defstruct (menu (:constructor make-menu (name title groups &key show note summary)) (:copier nil))
   "A menu called NAME, the command opening it, shown under TITLE: GROUPS, each
 \(TITLE . ENTRIES), ENTRIES MENU-ENTRYs. SHOW, when given, a function of an
 entry, says whether the menu has it now (the key of one it leaves out says
 so); NOTE, when given, a function of the menu, gives a line \\`C-h'
-says first (which entries are left out and how to see them)."
+says first (which entries are left out and how to see them); SUMMARY, when
+given, a function of the arguments on, gives lines shown under the entries,
+what they come to."
   (name nil :read-only t)
   (title "" :read-only t)
   (groups '() :read-only t)
   (show nil :read-only t)
-  (note nil :read-only t))
+  (note nil :read-only t)
+  (summary nil :read-only t))
 
-(setf (documentation 'make-menu 'function) "A MENU called NAME under TITLE with GROUPS, SHOW and NOTE."
+(setf (documentation 'make-menu 'function) "A MENU called NAME under TITLE with GROUPS, SHOW, NOTE and SUMMARY."
+      (documentation 'menu-summary 'function) "The function giving the lines under the entries, or NIL."
       (documentation 'menu-p 'function) "True when OBJECT is a MENU."
       (documentation 'menu-name 'function) "The name of the menu, the command opening it."
       (documentation 'menu-title 'function) "What the menu is called at its top."
@@ -55,6 +64,10 @@ says first (which entries are left out and how to see them)."
 
 (defvar *menus* (make-hash-table :test 'eq)
   "Every menu by its name, as DEFINE-MENU makes them.")
+
+(defun menu-named (name)
+  "The menu DEFINE-MENU made under NAME, the command opening it, or NIL."
+  (values (gethash name *menus*)))
 
 (defvar *menu-help-function* nil
   "A function of a text showing it in *Help*: what \\`C-h' in a menu lists.")
@@ -71,48 +84,52 @@ says first (which entries are left out and how to see them)."
 (defun parse-menu-entry (spec)
   "The form making a MENU-ENTRY from SPEC, as DEFINE-MENU takes one:
 \(KEY LABEL COMMAND), (KEY LABEL :SWITCH ARGUMENT) or (KEY LABEL :OPTION
-ARGUMENT :READ READER)."
+ARGUMENT :READ READER), :REPLACE T after it for one asked again."
   (destructuring-bind (key label &rest more) spec
     (if (keywordp (first more))
-        (destructuring-bind (&key switch option (read 'read-string)) more
-          `(make-menu-entry ,key ,label :switch ,switch :option ,option :reader ',(and option read)))
+        (destructuring-bind (&key switch option (read 'read-string) replace) more
+          `(make-menu-entry ,key ,label :switch ,switch :option ,option :reader ',(and option read) :replace ,replace))
         `(make-menu-entry ,key ,label :command ',(first more)))))
 
-(defmacro define-menu (name (&key title show note) doc &body groups)
+(defmacro define-menu (name (&key title show note summary) doc &body groups)
   "Define the command NAME, documented by DOC, that opens a menu under TITLE
 of GROUPS, each (GROUP-TITLE ENTRY...), an entry (KEY LABEL COMMAND) for an
 action, (KEY LABEL :SWITCH \"--argument\") for a switch, or (KEY LABEL
 :OPTION \"--argument=\" :READ READER) for an option, READER a function of a
-prompt (READ-STRING when not given). SHOW and NOTE are as MAKE-MENU takes
-them, function names."
+prompt (READ-STRING when not given), :REPLACE T after it to ask it again
+with its value. SHOW, NOTE and SUMMARY are as MAKE-MENU takes them,
+function names."
   (check-type doc string "a docstring; every command documents itself")
   `(progn
      (setf (gethash ',name *menus*)
            (make-menu ',name ,title
                       (list ,@(loop for (group-title . specs) in groups
                                     collect `(cons ,group-title (list ,@(mapcar #'parse-menu-entry specs)))))
-                      :show ,(and show `',show) :note ,(and note `',note)))
+                      :show ,(and show `',show) :note ,(and note `',note) :summary ,(and summary `',summary)))
      (define-command ,name () ,doc (open-menu (gethash ',name *menus*)))))
 
 (defparameter *menu-keeping-commands* '(menu-toggle-switch menu-set-option menu-entry-left-out)
   "The commands that keep a menu open: those of its switches and options, and
 the one saying an entry is left out.")
 
-(defun open-menu (menu)
+(defun open-menu (menu &key arguments)
   "Open MENU: its keys before every other while its switches and options are
-typed, its entries in the panel, its arguments none to begin with. The key
-of an entry it leaves out says so and keeps it open, never reaching the
-buffer behind it."
+typed, its entries in the panel, its arguments ARGUMENTS to begin with (none
+unless given, in the order given). The key of an entry it leaves out says so
+and keeps it open, never reaching the buffer behind it: an action's as the
+menu opens, a switch's or an option's as its key is typed."
   (let ((keymap (make-keymap :name (string-downcase (symbol-name (menu-name menu)))))
         (editor *editor*))
     (dolist (entry (menu-entries menu :all t))
       (define-key keymap (menu-entry-key entry)
-        (cond ((not (menu-shows-p menu entry)) 'menu-entry-left-out)
-              ((menu-entry-command entry))
-              ((menu-entry-switch entry) 'menu-toggle-switch)
-              (t 'menu-set-option))))
+        ;; a switch or an option looks whether the menu has it as its key is typed,
+        ;; for one may come and go with the others' values
+        (cond ((menu-entry-switch entry) 'menu-toggle-switch)
+              ((menu-entry-option entry) 'menu-set-option)
+              ((not (menu-shows-p menu entry)) 'menu-entry-left-out)
+              (t (menu-entry-command entry)))))
     (define-key keymap *prefix-help-key* 'menu-describe)
-    (setf (editor-menu editor) (list menu '()))
+    (setf (editor-menu editor) (list menu (reverse arguments)))
     (set-transient-map editor keymap
                        (lambda (command) (member command *menu-keeping-commands*))
                        (lambda () (setf (editor-menu editor) nil)))))
@@ -149,8 +166,10 @@ now, or with ALL among every one; NIL when there is none."
   (and *editor* (editor-menu *editor*) t))
 
 (define-command menu-toggle-switch ()
-  "Turn the switch of the open menu whose key was typed on, or off; the menu stays open."
+  "Turn the switch of the open menu whose key was typed on, or off, or say it
+is left out of the menu now; the menu stays open."
   (let ((entry (menu-entry-typed)) (open (editor-menu *editor*)))
+    (unless entry (menu-entry-left-out))
     (when entry
       (let ((argument (menu-entry-switch entry)))
         (setf (second open) (if (member argument (second open) :test #'string=)
@@ -159,16 +178,27 @@ now, or with ALL among every one; NIL when there is none."
 
 (define-command menu-set-option ()
   "Give the option of the open menu whose key was typed a value, asked for,
-or take its value away when it has one; the menu stays open."
+or take its value away when it has one, or ask it again with that value when
+the option says so (MENU-ENTRY-REPLACE), or say it is left out of the menu
+now; the menu stays open."
   (let ((entry (menu-entry-typed)) (open (editor-menu *editor*)))
+    (unless entry (menu-entry-left-out))
     (when entry
       (let* ((argument (menu-entry-option entry))
              (given (menu-given entry (second open))))
-        (if given
-            (setf (second open) (remove given (second open) :test #'string=))
+        (cond
+          ((and given (menu-entry-replace entry))
+           (let ((value (funcall (menu-entry-reader entry) (format nil "~a " (menu-entry-label entry))
+                                 (subseq given (length argument)))))
+             (setf (second open) (remove given (second open) :test #'string=))
+             (when (plusp (length value))
+               (push (concatenate 'string argument value) (second open)))))
+          (given
+            (setf (second open) (remove given (second open) :test #'string=)))
+          (t
             (let ((value (funcall (menu-entry-reader entry) (format nil "~a " (menu-entry-label entry)))))
               (when (plusp (length value))
-                (push (concatenate 'string argument value) (second open)))))))))
+                (push (concatenate 'string argument value) (second open))))))))))
 
 (define-command menu-entry-left-out ()
   "Say that the entry of the open menu whose key was typed is left out of it
@@ -211,10 +241,21 @@ switch or an option its argument in brackets, an option's with its value."
 (defun menu-panel-rows (editor width room)
   "The panel rows of EDITOR's open menu, at most ROOM: its title, then each
 group with entries shown, its title and its entries in columns, an argument
-on in :menu-argument-on and one off in :menu-argument-off; where they do not
-all fit, the last row says that \\`C-h' lists them all."
+on in :menu-argument-on and one off in :menu-argument-off, then the lines of
+its summary; where they do not all fit, the last row says that \\`C-h' lists
+them all."
   (destructuring-bind (menu arguments) (editor-menu editor)
-    (let ((rows (list (group-title-row (menu-title menu) width))))
+    (let* ((summary (and (menu-summary menu)
+                         (mapcar (lambda (line) (list (subseq line 0 (min (length line) width)) nil '()))
+                                 (funcall (menu-summary menu) (reverse arguments)))))
+           (room (max 1 (- room (length summary))))
+           (rows (list (group-title-row (menu-title menu) width)))
+           ;; one column width for every group, so that they line up
+           (column (apply #'key-hint-column-width
+                          (loop for (nil . all) in (menu-groups menu)
+                                collect (loop for e in all
+                                              when (menu-shows-p menu e)
+                                                collect (cons (menu-entry-key e) (menu-entry-text e arguments)))))))
       (loop for (title . all) in (menu-groups menu)
             for entries = (remove-if-not (lambda (e) (menu-shows-p menu e)) all)
             when entries
@@ -222,8 +263,9 @@ all fit, the last row says that \\`C-h' lists them all."
                                     (mapcar (lambda (row) (menu-row-arguments row entries arguments))
                                             (key-hint-rows (mapcar (lambda (e) (cons (menu-entry-key e) (menu-entry-text e arguments)))
                                                                    entries)
-                                                           width (max 1 (- room (length rows) 1)))))))
-      (subseq rows 0 (min (length rows) room)))))
+                                                           width (max 1 (- room (length rows) 1))
+                                                           :column-width column)))))
+      (append (subseq rows 0 (min (length rows) room)) summary))))
 
 (defun menu-keys-pending-p (editor)
   "True when the keys EDITOR has pending, if any, begin keys of its open menu's

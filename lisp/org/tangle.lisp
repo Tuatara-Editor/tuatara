@@ -399,7 +399,9 @@ when you say so. Nothing in a block is ever run."
                    (tuatara.buffer:kill-buffer listing))))))))))
 
 (defun install-code-files ()
-  "Bind \\`C-c C-v t' and \\`C-c C-v C-t' in Org buffers to tangle-code-files."
+  "Bind \\`C-c C-v t' and \\`C-c C-v C-t' in Org buffers to tangle-code-files,
+under \\`C-c C-v' (code files)."
   (let ((keymap (mode-keymap 'org-mode)))
     (define-key keymap "C-c C-v t" 'tangle-code-files)
-    (define-key keymap "C-c C-v C-t" 'tangle-code-files)))
+    (define-key keymap "C-c C-v C-t" 'tangle-code-files)
+    (label-keys keymap '(("C-c C-v" "code files")))))

@@ -43,7 +43,7 @@
            ;; repeating
            #:define-repeat-keys #:*repeat-maps* #:*not-repeatable* #:editor-repeatable #:editor-repeat-map
            #:*show-completion-count* #:*prompt-above-candidates* #:completion-count-prefix #:*panel-max-rows*
-           #:define-menu #:open-menu #:menu-entry-command #:menu-groups #:menu-entries #:menu-arguments #:menu-open-p #:*menu-help-function* #:editor-menu
+           #:define-menu #:open-menu #:menu-named #:menu-entry-argument #:menu-entry-command #:menu-groups #:menu-entries #:menu-arguments #:menu-open-p #:*menu-help-function* #:editor-menu
            #:set-transient-map #:clear-transient-map #:editor-transient-map #:editor-transient-keep
            #:editor-transient-exit #:editor-pre-command-functions #:rectangle-rows
            #:rectangle-live-p #:end-rectangle #:rectangle-point-column #:keep-rectangle-column

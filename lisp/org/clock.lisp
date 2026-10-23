@@ -197,12 +197,14 @@ finished CLOCK: line, write its duration again from its two times; true when it 
   t)
 
 (defun install-org-clock ()
-  "Bind Org's clock keys in Org buffers, show the clock running, and ask about it before quitting."
+  "Bind Org's clock keys in Org buffers, under \\`C-c C-x' (clock, blocks and
+more), show the clock running, and ask about it before quitting."
   (let ((keymap (mode-keymap 'org-mode)))
     (define-key keymap "C-c C-x C-i" 'org-clock-in)
     (define-key keymap "C-c C-x C-o" 'org-clock-out)
     (define-key keymap "C-c C-x C-q" 'org-clock-cancel)
-    (define-key keymap "C-c C-x C-j" 'org-clock-goto))
+    (define-key keymap "C-c C-x C-j" 'org-clock-goto)
+    (label-keys keymap '(("C-c C-x" "clock, blocks and more"))))
   (pushnew 'org-clock-mode-line *mode-line-functions*)
   (pushnew 'org-clock-title *title-functions*)
   (pushnew 'org-clock-tick *tick-functions*)
