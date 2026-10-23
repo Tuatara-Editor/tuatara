@@ -1386,3 +1386,11 @@ help left out."
     (dolist (kind kinds)
       (true (member kind tuatara.defaults::*org-agenda-item-types* :test #'string=) "~s named" kind)))
   (fail (macroexpand-1 '(tuatara.defaults::org-item-type-in item "sheduled"))))
+
+(define-test (org last-repeat-read-from-the-drawer)
+  ;; when a task by rule was last done for is its property's, not a line like it in its text
+  (let ((tuatara.defaults::*org-now* (encode-universal-time 0 0 18 2 11 2026)))
+    (true (search ":LAST_REPEAT: [2026-11-02 Mon 10:00]"
+                  (org-text-after "C-c C-t" (format nil "* TODO Team meeting~%SCHEDULED: <%%(diary-float t 1 1) 10:00>~%#+begin_example~%:LAST_REPEAT: [2027-01-04 Mon]~%#+end_example~%"))))
+    (true (search ":LAST_REPEAT: [2026-12-07 Mon 10:00]"
+                  (org-text-after "C-c C-t" (format nil "* TODO Team meeting~%SCHEDULED: <%%(diary-float t 1 1) 10:00>~%:PROPERTIES:~%:LAST_REPEAT: [2026-11-02 Mon 10:00]~%:END:~%"))))))

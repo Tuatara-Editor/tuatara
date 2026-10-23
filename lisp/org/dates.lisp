@@ -459,14 +459,12 @@ its ORG-RULE, or NIL; its text as a second value."
     (let ((rule (org-read-rule (subseq text s e))))
       (when rule (return (values rule (subseq text s e)))))))
 
-(defun org-rule-done-text (rule body now)
+(defun org-rule-done-text (rule last-repeat now)
   "What LAST_REPEAT says once a task by RULE is done at the universal time
-NOW, its BODY (its text after the headline) saying when it was last done
-for: the day it is done for (ORG-RULE-DONE-DAY) as an inactive timestamp,
-with the time RULE gives; NIL when RULE takes no day near."
-  (let* ((last (multiple-value-bind (match groups)
-                   (cl-ppcre:scan-to-strings "(?mi)^[ \\t]*:LAST_REPEAT:[ \\t]*(\\[[^]\\n]*\\])" body)
-                 (and match (let ((ts (org-read-ts (aref groups 0)))) (and ts (org-ts-day-number ts))))))
+NOW, LAST-REPEAT being what its property says now (when it was last done for,
+or NIL): the day it is done for (ORG-RULE-DONE-DAY) as an inactive
+timestamp, with the time RULE gives; NIL when RULE takes no day near."
+  (let* ((last (let ((ts (and last-repeat (org-read-ts last-repeat)))) (and ts (org-ts-day-number ts))))
          (day (org-rule-done-day rule last (org-today now))))
     (and day (format-day (if (org-rule-hour rule) "[%F %a %R]" "[%F %a]") day
                          (or (org-rule-hour rule) 0) (or (org-rule-minute rule) 0)))))

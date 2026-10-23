@@ -304,7 +304,7 @@ day it is done for (ORG-RULE-DONE-TEXT)."
          (body (if (< entry-line-end (length entry)) (subseq entry (1+ entry-line-end)) ""))
          (moved (org-repeat-timestamps body now))
          (rule (org-rule-timestamp-in body 0 (length body)))
-         (done-for (and rule (org-rule-done-text rule body now)))
+         (done-for (and rule (org-rule-done-text rule (org-headline-property headline "LAST_REPEAT") now)))
          (lines (org-text-lines moved))
          (lines (cond (done-for (org-entry-lines-with lines "LAST_REPEAT" done-for))
                       (*org-log-repeat* (org-entry-lines-with lines "LAST_REPEAT" (org-timestamp-text now)))
