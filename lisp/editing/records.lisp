@@ -58,6 +58,19 @@ record's other lines, and the record after it, are known at once."
 return there when its lines end in CRLF."
   (if (and crlf (plusp text-end) (= 13 (tuatara.text:rope-octet rope (1- text-end)))) (1- text-end) text-end))
 
+(defun record-verdict (memo rope start text-end crlf limit holder decide)
+  "What DECIDE, a function of a string and how many of its first characters
+are the text, says of the record of ROPE from START, the text of its last
+line ending at TEXT-END (its line ends CRLF when CRLF is true): its text
+read up to LIMIT octets and decoded into the string in HOLDER's car
+\(DECODE-INTO), true or NIL. Decided once a record: MEMO, LINE-RECORD's for
+that record, keeps it for its other lines."
+  (if (eq (svref memo 4) :unknown)
+      (setf (svref memo 4)
+            (let ((octets (tuatara.text:rope-octets rope :start start :end (min (record-text-end rope text-end crlf) (+ start limit)))))
+              (and (funcall decide (car holder) (decode-into octets 0 (length octets) holder)) t)))
+      (svref memo 4)))
+
 (defun record-line (buffer start)
   "The text of BUFFER's record from START, a line start, its last line end
 left out (RECORD-ENDS: a CSV's record may hold line breaks in quoted fields):

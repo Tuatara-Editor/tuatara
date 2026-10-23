@@ -560,13 +560,8 @@ not match."
                           (leaves (if (and first (= after next))
                                       (leaves-p octets at (+ at (- (min end (+ line limit)) line)))
                                       ;; a line of a record over several lines: the record tried once, whole
-                                      (if (eq (svref memo 4) :unknown)
-                                          (setf (svref memo 4)
-                                                (let ((record (tuatara.text:rope-octets
-                                                               rope :start start
-                                                                    :end (min (record-text-end rope text-end crlf) (+ start limit)))))
-                                                  (leaves-p record 0 (length record))))
-                                          (svref memo 4)))))
+                                      (record-verdict memo rope start text-end crlf limit holder
+                                                      (lambda (text length) (search-filter-leaves-line-p filter text length))))))
                      (when first (incf looked))
                      (when leaves
                        (when first (incf count))

@@ -465,3 +465,15 @@ are rewritten at once."
       (sb-int:unencapsulate 'tuatara.defaults::make-pattern-matcher 'counted))
     ;; once for the prompt, once for the count, however often the prompt is drawn
     (true (<= calls 2) "compiled ~d times" calls)))
+
+(define-test (sorting lines-rewritten-for-packages)
+  ;; rewrite-lines, which packages use, gives each line the text its function makes
+  (multiple-value-bind (f editor)
+      (run-keys (list (lambda ()
+                        (let ((b (tuatara.command:current-buffer)))
+                          (tuatara.defaults::rewrite-lines b 0 (tuatara.buffer:buffer-size b) "Upcasing"
+                                                           (lambda (text length) (and (plusp length) (string-upcase (subseq text 0 length))))
+                                                           (lambda (gone changed) (format nil "~d gone, ~d changed" gone changed))))))
+                :text (lines-text "ab" "" "cd") :width 100)
+    (true (tuatara.frontend.fake:fake-frame-showing f "1 gone, 2 changed"))
+    (is string= (lines-text "AB" "CD") (session-text editor))))
