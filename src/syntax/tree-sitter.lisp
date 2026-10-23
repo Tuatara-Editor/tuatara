@@ -582,14 +582,58 @@ or made when none is, and given back once FUNCTION returns."
       (sb-thread:with-mutex (**query-runs-lock**) (push run **idle-query-runs**)))))
 
 (defun rope-octets-equal-p (rope start end octets)
-  "True when the octets of ROPE from START below END are OCTETS."
+  "True when the octets of ROPE from START below END are OCTETS, read a
+window of them at a time."
+  (declare (type fixnum start end) (type tuatara.text:octets octets))
   (and (= (length octets) (- end start))
-       (loop for i from 0 below (length octets)
-             always (= (aref octets i) (tuatara.text:rope-octet rope (+ start i))))))
+       (let ((window (make-array 256 :element-type '(unsigned-byte 8))))
+         (declare (dynamic-extent window))
+         (loop for from of-type fixnum from start below end by 256
+               for to of-type fixnum = (min end (+ from 256))
+               always (progn (tuatara.text:rope-copy-into rope from to window)
+                             (loop for i of-type fixnum from 0 below (- to from)
+                                   always (= (aref window i) (aref octets (+ (- from start) i)))))))))
 
 (defun capture-text (rope start end)
   "The text of ROPE from octet START below END, raw bytes as their characters."
   (tuatara.text:rope-string rope :start start :end end))
+
+(defconstant +short-capture+ 256
+  "Octets of a captured node's text read on the stack to be tested (CALL-WITH-CAPTURE-TEXT).")
+
+(defun call-with-capture-text (rope start end function)
+  "Call FUNCTION with a string holding the text of ROPE from octet START below
+END, raw bytes as their characters, and that text's length, the string
+perhaps longer: for a text of up to +SHORT-CAPTURE+ octets one on the stack,
+which FUNCTION must not keep."
+  (declare (type fixnum start end) (type function function))
+  (let ((n (- end start)))
+    (if (> n +short-capture+)
+        (let ((text (capture-text rope start end))) (funcall function text (length text)))
+        (let ((octets (make-array +short-capture+ :element-type '(unsigned-byte 8)))
+              (text (make-string +short-capture+)))
+          (declare (dynamic-extent octets text))
+          (tuatara.text:rope-copy-into rope start end octets)
+          (let ((i 0) (k 0))
+            (declare (type fixnum i k))
+            (loop while (< i n)
+                  do (multiple-value-bind (code length) (tuatara.text:octets-decode octets i n)
+                       (setf (schar text k) (code-char code))
+                       (incf k) (incf i length)))
+            (funcall function text k))))))
+
+(defun rope-ranges-equal-p (rope start end other-start other-end)
+  "True when ROPE holds the same octets from START below END as from OTHER-START below OTHER-END."
+  (declare (type fixnum start end other-start other-end))
+  (and (= (- end start) (- other-end other-start))
+       (let ((a (make-array 256 :element-type '(unsigned-byte 8)))
+             (b (make-array 256 :element-type '(unsigned-byte 8))))
+         (declare (dynamic-extent a b))
+         (loop for from of-type fixnum from 0 below (- end start) by 256
+               for n of-type fixnum = (min 256 (- end start from))
+               always (progn (tuatara.text:rope-copy-into rope (+ start from) (+ start from n) a)
+                             (tuatara.text:rope-copy-into rope (+ other-start from) (+ other-start from n) b)
+                             (loop for i of-type fixnum from 0 below n always (= (aref a i) (aref b i))))))))
 
 (defun test-passes-p (test rope captures count)
   "True when the match whose COUNT captures (numbers, start, end, symbol, four
@@ -630,19 +674,25 @@ reading text from ROPE; a capture the match lacks passes."
       (let* ((start (aref captures (+ 1 (* 4 i))))
              (end (aref captures (+ 2 (* 4 i))))
              (holds (ecase kind
-                      (:match (and (cl-ppcre:scan argument (capture-text rope start end)) t))
+                      (:match (flet ((scan (text length)
+                                       (and (cl-ppcre:scan argument text :end length) t)))
+                                (declare (dynamic-extent #'scan))
+                                (call-with-capture-text rope start end #'scan)))
                       (:eq (if (vectorp argument)
                                (rope-octets-equal-p rope start end argument)
-                               ;; another capture: compare the two texts
+                               ;; another capture: the same text is the same octets
                                (let ((other (loop for j from 0 below count
                                                   when (= argument (aref captures (* 4 j))) return j)))
                                  (and other
-                                      (string= (capture-text rope start end)
-                                               (capture-text rope (aref captures (+ 1 (* 4 other)))
-                                                             (aref captures (+ 2 (* 4 other)))))))))
+                                      (rope-ranges-equal-p rope start end (aref captures (+ 1 (* 4 other)))
+                                                           (aref captures (+ 2 (* 4 other))))))))
                       ;; a text longer than every one of them is none of them
                       (:any-of (and (<= (- end start) (car argument))
-                                    (member (capture-text rope start end) (cdr argument) :test #'string=)
+                                    (flet ((any-of (text length)
+                                             (loop for word in (cdr argument)
+                                                   thereis (string= word text :end2 length))))
+                                      (declare (dynamic-extent #'any-of))
+                                      (call-with-capture-text rope start end #'any-of))
                                     t)))))
         (when (eq holds negated) (return nil))))))
 
@@ -671,6 +721,6 @@ next match. Matches with more than +MOST-CAPTURES+ captures are cut short."
                  (pattern (sb-sys:sap-ref-32 pattern-cell 0)))
              (dotimes (i (* 4 count))
                (setf (aref captures i) (sb-sys:sap-ref-32 foreign (* 4 i))))
-             (when (every (lambda (test) (test-passes-p test rope captures count))
-                          (aref predicates pattern))
+             (when (loop for test in (aref predicates pattern)
+                         always (test-passes-p test rope captures count))
                (funcall function pattern captures count)))))))))
