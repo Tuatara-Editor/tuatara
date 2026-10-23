@@ -617,12 +617,14 @@ the lines search filters hide, not counted."
   :verb "count the words"
   :left-words "nothing counted")
 
-(defun count-text (rope start end &key done cancel (parts (list (cons start end))))
+(defun count-text (rope start end &key done cancel (parts (list (cons start end))) double-space)
   "Four values: the lines, sentences, words and characters of ROPE's octets
 from START below END: lines as count-lines (a last line without a line end
-counts), words as runs of letters and digits, a sentence ending at . ? !
-followed by a line end or two blanks (not the full stop of an abbreviation,
-ABBREVIATION-ENDING-P), at a blank line, or at the end; an octet that is no
+counts), words as runs of letters and digits, a sentence ending where
+sentence motion ends it (SENTENCE-GAP: at . ? ! … and the closing marks after
+them followed by a blank or a line end, two blanks where sentences are two
+spaces apart, DOUBLE-SPACE), not at the full stop of an abbreviation
+\(ABBREVIATION-ENDING-P), at a blank line, or at the end; an octet that is no
 part of a character in UTF-8 counts as one character. PARTS,
 a list of (FROM . TO) in order, gives the stretches of it counted, one after
 another as one text: all of it unless given. DONE, a cons, has its car set to
@@ -652,20 +654,24 @@ car turns true."
                (let ((word (or (alpha-char-p char) (digit-char-p char))))
                  (when (and word (not in-word)) (incf words))
                  (setf in-word word))
-               (case char
-                 (#\Newline
-                  (when (or ending line-blank) (sentence-over))
-                  (setf ending nil line-blank t))
-                 ((#\Space #\Tab #\Return)
-                  (case ending
-                    (:end (setf ending :blank))
-                    (:blank (sentence-over))))
-                 (t
-                  (setf line-blank nil)
-                  (cond ((and ending (eq ending :end) (sentence-closing-char-p char)))
-                        ((and (sentence-end-char-p char) (not (and (char= char #\.) (abbreviation-p))))
-                         (setf in-sentence t ending :end))
-                        (t (setf in-sentence t ending nil))))))
+               (let ((blank (member char '(#\Space #\Tab #\Newline #\Return))))
+                 ;; after a sentence's end, what follows says whether it ends there
+                 (case ending
+                   (:end (unless (sentence-closing-char-p char)
+                           (let ((gap (sentence-gap char double-space)))
+                             (case gap
+                               ((t) (sentence-over))
+                               (:blank (setf ending :blank))
+                               (t (setf ending nil))))))
+                   (:blank (if blank (sentence-over) (setf ending nil))))
+                 (cond ((char= char #\Newline)
+                        (when line-blank (sentence-over))
+                        (setf line-blank t))
+                       (blank)
+                       (t
+                        (setf line-blank nil in-sentence t)
+                        (when (and (null ending) (sentence-end-char-p char) (not (and (char= char #\.) (abbreviation-p))))
+                          (setf ending :end))))))
              (unpending ()
                ;; octets begun as a character and left unfinished: one character each
                (loop repeat pending-count do (see (code-char #xFFFD)))
@@ -756,7 +762,8 @@ it takes time."
      job (tuatara.runtime:carry-settings
           *count-carried-settings*
           (lambda (job)
-            (let ((result (multiple-value-list (count-text rope start end :parts parts :done done :cancel cancel))))
+            (let ((result (multiple-value-list (count-text rope start end :parts parts :done done :cancel cancel
+                                                                          :double-space (sentence-end-double-space-p b)))))
               (if (first result)
                   (setf (count-job-result job) result (count-job-status job) :done)
                   (setf (count-job-status job) :stopped)))))

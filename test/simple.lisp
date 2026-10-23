@@ -593,8 +593,8 @@ results expected and what the kill ring then holds first; \"ERROR ...\" for what
                           (is equal kill (first (tuatara.command:editor-kill-ring editor)) "~s then ~a: the kill" text keys)))))))
 
 (define-test (simple counting-words)
-  ;; lines, sentences, words and characters (two blanks after a sentence's end); blank
-  ;; lines at the end add no sentence
+  ;; lines, sentences, words and characters, sentences two spaces apart (and one space
+  ;; apart, below); blank lines at the end add no sentence
   (loop for (text . counts) in '(("Hello there, world. This is it.
 Second line here" 2 2 9 48)
                                  ("One.  Two.  Three." 1 3 3 18)
@@ -614,10 +614,15 @@ And a third." 6 3 10 51)
                                  ("Wait… what‽  Go." 1 2 3 16)
                                  ("" 0 0 0 0))
         do (let ((rope (tuatara.text:string->rope text)))
+             (is equal counts (multiple-value-list (tuatara.defaults::count-text rope 0 (tuatara.text:rope-bytes rope) :double-space t))
+                 "~s" text)))
+  ;; one space apart, as sentences are by default, a full stop and a blank end a sentence
+  (loop for (text . counts) in '(("One. Two. Three." 1 3 3 16) ("One.  Two." 1 2 2 10) ("Dr. Smith. Yes" 1 2 3 14))
+        do (let ((rope (tuatara.text:string->rope text)))
              (is equal counts (multiple-value-list (tuatara.defaults::count-text rope 0 (tuatara.text:rope-bytes rope)))
                  "~s" text)))
   ;; M-= says them, of the selection or the whole buffer
-  (is string= "Buffer has 2 lines, 2 sentences, 9 words, and 48 characters"
+  (is string= "Buffer has 2 lines, 3 sentences, 9 words, and 48 characters"
       (echo-text (session-in nil (format nil "Hello there, world. This is it.~%Second line here") "M-=" :width 100)))
   (is string= "Region has 1 line, 1 sentence, 2 words, and 12 characters"
       (echo-text (session-in nil (format nil "Hello there, world. This is it.~%Second line here") "M-=" :point 0 :mark 12 :width 100)))
@@ -643,7 +648,7 @@ And a third." 6 3 10 51)
                                  ("I met Mr.  Rotorua, e.g.  at noon.  Then." 1 2 9 41)
                                  ("End.  Dr.  Ann.  Taranaki." 1 3 4 26))
         do (let ((rope (tuatara.text:string->rope text)))
-             (is equal counts (multiple-value-list (tuatara.defaults::count-text rope 0 (tuatara.text:rope-bytes rope)))
+             (is equal counts (multiple-value-list (tuatara.defaults::count-text rope 0 (tuatara.text:rope-bytes rope) :double-space t))
                  "~s" text))))
 
 (defun large-text (turns text &key mode (width 100))

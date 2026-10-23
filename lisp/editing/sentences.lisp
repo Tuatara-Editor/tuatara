@@ -19,6 +19,19 @@ the sentence: closing quote marks and brackets.")
 \(*SENTENCE-CLOSERS*): closing quote marks and brackets."
   (find char *sentence-closers*))
 
+(defun sentence-gap (next double-space)
+  "Whether a sentence ends at its full stop (or ? ! …) and the closing marks
+after it, followed by NEXT, the character after them (NIL at the end of the
+text): T when it does, NIL when it does not, and :BLANK when it does only
+if a blank, a line end or the end of the text comes after NEXT too. A
+blank or a line end after them ends it; where sentences are two spaces
+apart (DOUBLE-SPACE), a tab or a line end does, a space only with one more
+after it."
+  (cond ((null next) t)
+        ((not (member next '(#\Space #\Tab #\Newline #\Return))) nil)
+        ((and double-space (char= next #\Space)) :blank)
+        (t t)))
+
 (defparameter *sentence-abbreviations*
   '("e.g." "i.e." "cf." "viz." "vs." "etc." "al." "et seq." "ibid." "q.v."
     "ca." "approx." "esp." "incl." "excl." "resp." "misc." "a.k.a." "ff."

@@ -139,6 +139,7 @@
                (:file "disk-changes")
                (:file "line-endings")
                (:file "sort")
+               (:file "sentences")
                (:file "hex")
                (:file "gutter")
                (:file "toggles")
