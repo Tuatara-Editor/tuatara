@@ -129,7 +129,8 @@ installed."
 (defun org-notify-tick (editor)
   "Tick function: about once a minute, while *ORG-NOTIFY-TAG* is set, work out
 on a thread of its own which entries tagged with it are due to be told
-\(ORG-NOTIFY-WORK), and say once when the program that tells them is not
+\(ORG-NOTIFY-WORK), the agenda files open taken here and those on disk
+looked at there, and say once when the program that tells them is not
 installed. The seconds until it looks again; NIL with no tag set."
   (declare (ignore editor))
   (destructuring-bind (running next missing said) **org-notify-state**
@@ -140,7 +141,7 @@ installed. The seconds until it looks again; NIL with no tag set."
                missing *org-notify-tag*))
     (let ((now (get-universal-time)))
       (when (and *org-notify-tag* (not running) (>= now (second **org-notify-state**)))
-        (let ((snapshot (org-agenda-snapshot)))
+        (let ((open (org-agenda-open-snapshot)))
           (setf (first **org-notify-state**) t
                 (second **org-notify-state**) (+ now 60))
           (tuatara.runtime:make-guarded-thread
@@ -148,7 +149,8 @@ installed. The seconds until it looks again; NIL with no tag set."
             *org-notify-carried-settings*
             (lambda ()
               (unwind-protect
-                   (setf (third **org-notify-state**) (org-notify-work snapshot (or *org-now* (get-universal-time))))
+                   (setf (third **org-notify-state**)
+                         (org-notify-work (org-agenda-snapshot-with open) (or *org-now* (get-universal-time))))
                 (setf (first **org-notify-state**) nil))))
            :name "tuatara notifications")))
       (and *org-notify-tag* (max 1 (- (second **org-notify-state**) now))))))

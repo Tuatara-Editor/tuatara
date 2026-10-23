@@ -327,6 +327,31 @@ tells whether it changed."
                               (t (tuatara.buffer:buffer-text source)))
                         key))))
 
+(defun org-agenda-open-snapshot ()
+  "On the editor's thread: the agenda files open now, as their buffers have
+them (ORG-AGENDA-SNAPSHOT), for ORG-AGENDA-SNAPSHOT-WITH to finish on another
+thread: the buffers visiting an Org file, or a file *ORG-AGENDA-FILES* names.
+Nothing on disk is looked at."
+  (let ((named (loop for file in *org-agenda-files*
+                     for path = (ignore-errors (tuatara.io:native (tuatara.io:expand-path file)))
+                     when path collect path)))
+    (org-agenda-snapshot
+     (loop for buffer in tuatara.buffer:*buffers*
+           for file = (tuatara.buffer:buffer-file buffer)
+           for path = (and file (tuatara.io:native file))
+           when (and path (or (uiop:string-suffix-p path ".org") (member path named :test #'equal)))
+             collect path))))
+
+(defun org-agenda-snapshot-with (open &optional (paths (org-agenda-file-paths)))
+  "Away from the editor's thread: a snapshot of the agenda files PATHS as
+ORG-AGENDA-SNAPSHOT takes one, those OPEN has (ORG-AGENDA-OPEN-SNAPSHOT) as
+it has them, the others as they are on disk now. The folders of the agenda
+files are listed, and the files looked at, here."
+  (loop for path in paths
+        collect (or (assoc path open :test #'equal)
+                    (multiple-value-bind (source key) (org-agenda-disk-source path)
+                      (list path source key)))))
+
 (defparameter *org-file-read-limit* (* 64 1024 1024)
   "The most octets of a file read from disk for the agenda or a clock table:
 a larger one is left out, and said to be.")
@@ -367,10 +392,15 @@ agenda is worked out elsewhere, as *ORG-AGENDA-SNAPSHOT* has it."
   (let ((buffer (buffer-visiting path)))
     (if buffer
         (values buffer (list :buffer buffer (tuatara.buffer:buffer-version buffer)))
-        ;; a regular file alone: a pipe or a device is never waited on
-        (let ((stamp (ignore-errors (tuatara.io:path-stamp path))))
-          (and stamp (eq (tuatara.io:stamp-kind stamp) :regular)
-               (values :disk (list :file (tuatara.io:stamp-mtime stamp) (tuatara.io:stamp-size stamp))))))))
+        (org-agenda-disk-source path))))
+
+(defun org-agenda-disk-source (path)
+  "Where the agenda file at PATH is read from on disk, as two values: :DISK
+and what tells whether it changed (the file's time and size); NIL when it is
+no regular file there (a pipe or a device is never waited on)."
+  (let ((stamp (ignore-errors (tuatara.io:path-stamp path))))
+    (and stamp (eq (tuatara.io:stamp-kind stamp) :regular)
+         (values :disk (list :file (tuatara.io:stamp-mtime stamp) (tuatara.io:stamp-size stamp))))))
 
 (defun org-agenda-entries (path)
   "The entries of the agenda file at PATH (native), read again only when it
