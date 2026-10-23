@@ -51,7 +51,9 @@ selects C, and .PY selects Python.")
 (defvar *auto-mode-interpreters* (make-hash-table :test 'equal)
   "Interpreter names from a #! line (python3, bash) and the mode they select.")
 (defvar *auto-mode-patterns* '()
-  "Regular expressions on the whole path, as (REGEX . MODE), tried before extensions.")
+  "Regular expressions on the whole path, tried before extensions, each
+\(REGEX MODE SCANNER): the expression as written, the mode it selects, and the
+expression compiled once.")
 
 (defun find-mode (name)
   "The MODE-INFO of major mode NAME, or NIL."
@@ -81,7 +83,7 @@ whole path."
                        when (eq mode name) collect key)
                  #'string<)))
     (values (keys *auto-mode-extensions*) (keys *auto-mode-file-names*) (keys *auto-mode-interpreters*)
-            (sort (loop for (regex . mode) in *auto-mode-patterns* when (eq mode name) collect regex) #'string<))))
+            (sort (loop for (regex mode) in *auto-mode-patterns* when (eq mode name) collect regex) #'string<))))
 
 (defun default-lighter (name)
   "The mode-line name derived from mode NAME: python-mode gives \"Python\"."
@@ -94,7 +96,7 @@ whole path."
   "Take away every rule that opens files in major mode NAME."
   (dolist (table (list *auto-mode-extensions* *auto-mode-file-names* *auto-mode-interpreters*))
     (maphash (lambda (k v) (when (eq v name) (remhash k table))) table))
-  (setf *auto-mode-patterns* (remove name *auto-mode-patterns* :key #'cdr)))
+  (setf *auto-mode-patterns* (remove name *auto-mode-patterns* :key #'second)))
 
 (defun forget-major-mode (name)
   "Make NAME no longer a major mode: no file is opened in it and it is no
@@ -122,7 +124,7 @@ replacing its auto-mode rules. Called by DEFINE-MAJOR-MODE."
     (dolist (e extensions) (setf (gethash e *auto-mode-extensions*) name))
     (dolist (f file-names) (setf (gethash f *auto-mode-file-names*) name))
     (dolist (i interpreters) (setf (gethash i *auto-mode-interpreters*) name))
-    (dolist (p patterns) (push (cons p name) *auto-mode-patterns*))
+    (dolist (p patterns) (push (list p name (cl-ppcre:create-scanner p)) *auto-mode-patterns*))
     name))
 
 (defmacro define-major-mode (name parent doc &key lighter modal-class comment block-comment extensions file-names interpreters patterns largest-file (interactive t))
@@ -341,8 +343,9 @@ python3.12 finds python), else FUNDAMENTAL-MODE."
     (when (and type (string-equal type "gpg") (> (length name) 4))
       (return-from mode-for-file (mode-for-file (subseq (tuatara.io:native path) 0 (- (length (tuatara.io:native path)) 4)) first-line)))
     (or (gethash name *auto-mode-file-names*)
-        (loop for (regex . mode) in *auto-mode-patterns*
-              when (cl-ppcre:scan regex (tuatara.io:native path)) return mode)
+        (loop with native = (tuatara.io:native path)
+              for (nil mode scanner) in *auto-mode-patterns*
+              when (cl-ppcre:scan scanner native) return mode)
         (and type (extension-mode type))
         (let ((interpreter (and first-line (shebang-interpreter first-line))))
           (and interpreter
