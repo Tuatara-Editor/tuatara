@@ -825,186 +825,9 @@ PM, as in the United States); UTC true when a
 time with an offset is compared as the moment it names, in UTC, else as it
 is written.")
 
-(defconstant +day-nanoseconds+ (* 86400 1000000000)
-  "Nanoseconds in a day.")
-
 (defconstant +date-mark-days+ 1000000
   "What is added to a day number written in a date filter's mark, so that it
 is never below 0: a mark holds letters, digits and hyphens only.")
-
-(declaim (inline ascii-digit))
-(defun ascii-digit (text i end)
-  "The value of the digit 0 to 9 at index I of TEXT, or NIL when there is
-none before END."
-  (and (< i end) (let ((c (char text i))) (and (char<= #\0 c #\9) (- (char-code c) 48)))))
-
-(defun fixed-digits (text start count end)
-  "The number the COUNT digits at START of TEXT write, or NIL when there are
-not COUNT digits there before END."
-  (let ((value 0))
-    (dotimes (k count value)
-      (let ((d (ascii-digit text (+ start k) end)))
-        (if d (setf value (+ (* value 10) d)) (return nil))))))
-
-(defun short-digits (text start end)
-  "One or two digits at START of TEXT, as two values: the number they write
-and the index after them; NIL when there is no digit."
-  (let ((first (ascii-digit text start end)))
-    (when first
-      (let ((second (ascii-digit text (1+ start) end)))
-        (if second
-            (values (+ (* 10 first) second) (+ start 2))
-            (values first (1+ start)))))))
-
-(defun char-at-p (text i end chars)
-  "True when the character at index I of TEXT, before END, is one of CHARS."
-  (and (< i end) (find (char text i) chars)))
-
-(defun clock-at (text start end &key two-digit-hour (separators ":") (fraction-marks ".,"))
-  "A time of day at START of TEXT, hours and minutes, then seconds and parts
-of a second if written: H:MM, HH:MM:SS, HH:MM:SS.123 and the like, the
-minutes and seconds apart by one of SEPARATORS, the same each time, the
-parts of a second after one of FRACTION-MARKS other than that one. Three
-values: the index after it, the nanoseconds since midnight, and the
-nanoseconds the last figure written counts in (a minute, a second, a tenth
-...); NIL when no time of day is there."
-  (multiple-value-bind (hour at)
-      (if two-digit-hour
-          (let ((h (fixed-digits text start 2 end))) (and h (values h (+ start 2))))
-          (short-digits text start end))
-    (when (and hour (<= hour 23) (char-at-p text at end separators))
-      (let* ((separator (char text at))
-             (minute (fixed-digits text (1+ at) 2 end)))
-        (when (and minute (<= minute 59))
-          (let ((at (+ at 3))
-                (nanos (* (+ (* hour 3600) (* minute 60)) 1000000000))
-                (unit (* 60 1000000000)))
-            (when (and (< at end) (char= (char text at) separator))
-              (let ((second (fixed-digits text (1+ at) 2 end)))
-                ;; 60: a leap second, as RFC 3339 allows
-                (when (and second (<= second 60))
-                  (setf at (+ at 3)
-                        nanos (+ nanos (* second 1000000000))
-                        unit 1000000000)
-                  (when (and (char-at-p text at end fraction-marks) (char/= (char text at) separator) (ascii-digit text (1+ at) end))
-                    (incf at)
-                    (let ((scale 100000000))
-                      (loop for d = (ascii-digit text at end)
-                            while d
-                            do (when (plusp scale)
-                                 (incf nanos (* d scale))
-                                 (setf unit scale scale (floor scale 10)))
-                               (incf at)))))))
-            (values at nanos unit)))))))
-
-(defun zone-at (text start end)
-  "An offset from UTC at START of TEXT: Z, +02:00, +0200 or +02 (or - for
-west), after one space too, or a space and UTC or GMT. Two values: the
-index after it and the offset in minutes east of UTC; NIL when there is
-none."
-  (let ((at (if (and (< start end) (char= (char text start) #\Space)) (1+ start) start)))
-    (cond ((and (= at start) (char-at-p text at end "Zz")) (values (1+ at) 0))
-          ((and (> at start) (<= (+ at 3) end)
-                (or (string= "UTC" text :start2 at :end2 (+ at 3)) (string= "GMT" text :start2 at :end2 (+ at 3)))
-                (not (and (< (+ at 3) end) (alpha-char-p (char text (+ at 3))))))
-           (values (+ at 3) 0))
-          ((char-at-p text at end "+-")
-           (let ((sign (if (char= (char text at) #\-) -1 1))
-                 (hours (fixed-digits text (1+ at) 2 end)))
-             (when (and hours (<= hours 23))
-               (let* ((colon (char-at-p text (+ at 3) end ":"))
-                      (minutes (fixed-digits text (+ at 3 (if colon 1 0)) 2 end)))
-                 (cond ((and minutes (<= minutes 59))
-                        (values (+ at 5 (if colon 1 0)) (* sign (+ (* 60 hours) minutes))))
-                       ((not colon) (values (+ at 3) (* sign 60 hours)))))))))))
-
-(defun written-date-at (text start end format)
-  "A date written in FORMAT (*DATE-FAMILIES*) at START of TEXT: 2026-06-30
-for :ISO; 30.06.2026, 1.7.2026 or 30/06/2026 for :DMY; 06/30/2026 or 7/1/2026
-for :MDY, the parts apart by . / or - (/ or - for :MDY), the same both
-times. Four values: its year, month and day, and the index after it; NIL when
-no date that is in the calendar is there."
-  (multiple-value-bind (year month day at)
-      (ecase format
-        (:iso (let ((y (fixed-digits text start 4 end))
-                    (m (and (char-at-p text (+ start 4) end "-") (fixed-digits text (+ start 5) 2 end)))
-                    (d (and (char-at-p text (+ start 7) end "-") (fixed-digits text (+ start 8) 2 end))))
-                (and y m d (values y m d (+ start 10)))))
-        ((:dmy :mdy)
-         (multiple-value-bind (a at) (short-digits text start end)
-           (when (and a (char-at-p text at end (if (eq format :dmy) "./-" "/-")))
-             (let ((mark (char text at)))
-               (multiple-value-bind (b at) (short-digits text (1+ at) end)
-                 (when (and b (< at end) (char= (char text at) mark))
-                   (let ((y (fixed-digits text (1+ at) 4 end)))
-                     (when y
-                       (if (eq format :mdy)
-                           (values y a b (+ at 5))
-                           (values y b a (+ at 5))))))))))))
-    (when (and at (tuatara.dates:valid-date-p year month day))
-      (values year month day at))))
-
-(defun date-time-at (text start end format)
-  "A date written in FORMAT (*DATE-FAMILIES*) at START of TEXT, and the time
-of day and offset from UTC after it when written, no digit right after it.
-Five values: the index after it; its day number (TUATARA.DATES:DAY-NUMBER);
-the nanoseconds since that day's midnight; the offset in minutes east of
-UTC, or NIL when none is written; and the nanoseconds its last figure counts
-in, a day's for a date alone. NIL when no date is there."
-  (multiple-value-bind (year month day at) (written-date-at text start end format)
-    (when at
-      (let ((nanos 0) (unit +day-nanoseconds+) (zone nil) (date-end at))
-        (flet ((take-clock (from &key two-digit-hour (separators ":"))
-                 (multiple-value-bind (after clock-nanos clock-unit)
-                     (clock-at text from end :two-digit-hour two-digit-hour :separators separators)
-                   (when after
-                     (setf at after nanos clock-nanos unit clock-unit)
-                     t))))
-          (ecase format
-            (:iso
-             (cond ((char-at-p text at end "Tt")
-                    ;; a T promises a time: without one it is no date-time
-                    (unless (take-clock (1+ at) :two-digit-hour t)
-                      (return-from date-time-at nil)))
-                   ((char-at-p text at end " ")
-                    (take-clock (1+ at) :two-digit-hour t))))
-            (:dmy
-             (when (char-at-p text at end " ")
-               (take-clock (1+ at) :separators ":.")))
-            (:mdy
-             (let ((from (cond ((char-at-p text at end " ") (1+ at))
-                               ((and (char-at-p text at end ",") (char-at-p text (1+ at) end " ")) (+ at 2)))))
-               (when (and from (take-clock from))
-                 ;; AM or PM after it, a space between or not
-                 (let* ((space (if (char-at-p text at end " ") 1 0))
-                        (half (and (char-at-p text (+ at space) end "AaPp")
-                                   (char-at-p text (+ at space 1) end "Mm")
-                                   (eq (upper-case-p (char text (+ at space))) (upper-case-p (char text (+ at space 1))))
-                                   (char text (+ at space)))))
-                   (when (and half (not (and (< (+ at space 2) end) (alpha-char-p (char text (+ at space 2))))))
-                     (let ((hour (floor nanos (* 3600 1000000000))))
-                       (unless (<= 1 hour 12) (return-from date-time-at nil))
-                       (let ((afternoon (char-equal half #\p)))
-                         (incf nanos (* 3600 1000000000 (- (if afternoon (if (= hour 12) 12 (+ hour 12)) (if (= hour 12) 0 hour)) hour)))))
-                     (incf at (+ space 2)))))))))
-        (when (< unit +day-nanoseconds+)
-          (multiple-value-bind (after minutes) (zone-at text at end)
-            (when after (setf at after zone minutes))))
-        (cond ((not (ascii-digit text at end))
-               (values at (tuatara.dates:day-number year month day) nanos zone unit))
-              ;; a time after a space or comma that runs into more digits was none: the date alone
-              ((and (> at date-end) (not (char-at-p text date-end end "Tt")))
-               (values date-end (tuatara.dates:day-number year month day) 0 nil +day-nanoseconds+)))))))
-
-(defun utc-moment (day nanos zone)
-  "The moment DAY and NANOS (as DATE-TIME-AT gives them) name at ZONE minutes
-east of UTC, as day and nanoseconds in UTC: two values."
-  (multiple-value-bind (days rest) (floor (- nanos (* zone 60 1000000000)) +day-nanoseconds+)
-    (values (+ day days) rest)))
-
-(defun moment< (day nanos other-day other-nanos)
-  "True when DAY and NANOS come before OTHER-DAY and OTHER-NANOS."
-  (or (< day other-day) (and (= day other-day) (< nanos other-nanos))))
 
 (defun date-filter (spec)
   "A cl-ppcre filter for the date pattern SPEC (DATE-MARK-SPEC writes it):
@@ -1021,12 +844,12 @@ from its first moment and before its last, when they are given."
             (high (bound high)))
         (lambda (position)
           (multiple-value-bind (after day nanos zone)
-              (date-time-at cl-ppcre::*string* position cl-ppcre::*end-pos* format)
+              (tuatara.dates:date-time-at cl-ppcre::*string* position cl-ppcre::*end-pos* format)
             (when after
               (when (and utc zone)
-                (setf (values day nanos) (utc-moment day nanos zone)))
-              (and (or (null low) (not (moment< day nanos (car low) (cdr low))))
-                   (or (null high) (moment< day nanos (car high) (cdr high)))
+                (setf (values day nanos) (tuatara.dates:utc-moment day nanos zone)))
+              (and (or (null low) (not (tuatara.dates:moment< day nanos (car low) (cdr low))))
+                   (or (null high) (tuatara.dates:moment< day nanos (car high) (cdr high)))
                    after))))))))
 
 (defun date-mark-spec (format utc low high)
@@ -1053,7 +876,7 @@ PATTERN-REFUSED when TEXT is no date, or gives an offset that NAME, comparing
 dates as written, cannot use."
   (destructuring-bind (&optional after day nanos zone unit)
       (flet ((whole (format)
-               (let ((found (multiple-value-list (date-time-at text 0 (length text) format))))
+               (let ((found (multiple-value-list (tuatara.dates:date-time-at text 0 (length text) format))))
                  (and (eql (first found) (length text)) found))))
         (or (whole format) (and (not (eq format :iso)) (whole :iso))))
     (unless after
@@ -1063,13 +886,8 @@ dates as written, cannot use."
       (unless utc
         (refuse-pattern "invalid: [[:~a…:]] compares dates as they are written, with no offset: [[:~autc…:]] compares the moments in UTC"
                         name name))
-      (setf (values day nanos) (utc-moment day nanos zone)))
+      (setf (values day nanos) (tuatara.dates:utc-moment day nanos zone)))
     (values day nanos unit)))
-
-(defun moment-after (day nanos unit)
-  "The moment UNIT nanoseconds after DAY and NANOS, as two values."
-  (multiple-value-bind (days rest) (floor (+ nanos unit) +day-nanoseconds+)
-    (values (+ day days) rest)))
 
 (defun date-pattern-at (regex i)
   "When a date pattern opens at index I of REGEX, two values: the index after
@@ -1085,7 +903,7 @@ of that minute. Signals PATTERN-REFUSED for a bound that is no date."
                         for after = (+ i 3 (length name))
                         when (and (<= after (length regex))
                                   (string= name regex :start2 (+ i 3) :end2 after)
-                                  (char-at-p regex after (length regex) "<>=:"))
+                                  (tuatara.dates:char-at-p regex after (length regex) "<>=:"))
                           return entry)))
       (when family
         (destructuring-bind (name format utc) family
@@ -1097,7 +915,7 @@ of that minute. Signals PATTERN-REFUSED for a bound that is no date."
                          (multiple-value-bind (day nanos) (date-bound text name format utc) (cons day nanos)))
                        (end-of (text)
                          (multiple-value-bind (day nanos unit) (date-bound text name format utc)
-                           (multiple-value-bind (d n) (moment-after day nanos unit) (cons d n)))))
+                           (multiple-value-bind (d n) (tuatara.dates:moment-after day nanos unit) (cons d n)))))
                   (cond ((zerop (length words)))
                         ((char= (char words 0) #\:)
                          (let ((dots (search ".." words)))
@@ -1111,7 +929,7 @@ of that minute. Signals PATTERN-REFUSED for a bound that is no date."
                         ((char= (char words 0) #\<) (setf high (start-of (subseq words 1))))
                         ((char= (char words 0) #\>) (setf low (end-of (subseq words 1))))
                         (t (setf low (start-of (subseq words 1)) high (end-of (subseq words 1))))))
-                (when (and low high (not (moment< (car low) (cdr low) (car high) (cdr high))))
+                (when (and low high (not (tuatara.dates:moment< (car low) (cdr low) (car high) (cdr high))))
                   (refuse-pattern "invalid: [[:~a~a:]] ends before it begins" name words))
                 (values (+ close 3) (date-pattern format utc low high))))))))))
 

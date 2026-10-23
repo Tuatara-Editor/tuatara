@@ -385,13 +385,13 @@ the day after once more."
 (defun calendar-read-day (text)
   "The day number TEXT names: 2026-10-03, 2026-10 (its first day), or what
 a date asked for reads (READ-DATE-TEXT: fri, +3d, oct 3); NIL for none."
-  (let ((text (string-trim " " text)))
-    (multiple-value-bind (match groups) (cl-ppcre:scan-to-strings "^(\\d{1,4})-(\\d{1,2})(?:-(\\d{1,2}))?$" text)
-      (if match
-          (let ((y (parse-integer (aref groups 0))) (m (parse-integer (aref groups 1)))
-                (d (if (aref groups 2) (parse-integer (aref groups 2)) 1)))
-            (and (valid-date-p y m d) (day-number y m d)))
-          (values (ignore-errors (read-date-text text (org-today))))))))
+  (let* ((text (string-trim " " text))
+         (end (length text))
+         (month (and (= end 7) (char-at-p text 4 end "-") (fixed-digits text 0 4 end) (fixed-digits text 5 2 end))))
+    (multiple-value-bind (y m d at) (written-date-at text 0 end :iso)
+      (cond ((eql at end) (day-number y m d))
+            (month (and (<= 1 month 12) (day-number (fixed-digits text 0 4 end) month 1)))
+            (t (values (ignore-errors (read-date-text text (org-today)))))))))
 
 (define-command calendar-goto-date ()
   "Move point to a date asked for: 2026-12-24, 2026-12, or as any date asked

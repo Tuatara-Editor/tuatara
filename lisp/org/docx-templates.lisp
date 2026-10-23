@@ -215,9 +215,11 @@ looking as PROPERTIES says."
 (defun docx-date-parts (text)
   "The date TEXT gives, 2026-09-30 or <2026-09-30 Wed> or [2026-09-30 Wed 10:00],
 as year, month and day; NIL when it gives none."
-  (multiple-value-bind (match groups) (cl-ppcre:scan-to-strings "^\\s*[<\\[]?(\\d{4})-(\\d{1,2})-(\\d{1,2})" text)
-    (and match (let ((y (parse-integer (aref groups 0))) (m (parse-integer (aref groups 1))) (d (parse-integer (aref groups 2))))
-                 (and (valid-date-p y m d) (values y m d))))))
+  (let* ((end (length text))
+         (start (or (position-if-not (lambda (c) (member c '(#\Space #\Tab #\Newline))) text) end))
+         (start (if (char-at-p text start end "<[") (1+ start) start)))
+    (multiple-value-bind (y m d) (written-date-at text start end :iso)
+      (and y (values y m d)))))
 
 (defun word-date-pattern (format)
   "Word's date FORMAT (d, dd, ddd, dddd, M, MM, MMM, MMMM, yy, yyyy, other
