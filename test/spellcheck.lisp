@@ -323,3 +323,31 @@ each of them and at the end, the editor woken to redraw."
            (tuatara.buffer:buffer-insert b 0 "c")
            (true (gethash "Vrbltz" (tuatara.defaults::local-words b))))
       (tuatara.buffer:kill-buffer b))))
+
+(define-test (spellcheck shown-rows-read-after-waiting)
+  ;; the window's rows are read again once the speller has answered: a redraw meanwhile
+  ;; fills the rows it showed before with other text
+  (multiple-value-bind (f editor) (run-keys "" :text (format nil "Some words.~%") :width 60 :height 6)
+    (declare (ignore f))
+    (let* ((tuatara.command:*editor* editor)
+           (window (tuatara.command:editor-window editor))
+           (redrawn (vector))
+           (read '()))
+      (sb-int:encapsulate 'tuatara.defaults::spelling-in-rows 'rows-read
+                          (lambda (function buffer rows syntax)
+                            (declare (ignore function buffer syntax))
+                            (push rows read)
+                            (values '() (if (rest read) '() (list (list 0 4 "Some"))) '("en_US"))))
+      (sb-int:encapsulate 'tuatara.defaults::spelling-ask 'rows-read (lambda (function &rest arguments)
+                                                                        (declare (ignore function arguments))))
+      (sb-int:encapsulate 'tuatara.command:wait-until-interruptibly 'rows-read
+                          (lambda (function &rest arguments)
+                            (declare (ignore function arguments))
+                            (setf (tuatara.display:window-rows window) redrawn)
+                            t))
+      (unwind-protect (tuatara.defaults::spelling-answered-in window)
+        (sb-int:unencapsulate 'tuatara.defaults::spelling-in-rows 'rows-read)
+        (sb-int:unencapsulate 'tuatara.defaults::spelling-ask 'rows-read)
+        (sb-int:unencapsulate 'tuatara.command:wait-until-interruptibly 'rows-read))
+      (is = 2 (length read))
+      (is eq redrawn (first read)))))
