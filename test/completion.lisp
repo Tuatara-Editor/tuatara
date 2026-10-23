@@ -473,3 +473,31 @@
                           (tuatara.command::flatten-spans (list (list 0 length :a) (list 5 (- length 5) :b)) length)))))
     (true (< (consed 1000) 2000))
     (true (< (consed 100000) 2000))))
+
+(define-test (completion one-walk-for-match-and-places)
+  ;; the places a word typed lights up are those its match is made of, found by the same walk
+  (let ((names '("forward-char" "save-buffers-kill-editor" "Forward" "kill-region" "describe-key-briefly"
+                 "find-file-other-window" "org-agenda" "OrgMode" "x" "")))
+    (dolist (string names)
+      (dolist (component '("for" "ward" "fc" "sbke" "fwdc" "xyz" "For" "kr" "dkb" "ffow" "oa" "OM" "x" "e"))
+        (let ((kind (tuatara.command:component-match component string))
+              (places (tuatara.command::component-positions component string)))
+          (is eq (and kind t) (and places t) "~s in ~s" component string)
+          (when places
+            (is = (length component) (length places))
+            (true (apply #'< places))
+            (true (every (lambda (c p) (char-equal c (char string p))) component places)))
+          (when (member kind '(:prefix :substring))
+            (is equal (loop for i from (nth-value 1 (tuatara.command:component-match component string))
+                            repeat (length component) collect i)
+                places))))))
+  ;; and it goes faster than a plain search for the word over the names
+  (let ((candidates (loop for i below 3000 collect (tuatara.command:make-candidate (format nil "kea-~d-mountain-parrot-of-the-alps" i)))))
+    (flet ((fastest (function)
+             (loop repeat 5
+                   minimize (let ((start (tuatara.bench::monotonic-seconds)))
+                              (funcall function)
+                              (- (tuatara.bench::monotonic-seconds) start)))))
+      (let ((filter (fastest (lambda () (tuatara.command:filter-candidates "kmpz" candidates))))
+            (search (fastest (lambda () (dolist (c candidates) (search "kmpz" (tuatara.command:candidate-string c) :test #'char-equal))))))
+        (true (< filter search) "filtering took ~,2f ms, searching ~,2f ms" (* 1000 filter) (* 1000 search))))))
