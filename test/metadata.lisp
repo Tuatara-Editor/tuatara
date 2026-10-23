@@ -154,6 +154,14 @@ integers (SHORT, LONG) or of fractions (N . D) (RATIONAL), or octets."
       (note-has note "- Author :: Ana Timaru")
       (note-has note "- Description :: Kea on a rock")
       (note-has note "- Last changed (tIME) :: 2026-03-02 10:00:00 UTC"))
+    ;; a time no calendar has is said to be none, its numbers as written
+    (let ((png (write-test-octets-file
+                (merge-pathnames "bad-time.png" dir)
+                (octets-of #x89 "PNG" 13 10 26 10
+                           (png-chunk "IHDR" (octets-of (be-octets 1 4) (be-octets 1 4) 8 6 0 0 0))
+                           (png-chunk "tIME" (octets-of (be-octets 2026 2) 13 40 25 0 0))
+                           (png-chunk "IEND" #())))))
+      (note-has (metadata-of png) "- Last changed (tIME) :: no such time: year 2026, month 13, day 40, 25:0:0"))
     ;; WebP and TIFF
     (let ((webp (write-test-octets-file (merge-pathnames "kea.webp" dir)
                                         (let ((exif (octets-of "Exif" 0 0 *exif-test-tiff*)))
