@@ -138,7 +138,7 @@ octets it wrote, its status lines (\"ENC_TO ...\"), true when it ended well,
 and what it said besides. An error meanwhile writes no passphrase or text
 to the debug log (*SECRET-AT-HAND*)."
   (let* ((tuatara.runtime:*secret-at-hand* t)
-         (program (or (gpg-path) (tuatara.io:program-missing "gpg" :install "Fedora: sudo dnf install gnupg2")))
+         (program (or (gpg-path) (tuatara.io:program-missing "gpg" :why (outside-program-install-words :gpg))))
          (most (gpg-most-output input))
          (pipe (and passphrase (multiple-value-list (sb-posix:pipe))))
          (second (and second-input (multiple-value-list (sb-posix:pipe))))
@@ -624,7 +624,7 @@ managers among them) can then read it, and keep it."
                   (:agent "gpg-agent's pinentry, in its window")
                   (:terminal "gpg-agent's pinentry, in the terminal lent it")
                   (:minibuffer "the minibuffer (gpg's loopback: the passphrase passes through the editor)")))
-        "Encrypted files (.gpg) by none: install gpg (Fedora: gnupg2)")))
+        (format nil "Encrypted files (.gpg) by none: ~a" (outside-program-install-words :gpg)))))
 
 (defun encrypted-new-file (buffer)
   "Find-file function: a new file whose name ends in .gpg is encrypted from the

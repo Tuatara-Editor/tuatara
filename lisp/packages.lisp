@@ -886,7 +886,7 @@ THEN at once with *PACKAGE-ASK-BEFORE-LOADING* NIL."
 
 (defun git-for-packages ()
   "The git program packages are fetched with, or an error saying it is missing."
-  (or (tuatara.io:find-program "git") (tuatara.io:program-missing "git" :why "packages are fetched with it")))
+  (or (tuatara.io:find-program "git") (tuatara.io:program-missing "git" :why (format nil "packages are fetched with it: ~a" (outside-program-install-words :git)))))
 
 (defun package-git-environment ()
   "What git is given when it fetches packages: what it is given to push and

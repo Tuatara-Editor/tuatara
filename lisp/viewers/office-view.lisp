@@ -130,7 +130,8 @@ drawing PDFs in it."
   (if (tuatara.io:sandbox-find-program *office-page-program*)
       (format nil "Word, Excel, PowerPoint and OpenDocument files' pages (and those of before 2007) by ~a (LibreOffice: its Writer, Calc and Impress), their text by Tuatara"
               *office-page-program*)
-      (format nil "Word, Excel, PowerPoint and OpenDocument files' text by Tuatara, their pages by none: install LibreOffice (~a)" *office-page-program*)))
+      (format nil "Word, Excel, PowerPoint and OpenDocument files' text by Tuatara, their pages by none (~a): ~a"
+              *office-page-program* (outside-program-install-words :office))))
 
 ;;; In rimu's preview
 

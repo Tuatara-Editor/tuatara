@@ -56,9 +56,9 @@ to install."
   (let ((decoder (find-pdf-decoder)))
     (if decoder
         (format nil "PDF text by ~a" (decoder-words decoder))
-        (format nil "PDF text by none of ~{~a~^, ~}: install ~{~a~^ or ~}"
+        (format nil "PDF text by none of ~{~a~^, ~}: ~a"
                 (mapcar (lambda (d) (first (getf d :text))) *pdf-decoders*)
-                (mapcar (lambda (d) (getf d :name)) *pdf-decoders*)))))
+                (outside-program-install-words :pdf)))))
 
 (defun sandbox-font-directories ()
   "Your own font directories, each (SOURCE . TARGET), TARGET where a program
@@ -386,9 +386,11 @@ developed by ImageMagick's LibRaw reader (DNG), whatever its maker.")
   (let ((decoder (find-image-decoder)))
     (if decoder
         (format nil "pictures by ~a (~a)" (first (getf decoder :program)) (getf decoder :name))
-        (format nil "pictures by none of ~{~a~^, ~}: install ~{~a~^ or ~}"
+        (format nil "pictures by none of ~{~a~^, ~}: ~a, or ~{~a~^ or ~}"
                 (mapcar (lambda (d) (first (getf d :program))) *image-decoders*)
-                (mapcar (lambda (d) (getf d :name)) *image-decoders*)))))
+                (outside-program-install-words :pictures)
+                (remove (getf (outside-program :pictures) :name) (mapcar (lambda (d) (getf d :name)) *image-decoders*)
+                        :test #'string=)))))
 
 (defun decoded-image (octets)
   "The picture OCTETS hold as a PAM image (P7) of 3 or 4 channels, or of 1 or 2

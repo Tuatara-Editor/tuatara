@@ -176,7 +176,7 @@ passphrase, only after the passphrase, asked again, opens what was made."
 as it comes, its default-cache-ttl), of encrypted files and of your keys: the
 next to open one asks again. Text already open stays open: kill those
 buffers too to lock it away."
-  (let ((gpgconf (or (gpgconf-path) (tuatara.io:program-missing "gpgconf" :install "Fedora: sudo dnf install gnupg2"))))
+  (let ((gpgconf (or (gpgconf-path) (tuatara.io:program-missing "gpgconf" :why (outside-program-install-words :gpg)))))
     ;; reloading gpg-agent flushes its cache; one not running keeps nothing
     (if (nth-value 1 (tuatara.io:program-output (list gpgconf "--reload" "gpg-agent") :capture nil :seconds 5))
         (message "gpg-agent has forgotten the passphrases it kept")

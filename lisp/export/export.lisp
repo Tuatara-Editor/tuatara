@@ -101,8 +101,8 @@ the programs found, and whether they run shut in by the sandbox."
         (multiple-value-bind (status detail) (tuatara.io:sandbox-status)
           (format nil "PDFs of Org and LaTeX by ~{~a~^, then ~}, ~:[unconfined (~a): a document could read any of your files~;shut in by the sandbox~*~]"
                   (mapcar #'cdr engines) (eq status :ready) detail))
-        (format nil "PDFs of Org and LaTeX by none of ~{~a~^, ~}, on the PATH or in TeX Live's folders: install TeX Live, or give their paths in *latex-engines*"
-                (latex-engine-names)))))
+        (format nil "PDFs of Org and LaTeX by none of ~{~a~^, ~}, on the PATH or in TeX Live's folders: ~a, or give their paths in *latex-engines*"
+                (latex-engine-names) (outside-program-install-words :latex)))))
 
 (defun intended-engine (tex)
   "The LaTeX program the file TEX says it is meant for, by its first lines, as

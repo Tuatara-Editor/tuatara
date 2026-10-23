@@ -107,7 +107,7 @@ the check."
        (setf (health-check-sandbox check)
              (multiple-value-list (tuatara.io:sandbox-status :again t))
              (health-check-decoders check)
-             (append (list (pdf-decoder-words) (office-page-words) (image-decoder-words) (external-program-words) (org-notify-health-words) (encrypted-health-words))
+             (append (list (pdf-decoder-words) (office-page-words) (image-decoder-words) (external-program-words) (org-notify-health-words) (encrypted-health-words) (git-health-words))
                      (remove nil (mapcar (lambda (f) (ignore-errors (funcall f))) *health-decoder-functions*)))
              (health-check-exporters check)
              (list (latex-export-words))
