@@ -40,47 +40,29 @@ above it all; EMPTY is said when there are no rows."
 
 ;;; The log
 
-(defparameter *git-log-format* "--format=%h%x00%ad%x00%an%x00%D%x00%s"
-  "How git log is asked to write a commit for PARSE-GIT-LOG-LINES: hash, date,
-author, the names at it and subject, apart.")
-
-(defun parse-git-log-lines (text)
-  "TEXT, what git log printed with *GIT-LOG-FORMAT*, perhaps with --graph, as
-a list of rows, each (GRAPH HASH DATE AUTHOR NAMES SUBJECT), GRAPH the
-graph's characters before the hash (empty without it); a line of the graph
-alone is (GRAPH NIL)."
-  (loop for line in (uiop:split-string (string-right-trim '(#\Newline) text) :separator '(#\Newline))
-        for fields = (uiop:split-string line :separator (list (code-char 0)))
-        collect (if (= 5 (length fields))
-                    (let* ((head (first fields))
-                           (at (or (position-if (lambda (c) (digit-char-p c 16)) head
-                                                :start (or (position #\Space head :from-end t :end (length head)) 0))
-                                   0)))
-                      (list* (subseq head 0 at) (subseq head at) (rest fields)))
-                    (list line nil))))
-
-(defun git-log-columns (rows)
-  "The columns of a log of ROWS (PARSE-GIT-LOG-LINES), as TABLE-HEADING-PIECES
+(defun git-log-columns (commits)
+  "The columns of a log of COMMITS (PARSE-GIT-COMMITS), as TABLE-HEADING-PIECES
 takes them: the commit, wide enough for the graph before its hash, its date,
 author and subject."
-  (let ((graph (reduce #'max rows :key (lambda (row) (length (first row))) :initial-value 0)))
+  (let ((graph (reduce #'max commits :key (lambda (commit) (length (git-commit-graph commit))) :initial-value 0)))
     (list (list "Commit" :width (+ 9 graph) :elide nil) (list "Date" :width 10) (list "Author" :width 16) (list "Subject"))))
 
-(defun git-log-row-fields (row)
-  "The fields of the log's line for ROW (PARSE-GIT-LOG-LINES): the graph and
+(defun git-log-row-fields (commit)
+  "The fields of the log's line for COMMIT (PARSE-GIT-COMMITS): the graph and
 hash, the date, the author, and the subject after the names at the commit."
-  (destructuring-bind (graph &optional hash date author names subject) row
-    (if hash
-        (list (concatenate 'string graph hash) date (escape-controls author)
-              (format nil "~@[(~a) ~]~a" (and (plusp (length names)) (escape-controls names)) (escape-controls subject)))
-        (list graph "" "" ""))))
+  (if (git-commit-hash commit)
+      (list (concatenate 'string (git-commit-graph commit) (git-commit-short commit)) (git-commit-date commit)
+            (escape-controls (git-commit-author commit))
+            (format nil "~@[(~a) ~]~a" (and (plusp (length (git-commit-names commit))) (escape-controls (git-commit-names commit)))
+                    (escape-controls (git-commit-subject commit))))
+      (list (git-commit-graph commit) "" "" "")))
 
 (defun git-show-log (top title arguments)
   "List the commits git log gives with ARGUMENTS for the repository at TOP in
 the log buffer, TITLE at its top, a line each, in the background."
-  (git-show-table "Reading the log" top (append (list "log" *git-log-format* "--date=short" "--no-color") arguments)
-                  "*git log*" 'git-log-mode #'parse-git-log-lines #'git-log-columns #'git-log-row-fields
-                  :title title :entry (lambda (row) (and (second row) (rest row))) :empty "No commits"))
+  (git-show-table "Reading the log" top (append (list "log" *git-commit-format* "--date=short" "--no-color") arguments)
+                  "*git log*" 'git-log-mode #'parse-git-commits #'git-log-columns #'git-log-row-fields
+                  :title title :entry (lambda (commit) (and (git-commit-hash commit) commit)) :empty "No commits"))
 
 (defun git-log-menu-arguments (switches)
   "SWITCHES, the arguments of git log the log menu had on, with how many

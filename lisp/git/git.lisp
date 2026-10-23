@@ -336,9 +336,67 @@ most used again (*GIT-MENUS*, *GIT-SLIM-ACTIONS*)."
     (setf (tuatara.buffer:buffer-local (current-buffer) 'git-menus) (if full :slim :full))
     (message (if full "Slim git menus: the actions most used" "Full git menus: every action"))))
 
+(defparameter *git-commit-format* "--format=%x1e%H%x1f%h%x1f%ad%x1f%an%x1f%cr%x1f%D%x1f%s"
+  "How git log is asked to write each commit, for PARSE-GIT-COMMITS: a record
+separator, then its hash, short hash, date, author, how long ago it was
+made, the names at it and its subject, a unit separator between each.")
+
+(defstruct (git-commit (:constructor make-git-commit (&key hash short date author ago names subject path (graph ""))) (:copier nil))
+  "A commit as git log wrote it (PARSE-GIT-COMMITS): its HASH and SHORT hash,
+its DATE, AUTHOR, how long AGO it was made (2 days ago), the NAMES at it
+\(branches, tags) and its SUBJECT, as git writes them; PATH, what the file
+of a history was called in it; GRAPH, the characters of the graph before
+it, with --graph. A line of the graph alone is a GIT-COMMIT with no HASH."
+  hash short date author ago names subject path (graph ""))
+
+(setf (documentation 'git-commit-p 'function) "True when OBJECT is a GIT-COMMIT.")
+
+(defun parse-git-commit-fields (text)
+  "TEXT, a commit's fields as *GIT-COMMIT-FORMAT* writes them after its
+record separator, as a GIT-COMMIT; NIL when its hash is not one
+\(GIT-HASH-P), as a subject holding git's separators would make."
+  (let ((fields (uiop:split-string text :separator (list (code-char #x1f)))))
+    (when (and (>= (length fields) 7) (git-hash-p (first fields)))
+      (destructuring-bind (hash short date author ago names &rest subject) fields
+        (make-git-commit :hash hash :short short :date date :author author :ago ago :names names
+                         :subject (reduce (lambda (a b) (concatenate 'string a (string (code-char #x1f)) b)) subject))))))
+
+(defun parse-git-commits (text &key names path)
+  "TEXT, what git log printed with *GIT-COMMIT-FORMAT*, as a list of
+GIT-COMMITs, the latest first. With NAMES, git was asked for the names of
+the files each changed (--name-only -z): each one's PATH is the name after
+it, one naming none left out. PATH, when given, is every one's. Without
+NAMES, the lines of a graph (--graph) are kept: each commit's GRAPH, and a
+line of the graph alone a GIT-COMMIT of its own."
+  (let* ((chunks (uiop:split-string text :separator (list (code-char #x1e))))
+         ;; what comes before a commit on its line: the graph
+         (before (first chunks))
+         (commits '()))
+    (dolist (chunk (rest chunks) (nreverse commits))
+      (let* ((end (or (position-if (lambda (c) (or (char= c #\Newline) (char= c (code-char 0)))) chunk) (length chunk)))
+             (commit (parse-git-commit-fields (subseq chunk 0 end)))
+             (after (subseq chunk end)))
+        (if names
+            (let ((named (or path (string-trim (list #\Newline (code-char 0)) after))))
+              (when (and commit (plusp (length named)))
+                (setf (git-commit-path commit) named)
+                (push commit commits)))
+            (let ((lines (uiop:split-string after :separator '(#\Newline))))
+              (when commit
+                (setf (git-commit-graph commit) before (git-commit-path commit) path)
+                (push commit commits))
+              ;; the lines of the graph alone before the next commit, then the next one's graph
+              (dolist (line (butlast (rest lines)))
+                (push (make-git-commit :graph line) commits))
+              (setf before (if (rest lines) (car (last lines)) ""))))))))
+
 (defun git-log-arguments (count)
-  "The arguments of git log listing the latest COUNT commits as PARSE-GIT-LOG reads them."
-  (list "log" (format nil "-n~d" count) "--format=%h%x00%ad%x00%an%x00%s" "--date=short"))
+  "The arguments of git log listing the latest COUNT commits as PARSE-GIT-COMMITS reads them."
+  (list "log" (format nil "-n~d" count) *git-commit-format* "--date=short"))
+
+(defun git-commit-line (commit)
+  "COMMIT as a status lists it: (SHORT SUBJECT)."
+  (list (git-commit-short commit) (git-commit-subject commit)))
 
 ;;; What the repository holds
 
@@ -421,10 +479,6 @@ the lists of their fields; a line of another count of fields left out."
         for fields = (uiop:split-string line :separator (list (code-char 0)))
         when (= count (length fields)) collect fields))
 
-(defun parse-git-log (text)
-  "TEXT, what git log printed with GIT-LOG-ARGUMENTS, as a list of (HASH DATE AUTHOR SUBJECT)."
-  (git-records text 4))
-
 (defun git-stashes (job top)
   "On JOB's thread: the stashes of the repository at TOP, the latest first, each (NAME SUBJECT)."
   (git-records (git-job-output job top (list "stash" "list" "--format=%gd%x00%gs")) 2))
@@ -476,8 +530,7 @@ is as it was then."
                 (git-stashes job top))))
     (unless (git-state-unborn-p state)
       (setf (git-state-recent state)
-            (mapcar (lambda (commit) (list (first commit) (fourth commit)))
-                    (parse-git-log (git-job-output job top (git-log-arguments *git-recent-commits*)))))
+            (mapcar #'git-commit-line (parse-git-commits (git-job-output job top (git-log-arguments *git-recent-commits*)))))
       (git-read-unpushed job top state))
     state))
 
@@ -496,8 +549,8 @@ repository has a remote, those on no remote at all."
                 (or (parse-integer (or (git-job-try job top (append (list "rev-list" "--count") range)) "") :junk-allowed t) 0))
             (git-state-unpushed state)
             (and (plusp (git-state-unpushed-count state))
-                 (mapcar (lambda (commit) (list (first commit) (fourth commit)))
-                         (parse-git-log (or (git-job-try job top (append (git-log-arguments *git-recent-commits*) range)) ""))))))))
+                 (mapcar #'git-commit-line
+                         (parse-git-commits (or (git-job-try job top (append (git-log-arguments *git-recent-commits*) range)) ""))))))))
 
 ;;; Hunks
 
@@ -1390,7 +1443,8 @@ buffer GIT-EDIT-BUFFER made; else say ELSEWHERE."
   "The hash of the commit on point's line of a status (its Recent commits) or
 of a log, or NIL."
   (let ((entry (and (git-here) (list-entry-at))))
-    (cond ((eq (first entry) :commit) (second entry))
+    (cond ((git-commit-p entry) (git-commit-short entry))
+          ((eq (first entry) :commit) (second entry))
           ((and (typep (buffer-major-mode (current-buffer)) 'git-log-mode) (stringp (first entry))) (first entry)))))
 
 (defun git-text-buffer (name top text &key (mode 'diff-mode))

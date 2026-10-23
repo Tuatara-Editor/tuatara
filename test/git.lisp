@@ -1582,23 +1582,43 @@ DIR is visited and its status read, the project trusted. Returns the frontend."
   ;; each commit of a file's log, with the name it had then; one naming none left out
   (flet ((record (hash short date author subject &optional name)
            (format nil "~c~{~a~^~c~}~c~@[~%~a~c~]" (code-char #x1e)
-                   (list hash (code-char #x1f) short (code-char #x1f) date (code-char #x1f) author (code-char #x1f) subject)
+                   (list hash (code-char #x1f) short (code-char #x1f) date (code-char #x1f) author (code-char #x1f)
+                         "2 days ago" (code-char #x1f) "" (code-char #x1f) subject)
                    (code-char 0) name (code-char 0))))
     (let* ((h1 (make-string 40 :initial-element #\a)) (h3 (make-string 40 :initial-element #\c))
-           (revisions (tuatara.defaults::parse-git-rewind-log
+           (revisions (tuatara.defaults::git-file-history
                        (concatenate 'string (record h1 "s1" "2026-10-15" "Ann" "Four" "b.txt")
                                     (record (make-string 40 :initial-element #\b) "s2" "2026-10-14" "Bo" "Merge")
                                     (record h3 "s3" "2026-10-13" "Bo" "One" "a.txt")))))
       (is = 2 (length revisions))
-      (is equal (list h1 "s1" "2026-10-15" "Ann" "Four" "b.txt") (svref revisions 0))
-      (is equal "a.txt" (sixth (svref revisions 1))))
+      (let ((first (svref revisions 0)))
+        (is equal (list h1 "s1" "2026-10-15" "Ann" "2 days ago" "Four" "b.txt")
+            (list (tuatara.defaults::git-commit-hash first) (tuatara.defaults::git-commit-short first)
+                  (tuatara.defaults::git-commit-date first) (tuatara.defaults::git-commit-author first)
+                  (tuatara.defaults::git-commit-ago first) (tuatara.defaults::git-commit-subject first)
+                  (tuatara.defaults::git-commit-path first))))
+      (is equal "a.txt" (tuatara.defaults::git-commit-path (svref revisions 1))))
     ;; a subject holding git's separators makes no commit of its own, whose hash would go to git
-    (let ((revisions (tuatara.defaults::parse-git-rewind-log
+    (let ((revisions (tuatara.defaults::git-file-history
                       (record (make-string 40 :initial-element #\d) "s4" "2026-10-12" "Eve"
-                              (format nil "Hi~c--output=/tmp/x~cs~cd~ca~cb" (code-char #x1e) (code-char #x1f) (code-char #x1f) (code-char #x1f) (code-char #x1f))
+                              (format nil "Hi~c--output=/tmp/x~cs~cd~ca~cb~cc~cd" (code-char #x1e) (code-char #x1f) (code-char #x1f)
+                                      (code-char #x1f) (code-char #x1f) (code-char #x1f) (code-char #x1f))
                               "c.txt"))))
-      (true (every (lambda (revision) (tuatara.defaults::git-hash-p (first revision))) revisions))
-      (false (find "--output=/tmp/x" revisions :key #'first :test #'equal)))))
+      (true (every (lambda (revision) (tuatara.defaults::git-hash-p (tuatara.defaults::git-commit-hash revision))) revisions))
+      (false (find "--output=/tmp/x" revisions :key #'tuatara.defaults::git-commit-hash :test #'equal))))
+  ;; one format for every log: a graph's lines kept, each commit's graph before it
+  (let* ((hash (make-string 40 :initial-element #\e))
+         (fields (format nil "~a~c~a~c2026-10-11~cAnn~c3 days ago~cHEAD -> main~cA subject" hash (code-char #x1f) "eeeeeee"
+                         (code-char #x1f) (code-char #x1f) (code-char #x1f) (code-char #x1f) (code-char #x1f)))
+         (commits (tuatara.defaults::parse-git-commits
+                   (format nil "* ~c~a~%|\\~%| * ~c~a~%" (code-char #x1e) fields (code-char #x1e) fields))))
+    (is = 3 (length commits))
+    (is equal "* " (tuatara.defaults::git-commit-graph (first commits)))
+    (is equal "HEAD -> main" (tuatara.defaults::git-commit-names (first commits)))
+    (false (tuatara.defaults::git-commit-hash (second commits)))
+    (is equal "|\\" (tuatara.defaults::git-commit-graph (second commits)))
+    (is equal "| * " (tuatara.defaults::git-commit-graph (third commits)))
+    (is equal "A subject" (tuatara.defaults::git-commit-subject (third commits)))))
 
 (define-test (git rewind-binary-and-untracked)
   ;; a file that is not text, and one git does not keep, are said so, the
