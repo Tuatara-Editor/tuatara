@@ -652,6 +652,18 @@ And a third." 6 3 10 51)
              (is equal counts (multiple-value-list (tuatara.defaults::count-text rope 0 (tuatara.text:rope-bytes rope) :double-space t))
                  "~s" text))))
 
+(define-test (simple counted-alike-in-any-pieces)
+  ;; a character cut between the pieces the text is read in counts as one, however small the pieces
+  (let* ((octets (coerce (append (coerce (tuatara.text:string-octets "Kia ora tūī ✓ 😀. Ōtaki!  ") 'list)
+                                 '(#xE9 32 #xF0 #x9F 32 #xC3 #xA9 #xFF 10 #xE2 #x82))
+                         '(vector (unsigned-byte 8))))
+         (rope (tuatara.text:octets->rope octets))
+         (whole (multiple-value-list (tuatara.defaults::count-text rope 0 (length octets)))))
+    (dotimes (size 9)
+      (let ((tuatara.defaults::*count-piece* (1+ size)))
+        (is equal whole (multiple-value-list (tuatara.defaults::count-text rope 0 (length octets)))
+            "pieces of ~d" (1+ size))))))
+
 (defun large-text (turns text &key mode (width 100))
   "The text after TURNS typed on TEXT, each once the work in the background the
 one before began is done, with any selection too large for the editor's

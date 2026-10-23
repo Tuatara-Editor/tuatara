@@ -678,16 +678,16 @@ car turns true."
                      do (when (and cancel (car cancel)) (return-from count-text nil))
                         (let* ((n (min (- (length piece) carried) (- to at)))
                                (filled (+ carried n))
-                               ;; a character begun in the last three octets may go on in the next piece
-                               (stop (if (= left n) filled (max 0 (- filled 3))))
                                (i 0))
-                          (declare (type fixnum n filled stop i))
+                          (declare (type fixnum n filled i))
                           (tuatara.text:rope-copy-into rope at (+ at n) piece carried)
                           (loop for k from carried below filled
                                 do (let ((octet (aref piece k)))
                                      (setf last-octet octet)
                                      (when (= octet 10) (incf lines))))
-                          (loop while (< i stop)
+                          ;; a character begun at the end may go on in the next piece
+                          (loop with stop of-type fixnum = (if (= left n) filled (- filled (tuatara.text:octets-pending piece 0 filled)))
+                                while (< i stop)
                                 do (if (< (aref piece i) #x80)
                                        (progn (see (code-char (aref piece i))) (incf i))
                                        (multiple-value-bind (code length) (tuatara.text:octets-decode piece i filled)
