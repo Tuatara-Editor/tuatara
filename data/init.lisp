@@ -1526,7 +1526,7 @@
 ;; for the newest commit. :file names its first file when it is not
 ;; example.lisp or load.lisp, :folder its folder when that is not example/. Not
 ;; set: the newest tag.
-;; (load-package "example" :source "mine" :version "v1.2.0" :folder "tuatara"
+;; (load-package "example" :source "mine" :version "v1.2.0" :folder "lisp"
 ;;               :file "start.lisp")
 
 ;; A package from a folder of your disk, without naming a source first.
