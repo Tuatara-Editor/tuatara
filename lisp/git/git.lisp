@@ -809,17 +809,17 @@ there are; an ignored file; a submodule, a stash, or a commit."
    (lambda (line)
      (case section
        (:submodules (destructuring-bind (path kind) member
-                      (funcall line (format nil "  ~16a ~a" kind (escape-controls path)) nil (list :submodule path))))
+                      (funcall line (format nil "  ~a ~a" (column-text kind 16 :elide nil) (escape-controls path)) nil (list :submodule path))))
        (:stashes (destructuring-bind (name subject) member
                    (funcall line (format nil "  ~a ~a" name (escape-controls subject)) :git-status-commit (list :stash name))))
        ((:unpushed :recent) (destructuring-bind (hash subject) member
                               (funcall line (format nil "  ~a ~a" hash (escape-controls subject)) :git-status-commit (list :commit hash))))
        (:ignored (destructuring-bind (path kind) member
-                   (funcall line (format nil "  ~10a ~a" kind (escape-controls path)) :list-dim (list :file :ignored path))))
+                   (funcall line (format nil "  ~a ~a" (column-text kind 10 :elide nil) (escape-controls path)) :list-dim (list :file :ignored path))))
        (t (destructuring-bind (path kind &optional original) member
             (let* ((key (cons section path))
                    (diff (gethash key shown)))
-              (funcall line (format nil "  ~10a ~@[~a -> ~]~a" kind (and original (escape-controls original)) (escape-controls path))
+              (funcall line (format nil "  ~a ~@[~a -> ~]~a" (column-text kind 10 :elide nil) (and original (escape-controls original)) (escape-controls path))
                        (and (eq section :staged) (git-staged-face kind))
                        (list :file section path))
               (when diff

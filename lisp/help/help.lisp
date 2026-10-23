@@ -303,7 +303,7 @@ words typed, in *Apropos*. Each name is a link to its description:
                (put "  ")
                (put name :button (lambda () (show-help-pieces (describe-command-pieces s))))
                ;; the keys from the 31st column
-               (put (format nil "~va~a~%    ~a~%" (max 1 (- 28 (length name))) "" (command-bindings-text s)
+               (put (format nil "~a~a~%    ~a~%" (column-text "" (max 1 (- 28 (text-columns name)))) (command-bindings-text s)
                             (first-sentence (documentation-text s 'function))))))
            (put (format nil "~%Variables:~%"))
            (dolist (s variables)
@@ -319,7 +319,7 @@ words typed, in *Apropos*. Each name is a link to its description:
 keys (MARK-KEY) when MARKED, then WHAT they run from the 25th column after
 INDENT on, at least a space after the keys."
   ;; padded by the keys' own length: the marks take no room
-  (format out "~a~a~va~a~%" indent (if marked (mark-key keys) keys) (max 1 (- 22 (length keys))) "" what))
+  (format out "~a~a~a~a~%" indent (if marked (mark-key keys) keys) (column-text "" (max 1 (- 22 (text-columns keys)))) what))
 
 (define-command describe-bindings ()
   "List every key binding in effect, keymap by keymap, each followed by the

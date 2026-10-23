@@ -134,9 +134,9 @@ it names (SUBSTITUTE-COMMAND-KEYS) in :help-key-binding."
 
 (defun health-cell (text width &optional face)
   "Add TEXT to the report in FACE, padded with spaces to WIDTH columns of the
-screen and one more."
-  (health-put text face)
-  (health-put (make-string (1+ (max 0 (- width (text-columns text)))) :initial-element #\Space)))
+screen (COLUMN-TEXT) and one more."
+  (health-put (column-text text width :elide nil) face)
+  (health-put " "))
 
 (defun health-heading (text)
   "Add TEXT to the report as a heading, a blank line before it."

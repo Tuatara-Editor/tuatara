@@ -346,3 +346,14 @@
   (is string= "notes.lisp" (tuatara.defaults::source-file-words "/tmp/notes.lisp"))
   (let ((tuatara.runtime:*source-tree* nil))
     (finish (tuatara.defaults::license-file))))
+
+(define-test (help columns-by-the-screen)
+  ;; what a list of keys and the health report line up after a wide character starts at the
+  ;; same column of the screen as after narrow ones: padded by the screen's columns
+  (flet ((column-of (line what) (tuatara.defaults::text-columns (subseq line 0 (search what line)))))
+    (is = 22 (column-of (with-output-to-string (out) (tuatara.defaults::key-line out "" "漢字" "runs")) "runs"))
+    (is = 22 (column-of (with-output-to-string (out) (tuatara.defaults::key-line out "" "C-x" "runs")) "runs"))
+    (let ((tuatara.defaults::*health-pieces* '()))
+      (tuatara.defaults::health-cell "漢字" 10)
+      (tuatara.defaults::health-put "next")
+      (is = 11 (column-of (tuatara.defaults::pieces-text (reverse tuatara.defaults::*health-pieces*)) "next")))))

@@ -69,12 +69,12 @@ RIMU-COLUMN-READY."
    (lambda (names)
      (let* ((commits (rimu-git-commits directory names))
             ;; the messages lined up after the longest date
-            (widest (if commits (loop for (when) being the hash-values of commits maximize (length when)) 0)))
+            (widest (if commits (loop for (when) being the hash-values of commits maximize (text-columns when)) 0)))
        (map 'vector
             (lambda (name)
               (let ((commit (and commits (gethash name commits))))
                 (and commit
-                     (list (cons (format nil "~va" widest (first commit)) :list-date)
+                     (list (cons (column-text (first commit) widest :elide nil) :list-date)
                            (cons "  " nil)
                            (cons (let ((subject (second commit)))
                                    (if (> (length subject) 72) (subseq subject 0 72) subject))
