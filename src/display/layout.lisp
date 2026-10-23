@@ -63,10 +63,29 @@ are."
       (documentation 'row-set-in 'function) "The runs of ROW's characters shown where no text of the buffer is, each (FROM . TO) of indices into its string; highlights leave them alone."
       (documentation 'row-scale 'function) "How many rows' height ROW is drawn in, its letters as many times as wide: 1, or more for a line drawn large (5/4, 3/2, 2).")
 
-(defun make-row (start &optional (room 0))
+(defun make-row (start &optional (room 0) spares)
   "Return an empty row starting at byte START, with room for ROOM characters
-and columns before it needs more."
-  (%make-row start 0 :room room))
+and columns before it needs more: one taken from SPARES, a vector with a fill
+pointer of rows no longer shown, when it has any, emptied (its room kept)."
+  (if (and spares (plusp (fill-pointer spares)))
+      (let ((row (vector-pop spares)))
+        (setf (fill-pointer (row-string row)) 0
+              (fill-pointer (row-faces row)) 0
+              (fill-pointer (row-char-bytes row)) 0
+              (fill-pointer (row-bytes row)) 0
+              (row-start row) start
+              (row-end row) 0
+              (row-shown-end row) 0
+              (row-columns row) 0
+              (row-continuation-p row) nil
+              (row-truncated-p row) nil
+              (row-last-p row) nil
+              (row-mixed row) nil
+              (row-extend row) nil
+              (row-scale row) 1
+              (row-set-in row) '())
+        row)
+      (%make-row start 0 :room room)))
 
 (defun row-add (row text byte columns &optional face)
   "Append TEXT, a string or a single character, to ROW as the display of the
@@ -436,7 +455,7 @@ Complexity: O(log n)."
                (when (> anchor position) (return anchor))))))
 
 (defun layout (rope start width height &key (wrap nil) wrap-column word-wrap (tab-width 8) (hscroll 0) highlights crlf hidden
-                                             prefix scale until invisible)
+                                             prefix scale until invisible spares)
   "Lay out ROPE from byte START into at most HEIGHT rows of WIDTH columns.
 WRAP true wraps long lines at the column, WRAP-COLUMN when given (no further
 than WIDTH), and with WORD-WRAP at a word's edge: a row ends after the last
@@ -464,7 +483,8 @@ as \\xNN in :raw-byte. A grapheme cluster takes the columns of its first
 character (CLUSTER-COLUMNS), and a mark at a line's start is shown on
 *MARK-BASE*. Every row takes at least one character: one too
 wide for a whole wrapped row is shown as *CUT-GLYPH* (a tab as the spaces
-that fit). Returns a simple-vector of ROW.
+that fit). The rows are made anew, or taken from SPARES, a vector with a
+fill pointer of rows no longer shown (MAKE-ROW). Returns a simple-vector of ROW.
 Complexity: O(WIDTH × HEIGHT), and for each row scrolled sideways
 O(*SCREEN-COLUMN-REACH* + log n) however long its line (SKIP-COLUMNS)."
   (declare (type fixnum start width height hscroll))
@@ -491,7 +511,7 @@ O(*SCREEN-COLUMN-REACH* + log n) however long its line (SKIP-COLUMNS)."
              (let ((room (- height used)))
                (when (> line-scale room)
                  (if (plusp (length rows)) (return) (setf line-scale room))))
-             (let ((row (make-row position width))
+             (let ((row (make-row position width spares))
                    (limit (max 1 (floor full-limit line-scale)))
                    (skipped 0)         ; columns consumed before the hscroll offset (truncate mode)
                    (wrapped nil)

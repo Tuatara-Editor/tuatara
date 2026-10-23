@@ -75,12 +75,13 @@ BYTE (-1 for none), in FACE."
   (vector-push-extend byte (row-bytes row))
   (incf (row-columns row)))
 
-(defun hex-layout (rope start height)
+(defun hex-layout (rope start height &optional spares)
   "Lay out ROPE as a hex dump from byte START (a multiple of +HEX-ROW+) into at
 most HEIGHT rows (see this file's header). The hex digits and the text column
 of each octet map back to its offset, other columns to none (-1), so that the
 cursor shows on an octet's hex digits; the rows are marked MIXED, their
-characters' offsets not in order, for APPLY-HIGHLIGHTS. Complexity: O(HEIGHT)."
+characters' offsets not in order, for APPLY-HIGHLIGHTS. Rows are taken from
+SPARES, rows no longer shown, while it has any (MAKE-ROW). Complexity: O(HEIGHT)."
   (let* ((total (tuatara.text:rope-bytes rope))
          (digits (hex-offset-digits total))
          (rows (make-array 0 :adjustable t :fill-pointer 0)))
@@ -89,7 +90,7 @@ characters' offsets not in order, for APPLY-HIGHLIGHTS. Complexity: O(HEIGHT)."
           while (<= offset total)
           do (let* ((n (min +hex-row+ (- total offset)))
                     (octets (tuatara.text:rope-octets rope :start offset :end (+ offset n)))
-                    (row (make-row offset (+ digits 70))))
+                    (row (make-row offset (+ digits 70) spares)))
                (setf (row-mixed row) t)
                (row-add-octets row (hex-digits offset digits) -1 :hex-offset)
                (row-add-octets row "  " -1 nil)
