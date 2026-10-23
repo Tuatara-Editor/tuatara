@@ -128,14 +128,15 @@ every ssh key, that, and how to give ssh yours."
 
 (defun git-job-try (job top arguments &key errors environment input)
   "On JOB's thread (with JOB NIL, the thread calling it, never the
-editor's): run git with ARGUMENTS in TOP (RUN-GIT), with ERRORS what it says
-on its error output with what it prints, ENVIRONMENT (NAME=VALUE strings)
-added and INPUT, a string, on its standard input; what it printed, as text,
-and true as a second value when it succeeded. The job goes on however git
-ended."
-  (multiple-value-bind (octets ok) (run-git top arguments :cancel (and job (tuatara.runtime:job-cancel job)) :errors errors
-                                                          :environment environment :input input)
-    (values (if octets (tuatara.text:lenient-string octets) "") ok)))
+editor's): run git with ARGUMENTS in TOP (RUN-GIT), ENVIRONMENT (NAME=VALUE
+strings) added and INPUT, a string, on its standard input; what it printed,
+as text, and true as a second value when it succeeded; with ERRORS, what it
+said on its error output as a third. The job goes on however git ended."
+  (multiple-value-bind (octets ok too-large said)
+      (run-git top arguments :cancel (and job (tuatara.runtime:job-cancel job)) :errors errors
+                             :environment environment :input input)
+    (declare (ignore too-large))
+    (values (if octets (tuatara.text:lenient-string octets) "") ok said)))
 
 (defparameter *git-shown-limit* (* 64 1024 1024)
   "The most git may print for a commit, a stash or changes shown in a buffer
@@ -143,13 +144,13 @@ of their own (GIT-SHOW-OUTPUT).")
 
 (defun git-job-octets (job top arguments &key environment input limit)
   "On JOB's thread: run git with ARGUMENTS in TOP (RUN-GIT), what it says on
-its error output with what it prints, ENVIRONMENT (NAME=VALUE strings) added
+its error output read apart, ENVIRONMENT (NAME=VALUE strings) added
 and INPUT, a string, on its standard input; what it printed, as octets, when
 it succeeded. When it did not, or printed more than LIMIT octets
 \(*PROGRAM-OUTPUT-LIMIT* when it is NIL), JOB ends
 there: stopped when it was asked to, else failed, saying what git said went
 wrong (GIT-FAILURE-WORDS) or that it printed too much."
-  (multiple-value-bind (octets ok too-large)
+  (multiple-value-bind (octets ok too-large said)
       (run-git top arguments :cancel (tuatara.runtime:job-cancel job) :errors t
                              :environment environment :input input :limit limit)
     (cond (too-large
@@ -157,7 +158,9 @@ wrong (GIT-FAILURE-WORDS) or that it printed too much."
                                       (tuatara.io:octets-words (or limit *program-output-limit*)))))
           (ok (or octets (make-array 0 :element-type '(unsigned-byte 8))))
           (t (tuatara.runtime:job-check-stop)
-             (throw 'git-failed (git-failure-words (first arguments) (if octets (tuatara.text:lenient-string octets) "")))))))
+             ;; what it said, or, saying nothing, what it printed (nothing to commit)
+             (throw 'git-failed (git-failure-words (first arguments)
+                                                   (if (plusp (length said)) said (if octets (tuatara.text:lenient-string octets) ""))))))))
 
 (defun git-job-output (job top arguments &key environment input)
   "On JOB's thread: what git printed with ARGUMENTS in TOP, as text, as

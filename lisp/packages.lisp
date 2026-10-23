@@ -902,13 +902,13 @@ and git-lfs's filters, which would ask other servers, left out."
 printed, as text; an error with what it said when it fails. A package's own
 scratch repository may fetch the files a sparse checkout needs from its
 address as it goes."
-  (multiple-value-bind (octets ok)
+  (multiple-value-bind (octets ok too-large said)
       (let ((*git-safety* (remove "--no-lazy-fetch" *git-safety* :test #'string=)))
         (run-git-program (git-for-packages) directory arguments :environment (package-git-environment) :errors t))
-    (let ((text (if octets (tuatara.text:octets-string octets) "")))
-      (unless ok
-        (error "~a" (git-failure-words (first arguments) text)))
-      text)))
+    (declare (ignore too-large))
+    (unless ok
+      (error "~a" (git-failure-words (first arguments) (or said ""))))
+    (if octets (tuatara.text:octets-string octets) "")))
 
 (defun package-commit-name (text where)
   "TEXT, a commit's name git printed for the repository at WHERE, checked to be

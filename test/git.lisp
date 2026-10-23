@@ -1674,3 +1674,26 @@ DIR is visited and its status read, the project trusted. Returns the frontend."
       (true (search own line) "~a" line))
     (is string= (namestring (merge-pathnames "gitconfig" *test-state-directory*)) (sb-posix:getenv "GIT_CONFIG_GLOBAL"))
     (is string= "1" (sb-posix:getenv "GIT_CONFIG_NOSYSTEM"))))
+
+(define-test (git warnings-kept-apart)
+  ;; git warns of a folder it cannot read on its error output: what it prints is read alone,
+  ;; every file and the commit there, the warning taken for none of them
+  (with-test-directory (dir)
+    (scratch-repository dir)
+    (dolist (name '("b.txt" "c.txt" "x/in.txt"))
+      (ensure-directories-exist (merge-pathnames name dir))
+      (alexandria:write-string-into-file (format nil "new~%") (merge-pathnames name dir)))
+    (let ((locked (namestring (merge-pathnames "x/" dir))))
+      (sb-posix:chmod locked 0)
+      (unwind-protect
+           (let* ((top (namestring dir))
+                  (state (catch 'tuatara.defaults::git-failed
+                           (tuatara.defaults::git-read-state (tuatara.defaults::%make-hash-job :what "git") top
+                                                             (concatenate 'string top ".git/"))))
+                  (untracked (mapcar #'first (tuatara.defaults::git-state-untracked state))))
+             (true (member "b.txt" untracked :test #'string=))
+             (true (member "c.txt" untracked :test #'string=))
+             (false (find-if (lambda (path) (search "warning" path)) untracked))
+             (true (tuatara.defaults::git-hash-p (tuatara.defaults::git-state-commit state)))
+             (is equal "main" (tuatara.defaults::git-state-branch state)))
+        (sb-posix:chmod locked #o700)))))

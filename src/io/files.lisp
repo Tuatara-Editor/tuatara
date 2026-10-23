@@ -859,23 +859,33 @@ it read and let go."
                   (t (when (< count most) (write-char c out))
                      (incf count)))))))
 
-(defun read-stream-octets (stream &key limit cancel wipe)
+(defun read-stream-octets (stream &key limit cancel wipe drain)
   "Everything left in STREAM, an octet stream such as a program's output, as
 one vector of octets, read in pieces of 64 KiB. With LIMIT, reading stops once
-more than LIMIT octets came: NIL, and true as a second value. CANCEL, a cons,
-stops reading when its car turns true: what was read so far, and true as a
-third value. With WIPE, every piece read is filled with zeros once the vector
-holds it, or once it is let go, so that what was read is left only in the
-vector given."
-  (let ((pieces (make-octet-pieces)) (too-large nil) (cancelled nil))
+more than LIMIT octets came: NIL, and true as a second value; with DRAIN too,
+it goes on to the end of STREAM, what comes past LIMIT let go, and the first
+LIMIT octets are given, true as a second value (what a program says of
+itself, never left unread for it to wait on). CANCEL, a cons, stops reading
+when its car turns true: what was read so far, and true as a third value.
+With WIPE, every piece read is filled with zeros once the vector holds it, or
+once it is let go, so that what was read is left only in the vector given."
+  (let ((pieces (make-octet-pieces)) (too-large nil) (cancelled nil) (spare nil))
     (loop (when (and cancel (car cancel)) (setf cancelled t) (return))
-          (let* ((piece (make-array 65536 :element-type '(unsigned-byte 8)))
+          (let* ((piece (if too-large
+                            (or spare (setf spare (make-array 65536 :element-type '(unsigned-byte 8))))
+                            (make-array 65536 :element-type '(unsigned-byte 8))))
                  (n (read-sequence piece stream)))
-            (add-octet-piece pieces piece n)
-            (when (and limit (> (octet-pieces-size pieces) limit)) (setf too-large t) (return))
+            (unless too-large
+              (add-octet-piece pieces piece n)
+              (when (and limit (> (octet-pieces-size pieces) limit))
+                (setf too-large t)
+                (unless drain (return))))
             (when (< n (length piece)) (return))))
-    (let ((octets (and (not too-large) (joined-octets pieces))))
-      (when wipe (wipe-octet-pieces pieces))
+    (let ((octets (cond ((not too-large) (joined-octets pieces))
+                        (drain (subseq (joined-octets pieces) 0 limit)))))
+      (when wipe
+        (wipe-octet-pieces pieces)
+        (when spare (fill spare 0)))
       (values octets too-large cancelled))))
 
 (defun visit-file (path &key safe)
