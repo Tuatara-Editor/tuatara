@@ -265,11 +265,9 @@ unless given): a tab to the next tab stop (TAB-COLUMNS), a wide character
 two columns, a combining mark none."
   (let ((width (tab-columns)) (before 0))
     (loop for c across text
-          do (if (char= c #\Tab)
-                 (setf column (next-tab-stop column width) before 9)
-                 (multiple-value-bind (columns next) (tuatara.display:cluster-columns (char-code c) before (tuatara.display:char-columns c))
-                   (incf column columns)
-                   (setf before next))))
+          do (multiple-value-bind (columns next) (tuatara.display:advance-column (char-code c) column before width nil)
+               (incf column columns)
+               (setf before next)))
     column))
 
 (defun sentence-end-word-p (word)

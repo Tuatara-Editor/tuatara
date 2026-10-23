@@ -62,14 +62,11 @@ fill; NIL means *TAB-WIDTH*.")
 (defun line-blanks (octets &optional (width (tab-columns)))
   "The blanks OCTETS, a line without its newline, begins with (spaces, tabs
 and carriage returns): how many octets, whether the line holds nothing else,
-and the column its text starts at, a tab going to the next of the stops WIDTH
-columns apart, as three values."
+and the column its text starts at as the screen shows it, a tab going to the
+next of the stops WIDTH columns apart, as three values."
   (let ((p 0) (column 0))
-    (loop while (< p (length octets))
-          do (case (aref octets p)
-               (9 (setf column (next-tab-stop column width)))
-               ((32 13) (incf column))
-               (t (return)))
+    (loop while (and (< p (length octets)) (tuatara.text:blank-line-octet-p (aref octets p)))
+          do (incf column (tuatara.display:advance-column (aref octets p) column 0 width nil))
              (incf p))
     (values p (= p (length octets)) column)))
 
