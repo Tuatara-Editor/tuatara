@@ -727,11 +727,6 @@ when a carriage return comes before it, else :LF."
   (let ((newline (tuatara.text:rope-find-octet rope 10 :end (min (tuatara.text:rope-bytes rope) 65536))))
     (if (and newline (plusp newline) (= (tuatara.text:rope-octet rope (1- newline)) 13)) :crlf :lf)))
 
-(defun crlf-at-p (rope byte)
-  "True when ROPE holds a carriage return at BYTE and a newline after it."
-  (and (< (1+ byte) (tuatara.text:rope-bytes rope)) (>= byte 0)
-       (= (tuatara.text:rope-octet rope byte) 13) (= (tuatara.text:rope-octet rope (1+ byte)) 10)))
-
 (defun buffer-forward-char (buffer byte &optional (n 1))
   "Byte offset N characters after BYTE in BUFFER (before, for negative N),
 clamped to the text, stopping at once at its end. In a :CRLF buffer a
@@ -740,13 +735,13 @@ carriage return and the newline after it are one step."
     ;; at an end of the text it stops at once, whatever is left of N
     (if (>= n 0)
         (loop repeat n
-              for next = (if (and crlf (crlf-at-p rope byte))
+              for next = (if (and crlf (tuatara.text:rope-crlf-p rope byte))
                              (+ byte 2)
                              (tuatara.text:rope-next-boundary rope byte))
               until (= next byte)
               do (setf byte next))
         (loop repeat (- n)
-              for next = (if (and crlf (crlf-at-p rope (- byte 2)))
+              for next = (if (and crlf (tuatara.text:rope-crlf-p rope (- byte 2)))
                              (- byte 2)
                              (tuatara.text:rope-previous-boundary rope byte))
               until (= next byte)
@@ -762,7 +757,7 @@ carriage return and the newline after it are one step."
 buffer the carriage return before it, or the text end."
   (let* ((rope (buffer-text buffer))
          (end (tuatara.text:rope-line-end rope byte)))
-    (if (and (buffer-crlf-p buffer) (crlf-at-p rope (1- end)))
+    (if (and (buffer-crlf-p buffer) (tuatara.text:rope-crlf-p rope (1- end)))
         (1- end)
         end)))
 

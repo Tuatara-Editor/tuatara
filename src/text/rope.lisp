@@ -111,6 +111,21 @@ for a size larger than a megabyte, new octets. BODY must not keep it."
   "True when CODE is a control character's: 0 to 31, 127 to 159."
   (or (< code 32) (<= 127 code 159)))
 
+(declaim (inline crlf-octets-p))
+(defun crlf-octets-p (octets i avail)
+  "True when OCTETS hold a carriage return at index I and a newline after it,
+below AVAIL: a line end of two octets."
+  (declare (type octets octets) (type fixnum i avail))
+  (and (= (aref octets i) 13) (< (1+ i) avail) (= (aref octets (1+ i)) 10)))
+
+(declaim (inline line-text-end))
+(defun line-text-end (octets start newline crlf)
+  "Where the text of a line ends in OCTETS, whose newline is at index NEWLINE
+and which starts at index START or before: with CRLF, at the carriage return
+just before the newline, when there is one after START; else at the newline."
+  (declare (type octets octets) (type fixnum start newline))
+  (if (and crlf (> newline start) (= (aref octets (1- newline)) 13)) (1- newline) newline))
+
 (sb-ext:defglobal **utf8-classes**
     (let ((table (make-array 256 :element-type '(unsigned-byte 8))))
       (dotimes (b 256 table)
@@ -1580,6 +1595,15 @@ well-formed sequence. Decodes at most four octets. Complexity: O(log n)."
     (with-rope-window (window base end) (rope byte (+ byte 4) 4)
       (code-char (octets-decode window 0 end)))))
 
+(defun rope-crlf-p (rope byte)
+  "True when ROPE holds a carriage return at BYTE and a newline after it (CRLF-OCTETS-P)."
+  (declare (type fixnum byte))
+  (and (>= byte 0) (< (1+ byte) (rope-bytes rope))
+       (let ((pair (make-array 2 :element-type '(unsigned-byte 8))))
+         (declare (dynamic-extent pair))
+         (rope-copy-into rope byte (+ byte 2) pair)
+         (crlf-octets-p pair 0 2))))
+
 (defun rope-find-octet (rope value &key (start 0) (end (rope-bytes rope)))
   "Return the byte offset of the first octet equal to VALUE in ROPE from START
 below END, or NIL. Complexity: O(log n + distance scanned)."
@@ -1651,7 +1675,7 @@ Complexity: O(log n) for each backslash before it."
     (loop while (and (plusp q) (= 92 (rope-octet rope (1- q)))) do (incf count) (decf q))
     (oddp count)))
 
-(defun rope-bracket-match (rope position &key backward inside (openers "([{") (closers ")]}")
+(defun rope-bracket-match (rope position &key backward inside (openers *openers*) (closers *closers*)
                                               (limit most-positive-fixnum) (start 0) (end (rope-bytes rope))
                                               (spans #()) escapes)
   "The partner of the opening bracket at byte POSITION of ROPE, or with BACKWARD
@@ -1748,12 +1772,21 @@ Complexity: O(log n + distance scanned)."
                 when (= 1 (sbit wanted (aref block i))) do (return-from rope-find-any-octet (+ low i)))))
     nil))
 
-(defparameter *text-octets* (loop for octet below 256 unless (member octet '(9 10 13 32)) collect octet)
-  "The octets that make a line more than blank: all but tab, newline, carriage return and space.")
-
 (defparameter *blank-octets* '(32 9 10 13)
   "The octets of the blanks between words and lines: a space, a tab, a newline
 and a carriage return.")
+
+(defparameter *text-octets* (loop for octet below 256 unless (member octet *blank-octets*) collect octet)
+  "The octets that make a line more than blank: all but the blanks (*BLANK-OCTETS*).")
+
+(defparameter *openers* "([{"
+  "The brackets that open a pair, each in the place of the one that closes it in *CLOSERS*.")
+
+(defparameter *closers* ")]}"
+  "The brackets that close a pair, each in the place of the one that opens it in *OPENERS*.")
+
+(defparameter *bracket-octets* (map 'list #'char-code (concatenate 'string *openers* *closers*))
+  "The octets of the brackets (*OPENERS* and *CLOSERS*).")
 
 (defun rope-skip-octets (rope position octets &key backward (bound (if backward 0 (rope-bytes rope))))
   "POSITION of ROPE moved over the octets in OCTETS, a list of them (such as
@@ -1774,9 +1807,17 @@ back to just after the last octet before it that is not one of them, or BOUND
                 when (zerop (sbit skipped (aref block i))) do (return-from rope-skip-octets (+ low i)))))
     bound))
 
+(sb-ext:define-load-time-global **blank-line-octets**
+    (let ((table (make-array 256 :element-type 'bit :initial-element 0)))
+      (dolist (octet *blank-octets* table)
+        (unless (= octet 10) (setf (sbit table octet) 1))))
+  "One bit for each octet, 1 for those a blank line may hold: the blanks
+\(*BLANK-OCTETS*) but the newline.")
+
+(declaim (inline blank-line-octet-p))
 (defun blank-line-octet-p (octet)
-  "True for an octet a blank line may hold: a space, a tab or a carriage return."
-  (or (= octet 32) (= octet 9) (= octet 13)))
+  "True for an octet a blank line may hold: a blank (*BLANK-OCTETS*) but the newline."
+  (= 1 (sbit (the simple-bit-vector **blank-line-octets**) octet)))
 
 (defun map-line-slices (function rope start end left right &key crlf octets width block)
   "Call FUNCTION for each line of ROPE that starts at a byte offset in [START,
@@ -1837,7 +1878,7 @@ each octet. Complexity: O(END - START + the length of the last line)."
                          (when (or (= column right) (>= i avail)) (return))
                          (let ((b (aref block i)))
                            (when (or (= b 10)
-                                     (and crlf (= b 13) (< (1+ i) avail) (= (aref block (1+ i)) 10)))
+                                     (and crlf (crlf-octets-p block i avail)))
                              (return))
                            (if (< b 128)
                                (incf i)
@@ -1858,7 +1899,7 @@ each octet. Complexity: O(END - START + the length of the last line)."
                          (let* ((b (aref block i))
                                 (tab (= b 9)))
                            (when (or (= b 10)
-                                     (and crlf (= b 13) (< (1+ i) avail) (= (aref block (1+ i)) 10)))
+                                     (and crlf (crlf-octets-p block i avail)))
                              (return))
                            (multiple-value-bind (w len next)
                                (if (< 31 b 127)
@@ -1893,12 +1934,11 @@ each octet. Complexity: O(END - START + the length of the last line)."
                                            (if (> pos block-start)
                                                (fill-from pos)
                                                (progn (setf from block-end) (fill-from from)))))))
-                            (line-end (if (and crlf (< newline total) (> newline slice-end)
-                                               (= 13 (if (> newline block-start)
-                                                         (aref block (- newline block-start 1))
-                                                         (rope-octet rope (1- newline)))))
-                                          (1- newline)
-                                          newline)))
+                            (line-end (cond ((or (not crlf) (>= newline total) (<= newline slice-end)) newline)
+                                            ((> newline block-start)
+                                             (+ block-start (line-text-end block 0 (- newline block-start) crlf)))
+                                            ((rope-crlf-p rope (1- newline)) (1- newline))
+                                            (t newline))))
                        (declare (type fixnum newline line-end))
                        (if octets
                            (funcall function pos slice-start slice-end start-column column line-end

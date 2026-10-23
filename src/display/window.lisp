@@ -769,7 +769,7 @@ long it is."
         (let* ((total (tuatara.text:rope-bytes rope))
                (octet (and (< point total) (tuatara.text:rope-octet rope point)))
                (after (if (or (null octet) (= octet 10)
-                              (and crlf (= octet 13) (< (1+ point) total) (eql (tuatara.text:rope-octet rope (1+ point)) 10)))
+                              (and crlf (tuatara.text:rope-crlf-p rope point)))
                           point
                           (tuatara.text:rope-next-boundary rope point))))
           (loop for back = (- column (window-hscroll window)) then (floor back 2)
