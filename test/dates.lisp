@@ -300,3 +300,11 @@
     (is equal '(2 nil) (multiple-value-list (tuatara.defaults::repeat-nth (tuatara.dates:day-number 2026 11 10))))
     (is equal '(5 t) (multiple-value-list (tuatara.defaults::repeat-nth (tuatara.dates:day-number 2026 10 30))))
     (is equal '(4 t) (multiple-value-list (tuatara.defaults::repeat-nth (tuatara.dates:day-number 2026 2 28))))))
+
+(define-test (dates utc-time-words-any-year)
+  ;; a time in universal time written as any date is, any year
+  (is string= "2026-10-06 20:15:00 UTC" (tuatara.dates:utc-time-words (encode-universal-time 0 15 20 6 10 2026 0)))
+  (is string= "1899-12-31 23:59:59 UTC" (tuatara.dates:utc-time-words -1))
+  (is string= "1066-10-14 09:00:00 UTC"
+      (tuatara.dates:utc-time-words (+ (* 86400 (tuatara.dates:day-number 1066 10 14)) (* 9 3600))))
+  (false (tuatara.dates:utc-time-words nil)))

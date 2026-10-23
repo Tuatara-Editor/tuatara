@@ -280,11 +280,13 @@ counts them. O(length of PATTERN)."
     (format-day pattern day hour minute second (and (search "z" pattern) (local-offset time)))))
 
 (defun utc-time-words (time)
-  "The universal TIME in universal time: 2026-10-06 20:15:00 UTC; NIL for
-none, or one that cannot be written."
+  "The universal TIME in universal time, any year: 2026-10-06 20:15:00 UTC;
+NIL for none."
   (when time
-    (ignore-errors (multiple-value-bind (s m h d mo y) (decode-universal-time time 0)
-                     (format nil "~d-~2,'0d-~2,'0d ~2,'0d:~2,'0d:~2,'0d UTC" y mo d h m s)))))
+    (multiple-value-bind (day seconds) (floor time 86400)
+      (multiple-value-bind (hour rest) (floor seconds 3600)
+        (multiple-value-bind (minute second) (floor rest 60)
+          (format-day "%F %T UTC" day hour minute second))))))
 
 (defun short-time-words (time)
   "The universal TIME in local time, short, as a list shows it: 2026-10-07
