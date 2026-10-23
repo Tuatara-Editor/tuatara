@@ -28,14 +28,14 @@ control character; \\xNN for a raw octet."
   (let ((code (char-code char)))
     (cond ((tuatara.text:raw-byte-code-p code) (tuatara.display:raw-byte-display code))
           ((= code 32) "SPC")
-          ((or (< code 32) (= code 127)) (format nil "^~c" (code-char (logxor code 64))))
+          ((or (< code 32) (= code 127)) (tuatara.display:control-char-display char))
           (t (string char)))))
 
 (defun char-codes-text (char)
   "The code of CHAR in decimal, octal and hexadecimal, as (97, #o141, #x61); for
 a raw octet, that it is one, and its value."
   (if (tuatara.text:raw-byte-code-p (char-code char))
-      (format nil "(a raw octet, not UTF-8, #x~(~2,'0x~))" (- (char-code char) #xDC00))
+      (format nil "(a raw octet, not UTF-8, #x~a)" (svref tuatara.text:*hex-pairs* (- (char-code char) #xDC00)))
       (let ((code (char-code char)))
         (format nil "(~d, #o~o, #x~(~x~))" code code code))))
 
@@ -130,8 +130,8 @@ marked."
       (cond ((null char)
              (format out "Point is at the end of the buffer.~%~%  position     ~a~%" place))
             ((tuatara.text:raw-byte-code-p (char-code char))
-             (format out "~a at point is an octet that is not UTF-8, #x~(~2,'0x~).~%~%  position     ~a~%"
-                     (char-shown-as char) (- (char-code char) #xDC00) place))
+             (format out "~a at point is an octet that is not UTF-8, #x~a.~%~%  position     ~a~%"
+                     (char-shown-as char) (svref tuatara.text:*hex-pairs* (- (char-code char) #xDC00)) place))
             (t
              (let ((code (char-code char)))
                (format out "~a at point: U+~4,'0x~@[, ~a~].~%~%" (char-shown-as char) code
@@ -142,8 +142,8 @@ marked."
                  (format out "  kind         ~a (~a)~%"
                          (or (cdr (assoc category *general-categories*)) "a character")
                          (string-capitalize (symbol-name category))))
-               (format out "  octets       ~{#x~(~2,'0x~)~^ ~}~%"
-                       (coerce (tuatara.text:rope-octets rope :start position :end end) 'list))
+               (format out "  octets       #x~a~%"
+                       (tuatara.text:octets-hex (tuatara.text:rope-octets rope :start position :end end) :separator " #x"))
                (let ((columns (tuatara.display:char-columns char)))
                  (format out "  width        ~d column~:p~%" columns)))))
       (let ((face (face-shown-at buffer position)))

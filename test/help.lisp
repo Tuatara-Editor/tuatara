@@ -106,6 +106,18 @@
       (destructuring-bind (name line) (followed "C-h v t u a t a r a . d e f a u l t s : : * h e l p - c o l u m n * RET")
         (true (search "(defparameter *help-column* " line) "~a ~a" name line)))))
 
+(define-test (help char-named-as-shown)
+  ;; a control character named as the screen shows it, a raw octet's codes in hexadecimal
+  (is equal (loop for code in '(0 1 9 27 31 127) collect (format nil "^~c" (code-char (logxor code 64))))
+      (loop for code in '(0 1 9 27 31 127) collect (tuatara.defaults::char-shown-as (code-char code))))
+  (is string= "SPC" (tuatara.defaults::char-shown-as #\Space))
+  (is string= "(a raw octet, not UTF-8, #xe9)" (tuatara.defaults::char-codes-text (code-char (+ #xDC00 #xE9))))
+  (flet ((described (keys)
+           (run-keys keys :text (format nil "€~c" (code-char (+ #xDC00 #xFF))) :width 100 :height 30)
+           (tuatara.buffer:buffer-string (tuatara.buffer:find-buffer "*Help*"))))
+    (true (search "octets       #xe2 #x82 #xac" (described "C-u C-x =")))
+    (true (search "is an octet that is not UTF-8, #xff." (described "l C-u C-x =")))))
+
 (define-test (help what-is-at-point)
   ;; C-x =: the character at point, its codes, and where point is
   (multiple-value-bind (f editor) (run-keys "C-x =" :text "héllo" :width 100)
