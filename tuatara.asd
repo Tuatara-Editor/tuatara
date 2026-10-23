@@ -143,6 +143,7 @@
                (:file "csv-records")
                (:file "selecting-lines")
                (:file "editing-words")
+               (:file "drawn-once")
                (:file "hex")
                (:file "gutter")
                (:file "toggles")
