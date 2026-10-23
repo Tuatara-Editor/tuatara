@@ -111,10 +111,7 @@ place, list them in *xref*."
   (let ((definitions (lisp-definitions symbol)))
     (cond ((null definitions) (message "No definitions found for: ~a" (lisp-name-text symbol)))
           ((rest definitions) (show-definitions (qualified-name symbol) definitions))
-          (t (multiple-value-bind (b position) (funcall (definition-locate (first definitions)))
-               (if (typep b 'tuatara.buffer:buffer)
-                   (progn (pop-to-buffer b :other t) (goto position))
-                   (message "~a" position)))))))
+          (t (go-to-definition (first definitions) :other t)))))
 
 (defun source-location-pieces (symbol kind)
   "Where SYMBOL's definition of KIND (:function, :variable) is, from SBCL's

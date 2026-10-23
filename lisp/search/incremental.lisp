@@ -187,20 +187,6 @@ one (COUNT-LINE-MATCHES), or without EVERY the first on each line
                     (count-first-per-line rope matcher start end :stop stop))
               (if status (return nil) count))))
 
-(defun stretch-count (buffer stretches filter &key every ends stop)
-  "How many matches FILTER's pattern has in STRETCHES of BUFFER, (START .
-END) each: with EVERY each match, else the lines FILTER leaves
-\(LINES-MATCHING), records ending as ENDS says (RECORD-ENDS); NIL once STOP
-answers true. Counted on every core."
-  (let ((rope (tuatara.buffer:buffer-text buffer)))
-    (if every
-        (count-in-stretches rope (search-filter-matcher filter) stretches :every t :stop stop)
-        (let ((count (nth-value 1 (lines-matching-everywhere
-                                   filter rope
-                                   (coerce (loop for (start . end) in stretches collect start collect end) '(simple-array fixnum (*)))
-                                   (buffer-crlf-p buffer) nil stop nil ends))))
-          (and (not (and stop (funcall stop))) count)))))
-
 (defun stretch-pattern-count (counter buffer stretches text regex &key every ends)
   "STRETCH-COUNT of TEXT in STRETCHES of BUFFER as it is typed at a question,
 kept up to date by COUNTER as PATTERN-COUNT-UPDATE counts: its two values,

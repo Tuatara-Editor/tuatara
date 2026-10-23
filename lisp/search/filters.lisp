@@ -678,6 +678,20 @@ ENDS says (RECORD-ENDS)."
             (reduce #'+ results :key #'second)
             (reduce #'+ results :key #'third))))
 
+(defun stretch-count (buffer stretches filter &key every ends stop)
+  "How many matches FILTER's pattern has in STRETCHES of BUFFER, (START .
+END) each: with EVERY each match, else the lines FILTER leaves
+\(LINES-MATCHING), records ending as ENDS says (RECORD-ENDS); NIL once STOP
+answers true. Counted on every core."
+  (let ((rope (tuatara.buffer:buffer-text buffer)))
+    (if every
+        (count-in-stretches rope (search-filter-matcher filter) stretches :every t :stop stop)
+        (let ((count (nth-value 1 (lines-matching-everywhere
+                                   filter rope
+                                   (coerce (loop for (start . end) in stretches collect start collect end) '(simple-array fixnum (*)))
+                                   (buffer-crlf-p buffer) nil stop nil ends))))
+          (and (not (and stop (funcall stop))) count)))))
+
 (defun runs-octets (runs)
   "How many octets of the text RUNS (LINES-MATCHING) take."
   (loop for i from 0 below (length runs) by 2 sum (- (aref runs (1+ i)) (aref runs i))))
