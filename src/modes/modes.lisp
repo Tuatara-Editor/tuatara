@@ -177,6 +177,12 @@ installed and before its hooks run. Methods should call CALL-NEXT-METHOD.")
 (START END FACE) byte ranges; NIL when MODE colours nothing.")
   (:method (mode buffer rows) (declare (ignore mode buffer rows)) nil))
 
+(defgeneric mode-marks-point-p (mode)
+  (:documentation "True when MODE shows where point is in a look of its own (the calendar
+its day), so that a window of it the typing does not go to draws no cursor
+over that.")
+  (:method (mode) (declare (ignore mode)) nil))
+
 (defun mode-comment-syntax (mode)
   "How MODE's language writes comments at the start of a line, as two values:
 the marker a commented line starts with (\";\" in Lisp, \"//\" in Rust), and what

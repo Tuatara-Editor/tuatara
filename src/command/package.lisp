@@ -47,7 +47,7 @@
            #:set-transient-map #:clear-transient-map #:editor-transient-map #:editor-transient-keep
            #:editor-transient-exit #:editor-pre-command-functions #:rectangle-rows
            #:rectangle-live-p #:end-rectangle #:rectangle-point-column #:keep-rectangle-column
-           #:rectangle-columns #:region-rectangle-rows #:*other-cursor-functions* #:*read-key-replay*
+           #:rectangle-columns #:region-rectangle-rows #:*other-cursor-functions* #:*point-marked-functions* #:*read-key-replay*
            #:*this-command-keys* #:*command-undo-since* #:*command-notes* #:editor-transient-fresh #:*dropped*
            #:*debug-on-error* #:*backtrace-function* #:*backtrace-frames* #:capture-backtrace
            ;; completing a word in the text

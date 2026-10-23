@@ -70,6 +70,10 @@
   (declare (ignore editor))
   (mode-line-extra (buffer-major-mode buffer) buffer))
 
+(defun mode-marks-point-of-buffer (buffer)
+  "True when the major mode of BUFFER marks point in a look of its own."
+  (mode-marks-point-p (buffer-major-mode buffer)))
+
 (defun leave-mode-on-kill (buffer)
   "Let BUFFER's major mode release what it attached before the buffer is killed."
   (mode-exit (buffer-major-mode buffer) buffer))
@@ -82,6 +86,7 @@ Idempotent: the hooks are named functions."
   (pushnew 'leave-mode-on-kill tuatara.buffer:*kill-buffer-functions*)
   (pushnew 'syntax-highlights-for-window *syntax-highlight-functions*)
   (pushnew 'mode-line-extra-for-buffer *mode-line-functions*)
+  (pushnew 'mode-marks-point-of-buffer *point-marked-functions*)
   (let ((map (mode-keymap 'prog-mode)))
     ;; C-M-i reaches a terminal as M-TAB
     (define-key map "C-M-i" 'completion-at-point)

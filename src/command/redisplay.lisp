@@ -482,6 +482,11 @@ in ROWS of WINDOW besides point, in any order: the cursors of a split, for one.
 Each is drawn in :split-cursor, or :split-cursor-insert while the real cursor
 is a bar.")
 
+(defvar *point-marked-functions* '()
+  "Functions of a buffer, true when it shows where point is in a look of its
+own (the calendar its day): a window of it the typing does not go to then
+draws no cursor over that.")
+
 (defun row-at (rows position)
   "The index of the row of ROWS showing POSITION, or at whose end it stands;
 NIL when POSITION is outside them."
@@ -508,10 +513,12 @@ values: the highlight ranges of those on a character, and for each row with
 one after the end of its text, (ROW . FACE). Those of *OTHER-CURSOR-FUNCTIONS*
 are in :split-cursor (:split-cursor-insert while text is typed); WINDOW's
 point, while the cursor is elsewhere (CURSOR-ELSEWHERE-P), in :cursor-inactive,
-but in the hex view, which marks its octet itself."
+but in the hex view, which marks its octet itself, and in a buffer that marks
+point in its own way (*POINT-MARKED-FUNCTIONS*)."
   (let* ((buffer (tuatara.display:window-buffer window))
          (point (and (cursor-elsewhere-p editor window)
                      (not (tuatara.display:hex-view-p buffer))
+                     (notany (lambda (function) (funcall function buffer)) *point-marked-functions*)
                      (tuatara.display:window-point window))))
     (when (and (or point *other-cursor-functions*) (plusp (length rows)))
       (let* ((from (tuatara.display:row-start (aref rows 0)))
