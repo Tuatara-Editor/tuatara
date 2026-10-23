@@ -157,10 +157,10 @@ installed. The seconds until it looks again; NIL with no tag set."
 
 (defun org-notify-health-words ()
   "How entries tagged :notify: are told here, as M-x check-health says it."
-  (program-health-words (format nil "agenda entries tagged :~a: told on the desktop" (or *org-notify-tag* "notify"))
-                        (and *org-notify-program* (tuatara.io:find-program *org-notify-program*))
-                        (format nil "~a not found (libnotify)" *org-notify-program*)
-                        :how (format nil "~@[~d min before and ~]at their time" (and (integerp *org-notify-before*) (plusp *org-notify-before*) *org-notify-before*))))
+  (outside-program-health-words :notify (format nil "agenda entries tagged :~a: told on the desktop" (or *org-notify-tag* "notify"))
+                                (and *org-notify-program* (tuatara.io:find-program *org-notify-program*))
+                                :how (format nil "~@[~d min before and ~]at their time"
+                                             (and (integerp *org-notify-before*) (plusp *org-notify-before*) *org-notify-before*))))
 
 (defun install-org-notify ()
   "Tell the agenda's entries tagged :notify: on the desktop while Tuatara runs."

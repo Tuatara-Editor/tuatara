@@ -1484,3 +1484,11 @@ help left out."
           (sb-int:unencapsulate 'tuatara.io:path-stamp 'counted)
           (sb-int:unencapsulate 'tuatara.io:directory-entries 'counted)
           (setf tuatara.defaults::**org-notify-state** kept))))))
+
+(define-test (org notify-health-said-as-others)
+  ;; check-health says what is missing for desktop notices as for every outside program: what to install
+  (let ((tuatara.defaults::*org-notify-program* "no-such-notify-program-here"))
+    (is string= (format nil "agenda entries tagged :~a: told on the desktop by none: ~a"
+                        (or tuatara.defaults::*org-notify-tag* "notify")
+                        (tuatara.defaults::outside-program-install-words :notify))
+        (tuatara.defaults::org-notify-health-words))))
