@@ -93,6 +93,10 @@ was typed is no date."
       (when (and window (member window (editor-windows *editor*)))
         (leave-window window)))))
 
+(defparameter *repeat-weekday-arguments* (map 'list #'string-downcase *short-weekday-names*)
+  "The switches of the repeat menu (REPEAT-MENU) for the days of the week, by
+their number, 0 for Sunday: sun, mon and so on.")
+
 (defparameter *org-repeat-counts*
   '(("one" . 1) ("two" . 2) ("other" . 2) ("second" . 2) ("three" . 3) ("third" . 3) ("four" . 4) ("fourth" . 4)
     ("five" . 5) ("fifth" . 5) ("six" . 6) ("sixth" . 6) ("seven" . 7) ("eight" . 8) ("nine" . 9) ("ten" . 10)
@@ -136,32 +140,15 @@ INPUT says neither."
                 (and from (string-trim " " (subseq input (+ from (if (char-equal (char input from) #\f) 0 1) 4) (or until (length input)))))
                 (and until (after until)))))))
 
-(defun org-repeat-as-form (value)
-  "VALUE, what ORG-WORDS-REPEAT read, as the form of a rule and its time
-text: a rule's own; a repeat of days or weeks every N days from its date
-\(diary-cyclic), of a month the same day of every month, of a year the same
-day of every year; NIL for every N months or years."
-  (if (stringp value)
-      (multiple-value-bind (match groups) (cl-ppcre:scan-to-strings *org-rule-pattern* value)
-        (and match (values (aref groups 0)
-                           (let ((rule (org-read-rule value))) (and rule (org-rule-time-text rule))))))
-      (let ((n (org-ts-repeat-value value)) (unit (org-ts-repeat-unit value))
-            (y (org-ts-year value)) (m (org-ts-month value)) (d (org-ts-day value)))
-        (values (case unit
-                  (#\d (format nil "diary-cyclic ~d ~d ~d ~d" n y m d))
-                  (#\w (format nil "diary-cyclic ~d ~d ~d ~d" (* 7 n) y m d))
-                  (#\m (and (= n 1) (format nil "diary-date t ~d t" d)))
-                  (#\y (and (= n 1) (format nil "diary-anniversary ~d ~d" m d))))
-                (org-ts-time-text value)))))
-
 (defun org-words-repeat (input now)
   "INPUT, a repeat in words, read at the universal time NOW, as
 ORG-WORDS-REPEAT-PLAIN reads it, and from and to when it says them
 \(ORG-REPEAT-RANGE): from a date, a repeater begins there; to or until a
 date, it is a timestamp by rule (<%%(and (diary-block ...) ...)>) that ends
-there, its dates read as a date is typed (nov 2, 2026-11-02, fri). NIL when
-INPUT is none, a date is none, it ends before it begins, or a rule is given
-a date to begin from and none to end."
+there, written as the repeat menu writes it (REPEAT-VALUE), its dates read
+as a date is typed (nov 2, 2026-11-02, fri). NIL when INPUT is none, a date
+is none, it ends before it begins, it cannot be written to end, or a rule is
+given a date to begin from and none to end."
   (multiple-value-bind (head from-text to-text)
       ;; the time, wherever it is said, is the repeat's
       (multiple-value-bind (start end) (find-time-range input)
@@ -175,16 +162,11 @@ a date to begin from and none to end."
                (start (if from-text (read-date-text from-text today) today))
                (end (and to-text (read-date-text to-text today))))
           (when (and start (or (null to-text) (and end (<= start end))))
-            (let ((value (org-words-repeat-plain head (day-universal-time start 12 0))))
+            (multiple-value-bind (value arguments) (org-words-repeat-plain head (day-universal-time start 12 0))
               (cond ((null value) nil)
                     ((null end) (and (org-ts-p value) value))
-                    (t (multiple-value-bind (form time) (org-repeat-as-form value)
-                         (when form
-                           (multiple-value-bind (sy sm sd) (day-date start)
-                             (multiple-value-bind (ey em ed) (day-date end)
-                               (let ((text (format nil "<%%(and (diary-block ~d ~d ~d ~d ~d ~d) (~a))~@[ ~a~]>"
-                                                   sy sm sd ey em ed form time)))
-                                 (and (org-read-rule text) text))))))))))))))
+                    (t (let ((*org-now* now))
+                         (values (repeat-value (append arguments (list (format nil "ends=~a" (format-day "%F" end)))))))))))))))
 
 (defun org-words-repeat-plain (input now)
   "INPUT, a repeat in words, read at the universal time NOW, or NIL when it is
@@ -198,7 +180,9 @@ or last weekday of every month, or of every N months: the text of a
 timestamp by rule (<%%(diary-float t 1 1)>), the months counted from the next
 time it comes, N dividing twelve. A time of day or a time range may go
 anywhere (10:00, 10:00-11:00); of, the, on, at and commas are passed over;
-everyday and daily are every day, weekly, monthly and yearly likewise."
+everyday and daily are every day, weekly, monthly and yearly likewise. It is
+written as the repeat menu writes it (REPEAT-FORM), from the menu's
+arguments for it, which are the second value."
   (let* ((words (loop for w in (cl-ppcre:split "[\\s,]+" (string-downcase (string-trim " " input)))
                       for whole = (cdr (assoc w '(("everyday" "every" "day") ("daily" "every" "day") ("weekly" "every" "week")
                                                   ("monthly" "every" "month") ("yearly" "every" "year"))
@@ -210,50 +194,49 @@ everyday and daily are every day, weekly, monthly and yearly likewise."
          (every (position-if (lambda (w) (member w '("every" "each") :test #'string=)) words))
          (today (org-today now)))
     (when every
-      (multiple-value-bind (hour minute end-hour end-minute) (and time (read-time-range time))
-        (let* ((before (subseq words 0 every))
-               (after (subseq words (1+ every)))
-               (days (and (null before) (org-repeat-weekday-set after)))
-               ;; the time as a timestamp writes it, 09:00
-               (time (time-range-text hour minute end-hour end-minute))
-               (count (let ((w (first after)))
-                        (cond ((null w) nil)
-                              ((cl-ppcre:scan "^[0-9]{1,3}$" w) (parse-integer w))
-                              (t (cdr (assoc w *org-repeat-counts* :test #'string=))))))
-               (after (if count (rest after) after))
-               (count (or count 1)))
-          (cond
-            ;; several days of the week
-            ((and days (rest days))
-             (let ((text (format nil "<%%(memq (calendar-day-of-week date) '~a)~@[ ~a~]>" days time)))
-               (and (org-read-rule text) text)))
-            ;; every N days, weeks, months, years, or weekdays
-            ((and (null before) (= (length after) 1) (plusp count))
-             (let* ((unit (string-right-trim "s" (first after)))
-                    (weekday (weekday-of-word (first after)))
-                    (letter (cond (weekday #\w)
-                                  ((string= unit "day") #\d) ((string= unit "week") #\w)
-                                  ((string= unit "month") #\m) ((string= unit "year") #\y))))
-               (when letter
-                 (let ((ts (org-date-ts (if weekday (+ today (mod (- weekday (weekday today)) 7)) today)
-                                        hour minute end-hour end-minute)))
-                   (setf (org-ts-repeater ts) :cumulate (org-ts-repeat-value ts) count (org-ts-repeat-unit ts) letter)
-                   ts))))
-            ;; the Nth or last weekday of every month, or of every N months
-            ((and (= (length before) 2) (= (length after) 1)
-                  (member (string-right-trim "s" (first after)) '("month") :test #'string=)
-                  (member count '(1 2 3 4 6 12)))
-             (let ((n (cdr (assoc (first before) *org-repeat-ordinals* :test #'string=)))
-                   (dayname (weekday-of-word (second before))))
-               (when (and n dayname)
-                 (multiple-value-bind (year month) (day-date today)
-                   (let* ((this (org-float-day year month dayname n nil))
-                          (first-month (if (and this (>= this today)) month (1+ (mod month 12))))
-                          (months (sort (loop for k below (/ 12 count) collect (1+ (mod (+ (1- first-month) (* k count)) 12))) #'<))
-                          (text (format nil "<%%(diary-float ~a ~d ~d)~@[ ~a~]>"
-                                        (cond ((= count 1) "t") ((= count 12) (first months)) (t (format nil "'~a" months)))
-                                        dayname n time)))
-                     (and (org-read-rule text) text))))))))))))
+      (let* ((before (subseq words 0 every))
+             (after (subseq words (1+ every)))
+             (days (and (null before) (org-repeat-weekday-set after)))
+             (count (let ((w (first after)))
+                      (cond ((null w) nil)
+                            ((cl-ppcre:scan "^[0-9]{1,3}$" w) (parse-integer w))
+                            (t (cdr (assoc w *org-repeat-counts* :test #'string=))))))
+             (after (if count (rest after) after))
+             (count (or count 1))
+             (start today)
+             (kind
+               (cond
+                 ;; several days of the week
+                 ((and days (rest days))
+                  (if (equal days '(1 2 3 4 5))
+                      (list "repeats=weekdays")
+                      (list* "repeats=weekly" (mapcar (lambda (d) (nth d *repeat-weekday-arguments*)) days))))
+                 ;; every N days, weeks, months, years, or weekdays
+                 ((and (null before) (= (length after) 1) (plusp count))
+                  (let ((unit (string-right-trim "s" (first after)))
+                        (weekday (weekday-of-word (first after))))
+                    (cond (weekday (list "repeats=weekly" (nth weekday *repeat-weekday-arguments*)))
+                          ((string= unit "day") (list "repeats=daily"))
+                          ((string= unit "week") (list "repeats=weekly"))
+                          ((string= unit "month") (list "repeats=monthly-day"))
+                          ((string= unit "year") (list "repeats=yearly")))))
+                 ;; the Nth or last weekday of every month, or of every N months, from the next time it comes
+                 ((and (= (length before) 2) (= (length after) 1)
+                       (string= (string-right-trim "s" (first after)) "month"))
+                  (let ((n (cdr (assoc (first before) *org-repeat-ordinals* :test #'string=)))
+                        (dayname (weekday-of-word (second before))))
+                    (when (and n dayname)
+                      (setf start (org-rule-next (make-org-rule :kind :float :arguments (list t dayname n nil)) today))
+                      (and start (list (if (minusp n) "repeats=monthly-last" "repeats=monthly-nth")))))))))
+        (when (and kind (or (null time) (read-time-range time)))
+          (let* ((arguments (append (list (format nil "start=~a" (format-day "%F" start)))
+                                    (and time (list (format nil "time=~a" (multiple-value-call #'time-range-text (read-time-range time)))))
+                                    (and (> count 1) (list (format nil "every=~d" count)))
+                                    kind))
+                 (form (repeat-form arguments start nil)))
+            (cond ((null form) nil)
+                  ((org-ts-p form) (values form arguments))
+                  (t (values (repeat-rule-text form (repeat-time arguments)) arguments)))))))))
 
 (defun org-repeat-words (value)
   "VALUE, what ORG-WORDS-REPEAT read, as the question shows it: the timestamp

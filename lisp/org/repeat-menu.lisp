@@ -13,10 +13,6 @@
 
 (in-package #:tuatara.defaults)
 
-(defparameter *repeat-weekday-arguments* '("sun" "mon" "tue" "wed" "thu" "fri" "sat")
-  "The switches of the repeat menu for the days of the week, by their number,
-0 for Sunday.")
-
 (defvar *repeat-menu-target* nil
   "While the repeat menu is open, the function given what it writes: an
 ORG-TS, or the text of a timestamp by rule.")
@@ -96,8 +92,8 @@ saying why not."
          (every (repeat-every arguments))
          (time (repeat-time arguments)))
     (multiple-value-bind (year month date) (day-date start)
-      (flet ((repeater (value unit)
-               (let ((ts (org-date-ts start nil nil nil nil)))
+      (flet ((repeater (value unit &optional (day start))
+               (let ((ts (org-date-ts day nil nil nil nil)))
                  (multiple-value-bind (hour minute end-hour end-minute) (read-time-range (or time ""))
                    (setf (org-ts-hour ts) hour (org-ts-minute ts) minute
                          (org-ts-end-hour ts) end-hour (org-ts-end-minute ts) end-minute))
@@ -111,15 +107,15 @@ saying why not."
           ((string= kind "weekdays") "memq (calendar-day-of-week date) '(1 2 3 4 5)")
           ((string= kind "weekly")
            (let ((days (repeat-weekdays arguments start)))
-             (cond ((and (null (rest days)) (= (first days) (weekday start)) (null end))
-                    (repeater every #\w))
-                   ((= every 1) (format nil "memq (calendar-day-of-week date) '~a" days))
-                   (t
-                    ;; each day every so many weeks, from its first after the start
-                    (format nil "or~{ (diary-cyclic ~{~d~^ ~})~}"
-                            (loop for d in days
-                                  collect (multiple-value-bind (y m dd) (day-date (+ start (mod (- d (weekday start)) 7)))
-                                            (list (* 7 every) y m dd))))))))
+             (flet ((first-on (d) (+ start (mod (- d (weekday start)) 7))))
+               (flet ((cyclic (d)
+                        ;; the day every so many weeks, from its first at or after the start
+                        (multiple-value-bind (y m dd) (day-date (first-on d))
+                          (format nil "diary-cyclic ~d ~d ~d ~d" (* 7 every) y m dd))))
+                 (cond ((and (null (rest days)) (null end)) (repeater every #\w (first-on (first days))))
+                       ((null (rest days)) (cyclic (first days)))
+                       ((= every 1) (format nil "memq (calendar-day-of-week date) '~a" days))
+                       (t (format nil "or~{ (~a)~}" (mapcar #'cyclic days))))))))
           ((string= kind "monthly-day")
            (let ((months (repeat-months start every)))
              (cond ((null end) (repeater every #\m))
@@ -137,6 +133,16 @@ saying why not."
                  (t (multiple-value-bind (last) (day-date end)
                       (format nil "diary-date ~d ~d '~a" month date
                               (loop for y from year to last by every collect y)))))))))))
+
+(defun repeat-rule-text (form time &optional from to)
+  "The timestamp by rule of FORM, diary-float t 1 1 say, TIME after it
+\(10:00, or NIL), taken from the day number FROM to the day TO when they are
+given: <%%(and (diary-block 2026 11 2 2026 12 21) (diary-cyclic 7 2026 11 2)) 10:00>."
+  (if from
+      (multiple-value-bind (sy sm sd) (day-date from)
+        (multiple-value-bind (ey em ed) (day-date to)
+          (format nil "<%%(and (diary-block ~d ~d ~d ~d ~d ~d) (~a))~@[ ~a~]>" sy sm sd ey em ed form time)))
+      (format nil "<%%(~a)~@[ ~a~]>" form time)))
 
 (defun repeat-days (value from count)
   "The first COUNT days, at or after the day number FROM, that VALUE (an
@@ -177,10 +183,8 @@ when it is a rule, so that it comes no sooner."
                      ((org-ts-p form) form)
                      ;; a rule of no start of its own begins no sooner than the menu's
                      ((or end (and (> start (org-today)) (not (string= (subseq form 0 2) "or"))))
-                      (multiple-value-bind (sy sm sd) (day-date start)
-                        (multiple-value-bind (ey em ed) (day-date (or end (day-number (+ 100 (day-date start)) 1 1)))
-                          (format nil "<%%(and (diary-block ~d ~d ~d ~d ~d ~d) (~a))~@[ ~a~]>" sy sm sd ey em ed form time))))
-                     (t (format nil "<%%(~a)~@[ ~a~]>" form time))))))
+                      (repeat-rule-text form time start (or end (day-number (+ 100 (day-date start)) 1 1))))
+                     (t (repeat-rule-text form time))))))
       (cond ((and end-day (< end-day start))
              (values nil "It ends before it starts"))
             (count

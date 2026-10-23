@@ -1300,3 +1300,22 @@ help left out."
         (mapcar (lambda (row) (list (sixth row) (fourth row)))
                 (org-agenda-test-rows (tuatara.defaults::org-agenda-day (tuatara.dates:day-number 2026 10 5)
                                                                         :files (list (namestring path)) :log nil))))))
+
+(define-test (org words-and-menu-write-repeats-alike)
+  ;; a repeat in words with an end is written as the repeat menu writes it
+  (let* ((now (encode-universal-time 0 0 12 23 10 2026))
+         (tuatara.defaults::*org-now* now))
+    (flet ((words (input) (let ((v (tuatara.defaults::org-words-repeat input now)))
+                            (if (stringp v) v (and v (tuatara.defaults::org-ts-text v)))))
+           (menu (&rest arguments) (let ((v (tuatara.defaults::repeat-value arguments)))
+                                     (if (stringp v) v (and v (tuatara.defaults::org-ts-text v))))))
+      (is equal "<%%(and (diary-block 2026 11 5 2027 3 1) (diary-date '(1 3 5 7 9 11) 5 t))>"
+          (words "every 2 months from 2026-11-05 until 2027-03-01"))
+      (is equal (menu "start=2026-11-05" "repeats=monthly-day" "every=2" "ends=2027-03-01")
+          (words "every 2 months from 2026-11-05 until 2027-03-01"))
+      (is equal (menu "start=2026-11-02" "time=10:00" "repeats=monthly-nth" "ends=2026-12-31")
+          (words "first monday every month from 2026-11-01 to 2026-12-31 10:00"))
+      (is equal (menu "start=2026-10-23" "repeats=weekly" "mon" "ends=2026-12-21") (words "every monday until dec 21"))
+      ;; a weekly repeat on one day from a day before it: a repeater from that day, in words or the menu
+      (is equal "<2026-10-26 Mon +1w>" (menu "start=2026-10-23" "repeats=weekly" "mon"))
+      (is equal "<2026-10-26 Mon +1w>" (words "every monday")))))
