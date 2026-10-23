@@ -11,7 +11,19 @@
     (is eq :crlf (of (format nil "a~c~%b~c~%" #\Return #\Return)))
     (is eq :lf (of (format nil "a~%b~c~%" #\Return)))           ; the first line end decides
     (is eq :lf (of "no line end"))
-    (is eq :lf (of ""))))
+    (is eq :lf (of "")))
+  ;; of a part of the text, as the files searched together are each judged
+  (let ((rope (tuatara.text:string->rope (format nil "a~%b~c~%c~%~c~%" #\Return #\Return))))
+    (is eq :lf (tuatara.buffer:detect-line-ending rope :start 0 :end 2))
+    (is eq :crlf (tuatara.buffer:detect-line-ending rope :start 2 :end 5))
+    (is eq :lf (tuatara.buffer:detect-line-ending rope :start 5 :end 7))
+    (is eq :lf (tuatara.buffer:detect-line-ending rope :start 4 :end 5))
+    (is eq :crlf (tuatara.buffer:detect-line-ending rope :start 7))
+    ;; the text of a line: before its carriage return with CRLF, a carriage return at the end too
+    (is = 3 (tuatara.text:rope-line-text-end rope 2 4 t))
+    (is = 4 (tuatara.text:rope-line-text-end rope 2 4 nil))
+    (is = 7 (tuatara.text:rope-line-text-end rope 7 7 t))
+    (is = 7 (tuatara.text:rope-line-text-end rope 7 8 t))))
 
 (define-test (line-endings showing-line-endings)
   (let ((rope (tuatara.text:string->rope (format nil "ab~c~%cd~c~%lone~cCR" #\Return #\Return #\Return))))

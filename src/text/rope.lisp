@@ -1627,6 +1627,14 @@ well-formed sequence. Decodes at most four octets. Complexity: O(log n)."
          (rope-copy-into rope byte (+ byte 2) pair)
          (crlf-octets-p pair 0 2))))
 
+(defun rope-line-text-end (rope start end crlf)
+  "Where the text of a line of ROPE ends, the line ending at octet END (its
+newline, or the end of the text) and starting at START or before: with CRLF,
+at the carriage return just before END, when there is one after START; else
+at END. As LINE-TEXT-END has it for octets."
+  (declare (type fixnum start end))
+  (if (and crlf (> end start) (= 13 (rope-octet rope (1- end)))) (1- end) end))
+
 (defun rope-find-octet (rope value &key (start 0) (end (rope-bytes rope)))
   "Return the byte offset of the first octet equal to VALUE in ROPE from START
 below END, or NIL. Complexity: O(log n + distance scanned)."

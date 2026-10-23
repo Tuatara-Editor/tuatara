@@ -116,9 +116,7 @@ before a carriage return ahead of that) and the start of the line after."
     (declare (type fixnum size p k))
     (loop while (< p size)
           do (let* ((newline (or (loop for i of-type fixnum from p below size when (= (aref octets i) 10) return i) size))
-                    (text-end (if (and crlf (< newline size) (> newline p) (= (aref octets (1- newline)) 13))
-                                  (1- newline)
-                                  newline))
+                    (text-end (if (< newline size) (tuatara.text:line-text-end octets p newline crlf) newline))
                     (next (min size (1+ newline))))
                (declare (type fixnum newline text-end next))
                (setf (aref starts k) p (aref ends k) text-end (aref nexts k) next)
@@ -129,7 +127,7 @@ before a carriage return ahead of that) and the start of the line after."
 (defun rope-line-before (rope at crlf)
   "The text of ROPE's line that ends just before AT, a line's start, as octets,
 without its line end (a carriage return too with CRLF)."
-  (let* ((end (if (and crlf (>= at 2) (= (tuatara.text:rope-octet rope (- at 2)) 13)) (- at 2) (1- at)))
+  (let* ((end (tuatara.text:rope-line-text-end rope 0 (1- at) crlf))
          (start (tuatara.text:rope-line-start rope (max 0 end))))
     (tuatara.text:rope-octets rope :start start :end end)))
 

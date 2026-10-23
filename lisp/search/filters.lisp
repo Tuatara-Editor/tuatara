@@ -451,7 +451,7 @@ AT, from which the text is read: a line holding many matches is read once."
             newline (tuatara.text:rope-find-octet rope 10 :start at)))
     (if newline
         (values start
-                (if (and crlf (> newline start) (= 13 (tuatara.text:rope-octet rope (1- newline)))) (1- newline) newline)
+                (tuatara.text:rope-line-text-end rope start newline crlf)
                 (1+ newline))
         (values start total total))))
 

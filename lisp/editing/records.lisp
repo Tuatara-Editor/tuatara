@@ -56,7 +56,7 @@ record's other lines, and the record after it, are known at once."
 (defun record-text-end (rope text-end crlf)
   "TEXT-END, where a record's last line of ROPE ends, before the carriage
 return there when its lines end in CRLF."
-  (if (and crlf (plusp text-end) (= 13 (tuatara.text:rope-octet rope (1- text-end)))) (1- text-end) text-end))
+  (tuatara.text:rope-line-text-end rope 0 text-end crlf))
 
 (defun record-verdict (memo rope start text-end crlf limit holder decide)
   "What DECIDE, a function of a string and how many of its first characters

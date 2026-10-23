@@ -721,11 +721,12 @@ carriage return and a newline."
       (coerce '(#\Return #\Newline) 'string)
       (string #\Newline)))
 
-(defun detect-line-ending (rope)
-  "How ROPE's lines end, judged by its first line end in its first 64 KB: :CRLF
-when a carriage return comes before it, else :LF."
-  (let ((newline (tuatara.text:rope-find-octet rope 10 :end (min (tuatara.text:rope-bytes rope) 65536))))
-    (if (and newline (plusp newline) (= (tuatara.text:rope-octet rope (1- newline)) 13)) :crlf :lf)))
+(defun detect-line-ending (rope &key (start 0) (end (tuatara.text:rope-bytes rope)))
+  "How the lines of ROPE's text from START below END end, judged by its first
+line end in its first 64 KB: :CRLF when a carriage return comes before it,
+else :LF."
+  (let ((newline (tuatara.text:rope-find-octet rope 10 :start start :end (min end (+ start 65536)))))
+    (if (and newline (/= newline (tuatara.text:rope-line-text-end rope start newline t))) :crlf :lf)))
 
 (defun buffer-forward-char (buffer byte &optional (n 1))
   "Byte offset N characters after BYTE in BUFFER (before, for negative N),
