@@ -1022,10 +1022,12 @@ help left out."
 
 (define-test (org warning-of-any-length)
   ;; a warning too long to mean anything: read as days still, never an error that stops the agenda
-  (is = 3 (tuatara.defaults::org-warning-days "<2026-10-20 Tue -3d>" 14))
-  (is = 60 (tuatara.defaults::org-warning-days "<2026-10-20 Tue -2m>" 14))
-  (is = 1 (tuatara.defaults::org-warning-days "<2026-10-20 Tue -36h>" 14))
-  (true (< 1000000 (tuatara.defaults::org-warning-days (format nil "<2026-10-20 Tue -~am>" (make-string 400 :initial-element #\9)) 14))))
+  (flet ((warning (text) (tuatara.defaults::org-warning-days (tuatara.defaults::org-read-ts text))))
+    (is = 3 (warning "<2026-10-20 Tue -3d>"))
+    (is = 60 (warning "<2026-10-20 Tue -2m>"))
+    (is = 1 (warning "<2026-10-20 Tue -36h>"))
+    (false (warning "<2026-10-20 Tue +1w>"))
+    (true (< 1000000 (warning (format nil "<2026-10-20 Tue -~am>" (make-string 400 :initial-element #\9)))))))
 
 (define-test (org dates-by-rule)
   ;; <%%(diary-float t 1 1)>, the first Monday of every month, as Emacs's Org writes it:
@@ -1405,3 +1407,19 @@ help left out."
     (is string= "[2026-10-01 Thu]" (tuatara.defaults::org-day-timestamp-text day))
     (is string= "[2026-10-01 Thu 09:05]" (tuatara.defaults::org-day-timestamp-text day :hour 9 :minute 5))
     (is string= "[1899-12-31 Sun]" (tuatara.defaults::org-day-timestamp-text -1))))
+
+(define-test (org agenda-times-from-timestamps-read)
+  ;; the times, ranges and warnings of timestamps are those read with them, not looked for again in their text
+  (uiop:with-temporary-file (:pathname path :type "org")
+    (with-open-file (o path :direction :output :if-exists :supersede :external-format :utf-8)
+      (format o "* TODO Call~%DEADLINE: <2026-10-07 Wed 15:30 -3d>~%* Meet~%<2026-10-05 Mon 9:30-10:00>~%* Standup~%<%%(diary-cyclic 1 2026 10 1) 08:15>~%"))
+    (let ((tuatara.defaults::*org-now* (encode-universal-time 0 0 12 5 10 2026)) (looks 0))
+      (sb-int:encapsulate 'tuatara.dates:find-time-range 'counted (lambda (f &rest arguments) (incf looks) (apply f arguments)))
+      (unwind-protect
+           (let ((rows (org-agenda-test-rows (tuatara.defaults::org-agenda-span (tuatara.dates:day-number 2026 10 5) 3
+                                                                                :files (list (namestring path)) :log nil))))
+             (is equal '(("2026-10-05" 815 "Standup") ("2026-10-05" 930 "Meet") ("2026-10-05" nil "Call")
+                         ("2026-10-06" 815 "Standup") ("2026-10-07" 815 "Standup") ("2026-10-07" 1530 "Call"))
+                 (mapcar (lambda (row) (list (first row) (fourth row) (sixth row))) rows)))
+        (sb-int:unencapsulate 'tuatara.dates:find-time-range 'counted))
+      (is = 0 looks))))

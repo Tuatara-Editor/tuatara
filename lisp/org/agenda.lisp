@@ -95,14 +95,12 @@ before CURRENT (PREFER :past), at or after it (:future), or the nearer."
             (:future (if (= current n1) n1 n2))
             (t (if (> (abs (- current n1)) (abs (- current n2))) n2 n1)))))))
 
-(defun org-warning-days (text default &key delay)
-  "The days of warning before the deadline TEXT (its -3d, or DEFAULT); with
-DELAY, the days a scheduled TEXT waits (its -2d, else 0)."
-  (multiple-value-bind (match groups) (cl-ppcre:scan-to-strings "-(\\d+)([hdwmy])(?:$|>| )" text)
-    (if match
-        (floor (* (parse-integer (aref groups 0))
-                  (ecase (char (aref groups 1) 0) (#\d 1) (#\w 7) (#\m 152/5) (#\y 1461/4) (#\h 1/24))))
-        (if delay 0 default))))
+(defun org-warning-days (ts)
+  "The days of warning before the deadline TS (an ORG-TS) its -3d says, or
+the days a scheduled TS waits; NIL when it says none."
+  (and (org-ts-warning ts)
+       (floor (* (org-ts-warning-value ts)
+                 (ecase (org-ts-warning-unit ts) (#\d 1) (#\w 7) (#\m 152/5) (#\y 1461/4) (#\h 1/24))))))
 
 ;;; Entries of the files
 
@@ -465,26 +463,41 @@ and third values."
   "ORG-TIME-OF-DAY of TEXT, read once while an agenda is made."
   (memo-values *org-agenda-time-memo* text (lambda () (org-time-of-day text))))
 
+(defun org-agenda-stamp-time (text)
+  "The time of day of the timestamp TEXT, plain or by rule, as it was read
+once while an agenda is made (ORG-AGENDA-TS, ORG-AGENDA-RULE): 930 for 09:30,
+or NIL; and the end of its range, 1000, or NIL. For TEXT that is no
+timestamp, the first time of day in it (ORG-TIME-OF-DAY)."
+  (flet ((of-day (hour minute) (and hour (+ (* 100 hour) minute))))
+    (let ((ts (org-agenda-ts text)))
+      (if ts
+          (values (of-day (org-ts-hour ts) (org-ts-minute ts)) (of-day (org-ts-end-hour ts) (org-ts-end-minute ts)))
+          (let ((rule (org-agenda-rule text)))
+            (if rule
+                (values (of-day (org-rule-hour rule) (org-rule-minute rule)) (of-day (org-rule-end-hour rule) (org-rule-end-minute rule)))
+                (multiple-value-bind (of-day part end) (org-agenda-time-of-day text)
+                  (declare (ignore part))
+                  (values of-day end))))))))
+
 (defun org-agenda-item (entry day type extra time urgency &key (search-heading t) (title (agenda-entry-title entry)) keep-title end)
   "An agenda line for ENTRY: TIME the timestamp text its time of day is read
 from (or :HEADING, its title's), NIL for none; with SEARCH-HEADING a title
 holding a time gives it when the timestamp has none, the time taken out of
 the title (unless KEEP-TITLE). END, when given, is the
 end of its time range; else the range's end where the time is one."
-  (multiple-value-bind (of-day found range-end)
+  (multiple-value-bind (of-day range-end found)
       (cond ((null time) nil)
-            ((and (stringp time) (org-agenda-time-of-day time)) (org-agenda-time-of-day time))
-            (search-heading (multiple-value-bind (value part) (org-agenda-time-of-day title) (values value (and part (list part))))))
-    (let ((title (if (and (consp found) (not keep-title))
-                     (let ((at (search (first found) title)))
+            ((and (stringp time) (org-agenda-stamp-time time)) (org-agenda-stamp-time time))
+            (search-heading (multiple-value-bind (value part) (org-agenda-time-of-day title) (values value nil part))))
+    (let ((title (if (and found (not keep-title))
+                     (let ((at (search found title)))
                        (if at
                            (string-trim " " (concatenate 'string (string-right-trim " " (subseq title 0 at))
-                                                         (subseq title (+ at (length (first found))))))
+                                                         (subseq title (+ at (length found)))))
                            title))
-                     title))
-          (part (if (consp found) (first found) found)))
+                     title)))
       (make-org-agenda-item :day day :type type :extra extra :time of-day :entry entry :title title :urgency urgency
-                            :end (or end (and of-day (stringp part) range-end))))))
+                            :end (or end range-end)))))
 
 (defun agenda-entry-read-text (entry)
   "Fill ENTRY's STAMPS, RANGES and LOGS from its own text, not its planning
@@ -535,14 +548,11 @@ DAY REPEATS), REPEATS its repeater (ORG-REPEATER-OF), or NIL; :RANGES, each
 \(FROM TO FIRST-DAY LAST-DAY); and for its dates by rule (ORG-READ-RULE)
 :RULES, each (KIND TEXT RULE), KIND :SCHEDULED, :DEADLINE or :STAMP, with
 :LAST-DONE, the day of its LAST_REPEAT, the last day it was done for, or NIL."
-  (flet ((planned (text delay)
+  (flet ((planned (text)
            (let ((ts (and text (char= (char text 0) #\<) (org-agenda-ts text))))
-             (and ts (list (org-ts-day-number ts)
-                           (and (cl-ppcre:scan "-\\d+[hdwmy](?:$|>| )" text)
-                                (org-warning-days text 0 :delay delay))
-                           (org-repeater-of text))))))
-    (list :deadline (planned (agenda-entry-deadline entry) nil)
-          :scheduled (planned (agenda-entry-scheduled entry) t)
+             (and ts (list (org-ts-day-number ts) (org-warning-days ts) (org-repeater-of text))))))
+    (list :deadline (planned (agenda-entry-deadline entry))
+          :scheduled (planned (agenda-entry-scheduled entry))
           :stamps (loop for text in (agenda-entry-stamps entry)
                         unless (org-agenda-rule text)
                         collect (list text (org-ts-day-number (org-agenda-ts text))
