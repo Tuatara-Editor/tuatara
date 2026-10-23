@@ -1492,3 +1492,22 @@ help left out."
                         (or tuatara.defaults::*org-notify-tag* "notify")
                         (tuatara.defaults::outside-program-install-words :notify))
         (tuatara.defaults::org-notify-health-words))))
+
+(define-test (org agenda-files-looked-at-away)
+  ;; the agenda files not open are looked at on the thread that works the agenda out, not on the
+  ;; editor's: the calendar's marks and a refresh start without asking the disk anything
+  (let* ((directory (asdf:system-relative-pathname :tuatara "test/org/agenda/"))
+         (tuatara.defaults::*org-agenda-files* (list (namestring directory)))
+         (tuatara.defaults::*org-agenda-paths-kept* nil)
+         (here sb-thread:*current-thread*)
+         (looked 0))
+    (sb-int:encapsulate 'tuatara.io:path-stamp 'looked
+                        (lambda (function &rest arguments)
+                          (when (eq sb-thread:*current-thread* here) (incf looked))
+                          (apply function arguments)))
+    (let ((marks (unwind-protect (tuatara.defaults::org-calendar-mark-source
+                                  (tuatara.dates:day-number 2026 10 1) (tuatara.dates:day-number 2026 10 31))
+                   (sb-int:unencapsulate 'tuatara.io:path-stamp 'looked))))
+      (is = 0 looked)
+      (true (functionp marks))
+      (true (plusp (length (funcall marks)))))))

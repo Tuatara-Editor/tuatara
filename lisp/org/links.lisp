@@ -285,11 +285,7 @@ or looked for."
         (progn (org-goto-char buffer (org-node-begin here)) t)
         (let ((scanner (cl-ppcre:create-scanner (format nil "(?im)^[ \\t]*:ID:[ \\t]+~a[ \\t]*$" (cl-ppcre:quote-meta-chars id))))
               ;; the Org files open now, as their buffers have them
-              (open (org-agenda-snapshot
-                     (loop for b in tuatara.buffer:*buffers*
-                           for file = (tuatara.buffer:buffer-file b)
-                           for path = (and file (tuatara.io:native file))
-                           when (and path (uiop:string-suffix-p path ".org")) collect path))))
+              (open (org-agenda-open-snapshot)))
           (org-search-notes (format nil "id:~a" id)
                             (lambda (path)
                               (and (uiop:string-suffix-p path ".org")

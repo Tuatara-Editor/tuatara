@@ -449,7 +449,7 @@ they are on the editor's (TUATARA.RUNTIME:CARRY-SETTINGS).")
                            (:copier nil))
   "An agenda of BUFFER worked out again in the background, a job
 \(TUATARA.RUNTIME:JOB): VIEW the view it is worked out for, SOURCES the agenda
-files as it found them (ORG-AGENDA-SOURCES-KEY); RESULT, once done, the text,
+files as it found them (ORG-AGENDA-SOURCES-KEY), known once it has looked; RESULT, once done, the text,
 spans and lines ORG-AGENDA-COMPOSE gives, NIL when it gave up."
   view sources result)
 
@@ -466,8 +466,9 @@ spans and lines ORG-AGENDA-COMPOSE gives, NIL when it gave up."
 
 (defun org-agenda-start-refresh (buffer &key (point :keep))
   "Work BUFFER's agenda out again in the background, a job of BUFFER
-\(AGENDA-REFRESH), from the agenda files as they are now
-\(ORG-AGENDA-SNAPSHOT), unless that is under way; the result is put in as the
+\(AGENDA-REFRESH), from the agenda files as they are now, those open as
+their buffers have them taken here and the rest looked at on the job's thread
+\(ORG-AGENDA-OPEN-SNAPSHOT, ORG-AGENDA-SNAPSHOT-WITH), unless that is under way; the result is put in as the
 job is taken in, point put as POINT says (as ORG-AGENDA-APPLY has it), or as
 the last POINT other than :keep asked for meanwhile. An agenda never drawn
 yet says it is being worked out."
@@ -478,8 +479,8 @@ yet says it is being worked out."
   (unless (tuatara.buffer:buffer-local buffer 'org-agenda-refresh)
     (let* ((view (copy-list (org-agenda-view buffer)))
            (width (org-agenda-window-width buffer))
-           (snapshot (org-agenda-snapshot))
-           (job (make-agenda-refresh buffer view (mapcar #'third snapshot))))
+           (open (org-agenda-open-snapshot))
+           (job (make-agenda-refresh buffer view nil)))
       (setf (tuatara.buffer:buffer-local buffer 'org-agenda-refresh) job)
       (tuatara.runtime:start-job-thread
        job (tuatara.runtime:carry-settings
@@ -488,7 +489,8 @@ yet says it is being worked out."
               ;; an agenda that cannot be worked out is NIL: asked for again when its files change
               (setf (agenda-refresh-result job)
                     (tuatara.runtime:ignoring-errors-reported ("working out the agenda")
-                      (let ((*org-agenda-snapshot* snapshot))
+                      (let ((*org-agenda-snapshot* (org-agenda-snapshot-with open)))
+                        (setf (agenda-refresh-sources job) (mapcar #'third *org-agenda-snapshot*))
                         (multiple-value-list (org-agenda-compose view width)))))))
        :name "tuatara agenda"))))
 
@@ -987,18 +989,19 @@ are (\\[org-save-all-org-buffers] saves them all)."
 
 (defun org-calendar-mark-source (first last)
   "For the calendar (*CALENDAR-MARK-FUNCTIONS*): on the editor's thread, the
-agenda files as they are now (ORG-AGENDA-SNAPSHOT) and the agenda's settings;
-the function that, on a thread of its own, gives the days from FIRST to LAST
-the agenda lists entries on."
-  (let ((snapshot (org-agenda-snapshot)))
-    (and snapshot
+agenda files open as their buffers have them (ORG-AGENDA-OPEN-SNAPSHOT) and
+the agenda's settings; the function that, on a thread of its own, looks at
+the others on disk (ORG-AGENDA-SNAPSHOT-WITH) and gives the days from FIRST to
+LAST the agenda lists entries on. NIL with no agenda files."
+  (let ((open (org-agenda-open-snapshot)))
+    (and *org-agenda-files*
          (tuatara.runtime:carry-settings
           *org-agenda-carried-settings*
           (lambda ()
-            (let* ((*org-agenda-snapshot* snapshot)
+            (let* ((*org-agenda-snapshot* (org-agenda-snapshot-with open))
                    (*org-agenda-ts-memo* (make-hash-table :test 'equal))
                    (*org-agenda-time-memo* (make-hash-table :test 'equal))
-                   (files (mapcar #'first snapshot))
+                   (files (mapcar #'first *org-agenda-snapshot*))
                    (entries (mapcar #'org-agenda-entries files)))
               (loop for day from first to last
                     when (org-agenda-day day :files files :entries-by-file entries :log nil)
