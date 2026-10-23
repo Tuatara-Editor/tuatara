@@ -797,7 +797,15 @@ tiny pieces, a few lines each, so that a small text exercises it."
     ;; a log: the whole line, no header
     (is string= (format nil "10:00 ERROR disk~%10:02 ERROR net~%")
         (list-records-after "C-x / k RET E R R O R RET" (format nil "10:00 ERROR disk~%10:01 INFO up~%10:02 ERROR net~%")
-                            :on-disk on-disk :mode "log-mode")))
+                            :on-disk on-disk :mode "log-mode"))
+    ;; a log by the date its lines begin with, compared as a date, as written and in UTC
+    (let ((log (format nil "2026-06-29T22:10:04+02:00 login aroha~%2026-06-30T23:30:00-05:00 login hemi~%2026-07-01T00:15:00+02:00 login aroha~%2026-07-01 08:00:00 +0200 backup~%")))
+      (is string= (format nil "2026-07-01T00:15:00+02:00 login aroha~%2026-07-01 08:00:00 +0200 backup~%")
+          (list-records-after (format nil "C-x / k $ 0 RET ~a RET" (typed-keys "[[:date>=2026-07-01:]]")) log
+                              :on-disk on-disk :mode "log-mode"))
+      (is string= (format nil "2026-06-29T22:10:04+02:00 login aroha~%2026-07-01T00:15:00+02:00 login aroha~%")
+          (list-records-after (format nil "C-x h M-x k e e p - l i n e s RET $ 0 RET ~a RET" (typed-keys "[[:dateutc<2026-07-01:]]")) log
+                              :on-disk on-disk :mode "log-mode"))))
   ;; no such column: said, nothing changed
   (multiple-value-bind (f editor) (run-keys "M-x c s v - m o d e RET C-x / k P L A C E RET" :text *list-records-sample* :width 100)
     (is string= *list-records-sample* (session-text editor))

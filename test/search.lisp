@@ -214,6 +214,55 @@ newlines and some multibyte characters."
   (true (tuatara.syntax:literal-pattern-p "foo bar,1"))
   (false (tuatara.syntax:literal-pattern-p "foo.")))
 
+(define-test (search regex-prefilter-shapes)
+  ;; where no text is held by every match, a shape is: a run of sets of octets, each
+  ;; place one of a few, as [0-9A-Fa-f]{8}- in every UUID
+  (flet ((shape (pattern &optional case-fold)
+           (multiple-value-bind (shape prefix-p)
+               (tuatara.syntax::required-shape
+                (tuatara.syntax::with-pattern-syntax (cl-ppcre:parse-string (tuatara.syntax::engine-pattern pattern)))
+                case-fold)
+             (list (and shape (length shape)) prefix-p)))
+         (scanner-shape (pattern)
+           (let ((traits (gethash (tuatara.syntax:compile-regex pattern) tuatara.syntax::**regex-traits**)))
+             (and (tuatara.syntax::regex-traits-shape traits) t))))
+    (is equal '(10 t) (shape "[0-9]{4}-[0-9]{2}-[0-9]{2}"))
+    (is equal '(36 t) (shape "[[:uuid:]]"))
+    (is equal '(32 t) (shape "[[:md5:]]"))
+    ;; a lookahead at the start says what the text at a match starts with
+    (is equal '(8 t) (shape "[[:date<2026-07-01:]]"))
+    ;; either way: the places they have in common, every octet either allows
+    (is equal '(3 t) (shape "(?:[0-9]{3}|[a-f]{4})x"))
+    (is equal '(4 nil) (shape "\\w+ [0-9]{3}"))
+    ;; nothing for what may be more than one octet, or a newline
+    (is equal '(nil nil) (shape "\\d{4}"))
+    (is equal '(nil nil) (shape ".{4}"))
+    (is equal '(nil nil) (shape "[^,]{4}"))
+    (is equal '(nil nil) (shape "é{4}" t))
+    (is equal '(1 t) (shape "a\\nb"))
+    ;; a scanner looks for a shape only when it tells more than the text every match holds
+    (true (scanner-shape "[[:uuid:]]"))
+    (true (scanner-shape "[[:macaddress:]]"))
+    (false (scanner-shape "user=[0-9]{2}"))
+    (false (scanner-shape "[0-9]:"))
+    (false (scanner-shape "[[:ipv6:]]")))
+  ;; a search for a shape over text that has none goes at the speed of a search for text:
+  ;; it never tries the pattern there
+  (let* ((line "The kea is a large parrot of the alpine South Island, a cafe of bad beef and dead feed, 2026 at 10:42.")
+         (rope (tuatara.text:string->rope (with-output-to-string (o) (dotimes (i 40000) (write-line line o))))))
+    (flet ((fastest (pattern)
+             (loop repeat 3
+                   minimize (let ((start (get-internal-real-time)))
+                              (tuatara.syntax:regex-search-all rope pattern)
+                              (- (get-internal-real-time) start)))))
+      (let ((text (fastest "zqzq")))
+        (dolist (pattern '("[[:md5:]]" "[[:uuid:]]" "[[:macaddress:]]" "[0-9]{4}-[0-9]{2}-[0-9]{2}" "[[:date:]]"
+                           "[[:creditcard:]]" "[[:iban:]]" "[[:bitcoin:]]"))
+          (let ((time (fastest pattern)))
+            (true (<= time (max (* 4 text) (* 30 (/ internal-time-units-per-second 1000))))
+                  "~a over 4 MB took ~,1f ms, text ~,1f ms" pattern
+                  (/ (* 1000 time) internal-time-units-per-second) (/ (* 1000 text) internal-time-units-per-second))))))))
+
 (define-test (search collect)
   ;; gathered in parallel pieces, the matches are exactly those of one serial scan,
   ;; also where a match runs across a piece boundary
