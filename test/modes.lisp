@@ -440,3 +440,13 @@ the buffer killed."
     (is eq 'test-parent-mode (mode-of "more than ten octets"))
     (is eq 'test-parent-mode (tuatara.modes:mode-for-size 'test-small-files-mode 11))
     (is eq 'test-small-files-mode (tuatara.modes:mode-for-size 'test-small-files-mode 10))))
+
+(define-test (modes every-mode-with-fields-is-of-records)
+  ;; a mode that cuts its records into fields is a file of records, filtered by hiding lines
+  (let ((classes (loop for method in (sb-mop:generic-function-methods #'tuatara.defaults::mode-record-fields)
+                       for class = (first (sb-mop:method-specializers method))
+                       unless (eq class (find-class t))
+                         collect class)))
+    (true (>= (length classes) 8))
+    (dolist (class classes)
+      (true (tuatara.defaults::filters-hide-lines-p (make-instance class) nil) "~a" (class-name class)))))
