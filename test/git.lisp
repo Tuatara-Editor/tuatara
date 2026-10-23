@@ -1335,6 +1335,19 @@ DIR is visited and its status read, the project trusted. Returns the frontend."
       (false (tuatara.frontend.fake:fake-frame-showing f "bad revision"))
       (true (search "+first" (tuatara.buffer:buffer-string (tuatara.buffer:find-buffer "*git diff*")))))))
 
+(define-test (git hashes-told-one-way)
+  ;; a commit's hash, whole or cut short, told by one test: the packages' and the logs'
+  (true (tuatara.defaults::git-hash-p (make-string 40 :initial-element #\a)))
+  (false (tuatara.defaults::git-hash-p "abc1234"))
+  (true (tuatara.defaults::git-hash-p "abc1234" :short t))
+  (false (tuatara.defaults::git-hash-p "abc12" :short t))
+  (false (tuatara.defaults::git-hash-p "abc123g" :short t))
+  (is string= "abc1234" (tuatara.defaults::package-commit-name (format nil "abc1234~%") "here"))
+  (fail (tuatara.defaults::package-commit-name "not-a-hash" "here"))
+  ;; a path as an address writes it, one way for a file: address and the trash
+  (is string= "file:///a%20b/c~-._%25" (tuatara.defaults::path-uri "/a b/c~-._%"))
+  (is string= "/a%20b/c~-._%25" (tuatara.io:url-path "/a b/c~-._%")))
+
 (define-test (git command-words)
   ;; the words of ! are split as a shell splits them, though no shell runs
   (is equal '("log" "-1" "--format=[%s] two words")

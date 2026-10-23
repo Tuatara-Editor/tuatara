@@ -690,10 +690,11 @@ UTF-8: what PERCENT-ENCODED wrote, as a file: address or a .trashinfo has a
 path."
   (tuatara.text:octets-string (percent-decoded-octets text)))
 
-(defun trash-url-path (path)
-  "PATH as a .trashinfo's Path= has it: its octets, those other than letters,
-digits, / and -_.~ written %XX."
-  (percent-encoded path :safe "/-_.~"))
+(defun url-path (path)
+  "PATH as the path of an address has it, a file: address's and a
+.trashinfo's Path=: its octets, those other than letters, digits, / and -._~
+written %XX."
+  (percent-encoded path :safe "/-._~"))
 
 (defun trash-info-path (path top)
   "Where the file PATH was, as its .trashinfo says it: whole in your own
@@ -728,7 +729,7 @@ trash for it."
           (unwind-protect
                (write-octets fd (tuatara.text:string-octets
                                  (format nil "[Trash Info]~%Path=~a~%DeletionDate=~a~%"
-                                         (trash-url-path (trash-info-path path top))
+                                         (url-path (trash-info-path path top))
                                          (tuatara.dates:format-time "%FT%T" time)))
                              :path info)
             (sb-posix:close fd))

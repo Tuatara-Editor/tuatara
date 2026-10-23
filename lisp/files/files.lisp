@@ -442,8 +442,8 @@ images have and text has not. \\[end-safe-visit] opens one as usual after all.")
             do (setf common (tuatara.io:parent-path common))))))
 
 (defun path-uri (path)
-  "The file: address of the native PATH, its characters other than letters, digits and -._~/ encoded."
-  (concatenate 'string "file://" (tuatara.io:percent-encoded (tuatara.io:native path) :safe "/-._~")))
+  "The file: address of the native PATH, its characters other than letters, digits and -._~/ encoded (URL-PATH)."
+  (concatenate 'string "file://" (tuatara.io:url-path (tuatara.io:native path))))
 
 (defun uri-path (uri &key (hosts '("localhost")))
   "The native path of the file: address URI, its . and .. taken as they lead;

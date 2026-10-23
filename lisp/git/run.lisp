@@ -27,11 +27,14 @@ those as names of files.")
       (remove "--literal-pathspecs" *git-safety* :test #'string=)
       *git-safety*))
 
-(defun git-hash-p (text)
+(defun git-hash-p (text &key short)
   "True when TEXT is a commit's full hash as git writes it: 40 hexadecimal
-digits, or 64 in a repository of SHA-256 hashes. What a commit says of
-itself (its subject, its author) is never taken for one."
-  (and (stringp text) (member (length text) '(40 64)) (every (lambda (c) (digit-char-p c 16)) text)))
+digits, or 64 in a repository of SHA-256 hashes; with SHORT, a hash cut as
+short as 7 digits too. What a commit says of itself (its subject, its
+author) is never taken for one."
+  (and (stringp text)
+       (if short (<= 7 (length text) 64) (member (length text) '(40 64)))
+       (every (lambda (c) (digit-char-p c 16)) text)))
 
 (defparameter *git-look-seconds* 30
   "How long git may take to tell the change gutter and rimu's lists what it
