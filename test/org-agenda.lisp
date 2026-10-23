@@ -1344,3 +1344,31 @@ help left out."
     (is equal (mapcar (lambda (m) (tuatara.dates:day-number 2026 m 31)) '(10 11 12 13))
         (tuatara.defaults::repeat-days monthly today 4))
     (is equal (list (tuatara.dates:day-number 2025 1 1)) (tuatara.defaults::repeat-days daily 0 1))))
+
+(define-test (org rule-days-found-by-year-and-month)
+  ;; a rule's next and last days, looked for by year or month, are those a walk day by day finds
+  (let ((rules (mapcar #'tuatara.defaults::org-read-rule
+                       '("<%%(diary-anniversary 2 29 2000)>" "<%%(diary-anniversary 10 23)>" "<%%(diary-date 12 25 t)>"
+                         "<%%(diary-date t 31 t)>" "<%%(diary-date '(1 4) 30 '(2027 2029))>" "<%%(diary-date 2 29 t)>"
+                         "<%%(diary-float t 1 1)>" "<%%(diary-float '(1 4 7 10) 5 -1)>" "<%%(diary-float t 2 5)>"
+                         "<%%(diary-float 2 0 5)>" "<%%(diary-float t 1 1 8)>" "<%%(diary-date 2026 t t)>"
+                         "<%%(and (diary-block 2026 11 1 2027 3 1) (diary-date t 1 t))>")))
+        (reach tuatara.defaults::*org-rule-reach*))
+    (flet ((walk (rule day by)
+             (multiple-value-bind (first last) (tuatara.defaults::org-rule-span rule)
+               (if (= by 1)
+                   (loop for k from (max day (or first day)) to (min (+ day reach) (or last (+ day reach)))
+                         when (tuatara.defaults::org-rule-matches-p rule k) return k)
+                   (loop for k downfrom (min day (or last day)) to (max (- day reach) (or first (- day reach)))
+                         when (tuatara.defaults::org-rule-matches-p rule k) return k)))))
+      (dolist (rule rules)
+        (true rule)
+        (loop for day from (tuatara.dates:day-number 2023 12 20) to (tuatara.dates:day-number 2032 3 10) by 37
+              do (is eql (walk rule day 1) (tuatara.defaults::org-rule-next rule day) "next of ~a from ~d" rule day)
+                 (is eql (walk rule day -1) (tuatara.defaults::org-rule-previous rule day) "last of ~a from ~d" rule day))))
+    ;; a day that comes once in eight years found in few looks
+    (let ((leap (tuatara.defaults::org-read-rule "<%%(diary-anniversary 2 29 2000)>")) (looks 0))
+      (sb-int:encapsulate 'tuatara.defaults::org-rule-matches-p 'counted (lambda (f &rest arguments) (incf looks) (apply f arguments)))
+      (unwind-protect (tuatara.defaults::org-rule-next leap (tuatara.dates:day-number 2097 3 1))
+        (sb-int:unencapsulate 'tuatara.defaults::org-rule-matches-p 'counted))
+      (true (< looks 20) "~d looks" looks))))

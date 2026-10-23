@@ -350,15 +350,66 @@ eight years, 29 February in a year that leaves one out, is still found.")
 
 (defun org-rule-span (rule)
   "The first and last day RULE can take, as two values, each NIL for none:
-those of a range of days in it, every other day open."
-  (case (org-rule-kind rule)
-    (:block (values-list (org-rule-arguments rule)))
-    (:all (let ((first nil) (last nil))
-            (dolist (part (first (org-rule-arguments rule)) (values first last))
-              (multiple-value-bind (a b) (org-rule-span part)
-                (when a (setf first (if first (max first a) a)))
-                (when b (setf last (if last (min last b) b)))))))
-    (t (values nil nil))))
+those of a range of days in it, of the years it lists or the year an
+anniversary begins, every other day open."
+  (destructuring-bind (&optional a b c &rest more) (org-rule-arguments rule)
+    (declare (ignore more))
+    (case (org-rule-kind rule)
+      (:block (values a b))
+      (:anniversary (values (and c (day-number c 1 1)) nil))
+      (:date (let ((years (cond ((integerp a) (list a)) ((consp a) a))))
+               (if years
+                   (values (day-number (reduce #'min years) 1 1) (day-number (reduce #'max years) 12 31))
+                   (values nil nil))))
+      (:all (let ((first nil) (last nil))
+              (dolist (part a (values first last))
+                (multiple-value-bind (from to) (org-rule-span part)
+                  (when from (setf first (if first (max first from) from)))
+                  (when to (setf last (if last (min last to) to)))))))
+      (t (values nil nil)))))
+
+(defun org-rule-step (rule)
+  "How the days RULE can take are looked through: :YEAR when a year holds one
+at most (a day of a month), :MONTH when a month does (a day of every month,
+the Nth weekday of a month), NIL day by day."
+  (destructuring-bind (&optional a b c d) (org-rule-arguments rule)
+    (declare (ignore a))
+    (case (org-rule-kind rule)
+      (:anniversary :year)
+      (:date (cond ((and (integerp b) (integerp c)) :year) ((integerp c) :month)))
+      (:float (and (integerp b) (null d) :month)))))
+
+(defun org-rule-candidate (rule year month)
+  "The one day RULE can take in YEAR, or in MONTH of YEAR when it is looked
+through by month (ORG-RULE-STEP), or NIL."
+  (destructuring-bind (a &optional b c d) (org-rule-arguments rule)
+    (declare (ignore d))
+    (ecase (org-rule-kind rule)
+      (:anniversary (and (valid-date-p year a b) (day-number year a b)))
+      (:date (let ((month (if (integerp b) b month)))
+               (and (valid-date-p year month c) (day-number year month c))))
+      (:float (org-float-day year month b c nil)))))
+
+(defun org-rule-search (rule from to)
+  "The first day RULE takes from the day FROM to the day TO, looking back
+when TO is before FROM, or NIL: by year or by month where it can
+\(ORG-RULE-STEP), else day by day."
+  (let ((by (if (<= from to) 1 -1)))
+    (flet ((taken (day)
+             (and day (if (= by 1) (<= from day to) (<= to day from)) (org-rule-matches-p rule day) day))
+           (index (day step)
+             (multiple-value-bind (year month) (day-date day)
+               (if (eq step :year) year (+ (* 12 year) (1- month))))))
+      (let ((step (org-rule-step rule)))
+        (if (null step)
+            (loop for k = from then (+ k by)
+                  until (if (= by 1) (> k to) (< k to))
+                  when (org-rule-matches-p rule k) return k)
+            (loop for i = (index from step) then (+ i by)
+                  until (if (= by 1) (> i (index to step)) (< i (index to step)))
+                  thereis (taken (if (eq step :year)
+                                     (org-rule-candidate rule i nil)
+                                     (org-rule-candidate rule (floor i 12) (1+ (mod i 12)))))))))))
 
 (defun org-rule-next (rule day)
   "The first day number at or after DAY that RULE takes, or NIL when none
@@ -369,8 +420,9 @@ does within *ORG-RULE-REACH* days or its range of days (ORG-RULE-SPAN)."
     (:block (destructuring-bind (from to) (org-rule-arguments rule)
               (cond ((<= day from) from) ((<= day to) day))))
     (t (multiple-value-bind (first last) (org-rule-span rule)
-         (loop for k from (max day (or first day)) to (min (+ day *org-rule-reach*) (or last (+ day *org-rule-reach*)))
-               when (org-rule-matches-p rule k) return k)))))
+         (let ((from (max day (or first day)))
+               (to (min (+ day *org-rule-reach*) (or last (+ day *org-rule-reach*)))))
+           (and (<= from to) (org-rule-search rule from to)))))))
 
 (defun org-rule-previous (rule day)
   "The last day number at or before DAY that RULE takes, or NIL when none
@@ -381,8 +433,9 @@ does within *ORG-RULE-REACH* days or its range of days (ORG-RULE-SPAN)."
     (:block (destructuring-bind (from to) (org-rule-arguments rule)
               (cond ((>= day to) to) ((>= day from) day))))
     (t (multiple-value-bind (first last) (org-rule-span rule)
-         (loop for k downfrom (min day (or last day)) to (max (- day *org-rule-reach*) (or first (- day *org-rule-reach*)))
-               when (org-rule-matches-p rule k) return k)))))
+         (let ((from (min day (or last day)))
+               (to (max (- day *org-rule-reach*) (or first (- day *org-rule-reach*)))))
+           (and (>= from to) (org-rule-search rule from to)))))))
 
 (defun org-rule-time-text (rule)
   "The time RULE says, as a timestamp writes it (10:00, 10:00-11:00), or NIL."
