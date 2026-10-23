@@ -189,6 +189,9 @@ the time written after it, or NIL."
   "A timestamp by rule: <%%( its form ) and a time or a time range after it,
 each a group.")
 
+(defparameter *org-rule-scanner* (cl-ppcre:create-scanner *org-rule-pattern*)
+  "*ORG-RULE-PATTERN* made ready to match once, not again at each rule read.")
+
 (defun org-read-rule-data (text start end)
   "What TEXT holds from START below END read as data, never run: numbers,
 t and nil, names (as strings), and lists of them in brackets, a quote before
@@ -280,7 +283,8 @@ and (or FORM ...), the days any of them takes, of these."
   "TEXT, a timestamp by rule (<%%(diary-float t 1 1) 10:00>), read as an
 ORG-RULE, or NIL when it is none or its form is not one of those
 ORG-RULE-FROM-DATA knows."
-  (multiple-value-bind (match groups) (cl-ppcre:scan-to-strings *org-rule-pattern* text)
+  (multiple-value-bind (match groups)
+      (and (> (length text) 4) (string= "<%%(" text :end2 4) (cl-ppcre:scan-to-strings *org-rule-scanner* text))
     (when match
       (let* ((form (aref groups 0))
              (rule (org-rule-from-data (org-read-rule-data form 0 (length form)))))

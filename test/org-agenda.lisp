@@ -1272,3 +1272,13 @@ help left out."
              (true (find "Review" rows :key #'sixth :test #'string=))
              (true (<= calls 3) "~d calls for 3 rules over 60 days" calls))
         (sb-int:unencapsulate 'tuatara.defaults::org-rule-next 'counted)))))
+
+(defun least-consed (function &optional (runs 3))
+  "The fewest bytes FUNCTION, of no arguments, conses in RUNS calls."
+  (loop repeat runs minimize (nth-value 2 (tuatara.bench::measuring (funcall function)))))
+
+(define-test (org rules-read-without-garbage)
+  ;; a plain timestamp is no rule, seen at once; a rule's pattern is made once, not at each read
+  (is = 0 (least-consed (lambda () (tuatara.defaults::org-read-rule "<2026-10-05 Mon 09:00>"))))
+  (let ((consed (least-consed (lambda () (tuatara.defaults::org-read-rule "<%%(diary-float t 1 1) 10:00>")))))
+    (true (< consed 4000) "~d bytes to read a rule" consed)))
