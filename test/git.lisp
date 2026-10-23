@@ -1755,3 +1755,20 @@ DIR is visited and its status read, the project trusted. Returns the frontend."
              (is equal 1 (count "status" runs :test #'string=))
              (true (<= (length runs) 3) "git ran ~d times: ~{~a~^, ~}" (length runs) (reverse runs)))
         (sb-int:unencapsulate 'tuatara.defaults::run-git-program 'count-runs)))))
+
+(define-test (git log-filtered-by-a-column)
+  ;; the log is a table as the other lists are: a filter tries its pattern on one column
+  (with-test-directory (dir)
+    (scratch-repository dir)
+    (put-file (merge-pathnames "a.txt" dir) (format nil "one~%two~%"))
+    (git-output dir "commit" "-q" "-am" "Second, after First")
+    (flet ((log-buffer () (tuatara.buffer:find-buffer "*git log*"))
+           (shown () (shown-lines (tuatara.buffer:find-buffer "*git log*"))))
+      (when (log-buffer) (tuatara.buffer:kill-buffer (log-buffer)))
+      (git-session dir "a.txt"
+                   (list "~ L L" (list :until (lambda () (and (log-buffer) (search "Second" (tuatara.buffer:buffer-string (log-buffer))))))
+                         "C-x / f S u b j e c t RET ^ F i r s t RET"
+                         (list :until (lambda () (notany (lambda (line) (search "Second" line)) (shown))))))
+      (is equal '("Commit" "Date" "Author" "Subject") (mapcar #'first (tuatara.defaults::list-table-columns (log-buffer))))
+      (true (find-if (lambda (line) (search "First" line)) (shown)))
+      (false (find-if (lambda (line) (search "Second" line)) (shown))))))

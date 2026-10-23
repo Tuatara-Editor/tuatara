@@ -765,10 +765,47 @@ whole unless ELIDE."
   "The text of CELL, a string or (TEXT . FACE) as TABLE-ROW-PIECES takes it."
   (if (consp cell) (car cell) cell))
 
+(defun kept-row-pieces (columns row-cells key texts)
+  "The pieces of a row of ROW-CELLS under COLUMNS (TABLE-ROW-PIECES), the
+texts of its cells kept in TEXTS under KEY, the entry the row is about, unless
+KEY is NIL; the texts as a second value. Touches no list: a job's thread may
+make rows."
+  (let ((cell-texts (map 'simple-vector #'table-list-cell-text row-cells)))
+    (when key (setf (gethash key texts) cell-texts))
+    (values (table-row-pieces columns row-cells) cell-texts)))
+
+(defun table-list-rows (columns items cells &key (key #'identity))
+  "The rows a table list shows of ITEMS under COLUMNS, made apart from any
+list, so on a job's thread too, for RENDER-MADE-TABLE-LIST: CELLS, a function
+of an item, gives its cells, KEY the entry its line is about, NIL for a line
+about none. Three values: the pieces of the rows, a table from each entry to
+the texts of its cells, and the first row's texts."
+  (let ((texts (make-hash-table :test 'eq)) (first nil))
+    (values (loop for item in items
+                  append (multiple-value-bind (pieces cell-texts)
+                             (kept-row-pieces columns (funcall cells item) (funcall key item) texts)
+                           (unless first (setf first cell-texts))
+                           pieces))
+            texts first)))
+
+(defun render-made-table-list (list columns rows texts first &rest options &key before after first-line &allow-other-keys)
+  "Fill LIST with a table whose ROWS are made (TABLE-LIST-ROWS, TEXTS and
+FIRST as it gives them): the titles of COLUMNS over them, BEFORE and AFTER,
+pieces, above the titles and below the rows; the columns kept for a filter to
+try a pattern on one (KEEP-LIST-TABLE). The other OPTIONS go to
+RENDER-PIECES, FIRST-LINE counted from the titles when not given."
+  (keep-list-table list (map 'simple-vector (lambda (column) (string-trim " " (first column))) columns) texts first)
+  (apply #'render-pieces list
+         (append before (table-heading-pieces columns) rows after)
+         :first-line (or first-line (+ 2 (count #\Newline (pieces-text before))))
+         (loop for (name value) on options by #'cddr
+               unless (member name '(:before :after :first-line))
+                 append (list name value))))
+
 (defun render-table-list (list columns items cells
                           &rest options
                           &key (marked-by (lambda (item section) (declare (ignore section)) item))
-                               sections section-title (keep-marks t) before after first-line
+                               sections section-title (keep-marks t)
                           &allow-other-keys)
   "Fill LIST with a table (TABLE-HEADING-PIECES): the titles of COLUMNS over
 a row for each of ITEMS, its cells what CELLS, a function of the item, its
@@ -776,17 +813,16 @@ mark (ENTRY-MARK) and its section, gives (TABLE-ROW-PIECES). With SECTIONS,
 ITEMS are sections, each (SECTION . MEMBERS), under headings that fold
 \(SECTIONED-PIECES, SECTION-TITLE naming each). MARKED-BY, a function of an
 item and its section, gives what its mark is kept by; with KEEP-MARKS, the marks of
-items no longer listed are dropped. BEFORE and AFTER are pieces above the
-titles and below the rows. The other OPTIONS go to RENDER-PIECES, FIRST-LINE
-counted from the titles when not given. Each row's cells are kept as text, so
+items no longer listed are dropped. The other OPTIONS go to
+RENDER-MADE-TABLE-LIST: BEFORE and AFTER, pieces above the titles and below
+the rows, and those of RENDER-PIECES. Each row's cells are kept as text, so
 that \\[list-show-records] can try a pattern on one column."
-  (let ((texts (make-hash-table :test 'eq)) (first nil)
-        (titles (map 'simple-vector (lambda (column) (string-trim " " (first column))) columns)))
+  (let ((texts (make-hash-table :test 'eq)) (first nil))
     (flet ((row (item section)
-             (let ((row-cells (funcall cells item (entry-mark list (funcall marked-by item section)) section)))
-               (setf (gethash item texts) (map 'simple-vector #'table-list-cell-text row-cells))
-               (unless first (setf first (gethash item texts)))
-               (table-row-pieces columns row-cells))))
+             (multiple-value-bind (pieces cell-texts)
+                 (kept-row-pieces columns (funcall cells item (entry-mark list (funcall marked-by item section)) section) item texts)
+               (unless first (setf first cell-texts))
+               pieces)))
       (when keep-marks
         (keep-list-marks list (if sections
                                   (loop for (section . members) in items
@@ -796,16 +832,13 @@ that \\[list-show-records] can try a pattern on one column."
           (if sections
               (sectioned-pieces list items section-title #'row)
               (values items (loop for item in items append (row item nil))))
-        (keep-list-table list titles texts first)
-        (apply #'render-pieces list
-               (append before (table-heading-pieces columns) rows after)
+        (apply #'render-made-table-list list columns rows texts first
                :entries entries
-               :first-line (or first-line (+ 2 (count #\Newline (pieces-text before))))
                :mark-key (if sections
                              (lambda (entry) (let ((member (entry-member entry))) (and member (funcall marked-by member (third entry)))))
                              (lambda (entry) (funcall marked-by entry nil)))
                (loop for (name value) on options by #'cddr
-                     unless (member name '(:marked-by :sections :section-title :keep-marks :before :after :first-line))
+                     unless (member name '(:marked-by :sections :section-title :keep-marks))
                        append (list name value)))))))
 
 (defun keep-list-table (list titles texts first)

@@ -15,25 +15,25 @@
 
 (defun git-show-table (doing top arguments name mode parse columns fields &key title (entry #'identity) empty)
   "Run git with ARGUMENTS for the repository at TOP as a job doing DOING and
-show what it printed as a table in the buffer NAME in MODE, a row a line: on
+show what it printed as a table in the buffer NAME in MODE, a row a line
+\(RENDER-MADE-TABLE-LIST), a filter able to try a pattern on one column: on
 the job's thread PARSE, a function of the text, gives the rows, COLUMNS (as
 TABLE-HEADING-PIECES takes them, or a function of the rows giving them) head
-them and FIELDS, a function of a row, gives its cells; ENTRY, a function of
-a row, what its line is about (LIST-ENTRY-AT). TITLE, when given, is a line
-above it all; EMPTY is said when there are no rows."
+them and FIELDS, a function of a row, gives its cells (TABLE-LIST-ROWS);
+ENTRY, a function of a row, what its line is about (LIST-ENTRY-AT). TITLE,
+when given, is a line above it all; EMPTY is said when there are no rows."
   (start-git-job doing
                  (lambda (job)
                    (let* ((rows (funcall parse (git-job-output job top arguments)))
                           (columns (if (functionp columns) (funcall columns rows) columns)))
-                     (values (append (and title (list (cons (format nil "~a~%" title) :heading)))
-                                     (table-heading-pieces columns)
-                                     (loop for row in rows append (table-row-pieces columns (funcall fields row))))
-                             (map 'vector entry rows))))
-                 (lambda (pieces entries)
-                   (let ((buffer (buffer-in-mode name mode))
-                         (first (if title 3 2)))
+                     (multiple-value-bind (pieces texts first) (table-list-rows columns rows fields :key entry)
+                       (values columns pieces texts first (map 'vector entry rows)))))
+                 (lambda (columns pieces texts first entries)
+                   (let ((buffer (buffer-in-mode name mode)))
                      (git-set-top buffer top)
-                     (render-pieces buffer pieces :point first :first-line first :entries entries)
+                     (render-made-table-list buffer columns pieces texts first
+                                             :before (and title (list (cons (format nil "~a~%" title) :heading)))
+                                             :point (if title 3 2) :entries entries)
                      (show-buffer buffer)
                      (when (and empty (zerop (length entries))) (message "~a" empty))))
                  :quiet t))
