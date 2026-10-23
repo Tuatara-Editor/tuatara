@@ -76,12 +76,15 @@ stand where line numbers would."
                                                            (concatenate 'string (make-string (- width (length s)) :initial-element #\Space) s)
                                                            (subseq s 0 width)))
                                                      face)))
-                        ;; the next line begins where the next row does not go on from this one:
-                        ;; its own number where it is known, as lines hidden by a fold are skipped
+                        ;; the next line begins where the next row does not go on from this one: the
+                        ;; line after where it starts at this row's end, else lines hidden by a fold
+                        ;; are skipped and its own number is looked for
                         (when (and line (< (1+ index) (length rows))
                                    (not (tuatara.display:row-continuation-p (aref rows (1+ index)))))
-                          (setf line (or (tuatara.buffer:buffer-known-line-number buffer (tuatara.display:row-start (aref rows (1+ index))))
-                                         (1+ line))))))))))
+                          (let ((next (tuatara.display:row-start (aref rows (1+ index)))))
+                            (setf line (or (and (/= next (tuatara.display:row-end row))
+                                                (tuatara.buffer:buffer-known-line-number buffer next))
+                                           (1+ line)))))))))))
 
 (defvar *syntax-highlight-functions* '()
   "Functions of (EDITOR WINDOW ROWS) returning lists of (START END FACE) byte

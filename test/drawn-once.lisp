@@ -26,6 +26,25 @@ modal mode line makes nothing while it stays the same.")
         (sb-int:unencapsulate 'tuatara.buffer:buffer-known-line-number 'counted))
       (is = 0 calls))))
 
+(define-test (drawn-once gutter-line-found-once)
+  ;; the gutter finds the line of the window's first row, and the numbers that of point;
+  ;; the lines below follow from the first
+  (multiple-value-bind (f editor)
+      (run-keys "M-x d i s p l a y - l i n e - n u m b e r s - m o d e RET"
+                :text (format nil "~{~a~%~}" (loop for i below 200 collect i)))
+    (declare (ignore f))
+    (let* ((window (tuatara.command:editor-window editor))
+           (rows (tuatara.display:window-rows window))
+           (calls 0))
+      (sb-int:encapsulate 'tuatara.buffer:buffer-known-line-number 'counted
+                          (lambda (function &rest arguments) (incf calls) (apply function arguments)))
+      (let ((cells (unwind-protect (tuatara.command::gutter-cells editor window rows)
+                     (sb-int:unencapsulate 'tuatara.buffer:buffer-known-line-number 'counted))))
+        (true (> (length rows) 3))
+        (is = 2 calls)
+        (is equal (loop for i from 1 to (length rows) collect (princ-to-string i))
+            (mapcar (lambda (cell) (string-left-trim " " (car (first cell)))) cells))))))
+
 (define-test (drawn-once modal-mode-line-kept)
   (multiple-value-bind (f editor) (run-keys "" :text "kia ora")
     (declare (ignore f))
