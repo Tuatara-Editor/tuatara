@@ -5,8 +5,11 @@
 # an Arch package (.pkg.tar.zst), each installed with the system's own package
 # manager, which also fetches the libraries Tuatara needs (GTK 4, ncurses,
 # OpenSSL's crypto, zstd, the C++ runtime) and offers the programs some of its
-# features run (enchant for spelling, bubblewrap, ImageMagick, poppler's tools,
-# git). All three hold Tuatara as tools/release.sh lays it out, in
+# features run, recommended (enchant for spelling, bubblewrap, ImageMagick,
+# poppler's tools, git, libnotify) or suggested (GnuPG, xdg-utils, LibreOffice,
+# TeX Live): the packages *outside-programs* names (lisp/files/external.lisp),
+# which a test holds the lists here to. All three hold Tuatara as
+# tools/release.sh lays it out, in
 # /usr/lib/tuatara/, with the command tuatara in /usr/bin, the desktop entry
 # and the icons; each is made by its system's own tools (rpmbuild, dpkg-deb,
 # makepkg) in a container of the system's image pinned in tools/containers.sh,
@@ -109,7 +112,8 @@ Packager: $packager
 ExclusiveArch: x86_64
 AutoProv: no
 Requires: gtk4 ncurses-libs openssl-libs libzstd libstdc++
-Recommends: enchant2 bubblewrap ImageMagick poppler-utils git-core
+Recommends: enchant2 bubblewrap ImageMagick poppler-utils git-core libnotify
+Suggests: gnupg2 xdg-utils libreoffice-writer libreoffice-calc libreoffice-impress texlive-xetex texlive-luatex
 
 %description
 $description
@@ -146,7 +150,8 @@ Architecture: amd64
 Maintainer: $packager
 Installed-Size: $(du -sk "$stage" | cut -f1)
 Depends: libc6 (>= 2.38), libgtk-4-1, libncursesw6, libssl3t64 | libssl3, libzstd1, libstdc++6
-Recommends: libenchant-2-2, bubblewrap, imagemagick, poppler-utils, git
+Recommends: libenchant-2-2, bubblewrap, imagemagick, poppler-utils, git, libnotify-bin
+Suggests: gnupg, xdg-utils, libreoffice-writer, libreoffice-calc, libreoffice-impress, texlive-xetex, texlive-luatex
 Section: editors
 Priority: optional
 Description: $summary
@@ -174,7 +179,13 @@ optdepends=('enchant: spelling'
             'bubblewrap: pictures and programs run shut in'
             'imagemagick: pictures'
             'poppler: PDF files'
-            'git: the git interface')
+            'git: the git interface'
+            'libnotify: agenda entries told on the desktop'
+            'gnupg: encrypted files'
+            'xdg-utils: files opened in the desktop programs'
+            'libreoffice-fresh: pages of Office documents'
+            'texlive-xetex: PDFs of Org and LaTeX files'
+            'texlive-luatex: PDFs of Org and LaTeX files')
 options=('!strip' '!debug')
 
 package() {

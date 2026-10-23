@@ -568,18 +568,19 @@ three
 three
 ")
     (nil "A<POINT>X<MARK>B" "C-w C-S-<backspace>" "<POINT>" "AXB")
-    (nil "<POINT>abcde" "M-z c" "<POINT>de" "abc")
-    (nil "<POINT>abcde abc123" "C-u 2 M-z c" "<POINT>123" "abcde abc")
-    (nil "<POINT>abcdeCXYZ" "M-z C" "<POINT>XYZ" "abcdeC")
-    (nil "<POINT>abcdeCXYZ" "M-z c" "<POINT>deCXYZ" "abc")
-    (nil "abc<POINT>de" "C-u - 1 M-z a" "<POINT>de" "abc")
+    (nil "<POINT>abcde" "M-z c" "<POINT>cde" "ab")
+    (nil "<POINT>abcde abc123" "C-u 2 M-z c" "<POINT>c123" "abcde ab")
+    (nil "<POINT>abcdeCXYZ" "M-z C" "<POINT>CXYZ" "abcde")
+    (nil "<POINT>abcdeCXYZ" "M-z c" "<POINT>cdeCXYZ" "ab")
+    (nil "abc<POINT>de" "C-u - 1 M-z a" "a<POINT>de" "bc")
     (nil "<POINT>abcde" "M-z z" "ERROR Search failed: \"z\"" nil)
-    (nil "<POINT>héllo world" "M-z o" "<POINT> world" "héllo")
-    (nil "<POINT>abcde" "M-x z a p - u p - t o - c h a r RET c" "<POINT>cde" "ab")
-    (nil "<POINT>abcde abc123" "C-u 2 M-x z a p - u p - t o - c h a r RET c" "<POINT>c123" "abcde ab")
-    (nil "abc<POINT>de" "C-u - 1 M-x z a p - u p - t o - c h a r RET a" "a<POINT>de" "bc")
+    (nil "<POINT>abcde" "M-z C-b" "ERROR C-b is no character to zap to" nil)
+    (nil "<POINT>héllo world" "M-z o" "<POINT>o world" "héll")
+    (nil "<POINT>abcde" "M-x z a p - t o - c h a r RET c" "<POINT>de" "abc")
+    (nil "<POINT>abcde abc123" "C-u 2 M-x z a p - t o - c h a r RET c" "<POINT>123" "abcde abc")
+    (nil "abc<POINT>de" "C-u - 1 M-x z a p - t o - c h a r RET a" "<POINT>de" "abc")
     )
-  "C-S-<backspace> (kill-whole-line), M-z (zap-to-char) and zap-up-to-char on each text, with the
+  "C-S-<backspace> (kill-whole-line), M-z (zap-up-to-char) and zap-to-char on each text, with the
 results expected and what the kill ring then holds first; \"ERROR ...\" for what is refused.")
 
 (define-test (simple killing-cases)
@@ -593,8 +594,8 @@ results expected and what the kill ring then holds first; \"ERROR ...\" for what
                           (is equal kill (first (tuatara.command:editor-kill-ring editor)) "~s then ~a: the kill" text keys)))))))
 
 (define-test (simple counting-words)
-  ;; lines, sentences, words and characters (two blanks after a sentence's end); blank
-  ;; lines at the end add no sentence
+  ;; lines, sentences, words and characters, sentences two spaces apart (and one space
+  ;; apart, below); blank lines at the end add no sentence
   (loop for (text . counts) in '(("Hello there, world. This is it.
 Second line here" 2 2 9 48)
                                  ("One.  Two.  Three." 1 3 3 18)
@@ -614,10 +615,15 @@ And a third." 6 3 10 51)
                                  ("Wait… what‽  Go." 1 2 3 16)
                                  ("" 0 0 0 0))
         do (let ((rope (tuatara.text:string->rope text)))
+             (is equal counts (multiple-value-list (tuatara.defaults::count-text rope 0 (tuatara.text:rope-bytes rope) :double-space t))
+                 "~s" text)))
+  ;; one space apart, as sentences are by default, a full stop and a blank end a sentence
+  (loop for (text . counts) in '(("One. Two. Three." 1 3 3 16) ("One.  Two." 1 2 2 10) ("Dr. Smith. Yes" 1 2 3 14))
+        do (let ((rope (tuatara.text:string->rope text)))
              (is equal counts (multiple-value-list (tuatara.defaults::count-text rope 0 (tuatara.text:rope-bytes rope)))
                  "~s" text)))
   ;; M-= says them, of the selection or the whole buffer
-  (is string= "Buffer has 2 lines, 2 sentences, 9 words, and 48 characters"
+  (is string= "Buffer has 2 lines, 3 sentences, 9 words, and 48 characters"
       (echo-text (session-in nil (format nil "Hello there, world. This is it.~%Second line here") "M-=" :width 100)))
   (is string= "Region has 1 line, 1 sentence, 2 words, and 12 characters"
       (echo-text (session-in nil (format nil "Hello there, world. This is it.~%Second line here") "M-=" :point 0 :mark 12 :width 100)))
@@ -643,8 +649,20 @@ And a third." 6 3 10 51)
                                  ("I met Mr.  Rotorua, e.g.  at noon.  Then." 1 2 9 41)
                                  ("End.  Dr.  Ann.  Taranaki." 1 3 4 26))
         do (let ((rope (tuatara.text:string->rope text)))
-             (is equal counts (multiple-value-list (tuatara.defaults::count-text rope 0 (tuatara.text:rope-bytes rope)))
+             (is equal counts (multiple-value-list (tuatara.defaults::count-text rope 0 (tuatara.text:rope-bytes rope) :double-space t))
                  "~s" text))))
+
+(define-test (simple counted-alike-in-any-pieces)
+  ;; a character cut between the pieces the text is read in counts as one, however small the pieces
+  (let* ((octets (coerce (append (coerce (tuatara.text:string-octets "Kia ora tūī ✓ 😀. Ōtaki!  ") 'list)
+                                 '(#xE9 32 #xF0 #x9F 32 #xC3 #xA9 #xFF 10 #xE2 #x82))
+                         '(vector (unsigned-byte 8))))
+         (rope (tuatara.text:octets->rope octets))
+         (whole (multiple-value-list (tuatara.defaults::count-text rope 0 (length octets)))))
+    (dotimes (size 9)
+      (let ((tuatara.defaults::*count-piece* (1+ size)))
+        (is equal whole (multiple-value-list (tuatara.defaults::count-text rope 0 (length octets)))
+            "pieces of ~d" (1+ size))))))
 
 (defun large-text (turns text &key mode (width 100))
   "The text after TURNS typed on TEXT, each once the work in the background the

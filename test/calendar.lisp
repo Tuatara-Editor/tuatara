@@ -81,14 +81,24 @@ each (YEAR MONTH WEEK-START TEXT)."
   (tuatara.dates:day-number y m d))
 
 (defun calendar-keys (keys &key (width 100) (height 24))
-  "Run the calendar on 2026-10-03, KEYS typed in it; the frontend, the editor
-and the day point is on in the calendar."
+  "Run the calendar on 2026-10-03, KEYS typed in it (a string, or a list as
+RUN-KEYS takes it); the frontend, the editor and the day point is on in the
+calendar."
   (let ((old (tuatara.buffer:find-buffer "*Calendar*")))
     (when old (tuatara.buffer:kill-buffer old)))
   (let ((tuatara.defaults::*org-now* (encode-universal-time 0 0 12 3 10 2026)))
-    (multiple-value-bind (f editor) (run-keys (format nil "M-x c a l e n d a r RET ~a" keys) :width width :height height)
+    (multiple-value-bind (f editor) (run-keys (if (listp keys) (cons "M-x c a l e n d a r RET" keys) (format nil "M-x c a l e n d a r RET ~a" keys))
+                                                 :width width :height height)
       (let ((b (tuatara.buffer:find-buffer "*Calendar*")))
         (values f editor (and b (tuatara.defaults::calendar-date-at b)))))))
+
+(defun wait-for-calendar-marks ()
+  "Wait, a few seconds at most, till no calendar's days are being marked in the background."
+  (let ((until (+ (get-internal-real-time) (* 10 internal-time-units-per-second))))
+    (loop while (and (some (lambda (job) (and (typep job 'tuatara.defaults::calendar-marks) (tuatara.runtime:job-running-p job)))
+                           tuatara.runtime:*jobs*)
+                     (< (get-internal-real-time) until))
+          do (sleep 0.01))))
 
 (define-test (calendar calendar-moving)
   (flet ((at (keys) (nth-value 2 (calendar-keys keys))))
@@ -185,6 +195,9 @@ and the day point is on in the calendar."
                                                   :key (lambda (w) (tuatara.buffer:buffer-name (tuatara.display:window-buffer w)))
                                                   :test #'string=))))
   (is = 1 (length (tuatara.command:editor-windows (nth-value 1 (calendar-keys "q")))))
+  ;; no cursor drawn over the day at point, which the calendar marks itself; back once it is closed
+  (is eq :hidden (tuatara.frontend.fake:fake-cursor-shape (calendar-keys "C-f")))
+  (isnt eq :hidden (tuatara.frontend.fake:fake-cursor-shape (calendar-keys "q")))
   ;; SPC c below, SPC C in the window you are in, q bringing its buffer back
   (let ((tuatara.defaults::*org-now* (encode-universal-time 0 0 12 3 10 2026)))
     (let ((editor (nth-value 1 (run-keys "SPC c" :width 100 :height 24))))
@@ -236,6 +249,17 @@ and the day point is on in the calendar."
         ;; the calendar was shown while it asked, and goes with the question
         (true (tuatara.frontend.fake:fake-frame-showing f "October 2026"))
         (is = 1 (length (tuatara.command:editor-windows editor))))
+      ;; as it asks, the day at point is marked by the calendar alone, one look across,
+      ;; with no cursor of the window drawn over one of its digits
+      (multiple-value-bind (cursor screen spans)
+          (cursor-at-question '("M-x o r g - m o d e RET C-c C-s" :look "C-g") :text (format nil "* Task~%") :width 100 :height 24)
+        (declare (ignore cursor))
+        (flet ((with-face (row face)
+                 (some (lambda (span) (let ((faces (third span))) (if (listp faces) (member face faces) (eq faces face)))) row)))
+          (let ((row (position-if (lambda (row) (with-face row :calendar-selected)) spans)))
+            (true row)
+            (true (search " 3 " (aref screen row)))
+            (false (with-face (aref spans row) :cursor-inactive)))))
       ;; a time typed stays; a week, a month and a year on
       (true (search "SCHEDULED: <2026-10-10 Sat 14:00>" (scheduled "1 4 : 0 0 S-<down> RET")))
       (true (search "SCHEDULED: <2026-11-03 Tue>" (scheduled "M-S-<right> RET")))

@@ -949,3 +949,16 @@ than holding the run."
   (true (tuatara.frontend.fake:fake-frame-showing
          (run-keys (list "C-s ^ $" #'wait-for-search-count :tick "C-g") :text (format nil "a~%~%b~%~%c") :width 80)
          "1/2    Regex search forward: ^$")))
+
+(define-test (incremental-search pattern-prompts-alike)
+  ;; every question taking a pattern names its kind one way, a thorough regex too, and
+  ;; refuses one that cannot be used, saying why
+  (let ((tuatara.syntax:*regex-thorough* t))
+    (true (tuatara.frontend.fake:fake-frame-showing (filtered-session (list "C-x / s a" :tick)) "Thorough regex filter: a")))
+  (true (tuatara.frontend.fake:fake-frame-showing (filtered-session (list "C-x / s M-r a" :tick)) "Literal filter: a"))
+  (is string= "Regex keep lines [incomplete]: " (tuatara.defaults::pattern-prompt t "keep lines" "incomplete"))
+  (is string= "Literal search files: " (tuatara.defaults::pattern-prompt nil "search files"))
+  ;; a search of files refuses a word that is no regular expression, as the others refuse it
+  (is string= "incomplete" (tuatara.defaults::search-input-problem "kia ora(" t))
+  (false (tuatara.defaults::search-input-problem "kia ora(" nil))
+  (false (tuatara.defaults::search-input-problem "kia ora" t)))

@@ -156,7 +156,7 @@ pair holds, and whether the pair was taken off."
 (defun pair-needs-space-p (char)
   "True when a pair inserted next to CHAR is set apart from it by a space:
 next to a letter, a digit or the other side of a pair."
-  (and char (or (alphanumericp char) (member char '(#\) #\] #\} #\( #\[ #\{ #\")))))
+  (and char (or (word-char-p char) (member char '(#\) #\] #\} #\( #\[ #\{ #\")))))
 
 (define-command insert-pair ()
   "Put the pair of the delimiter of the key pressed around the region

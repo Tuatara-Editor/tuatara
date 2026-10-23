@@ -690,7 +690,7 @@ begins with that change where it goes.")
 (defun lisp-line-head (rope line line-end)
   "The text of the line of ROPE from LINE below LINE-END past the blanks it
 begins with, no more than *LISP-LINE-HEAD* octets of it."
-  (let ((text (tuatara.text:rope-skip-octets rope line '(32 9 13) :bound line-end)))
+  (let ((text (tuatara.text:rope-skip-octets rope line tuatara.text:*blank-line-octets* :bound line-end)))
     (tuatara.text:octets-string (tuatara.text:rope-octets rope :start text :end (min line-end (+ text *lisp-line-head*))))))
 
 (defun lisp-indent-lines (rope start end &optional syntax blank-lines)

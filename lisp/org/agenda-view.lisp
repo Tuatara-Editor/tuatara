@@ -129,7 +129,7 @@ column shows it."
   (let* ((entry (org-item-entry item))
          (heading (cl-ppcre:regex-replace "[ \\t]+:[\\w@#%:]+:[ \\t]*$" (agenda-entry-heading entry) ""))
          (raw (agenda-entry-title entry)))
-    (cond ((member (org-item-type item) '("closed" "clock") :test #'string=) heading)
+    (cond ((org-item-type-in item "closed" "clock") heading)
           ((and (<= (length raw) (length heading)) (string= raw heading :start2 (- (length heading) (length raw))))
            (concatenate 'string (subseq heading 0 (- (length heading) (length raw))) (org-item-title item)))
           (t (org-item-title item)))))
@@ -150,15 +150,14 @@ second half of its warning, distant before."
 (defun org-agenda-item-face (item today)
   "The face of the agenda line ITEM, today being TODAY, by what it is: done,
 scheduled, a deadline, an event."
-  (let ((type (org-item-type item)) (done (org-done-p (org-item-entry item))))
-    (cond ((string= type "closed") :org-agenda-done)
-          ((string= type "clock") :org-agenda-calendar-event)
-          ((member type '("todo" "tagsmatch") :test #'string=) nil)
-          (done :org-agenda-done)
-          ((string= type "past-scheduled") :org-scheduled-previously)
-          ((string= type "scheduled") (if (eql (org-item-day item) today) :org-scheduled-today :org-scheduled))
-          ((member type '("deadline" "upcoming-deadline") :test #'string=) (org-agenda-deadline-face item))
-          (t :org-agenda-calendar-event))))
+  (cond ((org-item-type-in item "closed") :org-agenda-done)
+        ((org-item-type-in item "clock") :org-agenda-calendar-event)
+        ((org-item-type-in item "todo" "tagsmatch") nil)
+        ((org-done-p (org-item-entry item)) :org-agenda-done)
+        ((org-item-type-in item "past-scheduled") :org-scheduled-previously)
+        ((org-item-type-in item "scheduled") (if (eql (org-item-day item) today) :org-scheduled-today :org-scheduled))
+        ((org-item-type-in item "deadline" "upcoming-deadline") (org-agenda-deadline-face item))
+        (t :org-agenda-calendar-event)))
 
 (defun org-agenda-pieces-text (pieces)
   "The text of PIECES, each (TEXT . FACE), one after the other."
@@ -250,7 +249,7 @@ TODAY and the time of day now NOW (1427), in an agenda of DAYS days, as
 
 (defun org-agenda-grid-pieces (item)
   "The line of the time grid's ITEM as pieces: its time and the grid's line, or the time now."
-  (let ((face (if (string= (org-item-type item) "now") :org-agenda-current-time :org-time-grid)))
+  (let ((face (if (org-item-type-in item "now") :org-agenda-current-time :org-time-grid)))
     (list (cons "  " nil)
           (cons (concatenate 'string (make-string 12 :initial-element #\Space)
                              (org-agenda-time-column (org-item-time item) nil) (org-item-title item))
@@ -304,7 +303,7 @@ the time grid, or NIL."
                                               (t :org-agenda-date))))
                             (list :day day))
                       (dolist (item all)
-                        (if (member (org-item-type item) '("grid" "now") :test #'string=)
+                        (if (org-item-type-in item "grid" "now")
                             (line (org-agenda-grid-pieces item) (list :grid (org-item-time item)))
                             (line (org-agenda-item-pieces item width today) item)))))))
         (:todo
@@ -450,7 +449,7 @@ they are on the editor's (TUATARA.RUNTIME:CARRY-SETTINGS).")
                            (:copier nil))
   "An agenda of BUFFER worked out again in the background, a job
 \(TUATARA.RUNTIME:JOB): VIEW the view it is worked out for, SOURCES the agenda
-files as it found them (ORG-AGENDA-SOURCES-KEY); RESULT, once done, the text,
+files as it found them (ORG-AGENDA-SOURCES-KEY), known once it has looked; RESULT, once done, the text,
 spans and lines ORG-AGENDA-COMPOSE gives, NIL when it gave up."
   view sources result)
 
@@ -467,8 +466,9 @@ spans and lines ORG-AGENDA-COMPOSE gives, NIL when it gave up."
 
 (defun org-agenda-start-refresh (buffer &key (point :keep))
   "Work BUFFER's agenda out again in the background, a job of BUFFER
-\(AGENDA-REFRESH), from the agenda files as they are now
-\(ORG-AGENDA-SNAPSHOT), unless that is under way; the result is put in as the
+\(AGENDA-REFRESH), from the agenda files as they are now, those open as
+their buffers have them taken here and the rest looked at on the job's thread
+\(ORG-AGENDA-OPEN-SNAPSHOT, ORG-AGENDA-SNAPSHOT-WITH), unless that is under way; the result is put in as the
 job is taken in, point put as POINT says (as ORG-AGENDA-APPLY has it), or as
 the last POINT other than :keep asked for meanwhile. An agenda never drawn
 yet says it is being worked out."
@@ -479,8 +479,8 @@ yet says it is being worked out."
   (unless (tuatara.buffer:buffer-local buffer 'org-agenda-refresh)
     (let* ((view (copy-list (org-agenda-view buffer)))
            (width (org-agenda-window-width buffer))
-           (snapshot (org-agenda-snapshot))
-           (job (make-agenda-refresh buffer view (mapcar #'third snapshot))))
+           (open (org-agenda-open-snapshot))
+           (job (make-agenda-refresh buffer view nil)))
       (setf (tuatara.buffer:buffer-local buffer 'org-agenda-refresh) job)
       (tuatara.runtime:start-job-thread
        job (tuatara.runtime:carry-settings
@@ -489,7 +489,8 @@ yet says it is being worked out."
               ;; an agenda that cannot be worked out is NIL: asked for again when its files change
               (setf (agenda-refresh-result job)
                     (tuatara.runtime:ignoring-errors-reported ("working out the agenda")
-                      (let ((*org-agenda-snapshot* snapshot))
+                      (let ((*org-agenda-snapshot* (org-agenda-snapshot-with open)))
+                        (setf (agenda-refresh-sources job) (mapcar #'third *org-agenda-snapshot*))
                         (multiple-value-list (org-agenda-compose view width)))))))
        :name "tuatara agenda"))))
 
@@ -988,18 +989,19 @@ are (\\[org-save-all-org-buffers] saves them all)."
 
 (defun org-calendar-mark-source (first last)
   "For the calendar (*CALENDAR-MARK-FUNCTIONS*): on the editor's thread, the
-agenda files as they are now (ORG-AGENDA-SNAPSHOT) and the agenda's settings;
-the function that, on a thread of its own, gives the days from FIRST to LAST
-the agenda lists entries on."
-  (let ((snapshot (org-agenda-snapshot)))
-    (and snapshot
+agenda files open as their buffers have them (ORG-AGENDA-OPEN-SNAPSHOT) and
+the agenda's settings; the function that, on a thread of its own, looks at
+the others on disk (ORG-AGENDA-SNAPSHOT-WITH) and gives the days from FIRST to
+LAST the agenda lists entries on. NIL with no agenda files."
+  (let ((open (org-agenda-open-snapshot)))
+    (and *org-agenda-files*
          (tuatara.runtime:carry-settings
           *org-agenda-carried-settings*
           (lambda ()
-            (let* ((*org-agenda-snapshot* snapshot)
+            (let* ((*org-agenda-snapshot* (org-agenda-snapshot-with open))
                    (*org-agenda-ts-memo* (make-hash-table :test 'equal))
                    (*org-agenda-time-memo* (make-hash-table :test 'equal))
-                   (files (mapcar #'first snapshot))
+                   (files (mapcar #'first *org-agenda-snapshot*))
                    (entries (mapcar #'org-agenda-entries files)))
               (loop for day from first to last
                     when (org-agenda-day day :files files :entries-by-file entries :log nil)
@@ -1038,6 +1040,7 @@ day; the agendas EDITOR shows are kept up to date (ORG-AGENDA-FOLLOW)."
                                      ("C-c C-q" org-agenda-set-tags) ("C-c C-z" org-agenda-add-note) ("C-c C-w" org-agenda-refile)
                                      ("s" org-agenda-save-all-buffers) ("c" org-agenda-goto-calendar)))
   (pushnew 'org-calendar-mark-source *calendar-mark-functions*)
+  (pushnew '(:calendar-marked org-calendar-goto-agenda "agenda") *calendar-day-openers* :test #'equal)
   (define-key (mode-keymap 'calendar-mode) "a" 'org-calendar-goto-agenda))
 
 (commands-for-mode 'org-agenda-mode "The agenda (\\[org-agenda])"

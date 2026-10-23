@@ -327,22 +327,27 @@ asked about, and the window redrawn when they are."
 
 ;;; Correcting
 
-(defun spelling-answered-in (window rows)
+(defun spelling-answered-in (window &optional rows)
   "The words ROWS of WINDOW show spelt wrong, each (START END WORD), once
 every one of them is answered, the editor waiting meanwhile (\\`C-g' stops
-it, and NIL is returned); and the languages, as a second value."
+it, and NIL is returned); and the languages, as a second value. Without
+ROWS, the rows WINDOW shows, read again after the wait, as the window may
+have been drawn anew meanwhile."
   (let ((buffer (tuatara.display:window-buffer window)))
-    (multiple-value-bind (wrong unknown languages) (spelling-in-rows buffer rows (window-syntax *editor* window rows))
-      (if (null unknown)
-          (values wrong languages)
-          (let ((words (mapcar #'third unknown)))
-            (spelling-ask languages words)
-            ;; asked again while waiting: a lot dropped for newer ones (*SPELLING-BACKLOG*) still gets answered
-            (when (wait-until-interruptibly (lambda ()
-                                              (spelling-ask languages words)
-                                              (every (lambda (w) (spelling-known languages w)) words))
-                                            :message "Checking the spelling...")
-              (values (nth-value 0 (spelling-in-rows buffer rows (window-syntax *editor* window rows))) languages)))))))
+    (flet ((wrong-in-rows ()
+             (let ((rows (or rows (tuatara.display:window-rows window))))
+               (spelling-in-rows buffer rows (window-syntax *editor* window rows)))))
+      (multiple-value-bind (wrong unknown languages) (wrong-in-rows)
+        (if (null unknown)
+            (values wrong languages)
+            (let ((words (mapcar #'third unknown)))
+              (spelling-ask languages words)
+              ;; asked again while waiting: a lot dropped for newer ones (*SPELLING-BACKLOG*) still gets answered
+              (when (wait-until-interruptibly (lambda ()
+                                                (spelling-ask languages words)
+                                                (every (lambda (w) (spelling-known languages w)) words))
+                                              :message "Checking the spelling...")
+                (values (nth-value 0 (wrong-in-rows)) languages))))))))
 
 (defun spelling-ready (buffer)
   "Signal an error unless BUFFER's words can be checked here."
@@ -424,7 +429,7 @@ or keep the word: while the editor runs, in the file's own word list (as
 \(as \\[spellcheck-add-word] does)."
   (let* ((window (current-window)) (buffer (current-buffer)) (point (point)))
     (spelling-ready buffer)
-    (multiple-value-bind (wrong languages) (spelling-answered-in window (tuatara.display:window-rows window))
+    (multiple-value-bind (wrong languages) (spelling-answered-in window)
       (let ((target (or (find-if (lambda (w) (<= (first w) point (second w))) wrong)
                         (first (sort (copy-list wrong) #'<
                                      :key (lambda (w) (min (abs (- (first w) point)) (abs (- (second w) point)))))))))

@@ -116,6 +116,11 @@ its buffer shows such characters: its code in hexadecimal between angle
 brackets, four digits at least, as <FEFF> or <E0020>."
   (format nil "<~4,'0X>" code))
 
+(defun invisible-code-columns (code)
+  "The columns INVISIBLE-CODE-DISPLAY's text for CODE takes: its hexadecimal
+digits, four at least, and the two angle brackets."
+  (+ 2 (max 4 (ceiling (integer-length code) 4))))
+
 (defun mark-code-p (code)
   "True when the character of CODE is a mark that combines with the character
 before it (an accent, a vowel sign), one shown on *MARK-BASE* where nothing
@@ -148,10 +153,10 @@ for. Loading this file again starts it afresh.")
   "Number of columns the character of CODE occupies in the grid (CHAR-COLUMNS);
 with INVISIBLE, a character that draws nothing takes those of its code
 \(INVISIBLE-CODE-DISPLAY)."
-  (cond ((< code 32) 2)
-        ((= code 127) 2)
+  (cond ((< code 32) 2)                  ; ^X
+        ((= code 127) 2)                 ; ^?
         ((< code 160) (if (< code 128) 1 4)) ; C1 controls shown as \xNN
-        ((and invisible (invisible-code-p code)) (if (> code #xFFFF) 7 6))
+        ((and invisible (invisible-code-p code)) (invisible-code-columns code))
         ((< code #x40000)
          (let ((table *plane-columns*))
            (declare (type (simple-array (unsigned-byte 8) (#x40000)) table))
@@ -222,7 +227,8 @@ joined to the one before it in a grapheme cluster takes no columns of its own."
   "How many characters of STRING, from its start, fit in COLUMNS columns,
 WIDTH giving each character's own (CHAR-COLUMNS unless given) and a grapheme
 cluster the columns of its first character (STRING-COLUMNS): where text is
-cut to fit a width, never inside a cluster."
+cut to fit a width, never inside a cluster. The columns those characters
+take are the second value."
   (let ((used 0) (before 0))
     (declare (type fixnum used before))
     (loop for i from 0 below (length string)
@@ -231,8 +237,9 @@ cut to fit a width, never inside a cluster."
                  (incf used more)
                  (setf before next)))
              (when (> used columns)
-               (return-from chars-in-columns (tuatara.text:string-cluster-start string (1+ i)))))
-    (length string)))
+               (let ((kept (tuatara.text:string-cluster-start string (1+ i))))
+                 (return-from chars-in-columns (values kept (string-columns string :end kept :width width))))))
+    (values (length string) used)))
 
 (defun pad-columns (string columns &key (width #'char-columns) left)
   "STRING with spaces after it, or with LEFT before it, to take COLUMNS
@@ -317,17 +324,85 @@ for no words."
     (when line (push line lines))
     (nreverse lines)))
 
+(defun list-item-head (line)
+  "The length of what begins LINE as an item of a list, - or * or a number and
+a full stop, with the blanks after it; NIL when LINE begins no item."
+  (let* ((n (length line))
+         (after (cond ((zerop n) nil)
+                      ((find (char line 0) "-*") 1)
+                      (t (let ((digits (or (position-if-not #'digit-char-p line) n)))
+                           (and (plusp digits) (< digits n) (char= (char line digits) #\.) (1+ digits))))))
+         (words (and after (position-if-not (lambda (c) (member c '(#\Space #\Tab #\Newline #\Return #\Page))) line
+                                            :start after))))
+    (and after (> (or words n) after) (or words n))))
+
+(defun docstring-paragraphs (doc)
+  "DOC, a docstring, cut into its parts in order, for its text to be filled
+and the rest kept as written: (:BLANK) for a blank line; (:AS-IS LINE) for a
+line set in (a table, an example; under an item of a list, set in further
+than its words); (:FILLED HEAD INDENT WORDS LINES) for lines whose words are
+filled: HEAD what begins them (an item's - or * or number and full stop with
+the blanks after it, else \"\"), INDENT the columns the lines after the first
+are set in by, WORDS their words, a list, and LINES the lines they were
+written in. An item's lines go on until a blank line or the next item; any
+other lines run on into one paragraph."
+  (let ((parts '()) (head nil) (indent 0) (words '()) (lines '()))
+    (flet ((flush ()
+             (when head
+               (push (list :filled head indent (reverse words) (reverse lines)) parts))
+             (setf head nil words '() lines '()))
+           (add (line from)
+             (setf words (revappend (remove "" (uiop:split-string (subseq line from) :separator '(#\Space #\Tab))
+                                            :test #'string=)
+                                    words))
+             (push line lines)))
+      (dolist (line (uiop:split-string doc :separator '(#\Newline)))
+        (let ((item (list-item-head line)))
+          (cond ((every (lambda (c) (member c '(#\Space #\Tab))) line)
+                 (flush) (push (list :blank) parts))
+                (item (flush)
+                      (setf head (subseq line 0 item) indent item)
+                      (add line item))
+                ((and head (plusp indent) (<= (or (position #\Space line :test-not #'char=) 0) indent))
+                 (add line 0))
+                ((char= (char line 0) #\Space)
+                 (flush) (push (list :as-is line) parts))
+                (t (unless head (setf head "" indent 0))
+                   (add line 0)))))
+      (flush))
+    (nreverse parts)))
+
+(sb-ext:define-load-time-global **octet-escapes**
+    (let ((texts (make-array 256)))
+      (dotimes (octet 256 texts)
+        (setf (svref texts octet) (concatenate 'string "\\x" (string-upcase (svref tuatara.text:*hex-pairs* octet))))))
+  "The text \\xNN of each octet, by its value, made once.")
+
+(sb-ext:define-load-time-global **control-displays**
+    (let ((texts (make-array 160 :initial-element nil)))
+      (dotimes (code 160 texts)
+        (setf (svref texts code)
+              (cond ((< code 32) (coerce (list #\^ (code-char (+ code 64))) 'string))
+                    ((= code 127) "^?")
+                    ((>= code 128) (svref **octet-escapes** code))))))
+  "The text each control character is shown as, by its code below 160, made once.")
+
 (defun control-char-display (char)
-  "The text a control character is shown as: ^A for code 1, ^? for 127, \\x85 for C1 controls."
-  (let ((code (char-code char)))
-    (cond ((< code 32) (format nil "^~c" (code-char (+ code 64))))
-          ((= code 127) "^?")
-          (t (format nil "\\x~2,'0X" code)))))
+  "The text a control character is shown as: ^A for code 1, ^? for 127, \\x85 for C1 controls.
+The text is shared: it must not be changed."
+  (svref **control-displays** (char-code char)))
 
 (defun raw-byte-display (code)
   "The text the character of CODE, a raw byte's (an octet that is not UTF-8,
-U+DC80..U+DCFF), is shown as: \\x80 for the octet #x80."
-  (format nil "\\x~2,'0X" (logand code #xFF)))
+U+DC80..U+DCFF), is shown as: \\x80 for the octet #x80. The text is shared:
+it must not be changed."
+  (svref **octet-escapes** (logand code #xFF)))
+
+(sb-ext:define-load-time-global **spaces**
+    (let ((texts (make-array 65)))
+      (dotimes (n 65 texts)
+        (setf (svref texts n) (make-string n :initial-element #\Space))))
+  "Strings of spaces of each length up to 64, the most a tab can take, made once.")
 
 (declaim (inline next-tab-stop))
 (defun next-tab-stop (column width)
@@ -335,19 +410,36 @@ U+DC80..U+DCFF), is shown as: \\x80 for the octet #x80."
   (declare (type fixnum column width))
   (* width (1+ (floor column width))))
 
+(declaim (inline advance-column))
+(defun advance-column (code column before tab-width invisible)
+  "Two values: the columns the character of CODE takes on the screen where it
+stands at COLUMN after the character of code BEFORE (0 at a line's start),
+and the code to give as BEFORE for the character after it. A tab reaches the
+next of every TAB-WIDTH columns, a control character takes two (^X), any
+other what CODE-COLUMNS says (with INVISIBLE, a character that draws nothing
+the columns of its code shown), and a grapheme cluster the columns of its
+first character (CLUSTER-COLUMNS). Every count of columns along a line goes
+by this."
+  (declare (type fixnum code column before tab-width))
+  (cond ((= code 9) (values (- (next-tab-stop column tab-width) column) code))
+        ((< code 128) (values (if (tuatara.text:control-code-p code) 2 1) code))
+        (t (cluster-columns code before (code-columns code invisible) invisible))))
+
 (defun char-display (char column tab-width &optional invisible)
   "How CHAR, at COLUMN, is shown, as three values: the text shown (CHAR
 itself when it is shown as itself, else a string), the columns it takes, and
 :RAW-BYTE or :INVISIBLE-CHARACTER when that text stands for a character that
-cannot be shown as itself, else NIL. A tab is shown as spaces
+cannot be shown as itself, else NIL; text it gives is shared and must not be
+changed. A tab is shown as spaces
 up to the next of every TAB-WIDTH columns, a control character as ^X or \\xNN
 \(CONTROL-CHAR-DISPLAY), a raw byte as \\xNN, and with INVISIBLE a character
 that draws nothing as its code (INVISIBLE-CODE-DISPLAY)."
   (let ((code (char-code char)))
     (cond ((char= char #\Tab)
            (let ((n (- (next-tab-stop column tab-width) column)))
-             (values (make-string n :initial-element #\Space) n nil)))
-          ((or (< code 32) (<= 127 code 159))
+             (values (if (< n (length **spaces**)) (svref **spaces** n) (make-string n :initial-element #\Space))
+                     n nil)))
+          ((tuatara.text:control-code-p code)
            (let ((text (control-char-display char))) (values text (length text) nil)))
           ((tuatara.text:raw-byte-code-p code)
            (values (raw-byte-display code) 4 :raw-byte))
@@ -366,7 +458,7 @@ draws a piece of a picture. STRING itself when nothing needs it."
   (flet ((unsafe (c)
            (let ((code (char-code c)))
              (or (<= #xD800 code #xDFFF)
-                 (and controls (or (< code 32) (<= 127 code 159)
+                 (and controls (or (tuatara.text:control-code-p code)
                                    (= code tuatara.frontend:+kitty-placeholder+)
                                    (in-ranges-p code *direction-controls*)))))))
     (if (find-if #'unsafe string)

@@ -55,6 +55,15 @@ not UTF-8 kept as its raw byte."
                                                             :external-format (list encoding :replacement (code-char #xFFFD)))))
         (octets-string octets :start start :end end))))
 
+(defun word-char-p (char)
+  "True for characters that make up words: letters and digits."
+  (and char (or (alpha-char-p char) (digit-char-p char))))
+
+(defun name-char-p (char)
+  "True for characters that make up a name, a word with _ in it as well:
+letters, digits and _."
+  (or (word-char-p char) (eql char #\_)))
+
 (defun split-words (string &optional (separators '(#\Space #\Tab)))
   "The parts of STRING between SEPARATORS (characters, or a string of them),
 the empty ones left out; NIL for NIL."
@@ -75,14 +84,31 @@ digits. Only the digits and the point are read, never anything else."
                 (+ (if (plusp (length whole)) (parse-integer whole) 0)
                    (if (plusp (length part)) (/ (parse-integer part) (expt 10 (length part))) 0)))))))
 
+(defparameter *hex-pairs*
+  (let ((pairs (make-array 256)))
+    (dotimes (i 256 pairs)
+      (setf (aref pairs i) (coerce (format nil "~(~2,'0x~)" i) 'simple-base-string))))
+  "The two lower-case hex digits of each octet, by its value.")
+
 (defun octets-hex (octets &key (start 0) end upper-case separator)
   "OCTETS from START below END (or their end) written in hexadecimal, two
 digits each, in lower case unless UPPER-CASE, SEPARATOR (a string) between
 each two when given."
-  (with-output-to-string (s)
-    (loop for i from start below (or end (length octets))
-          do (when (and separator (> i start)) (write-string separator s))
-             (format s (if upper-case "~2,'0X" "~(~2,'0x~)") (aref octets i)))))
+  (let* ((end (or end (length octets)))
+         (count (max 0 (- end start)))
+         (gap (length (or separator "")))
+         (out (make-string (max 0 (- (* count (+ 2 gap)) gap))))
+         (at 0))
+    (declare (type fixnum end count gap at))
+    (loop for i from start below end
+          do (when (and separator (> i start))
+               (replace out separator :start1 at)
+               (incf at gap))
+             (let ((pair (svref *hex-pairs* (aref octets i))))
+               (setf (char out at) (if upper-case (char-upcase (char pair 0)) (char pair 0))
+                     (char out (1+ at)) (if upper-case (char-upcase (char pair 1)) (char pair 1)))
+               (incf at 2)))
+    out))
 
 ;;; Hashes of text
 
@@ -107,7 +133,7 @@ given by a program). NIL for NIL."
   (and text
        (let ((out (make-string-output-stream)) (blank nil))
          (loop for c across text
-               do (if (let ((code (char-code c))) (or (< code 32) (<= 127 code 159)))
+               do (if (control-code-p (char-code c))
                       (setf blank t)
                       (progn (when blank (write-char #\Space out) (setf blank nil))
                              (write-char c out))))

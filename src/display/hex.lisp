@@ -46,12 +46,6 @@ and point at the start of the character that octet is part of."
   "How many hex digits the offsets of a text of TOTAL octets take: eight, or more for a text past 4 GB."
   (max 8 (length (format nil "~x" total))))
 
-(defparameter *hex-pairs*
-  (let ((pairs (make-array 256)))
-    (dotimes (i 256 pairs)
-      (setf (aref pairs i) (format nil "~(~2,'0x~)" i))))
-  "The two lower-case hex digits of each octet, by its value.")
-
 (defun hex-digits (n digits)
   "N in lower-case hex, at least DIGITS digits long, zeros before it."
   (let* ((length (max digits (ceiling (integer-length n) 4)))
@@ -59,28 +53,21 @@ and point at the start of the character that octet is part of."
     (loop for i downfrom (1- length) to 0
           for value = n then (ash value -4)
           while (plusp value)
-          do (setf (char string i) (char-downcase (digit-char (logand value 15) 16))))
+          do (setf (char string i) (char (svref tuatara.text:*hex-pairs* (logand value 15)) 1)))
     string))
 
-(defun row-add-octets (row string byte face)
-  "Append STRING to ROW, a column a character, each standing for the octet at
-BYTE (-1 for none), in FACE."
-  (loop for c across string do (row-add-char row c byte face)))
+(defun row-add-octets (row text byte face)
+  "Append TEXT, a string or a character, to ROW, a column a character, each
+standing for the octet at BYTE (-1 for none), in FACE."
+  (row-add row text byte (if (characterp text) 1 (length text)) face))
 
-(defun row-add-char (row char byte face)
-  "Append CHAR to ROW, standing for the octet at BYTE (-1 for none), in FACE."
-  (vector-push-extend char (row-string row))
-  (vector-push-extend face (row-faces row))
-  (vector-push-extend byte (row-char-bytes row))
-  (vector-push-extend byte (row-bytes row))
-  (incf (row-columns row)))
-
-(defun hex-layout (rope start height)
+(defun hex-layout (rope start height &optional spares)
   "Lay out ROPE as a hex dump from byte START (a multiple of +HEX-ROW+) into at
 most HEIGHT rows (see this file's header). The hex digits and the text column
 of each octet map back to its offset, other columns to none (-1), so that the
 cursor shows on an octet's hex digits; the rows are marked MIXED, their
-characters' offsets not in order, for APPLY-HIGHLIGHTS. Complexity: O(HEIGHT)."
+characters' offsets not in order, for APPLY-HIGHLIGHTS. Rows are taken from
+SPARES, rows no longer shown, while it has any (MAKE-ROW). Complexity: O(HEIGHT)."
   (let* ((total (tuatara.text:rope-bytes rope))
          (digits (hex-offset-digits total))
          (rows (make-array 0 :adjustable t :fill-pointer 0)))
@@ -88,22 +75,24 @@ characters' offsets not in order, for APPLY-HIGHLIGHTS. Complexity: O(HEIGHT)."
           for offset = (+ start (* r +hex-row+))
           while (<= offset total)
           do (let* ((n (min +hex-row+ (- total offset)))
-                    (octets (tuatara.text:rope-octets rope :start offset :end (+ offset n)))
-                    (row (make-row offset (+ digits 70))))
+                    (octets (make-array +hex-row+ :element-type '(unsigned-byte 8)))
+                    (row (make-row offset (+ digits 70) spares)))
+               (declare (dynamic-extent octets))
+               (tuatara.text:rope-copy-into rope offset (+ offset n) octets)
                (setf (row-mixed row) t)
                (row-add-octets row (hex-digits offset digits) -1 :hex-offset)
                (row-add-octets row "  " -1 nil)
                (dotimes (k +hex-row+)
                  (if (< k n)
-                     (progn (row-add-octets row (aref *hex-pairs* (aref octets k)) (+ offset k) nil)
+                     (progn (row-add-octets row (svref tuatara.text:*hex-pairs* (aref octets k)) (+ offset k) nil)
                             (row-add-octets row " " -1 nil))
                      (row-add-octets row "   " -1 nil))
                  (when (= k 7) (row-add-octets row " " -1 nil)))
                (row-add-octets row " " -1 nil)
                (dotimes (k n)
                  (let ((b (aref octets k)))
-                   (row-add-char row (if (<= 32 b 126) (code-char b) #\.) (+ offset k)
-                                 (if (<= 32 b 126) nil :hex-unprintable))))
+                   (row-add-octets row (if (<= 32 b 126) (code-char b) #\.) (+ offset k)
+                                   (if (<= 32 b 126) nil :hex-unprintable))))
                (setf (row-end row) (+ offset n) (row-shown-end row) (+ offset n)
                      (row-last-p row) (= (+ offset n) total))
                (vector-push-extend row rows)

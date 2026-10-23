@@ -240,29 +240,36 @@ gap between two, the one behind."
   "Signal that no paragraph break was found within *TEXT-SCAN-LIMIT*."
   (error "No paragraph break within ~a" (scan-limit-words)))
 
-(defun paragraphs-forward (buffer position count)
+(defun paragraphs-forward (buffer position count &optional within)
   "Where COUNT paragraphs forward of POSITION end: past blank lines, then past
 lines of text, to the start of the blank line after them or the end of the
 text. The lines are read as octets, fast; farther than *TEXT-SCAN-LIMIT* is an
-error."
+error. With WITHIN, no more than that many octets are read, and NIL is the
+answer when that is not enough."
   (let ((text (tuatara.buffer:buffer-text buffer))
         (p (tuatara.buffer:buffer-line-start buffer position)))
-    ;; at the end of the text it stops at once, whatever is left of COUNT
-    (loop repeat count
-          until (>= p (tuatara.text:rope-bytes text))
-          do (setf p (or (tuatara.text:rope-line-downward text p :limit *text-scan-limit*) (paragraph-too-far))
-                   p (or (tuatara.text:rope-line-downward text p :blank t :limit *text-scan-limit*) (paragraph-too-far))))
+    (flet ((downward (line blank)
+             (or (tuatara.text:rope-line-downward text line :blank blank :limit (or within *text-scan-limit*))
+                 (if within (return-from paragraphs-forward nil) (paragraph-too-far)))))
+      ;; at the end of the text it stops at once, whatever is left of COUNT
+      (loop repeat count
+            until (>= p (tuatara.text:rope-bytes text))
+            do (setf p (downward p nil) p (downward p t))))
     p))
 
-(defun paragraphs-backward (buffer position count)
+(defun paragraphs-backward (buffer position count &optional within)
   "Where COUNT paragraphs back from POSITION begin: from the line before
 POSITION's character, up past blank lines, then up through the text to the
 start of the blank line before it, or the start of the text. Farther than
-*TEXT-SCAN-LIMIT* is an error."
+*TEXT-SCAN-LIMIT* is an error. With WITHIN, no more than that many octets are
+read for each line looked for, and NIL is the answer when that is not
+enough."
   (let ((text (tuatara.buffer:buffer-text buffer)) (p position))
     (flet ((upward (line blank)
-             (multiple-value-bind (found why) (tuatara.text:rope-line-upward text line :blank blank :limit *text-scan-limit*)
-               (when (eq why :limit) (paragraph-too-far))
+             (multiple-value-bind (found why) (tuatara.text:rope-line-upward text line :blank blank
+                                                                                   :limit (or within *text-scan-limit*))
+               (when (eq why :limit)
+                 (if within (return-from paragraphs-backward nil) (paragraph-too-far)))
                found)))
       (dotimes (i count p)
         (when (zerop p) (return 0))
@@ -334,72 +341,100 @@ Dr.). Else NIL."
              (p stop))
         (loop while (let ((c (tuatara.buffer:buffer-char-at buffer p))) (and c (sentence-closing-char-p c)))
               do (setf p (tuatara.buffer:buffer-forward-char buffer p)))
-        (let ((next (tuatara.buffer:buffer-char-at buffer p)))
-          (and (or (null next)
-                   (if (sentence-end-double-space-p buffer)
-                       (or (member next '(#\Tab #\Newline #\Return))
-                           (and (blank-char-p next)
-                                (let ((after (tuatara.buffer:buffer-char-at buffer (tuatara.buffer:buffer-forward-char buffer p))))
-                                  (or (null after) (blank-char-p after)))))
-                       (blank-char-p next)))
+        (let ((gap (sentence-gap (tuatara.buffer:buffer-char-at buffer p) (sentence-end-double-space-p buffer))))
+          (and (if (eq gap :blank)
+                   (let ((after (tuatara.buffer:buffer-char-at buffer (tuatara.buffer:buffer-forward-char buffer p))))
+                     (or (null after) (blank-char-p after)))
+                   gap)
                (not (and (char= c #\.) (abbreviation-before-p buffer stop)))
                p))))))
 
-(defun paragraph-text-end (buffer position)
+(defun paragraph-text-end (buffer position &optional within)
   "The end of the text of the paragraph at or after POSITION: before the line
-end of its last line."
-  (let* ((end (paragraphs-forward buffer position 1))
-         (p end))
-    (loop while (and (> p position) (blank-char-p (char-before-position buffer p)))
-          do (setf p (tuatara.buffer:buffer-forward-char buffer p -1)))
-    (max p position)))
+end of its last line. With WITHIN, NIL when finding it takes reading more
+than that many octets (PARAGRAPHS-FORWARD)."
+  (let ((end (paragraphs-forward buffer position 1 within)))
+    (when end
+      (let ((p end))
+        (loop while (and (> p position) (blank-char-p (char-before-position buffer p)))
+              do (setf p (tuatara.buffer:buffer-forward-char buffer p -1)))
+        (max p position)))))
+
+(defun paragraph-text-start (buffer position &optional within)
+  "The start of the text of the paragraph POSITION is in or after: past the
+blank lines and blanks before it. With WITHIN, NIL when finding it takes
+reading more than that many octets (PARAGRAPHS-BACKWARD)."
+  (let ((p (paragraphs-backward buffer position 1 within)))
+    (when p
+      (loop while (and (< p (tuatara.buffer:buffer-size buffer)) (blank-char-p (tuatara.buffer:buffer-char-at buffer p)))
+            do (setf p (tuatara.buffer:buffer-forward-char buffer p)))
+      p)))
+
+(defun next-sentence-end (buffer position)
+  "Where the first sentence ending after POSITION ends (SENTENCE-END-AT), a
+paragraph's end aside; NIL when none does within *TEXT-SCAN-LIMIT* octets."
+  (let* ((text (tuatara.buffer:buffer-text buffer))
+         (limit (min (tuatara.text:rope-bytes text) (+ position *text-scan-limit*))))
+    (loop with q = position
+          do (let ((candidate (tuatara.text:rope-find-any-octet text *sentence-end-octets* :start q :end limit)))
+               (unless candidate (return nil))
+               (let ((end (sentence-end-at buffer candidate)))
+                 (when (and end (> end position)) (return end)))
+               (setf q (1+ candidate))))))
 
 (defun sentences-forward (buffer position count)
   "Where COUNT sentences forward of POSITION end: at the next full stop
 (or ? ! …) and its closers followed by a blank (two spaces where sentences
-are two spaces apart: SENTENCE-END-AT), or the end of the paragraph's text."
+are two spaces apart: SENTENCE-END-AT), or the end of the paragraph's text
+when that comes first. Only the text up to that full stop is read for the
+paragraph's end; farther than *TEXT-SCAN-LIMIT* is an error."
   (let ((p position))
     (dotimes (i count p)
-      (let ((limit (paragraph-text-end buffer p)))
-        (when (<= limit p)
-          (setf limit (paragraph-text-end buffer (next-line-start buffer p))))
-        (setf p (loop with q = p
-                      do (let ((candidate (tuatara.text:rope-find-any-octet (tuatara.buffer:buffer-text buffer)
-                                                                            *sentence-end-octets* :start q :end limit)))
-                           (unless candidate (return limit))
-                           (let ((end (sentence-end-at buffer candidate)))
-                             (when (and end (> end p)) (return end)))
-                           (setf q (1+ candidate)))))))))
+      (let* ((end (next-sentence-end buffer p))
+             ;; the paragraph's end matters only before that sentence's
+             (within (and end (+ 4096 (- end (tuatara.buffer:buffer-line-start buffer p)))))
+             (limit (paragraph-text-end buffer p within)))
+        (when (and limit (<= limit p))
+          (let ((next (next-line-start buffer p)))
+            (setf limit (paragraph-text-end buffer next (and end (+ 4096 (max 0 (- end next))))))))
+        (setf p (cond ((null limit) end)
+                      ((null end) limit)
+                      (t (min end limit))))))))
 
-(defun paragraph-text-start (buffer position)
-  "The start of the text of the paragraph POSITION is in or after: past the
-blank lines and blanks before it."
-  (let ((p (paragraphs-backward buffer position 1)))
-    (loop while (and (< p (tuatara.buffer:buffer-size buffer)) (blank-char-p (tuatara.buffer:buffer-char-at buffer p)))
-          do (setf p (tuatara.buffer:buffer-forward-char buffer p)))
-    p))
+(defun previous-sentence-start (buffer position)
+  "Two values for the sentence before POSITION: where the sentence after it
+begins, past the blanks after its end, when that is before POSITION; and
+where the character ending it is. NIL when no sentence ends within
+*TEXT-SCAN-LIMIT* octets before POSITION, a paragraph's start aside."
+  (let ((text (tuatara.buffer:buffer-text buffer))
+        (floor (max 0 (- position *text-scan-limit*))))
+    (loop with high = position
+          do (let ((r (tuatara.text:rope-find-any-octet text *sentence-end-octets* :start floor :end high :from-end t)))
+               (unless r (return nil))
+               (let ((end (sentence-end-at buffer r)))
+                 (when end
+                   (let ((start (skip-blanks buffer end)))
+                     (when (< start position) (return (values start r))))))
+               (setf high r)))))
 
 (defun sentences-backward (buffer position count)
   "Where COUNT sentences back from POSITION begin: just after the end of the
 sentence before and the blanks after it, or else the start of the paragraph's
-text; from the start of a paragraph, the last sentence of the one before."
+text when that comes later; from the start of a paragraph, the last sentence
+of the one before. Only the text back to that sentence's end is read for the
+paragraph's start; farther than *TEXT-SCAN-LIMIT* is an error."
   (let ((p position))
     (dotimes (i count p)
       (when (zerop p) (return 0))
-      (let ((floor (paragraph-text-start buffer p)))
-        (when (>= floor p)
-          (setf floor (paragraph-text-start buffer (paragraphs-backward buffer p 1))))
-        (setf p (or (loop with high = p
-                          do (let ((r (tuatara.text:rope-find-any-octet (tuatara.buffer:buffer-text buffer)
-                                                                        *sentence-end-octets*
-                                                                        :start (min floor high) :end high :from-end t)))
-                               (unless r (return nil))
-                               (let ((end (sentence-end-at buffer r)))
-                                 (when end
-                                   (let ((start (skip-blanks buffer end)))
-                                     (when (< start p) (return start)))))
-                               (setf high r)))
-                    (min floor p)))))))
+      (multiple-value-bind (start at) (previous-sentence-start buffer p)
+        (let* ((within (and at (+ 4096 (- (tuatara.buffer:buffer-line-end buffer p) at))))
+               (floor (paragraph-text-start buffer p within)))
+          (when (and floor (>= floor p))
+            (let ((back (paragraphs-backward buffer p 1 within)))
+              (setf floor (and back (paragraph-text-start buffer back (and at (+ 4096 (max 0 (- (tuatara.buffer:buffer-line-end buffer back) at)))))))))
+          (setf p (cond ((and floor (or (null at) (< at floor))) (min floor p))
+                        (start start)
+                        (t (min (or floor 0) p)))))))))
 
 (define-command select-sentence ()
   "Select the sentence at point, as far as its full stop; from the gap

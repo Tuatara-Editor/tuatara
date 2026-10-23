@@ -1335,14 +1335,27 @@ DIR is visited and its status read, the project trusted. Returns the frontend."
       (false (tuatara.frontend.fake:fake-frame-showing f "bad revision"))
       (true (search "+first" (tuatara.buffer:buffer-string (tuatara.buffer:find-buffer "*git diff*")))))))
 
-(define-test (git command-words)
+(define-test (git hashes-told-one-way)
+  ;; a commit's hash, whole or cut short, told by one test: the packages' and the logs'
+  (true (tuatara.defaults::git-hash-p (make-string 40 :initial-element #\a)))
+  (false (tuatara.defaults::git-hash-p "abc1234"))
+  (true (tuatara.defaults::git-hash-p "abc1234" :short t))
+  (false (tuatara.defaults::git-hash-p "abc12" :short t))
+  (false (tuatara.defaults::git-hash-p "abc123g" :short t))
+  (is string= "abc1234" (tuatara.defaults::package-commit-name (format nil "abc1234~%") "here"))
+  (fail (tuatara.defaults::package-commit-name "not-a-hash" "here"))
+  ;; a path as an address writes it, one way for a file: address and the trash
+  (is string= "file:///a%20b/c~-._%25" (tuatara.defaults::path-uri "/a b/c~-._%"))
+  (is string= "/a%20b/c~-._%25" (tuatara.io:url-path "/a b/c~-._%")))
+
+(define-test (git run-words-split)
   ;; the words of ! are split as a shell splits them, though no shell runs
   (is equal '("log" "-1" "--format=[%s] two words")
-      (tuatara.defaults::git-command-words "log -1 \"--format=[%s] two words\""))
+      (tuatara.io:command-words "log -1 \"--format=[%s] two words\""))
   (is equal '("a b" "c\"d" "e f" "$HOME")
-      (tuatara.defaults::git-command-words "'a b' \"c\\\"d\" e\\ f $HOME"))
-  (is equal '(nil nil) (multiple-value-list (tuatara.defaults::git-command-words "log 'open")))
-  (is equal '(nil t) (multiple-value-list (tuatara.defaults::git-command-words "   "))))
+      (tuatara.io:command-words "'a b' \"c\\\"d\" e\\ f $HOME"))
+  (is equal '(nil nil) (subseq (multiple-value-list (tuatara.io:command-words "log 'open")) 0 2))
+  (is equal '(nil t) (multiple-value-list (tuatara.io:command-words "   "))))
 
 (define-test (git pull-detached)
   ;; a pull with HEAD detached says so, git not run
@@ -1582,23 +1595,43 @@ DIR is visited and its status read, the project trusted. Returns the frontend."
   ;; each commit of a file's log, with the name it had then; one naming none left out
   (flet ((record (hash short date author subject &optional name)
            (format nil "~c~{~a~^~c~}~c~@[~%~a~c~]" (code-char #x1e)
-                   (list hash (code-char #x1f) short (code-char #x1f) date (code-char #x1f) author (code-char #x1f) subject)
+                   (list hash (code-char #x1f) short (code-char #x1f) date (code-char #x1f) author (code-char #x1f)
+                         "2 days ago" (code-char #x1f) "" (code-char #x1f) subject)
                    (code-char 0) name (code-char 0))))
     (let* ((h1 (make-string 40 :initial-element #\a)) (h3 (make-string 40 :initial-element #\c))
-           (revisions (tuatara.defaults::parse-git-rewind-log
+           (revisions (tuatara.defaults::git-file-history
                        (concatenate 'string (record h1 "s1" "2026-10-15" "Ann" "Four" "b.txt")
                                     (record (make-string 40 :initial-element #\b) "s2" "2026-10-14" "Bo" "Merge")
                                     (record h3 "s3" "2026-10-13" "Bo" "One" "a.txt")))))
       (is = 2 (length revisions))
-      (is equal (list h1 "s1" "2026-10-15" "Ann" "Four" "b.txt") (svref revisions 0))
-      (is equal "a.txt" (sixth (svref revisions 1))))
+      (let ((first (svref revisions 0)))
+        (is equal (list h1 "s1" "2026-10-15" "Ann" "2 days ago" "Four" "b.txt")
+            (list (tuatara.defaults::git-commit-hash first) (tuatara.defaults::git-commit-short first)
+                  (tuatara.defaults::git-commit-date first) (tuatara.defaults::git-commit-author first)
+                  (tuatara.defaults::git-commit-ago first) (tuatara.defaults::git-commit-subject first)
+                  (tuatara.defaults::git-commit-path first))))
+      (is equal "a.txt" (tuatara.defaults::git-commit-path (svref revisions 1))))
     ;; a subject holding git's separators makes no commit of its own, whose hash would go to git
-    (let ((revisions (tuatara.defaults::parse-git-rewind-log
+    (let ((revisions (tuatara.defaults::git-file-history
                       (record (make-string 40 :initial-element #\d) "s4" "2026-10-12" "Eve"
-                              (format nil "Hi~c--output=/tmp/x~cs~cd~ca~cb" (code-char #x1e) (code-char #x1f) (code-char #x1f) (code-char #x1f) (code-char #x1f))
+                              (format nil "Hi~c--output=/tmp/x~cs~cd~ca~cb~cc~cd" (code-char #x1e) (code-char #x1f) (code-char #x1f)
+                                      (code-char #x1f) (code-char #x1f) (code-char #x1f) (code-char #x1f))
                               "c.txt"))))
-      (true (every (lambda (revision) (tuatara.defaults::git-hash-p (first revision))) revisions))
-      (false (find "--output=/tmp/x" revisions :key #'first :test #'equal)))))
+      (true (every (lambda (revision) (tuatara.defaults::git-hash-p (tuatara.defaults::git-commit-hash revision))) revisions))
+      (false (find "--output=/tmp/x" revisions :key #'tuatara.defaults::git-commit-hash :test #'equal))))
+  ;; one format for every log: a graph's lines kept, each commit's graph before it
+  (let* ((hash (make-string 40 :initial-element #\e))
+         (fields (format nil "~a~c~a~c2026-10-11~cAnn~c3 days ago~cHEAD -> main~cA subject" hash (code-char #x1f) "eeeeeee"
+                         (code-char #x1f) (code-char #x1f) (code-char #x1f) (code-char #x1f) (code-char #x1f)))
+         (commits (tuatara.defaults::parse-git-commits
+                   (format nil "* ~c~a~%|\\~%| * ~c~a~%" (code-char #x1e) fields (code-char #x1e) fields))))
+    (is = 3 (length commits))
+    (is equal "* " (tuatara.defaults::git-commit-graph (first commits)))
+    (is equal "HEAD -> main" (tuatara.defaults::git-commit-names (first commits)))
+    (false (tuatara.defaults::git-commit-hash (second commits)))
+    (is equal "|\\" (tuatara.defaults::git-commit-graph (second commits)))
+    (is equal "| * " (tuatara.defaults::git-commit-graph (third commits)))
+    (is equal "A subject" (tuatara.defaults::git-commit-subject (third commits)))))
 
 (define-test (git rewind-binary-and-untracked)
   ;; a file that is not text, and one git does not keep, are said so, the
@@ -1674,3 +1707,68 @@ DIR is visited and its status read, the project trusted. Returns the frontend."
       (true (search own line) "~a" line))
     (is string= (namestring (merge-pathnames "gitconfig" *test-state-directory*)) (sb-posix:getenv "GIT_CONFIG_GLOBAL"))
     (is string= "1" (sb-posix:getenv "GIT_CONFIG_NOSYSTEM"))))
+
+(define-test (git warnings-kept-apart)
+  ;; git warns of a folder it cannot read on its error output: what it prints is read alone,
+  ;; every file and the commit there, the warning taken for none of them
+  (with-test-directory (dir)
+    (scratch-repository dir)
+    (dolist (name '("b.txt" "c.txt" "x/in.txt"))
+      (ensure-directories-exist (merge-pathnames name dir))
+      (alexandria:write-string-into-file (format nil "new~%") (merge-pathnames name dir)))
+    (let ((locked (namestring (merge-pathnames "x/" dir))))
+      (sb-posix:chmod locked 0)
+      (unwind-protect
+           (let* ((top (namestring dir))
+                  (state (catch 'tuatara.defaults::git-failed
+                           (tuatara.defaults::git-read-state (tuatara.defaults::%make-hash-job :what "git") top
+                                                             (concatenate 'string top ".git/"))))
+                  (untracked (mapcar #'first (tuatara.defaults::git-state-untracked state))))
+             (true (member "b.txt" untracked :test #'string=))
+             (true (member "c.txt" untracked :test #'string=))
+             (false (find-if (lambda (path) (search "warning" path)) untracked))
+             (true (tuatara.defaults::git-hash-p (tuatara.defaults::git-state-commit state)))
+             (is equal "main" (tuatara.defaults::git-state-branch state)))
+        (sb-posix:chmod locked #o700)))))
+
+(define-test (git status-read-in-one-walk)
+  ;; the repository read for its status walks its tree once, the files ignored found by that
+  ;; same walk, and runs git no more than needed: no stash list with no stash
+  (with-test-directory (dir)
+    (scratch-repository dir)
+    (put-file (merge-pathnames ".gitignore" dir) (format nil "*.log~%build/~%"))
+    (git-output dir "add" ".gitignore")
+    (git-output dir "commit" "-q" "-m" "Ignore")
+    (put-file (merge-pathnames "debug.log" dir) "x")
+    (ensure-directories-exist (merge-pathnames "build/deep/" dir))
+    (put-file (merge-pathnames "build/deep/out.o" dir) "x")
+    (let ((runs '()) (top (namestring dir)))
+      (sb-int:encapsulate 'tuatara.defaults::run-git-program 'count-runs
+                          (lambda (function git directory arguments &rest keys)
+                            (push (first arguments) runs)
+                            (apply function git directory arguments keys)))
+      (unwind-protect
+           (let ((state (catch 'tuatara.defaults::git-failed
+                          (tuatara.defaults::git-read-state (tuatara.defaults::%make-hash-job :what "git") top
+                                                            (concatenate 'string top ".git/")))))
+             (is equal '("build/" "debug.log") (sort (mapcar #'first (tuatara.defaults::git-state-ignored state)) #'string<))
+             (is equal 1 (count "status" runs :test #'string=))
+             (true (<= (length runs) 3) "git ran ~d times: ~{~a~^, ~}" (length runs) (reverse runs)))
+        (sb-int:unencapsulate 'tuatara.defaults::run-git-program 'count-runs)))))
+
+(define-test (git log-filtered-by-a-column)
+  ;; the log is a table as the other lists are: a filter tries its pattern on one column
+  (with-test-directory (dir)
+    (scratch-repository dir)
+    (put-file (merge-pathnames "a.txt" dir) (format nil "one~%two~%"))
+    (git-output dir "commit" "-q" "-am" "Second, after First")
+    (flet ((log-buffer () (tuatara.buffer:find-buffer "*git log*"))
+           (shown () (shown-lines (tuatara.buffer:find-buffer "*git log*"))))
+      (when (log-buffer) (tuatara.buffer:kill-buffer (log-buffer)))
+      (git-session dir "a.txt"
+                   (list "~ L L" (list :until (lambda () (and (log-buffer) (search "Second" (tuatara.buffer:buffer-string (log-buffer))))))
+                         "C-x / f S u b j e c t RET ^ F i r s t RET"
+                         (list :until (lambda () (notany (lambda (line) (search "Second" line)) (shown))))))
+      (is equal '("Commit" "Date" "Author" "Subject") (mapcar #'first (tuatara.defaults::list-table-columns (log-buffer))))
+      (true (find-if (lambda (line) (search "First" line)) (shown)))
+      (false (find-if (lambda (line) (search "Second" line)) (shown))))))

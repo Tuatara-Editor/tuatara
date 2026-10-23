@@ -34,6 +34,13 @@ arguments that a thread of its own calls, returning the days to mark: day
 numbers (the agenda's: the days with entries), shown in :calendar-marked, or
 \(DAY . FACE) for a face of its own (the journal's days, :calendar-journal).")
 
+(defvar *calendar-day-openers* '()
+  "What \\<calendar-mode>\\[calendar-open-day] opens on a day the calendar marks: each (FACE COMMAND
+WHAT), COMMAND a calendar command opening what the days marked in FACE have,
+asked for by its own key and named WHAT when a day is marked for more than
+one (the journal's days, :calendar-journal, opened by
+CALENDAR-JOURNAL-ENTRY, named \"journal entry\").")
+
 (defvar *calendar-mark-days* t
   "True for the calendar to mark the days *CALENDAR-MARK-FUNCTIONS* name (the
 days with agenda entries) as soon as it shows them; NIL to wait for \\<calendar-mode>\\[calendar-mark-days].")
@@ -385,13 +392,13 @@ the day after once more."
 (defun calendar-read-day (text)
   "The day number TEXT names: 2026-10-03, 2026-10 (its first day), or what
 a date asked for reads (READ-DATE-TEXT: fri, +3d, oct 3); NIL for none."
-  (let ((text (string-trim " " text)))
-    (multiple-value-bind (match groups) (cl-ppcre:scan-to-strings "^(\\d{1,4})-(\\d{1,2})(?:-(\\d{1,2}))?$" text)
-      (if match
-          (let ((y (parse-integer (aref groups 0))) (m (parse-integer (aref groups 1)))
-                (d (if (aref groups 2) (parse-integer (aref groups 2)) 1)))
-            (and (valid-date-p y m d) (day-number y m d)))
-          (values (ignore-errors (read-date-text text (org-today))))))))
+  (let* ((text (string-trim " " text))
+         (end (length text))
+         (month (and (= end 7) (char-at-p text 4 end "-") (fixed-digits text 0 4 end) (fixed-digits text 5 2 end))))
+    (multiple-value-bind (y m d at) (written-date-at text 0 end :iso)
+      (cond ((eql at end) (day-number y m d))
+            (month (and (<= 1 month 12) (day-number (fixed-digits text 0 4 end) month 1)))
+            (t (values (ignore-errors (read-date-text text (org-today)))))))))
 
 (define-command calendar-goto-date ()
   "Move point to a date asked for: 2026-12-24, 2026-12, or as any date asked
@@ -416,12 +423,11 @@ four as it is); jan alone for this year's; 2027-03; or a date as
 CALENDAR-READ-DAY reads it, its month. NIL for none."
   (let ((text (string-downcase (string-trim " " text))))
     (or (cl-ppcre:register-groups-bind (name short long) ("^([a-z]+)\\.?(?:\\s+(?:'?(\\d{1,2})|(\\d{3,4})))?$" text)
-          (let ((m (and (>= (length name) 3)
-                        (position-if (lambda (full) (uiop:string-prefix-p name (string-downcase full))) *month-names*))))
+          (let ((m (month-of-word name)))
             (and m (day-number (cond (long (parse-integer long))
-                                              (short (calendar-two-digit-year short))
-                                              (t (nth-value 0 (day-date (org-today)))))
-                                        (1+ m) 1))))
+                                     (short (calendar-two-digit-year short))
+                                     (t (nth-value 0 (day-date (org-today)))))
+                               m 1))))
         (let ((day (calendar-read-day text)))
           (and day (multiple-value-bind (year month) (day-date day)
                      (day-number year month 1)))))))
@@ -449,36 +455,39 @@ year."
 
 ;;; A date asked for
 
-(defun date-words (day hour minute end-hour end-minute)
-  "The day number DAY written as a date asked for is shown: 2026-12-24 Thu,
-with HOUR and MINUTE when given, 14:00, and END-HOUR and END-MINUTE for a
-range, 14:00-15:30."
-  (format nil "~a~@[-~a~]" (format-day (if hour "%F %a %R" "%F %a") day (or hour 0) (or minute 0))
-          (and hour end-hour (format-day "%R" 0 end-hour end-minute))))
-
-(defun read-date (prompt &key (now (get-universal-time)) (shown #'date-words) follow none)
+(defun read-date (prompt &key (now (get-universal-time)) (shown #'date-time-text) follow none also keymap)
   "Ask PROMPT for a date, read as READ-DATE-TEXT reads it (tomorrow, fri, +3d,
 sep 30, 2026-12-24 14:00, 3pm), the date it reads shown below as it is
 typed, as SHOWN, a function of its day number, hour, minute, end hour and
 end minute, writes it (2026-12-24 Thu 14:00 unless given), \\`RET' taking it;
 FOLLOW, when given, a function of the same, is called as each is read. NOW
-is the universal time taken as now. Returns the universal time of the date
-in local time, at midnight when no time is given, and as the values after
-it its day number, hour, minute, end hour and end minute; when what was
-typed is no date, what NONE, a function of it, gives (NIL unless given)."
+is the universal time taken as now. ALSO, when given, reads what is typed
+when it is no date: a function of it giving what it reads and the words
+shown for it, or NIL. KEYMAP, when given, holds keys of the question's own.
+Returns the universal time of the date in local time,
+at midnight when no time is given, and as the values after it its day
+number, hour, minute, end hour and end minute; when what was typed is no
+date, what NONE, a function of it or of what ALSO read, gives (NIL unless
+given)."
   (let* ((today (nth-value 0 (time-day now)))
          (chosen (completing-read prompt
                                   (lambda (input)
                                     (let ((parts (multiple-value-list (read-date-text input today))))
-                                      (when (first parts)
-                                        (when follow (apply follow parts))
-                                        (list (make-candidate (apply shown parts) :value parts :annotation "RET takes it")))))
-                                  :filter nil))
-         (parts (if (consp chosen) chosen (multiple-value-list (read-date-text chosen today)))))
+                                      (cond ((first parts)
+                                             (when follow (apply follow parts))
+                                             (list (make-candidate (apply shown parts) :value parts :annotation "RET takes it")))
+                                            (also
+                                             (multiple-value-bind (value words) (funcall also input)
+                                               (and value (list (make-candidate words :value (list :also value)
+                                                                                      :annotation "RET takes it"))))))))
+                                  :filter nil :keymap keymap))
+         (parts (cond ((and (consp chosen) (eq (first chosen) :also)) (list nil))
+                      ((consp chosen) chosen)
+                      (t (multiple-value-list (read-date-text chosen today))))))
     (if (first parts)
         (destructuring-bind (day hour minute end-hour end-minute) parts
           (values (day-universal-time day (or hour 0) (or minute 0)) day hour minute end-hour end-minute))
-        (and none (funcall none chosen)))))
+        (and none (funcall none (if (and (consp chosen) (eq (first chosen) :also)) (second chosen) chosen))))))
 
 ;;; Marks
 
@@ -553,6 +562,29 @@ others are worked out for it since, or marks were taken off meanwhile."
   (calendar-start-marks (current-buffer))
   (message "Marking the days with entries"))
 
+(define-command calendar-open-day ()
+  "Open what the day at point is marked for: its agenda, its journal entry,
+whichever it has (*CALENDAR-DAY-OPENERS*); with more than one, asked which, each
+by the key that opens it alone."
+  (let* ((day (calendar-cursor-date))
+         (marked (tuatara.buffer:buffer-local (current-buffer) 'calendar-marked))
+         (openers (loop for opener in (reverse *calendar-day-openers*)
+                        when (member (first opener) (and marked (gethash day marked))) collect opener)))
+    (cond ((null marked)
+           (message (substitute-command-keys "No days are marked yet: \\<calendar-mode>\\[calendar-mark-days] marks them")))
+          ((null openers) (message "Nothing is marked on ~a" (calendar-date-words day)))
+          ((null (rest openers)) (funcall (second (first openers))))
+          (t (let* ((keymaps (list (mode-keymap 'calendar-mode)))
+                    (keys (loop for (nil command) in openers collect (first (where-is command keymaps))))
+                    (key (tuatara.frontend:key-description
+                          (tuatara.frontend:key-spec (read-key (format nil "Open on ~a: ~{~{~a ~a~}~^, ~}"
+                                            (calendar-date-words day)
+                                            (loop for k in keys for (nil nil what) in openers collect (list k what)))))))
+                    (chosen (position key keys :test #'equal)))
+               (if chosen
+                   (funcall (second (nth chosen openers)))
+                   (message "~a opens none of them" key)))))))
+
 (define-command calendar-unmark ()
   "Take the marks off the calendar's days, until \\<calendar-mode>\\[calendar-mark-days] puts them back."
   (setf (tuatara.buffer:buffer-local (current-buffer) 'calendar-marking) nil
@@ -581,6 +613,10 @@ bold and underline in that colour)."
               (loop for (day start end) across (calendar-days-of buffer)
                     when (and (< start to) (> end from) (= day today))
                       collect (list start end :calendar-today))))))
+
+(defmethod mode-marks-point-p ((mode calendar-mode))
+  "The calendar marks the day at point itself (CALENDAR-POINT-HIGHLIGHTS)."
+  t)
 
 (defun calendar-cursor-face (editor buffer)
   "Make :calendar-selected look as the cursor does in BUFFER, a calendar: its
@@ -648,14 +684,14 @@ colour."
                           ("M-v" calendar-scroll-right-three-months) ("<prior>" calendar-scroll-right-three-months)
                           ("." calendar-goto-today) ("g d" calendar-goto-date) ("o" calendar-other-month)
                           ("p d" calendar-print-day-of-year) ("p c" calendar-iso-print-date)
-                          ("m" calendar-mark-days) ("u" calendar-unmark))))
+                          ("m" calendar-mark-days) ("u" calendar-unmark) ("RET" calendar-open-day))))
   (commands-for-mode 'calendar-mode "the calendar (\\[calendar])"
                      'calendar-forward-day 'calendar-backward-day 'calendar-forward-week 'calendar-backward-week
                      'calendar-forward-month 'calendar-backward-month 'calendar-forward-year 'calendar-backward-year
                      'calendar-beginning-of-week 'calendar-end-of-week 'calendar-beginning-of-month 'calendar-end-of-month
                      'calendar-beginning-of-year 'calendar-end-of-year 'calendar-scroll-left 'calendar-scroll-right
                      'calendar-scroll-left-three-months 'calendar-scroll-right-three-months 'calendar-goto-today 'calendar-jump-back
-                     'calendar-goto-date 'calendar-other-month 'calendar-print-day-of-year 'calendar-iso-print-date
+                     'calendar-goto-date 'calendar-open-day 'calendar-other-month 'calendar-print-day-of-year 'calendar-iso-print-date
                      'calendar-mark-days 'calendar-unmark)
   (place-buffers 'calendar-mode :below :size :fit :keep t :select t)
   (pushnew 'calendar-mode-line *mode-line-functions*)

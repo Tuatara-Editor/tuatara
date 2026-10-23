@@ -1199,3 +1199,39 @@ what marks a project; check-health saying which are installed.")
     ;; a few microseconds a block; a millisecond and more when every pair was compared
     (let ((each (/ (- (seconds 8000) (seconds 2000)) 12000)))
       (true (< each 0.00005) "~,2f µs for each more block" (* each 1000000)))))
+
+(define-test (lsp capabilities-claimed-are-asked)
+  ;; what the editor tells a server it can do, it does: every request it claims is made
+  ;; somewhere in the client, and the kinds of names it takes are those it colours
+  (let* ((source (with-output-to-string (out)
+                   (dolist (file (directory (merge-pathnames "lisp/lsp/*.lisp" (asdf:system-source-directory :tuatara))))
+                     (write-string (uiop:read-file-string file) out))))
+         (capabilities (tuatara.defaults::lsp-capabilities))
+         (text-document (tuatara.text:json-get capabilities "textDocument"))
+         ;; a capability named apart from the method that uses it
+         (methods '(("synchronization" . "didOpen") ("callHierarchy" . "prepareCallHierarchy")
+                    ("semanticTokens" . "semanticTokens/full"))))
+    (loop for capability being the hash-keys of text-document
+          do (let ((method (or (cdr (assoc capability methods :test #'string=)) capability)))
+               (true (search (format nil "\"textDocument/~a\"" method) source) "~a is claimed but never asked for" capability)))
+    (false (tuatara.text:json-get text-document "rename" "prepareSupport") "rename is claimed to be prepared")
+    (is equalp (map 'vector #'car tuatara.defaults::*lsp-semantic-faces*)
+        (tuatara.text:json-get text-document "semanticTokens" "tokenTypes"))))
+
+(define-test (lsp messages-read-with-little-garbage)
+  ;; a message of 2 MB (a long hover) read and decoded once: some 19 octets made for each of
+  ;; its octets went to decoding it alone, as text that took what was not UTF-8 for a ?
+  (with-test-directory (dir)
+    (let* ((path (namestring (merge-pathnames "message" dir)))
+           (body (tuatara.text:string-octets (format nil "{\"jsonrpc\":\"2.0\",\"id\":1,\"result\":{\"contents\":\"~a\"}}"
+                                                     (make-string (* 2 1024 1024) :initial-element #\x)))))
+      (with-open-file (out path :direction :output :element-type '(unsigned-byte 8))
+        (write-sequence (tuatara.text:string-octets (format nil "Content-Length: ~d~c~c~c~c" (length body) #\Return #\Newline #\Return #\Newline)) out)
+        (write-sequence body out))
+      (let ((consed (loop repeat 3
+                          minimize (with-open-file (in path :element-type :default :external-format :latin-1)
+                                     (let ((before (sb-ext:get-bytes-consed)))
+                                       (is equal (* 2 1024 1024)
+                                           (length (tuatara.text:json-get (tuatara.defaults::lsp-read-message in) "result" "contents")))
+                                       (- (sb-ext:get-bytes-consed) before))))))
+        (true (< consed (* 16 (length body))) "~,1f octets made for each octet" (/ consed (length body)))))))

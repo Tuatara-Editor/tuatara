@@ -214,6 +214,128 @@ newlines and some multibyte characters."
   (true (tuatara.syntax:literal-pattern-p "foo bar,1"))
   (false (tuatara.syntax:literal-pattern-p "foo.")))
 
+(define-test (search regex-prefilter-shapes)
+  ;; where no text is held by every match, a shape is: a run of sets of octets, each
+  ;; place one of a few, as [0-9A-Fa-f]{8}- in every UUID
+  (flet ((shape (pattern &optional case-fold)
+           (multiple-value-bind (shape prefix-p)
+               (tuatara.syntax::required-shape
+                (tuatara.syntax::with-pattern-syntax (cl-ppcre:parse-string (tuatara.syntax::engine-pattern pattern)))
+                case-fold)
+             (list (and shape (length shape)) prefix-p)))
+         (scanner-shape (pattern)
+           (let ((traits (gethash (tuatara.syntax:compile-regex pattern) tuatara.syntax::**regex-traits**)))
+             (and (tuatara.syntax::regex-traits-shape traits) t))))
+    (is equal '(10 t) (shape "[0-9]{4}-[0-9]{2}-[0-9]{2}"))
+    (is equal '(36 t) (shape "[[:uuid:]]"))
+    (is equal '(32 t) (shape "[[:md5:]]"))
+    ;; a lookahead at the start says what the text at a match starts with
+    (is equal '(8 t) (shape "[[:date<2026-07-01:]]"))
+    ;; either way: the places they have in common, every octet either allows
+    (is equal '(3 t) (shape "(?:[0-9]{3}|[a-f]{4})x"))
+    (is equal '(4 nil) (shape "\\w+ [0-9]{3}"))
+    ;; nothing for what may be more than one octet, or a newline
+    (is equal '(nil nil) (shape "\\d{4}"))
+    (is equal '(nil nil) (shape ".{4}"))
+    (is equal '(nil nil) (shape "[^,]{4}"))
+    (is equal '(nil nil) (shape "é{4}" t))
+    (is equal '(1 t) (shape "a\\nb"))
+    ;; a scanner looks for a shape only when it tells more than the text every match holds
+    (true (scanner-shape "[[:uuid:]]"))
+    (true (scanner-shape "[[:macaddress:]]"))
+    (false (scanner-shape "user=[0-9]{2}"))
+    (false (scanner-shape "[0-9]:"))
+    (false (scanner-shape "[[:ipv6:]]")))
+  ;; a search for a shape over text that has none goes at the speed of a search for text:
+  ;; it never tries the pattern there
+  (let* ((line "The kea is a large parrot of the alpine South Island, a cafe of bad beef and dead feed, 2026 at 10:42.")
+         (rope (tuatara.text:string->rope (with-output-to-string (o) (dotimes (i 40000) (write-line line o))))))
+    (flet ((fastest (pattern)
+             (loop repeat 3
+                   minimize (let ((start (get-internal-real-time)))
+                              (tuatara.syntax:regex-search-all rope pattern)
+                              (- (get-internal-real-time) start)))))
+      (let ((text (fastest "zqzq")))
+        (dolist (pattern '("[[:md5:]]" "[[:uuid:]]" "[[:macaddress:]]" "[0-9]{4}-[0-9]{2}-[0-9]{2}" "[[:date:]]"
+                           "[[:creditcard:]]" "[[:iban:]]" "[[:bitcoin:]]"))
+          (let ((time (fastest pattern)))
+            (true (<= time (max (* 4 text) (* 30 (/ internal-time-units-per-second 1000))))
+                  "~a over 4 MB took ~,1f ms, text ~,1f ms" pattern
+                  (/ (* 1000 time) internal-time-units-per-second) (/ (* 1000 text) internal-time-units-per-second))))))))
+
+(define-test (search regex-compiled-once)
+  ;; a pattern compiled again the same way is the scanner made before: nothing is built anew
+  (let ((scanner (tuatara.syntax:compile-regex "kea error")))
+    (is eq scanner (tuatara.syntax:compile-regex (copy-seq "kea error")))
+    (isnt eq scanner (tuatara.syntax:compile-regex "kea error" :case-fold nil))
+    (isnt eq scanner (tuatara.syntax:compile-regex "kea error" :crlf t))
+    (let ((consed (loop repeat 3
+                        minimize (let ((before (tuatara.bench::bytes-consed)))
+                                   (tuatara.syntax:compile-regex "kea error")
+                                   (- (tuatara.bench::bytes-consed) before)))))
+      (true (< consed 4096) "compiling it again consed ~:d octets" consed))))
+
+(define-test (search crlf-plain-text-kept-plain)
+  ;; a pattern of plain text alone, its special characters escaped, means the same in CRLF text
+  (let ((text (format nil "~c[1m 1.5 1x5 (a+b) aab~c~%" (code-char 27) #\Return)))
+    (dolist (pattern '("\\e\\[" "1\\.5" "\\(a\\+b\\)" "\\Q(a+b)\\E"))
+      (is equal (cl-ppcre:all-matches-as-strings (tuatara.syntax:compile-regex pattern) text)
+          (cl-ppcre:all-matches-as-strings (tuatara.syntax:compile-regex pattern :crlf t) text)
+          "~s, CRLF" pattern))))
+
+(define-test (search regex-tries-lines-holding-text)
+  ;; a pattern whose matches lie within a line and hold text not at their start is
+  ;; tried on the lines holding that text alone, and finds what a whole-text scan finds
+  (let ((s (with-output-to-string (o)
+             (dotimes (i 3000)
+               (format o "~a~%" (case (mod i 5)
+                                  (0 "12 kea Error at the door, kea error again")
+                                  (1 "é中 kea error")
+                                  (2 "kea erro r and errorless")
+                                  (3 (format nil "~a~c" "77 kea error" #\Return))
+                                  (t "nothing here"))))))
+        (patterns '("\\d+ kea error" "[a-z]+ again$" "\\w+ error\\b" "o[a-z]* the door" "\\S+ kea error$")))
+    (let ((rope (tuatara.text:string->rope s)))
+      (dolist (p patterns)
+        (is equal (regex-oracle s p) (triples (tuatara.syntax:regex-search-all rope p)) "~a" p))))
+  ;; and goes at near the speed of a pattern that begins with its text
+  (let* ((lines '("2026-10-23 12:00:01 kea INFO all good here on the mountain, nothing to report at all"
+                  "2026-10-23 12:00:03 kea Error the door would not open, tried again with the key"))
+         (rope (tuatara.text:string->rope
+                (with-output-to-string (o) (dotimes (i 40000) (write-line (nth (mod i 2) lines) o))))))
+    (flet ((fastest (pattern)
+             (let ((scanner (tuatara.syntax:compile-regex pattern)))
+               (loop repeat 3
+                     minimize (let ((start (get-internal-real-time)))
+                                (tuatara.syntax:map-regex-matches (lambda (s e m g) (declare (ignore s e m g)) nil)
+                                                                  rope scanner 0 (tuatara.text:rope-bytes rope)
+                                                                  :texts nil)
+                                (- (get-internal-real-time) start))))))
+      (let ((begun (fastest "kea error the")))
+        (dolist (pattern '("\\d+ kea error" "[Ee]rror the"))
+          (let ((time (fastest pattern)))
+            (true (<= time (max (* 3 begun) (* 10 (/ internal-time-units-per-second 1000))))
+                  "~a took ~,1f ms, kea error the ~,1f ms" pattern
+                  (/ (* 1000 time) internal-time-units-per-second) (/ (* 1000 begun) internal-time-units-per-second))))))))
+
+(define-test (search searches-read-into-kept-blocks)
+  ;; a search, and a walk over a line's columns, read the text into blocks kept for that,
+  ;; not into new ones each time: a key of an incremental search makes next to nothing
+  (let ((rope (tuatara.text:string->rope (format nil "~{~a~%~}" (loop for i below 3000 collect (format nil "line ~d of the kea" i))))))
+    (flet ((consed (function)
+             (funcall function)
+             (loop repeat 3
+                   minimize (let ((before (tuatara.bench::bytes-consed)))
+                              (funcall function)
+                              (- (tuatara.bench::bytes-consed) before)))))
+      (dolist (way (list (lambda () (tuatara.syntax:search-forward rope "zzzq"))
+                         (lambda () (tuatara.syntax:search-backward rope "zzzq"))
+                         (lambda () (tuatara.text:map-line-slices (lambda (&rest line) (declare (ignore line))) rope 0 1 0 10))))
+        (let ((consed (consed way)))
+          (true (< consed 1024) "consed ~:d octets" consed)))
+      (let ((consed (consed (lambda () (tuatara.syntax:search-all rope "zzzq")))))
+        (true (< consed (* 16 1024)) "search-all consed ~:d octets" consed)))))
+
 (define-test (search collect)
   ;; gathered in parallel pieces, the matches are exactly those of one serial scan,
   ;; also where a match runs across a piece boundary

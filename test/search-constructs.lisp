@@ -112,7 +112,17 @@
       ("[[:jcb:]]" "a JCB number: 3528–3589, 16–19 digits" "[[:jcb:]]" "3530111333300000" ("3530111333300000"))
       ("[[:unionpay:]]" "a UnionPay number: 62, 16–19 digits" "[[:unionpay:]]" "6200000000000005" ("6200000000000005"))
       ("[[:maestro:]]" "a Maestro number: 5018, 5020, 5038, 5893, 6304, 6759, 6761–6763; 12–19 digits" "[[:maestro:]]" "6759649826438453" ("6759649826438453"))
-      ("[[:mir:]]" "a Mir number: 2200–2204, 16–19 digits" "[[:mir:]]" "2200000000000004" ("2200000000000004"))))
+      ("[[:mir:]]" "a Mir number: 2200–2204, 16–19 digits" "[[:mir:]]" "2200000000000004" ("2200000000000004"))
+      ("[[:date:]]" "a date as RFC 3339 and ISO 8601 write it, a day of the calendar, with its time and offset when written" "[[:date:]]" "2026-06-30, 2026-06-30T14:05:00+02:00, 2026-06-30 14:05:00,123, not 2026-02-30" ("2026-06-30" "2026-06-30T14:05:00+02:00" "2026-06-30 14:05:00,123"))
+      ("[[:date<B:]]" "a date before B, compared as a date, not as text" "[[:date<2026-07-01:]]" "2025-12-31 2026-06-30T23:30 2026-07-01" ("2025-12-31" "2026-06-30T23:30"))
+      ("[[:date<=B:]]" "a date up to the end of B: of its day, or of its minute for 14:05" "[[:date<=2026-06-30T14:05:]]" "2026-06-30T14:05:59 2026-06-30T14:06" ("2026-06-30T14:05:59"))
+      ("[[:date>=B:]]" "a date from B on; =[[:date>B:]]= after the end of B" "[[:date>=2026-07-01:]]" "2026-06-30 2026-07-01T08:00" ("2026-07-01T08:00"))
+      ("[[:date=B:]]" "a date within B" "[[:date=2026-06-30:]]" "2026-06-29 2026-06-30T23:59:59 2026-07-01" ("2026-06-30T23:59:59"))
+      ("[[:date:A..B:]]" "a date from A to the end of B, either left out" "[[:date:2026-01-01..2026-06-30:]]" "2025-12-31 2026-03-15 2026-06-30T18:00 2026-07-01" ("2026-03-15" "2026-06-30T18:00"))
+      ("[[:dateutc<B:]]" "a moment before B in UTC: an offset taken off; a time with none, and B with none, taken as UTC" "[[:dateutc<2026-07-01:]]" "2026-06-30T23:30:00-05:00 2026-06-30T23:30:00+02:00" ("2026-06-30T23:30:00+02:00"))
+      ("[[:datedmy:]]" "a date written day, month, year, apart by . / or - (Norway, Denmark, Finland, New Zealand, Britain)" "[[:datedmy:]]" "30.06.2026 14.05, 30/06/2026, 1.7.2026, not 31.02.2026" ("30.06.2026 14.05" "30/06/2026" "1.7.2026"))
+      ("[[:datemdy:]]" "a date written month, day, year, apart by / or - (the United States), AM and PM read" "[[:datemdy:]]" "06/30/2026 2:05 PM, 7-1-2026, not 13/01/2026 or 07.01.2026" ("06/30/2026 2:05 PM" "7-1-2026"))
+      ("[[:datedmy<B:]]" "B written as the dates are, or as 2026-07-01; =datedmyutc= and =datemdyutc= compare in UTC" "[[:datedmy<01.07.2026:]]" "30.06.2026 01.07.2026" ("30.06.2026"))))
     ("Short sets"
      "Letters for sets used often, inside a set or out; the capital is the set turned round."
      (("\\d" "a digit, of any language" "\\d+" "ra 42" ("42"))
@@ -234,6 +244,9 @@
       ("\\N" "anything but a line end: write =.=" "\\N" "" (:refused "not supported: \\N"))
       ("\\g1" "a group again: write =\\1=" "(a)\\g1" "" (:refused "not supported: \\g"))
       ("\\k'name'" "write =\\k<name>=" "(?<n>a)\\k'n'" "" (:refused "not supported: \\k without <name>"))
+      ("[[:date<B:]]" "B no date" "[[:date<2026-13-01:]]" "" (:refused "invalid: [[:date…:]] has no date in \"2026-13-01\": write one as 2026-07-01 or 2026-07-01T12:00"))
+      ("[[:date<B:]]" "B with an offset: write =dateutc=" "[[:date<2026-07-01T00:00Z:]]" "" (:refused "invalid: [[:date…:]] compares dates as they are written, with no offset: [[:dateutc…:]] compares the moments in UTC"))
+      ("[[:date:A..B:]]" "B before A" "[[:date:2026-07-01..2026-06-01:]]" "" (:refused "invalid: [[:date:2026-07-01..2026-06-01:]] ends before it begins"))
       ("(?P<name>…)" "write =(?<name>…)=" "(?P<n>a)" "" (:refused "invalid: (?P is no kind of group"))
       ("(?R) (?1)" "a pattern within itself" "(?R)" "" (:refused "invalid: (?R is no kind of group"))
       ("(?\\vert{}…)" "groups that share numbers" "(?|(a)|(b))" "" (:refused "invalid: (?| is no kind of group"))
@@ -317,6 +330,10 @@ question as PATTERN/REPLACEMENT."
       (tuatara.text:octets-hex (tuatara.syntax::sha3-256 (tuatara.text:string-octets ""))))
   (is string= "3a985da74fe225b2045c172d6bd390bd855f086e3e9d525b46bfe24511431532"
       (tuatara.text:octets-hex (tuatara.syntax::sha3-256 (tuatara.text:string-octets "abc"))))
+  ;; SHA-256 as FIPS 180-4 gives it, the digest written where it is asked
+  (let ((digest (make-array 32 :element-type '(unsigned-byte 8))))
+    (is string= "ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad"
+        (tuatara.text:octets-hex (tuatara.syntax::sha256 (tuatara.text:string-octets "abc") 3 digest))))
   (flet ((both (pattern text)
            (let ((finds (construct-finds pattern text)))
              (is equal finds (construct-finds-in-string pattern text) "~a on ~s, in a string" pattern text)
@@ -373,6 +390,82 @@ question as PATTERN/REPLACEMENT."
     ;; all letters of one case, or no digit: not taken for Base32 or Base64
     (is equal '() (both "[[:base32:]]" "KIWIKEAKAKAPOTUIWEKA"))
     (is equal '() (both "[[:base64:]]" "TheKeaIsAParrotOfTheSouthernAlpsOfAotearoa"))))
+
+(define-test (search-constructs named-patterns-make-no-garbage)
+  ;; a named pattern tried at every place of a long text makes no garbage: its checks
+  ;; read into buffers on the stack, and repetitions are written out, never counted
+  (let ((line (format nil "id 99887766, 3.14 at 192.168.1.1 by fe80::1 on ac:de:48:00:00:80 ~
+                           paid 4111 1111 1111 1111 to GB82 WEST 1234 5698 7654 32, wallet ~
+                           1A1zP1eP5QGefi2DMPTfTL5SLmv7DivfNa bc1qar0srrr7xfkvy5l643lydnw9re59gtzzwf5mdq ~
+                           duckduckgogg42xjoc72x3sjasowoarfbgcmvfimaftt6twagswzczad.onion ~
+                           S2lhIG9yYSBrb3V0b3Uga2F0b2EsIHRoZSBrZWEgaXMgYSBwYXJyb3Q= JBSWY3DPEHPK3PXP ~
+                           2026-06-30T14:05:00+02:00 30.06.2026 06/30/2026 kea@example.co.nz https://example.nz/a ~
+                           550e8400-e29b-41d4-a716-446655440000 d41d8cd98f00b204e9800998ecf8427e~%")))
+    (let* ((text (with-output-to-string (o) (dotimes (i 5000) (write-string line o))))
+           (rope (tuatara.text:string->rope text)))
+      (dolist (pattern '("[[:creditcard:]]" "[[:visa:]]" "[[:iban:]]" "[[:bitcoin:]]" "[[:onion:]]" "[[:base32:]]"
+                         "[[:base64:]]" "[[:ipv4:]]" "[[:ipv6:]]" "[[:ipaddress:]]" "[[:macaddress:]]" "[[:email:]]"
+                         "[[:url:]]" "[[:uuid:]]" "[[:md5:]]" "[[:date<2026-07-01:]]" "[[:datedmy:]]" "[[:datemdy:]]"))
+        (let ((scanner (tuatara.syntax:compile-pattern pattern)) (found 0))
+          (flet ((in-string ()
+                   (cl-ppcre:do-scans (s e rs re scanner text) (incf found)))
+                 (in-rope ()
+                   (tuatara.syntax:map-regex-matches (lambda (s e m g) (declare (ignore s e m g)) (incf found) nil)
+                                                     rope scanner 0 (tuatara.text:rope-bytes rope) :texts nil)))
+            (in-string)
+            (true (plusp found) "~a finds something" pattern)
+            ;; the least of a few readings, other threads' work left out
+            (dolist (way (list #'in-string #'in-rope))
+              (let ((consed (loop repeat 3
+                                  minimize (let ((before (sb-ext:get-bytes-consed)))
+                                             (funcall way)
+                                             (- (sb-ext:get-bytes-consed) before)))))
+                (true (< consed (* 64 1024)) "~a over 5,000 lines consed ~:d octets" pattern consed)))))))))
+
+(define-test (search-constructs date-patterns)
+  ;; dates read and compared as dates: their edges, their times and offsets, in a search of
+  ;; the text and in a string alike
+  (flet ((both (pattern text)
+           (let ((finds (construct-finds pattern text)))
+             (is equal finds (construct-finds-in-string pattern text) "~a on ~s, in a string" pattern text)
+             finds)))
+    ;; no digit on either side, a T that promises a time it does not keep, a day not in the calendar
+    (is equal '() (both "[[:date:]]" "12026-01-01 2026-01-011 2026-06-30T25:00 2026-06-31 2026-6-30"))
+    ;; a space and no time: the date alone; small t and z as RFC 3339 allows; a leap second
+    (is equal '("2026-06-30" "2026-06-30t10:00:00z" "2016-12-31T23:59:60Z") (both "[[:date:]]" "2026-06-30 at 2026-06-30t10:00:00z 2016-12-31T23:59:60Z"))
+    ;; offsets as logs write them, a space before or none, and UTC or GMT
+    (is equal '("2026-06-30 09:00:00 +0200" "2026-06-30T09:00+02" "2026-06-30 10:00 UTC" "2026-06-30 10:00:00.123456789 GMT")
+        (both "[[:date:]]" "2026-06-30 09:00:00 +0200, 2026-06-30T09:00+02, 2026-06-30 10:00 UTC, 2026-06-30 10:00:00.123456789 GMT"))
+    ;; as written: the offset is not taken off; in UTC it is
+    (is equal '("2026-06-30T23:30:00-05:00") (both "[[:date<2026-07-01:]]" "2026-06-30T23:30:00-05:00"))
+    (is equal '() (both "[[:dateutc<2026-07-01:]]" "2026-06-30T23:30:00-05:00"))
+    (is equal '("2026-06-30T23:30:00-05:00") (both "[[:dateutc>2026-07-01T04:29Z:]]" "2026-06-30T23:30:00-05:00"))
+    (is equal '() (both "[[:dateutc>2026-07-01T04:30Z:]]" "2026-06-30T23:30:00-05:00"))
+    ;; a bound's last figure says how much of it counts: a minute, a second, a tenth
+    (is equal '("2026-06-30T14:05:00.9") (both "[[:date<=2026-06-30T14:05:00:]]" "2026-06-30T14:05:00.9 2026-06-30T14:05:01"))
+    (is equal '("2026-06-30T14:05:00.1") (both "[[:date<=2026-06-30T14:05:00.1:]]" "2026-06-30T14:05:00.1 2026-06-30T14:05:00.2"))
+    ;; the day and month apart by the same mark both times; a time apart by . in day, month, year
+    (is equal '("1-7-2026" "30.06.2026 14.05.30,5") (both "[[:datedmy:]]" "30.06/2026, 1-7-2026, 30.06.2026 14.05.30,5"))
+    ;; 12 AM is midnight, 12 PM noon; an hour past 12 with AM or PM is no time
+    (is equal '("06/30/2026 12:30 AM") (both "[[:datemdy<06/30/2026 01:00:]]" "06/30/2026 12:30 AM, 06/30/2026 12:30 PM"))
+    (is equal '("06/30/2026, 11:00PM") (both "[[:datemdy>06/30/2026 22:59:]]" "06/30/2026, 11:00PM, 06/30/2026 9:00 pm"))
+    (is equal '() (both "[[:datemdy:]]" "06/30/2026 13:00 PM"))
+    ;; repeated and inside one of your own named patterns
+    (unwind-protect
+         (progn
+           (tuatara-user:define-named-pattern "early" "a line of the first half of 2026" "^[[:date:2026-01-01..2026-06-30:]] ")
+           (is equal '("2026-03-01 ") (both "[[:early:]]" (format nil "2026-03-01 a~%2026-08-01 b"))))
+      (remhash "early" tuatara.syntax::**own-named-patterns**))
+    ;; a date-time cut by the search's windows is found whole
+    (let* ((text (with-output-to-string (o)
+                   (dotimes (i 400) (format o "line ~d 2026-06-30T14:05:00.123+02:00 x~%" i))))
+           (rope (tuatara.text:string->rope text))
+           (matcher (tuatara.defaults::make-pattern-matcher "[[:dateutc<2026-06-30T12:06Z:]]" :regex t)))
+      (dolist (sizes '((700 900) (64 128)))
+        (let ((tuatara.syntax:*serial-window* (first sizes)) (tuatara.syntax:*parallel-piece* (second sizes)))
+          (let ((matches (tuatara.defaults::line-matches rope matcher t 0 (tuatara.text:rope-bytes rope))))
+            (is = 400 (length matches) "every date at ~a" sizes)
+            (true (every (lambda (m) (= 29 (- (second m) (first m)))) matches) "each whole at ~a" sizes)))))))
 
 (define-test (search-constructs own-named-patterns)
   ;; patterns of your own, as an init file defines them: found as Tuatara's are, in a

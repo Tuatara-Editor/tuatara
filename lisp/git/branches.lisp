@@ -127,8 +127,9 @@ instead; DONE is said once one has run, KEPT when the answer is no, FAILED
 when git failed otherwise. The status is read again."
   (start-git-job doing
                  (lambda (job)
-                   (multiple-value-bind (text ok) (git-job-try job top arguments :errors t)
-                     (values ok (search refusal text))))
+                   (multiple-value-bind (text ok said) (git-job-try job top arguments :errors t)
+                     (declare (ignore text))
+                     (values ok (search refusal said))))
                  (lambda (ok refused)
                    (cond (ok (message "~a" done))
                          ((and refused (yes-or-no-p* question)) (git-run doing top forced done))

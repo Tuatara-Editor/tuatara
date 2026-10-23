@@ -1,11 +1,12 @@
-;;;; src/syntax/named-patterns.lisp --- The named patterns of the search patterns: addresses, card numbers, hashes, encoded blocks.
+;;;; src/syntax/named-patterns.lisp --- The named patterns of the search patterns: addresses, card numbers, hashes, encoded blocks, dates.
 ;;;; Copyright (C) 2026 Michael A Jones.  GPL-3.0-or-later; see LICENSE.
 ;;;;
 ;;;; [[:ipv4:]], [[:creditcard:]], [[:base64:]] and the others, each what a
 ;;;; standard says the thing is: a pattern written out here, or, for what a
 ;;;; pattern cannot check (a card number's Luhn digit, an address's checksum, a
-;;;; block over lines), a filter the search runs as it matches, reading the
-;;;; text on past its window when it must. The search (search.lisp) reads them.
+;;;; block over lines, a date before or after another), a filter the search
+;;;; runs as it matches, reading the text on past its window when it must.
+;;;; The search (search.lisp) reads them.
 
 (in-package #:tuatara.syntax)
 
@@ -17,13 +18,24 @@
 the text instead of a pattern: an empty named group, (?<tuatarazfiltercard>),
 made the filter its name gives (*PATTERN-FILTERS*) once the pattern is read.")
 
+(defun written-out (pattern least &optional (most least))
+  "PATTERN LEAST to MOST times, as (?:PATTERN){LEAST,MOST} matches it,
+written out in full: three times, (?:P)(?:P)(?:P); one to three,
+\(?:P)(?:(?:P)(?:(?:P))?)?. A pattern written so is matched without a count
+kept for the repetition."
+  (let ((group (format nil "(?:~a)" pattern)))
+    (with-output-to-string (out)
+      (dotimes (i least) (write-string group out))
+      (dotimes (i (- most least)) (format out "(?:~a" group))
+      (dotimes (i (- most least)) (write-string ")?" out)))))
+
 (defun dec-octet ()
   "RFC 3986's dec-octet, 0 to 255 with no leading zero, as a pattern."
   "(?:25[0-5]|2[0-4][0-9]|1[0-9]{2}|[1-9][0-9]|[0-9])")
 
 (defun ipv4-core ()
   "RFC 3986's IPv4address, four dec-octets apart by dots, with no edges."
-  (format nil "(?:~a\\.){3}~a" (dec-octet) (dec-octet)))
+  (format nil "~a~a" (written-out (format nil "~a\\." (dec-octet)) 3) (dec-octet)))
 
 (defun ipv4-pattern ()
   "An IPv4 address standing alone: no digit or dot just before it, and no
@@ -41,15 +53,17 @@ after, so std::cout holds none), nor followed by a colon and more of an
 address, or a dot and a digit; a colon that ends a sentence may follow."
   (let* ((h16 "[0-9A-Fa-f]{1,4}")
          (ls32 (format nil "(?:~a|~a:~a)" (ipv4-core) h16 h16))
-         (forms (list (format nil "(?:~a:){6}~a" h16 ls32)
-                      (format nil "::(?:~a:){5}~a" h16 ls32)
-                      (format nil "(?:~a)?::(?:~a:){4}~a" h16 h16 ls32)
-                      (format nil "(?:(?:~a:){0,1}~a)?::(?:~a:){3}~a" h16 h16 h16 ls32)
-                      (format nil "(?:(?:~a:){0,2}~a)?::(?:~a:){2}~a" h16 h16 h16 ls32)
-                      (format nil "(?:(?:~a:){0,3}~a)?::~a:~a" h16 h16 h16 ls32)
-                      (format nil "(?:(?:~a:){0,4}~a)?::~a" h16 h16 ls32)
-                      (format nil "(?:(?:~a:){0,5}~a)?::~a" h16 h16 h16)
-                      (format nil "(?:(?:~a:){0,6}~a)?::" h16 h16))))
+         (forms (flet ((groups (least &optional (most least))
+                         (written-out (format nil "~a:" h16) least most)))
+                  (list (format nil "~a~a" (groups 6) ls32)
+                        (format nil "::~a~a" (groups 5) ls32)
+                        (format nil "(?:~a)?::~a~a" h16 (groups 4) ls32)
+                        (format nil "(?:~a~a)?::~a~a" (groups 0 1) h16 (groups 3) ls32)
+                        (format nil "(?:~a~a)?::~a~a" (groups 0 2) h16 (groups 2) ls32)
+                        (format nil "(?:~a~a)?::~a:~a" (groups 0 3) h16 h16 ls32)
+                        (format nil "(?:~a~a)?::~a" (groups 0 4) h16 ls32)
+                        (format nil "(?:~a~a)?::~a" (groups 0 5) h16 h16)
+                        (format nil "(?:~a~a)?::" (groups 0 6) h16)))))
     ;; first, cheaply, a colon within the first five characters, as every form has
     (format nil "(?<![0-9A-Za-z_:])(?=[0-9A-Fa-f]{0,4}:)(?:~{~a~^|~})(?![0-9A-Za-z_]|:[0-9A-Fa-f:]|\\.[0-9])" forms)))
 
@@ -98,40 +112,126 @@ and variant (8, 9, a or b) where they stand; or the nil or max UUID."
   "Exactly DIGITS hex digits standing alone, as a digest is written."
   (format nil "(?<![0-9A-Fa-f])[0-9A-Fa-f]{~d}(?![0-9A-Fa-f])" digits))
 
-(defparameter *card-numbers*
-  '(("visa" "4" (13 16 19))
-    ("mastercard" "5[1-5]|222[1-9]|22[3-9]|2[3-6]|27[01]|2720" (16))
-    ("amex" "3[47]" (15))
-    ("discover" "6011|64[4-9]|65|622(?:1(?:2[6-9]|[3-9])|[2-8]|9(?:[01]|2[0-5]))" (16 17 18 19))
-    ("diners" "36|30[0-5]|3095|3[89]" (14 15 16 17 18 19))
-    ("jcb" "35(?:2[89]|[3-8])" (16 17 18 19))
-    ("unionpay" "62" (16 17 18 19))
-    ("maestro" "5018|5020|5038|5893|6304|6759|676[1-3]" (12 13 14 15 16 17 18 19))
-    ("mir" "220[0-4]" (16 17 18 19)))
-  "The payment card networks a named pattern finds the numbers of, each (NAME
-PREFIXES LENGTHS): PREFIXES, a pattern for how its numbers begin, the
-network's issuer numbers (ISO/IEC 7812) as it publishes them; LENGTHS, how
-many digits its numbers have.")
+;;; Reading a run of characters: what the filters below read before their
+;;; checks, into a buffer on the stack, so that trying a place makes no garbage.
 
-(sb-ext:defglobal **card-prefixes** (make-hash-table :test 'equal :synchronized t)
-  "The scanner of each network's PREFIXES (*CARD-NUMBERS*), by name.")
+(declaim (inline alphanumericp*))
+(defun alphanumericp* (c)
+  "True when C is an ASCII letter or digit."
+  (declare (type character c))
+  (or (char<= #\0 c #\9) (char<= #\A c #\Z) (char<= #\a c #\z)))
+
+(defun char-table (predicate)
+  "The ASCII characters PREDICATE is true of, as a bit for each code below 128."
+  (let ((table (make-array 128 :element-type 'bit :initial-element 0)))
+    (dotimes (code 128 table)
+      (when (funcall predicate (code-char code)) (setf (sbit table code) 1)))))
+
+(declaim (inline in-table-p))
+(defun in-table-p (table ch)
+  "True when CH is one of the characters of TABLE (CHAR-TABLE)."
+  (declare (type simple-bit-vector table) (type character ch))
+  (let ((code (char-code ch))) (and (< code 128) (= 1 (sbit table code)))))
+
+(sb-ext:define-load-time-global *ascii-digits* (char-table (lambda (ch) (char<= #\0 ch #\9)))
+  "The digits 0 to 9.")
+(sb-ext:define-load-time-global *ascii-alphanumerics* (char-table #'alphanumericp*)
+  "The ASCII letters and digits.")
+(sb-ext:define-load-time-global *base32-either* (char-table (lambda (ch) (or (char<= #\A ch #\Z) (char<= #\a ch #\z) (char<= #\2 ch #\7))))
+  "The characters of Base32, in capitals or small.")
+
+(defun read-run (text start end table run &key gaps (separators ""))
+  "Copy the characters of TABLE (CHAR-TABLE) from START of TEXT, before END,
+into RUN, a string, as many as it holds, passing over one of SEPARATORS that
+stands between two of them; GAPS, a vector of fixnums, keeps how many were
+copied before each one passed, as many as it holds. Two values: how many
+were copied, and how many separators were passed."
+  (declare (type simple-string run) (type simple-bit-vector table) (type fixnum start end)
+           (type (or null (simple-array fixnum (*))) gaps) (type simple-string separators))
+  (let ((count 0) (gap-count 0) (i start))
+    (declare (type fixnum count gap-count i))
+    (loop while (and (< i end) (< count (length run)))
+          do (let ((c (char text i)))
+               (cond ((in-table-p table c)
+                      (setf (schar run count) c)
+                      (incf count)
+                      (incf i))
+                     ((and gaps (plusp count) (find c separators) (< gap-count (length gaps))
+                           (< (1+ i) end) (in-table-p table (char text (1+ i))))
+                      (setf (aref gaps gap-count) count)
+                      (incf gap-count)
+                      (incf i))
+                     (t (return)))))
+    (values count gap-count)))
+
+(defun run-index (start count gaps gap-count)
+  "The index of the text after the first COUNT characters READ-RUN read from
+START, the separators it passed among them (GAPS, GAP-COUNT) counted in."
+  (declare (type fixnum start count gap-count) (type (simple-array fixnum (*)) gaps))
+  (+ start count (loop for k below gap-count count (< (aref gaps k) count))))
+
+(defun grouped-in-fours-p (gaps gap-count length &optional other)
+  "True when the separators READ-RUN passed among the first LENGTH characters
+\(GAPS, GAP-COUNT) are none, or one after every fourth character, or, when
+OTHER is given, a list of counts, one after each of those."
+  (declare (type fixnum gap-count length) (type (simple-array fixnum (*)) gaps))
+  (let ((among (loop for k below gap-count count (< (aref gaps k) length))))
+    (or (zerop among)
+        (and (= among (floor (1- length) 4))
+             (loop for k below among always (= (aref gaps k) (* 4 (1+ k)))))
+        (and other (= among (length other))
+             (loop for k below among for count in other always (= (aref gaps k) count))))))
+
+(defun one-case-p (run length)
+  "True when the letters of the first LENGTH characters of RUN are all
+capitals or all small."
+  (declare (type simple-string run) (type fixnum length))
+  (or (loop for k below length never (lower-case-p (schar run k)))
+      (loop for k below length never (upper-case-p (schar run k)))))
+
+;;; Card numbers, IBANs, Bitcoin and onion addresses: each the standard's check
+;;; on the run read.
+
+(defparameter *card-numbers*
+  '(("visa" ((4 4)) (13 16 19))
+    ("mastercard" ((51 55) (2221 2720)) (16))
+    ("amex" ((34 34) (37 37)) (15))
+    ("discover" ((6011 6011) (644 649) (65 65) (622126 622925)) (16 17 18 19))
+    ("diners" ((36 36) (300 305) (3095 3095) (38 39)) (14 15 16 17 18 19))
+    ("jcb" ((3528 3589)) (16 17 18 19))
+    ("unionpay" ((62 62)) (16 17 18 19))
+    ("maestro" ((5018 5018) (5020 5020) (5038 5038) (5893 5893) (6304 6304) (6759 6759) (6761 6763))
+     (12 13 14 15 16 17 18 19))
+    ("mir" ((2200 2204)) (16 17 18 19)))
+  "The payment card networks a named pattern finds the numbers of, each (NAME
+PREFIXES LENGTHS): PREFIXES, how its numbers begin, the network's issuer
+numbers (ISO/IEC 7812) as it publishes them, each (LOW HIGH), every number
+from LOW to HIGH, the two of as many digits; LENGTHS, how many digits its
+numbers have.")
 
 (defun card-network-p (digits length network)
-  "True when DIGITS, a string of LENGTH digits, is a number of the card
-NETWORK (an entry of *CARD-NUMBERS*): one of its lengths and prefixes."
+  "True when the first LENGTH of DIGITS, a string of digits, are a number of
+the card NETWORK (an entry of *CARD-NUMBERS*): one of its lengths and
+prefixes."
+  (declare (type simple-string digits) (type fixnum length))
   (destructuring-bind (name prefixes lengths) network
+    (declare (ignore name))
     (and (member length lengths)
-         (cl-ppcre:scan (or (gethash name **card-prefixes**)
-                            (setf (gethash name **card-prefixes**)
-                                  (cl-ppcre:create-scanner (format nil "\\A(?:~a)" prefixes))))
-                        digits))))
+         (loop for (low high) in prefixes
+               thereis (let ((width (loop for n = low then (floor n 10) while (plusp n) count t)))
+                         (and (<= width length)
+                              (<= low
+                                  (let ((value 0))
+                                    (dotimes (k width value)
+                                      (setf value (+ (* value 10) (- (char-code (schar digits k)) 48)))))
+                                  high)))))))
 
-(defun luhn-p (digits)
-  "True when DIGITS, a string of digits, passes the Luhn check (ISO/IEC
-7812): every second digit from the last doubled, nine taken off a double past
-nine, the sum a multiple of ten."
+(defun luhn-p (digits &optional (length (length digits)))
+  "True when the first LENGTH of DIGITS, a string of digits, pass the Luhn
+check (ISO/IEC 7812): every second digit from the last doubled, nine taken
+off a double past nine, the sum a multiple of ten."
   (let ((sum 0))
-    (loop for i from (1- (length digits)) downto 0
+    (loop for i from (1- length) downto 0
           for count from 0
           do (let ((digit (- (char-code (char digits i)) 48)))
                (when (oddp count)
@@ -140,43 +240,26 @@ nine, the sum a multiple of ten."
                (incf sum digit)))
     (zerop (mod sum 10))))
 
-(defun card-groups-p (separators length)
-  "True when SEPARATORS, the numbers of digits before each space or hyphen
-of a card number of LENGTH digits, are how such a number is written: none;
-one after every fourth digit; or, for 14 and 15 digits, after the fourth and
-the tenth."
-  (or (null separators)
-      (equal separators (loop for k from 4 below length by 4 collect k))
-      (and (member length '(14 15)) (equal separators '(4 10)))))
-
 (defun card-end (text start end networks)
   "Where the card number that begins at START of TEXT (before END) ends, or
 NIL when none does: the most digits, read with the spaces or hyphens between
-them, that are written as a card number is (CARD-GROUPS-P), are a number of
-one of NETWORKS (CARD-NETWORK-P), pass the Luhn check, and are followed by
-no digit."
-  (let ((digits (make-string 19)) (ends (make-array 20 :initial-element nil))
-        (count 0) (separators '()) (i start))
-    (loop while (and (< i end) (< count 19))
-          do (let ((c (char text i)))
-               (cond ((char<= #\0 c #\9)
-                      (setf (char digits count) c)
-                      (incf count) (incf i)
-                      (setf (aref ends count) i))
-                     ((and (plusp count) (find c " -") (< (1+ i) end) (char<= #\0 (char text (1+ i)) #\9))
-                      (push count separators) (incf i))
-                     (t (return)))))
-    (setf separators (nreverse separators))
-    (loop for length from count downto 12
-          for after = (aref ends length)
-          ;; no digit right after it: the next is a space or hyphen, or no digit
-          when (and (or (< length count) (>= after end) (not (char<= #\0 (char text after) #\9)))
-                    (or (= length count) (member length separators))
-                    (card-groups-p (remove-if (lambda (k) (>= k length)) separators) length))
-            do (let ((number (subseq digits 0 length)))
-                 (when (and (some (lambda (network) (card-network-p number length network)) networks)
-                            (luhn-p number))
-                   (return after))))))
+them (READ-RUN), that are written as a card number is, together, in fours,
+or for 14 and 15 digits after the fourth and the tenth (GROUPED-IN-FOURS-P),
+are a number of one of NETWORKS (CARD-NETWORK-P), pass the Luhn check, and
+are followed by no digit."
+  (let ((digits (make-string 19)) (gaps (make-array 18 :element-type 'fixnum)))
+    (declare (dynamic-extent digits gaps))
+    (multiple-value-bind (count gap-count)
+        (read-run text start end *ascii-digits* digits :gaps gaps :separators " -")
+      (loop for length from count downto 12
+            for after = (run-index start length gaps gap-count)
+            ;; no digit right after it: the next is a space or hyphen, or no digit
+            when (and (or (< length count) (>= after end) (not (char<= #\0 (char text after) #\9)))
+                      (or (= length count) (find length gaps :end gap-count))
+                      (grouped-in-fours-p gaps gap-count length (and (member length '(14 15)) '(4 10)))
+                      (loop for network in networks thereis (card-network-p digits length network))
+                      (luhn-p digits length))
+              return after))))
 
 (defun card-filter (&optional network)
   "A cl-ppcre filter that matches a card number of NETWORK (a name of
@@ -202,21 +285,15 @@ no digit."
   "How many characters an IBAN of each country has, by its code, as the IBAN
 registry (SWIFT, for ISO 13616) lists them.")
 
-(declaim (inline alphanumericp*))
-(defun alphanumericp* (c)
-  "True when C is an ASCII letter or digit."
-  (declare (type character c))
-  (or (char<= #\0 c #\9) (char<= #\A c #\Z) (char<= #\a c #\z)))
-
-(defun iban-check-p (iban)
-  "True when IBAN, its characters without spaces, passes ISO 7064 MOD 97-10:
-its first four put last, each letter written as its number (A 10 to Z 35),
-the whole leaves 1 when divided by 97."
+(defun iban-check-p (iban &optional (length (length iban)))
+  "True when the first LENGTH characters of IBAN, without spaces, pass ISO
+7064 MOD 97-10: its first four put last, each letter written as its number
+\(A 10 to Z 35), the whole leaves 1 when divided by 97."
   (let ((rest 0))
     (flet ((add (c)
              (let ((value (digit-char-p c 36)))
                (setf rest (mod (if (< value 10) (+ (* rest 10) value) (+ (* rest 100) value)) 97)))))
-      (loop for i from 4 below (length iban) do (add (char iban i)))
+      (loop for i from 4 below length do (add (char iban i)))
       (loop for i from 0 below 4 do (add (char iban i))))
     (= rest 1)))
 
@@ -227,23 +304,23 @@ many characters in all as that country's IBANs have (*IBAN-LENGTHS*),
 written together or in groups of four apart by a space, followed by no
 letter or digit, passing the check (IBAN-CHECK-P). Letters are capitals, or
 all small."
-  (let* ((code (and (<= (+ start 2) end) (string-upcase (subseq text start (+ start 2)))))
-         (length (cdr (assoc code *iban-lengths* :test #'equal))))
-    (when length
-      (let* ((spaced (and (< (+ start 4) end) (char= (char text (+ start 4)) #\Space)))
-             (iban (make-string length)) (i start))
-        (dotimes (k length)
-          (when (and spaced (plusp k) (zerop (mod k 4)))
-            (unless (and (< i end) (char= (char text i) #\Space)) (return-from iban-end nil))
-            (incf i))
-          (unless (and (< i end) (alphanumericp* (char text i))) (return-from iban-end nil))
-          (setf (char iban k) (char text i))
-          (incf i))
-        (and (or (>= i end) (not (alphanumericp* (char text i))))
-             (or (string= iban (string-upcase iban)) (string= iban (string-downcase iban)))
-             (every #'digit-char-p (subseq iban 2 4))
-             (iban-check-p iban)
-             i)))))
+  (let ((iban (make-string 34)) (gaps (make-array 9 :element-type 'fixnum)))
+    (declare (dynamic-extent iban gaps))
+    (multiple-value-bind (count gap-count)
+        (read-run text start end *ascii-alphanumerics* iban :gaps gaps :separators " ")
+      (let ((length (and (>= count 2)
+                         (loop for (code . characters) in *iban-lengths*
+                               when (and (char-equal (char code 0) (schar iban 0))
+                                         (char-equal (char code 1) (schar iban 1)))
+                                 return characters))))
+        (when (and length (>= count length))
+          (let ((after (run-index start length gaps gap-count)))
+            (and (or (>= after end) (not (alphanumericp* (char text after))))
+                 (grouped-in-fours-p gaps gap-count length)
+                 (one-case-p iban length)
+                 (char<= #\0 (schar iban 2) #\9) (char<= #\0 (schar iban 3) #\9)
+                 (iban-check-p iban length)
+                 after)))))))
 
 (defparameter *sha256-constants*
   (coerce '(#x428a2f98 #x71374491 #xb5c0fbcf #xe9b5dba5 #x3956c25b #x59f111f1 #x923f82a4 #xab1c5ed5
@@ -257,26 +334,27 @@ all small."
           '(simple-array (unsigned-byte 32) (64)))
   "SHA-256's round constants (FIPS 180-4).")
 
-(defun sha256 (octets)
-  "The SHA-256 digest of OCTETS (FIPS 180-4), 32 octets: for the few octets
-a check sums, as a Bitcoin address's."
-  (declare (optimize speed))
+(defun sha256 (octets end digest)
+  "The SHA-256 digest (FIPS 180-4) of the first END of OCTETS, at most 55,
+written into DIGEST, 32 octets, which it returns: for the few octets a check
+sums, as a Bitcoin address's. DIGEST may be OCTETS."
+  (declare (optimize speed) (type (simple-array (unsigned-byte 8) (*)) octets digest) (type (integer 0 55) end))
   (let* ((k *sha256-constants*)
-         (h (make-array 8 :element-type '(unsigned-byte 32)
-                          :initial-contents '(#x6a09e667 #xbb67ae85 #x3c6ef372 #xa54ff53a
-                                              #x510e527f #x9b05688c #x1f83d9ab #x5be0cd19)))
-         (n (length octets))
-         (padded (* 64 (ceiling (+ n 9) 64)))
-         (message (make-array padded :element-type '(unsigned-byte 8) :initial-element 0))
+         (h (make-array 8 :element-type '(unsigned-byte 32)))
+         (padded 64)
+         (message (make-array 64 :element-type '(unsigned-byte 8) :initial-element 0))
          (w (make-array 64 :element-type '(unsigned-byte 32))))
     (declare (type (simple-array (unsigned-byte 32) (64)) k w)
              (type (simple-array (unsigned-byte 32) (8)) h)
-             (type (simple-array (unsigned-byte 8) (*)) message)
-             (type fixnum n padded))
-    (replace message octets)
-    (setf (aref message n) #x80)
+             (type (simple-array (unsigned-byte 8) (64)) message)
+             (type fixnum padded)
+             (dynamic-extent h message w))
+    (setf (aref h 0) #x6a09e667 (aref h 1) #xbb67ae85 (aref h 2) #x3c6ef372 (aref h 3) #xa54ff53a
+          (aref h 4) #x510e527f (aref h 5) #x9b05688c (aref h 6) #x1f83d9ab (aref h 7) #x5be0cd19)
+    (replace message octets :end2 end)
+    (setf (aref message end) #x80)
     (loop for i from 0 below 8
-          do (setf (aref message (- padded 1 i)) (ldb (byte 8 (* 8 i)) (* 8 n))))
+          do (setf (aref message (- padded 1 i)) (ldb (byte 8 (* 8 i)) (* 8 end))))
     (macrolet ((rotr (x n) `(logior (ash ,x (- ,n)) (ldb (byte 32 0) (ash ,x (- 32 ,n)))))
                (add (&rest xs) `(ldb (byte 32 0) (+ ,@xs))))
       (loop for block of-type fixnum from 0 below padded by 64
@@ -304,10 +382,9 @@ a check sums, as a Bitcoin address's."
                        (aref h 2) (add (aref h 2) c) (aref h 3) (add (aref h 3) d)
                        (aref h 4) (add (aref h 4) e) (aref h 5) (add (aref h 5) f)
                        (aref h 6) (add (aref h 6) g) (aref h 7) (add (aref h 7) hh)))))
-    (let ((digest (make-array 32 :element-type '(unsigned-byte 8))))
-      (dotimes (i 8 digest)
-        (dotimes (j 4)
-          (setf (aref digest (+ (* 4 i) j)) (ldb (byte 8 (* 8 (- 3 j))) (aref h i))))))))
+    (dotimes (i 8 digest)
+      (dotimes (j 4)
+        (setf (aref digest (+ (* 4 i) j)) (ldb (byte 8 (* 8 (- 3 j))) (aref h i)))))))
 
 (defparameter *base58* "123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz"
   "The characters of Base58, as Bitcoin writes numbers in them, by value.")
@@ -315,48 +392,65 @@ a check sums, as a Bitcoin address's."
 (defparameter *bech32* "qpzry9x8gf2tvdw0s3jn54khce6mua7l"
   "The characters of Bech32 (BIP 173), by value.")
 
-(defun base58check-address-p (address)
-  "True when ADDRESS, a string of Base58, is a Bitcoin address of the first
-kinds (P2PKH, starting 1; P2SH, starting 3): 25 octets once read, a version
-of 0 or 5, and its last four the first four of SHA-256 twice over the rest."
-  (let ((n 0) (zeros (or (position #\1 address :test-not #'char=) (length address))))
-    (loop for c across address do (setf n (+ (* n 58) (position c *base58*))))
-    (let ((length (- 25 zeros)))
-      (when (<= (ceiling (integer-length n) 8) length)
-        (let ((octets (make-array 25 :element-type '(unsigned-byte 8) :initial-element 0)))
-          (dotimes (i length) (setf (aref octets (- 24 i)) (ldb (byte 8 (* 8 i)) n)))
-          (and (member (aref octets 0) '(0 5))
-               (not (mismatch (sha256 (sha256 (subseq octets 0 21))) octets :start2 21 :end1 4))))))))
+(defun base58check-address-p (address length)
+  "True when the first LENGTH characters of ADDRESS, Base58, are a Bitcoin
+address of the first kinds (P2PKH, starting 1; P2SH, starting 3): 25 octets
+once read, a version of 0 or 5, and its last four the first four of SHA-256
+twice over the rest."
+  (let ((octets (make-array 25 :element-type '(unsigned-byte 8) :initial-element 0))
+        (sum (make-array 32 :element-type '(unsigned-byte 8)))
+        (zeros (loop for k below length while (char= (schar address k) #\1) count t)))
+    (declare (dynamic-extent octets sum))
+    ;; the number the characters write, an octet at a time
+    (dotimes (k length)
+      (let ((carry (position (schar address k) *base58*)))
+        (unless carry (return-from base58check-address-p nil))
+        (loop for i from 24 downto 0
+              do (setf carry (+ carry (* 58 (aref octets i)))
+                       (aref octets i) (ldb (byte 8 0) carry)
+                       carry (ash carry -8)))
+        (unless (zerop carry) (return-from base58check-address-p nil))))
+    ;; each leading 1 an octet of zero
+    (and (loop for i below zeros always (zerop (aref octets i)))
+         (member (aref octets 0) '(0 5))
+         (progn (sha256 octets 21 sum)
+                (sha256 sum 32 sum)
+                (loop for i below 4 always (= (aref sum i) (aref octets (+ 21 i))))))))
 
-(defun bech32-polymod (values)
-  "BIP 173's checksum of VALUES, numbers below 32."
-  (let ((check 1))
-    (dolist (value values check)
-      (let ((top (ash check -25)))
-        (setf check (logxor (ash (logand check #x1ffffff) 5) value))
-        (loop for g in '(#x3b6a57b2 #x26508e6d #x1ea119fa #x3d4233dd #x2a1462b3)
-              for i from 0
-              when (logbitp i top) do (setf check (logxor check g)))))))
+(defun bech32-step (check value)
+  "BIP 173's checksum CHECK with VALUE, a number below 32, taken in."
+  (let ((top (ash check -25))
+        (check (logxor (ash (logand check #x1ffffff) 5) value)))
+    (loop for g across #(#x3b6a57b2 #x26508e6d #x1ea119fa #x3d4233dd #x2a1462b3)
+          for i from 0
+          when (logbitp i top) do (setf check (logxor check g)))
+    check))
 
-(defun segwit-address-p (address)
-  "True when ADDRESS (bc1..., all small or all capitals) is a Bitcoin SegWit
-address: Bech32 for version 0 (BIP 173), Bech32m for versions 1 to 16 (BIP
-350), its checksum right, its program 2 to 40 octets, 20 or 32 for version 0."
-  (let* ((small (string-downcase address))
-         (data (map 'list (lambda (c) (position c *bech32*)) (subseq small 3))))
-    (when (and (or (string= address small) (string= address (string-upcase address)))
-               (every #'identity data) (>= (length data) 7))
-      (let ((check (bech32-polymod (append '(3 3 0 2 3) data)))
-            (version (first data))
-            (bits 0) (count 0) (program 0))
-        ;; the program: its five-bit values made octets, nothing left over but zeros
-        (dolist (value (subseq data 1 (- (length data) 6)))
-          (setf bits (logior (ash bits 5) value))
-          (incf count 5)
-          (when (>= count 8)
-            (decf count 8)
-            (incf program)
-            (setf bits (ldb (byte count 0) bits))))
+(defun segwit-address-p (address length)
+  "True when the first LENGTH characters of ADDRESS (bc1..., all small or all
+capitals) are a Bitcoin SegWit address: Bech32 for version 0 (BIP 173),
+Bech32m for versions 1 to 16 (BIP 350), its checksum right, its program 2 to
+40 octets, 20 or 32 for version 0."
+  (let ((values (- length 3)))
+    (when (and (one-case-p address length) (>= values 7))
+      (let ((check 1) (version 0) (bits 0) (count 0) (program 0))
+        ;; the part before the 1, "bc", as BIP 173 expands it
+        (dolist (value '(3 3 0 2 3))
+          (setf check (bech32-step check value)))
+        (loop for k from 3 below length
+              for index from 0
+              do (let ((value (position (char-downcase (schar address k)) *bech32*)))
+                   (unless value (return-from segwit-address-p nil))
+                   (setf check (bech32-step check value))
+                   (cond ((zerop index) (setf version value))
+                         ;; the program: its five-bit values made octets, nothing left over but zeros
+                         ((< index (- values 6))
+                          (setf bits (logior (ash bits 5) value))
+                          (incf count 5)
+                          (when (>= count 8)
+                            (decf count 8)
+                            (incf program)
+                            (setf bits (ldb (byte count 0) bits)))))))
         (and (<= version 16) (< count 5) (zerop bits)
              (<= 2 program 40)
              (if (zerop version)
@@ -368,13 +462,14 @@ address: Bech32 for version 0 (BIP 173), Bech32m for versions 1 to 16 (BIP
 or NIL when none does: a Base58Check one of 26 to 35 characters
 \(BASE58CHECK-ADDRESS-P) or a SegWit one (SEGWIT-ADDRESS-P), followed by no
 letter or digit."
-  (let ((stop (or (position-if-not #'alphanumericp* text :start start :end end) end)))
-    (and (if (and (<= (+ start 3) stop) (string-equal "bc1" text :start2 start :end2 (+ start 3)))
-             (and (<= 14 (- stop start) 90) (segwit-address-p (subseq text start stop)))
-             (and (<= 26 (- stop start) 35)
-                  (every (lambda (c) (find c *base58*)) (subseq text start stop))
-                  (base58check-address-p (subseq text start stop))))
-         stop)))
+  (let ((address (make-string 91)))
+    (declare (dynamic-extent address))
+    (let ((length (read-run text start end *ascii-alphanumerics* address)))
+      (and (< length 91)
+           (if (and (>= length 3) (string-equal "bc1" address :end2 3))
+               (and (<= 14 length 90) (segwit-address-p address length))
+               (and (<= 26 length 35) (base58check-address-p address length)))
+           (+ start length)))))
 
 (defparameter *keccak-round-constants*
   (coerce '(#x0000000000000001 #x0000000000008082 #x800000000000808A #x8000000080008000
@@ -391,18 +486,34 @@ letter or digit."
           '(simple-array (unsigned-byte 8) (25)))
   "How far Keccak-f[1600] turns each lane, lane X + 5Y (FIPS 202).")
 
-(defun sha3-256 (octets)
-  "The SHA3-256 digest of OCTETS (FIPS 202), 32 octets: for the few octets a
-check sums, as an onion address's."
-  (let ((a (make-array 25 :element-type '(unsigned-byte 64) :initial-element 0))
-        (b (make-array 25 :element-type '(unsigned-byte 64) :initial-element 0))
-        (c (make-array 5 :element-type '(unsigned-byte 64) :initial-element 0))
-        (padded (make-array (* 136 (ceiling (1+ (length octets)) 136)) :element-type '(unsigned-byte 8) :initial-element 0)))
-    (flet ((rot (x n) (if (zerop n) x (ldb (byte 64 0) (logior (ash x n) (ash x (- n 64)))))))
-      (replace padded octets)
-      (setf (aref padded (length octets)) #x06)
-      (setf (aref padded (1- (length padded))) (logior (aref padded (1- (length padded))) #x80))
-      (loop for block from 0 below (length padded) by 136
+(defun sha3-256 (octets &optional (end (length octets))
+                           (digest (make-array 32 :element-type '(unsigned-byte 8))))
+  "The SHA3-256 digest (FIPS 202) of the first END of OCTETS, all of them when
+not given, written into DIGEST, 32 octets, a new one when not given, which it
+returns: for the few octets a check sums, as an onion address's."
+  (declare (optimize speed) (type (simple-array (unsigned-byte 8) (*)) octets digest) (type fixnum end))
+  (let* ((size (* 136 (ceiling (1+ end) 136)))
+         (a (make-array 25 :element-type '(unsigned-byte 64) :initial-element 0))
+         (b (make-array 25 :element-type '(unsigned-byte 64) :initial-element 0))
+         (c (make-array 5 :element-type '(unsigned-byte 64) :initial-element 0))
+         (padded (make-array size :element-type '(unsigned-byte 8) :initial-element 0))
+         (round-constants *keccak-round-constants*)
+         (rotations *keccak-rotations*))
+    (declare (type (simple-array (unsigned-byte 64) (25)) a b)
+             (type (simple-array (unsigned-byte 64) (5)) c)
+             (type (simple-array (unsigned-byte 8) (*)) padded)
+             (type (simple-array (unsigned-byte 64) (24)) round-constants)
+             (type (simple-array (unsigned-byte 8) (25)) rotations)
+             (type fixnum size)
+             (dynamic-extent a b c padded))
+    (flet ((rot (x n)
+             (declare (type (unsigned-byte 64) x) (type (integer 0 63) n))
+             (logior (ldb (byte 64 0) (ash x n)) (ash x (- n 64)))))
+      (declare (inline rot))
+      (replace padded octets :end2 end)
+      (setf (aref padded end) #x06)
+      (setf (aref padded (1- size)) (logior (aref padded (1- size)) #x80))
+      (loop for block of-type fixnum from 0 below size by 136
             do (dotimes (lane 17)
                  (dotimes (k 8)
                    (setf (aref a lane) (logxor (aref a lane) (ash (aref padded (+ block (* 8 lane) k)) (* 8 k))))))
@@ -415,17 +526,16 @@ check sums, as an onion address's."
                  (dotimes (x 5)
                    (dotimes (y 5)
                      (setf (aref b (+ y (* 5 (mod (+ (* 2 x) (* 3 y)) 5))))
-                           (rot (aref a (+ x (* 5 y))) (aref *keccak-rotations* (+ x (* 5 y)))))))
+                           (rot (aref a (+ x (* 5 y))) (aref rotations (+ x (* 5 y)))))))
                  (dotimes (x 5)
                    (dotimes (y 5)
                      (setf (aref a (+ x (* 5 y)))
                            (logxor (aref b (+ x (* 5 y)))
                                    (logand (logxor (aref b (+ (mod (1+ x) 5) (* 5 y))) #xFFFFFFFFFFFFFFFF)
                                            (aref b (+ (mod (+ x 2) 5) (* 5 y))))))))
-                 (setf (aref a 0) (logxor (aref a 0) (aref *keccak-round-constants* round))))))
-    (let ((digest (make-array 32 :element-type '(unsigned-byte 8))))
-      (dotimes (i 32 digest)
-        (setf (aref digest i) (ldb (byte 8 (* 8 (mod i 8))) (aref a (floor i 8))))))))
+                 (setf (aref a 0) (logxor (aref a 0) (aref round-constants round))))))
+    (dotimes (i 32 digest)
+      (setf (aref digest i) (ldb (byte 8 (* 8 (mod i 8))) (aref a (floor i 8)))))))
 
 (defparameter *base32* "ABCDEFGHIJKLMNOPQRSTUVWXYZ234567"
   "The characters of Base32 (RFC 4648), by value.")
@@ -435,31 +545,45 @@ check sums, as an onion address's."
 address (Tor's rend-spec-v3): Base32 for a key of 32 octets, two octets of
 check and the version 3, the check the first two octets of SHA3-256 of
 \".onion checksum\", the key and the version."
-  (let ((n 0))
-    (loop for ch across name do (setf n (+ (* n 32) (position (char-upcase ch) *base32*))))
-    (let ((octets (make-array 35 :element-type '(unsigned-byte 8))))
-      (dotimes (i 35) (setf (aref octets (- 34 i)) (ldb (byte 8 (* 8 i)) n)))
-      (and (= (aref octets 34) 3)
-           (let ((sum (sha3-256 (concatenate '(vector (unsigned-byte 8))
-                                             (map 'vector #'char-code ".onion checksum")
-                                             (subseq octets 0 32) #(3)))))
-             (and (= (aref sum 0) (aref octets 32)) (= (aref sum 1) (aref octets 33))))))))
+  (let ((octets (make-array 35 :element-type '(unsigned-byte 8)))
+        (input (make-array 48 :element-type '(unsigned-byte 8)))
+        (sum (make-array 32 :element-type '(unsigned-byte 8))))
+    (declare (dynamic-extent octets input sum))
+    ;; 56 characters of five bits each: 280 bits, 35 octets
+    (let ((bits 0) (count 0) (at 0))
+      (dotimes (k 56)
+        (setf bits (logior (ash bits 5) (position (char-upcase (schar name k)) *base32*)))
+        (incf count 5)
+        (when (>= count 8)
+          (decf count 8)
+          (setf (aref octets at) (ldb (byte 8 count) bits)
+                bits (ldb (byte count 0) bits))
+          (incf at))))
+    (and (= (aref octets 34) 3)
+         (progn
+           (loop for c across ".onion checksum" for i from 0 do (setf (aref input i) (char-code c)))
+           (replace input octets :start1 15 :end2 32)
+           (setf (aref input 47) 3)
+           (sha3-256 input 48 sum)
+           (and (= (aref sum 0) (aref octets 32)) (= (aref sum 1) (aref octets 33)))))))
 
 (defun onion-end (text start end)
   "Where the onion address that begins at START of TEXT (before END) ends, or
 NIL when none does: 56 characters of Base32, all small or all capitals, its
 check right (ONION-V3-P), or 16 for a version 2 address, which has none; then
 .onion, followed by no letter, digit or hyphen."
-  (let ((stop (or (position-if-not (lambda (ch) (find (char-upcase ch) *base32*)) text :start start :end end) end)))
-    (and (member (- stop start) '(16 56))
-         (<= (+ stop 6) end)
-         (string-equal ".onion" text :start2 stop :end2 (+ stop 6))
-         (let ((name (subseq text start stop)))
-           (and (or (string= name (string-downcase name)) (string= name (string-upcase name)))
-                (or (= (length name) 16) (onion-v3-p name))))
-         (let ((after (+ stop 6)))
-           (and (or (>= after end) (not (or (alphanumericp* (char text after)) (char= (char text after) #\-))))
-                after)))))
+  (let ((name (make-string 57)))
+    (declare (dynamic-extent name))
+    (let* ((length (read-run text start end *base32-either* name))
+           (stop (+ start length)))
+      (and (member length '(16 56))
+           (<= (+ stop 6) end)
+           (string-equal ".onion" text :start2 stop :end2 (+ stop 6))
+           (one-case-p name length)
+           (or (= length 16) (onion-v3-p name))
+           (let ((after (+ stop 6)))
+             (and (or (>= after end) (not (or (alphanumericp* (char text after)) (char= (char text after) #\-))))
+                  after))))))
 
 (defvar *window-open* nil
   "True while a pattern is tried on a window of a longer text, more of it
@@ -470,7 +594,7 @@ after the window's end: a filter reading to that end then says it may go on.")
 the rope, the octets the window's text begins and ends at, and the one past
 which the pattern sees nothing. A filter may read the rope before the window
 and, when the window says it may go on (*WINDOW-OPEN*), after it
-(TEXT-READER).")
+\(CALL-WITH-TEXT-READER).")
 
 (defvar *window-reached* nil
   "The octet a filter's match reached, read on past the window's end
@@ -505,18 +629,6 @@ the table, or the limit."
                         (unless (and (< b 128) (= 1 (sbit table b))) (return-from run j))))
              (setf at stop))))))))
 
-(defun char-table (predicate)
-  "The ASCII characters PREDICATE is true of, as a bit for each code below 128."
-  (let ((table (make-array 128 :element-type 'bit :initial-element 0)))
-    (dotimes (code 128 table)
-      (when (funcall predicate (code-char code)) (setf (sbit table code) 1)))))
-
-(declaim (inline in-table-p))
-(defun in-table-p (table ch)
-  "True when CH is one of the characters of TABLE (CHAR-TABLE)."
-  (declare (type simple-bit-vector table) (type character ch))
-  (let ((code (char-code ch))) (and (< code 128) (= 1 (sbit table code)))))
-
 (sb-ext:define-load-time-global *base32-capitals* (char-table (lambda (ch) (or (char<= #\A ch #\Z) (char<= #\2 ch #\7))))
   "The characters of Base32 written in capitals (RFC 4648).")
 (sb-ext:define-load-time-global *base32-small* (char-table (lambda (ch) (or (char<= #\a ch #\z) (char<= #\2 ch #\7))))
@@ -526,18 +638,20 @@ the table, or the limit."
 (sb-ext:define-load-time-global *base64-safe* (char-table (lambda (ch) (or (alphanumericp* ch) (find ch "-_"))))
   "The characters of Base64 for addresses and file names, - and _ for + and /.")
 
-(defun text-reader (text end)
-  "Five values for reading TEXT, which ends at END: a function of an index
-giving the character there; the index the text it reads ends at; whether that
-end is a window's that says it may go on (*WINDOW-OPEN*); the first index it
-reads; and a function of an index and a CHAR-TABLE giving the first index from
-there whose character is not in the table, or the end. On a window of a rope
-(*WINDOW-ROPE*), END the window's end, the rope is read before the window,
-from its start, and after it, as far as the pattern sees, when the window may
-go on: an index before 0 or past END stands for the octet as far before or
-past the window, each octet as a character. So a run of ASCII characters, a
-block of Base64 say, is read whole however long, for WINDOW-INDEX to give
-back."
+(defun call-with-text-reader (text end function)
+  "Call FUNCTION with five values for reading TEXT, which ends at END: a
+function of an index giving the character there; the index the text it
+reads ends at; whether that end is a window's that says it may go on
+\(*WINDOW-OPEN*); the first index it reads; and a function of an index and a
+CHAR-TABLE giving the first index from there whose character is not in the
+table, or the end. On a window of a rope (*WINDOW-ROPE*), END the window's
+end, the rope is read before the window, from its start, and after it, as
+far as the pattern sees, when the window may go on: an index before 0 or
+past END stands for the octet as far before or past the window, each octet
+as a character. So a run of ASCII characters, a block of Base64 say, is read
+whole however long, for WINDOW-INDEX to give back. The two functions are
+made on the stack: FUNCTION may pass them on, never keep them."
+  (declare (type function function))
   (destructuring-bind (&optional rope context octet bound) *window-rope*
     (if rope
         (let ((back nil) (on nil) (on-run nil) (open *window-open*))
@@ -555,34 +669,47 @@ back."
             (macrolet ((reading (type)
                          `(let ((text text))
                             (declare (type ,type text))
-                            (values
-                             (lambda (i)
-                               (declare (type fixnum i) (optimize speed))
-                               (cond ((minusp i) (before (+ context i)))
-                                     ((< i end) (schar text i))
-                                     (t (after (+ octet (- i end))))))
-                             (lambda (i table)
-                               (declare (type fixnum i) (type simple-bit-vector table) (optimize speed))
-                               (let ((j (loop for j of-type fixnum from i below end
-                                              unless (in-table-p table (schar text j)) return j
-                                              finally (return (max i end)))))
-                                 (declare (type fixnum j))
-                                 (if (and open (>= j end))
-                                     (+ end (- (the fixnum (after-run (+ octet (- j end)) table)) octet))
-                                     j)))))))
-              (multiple-value-bind (char-at run)
-                  (if (typep text 'simple-base-string)
-                      (reading simple-base-string)
-                      (reading (simple-array character (*))))
-                (values char-at (if open (+ end (- bound octet)) end) nil (- context) run)))))
-        (values (lambda (i) (char text i)) end *window-open* 0
-                (lambda (i table)
-                  (or (position-if-not (lambda (ch) (in-table-p table ch)) text :start i :end end) end))))))
+                            (flet ((char-at (i)
+                                     (declare (type fixnum i) (optimize speed))
+                                     (cond ((minusp i) (before (+ context i)))
+                                           ((< i end) (schar text i))
+                                           (t (after (+ octet (- i end))))))
+                                   (run (i table)
+                                     (declare (type fixnum i) (type simple-bit-vector table) (optimize speed))
+                                     (let ((j (loop for j of-type fixnum from i below end
+                                                    unless (in-table-p table (schar text j)) return j
+                                                    finally (return (max i end)))))
+                                       (declare (type fixnum j))
+                                       (if (and open (>= j end))
+                                           (+ end (- (the fixnum (after-run (+ octet (- j end)) table)) octet))
+                                           j))))
+                              (declare (dynamic-extent #'char-at #'run))
+                              (funcall function #'char-at (if open (+ end (- bound octet)) end) nil (- context) #'run)))))
+              (if (typep text 'simple-base-string)
+                  (reading simple-base-string)
+                  (reading (simple-array character (*)))))))
+        (flet ((char-at (i) (char text i))
+               (run (i table)
+                 (loop for j from i below end
+                       unless (in-table-p table (char text j)) return j
+                       finally (return (max i end)))))
+          (declare (dynamic-extent #'char-at #'run))
+          (funcall function #'char-at end *window-open* 0 #'run)))))
+
+(defmacro with-text-reader (((char-at reach open first run) text end) &body body)
+  "Run BODY with CHAR-AT, REACH, OPEN, FIRST and RUN bound as
+CALL-WITH-TEXT-READER gives them for reading TEXT, which ends at END."
+  (let ((reader (gensym "READER")))
+    `(flet ((,reader (,char-at ,reach ,open ,first ,run)
+              (declare (ignorable ,char-at ,reach ,open ,first ,run))
+              ,@body))
+       (declare (dynamic-extent #',reader))
+       (call-with-text-reader ,text ,end #',reader))))
 
 (defun window-index (index end)
-  "INDEX, from a TEXT-READER of a text ending at END, as an index of that
-text: one at END or past it read on in the rope is kept in *WINDOW-REACHED*
-as its octet and given as END."
+  "INDEX, from CALL-WITH-TEXT-READER's reading of a text ending at END, as an
+index of that text: one at END or past it read on in the rope is kept in
+*WINDOW-REACHED* as its octet and given as END."
   (if (and index *window-open* *window-rope* (>= index end))
       (progn (setf *window-reached* (+ (third *window-rope*) (- index end))) end)
       index))
@@ -612,9 +739,9 @@ taking it in."
                         finally (return (<= own width)))))))))
 
 (defun encoded-block-end (char-at run first start end table group padding least open)
-  "Where the block of RFC 4648 encoding that begins at START of a text (before
-END), read by CHAR-AT and RUN from FIRST (TEXT-READER), ends, or NIL when
-none does: none begins on a line that goes on the block before it
+  "Where the block of RFC 4648 encoding that begins at START of a text
+\(before END), read by CHAR-AT and RUN from FIRST (CALL-WITH-TEXT-READER),
+ends, or NIL when none does: none begins on a line that goes on the block before it
 (CONTINUED-LINE-P). Its characters are those of TABLE (CHAR-TABLE), GROUP of
 them making whole octets, and the = PADDING allows after them (the counts of
 = it may hold); at least LEAST of them, a letter and a digit among them,
@@ -633,7 +760,8 @@ window grows and it is read whole."
              (and (>= count least) letter digit
                   (if (plusp pad)
                       (and (member pad padding) (zerop (mod (+ count pad) group)))
-                      (member (mod count group) (cons 0 (mapcar (lambda (p) (- group p)) padding))))
+                      (let ((left (mod count group)))
+                        (or (zerop left) (loop for p in padding thereis (= left (- group p))))))
                   (or (>= at end) (not (or (alphanumericp* (funcall char-at at)) (find (funcall char-at at) "+/-_="))))
                   at)))
       (loop
@@ -662,7 +790,7 @@ window grows and it is read whole."
 (defun base32-end (text start end)
   "Where the Base32 block that begins at START of TEXT ends (RFC 4648), all
 capitals or all small, or NIL: see ENCODED-BLOCK-END."
-  (multiple-value-bind (char-at reach open first run) (text-reader text end)
+  (with-text-reader ((char-at reach open first run) text end)
     (let ((table (if (lower-case-p (char text start)) *base32-small* *base32-capitals*)))
       (window-index (encoded-block-end char-at run first start reach table 8 '(1 3 4 6) 16 open) end))))
 
@@ -670,7 +798,7 @@ capitals or all small, or NIL: see ENCODED-BLOCK-END."
   "Where the Base64 block that begins at START of TEXT ends (RFC 4648), of
 + and / or of - and _ (the alphabet for addresses and file names), never
 both, or NIL: see ENCODED-BLOCK-END. It holds small and capital letters."
-  (multiple-value-bind (char-at reach open first run) (text-reader text end)
+  (with-text-reader ((char-at reach open first run) text end)
     (let* ((safe (loop for i from start below reach
                        for ch = (funcall char-at i)
                        while (or (alphanumericp* ch) (find ch "+/-_"))
@@ -682,8 +810,132 @@ both, or NIL: see ENCODED-BLOCK-END. It holds small and capital letters."
            (loop for i from start below block thereis (lower-case-p (funcall char-at i)))
            (window-index block end)))))
 
+;;; Dates: [[:date:]], [[:date<2026-07-01:]], [[:dateutc:2026-01-01..2026-06-30:]]
+;;; and the others, a date read and compared as a date, not as text.
+
+(defparameter *date-families*
+  '(("date" :iso nil) ("dateutc" :iso t)
+    ("datedmy" :dmy nil) ("datedmyutc" :dmy t)
+    ("datemdy" :mdy nil) ("datemdyutc" :mdy t))
+  "The named patterns of dates, each (NAME FORMAT UTC): FORMAT the way the
+dates are written, :ISO (2026-06-30, RFC 3339's 2026-06-30T14:05:00+02:00),
+:DMY, day, month, year (30.06.2026 14:05, 30/06/2026, as in Norway, Denmark,
+Finland, New Zealand and Britain) or :MDY, month, day, year (06/30/2026 2:05
+PM, as in the United States); UTC true when a
+time with an offset is compared as the moment it names, in UTC, else as it
+is written.")
+
+(defconstant +date-mark-days+ 1000000
+  "What is added to a day number written in a date filter's mark, so that it
+is never below 0: a mark holds letters, digits and hyphens only.")
+
+(defun date-filter (spec)
+  "A cl-ppcre filter for the date pattern SPEC (DATE-MARK-SPEC writes it):
+it matches a date of its format where it stands (DATE-TIME-AT) that lies
+from its first moment and before its last, when they are given."
+  (destructuring-bind (kinds low high) (uiop:split-string spec :separator "-")
+    (flet ((bound (text)
+             (unless (string= text "n")
+               (destructuring-bind (day nanos) (uiop:split-string text :separator "x")
+                 (cons (- (parse-integer day) +date-mark-days+) (parse-integer nanos))))))
+      (let ((format (ecase (char kinds 0) (#\i :iso) (#\d :dmy) (#\m :mdy)))
+            (utc (char= (char kinds 1) #\u))
+            (low (bound low))
+            (high (bound high)))
+        (lambda (position)
+          (multiple-value-bind (after day nanos zone)
+              (tuatara.dates:date-time-at cl-ppcre::*string* position cl-ppcre::*end-pos* format)
+            (when after
+              (when (and utc zone)
+                (setf (values day nanos) (tuatara.dates:utc-moment day nanos zone)))
+              (and (or (null low) (not (tuatara.dates:moment< day nanos (car low) (cdr low))))
+                   (or (null high) (tuatara.dates:moment< day nanos (car high) (cdr high)))
+                   after))))))))
+
+(defun date-mark-spec (format utc low high)
+  "The words a date filter's mark carries: FORMAT and UTC as *DATE-FAMILIES*
+has them, LOW and HIGH each NIL or (DAY . NANOSECONDS), the first moment
+taken and the first after the last one."
+  (flet ((bound (point)
+           (if point (format nil "~dx~d" (+ (car point) +date-mark-days+) (cdr point)) "n")))
+    (format nil "~a~a-~a-~a" (ecase format (:iso "i") (:dmy "d") (:mdy "m")) (if utc "u" "w")
+            (bound low) (bound high))))
+
+(defun date-pattern (format utc low high)
+  "The pattern of a date written in FORMAT, from LOW and before HIGH (see
+DATE-MARK-SPEC), no digit just before: read by a filter (DATE-FILTER)."
+  (format nil "(?<![0-9])(?=~a)(?<~adate-~a>)"
+          (if (eq format :iso) "[0-9]{4}-[0-9]{2}-" "[0-9]")
+          *filter-mark* (date-mark-spec format utc low high)))
+
+(defun date-bound (text name format utc)
+  "TEXT, a date bounding the dates of [[:NAME...:]], read in FORMAT or as
+2026-07-01T12:00 is, as three values: its day, its nanoseconds and the
+nanoseconds its last figure counts in, in UTC when UTC is true. Signals
+PATTERN-REFUSED when TEXT is no date, or gives an offset that NAME, comparing
+dates as written, cannot use."
+  (destructuring-bind (&optional after day nanos zone unit)
+      (flet ((whole (format)
+               (let ((found (multiple-value-list (tuatara.dates:date-time-at text 0 (length text) format))))
+                 (and (eql (first found) (length text)) found))))
+        (or (whole format) (and (not (eq format :iso)) (whole :iso))))
+    (unless after
+      (refuse-pattern "invalid: [[:~a…:]] has no date in ~s: write one as 2026-07-01 or 2026-07-01T12:00~a"
+                      name text (if utc "Z" "")))
+    (when zone
+      (unless utc
+        (refuse-pattern "invalid: [[:~a…:]] compares dates as they are written, with no offset: [[:~autc…:]] compares the moments in UTC"
+                        name name))
+      (setf (values day nanos) (tuatara.dates:utc-moment day nanos zone)))
+    (values day nanos unit)))
+
+(defun date-pattern-at (regex i)
+  "When a date pattern opens at index I of REGEX, two values: the index after
+it and the pattern it stands for (DATE-PATTERN); else NIL. One of
+*DATE-FAMILIES* in its brackets, alone, [[:date:]], or with a bound:
+<B before B, <=B up to the end of B, >B after the end of B, >=B from B, =B
+within B, :A..B from A to the end of B, either left out. B is a day or a
+time: <=2026-06-30 takes the whole of that day, <=2026-06-30T14:05 the whole
+of that minute. Signals PATTERN-REFUSED for a bound that is no date."
+  (when (and (< (+ i 3) (length regex)) (string= "[[:" regex :start2 i :end2 (+ i 3)))
+    (let ((family (loop for entry in (sort (copy-list *date-families*) #'> :key (lambda (e) (length (first e))))
+                        for name = (first entry)
+                        for after = (+ i 3 (length name))
+                        when (and (<= after (length regex))
+                                  (string= name regex :start2 (+ i 3) :end2 after)
+                                  (tuatara.dates:char-at-p regex after (length regex) "<>=:"))
+                          return entry)))
+      (when family
+        (destructuring-bind (name format utc) family
+          (let* ((from (+ i 3 (length name)))
+                 (close (search ":]]" regex :start2 from)))
+            (when close
+              (let ((words (subseq regex from close)) (low nil) (high nil))
+                (flet ((start-of (text)
+                         (multiple-value-bind (day nanos) (date-bound text name format utc) (cons day nanos)))
+                       (end-of (text)
+                         (multiple-value-bind (day nanos unit) (date-bound text name format utc)
+                           (multiple-value-bind (d n) (tuatara.dates:moment-after day nanos unit) (cons d n)))))
+                  (cond ((zerop (length words)))
+                        ((char= (char words 0) #\:)
+                         (let ((dots (search ".." words)))
+                           (unless dots
+                             (refuse-pattern "invalid: [[:~a:A..B:]] wants two dots between its dates, either left out" name))
+                           (let ((a (subseq words 1 dots)) (b (subseq words (+ dots 2))))
+                             (when (plusp (length a)) (setf low (start-of a)))
+                             (when (plusp (length b)) (setf high (end-of b))))))
+                        ((uiop:string-prefix-p "<=" words) (setf high (end-of (subseq words 2))))
+                        ((uiop:string-prefix-p ">=" words) (setf low (start-of (subseq words 2))))
+                        ((char= (char words 0) #\<) (setf high (start-of (subseq words 1))))
+                        ((char= (char words 0) #\>) (setf low (end-of (subseq words 1))))
+                        (t (setf low (start-of (subseq words 1)) high (end-of (subseq words 1))))))
+                (when (and low high (not (tuatara.dates:moment< (car low) (cdr low) (car high) (cdr high))))
+                  (refuse-pattern "invalid: [[:~a~a:]] ends before it begins" name words))
+                (values (+ close 3) (date-pattern format utc low high))))))))))
+
 (defparameter *pattern-filters*
   (list* (cons "card" (lambda () (card-filter)))
+         (cons "date" #'date-filter)
          (cons "iban" (lambda () (lambda (position) (iban-end cl-ppcre::*string* position cl-ppcre::*end-pos*))))
          (cons "bitcoin" (lambda () (lambda (position) (bitcoin-end cl-ppcre::*string* position cl-ppcre::*end-pos*))))
          (cons "onion" (lambda () (lambda (position) (onion-end cl-ppcre::*string* position cl-ppcre::*end-pos*))))
@@ -692,14 +944,15 @@ both, or NIL: see ENCODED-BLOCK-END. It holds small and capital letters."
          (loop for (name) in *card-numbers*
                collect (let ((name name)) (cons (format nil "card~a" name) (lambda () (card-filter name))))))
   "The filters a named pattern may hold (*FILTER-MARK*), each (NAME . MAKER),
-MAKER a function of no arguments making the filter.")
+MAKER a function making the filter: of no arguments, or, for a mark NAME-WORDS,
+of WORDS.")
 
 (defun card-pattern (&optional network)
   "The numbers of the card NETWORK (a name of *CARD-NUMBERS*), or of any of
 them, no digit just before: read by a filter (CARD-FILTER), as they are
 written, together or in groups, of the network's prefixes and lengths, the
 Luhn check digit right (ISO/IEC 7812)."
-  (format nil "(?<![0-9])(?=[0-9])(?<~acard~@[~a~]>)" *filter-mark* network))
+  (format nil "(?<![0-9])(?=[0-9]{4}(?:[0-9]{4}|[ -][0-9]{4}))(?<~acard~@[~a~]>)" *filter-mark* network))
 
 (defparameter *named-patterns*
   (append
@@ -718,9 +971,10 @@ Luhn check digit right (ISO/IEC 7812)."
      ("sha256" "a SHA-256 digest: 64 hex digits (FIPS 180-4)" ,(hex-run-pattern 64))
      ("sha512" "a SHA-512 digest: 128 hex digits (FIPS 180-4)" ,(hex-run-pattern 128))
      ("iban" "an IBAN, its country's length and its check digits right (ISO 13616)"
-      ,(format nil "(?<![A-Za-z0-9])(?=[A-Za-z]{2}[0-9]{2})(?<~aiban>)" *filter-mark*))
+      ,(format nil "(?<![A-Za-z0-9])(?=[A-Za-z]{2}[0-9]{2}[ A-Za-z0-9][A-Za-z0-9]{4})(?<~aiban>)" *filter-mark*))
      ("bitcoin" "a Bitcoin address, 1..., 3... or bc1..., its checksum right (BIP 173, BIP 350)"
-      ,(format nil "(?<![A-Za-z0-9])(?=[13]|[Bb][Cc]1)(?<~abitcoin>)" *filter-mark*))
+      ,(format nil "(?<![A-Za-z0-9])(?=[13][1-9A-HJ-NP-Za-km-z]{25}|[Bb][Cc]1[~a~:@(~a~)]{11})(?<~abitcoin>)"
+               *bech32* *bech32* *filter-mark*))
      ("onion" "a Tor onion address, version 3 its check right, or version 2 (Tor's rend-spec)"
       ,(format nil "(?<![A-Za-z0-9-])(?=[A-Za-z2-7]{16})(?<~aonion>)" *filter-mark*))
      ("base32" "a block of Base32, capitals or small, padded right, over lines too (RFC 4648)"
@@ -730,7 +984,16 @@ Luhn check digit right (ISO/IEC 7812)."
      ("creditcard" "a payment card number of any network below, its check digit right (ISO/IEC 7812)"
       ,(card-pattern)))
    (loop for (name) in *card-numbers*
-         collect (list name (format nil "a ~a card number, its check digit right" name) (card-pattern name))))
+         collect (list name (format nil "a ~a card number, its check digit right" name) (card-pattern name)))
+   (loop for (name format utc) in *date-families*
+         collect (list name
+                       (format nil "a date~a~:[~;, a bound with an offset compared in UTC~], [[:~a<2026-07-01:]] and the like for a range"
+                               (ecase format
+                                 (:iso " as RFC 3339 and ISO 8601 write it, 2026-06-30 or 2026-06-30T14:05:00+02:00")
+                                 (:dmy ", day, month, year, 30.06.2026, 30/06/2026 or 30-06-2026 14:05")
+                                 (:mdy ", month, day, year, 06/30/2026 or 6-30-2026 2:05 PM"))
+                               utc name)
+                       (date-pattern format utc nil nil))))
   "The named patterns, [[:ipv4:]] and the others, each (NAME WORDS PATTERN):
 WORDS say what it finds, PATTERN finds it, as cl-ppcre reads it. Each stands
 alone in its brackets, as a group: [[:ipv4:]]+ repeats it; it holds no group
@@ -766,7 +1029,9 @@ as every pattern is (ENGINE-PATTERN)."
 the filter it names (*PATTERN-FILTERS*)."
   (cond ((and (consp tree) (eq (first tree) :named-register) (stringp (second tree))
               (uiop:string-prefix-p *filter-mark* (second tree)))
-         (let ((maker (cdr (assoc (subseq (second tree) (length *filter-mark*)) *pattern-filters* :test #'string=))))
-           (list :filter (funcall maker))))
+         (let* ((name (subseq (second tree) (length *filter-mark*)))
+                (dash (position #\- name))
+                (maker (cdr (assoc (subseq name 0 dash) *pattern-filters* :test #'string=))))
+           (list :filter (if dash (funcall maker (subseq name (1+ dash))) (funcall maker)))))
         ((consp tree) (mapcar #'filter-tree tree))
         (t tree)))

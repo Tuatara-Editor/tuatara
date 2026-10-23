@@ -10,9 +10,9 @@
    #:xml-elements #:xml-element #:xml-top-elements #:xml-element-inner #:xml-element-inside #:xml-replace-elements #:xml-value
    #:utf-16-text #:parse-decimal #:split-words #:merge-ranges #:+fnv-offset+ #:string-hash
    ;; JSON
-   #:json-read #:json-write #:json-object #:json-get #:json-integer #:json-text #:json-items #:json-true-p #:json-error #:json-error-position #:json-error-text #:*json-deepest*
+   #:json-read #:json-path-bounds #:json-write #:json-object #:json-get #:json-integer #:json-text #:json-items #:json-true-p #:json-error #:json-error-position #:json-error-text #:*json-deepest*
    ;; types and tunables
-   #:octets #:make-octets #:fixvec #:+max-leaf+ #:+target-leaf+ #:+min-leaf+ #:+max-fanout+ #:+span-size+
+   #:octets #:make-octets #:with-octet-block #:fixvec #:+max-leaf+ #:+target-leaf+ #:+min-leaf+ #:+max-fanout+ #:+span-size+
    ;; mapped files
    #:mapping #:mapping-p #:map-file #:map-fd #:close-mapping #:retarget-mapping
    #:mapping-path #:mapping-length #:mapping-live #:mapping-fd #:mapping-sap #:mapping-rope #:map-rope-sources
@@ -28,7 +28,7 @@
    #:rope-line-downward #:rope-line-upward #:map-line-slices #:rope-count-chars #:*text-octets*
    #:tally #:tally-p #:make-tally #:tally-line-number #:tally-line-start #:tally-counted-lines
    #:rope-count-newlines #:rope-nth-newline
-   #:rope-line-start #:rope-line-end #:rope-line-pieces #:blank-line-octet-p
+   #:rope-line-start #:rope-line-end #:rope-line-pieces #:blank-line-octet-p #:*blank-line-octets*
    #:rope-pieces #:rope-slice #:splice-rope
    ;; edits
    #:edit #:edit-p #:make-edit #:edit-start #:edit-end #:edit-insert #:edit-deleted
@@ -44,6 +44,6 @@
    ;; invariants
    #:check-rope #:summarise #:continuation-byte-p
    ;; strict UTF-8
-   #:octets-decode #:octets-char-start-p #:octets-string #:string-octets #:put-string-octets #:string-octet-length #:char-octet-length #:lenient-string #:raw-byte-code-p #:rope-invalid
+   #:octets-decode #:octets-char-start-p #:octets-pending #:octets-string #:string-octets #:put-string-octets #:string-octet-length #:char-octet-length #:lenient-string #:raw-byte-code-p #:control-code-p #:crlf-octets-p #:line-text-end #:rope-line-text-end #:rope-crlf-p #:*openers* #:*closers* #:*opening-octets* #:*closing-octets* #:*bracket-octets* #:rope-invalid
    ;; octets and lines of plain strings
-   #:octets-latin-1 #:charset-text #:octets-hex #:string-line-start #:string-line-end #:one-line))
+   #:octets-latin-1 #:word-char-p #:name-char-p #:charset-text #:octets-hex #:*hex-pairs* #:string-line-start #:string-line-end #:one-line))

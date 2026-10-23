@@ -389,10 +389,20 @@ of their own, each (START END FACE)."
 (defun fit-to-columns (string columns)
   "STRING cut or padded with spaces to fill COLUMNS columns of the screen, a
 wide character counting two. Two values: that string, and how many characters
-of STRING it keeps."
-  (let ((kept (tuatara.display:chars-in-columns string columns)))
-    (values (tuatara.display:pad-columns (if (= kept (length string)) string (subseq string 0 kept)) columns)
-            kept)))
+of STRING it keeps. Each character is looked at once; one of printable ASCII
+alone takes a column each."
+  (declare (type fixnum columns))
+  (let ((n (length string)))
+    (multiple-value-bind (kept used)
+        (if (every (lambda (c) (char<= #\Space c #\~)) string)
+            (let ((k (min n columns))) (values k k))
+            (tuatara.display:chars-in-columns string columns))
+      (declare (type fixnum kept used))
+      (let ((cut (if (= kept n) string (subseq string 0 kept))))
+        (values (if (< used columns)
+                    (concatenate 'string cut (make-string (- columns used) :initial-element #\Space))
+                    cut)
+                kept)))))
 
 (defun row-parts (pieces)
   "The columns where a part of a screen row made of PIECES begins after the
@@ -472,6 +482,16 @@ in ROWS of WINDOW besides point, in any order: the cursors of a split, for one.
 Each is drawn in :split-cursor, or :split-cursor-insert while the real cursor
 is a bar.")
 
+(defvar *point-marked-functions* '()
+  "Functions of a buffer, true when it shows where point is in a look of its
+own (the calendar its day): no cursor is then drawn over it, in its window
+selected or not.")
+
+(defun point-marked-p (buffer)
+  "True when BUFFER shows where point is in a look of its own
+\(*POINT-MARKED-FUNCTIONS*), so that no cursor is drawn over it."
+  (some (lambda (function) (funcall function buffer)) *point-marked-functions*))
+
 (defun row-at (rows position)
   "The index of the row of ROWS showing POSITION, or at whose end it stands;
 NIL when POSITION is outside them."
@@ -498,10 +518,12 @@ values: the highlight ranges of those on a character, and for each row with
 one after the end of its text, (ROW . FACE). Those of *OTHER-CURSOR-FUNCTIONS*
 are in :split-cursor (:split-cursor-insert while text is typed); WINDOW's
 point, while the cursor is elsewhere (CURSOR-ELSEWHERE-P), in :cursor-inactive,
-but in the hex view, which marks its octet itself."
+but in the hex view, which marks its octet itself, and in a buffer that marks
+point in its own way (*POINT-MARKED-FUNCTIONS*)."
   (let* ((buffer (tuatara.display:window-buffer window))
          (point (and (cursor-elsewhere-p editor window)
                      (not (tuatara.display:hex-view-p buffer))
+                     (not (point-marked-p buffer))
                      (tuatara.display:window-point window))))
     (when (and (or point *other-cursor-functions*) (plusp (length rows)))
       (let* ((from (tuatara.display:row-start (aref rows 0)))
@@ -758,7 +780,7 @@ match."
            (let ((code (char-code c)))
              (if (eq which :raw-bytes)
                  (and (tuatara.text:raw-byte-code-p code) (tuatara.display:raw-byte-display code))
-                 (cond ((or (< code 32) (<= 127 code 159)) (tuatara.display:control-char-display c))
+                 (cond ((tuatara.text:control-code-p code) (tuatara.display:control-char-display c))
                        ((and (>= code #x61C)
                              (or (tuatara.display:in-ranges-p code tuatara.display:*direction-controls*)
                                  (tuatara.display:in-ranges-p code *escaped-invisibles*)))
@@ -853,8 +875,10 @@ counted: what needs them shows without them meanwhile."
                   (+ (tuatara.display:window-text-top selected) row)
                   (+ (tuatara.display:area-left selected) (tuatara.display:window-margin selected)
                      (cursor-column-past-line selected column (tuatara.display:row-scale (aref (tuatara.display:window-rows selected) row))))
-                  ;; no cursor over a picture shown in place of the text, nor while one is on its way
-                  (if (shown-as-picture-p frontend (tuatara.display:window-buffer selected)) :hidden shape)
+                  ;; no cursor over a picture shown in place of the text, nor while one is on its
+                  ;; way, nor where the buffer marks point itself (the calendar's day)
+                  (let ((buffer (tuatara.display:window-buffer selected)))
+                    (if (or (shown-as-picture-p frontend buffer) (point-marked-p buffer)) :hidden shape))
                   colour)
                  ;; point is under the panel for now: the cursor waits after the echo row's text
                  (tuatara.frontend:frontend-set-cursor

@@ -53,7 +53,7 @@
     (is string= (format nil "a foo~%c foo bazooka") (split-text "% f f o o RET a C-k C-g" text))
     (true (search "Split ended: the text deleted beside this place differs at another"
                   (split-echo "% f f o o RET a C-k" text)))
-    (is string= (format nil "a foo~%c foo bazooka") (split-text "% f f o o RET a M-z r C-g" text))
+    (is string= (format nil "a foor~%c foozooka") (split-text "% f f o o RET a M-z r C-g" text))
     ;; each C-d deleting the same character at both, until one does not
     (is string= (format nil "a foo~%c foozooka") (split-text "% f f o o RET a C-d C-d C-d C-d C-g" text))
     (is string= (format nil "a foobar~%c foo b  zooka") (split-text "% f f o o RET a M-\\ C-g" (format nil "a foo   bar~%c foo b  zooka")))

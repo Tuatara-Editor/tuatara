@@ -675,6 +675,18 @@ when it is full: return where in the buffer they go and how many fit."
              (fill (writer-buffer writer) 32 :start at :end (+ at n))
              (decf count n))))
 
+(defun read-fd-into (fd octets &key (start 0) (end (length octets)) (path "a file"))
+  "Read what the open file or pipe FD has, as much as fits, into OCTETS from
+START below END, read again when a signal broke in: how many octets came, 0
+at its end. A FILE-SYSTEM-ERROR, naming PATH, when it cannot be read."
+  (loop (let ((got (with-octets-sap (sap octets)
+                     (sb-alien:alien-funcall
+                      (sb-alien:extern-alien "read" (function sb-alien:long sb-alien:int sb-sys:system-area-pointer
+                                                              sb-alien:unsigned-long))
+                      fd (sb-sys:sap+ sap start) (- end start)))))
+          (cond ((>= got 0) (return got))
+                ((/= (sb-alien:get-errno) sb-posix:eintr) (fail "read" path))))))
+
 (defun read-fd-octets (fd &key (path "a file") (size-hint 65536) most)
   "Every octet the open file FD gives until its end, as an octet vector: for
 files whose size the system does not know or report truly (/proc, /sys), and
@@ -690,16 +702,43 @@ seen without growing it; the vector returned is that one, cut to what came."
         (let ((bigger (make-array (* 2 (length buffer)) :element-type '(unsigned-byte 8))))
           (replace bigger buffer)
           (setf buffer bigger)))
-      (let ((got (with-octets-sap (sap buffer)
-                   (sb-alien:alien-funcall
-                    (sb-alien:extern-alien "read" (function sb-alien:long sb-alien:int sb-sys:system-area-pointer
-                                                            sb-alien:unsigned-long))
-                    fd (sb-sys:sap+ sap filled) (- (length buffer) filled)))))
-        (cond ((plusp got) (incf filled got))
-              ((zerop got) (return))
-              ((= (sb-alien:get-errno) sb-posix:eintr))
-              (t (fail "read" path)))))
+      (let ((got (read-fd-into fd buffer :start filled :path path)))
+        (if (zerop got) (return) (incf filled got))))
     (if (= filled (length buffer)) buffer (sb-kernel:%shrink-vector buffer filled))))
+
+(defstruct (octet-pieces (:constructor make-octet-pieces ()) (:copier nil))
+  "Octets gathered a piece at a time (ADD-OCTET-PIECE), joined into one vector
+once all have come (JOINED-OCTETS): SIZE octets in all, PIECES each (VECTOR
+. N), the first N octets of VECTOR, the latest first."
+  (size 0 :type fixnum)
+  (pieces '() :type list))
+
+(setf (documentation 'make-octet-pieces 'function) "A new OCTET-PIECES, holding no octets yet."
+      (documentation 'octet-pieces-size 'function) "How many octets an OCTET-PIECES holds in all.")
+
+(defun add-octet-piece (pieces octets &optional (n (length octets)))
+  "Add the first N octets of OCTETS to PIECES (OCTET-PIECES), OCTETS itself
+kept, not copied: it is not to be changed after. Returns PIECES."
+  (push (cons octets n) (octet-pieces-pieces pieces))
+  (incf (octet-pieces-size pieces) n)
+  pieces)
+
+(defun joined-octets (pieces)
+  "Every octet of PIECES (OCTET-PIECES), in the order they were added, as one
+new vector."
+  (let* ((size (octet-pieces-size pieces))
+         (all (make-array size :element-type '(unsigned-byte 8)))
+         (at size))
+    (loop for (piece . n) in (octet-pieces-pieces pieces)
+          do (decf at n)
+             (replace all piece :start1 at :end2 n))
+    all))
+
+(defun wipe-octet-pieces (pieces)
+  "Fill every vector of PIECES (OCTET-PIECES) with zeros, so that what they
+held is left only where it was joined."
+  (loop for (piece) in (octet-pieces-pieces pieces) do (fill piece 0))
+  pieces)
 
 (defun read-fd-at (fd octets offset &key (end (length octets)) (path "a file"))
   "Read into OCTETS below END the octets of the open file FD from OFFSET, with

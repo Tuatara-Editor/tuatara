@@ -285,11 +285,7 @@ or looked for."
         (progn (org-goto-char buffer (org-node-begin here)) t)
         (let ((scanner (cl-ppcre:create-scanner (format nil "(?im)^[ \\t]*:ID:[ \\t]+~a[ \\t]*$" (cl-ppcre:quote-meta-chars id))))
               ;; the Org files open now, as their buffers have them
-              (open (org-agenda-snapshot
-                     (loop for b in tuatara.buffer:*buffers*
-                           for file = (tuatara.buffer:buffer-file b)
-                           for path = (and file (tuatara.io:native file))
-                           when (and path (uiop:string-suffix-p path ".org")) collect path))))
+              (open (org-agenda-open-snapshot)))
           (org-search-notes (format nil "id:~a" id)
                             (lambda (path)
                               (and (uiop:string-suffix-p path ".org")
@@ -342,19 +338,26 @@ first as a search's does (Regex match file names: ), the files MATCHING (a
 function of a regular expression and the files) gives listed as it is
 typed, the files found in the background meanwhile
 \(CALL-WITH-FORMATTED-FILES); \\<pattern>\\[search-toggle-regex] switches to literal
-text and back. \\<minibuffer>\\[minibuffer-done] takes what is typed, whichever file is
-selected, once all are listed: a regular expression, literal text with its
-special characters escaped."
-  (let ((typed "") (regex t))
+text and back. \\<pattern-answer>\\[pattern-done] takes what is typed, whichever file is
+selected: a regular expression, literal text with its
+special characters escaped; a regular expression that cannot be used says
+why in the prompt, waiting for it to be mended."
+  (let ((typed "") (regex t) (refused nil))
     (call-with-formatted-files
      (lambda (listed source)
-       (let ((*toggle-pattern-kind* (lambda () (setf regex (not regex)))))
-         (completing-read (lambda () (format nil "~a ~a: " (string-capitalize (pattern-kind-words regex) :end 1) words))
+       (let ((*toggle-pattern-kind* (lambda () (setf regex (not regex))))
+             (*pattern-done* (lambda ()
+                               (if (pattern-problem (editor-minibuffer-text *editor*) regex)
+                                   (setf refused (editor-minibuffer-text *editor*))
+                                   (finish-minibuffer)))))
+         (completing-read (lambda ()
+                            (let ((text (editor-minibuffer-text *editor*)))
+                              (refusable-pattern-prompt regex words (pattern-problem text regex) (equal refused text))))
                           (lambda (input)
                             (setf typed input)
                             (mapcar #'third (funcall matching (pattern-regex input regex) (funcall listed))))
                           :filter nil :select (lambda (candidates input) (declare (ignore candidates input)) :input) :reselect t
-                          :source source :keymap *pattern-keymap*
+                          :source source :keymap *pattern-answer-keymap*
                           :none (format nil "none in ~a" (abbreviated-path (directory-name *formatted-file-directory*)))))))
     (keep-typed-pattern typed)
     (pattern-regex typed regex)))

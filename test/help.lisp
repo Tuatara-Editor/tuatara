@@ -106,6 +106,32 @@
       (destructuring-bind (name line) (followed "C-h v t u a t a r a . d e f a u l t s : : * h e l p - c o l u m n * RET")
         (true (search "(defparameter *help-column* " line) "~a ~a" name line)))))
 
+(define-test (help docstrings-split-one-way)
+  ;; help and the completion popup cut a docstring into the same paragraphs, items and examples
+  (dolist (doc (list (format nil "The buffer called NAME,~%made when there is none.~%~%  example~%Done.")
+                     (format nil "Keys:~%- C-x b goes to a buffer~%- q~%  leaves it~%1. one more~%~%  (set in)~%After the list, words~%run on.")
+                     (format nil "One line.")
+                     (format nil "First paragraph of a few words that need filling to fit the~%column given here.~%~%Second~%~%~%Third.")))
+    (dolist (column '(18 30 72))
+      (is equal (tuatara.command::wrap-text doc column)
+          (uiop:split-string (string-right-trim '(#\Newline)
+                                                (with-output-to-string (out)
+                                                  (tuatara.defaults::write-documentation out doc :column column)))
+                             :separator '(#\Newline))
+          "~s at ~d" doc column))))
+
+(define-test (help char-named-as-shown)
+  ;; a control character named as the screen shows it, a raw octet's codes in hexadecimal
+  (is equal (loop for code in '(0 1 9 27 31 127) collect (format nil "^~c" (code-char (logxor code 64))))
+      (loop for code in '(0 1 9 27 31 127) collect (tuatara.defaults::char-shown-as (code-char code))))
+  (is string= "SPC" (tuatara.defaults::char-shown-as #\Space))
+  (is string= "(a raw octet, not UTF-8, #xe9)" (tuatara.defaults::char-codes-text (code-char (+ #xDC00 #xE9))))
+  (flet ((described (keys)
+           (run-keys keys :text (format nil "€~c" (code-char (+ #xDC00 #xFF))) :width 100 :height 30)
+           (tuatara.buffer:buffer-string (tuatara.buffer:find-buffer "*Help*"))))
+    (true (search "octets       #xe2 #x82 #xac" (described "C-u C-x =")))
+    (true (search "is an octet that is not UTF-8, #xff." (described "l C-u C-x =")))))
+
 (define-test (help what-is-at-point)
   ;; C-x =: the character at point, its codes, and where point is
   (multiple-value-bind (f editor) (run-keys "C-x =" :text "héllo" :width 100)
@@ -346,3 +372,14 @@
   (is string= "notes.lisp" (tuatara.defaults::source-file-words "/tmp/notes.lisp"))
   (let ((tuatara.runtime:*source-tree* nil))
     (finish (tuatara.defaults::license-file))))
+
+(define-test (help columns-by-the-screen)
+  ;; what a list of keys and the health report line up after a wide character starts at the
+  ;; same column of the screen as after narrow ones: padded by the screen's columns
+  (flet ((column-of (line what) (tuatara.defaults::text-columns (subseq line 0 (search what line)))))
+    (is = 22 (column-of (with-output-to-string (out) (tuatara.defaults::key-line out "" "漢字" "runs")) "runs"))
+    (is = 22 (column-of (with-output-to-string (out) (tuatara.defaults::key-line out "" "C-x" "runs")) "runs"))
+    (let ((tuatara.defaults::*health-pieces* '()))
+      (tuatara.defaults::health-cell "漢字" 10)
+      (tuatara.defaults::health-put "next")
+      (is = 11 (column-of (tuatara.defaults::pieces-text (reverse tuatara.defaults::*health-pieces*)) "next")))))

@@ -204,6 +204,21 @@ help left out."
     (dolist (other others)
       (false (tuatara.defaults::org-read-ts other) "~a not read" other)
       (false (cl-ppcre:scan tuatara.defaults::*org-one-timestamp-scanner* other) "~a not found" other)))
+  ;; timestamps by rule likewise: found whole by each pattern that finds them, and read
+  (dolist (stamp '("<%%(diary-float t 1 1)>" "<%%(diary-float t 1 1) 10:00>" "<%%(diary-cyclic 2 2026 10 1) 9:05-10:30>"
+                   "<%%(diary-cyclic 2 2026 10 1) 22:00-24:00>" "<%%(memq (calendar-day-of-week date) '(1 2 3 4 5))>"
+                   "<%%(and (diary-block 2026 11 1 2026 11 10) (memq (calendar-day-of-week date) '(1)))>"
+                   "<%%(or (diary-cyclic 14 2026 11 2) (diary-cyclic 14 2026 11 4)) 18:00>"))
+    (let ((line (format nil "Meet ~a then" stamp)))
+      (true (tuatara.defaults::org-read-rule stamp) "~a read" stamp)
+      (is equal (list stamp) (cl-ppcre:all-matches-as-strings tuatara.defaults::*org-timestamp-re* line) "~a found" stamp)
+      (is equal (list stamp) (cl-ppcre:all-matches-as-strings tuatara.defaults::*org-rule-timestamp-scanner* line))
+      (is equal (list stamp) (cl-ppcre:register-groups-bind (k text) (tuatara.defaults::*org-planning-item-scanner* (format nil "SCHEDULED: ~a" stamp))
+                               (declare (ignore k)) (list text)))))
+  (dolist (other '("<%%(diary-float t 1 1) 25:00>" "<%%(diary-float t 1 1) 10:00-25:00>" "<%%(diary-float t 1 1) 9:60>"))
+    (false (tuatara.defaults::org-read-rule other) "~a not read" other)
+    (false (cl-ppcre:scan tuatara.defaults::*org-timestamp-re* other) "~a not found" other)
+    (false (cl-ppcre:scan tuatara.defaults::*org-rule-timestamp-scanner* other) "~a not found" other))
   ;; what is read of one
   (let ((ts (tuatara.defaults::org-read-ts "<2026-10-05 Mon 09:00-10:30 .+1d -3d>")))
     (is equal '(2026 10 5 9 0 10 30 :restart 1 #\d :all 3 #\d)
@@ -1007,7 +1022,492 @@ help left out."
 
 (define-test (org warning-of-any-length)
   ;; a warning too long to mean anything: read as days still, never an error that stops the agenda
-  (is = 3 (tuatara.defaults::org-warning-days "<2026-10-20 Tue -3d>" 14))
-  (is = 60 (tuatara.defaults::org-warning-days "<2026-10-20 Tue -2m>" 14))
-  (is = 1 (tuatara.defaults::org-warning-days "<2026-10-20 Tue -36h>" 14))
-  (true (< 1000000 (tuatara.defaults::org-warning-days (format nil "<2026-10-20 Tue -~am>" (make-string 400 :initial-element #\9)) 14))))
+  (flet ((warning (text) (tuatara.defaults::org-warning-days (tuatara.defaults::org-read-ts text))))
+    (is = 3 (warning "<2026-10-20 Tue -3d>"))
+    (is = 60 (warning "<2026-10-20 Tue -2m>"))
+    (is = 1 (warning "<2026-10-20 Tue -36h>"))
+    (false (warning "<2026-10-20 Tue +1w>"))
+    (true (< 1000000 (warning (format nil "<2026-10-20 Tue -~am>" (make-string 400 :initial-element #\9)))))))
+
+(define-test (org dates-by-rule)
+  ;; <%%(diary-float t 1 1)>, the first Monday of every month, as Emacs's Org writes it:
+  ;; read as data, never run, and listed, done and asked for in words as a repeat is
+  (flet ((days (text from count)
+           (let ((rule (tuatara.defaults::org-read-rule text)) (day from))
+             (loop repeat count
+                   for next = (tuatara.defaults::org-rule-next rule day)
+                   while next collect (tuatara.dates:format-day "%F" next) do (setf day (1+ next)))))
+         (at (y m d &optional (h 18)) (encode-universal-time 0 0 h d m y)))
+    (let ((today (tuatara.dates:day-number 2026 10 23)))
+      (is equal '("2026-11-02" "2026-12-07") (days "<%%(diary-float t 1 1) 10:00>" today 2))
+      (is equal '("2026-10-30" "2027-01-29") (days "<%%(diary-float '(1 4 7 10) 5 -1) 14:00-15:00>" today 2))
+      (is equal '("2026-10-29" "2026-11-12") (days "<%%(diary-cyclic 14 2026 10 1)>" today 2))
+      ;; Emacs's own order, month, day, year, read too
+      (is equal '("2026-10-29") (days "<%%(diary-cyclic 14 10 1 2026)>" today 1))
+      (is equal '("2026-10-23" "2026-10-24" "2026-10-25") (days "<%%(diary-block 2026 10 20 2026 10 25)>" today 5))
+      (is equal '("2027-06-30") (days "<%%(diary-anniversary 6 30 1990)>" today 1))
+      (is equal '("2026-11-01" "2026-12-01") (days "<%%(diary-date t 1 t)>" today 2))
+      ;; a fifth weekday only in the months that have one; counted from a day of the month
+      (is equal '("2026-12-29" "2027-03-30") (days "<%%(diary-float t 2 5)>" today 2))
+      (is equal '("2026-11-09") (days "<%%(diary-float t 1 1 8)>" today 1))
+      ;; and: the days all its forms take, looked for within its range of days only
+      (is equal '("2026-11-02" "2026-11-09") (days "<%%(and (diary-block 2026 11 1 2026 11 10) (memq (calendar-day-of-week date) '(1)))>" today 5))
+      (is equal '() (days "<%%(and (diary-block 2020 1 1 2020 2 1) (diary-date t 1 t))>" today 3))
+      ;; days of the week listed, in the one form of Lisp read as data
+      (is equal '("2026-10-23" "2026-10-26" "2026-10-27" "2026-10-28" "2026-10-29" "2026-10-30" "2026-11-02")
+          (days "<%%(memq (calendar-day-of-week date) '(1 2 3 4 5)) 09:00>" today 7)))
+    ;; anything else is not read, and nothing of it is run
+    (dolist (text '("<%%(shell-command \"touch /tmp/x\")>" "<%%((lambda () 1))>" "<%%(diary-float t 9 1)>"
+                    "<%%(diary-float t 1 1) 25:00>" "<%%(diary-float #.(quit) 1 1)>" "<%%(diary-cyclic 0 2026 1 1)>"
+                    "<%%(memq (calendar-day-of-week date) '(1 9))>" "<%%(memq (calendar-day-of-week now) '(1 2))>"
+                    "<%%(memq (delete-file \"x\") '(1 2))>"))
+      (false (tuatara.defaults::org-read-rule text) "~a" text))
+    ;; a repeat in words: a repeater from today, or a rule, the months from the next time it comes
+    (let ((now (at 2026 10 23 12)))
+      (flet ((words (input) (let ((v (tuatara.defaults::org-words-repeat input now)))
+                              (if (stringp v) v (and v (tuatara.defaults::org-ts-text v))))))
+        (is equal "<%%(diary-float t 1 1) 10:00>" (words "first monday every month 10:00"))
+        (is equal "<%%(diary-float '(1 4 7 10) 5 -1) 14:00-15:00>" (words "last friday of every 3 months, 14:00-15:00"))
+        (is equal "<%%(diary-float '(1 3 5 7 9 11) 3 3)>" (words "third wed every 2 months"))
+        (is equal "<2026-10-23 Fri 10:00 +1w>" (words "every week 10:00"))
+        (is equal "<2026-10-23 Fri +2d>" (words "every second day"))
+        (is equal "<2026-10-23 Fri 08:00 +1d>" (words "everyday 8:00"))
+        (is equal "<2026-10-23 Fri 20:00 +1d>" (words "daily 20:00"))
+        (is equal "<2026-10-23 Fri 09:30 +2w>" (words "every other friday 9:30"))
+        (is equal "<2026-10-26 Mon +1w>" (words "every monday"))
+        (is equal "<%%(memq (calendar-day-of-week date) '(1 2 3 4 5)) 09:00>" (words "every weekday 9:00"))
+        (is equal "<%%(memq (calendar-day-of-week date) '(1 2 3 4 5)) 08:30-09:00>" (words "every monday to friday 8:30-9:00"))
+        (is equal "<%%(memq (calendar-day-of-week date) '(1 3 5))>" (words "every mon, wed and fri"))
+        (is equal "<%%(memq (calendar-day-of-week date) '(0 6))>" (words "every weekend"))
+        (is equal "<%%(memq (calendar-day-of-week date) '(0 1 5 6))>" (words "every friday to monday"))
+        ;; from and to: a repeat between two dates, the time wherever it is said
+        (is equal "<%%(and (diary-block 2026 11 2 2026 12 21) (diary-cyclic 7 2026 11 2)) 10:00>"
+            (words "every monday from nov 2 to dec 21 10:00"))
+        (is equal "<%%(and (diary-block 2026 11 2 2026 11 13) (memq (calendar-day-of-week date) '(1 2 3 4 5))) 09:00>"
+            (words "every weekday 9:00 from 2026-11-02 until 2026-11-13"))
+        (is equal "<%%(and (diary-block 2026 10 23 2026 12 21) (diary-cyclic 7 2026 10 26))>" (words "every monday until dec 21"))
+        (is equal "<2026-11-02 Mon +1w>" (words "every monday from nov 2"))
+        (false (words "every monday from dec 21 to nov 2"))
+        (false (words "first monday every month from jan 1"))
+        (false (words "every other mon and fri"))
+        (false (words "last friday every 5 months"))
+        (false (words "monday"))))
+    ;; done: the day it was for kept in LAST_REPEAT, the rule and the keyword as they were
+    (let ((task (format nil "* TODO Team meeting~%SCHEDULED: <%%(diary-float t 1 1) 10:00>~%Notes~%")))
+      (let ((tuatara.defaults::*org-now* (at 2026 11 2)))
+        (setf task (org-text-after "C-c C-t" task))
+        (is string= (format nil "* TODO Team meeting~%SCHEDULED: <%%(diary-float t 1 1) 10:00>~%:PROPERTIES:~%:LAST_REPEAT: [2026-11-02 Mon 10:00]~%:END:~%- State \"DONE\"       from \"TODO\"       [2026-11-02 Mon 18:00]~%Notes~%")
+            task))
+      ;; done before the next comes: that one; long after, the missed ones passed over
+      (let ((tuatara.defaults::*org-now* (at 2026 11 3)))
+        (setf task (org-text-after "C-c C-t" task))
+        (true (search ":LAST_REPEAT: [2026-12-07 Mon 10:00]" task)))
+      (let ((tuatara.defaults::*org-now* (at 2027 2 10)))
+        (setf task (org-text-after "C-c C-t" task))
+        (true (search ":LAST_REPEAT: [2027-02-01 Mon 10:00]" task))))
+    ;; asked for in words, or typed whole
+    (let ((tuatara.defaults::*org-now* (at 2026 10 23 12)))
+      (is string= (format nil "* TODO Meet~%SCHEDULED: <%%(diary-float t 1 1) 10:00>~%")
+          (org-text-after (format nil "C-c C-s ~a RET" (typed-keys "first monday every month 10:00")) (format nil "* TODO Meet~%")))
+      (is string= (format nil "* TODO Run~%SCHEDULED: <2026-10-23 Fri 09:30 +2w>~%")
+          (org-text-after (format nil "C-c C-s ~a RET" (typed-keys "every other friday 9:30")) (format nil "* TODO Run~%")))
+      (is string= (format nil "* TODO Water~%SCHEDULED: <%%(diary-cyclic 2 2026 10 1)>~%")
+          (org-text-after (format nil "C-c C-s ~a RET" (typed-keys "<%%(diary-cyclic 2 2026 10 1)>")) (format nil "* TODO Water~%")))
+      ;; the calendar's day written after from, and after to, in place of what was typed there
+      (is string= (format nil "* TODO Swim~%SCHEDULED: <%%(and (diary-block 2026 10 26 2026 12 14) (diary-cyclic 7 2026 10 26))>~%")
+          (org-text-after (format nil "C-c C-s ~a S-<right> S-<right> S-<right> ~a S-<down> S-<down> S-<down> S-<down> S-<down> S-<down> S-<down> RET"
+                                  (typed-keys "every monday from ") (typed-keys " to "))
+                          (format nil "* TODO Swim~%")))
+      (is equal 18 (tuatara.defaults::org-repeat-date-place "every monday from "))
+      (false (tuatara.defaults::org-repeat-date-place "every monday to friday"))
+      ;; the journal's date question takes dates only
+      (true (null (tuatara.defaults::org-words-repeat "monday" (at 2026 10 23)))))
+    ;; the agenda: a timestamp by rule on each of its days; a task by rule never done not past
+    ;; due, done before past due from the first day after; a deadline warned of as it nears
+    (uiop:with-temporary-file (:pathname path :type "org")
+      (with-open-file (o path :direction :output :if-exists :supersede :external-format :utf-8)
+        (format o "* TODO Team meeting~%SCHEDULED: <%%(diary-float t 1 1) 10:00>~%~
+                   * TODO Done before~%SCHEDULED: <%%(diary-float t 1 1)>~%:PROPERTIES:~%:LAST_REPEAT: [2026-09-07 Mon]~%:END:~%~
+                   * TODO Quarterly review~%DEADLINE: <%%(diary-float '(1 4 7 10) 5 -1) 14:00>~%~
+                   * Standup~%<%%(diary-cyclic 2 2026 10 1) 09:00>~%~
+                   * DONE Finished~%SCHEDULED: <%%(diary-float t 1 1)>~%"))
+      (let ((tuatara.defaults::*org-now* (at 2026 10 22 12))
+            (files (list (namestring path))))
+        (flet ((rows (day count)
+                 (mapcar (lambda (row) (subseq row 0 6))
+                         (org-agenda-test-rows (tuatara.defaults::org-agenda-span (tuatara.dates:day-number 2026 10 day) count :files files :log nil)))))
+          (is equal '(("2026-10-05" "timestamp" "" 900 nil "Standup")
+                      ("2026-10-05" "scheduled" "Scheduled:" 1000 "TODO" "Team meeting")
+                      ("2026-10-05" "scheduled" "Scheduled:" nil "TODO" "Done before"))
+              (rows 5 1))
+          (is equal '(("2026-10-22" "upcoming-deadline" "In   8 d.:" 1400 "TODO" "Quarterly review")
+                      ("2026-10-22" "past-scheduled" "Sched.17x:" nil "TODO" "Done before"))
+              (rows 22 1))
+          (is equal '(("2026-10-30" "deadline" "Deadline:" 1400 "TODO" "Quarterly review"))
+              (remove "Standup" (rows 30 1) :key #'sixth :test #'string=)))))))
+
+(define-test (org notify-tagged-entries)
+  ;; entries tagged :notify: told on the desktop: before their time and at it, a date alone
+  ;; in the morning, each once, a task done never; by the program, given -- before the title
+  (uiop:with-temporary-file (:pathname path :type "org")
+    (with-open-file (o path :direction :output :if-exists :supersede :external-format :utf-8)
+      (format o "* TODO Dentist :notify:~%SCHEDULED: <2026-10-23 Fri 14:00>~%~
+                 * Team meeting :notify:~%:PROPERTIES:~%:NOTIFY_BEFORE: 30~%:END:~%<%%(diary-float t 5 4) 10:00>~%~
+                 * TODO Pay rent :notify:~%DEADLINE: <2026-10-23 Fri>~%~
+                 * DONE Done already :notify:~%SCHEDULED: <2026-10-23 Fri 14:00>~%~
+                 * Not tagged~%<2026-10-23 Fri 14:00>~%~
+                 * -rf / :notify:~%<2026-10-23 Fri 16:00>~%~
+                 * Medication :notify:~%<2026-10-20 Tue 08:00 +1d>~%<2026-10-20 Tue 20:00 +1d>~%~
+                 * TODO Tablet :notify:~%SCHEDULED: <2026-10-21 Wed 07:30 ++1d>~%~
+                 * TODO Left undone :notify:~%SCHEDULED: <2026-10-21 Wed 07:30>~%"))
+    (let ((files (list (namestring path))))
+      (flet ((due (h m)
+               (let* ((now (encode-universal-time 0 m h 23 10 2026))
+                      (tuatara.defaults::*org-now* now))
+                 (mapcar (lambda (d) (list (second d) (third d)))
+                         (tuatara.defaults::org-notify-due
+                          (tuatara.defaults::org-agenda-day (tuatara.defaults::org-today now) :files files :log nil) now)))))
+        (clrhash tuatara.defaults::**org-notify-sent**)
+        (let ((tuatara.defaults::*org-notify-before* 10) (tuatara.defaults::*org-notify-day-time* "08:00"))
+          ;; before the morning: nothing
+          (is equal '() (due 7 0))
+          ;; the morning: the deadline of a date alone; the fourth Friday's meeting 30 minutes before
+          ;; the words: when, what kind, and the category, here the file's name
+          (true (assoc "Pay rent" (due 8 0) :test #'string=))
+          (false (assoc "Pay rent" (due 7 59) :test #'string=))
+          (true (uiop:string-prefix-p "Today · Deadline · " (second (assoc "Pay rent" (due 8 0) :test #'string=))))
+          (true (uiop:string-prefix-p "10:00, in 25 min" (second (assoc "Team meeting" (due 9 35) :test #'string=))))
+          ;; ten minutes before, and at the time, not the one done nor the one not tagged
+          (is equal '("Dentist") (mapcar #'first (remove-if-not (lambda (d) (search "14:00" (second d))) (due 13 52))))
+          (true (search "in 8 min" (second (assoc "Dentist" (due 13 52) :test #'string=))))
+          (true (search "now" (second (assoc "Dentist" (due 14 2) :test #'string=))))
+          (false (assoc "Dentist" (due 14 6) :test #'string=))
+          ;; a repeating task not ticked off for days is told at its time all the same; one that
+          ;; does not repeat, past due, is not
+          (true (search "07:30, now" (second (assoc "Tablet" (due 7 31) :test #'string=))))
+          (false (assoc "Left undone" (due 7 31) :test #'string=))
+          ;; one entry, two times a day, every day: each told
+          (true (search "08:00, now" (second (assoc "Medication" (due 8 1) :test #'string=))))
+          (let ((first (tuatara.defaults::org-notify-due
+                        (tuatara.defaults::org-agenda-day (tuatara.dates:day-number 2026 10 23) :files files :log nil)
+                        (encode-universal-time 0 1 8 23 10 2026))))
+            (dolist (d first) (setf (gethash (first d) tuatara.defaults::**org-notify-sent**) t))
+            (true (search "20:00, now" (second (assoc "Medication" (due 20 1) :test #'string=)))))
+          (clrhash tuatara.defaults::**org-notify-sent**)
+          ;; told once: the program run by its thread, a stand-in writing what it was given
+          (uiop:with-temporary-file (:pathname out)
+            (uiop:with-temporary-file (:pathname program :type "sh")
+              (with-open-file (o program :direction :output :if-exists :supersede)
+                (format o "#!/bin/sh~%printf '%s|' \"$@\" >> '~a'~%printf '\\n' >> '~a'~%" (namestring out) (namestring out)))
+              (sb-posix:chmod (namestring program) #o700)
+              (let ((tuatara.defaults::*org-notify-program* (namestring program))
+                    (snapshot (tuatara.defaults::org-agenda-snapshot files))
+                    (now (encode-universal-time 0 0 16 23 10 2026)))
+                (clrhash tuatara.defaults::**org-notify-sent**)
+                (tuatara.defaults::org-notify-work snapshot now)
+                (tuatara.defaults::org-notify-work snapshot (+ now 30))
+                (loop repeat 100 until (search "-rf /" (uiop:read-file-string out)) do (sleep 0.05))
+                (let ((lines (remove "" (uiop:split-string (uiop:read-file-string out) :separator '(#\Newline)) :test #'string=)))
+                  (is = 1 (length lines) "told once: ~s" lines)
+                  (true (uiop:string-prefix-p "--app-name=Tuatara|--|-rf /|16:00, now · " (first lines)) "~s" lines)))
+              ;; a program not there is named, nothing told
+              (let ((tuatara.defaults::*org-notify-program* "no-such-notifier-here"))
+                (clrhash tuatara.defaults::**org-notify-sent**)
+                (is equal "no-such-notifier-here"
+                    (tuatara.defaults::org-notify-work (tuatara.defaults::org-agenda-snapshot files)
+                                                       (encode-universal-time 0 0 16 23 10 2026))))))
+          (clrhash tuatara.defaults::**org-notify-sent**))))))
+
+(define-test (org repeat-menu)
+  ;; C-r at the date prompt: the menu of a repeat, started from what was typed, RET writing
+  ;; it where the prompt would have; what it comes to under it
+  (let ((tuatara.defaults::*org-now* (encode-universal-time 0 0 12 23 10 2026)))
+    (flet ((written (keys) (org-text-after keys (format nil "* TODO Thing~%"))))
+      (is string= (format nil "* TODO Thing~%SCHEDULED: <2026-10-23 Fri +1w>~%")
+          (written (format nil "C-c C-s C-r r ~a RET RET" (typed-keys "Weekly"))))
+      ;; days of the week switched on, after six times: its sixth day the end
+      (is string= (format nil "* TODO Thing~%SCHEDULED: <%%(and (diary-block 2026 10 23 2026 11 4) (memq (calendar-day-of-week date) '(1 3 5)))>~%")
+          (written (format nil "C-c C-s C-r r ~a RET 1 3 5 e ~a RET ~a RET RET" (typed-keys "Weekly") (typed-keys "After") (typed-keys "6"))))
+      ;; started from a day and time typed; every two weeks on two days
+      (is string= (format nil "* TODO Thing~%SCHEDULED: <%%(or (diary-cyclic 14 2026 11 2) (diary-cyclic 14 2026 11 4)) 18:00>~%")
+          (written (format nil "C-c C-s ~a C-r r ~a RET n ~a RET 1 3 RET" (typed-keys "nov 2 18:00") (typed-keys "Weekly") (typed-keys "2"))))
+      ;; the choices named from the start: the last Friday, until a day
+      (is string= (format nil "* TODO Thing~%SCHEDULED: <%%(and (diary-block 2026 10 30 2027 10 31) (diary-float t 5 -1))>~%")
+          (written (format nil "C-c C-s ~a C-r r ~a RET e ~a RET ~a RET RET" (typed-keys "oct 30") (typed-keys "last") (typed-keys "On a") (typed-keys "2027-10-31"))))
+      (is string= (format nil "* TODO Thing~%SCHEDULED: <2026-10-23 Fri 08:00 +1d>~%")
+          (written (format nil "C-c C-s C-r t ~a RET r ~a RET RET" (typed-keys "08:00") (typed-keys "Daily"))))
+      ;; C-g leaves it, nothing written
+      (is string= (format nil "* TODO Thing~%") (written "C-c C-s C-r C-g")))
+    (flet ((summary (&rest arguments) (tuatara.defaults::repeat-summary arguments)))
+      (is equal '("Every 2 weeks on Monday and Wednesday, 18:00, from Mon 2 Nov 2026"
+                  "Writes  <%%(or (diary-cyclic 14 2026 11 2) (diary-cyclic 14 2026 11 4)) 18:00>"
+                  "Next    Mon 2 Nov · Wed 4 Nov · Mon 16 Nov · Wed 18 Nov · Mon 30 Nov")
+          (summary "start=2026-11-02" "time=18:00" "repeats=weekly" "every=2" "mon" "wed"))
+      (is equal "Every 3 months on the fourth Friday, from Fri 23 Oct 2026"
+          (first (summary "start=2026-10-23" "repeats=monthly-nth" "every=3")))
+      (is equal "Next    Fri 23 Oct · Mon 23 Oct 2028 · Wed 23 Oct 2030 · Sat 23 Oct 2032"
+          (third (summary "start=2026-10-23" "repeats=yearly" "every=2" "ends=2032-12-31")))
+      ;; what cannot be written says why
+      (is equal '("Cannot be written: Every 5 months has no end date: 12 must be a multiple of it")
+          (summary "start=2026-10-23" "repeats=monthly-day" "every=5" "ends=2027-10-31"))
+      (is equal '("Cannot be written: It ends before it starts")
+          (summary "start=2026-10-23" "repeats=daily" "ends=2026-10-01")))
+    ;; the choices named from the day it starts on
+    (is equal '("Does not repeat" "Daily" "Every weekday, Monday to Friday" "Weekly on Friday" "Monthly on day 30"
+                "Monthly on the last Friday" "Yearly on 30 October")
+        (mapcar #'second (tuatara.defaults::repeat-kinds (tuatara.dates:day-number 2026 10 30))))))
+
+(define-test (org c-c-hints-line-up)
+  ;; C-c on a heading: what acts on it under its title, the rest under it, the columns at the
+  ;; same places in both; the prefixes under it named
+  (let* ((f (run-keys-in-turns (list "M-x o r g - m o d e RET C-c" "") :text (format nil "* TODO Thing~%") :width 110 :height 30))
+         (rows (loop for i below 30 collect (tuatara.frontend.fake:fake-screen-line f i)))
+         (deadline (find-if (lambda (row) (search "C-d org-deadline" row)) rows))
+         (formula (find-if (lambda (row) (search "= org-table-eval-formula" row)) rows)))
+    (true (and deadline formula))
+    (is = (search "C-d org-deadline" deadline) (search "= org-table-eval-formula" formula))
+    (true (find-if (lambda (row) (search "C-x +clock, blocks and more" row)) rows))
+    (true (find-if (lambda (row) (search "C-v +code files" row)) rows))))
+
+(define-test (org rules-worked-out-once-per-agenda)
+  ;; a task by rule: when it is open is worked out once for an agenda of many days, not each day
+  (uiop:with-temporary-file (:pathname path :type "org")
+    (with-open-file (o path :direction :output :if-exists :supersede :external-format :utf-8)
+      (format o "* TODO Meeting~%SCHEDULED: <%%(diary-float t 1 1) 10:00>~%~
+                 * TODO Review~%DEADLINE: <%%(diary-float '(1 4 7 10) 5 -1)>~%~
+                 * TODO Water~%SCHEDULED: <%%(diary-cyclic 3 2026 10 1)>~%"))
+    (let ((tuatara.defaults::*org-now* (encode-universal-time 0 0 12 22 10 2026))
+          (files (list (namestring path)))
+          (calls 0))
+      (sb-int:encapsulate 'tuatara.defaults::org-rule-next 'counted
+                          (lambda (f &rest arguments) (incf calls) (apply f arguments)))
+      (unwind-protect
+           (let ((rows (org-agenda-test-rows (tuatara.defaults::org-agenda-span (tuatara.dates:day-number 2026 10 1) 60
+                                                                                :files files :log nil))))
+             (is equal '("2026-10-05" "scheduled" "Scheduled:" 1000 "TODO" "Meeting")
+                 (subseq (find "Meeting" rows :key #'sixth :test #'string=) 0 6))
+             (true (find "Review" rows :key #'sixth :test #'string=))
+             (true (<= calls 3) "~d calls for 3 rules over 60 days" calls))
+        (sb-int:unencapsulate 'tuatara.defaults::org-rule-next 'counted)))))
+
+(defun least-consed (function &optional (runs 3))
+  "The fewest bytes FUNCTION, of no arguments, conses in RUNS calls."
+  (loop repeat runs minimize (nth-value 2 (tuatara.bench::measuring (funcall function)))))
+
+(define-test (org rules-read-without-garbage)
+  ;; a plain timestamp is no rule, seen at once; a rule's pattern is made once, not at each read
+  (is = 0 (least-consed (lambda () (tuatara.defaults::org-read-rule "<2026-10-05 Mon 09:00>"))))
+  (let ((consed (least-consed (lambda () (tuatara.defaults::org-read-rule "<%%(diary-float t 1 1) 10:00>")))))
+    (true (< consed 4000) "~d bytes to read a rule" consed)))
+
+(define-test (org agenda-times-of-day-read-one-way)
+  ;; the agenda, timestamps and rules read a time of day as a date question does
+  (is equal '(1530 "3:30pm" nil) (multiple-value-list (tuatara.defaults::org-time-of-day "Call 3:30pm")))
+  (is equal '(930 "9:30-10:00" 1000) (multiple-value-list (tuatara.defaults::org-time-of-day "<2026-10-05 Mon 9:30-10:00>")))
+  (false (tuatara.defaults::org-time-of-day "25:00"))
+  (false (tuatara.defaults::org-time-of-day "13pm"))
+  (false (tuatara.defaults::org-read-rule "<%%(diary-float t 1 1) 10:00-25:00>"))
+  (false (tuatara.defaults::org-read-ts "<2026-10-05 Mon 25:00>"))
+  (is string= "<2026-10-05 Mon 22:00-24:00>" (tuatara.defaults::org-ts-text (tuatara.defaults::org-read-ts "<2026-10-05 Mon 22:00-24:00>")))
+  ;; a title's time in the afternoon sorts after a morning's
+  (uiop:with-temporary-file (:pathname path :type "org")
+    (with-open-file (o path :direction :output :if-exists :supersede :external-format :utf-8)
+      (format o "* Call 3:30pm~%<2026-10-05 Mon>~%* Standup~%<2026-10-05 Mon 09:00>~%"))
+    (is equal '(("Standup" 900) ("Call" 1530))
+        (mapcar (lambda (row) (list (sixth row) (fourth row)))
+                (org-agenda-test-rows (tuatara.defaults::org-agenda-day (tuatara.dates:day-number 2026 10 5)
+                                                                        :files (list (namestring path)) :log nil))))))
+
+(define-test (org words-and-menu-write-repeats-alike)
+  ;; a repeat in words with an end is written as the repeat menu writes it
+  (let* ((now (encode-universal-time 0 0 12 23 10 2026))
+         (tuatara.defaults::*org-now* now))
+    (flet ((words (input) (let ((v (tuatara.defaults::org-words-repeat input now)))
+                            (if (stringp v) v (and v (tuatara.defaults::org-ts-text v)))))
+           (menu (&rest arguments) (let ((v (tuatara.defaults::repeat-value arguments)))
+                                     (if (stringp v) v (and v (tuatara.defaults::org-ts-text v))))))
+      (is equal "<%%(and (diary-block 2026 11 5 2027 3 1) (diary-date '(1 3 5 7 9 11) 5 t))>"
+          (words "every 2 months from 2026-11-05 until 2027-03-01"))
+      (is equal (menu "start=2026-11-05" "repeats=monthly-day" "every=2" "ends=2027-03-01")
+          (words "every 2 months from 2026-11-05 until 2027-03-01"))
+      (is equal (menu "start=2026-11-02" "time=10:00" "repeats=monthly-nth" "ends=2026-12-31")
+          (words "first monday every month from 2026-11-01 to 2026-12-31 10:00"))
+      (is equal (menu "start=2026-10-23" "repeats=weekly" "mon" "ends=2026-12-21") (words "every monday until dec 21"))
+      ;; a weekly repeat on one day from a day before it: a repeater from that day, in words or the menu
+      (is equal "<2026-10-26 Mon +1w>" (menu "start=2026-10-23" "repeats=weekly" "mon"))
+      (is equal "<2026-10-26 Mon +1w>" (words "every monday")))))
+
+(define-test (org repeat-days-long-after-the-start)
+  ;; the days to come of a repeat that began long ago: found at once, not stepped to
+  (let* ((today (tuatara.dates:day-number 2026 10 23))
+         (daily (tuatara.defaults::org-read-ts "<2025-01-01 Wed +1d>"))
+         (monthly (tuatara.defaults::org-read-ts "<2026-01-31 Sat +1m>")))
+    (is equal (loop for k below 5 collect (+ today k)) (tuatara.defaults::repeat-days daily today 5))
+    (is equal (mapcar (lambda (m) (tuatara.dates:day-number 2026 m 31)) '(10 11 12 13))
+        (tuatara.defaults::repeat-days monthly today 4))
+    (is equal (list (tuatara.dates:day-number 2025 1 1)) (tuatara.defaults::repeat-days daily 0 1))))
+
+(define-test (org rule-days-found-by-year-and-month)
+  ;; a rule's next and last days, looked for by year or month, are those a walk day by day finds
+  (let ((rules (mapcar #'tuatara.defaults::org-read-rule
+                       '("<%%(diary-anniversary 2 29 2000)>" "<%%(diary-anniversary 10 23)>" "<%%(diary-date 12 25 t)>"
+                         "<%%(diary-date t 31 t)>" "<%%(diary-date '(1 4) 30 '(2027 2029))>" "<%%(diary-date 2 29 t)>"
+                         "<%%(diary-float t 1 1)>" "<%%(diary-float '(1 4 7 10) 5 -1)>" "<%%(diary-float t 2 5)>"
+                         "<%%(diary-float 2 0 5)>" "<%%(diary-float t 1 1 8)>" "<%%(diary-date 2026 t t)>"
+                         "<%%(and (diary-block 2026 11 1 2027 3 1) (diary-date t 1 t))>")))
+        (reach tuatara.defaults::*org-rule-reach*))
+    (flet ((walk (rule day by)
+             (multiple-value-bind (first last) (tuatara.defaults::org-rule-span rule)
+               (if (= by 1)
+                   (loop for k from (max day (or first day)) to (min (+ day reach) (or last (+ day reach)))
+                         when (tuatara.defaults::org-rule-matches-p rule k) return k)
+                   (loop for k downfrom (min day (or last day)) to (max (- day reach) (or first (- day reach)))
+                         when (tuatara.defaults::org-rule-matches-p rule k) return k)))))
+      (dolist (rule rules)
+        (true rule)
+        (loop for day from (tuatara.dates:day-number 2023 12 20) to (tuatara.dates:day-number 2032 3 10) by 37
+              do (is eql (walk rule day 1) (tuatara.defaults::org-rule-next rule day) "next of ~a from ~d" rule day)
+                 (is eql (walk rule day -1) (tuatara.defaults::org-rule-previous rule day) "last of ~a from ~d" rule day))))
+    ;; a day that comes once in eight years found in few looks
+    (let ((leap (tuatara.defaults::org-read-rule "<%%(diary-anniversary 2 29 2000)>")) (looks 0))
+      (sb-int:encapsulate 'tuatara.defaults::org-rule-matches-p 'counted (lambda (f &rest arguments) (incf looks) (apply f arguments)))
+      (unwind-protect (tuatara.defaults::org-rule-next leap (tuatara.dates:day-number 2097 3 1))
+        (sb-int:unencapsulate 'tuatara.defaults::org-rule-matches-p 'counted))
+      (true (< looks 20) "~d looks" looks))))
+
+(define-test (org agenda-line-kinds-agree)
+  ;; every kind of line the agenda makes is one of those named, and a kind not named is refused
+  (let* ((directory (asdf:system-relative-pathname :tuatara "test/org/agenda/"))
+         (files (list (namestring (merge-pathnames "tasks.org" directory)) (namestring (merge-pathnames "notes.org" directory))))
+         (tuatara.defaults::*org-now* (encode-universal-time 0 0 18 1 10 2026))
+         (items (append (tuatara.defaults::org-agenda-span (tuatara.dates:day-number 2026 9 20) 20 :files files :log t)
+                        (tuatara.defaults::org-agenda-todo-list :files files)
+                        (tuatara.defaults::org-agenda-match "work" :files files)))
+         (kinds (remove-duplicates (mapcar #'tuatara.defaults::org-item-type items) :test #'string=)))
+    (true (>= (length kinds) 9) "~s" kinds)
+    (dolist (kind kinds)
+      (true (member kind tuatara.defaults::*org-agenda-item-types* :test #'string=) "~s named" kind)))
+  (fail (macroexpand-1 '(tuatara.defaults::org-item-type-in item "sheduled"))))
+
+(define-test (org last-repeat-read-from-the-drawer)
+  ;; when a task by rule was last done for is its property's, not a line like it in its text
+  (let ((tuatara.defaults::*org-now* (encode-universal-time 0 0 18 2 11 2026)))
+    (true (search ":LAST_REPEAT: [2026-11-02 Mon 10:00]"
+                  (org-text-after "C-c C-t" (format nil "* TODO Team meeting~%SCHEDULED: <%%(diary-float t 1 1) 10:00>~%#+begin_example~%:LAST_REPEAT: [2027-01-04 Mon]~%#+end_example~%"))))
+    (true (search ":LAST_REPEAT: [2026-12-07 Mon 10:00]"
+                  (org-text-after "C-c C-t" (format nil "* TODO Team meeting~%SCHEDULED: <%%(diary-float t 1 1) 10:00>~%:PROPERTIES:~%:LAST_REPEAT: [2026-11-02 Mon 10:00]~%:END:~%"))))))
+
+(define-test (org timestamps-written-one-way)
+  ;; a timestamp of a time or a day, any year, with its time or without, written one way
+  (let ((time (encode-universal-time 0 30 17 1 10 2026)) (day (tuatara.dates:day-number 2026 10 1)))
+    (is string= "[2026-10-01 Thu 17:30]" (tuatara.defaults::org-timestamp-text time))
+    (is string= "<2026-10-01 Thu 17:30>" (tuatara.defaults::org-timestamp-text time :active t))
+    (is string= "[2026-10-01 Thu]" (tuatara.defaults::org-timestamp-text time :clock nil))
+    (is string= "<2026-10-01 Thu>" (tuatara.defaults::org-timestamp-text time :active t :clock nil))
+    (is string= "[2026-10-01 Thu]" (tuatara.defaults::org-day-timestamp-text day))
+    (is string= "[2026-10-01 Thu 09:05]" (tuatara.defaults::org-day-timestamp-text day :hour 9 :minute 5))
+    (is string= "[1899-12-31 Sun]" (tuatara.defaults::org-day-timestamp-text -1))))
+
+(define-test (org agenda-times-from-timestamps-read)
+  ;; the times, ranges and warnings of timestamps are those read with them, not looked for again in their text
+  (uiop:with-temporary-file (:pathname path :type "org")
+    (with-open-file (o path :direction :output :if-exists :supersede :external-format :utf-8)
+      (format o "* TODO Call~%DEADLINE: <2026-10-07 Wed 15:30 -3d>~%* Meet~%<2026-10-05 Mon 9:30-10:00>~%* Standup~%<%%(diary-cyclic 1 2026 10 1) 08:15>~%"))
+    (let ((tuatara.defaults::*org-now* (encode-universal-time 0 0 12 5 10 2026)) (looks 0))
+      (sb-int:encapsulate 'tuatara.dates:find-time-range 'counted (lambda (f &rest arguments) (incf looks) (apply f arguments)))
+      (unwind-protect
+           (let ((rows (org-agenda-test-rows (tuatara.defaults::org-agenda-span (tuatara.dates:day-number 2026 10 5) 3
+                                                                                :files (list (namestring path)) :log nil))))
+             (is equal '(("2026-10-05" 815 "Standup") ("2026-10-05" 930 "Meet") ("2026-10-05" nil "Call")
+                         ("2026-10-06" 815 "Standup") ("2026-10-07" 815 "Standup") ("2026-10-07" 1530 "Call"))
+                 (mapcar (lambda (row) (list (first row) (fourth row) (sixth row))) rows)))
+        (sb-int:unencapsulate 'tuatara.dates:find-time-range 'counted))
+      (is = 0 looks))))
+
+(define-test (org entry-text-read-in-one-look)
+  ;; an entry's ranges, timestamps and rules taken in one look along each line, its lines not copied
+  (uiop:with-temporary-file (:pathname path :type "org")
+    (with-open-file (o path :direction :output :if-exists :supersede)
+      (format o "* Many~%")
+      (dotimes (i 1000)
+        (format o "Met <2026-10-05 Mon>--<2026-10-07 Wed> then <2026-10-~2,'0d Thu 10:00> and <%%(diary-float t 1 1)>~%" (1+ (mod i 28)))))
+    (let* ((tuatara.defaults::*org-agenda-ts-memo* (make-hash-table :test 'equal))
+           (entry (first (tuatara.defaults::org-agenda-entries (namestring path)))))
+      (tuatara.defaults::agenda-entry-read-text entry)
+      (is = 2000 (length (tuatara.defaults::agenda-entry-stamps entry)))
+      (is equal '("<2026-10-05 Mon>" "<2026-10-07 Wed>") (first (tuatara.defaults::agenda-entry-ranges entry)))
+      (is = 1000 (length (tuatara.defaults::agenda-entry-ranges entry)))
+      (let ((per-line (floor (least-consed (lambda () (tuatara.defaults::agenda-entry-read-text entry))) 1000)))
+        (true (< per-line 1700) "~d bytes a line" per-line)))))
+
+(define-test (org keywords-and-properties-found-without-patterns-made)
+  ;; a file's keyword, a drawer's property and a clock table's span read without a pattern made for each
+  (let ((text (format nil "Some text~%  #+title:   A title  ~%#+FILETAGS:~%#+CATEGORYX: no~%#+category: work~%")))
+    (is string= "A title" (tuatara.defaults::org-file-keyword text "TITLE"))
+    (false (tuatara.defaults::org-file-keyword text "FILETAGS"))
+    (is string= "work" (tuatara.defaults::org-file-keyword text "CATEGORY"))
+    (false (tuatara.defaults::org-file-keyword text "ARCHIVE"))
+    (true (< (least-consed (lambda () (tuatara.defaults::org-file-keyword text "CATEGORY"))) 400)))
+  (let ((lines (list "SCHEDULED: <2026-10-05 Mon>" ":PROPERTIES:" ":ID: x" "  :last_repeat: [2026-10-01 Thu]" ":END:" "Body")))
+    (is equal (list "SCHEDULED: <2026-10-05 Mon>" ":PROPERTIES:" ":ID: x" ":LAST_REPEAT: [2026-10-05 Mon]" ":END:" "Body")
+        (tuatara.defaults::org-entry-lines-with lines "LAST_REPEAT" "[2026-10-05 Mon]"))
+    (true (< (least-consed (lambda () (tuatara.defaults::org-entry-lines-with lines "LAST_REPEAT" "[2026-10-05 Mon]"))) 3000)))
+  (let ((now (encode-universal-time 0 0 12 23 10 2026)))
+    (is equal (list (tuatara.dates:day-universal-time (tuatara.dates:day-number 2026 10 21)))
+        (subseq (multiple-value-list (tuatara.defaults::clocktable-block "today-2" now)) 0 1))
+    (false (tuatara.defaults::clocktable-block "today-x" now))
+    (true (< (least-consed (lambda () (tuatara.defaults::clocktable-block "thisweek" now))) 3000))))
+
+(define-test (org notifications-look-at-disk-away-from-the-editor)
+  ;; each minute's notifications take the open files on the editor's thread, and look at the disk on their own
+  (uiop:with-temporary-file (:pathname path :type "org")
+    (with-open-file (o path :direction :output :if-exists :supersede :external-format :utf-8)
+      (format o "* Nothing due :notify:~%<2030-01-01 Tue 10:00>~%"))
+    (let* ((editor-thread sb-thread:*current-thread*)
+           (here 0) (there 0)
+           (folder (namestring (uiop:pathname-directory-pathname path)))
+           (tuatara.defaults::*org-agenda-files* (list (format nil "~a*.org" folder)))
+           (tuatara.defaults::*org-notify-tag* "notify")
+           (kept (copy-list tuatara.defaults::**org-notify-state**)))
+      (flet ((counted (f &rest arguments)
+               (if (eq sb-thread:*current-thread* editor-thread) (incf here) (incf there))
+               (apply f arguments)))
+        (sb-int:encapsulate 'tuatara.io:path-stamp 'counted #'counted)
+        (sb-int:encapsulate 'tuatara.io:directory-entries 'counted #'counted)
+        (unwind-protect
+             (progn
+               (setf tuatara.defaults::**org-notify-state** (list nil 0 nil nil))
+               (tuatara.defaults::org-notify-tick nil)
+               (loop repeat 200 while (first tuatara.defaults::**org-notify-state**) do (sleep 0.02))
+               (is = 0 here)
+               (true (plusp there)))
+          (sb-int:unencapsulate 'tuatara.io:path-stamp 'counted)
+          (sb-int:unencapsulate 'tuatara.io:directory-entries 'counted)
+          (setf tuatara.defaults::**org-notify-state** kept))))))
+
+(define-test (org notify-health-said-as-others)
+  ;; check-health says what is missing for desktop notices as for every outside program: what to install
+  (let ((tuatara.defaults::*org-notify-program* "no-such-notify-program-here"))
+    (is string= (format nil "agenda entries tagged :~a: told on the desktop by none: ~a"
+                        (or tuatara.defaults::*org-notify-tag* "notify")
+                        (tuatara.defaults::outside-program-install-words :notify))
+        (tuatara.defaults::org-notify-health-words))))
+
+(define-test (org agenda-files-looked-at-away)
+  ;; the agenda files not open are looked at on the thread that works the agenda out, not on the
+  ;; editor's: the calendar's marks and a refresh start without asking the disk anything
+  (let* ((directory (asdf:system-relative-pathname :tuatara "test/org/agenda/"))
+         (tuatara.defaults::*org-agenda-files* (list (namestring directory)))
+         (tuatara.defaults::*org-agenda-paths-kept* nil)
+         (here sb-thread:*current-thread*)
+         (looked 0))
+    (sb-int:encapsulate 'tuatara.io:path-stamp 'looked
+                        (lambda (function &rest arguments)
+                          (when (eq sb-thread:*current-thread* here) (incf looked))
+                          (apply function arguments)))
+    (let ((marks (unwind-protect (tuatara.defaults::org-calendar-mark-source
+                                  (tuatara.dates:day-number 2026 10 1) (tuatara.dates:day-number 2026 10 31))
+                   (sb-int:unencapsulate 'tuatara.io:path-stamp 'looked))))
+      (is = 0 looked)
+      (true (functionp marks))
+      (true (plusp (length (funcall marks)))))))

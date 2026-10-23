@@ -139,18 +139,28 @@ or back (hex-switch-column); elsewhere nothing, so that it changes no text."
 
 ;;; Mode line, cursor, keys
 
+(sb-ext:defglobal **modal-mode-lines** (make-hash-table :test 'eq :weakness :key :synchronized t)
+  "For each window, the modal mode line it showed last and what it was made
+from: (LIGHTER LINE SPANS TEXT TEXT-SPANS).")
+
 (defun modal-mode-line (editor &optional (window (editor-window editor)))
   "The modal lighter of WINDOW's buffer, then the default mode line:
-N or I in editing buffers, S in support buffers, E where modal editing is off."
+N or I in editing buffers, S in support buffers, E where modal editing is off.
+The same text and spans as last time, nothing made, while neither changed."
   (let* ((buffer (tuatara.display:window-buffer window))
-         (lighter (if (not *modal-editing*) "" (format nil " TUATARA[~a]"
-                          (case (buffer-modal-class buffer)
-                            (:support "S") (:excluded "E")
-                            (t (if (eq (modal-state buffer) :insert) "I" "N")))))))
+         (lighter (cond ((not *modal-editing*) "")
+                        (t (case (buffer-modal-class buffer)
+                             (:support " TUATARA[S]") (:excluded " TUATARA[E]")
+                             (t (if (eq (modal-state buffer) :insert) " TUATARA[I]" " TUATARA[N]")))))))
     (multiple-value-bind (line spans) (default-mode-line editor window)
-      (values (concatenate 'string lighter line)
-              (loop for (start end face) in spans
-                    collect (list (+ start (length lighter)) (+ end (length lighter)) face))))))
+      (let ((last (gethash window **modal-mode-lines**)))
+        (if (and last (eq (first last) lighter) (string= (second last) line) (equal (third last) spans))
+            (values (fourth last) (fifth last))
+            (let ((text (concatenate 'string lighter line))
+                  (text-spans (loop for (start end face) in spans
+                                    collect (list (+ start (length lighter)) (+ end (length lighter)) face))))
+              (setf (gethash window **modal-mode-lines**) (list lighter line spans text text-spans))
+              (values text text-spans)))))))
 
 (defvar *tuatara-normal-cursor-shape* nil
   "The cursor's shape in NORMAL state: :block, :bar or :underline; NIL (as

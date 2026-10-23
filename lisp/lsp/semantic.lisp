@@ -30,6 +30,10 @@ the face *LSP-SEMANTIC-FACES* gives its kind, over the mode's colours.")
 as (KIND . FACE), KIND as the server names it; a kind not here keeps the
 mode's colour.")
 
+(defun lsp-token-kinds ()
+  "The kinds of name a server is told the editor colours (*LSP-SEMANTIC-FACES*), as a vector."
+  (map 'vector #'car *lsp-semantic-faces*))
+
 (defun lsp-ask-tokens (doc)
   "Ask DOC's server that gives semantic tokens for those of all it shows, kept
 to colour the code once they come while its buffer's text is still as asked of."

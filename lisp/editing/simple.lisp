@@ -72,8 +72,8 @@ the space left after it."
     (when (< start end) (tuatara.buffer:buffer-delete buffer start end))
     (let ((after (tuatara.buffer:buffer-char-at buffer start))
           (before (and (plusp start) (tuatara.buffer:buffer-char-at buffer (1- start)))))
-      (unless (or (null after) (member after '(#\Newline #\Return)) (find after ")]}")
-                  (null before) (char= before #\Newline) (find before "([{")
+      (unless (or (null after) (member after '(#\Newline #\Return)) (find after tuatara.text:*closers*)
+                  (null before) (char= before #\Newline) (find before tuatara.text:*openers*)
                   (lisp-prefix-char-p buffer before))
         (tuatara.buffer:buffer-insert buffer start " "))
       start)))
@@ -139,12 +139,12 @@ FIXUP-WHITESPACE-AT would leave none (PREFIXES are the quote marks of Lisp)."
                   (let* ((bound (or bound (setf bound (tuatara.text:rope-line-end rope bottom))))
                          (after (loop for p from next below bound
                                       for b = (octet p)
-                                      unless (member b '(32 9 10 13)) return b))
+                                      unless (member b tuatara.text:*blank-octets*) return b))
                          (before (octet (1- end))))
                     (funcall function end next nil
                              (if (and after
-                                      (not (find (code-char after) ")]}"))
-                                      (not (find (code-char before) "([{"))
+                                      (not (member after tuatara.text:*closing-octets*))
+                                      (not (member before tuatara.text:*opening-octets*))
                                       (not (find (code-char before) prefixes)))
                                  space
                                  none)))))))))))
@@ -519,7 +519,7 @@ key is said to be no character FOR that."
             ((and (characterp base) (not (tuatara.frontend:key-ctrl key)) (not (tuatara.frontend:key-meta key))) base)
             ((eq base :enter) #\Newline)
             ((eq base :tab) #\Tab)
-            (t (error "~a is no character ~a" (tuatara.frontend:key-description key) for))))))
+            (t (error "~a is no character ~a" (tuatara.frontend:key-description (tuatara.frontend:key-spec key)) for))))))
 
 (defun find-char-occurrence (buffer position char count fold)
   "Where the COUNTth CHAR after POSITION of BUFFER ends, or where the -COUNTth
@@ -617,92 +617,91 @@ the lines search filters hide, not counted."
   :verb "count the words"
   :left-words "nothing counted")
 
-(defun count-text (rope start end &key done cancel (parts (list (cons start end))))
+(defun count-text (rope start end &key done cancel (parts (list (cons start end))) double-space)
   "Four values: the lines, sentences, words and characters of ROPE's octets
 from START below END: lines as count-lines (a last line without a line end
-counts), words as runs of letters and digits, a sentence ending at . ? !
-followed by a line end or two blanks (not the full stop of an abbreviation,
-ABBREVIATION-ENDING-P), at a blank line, or at the end; an octet that is no
+counts), words as runs of letters and digits, a sentence ending where
+sentence motion ends it (SENTENCE-GAP: at . ? ! … and the closing marks after
+them followed by a blank or a line end, two blanks where sentences are two
+spaces apart, DOUBLE-SPACE), not at the full stop of an abbreviation
+\(ABBREVIATION-ENDING-P), at a blank line, or at the end; an octet that is no
 part of a character in UTF-8 counts as one character. PARTS,
 a list of (FROM . TO) in order, gives the stretches of it counted, one after
 another as one text: all of it unless given. DONE, a cons, has its car set to
 the octets counted as the count goes; CANCEL, a cons, stops it (NIL) when its
 car turns true."
-  (let ((lines 0) (sentences 0) (words 0) (chars 0)
-        (in-word nil) (in-sentence nil) (last-octet nil)
-        ;; after a sentence's end: :end (its closing marks may follow), :blank (one blank seen)
-        (ending nil)
-        ;; since the last line end, only blanks: a blank line ends a sentence
-        (line-blank t)
-        (piece (make-array (min *count-piece* (max 1 (- end start))) :element-type '(unsigned-byte 8)))
-        (counted 0)
-        ;; the octets of a character of several, as they come
-        (pending (make-array 4 :element-type '(unsigned-byte 8)))
-        (pending-count 0))
-    (multiple-value-bind (abbreviations reach) (abbreviation-scanner)
-     ;; a blank, then the characters last seen, to find an abbreviation's full stop
-     (let ((recent (make-string (max 1 reach) :initial-element #\Space)))
-      (labels ((sentence-over () (when in-sentence (incf sentences)) (setf in-sentence nil ending nil))
-             (abbreviation-p ()
-               (and abbreviations (cl-ppcre:scan abbreviations recent)))
+  (let* ((lines 0) (sentences 0) (words 0) (chars 0)
+         (in-word nil) (in-sentence nil) (last-octet nil)
+         ;; after a sentence's end: :end (its closing marks may follow), :blank (one blank seen)
+         (ending nil)
+         ;; since the last line end, only blanks: a blank line ends a sentence
+         (line-blank t)
+         ;; the octets read, three more for those of a character a piece cut, carried to the next
+         (piece (make-array (+ 3 (min *count-piece* (max 1 (- end start)))) :element-type '(unsigned-byte 8)))
+         (carried 0) (counted 0)
+         (left (loop for (from . to) in parts sum (max 0 (- to from))))
+         ;; the characters last seen, in a ring, to find an abbreviation's full stop
+         (ring (make-string (max 1 (nth-value 1 (abbreviations-read-back)))))
+         (char-at (lambda (i)
+                    (declare (type fixnum i))
+                    (and (>= i 0) (>= i (- chars (length ring))) (schar ring (mod i (length ring)))))))
+    (declare (type fixnum lines sentences words chars carried counted left))
+    (labels ((sentence-over () (when in-sentence (incf sentences)) (setf in-sentence nil ending nil))
              (see (char)
-               (replace recent recent :start1 1 :start2 2)
-               (setf (char recent (1- (length recent))) char)
+               (setf (schar ring (mod chars (length ring))) char)
                (incf chars)
-               (let ((word (or (alpha-char-p char) (digit-char-p char))))
+               (let ((word (word-char-p char)))
                  (when (and word (not in-word)) (incf words))
                  (setf in-word word))
-               (case char
-                 (#\Newline
-                  (when (or ending line-blank) (sentence-over))
-                  (setf ending nil line-blank t))
-                 ((#\Space #\Tab #\Return)
-                  (case ending
-                    (:end (setf ending :blank))
-                    (:blank (sentence-over))))
-                 (t
-                  (setf line-blank nil)
-                  (cond ((and ending (eq ending :end) (sentence-closing-char-p char)))
-                        ((and (sentence-end-char-p char) (not (and (char= char #\.) (abbreviation-p))))
-                         (setf in-sentence t ending :end))
-                        (t (setf in-sentence t ending nil))))))
-             (unpending ()
-               ;; octets begun as a character and left unfinished: one character each
-               (loop repeat pending-count do (see (code-char #xFFFD)))
-               (setf pending-count 0)))
+               (let ((blank (member char '(#\Space #\Tab #\Newline #\Return))))
+                 ;; after a sentence's end, what follows says whether it ends there
+                 (case ending
+                   (:end (unless (sentence-closing-char-p char)
+                           (let ((gap (sentence-gap char double-space)))
+                             (case gap
+                               ((t) (sentence-over))
+                               (:blank (setf ending :blank))
+                               (t (setf ending nil))))))
+                   (:blank (if blank (sentence-over) (setf ending nil))))
+                 (cond ((char= char #\Newline)
+                        (when line-blank (sentence-over))
+                        (setf line-blank t))
+                       (blank)
+                       (t
+                        (setf line-blank nil in-sentence t)
+                        (when (and (null ending) (sentence-end-char-p char)
+                                   (not (and (char= char #\.) (abbreviation-ends-p char-at chars))))
+                          (setf ending :end)))))))
       (loop for (from . to) in parts
             do (loop with at = from
                      while (< at to)
                      do (when (and cancel (car cancel)) (return-from count-text nil))
-                        (let ((n (min (length piece) (- to at))))
-                          (tuatara.text:rope-copy-into rope at (+ at n) piece)
-                          (dotimes (i n)
-                            (let ((octet (aref piece i)))
-                              (setf last-octet octet)
-                              (when (= octet 10) (incf lines))
-                              (cond ((< octet #x80) (unpending) (see (code-char octet)))
-                                    ((< octet #xC0)
-                                     ;; a character's later octets
-                                     (if (zerop pending-count)
-                                         (see (code-char #xFFFD))
-                                         (let* ((lead (aref pending 0))
-                                                (length (cond ((< lead #xE0) 2) ((< lead #xF0) 3) (t 4))))
-                                           (setf (aref pending pending-count) octet)
-                                           (incf pending-count)
-                                           (when (= pending-count length)
-                                             (multiple-value-bind (code taken) (tuatara.text:octets-decode pending 0 length)
-                                               (if (= taken length)
-                                                   (progn (setf pending-count 0) (see (code-char code)))
-                                                   (unpending)))))))
-                                    ((< octet #xF8) (unpending) (setf (aref pending 0) octet pending-count 1))
-                                    (t (unpending) (see (code-char #xFFFD))))))
+                        (let* ((n (min (- (length piece) carried) (- to at)))
+                               (filled (+ carried n))
+                               (i 0))
+                          (declare (type fixnum n filled i))
+                          (tuatara.text:rope-copy-into rope at (+ at n) piece carried)
+                          (loop for k from carried below filled
+                                do (let ((octet (aref piece k)))
+                                     (setf last-octet octet)
+                                     (when (= octet 10) (incf lines))))
+                          ;; a character begun at the end may go on in the next piece
+                          (loop with stop of-type fixnum = (if (= left n) filled (- filled (tuatara.text:octets-pending piece 0 filled)))
+                                while (< i stop)
+                                do (if (< (aref piece i) #x80)
+                                       (progn (see (code-char (aref piece i))) (incf i))
+                                       (multiple-value-bind (code length) (tuatara.text:octets-decode piece i filled)
+                                         (see (code-char code))
+                                         (incf i length))))
+                          (replace piece piece :start2 i :end2 filled)
+                          (setf carried (- filled i))
+                          (decf left n)
                           (incf at n) (incf counted n)
                           (when done (setf (car done) counted)))))
-      (unpending)
       ;; the end of the text ends the sentence under way
       (sentence-over)
       (when (and (< start end) last-octet (/= last-octet 10)) (incf lines))
-      (values lines sentences words chars))))))
+      (values lines sentences words chars))))
 
 (defun count-progress (job)
   "How much of JOB is counted, from 0 to 99 while it runs."
@@ -725,8 +724,9 @@ buffer was killed."
 (define-command count-words ()
   "Say how many lines, sentences, words and characters the selection has, or
 the whole buffer without one: \"Region has 2 lines, 2 sentences, 9 words, and
-48 characters\". A sentence ends at . ? or ! and a line end or two blanks
-after it, or at a blank line. The lines search filters hide
+48 characters\". A sentence ends where \\[forward-sentence] finds its end: at
+. ? ! or … and a space or a line end after it (two spaces, a tab or a line
+end with *SENTENCE-END-DOUBLE-SPACE*), or at a blank line. The lines search filters hide
 \(\\[search-filter-regex]) are not counted. A large text is counted in the background, its
 progress in the mode line; \\[stop-job] stops it. While another job runs in
 the buffer it waits its turn (\\[list-jobs])."
@@ -756,7 +756,8 @@ it takes time."
      job (tuatara.runtime:carry-settings
           *count-carried-settings*
           (lambda (job)
-            (let ((result (multiple-value-list (count-text rope start end :parts parts :done done :cancel cancel))))
+            (let ((result (multiple-value-list (count-text rope start end :parts parts :done done :cancel cancel
+                                                                          :double-space (sentence-end-double-space-p b)))))
               (if (first result)
                   (setf (count-job-result job) result (count-job-status job) :done)
                   (setf (count-job-status job) :stopped)))))

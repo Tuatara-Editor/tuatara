@@ -176,14 +176,14 @@ for rimu's operations to finish. Returns the frontend and the editor."
           (true (tuatara.frontend.fake:fake-frame-showing f "Not put back: x: its .trashinfo gives no whole path"))
           (true (probe-file (here trash "files/rel"))))
         (delete-file (here trash "info/rel.trashinfo"))
-        (trashed "up" (format nil "~asub/../../escaped" (tuatara.io::trash-url-path (namestring dir))))
+        (trashed "up" (format nil "~asub/../../escaped" (tuatara.io:url-path (namestring dir))))
         (let ((f (ops-session dir "g t R" :width 300)))
           (true (tuatara.frontend.fake:fake-frame-showing f "Not put back: escaped: its .trashinfo's path climbs with .."))
           (true (probe-file (here trash "files/up"))))
         (delete-file (here trash "info/up.trashinfo"))
         ;; several: where they go is said
-        (trashed "one" (format nil "~aone" (tuatara.io::trash-url-path (namestring dir))))
-        (trashed "two" (format nil "~asub/two" (tuatara.io::trash-url-path (namestring dir))))
+        (trashed "one" (format nil "~aone" (tuatara.io:url-path (namestring dir))))
+        (trashed "two" (format nil "~asub/two" (tuatara.io:url-path (namestring dir))))
         (let ((f (ops-session dir "g t m m R n RET" :width 300)))
           (true (tuatara.frontend.fake:fake-frame-showing f "Put back the 2 things to "))
           (true (tuatara.frontend.fake:fake-frame-showing f (format nil "~asub/" (tuatara.command::abbreviated-path (namestring dir)))))))))
@@ -310,7 +310,7 @@ for rimu's operations to finish. Returns the frontend and the editor."
       (is string= "beta" (alexandria:read-file-into-string (here dir "data/Trash/files/b.txt")))
       (let ((info (alexandria:read-file-into-string (here dir "data/Trash/info/b.txt.trashinfo"))))
         (true (search "[Trash Info]" info))
-        (true (search (format nil "Path=~a" (tuatara.io::trash-url-path (namestring (here dir "b.txt")))) info))
+        (true (search (format nil "Path=~a" (tuatara.io:url-path (namestring (here dir "b.txt")))) info))
         (true (search "DeletionDate=" info))))
     ;; the same name again: a name of its own in the trash
     (alexandria:write-string-into-file "beta 2" (here dir "b.txt"))
@@ -347,7 +347,7 @@ for rimu's operations to finish. Returns the frontend and the editor."
       (ensure-directories-exist (here dir "data/Trash/files/"))
       (alexandria:write-string-into-file
        (format nil "[Trash Info]~%Path=~aline%0Abreak.txt~%DeletionDate=2026-10-07T10:00:00~%"
-               (tuatara.io::trash-url-path (namestring dir)))
+               (tuatara.io:url-path (namestring dir)))
        (here dir "data/Trash/info/good.trashinfo"))
       (sb-posix:mkfifo fifo #o600)
       (sb-posix:symlink "/dev/zero" (namestring (here dir "data/Trash/info/zero.trashinfo")))

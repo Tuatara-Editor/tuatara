@@ -42,7 +42,7 @@
     ("M-^" delete-indentation) ("M-\\" delete-horizontal-space) ("M-SPC" cycle-spacing) ("C-o" open-line)
     ("M-m" back-to-indentation) ("C-x C-o" delete-blank-lines)
     ("C-t" transpose-chars) ("M-t" transpose-words) ("C-x C-t" transpose-lines) ("C-M-t" transpose-sexps)
-    ("C-S-<backspace>" kill-whole-line) ("M-z" zap-to-char) ("M-=" count-words-region)
+    ("C-S-<backspace>" kill-whole-line) ("M-z" zap-up-to-char) ("M-=" count-words-region)
     ("C-M-f" forward-sexp) ("C-M-b" backward-sexp) ("C-x h" mark-whole-buffer)
     ("C-M-n" forward-list) ("C-M-p" backward-list) ("C-M-u" backward-up-list) ("C-M-d" down-list)
     ("C-M-a" beginning-of-defun) ("C-M-e" end-of-defun) ("C-M-SPC" mark-sexp) ("C-M-@" mark-sexp)
@@ -70,6 +70,10 @@
   (declare (ignore editor))
   (mode-line-extra (buffer-major-mode buffer) buffer))
 
+(defun mode-marks-point-of-buffer (buffer)
+  "True when the major mode of BUFFER marks point in a look of its own."
+  (mode-marks-point-p (buffer-major-mode buffer)))
+
 (defun leave-mode-on-kill (buffer)
   "Let BUFFER's major mode release what it attached before the buffer is killed."
   (mode-exit (buffer-major-mode buffer) buffer))
@@ -82,6 +86,7 @@ Idempotent: the hooks are named functions."
   (pushnew 'leave-mode-on-kill tuatara.buffer:*kill-buffer-functions*)
   (pushnew 'syntax-highlights-for-window *syntax-highlight-functions*)
   (pushnew 'mode-line-extra-for-buffer *mode-line-functions*)
+  (pushnew 'mode-marks-point-of-buffer *point-marked-functions*)
   (let ((map (mode-keymap 'prog-mode)))
     ;; C-M-i reaches a terminal as M-TAB
     (define-key map "C-M-i" 'completion-at-point)
@@ -268,7 +273,7 @@ so that \\`C-c' shows, and runs, what the buffer at hand can do in every mode
     (install-org-folding editor)
     (install-org-editing)
     (install-org-links editor) (install-markdown-links) (install-org-linking) (install-org-clock) (install-org-schedule)
-    (install-org-items) (install-org-tables) (install-org-formulas) (install-code-files) (install-org-agenda-view editor)
+    (install-org-items) (install-org-tables) (install-org-formulas) (install-code-files) (install-org-agenda-view editor) (install-org-notify)
     (install-display-toggles)
     (install-hl-line)
     (install-cursor-column)

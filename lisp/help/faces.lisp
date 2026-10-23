@@ -103,7 +103,7 @@ drawn now, with the face it comes from when another gives it."
                 do (multiple-value-bind (value from) (tuatara.display:face-attribute name attribute)
                      (when value
                        (setf any t)
-                       (put (format nil "  ~18a ~a" words (cond ((eq value t) "yes")
+                       (put (format nil "  ~a ~a" (column-text words 18 :elide nil) (cond ((eq value t) "yes")
                                                                 ((stringp value) value)
                                                                 (t (string-downcase (princ-to-string value))))))
                        (unless (eq from name)

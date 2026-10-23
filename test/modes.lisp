@@ -37,6 +37,17 @@ extension and #! line, the mode name in the mode line, CSV colours and the colum
   (is equal '(nil) (multiple-value-list (tuatara.modes:mode-comment-syntax (make-instance 'tuatara.defaults::text-mode))))
   (is equal '(nil) (multiple-value-list (tuatara.modes:mode-block-comment-syntax (make-instance 'test-child-mode)))))
 
+(define-test (modes file-patterns-compiled-once)
+  ;; the patterns on a file's whole path are compiled as their modes are defined: a
+  ;; lookup only tries them
+  (is eq 'tuatara.defaults::blade-mode (tuatara.modes:mode-for-file #p"/srv/site/views/home.blade.php"))
+  (is eq 'tuatara.defaults::xml-mode (tuatara.modes:mode-for-file #p"/home/kea/Rust.tmLanguage"))
+  (let ((consed (loop repeat 3
+                      minimize (let ((before (tuatara.bench::bytes-consed)))
+                                 (tuatara.modes:mode-for-file #p"/tmp/unknown.zzz")
+                                 (- (tuatara.bench::bytes-consed) before)))))
+    (true (< consed (* 64 1024)) "a lookup consed ~:d octets" consed)))
+
 (define-test (modes switching-and-mode-line)
   ;; M-x switches mode; the mode line shows its name; the parent's keys work
   (multiple-value-bind (f editor) (run-keys "M-x t e s t - p a r e n t - m o d e RET C-c z" :text "abc")
@@ -440,3 +451,13 @@ the buffer killed."
     (is eq 'test-parent-mode (mode-of "more than ten octets"))
     (is eq 'test-parent-mode (tuatara.modes:mode-for-size 'test-small-files-mode 11))
     (is eq 'test-small-files-mode (tuatara.modes:mode-for-size 'test-small-files-mode 10))))
+
+(define-test (modes every-mode-with-fields-is-of-records)
+  ;; a mode that cuts its records into fields is a file of records, filtered by hiding lines
+  (let ((classes (loop for method in (sb-mop:generic-function-methods #'tuatara.defaults::mode-record-fields)
+                       for class = (first (sb-mop:method-specializers method))
+                       unless (eq class (find-class t))
+                         collect class)))
+    (true (>= (length classes) 8))
+    (dolist (class classes)
+      (true (tuatara.defaults::filters-hide-lines-p (make-instance class) nil) "~a" (class-name class)))))

@@ -150,7 +150,7 @@ plain selection, whatever kind the one before was (a rectangle)."
 letters, digits and _, :SPACE for spaces and tabs, :OTHER for the rest; NIL at
 a line's end."
   (cond ((or (null char) (char= char #\Newline) (char= char #\Return)) nil)
-        ((or (word-char-p char) (char= char #\_)) :word)
+        ((name-char-p char) :word)
         ((or (char= char #\Space) (char= char #\Tab)) :space)
         (t :other)))
 
@@ -166,9 +166,9 @@ alone when it has no partner. NIL at a line's end with nothing before it."
          (before (and (plusp position)
                       (tuatara.buffer:buffer-char-at buffer (tuatara.buffer:buffer-forward-char buffer position -1))))
          (class (click-class char)))
-    (cond ((and char (find char *openers*))
+    (cond ((and char (find char tuatara.text:*openers*))
            (values position (sexp-end-after buffer position)))
-          ((and char (find char *closers*))
+          ((and char (find char tuatara.text:*closers*))
            (let ((after (tuatara.buffer:buffer-forward-char buffer position)))
              (multiple-value-bind (start balanced) (sexp-start-before buffer after)
                (values (if balanced start position) after))))

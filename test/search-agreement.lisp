@@ -34,6 +34,14 @@ that shows a fault shows it again."
                 ;; a block of Base64 wrapped over lines of one length, and an onion address
                 ((= r 2) (format o "S2lhIG9yYSBrb3V0b3Uga2F0b2Es~%IHRoZSBrZWEgaXMgYSBwYXJyb3Q=~%via ~a.onion"
                                  (if (zerop (random 2)) "duckduckgogg42xjoc72x3sjasowoarfbgcmvfimaftt6twagswzczad" "expyuzz4wqqyqhjn")))
+                ;; identifiers in hex, found by their shape: a UUID or GUID, a MAC address, a digest
+                ((= r 3) (format o "session ~(~8,'0x-~4,'0x-~x~3,'0x-~x~3,'0x-~12,'0x~) {~:@(~8,'0x-~4,'0x-~4,'0x-~4,'0x-~12,'0x~)} ~
+                                    on ~(~2,'0x:~2,'0x:~2,'0x:~2,'0x:~2,'0x:~2,'0x~) sum ~(~32,'0x~) seen ~d.~d.2026 ~d/~d/2026"
+                                 (random (expt 16 8)) (random (expt 16 4)) (random 10) (random (expt 16 3))
+                                 (+ 8 (random 6)) (random (expt 16 3)) (random (expt 16 12))
+                                 (random (expt 16 8)) (random (expt 16 4)) (random (expt 16 4)) (random (expt 16 4)) (random (expt 16 12))
+                                 (random 256) (random 256) (random 256) (random 256) (random 256) (random 256)
+                                 (random (expt 16 32)) (1+ (random 31)) (1+ (random 12)) (1+ (random 12)) (1+ (random 31))))
                 (t (format o "2026-~2,'0d-~2,'0d ~2,'0d:~2,'0d:~2,'0d ~a user=~a ip=~d.~d.~d.~d ~a ~a@example.~a #~36r £~:d.~2,'0d ~a"
                            (1+ (random 12)) (1+ (random 28)) (random 24) (random 60) (random 60)
                            (nth (random (length words)) words) (nth (random (length users)) users)
@@ -62,6 +70,10 @@ that shows a fault shows it again."
     "(?<=user=)\\w+" "\\w+(?=@)" "^(?!.*ERROR).*kia" "(?<!\\d)\\d{2}(?!\\d)" "(<)?\\d+(?(1)>)" "(?i:t)RANSFER" "(?s)login.{0,40}failed"
     ;; named patterns: addresses, and card numbers checked by Luhn as they are matched
     "[[:ipv4:]]" "[[:ipaddress:]]" "[[:email:]]" "[[:creditcard:]]" "[[:onion:]]" "[[:base32:]]" "[[:base64:]]" "[[:xdigit:]]{4}|[[:md5:]]" "[[:email:]] [[:ipv4:]]" "(?<=user=)\\w+ ip=[[:ipv4:]]"
+    ;; found from their shape, every match a run of sets of octets: hex identifiers, dates
+    "[[:uuid:]]" "[[:guid:]]" "[[:macaddress:]]" "[[:md5:]]" "[0-9a-f]{12}" "[0-9A-F]{8}-" "sum [0-9a-f]{32}"
+    "[[:date:]]" "[[:dateutc<2026-07-01:]]" "[[:date:2026-03-01..2026-03-31:]]" "[[:datedmy:]]" "[[:datemdy<06/30/2026:]]"
+    "[0-9]{4}-[0-9]{2}-[0-9]{2} [0-9]{2}:" "(?:on|sum) [0-9a-f]{2}"
     ;; across lines
     "ora\\nfailed" "\\d\\n2026" "\\R2026")
   "Patterns of every kind, none of which matches an empty text, searched for
@@ -171,8 +183,8 @@ in parallel (LINE-MATCHES)."
            (rope (tuatara.text:string->rope text))
            (size (tuatara.text:rope-bytes rope)))
       (dolist (needle '("login" "LOGIN" "user=" "example.nz" "kōrero" "Αθήνα" "中文" "😀" "café" "aaaaaaaaaaaaaaaa"
-                        "@example.org #" "2026-1" "£1" "ζωή"))
-        (dolist (fold (if (every (lambda (c) (< (char-code c) 128)) needle) '(nil t) '(nil)))
+                        "@example.org #" "2026-1" "£1" "ζωή" "kŌrero" "αθήνα" "CAFÉ" "ōtautahi"))
+        (dolist (fold '(nil t))
           (let ((oracle (oracle-positions text needle :case-fold fold))
                 (wanted (to-octets (if fold (string-downcase needle) needle)))
                 (in (to-octets (if fold (string-downcase text) text))))

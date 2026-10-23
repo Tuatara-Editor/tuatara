@@ -49,26 +49,34 @@ a tenth more to spare; 0 until it has counted any."
                    (length (princ-to-string (max 1 (ceiling (* 11/10 (1+ lines) (tuatara.buffer:buffer-size buffer)) reached))))
                    0))))))
 
-(defun line-numbers-cell (editor window row line)
+(defun line-numbers-prepare (editor window rows)
+  "What the numbers beside WINDOW's ROWS are worked out from, once a frame: a
+list of the window's current line (NIL while the lines are counted and the
+count has not passed point), whether the lines are counted, whether they show
+relative to the current one, and whether a wrapped row shows the wrap
+indicator."
+  (declare (ignore editor rows))
+  (let ((buffer (tuatara.display:window-buffer window)))
+    (list (tuatara.buffer:buffer-known-line-number buffer (tuatara.display:window-point window))
+          (tuatara.buffer:buffer-indexed-p buffer)
+          (eq (line-numbers-mode buffer) :relative)
+          (and *soft-wrap-indicator* (soft-wrap-p buffer) t))))
+
+(defun line-numbers-cell (editor window row line &optional (frame (line-numbers-prepare editor window nil)))
   "The number shown beside ROW: for a row that goes on from the one above, none,
 or where long lines wrap at a word's edge the wrap indicator
 (*SOFT-WRAP-INDICATOR*); in relative mode the distance from the window's
 current line, which shows its own number. The line after the text's last
-newline, where point can rest though it holds no text, shows ~ instead."
-  (declare (ignore editor row))
-  (let ((buffer (tuatara.display:window-buffer window)))
-    (if (null line)
-        (if (and *soft-wrap-indicator* (soft-wrap-p buffer))
-            (values *soft-wrap-indicator* :wrap-indicator)
-            (values "" :line-number))
-        ;; while the lines are counted, point's line where the count has passed it
-        (let ((current (tuatara.buffer:buffer-known-line-number buffer (tuatara.display:window-point window)))
-              (counted (tuatara.buffer:buffer-indexed-p buffer)))
-          (cond ((and counted (past-text-line-p buffer line)) (values "~" :line-number))
-                ((eql line current) (values (princ-to-string (1+ line)) :current-line-number))
-                ((and current (eq (line-numbers-mode buffer) :relative))
-                 (values (princ-to-string (abs (- line current))) :line-number))
-                (t (values (princ-to-string (1+ line)) :line-number)))))))
+newline, where point can rest though it holds no text, shows ~ instead.
+FRAME is what LINE-NUMBERS-PREPARE worked out for the frame."
+  (declare (ignore row))
+  (destructuring-bind (current counted relative wrap) frame
+    (cond ((null line)
+           (if wrap (values *soft-wrap-indicator* :wrap-indicator) (values "" :line-number)))
+          ((and counted (past-text-line-p (tuatara.display:window-buffer window) line)) (values "~" :line-number))
+          ((eql line current) (values (princ-to-string (1+ line)) :current-line-number))
+          ((and current relative) (values (princ-to-string (abs (- line current))) :line-number))
+          (t (values (princ-to-string (1+ line)) :line-number)))))
 
 (define-command display-relative-line-numbers-mode ()
   "Show relative line numbers in the gutter of the current buffer, or none:
@@ -83,4 +91,4 @@ expects; with a count, on when it is positive, off when it is zero or less."
 
 (defun install-line-numbers ()
   "Register the line-number gutter provider."
-  (add-gutter-provider :line-numbers #'line-numbers-width #'line-numbers-cell))
+  (add-gutter-provider :line-numbers #'line-numbers-width #'line-numbers-cell :prepare #'line-numbers-prepare))

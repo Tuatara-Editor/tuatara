@@ -15,10 +15,10 @@
 with a rebase, a merge stopped half way): the message kept as it is.")
 
 (defun git-commit-candidate (commit)
-  "COMMIT, as PARSE-GIT-LOG gives one, as a candidate of a question: its hash
-and subject, its date beside them, its hash taken."
-  (make-candidate (format nil "~a ~a" (first commit) (escape-controls (fourth commit)))
-                  :value (first commit) :annotation (second commit)))
+  "COMMIT, a GIT-COMMIT, as a candidate of a question: its short hash and
+subject, its date beside them, its hash taken."
+  (make-candidate (format nil "~a ~a" (git-commit-short commit) (escape-controls (git-commit-subject commit)))
+                  :value (git-commit-short commit) :annotation (git-commit-date commit)))
 
 (defun git-ask-revision (prompt top then &key commits-only)
   "Ask with PROMPT for a revision of the repository at TOP: a branch, a tag,
@@ -31,7 +31,7 @@ with it."
              (lambda (job top)
                (values (and (not commits-only)
                             (git-lines job top (list "for-each-ref" "--format=%(refname:short)" "refs/heads" "refs/remotes" "refs/tags")))
-                       (parse-git-log (git-job-output job top (git-log-arguments *git-log-length*)))))
+                       (parse-git-commits (git-job-output job top (git-log-arguments *git-log-length*)))))
              (lambda (names commits)
                (if (and commits-only (null commits))
                    (message "No commit yet")

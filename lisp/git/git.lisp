@@ -128,14 +128,15 @@ every ssh key, that, and how to give ssh yours."
 
 (defun git-job-try (job top arguments &key errors environment input)
   "On JOB's thread (with JOB NIL, the thread calling it, never the
-editor's): run git with ARGUMENTS in TOP (RUN-GIT), with ERRORS what it says
-on its error output with what it prints, ENVIRONMENT (NAME=VALUE strings)
-added and INPUT, a string, on its standard input; what it printed, as text,
-and true as a second value when it succeeded. The job goes on however git
-ended."
-  (multiple-value-bind (octets ok) (run-git top arguments :cancel (and job (tuatara.runtime:job-cancel job)) :errors errors
-                                                          :environment environment :input input)
-    (values (if octets (tuatara.text:lenient-string octets) "") ok)))
+editor's): run git with ARGUMENTS in TOP (RUN-GIT), ENVIRONMENT (NAME=VALUE
+strings) added and INPUT, a string, on its standard input; what it printed,
+as text, and true as a second value when it succeeded; with ERRORS, what it
+said on its error output as a third. The job goes on however git ended."
+  (multiple-value-bind (octets ok too-large said)
+      (run-git top arguments :cancel (and job (tuatara.runtime:job-cancel job)) :errors errors
+                             :environment environment :input input)
+    (declare (ignore too-large))
+    (values (if octets (tuatara.text:lenient-string octets) "") ok said)))
 
 (defparameter *git-shown-limit* (* 64 1024 1024)
   "The most git may print for a commit, a stash or changes shown in a buffer
@@ -143,13 +144,13 @@ of their own (GIT-SHOW-OUTPUT).")
 
 (defun git-job-octets (job top arguments &key environment input limit)
   "On JOB's thread: run git with ARGUMENTS in TOP (RUN-GIT), what it says on
-its error output with what it prints, ENVIRONMENT (NAME=VALUE strings) added
+its error output read apart, ENVIRONMENT (NAME=VALUE strings) added
 and INPUT, a string, on its standard input; what it printed, as octets, when
 it succeeded. When it did not, or printed more than LIMIT octets
 \(*PROGRAM-OUTPUT-LIMIT* when it is NIL), JOB ends
 there: stopped when it was asked to, else failed, saying what git said went
 wrong (GIT-FAILURE-WORDS) or that it printed too much."
-  (multiple-value-bind (octets ok too-large)
+  (multiple-value-bind (octets ok too-large said)
       (run-git top arguments :cancel (tuatara.runtime:job-cancel job) :errors t
                              :environment environment :input input :limit limit)
     (cond (too-large
@@ -157,7 +158,9 @@ wrong (GIT-FAILURE-WORDS) or that it printed too much."
                                       (tuatara.io:octets-words (or limit *program-output-limit*)))))
           (ok (or octets (make-array 0 :element-type '(unsigned-byte 8))))
           (t (tuatara.runtime:job-check-stop)
-             (throw 'git-failed (git-failure-words (first arguments) (if octets (tuatara.text:lenient-string octets) "")))))))
+             ;; what it said, or, saying nothing, what it printed (nothing to commit)
+             (throw 'git-failed (git-failure-words (first arguments)
+                                                   (if (plusp (length said)) said (if octets (tuatara.text:lenient-string octets) ""))))))))
 
 (defun git-job-output (job top arguments &key environment input)
   "On JOB's thread: what git printed with ARGUMENTS in TOP, as text, as
@@ -333,9 +336,67 @@ most used again (*GIT-MENUS*, *GIT-SLIM-ACTIONS*)."
     (setf (tuatara.buffer:buffer-local (current-buffer) 'git-menus) (if full :slim :full))
     (message (if full "Slim git menus: the actions most used" "Full git menus: every action"))))
 
+(defparameter *git-commit-format* "--format=%x1e%H%x1f%h%x1f%ad%x1f%an%x1f%cr%x1f%D%x1f%s"
+  "How git log is asked to write each commit, for PARSE-GIT-COMMITS: a record
+separator, then its hash, short hash, date, author, how long ago it was
+made, the names at it and its subject, a unit separator between each.")
+
+(defstruct (git-commit (:constructor make-git-commit (&key hash short date author ago names subject path (graph ""))) (:copier nil))
+  "A commit as git log wrote it (PARSE-GIT-COMMITS): its HASH and SHORT hash,
+its DATE, AUTHOR, how long AGO it was made (2 days ago), the NAMES at it
+\(branches, tags) and its SUBJECT, as git writes them; PATH, what the file
+of a history was called in it; GRAPH, the characters of the graph before
+it, with --graph. A line of the graph alone is a GIT-COMMIT with no HASH."
+  hash short date author ago names subject path (graph ""))
+
+(setf (documentation 'git-commit-p 'function) "True when OBJECT is a GIT-COMMIT.")
+
+(defun parse-git-commit-fields (text)
+  "TEXT, a commit's fields as *GIT-COMMIT-FORMAT* writes them after its
+record separator, as a GIT-COMMIT; NIL when its hash is not one
+\(GIT-HASH-P), as a subject holding git's separators would make."
+  (let ((fields (uiop:split-string text :separator (list (code-char #x1f)))))
+    (when (and (>= (length fields) 7) (git-hash-p (first fields)))
+      (destructuring-bind (hash short date author ago names &rest subject) fields
+        (make-git-commit :hash hash :short short :date date :author author :ago ago :names names
+                         :subject (reduce (lambda (a b) (concatenate 'string a (string (code-char #x1f)) b)) subject))))))
+
+(defun parse-git-commits (text &key names path)
+  "TEXT, what git log printed with *GIT-COMMIT-FORMAT*, as a list of
+GIT-COMMITs, the latest first. With NAMES, git was asked for the names of
+the files each changed (--name-only -z): each one's PATH is the name after
+it, one naming none left out. PATH, when given, is every one's. Without
+NAMES, the lines of a graph (--graph) are kept: each commit's GRAPH, and a
+line of the graph alone a GIT-COMMIT of its own."
+  (let* ((chunks (uiop:split-string text :separator (list (code-char #x1e))))
+         ;; what comes before a commit on its line: the graph
+         (before (first chunks))
+         (commits '()))
+    (dolist (chunk (rest chunks) (nreverse commits))
+      (let* ((end (or (position-if (lambda (c) (or (char= c #\Newline) (char= c (code-char 0)))) chunk) (length chunk)))
+             (commit (parse-git-commit-fields (subseq chunk 0 end)))
+             (after (subseq chunk end)))
+        (if names
+            (let ((named (or path (string-trim (list #\Newline (code-char 0)) after))))
+              (when (and commit (plusp (length named)))
+                (setf (git-commit-path commit) named)
+                (push commit commits)))
+            (let ((lines (uiop:split-string after :separator '(#\Newline))))
+              (when commit
+                (setf (git-commit-graph commit) before (git-commit-path commit) path)
+                (push commit commits))
+              ;; the lines of the graph alone before the next commit, then the next one's graph
+              (dolist (line (butlast (rest lines)))
+                (push (make-git-commit :graph line) commits))
+              (setf before (if (rest lines) (car (last lines)) ""))))))))
+
 (defun git-log-arguments (count)
-  "The arguments of git log listing the latest COUNT commits as PARSE-GIT-LOG reads them."
-  (list "log" (format nil "-n~d" count) "--format=%h%x00%ad%x00%an%x00%s" "--date=short"))
+  "The arguments of git log listing the latest COUNT commits as PARSE-GIT-COMMITS reads them."
+  (list "log" (format nil "-n~d" count) *git-commit-format* "--date=short"))
+
+(defun git-commit-line (commit)
+  "COMMIT as a status lists it: (SHORT SUBJECT)."
+  (list (git-commit-short commit) (git-commit-subject commit)))
 
 ;;; What the repository holds
 
@@ -351,12 +412,13 @@ commits not pushed, UNPUSHED, each (HASH SUBJECT), the latest first, at most
 *GIT-RECENT-COMMITS* of UNPUSHED-COUNT, and UNPUSHED-TO, the upstream they
 are not in, or NIL for those on no remote at all, a branch with none; and
 DOING, what git is in the middle of: :AM, :MERGE, :REBASE, :CHERRY-PICK, :REVERT,
-:BISECT, or NIL; its SUBMODULES, each (PATH STATE); and the files it IGNORES,
+:BISECT, or NIL; its SUBMODULES, each (PATH STATE); the files it IGNORES,
 each (PATH KIND), KIND the word ignored, a folder ignored whole one entry
-ending in /, or :UNREAD when there are some not listed."
+ending in /; and STASH-STAMP, the stamp of git's list of stashes when they
+were read, NIL when there was none."
   branch commit upstream (ahead 0) (behind 0)
   (untracked '()) (unstaged '()) (staged '()) (stashes '()) (recent '()) (unpushed '()) (unpushed-count 0) unpushed-to
-  doing (submodules '()) (ignored '()))
+  doing (submodules '()) (ignored '()) stash-stamp)
 
 (defun git-state-unborn-p (state)
   "True when the repository STATE is of has no commit yet."
@@ -370,7 +432,7 @@ ending in /, or :UNREAD when there are some not listed."
 
 (defun parse-git-status (text)
   "TEXT, what git status --porcelain=v2 --branch -z printed, as a GIT-STATE; a
-submodule's KIND is submodule."
+submodule's KIND is submodule; the files ignored, with --ignored, ignored."
   (let ((state (make-git-state))
         (fields (uiop:split-string text :separator (list (code-char 0)))))
     (loop while fields
@@ -388,6 +450,8 @@ submodule's KIND is submodule."
                               (git-state-behind state) (abs (or (parse-integer (or (second counts) "0") :junk-allowed t) 0)))))
                      ((uiop:string-prefix-p "? " entry)
                       (push (list (subseq entry 2) "untracked") (git-state-untracked state)))
+                     ((uiop:string-prefix-p "! " entry)
+                      (push (list (subseq entry 2) "ignored") (git-state-ignored state)))
                      ((or (uiop:string-prefix-p "1 " entry) (uiop:string-prefix-p "2 " entry) (uiop:string-prefix-p "u " entry))
                       ;; the path is the last field; a rename's original comes after, on its own
                       (let* ((parts (uiop:split-string entry :separator '(#\Space)))
@@ -403,6 +467,7 @@ submodule's KIND is submodule."
                                     (push (list* path (kind (char xy 0)) (and original (list original))) (git-state-staged state)))
                                   (unless (char= (char xy 1) #\.) (push (list path (kind (char xy 1))) (git-state-unstaged state))))))))))))
     (setf (git-state-untracked state) (nreverse (git-state-untracked state))
+          (git-state-ignored state) (nreverse (git-state-ignored state))
           (git-state-unstaged state) (nreverse (git-state-unstaged state))
           (git-state-staged state) (nreverse (git-state-staged state)))
     state))
@@ -414,13 +479,14 @@ the lists of their fields; a line of another count of fields left out."
         for fields = (uiop:split-string line :separator (list (code-char 0)))
         when (= count (length fields)) collect fields))
 
-(defun parse-git-log (text)
-  "TEXT, what git log printed with GIT-LOG-ARGUMENTS, as a list of (HASH DATE AUTHOR SUBJECT)."
-  (git-records text 4))
-
 (defun git-stashes (job top)
   "On JOB's thread: the stashes of the repository at TOP, the latest first, each (NAME SUBJECT)."
   (git-records (git-job-output job top (list "stash" "list" "--format=%gd%x00%gs")) 2))
+
+(defun git-stash-stamp (folder)
+  "The stamp of the list of stashes in git's own FOLDER, NIL when there is none:
+no stash."
+  (ignore-errors (tuatara.io:path-stamp (concatenate 'string folder "logs/refs/stash") :follow nil)))
 
 (defun git-uncommented-lines (text)
   "The lines of TEXT, those beginning with # left out, joined again by newlines."
@@ -443,42 +509,28 @@ that say so, in the order they are looked for.")
         when (some (lambda (file) (tuatara.io:path-kind (concatenate 'string folder file) :follow nil)) files)
           return operation))
 
-(defparameter *git-ignored-arguments* (list "ls-files" "--others" "--ignored" "--exclude-standard" "--directory")
-  "The arguments of git listing the files it ignores, a folder ignored whole once.")
-
-(defun git-ignored-files (job top)
-  "On JOB's thread: the files git ignores at TOP, each (PATH KIND), KIND the
-word ignored, a folder ignored whole one entry ending in / (its files not
-listed)."
-  (mapcar (lambda (path) (list path "ignored"))
-          (tuatara.text:split-words (git-job-output job top (append *git-ignored-arguments* (list "-z"))) (list (code-char 0)))))
-
-(defun git-ignores-any-p (job top)
-  "On JOB's thread: true when git ignores a file at TOP, git ended at the first."
-  (let ((found nil))
-    (run-git top *git-ignored-arguments* :cancel (tuatara.runtime:job-cancel job)
-                                         :line (lambda (line) (declare (ignore line)) (setf found t)))
-    found))
-
-(defun git-read-state (job top folder &key ignored)
+(defun git-read-state (job top folder &key previous)
   "On JOB's thread: the repository at TOP, git's own FOLDER, as a GIT-STATE,
-read by git status (taking no lock that git run elsewhere would meet), its
-latest commits by git log and its stashes by git stash list once it has a
-commit; with IGNORED the files it ignores listed, else :UNREAD when there is
-one, NIL when none."
-  (let ((state (parse-git-status (git-job-output job top (list "status" "--porcelain=v2" "--branch" "-z" "--untracked-files=normal")
-                                                 :environment (list "GIT_OPTIONAL_LOCKS=0")))))
+read by git status (taking no lock that git run elsewhere would meet), the
+files it ignores found in the same walk of its tree, a folder ignored whole
+one entry; its latest commits by git log, and its stashes by git stash list
+when it has any, kept from PREVIOUS, the state read before, while their list
+is as it was then."
+  (let ((state (parse-git-status (git-job-output job top (list "status" "--porcelain=v2" "--branch" "-z" "--untracked-files=normal"
+                                                               "--ignored=traditional")
+                                                 :environment (list "GIT_OPTIONAL_LOCKS=0"))))
+        (stamp (git-stash-stamp folder)))
     (setf (git-state-doing state) (git-operation folder)
           (git-state-submodules state) (git-submodules job top)
-          (git-state-ignored state) (if ignored
-                                        (git-ignored-files job top)
-                                        (and (git-ignores-any-p job top) :unread)))
-    (unless (git-state-unborn-p state)
-      (setf (git-state-stashes state) (git-stashes job top)))
+          (git-state-stash-stamp state) stamp)
+    (when (and stamp (not (git-state-unborn-p state)))
+      (setf (git-state-stashes state)
+            (if (and previous (equalp stamp (git-state-stash-stamp previous)))
+                (git-state-stashes previous)
+                (git-stashes job top))))
     (unless (git-state-unborn-p state)
       (setf (git-state-recent state)
-            (mapcar (lambda (commit) (list (first commit) (fourth commit)))
-                    (parse-git-log (git-job-output job top (git-log-arguments *git-recent-commits*)))))
+            (mapcar #'git-commit-line (parse-git-commits (git-job-output job top (git-log-arguments *git-recent-commits*)))))
       (git-read-unpushed job top state))
     state))
 
@@ -497,8 +549,8 @@ repository has a remote, those on no remote at all."
                 (or (parse-integer (or (git-job-try job top (append (list "rev-list" "--count") range)) "") :junk-allowed t) 0))
             (git-state-unpushed state)
             (and (plusp (git-state-unpushed-count state))
-                 (mapcar (lambda (commit) (list (first commit) (fourth commit)))
-                         (parse-git-log (or (git-job-try job top (append (git-log-arguments *git-recent-commits*) range)) ""))))))))
+                 (mapcar #'git-commit-line
+                         (parse-git-commits (or (git-job-try job top (append (git-log-arguments *git-recent-commits*) range)) ""))))))))
 
 ;;; Hunks
 
@@ -657,7 +709,7 @@ subject. \\<git-log-mode>\\[git-log-show] shows the commit on the line; \\[quit-
     (:untracked (git-state-untracked state))
     (:unstaged (git-state-unstaged state))
     (:staged (git-state-staged state))
-    (:ignored (let ((ignored (git-state-ignored state))) (if (listp ignored) ignored '())))))
+    (:ignored (git-state-ignored state))))
 
 (defun git-diff-face (line)
   "The face a line of a difference is shown in."
@@ -719,7 +771,7 @@ there are, as two values."
 MEMBERS), those with nothing in them left out: the files not tracked,
 changed and staged, as many as GIT-SECTION-SHOWN lists, its submodules, its
 stashes, its commits not pushed, its latest commits, and the files it
-ignores, listed once they are read."
+ignores."
   (flet ((section (name members) (and members (list (cons name members)))))
     (append (loop for (section) in *git-sections*
                   append (section section (git-section-shown (git-section-files state section) section limits)))
@@ -727,8 +779,7 @@ ignores, listed once they are read."
             (section :stashes (git-state-stashes state))
             (section :unpushed (git-state-unpushed state))
             (section :recent (git-state-recent state))
-            (let ((ignored (git-state-ignored state)))
-              (and ignored (list (cons :ignored (if (listp ignored) (git-section-shown ignored :ignored limits) '()))))))))
+            (section :ignored (git-section-shown (git-state-ignored state) :ignored limits)))))
 
 (defun git-status-section-title (state section)
   "The title of SECTION of a status of STATE."
@@ -742,11 +793,10 @@ ignores, listed once they are read."
 
 (defun git-status-section-count (state section members)
   "How many SECTION of a status of STATE holds, MEMBERS of them shown: all
-its files, all its commits not pushed; NIL for files ignored not yet read."
+its files, all its commits not pushed."
   (case section
     (:unpushed (git-state-unpushed-count state))
-    (:ignored (let ((ignored (git-state-ignored state))) (and (listp ignored) (length ignored))))
-    ((:untracked :unstaged :staged) (length (git-section-files state section)))
+    ((:untracked :unstaged :staged :ignored) (length (git-section-files state section)))
     (t (length members))))
 
 (defun git-status-row (member section shown limits)
@@ -759,17 +809,17 @@ there are; an ignored file; a submodule, a stash, or a commit."
    (lambda (line)
      (case section
        (:submodules (destructuring-bind (path kind) member
-                      (funcall line (format nil "  ~16a ~a" kind (escape-controls path)) nil (list :submodule path))))
+                      (funcall line (format nil "  ~a ~a" (column-text kind 16 :elide nil) (escape-controls path)) nil (list :submodule path))))
        (:stashes (destructuring-bind (name subject) member
                    (funcall line (format nil "  ~a ~a" name (escape-controls subject)) :git-status-commit (list :stash name))))
        ((:unpushed :recent) (destructuring-bind (hash subject) member
                               (funcall line (format nil "  ~a ~a" hash (escape-controls subject)) :git-status-commit (list :commit hash))))
        (:ignored (destructuring-bind (path kind) member
-                   (funcall line (format nil "  ~10a ~a" kind (escape-controls path)) :list-dim (list :file :ignored path))))
+                   (funcall line (format nil "  ~a ~a" (column-text kind 10 :elide nil) (escape-controls path)) :list-dim (list :file :ignored path))))
        (t (destructuring-bind (path kind &optional original) member
             (let* ((key (cons section path))
                    (diff (gethash key shown)))
-              (funcall line (format nil "  ~10a ~@[~a -> ~]~a" kind (and original (escape-controls original)) (escape-controls path))
+              (funcall line (format nil "  ~a ~@[~a -> ~]~a" (column-text kind 10 :elide nil) (and original (escape-controls original)) (escape-controls path))
                        (and (eq section :staged) (git-staged-face kind))
                        (list :file section path))
               (when diff
@@ -831,25 +881,13 @@ it holds and folded as in any list in sections (SECTIONED-PIECES)."
         (render-pieces buffer (append head-pieces pieces) :point point
                                                            :entries (concatenate 'vector head-entries entries)
                                                            :refill (lambda (b) (git-refresh-status b))
-                                                           :redraw 'git-status-redraw)))))
+                                                           :redraw 'git-status-render)))))
 
-(defun git-ignored-open-p (buffer)
-  "True when the status BUFFER shows the files its repository ignores: their section is not folded."
-  (not (member :ignored (list-folded buffer))))
-
-(defun git-status-redraw (buffer)
-  "Draw the status BUFFER again from what was last read, its sections folded
-as they are now; the files ignored are read once their section is opened."
-  (git-status-render buffer)
-  (let ((state (tuatara.buffer:buffer-local buffer 'git-state)))
-    (when (and state (eq (git-state-ignored state) :unread) (git-ignored-open-p buffer))
-      (git-refresh-status buffer))))
-
-(defparameter *git-watched-files* '("index" "HEAD" "logs/HEAD")
+(defparameter *git-watched-files* '("index" "HEAD" "logs/HEAD" "logs/refs/stash")
   "The files in git's own folder whose change means the repository changed:
-what is staged, the commit checked out, and where HEAD has been. Git changes
-them whenever it commits, stages, checks out, resets or stashes, run from
-the editor or from anywhere else.")
+what is staged, the commit checked out, where HEAD has been, and the
+stashes. Git changes them whenever it commits, stages, checks out, resets or
+stashes, run from the editor or from anywhere else.")
 
 (defun git-stamps (folder)
   "The stamps of *GIT-WATCHED-FILES* in git's own FOLDER, NIL for one not there."
@@ -870,12 +908,13 @@ GIT-WATCH-TICK to see when the repository changes."
   (let ((top (tuatara.buffer:buffer-local buffer 'git-top))
         (shown (mapcar (lambda (key) (cons key (git-shown-paths buffer key)))
                        (alexandria:hash-table-keys (tuatara.buffer:buffer-local buffer 'git-shown))))
-        (ignored (git-ignored-open-p buffer)))
+        (folder (tuatara.buffer:buffer-local buffer 'git-folder))
+        (previous (tuatara.buffer:buffer-local buffer 'git-state)))
     (setf (tuatara.buffer:buffer-local buffer 'git-reading) t)
     (start-git-job "Reading the repository"
                    (lambda (job)
-                     (let* ((folder (git-folder job top))
-                            (state (git-read-state job top folder :ignored ignored))
+                     (let* ((folder (or folder (git-folder job top)))
+                            (state (git-read-state job top folder :previous previous))
                             (diffs (loop for (key . paths) in shown
                                          collect (cons key (git-read-diff job top (car key) paths)))))
                        (values state diffs folder (git-stamps folder))))
@@ -1404,7 +1443,8 @@ buffer GIT-EDIT-BUFFER made; else say ELSEWHERE."
   "The hash of the commit on point's line of a status (its Recent commits) or
 of a log, or NIL."
   (let ((entry (and (git-here) (list-entry-at))))
-    (cond ((eq (first entry) :commit) (second entry))
+    (cond ((git-commit-p entry) (git-commit-short entry))
+          ((eq (first entry) :commit) (second entry))
           ((and (typep (buffer-major-mode (current-buffer)) 'git-log-mode) (stringp (first entry))) (first entry)))))
 
 (defun git-text-buffer (name top text &key (mode 'diff-mode))

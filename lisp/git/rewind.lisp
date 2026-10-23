@@ -14,41 +14,26 @@
 
 ;;; Histories read
 
-(defparameter *git-rewind-format* "--format=%x1e%H%x1f%h%x1f%ad%x1f%an%x1f%s"
-  "How git log is asked to write each commit for PARSE-GIT-REWIND-LOG: its
-hash, short hash, date, author and subject, apart.")
-
-(defun parse-git-rewind-log (text &optional path)
-  "TEXT, what git log printed with *GIT-REWIND-FORMAT*, as a vector of (HASH
-SHORT DATE AUTHOR SUBJECT PATH), the latest first. PATH is what the file was
-called in that commit, as --name-only -z writes it after each, a commit
-naming none left out; or, when PATH is given, PATH for every one. A record
-whose hash is not one (GIT-HASH-P), as a subject holding git's separators
-would make, is left out."
-  (let ((revisions '()))
-    (dolist (record (rest (uiop:split-string text :separator (list (code-char #x1e)))))
-      (let* ((end (or (position (code-char 0) record) (length record)))
-             (fields (uiop:split-string (string-right-trim '(#\Newline) (subseq record 0 end))
-                                        :separator (list (code-char #x1f))))
-             (named (or path (string-trim (list #\Newline (code-char 0)) (subseq record end)))))
-        (when (and (= 5 (length fields)) (git-hash-p (first fields)) (plusp (length named)))
-          (push (append fields (list named)) revisions))))
-    (coerce (nreverse revisions) 'simple-vector)))
+(defun git-file-history (text)
+  "TEXT, what git log printed for a file with *GIT-COMMIT-FORMAT*,
+--name-only and -z, as a vector of GIT-COMMITs, the latest first, each with
+the file's name in it (PARSE-GIT-COMMITS)."
+  (coerce (parse-git-commits text :names t) 'simple-vector))
 
 (defun git-rewind-file-log (job top path &optional at)
   "On JOB's thread: the commits of PATH in the repository at TOP, the latest
-first (PARSE-GIT-REWIND-LOG), followed back across renames, from the commit
-AT or HEAD; one that deleted it left out."
-  (parse-git-rewind-log (git-job-output job top (append (list "log" "--follow" "--diff-filter=d" "--date=short" "--name-only" "-z"
-                                                              *git-rewind-format*)
-                                                        (and at (list "--end-of-options" at))
-                                                        (list "--" path)))))
+first (GIT-FILE-HISTORY), followed back across renames, from the commit AT
+or HEAD; one that deleted it left out."
+  (git-file-history (git-job-output job top (append (list "log" "--follow" "--diff-filter=d" "--date=short" "--name-only" "-z"
+                                                          *git-commit-format*)
+                                                    (and at (list "--end-of-options" at))
+                                                    (list "--" path)))))
 
 (defun git-rewind-revision-octets (job top revision)
-  "On JOB's thread: the file as REVISION, an entry of PARSE-GIT-REWIND-LOG,
-left it, as octets, read from the repository at TOP; no more than
+  "On JOB's thread: the file as REVISION, a GIT-COMMIT of its history, left
+it, as octets, read from the repository at TOP; no more than
 *GIT-SHOWN-LIMIT*."
-  (git-blob-octets top (first revision) (sixth revision) :job job :limit *git-shown-limit*))
+  (git-blob-octets top (git-commit-hash revision) (git-commit-path revision) :job job :limit *git-shown-limit*))
 
 ;;; Buffers going back
 
@@ -66,10 +51,9 @@ closes.")
   "What is said of the commit INDEX (0 the latest) of BUFFER's history: which
 of how many, its short hash, date, author and subject."
   (let ((revisions (tuatara.buffer:buffer-local buffer 'git-rewind-revisions)))
-    (destructuring-bind (hash short date author subject path) (svref revisions index)
-      (declare (ignore hash path))
-      (format nil "~:d of ~:d: ~a ~a ~a: ~a" (1+ index) (length revisions) short date
-              (escape-controls author) (escape-controls subject)))))
+    (let ((revision (svref revisions index)))
+      (format nil "~:d of ~:d: ~a ~a ~a: ~a" (1+ index) (length revisions) (git-commit-short revision) (git-commit-date revision)
+              (escape-controls (git-commit-author revision)) (escape-controls (git-commit-subject revision))))))
 
 (defun git-rewind-buffer (top name mode)
   "Show at once, in the current window, a new buffer NAME (one by that name
@@ -98,9 +82,9 @@ from, if any."
                      ;; from a folder's commit: the file followed back from there, and the
                      ;; commits after it that kept its name (following from HEAD a name
                      ;; gone there follows another file)
-                     (let* ((newer (and at (parse-git-rewind-log
+                     (let* ((newer (and at (git-file-history
                                             (git-job-output job top (list "log" "--diff-filter=d" "--date=short" "--name-only" "-z"
-                                                                          *git-rewind-format* "--end-of-options" (format nil "~a..HEAD" at)
+                                                                          *git-commit-format* "--end-of-options" (format nil "~a..HEAD" at)
                                                                           "--" path)))))
                             (revisions (concatenate 'simple-vector newer (git-rewind-file-log job top path at)))
                             ;; renamed in what is staged: its history is that of the name HEAD has
@@ -203,10 +187,9 @@ left it, the latest first, by its hash, date, author or subject."
                 "Rewind to: "
                 (loop for revision across (tuatara.buffer:buffer-local (current-buffer) 'git-rewind-revisions)
                       for i from 0
-                      collect (destructuring-bind (hash short date author subject path) revision
-                                (declare (ignore hash path))
-                                (make-candidate (format nil "~a ~a ~a: ~a" short date (escape-controls author) (escape-controls subject))
-                                                :value i)))
+                      collect (make-candidate (format nil "~a ~a ~a: ~a" (git-commit-short revision) (git-commit-date revision)
+                                                      (escape-controls (git-commit-author revision)) (escape-controls (git-commit-subject revision)))
+                                              :value i))
                 :require-match t :keep-order t)))
     (when (integerp index) (git-rewind-show (current-buffer) index))))
 
@@ -215,13 +198,13 @@ left it, the latest first, by its hash, date, author or subject."
 shown: what it says and its changes."
   (let ((revision (git-rewind-shown (current-buffer))))
     (if revision
-        (git-show-commit (git-here) (first revision))
+        (git-show-commit (git-here) (git-commit-hash revision))
         (message "No commit shown yet: it is being read"))))
 
 (define-command git-rewind-copy-hash ()
   "Copy the short hash of the commit that left the file or folder of this
 history as it is shown."
-  (let ((short (second (git-rewind-shown (current-buffer)))))
+  (let ((short (let ((revision (git-rewind-shown (current-buffer)))) (and revision (git-commit-short revision)))))
     (if short
         (progn (kill-text short :append nil)
                (message "Copied ~a" short))
@@ -299,7 +282,7 @@ a file that is not text shown."
                                                                   0))))))))))
 
 (defun git-rewind-shown (buffer)
-  "The commit BUFFER's history shows, an entry of PARSE-GIT-REWIND-LOG, and
+  "The commit BUFFER's history shows, a GIT-COMMIT, and
 as a second value which it is (0 the latest) of how many, a third; NIL when
 BUFFER shows none."
   (let ((revisions (tuatara.buffer:buffer-local buffer 'git-rewind-revisions)))
@@ -312,14 +295,14 @@ BUFFER shows none."
 the commit shown, lit up in the warning colour (:mode-line-rewind)."
   (declare (ignore editor))
   (let ((revision (git-rewind-shown buffer)))
-    (and revision (list (format nil " Rewind ~a " (second revision)) :mode-line-rewind))))
+    (and revision (list (format nil " Rewind ~a " (git-commit-short revision)) :mode-line-rewind))))
 
 (defun git-rewind-mode-line-place (editor buffer)
   "What the mode line of a history adds after GIT-REWIND-MODE-LINE: the date
 of the commit shown, and which of how many it is."
   (declare (ignore editor))
   (multiple-value-bind (revision at count) (git-rewind-shown buffer)
-    (and revision (format nil "~a ~:d/~:d" (third revision) (1+ at) count))))
+    (and revision (format nil "~a ~:d/~:d" (git-commit-date revision) (1+ at) count))))
 
 (defun install-git-rewind ()
   "Bind \\`C-x G' to \\[git-rewind], beside \\`C-x g' for the status, and the keys of a

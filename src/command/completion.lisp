@@ -61,73 +61,96 @@ words are separated by WORD-SEPARATOR-P, or by a change to upper case."
        (or (null previous) (word-separator-p previous)
            (and (lower-case-p previous) (upper-case-p c)))))
 
-(defun initialism-p (component string case-sensitive)
-  "True when COMPONENT's characters are the first characters of STRING's first words (WORD-START-P)."
-  (let ((i 0) (n (length component)) (previous nil))
-    (loop for c across string
-          while (< i n)
-          do (when (word-start-p c previous)
-               (unless (if case-sensitive (char= c (char component i)) (char-equal c (char component i)))
-                 (return-from initialism-p nil))
-               (incf i))
-             (setf previous c))
-    (= i n)))
+(defun fold-component (component case-sensitive)
+  "COMPONENT as COMPONENT-WALK takes it: in lower case unless CASE-SENSITIVE."
+  (if case-sensitive (coerce component 'simple-string) (string-downcase component)))
 
-(defun flex-match-p (component string case-sensitive)
-  "True when COMPONENT's characters occur in STRING in order, not necessarily adjacent."
-  (let ((i 0))
-    (loop for c across string
-          while (< i (length component))
-          do (when (if case-sensitive (char= c (char component i)) (char-equal c (char component i)))
-               (incf i)))
-    (= i (length component))))
+(defun component-walk (folded string case-sensitive &optional positions)
+  "How FOLDED, a component of what was typed in lower case unless
+CASE-SENSITIVE (FOLD-COMPONENT), matches STRING, as four values: the kind of
+match, :prefix, :substring, :initialism (its characters the first characters
+of STRING's first words, WORD-START-P), :flex (its characters in STRING in
+order, not necessarily adjacent) or NIL; where a prefix or substring was
+found; how spread out a flex match is, found in order from STRING's start: the
+gaps between its characters counted ten each and the characters skipped inside
+it one each, 0 when they stand together; and with POSITIONS, the positions of
+STRING it matches, as a list. Each character of STRING is compared once for
+each way of matching, and nothing is made but the positions."
+  (declare (type simple-string folded) (type string string))
+  (macrolet ((same (c k)
+               `(let ((c ,c) (d (schar folded ,k)))
+                  (or (char= c d) (and (not case-sensitive) (char= (char-downcase c) d)))))
+             (walking (type)
+               ;; the walk, for a string of TYPE
+               `(let ((string string) (n (length folded)) (m (length string)))
+                  (declare (type ,type string) (type fixnum n m) (optimize speed))
+                  ;; a part of the string
+                  (let ((at (loop for start of-type fixnum from 0 to (- m n)
+                                  when (loop for k of-type fixnum from 0 below n
+                                             always (same (char string (+ start k)) k))
+                                    return start)))
+                    (when at
+                      (return-from component-walk
+                        (values (if (zerop at) :prefix :substring) at 0
+                                (and positions (loop for i from at below (+ at n) collect i))))))
+                  ;; the first characters of the first words
+                  (let ((k 0) (previous nil) (found '()))
+                    (declare (type fixnum k))
+                    (loop for i of-type fixnum from 0 below m
+                          for c = (char string i)
+                          while (< k n)
+                          do (when (word-start-p c previous)
+                               (unless (same c k) (return))
+                               (when positions (push i found))
+                               (incf k))
+                             (setf previous c))
+                    (when (= k n)
+                      (return-from component-walk (values :initialism nil 0 (nreverse found)))))
+                  ;; the characters in order
+                  (let ((k 0) (first -1) (last -1) (gaps 0) (found '()))
+                    (declare (type fixnum k first last gaps))
+                    (loop for i of-type fixnum from 0 below m
+                          while (< k n)
+                          do (when (same (char string i) k)
+                               (when (and (>= last 0) (> i (1+ last))) (incf gaps))
+                               (when (< first 0) (setf first i))
+                               (setf last i)
+                               (when positions (push i found))
+                               (incf k)))
+                    (if (= k n)
+                        (values :flex nil (if (>= first 0) (+ (* 10 gaps) (- (1+ last) first n)) 0) (nreverse found))
+                        nil)))))
+    (typecase string
+      ((simple-array character (*)) (walking (simple-array character (*))))
+      (simple-base-string (walking simple-base-string))
+      (t (walking string)))))
 
 (defun component-match (component string &optional (case-sensitive (smart-case-p component)))
   "How COMPONENT matches STRING: :prefix, :substring, :initialism, :flex, or
-NIL, and as a second value where it was found for the first two.
-Case-insensitive unless CASE-SENSITIVE, true when COMPONENT contains upper
-case."
-  (let ((at (search component string :test (if case-sensitive #'char= #'char-equal))))
-    (cond ((and at (zerop at)) (values :prefix 0))
-          (at (values :substring at))
-          ((initialism-p component string case-sensitive) :initialism)
-          ((flex-match-p component string case-sensitive) :flex)
-          (t nil))))
+NIL, and as a second value where it was found for the first two
+\(COMPONENT-WALK). Case-insensitive unless CASE-SENSITIVE, true when COMPONENT
+contains upper case."
+  (multiple-value-bind (kind at) (component-walk (fold-component component case-sensitive) string case-sensitive)
+    (values kind at)))
 
 (defparameter *match-scores* '((:prefix . 0) (:substring . 100) (:initialism . 300) (:flex . 400))
   "Rank of each match kind, lower is better: what COMPONENT-SCORE starts from.")
 
-(defun flex-spread (component string case-sensitive)
-  "How spread out COMPONENT's characters are in STRING, found in order from its
-start: the gaps between them counted ten each, and the characters skipped
-inside the match one each; 0 when they stand together."
-  (let ((i 0) (first nil) (last nil) (gaps 0))
-    (loop for c across string
-          for at from 0
-          while (< i (length component))
-          do (when (if case-sensitive (char= c (char component i)) (char-equal c (char component i)))
-               (when (and last (> at (1+ last))) (incf gaps))
-               (unless first (setf first at))
-               (setf last at)
-               (incf i)))
-    (if first (+ (* 10 gaps) (- (1+ last) first (length component))) 0)))
-
-(defun component-score (component string &optional (case-sensitive (smart-case-p component)))
-  "How well COMPONENT matches STRING, lower better, or NIL when it does not:
-its kind of match (*MATCH-SCORES*, COMPONENT-MATCH), a part of a name found
-earlier and at a word's start better, letters in order less spread out
-better (FLEX-SPREAD); CASE-SENSITIVE as COMPONENT-MATCH has it. The second
-value says how closely it matches, lower closer: 0 found at the start of a
-word, 1 found inside one, 2 the first letters of its words, 3 its letters
-apart."
-  (multiple-value-bind (kind at) (component-match component string case-sensitive)
+(defun component-score (folded string case-sensitive)
+  "How well FOLDED, a component as FOLD-COMPONENT gives it, matches STRING,
+lower better, or NIL when it does not: its kind of match (*MATCH-SCORES*,
+COMPONENT-WALK), a part of a name found earlier and at a word's start better,
+letters in order less spread out better. The second value says how closely
+it matches, lower closer: 0 found at the start of a word, 1 found inside one,
+2 the first letters of its words, 3 its letters apart."
+  (multiple-value-bind (kind at spread) (component-walk folded string case-sensitive)
     (when kind
       ;; at the start of a word before inside one
       (let ((inside (and (eq kind :substring) (not (word-separator-p (char string (1- at)))))))
         (values (+ (cdr (assoc kind *match-scores*))
                    (case kind
                      (:substring (+ (min 49 at) (if inside 50 0)))
-                     (:flex (min 99 (flex-spread component string case-sensitive)))
+                     (:flex (min 99 spread))
                      (t 0)))
                 (case kind
                   ((:prefix :substring) (if inside 1 0))
@@ -135,16 +158,21 @@ apart."
                   (t 3)))))))
 
 (defun input-components (input)
-  "INPUT's components (SPLIT-COMPONENTS), each as (COMPONENT . CASE-SENSITIVE)."
-  (mapcar (lambda (component) (cons component (smart-case-p component))) (tuatara.text:split-words input)))
+  "INPUT's components (SPLIT-COMPONENTS), each as (FOLDED . CASE-SENSITIVE),
+FOLDED the component in lower case unless it is matched case-sensitively
+\(FOLD-COMPONENT)."
+  (mapcar (lambda (component)
+            (let ((case-sensitive (smart-case-p component)))
+              (cons (fold-component component case-sensitive) case-sensitive)))
+          (tuatara.text:split-words input)))
 
 (defun components-score (components string)
   "The score of STRING against COMPONENTS, as INPUT-COMPONENTS gives them: the
 sum of theirs (COMPONENT-SCORE), or NIL when one does not match; the second
 value how closely the one matching least closely matches (0 with none)."
   (let ((score 0) (closeness 0))
-    (loop for (component . case-sensitive) in components
-          do (multiple-value-bind (one close) (component-score component string case-sensitive)
+    (loop for (folded . case-sensitive) in components
+          do (multiple-value-bind (one close) (component-score folded string case-sensitive)
                (unless one (return-from components-score nil))
                (incf score one)
                (setf closeness (max closeness close))))
@@ -363,31 +391,13 @@ last one left cut at its end. Returns the string and its spans."
     (multiple-value-bind (string spans) (join-fields fields :row-width row-width :default-face default-face)
       (tuatara.display:fit-columns string spans limit :width #'panel-char-columns))))
 
-(defun word-initial-positions (string)
-  "The positions in STRING of the first characters of its words (WORD-START-P)."
-  (loop for c across string
-        for i from 0
-        when (word-start-p c (and (plusp i) (char string (1- i)))) collect i))
-
 (defun component-positions (component string)
   "The positions of the characters of STRING that COMPONENT matches, as
 COMPONENT-MATCH matches it (a substring, the initials of words, or letters in
 order), or NIL when it does not match."
-  (let* ((cs (smart-case-p component))
-         (test (if cs #'char= #'char-equal))
-         (pos (search component string :test test)))
-    (cond ((zerop (length component)) nil)
-          (pos (loop for i from pos below (+ pos (length component)) collect i))
-          ((let ((initials (word-initial-positions string)))
-             (and (<= (length component) (length initials))
-                  (loop for a across component for p in initials always (funcall test a (char string p)))
-                  (subseq initials 0 (length component)))))
-          (t (let ((i 0) (found '()))
-               (loop for c across string
-                     for p from 0
-                     while (< i (length component))
-                     do (when (funcall test c (char component i)) (push p found) (incf i)))
-               (and (= i (length component)) (nreverse found)))))))
+  (let ((case-sensitive (smart-case-p component)))
+    (and (plusp (length component))
+         (nth-value 3 (component-walk (fold-component component case-sensitive) string case-sensitive t)))))
 
 (defparameter *match-faces* #(:completion-match-0 :completion-match-1 :completion-match-2 :completion-match-3)
   "The faces of the parts of a candidate the words typed match: the first word's,

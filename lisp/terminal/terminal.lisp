@@ -79,10 +79,28 @@ and its keys work as anywhere."
 (defvar *terminal-buffers* '()
   "The terminal buffers there are, newest first.")
 
+(defvar *terminal-look-faces* (cons nil (make-hash-table))
+  "The faces of each look shown so far (TERMINAL-FACES), by the look, in its
+cdr; its car the face generation (TUATARA.DISPLAY:*FACE-GENERATION*) they
+were made for.")
+
 (defun terminal-faces (look)
-  "The faces a cell of LOOK (EMULATOR-FRAME's: (FG BG . ATTRIBUTES)) is shown
-in: its colours, then bold, italic, underlined, dim and reversed."
-  (destructuring-bind (fg bg &rest attributes) look
+  "The faces a cell of LOOK (EMULATOR-FRAME's, a number: LOOK-LIST) is shown
+in: its colours, then bold, italic, underlined, dim and reversed. Made once
+for each look while the faces stay as they are."
+  (let ((known *terminal-look-faces*))
+    (unless (eql (car known) tuatara.display:*face-generation*)
+      ;; a fresh table, never one cleared: another thread may be reading the old one
+      (setf known (cons tuatara.display:*face-generation* (make-hash-table :synchronized t))
+            *terminal-look-faces* known))
+    (multiple-value-bind (faces found) (gethash look (cdr known))
+      (if found
+          faces
+          (setf (gethash look (cdr known)) (look-faces look))))))
+
+(defun look-faces (look)
+  "The faces a cell of LOOK is shown in, made afresh (TERMINAL-FACES)."
+  (destructuring-bind (&optional fg bg &rest attributes) (look-list look)
     (remove nil (list* (and fg (terminal-colour-face :fg fg))
                        (and bg (terminal-colour-face :bg bg))
                        (mapcar (lambda (attribute)
@@ -130,13 +148,14 @@ programs' colours were last coloured for.")
 ;;; A terminal's text with its escape sequences, its colours made faces
 
 (defun sgr-colour (codes)
-  "The colour the SGR CODES (a list, from just after 38 or 48) begin with, and
-the codes after it: 5;N an index of the 256, 2;R;G;B #rrggbb."
-  (case (first codes)
-    (5 (values (second codes) (cddr codes)))
-    (2 (values (tuatara.display:colour-hex (mapcar (lambda (c) (min 255 (or c 0))) (list (second codes) (third codes) (fourth codes))))
-               (nthcdr 4 codes)))
-    (t (values nil (rest codes)))))
+  "The colour code (MAKE-LOOK) the SGR CODES (a list, from just after 38 or 48)
+begin with, and the codes after it: 5;N an index of the 256, 2;R;G;B red,
+green and blue; 0 for none."
+  (flet ((part (c) (min 255 (max 0 (or c 0)))))
+    (case (first codes)
+      (5 (values (palette-code (part (second codes))) (cddr codes)))
+      (2 (values (rgb-code (part (second codes)) (part (third codes)) (part (fourth codes))) (nthcdr 4 codes)))
+      (t (values 0 (rest codes))))))
 
 (defun sgr-colour-parts (parts)
   "The parts of a colour written with colons (2::R:G:B, 2:R:G:B or 5:N, after
@@ -148,13 +167,13 @@ the codes after it: 5;N an index of the 256, 2;R;G;B #rrggbb."
 FACES a list, or plain strings:
 SGR colours, bold, italic and underline as faces, every other sequence (a
 cursor's move, a shell's marks) left out."
-  (let ((pieces '()) (fg nil) (bg nil) (bold nil) (italic nil) (underline nil)
+  (let ((pieces '()) (fg 0) (bg 0) (bold nil) (italic nil) (underline nil)
         (out (make-string-output-stream)) (i 0) (n (length text)))
     (flet ((flush ()
              (let ((s (get-output-stream-string out)))
                (when (plusp (length s))
-                 (let ((faces (terminal-faces (list* fg bg (remove nil (list (and bold :bold) (and italic :italic)
-                                                                              (and underline :underline)))))))
+                 (let ((faces (terminal-faces (make-look fg bg (logior (if bold (look-bit :bold) 0) (if italic (look-bit :italic) 0)
+                                                                       (if underline (look-bit :underline) 0))))))
                    (push (if faces (list s faces) s) pieces))))))
       (loop while (< i n)
             do (let ((c (char text i)))
@@ -185,17 +204,17 @@ cursor's move, a shell's marks) left out."
                                                     (t nil))))
                                      (case (or code :none)
                                        (:none nil)
-                                       (0 (setf fg nil bg nil bold nil italic nil underline nil))
+                                       (0 (setf fg 0 bg 0 bold nil italic nil underline nil))
                                        (1 (setf bold t)) (3 (setf italic t)) (4 (setf underline t))
                                        ((21 22) (setf bold nil)) (23 (setf italic nil)) (24 (setf underline nil))
-                                       (39 (setf fg nil)) (49 (setf bg nil))
+                                       (39 (setf fg 0)) (49 (setf bg 0))
                                        (38 (multiple-value-setq (fg codes) (sgr-colour codes)))
                                        (48 (multiple-value-setq (bg codes) (sgr-colour codes)))
                                        ;; the sixteen colours by their numbers in the palette
-                                       (t (cond ((<= 30 code 37) (setf fg (- code 30)))
-                                                ((<= 40 code 47) (setf bg (- code 40)))
-                                                ((<= 90 code 97) (setf fg (+ 8 (- code 90))))
-                                                ((<= 100 code 107) (setf bg (+ 8 (- code 100)))))))))))
+                                       (t (cond ((<= 30 code 37) (setf fg (palette-code (- code 30))))
+                                                ((<= 40 code 47) (setf bg (palette-code (- code 40))))
+                                                ((<= 90 code 97) (setf fg (palette-code (+ 8 (- code 90)))))
+                                                ((<= 100 code 107) (setf bg (palette-code (+ 8 (- code 100))))))))))))
                       (setf i (1+ end))))
                    ((and (char= c #\Escape) (< (1+ i) n) (char= (char text (1+ i)) #\]))
                     ;; OSC: up to its BEL or ST (ESC \)
@@ -311,15 +330,16 @@ when it took KEY."
 characters: an address's last full stop, comma, colon or quotation mark left
 out, and a closing bracket it does not open."
   (let ((found '()))
-    (cl-ppcre:do-matches (start end *terminal-url-pattern* text)
-      (loop while (and (> end start)
-                       (let ((c (char text (1- end))))
-                         (or (find c ".,;:!?'\"")
-                             (and (find c ")]}")
-                                  (> (count c text :start start :end end)
-                                     (count (char "([{" (position c ")]}")) text :start start :end end))))))
-            do (decf end))
-      (push (list start end) found))
+    (when (search "://" text)
+      (cl-ppcre:do-matches (start end *terminal-url-pattern* text)
+        (loop while (and (> end start)
+                         (let ((c (char text (1- end))))
+                           (or (find c ".,;:!?'\"")
+                               (and (find c tuatara.text:*closers*)
+                                    (> (count c text :start start :end end)
+                                       (count (char tuatara.text:*openers* (position c tuatara.text:*closers*)) text :start start :end end))))))
+              do (decf end))
+        (push (list start end) found)))
     (nreverse found)))
 
 (defun terminal-link-at (buffer emulator column row &key history)
@@ -411,32 +431,52 @@ terminal shown there."
   (values (max 2 (tuatara.display:window-text-width window))
           (max 1 (tuatara.display:window-height window))))
 
-(defun terminal-shown-text (rows looks cursor-row cursor-column)
-  "The text a terminal buffer shows for ROWS, the screen's rows, and the parts
-of it in faces as two values: the rows a line each, the spaces at their ends
-left out but those before the cursor (at CURSOR-COLUMN of CURSOR-ROW), and
-each (START END FACES) in octets, from LOOKS."
-  (let ((out (make-string-output-stream)) (spans '()) (octets 0))
+(defun terminal-row-shown (row row-looks keep)
+  "What a terminal buffer shows of ROW, a row of its screen whose looks are
+ROW-LOOKS (EMULATOR-FRAME's): a list (KEEP OCTETS SPANS), OCTETS the row in
+UTF-8, the spaces at its end left out but for its first KEEP characters, SPANS
+each (START END FACES) in those octets, its addresses as links and its looks
+as faces."
+  (let* ((last (position #\Space row :from-end t :test-not #'char=))
+         (end (min (length row) (max keep (if last (1+ last) 0))))
+         (spans '()))
+    (flet ((octets (to) (tuatara.text:string-octet-length row :end to)))
+      (loop for (start stop) in (text-urls (subseq row 0 end))
+            do (push (list (octets start) (octets stop) '(:link)) spans))
+      (loop for (from to look) in row-looks
+            when (< from end)
+              do (let ((start (octets from)) (stop (octets (min to end))))
+                   (when (< start stop) (push (list start stop (terminal-faces look)) spans))))
+      (list keep (tuatara.text:string-octets row :end end) (nreverse spans)))))
+
+(defun terminal-shown-text (rows looks cursor-row cursor-column &optional shown)
+  "The text a terminal buffer shows for ROWS, the screen's rows, as UTF-8
+octets, and the parts of it in faces, as two values: the rows a line each,
+the spaces at their ends left out but those before the cursor (at
+CURSOR-COLUMN of CURSOR-ROW), and each (START END FACES) in octets, from
+LOOKS. SHOWN, when given, a vector as long as ROWS, keeps what each row shows
+\(TERMINAL-ROW-SHOWN), made again only for a row whose place in it is NIL or
+whose spaces kept for the cursor changed."
+  (let ((entries (make-array (length rows))) (spans '()) (octets 0))
     (loop for row across rows
           for row-looks across looks
           for r from 0
-          do (let* ((keep (if (eql r cursor-row) (tuatara.display:chars-in-columns row cursor-column) 0))
-                    (last (position #\Space row :from-end t :test-not #'char=))
-                    (text (subseq row 0 (min (length row) (max keep (if last (1+ last) 0))))))
-               (when (plusp r) (write-char #\Newline out) (incf octets))
-               (write-string text out)
-               (loop for (start end) in (text-urls text)
-                     do (push (list (+ octets (tuatara.text:string-octet-length text :end start))
-                                    (+ octets (tuatara.text:string-octet-length text :end end))
-                                    '(:link))
-                              spans))
-               (loop for (from to look) in row-looks
-                     when (< from (length text))
-                       do (let ((start (+ octets (tuatara.text:string-octet-length text :end from)))
-                                (stop (+ octets (tuatara.text:string-octet-length text :end (min to (length text))))))
-                            (when (< start stop) (push (list start stop (terminal-faces look)) spans))))
-               (incf octets (tuatara.text:string-octet-length text))))
-    (values (get-output-stream-string out) (nreverse spans))))
+          do (let ((keep (if (eql r cursor-row) (tuatara.display:chars-in-columns row cursor-column) 0))
+                   (entry (and shown (aref shown r))))
+               (unless (and entry (= keep (first entry)))
+                 (setf entry (terminal-row-shown row row-looks keep))
+                 (when shown (setf (aref shown r) entry)))
+               (setf (aref entries r) entry)))
+    (let ((text (make-array (max 0 (+ (1- (length rows)) (loop for entry across entries sum (length (second entry)))))
+                            :element-type '(unsigned-byte 8))))
+      (loop for (nil row-octets row-spans) across entries
+            for r from 0
+            do (when (plusp r) (setf (aref text octets) 10) (incf octets))
+               (replace text row-octets :start1 octets)
+               (loop for (start end faces) in row-spans
+                     do (push (list (+ octets start) (+ octets end) faces) spans))
+               (incf octets (length row-octets)))
+      (values text (nreverse spans)))))
 
 (defvar tuatara-user:*terminal-title-max* 40
   "The most columns of a terminal's title (as the shell gives it, user@host:~/dir
@@ -468,18 +508,21 @@ over it (BUFFER's :pictures). :BUSY when the library could not be had at
 once, nothing shown: to be tried again."
   (let ((rows (tuatara.buffer:buffer-local buffer 'terminal-rows))
         (looks (tuatara.buffer:buffer-local buffer 'terminal-looks))
+        (shown (tuatara.buffer:buffer-local buffer 'terminal-shown))
         ;; the whole screen still owed by a refresh that could not be made
         (all (or all (tuatara.buffer:buffer-local buffer 'terminal-owed-all))))
     (unless (and rows (= (length rows) (emulator-rows emulator)))
       (setf rows (make-array (emulator-rows emulator) :initial-element "")
             looks (make-array (emulator-rows emulator) :initial-element '())
+            shown (make-array (emulator-rows emulator) :initial-element nil)
             all t
             (tuatara.buffer:buffer-local buffer 'terminal-rows) rows
-            (tuatara.buffer:buffer-local buffer 'terminal-looks) looks))
+            (tuatara.buffer:buffer-local buffer 'terminal-looks) looks
+            (tuatara.buffer:buffer-local buffer 'terminal-shown) shown))
     (multiple-value-bind (x y visible shape pictures)
         (emulator-frame emulator (lambda (row text row-looks)
                                    (when (< row (length rows))
-                                     (setf (aref rows row) text (aref looks row) row-looks)))
+                                     (setf (aref rows row) text (aref looks row) row-looks (aref shown row) nil)))
                         :all all :wait nil)
       (declare (ignore visible shape))
       ;; the reader holds the library a while (a picture being drawn): not waited for, tried again soon
@@ -489,7 +532,7 @@ once, nothing shown: to be tried again."
       (setf (tuatara.buffer:buffer-local buffer 'terminal-owed-all) nil)
       (setf (tuatara.buffer:buffer-local buffer :pictures) pictures)
       (follow-terminal-program buffer emulator)
-      (multiple-value-bind (text spans) (terminal-shown-text rows looks y (or x 0))
+      (multiple-value-bind (text spans) (terminal-shown-text rows looks y (or x 0) shown)
         (set-made-text buffer text :spans spans :key nil))
       (when y
         (let ((line (tuatara.buffer:buffer-goto-line buffer (min y (1- (length rows))))))

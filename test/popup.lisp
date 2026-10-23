@@ -278,4 +278,13 @@ read (TUATARA.DEFAULTS::*PATH-LISTING*), for the editor to list it next."
   ;; a docstring's own line breaks give way to the box's width; blank lines and indented lines stay
   (is equal '("The buffer called NAME, made" "when there is none." "" "  example" "Done.")
       (tuatara.command::wrap-text (format nil "The buffer called NAME,~%made when there is none.~%~%  example~%Done.") 30))
-  (is equal '("one two three" "four") (tuatara.command::wrap-text (format nil "one~%two three four") 13)))
+  (is equal '("one two three" "four") (tuatara.command::wrap-text (format nil "one~%two three four") 13))
+  ;; an item of a list stands on its own, its words filled under its first, as help shows them
+  (is equal '("Keys:" "- C-x b goes to a" "  buffer" "- q leaves" "1. one more")
+      (tuatara.command::wrap-text (format nil "Keys:~%- C-x b goes to a buffer~%- q~%  leaves~%1. one more") 18))
+  (is equal '((:filled "" 0 ("Keys:") ("Keys:"))
+              (:filled "- " 2 ("C-x" "b" "goes") ("- C-x b" "  goes"))
+              (:blank)
+              (:as-is "  (example)")
+              (:filled "12. " 4 ("last") ("12. last")))
+      (tuatara.display:docstring-paragraphs (format nil "Keys:~%- C-x b~%  goes~%~%  (example)~%12. last"))))

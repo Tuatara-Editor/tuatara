@@ -539,8 +539,13 @@ and a month on its day MSTART. NIL for a block it does not know."
                  (values (day-universal-time (day-number y 1 1)) (day-universal-time (day-number (1+ y) 1 1))
                          (format nil "the year ~d" y)))
                (shift (base)
-                 (multiple-value-bind (match groups) (cl-ppcre:scan-to-strings (format nil "^~a(?:-(\\d+))?$" base) word)
-                   (and match (if (aref groups 0) (parse-integer (aref groups 0)) 0)))))
+                 ;; BASE alone, 0, or BASE-N, N
+                 (let ((size (length base)))
+                   (and (uiop:string-prefix-p base word)
+                        (cond ((= (length word) size) 0)
+                              ((and (> (length word) (1+ size)) (char= (char word size) #\-)
+                                    (every #'digit-char-p (subseq word (1+ size))))
+                               (parse-integer word :start (1+ size))))))))
         (let ((first (week-start today wstart)) (n nil))
           (cond ((setf n (shift "today")) (day-range (- today n)))
                 ((string= word "yesterday") (day-range (1- today)))
@@ -554,9 +559,8 @@ and a month on its day MSTART. NIL for a block it does not know."
                 ((cl-ppcre:scan "^\\d{4}$" word) (year-range (parse-integer word)))
                 ((cl-ppcre:scan "^\\d{4}-\\d{2}$" word)
                  (month-range (parse-integer word :end 4) (parse-integer word :start 5)))
-                ((cl-ppcre:scan "^\\d{4}-\\d{2}-\\d{2}$" word)
-                 (day-range (day-number (parse-integer word :end 4) (parse-integer word :start 5 :end 7)
-                                        (parse-integer word :start 8))))
+                ((eql (nth-value 3 (written-date-at word 0 (length word) :iso)) (length word))
+                 (multiple-value-bind (y m d) (written-date-at word 0 (length word) :iso) (day-range (day-number y m d))))
                 ((cl-ppcre:scan "^\\d{4}-w\\d{2}$" word)
                  (week-range (iso-week-monday (parse-integer word :end 4) (parse-integer word :start 6))))
                 (t (values nil nil nil))))))))
@@ -1129,10 +1133,6 @@ on; year, the next year's first day."
               ((string-equal step "quarter") (at mstart (+ 3 m) y))
               (t (at 1 1 (1+ y))))))))
 
-(defun clocktable-day-stamp (time)
-  "The day of the universal TIME as an inactive timestamp without a time: [2026-09-28 Mon]."
-  (format-time "[%F %a]" time))
-
 (defun clocktable-steps (params)
   "The clock tables of PARAMS one for each :step (day, week, semimonth, month,
 quarter, year) of its :block, or from its :tstart to its :tend: each under a
@@ -1175,7 +1175,7 @@ block's old text when it has neither a block nor both times."
                                          (let ((next (clocktable-step-next start step wstart mstart)))
                                            ;; a step that gets nowhere would go on for ever
                                            (when (<= next start)
-                                             (message "The clock table's steps go nowhere from ~a" (clocktable-day-stamp start))
+                                             (message "The clock table's steps go nowhere from ~a" (org-timestamp-text start :clock nil))
                                              (return))
                                            (multiple-value-bind (text total)
                                                (clocktable-one (list* :header "" :step nil :block nil
@@ -1183,7 +1183,7 @@ block's old text when it has neither a block nor both times."
                                                                       params))
                                              (setf last-skipped (and skip0 (zerop total)))
                                              (unless last-skipped
-                                               (format out "~%~a~a~%~a" title (clocktable-day-stamp start) text)))
+                                               (format out "~%~a~a~%~a" title (org-timestamp-text start :clock nil) text)))
                                            (setf start next))))))
                  (cond ((zerop (length written)) (string #\Newline))
                        (last-skipped (concatenate 'string written (string #\Newline)))

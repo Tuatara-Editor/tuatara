@@ -203,7 +203,8 @@ anything not framed as the protocol frames it, is an error."
         (let ((octets (make-array length :element-type '(unsigned-byte 8))))
           (unless (= length (read-sequence octets stream))
             (return-from lsp-read-message nil))
-          (let ((text (tuatara.text:lenient-string octets)))
+          ;; an octet that is not UTF-8 as its raw byte's character, as in a file's text
+          (let ((text (tuatara.text:octets-string octets)))
             (values (tuatara.text:json-read text) text))))))
 
 (defun lsp-arrive (server message)
@@ -373,9 +374,9 @@ SERVER and ARGUMENTS bound."
                                                                          "resolveSupport" (funcall o "properties" #("documentation" "detail"))))
                       "hover" (funcall o "contentFormat" #("plaintext" "markdown"))
                       "signatureHelp" (funcall o "signatureInformation" (funcall o "documentationFormat" #("plaintext" "markdown")))
-                      "definition" (funcall o) "references" (funcall o) "declaration" (funcall o) "implementation" (funcall o)
+                      "definition" (funcall o) "references" (funcall o) "implementation" (funcall o)
                       "typeDefinition" (funcall o)
-                      "rename" (funcall o "prepareSupport" t)
+                      "rename" (funcall o)
                       "formatting" (funcall o) "rangeFormatting" (funcall o)
                       "codeAction" (funcall o "codeActionLiteralSupport"
                                             (funcall o "codeActionKind" (funcall o "valueSet" #("" "quickfix" "refactor" "refactor.extract"
@@ -386,9 +387,7 @@ SERVER and ARGUMENTS bound."
                       "codeLens" (funcall o) "foldingRange" (funcall o "lineFoldingOnly" t) "selectionRange" (funcall o)
                       "documentSymbol" (funcall o "hierarchicalDocumentSymbolSupport" t)
                       "semanticTokens" (funcall o "requests" (funcall o "full" t) "formats" #("relative")
-                                                  "tokenTypes" #("namespace" "type" "class" "enum" "interface" "struct" "typeParameter" "parameter"
-                                                                "variable" "property" "enumMember" "event" "function" "method" "macro"
-                                                                "keyword" "modifier" "comment" "string" "number" "regexp" "operator" "decorator")
+                                                  "tokenTypes" (lsp-token-kinds)
                                                   "tokenModifiers" #()
                                                   "overlappingTokenSupport" :false "multilineTokenSupport" :false)))))
 

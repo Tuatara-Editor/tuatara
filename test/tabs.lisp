@@ -196,3 +196,15 @@ for major modes, and the settings made for modes before it put back afterwards."
          (names (cl-ppcre:all-matches-as-strings "(?<=\\(\")[^\"]+(?=\" )" (subseq source start end))))
     (true (> (length names) 50))
     (is equal '() (loop for (name . more) on names when (member name more :test #'string=) collect name))))
+
+(define-test (tabs blank-columns-as-shown)
+  ;; the column a line's text starts at is where the screen shows it: a carriage return
+  ;; among the blanks is ^M, two columns; the same count as the display's for every blank
+  (flet ((column (string) (nth-value 2 (tuatara.defaults::line-blanks (tuatara.text:string-octets string) 4))))
+    (is = 3 (column (format nil " ~cx" #\Return)))
+    (is = 4 (column (format nil "~cx" #\Tab)))
+    (is = 8 (column (format nil "  ~c~cx" #\Return #\Tab)))
+    (dolist (string (list (format nil " ~c x" #\Return) (format nil "~c ~c~cy" #\Tab #\Return #\Tab)))
+      (let ((blanks (subseq string 0 (1- (length string)))))
+        (is = (let ((tuatara.defaults::*tab-columns* 4)) (tuatara.defaults::text-columns blanks)) (column string)
+            "~s" string)))))

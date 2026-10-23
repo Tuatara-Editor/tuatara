@@ -54,6 +54,39 @@ headroom before a leaf has to split.")
   (declare (type fixnum length))
   (make-array length :element-type '(unsigned-byte 8)))
 
+(defconstant +block-slack+ 256
+  "Octets a kept block has past its size, for a needle or a character read on past it.")
+
+(sb-ext:defglobal **octet-blocks**
+    (map 'simple-vector
+         (lambda (size)
+           (tuatara.runtime:make-spares (lambda () (make-octets (+ size +block-slack+)))))
+         '(4096 65536 1048576))
+  "Blocks of octets text is read into, kept to be read into again: of 4 KB,
+64 KB and a megabyte, each with +BLOCK-SLACK+ octets more (WITH-OCTET-BLOCK).")
+
+(defun octet-block-spares (size)
+  "The kept blocks of the least size holding SIZE octets, or NIL when none is that large."
+  (declare (type fixnum size))
+  (cond ((<= size (+ 4096 +block-slack+)) (svref **octet-blocks** 0))
+        ((<= size (+ 65536 +block-slack+)) (svref **octet-blocks** 1))
+        ((<= size (+ 1048576 +block-slack+)) (svref **octet-blocks** 2))
+        (t nil)))
+
+(defmacro with-octet-block ((var size) &body body)
+  "Run BODY with VAR bound to octets at least SIZE long: a block kept for
+reading text into (**OCTET-BLOCKS**), given back after however BODY ends, or
+for a size larger than a megabyte, new octets. BODY must not keep it."
+  (let ((spares (gensym "SPARES")) (body-function (gensym "BODY")) (n (gensym "SIZE")))
+    `(flet ((,body-function (,var)
+              (declare (type octets ,var))
+              ,@body))
+       (declare (dynamic-extent #',body-function))
+       (let* ((,n ,size) (,spares (octet-block-spares ,n)))
+         (if ,spares
+             (tuatara.runtime:with-spare (,var ,spares) (,body-function ,var))
+             (,body-function (make-octets ,n)))))))
+
 ;;; UTF-8, strictly
 ;;;
 ;;; Every sequence of octets is text. A well-formed UTF-8 sequence (Unicode's
@@ -72,6 +105,26 @@ headroom before a leaf has to split.")
 (defun raw-byte-code-p (code)
   "True when CODE is the code of a raw byte's character, U+DC80..U+DCFF."
   (<= #xDC80 code #xDCFF))
+
+(declaim (inline control-code-p))
+(defun control-code-p (code)
+  "True when CODE is a control character's: 0 to 31, 127 to 159."
+  (or (< code 32) (<= 127 code 159)))
+
+(declaim (inline crlf-octets-p))
+(defun crlf-octets-p (octets i avail)
+  "True when OCTETS hold a carriage return at index I and a newline after it,
+below AVAIL: a line end of two octets."
+  (declare (type octets octets) (type fixnum i avail))
+  (and (= (aref octets i) 13) (< (1+ i) avail) (= (aref octets (1+ i)) 10)))
+
+(declaim (inline line-text-end))
+(defun line-text-end (octets start newline crlf)
+  "Where the text of a line ends in OCTETS, whose newline is at index NEWLINE
+and which starts at index START or before: with CRLF, at the carriage return
+just before the newline, when there is one after START; else at the newline."
+  (declare (type octets octets) (type fixnum start newline))
+  (if (and crlf (> newline start) (= (aref octets (1- newline)) 13)) (1- newline) newline))
 
 (sb-ext:defglobal **utf8-classes**
     (let ((table (make-array 256 :element-type '(unsigned-byte 8))))
@@ -260,10 +313,28 @@ Complexity: O(END - START)."
   (sb-sys:with-pinned-objects (octets)
     (summarise-sap (sb-sys:vector-sap octets) start end)))
 
-(defun octets-string (octets &key (start 0) (end (length octets)))
+(defun unfinished-sequence-length (octets i end)
+  "How many octets at index I of OCTETS, whose text ends at END, make one
+piece of what is not UTF-8: a sequence well begun and cut short, its octets
+up to where it goes wrong; else the one octet at I."
+  (declare (type octets octets) (type fixnum i end) (optimize speed (safety 0)))
+  (let ((state (aref **utf8-next** (aref **utf8-classes** (aref octets i)))) (k 1))
+    (declare (type (unsigned-byte 8) state) (type fixnum k))
+    (if (or (zerop state) (= state 9))
+        1
+        (loop (when (>= (+ i k) end) (return k))
+              (let ((next (aref **utf8-next** (+ (* state 12) (aref **utf8-classes** (aref octets (+ i k)))))))
+                (declare (type (unsigned-byte 8) next))
+                (when (= next 8) (return k))
+                (incf k)
+                (setf state next))))))
+
+(defun octets-string (octets &key (start 0) (end (length octets)) replacement)
   "OCTETS from START below END as a string: well-formed UTF-8 decoded, every
-other octet as its raw byte's character (U+DC80..U+DCFF)."
-  (declare (type octets octets) (type fixnum start end))
+other octet as its raw byte's character (U+DC80..U+DCFF); with REPLACEMENT, a
+character, each piece of what is not UTF-8 as that character instead: a
+sequence cut short as one, any other octet as one each."
+  (declare (type octets octets) (type fixnum start end) (type (or null character) replacement))
   (let ((out (make-string (- end start))) (n 0) (i start))
     (declare (type fixnum n i))
     (loop while (< i end)
@@ -271,14 +342,19 @@ other octet as its raw byte's character (U+DC80..U+DCFF)."
                (if (< b #x80)
                    (progn (setf (schar out n) (code-char b)) (incf n) (incf i))
                    (multiple-value-bind (code length) (octets-decode octets i end)
-                     (setf (schar out n) (code-char code)) (incf n) (incf i length)))))
+                     (cond ((not (and replacement (raw-byte-code-p code)))
+                            (setf (schar out n) (code-char code)) (incf n) (incf i length))
+                           (t (setf (schar out n) replacement) (incf n)
+                              (incf i (unfinished-sequence-length octets i end))))))))
     (if (= n (length out)) out (subseq out 0 n))))
 
 (defun lenient-string (octets &key (start 0) (end (length octets)) (replacement #\?))
   "OCTETS from START below END read as UTF-8 text, what is not UTF-8 as
 REPLACEMENT, a character or string: a program's output, a part of a file read
 to be shown."
-  (sb-ext:octets-to-string octets :start start :end end :external-format (list :utf-8 :replacement replacement)))
+  (if (and (typep octets 'octets) (characterp replacement))
+      (octets-string octets :start start :end end :replacement replacement)
+      (sb-ext:octets-to-string octets :start start :end end :external-format (list :utf-8 :replacement replacement))))
 
 (declaim (inline char-octet-length))
 (defun char-octet-length (char)
@@ -1542,6 +1618,23 @@ well-formed sequence. Decodes at most four octets. Complexity: O(log n)."
     (with-rope-window (window base end) (rope byte (+ byte 4) 4)
       (code-char (octets-decode window 0 end)))))
 
+(defun rope-crlf-p (rope byte)
+  "True when ROPE holds a carriage return at BYTE and a newline after it (CRLF-OCTETS-P)."
+  (declare (type fixnum byte))
+  (and (>= byte 0) (< (1+ byte) (rope-bytes rope))
+       (let ((pair (make-array 2 :element-type '(unsigned-byte 8))))
+         (declare (dynamic-extent pair))
+         (rope-copy-into rope byte (+ byte 2) pair)
+         (crlf-octets-p pair 0 2))))
+
+(defun rope-line-text-end (rope start end crlf)
+  "Where the text of a line of ROPE ends, the line ending at octet END (its
+newline, or the end of the text) and starting at START or before: with CRLF,
+at the carriage return just before END, when there is one after START; else
+at END. As LINE-TEXT-END has it for octets."
+  (declare (type fixnum start end))
+  (if (and crlf (> end start) (= 13 (rope-octet rope (1- end)))) (1- end) end))
+
 (defun rope-find-octet (rope value &key (start 0) (end (rope-bytes rope)))
   "Return the byte offset of the first octet equal to VALUE in ROPE from START
 below END, or NIL. Complexity: O(log n + distance scanned)."
@@ -1613,7 +1706,33 @@ Complexity: O(log n) for each backslash before it."
     (loop while (and (plusp q) (= 92 (rope-octet rope (1- q)))) do (incf count) (decf q))
     (oddp count)))
 
-(defun rope-bracket-match (rope position &key backward inside (openers "([{") (closers ")]}")
+(defparameter *openers* "([{"
+  "The brackets that open a pair, each in the place of the one that closes it in *CLOSERS*.")
+
+(defparameter *closers* ")]}"
+  "The brackets that close a pair, each in the place of the one that opens it in *OPENERS*.")
+
+(defparameter *opening-octets* (map 'list #'char-code *openers*)
+  "The octets of the brackets that open a pair (*OPENERS*).")
+
+(defparameter *closing-octets* (map 'list #'char-code *closers*)
+  "The octets of the brackets that close a pair (*CLOSERS*), each in the place of the one that opens it.")
+
+(defparameter *bracket-octets* (append *opening-octets* *closing-octets*)
+  "The octets of the brackets (*OPENERS* and *CLOSERS*).")
+
+(defun bracket-weights (openers closers)
+  "A table of 256 by octet: 1 for each bracket in OPENERS, -1 for each in CLOSERS, 0 for the rest."
+  (let ((weight (make-array 256 :element-type '(signed-byte 8) :initial-element 0)))
+    (loop for c across openers do (setf (aref weight (char-code c)) 1))
+    (loop for c across closers do (setf (aref weight (char-code c)) -1))
+    weight))
+
+(sb-ext:define-load-time-global **bracket-weights**
+    (list *openers* *closers* (bracket-weights *openers* *closers*))
+  "*OPENERS*, *CLOSERS* and their BRACKET-WEIGHTS, made once.")
+
+(defun rope-bracket-match (rope position &key backward inside (openers *openers*) (closers *closers*)
                                               (limit most-positive-fixnum) (start 0) (end (rope-bytes rope))
                                               (spans #()) escapes)
   "The partner of the opening bracket at byte POSITION of ROPE, or with BACKWARD
@@ -1634,14 +1753,15 @@ there is no such bracket at POSITION, or no partner there.
 Complexity: O(log n + distance scanned + spans before POSITION)."
   (declare (type fixnum position start end) (type simple-vector spans))
   (check-byte-offset rope position)
-  (let ((weight (make-array 256 :element-type '(signed-byte 8) :initial-element 0))
+  (let ((weight (destructuring-bind (kept-openers kept-closers table) **bracket-weights**
+                  (if (and (string= openers kept-openers) (string= closers kept-closers))
+                      table
+                      (bracket-weights openers closers))))
         (depth (if inside 1 0))
         (total (rope-bytes rope))
         (count (length spans))
         (own nil))
-    (declare (type fixnum depth total count))
-    (loop for c across openers do (setf (aref weight (char-code c)) 1))
-    (loop for c across closers do (setf (aref weight (char-code c)) -1))
+    (declare (type fixnum depth total count) (type (simple-array (signed-byte 8) (256)) weight))
     (labels ((kind (octet)
                (let ((c (code-char octet))) (or (position c openers) (position c closers))))
              (same-kind-p (octet) (or inside (eql (kind octet) own))))
@@ -1710,12 +1830,12 @@ Complexity: O(log n + distance scanned)."
                 when (= 1 (sbit wanted (aref block i))) do (return-from rope-find-any-octet (+ low i)))))
     nil))
 
-(defparameter *text-octets* (loop for octet below 256 unless (member octet '(9 10 13 32)) collect octet)
-  "The octets that make a line more than blank: all but tab, newline, carriage return and space.")
-
 (defparameter *blank-octets* '(32 9 10 13)
   "The octets of the blanks between words and lines: a space, a tab, a newline
 and a carriage return.")
+
+(defparameter *text-octets* (loop for octet below 256 unless (member octet *blank-octets*) collect octet)
+  "The octets that make a line more than blank: all but the blanks (*BLANK-OCTETS*).")
 
 (defun rope-skip-octets (rope position octets &key backward (bound (if backward 0 (rope-bytes rope))))
   "POSITION of ROPE moved over the octets in OCTETS, a list of them (such as
@@ -1736,11 +1856,21 @@ back to just after the last octet before it that is not one of them, or BOUND
                 when (zerop (sbit skipped (aref block i))) do (return-from rope-skip-octets (+ low i)))))
     bound))
 
-(defun blank-line-octet-p (octet)
-  "True for an octet a blank line may hold: a space, a tab or a carriage return."
-  (or (= octet 32) (= octet 9) (= octet 13)))
+(defparameter *blank-line-octets* (remove 10 *blank-octets*)
+  "The octets a blank line may hold: the blanks (*BLANK-OCTETS*) but the newline.")
 
-(defun map-line-slices (function rope start end left right &key crlf octets tab-width width block)
+(sb-ext:define-load-time-global **blank-line-octets**
+    (let ((table (make-array 256 :element-type 'bit :initial-element 0)))
+      (dolist (octet *blank-line-octets* table)
+        (setf (sbit table octet) 1)))
+  "One bit for each octet, 1 for those a blank line may hold (*BLANK-LINE-OCTETS*).")
+
+(declaim (inline blank-line-octet-p))
+(defun blank-line-octet-p (octet)
+  "True for an octet a blank line may hold (*BLANK-LINE-OCTETS*)."
+  (= 1 (sbit (the simple-bit-vector **blank-line-octets**) octet)))
+
+(defun map-line-slices (function rope start end left right &key crlf octets width block)
   "Call FUNCTION for each line of ROPE that starts at a byte offset in [START,
 END), START being a line start: with the line's start, the byte offsets of its
 LEFT-th and RIGHT-th characters (its end, where it is shorter), the columns
@@ -1749,118 +1879,123 @@ line's end: its newline, with CRLF the carriage return before one, or the
 text's end. With OCTETS, three more: the block of octets read, where in the
 text it starts and where it ends; a line shorter than a block is in it whole,
 its newline too. Columns count characters, as TUATARA.BUFFER:BUFFER-COLUMN
-does: a raw byte is one. With TAB-WIDTH, they are columns on the screen
-instead: a tab to its next stop, a control character two, any other
-character what WIDTH says, a function of its code and of what it gave as
-its second value for the character before (that character's code for an
-ASCII one, 0 at the line's start) returning the columns and that second
-value, so that a grapheme cluster can take the columns of its first
-character; a tab across LEFT or
+does: a raw byte is one. With WIDTH, they are columns on the screen
+instead: a printable ASCII character takes one, any other what WIDTH says, a
+function of its code, the column it stands at and what it gave as its second
+value for the character before (that character's code for a printable ASCII
+one, 0 at the line's start) returning the columns and that second value, so
+that a tab can reach its stop and a grapheme cluster take the columns of its
+first character; a tab across LEFT or
 RIGHT is in the slice (its start or end column then outside them), another
 character across one out of it, and a character of no width (a combining
 mark) goes with the one before it. The text is read once, a block at a time:
 as large as the lines asked for, from 4 KB to a megabyte, never more than
-the text left, into BLOCK when given octets as large, so that nothing is made
-for it; an ASCII octet is a character by itself, so most lines cost a look at
+the text left, into BLOCK when given octets as large, else into one kept
+for reading into (WITH-OCTET-BLOCK), so that nothing is made for it: FUNCTION
+must not keep the block. An ASCII octet is a character by itself, so most lines cost a look at
 each octet. Complexity: O(END - START + the length of the last line)."
   (declare (type function function) (type fixnum start end left right)
            (optimize speed))
   (let* ((total (rope-bytes rope))
          (size (max (+ 16 (* 4 right))
                     (min (* 1024 1024) (- total start) (max 4096 (* 2 (- (min end total) start))))))
-         (block (if (and block (>= (length (the octets block)) size)) block (make-octets size)))
          (block-start 0) (block-end 0)
          (pos start))
-    (declare (type fixnum total size block-start block-end pos) (type octets block))
-    (flet ((fill-from (at)
-             (declare (type fixnum at))
-             (setf block-start at
-                   block-end (min total (+ at size)))
-             (rope-copy-into rope block-start block-end block)))
-      (loop while (and (< pos end) (<= pos total))
-            do ;; a slice takes at most four octets a character, and a line end two
-               (when (or (< pos block-start) (> (min total (+ pos (* 4 right) 5)) block-end))
-                 (fill-from pos))
-               (let ((i (- pos block-start))
-                     (avail (- block-end block-start))
-                     (column 0) (slice-start -1) (start-column 0) (before 0))
-                 (declare (type fixnum i avail column slice-start start-column before))
-                 (if (null tab-width)
-                     (loop
-                       (when (and (= column left) (< slice-start 0))
-                         (setf slice-start (+ block-start i) start-column column))
-                       (when (or (= column right) (>= i avail)) (return))
-                       (let ((b (aref block i)))
-                         (when (or (= b 10)
-                                   (and crlf (= b 13) (< (1+ i) avail) (= (aref block (1+ i)) 10)))
-                           (return))
-                         (if (< b 128)
-                             (incf i)
-                             (incf i (the fixnum (nth-value 1 (octets-decode block i avail))))))
-                       (incf column))
-                     ;; columns on the screen: a tab to its stop, others as WIDTH says; a tab
-                     ;; across an edge taken in (its columns made spaces by the caller), another
-                     ;; character across one left out, one of no width kept with the one before
-                     (loop
-                       ;; characters of no width can fill the block before RIGHT: read on, the
-                       ;; line from its start where the block began before it
-                       (when (and (> (+ i 4) avail) (< block-end total))
-                         (let ((at (+ block-start i)))
-                           (declare (type fixnum at))
-                           (fill-from (if (> pos block-start) pos at))
-                           (setf i (- at block-start) avail (- block-end block-start))))
-                       (when (>= i avail) (return))
-                       (let* ((b (aref block i))
-                              (tab (= b 9)))
-                         (when (or (= b 10)
-                                   (and crlf (= b 13) (< (1+ i) avail) (= (aref block (1+ i)) 10)))
-                           (return))
-                         (multiple-value-bind (w len next)
-                             (cond (tab (values (- (* (1+ (floor column (the fixnum tab-width))) (the fixnum tab-width)) column) 1 b))
-                                   ((or (< b 32) (= b 127)) (values 2 1 b))
-                                   ((< b 128) (values 1 1 b))
-                                   (t (multiple-value-bind (code length) (octets-decode block i avail)
-                                        (multiple-value-bind (w next) (funcall (the function width) code before)
-                                          (values w length next)))))
-                           (declare (type fixnum w len next))
-                           (setf before next)
-                           (when (and (< slice-start 0) (plusp w)
-                                      (or (>= column left)
-                                          (and tab (< column left (+ column w)))))
-                             (setf slice-start (+ block-start i) start-column column))
-                           (when (and (>= slice-start 0) (plusp w)
-                                      (or (>= column right)
-                                          (and (not tab) (< column right (+ column w)))))
+    (declare (type fixnum total size block-start block-end pos))
+    (unless (and block (>= (length (the octets block)) size))
+      (return-from map-line-slices
+        (with-octet-block (kept size)
+          (map-line-slices function rope start end left right
+                           :crlf crlf :octets octets :width width :block kept))))
+    (let ((block block))
+      (declare (type octets block))
+      (flet ((fill-from (at)
+               (declare (type fixnum at))
+               (setf block-start at
+                     block-end (min total (+ at size)))
+               (rope-copy-into rope block-start block-end block)))
+        (loop while (and (< pos end) (<= pos total))
+              do ;; a slice takes at most four octets a character, and a line end two
+                 (when (or (< pos block-start) (> (min total (+ pos (* 4 right) 5)) block-end))
+                   (fill-from pos))
+                 (let ((i (- pos block-start))
+                       (avail (- block-end block-start))
+                       (column 0) (slice-start -1) (start-column 0) (before 0))
+                   (declare (type fixnum i avail column slice-start start-column before))
+                   (if (null width)
+                       (loop
+                         (when (and (= column left) (< slice-start 0))
+                           (setf slice-start (+ block-start i) start-column column))
+                         (when (or (= column right) (>= i avail)) (return))
+                         (let ((b (aref block i)))
+                           (when (or (= b 10)
+                                     (and crlf (crlf-octets-p block i avail)))
                              (return))
-                           (incf i len)
-                           (incf column w)))))
-                 (let ((slice-end (+ block-start i)))
-                   (declare (type fixnum slice-end))
-                   (when (< slice-start 0) (setf slice-start slice-end start-column column))
-                   (let* ((newline (let ((from slice-end))
-                                     (declare (type fixnum from))
-                                     (loop
-                                       (let ((hit (position 10 block :start (- from block-start)
-                                                                     :end (- block-end block-start))))
-                                         (when hit (return (+ block-start (the fixnum hit))))
-                                         (when (>= block-end total) (return total))
-                                         ;; read on from the line's start, so that a line shorter than a
-                                         ;; block is in the block whole; a longer one, from where the search is
-                                         (if (> pos block-start)
-                                             (fill-from pos)
-                                             (progn (setf from block-end) (fill-from from)))))))
-                          (line-end (if (and crlf (< newline total) (> newline slice-end)
-                                             (= 13 (if (> newline block-start)
-                                                       (aref block (- newline block-start 1))
-                                                       (rope-octet rope (1- newline)))))
-                                        (1- newline)
-                                        newline)))
-                     (declare (type fixnum newline line-end))
-                     (if octets
-                         (funcall function pos slice-start slice-end start-column column line-end
-                                  block block-start block-end)
-                         (funcall function pos slice-start slice-end start-column column line-end))
-                     (setf pos (1+ newline)))))))
+                           (if (< b 128)
+                               (incf i)
+                               (incf i (the fixnum (nth-value 1 (octets-decode block i avail))))))
+                         (incf column))
+                       ;; columns on the screen: a tab to its stop, others as WIDTH says; a tab
+                       ;; across an edge taken in (its columns made spaces by the caller), another
+                       ;; character across one left out, one of no width kept with the one before
+                       (loop
+                         ;; characters of no width can fill the block before RIGHT: read on, the
+                         ;; line from its start where the block began before it
+                         (when (and (> (+ i 4) avail) (< block-end total))
+                           (let ((at (+ block-start i)))
+                             (declare (type fixnum at))
+                             (fill-from (if (> pos block-start) pos at))
+                             (setf i (- at block-start) avail (- block-end block-start))))
+                         (when (>= i avail) (return))
+                         (let* ((b (aref block i))
+                                (tab (= b 9)))
+                           (when (or (= b 10)
+                                     (and crlf (crlf-octets-p block i avail)))
+                             (return))
+                           (multiple-value-bind (w len next)
+                               (if (< 31 b 127)
+                                   (values 1 1 b)
+                                   (multiple-value-bind (code length) (if (< b 128) (values b 1) (octets-decode block i avail))
+                                     (multiple-value-bind (w next) (funcall (the function width) code column before)
+                                       (values w length next))))
+                             (declare (type fixnum w len next))
+                             (setf before next)
+                             (when (and (< slice-start 0) (plusp w)
+                                        (or (>= column left)
+                                            (and tab (< column left (+ column w)))))
+                               (setf slice-start (+ block-start i) start-column column))
+                             (when (and (>= slice-start 0) (plusp w)
+                                        (or (>= column right)
+                                            (and (not tab) (< column right (+ column w)))))
+                               (return))
+                             (incf i len)
+                             (incf column w)))))
+                   (let ((slice-end (+ block-start i)))
+                     (declare (type fixnum slice-end))
+                     (when (< slice-start 0) (setf slice-start slice-end start-column column))
+                     (let* ((newline (let ((from slice-end))
+                                       (declare (type fixnum from))
+                                       (loop
+                                         (let ((hit (position 10 block :start (- from block-start)
+                                                                       :end (- block-end block-start))))
+                                           (when hit (return (+ block-start (the fixnum hit))))
+                                           (when (>= block-end total) (return total))
+                                           ;; read on from the line's start, so that a line shorter than a
+                                           ;; block is in the block whole; a longer one, from where the search is
+                                           (if (> pos block-start)
+                                               (fill-from pos)
+                                               (progn (setf from block-end) (fill-from from)))))))
+                            (line-end (cond ((or (not crlf) (>= newline total) (<= newline slice-end)) newline)
+                                            ((> newline block-start)
+                                             (+ block-start (line-text-end block 0 (- newline block-start) crlf)))
+                                            ((rope-crlf-p rope (1- newline)) (1- newline))
+                                            (t newline))))
+                       (declare (type fixnum newline line-end))
+                       (if octets
+                           (funcall function pos slice-start slice-end start-column column line-end
+                                    block block-start block-end)
+                           (funcall function pos slice-start slice-end start-column column line-end))
+                       (setf pos (1+ newline))))))))
     nil))
 
 (defun rope-line-downward (rope start &key blank (limit most-positive-fixnum))

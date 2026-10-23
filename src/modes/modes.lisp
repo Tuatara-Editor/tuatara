@@ -15,7 +15,9 @@ LIGHTER shown in the mode line, its KEYMAP, the MODAL-CLASS it gives modal editi
 language writes comments: COMMENT, the marker a commented line starts with and
 what commenting a line puts there, and BLOCK-COMMENT, what begins and ends a
 comment that has an end, each a list of two strings or NIL to inherit; and
-LARGEST, the most octets a file opened in the mode may have (LARGEST-FILE)."
+LARGEST, the most octets a file opened in the mode may have (LARGEST-FILE);
+and KNOWN-MODAL-CLASS, the modal class it gives its buffers once worked out
+along its inheritance, NIL until then."
   (name nil :read-only t)
   (parent nil)
   (doc "")
@@ -25,7 +27,8 @@ LARGEST, the most octets a file opened in the mode may have (LARGEST-FILE)."
   (hooks '())
   (comment nil)
   (block-comment nil)
-  (largest nil))
+  (largest nil)
+  (known-modal-class nil))
 
 (setf (documentation 'mode-info-p 'function) "True when OBJECT is a MODE-INFO."
       (documentation 'mode-info-name 'function) "The mode's name, a symbol naming its class."
@@ -34,6 +37,7 @@ LARGEST, the most octets a file opened in the mode may have (LARGEST-FILE)."
       (documentation 'mode-info-lighter 'function) "The name shown in the mode line."
       (documentation 'mode-info-keymap 'function) "The mode's keymap; its parent is the parent mode's keymap."
       (documentation 'mode-info-modal-class 'function) "The modal class the mode sets, or NIL to inherit."
+      (documentation 'mode-info-known-modal-class 'function) "The modal class the mode gives its buffers once worked out, or NIL until then."
       (documentation 'mode-info-largest 'function) "The most octets a file opened in the mode may have, a number or a variable holding one; NIL for no limit."
       (documentation 'mode-info-hooks 'function) "Functions called with the buffer when the mode is entered."
       (documentation 'mode-info-comment 'function) "The marker of the mode's comments at the start of a line and what commenting a line puts there, as a list of two strings; NIL to inherit."
@@ -51,7 +55,9 @@ selects C, and .PY selects Python.")
 (defvar *auto-mode-interpreters* (make-hash-table :test 'equal)
   "Interpreter names from a #! line (python3, bash) and the mode they select.")
 (defvar *auto-mode-patterns* '()
-  "Regular expressions on the whole path, as (REGEX . MODE), tried before extensions.")
+  "Regular expressions on the whole path, tried before extensions, each
+\(REGEX MODE SCANNER): the expression as written, the mode it selects, and the
+expression compiled once.")
 
 (defun find-mode (name)
   "The MODE-INFO of major mode NAME, or NIL."
@@ -81,7 +87,7 @@ whole path."
                        when (eq mode name) collect key)
                  #'string<)))
     (values (keys *auto-mode-extensions*) (keys *auto-mode-file-names*) (keys *auto-mode-interpreters*)
-            (sort (loop for (regex . mode) in *auto-mode-patterns* when (eq mode name) collect regex) #'string<))))
+            (sort (loop for (regex mode) in *auto-mode-patterns* when (eq mode name) collect regex) #'string<))))
 
 (defun default-lighter (name)
   "The mode-line name derived from mode NAME: python-mode gives \"Python\"."
@@ -94,14 +100,22 @@ whole path."
   "Take away every rule that opens files in major mode NAME."
   (dolist (table (list *auto-mode-extensions* *auto-mode-file-names* *auto-mode-interpreters*))
     (maphash (lambda (k v) (when (eq v name) (remhash k table))) table))
-  (setf *auto-mode-patterns* (remove name *auto-mode-patterns* :key #'cdr)))
+  (setf *auto-mode-patterns* (remove name *auto-mode-patterns* :key #'second)))
 
 (defun forget-major-mode (name)
   "Make NAME no longer a major mode: no file is opened in it and it is no
 longer listed; a buffer in it stays so. Its command is forgotten apart
 \(FORGET-COMMAND)."
   (drop-auto-mode-rules name)
-  (remhash name *modes*))
+  (remhash name *modes*)
+  (forget-modal-classes))
+
+(defun forget-modal-classes ()
+  "Make every mode work out its modal class again when next asked, after a
+mode is defined again or forgotten: a mode's class follows the modes it is
+made from."
+  (loop for info being the hash-values of *modes*
+        do (setf (mode-info-known-modal-class info) nil)))
 
 (defun register-major-mode (name parent doc &key lighter modal-class comment block-comment extensions file-names interpreters patterns largest-file)
   "Record major mode NAME with PARENT, DOC and the rest, creating its keymap
@@ -115,6 +129,7 @@ replacing its auto-mode rules. Called by DEFINE-MAJOR-MODE."
           (mode-info-comment info) (if (stringp comment) (list comment comment) comment)
           (mode-info-block-comment info) block-comment
           (mode-info-largest info) largest-file)
+    (forget-modal-classes)
     (unless (mode-info-keymap info)
       (setf (mode-info-keymap info) (tuatara.command:make-keymap :name (string-downcase (symbol-name name)))))
     (setf (tuatara.command:keymap-parent (mode-info-keymap info)) (and parent (mode-keymap parent)))
@@ -122,7 +137,7 @@ replacing its auto-mode rules. Called by DEFINE-MAJOR-MODE."
     (dolist (e extensions) (setf (gethash e *auto-mode-extensions*) name))
     (dolist (f file-names) (setf (gethash f *auto-mode-file-names*) name))
     (dolist (i interpreters) (setf (gethash i *auto-mode-interpreters*) name))
-    (dolist (p patterns) (push (cons p name) *auto-mode-patterns*))
+    (dolist (p patterns) (push (list p name (cl-ppcre:create-scanner p)) *auto-mode-patterns*))
     name))
 
 (defmacro define-major-mode (name parent doc &key lighter modal-class comment block-comment extensions file-names interpreters patterns largest-file (interactive t))
@@ -174,6 +189,11 @@ installed and before its hooks run. Methods should call CALL-NEXT-METHOD.")
   (:documentation "Syntax colours for the text laid out in ROWS of BUFFER, as a list of
 (START END FACE) byte ranges; NIL when MODE colours nothing.")
   (:method (mode buffer rows) (declare (ignore mode buffer rows)) nil))
+
+(defgeneric mode-marks-point-p (mode)
+  (:documentation "True when MODE shows where point is in a look of its own (the calendar
+its day), so that no cursor is drawn over it.")
+  (:method (mode) (declare (ignore mode)) nil))
 
 (defun mode-comment-syntax (mode)
   "How MODE's language writes comments at the start of a line, as two values:
@@ -266,10 +286,17 @@ or the nearest mode that mode is made from (MODE-SETTING); else GLOBAL."
 
 (defun mode-modal-class (mode)
   "The modal class MODE gives its buffers: the nearest modal class set along
-its inheritance, :editing when none is."
-  (or (loop for name in (mode-precedence mode)
-            thereis (mode-info-modal-class (find-mode name)))
-      :editing))
+its inheritance, :editing when none is. Worked out once a mode, until a mode is
+defined again."
+  (flet ((worked-out ()
+           (or (loop for name in (mode-precedence mode)
+                     thereis (mode-info-modal-class (find-mode name)))
+               :editing)))
+    (let ((info (find-mode (if (symbolp mode) mode (class-name (class-of mode))))))
+      (if info
+          (or (mode-info-known-modal-class info)
+              (setf (mode-info-known-modal-class info) (worked-out)))
+          (worked-out)))))
 
 ;;; Buffers and modes
 
@@ -341,8 +368,9 @@ python3.12 finds python), else FUNDAMENTAL-MODE."
     (when (and type (string-equal type "gpg") (> (length name) 4))
       (return-from mode-for-file (mode-for-file (subseq (tuatara.io:native path) 0 (- (length (tuatara.io:native path)) 4)) first-line)))
     (or (gethash name *auto-mode-file-names*)
-        (loop for (regex . mode) in *auto-mode-patterns*
-              when (cl-ppcre:scan regex (tuatara.io:native path)) return mode)
+        (loop with native = (tuatara.io:native path)
+              for (nil mode scanner) in *auto-mode-patterns*
+              when (cl-ppcre:scan scanner native) return mode)
         (and type (extension-mode type))
         (let ((interpreter (and first-line (shebang-interpreter first-line))))
           (and interpreter

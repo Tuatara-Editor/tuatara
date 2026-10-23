@@ -59,7 +59,7 @@ prompt being ASCII, so that no cut falls inside a character."
          (octets (tuatara.text:rope-octets (tuatara.buffer:buffer-text buffer) :start line :end (min end (+ line 128))))
          (gt (position 62 octets)))
     (and gt (plusp gt) (< (1+ gt) (length octets)) (= (aref octets (1+ gt)) 32)
-         (notany (lambda (o) (member o '(32 9 13))) (subseq octets 0 gt))
+         (loop for i below gt never (tuatara.text:blank-line-octet-p (aref octets i)))
          (+ gt 2))))
 
 (defun status-line-p (buffer line)

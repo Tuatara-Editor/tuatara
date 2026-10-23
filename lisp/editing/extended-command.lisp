@@ -76,6 +76,13 @@ tells which."
         (tuatara.syntax:*regex-thorough* "thorough regex")
         (t "regex")))
 
+(defun pattern-prompt (regex words &optional note)
+  "The prompt of a question that takes a pattern: its kind first, as REGEX
+says (PATTERN-KIND-WORDS), then WORDS saying what is done with it, and NOTE
+in brackets when given, why the pattern cannot be used: Regex keep lines
+[incomplete]: ."
+  (format nil "~a ~a~@[ [~a]~]: " (string-capitalize (pattern-kind-words regex) :end 1) words note))
+
 (defun pattern-problem (text regex)
   "Why TEXT cannot be used as a pattern, a regular expression when REGEX is
 true, else literal text; NIL when it can, or is empty."
@@ -87,6 +94,17 @@ true, else literal text; NIL when it can, or is empty."
 the problem, to finish the pattern when it is incomplete or else to mend it,
 or ABORT-KEYS, a key description, to give up."
   (format nil "~a; ~:[mend~;finish~] it, or ~a gives up" problem (string= problem "incomplete") abort-keys))
+
+(defun refusable-pattern-prompt (regex words problem refused)
+  "The prompt of a question that takes a pattern (PATTERN-PROMPT) for what
+WORDS says is done with it, PROBLEM why what is typed cannot be used
+\(PATTERN-PROBLEM) or NIL: once REFUSED, with what to do about it
+\(REFUSED-PATTERN-WORDS)."
+  (pattern-prompt regex words
+                  (and problem
+                       (if refused
+                           (refused-pattern-words problem (substitute-command-keys "\\<minibuffer>\\[minibuffer-abort]"))
+                           problem))))
 
 (defun pattern-regex (text regex)
   "TEXT, a pattern READ-PATTERN read, as a regular expression: as it is when
@@ -105,19 +123,19 @@ expression, keeps a count up to date as it is typed and returns two values,
 as PATTERN-COUNT-UPDATE does: true while it counts, and what to show before
 the prompt. Returns what was typed, kept among the patterns typed before,
 and as a second value whether it is a regular expression."
-  (let* ((editor *editor*) (regex t) (refused nil))
-    (flet ((typed () (editor-minibuffer-text editor))
-           (prompt (text)
-             (let ((problem (pattern-problem text regex)))
-               (format nil "~a ~a~@[ [~a]~]: "
-                       (string-capitalize (pattern-kind-words regex) :end 1) words
-                       (and problem
-                            (if refused
-                                (refused-pattern-words problem (substitute-command-keys "\\<minibuffer>\\[minibuffer-abort]"))
-                                problem))))))
+  (let* ((editor *editor*) (regex t) (refused nil)
+         ;; the last text and kind looked at, and why it cannot be used: worked out once
+         (checked (list nil)))
+    (labels ((typed () (editor-minibuffer-text editor))
+             (problem (text)
+               (let ((key (cons text regex)))
+                 (if (equal (car checked) key)
+                     (cdr checked)
+                     (cdr (setf checked (cons key (pattern-problem text regex)))))))
+             (prompt (text) (refusable-pattern-prompt regex words (problem text) refused)))
       (let ((text (let ((*toggle-pattern-kind* (lambda () (setf regex (not regex) refused nil)))
                         (*pattern-done* (lambda ()
-                                          (if (pattern-problem (typed) regex)
+                                          (if (problem (typed))
                                               (setf refused t)
                                               (finish-minibuffer)))))
                     (read-string (prompt initial)

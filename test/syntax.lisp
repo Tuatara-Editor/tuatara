@@ -1497,6 +1497,40 @@ bound to the fake frontend and the editor; the file and its buffer go afterwards
       (true (< (consed test-any (* 64 1024)) 4096) "#any-of? on 64 KB")
       (true (< (consed test-eq 2) 1024) "#eq? on two octets"))))
 
+(define-test (syntax predicates-tested-without-copies)
+  ;; the tests of a rule on its nodes' text read short text on the stack: matching the
+  ;; rules of colour over a file makes next to nothing for each match
+  (let* ((test-match (tuatara.syntax::parse-predicate (list "match?" 0 "^[A-Z]")))
+         (test-any (tuatara.syntax::parse-predicate (list "any-of?" 0 "fn" "Kea")))
+         (test-eq (tuatara.syntax::parse-predicate (list "eq?" 0 1)))
+         (rope (tuatara.text:string->rope "Kea kea é Kea"))
+         (captures (make-array 8 :element-type 'fixnum :initial-contents (list 0 0 3 0 1 11 14 0))))
+    (flet ((passes (test) (tuatara.syntax::text-test-passes-p (first test) 0 (third test) nil rope captures 2)))
+      (true (passes test-match))
+      (true (passes test-any))
+      (true (passes test-eq))
+      (setf (aref captures 5) 4 (aref captures 6) 7)
+      (false (passes test-eq))
+      (is = 0 (nth-value 2 (tuatara.bench::measuring
+                             (loop repeat 100 do (passes test-match) (passes test-any) (passes test-eq)))))))
+  (let ((language (tuatara.defaults::find-language 'rust)))
+    (when (and language (tuatara.defaults::language-compiled-query language :colouring))
+      (let* ((query (tuatara.defaults::language-compiled-query language :colouring))
+             (text (with-output-to-string (o)
+                     (dotimes (i 300)
+                       (format o "pub fn kea_~d(x: &str) -> Result<String, Error> {~%    if x == \"kea\" { return Ok(None); }~%    self.call(true, 'c')?~%}~%" i))))
+             (rope (tuatara.text:string->rope text))
+             (parser (tuatara.syntax:make-parser (tuatara.syntax:find-grammar (tuatara.defaults::language-grammar language))))
+             (tree (tuatara.syntax:parse-rope parser rope))
+             (matches 0))
+        (unwind-protect
+             (flet ((run () (tuatara.syntax:map-query-matches (lambda (p c n) (declare (ignore p c n)) (incf matches))
+                                                              query tree rope 0 (length text))))
+               (run)
+               (let ((consed (loop repeat 3 minimize (nth-value 2 (tuatara.bench::measuring (run))))))
+                 (true (< consed (* 16 1024)) "~:d matches consed ~:d octets" (floor matches 4) consed)))
+          (release-parse tree parser))))))
+
 (define-test (syntax colours-kept-for-several-ranges)
   ;; two parts of a buffer shown at once keep their colours, each worked out once
   (let* ((text (with-output-to-string (s) (dotimes (i 40) (format s "fn f~d() {}~%" i))))

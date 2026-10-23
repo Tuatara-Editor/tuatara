@@ -919,6 +919,12 @@ define them, a name in double brackets: [[:ipv4:]] is an IP address,
 digit is right, [[:iban:]] a bank account's IBAN.  They work wherever a
 regexp is typed.
 
+Dates are compared as dates: [[:date<2026-07-01:]] is a date before 1
+July, [[:date:2026-01-01..2026-06-30:]] one in the first half of the
+year, as RFC 3339 writes them (2026-06-30T14:05:00+02:00).
+[[:dateutc<2026-07-01:]] compares the moments in UTC, offsets taken off;
+[[:datedmy:]] reads 30.06.2026 and [[:datemdy:]] 06/30/2026.
+
 
 Lesson 16 -- cursors in a column
 --------------------------------

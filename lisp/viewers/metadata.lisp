@@ -242,10 +242,13 @@ when it has none."
                      ((string= type "eXIf") (push (exif-section (subseq octets data end) 0 "in its eXIf chunk") sections))
                      ((string= type "tIME")
                       (when (= length 7)
-                        (push (cons "Last changed (tIME)" (format nil "~4,'0d-~2,'0d-~2,'0d ~2,'0d:~2,'0d:~2,'0d UTC"
-                                                                  (octets-integer octets data 2 :big-endian t) (aref octets (+ data 2)) (aref octets (+ data 3))
-                                                                  (aref octets (+ data 4)) (aref octets (+ data 5)) (aref octets (+ data 6))))
-                              texts)))
+                        (destructuring-bind (year month day hour minute second)
+                            (cons (octets-integer octets data 2 :big-endian t) (coerce (subseq octets (+ data 2) (+ data 7)) 'list))
+                          (push (cons "Last changed (tIME)"
+                                      (if (and (valid-date-p year month day) (< hour 24) (< minute 60) (< second 61))
+                                          (utc-time-words (+ (* 86400 (day-number year month day)) (* 3600 hour) (* 60 minute) second))
+                                          (format nil "no such time: year ~d, month ~d, day ~d, ~d:~d:~d" year month day hour minute second)))
+                                texts))))
                      ((member type '("tEXt" "zTXt" "iTXt") :test #'string=)
                       (let ((nul (position 0 octets :start data :end end)))
                         (when nul

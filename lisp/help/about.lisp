@@ -118,8 +118,8 @@ buffer."
                     (if command
                         (let ((command command)) (lambda () (funcall command)))
                         (lambda () (visit-path (tuatara.io:native (config-file))))))
-               (line "~va ~a~%" (max 1 (- 22 (length label)))
-                     "" (format nil "~22a ~a" (if command (keys command) (abbreviated-path (config-file))) words))))))
+               (line "~a ~a ~a~%" (column-text "" (max 1 (- 22 (text-columns label))))
+                     (column-text (if command (keys command) (abbreviated-path (config-file))) 22 :elide nil) words)))))
 
 (define-command about-tuatara ()
   "Show *About Tuatara*, the page that introduces Tuatara.
@@ -230,10 +230,10 @@ from each."
              (append (list (list (format nil "~%  Credits~2%") :about-heading)
                            (list (format nil "  Tuatara says where its ideas come from.~2%")))
                      (loop for (name . lines) in *credits*
-                           collect (list (format nil "  ~22a" name) :about-heading)
+                           collect (list (format nil "  ~a" (column-text name 22 :elide nil)) :about-heading)
                            ;; a name too long for its column has the lines below it
                            collect (list (format nil "~:[~*~;~%~24@a~]~{~a~^~%                        ~}~%"
-                                                 (> (length name) 21) "" lines))))))
+                                                 (> (text-columns name) 21) "" lines))))))
       (render-pieces buffer #'credits-pieces :point :button))
     (show-buffer buffer)))
 

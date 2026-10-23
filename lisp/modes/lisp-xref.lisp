@@ -96,11 +96,12 @@ DEFINITION; :NONE when MODE looks up no definitions.")
 for \\[xref-find-definitions] to ask with; NIL for none.")
   (:method (mode buffer) (declare (ignore mode buffer)) nil))
 
-(defun go-to-definition (definition)
-  "Go to DEFINITION in the selected window, or say why it cannot be reached."
+(defun go-to-definition (definition &key other)
+  "Go to DEFINITION in the selected window, or with OTHER in another, or say
+why it cannot be reached."
   (multiple-value-bind (b position) (funcall (definition-locate definition))
     (if (typep b 'tuatara.buffer:buffer)
-        (progn (show-buffer b) (goto position))
+        (progn (if other (pop-to-buffer b :other t) (show-buffer b)) (goto position))
         (message "~a" position))))
 
 (define-command xref-find-definitions ()

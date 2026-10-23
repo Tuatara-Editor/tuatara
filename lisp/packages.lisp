@@ -886,7 +886,7 @@ THEN at once with *PACKAGE-ASK-BEFORE-LOADING* NIL."
 
 (defun git-for-packages ()
   "The git program packages are fetched with, or an error saying it is missing."
-  (or (tuatara.io:find-program "git") (tuatara.io:program-missing "git" :why "packages are fetched with it")))
+  (or (tuatara.io:find-program "git") (tuatara.io:program-missing "git" :why (format nil "packages are fetched with it: ~a" (outside-program-install-words :git)))))
 
 (defun package-git-environment ()
   "What git is given when it fetches packages: what it is given to push and
@@ -902,19 +902,19 @@ and git-lfs's filters, which would ask other servers, left out."
 printed, as text; an error with what it said when it fails. A package's own
 scratch repository may fetch the files a sparse checkout needs from its
 address as it goes."
-  (multiple-value-bind (octets ok)
+  (multiple-value-bind (octets ok too-large said)
       (let ((*git-safety* (remove "--no-lazy-fetch" *git-safety* :test #'string=)))
         (run-git-program (git-for-packages) directory arguments :environment (package-git-environment) :errors t))
-    (let ((text (if octets (tuatara.text:octets-string octets) "")))
-      (unless ok
-        (error "~a" (git-failure-words (first arguments) text)))
-      text)))
+    (declare (ignore too-large))
+    (unless ok
+      (error "~a" (git-failure-words (first arguments) (or said ""))))
+    (if octets (tuatara.text:octets-string octets) "")))
 
 (defun package-commit-name (text where)
   "TEXT, a commit's name git printed for the repository at WHERE, checked to be
-one (hexadecimal, 7 to 64 digits); an error otherwise."
+one (GIT-HASH-P, 7 to 64 hexadecimal digits); an error otherwise."
   (let ((name (string-trim '(#\Newline #\Space #\Tab) text)))
-    (unless (cl-ppcre:scan "^[0-9a-f]{7,64}$" name)
+    (unless (git-hash-p name :short t)
       (error "~a gave no commit's name: ~s" where (subseq name 0 (min 80 (length name)))))
     name))
 
@@ -954,8 +954,8 @@ one (PACKAGE-COMMIT-NAME)."
                   (peeled (find-if (lambda (line) (search "^{}" line)) lines)))
              (cond (lines (values (package-commit-name (first-word (or peeled (first lines))) where)
                                   (and (search "refs/tags/" (or peeled (first lines))) version)))
-                   ((cl-ppcre:scan "^[0-9a-f]{40}(?:[0-9a-f]{24})?$" version) (values version nil))
-                   ((cl-ppcre:scan "^[0-9a-f]{7,64}$" version)
+                   ((git-hash-p version) (values version nil))
+                   ((git-hash-p version :short t)
                     (error "~a has no tag or branch called ~a, and a commit is fetched by its whole name, ~
                             40 hexadecimal digits (git log shows it)" where version))
                    (t (error "~a has no tag, branch or commit called ~a" where version))))))))

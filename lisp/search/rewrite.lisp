@@ -1079,23 +1079,22 @@ so that no line looks anything up in the text."
              (incf changes)))
       (block each-line
         (when (< start end)
-          (call-with-line-block
-           (lambda (reused)
-             (tuatara.text:map-line-slices
-              (lambda (line s e sc ec line-end octets octets-start octets-end)
-                (declare (ignore s e sc ec) (type fixnum line line-end octets-start octets-end))
-                (when (and (zerop (logand lines 1023)) (car cancel)) (return-from each-line))
-                (setf block octets block-start octets-start block-end octets-end pos line)
-                (let ((next (slice-next-line rope total crlf line-end block block-start block-end)))
-                  (declare (type fixnum next))
-                  (funcall per-line #'edit line line-end next rope block block-start block-end)
-                  (write-text writer rope pos next block block-start block-end)
-                  (incf lines)
-                  (setf (rewrite-piece-done piece) next)
-                  (when (>= next next-checkpoint)
-                    (piece-checkpoint piece next (piece-written piece writer) start)
-                    (setf next-checkpoint (+ next interval)))))
-              rope start end 0 0 :crlf crlf :octets t :block reused)))))
+          (tuatara.text:with-octet-block (reused (* 1024 1024))
+            (tuatara.text:map-line-slices
+             (lambda (line s e sc ec line-end octets octets-start octets-end)
+               (declare (ignore s e sc ec) (type fixnum line line-end octets-start octets-end))
+               (when (and (zerop (logand lines 1023)) (car cancel)) (return-from each-line))
+               (setf block octets block-start octets-start block-end octets-end pos line)
+               (let ((next (slice-next-line rope total crlf line-end block block-start block-end)))
+                 (declare (type fixnum next))
+                 (funcall per-line #'edit line line-end next rope block block-start block-end)
+                 (write-text writer rope pos next block block-start block-end)
+                 (incf lines)
+                 (setf (rewrite-piece-done piece) next)
+                 (when (>= next next-checkpoint)
+                   (piece-checkpoint piece next (piece-written piece writer) start)
+                   (setf next-checkpoint (+ next interval)))))
+             rope start end 0 0 :crlf crlf :octets t :block reused))))
       (unless (car cancel)
         (finish-piece piece writer changes lines)))))
 
@@ -1108,35 +1107,22 @@ when it holds it, else the text read now."
       (values block (- line block-start))
       (values (tuatara.text:rope-octets rope :start line :end line-end) 0)))
 
-(sb-ext:defglobal **line-blocks** (tuatara.runtime:make-spares (lambda () (tuatara.text:make-octets (* 1024 1024))))
-  "Blocks of a megabyte that pieces of a text are read into a line at a time,
-kept to be read into again: the work on every core over a text of gigabytes
-then makes no more of them than it has pieces at once.")
-
-(defun call-with-line-block (function)
-  "Call FUNCTION with a block of a megabyte to read a piece of text into, one
-kept (**LINE-BLOCKS**) or a new one, kept again once FUNCTION returns.
-FUNCTION must not keep it."
-  (tuatara.runtime:with-spare (block **line-blocks**)
-    (funcall function block)))
-
 (defun map-piece-lines (function rope start end crlf &optional halt)
   "Call FUNCTION with (LINE LINE-END ROPE BLOCK BLOCK-START BLOCK-END) for each
 line of ROPE starting from START below END, read a block at a time (CRLF when
-a carriage return before a newline ends them), the block one kept for that
-(CALL-WITH-LINE-BLOCK), which FUNCTION must not keep; stop when HALT, checked
-now and then, answers true."
+a carriage return before a newline ends them), the block one of a megabyte
+kept for reading into (TUATARA.TEXT:WITH-OCTET-BLOCK), which FUNCTION must not
+keep; stop when HALT, checked now and then, answers true."
   (let ((n 0))
     (declare (type fixnum n))
-    (call-with-line-block
-     (lambda (reused)
-       (block lines
-         (tuatara.text:map-line-slices
-          (lambda (line s e sc ec line-end block block-start block-end)
-            (declare (ignore s e sc ec))
-            (when (and halt (zerop (logand (incf n) 1023)) (funcall halt)) (return-from lines))
-            (funcall function line line-end rope block block-start block-end))
-          rope start end 0 0 :crlf crlf :octets t :block reused))))))
+    (tuatara.text:with-octet-block (reused (* 1024 1024))
+      (block lines
+        (tuatara.text:map-line-slices
+         (lambda (line s e sc ec line-end block block-start block-end)
+           (declare (ignore s e sc ec))
+           (when (and halt (zerop (logand (incf n) 1023)) (funcall halt)) (return-from lines))
+           (funcall function line line-end rope block block-start block-end))
+         rope start end 0 0 :crlf crlf :octets t :block reused)))))
 
 (defun start-line-job (buffer from to per-line &key doing what verb leaves report announce prepare goal)
   "Rewrite the lines of BUFFER from the one starting at FROM to the one ending

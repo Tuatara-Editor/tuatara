@@ -265,11 +265,9 @@ unless given): a tab to the next tab stop (TAB-COLUMNS), a wide character
 two columns, a combining mark none."
   (let ((width (tab-columns)) (before 0))
     (loop for c across text
-          do (if (char= c #\Tab)
-                 (setf column (next-tab-stop column width) before 9)
-                 (multiple-value-bind (columns next) (tuatara.display:cluster-columns (char-code c) before (tuatara.display:char-columns c))
-                   (incf column columns)
-                   (setf before next))))
+          do (multiple-value-bind (columns next) (tuatara.display:advance-column (char-code c) column before width nil)
+               (incf column columns)
+               (setf before next)))
     column))
 
 (defun sentence-end-word-p (word)
@@ -362,38 +360,27 @@ than a line has a line of its own."
     (terpri stream)))
 
 (defun write-documentation (stream doc &key (column *help-column*))
-  "Write DOC, a docstring, to STREAM filled to COLUMN (WRITE-FILLED): the
-lines of a paragraph joined and filled; a line beginning at its start with -
-or * or a number and a full stop begins a list item, the lines after it its words
-until a blank line or the next item, filled under its first word; any other
-line set in (a table, an example; under an item, set in further than its
-words) and the blank lines kept as written."
-  (let ((head nil) (words '()) (substitute-keymap "") (block-keymap ""))
-    (labels ((flush ()
-               (when head
-                 (write-filled stream (car head)
-                               (format nil "~a~{~a~^ ~}" block-keymap (reverse words))
-                               :indent (cdr head) :column column))
-               (setf head nil words '()))
-             (keep-keymap (line)
-               ;; a \\<KEYMAP> names the keymap for the keys after it, in the later paragraphs too
-               (multiple-value-bind (match groups) (cl-ppcre:scan-to-strings "\\\\<([^>]+)>" line)
-                 (when match (setf substitute-keymap (format nil "\\<~a>" (aref groups 0)))))))
-      (dolist (line (uiop:split-string doc :separator '(#\Newline)))
-        (multiple-value-bind (match groups) (cl-ppcre:scan-to-strings "^((?:[-*]|\\d+\\.)\\s+)(.*)$" line)
-          (cond ((blank-text-p line) (flush) (terpri stream))
-                (match (flush)
-                       (setf head (cons (aref groups 0) (length (aref groups 0))) block-keymap substitute-keymap)
-                       (push (aref groups 1) words))
-                ((and head (plusp (cdr head)) (<= (or (position #\Space line :test-not #'char=) 0) (cdr head)))
-                 (push (string-trim " " line) words))
-                ((and (plusp (length line)) (char= (char line 0) #\Space))
-                 (flush)
-                 (write-line (substitute-command-keys (concatenate 'string substitute-keymap line) :marks t) stream))
-                (t (unless head (setf head (cons "" 0) block-keymap substitute-keymap))
-                   (push line words))))
-        (keep-keymap line))
-      (flush))))
+  "Write DOC, a docstring, to STREAM filled to COLUMN (WRITE-FILLED), its
+parts as TUATARA.DISPLAY:DOCSTRING-PARAGRAPHS finds them, as the completion
+popup shows them too: the lines of a paragraph joined and filled; a line
+beginning at its start with - or * or a number and a full stop begins a list
+item, the lines after it its words until a blank line or the next item, filled
+under its first word; any other line set in (a table, an example; under an
+item, set in further than its words) and the blank lines kept as written."
+  (let ((keymap ""))
+    (flet ((keep-keymap (line)
+             ;; a \\<KEYMAP> names the keymap for the keys after it, in the later parts too
+             (multiple-value-bind (match groups) (cl-ppcre:scan-to-strings "\\\\<([^>]+)>" line)
+               (when match (setf keymap (format nil "\\<~a>" (aref groups 0)))))))
+      (dolist (part (tuatara.display:docstring-paragraphs doc))
+        (ecase (first part)
+          (:blank (terpri stream))
+          (:as-is (let ((line (second part)))
+                    (write-line (substitute-command-keys (concatenate 'string keymap line) :marks t) stream)
+                    (keep-keymap line)))
+          (:filled (destructuring-bind (head indent words lines) (rest part)
+                     (write-filled stream head (format nil "~a~{~a~^ ~}" keymap words) :indent indent :column column)
+                     (mapc #'keep-keymap lines))))))))
 
 (defun fill-paragraph-at (buffer position &key (from 0) to)
   "Fill the paragraph of BUFFER at POSITION (STRING-PARAGRAPH-BOUNDS in a

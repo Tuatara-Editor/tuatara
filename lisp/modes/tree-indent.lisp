@@ -205,7 +205,7 @@ in *Messages*, when the buffer has no syntax tree."
                ;; from the text before the first line, which may reach on to it (@extend)
                (from (let* ((low (max 0 (- first 4096)))
                             (text (tuatara.text:rope-octets rope :start low :end first))
-                            (last (position-if-not (lambda (octet) (member octet '(9 10 13 32))) text :from-end t)))
+                            (last (position-if-not (lambda (octet) (member octet tuatara.text:*blank-octets*)) text :from-end t)))
                        (if last (+ low last) first)))
                (captures (indent-captures (language-compiled-query language :indent) tree rope from
                                           (tuatara.text:rope-line-end rope stop)))

@@ -69,7 +69,7 @@ puts it, as new octets; NIL when that changes nothing."
         (:down (each (b) (if (<= 65 b 90) (+ b 32) b)))
         (:capital
          (let ((in-word nil))
-           (each (b) (let ((word (or (<= 65 b 90) (<= 97 b 122) (<= 48 b 57))))
+           (each (b) (let ((word (word-char-p (code-char b))))
                        (prog1 (cond ((not word) b)
                                     (in-word (if (<= 65 b 90) (+ b 32) b))
                                     (t (if (<= 97 b 122) (- b 32) b)))
@@ -108,7 +108,7 @@ changed octet by octet, another read as text."
             ((large-for-here-p start end)
              (check-writable b)
              (setf (tuatara.buffer:buffer-mark-active-p b) nil)
-             (start-line-job b (tuatara.buffer:buffer-line-start b start) (tuatara.buffer:buffer-line-end b end)
+             (start-line-job b (tuatara.buffer:buffer-line-start b start) (tuatara.buffer:buffer-line-end b (range-last-place b start end))
                              (case-line how start end)
                              :doing "Changing case" :what "Changing the case of the region"
                              :verb "change the case" :leaves "the case is as it was"

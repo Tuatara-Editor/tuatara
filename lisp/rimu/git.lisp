@@ -44,17 +44,12 @@ car turns true."
             (incf left)))))
     (when (plusp left)
       (let ((commit nil))
-        (and (nth-value 1 (run-git directory (list "log" "--relative" "--name-only"
-                                                   (format nil "--format=~ccommit~c%cr~c%s" #\Soh #\Tab #\Tab)
-                                                   "--" ".")
+        (and (nth-value 1 (run-git directory (list "log" "--relative" "--name-only" *git-commit-format* "--" ".")
                                    :cancel cancel :seconds *git-look-seconds*
                                    :line (lambda (line)
-                                           (cond ((and (plusp (length line)) (char= (char line 0) #\Soh))
-                                                  ;; the time after the first tab, the subject after the second, any tab in it kept
-                                                  (let* ((one (position #\Tab line))
-                                                         (two (and one (position #\Tab line :start (1+ one)))))
-                                                    (setf commit (list (if one (subseq line (1+ one) (or two (length line))) "")
-                                                                       (if two (subseq line (1+ two)) "")))))
+                                           (cond ((and (plusp (length line)) (char= (char line 0) (code-char #x1e)))
+                                                  (let ((fields (parse-git-commit-fields (subseq line 1))))
+                                                    (setf commit (and fields (list (git-commit-ago fields) (git-commit-subject fields))))))
                                                  ((and commit (plusp (length line)))
                                                   ;; the entry it is under: the path's first part
                                                   (let ((name (subseq line 0 (or (position #\/ line) (length line)))))
@@ -74,12 +69,12 @@ RIMU-COLUMN-READY."
    (lambda (names)
      (let* ((commits (rimu-git-commits directory names))
             ;; the messages lined up after the longest date
-            (widest (if commits (loop for (when) being the hash-values of commits maximize (length when)) 0)))
+            (widest (if commits (loop for (when) being the hash-values of commits maximize (text-columns when)) 0)))
        (map 'vector
             (lambda (name)
               (let ((commit (and commits (gethash name commits))))
                 (and commit
-                     (list (cons (format nil "~va" widest (first commit)) :list-date)
+                     (list (cons (column-text (first commit) widest :elide nil) :list-date)
                            (cons "  " nil)
                            (cons (let ((subject (second commit)))
                                    (if (> (length subject) 72) (subseq subject 0 72) subject))
@@ -205,7 +200,8 @@ as its latest commit left it, point on the entry it was on (\\[git-rewind])."
     (start-git-job "Reading the folder's history"
                    (lambda (job)
                      (let ((path (if (string= folder "") "." folder)))
-                       (parse-git-rewind-log (git-job-output job top (list "log" "--date=short" *git-rewind-format* "--" path)) path)))
+                       (coerce (parse-git-commits (git-job-output job top (list "log" "--date=short" *git-commit-format* "--" path)) :path path)
+                               'simple-vector)))
                    (lambda (revisions)
                      (if (zerop (length revisions))
                          (progn (rimu-rewind-leave buffer)
@@ -221,7 +217,7 @@ the commit INDEX of its history (0 the latest) left it, point kept on its
 entry, or on the one named by the octets POINT-ON."
   (let ((revision (svref (tuatara.buffer:buffer-local buffer 'git-rewind-revisions) index)))
     (setf (tuatara.buffer:buffer-local buffer 'git-rewind-wanted) index
-          (cdr (tuatara.buffer:buffer-local buffer 'rimu-rewound)) (first revision))
+          (cdr (tuatara.buffer:buffer-local buffer 'rimu-rewound)) (git-commit-hash revision))
     (rimu-update buffer :reread t :point-on point-on :wait nil)))
 
 (defun rimu-rewound-taken-in (buffer)

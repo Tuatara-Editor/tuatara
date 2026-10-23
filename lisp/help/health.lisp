@@ -107,7 +107,7 @@ the check."
        (setf (health-check-sandbox check)
              (multiple-value-list (tuatara.io:sandbox-status :again t))
              (health-check-decoders check)
-             (append (list (pdf-decoder-words) (office-page-words) (image-decoder-words) (external-program-words) (encrypted-health-words))
+             (append (list (pdf-decoder-words) (office-page-words) (image-decoder-words) (external-program-words) (org-notify-health-words) (encrypted-health-words) (git-health-words))
                      (remove nil (mapcar (lambda (f) (ignore-errors (funcall f))) *health-decoder-functions*)))
              (health-check-exporters check)
              (list (latex-export-words))
@@ -134,9 +134,9 @@ it names (SUBSTITUTE-COMMAND-KEYS) in :help-key-binding."
 
 (defun health-cell (text width &optional face)
   "Add TEXT to the report in FACE, padded with spaces to WIDTH columns of the
-screen and one more."
-  (health-put text face)
-  (health-put (make-string (1+ (max 0 (- width (text-columns text)))) :initial-element #\Space)))
+screen (COLUMN-TEXT) and one more."
+  (health-put (column-text text width :elide nil) face)
+  (health-put " "))
 
 (defun health-heading (text)
   "Add TEXT to the report as a heading, a blank line before it."

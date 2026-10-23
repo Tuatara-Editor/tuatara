@@ -404,6 +404,62 @@
     ;; the key given back, for the tests after
     (tuatara-user:unbind-key "C-c z")))
 
+;;; A menu opened with values, its option asked again, a summary under it, a switch that comes with a value.
+
+(defun menu-test-read-again (prompt &optional current)
+  "Read the test menu's option again, CURRENT offered."
+  (tuatara.command:read-string prompt :initial (or current "")))
+
+(defun menu-test-summary (arguments)
+  "The test menu's summary of its ARGUMENTS."
+  (list (format nil "Summed: ~{~a~^ ~}" arguments)))
+
+(defun menu-test-filled-shows-p (entry)
+  "The filled test menu shows its deep switch only once a depth is given."
+  (or (not (equal (tuatara.command:menu-entry-argument entry) "--deep"))
+      (find-if (lambda (a) (uiop:string-prefix-p "--depth=" a)) (tuatara.command:menu-arguments))))
+
+(tuatara.command:define-menu menu-test-filled-menu (:title "Filled menu" :show menu-test-filled-shows-p :summary menu-test-summary)
+  "Open the filled menu the tests use."
+  ("Do" ("a" "Act" menu-test-act))
+  ("Options" ("= d" "Depth" :option "--depth=" :read menu-test-read-again :replace t) ("- e" "Deep" :switch "--deep")))
+
+(tuatara.command:define-command menu-test-open-filled ()
+  "Open the filled test menu with a name given."
+  (tuatara.command:open-menu (tuatara.command:menu-named 'menu-test-filled-menu) :arguments '("--name=kea")))
+
+(define-test (completion menus-asked-again-and-summed)
+  ;; opened with values, they are its arguments, its summary under its entries
+  (setf *menu-test-given* :none)
+  (let ((f (run-keys "M-x m e n u - t e s t - o p e n - f i l l e d RET" :width 100 :height 16)))
+    (true (tuatara.frontend.fake:fake-frame-showing f "Summed: --name=kea")))
+  ;; a switch the menu has only with a value: left out, then there
+  (multiple-value-bind (f editor) (run-keys "M-x m e n u - t e s t - o p e n - f i l l e d RET - e" :width 100 :height 16)
+    (true (tuatara.frontend.fake:fake-frame-showing f "Deep (- e) is left out of this menu now"))
+    (true (tuatara.command:editor-menu editor)))
+  (run-keys "M-x m e n u - t e s t - o p e n - f i l l e d RET = d 3 RET - e a" :width 100 :height 16)
+  (is equal '("--name=kea" "--depth=3" "--deep") *menu-test-given*)
+  ;; an option asked again shows its value and takes the new one; an empty answer takes it away
+  (let ((f (run-keys "M-x m e n u - t e s t - o p e n - f i l l e d RET = d 3 RET = d DEL 5 RET" :width 100 :height 16)))
+    (true (tuatara.frontend.fake:fake-frame-showing f "Summed: --name=kea --depth=5")))
+  (run-keys "M-x m e n u - t e s t - o p e n - f i l l e d RET = d 3 RET = d DEL RET a" :width 100 :height 16)
+  (is equal '("--name=kea") *menu-test-given*))
+
+(define-test (completion key-hint-groups-line-up)
+  ;; groups laid out one under another with one column width have their columns at the same places
+  (let* ((short '(("a" . "act") ("b" . "back") ("c" . "cut")))
+         (long '(("x" . "a much longer name") ("y" . "why") ("z" . "zed")))
+         (column (tuatara.command::key-hint-column-width short long)))
+    (flet ((second-column (rows) (search "  " (first (first rows)) :from-end nil)))
+      (let ((one (tuatara.command::key-hint-rows short 60 1 :column-width column))
+            (two (tuatara.command::key-hint-rows long 60 1 :column-width column)))
+        (is = (search "b back" (first (first one))) (search "y why" (first (first two))))
+        (true (second-column one)))))
+  ;; a menu's groups line up: the second column of the filled test menu's options under its action's
+  (let ((f (run-keys "M-x m e n u - t e s t - o p e n - f i l l e d RET = d 3 RET" :width 100 :height 16)))
+    (let ((rows (loop for i below 16 collect (tuatara.frontend.fake:fake-screen-line f i))))
+      (true (find-if (lambda (row) (search "= d Depth (--depth=3)" row)) rows)))))
+
 (define-test (completion flat-spans-by-runs)
   ;; spans laid flat: later ones' faces first, runs of the same faces joined
   (is equal '((0 2 :a) (2 4 (:b :a)) (4 6 :b))
@@ -417,3 +473,31 @@
                           (tuatara.command::flatten-spans (list (list 0 length :a) (list 5 (- length 5) :b)) length)))))
     (true (< (consed 1000) 2000))
     (true (< (consed 100000) 2000))))
+
+(define-test (completion one-walk-for-match-and-places)
+  ;; the places a word typed lights up are those its match is made of, found by the same walk
+  (let ((names '("forward-char" "save-buffers-kill-editor" "Forward" "kill-region" "describe-key-briefly"
+                 "find-file-other-window" "org-agenda" "OrgMode" "x" "")))
+    (dolist (string names)
+      (dolist (component '("for" "ward" "fc" "sbke" "fwdc" "xyz" "For" "kr" "dkb" "ffow" "oa" "OM" "x" "e"))
+        (let ((kind (tuatara.command:component-match component string))
+              (places (tuatara.command::component-positions component string)))
+          (is eq (and kind t) (and places t) "~s in ~s" component string)
+          (when places
+            (is = (length component) (length places))
+            (true (apply #'< places))
+            (true (every (lambda (c p) (char-equal c (char string p))) component places)))
+          (when (member kind '(:prefix :substring))
+            (is equal (loop for i from (nth-value 1 (tuatara.command:component-match component string))
+                            repeat (length component) collect i)
+                places))))))
+  ;; and it goes faster than a plain search for the word over the names
+  (let ((candidates (loop for i below 3000 collect (tuatara.command:make-candidate (format nil "kea-~d-mountain-parrot-of-the-alps" i)))))
+    (flet ((fastest (function)
+             (loop repeat 5
+                   minimize (let ((start (tuatara.bench::monotonic-seconds)))
+                              (funcall function)
+                              (- (tuatara.bench::monotonic-seconds) start)))))
+      (let ((filter (fastest (lambda () (tuatara.command:filter-candidates "kmpz" candidates))))
+            (search (fastest (lambda () (dolist (c candidates) (search "kmpz" (tuatara.command:candidate-string c) :test #'char-equal))))))
+        (true (< filter search) "filtering took ~,2f ms, searching ~,2f ms" (* 1000 filter) (* 1000 search))))))

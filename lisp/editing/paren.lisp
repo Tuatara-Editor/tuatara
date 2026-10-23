@@ -24,9 +24,6 @@ point when it closes, else the one after it when it opens. T unless set;
   "The most octets either side of a bracket looked through for its partner;
 a partner further away is not shown.")
 
-(defparameter *opening-octets* '(40 91 123) "The octets of ( [ and {.")
-(defparameter *closing-octets* '(41 93 125) "The octets of ) ] and }, in the order of *OPENING-OCTETS*.")
-
 (defun counted-partner (rope spans at forward from to)
   "The partner of the bracket at octet AT of ROPE found by counting brackets
 from octet FROM below TO, FORWARD or back (ROPE-BRACKET-MATCH): those in SPANS
@@ -88,8 +85,8 @@ cannot tell: no bracket token at AT, or an error in the node around it."
          (parent (second chain))
          (rope (tuatara.syntax:syntax-rope syntax)))
     (flet ((octet (i) (tuatara.text:rope-octet rope i))
-           (kind-of (i) (or (position (tuatara.text:rope-octet rope i) *opening-octets*)
-                            (position (tuatara.text:rope-octet rope i) *closing-octets*))))
+           (kind-of (i) (or (position (tuatara.text:rope-octet rope i) tuatara.text:*opening-octets*)
+                            (position (tuatara.text:rope-octet rope i) tuatara.text:*closing-octets*))))
       (cond ((null leaf) :unknown)
             ((some (lambda (node) (or (tuatara.syntax:string-node-p node) (tuatara.syntax:comment-node-p node))) chain)
              :text)
@@ -110,7 +107,7 @@ cannot tell: no bracket token at AT, or an error in the node around it."
              ;; the node may begin with marks before its bracket (#( in Lisp)
              (let ((open (loop for i from (tuatara.syntax:tree-node-start parent)
                                  below (min at (+ 4 (tuatara.syntax:tree-node-start parent)))
-                               when (member (octet i) *opening-octets*) return i)))
+                               when (member (octet i) tuatara.text:*opening-octets*) return i)))
                (if (and open (= at (1- (tuatara.syntax:tree-node-end parent)))
                         (multiple-value-bind (token up) (bracket-token-parent syntax open)
                           (and token (tuatara.syntax:opening-bracket-node-p token) (same-node-p up parent))))
@@ -147,8 +144,8 @@ bracket, the brackets are counted within *SHOW-PAREN-REACH* octets."
          (size (tuatara.text:rope-bytes rope))
          (before (and (plusp point) (tuatara.text:rope-octet rope (1- point))))
          (after (and (< point size) (tuatara.text:rope-octet rope point)))
-         (at (cond ((and (member before *closing-octets*) (not (tuatara.text:rope-escaped-p rope (1- point)))) (1- point))
-                   ((and (member after *opening-octets*) (not (tuatara.text:rope-escaped-p rope point))) point))))
+         (at (cond ((and (member before tuatara.text:*closing-octets*) (not (tuatara.text:rope-escaped-p rope (1- point)))) (1- point))
+                   ((and (member after tuatara.text:*opening-octets*) (not (tuatara.text:rope-escaped-p rope point))) point))))
     (when at
       (let* ((syntax (ready-syntax buffer))
              (answer (if syntax (multiple-value-list (tree-bracket-partner syntax at)) '(:unknown))))
@@ -231,7 +228,7 @@ alone."
 say what its partner is if that is out of sight above the window, or that it
 has none or one of another kind."
   (let ((point (tuatara.buffer:buffer-point buffer)))
-    (when (and *blink-matching-paren* (find char ")]}") (plusp point)
+    (when (and *blink-matching-paren* (find char tuatara.text:*closers*) (plusp point)
                (eql (tuatara.buffer:buffer-char-at buffer (1- point)) char)
                (not (tuatara.text:rope-escaped-p (tuatara.buffer:buffer-text buffer) (1- point)))
                (not (tuatara.display:hex-view-p buffer)))

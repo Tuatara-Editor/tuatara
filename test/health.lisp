@@ -174,3 +174,39 @@ a moment.")
     ;; both as asked, under their own names
     (is eq :gl (tuatara.defaults::drawing-choice (list (cons :gl (figures "GskGLRenderer" 180 15.0))
                                                        (cons :vulkan (figures "GskVulkanRenderer" 178 14.0)))))))
+
+(define-test (health outside-programs-agree)
+  ;; the software from outside, one table: the distribution packages recommend and suggest
+  ;; what it names, and M-x check-health says what to install from it, git among them
+  (let* ((script (uiop:read-file-lines (merge-pathnames "tools/distro-packages.sh" (asdf:system-source-directory :tuatara))))
+         (programs tuatara.defaults::*outside-programs*))
+    (flet ((field (prefix commas)
+             ;; the packages of the line beginning with PREFIX, with commas between them or not
+             (let ((line (find-if (lambda (line) (and (uiop:string-prefix-p prefix line) (eq commas (and (find #\, line) t))))
+                                  script)))
+               (and line (sort (mapcar (lambda (word) (string-trim ", " word))
+                                       (tuatara.text:split-words (subseq line (length prefix))))
+                               #'string<))))
+           (table (system weight)
+             (sort (loop for (nil . entry) in programs
+                         when (or (null weight) (eq weight (getf entry :weight)))
+                           append (copy-list (getf entry system)))
+                   #'string<)))
+      (is equal (table :fedora :recommends) (field "Recommends: " nil))
+      (is equal (table :fedora :suggests) (field "Suggests: " nil))
+      (is equal (table :debian :recommends) (field "Recommends: " t))
+      (is equal (table :debian :suggests) (field "Suggests: " t))
+      ;; Arch's optional packages, each with what it is for
+      (is equal (sort (loop for (nil . entry) in programs
+                            append (mapcar (lambda (package) (format nil "~a: ~a" package (getf entry :what))) (getf entry :arch)))
+                      #'string<)
+          (sort (loop for line in script
+                      for start = (position #\' line)
+                      for end = (and start (position #\' line :start (1+ start)))
+                      when (and end (or (search "optdepends=(" line) (uiop:string-prefix-p "            '" line)))
+                        collect (subseq line (1+ start) end))
+                #'string<))))
+  (is string= "install GnuPG (Fedora: gnupg2)" (tuatara.defaults::outside-program-install-words :gpg :fedora))
+  (true (search "Debian and Ubuntu: gnupg; Arch: gnupg" (tuatara.defaults::outside-program-install-words :gpg nil)))
+  (let ((words (tuatara.defaults::git-health-words)))
+    (true (or (search "by /" words) (search "install git" words)) "~a" words)))

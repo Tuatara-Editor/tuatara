@@ -101,8 +101,8 @@ the programs found, and whether they run shut in by the sandbox."
         (multiple-value-bind (status detail) (tuatara.io:sandbox-status)
           (format nil "PDFs of Org and LaTeX by ~{~a~^, then ~}, ~:[unconfined (~a): a document could read any of your files~;shut in by the sandbox~*~]"
                   (mapcar #'cdr engines) (eq status :ready) detail))
-        (format nil "PDFs of Org and LaTeX by none of ~{~a~^, ~}, on the PATH or in TeX Live's folders: install TeX Live, or give their paths in *latex-engines*"
-                (latex-engine-names)))))
+        (format nil "PDFs of Org and LaTeX by none of ~{~a~^, ~}, on the PATH or in TeX Live's folders: ~a, or give their paths in *latex-engines*"
+                (latex-engine-names) (outside-program-install-words :latex)))))
 
 (defun intended-engine (tex)
   "The LaTeX program the file TEX says it is meant for, by its first lines, as
@@ -552,7 +552,7 @@ with no network. Where there is no sandbox (bwrap missing, or turned off by
          ;; (xdvipdfmx); TEX's directory searched for what it names; what it writes kept to
          ;; where it runs, never a parent directory or a full name elsewhere
          (environment (list (format nil "PATH=~a:~a" (string-right-trim "/" (tuatara.io:parent-path path))
-                                    (or (sb-posix:getenv "PATH") "/usr/bin:/bin"))
+                                    (tuatara.io:program-search-path))
                             (format nil "TEXINPUTS=~a:" (tuatara.io:parent-path tex))
                             "openout_any=p"))
          (arguments (list "-interaction=nonstopmode" "-halt-on-error" "-file-line-error" "-no-shell-escape"

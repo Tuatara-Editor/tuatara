@@ -58,6 +58,19 @@ so that work on another thread reads them whole.")
   "The labels keys are given (SET-KEY-LABEL), by keymap: for each, a table of
 key spec to the label the key hints show for that key.")
 
+(defun prefix-keymap (keymap spec &key replace)
+  "The keymap the prefix key SPEC of KEYMAP leads to, made and bound to SPEC
+when SPEC is unbound. A key bound to something else is bound to a new keymap
+instead with REPLACE, else that is an error. Called with the keymaps held
+\(WITH-KEYMAPS-HELD)."
+  (let ((next (gethash spec (keymap-table keymap))))
+    (cond ((keymap-p next) next)
+          ((and next (not replace))
+           (error "~a is bound to ~(~a~), not a prefix key." (tuatara.frontend:key-description spec) next))
+          (t (incf *keymaps-generation*)
+             (setf (gethash spec (keymap-table keymap))
+                   (make-keymap :name (tuatara.frontend:key-description spec)))))))
+
 (defun set-key-label (keymap keys label)
   "Give KEYS, a key sequence in KEYMAP, the LABEL (a string) the key hints
 show for it instead of the name of the command it runs, or, for a prefix key,
@@ -69,14 +82,7 @@ error."
     (with-keymaps-held
      (loop for (spec . rest) on specs
           do (if rest
-                 (let ((next (gethash spec (keymap-table keymap))))
-                   (cond ((keymap-p next))
-                         (next (error "~a is bound to ~(~a~), not a prefix key."
-                                      (tuatara.frontend:key-description spec) next))
-                         (t (incf *keymaps-generation*)
-                            (setf next (make-keymap :name (tuatara.frontend:key-description spec))
-                                  (gethash spec (keymap-table keymap)) next)))
-                   (setf keymap next))
+                 (setf keymap (prefix-keymap keymap spec))
                  (let ((table (or (gethash keymap *key-labels*)
                                   (setf (gethash keymap *key-labels*) (make-hash-table :test 'equal)))))
                    (if label (setf (gethash spec table) label) (remhash spec table))))))
@@ -116,11 +122,7 @@ needed."
                             ;; an unbound key keeps no label
                             (let ((labels (gethash keymap *key-labels*)))
                               (when labels (remhash spec labels)))))
-                 (let ((next (gethash spec (keymap-table keymap))))
-                   (unless (keymap-p next)
-                     (setf next (make-keymap :name (tuatara.frontend:key-description spec))
-                           (gethash spec (keymap-table keymap)) next))
-                   (setf keymap next)))))
+                 (setf keymap (prefix-keymap keymap spec :replace t)))))
     command))
 
 (defun define-keys (keymap bindings)

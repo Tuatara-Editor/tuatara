@@ -656,7 +656,7 @@ window draws them with (set-face :org-level-1 :height 2)."
         (false (tuatara.frontend.fake:fake-frame-showing f "cannot be shown") "~a" keys)))))
 
 (define-test (org kills-never-take-folded-text-unseen)
-  ;; zap-to-char, kill-sexp and delete-blank-lines reaching into a folded body: the fold shown, nothing taken
+  ;; zap-up-to-char, kill-sexp and delete-blank-lines reaching into a folded body: the fold shown, nothing taken
   (let ((text (format nil "* A~%body x and more~%* B~%")))
     (is string= text (org-text-after "S-TAB M-z x" text))
     (is string= text (org-text-after "S-TAB C-M-k C-M-k C-M-k" text))))

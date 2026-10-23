@@ -222,7 +222,9 @@ of its own, gives the days from FIRST to LAST with a journal entry, each
                when (<= first day last) collect (cons day :calendar-journal))))))
 
 (defun install-journal ()
-  "Mark the journal's days in the calendar, and bind n there for the entry of the day at point."
+  "Mark the journal's days in the calendar, and bind n there for the entry of
+the day at point, which RET opens too on a day marked for it."
   (pushnew 'journal-calendar-marks *calendar-mark-functions*)
+  (pushnew '(:calendar-journal calendar-journal-entry "journal entry") *calendar-day-openers* :test #'equal)
   (define-key (mode-keymap 'calendar-mode) "n" 'calendar-journal-entry)
   (commands-for-mode 'calendar-mode "the calendar (\\[calendar])" 'calendar-journal-entry))

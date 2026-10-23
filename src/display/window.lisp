@@ -49,6 +49,8 @@ holding windows one above another or side by side."))
            :documentation "Columns reserved at the left for gutters (line numbers, version-control marks); text starts after them.")
    (rows :initform #() :accessor window-rows
          :documentation "The rows of the last layout, for painting and cursor mapping.")
+   (spare-rows :initform (make-array 0 :adjustable t :fill-pointer 0) :reader window-spare-rows
+               :documentation "Rows the window showed before and shows no more, for its next layout to fill again.")
    (row-start-seen :initform nil :accessor window-row-start-seen
                    :documentation "What the window's start was last found a row's start for (ROW-START-STATE), or NIL.")
    (laid-out :initform nil :accessor window-laid-out
@@ -77,6 +79,7 @@ point is its buffer's point; every other window keeps a point of its own."))
       (documentation 'window-hscroll 'function) "Columns WINDOW is scrolled horizontally."
       (documentation 'window-goal-column 'function) "Column vertical motion in WINDOW tries to keep, or NIL."
       (documentation 'window-rows 'function) "Rows of WINDOW's last layout."
+      (documentation 'window-spare-rows 'function) "Rows WINDOW showed before and shows no more, for its next layout to fill again."
       (documentation 'window-row-start-seen 'function) "What WINDOW's start was last found a row's start for (ROW-START-STATE), or NIL."
       (documentation 'window-laid-out 'function) "WINDOW's last layout, kept to be used again (KEPT-LAYOUT), or NIL."
       (documentation 'window-margin 'function) "Columns of WINDOW reserved at the left for gutters."
@@ -305,14 +308,15 @@ one line at a time (WINDOW-LAYOUT-ROWS with END): what the buffer shows
 otherwise may be looked up then, but what is kept for the window as it is
 shown is left as it is.")
 
-(defun window-layout-rows (window start height &key end)
+(defun window-layout-rows (window start height &key end spares)
   "WINDOW's buffer laid out from START into at most HEIGHT rows as WINDOW shows
 it: its width, its wrapping (at a word's edge and a column when its buffer
 wants), its tab width and its line ends; while the frontend draws rows large
 \(*ROW-SCALING*), its lines as many rows tall as its :line-scale-function says.
 With END, only the rows up to that octet are wanted: none is laid out that
 begins past it, and what the buffer hides or shows otherwise is looked for no
-further."
+further. With SPARES, the rows are filled from WINDOW's rows no longer shown
+\(WINDOW-SPARE-ROWS) while it has any."
   (let* ((buffer (window-buffer window))
          (visual (soft-wrap-of buffer))
          (wrap (or (window-wrap window) (and visual t))))
@@ -324,6 +328,7 @@ further."
             :crlf (tuatara.buffer:buffer-crlf-p buffer)
             :until end
             :invisible (invisible-characters-of buffer)
+            :spares (and spares (window-spare-rows window))
             :hidden (let ((*layout-probe* (and end t))) (window-hidden buffer start (window-width window) height end))
             :prefix (let ((function (tuatara.buffer:buffer-local buffer :line-prefix-function)))
                       (and function (lambda (line-start continuation) (funcall function buffer line-start continuation))))
@@ -485,10 +490,19 @@ or as a hex dump (HEX-LAYOUT) when the buffer is in the hex view."
                      (or (fold-at buffer (window-start window)) (hidden-around buffer (window-start window))))))
       (when fold
         (setf (window-start window) (tuatara.text:rope-line-start (tuatara.buffer:buffer-text buffer) (car fold)))))
-    (setf (window-rows window)
-          (if (hex-view-p buffer)
-              (hex-layout (tuatara.buffer:buffer-text buffer) (window-start window) (window-height window))
-              (kept-layout window)))))
+    (let ((old (window-rows window))
+          (rows (if (hex-view-p buffer)
+                    (progn
+                      ;; the rows kept for the text view may be filled with the dump's
+                      (setf (window-laid-out window) nil)
+                      (hex-layout (tuatara.buffer:buffer-text buffer) (window-start window) (window-height window)
+                                  (window-spare-rows window)))
+                    (kept-layout window))))
+      ;; the rows shown before and not now: filled again by the next layout
+      (loop for row across old
+            unless (find row rows :test #'eq)
+              do (vector-push-extend row (window-spare-rows window)))
+      (setf (window-rows window) rows))))
 
 (defun layout-kept-p (window)
   "True when WINDOW's last layout may be used again (KEPT-LAYOUT): its buffer
@@ -552,9 +566,9 @@ rows the window moved by, where rows are used again."
                             (if (row-last-p last)
                                 used
                                 (concatenate 'simple-vector used
-                                             (window-layout-rows window (row-end last) (- height (rows-height used)))))))))
+                                             (window-layout-rows window (row-end last) (- height (rows-height used)) :spares t)))))))
                      (t
-                      (let* ((before (window-layout-rows window start height :end (1- old-start)))
+                      (let* ((before (window-layout-rows window start height :end (1- old-start) :spares t))
                              (last (and (plusp (length before)) (aref before (1- (length before))))))
                         (when (and last (= (row-end last) old-start) (not (row-last-p last)))
                           (let ((room (- height (rows-height before))))
@@ -564,7 +578,7 @@ rows the window moved by, where rows are used again."
                                               do (decf room (row-scale row))
                                               count t))
                             (concatenate 'simple-vector before (subseq old 0 count))))))))
-             (rows (or rows (progn (setf count 0) (window-layout-rows window start height))))
+             (rows (or rows (progn (setf count 0) (window-layout-rows window start height :spares t))))
              (bases (make-array (length rows) :initial-element nil)))
         (dotimes (i (length rows))
           (setf (aref bases i)
@@ -755,7 +769,7 @@ long it is."
         (let* ((total (tuatara.text:rope-bytes rope))
                (octet (and (< point total) (tuatara.text:rope-octet rope point)))
                (after (if (or (null octet) (= octet 10)
-                              (and crlf (= octet 13) (< (1+ point) total) (eql (tuatara.text:rope-octet rope (1+ point)) 10)))
+                              (and crlf (tuatara.text:rope-crlf-p rope point)))
                           point
                           (tuatara.text:rope-next-boundary rope point))))
           (loop for back = (- column (window-hscroll window)) then (floor back 2)
@@ -817,8 +831,8 @@ screen: CRLF when a carriage return before a newline ends them, a tab TAB-WIDTH
 columns at most, each other character as wide as it is shown, with INVISIBLE
 one that draws nothing as its code (CODE-COLUMNS), a grapheme cluster as its
 first character (CLUSTER-COLUMNS)."
-  (list :crlf crlf :tab-width tab-width
-        :width (lambda (code before) (cluster-columns code before (code-columns code invisible) invisible))))
+  (list :crlf crlf
+        :width (lambda (code column before) (advance-column code column before tab-width invisible))))
 
 (defun buffer-slice-keys (buffer)
   "The keys TUATARA.TEXT:MAP-LINE-SLICES takes to cut BUFFER's lines at

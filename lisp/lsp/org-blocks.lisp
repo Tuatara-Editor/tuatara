@@ -70,7 +70,7 @@ of no such code), as ORG-BLOCK-DOC-SPECS's documents show it."
                        for comma = (let ((rest (subseq line cut)))
                                      (if (or (uiop:string-prefix-p ",*" rest) (uiop:string-prefix-p ",#+" rest)) 1 0))
                        do (setf (aref shown n) (subseq line (+ cut comma))
-                                (aref skipped n) (length (tuatara.text:string-octets (subseq line 0 (+ cut comma))))))))
+                                (aref skipped n) (tuatara.text:string-octet-length line :end (+ cut comma))))))
     (values (format nil "~{~a~^~%~}" (coerce shown 'list)) skipped)))
 
 (defun org-blocks-uri (buffer language)

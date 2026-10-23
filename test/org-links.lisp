@@ -110,9 +110,15 @@
       (true (tuatara.frontend.fake:fake-frame-showing
              (run-keys "M-x m a t c h - f o r m a t t e d - f i l e s - l i n k RET _ w o r k RET DEL a ] RET" :text (format nil "~%") :width 120 :height 16)
              "would end the link early"))
-      (true (tuatara.frontend.fake:fake-frame-showing
-             (run-keys "M-x m a t c h - f o r m a t t e d - f i l e s - l i n k RET ( RET" :text (format nil "~%") :width 120 :height 16)
-             "No link inserted: ( is no regular expression")))
+      ;; what is no regular expression is refused as every question of a pattern refuses it, the
+      ;; question kept open to mend it
+      (let ((f (run-keys "M-x m a t c h - f o r m a t t e d - f i l e s - l i n k RET ( RET" :text (format nil "~%") :width 120 :height 16)))
+        (true (tuatara.frontend.fake:fake-frame-showing f "Regex match file names [incomplete]"))
+        (true (tuatara.frontend.fake:fake-frame-showing f "Regex match file names [incomplete; finish it, or C-g gives up]: ("))
+        (false (tuatara.frontend.fake:fake-frame-showing f "No link inserted")))
+      (is string= (format nil "[[formatted-match:(a)][(a)]]~%")
+          (session-text (nth-value 1 (run-keys "M-x m a t c h - f o r m a t t e d - f i l e s - l i n k RET ( RET a ) RET RET"
+                                               :text (format nil "~%") :width 120 :height 16)))))
     (dolist (name '("20260202T101010--other-note__work.org"))
       (let ((buffer (tuatara.buffer:find-buffer name)))
         (when buffer (tuatara.buffer:kill-buffer buffer)))))

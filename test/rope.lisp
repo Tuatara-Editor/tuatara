@@ -294,6 +294,15 @@ them, and the fixnum vector of byte positions APPLY-EDITS should return."
     (is = 5 (tuatara.text:rope-find-any-octet rope (list (char-code #\?)) :start 3))
     (false (tuatara.text:rope-find-any-octet rope (list (char-code #\!))))))
 
+(defun column-by-steps (buffer line column)
+  "The position COLUMN characters into BUFFER's line starting at LINE, or the
+line's end where it is shorter, found a character at a time."
+  (let ((end (tuatara.buffer:buffer-line-end buffer line)) (p line))
+    (loop repeat column
+          while (< p end)
+          do (setf p (tuatara.text:rope-next-boundary (tuatara.buffer:buffer-text buffer) p)))
+    p))
+
 (defun line-slices-by-steps (buffer left right)
   "Each line's rectangle slice of BUFFER between the columns LEFT and RIGHT,
 found a line at a time by the buffer's own steps, as the rows of a rectangle
@@ -302,8 +311,8 @@ were before MAP-LINE-SLICES: (LINE START END START-COLUMN END-COLUMN LINE-END)."
     (loop for line = 0 then (let ((end (tuatara.buffer:buffer-line-end buffer line)))
                               (if (>= end size) nil (tuatara.buffer:buffer-forward-char buffer end)))
           while line
-          do (let ((s (tuatara.buffer:buffer-move-to-column buffer line left))
-                   (e (tuatara.buffer:buffer-move-to-column buffer line right)))
+          do (let ((s (column-by-steps buffer line left))
+                   (e (column-by-steps buffer line right)))
                (push (list line s e (tuatara.buffer:buffer-column buffer s) (tuatara.buffer:buffer-column buffer e)
                            (tuatara.buffer:buffer-line-end buffer line))
                      rows)))
@@ -371,8 +380,7 @@ were before MAP-LINE-SLICES: (LINE START END START-COLUMN END-COLUMN LINE-END)."
          (total (tuatara.text:rope-bytes rope))
          (found '()))
     (tuatara.text:map-line-slices (lambda (&rest slice) (push slice found)) rope 0 1 0 10
-                                  :tab-width 8
-                                  :width (lambda (code before) (declare (ignore before)) (values (if (= code #x200B) 0 1) code)))
+                                  :width (lambda (code column before) (declare (ignore column before)) (values (if (= code #x200B) 0 1) code)))
     (destructuring-bind (line start end start-column end-column line-end) (first found)
       (is = 0 line)
       (is = 0 start)
@@ -528,3 +536,58 @@ cd")
   (is string= "Description" (tuatara.text:xml-unprefixed "rdf:Description"))
   (is string= "title" (tuatara.text:xml-unprefixed "title"))
   (false (tuatara.text:xml-local-name "text")))
+
+(define-test (rope shared-character-sets)
+  ;; the sets of octets every part of the editor goes by, each written once
+  (is equal '(32 9 13) (remove-if-not #'tuatara.text:blank-line-octet-p '(32 9 10 13 65 12)))
+  (is equal '(32 9 13) tuatara.text:*blank-line-octets*)
+  (is = (- 256 (length tuatara.text:*blank-octets*)) (length tuatara.text:*text-octets*))
+  (true (notany (lambda (o) (member o tuatara.text:*blank-octets*)) tuatara.text:*text-octets*))
+  (is equal '(40 91 123 41 93 125) tuatara.text:*bracket-octets*)
+  (is equal '(40 91 123) tuatara.text:*opening-octets*)
+  (is equal '(41 93 125) tuatara.text:*closing-octets*)
+  (is equal '((40 . 41) (91 . 93) (123 . 125)) tuatara.syntax::*bracket-pairs*)
+  (is equal '(32 9 10 13 40 91 123 41 93 125) tuatara.defaults::*sexp-boundary-octets*)
+  ;; a line end of two octets, in a block and in a rope, and the text before it
+  (let ((octets (tuatara.text:string-octets (format nil "ab~c~cc~c" #\Return #\Newline #\Return))))
+    (true (tuatara.text:crlf-octets-p octets 2 (length octets)))
+    (false (tuatara.text:crlf-octets-p octets 5 (length octets)))
+    (is = 2 (tuatara.text:line-text-end octets 0 3 t))
+    (is = 3 (tuatara.text:line-text-end octets 0 3 nil))
+    (let ((rope (tuatara.text:octets->rope octets)))
+      (true (tuatara.text:rope-crlf-p rope 2))
+      (false (tuatara.text:rope-crlf-p rope 5))
+      (false (tuatara.text:rope-crlf-p rope -1)))))
+
+(define-test (rope bracket-match-makes-nothing)
+  ;; matching a bracket, as each move of point shows its partner, makes no table of its own
+  (let ((rope (tuatara.text:string->rope "(defun f (x) [x {y}])")))
+    (is = 21 (tuatara.text:rope-bracket-match rope 0))
+    (is = 13 (tuatara.text:rope-bracket-match rope 20 :backward t))
+    (is = 20 (tuatara.text:rope-bracket-match rope 13 :openers "[" :closers "]"))
+    (let ((consed (loop repeat 3
+                        minimize (let ((before (tuatara.bench::bytes-consed)))
+                                   (tuatara.text:rope-bracket-match rope 0)
+                                   (- (tuatara.bench::bytes-consed) before)))))
+      (true (< consed 256) "a match consed ~:d octets" consed))))
+
+(define-test (rope lenient-string-as-decoder-replaces)
+  ;; what is not UTF-8 becomes the replacement as the external format's decoder has it: a
+  ;; sequence cut short as one, any other octet as one each; a text's decoding makes its string alone
+  (let ((state (sb-ext:seed-random-state 27)) (differ 0))
+    (dotimes (n 20000)
+      (let ((octets (make-array (random 14 state) :element-type '(unsigned-byte 8))))
+        (dotimes (i (length octets))
+          (setf (aref octets i) (case (random 4 state)
+                                  (0 (random 128 state))
+                                  (1 (+ 128 (random 64 state)))
+                                  (t (random 256 state)))))
+        (let ((start (random (1+ (length octets)) state)))
+          (unless (string= (sb-ext:octets-to-string octets :start start :external-format '(:utf-8 :replacement #\?))
+                           (tuatara.text:lenient-string octets :start start))
+            (incf differ)))))
+    (is = 0 differ))
+  (let* ((text (tuatara.text:string-octets
+                (with-output-to-string (o) (dotimes (i 20000) (write-string "kia ora tūī ✓ " o)))))
+         (per-octet (/ (least-bytes (lambda () (tuatara.text:lenient-string text)) 3) (length text))))
+    (true (< per-octet 10) "~,1f octets made for each octet decoded" per-octet)))

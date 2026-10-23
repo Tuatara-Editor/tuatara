@@ -292,10 +292,6 @@ where long lines wrap at a word's edge (\\[soft-wrap-mode]), one row."
 where long lines wrap at a word's edge (\\[soft-wrap-mode]), one row."
   (vertical-motion (- (prefix))))
 
-(defun word-char-p (char)
-  "True for characters that make up words: letters and digits."
-  (and char (or (alpha-char-p char) (digit-char-p char))))
-
 (define-command forward-word ()
   "Move point to the end of the next word (or the prefix argument's worth,
 back with a negative one): past what is not a word, then past the word. No
@@ -372,12 +368,9 @@ turned: *WHEEL-SCROLL-LINES* lines on for \\`<wheel-down>', back for
 
 ;;; Balanced expressions
 
-(defparameter *openers* "([{" "Characters that open a balanced expression.")
-(defparameter *closers* ")]}" "Characters that close a balanced expression, in the order of *OPENERS*.")
-
 (defun sexp-boundary-p (char)
   "True for characters that end a symbol: whitespace and brackets."
-  (or (null char) (member char '(#\Space #\Tab #\Newline #\Return)) (find char *openers*) (find char *closers*)))
+  (or (null char) (member char '(#\Space #\Tab #\Newline #\Return)) (find char tuatara.text:*openers*) (find char tuatara.text:*closers*)))
 
 (defparameter *text-scan-limit* (* 64 1024 1024)
   "The most octets looked through, about a tenth of a second's worth, for
@@ -391,7 +384,7 @@ stray bracket, or a file of gigabytes without a blank line, costs no more.")
     (if (>= mb 1) (format nil "~d MB" (round mb)) (format nil "~d bytes" *text-scan-limit*))))
 
 (defparameter *sexp-boundary-octets*
-  (list* 32 9 10 13 (map 'list #'char-code (concatenate 'string *openers* *closers*)))
+  (append tuatara.text:*blank-octets* tuatara.text:*bracket-octets*)
   "The octets of the characters that end a symbol (SEXP-BOUNDARY-P).")
 
 (defun symbol-run-end (buffer position &key backward)
@@ -491,14 +484,13 @@ symbol without its end within *TEXT-SCAN-LIMIT* is refused."
   (let ((p (skip-blanks buffer position)) (balanced t))
     (let ((c (tuatara.buffer:buffer-char-at buffer p)))
       (cond ((null c))
-            ((find c *openers*)
+            ((find c tuatara.text:*openers*)
              (let ((end (tuatara.text:rope-bracket-match (tuatara.buffer:buffer-text buffer) p
-                                                         :openers *openers* :closers *closers*
                                                          :limit *text-scan-limit*)))
                (if end
                    (setf p end)
                    (setf p (tuatara.buffer:buffer-forward-char buffer p) balanced nil))))
-            ((find c *closers*))
+            ((find c tuatara.text:*closers*))
             (t (setf p (symbol-run-end buffer p)))))
     (values p balanced)))
 
@@ -515,14 +507,13 @@ its start within *TEXT-SCAN-LIMIT* is refused."
       (setf p (skip-blanks buffer p :backward t))
       (let ((c (before p)))
         (cond ((null c))
-              ((find c *closers*)
+              ((find c tuatara.text:*closers*)
                (let ((start (tuatara.text:rope-bracket-match (tuatara.buffer:buffer-text buffer) p :backward t
-                                                             :openers *openers* :closers *closers*
                                                              :limit *text-scan-limit*)))
                  (if start
                      (setf p start)
                      (setf p (tuatara.buffer:buffer-forward-char buffer p -1) balanced nil))))
-              ((find c *openers*))
+              ((find c tuatara.text:*openers*))
               (t (setf p (symbol-run-end buffer p :backward t))
                  ;; a quote or other prefix character belongs to the expression
                  (loop while (and (plusp p) (member (before p) '(#\' #\` #\, #\# #\@)))
@@ -553,7 +544,7 @@ bracket comes first, POSITION being at the end of the expression around it;
     (case end
       ((nil) (values nil :end))
       (:unbalanced (values nil :unbalanced))
-      (:text (if (find (tuatara.buffer:buffer-char-at buffer (skip-blanks buffer position)) *closers*)
+      (:text (if (find (tuatara.buffer:buffer-char-at buffer (skip-blanks buffer position)) tuatara.text:*closers*)
                  (values nil :end)
                  (multiple-value-bind (end balanced) (sexp-end-after buffer position)
                    (if balanced (values end nil) (values nil :unbalanced)))))
@@ -572,7 +563,7 @@ expression around it; :UNBALANCED when the bracket before has no partner."
       (:unbalanced (values nil :unbalanced))
       (:text (let ((before (skip-blanks buffer position :backward t)))
                (if (and (plusp before)
-                        (find (tuatara.buffer:buffer-char-at buffer (tuatara.buffer:buffer-forward-char buffer before -1)) *openers*))
+                        (find (tuatara.buffer:buffer-char-at buffer (tuatara.buffer:buffer-forward-char buffer before -1)) tuatara.text:*openers*))
                    (values nil :start)
                    (multiple-value-bind (start balanced) (sexp-start-before buffer position)
                      (if balanced (values start nil) (values nil :unbalanced))))))

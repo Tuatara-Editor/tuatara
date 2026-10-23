@@ -782,3 +782,107 @@
       (is = (tuatara.buffer:buffer-goto-line b 7) (tuatara.display:window-scroll w 1))
       (is = (tuatara.buffer:buffer-goto-line b 8) (tuatara.display:window-scroll w 1))
       (is = 0 (tuatara.display:window-scroll w -2)))))
+
+(define-test (display rows-filled-again)
+  ;; a window's layout after a key fills the rows it no longer shows again, rather than
+  ;; making rows the window's width, reads the text into a kept block, and shows what
+  ;; a layout made anew shows
+  (with-test-buffer (b "*rows*" :text (format nil "~{~a~%~}" (loop for i below 400 collect (format nil "line ~d ~a~c~a" i (make-string (mod (* i 37) 150) :initial-element #\x) #\Tab "é中"))))
+    (let ((w (tuatara.display:make-window b :width 200 :height 50)))
+      (flet ((same-as-anew ()
+               (let ((anew (tuatara.display:window-layout-rows w (tuatara.display:window-start w) 50))
+                     (shown (tuatara.display:window-rows w)))
+                 (is equal (map 'list (lambda (row) (list (tuatara.display:row-start row) (tuatara.display:row-end row)
+                                                          (coerce (tuatara.display:row-string row) 'list)
+                                                          (coerce (tuatara.display:row-bytes row) 'list)
+                                                          (tuatara.display:row-last-p row)))
+                                anew)
+                     (map 'list (lambda (row) (list (tuatara.display:row-start row) (tuatara.display:row-end row)
+                                                    (coerce (tuatara.display:row-string row) 'list)
+                                                    (coerce (tuatara.display:row-bytes row) 'list)
+                                                    (tuatara.display:row-last-p row)))
+                          shown)))))
+        (tuatara.display:window-layout w)
+        (let ((consed (loop repeat 3
+                            minimize (progn (tuatara.buffer:buffer-insert b 10 "z")
+                                            (nth-value 2 (tuatara.bench::measuring (tuatara.display:window-layout w)))))))
+          (true (< consed (* 6 1024)) "a layout after a key consed ~:d octets" consed))
+        (same-as-anew)
+        ;; scrolled, then the end of the text, then edited again
+        (setf (tuatara.display:window-start w) (tuatara.buffer:buffer-goto-line b 100))
+        (tuatara.display:window-layout w)
+        (same-as-anew)
+        (setf (tuatara.display:window-start w) (tuatara.buffer:buffer-goto-line b 390))
+        (tuatara.display:window-layout w)
+        (same-as-anew)
+        (tuatara.buffer:buffer-insert b (tuatara.buffer:buffer-goto-line b 395) "new line")
+        (tuatara.display:window-layout w)
+        (same-as-anew)))))
+
+(define-test (display columns-agree-with-what-is-shown)
+  ;; the columns a character is counted as taking are those of the text it is shown as
+  (flet ((agree (code &optional invisible)
+           (let ((c (code-char code)))
+             (multiple-value-bind (text own) (tuatara.display:char-display c 0 8 invisible)
+               (when (stringp text)
+                 (is = (length text) own "~x shown as ~s" code text)
+                 (is = (length text) (tuatara.display:code-columns code invisible) "~x counted" code)
+                 (is = (length text) (tuatara.display:advance-column code 0 0 8 invisible) "~x advanced" code))))))
+    (loop for code from 0 below #x300 unless (= code 9) do (agree code))
+    (loop for code from #xDC80 to #xDCFF do (agree code))
+    (loop for (low . high) in tuatara.display:*invisible-characters*
+          do (loop for code from low to high do (agree code t)))
+    ;; a character that draws nothing past the planes of four digits and one more
+    (let ((tuatara.display:*invisible-characters* (list (cons #x10FFFD #x10FFFD))))
+      (agree #x10FFFD t)))
+  ;; a tab reaches its stop, wherever it stands
+  (is = 3 (tuatara.display:advance-column 9 5 0 8 nil))
+  (is = 8 (tuatara.display:advance-column 9 8 0 8 nil))
+  ;; a control character takes one column in the panel, as the sign it is shown as there
+  (loop for code from 0 below 160
+        do (is = (length (tuatara.display:displayable (string (code-char code))))
+               (tuatara.command::panel-char-columns (code-char code)))))
+
+(define-test (display stand-ins-made-once)
+  ;; a tab, a control character and a raw byte are shown as text made once, not for each
+  ;; character of each frame; octets written in hex take one string
+  (flet ((consed (function)
+           (funcall function)
+           (loop repeat 3
+                 minimize (let ((before (tuatara.bench::bytes-consed)))
+                            (funcall function)
+                            (- (tuatara.bench::bytes-consed) before)))))
+    (is = 0 (consed (lambda () (dotimes (i 100)
+                                 (tuatara.display:char-display #\Tab (mod i 8) 8)
+                                 (tuatara.display:char-display (code-char 1) 0 8)
+                                 (tuatara.display:char-display (code-char #x85) 0 8)
+                                 (tuatara.display:char-display (code-char #xDCA9) 0 8)))))
+    (let ((octets (coerce (loop for i below 32 collect (* i 8)) 'tuatara.text:octets)))
+      (true (< (consed (lambda () (tuatara.text:octets-hex octets))) 512))
+      (is string= "0008101820" (tuatara.text:octets-hex octets :end 5))
+      (is string= "F0:F8" (tuatara.text:octets-hex octets :start 30 :upper-case t :separator ":"))
+      (is string= "" (tuatara.text:octets-hex octets :start 3 :end 3))))
+  (is string= "^A" (tuatara.display:control-char-display (code-char 1)))
+  (is string= "^?" (tuatara.display:control-char-display (code-char 127)))
+  (is string= "\\x85" (tuatara.display:control-char-display (code-char #x85)))
+  (is string= "\\xA9" (tuatara.display:raw-byte-display #xDCA9))
+  (is string= "        " (tuatara.display:char-display #\Tab 0 8)))
+
+(define-test (display rows-fitted-in-one-pass)
+  ;; a piece of a screen row is cut or padded to its columns as before, looking at each
+  ;; character once: a row of plain text in less time than counting its columns takes
+  (dolist (string (list "" "plain" "wide 中文 text" (format nil "e~cx" (code-char #x301)) "👍🏽 ok" (make-string 130 :initial-element #\x)))
+    (dolist (columns '(0 1 3 5 10 120))
+      (let ((kept (tuatara.display:chars-in-columns string columns)))
+        (is equal (list (tuatara.display:pad-columns (subseq string 0 kept) columns) kept)
+            (multiple-value-list (tuatara.command::fit-to-columns string columns))
+            "~s in ~d" string columns))))
+  (let ((row (make-string 120 :initial-element #\k)))
+    (flet ((fastest (function)
+             (loop repeat 5
+                   minimize (let ((start (tuatara.bench::monotonic-seconds)))
+                              (dotimes (i 2000) (funcall function))
+                              (- (tuatara.bench::monotonic-seconds) start)))))
+      (let ((fit (fastest (lambda () (tuatara.command::fit-to-columns row 130))))
+            (count (fastest (lambda () (tuatara.display:string-columns row)))))
+        (true (< fit count) "fitting took ~,1f µs, counting ~,1f µs" (* 500 fit) (* 500 count))))))

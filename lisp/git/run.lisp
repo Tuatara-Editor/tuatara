@@ -27,11 +27,14 @@ those as names of files.")
       (remove "--literal-pathspecs" *git-safety* :test #'string=)
       *git-safety*))
 
-(defun git-hash-p (text)
+(defun git-hash-p (text &key short)
   "True when TEXT is a commit's full hash as git writes it: 40 hexadecimal
-digits, or 64 in a repository of SHA-256 hashes. What a commit says of
-itself (its subject, its author) is never taken for one."
-  (and (stringp text) (member (length text) '(40 64)) (every (lambda (c) (digit-char-p c 16)) text)))
+digits, or 64 in a repository of SHA-256 hashes; with SHORT, a hash cut as
+short as 7 digits too. What a commit says of itself (its subject, its
+author) is never taken for one."
+  (and (stringp text)
+       (if short (<= 7 (length text) 64) (member (length text) '(40 64)))
+       (every (lambda (c) (digit-char-p c 16)) text)))
 
 (defparameter *git-look-seconds* 30
   "How long git may take to tell the change gutter and rimu's lists what it
@@ -51,7 +54,8 @@ as it comes, in place of the octets, until LINE returns true, which counts as
 success. CANCEL, a cons, stops it when its car turns true; on the thread of a
 job, stopping the job ends git at once. The process is ended however it
 stops. ENVIRONMENT, NAME=VALUE strings, is added to git's; with ERRORS what it
-says on its error output comes with what it prints; INPUT, a string, is given
+says on its error output (*GIT-SAID-LIMIT* octets of it at most) is read apart
+from what it prints, as text, the fourth value; INPUT, a string, is given
 on its standard input. With SECONDS, git is ended once it has run that long,
 as if stopped. Git printing more octets than LIMIT (*PROGRAM-OUTPUT-LIMIT* when it is
 NIL), or with LINE a line longer than that, is ended, NIL and NIL given,
@@ -73,14 +77,19 @@ runs in when it begins with ./."
 (defun git-blob-octets (top hash path &key job limit cancel seconds)
   "What the file PATH (from TOP, or from the folder TOP when it begins with
 ./) held as the commit HASH (or HEAD) of the repository at TOP left it, as
-octets, read by git cat-file: with JOB, on its thread, as GIT-JOB-OCTETS reads
-it, JOB ending there when git failed; else on the thread calling it as
-RUN-GIT gives it, CANCEL and SECONDS as it takes them, true as a second value
-when it was read and as a third when it was more than LIMIT octets."
-  (let ((arguments (list "cat-file" "blob" (git-object-name hash path))))
+octets, read by git cat-file; with PATH NIL, the text whose own id HASH is:
+with JOB, on its thread, as GIT-JOB-OCTETS reads it, JOB ending there when
+git failed; else on the thread calling it as RUN-GIT gives it, CANCEL and
+SECONDS as it takes them, true as a second value when it was read and as a
+third when it was more than LIMIT octets."
+  (let ((arguments (list "cat-file" "blob" (if path (git-object-name hash path) hash))))
     (if job
         (git-job-octets job top arguments :limit limit)
         (run-git top arguments :limit limit :cancel cancel :seconds seconds))))
+
+(defparameter *git-said-limit* (* 64 1024)
+  "The most octets of what git says on its error output kept, to say why it
+failed (RUN-GIT with ERRORS); the rest is read and let go.")
 
 (defun run-git-program (git directory arguments &key cancel line environment errors input seconds limit)
   "Run the program GIT as RUN-GIT runs git, once it has found it."
@@ -90,6 +99,12 @@ when it was read and as a third when it was more than LIMIT octets."
          (list* git "-C" (tuatara.io:native directory) (append (git-safety arguments) arguments))
          (lambda (process)
            (let ((stream (sb-ext:process-output process))
+                 (listener (and errors
+                                (tuatara.runtime:make-guarded-thread
+                                 (lambda ()
+                                   (ignore-errors
+                                    (tuatara.io:read-stream-octets (sb-ext:process-error process) :limit *git-said-limit* :drain t)))
+                                 :name "tuatara git messages")))
                  (octets nil) (stopped nil) (cancelled nil) (too-large nil)
                  (timer (and seconds (sb-ext:make-timer (lambda () (when (sb-ext:process-alive-p process)
                                                                       (ignore-errors (sb-ext:process-kill process 9))))
@@ -111,10 +126,16 @@ when it was read and as a third when it was more than LIMIT octets."
                (when timer (sb-ext:unschedule-timer timer)))
              ;; read to its end: git is done, and how it ended is known once it is waited for
              (unless (or stopped cancelled too-large) (sb-ext:process-wait process))
-             (if too-large
-                 (values nil nil t)
-                 (values (and (not line) (not cancelled) octets)
-                         (and (not cancelled) (or stopped (eql 0 (sb-ext:process-exit-code process))))))))
-         :job tuatara.runtime:*job* :input (and input :stream) :output :stream :error (and errors :output)
+             (when (and listener (or stopped cancelled too-large) (sb-ext:process-alive-p process))
+               (ignore-errors (sb-ext:process-kill process 15)))
+             (let ((said (and listener
+                              (let ((octets (sb-thread:join-thread listener :default nil)))
+                                (if octets (tuatara.text:lenient-string octets) ""))))
+                   (ok (and (not too-large) (not cancelled) (or stopped (eql 0 (sb-ext:process-exit-code process))))))
+               (cond ((and too-large listener) (values nil nil t said))
+                     (too-large (values nil nil t))
+                     (listener (values (and (not line) (not cancelled) octets) ok nil said))
+                     (t (values (and (not line) (not cancelled) octets) ok))))))
+         :job tuatara.runtime:*job* :input (and input :stream) :output :stream :error (and errors :stream)
          :environment (append environment (list "GIT_TERMINAL_PROMPT=0") (sb-ext:posix-environ)))
       (error () (values nil nil)))))
