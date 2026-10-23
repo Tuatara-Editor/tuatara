@@ -144,7 +144,7 @@ shown at the end of a row after a space."
              (pipe (find " pipe" lines :test (lambda (end line) (uiop:string-suffix-p line end)))))
         (true (tuatara.frontend.fake:fake-frame-showing f "Details shown"))
         ;; the octets used and those free under the directory's name
-        (true (cl-ppcre:scan "^  total used in directory [0-9.]+[KMG]? available [0-9.]+ [KMGTP]?i?B$" (second lines)))
+        (true (cl-ppcre:scan "^  total used in directory [0-9.]+[KMG]? available [0-9.]+[KMGTP]?$" (second lines)))
         ;; the inode number as ls -i writes it, then permissions, links, owner, group, size, time and the
         ;; name, as ls -l writes them
         (true (cl-ppcre:scan (format nil "^ +~d -rwsr-xr-x[.+]? 1 \\S+ \\S+ +6 [A-Z][a-z][a-z] [ 1-3][0-9] [0-2][0-9]:[0-5][0-9] bin.dat$"
@@ -1424,17 +1424,18 @@ and the editor."
     (multiple-value-bind (f editor) (rimu-session dir "S")
       (declare (ignore f))
       (let ((lines (rimu-lines editor)))
-        (true (find-if (lambda (l) (and (search "docs" l) (search "2.5 kB" l))) lines))
-        (true (find-if (lambda (l) (and (search "a.txt" l) (search "1.5 kB" l))) lines))))
+        ;; in the units of the size column and the first lines
+        (true (find-if (lambda (l) (and (search "docs" l) (search "2.5K" l))) lines))
+        (true (find-if (lambda (l) (and (search "a.txt" l) (search "1.5K" l))) lines))))
     (is = 2500 (tuatara.defaults::rimu-tree-size (namestring (merge-pathnames "docs/" dir))))
     ;; hidden again with S; shown from the start with *rimu-directory-sizes*
     (multiple-value-bind (f editor) (rimu-session dir "S S")
       (declare (ignore f))
-      (false (find-if (lambda (l) (search "2.5 kB" l)) (rimu-lines editor))))
+      (false (find-if (lambda (l) (search "2.5K" l)) (rimu-lines editor))))
     (let ((tuatara-user:*rimu-directory-sizes* t))
       (multiple-value-bind (f editor) (rimu-session dir "")
         (declare (ignore f))
-        (true (find-if (lambda (l) (search "2.5 kB" l)) (rimu-lines editor)))))))
+        (true (find-if (lambda (l) (search "2.5K" l)) (rimu-lines editor)))))))
 
 (define-test (rimu started-on-a-directory)
   ;; tuatara DIRECTORY lists it, as C-x C-f does, rather than stopping at the start
@@ -1646,3 +1647,59 @@ and the editor."
             (true entry)
             (is equalp (tuatara.text:string-octets "m.txt") (and entry (tuatara.io:listed-octets entry)))))))
     (rimu-forget)))
+
+(define-test (rimu columns-kept-when-read-again)
+  ;; a list read again keeps its git column, git not run, while the same names are listed and
+  ;; the repository has the same commit and staging; the sizes show their old values while
+  ;; they are worked out again
+  (with-test-directory (dir)
+    (scratch-repository dir)
+    ;; the columns as a session has them
+    (tuatara.defaults::install-rimu-git)
+    (tuatara.defaults::install-rimu-sizes)
+    (let* ((directory (namestring dir))
+           (columns (mapcar (lambda (name) (find name tuatara.defaults::*rimu-columns* :key #'tuatara.defaults::rimu-column-name))
+                            '(:git :sizes)))
+           (view (tuatara.defaults::make-rimu-view nil nil :name nil nil columns nil nil nil))
+           (old (tuatara.defaults::rimu-carry-cells nil (tuatara.defaults::rimu-read directory) view))
+           (runs 0))
+      (setf (gethash :git (tuatara.defaults::rimu-listing-cells old))
+            (map 'vector (lambda (entry) (tuatara.io:listed-name entry)) (tuatara.defaults::rimu-listing-entries old))
+            (gethash :sizes (tuatara.defaults::rimu-listing-cells old))
+            (map 'vector (lambda (entry) (declare (ignore entry)) "old") (tuatara.defaults::rimu-listing-entries old)))
+      (sb-int:encapsulate 'tuatara.defaults::run-git-program 'count-runs
+                          (lambda (function &rest arguments) (incf runs) (apply function arguments)))
+      (unwind-protect
+           (let ((again (tuatara.defaults::rimu-carry-cells old (tuatara.defaults::rimu-read directory) view)))
+             (is eq (gethash :git (tuatara.defaults::rimu-listing-cells old)) (gethash :git (tuatara.defaults::rimu-listing-cells again)))
+             (is = 0 runs)
+             (true (find "old" (gethash :sizes (tuatara.defaults::rimu-listing-cells again)) :test #'equal))
+             ;; a commit made: the git column read again
+             (put-file (merge-pathnames "b.txt" dir) "b")
+             (git-output dir "add" "b.txt")
+             (git-output dir "commit" "-q" "-m" "Second")
+             (let ((later (tuatara.defaults::rimu-carry-cells again (tuatara.defaults::rimu-read directory) view)))
+               (false (gethash :git (tuatara.defaults::rimu-listing-cells later)))))
+        (sb-int:unencapsulate 'tuatara.defaults::run-git-program 'count-runs)))))
+
+(define-test (rimu marks-found-without-garbage)
+  ;; the mark of each entry shown is found by a key made once for the entry, not again at each
+  ;; redisplay
+  (with-rimu-tree (dir)
+    (multiple-value-bind (f editor) (rimu-session dir "m m m")
+      (declare (ignore f editor))
+      (let* ((buffer (find-if #'tuatara.defaults::rimu-list-p tuatara.buffer:*buffers*))
+             (marks (tuatara.defaults::rimu-marks buffer))
+             (entries (tuatara.defaults::rimu-listing-entries (tuatara.buffer:buffer-local buffer 'tuatara.defaults::rimu-listing)))
+             (directory (tuatara.buffer:buffer-local buffer 'tuatara.defaults::rimu-directory)))
+        (is = 3 (count-if (lambda (entry) (tuatara.defaults::rimu-entry-mark buffer entry marks)) entries))
+        (loop for entry across entries
+              do (is eql (gethash (tuatara.defaults::rimu-mark-key directory entry) marks)
+                     (tuatara.defaults::rimu-entry-mark buffer entry marks)))
+        ;; a key made for each look was some 100 octets
+        (let ((consed (loop repeat 3
+                            minimize (let ((before (sb-ext:get-bytes-consed)))
+                                       (dotimes (i 100000)
+                                         (loop for entry across entries do (tuatara.defaults::rimu-entry-mark buffer entry marks)))
+                                       (- (sb-ext:get-bytes-consed) before)))))
+          (true (< consed (* 100000 (length entries) 8)) "~:d octets for ~:d looks" consed (* 100000 (length entries))))))))

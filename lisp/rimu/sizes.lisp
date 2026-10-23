@@ -62,7 +62,7 @@ RIMU-COLUMN-READY; the walk ends once no list of DIRECTORY shows the column."
                          (size (case (and stamp (tuatara.io:stamp-kind stamp))
                                  (:directory (rimu-tree-size (concatenate 'string path "/") :seen seen :wanted #'wanted))
                                  (:regular (tuatara.io:stamp-size stamp)))))
-                    (and size (cons (octets-words size) :list-size)))))
+                    (and size (cons (rimu-size-words size) :list-size)))))
               names))))))
 
 (define-command rimu-toggle-sizes ()
