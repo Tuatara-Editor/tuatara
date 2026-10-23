@@ -1199,3 +1199,21 @@ what marks a project; check-health saying which are installed.")
     ;; a few microseconds a block; a millisecond and more when every pair was compared
     (let ((each (/ (- (seconds 8000) (seconds 2000)) 12000)))
       (true (< each 0.00005) "~,2f µs for each more block" (* each 1000000)))))
+
+(define-test (lsp capabilities-claimed-are-asked)
+  ;; what the editor tells a server it can do, it does: every request it claims is made
+  ;; somewhere in the client, and the kinds of names it takes are those it colours
+  (let* ((source (with-output-to-string (out)
+                   (dolist (file (directory (merge-pathnames "lisp/lsp/*.lisp" (asdf:system-source-directory :tuatara))))
+                     (write-string (uiop:read-file-string file) out))))
+         (capabilities (tuatara.defaults::lsp-capabilities))
+         (text-document (tuatara.text:json-get capabilities "textDocument"))
+         ;; a capability named apart from the method that uses it
+         (methods '(("synchronization" . "didOpen") ("callHierarchy" . "prepareCallHierarchy")
+                    ("semanticTokens" . "semanticTokens/full"))))
+    (loop for capability being the hash-keys of text-document
+          do (let ((method (or (cdr (assoc capability methods :test #'string=)) capability)))
+               (true (search (format nil "\"textDocument/~a\"" method) source) "~a is claimed but never asked for" capability)))
+    (false (tuatara.text:json-get text-document "rename" "prepareSupport") "rename is claimed to be prepared")
+    (is equalp (map 'vector #'car tuatara.defaults::*lsp-semantic-faces*)
+        (tuatara.text:json-get text-document "semanticTokens" "tokenTypes"))))
