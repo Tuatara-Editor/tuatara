@@ -574,6 +574,7 @@ three
     (nil "<POINT>abcdeCXYZ" "M-z c" "<POINT>deCXYZ" "abc")
     (nil "abc<POINT>de" "C-u - 1 M-z a" "<POINT>de" "abc")
     (nil "<POINT>abcde" "M-z z" "ERROR Search failed: \"z\"" nil)
+    (nil "<POINT>abcde" "M-z C-b" "ERROR C-b is no character to zap to" nil)
     (nil "<POINT>héllo world" "M-z o" "<POINT> world" "héllo")
     (nil "<POINT>abcde" "M-x z a p - u p - t o - c h a r RET c" "<POINT>cde" "ab")
     (nil "<POINT>abcde abc123" "C-u 2 M-x z a p - u p - t o - c h a r RET c" "<POINT>c123" "abcde ab")

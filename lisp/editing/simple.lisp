@@ -519,7 +519,7 @@ key is said to be no character FOR that."
             ((and (characterp base) (not (tuatara.frontend:key-ctrl key)) (not (tuatara.frontend:key-meta key))) base)
             ((eq base :enter) #\Newline)
             ((eq base :tab) #\Tab)
-            (t (error "~a is no character ~a" (tuatara.frontend:key-description key) for))))))
+            (t (error "~a is no character ~a" (tuatara.frontend:key-description (tuatara.frontend:key-spec key)) for))))))
 
 (defun find-char-occurrence (buffer position char count fold)
   "Where the COUNTth CHAR after POSITION of BUFFER ends, or where the -COUNTth
