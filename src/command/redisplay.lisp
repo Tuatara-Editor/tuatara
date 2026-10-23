@@ -389,10 +389,20 @@ of their own, each (START END FACE)."
 (defun fit-to-columns (string columns)
   "STRING cut or padded with spaces to fill COLUMNS columns of the screen, a
 wide character counting two. Two values: that string, and how many characters
-of STRING it keeps."
-  (let ((kept (tuatara.display:chars-in-columns string columns)))
-    (values (tuatara.display:pad-columns (if (= kept (length string)) string (subseq string 0 kept)) columns)
-            kept)))
+of STRING it keeps. Each character is looked at once; one of printable ASCII
+alone takes a column each."
+  (declare (type fixnum columns))
+  (let ((n (length string)))
+    (multiple-value-bind (kept used)
+        (if (every (lambda (c) (char<= #\Space c #\~)) string)
+            (let ((k (min n columns))) (values k k))
+            (tuatara.display:chars-in-columns string columns))
+      (declare (type fixnum kept used))
+      (let ((cut (if (= kept n) string (subseq string 0 kept))))
+        (values (if (< used columns)
+                    (concatenate 'string cut (make-string (- columns used) :initial-element #\Space))
+                    cut)
+                kept)))))
 
 (defun row-parts (pieces)
   "The columns where a part of a screen row made of PIECES begins after the

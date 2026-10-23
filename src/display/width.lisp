@@ -227,7 +227,8 @@ joined to the one before it in a grapheme cluster takes no columns of its own."
   "How many characters of STRING, from its start, fit in COLUMNS columns,
 WIDTH giving each character's own (CHAR-COLUMNS unless given) and a grapheme
 cluster the columns of its first character (STRING-COLUMNS): where text is
-cut to fit a width, never inside a cluster."
+cut to fit a width, never inside a cluster. The columns those characters
+take are the second value."
   (let ((used 0) (before 0))
     (declare (type fixnum used before))
     (loop for i from 0 below (length string)
@@ -236,8 +237,9 @@ cut to fit a width, never inside a cluster."
                  (incf used more)
                  (setf before next)))
              (when (> used columns)
-               (return-from chars-in-columns (tuatara.text:string-cluster-start string (1+ i)))))
-    (length string)))
+               (let ((kept (tuatara.text:string-cluster-start string (1+ i))))
+                 (return-from chars-in-columns (values kept (string-columns string :end kept :width width))))))
+    (values (length string) used)))
 
 (defun pad-columns (string columns &key (width #'char-columns) left)
   "STRING with spaces after it, or with LEFT before it, to take COLUMNS

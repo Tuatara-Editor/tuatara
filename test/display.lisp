@@ -867,3 +867,22 @@
   (is string= "\\x85" (tuatara.display:control-char-display (code-char #x85)))
   (is string= "\\xA9" (tuatara.display:raw-byte-display #xDCA9))
   (is string= "        " (tuatara.display:char-display #\Tab 0 8)))
+
+(define-test (display rows-fitted-in-one-pass)
+  ;; a piece of a screen row is cut or padded to its columns as before, looking at each
+  ;; character once: a row of plain text in less time than counting its columns takes
+  (dolist (string (list "" "plain" "wide 中文 text" (format nil "e~cx" (code-char #x301)) "👍🏽 ok" (make-string 130 :initial-element #\x)))
+    (dolist (columns '(0 1 3 5 10 120))
+      (let ((kept (tuatara.display:chars-in-columns string columns)))
+        (is equal (list (tuatara.display:pad-columns (subseq string 0 kept) columns) kept)
+            (multiple-value-list (tuatara.command::fit-to-columns string columns))
+            "~s in ~d" string columns))))
+  (let ((row (make-string 120 :initial-element #\k)))
+    (flet ((fastest (function)
+             (loop repeat 5
+                   minimize (let ((start (tuatara.bench::monotonic-seconds)))
+                              (dotimes (i 2000) (funcall function))
+                              (- (tuatara.bench::monotonic-seconds) start)))))
+      (let ((fit (fastest (lambda () (tuatara.command::fit-to-columns row 130))))
+            (count (fastest (lambda () (tuatara.display:string-columns row)))))
+        (true (< fit count) "fitting took ~,1f µs, counting ~,1f µs" (* 500 fit) (* 500 count))))))
