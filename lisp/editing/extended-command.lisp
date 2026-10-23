@@ -95,6 +95,17 @@ the problem, to finish the pattern when it is incomplete or else to mend it,
 or ABORT-KEYS, a key description, to give up."
   (format nil "~a; ~:[mend~;finish~] it, or ~a gives up" problem (string= problem "incomplete") abort-keys))
 
+(defun refusable-pattern-prompt (regex words problem refused)
+  "The prompt of a question that takes a pattern (PATTERN-PROMPT) for what
+WORDS says is done with it, PROBLEM why what is typed cannot be used
+\(PATTERN-PROBLEM) or NIL: once REFUSED, with what to do about it
+\(REFUSED-PATTERN-WORDS)."
+  (pattern-prompt regex words
+                  (and problem
+                       (if refused
+                           (refused-pattern-words problem (substitute-command-keys "\\<minibuffer>\\[minibuffer-abort]"))
+                           problem))))
+
 (defun pattern-regex (text regex)
   "TEXT, a pattern READ-PATTERN read, as a regular expression: as it is when
 REGEX is true, else literal text with every special character escaped."
@@ -121,13 +132,7 @@ and as a second value whether it is a regular expression."
                  (if (equal (car checked) key)
                      (cdr checked)
                      (cdr (setf checked (cons key (pattern-problem text regex)))))))
-             (prompt (text)
-               (let ((problem (problem text)))
-                 (pattern-prompt regex words
-                                 (and problem
-                                      (if refused
-                                          (refused-pattern-words problem (substitute-command-keys "\\<minibuffer>\\[minibuffer-abort]"))
-                                          problem))))))
+             (prompt (text) (refusable-pattern-prompt regex words (problem text) refused)))
       (let ((text (let ((*toggle-pattern-kind* (lambda () (setf regex (not regex) refused nil)))
                         (*pattern-done* (lambda ()
                                           (if (problem (typed))
