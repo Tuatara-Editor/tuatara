@@ -69,7 +69,7 @@ puts it, as new octets; NIL when that changes nothing."
         (:down (each (b) (if (<= 65 b 90) (+ b 32) b)))
         (:capital
          (let ((in-word nil))
-           (each (b) (let ((word (or (<= 65 b 90) (<= 97 b 122) (<= 48 b 57))))
+           (each (b) (let ((word (word-char-p (code-char b))))
                        (prog1 (cond ((not word) b)
                                     (in-word (if (<= 65 b 90) (+ b 32) b))
                                     (t (if (<= 97 b 122) (- b 32) b)))

@@ -296,6 +296,11 @@ where long lines wrap at a word's edge (\\[soft-wrap-mode]), one row."
   "True for characters that make up words: letters and digits."
   (and char (or (alpha-char-p char) (digit-char-p char))))
 
+(defun name-char-p (char)
+  "True for characters that make up a name, a word with _ in it as well:
+letters, digits and _."
+  (or (word-char-p char) (eql char #\_)))
+
 (define-command forward-word ()
   "Move point to the end of the next word (or the prefix argument's worth,
 back with a negative one): past what is not a word, then past the word. No

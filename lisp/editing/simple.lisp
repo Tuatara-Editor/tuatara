@@ -651,7 +651,7 @@ car turns true."
                (replace recent recent :start1 1 :start2 2)
                (setf (char recent (1- (length recent))) char)
                (incf chars)
-               (let ((word (or (alpha-char-p char) (digit-char-p char))))
+               (let ((word (word-char-p char)))
                  (when (and word (not in-word)) (incf words))
                  (setf in-word word))
                (let ((blank (member char '(#\Space #\Tab #\Newline #\Return))))

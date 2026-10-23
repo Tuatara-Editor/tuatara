@@ -150,7 +150,7 @@ plain selection, whatever kind the one before was (a rectangle)."
 letters, digits and _, :SPACE for spaces and tabs, :OTHER for the rest; NIL at
 a line's end."
   (cond ((or (null char) (char= char #\Newline) (char= char #\Return)) nil)
-        ((or (word-char-p char) (char= char #\_)) :word)
+        ((name-char-p char) :word)
         ((or (char= char #\Space) (char= char #\Tab)) :space)
         (t :other)))
 

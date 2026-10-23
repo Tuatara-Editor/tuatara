@@ -140,7 +140,7 @@ and yours, one of yours taking the place of one of the same name."
 
 (defun snippet-word-end (text at)
   "Where the name of a value ($NAME) in TEXT from AT ends: after its letters, digits and _."
-  (snippet-run-end text at (lambda (c) (or (alphanumericp c) (char= c #\_)))))
+  (snippet-run-end text at #'name-char-p))
 
 (defun parse-snippet-brace (text at depth)
   "The part of a snippet's body TEXT written ${...}, its inside beginning at AT
