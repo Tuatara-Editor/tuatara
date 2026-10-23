@@ -724,8 +724,9 @@ buffer was killed."
 (define-command count-words ()
   "Say how many lines, sentences, words and characters the selection has, or
 the whole buffer without one: \"Region has 2 lines, 2 sentences, 9 words, and
-48 characters\". A sentence ends at . ? or ! and a line end or two blanks
-after it, or at a blank line. The lines search filters hide
+48 characters\". A sentence ends where \\[forward-sentence] finds its end: at
+. ? ! or … and a space or a line end after it (two spaces, a tab or a line
+end with *SENTENCE-END-DOUBLE-SPACE*), or at a blank line. The lines search filters hide
 \(\\[search-filter-regex]) are not counted. A large text is counted in the background, its
 progress in the mode line; \\[stop-job] stops it. While another job runs in
 the buffer it waits its turn (\\[list-jobs])."
