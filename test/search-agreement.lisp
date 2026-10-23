@@ -183,8 +183,8 @@ in parallel (LINE-MATCHES)."
            (rope (tuatara.text:string->rope text))
            (size (tuatara.text:rope-bytes rope)))
       (dolist (needle '("login" "LOGIN" "user=" "example.nz" "kōrero" "Αθήνα" "中文" "😀" "café" "aaaaaaaaaaaaaaaa"
-                        "@example.org #" "2026-1" "£1" "ζωή"))
-        (dolist (fold (if (every (lambda (c) (< (char-code c) 128)) needle) '(nil t) '(nil)))
+                        "@example.org #" "2026-1" "£1" "ζωή" "kŌrero" "αθήνα" "CAFÉ" "ōtautahi"))
+        (dolist (fold '(nil t))
           (let ((oracle (oracle-positions text needle :case-fold fold))
                 (wanted (to-octets (if fold (string-downcase needle) needle)))
                 (in (to-octets (if fold (string-downcase text) text))))

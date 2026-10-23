@@ -33,6 +33,20 @@
   "True when STRING has no upper-case letter, so a search for it ignores case."
   (notany #'upper-case-p string))
 
+(defun folds-past-ascii-p (string case-fold)
+  "True when a search for STRING ignoring case (CASE-FOLD) must fold letters
+past ASCII, as é with É, which the octets alone cannot: such a search goes
+by the pattern of STRING's text (LITERAL-SCANNER)."
+  (and case-fold (some (lambda (c) (and (>= (char-code c) 128) (both-case-p c))) string)))
+
+(defun character-start-from (rope byte)
+  "The first character's start of ROPE at or after BYTE."
+  (if (tuatara.text:char-boundary-p rope byte) byte (tuatara.text:rope-next-boundary rope byte)))
+
+(defun literal-scanner (string)
+  "A scanner for STRING's text, nothing in it special, ignoring case (COMPILE-REGEX)."
+  (compile-regex (cl-ppcre:quote-meta-chars string) :case-fold t))
+
 (defun scan-chunk (chunk needle case-fold from below &optional (filled (length chunk)))
   "Index of the first occurrence of NEEDLE in the first FILLED octets of CHUNK
 starting at or after FROM and before BELOW (the start index limit), or NIL.
@@ -160,14 +174,21 @@ sets, stands whole, reading through CHUNK; NIL when none."
                                         (threads (tuatara.runtime:cpu-count)) stop)
   "Byte offset of the first occurrence of STRING in ROPE starting at or after
 START and ending at or before END, and the offset after it, as two values; NIL
-when there is none. CASE-FOLD ignores ASCII case (the default when STRING has
-no upper-case letter). The first *SERIAL-WINDOW* octets are scanned on the
+when there is none. CASE-FOLD ignores case (the default when STRING has no
+upper-case letter): ASCII case on the octets, and for a STRING with letters
+past ASCII, case of every letter, through the pattern of its text. The first *SERIAL-WINDOW* octets are scanned on the
 calling thread; beyond that the range is cut into pieces of *PARALLEL-PIECE*
 octets run in order on THREADS threads (SEARCH-PIECES), so a rare needle costs
 O(distance / THREADS). STOP, when given, is asked between pieces; when it
 answers true the search gives up and returns NIL and :STOPPED.
 Complexity: O(distance scanned)."
   (declare (type fixnum start end))
+  (when (folds-past-ascii-p string case-fold)
+    (return-from search-forward
+      (multiple-value-bind (found after) (regex-search-forward rope (literal-scanner string) :start (character-start-from rope start)
+                                                                    :end end :bound end
+                                                                    :threads threads :stop stop)
+        (values found after))))
   (let* ((needle (needle-octets string case-fold)) (n (length needle))
          (end (- end (1- n))))              ; last position a match may start at, exclusive
     (when (and (plusp n) (< start end))
@@ -208,6 +229,11 @@ and at or after END, and the offset after it, as two values; NIL when none.
 Serial for the first *SERIAL-WINDOW* octets, then pieces going back, in
 parallel, and STOP, as SEARCH-FORWARD."
   (declare (type fixnum start end))
+  (when (folds-past-ascii-p string case-fold)
+    (return-from search-backward
+      (multiple-value-bind (found after) (regex-search-backward rope (literal-scanner string) :start start :end end
+                                                                     :threads threads :stop stop)
+        (values found after))))
   (let* ((needle (needle-octets string case-fold)) (n (length needle)))
     (when (and (plusp n) (<= (+ end n) start))
       (let* ((serial-start (max end (- start *serial-window*)))
@@ -238,6 +264,15 @@ again from where that one ends. Matches are collected in number vectors, not
 lists, so parallel threads do not contend for the allocator.
 Complexity: O((END - START) / THREADS)."
   (declare (type fixnum start end))
+  (when (folds-past-ascii-p string case-fold)
+    (return-from search-all
+      (let ((found (make-array 16 :element-type 'fixnum :adjustable t :fill-pointer 0)))
+        (map-regex-matches (lambda (s e m g)
+                             (declare (ignore e m g))
+                             (vector-push-extend s found)
+                             (>= (fill-pointer found) limit))
+                           rope (literal-scanner string) (character-start-from rope start) end :bound end :texts nil)
+        (coerce found '(simple-array fixnum (*))))))
   (let* ((needle (needle-octets string case-fold)) (n (length needle)))
     (if (or (zerop n) (< (- end start) n))
         (make-array 0 :element-type 'fixnum)
@@ -1720,12 +1755,16 @@ occurrence of STRING in ROPE that starts at or after START and before END and
 ends by BOUND (the text end by default), in order; TEXT is the text matched
 when TEXTS is true, else NIL. Stops and returns FUNCTION's value as soon as it
 returns true, or returns NIL when HALT, asked before each chunk, answers true;
-else returns NIL. CASE-FOLD ignores ASCII case. The text is read a chunk at a
+else returns NIL. CASE-FOLD ignores case, as for SEARCH-FORWARD. The text is read a chunk at a
 time into a spare decoder's buffer (WITH-DECODER), so that a search piece
 after piece on every core makes no new ones; a match's text is taken from
 that chunk, and given again as it was for a match of the same octets as the
 one before, so that billions of matches of a few texts make nothing each."
   (declare (type fixnum start end))
+  (when (folds-past-ascii-p string case-fold)
+    (return-from map-literal-matches
+      (map-regex-matches function rope (literal-scanner string) (character-start-from rope start) end
+                         :bound bound :halt halt :texts texts)))
   (with-decoder (decoder)
     (let* ((needle (needle-octets string case-fold)) (n (length needle))
            (total (tuatara.text:rope-bytes rope))
