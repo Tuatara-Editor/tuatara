@@ -1,0 +1,93 @@
+#+title: Case links
+#+identifier: 20260301T100000
+
+* Plain
+#+BEGIN: denote-links :regexp "_alpha"
+- [[denote:20260108T090000][3  Theta in sub]]
+- [[denote:20260101T090000][1  Alpha root]]
+- [[denote:20260102T090000][1=1  Beta child]]
+- [[denote:20260106T090000][zeta-markdown]]
+#+END:
+* Title
+#+BEGIN: denote-links :regexp "_alpha" :sort-by-component title
+- [[denote:20260101T090000][1  Alpha root]]
+- [[denote:20260102T090000][1=1  Beta child]]
+- [[denote:20260108T090000][3  Theta in sub]]
+- [[denote:20260106T090000][zeta-markdown]]
+#+END:
+* Keywords reversed
+#+BEGIN: denote-links :regexp "_alpha" :sort-by-component keywords :reverse-sort t
+- [[denote:20260108T090000][3  Theta in sub]]
+- [[denote:20260101T090000][1  Alpha root]]
+- [[denote:20260106T090000][zeta-markdown]]
+- [[denote:20260102T090000][1=1  Beta child]]
+#+END:
+* Signature
+#+BEGIN: denote-links :regexp "_alpha" :sort-by-component signature
+- [[denote:20260101T090000][1  Alpha root]]
+- [[denote:20260102T090000][1=1  Beta child]]
+- [[denote:20260108T090000][3  Theta in sub]]
+- [[denote:20260106T090000][zeta-markdown]]
+#+END:
+* Identifier reversed
+#+BEGIN: denote-links :regexp "_alpha" :sort-by-component identifier :reverse-sort t
+- [[denote:20260108T090000][3  Theta in sub]]
+- [[denote:20260106T090000][zeta-markdown]]
+- [[denote:20260102T090000][1=1  Beta child]]
+- [[denote:20260101T090000][1  Alpha root]]
+#+END:
+* Reversed only
+#+BEGIN: denote-links :regexp "_alpha" :reverse-sort t
+- [[denote:20260106T090000][zeta-markdown]]
+- [[denote:20260102T090000][1=1  Beta child]]
+- [[denote:20260101T090000][1  Alpha root]]
+- [[denote:20260108T090000][3  Theta in sub]]
+#+END:
+* Left out, identifiers only
+#+BEGIN: denote-links :regexp "_alpha" :not-regexp "_md" :id-only t
+- [[denote:20260108T090000]]
+- [[denote:20260101T090000]]
+- [[denote:20260102T090000]]
+#+END:
+* With dates and a name
+#+BEGIN: denote-links :regexp "_alpha" :include-date t :block-name "alpha-notes"
+#+name: alpha-notes
+- [[denote:20260108T090000][Theta in sub (2026-01-08)]]
+- [[denote:20260101T090000][Alpha root (2026-01-01)]]
+- [[denote:20260102T090000][Beta child (2026-01-02)]]
+- [[denote:20260106T090000][zeta-markdown (2026-01-06)]]
+#+END:
+* In the subdirectory
+#+BEGIN: denote-links :regexp "sub/"
+- [[denote:20260108T090000][3  Theta in sub]]
+#+END:
+* Capitals
+#+BEGIN: denote-links :regexp "_ALPHA"
+- [[denote:20260108T090000][3  Theta in sub]]
+- [[denote:20260101T090000][1  Alpha root]]
+- [[denote:20260102T090000][1=1  Beta child]]
+- [[denote:20260106T090000][zeta-markdown]]
+#+END:
+* Emacs's groups
+#+BEGIN: denote-links :regexp "\\(beta\\|gamma\\)-"
+- [[denote:20260102T090000][1=1  Beta child]]
+- [[denote:20260103T090000][1=2  Gamma, the second child]]
+#+END:
+* A directory left out
+#+BEGIN: denote-links :regexp "_alpha" :excluded-dirs-regexp "sub"
+- [[denote:20260101T090000][1  Alpha root]]
+- [[denote:20260102T090000][1=1  Beta child]]
+- [[denote:20260106T090000][zeta-markdown]]
+#+END:
+* Nothing matches
+#+BEGIN: denote-links :regexp "nothing-is-called-this"
+#+END:
+* Every sequence
+#+BEGIN: denote-links :regexp "=="
+- [[denote:20260108T090000][3  Theta in sub]]
+- [[denote:20260101T090000][1  Alpha root]]
+- [[denote:20260102T090000][1=1  Beta child]]
+- [[denote:20260103T090000][1=2  Gamma, the second child]]
+- [[denote:20260104T090000][1=1=1  Delta grandchild]]
+- [[denote:20260105T090000][2  epsilon-other-root]]
+#+END:

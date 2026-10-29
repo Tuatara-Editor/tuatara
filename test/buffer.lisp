@@ -1,0 +1,385 @@
+;;;; test/buffer.lisp --- Buffers: editing, point and mark, undo and redo, files.
+;;;; Copyright (C) 2026 Michael A Jones.  GPL-3.0-or-later; see LICENSE.
+
+(in-package #:tuatara.tests)
+
+(define-test buffer
+  :description "Buffers: editing through versions, point and mark following edits, undo and redo, saving and reopening files.")
+
+(defmacro with-test-buffer ((var &rest args) &body body)
+  "Run BODY with VAR bound to a fresh buffer made with ARGS, killing it afterwards."
+  `(let ((,var (tuatara.buffer:make-buffer ,@args)))
+     (unwind-protect (progn ,@body)
+       (tuatara.buffer:kill-buffer ,var))))
+
+(define-test (buffer edit-point-mark)
+  (with-test-buffer (b "*t*" :text "hello world")
+    (is = 0 (tuatara.buffer:buffer-point b))
+    (setf (tuatara.buffer:buffer-point b) 5)
+    (setf (tuatara.buffer:buffer-mark b) 11)
+    (is = 10 (tuatara.buffer:buffer-insert b 5 ", big"))    ; returns the offset after the insertion
+    (is string= "hello, big world" (tuatara.buffer:buffer-string b))
+    ;; point (bias :after) moved past the insertion; mark followed the text
+    (is = 10 (tuatara.buffer:buffer-point b))
+    (is = 16 (tuatara.buffer:buffer-mark b))
+    (multiple-value-bind (s e) (tuatara.buffer:buffer-region b) (is = 10 s) (is = 16 e))
+    (tuatara.buffer:buffer-delete b 0 7)
+    (is string= "big world" (tuatara.buffer:buffer-string b))
+    (is = 3 (tuatara.buffer:buffer-point b))
+    (is = 9 (tuatara.buffer:buffer-mark b))
+    (is = 5 (tuatara.buffer:buffer-replace b 0 3 "small"))
+    (is string= "small world" (tuatara.buffer:buffer-string b))
+    (true (tuatara.buffer:buffer-modified-p b))
+    (fail (setf (tuatara.buffer:buffer-point b) 99))
+    (with-test-buffer (m "*multi*" :text "aé😀")
+      (fail (setf (tuatara.buffer:buffer-point m) 2))       ; inside é
+      (is = 3 (tuatara.buffer:buffer-forward-char m 1))
+      (is = 3 (tuatara.buffer:buffer-forward-char m 0 2))
+      (is = 7 (tuatara.buffer:buffer-forward-char m 0 9))
+      (is = 1 (tuatara.buffer:buffer-forward-char m 3 -1))
+      (is char= #\😀 (tuatara.buffer:buffer-char-at m 3))
+      (false (tuatara.buffer:buffer-char-at m 7)))))
+
+(define-test (buffer splice-spans-checked)
+  ;; no spans: nothing done; an edge inside a character, or spans out of order: refused
+  (with-test-buffer (b "*spans*" :text "aé b c d")
+    (false (tuatara.buffer:buffer-splice-spans b '() nil))
+    (is string= "aé b c d" (tuatara.buffer:buffer-string b))
+    (fail (tuatara.buffer:buffer-splice-spans b (list (cons 0 2)) nil))
+    (fail (tuatara.buffer:buffer-splice-spans b (list (cons 6 7) (cons 0 1)) nil))
+    (is string= "aé b c d" (tuatara.buffer:buffer-string b))
+    ;; positions in, between and after the spans follow the text, undo brings it back
+    (setf (tuatara.buffer:buffer-point b) 8 (tuatara.buffer:buffer-mark b) 5)
+    (is = 2 (tuatara.buffer:buffer-splice-spans b (list (cons 0 1) (cons 4 6) (cons 7 8)) (tuatara.text:string->rope "XY")))
+    (is string= "XYé cd" (tuatara.buffer:buffer-string b))
+    (is = 6 (tuatara.buffer:buffer-point b))
+    (is = 5 (tuatara.buffer:buffer-mark b))
+    (tuatara.buffer:buffer-undo b)
+    (is string= "aé b c d" (tuatara.buffer:buffer-string b))))
+
+(define-test (buffer undo-redo)
+  (with-test-buffer (b "*u*" :text "abc")
+    (tuatara.buffer:buffer-insert b 3 "def")
+    (tuatara.buffer:buffer-delete b 0 2)
+    (is string= "cdef" (tuatara.buffer:buffer-string b))
+    (true (tuatara.buffer:buffer-undo b))
+    (is string= "abcdef" (tuatara.buffer:buffer-string b))
+    (is = 0 (tuatara.buffer:buffer-point b))
+    (true (tuatara.buffer:buffer-undo b))
+    (is string= "abc" (tuatara.buffer:buffer-string b))
+    (false (tuatara.buffer:buffer-undo b))
+    (true (tuatara.buffer:buffer-redo b))
+    (is string= "abcdef" (tuatara.buffer:buffer-string b))
+    (is = 6 (tuatara.buffer:buffer-point b))
+    (true (tuatara.buffer:buffer-redo b))
+    (is string= "cdef" (tuatara.buffer:buffer-string b))
+    (false (tuatara.buffer:buffer-redo b))
+    ;; a new edit after undo discards the redo stack
+    (tuatara.buffer:buffer-undo b)
+    (tuatara.buffer:buffer-insert b 0 "X")
+    (false (tuatara.buffer:buffer-redo b))
+    (is string= "Xabcdef" (tuatara.buffer:buffer-string b))))
+
+(define-test (buffer lines-and-columns)
+  (with-test-buffer (b "*l*" :text (format nil "one~%twoé~%three"))
+    (is = 3 (tuatara.buffer:buffer-line-count b))
+    (is = 4 (tuatara.buffer:buffer-goto-line b 1))
+    (is = 10 (tuatara.buffer:buffer-goto-line b 2))
+    (is = 10 (tuatara.buffer:buffer-goto-line b 99))
+    (is = 1 (tuatara.buffer:buffer-line-number b 6))
+    (is = 4 (tuatara.buffer:buffer-line-start b 7))
+    (is = 9 (tuatara.buffer:buffer-line-end b 4))
+    (is = 15 (tuatara.buffer:buffer-line-end b 12))
+    (is = 4 (tuatara.buffer:buffer-column b 9))             ; t w o é -> byte 9 is after é, column 4
+    (is = 7 (column-by-steps b 4 3))
+    (is = 9 (column-by-steps b 4 50))))
+
+(define-test (buffer file-round-trip)
+  (let* ((s (random-text 30000)) (octets (to-octets s)))
+    (with-temp-file (path octets)
+      (let ((b (tuatara.io:visit-file path)))
+        (unwind-protect
+             (progn
+               (true (eq b (tuatara.io:visit-file path)))
+               (is string= s (tuatara.buffer:buffer-string b))
+               (false (tuatara.buffer:buffer-modified-p b))
+               (tuatara.buffer:buffer-insert b 0 "PREFIX ")
+               (true (tuatara.buffer:buffer-modified-p b))
+               (tuatara.io:save-buffer-file b)
+               (false (tuatara.buffer:buffer-modified-p b))
+               ;; the file on disk has the new content; the old mapping is still valid for the buffer
+               (is string= (concatenate 'string "PREFIX " s)
+                   (sb-ext:octets-to-string (alexandria:read-file-into-byte-vector path) :external-format :utf-8))
+               (is string= (concatenate 'string "PREFIX " s) (tuatara.buffer:buffer-string b)))
+          (tuatara.buffer:kill-buffer b))
+        ;; reopen: fresh buffer with the saved text
+        (let ((b2 (tuatara.io:visit-file path)))
+          (unwind-protect (is string= (concatenate 'string "PREFIX " s) (tuatara.buffer:buffer-string b2))
+            (tuatara.buffer:kill-buffer b2)))))))
+
+(define-test (buffer new-file)
+  (let ((path (merge-pathnames (format nil "tuatara-new-~a.txt" (random 1000000)) (uiop:temporary-directory))))
+    (unwind-protect
+         (let ((b (tuatara.io:visit-file path)))
+           (unwind-protect
+                (progn (is = 0 (tuatara.buffer:buffer-size b))
+                       (tuatara.buffer:buffer-insert b 0 "created")
+                       (tuatara.io:save-buffer-file b)
+                       (true (probe-file path))
+                       (is string= "created" (sb-ext:octets-to-string (alexandria:read-file-into-byte-vector path))))
+             (tuatara.buffer:kill-buffer b)))
+      (ignore-errors (delete-file path)))))
+
+(define-test (buffer back-to-saved)
+  ;; undoing back to the text last saved leaves the buffer unmodified, and redo modifies it again
+  (let ((b (tuatara.buffer:make-buffer "*saved-test*" :text "abc")))
+    (unwind-protect
+         (progn
+           (false (tuatara.buffer:buffer-modified-p b))
+           (tuatara.buffer:buffer-insert b 0 "x")
+           (true (tuatara.buffer:buffer-modified-p b))
+           (tuatara.buffer:buffer-undo b)
+           (false (tuatara.buffer:buffer-modified-p b))
+           (tuatara.buffer:buffer-redo b)
+           (true (tuatara.buffer:buffer-modified-p b))
+           ;; saved as "xabc": undo modifies, redo brings the saved text back
+           (tuatara.buffer:buffer-mark-saved b)
+           (false (tuatara.buffer:buffer-modified-p b))
+           (tuatara.buffer:buffer-undo b)
+           (true (tuatara.buffer:buffer-modified-p b))
+           (tuatara.buffer:buffer-redo b)
+           (false (tuatara.buffer:buffer-modified-p b))
+           ;; typing grouped into one undo step
+           (tuatara.buffer:buffer-insert b 4 "1")
+           (tuatara.buffer:buffer-insert b 5 "2" :group t)
+           (true (tuatara.buffer:buffer-modified-p b))
+           (tuatara.buffer:buffer-undo b)
+           (false (tuatara.buffer:buffer-modified-p b))
+           ;; a whole-text swap
+           (tuatara.buffer:buffer-swap-text b (tuatara.text:string->rope "zz")
+                                            (lambda (p bias) (declare (ignore bias)) (min p 2))
+                                            (lambda (p bias) (declare (ignore bias)) (min p 4)))
+           (true (tuatara.buffer:buffer-modified-p b))
+           (tuatara.buffer:buffer-undo b)
+           (false (tuatara.buffer:buffer-modified-p b))
+           (is string= "xabc" (tuatara.buffer:buffer-string b)))
+      (tuatara.buffer:kill-buffer b))))
+
+(define-test (buffer kill-goes-on-past-a-failing-function)
+  ;; a function run on killing that fails leaves the others run and the buffer gone, its error said after
+  (let* ((b (tuatara.buffer:make-buffer "*failing kill*" :text "x"))
+         (ran '())
+         (tuatara.buffer:*kill-buffer-functions*
+           (list (lambda (buffer) (push :first ran) buffer)
+                 (lambda (buffer) (error "no such mount for ~a" (tuatara.buffer:buffer-name buffer)))
+                 (lambda (buffer) (push :last ran) buffer))))
+    (fail (tuatara.buffer:kill-buffer b) error)
+    (is equal '(:last :first) ran)
+    (false (tuatara.buffer:live-buffer-p b))
+    (false (member b tuatara.buffer:*buffers*))))
+
+;;; The undo limit
+
+(define-test (buffer undo-of-swap-then-edit-in-one-group)
+  ;; a whole-text swap and an edit after it made one group undo together, point left where
+  ;; the swap taken back last moves it, never at a place only the longer text had
+  (with-test-buffer (b "*undo swap edit*" :text "abc")
+    (let ((since (tuatara.buffer:buffer-undo-stack b)))
+      (tuatara.buffer:buffer-swap-text b (tuatara.text:string->rope "abcdefgh")
+                                       (lambda (p bias) (declare (ignore bias)) p)
+                                       (lambda (p bias) (declare (ignore bias)) (min p 3)))
+      (tuatara.buffer:buffer-insert b 7 "Q")
+      (tuatara.buffer:merge-undo-groups b since)
+      (true (tuatara.buffer:buffer-undo b))
+      (is string= "abc" (tuatara.buffer:buffer-string b))
+      (true (<= (tuatara.buffer:buffer-point b) 3)))))
+
+(defun recounted-undo-octets (buffer)
+  "What BUFFER's undo and redo stacks hold, counted afresh batch by batch."
+  (loop for group in (append (tuatara.buffer:buffer-undo-stack buffer) (tuatara.buffer:buffer-redo-stack buffer))
+        sum (loop for batch in group
+                  for swap = (tuatara.text:batch-swap batch)
+                  sum (if swap
+                          (tuatara.buffer::swap-held-octets swap)
+                          (loop for e across (tuatara.text:batch-edits batch)
+                                sum (+ tuatara.buffer::+edit-octets+ (tuatara.text:edit-insert-length e)
+                                       (tuatara.text:edit-delete-length e)))))))
+
+(defun hundred-octets-at-end (buffer)
+  "Put a hundred x at the end of BUFFER, an undo group of its own."
+  (tuatara.buffer:buffer-insert buffer (tuatara.buffer:buffer-size buffer) (make-string 100 :initial-element #\x)))
+
+(define-test (buffer undo-limit-lets-go-oldest)
+  ;; each insertion holds 196 octets: past 1000 the oldest go until at most 750 is held
+  (let ((tuatara.buffer:*undo-limit* 1000) (tuatara.buffer:*undo-let-go-functions* '()))
+    (with-test-buffer (b "*undo limit*" :text "start")
+      (let ((texts (list (tuatara.buffer:buffer-string b))))
+        (loop repeat 10 do (hundred-octets-at-end b) (push (tuatara.buffer:buffer-string b) texts))
+        (is = 4 (length (tuatara.buffer:buffer-undo-stack b)))
+        (is = (recounted-undo-octets b) (tuatara.buffer:buffer-undo-octets b))
+        (true (<= (tuatara.buffer:buffer-undo-octets b) 1000))
+        ;; the four newest undo, the fifth is gone
+        (loop for i from 1 to 4
+              do (true (tuatara.buffer:buffer-undo b))
+                 (is string= (nth i texts) (tuatara.buffer:buffer-string b)))
+        (false (tuatara.buffer:buffer-undo b))
+        (is string= (nth 4 texts) (tuatara.buffer:buffer-string b))
+        (is = (recounted-undo-octets b) (tuatara.buffer:buffer-undo-octets b))
+        (loop repeat 4 do (true (tuatara.buffer:buffer-redo b)))
+        (is string= (first texts) (tuatara.buffer:buffer-string b))
+        (is = (recounted-undo-octets b) (tuatara.buffer:buffer-undo-octets b))))))
+
+(define-test (buffer undo-limit-keeps-newest-group)
+  ;; a change larger than the limit is kept whole, and undoes
+  (let ((tuatara.buffer:*undo-limit* 100) (tuatara.buffer:*undo-let-go-functions* '()))
+    (with-test-buffer (b "*undo limit*" :text "abc")
+      (tuatara.buffer:buffer-insert b 0 "y")
+      (tuatara.buffer:buffer-insert b 0 (make-string 1000 :initial-element #\z))
+      (is = 1 (length (tuatara.buffer:buffer-undo-stack b)))
+      (is = (+ 1000 tuatara.buffer::+edit-octets+) (tuatara.buffer:buffer-undo-octets b))
+      (true (tuatara.buffer:buffer-undo b))
+      (is string= "yabc" (tuatara.buffer:buffer-string b))
+      (false (tuatara.buffer:buffer-undo b)))))
+
+(define-test (buffer undo-limit-nil-keeps-everything)
+  (let ((tuatara.buffer:*undo-limit* nil))
+    (with-test-buffer (b "*undo limit*" :text "start")
+      (loop repeat 200 do (hundred-octets-at-end b))
+      (is = 200 (length (tuatara.buffer:buffer-undo-stack b)))
+      (loop while (tuatara.buffer:buffer-undo b))
+      (is string= "start" (tuatara.buffer:buffer-string b)))))
+
+(define-test (buffer undo-limit-said-once)
+  ;; the buffer's oldest changes let go many times over, said the first time only
+  (let* ((said '())
+         (tuatara.buffer:*undo-limit* 500)
+         (tuatara.buffer:*undo-let-go-functions* (list (lambda (buffer) (push (tuatara.buffer:buffer-name buffer) said)))))
+    (with-test-buffer (b "*undo limit said*" :text "")
+      (loop repeat 50 do (hundred-octets-at-end b))
+      (is equal '("*undo limit said*") said))))
+
+(define-test (buffer undo-held-matches-recount)
+  ;; random edits, undo, redo, merges, swaps and splices: the running count of what undo holds
+  ;; is always what counting its batches afresh gives, and keeps within the limit
+  (dolist (limit '(nil 3000))
+    (let ((tuatara.buffer:*undo-limit* limit) (tuatara.buffer:*undo-let-go-functions* '()) (*random-state* (sb-ext:seed-random-state 41)))
+      (with-test-buffer (b "*undo count*" :text (make-string 500 :initial-element #\a))
+        (let ((since (tuatara.buffer:buffer-undo-stack b)))
+          (loop repeat 400
+                for size = (tuatara.buffer:buffer-size b)
+                for at = (random (1+ size))
+                for to = (min size (+ at (random 40)))
+                do (case (random 9)
+                     (0 (tuatara.buffer:buffer-insert b at (make-string (1+ (random 30)) :initial-element #\b)))
+                     (1 (tuatara.buffer:buffer-insert b at "c" :group t))
+                     (2 (tuatara.buffer:buffer-delete b at to))
+                     (3 (tuatara.buffer:buffer-replace b at to "dd"))
+                     (4 (tuatara.buffer:buffer-undo b))
+                     (5 (tuatara.buffer:buffer-redo b))
+                     (6 (tuatara.buffer:merge-undo-groups b since)
+                        (setf since (tuatara.buffer:buffer-undo-stack b)))
+                     (7 (let ((new (concatenate 'string (tuatara.buffer:buffer-string b) "e")) (old size))
+                          (tuatara.buffer:buffer-swap-text b (tuatara.text:string->rope new)
+                                                           (lambda (p bias) (declare (ignore bias)) p)
+                                                           (lambda (p bias) (declare (ignore bias)) (min p old)))))
+                     (8 (tuatara.buffer:buffer-splice b at to (tuatara.text:string->rope "ff"))))
+                   (is = (recounted-undo-octets b) (tuatara.buffer:buffer-undo-octets b))
+                   (when limit
+                     (true (or (<= (tuatara.buffer:buffer-undo-octets b) limit)
+                               (null (rest (tuatara.buffer:buffer-undo-stack b)))))))
+          (unless limit
+            (loop while (tuatara.buffer:buffer-undo b))
+            (is string= (make-string 500 :initial-element #\a) (tuatara.buffer:buffer-string b))))))))
+
+(define-test (buffer change-where-begun-past-many-keys)
+  ;; a job's change laid out where it began, with keys typed meanwhile each its own step: the
+  ;; time grows with the number of keys, not as a power of it nor as its square, and undo then
+  ;; takes back the keys one by one before the change
+  (flet ((seconds (keys)
+           (with-test-buffer (b "*typed meanwhile*" :text "abcdef")
+             (let* ((since (tuatara.buffer:buffer-undo-stack b))
+                    (begun (tuatara.buffer:buffer-text b))
+                    (rope (tuatara.text:splice-rope begun 0 3 (tuatara.text:string->rope "ABC")))
+                    (same (lambda (p bias) (declare (ignore bias)) p)))
+               (dotimes (i keys)
+                 (tuatara.buffer:buffer-insert b (tuatara.buffer:buffer-size b) "x"))
+               (let ((final (tuatara.text:string->rope (concatenate 'string "ABCdef" (make-string keys :initial-element #\x))))
+                     (start (get-internal-real-time)))
+                 (true (tuatara.buffer:buffer-change-where-begun b since begun rope same same final same same))
+                 (prog1 (/ (- (get-internal-real-time) start) internal-time-units-per-second)
+                   (is = (1+ keys) (length (tuatara.buffer:buffer-undo-stack b)))
+                   (loop repeat keys do (tuatara.buffer:buffer-undo b))
+                   (is string= "ABCdef" (tuatara.buffer:buffer-string b))))))))
+    (seconds 10)
+    (let ((ten (seconds 10)) (twenty (seconds 20)))
+      (when (true (< twenty (+ 0.05 (* 4 ten))) "10 keys ~,3f s, 20 keys ~,3f s" ten twenty)
+        (let ((thousand (seconds 1000)) (four-thousand (seconds 4000)))
+          (true (< four-thousand (+ 0.02 (* 8 thousand))) "1,000 keys ~,3f s, 4,000 keys ~,3f s" thousand four-thousand))))))
+
+(define-test (buffer undo-limit-change-where-begun)
+  ;; with a limit, a job's change laid out where it began still undoes right: the edits made
+  ;; meanwhile first, then the job's change; of the history under it the oldest let go, never
+  ;; the part a place in the history stands on
+  (let ((tuatara.buffer:*undo-limit* 1700) (tuatara.buffer:*undo-let-go-functions* '()))
+    (with-test-buffer (b "*undo where begun*" :text "abcdef")
+      (loop repeat 5 do (hundred-octets-at-end b))
+      (let* ((since (tuatara.buffer:buffer-undo-stack b))
+             (place (tuatara.buffer:make-undo-place b))
+             (begun-string (tuatara.buffer:buffer-string b))
+             (done-string (concatenate 'string "ABC" (subseq begun-string 3)))
+             (same (lambda (p bias) (declare (ignore bias)) p)))
+        ;; edits meanwhile take it past the limit: three of the oldest go, the place stays
+        (tuatara.buffer:buffer-insert b 0 "Z")
+        (loop repeat 4 do (hundred-octets-at-end b))
+        (is = 7 (length (tuatara.buffer:buffer-undo-stack b)))
+        (let* ((begun (tuatara.buffer:buffer-text-at b since))
+               (rope (tuatara.text:splice-rope begun 0 3 (tuatara.text:string->rope "ABC")))
+               (now (tuatara.buffer:buffer-string b))
+               (final (tuatara.text:string->rope (concatenate 'string "ZABC" (subseq now 4)))))
+          (true begun)
+          (tuatara.buffer:forget-undo-place b place)
+          (true (tuatara.buffer:buffer-change-where-begun b since begun rope same same final same same))
+          (is = (recounted-undo-octets b) (tuatara.buffer:buffer-undo-octets b))
+          (true (<= (tuatara.buffer:buffer-undo-octets b) 1700))
+          (loop repeat 5 do (true (tuatara.buffer:buffer-undo b)))
+          (is string= done-string (tuatara.buffer:buffer-string b))
+          (true (tuatara.buffer:buffer-undo b))
+          (is string= begun-string (tuatara.buffer:buffer-string b))
+          (loop repeat 2 do (true (tuatara.buffer:buffer-undo b)))
+          (false (tuatara.buffer:buffer-undo b))
+          (loop repeat 8 do (true (tuatara.buffer:buffer-redo b)))
+          (is string= (tuatara.text:rope-string final) (tuatara.buffer:buffer-string b)))))))
+
+(define-test (buffer text-put-by-lines)
+  ;; a buffer's text made another, only the lines between those both begin and end with compared,
+  ;; whatever the ends: changed at the start, in the middle or at the end, one the other and more,
+  ;; no line end at the last line, empty, lines repeated
+  (flet ((check (old new)
+           (with-test-buffer (b "*put*" :text old)
+             (tuatara.defaults::put-text-by-lines b (tuatara.buffer:buffer-text b) new)
+             (is string= new (tuatara.buffer:buffer-string b) "~s to ~s" old new))))
+    (let ((lines (format nil "~{line ~d~%~}" (loop for i below 50 collect i))))
+      (check lines lines)
+      (check lines (cl-ppcre:regex-replace "line 25" lines "line twenty-five"))
+      (check lines (concatenate 'string "first" (string #\Newline) lines))
+      (check lines (subseq lines (1+ (position #\Newline lines))))
+      (check lines (concatenate 'string lines "last"))
+      (check lines (concatenate 'string lines "last" (string #\Newline)))
+      (check lines (subseq lines 0 (- (length lines) 8)))
+      (check (concatenate 'string lines "tail") (concatenate 'string lines "tale"))
+      (check (concatenate 'string lines "tail") lines)
+      (check lines "")
+      (check "" lines)
+      (check (format nil "a~%b~%a~%b~%") (format nil "a~%b~%c~%a~%b~%"))
+      (check (format nil "x~%same~%same~%") (format nil "y~%same~%same~%same~%"))
+      (check (format nil "same~%same~%x~%") (format nil "same~%y~%same~%x~%"))
+      (check (format nil "ab") (format nil "abc"))
+      (check (format nil "abc") (format nil "ab"))
+      (check (format nil "a~%") (format nil "a"))
+      (check (format nil "a") (format nil "a~%")))
+    ;; a large text with a few lines changed: only those lines' edits
+    (let* ((big (format nil "~{~a~%~}" (loop for i below 200000 collect (format nil "line ~d of the big text" i))))
+           (changed (cl-ppcre:regex-replace "line 100000 of" big "line one hundred thousand of")))
+      (with-test-buffer (b "*put-big*" :text big)
+        (is = 1 (tuatara.defaults::put-text-by-lines b (tuatara.buffer:buffer-text b) changed))
+        (is string= changed (tuatara.buffer:buffer-string b))))))

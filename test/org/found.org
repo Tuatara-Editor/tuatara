@@ -1,0 +1,13 @@
+* Cases found in real notes
+Add "*=| grep successful=*" to the command, and *=x=* too.
+Bold in bold: *outer *inner* outer* and **double**.
+A sentence ends with a word in bold, then
+clock: the three things the file does at its end, timed.
+CLOCK: not a clock either
+- * / directories, * @ symlinks, * * executables
+- a_b_c and log_file_name.txt and x_1.5,2 and a_{b_c}
++
++ empty item above
+
+* Next
+The paragraph above ended with an empty item.

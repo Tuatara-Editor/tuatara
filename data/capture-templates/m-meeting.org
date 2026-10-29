@@ -1,0 +1,12 @@
+# name: Meeting notes
+# key: m
+# file: *org-agenda-files*
+# heading: Meetings
+# clock-in: t
+# clock-resume: t
+# --
+* Meeting: %^{Subject}  :meeting:
+%U
+Attendees: %^{Attendees}
+
+%?

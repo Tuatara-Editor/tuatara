@@ -1,0 +1,115 @@
+# Builds a release from a version tag, as tools/release.sh, tools/appimage.sh
+# and tools/distro-packages.sh build one anywhere, and makes a draft of it:
+# the AppImage, the Fedora, Ubuntu and Arch packages (each installed and run in
+# its own system first), the sources, and SHA256SUMS. The draft is published
+# by hand, once "What changed" is written; a 0.x version is marked a
+# pre-release. Run by hand (Actions, Release, Run workflow), it builds the
+# same files from the branch chosen and keeps them with the run, nothing
+# published.
+name: Release
+
+on:
+  push:
+    tags: ['[0-9]+.[0-9]+', '[0-9]+.[0-9]+.[0-9]+']
+  workflow_dispatch:
+
+# Read by default: the build runs code of others (the Lisp libraries, the
+# grammars' builds, the packaging tools); only the draft's job may write.
+permissions: {}
+
+concurrency:
+  group: release-${{ github.ref_name }}
+  cancel-in-progress: false
+
+jobs:
+  build:
+    name: Build and check every file
+    runs-on: ubuntu-24.04
+    timeout-minutes: 240
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: The tag is the version
+        if: startsWith(github.ref, 'refs/tags/')
+        run: |
+          version=$(sed -n 's/^ *:version "\(.*\)"$/\1/p' tuatara.asd)
+          if [ "$version" != "$GITHUB_REF_NAME" ]; then
+            echo "::error::The tag is $GITHUB_REF_NAME but tuatara.asd says $version."
+            exit 1
+          fi
+          if ! grep -q "^Version $version, " README.org; then
+            echo "::error::README.org's Status does not begin with \"Version $version, \"."
+            exit 1
+          fi
+
+      - name: Install SBCL, Zig and Quicklisp
+        run: tools/ci-setup.sh
+
+      # tools/release.sh refuses a file naming the home folder or the account it
+      # was built by; here the account is runner, a word Tuatara's own text uses
+      # and no one's name, so the check is given a name of its own. The steps
+      # after find the release up to date and leave it as it is.
+      - name: The release, checked to name no one
+        env:
+          USER: release-${{ github.run_id }}
+        run: tools/release.sh
+
+      - name: The AppImage
+        run: tools/appimage.sh
+
+      - name: The Fedora, Ubuntu and Arch packages, each installed and run
+        run: tools/distro-packages.sh --check
+
+      - name: SHA256SUMS
+        run: |
+          mkdir dist
+          cp build/Tuatara-x86_64.AppImage build/packages/* build/release/tuatara-sources.tar.zst dist/
+          cd dist
+          sha256sum * > SHA256SUMS
+          cat SHA256SUMS
+
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: release
+          path: dist/
+          if-no-files-found: error
+          retention-days: 14
+
+  draft:
+    name: Make the draft
+    if: startsWith(github.ref, 'refs/tags/')
+    needs: build
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+          sparse-checkout: .github/release-notes.md
+          sparse-checkout-cone-mode: false
+
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: release
+          path: dist
+
+      - name: Draft
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          version="$GITHUB_REF_NAME"
+          case "$version" in
+            0.*) status="**$version is a pre-release**, for trying it and telling us what breaks: its interfaces may still change until 1.0.0, the first stable release."
+                 title="Tuatara $version (pre-release)"; pre=--prerelease ;;
+            *)   status="Version $version."; title="Tuatara $version"; pre= ;;
+          esac
+          sed -e "s|@VERSION@|$version|g" -e "s|@COMMIT@|${GITHUB_SHA:0:7}|g" -e "s|@STATUS@|$status|" \
+            .github/release-notes.md > notes.md
+          gh release create "$version" dist/* --repo "$GITHUB_REPOSITORY" --verify-tag --draft $pre \
+            --title "$title" --notes-file notes.md

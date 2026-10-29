@@ -1,0 +1,23 @@
+; This Source Code Form is subject to the terms of the Mozilla Public
+; License, v. 2.0. If a copy of the MPL was not distributed with this
+; file, You can obtain one at https://mozilla.org/MPL/2.0/.
+;
+; The selection rules for fga: runtime/queries/fga/textobjects.scm of
+; Helix (https://github.com/helix-editor/helix) at commit 9bcdf4d79d14,
+; unchanged below this notice.
+
+(type_declaration
+  (relations) @class.inside) @class.around
+
+(condition_declaration
+  body: (_) @function.inside) @function.around
+
+(relations
+  (definition) @entry.inside) @entry.around
+
+(param 
+  ((_) @parameter.inside . ","? @parameter.around) @parameter.around)
+
+(comment) @comment.inside
+
+(comment)+ @comment.around

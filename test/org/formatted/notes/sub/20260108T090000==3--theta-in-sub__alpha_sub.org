@@ -1,0 +1,5 @@
+#+title: Theta in sub
+#+filetags: :alpha:sub:
+#+identifier: 20260108T090000
+
+In a subdirectory.

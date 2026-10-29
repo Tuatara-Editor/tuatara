@@ -1,0 +1,5 @@
+#+title: Mu heading link
+#+filetags: :mu:
+#+identifier: 20260111T090000
+
+Only to a heading: [[denote:20260301T100200::#h1][Case::Here]].

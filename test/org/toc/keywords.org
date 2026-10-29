@@ -1,0 +1,6 @@
+#+TODO: NEXT(n) WAIT(w@/!) | DONE(d)
+* Top :toc:
+* NEXT Task
+* WAIT [#B] Other :tag:
+* todo lower
+* DONE Finished

@@ -1,0 +1,58 @@
+; This Source Code Form is subject to the terms of the Mozilla Public
+; License, v. 2.0. If a copy of the MPL was not distributed with this
+; file, You can obtain one at https://mozilla.org/MPL/2.0/.
+;
+; The rules for local names in python: runtime/queries/python/locals.scm of
+; Helix (https://github.com/helix-editor/helix) at commit 9bcdf4d79d14,
+; unchanged below this notice.
+
+;; Scopes
+
+[
+  (module)
+  (function_definition)
+  (lambda)
+] @local.scope
+
+;; Definitions
+
+; Parameters
+(parameters
+  (identifier) @local.definition.variable.parameter)
+(parameters
+  (typed_parameter
+    (identifier) @local.definition.variable.parameter))
+(parameters
+  (default_parameter 
+    name: (identifier) @local.definition.variable.parameter))
+(parameters 
+  (typed_default_parameter 
+    name: (identifier) @local.definition.variable.parameter))
+(parameters
+  (list_splat_pattern ; *args
+    (identifier) @local.definition.variable.parameter))
+(parameters
+  (dictionary_splat_pattern ; **kwargs
+    (identifier) @local.definition.variable.parameter))
+(parameters
+  (identifier) @local.definition.variable.builtin
+  (#any-of? @local.definition.variable.builtin "self" "cls")) ; label self/cls as builtin
+    
+(lambda_parameters
+  (identifier) @local.definition.variable.parameter)
+  
+; Imports
+(import_statement
+  name: (dotted_name 
+    (identifier) @local.definition.namespace))
+
+(aliased_import
+  alias: (identifier) @local.definition.namespace)
+
+;; References
+
+(identifier) @local.reference
+
+; don't make the name of kwargs locals
+(keyword_argument
+  name: (identifier) @_)

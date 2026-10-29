@@ -1,0 +1,55 @@
+;;;; test/editing-words.lisp --- What a word is, the same for every command that looks for one.
+;;;; Copyright (C) 2026 Michael A Jones.  GPL-3.0-or-later; see LICENSE.
+
+(in-package #:tuatara.tests)
+
+(define-test editing-words
+  :description "Words alike everywhere: moving by words, counting them, double-clicking one, a snippet's
+value names, capitalising, and the case of a small region and a large one.")
+
+(defparameter *word-test-chars*
+  (append (loop for code from 0 below 128 collect (code-char code))
+          (map 'list #'identity "éÉßøŁłΩωЖжאב中文٣４ـ_-'’…·"))
+  "The characters a word's edges are tried on: ASCII, and letters, digits and marks of other scripts.")
+
+(define-test (editing-words one-definition)
+  ;; a double click's word and a snippet's value name are the letters, digits and _ a name holds
+  (is eq 'tuatara.text:word-char-p 'tuatara.defaults::word-char-p)
+  (is eq 'tuatara.text:name-char-p 'tuatara.defaults::name-char-p)
+  (dolist (char *word-test-chars*)
+    (unless (member char '(#\Newline #\Return))
+      (is eq (and (tuatara.defaults::name-char-p char) t) (eq :word (tuatara.defaults::click-class char)) "~s" char))
+    (let ((text (format nil "~ax" char)))
+      (is = (if (tuatara.defaults::name-char-p char) 2 0) (tuatara.defaults::snippet-word-end text 0) "~s" char)))
+  ;; count-words counts the words moving by words finds
+  (dolist (text (list "kia ora koutou" "tūī_2, kea-3 ٣٤ 中文 x'y" "  one  " "a.b,c;d" ""))
+    (let ((buffer (tuatara.buffer:make-buffer (tuatara.buffer:unique-buffer-name "words") :text text)))
+      (unwind-protect
+           (is = (loop with p = 0
+                       for next = (tuatara.defaults::words-forward buffer p 1)
+                       while (and (> next p) (tuatara.defaults::word-char-p (tuatara.buffer:buffer-char-at buffer (tuatara.buffer:buffer-forward-char buffer next -1))))
+                       count t
+                       do (setf p next))
+               (nth-value 2 (tuatara.defaults::count-text (tuatara.buffer:buffer-text buffer) 0 (tuatara.buffer:buffer-size buffer)))
+               "~s" text)
+        (tuatara.buffer:kill-buffer buffer)))))
+
+(define-test (editing-words counted-at-speed)
+  ;; count-words reads text with many full stops and abbreviations within a few times what
+  ;; decoding it takes, the same counts as before
+  (let* ((text (with-output-to-string (o)
+                 (dotimes (i 30000) (format o "Dr. Smith went to St. Kilda, e.g. by tram. Then Mr. Ōtaki said kia ora. 3.5 km!~%"))))
+         (octets (tuatara.text:string-octets text))
+         (rope (tuatara.text:octets->rope octets))
+         (count (least-seconds (lambda () (tuatara.defaults::count-text rope 0 (length octets)))))
+         (decode (least-seconds (lambda () (sb-ext:octets-to-string octets :external-format :utf-8)))))
+    (is equal '(30000 90000 570000 2400000) (multiple-value-list (tuatara.defaults::count-text rope 0 (length octets))))
+    (true (< count (+ 0.01 (* 8 decode))) "counted in ~,3fs, decoded in ~,3fs" count decode)))
+
+(define-test (editing-words case-small-and-large-alike)
+  ;; a region's case changed at once and a large one's changed in the background, line by
+  ;; line with ASCII read octet by octet, come out the same: ASCII, ß, ﬁ, the Turkish i
+  (dolist (text (list (format nil "hello WORLD_wide 3rd~%x-ray o'neil") (format nil "straße ﬁle~%İstanbul ıdır") (format nil "ǆungla éCOLE~%mIxEd ascii")))
+    (dolist (command '("u p c a s e - r e g i o n" "d o w n c a s e - r e g i o n" "c a p i t a l i z e - r e g i o n"))
+      (dolist (keys (list (format nil "% M-x ~a RET" command) (format nil "M-> C-SPC M-< C-f C-f M-x ~a RET" command)))
+        (is string= (small-text (list keys) text) (large-text (list keys) text) "~a on ~s" keys text)))))

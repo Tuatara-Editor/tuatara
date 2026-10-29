@@ -1,0 +1,280 @@
+#+title: Working on Tuatara
+
+* What you need
+
+- SBCL 2.6 or later, with threads (the Fedora and Debian packages are). The core
+  uses SBCL's threads, foreign calls and compiler, so other Lisps will not build it.
+- Quicklisp, in =~/quicklisp/= (its default), =~/.local/share/quicklisp/=, or
+  where =QUICKLISP_SETUP= names its =setup.lisp=. The Lisp libraries (CFFI,
+  cl-ppcre, Parachute and the rest) are fetched by it on the first build.
+- A C and C++ compiler, git and make, for the tree-sitter grammars.
+- Zig, the version =lisp/terminal/library.pin= names, for the terminal library
+  (from ziglang.org; one directory, no installation).
+- At run time: GTK 4 for the window, ncurses for the terminal; bubblewrap,
+  ImageMagick and poppler's tools for pictures and PDFs; enchant and hunspell
+  for spelling.
+
+On Fedora Atomic (Silverblue, Kinoite), =tools/toolbox-setup.sh= makes a toolbox
+container called =tuatara= with all of these but Zig and Quicklisp, and the
+scripts below run their Lisp and C work in it by themselves when it is there
+(=tools/inside.sh=). Elsewhere they run on the system itself.
+
+=tools/check-updates.sh= reports which pinned dependencies have newer
+versions upstream (tree-sitter and the grammars, Ghostty and Zig, Quicklisp,
+SBCL, and what the AppImage is made with) in =build/bumpcheck.org=, and
+changes nothing; it asks the network for names and versions only.
+=--install= runs it once a week from a systemd user timer, with a notice on
+the desktop when the list changes (=tools/toolbox-setup.sh= asks whether to,
+and does not unless you say yes), and =--remove= stops it.
+
+* Building and running
+
+#+begin_example
+tools/grammars.sh             # fetch and compile tree-sitter and the grammars, at their pinned commits
+tools/terminal-library.sh     # build the terminal library at its pinned commit
+tools/build-image.sh          # build/tuatara: the editor saved as one executable (runs both scripts above)
+tools/tuatara-tui.sh FILE     # build when the sources changed, then run it here
+build/tuatara --gui FILE      # in a window of its own
+#+end_example
+
+Each script does nothing when what it makes is up to date. =tools/release.sh=
+lays out a directory to give to others, its program built from the last commit
+in a new folder of its own, =/tmp/tuatara-release-build.XXXXXX/=, so that it names no folder of the machine it
+was built on (it refuses one that names the home folder or the account);
+=tools/appimage.sh= makes an AppImage of
+it (it takes its libraries from Ubuntu 24.04, in a podman container), and
+=tools/distro-packages.sh= Fedora, Ubuntu and Arch packages (each made by its
+system's own tools in a podman container; =--check= installs each in a new
+container and runs it). The images are pinned in =tools/containers.sh=.
+
+A release carries every grammar's licence (=grammars/licenses/=), and SBCL's
+and those of the Lisp libraries compiled into the program (=licenses/=); and
+=build/release/tuatara-sources.tar.zst= holds what it is made from: Tuatara,
+the Lisp libraries, Ghostty and every grammar at their pinned commits. Publish
+that archive with each release, as the GPL and the others' licences ask. A
+grammar whose repository has no licence file has its licence's text in
+=syntax/licenses/NAME.txt=, and a Lisp system SBCL carries compiled in
+=data/licenses/NAME.txt=; =tools/grammars.sh= and =tools/release.sh= stop on
+one with neither.
+
+A release is made on GitHub, from a version tag (=git tag -s VERSION=, pushed to
+=Tuatara-Editor/tuatara=): =.github/workflows/release.yml= checks that the tag
+is =tuatara.asd='s version and the README's, builds every file as the scripts
+above do (=tools/ci-setup.sh= installing SBCL, Zig and Quicklisp, each pinned
+and checked), installs and runs each package, and makes a draft release with
+=SHA256SUMS= and the notes of =.github/release-notes.md=; "What changed" is
+written there before it is published. Run by hand from the Actions tab, it
+builds the files of a branch without releasing them. The Lisp libraries are
+checked against =tools/lisp-archives.sha256=: when your Quicklisp's set
+changes, make it again from your own archives, as its first lines say, and
+the Quicklisp set =tools/ci-setup.sh= names with it.
+
+* Testing
+
+#+begin_example
+tools/test.sh                 # the whole suite and its benchmarks, about 25 minutes
+#+end_example
+
+One group or one test runs from a Lisp session with the tests loaded:
+=(ql:quickload :tuatara/tests)= then =(parachute:test 'tuatara.tests::terminal)=.
+However the tests run, they keep away from your own files: they have their own
+state, data and trash directories, see no drives mounted, and never read your
+init file (=test/fences.lisp=).
+
+Full compiler warnings fail the suite. Build once with an empty cache too
+(=XDG_CACHE_HOME= pointing at a new directory): a setting used before the file
+that defines it is loaded warns only then. A test that changes a file works on files
+it made itself, in a directory of its own.
+
+** The stable surface
+
+=test/api/stable-surface.sexp= pins what packages and init files are written
+against: the package API with its functions' arguments, the init file's
+settings, the commands' names. From 1.0.0 the =stable-surface= tests fail on
+a change that breaks it within a major version (CONTRIBUTING.md, "Keeping what
+others build on"). =tools/pin-stable-surface.sh= writes it again; it is run
+at each version bump, its =git diff= read first.
+
+* Working in a running editor
+
+=tools/lisp-server.sh= starts SBCL with Tuatara loaded and a Swank (SLIME) or
+Slynk (Sly) server on localhost:4005, the one of your Emacs package so that
+their protocols match: =SWANK_LOADER= names its =swank-loader.lisp= or
+=slynk-loader.lisp= when it is not found where Emacs keeps its packages. In
+the editor itself, =M-:= evaluates
+Lisp, =M-x ielm= is a REPL, and =M-.= goes to the source of anything.
+
+* How the code is laid out
+
+- =src/= :: the core, which knows nothing of the features: text (the rope),
+  buffers, display layout, the command loop, modes, input and output, the
+  sandbox, background jobs, tree-sitter.
+- =lisp/= :: the editor's features, written on the core: commands, the modal
+  layer, Org, rimu, search, the terminal, help.
+- =frontends/= :: the window (GTK 4), the terminal (ncurses), and a fake one
+  for the tests.
+- =syntax/= :: the grammars' pins and licences (=licenses/= for those whose
+  repository has no licence file), and the rules that colour,
+  indent and select (from Helix, MPL 2.0).
+- =test/= :: the tests (Parachute), one file per part; =tools/= the scripts.
+
+Tuatara carries no packages of its own: a package is loaded on asking from a
+git repository or a folder, =(load-package "NAME" :source ...)= in the init
+file, and is written, tested and kept where it lives ("Writing a package").
+
+* Writing a package
+
+A package is a git repository of its own (or a folder of your disk), the
+project's own packages each in =Tuatara-Editor/tuatara-NAME=. Its entry,
+=NAME.lisp=, is at the top, loading its other files with
+=load-package-file=; =test.lisp= holds its tests, and =tools/test.sh= with
+=test/run.lisp= runs them. An init file loads it with
+
+#+begin_src lisp
+(load-package "NAME" :source "https://example.org/you/tuatara-NAME")
+#+end_src
+
+=:folder= naming the folder within the repository when the package is not
+at its top.
+
+It has a Lisp package of its own that uses Tuatara's API, the names the
+package =tuatara= exports (=lisp/api.lisp=), and nothing else of Tuatara's:
+
+#+begin_src lisp
+(defpackage #:garamond
+  (:use #:cl #:tuatara))
+#+end_src
+
+Positions are octets from 0 into a buffer's text, as the core counts them. A
+setting is made with =define-package-setting=, its name beginning with the
+package's (=*garamond-mode-line*=), so that an init file sets it by that name
+as it sets Tuatara's own. Of the libraries Tuatara is built with, a package
+may use the few names =*api-from-libraries*= lists: cl-ppcre's regular
+expressions, and uiop's =string-prefix-p=, =split-string= and =getenv=. A
+package's =tools/test.sh= fails it when it uses a name outside the API, one
+of a library not listed, or a key Tuatara keeps a buffer's value under.
+
+A package's commands are under a =C-c= prefix of its own, one letter it
+claims and labels with its name (=label-keys=): facematch's =C-c f=,
+palimpsest's =C-c p=; a one-letter key it gives its own list is under that
+prefix too. The package binds its keys itself as it loads, in its own mode or
+one it adds to, never in every buffer; Tuatara binds none of a package's.
+
+The tests run against a Tuatara source tree, =../tuatara= beside the
+package's repository or =../../tuatara= beside the folder it is in, unless
+=TUATARA_SOURCE= names another, with Tuatara's own test helpers, and in its
+toolbox when there is one. A package follows the conventions below.
+
+** What Tuatara gives a package
+
+A package uses what Tuatara already has rather than writing its own copy.
+When it needs a helper Tuatara has but does not export, the helper is
+exported (added to =lisp/api.lisp=), not copied. These are the ones a
+package most often needs:
+
+- Scratch files :: a buffer that needs a folder of its own for its working
+  files asks for one when it is made, =(reading-buffer ... :private-folder
+  "NAME/")=, and =buffer-private-folder= names it. It lies in Tuatara's
+  private cache, readable by you alone, and is deleted when the buffer is
+  killed, once the buffer's background jobs have ended.
+- Files kept :: a file written for keeping (a report, a copy taken out) is
+  made with =write-new-file=: read-only (0400) from the moment it is
+  created, never written over a file or a link already there.
+  =write-private-copy= makes a private copy of a file in the cache.
+- Paths :: =native=, =expand-path=, =parent-path=, =path-join=,
+  =slash-ended=, =path-within-p= (inside a folder, =..= taken into
+  account), =native-file-name=, =native-file-stem=, =native-file-type=.
+- Files read whole :: =file-octets= with =:limit=, or =fd-octets= on a
+  file already open, reads a file whole and refuses one larger than the
+  limit, however large it turns out to be as it is read.
+- XML :: =xml-parse= (bounded in depth and size; =:most= sets how many
+  elements), then =xml-name=, =xml-attribute=, =xml-children=,
+  =xml-child=, =xml-local-name=, =xml-local-children=, =xml-find-all= and
+  =xml-all-text= to walk the tree; =xml-escape= writes text into XML or
+  HTML.
+- Octets, text and dates :: the type =octets= and its readers,
+  =string-octets=, =octets-string=, =utf-16-text=; =time-words=,
+  =utc-time-words=, =iso-date-time=, =format-time=; =octets-hex= writes
+  octets in hex, =shorten-string= cuts text to a length after a word.
+- PDF :: =pdf-header-at= tells a PDF by its first octets;
+  =pdf-object-at= reads a value, =pdf-get=, =pdf-ref-p= and
+  =pdf-array-items= look into it; =pdf-indirect-object-at= reads an object
+  where the file writes it, with its stream's place, and
+  =pdf-stream-octets= decodes that stream, held to a size, pictures left as
+  they are; =pdf-object-stream-offsets= and =pdf-packed-object= read the
+  objects an object stream holds. Nothing in the file is run.
+- Octets shown :: =show-octets-in-hex= shows octets a package made in a
+  buffer of their own in the hex view, read only.
+- Comparing :: =line-diff= gives the lines removed and added between two
+  lists of lines, in little memory however long they are.
+- Lines of a large file :: =rewrite-lines= gives each line of a region to a
+  function that keeps, changes or deletes it: in the background on every
+  core for a file of gigabytes, edits made meanwhile kept, one step to undo.
+  =selected-lines= gives the region; =csv-field-spans=, =csv-value-bounds=
+  and =csv-field-value= read fields as Tuatara's CSV mode does, and
+  =csv-header-names= gives the names of a CSV buffer's columns.
+- The selection and changing a buffer :: =selected-region= gives the text
+  selected, or NIL when none is; =check-writable= refuses, in Tuatara's own
+  words, to change a read-only buffer.
+- Sentences :: =sentence-end-char-p=, =sentence-closing-char-p= and
+  =abbreviation-before-p= (an abbreviation's full stop ends no sentence:
+  =*sentence-abbreviations*= and those of =*extra-sentence-abbreviations*=)
+  tell where a sentence ends as the sentence commands and filling do.
+- Sizes :: =octets-words= says a number of octets in words: 12.3 MB, or
+  with =:compact= 4.1K for a narrow column.
+- Background work :: =start-job-thread=, =job-check-stop= and
+  =running-percent=: the editor never waits on a package.
+- Lists narrowed by a search :: any list made with =render-pieces= and its
+  entries is narrowed by =C-x / s= (=search-filter-regex=), the filters
+  stacking; =set-search-filtering= gives more text of each entry to match
+  than its line (matched in the background), names a list's headings, and
+  has =C-s= narrow the list. =search-filters= and =light-search-filters= give
+  the filters kept and light their matches where an entry is opened.
+- The entry on a list's line, beside it :: a method of =preview-entry= for
+  the list's mode gives the buffer showing an entry, and the preview
+  follows the cursor in a window beside the list, as rimu's does;
+  =entry-preview-keys= gives the list =P= (=list-toggle-preview=), and the
+  list's =list-preview-p= says whether it is on, and is set to turn it on.
+- Menus, help and switches :: =define-menu= puts a few ways of doing a
+  thing under one key, in the panel (=menu-arguments= reads its switches);
+  =show-help= with =:fill= shows a page of help or a report in =*Help*=,
+  filled as documentation is; =define-display-toggle= makes a way of
+  showing switched on and off, its settings the package's, and
+  =switched-by-count= any other on and off.
+- Questions :: =completing-read=, =completing-read-value=, =read-date= (a
+  date as typed: tomorrow, fri, +3d, sep 30), =read-whole-number=,
+  =read-path=, =yes-or-no-p*=.
+- Programs from outside :: =sandbox-run= and =run-on-copies= run a program
+  shut in, on copies of the files, never on the files themselves;
+  =run-on-copies-for-report= reads the JSON report such a program prints,
+  =sandbox-pdf= has one draw a PDF of a document, =sandbox-outcome-words=
+  says why a run gave nothing, and =program-health-words= says what runs
+  a thing, for =M-x check-health=.
+- Telling what has just happened :: =notify= (a title, words, =:source=
+  such as ="Mail"=) shows it on the desktop and keeps it in
+  =*Notifications*= (=C-h N=) with the date and time, from any thread; a
+  package never runs notify-send itself.
+
+The whole list is Tuatara's =lisp/api.lisp=; each name's help (=C-h f=)
+says what it is for.
+
+* Conventions
+
+- Every definition has a docstring a user can read in the help: what it does
+  and how to use it, without reference to how another program behaves. Credit
+  for ideas goes in the README and file headers.
+- English, British spelling preferred (colour, behaviour); "license" in the GNU
+  GPL's name, and names already in the code keep their spelling.
+- One way per kind of thing: look for the function that does it before writing
+  another.
+- Nothing slow on the editor's thread: work that takes time runs in the
+  background, and the editor answers keys meanwhile.
+- No colours in code but =lisp/theme.lisp=, which derives every shade from the
+  theme in force.
+- Nothing in a file is ever run: pictures, PDFs and Office documents are drawn in
+  the sandbox, links are followed only when asked.
+- Each source file starts with its name, a one-line description, and the
+  copyright and license line.
+- A new setting: its name in =tuatara-user='s export list (=src/package.lisp=),
+  a =defvar= with a docstring where it is used, and a commented line in the
+  starter init file (=data/init.lisp=, read into =*starter-config*=).

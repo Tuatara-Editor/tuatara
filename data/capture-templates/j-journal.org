@@ -1,0 +1,6 @@
+# name: Journal entry
+# key: j
+# journal: t
+# --
+* %<%H:%M> %?
+%i

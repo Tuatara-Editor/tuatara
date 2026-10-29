@@ -1,0 +1,6 @@
+# name: Export block, LaTeX
+# key: <l
+# --
+#+begin_export latex
+$0
+#+end_export

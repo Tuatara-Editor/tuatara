@@ -1,0 +1,20 @@
+; This Source Code Form is subject to the terms of the Mozilla Public
+; License, v. 2.0. If a copy of the MPL was not distributed with this
+; file, You can obtain one at https://mozilla.org/MPL/2.0/.
+;
+; The rules for text in other languages in jsdoc: runtime/queries/jsdoc/injections.scm of
+; Helix (https://github.com/helix-editor/helix) at commit 9bcdf4d79d14,
+; unchanged below this notice.
+
+; Parse general comment tags
+
+((document) @injection.content
+ (#set! injection.include-children)
+ (#set! injection.language "comment"))
+
+; Fenced code blocks inside doc comments (e.g. ```js in @example): highlight
+; the body with the language named in the fence.
+((code_block
+   (code_block_language) @injection.language
+   (code_block_line) @injection.content)
+ (#set! injection.combined))

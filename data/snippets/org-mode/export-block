@@ -1,0 +1,6 @@
+# name: Export block
+# key: <E
+# --
+#+begin_export ${1|latex,html,ascii|}
+$0
+#+end_export

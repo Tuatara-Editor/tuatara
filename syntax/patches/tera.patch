@@ -1,0 +1,24 @@
+diff --git a/src/scanner.c b/src/scanner.c
+index bf13093..a6759a1 100644
+--- a/src/scanner.c
++++ b/src/scanner.c
+@@ -107,6 +107,8 @@ bool tree_sitter_tera_external_scanner_scan(void *payload, TSLexer *lexer, const
+ 				if (dash_count == 3) {
+ 					break;
+ 				} else {
++					// the dashes are content: the token goes on past them
++					marked_end = false;
+ 					found_content = true;
+ 				}
+ 			} else if (lexer->lookahead == '{') {
+@@ -117,6 +119,10 @@ bool tree_sitter_tera_external_scanner_scan(void *payload, TSLexer *lexer, const
+ 				if (lexer->lookahead == '{' || lexer->lookahead == '#' || lexer->lookahead == '%') {
+ 					break;
+ 				} else {
++					// the brace is content: the token goes on past it, rather
++					// than ending before it with nothing in it at the end of the
++					// text, taken again and again without end
++					marked_end = false;
+ 					found_content = true;
+ 				}
+ 			} else {

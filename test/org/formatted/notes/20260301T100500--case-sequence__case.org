@@ -1,0 +1,22 @@
+#+title: Case sequence
+#+identifier: 20260301T100500
+
+#+BEGIN: denote-sequence :sequence "1" :depth 2
+#+END:
+
+#+BEGIN: denote-sequence :sequence "1" :depth 3
+#+END:
+
+#+BEGIN: denote-sequence :sequence "1=1" :depth 5 :block-name "beta-family"
+#+END:
+
+#+BEGIN: denote-sequence :sequence "" :depth 1
+#+END:
+
+#+BEGIN: denote-backlinks
+old
+#+END:
+
+#+BEGIN: denote-missing-links :regexp "_gamma"
+old
+#+END:

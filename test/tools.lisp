@@ -1,0 +1,191 @@
+;;;; test/tools.lisp --- The scripts of tools/: the desktop entry, the development container, the AppImage.
+;;;; Copyright (C) 2026 Michael A Jones.  GPL-3.0-or-later; see LICENSE.
+
+(in-package #:tuatara.tests)
+
+(define-test tools
+  :description "The scripts of tools/ that build, install and set up Tuatara.")
+
+(defun tools-script (name)
+  "The native path of the script NAME in this repository's tools/."
+  (uiop:native-namestring (asdf:system-relative-pathname :tuatara (format nil "tools/~a" name))))
+
+(defun bash-output (script &rest arguments)
+  "What bash prints running the text SCRIPT with ARGUMENTS as $1 and on."
+  (uiop:run-program (list* "bash" "-c" script "_" arguments) :output :string :ignore-error-status t))
+
+(define-test (tools desktop-entry-exec-line)
+  ;; a path with characters a desktop entry's Exec= line treats specially: each
+  ;; escaped as a quoted argument wants it after the line is read as a string
+  (let ((line (bash-output (format nil "eval \"$(sed -n '/^exec_argument() {/,/^}/p' '~a')\"
+printf 'Exec=@EXEC@ %%F\\n' | sed \"s|@EXEC@|$(exec_argument \"$1\")|\"" (tools-script "install-desktop.sh"))
+                           "/opt/50%/a\\b\"c`d$e f|g&h/tuatara")))
+    (is string= (format nil "Exec=\"/opt/50%%/a\\\\\\\\b\\\\\"c\\\\`d\\\\$e f|g&h/tuatara\" %F~%") line)))
+
+(define-test (tools weekly-check-asked-first)
+  ;; setting up the container starts no weekly network job unless asked, and
+  ;; with no one to answer, none is started
+  (with-test-directory (directory)
+    (let ((tools (merge-pathnames "tools/" directory))
+          (bin (merge-pathnames "bin/" directory))
+          (started (merge-pathnames "started" directory)))
+      (ensure-directories-exist tools)
+      (ensure-directories-exist bin)
+      (uiop:copy-file (tools-script "toolbox-setup.sh") (merge-pathnames "toolbox-setup.sh" tools))
+      (flet ((script (path text)
+               (with-open-file (o path :direction :output) (write-string text o))
+               (sb-posix:chmod (uiop:native-namestring path) #o755)))
+        (script (merge-pathnames "check-updates.sh" tools)
+                (format nil "#!/bin/sh~%touch '~a'~%" (uiop:native-namestring started)))
+        (script (merge-pathnames "toolbox" bin)
+                (format nil "#!/bin/sh~%[ \"$1\" = list ] && echo ' x tuatara-made-up y'~%exit 0~%")))
+      (uiop:run-program (list "bash" (uiop:native-namestring (merge-pathnames "toolbox-setup.sh" tools)))
+                        :input nil :output nil :error-output nil :ignore-error-status t
+                        :environment (list (format nil "PATH=~a:/usr/bin:/bin" (uiop:native-namestring bin))
+                                           "TUATARA_CONTAINER=tuatara-made-up"))
+      (false (probe-file started)))))
+
+(define-test (tools appimage-runtime-pinned)
+  ;; the runtime put at the front of every AppImage: a fixed release, checked by its SHA-256
+  (let ((text (uiop:read-file-string (tools-script "appimage.sh"))))
+    (true (cl-ppcre:scan "(?m)^runtime_url=https://github\\.com/AppImage/type2-runtime/releases/download/[0-9]{8}/runtime-x86_64$" text))
+    (true (cl-ppcre:scan "(?m)^runtime_sha256=[0-9a-f]{64}$" text))
+    (true (search "fetch \"$runtime_url\" \"$tools_dir/runtime-x86_64\" \"$runtime_sha256\"" text))
+    (true (search "--runtime-file \"$tools_dir/runtime-x86_64\"" text))))
+
+(define-test (tools grammars-compiled-one-way)
+  ;; tools/grammars.sh and tools/fuzz-grammars.sh compile a grammar alike, the
+  ;; fuzzing with its assertions kept
+  (with-test-directory (directory)
+    (let ((src (uiop:native-namestring (merge-pathnames "src/" directory))))
+      (ensure-directories-exist src)
+      (dolist (name '("parser.c" "scanner.cc"))
+        (with-open-file (o (concatenate 'string src name) :direction :output) (write-line "" o)))
+      (flet ((calls (&rest options)
+               (uiop:split-string
+                (string-right-trim '(#\Newline)
+                                   (apply #'bash-output
+                                          (format nil ". '~a'
+cc() { printf 'cc'; printf ' [%s]' \"$@\"; echo; }
+c++() { printf 'c++'; printf ' [%s]' \"$@\"; echo; }
+compile_grammar \"$@\"" (tools-script "grammar-build.sh"))
+                                          src "/tmp/made-up/g.so" options))
+                :separator '(#\Newline))))
+        (let ((plain (calls))
+              (fuzzed (calls "--assertions")))
+          (is = 3 (length plain))
+          (true (search "[-DNDEBUG]" (first plain)))
+          (true (search "[-DNDEBUG]" (second plain)))
+          (true (search "safe-ctype.h]" (first plain)))
+          (true (search "[-fvisibility=hidden]" (second plain)))
+          (is = 3 (length fuzzed))
+          (false (search "NDEBUG" (format nil "~{~a~}" fuzzed)))
+          (false (search "[]" (format nil "~{~a~}" fuzzed)))
+          (true (search "safe-ctype.h]" (first fuzzed))))))))
+
+(define-test (tools grammar-generation-failure-stops)
+  ;; a patched grammar whose parser cannot be generated again stops the build,
+  ;; saying why, and leaves no parser of before to be compiled
+  (with-test-directory (directory)
+    (let* ((grammar (uiop:native-namestring (merge-pathnames "grammar/" directory)))
+           (parser (concatenate 'string grammar "src/parser.c")))
+      (ensure-directories-exist parser)
+      (flet ((generated (program)
+               (with-open-file (o parser :direction :output :if-exists :supersede) (write-line "/* before */" o))
+               (bash-output (format nil ". '~a'
+cli=\"$1/../cli\"; printf '#!/bin/sh\\n%s\\n' \"$2\" > \"$cli\"; chmod +x \"$cli\"
+generate_parser \"$1\" \"$cli\" 2>&1; echo \"went on\"" (tools-script "grammar-build.sh"))
+                            (string-right-trim "/" grammar) program)))
+        (let ((said (generated "echo 'grammar.js: no such rule' >&2; exit 1")))
+          (true (search "no such rule" said))
+          (true (search "could not be generated" said))
+          (false (search "went on" said))
+          (false (probe-file parser)))
+        (let ((said (generated "echo 'a single element rule'; echo '/* new */' > src/parser.c")))
+          (true (search "went on" said))
+          (false (search "single element" said))
+          (is string= (format nil "/* new */~%") (uiop:read-file-string parser)))))))
+
+(define-test (tools program-built-again-after-data)
+  ;; build/tuatara is made again when a source of it is newer, data/'s starter init
+  ;; file and LaTeX templates among them, by one test the scripts share
+  (with-test-directory (directory)
+    (let ((root (string-right-trim "/" (uiop:native-namestring directory))))
+      (flet ((stale-p ()
+               (string= "stale" (string-trim '(#\Newline)
+                                             (bash-output (format nil ". '~a'; image_stale \"$1\" && echo stale || echo fresh"
+                                                                  (tools-script "inside.sh"))
+                                                          root))))
+             (made (name seconds-ago)
+               (let ((path (format nil "~a/~a" root name)))
+                 (ensure-directories-exist path)
+                 (with-open-file (o path :direction :output :if-exists :supersede) (write-line "" o))
+                 (uiop:run-program (list "touch" "-d" (format nil "@~d" (- (sb-posix:time) seconds-ago)) path))
+                 path)))
+        (made "src/core.lisp" 100)
+        (true (stale-p))
+        (sb-posix:chmod (made "build/tuatara" 50) #o755)
+        (false (stale-p))
+        (made "data/latex-templates/article.tex" 10)
+        (true (stale-p))
+        (made "build/tuatara" 5)
+        (sb-posix:chmod (format nil "~a/build/tuatara" root) #o755)
+        (false (stale-p))
+        (made "data/init.lisp" 1)
+        (true (stale-p)))))
+  (true (search "image_stale \"$root\"" (uiop:read-file-string (tools-script "tuatara-tui.sh")))))
+
+(define-test (tools release-names-no-home-folder)
+  ;; the release's program is built from a copy in a folder of its own, and refused
+  ;; when it names this machine's home folder or user, which the check finds
+  (let ((release (uiop:read-file-string (tools-script "release.sh"))))
+    (true (search "git archive HEAD" release))
+    (true (search "work=\"$(mktemp -d /tmp/tuatara-release-build.XXXXXX)\"" release))
+    (true (search "trap 'rm -rf \"$work\"" release))
+    (true (search "XDG_CACHE_HOME=\"$work/cache\"" release))
+    (true (search "if names_this_machine \"$program\"; then" release)))
+  (with-test-directory (directory)
+    (let ((file (uiop:native-namestring (merge-pathnames "program" directory))))
+      (flet ((names-p (text)
+               (with-open-file (o file :direction :output :if-exists :supersede) (write-string text o))
+               (string= "yes" (string-trim '(#\Newline)
+                                           (bash-output (format nil "export HOME=/home/annt USER=annt; . '~a'
+names_this_machine \"$1\" 2>/dev/null && echo yes || echo no" (tools-script "inside.sh"))
+                                                        file)))))
+        (false (names-p "sources in /tmp/tuatara-release-build.Kp3x9Q/src/"))
+        (true (names-p (format nil "x~cy /home/annt/Projects/tuatara/src/core.lisp" (code-char 0))))
+        (true (names-p "built by annt"))))))
+
+(define-test (tools grammar-licences-as-spdx-has-them)
+  ;; a grammar under the GNU GPL is written GPL-3.0-only or GPL-3.0-or-later, as its
+  ;; package says; when nothing says which, it is left to be filled in by hand
+  (with-test-directory (directory)
+    (flet ((file (name text)
+             (let ((path (merge-pathnames name directory)))
+               (ensure-directories-exist path)
+               (with-open-file (o path :direction :output :if-exists :supersede) (write-string text o)))))
+      (file "syntax/grammars.tsv" (format nil "said	https://example.org/said	0	unknown~%unsaid	https://example.org/unsaid	0	unknown~%plain	https://example.org/plain	0	unknown"))
+      (dolist (name '("said" "unsaid"))
+        (file (format nil "build/grammar-sources/~a/COPYING" name)
+              "GNU GENERAL PUBLIC LICENSE Version 3, 29 June 2007 ... either version 3 of the License, or (at your option) any later version."))
+      (file "build/grammar-sources/said/package.json" "{\"license\": \"GPL-3.0-or-later\"}")
+      (file "build/grammar-sources/unsaid/package.json" "{\"license\": \"GPL-3.0\"}")
+      (file "build/grammar-sources/plain/LICENSE" "Permission is hereby granted, free of charge, to any person")
+      (uiop:run-program (list "python3" "-I" (tools-script "languages/licenses.py"))
+                        :directory directory :output nil :error-output nil)
+      (is equal '("GPL-3.0-or-later" "unknown" "MIT")
+          (mapcar (lambda (line) (fourth (uiop:split-string line :separator '(#\Tab))))
+                  (uiop:read-file-lines (merge-pathnames "syntax/grammars.tsv" directory)))))))
+
+(define-test (tools language-generators-share-their-helpers)
+  ;; the generators of tools/languages/ write Lisp strings one way, from common.py
+  (is string= (format nil "(\"a\\\"b\" \"c\\\\d\")~%")
+      (uiop:run-program (list "python3" "-I" "-c"
+                              (format nil "import sys; sys.path.insert(0, '~a'); from common import lisp_list; print(lisp_list(['a\"b', 'c\\\\d']))"
+                                      (tools-script "languages")))
+                        :output :string))
+  (dolist (script '("generate.py" "tools.py" "languages.py"))
+    (let ((text (uiop:read-file-string (tools-script (format nil "languages/~a" script)))))
+      (true (search "from common import" text) script)
+      (false (search "def lisp_string" text) script)
+      (false (search "HELIX = " text) script))))

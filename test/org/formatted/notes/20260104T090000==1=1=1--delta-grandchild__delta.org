@@ -1,0 +1,6 @@
+#+title: Delta grandchild
+#+date: [2026-01-04 Sun 09:00]
+#+filetags: :delta:
+#+identifier: 20260104T090000
+
+No links here.

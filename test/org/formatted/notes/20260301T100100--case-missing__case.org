@@ -1,0 +1,10 @@
+#+title: Case missing
+#+identifier: 20260301T100100
+
+Already linked: [[denote:20260101T090000][Alpha root]] and [[denote:20260108T090000]].
+
+#+BEGIN: denote-missing-links :regexp "_alpha"
+#+END:
+
+#+BEGIN: denote-missing-links :regexp "_alpha" :sort-by-component title :include-date t
+#+END:

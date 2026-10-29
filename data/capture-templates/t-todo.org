@@ -1,0 +1,8 @@
+# name: TODO for the agenda
+# key: t
+# file: *org-agenda-files*
+# heading: Tasks
+# --
+* TODO %?  %^g
+%U
+%a

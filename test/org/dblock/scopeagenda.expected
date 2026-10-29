@@ -1,0 +1,95 @@
+* Here
+:LOGBOOK:
+CLOCK: [2026-09-28 Mon 08:00]--[2026-09-28 Mon 08:30] =>  0:30
+:END:
+
+#+BEGIN: clocktable :scope agenda :maxlevel 3
+#+CAPTION: Clock summary at [2026-10-02 Fri 20:20]
+| File  | Headline                                 | Time   |      |      |
+|-------+------------------------------------------+--------+------+------|
+|       | ALL *Total time*                         | *4:35* |      |      |
+|-------+------------------------------------------+--------+------+------|
+| a.org | *File time*                              | *2:15* |      |      |
+|       | Project A                                | 2:15   |      |      |
+|       | \_  Sub A with a rather long headline... |        | 0:45 |      |
+|-------+------------------------------------------+--------+------+------|
+| b.org | *File time*                              | *2:20* |      |      |
+|       | Project B                                | 2:20   |      |      |
+|       | \_  Task B1 [1/2]                        |        | 2:20 |      |
+|       | \_    Deep B                             |        |      | 0:20 |
+|-------+------------------------------------------+--------+------+------|
+| c.org | *File time*                              | *0:00* |      |      |
+#+END:
+
+#+BEGIN: clocktable :scope agenda :maxlevel 3 :fileskip0 t
+#+CAPTION: Clock summary at [2026-10-02 Fri 20:20]
+| File  | Headline                                 | Time   |      |      |
+|-------+------------------------------------------+--------+------+------|
+|       | ALL *Total time*                         | *4:35* |      |      |
+|-------+------------------------------------------+--------+------+------|
+| a.org | *File time*                              | *2:15* |      |      |
+|       | Project A                                | 2:15   |      |      |
+|       | \_  Sub A with a rather long headline... |        | 0:45 |      |
+|-------+------------------------------------------+--------+------+------|
+| b.org | *File time*                              | *2:20* |      |      |
+|       | Project B                                | 2:20   |      |      |
+|       | \_  Task B1 [1/2]                        |        | 2:20 |      |
+|       | \_    Deep B                             |        |      | 0:20 |
+#+END:
+
+#+BEGIN: clocktable :scope agenda :maxlevel 2 :hidefiles t
+#+CAPTION: Clock summary at [2026-10-02 Fri 20:20]
+| Headline                                 |   Time |      |
+|------------------------------------------+--------+------|
+| *Total time*                             | *4:35* |      |
+|------------------------------------------+--------+------|
+| Project A                                |   2:15 |      |
+| \_  Sub A with a rather long headline... |        | 0:45 |
+|------------------------------------------+--------+------|
+| Project B                                |   2:20 |      |
+| \_  Task B1 [1/2]                        |        | 2:20 |
+|------------------------------------------+--------+------|
+#+END:
+
+#+BEGIN: clocktable :scope agenda :maxlevel 3 :emphasize t :properties ("CLIENT") :fileskip0 t
+#+CAPTION: Clock summary at [2026-10-02 Fri 20:20]
+| File  | CLIENT | Headline                                   | Time   |        |      |
+|-------+--------+--------------------------------------------+--------+--------+------|
+|       | ALL    | *Total time*                               | *4:35* |        |      |
+|-------+--------+--------------------------------------------+--------+--------+------|
+| a.org |        | *File time*                                | *2:15* |        |      |
+|       |        | *Project A*                                | *2:15* |        |      |
+|       |        | \_  /Sub A with a rather long headline.../ |        | /0:45/ |      |
+|-------+--------+--------------------------------------------+--------+--------+------|
+| b.org |        | *File time*                                | *2:20* |        |      |
+|       | Acme   | *Project B*                                | *2:20* |        |      |
+|       |        | \_  /Task B1 [1/2]/                        |        | /2:20/ |      |
+|       |        | \_    Deep B                               |        |        | 0:20 |
+#+END:
+
+#+BEGIN: clocktable :scope agenda :compact t :fileskip0 t
+#+CAPTION: Clock summary at [2026-10-02 Fri 20:20]
+| File  | Headline                                 |   Time |
+|-------+------------------------------------------+--------|
+|       | ALL *Total time*                         | *4:35* |
+|-------+------------------------------------------+--------|
+| a.org | *File time*                              | *2:15* |
+|       | Project A                                |   2:15 |
+|       | \_  Sub A with a rather long headline... |   0:45 |
+|-------+------------------------------------------+--------|
+| b.org | *File time*                              | *2:20* |
+|       | Project B                                |   2:20 |
+|       | \_  Task B1 [1/2]                        |   2:20 |
+#+END:
+
+#+BEGIN: clocktable :scope agenda :maxlevel 3 :block 2026-09-30 :fileskip0 t
+#+CAPTION: Clock summary at [2026-10-02 Fri 20:20], for Wednesday, September 30, 2026.
+| File  | Headline          | Time   |      |      |
+|-------+-------------------+--------+------+------|
+|       | ALL *Total time*  | *2:20* |      |      |
+|-------+-------------------+--------+------+------|
+| b.org | *File time*       | *2:20* |      |      |
+|       | Project B         | 2:20   |      |      |
+|       | \_  Task B1 [1/2] |        | 2:20 |      |
+|       | \_    Deep B      |        |      | 0:20 |
+#+END:

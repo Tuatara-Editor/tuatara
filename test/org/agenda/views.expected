@@ -1,0 +1,272 @@
+=== week-log
+Week-agenda (W40):
+Monday     28 September 2026 W40
+  tasks:       8:00...... Repeating event                               :home::
+  tasks:      10:00...... Closed:     DONE Deadline done                :home::
+Tuesday    29 September 2026
+  tasks:      17:00...... Closed:     DONE Done scheduled               :home::
+  tasks:      Scheduled:  DONE Done scheduled                           :home::
+  tasks:      Scheduled:  TODO Daily restart                            :home::
+Wednesday  30 September 2026
+  tasks:      10:00-11:30 Clocked:   (1:30) TODO Logged                 :home::
+  tasks:      Scheduled:  TODO Plain scheduled                          :home::
+  tasks:      Deadline:   DONE Deadline done                            :home::
+  tasks:      (1/3):  Conference                                        :home::
+Thursday    1 October 2026
+               8:00...... ----------------
+              10:00...... ----------------
+              12:00...... ----------------
+  tasks:      14:00-15:00 Meeting                                       :home::
+              14:00...... ----------------
+  notes:      15:30...... Scheduled:  TODO Call Ana at
+              16:00...... ----------------
+              18:00...... ----------------
+              20:00...... ----------------
+  tasks:      Scheduled:  [#A] TODO Priority task                       :home::
+  tasks:      Sched.11x:  TODO Overdue scheduled                   :home::work:
+  tasks:      Sched.10x:  TODO Weekly repeat                            :home::
+  tasks:      Sched. 4x:  TODO Delayed scheduled                        :home::
+  tasks:      Sched. 2x:  TODO Daily restart                            :home::
+  tasks:      Sched. 1x:  TODO Plain scheduled                          :home::
+  tasks:      Scheduled:  WAIT Waiting on someone                       :home::
+  tasks:      Scheduled:  CANCELLED Cancelled scheduled                 :home::
+  notes:      Scheduled:  TODO Untagged task
+  tasks:       6 d. ago:  TODO Deadline past                            :home::
+  tasks:      (2/3):  Conference                                        :home::
+  tasks:      In   2 d.:  NEXT Deadline this week           :home::work:urgent:
+  tasks:      In   5 d.:  TODO Deadline soon                            :home::
+  tasks:      In  19 d.:  TODO Deadline own warning                     :home::
+  notes:      Scheduled:  TODO [#C] Low priority
+Friday      2 October 2026
+  tasks:       9:30...... Scheduled:  TODO Scheduled with time          :home::
+  tasks:      Scheduled:  TODO Daily restart                            :home::
+  tasks:      Scheduled:  TODO Child inherits                      :home:proj::
+  tasks:      (3/3):  Conference                                        :home::
+Saturday    3 October 2026
+  tasks:      10:00...... TODO Child with body stamp               :home:proj::
+  tasks:      12:00...... Deadline:   NEXT Deadline this week :home::work:urgent:
+  tasks:      Scheduled:  TODO Daily restart                            :home::
+Sunday      4 October 2026
+  tasks:      Scheduled:  TODO Daily restart                            :home::
+  notes:      Not a task
+=== end
+=== week
+Week-agenda (W40):
+Monday     28 September 2026 W40
+  tasks:       8:00...... Repeating event                               :home::
+Tuesday    29 September 2026
+  tasks:      Scheduled:  DONE Done scheduled                           :home::
+  tasks:      Scheduled:  TODO Daily restart                            :home::
+Wednesday  30 September 2026
+  tasks:      Scheduled:  TODO Plain scheduled                          :home::
+  tasks:      Deadline:   DONE Deadline done                            :home::
+  tasks:      (1/3):  Conference                                        :home::
+Thursday    1 October 2026
+               8:00...... ----------------
+              10:00...... ----------------
+              12:00...... ----------------
+  tasks:      14:00-15:00 Meeting                                       :home::
+              14:00...... ----------------
+  notes:      15:30...... Scheduled:  TODO Call Ana at
+              16:00...... ----------------
+              18:00...... ----------------
+              20:00...... ----------------
+  tasks:      Scheduled:  [#A] TODO Priority task                       :home::
+  tasks:      Sched.11x:  TODO Overdue scheduled                   :home::work:
+  tasks:      Sched.10x:  TODO Weekly repeat                            :home::
+  tasks:      Sched. 4x:  TODO Delayed scheduled                        :home::
+  tasks:      Sched. 2x:  TODO Daily restart                            :home::
+  tasks:      Sched. 1x:  TODO Plain scheduled                          :home::
+  tasks:      Scheduled:  WAIT Waiting on someone                       :home::
+  tasks:      Scheduled:  CANCELLED Cancelled scheduled                 :home::
+  notes:      Scheduled:  TODO Untagged task
+  tasks:       6 d. ago:  TODO Deadline past                            :home::
+  tasks:      (2/3):  Conference                                        :home::
+  tasks:      In   2 d.:  NEXT Deadline this week           :home::work:urgent:
+  tasks:      In   5 d.:  TODO Deadline soon                            :home::
+  tasks:      In  19 d.:  TODO Deadline own warning                     :home::
+  notes:      Scheduled:  TODO [#C] Low priority
+Friday      2 October 2026
+  tasks:       9:30...... Scheduled:  TODO Scheduled with time          :home::
+  tasks:      Scheduled:  TODO Daily restart                            :home::
+  tasks:      Scheduled:  TODO Child inherits                      :home:proj::
+  tasks:      (3/3):  Conference                                        :home::
+Saturday    3 October 2026
+  tasks:      10:00...... TODO Child with body stamp               :home:proj::
+  tasks:      12:00...... Deadline:   NEXT Deadline this week :home::work:urgent:
+  tasks:      Scheduled:  TODO Daily restart                            :home::
+Sunday      4 October 2026
+  tasks:      Scheduled:  TODO Daily restart                            :home::
+  notes:      Not a task
+=== end
+=== day
+Day-agenda (W40):
+Thursday    1 October 2026
+               8:00...... ----------------
+              10:00...... ----------------
+              12:00...... ----------------
+  tasks:      14:00-15:00 Meeting                                       :home::
+              14:00...... ----------------
+  notes:      15:30...... Scheduled:  TODO Call Ana at
+              16:00...... ----------------
+              18:00...... ----------------
+              20:00...... ----------------
+  tasks:      Scheduled:  [#A] TODO Priority task                       :home::
+  tasks:      Sched.11x:  TODO Overdue scheduled                   :home::work:
+  tasks:      Sched.10x:  TODO Weekly repeat                            :home::
+  tasks:      Sched. 4x:  TODO Delayed scheduled                        :home::
+  tasks:      Sched. 2x:  TODO Daily restart                            :home::
+  tasks:      Sched. 1x:  TODO Plain scheduled                          :home::
+  tasks:      Scheduled:  WAIT Waiting on someone                       :home::
+  tasks:      Scheduled:  CANCELLED Cancelled scheduled                 :home::
+  notes:      Scheduled:  TODO Untagged task
+  tasks:       6 d. ago:  TODO Deadline past                            :home::
+  tasks:      (2/3):  Conference                                        :home::
+  tasks:      In   2 d.:  NEXT Deadline this week           :home::work:urgent:
+  tasks:      In   5 d.:  TODO Deadline soon                            :home::
+  tasks:      In  19 d.:  TODO Deadline own warning                     :home::
+  notes:      Scheduled:  TODO [#C] Low priority
+=== end
+=== todo
+Global list of TODO items of type: ALL
+  tasks:      TODO Plain scheduled                                      :home::
+  tasks:      TODO Scheduled with time                                  :home::
+  tasks:      TODO Overdue scheduled                               :home::work:
+  tasks:      TODO Deadline soon                                        :home::
+  tasks:      TODO Deadline far                                         :home::
+  tasks:      TODO Deadline past                                        :home::
+  tasks:      TODO Deadline own warning                                 :home::
+  tasks:      NEXT Deadline this week                       :home::work:urgent:
+  tasks:      TODO Weekly repeat                                        :home::
+  tasks:      TODO Daily restart                                        :home::
+  tasks:      TODO Delayed scheduled                                    :home::
+  tasks:      WAIT Waiting on someone                                   :home::
+  tasks:      TODO Inactive only                                        :home::
+  tasks:      TODO Unscheduled                                          :home::
+  tasks:      TODO Child inherits                                  :home:proj::
+  tasks:      TODO Child with body stamp                           :home:proj::
+  tasks:      TODO Logged                                               :home::
+  notes:      TODO Untagged task
+  notes:      TODO Tagged task                                           :work:
+  errands:    TODO Second untagged
+  notes:      TODO Call Ana at 15:30
+  notes:      TODO [#C] Low priority
+=== end
+=== match work
+Headlines with TAGS match: work
+  tasks:      TODO Overdue scheduled                               :home::work:
+  tasks:      NEXT Deadline this week                       :home::work:urgent:
+  notes:      TODO Tagged task                                           :work:
+  notes:      DONE Done work                                             :work:
+=== end
+=== untagged
+Untagged tasks
+  notes:      TODO Untagged task
+  errands:    TODO Second untagged
+  notes:      TODO Call Ana at 15:30
+  notes:      TODO [#C] Low priority
+=== end
+=== month
+Month-agenda (W40-W44):
+Thursday    1 October 2026
+               8:00...... ----------------
+              10:00...... ----------------
+              12:00...... ----------------
+  tasks:      14:00-15:00 Meeting                                       :home::
+              14:00...... ----------------
+  notes:      15:30...... Scheduled:  TODO Call Ana at
+              16:00...... ----------------
+              18:00...... ----------------
+              20:00...... ----------------
+  tasks:      Scheduled:  [#A] TODO Priority task                       :home::
+  tasks:      Sched.11x:  TODO Overdue scheduled                   :home::work:
+  tasks:      Sched.10x:  TODO Weekly repeat                            :home::
+  tasks:      Sched. 4x:  TODO Delayed scheduled                        :home::
+  tasks:      Sched. 2x:  TODO Daily restart                            :home::
+  tasks:      Sched. 1x:  TODO Plain scheduled                          :home::
+  tasks:      Scheduled:  WAIT Waiting on someone                       :home::
+  tasks:      Scheduled:  CANCELLED Cancelled scheduled                 :home::
+  notes:      Scheduled:  TODO Untagged task
+  tasks:       6 d. ago:  TODO Deadline past                            :home::
+  tasks:      (2/3):  Conference                                        :home::
+  tasks:      In   2 d.:  NEXT Deadline this week           :home::work:urgent:
+  tasks:      In   5 d.:  TODO Deadline soon                            :home::
+  tasks:      In  19 d.:  TODO Deadline own warning                     :home::
+  notes:      Scheduled:  TODO [#C] Low priority
+Friday      2 October 2026
+  tasks:       9:30...... Scheduled:  TODO Scheduled with time          :home::
+  tasks:      Scheduled:  TODO Daily restart                            :home::
+  tasks:      Scheduled:  TODO Child inherits                      :home:proj::
+  tasks:      (3/3):  Conference                                        :home::
+Saturday    3 October 2026
+  tasks:      10:00...... TODO Child with body stamp               :home:proj::
+  tasks:      12:00...... Deadline:   NEXT Deadline this week :home::work:urgent:
+  tasks:      Scheduled:  TODO Daily restart                            :home::
+Sunday      4 October 2026
+  tasks:      Scheduled:  TODO Daily restart                            :home::
+  notes:      Not a task
+Monday      5 October 2026 W41
+  tasks:       8:00...... Repeating event                               :home::
+  tasks:      Scheduled:  TODO Weekly repeat                            :home::
+  tasks:      Scheduled:  TODO Daily restart                            :home::
+Tuesday     6 October 2026
+  tasks:      Scheduled:  TODO Daily restart                            :home::
+  tasks:      Deadline:   TODO Deadline soon                            :home::
+Wednesday   7 October 2026
+  tasks:      Scheduled:  TODO Daily restart                            :home::
+Thursday    8 October 2026
+  tasks:      Scheduled:  TODO Daily restart                            :home::
+Friday      9 October 2026
+  tasks:      Scheduled:  TODO Daily restart                            :home::
+Saturday   10 October 2026
+  tasks:      Scheduled:  TODO Daily restart                            :home::
+Sunday     11 October 2026
+  tasks:      Scheduled:  TODO Daily restart                            :home::
+Monday     12 October 2026 W42
+  tasks:       8:00...... Repeating event                               :home::
+  tasks:      Scheduled:  TODO Weekly repeat                            :home::
+  tasks:      Scheduled:  TODO Daily restart                            :home::
+Tuesday    13 October 2026
+  tasks:      Scheduled:  TODO Daily restart                            :home::
+Wednesday  14 October 2026
+  tasks:      Scheduled:  TODO Daily restart                            :home::
+Thursday   15 October 2026
+  tasks:      Scheduled:  TODO Daily restart                            :home::
+Friday     16 October 2026
+  tasks:      Scheduled:  TODO Daily restart                            :home::
+Saturday   17 October 2026
+  tasks:      Scheduled:  TODO Daily restart                            :home::
+Sunday     18 October 2026
+  tasks:      Scheduled:  TODO Daily restart                            :home::
+Monday     19 October 2026 W43
+  tasks:       8:00...... Repeating event                               :home::
+  tasks:      Scheduled:  TODO Weekly repeat                            :home::
+  tasks:      Scheduled:  TODO Daily restart                            :home::
+Tuesday    20 October 2026
+  tasks:      Scheduled:  TODO Daily restart                            :home::
+  tasks:      Deadline:   TODO Deadline own warning                     :home::
+Wednesday  21 October 2026
+  tasks:      Scheduled:  TODO Daily restart                            :home::
+Thursday   22 October 2026
+  tasks:      Scheduled:  TODO Daily restart                            :home::
+Friday     23 October 2026
+  tasks:      Scheduled:  TODO Daily restart                            :home::
+Saturday   24 October 2026
+  tasks:      Scheduled:  TODO Daily restart                            :home::
+Sunday     25 October 2026
+  tasks:      Scheduled:  TODO Daily restart                            :home::
+Monday     26 October 2026 W44
+  tasks:       8:00...... Repeating event                               :home::
+  tasks:      Scheduled:  TODO Weekly repeat                            :home::
+  tasks:      Scheduled:  TODO Daily restart                            :home::
+Tuesday    27 October 2026
+  tasks:      Scheduled:  TODO Daily restart                            :home::
+Wednesday  28 October 2026
+  tasks:      Scheduled:  TODO Daily restart                            :home::
+Thursday   29 October 2026
+  tasks:      Scheduled:  TODO Daily restart                            :home::
+Friday     30 October 2026
+  tasks:      Scheduled:  TODO Daily restart                            :home::
+Saturday   31 October 2026
+  tasks:      Scheduled:  TODO Daily restart                            :home::
+=== end

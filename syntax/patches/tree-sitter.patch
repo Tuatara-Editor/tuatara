@@ -1,0 +1,58 @@
+diff --git a/lib/src/lexer.c b/lib/src/lexer.c
+index 1709c41..68f48d8 100644
+--- a/lib/src/lexer.c
++++ b/lib/src/lexer.c
+@@ -253,7 +253,17 @@ static void ts_lexer__do_advance(Lexer *self, bool skip) {
+ // chunk of source code if needed.
+ static void ts_lexer__advance(TSLexer *_self, bool skip) {
+   Lexer *self = (Lexer *)_self;
+-  if (!self->chunk) return;
++  if (!self->chunk) {
++    // At the end of the text, an external scanner that advances until some
++    // character comes, or a line begins, would wait for ever (a loop that
++    // forgets to check eof). After very many advances there, show it every
++    // character in turn, and its column as 0, so that what it waits for
++    // comes and the parse goes on.
++    if (++self->advances_at_end > (1u << 20)) {
++      self->data.lookahead = (int32_t)(self->advances_at_end % 128);
++    }
++    return;
++  }
+ 
+   if (skip) {
+     LOG("skip", self->data.lookahead)
+@@ -293,6 +303,10 @@ static void ts_lexer__mark_end(TSLexer *_self) {
+ static uint32_t ts_lexer__get_column(TSLexer *_self) {
+   Lexer *self = (Lexer *)_self;
+ 
++  // a scanner advancing at the end of the text until a line begins: see
++  // ts_lexer__advance
++  if (self->advances_at_end > (1u << 20)) return 0;
++
+   self->did_get_column = true;
+ 
+   if (!self->column_data.valid) {
+@@ -400,6 +414,11 @@ void ts_lexer_reset(Lexer *self, Length position) {
+ }
+ 
+ void ts_lexer_start(Lexer *self) {
++  if (self->advances_at_end) {
++    // the end of the text reads as the end again
++    self->advances_at_end = 0;
++    if (!self->chunk) self->data.lookahead = '\0';
++  }
+   self->token_start_position = self->current_position;
+   self->token_end_position = LENGTH_UNDEFINED;
+   self->data.result_symbol = 0;
+diff --git a/lib/src/lexer.h b/lib/src/lexer.h
+index 7f451e3..68cbdc4 100644
+--- a/lib/src/lexer.h
++++ b/lib/src/lexer.h
+@@ -31,6 +31,7 @@ typedef struct {
+   uint32_t chunk_start;
+   uint32_t chunk_size;
+   uint32_t lookahead_size;
++  uint32_t advances_at_end;
+   bool did_get_column;
+   ColumnData column_data;
+ 

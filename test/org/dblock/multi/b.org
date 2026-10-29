@@ -1,0 +1,14 @@
+#+TITLE: B file
+* Project B
+:PROPERTIES:
+:CLIENT:   Acme
+:END:
+** Task B1 [1/2]
+SCHEDULED: <2026-10-06 Tue>
+:LOGBOOK:
+CLOCK: [2026-09-30 Wed 14:00]--[2026-09-30 Wed 16:00] =>  2:00
+:END:
+*** Deep B
+:LOGBOOK:
+CLOCK: [2026-09-30 Wed 16:00]--[2026-09-30 Wed 16:20] =>  0:20
+:END:

@@ -1,0 +1,9 @@
+#+title: Case headings
+#+identifier: 20260301T100400
+
+* As headings
+#+BEGIN: denote-files-as-headings :regexp "==1" :sort-by-component signature
+#+END:
+* With links, no tags
+#+BEGIN: denote-files-as-headings :regexp "beta\\|epsilon\\|_md" :add-links t :exclude-tags t
+#+END:

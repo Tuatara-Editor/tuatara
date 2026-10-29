@@ -1,0 +1,14 @@
+#+title: Case missing
+#+identifier: 20260301T100100
+
+Already linked: [[denote:20260101T090000][Alpha root]] and [[denote:20260108T090000]].
+
+#+BEGIN: denote-missing-links :regexp "_alpha"
+- [[denote:20260102T090000][1=1  Beta child]]
+- [[denote:20260106T090000][zeta-markdown]]
+#+END:
+
+#+BEGIN: denote-missing-links :regexp "_alpha" :sort-by-component title :include-date t
+- [[denote:20260102T090000][Beta child (2026-01-02)]]
+- [[denote:20260106T090000][zeta-markdown (2026-01-06)]]
+#+END:

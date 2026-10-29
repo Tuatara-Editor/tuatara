@@ -1,0 +1,20 @@
+#+CATEGORY: notes
+* TODO Untagged task
+SCHEDULED: <2026-10-01 Thu>
+* TODO Tagged task :work:
+* TODO Second untagged
+:PROPERTIES:
+:CATEGORY: errands
+:EFFORT: 0:30
+:END:
+* Not a task
+<2026-10-04 Sun>
+* COMMENT Commented
+SCHEDULED: <2026-10-01 Thu>
+* TODO Archived :ARCHIVE:
+SCHEDULED: <2026-10-01 Thu>
+* DONE Done work :work:
+* TODO Call Ana at 15:30
+SCHEDULED: <2026-10-01 Thu>
+* TODO [#C] Low priority
+SCHEDULED: <2026-10-01 Thu>
