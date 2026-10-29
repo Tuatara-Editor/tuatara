@@ -135,6 +135,18 @@ generate_parser \"$1\" \"$cli\" 2>&1; echo \"went on\"" (tools-script "grammar-b
         (true (stale-p)))))
   (true (search "image_stale \"$root\"" (uiop:read-file-string (tools-script "tuatara-tui.sh")))))
 
+(define-test (tools inside-says-what-is-missing)
+  ;; run on this system, a program that is not installed is said with what to install,
+  ;; after env and its NAME=VALUE words, as the package tests run sbcl; one that is runs
+  (flet ((inside (command)
+           (bash-output (format nil "export TUATARA_CONTAINER=no-such-toolbox-here; . '~a'; ~a 2>&1; echo \"exit $?\""
+                                (tools-script "inside.sh") command))))
+    (let ((said (inside "inside env TUATARA_SOURCE=/tmp no-such-program-here --load x")))
+      (true (search "No no-such-program-here on this system, and no toolbox called no-such-toolbox-here" said) "~a" said)
+      (true (search "HACKING.org" said))
+      (true (search "exit 127" said)))
+    (is string= (format nil "ran~%exit 0~%") (inside "inside env A=1 echo ran"))))
+
 (define-test (tools release-names-no-home-folder)
   ;; the release's program is built from a copy in a folder of its own, and refused
   ;; when it names this machine's home folder or user, which the check finds

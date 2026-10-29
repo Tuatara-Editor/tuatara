@@ -4,7 +4,10 @@
 # inside COMMAND...  runs COMMAND in the toolbox container named by
 # $TUATARA_CONTAINER (tuatara by default, made by tools/toolbox-setup.sh) when
 # that container exists and this is not already inside a container; else here,
-# with SBCL, the C compilers and the libraries installed on this system.
+# with SBCL, the C compilers and the libraries installed on this system. When
+# it runs here and the program COMMAND runs (after env and its NAME=VALUE
+# words) is not installed, it says so and where to find what is needed, and
+# returns 127, as the shell does.
 inside() {
   local name="${TUATARA_CONTAINER:-tuatara}"
   # grep -c reads to the end: -q would stop at the first match, and under the
@@ -13,6 +16,20 @@ inside() {
      [ "$(toolbox list --containers 2>/dev/null | grep -c "[[:space:]]${name}[[:space:]]")" != 0 ]; then
     toolbox run --container "$name" "$@"
   else
+    local program word
+    for word in "$@"; do
+      case "$word" in
+        env|*=*) ;;
+        *) program="$word"; break ;;
+      esac
+    done
+    if [ -n "${program:-}" ] && ! command -v "$program" >/dev/null; then
+      echo "No $program on this system, and no toolbox called $name to run it in." >&2
+      echo "Install what Tuatara's HACKING.org lists under \"What you need\" (SBCL, Quicklisp," >&2
+      echo "a C compiler, git and make), or on Fedora Atomic make the toolbox with" >&2
+      echo "tools/toolbox-setup.sh." >&2
+      return 127
+    fi
     "$@"
   fi
 }
