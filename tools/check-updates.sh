@@ -13,6 +13,11 @@
 #   - the SBCL build/tuatara was saved with against the newest release;
 #   - what tools/appimage.sh uses: appimagetool, the AppImage runtime and the
 #     list of libraries left out;
+#   - the GitHub Actions of .github/workflows/, each pinned to a commit with its
+#     version in a comment: that the version's tag still points at the commit
+#     (a tag moved is a sign of a takeover) and the newest release, asked of
+#     the repository by git ls-remote; one commented by a branch is compared
+#     with the branch's newest commit;
 #   - the Ubuntu, Fedora and Arch images of tools/containers.sh, whose digest
 #     changes with each rebuilt image (security updates), asked of the
 #     registry by skopeo.
@@ -231,6 +236,26 @@ version_line() {
   if [ -z "$3" ]; then printf '%s\t%s\t%s\n' "$1" "${2:-?}" "(not reachable)"
   elif [ "${2#v}" != "${3#v}" ] && [ "$(printf '%s\n%s\n' "${2#v}" "${3#v}" | sort -V | tail -1)" = "${3#v}" ]; then printf '%s\t%s\t%s\n' "$1" "${2:-?}" "$3"; fi
 }
+# the GitHub Actions the workflows use, a line as version_line writes for
+# each pinned to a tag that has moved or has a newer release, or to a commit
+# that is not the newest of its branch
+grep -rhoE 'uses: +[^ ]+@[0-9a-f]{40} +# .*' "$root/.github/workflows" | sed 's/^uses: *//' | sort -u |
+  while read -r reference _ comment; do
+    slug="${reference%@*}"; commit="${reference#*@}"
+    repository="https://github.com/$(cut -d/ -f1,2 <<<"$slug")"
+    if [[ "$comment" =~ ^v[0-9]+(\.[0-9]+)*$ ]]; then
+      refs="$(GIT_TERMINAL_PROMPT=0 timeout 60 git ls-remote --tags "$repository" 2>/dev/null || true)"
+      at="$(awk -v t="refs/tags/$comment" '$2 == t "^{}" { print $1; found = 1 } $2 == t && !found { plain = $1 } END { if (!found) print plain }' <<<"$refs")"
+      if [ -z "$refs" ]; then printf '%s\t%s\t%s\n' "action $slug" "$comment" "(not reachable)"
+      elif [ "$at" != "$commit" ]; then printf '%s\t%s\t%s\n' "action $slug" "$comment (${commit:0:12})" "tag now at ${at:0:12}"
+      fi
+      newest="$(newest_tag <<<"$refs")"
+      [ -z "$newest" ] || version_line "action $slug" "$comment" "$newest"
+    else
+      check_repository "action $slug" "$repository" "$commit"
+    fi
+  done > "$work/actions"
+
 {
   version_line "tree-sitter program" "$cli_pinned" "$cli_newest"
   cat "$work/ghostty"
@@ -241,6 +266,7 @@ version_line() {
   version_line "AppImage runtime" "$runtime_pinned" "$runtime_newest"
   cat "$work/excludelist"
   cat "$work/images"
+  cat "$work/actions"
 } > "$work/tools"
 
 table() { awk -F'\t' '{ printf "|"; for (i = 1; i <= NF; i++) printf " %s |", $i; printf "\n" }' "$1"; }
