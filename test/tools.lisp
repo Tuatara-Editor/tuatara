@@ -800,3 +800,45 @@ touch y && echo wrote-scratch; echo \"secret=${SECRET:-none}\"'"
 grep -qs host_secret src/parser.c && echo took-host || echo took-nothing" repo cli)
                   directory)))
         (true (search "took-nothing" out) "~a" out)))))
+
+(define-test (tools bundled-libraries-recorded)
+  ;; each library copied with its package, version and hash and the package's
+  ;; copyright file; dpkg knows a file under /lib where its real path is under
+  ;; /usr/lib; a library of no package, or a package without a copyright file,
+  ;; stops it
+  (with-test-directory (directory)
+    (flet ((script (name text)
+             (sb-posix:chmod (uiop:native-namestring (write-test-file directory name text)) #o755)))
+      (script "bin/dpkg"
+              (format nil "#!/bin/sh~%for file in \"$@\"; do [ \"$file\" = /lib/libfoo.so.1.0 ] && echo \"libfoo1:amd64: $file\" && exit 0; done~%exit 1~%"))
+      (script "bin/dpkg-query" (format nil "#!/bin/sh~%printf 1.2-3~%"))
+      (write-test-file directory "usr/lib/libfoo.so.1.0" "foo")
+      (write-test-file directory "usr/lib/libbar.so.2" "bar")
+      (write-test-file directory "docs/libfoo1/copyright" "License: LGPL-2.1+")
+      (uiop:run-program (list "ln" "-s" "libfoo.so.1.0" (uiop:native-namestring (merge-pathnames "usr/lib/libfoo.so.1" directory))))
+      (flet ((run (library)
+               (multiple-value-bind (out error status)
+                   (uiop:run-program
+                    (list "bash" (tools-script "bundle-libraries.sh") (uiop:native-namestring (merge-pathnames "out/" directory))
+                          (uiop:native-namestring (merge-pathnames library directory)))
+                    :output :string :error-output :string :ignore-error-status t
+                    :environment (list (format nil "PATH=~a:/usr/bin:/bin" (uiop:native-namestring (merge-pathnames "bin/" directory)))
+                                       (format nil "DOC_DIR=~a" (uiop:native-namestring (merge-pathnames "docs/" directory)))
+                                       (format nil "USR_ROOT=~a" (string-right-trim "/" (uiop:native-namestring (merge-pathnames "usr/" directory))))))
+                 (declare (ignore out))
+                 (values status error))))
+        (is = 0 (run "usr/lib/libfoo.so.1"))
+        (is equal (list (format nil "libfoo.so.1~Alibfoo1~A1.2-3" #\Tab #\Tab))
+            (mapcar (lambda (line) (subseq line 0 (position #\Tab line :from-end t)))
+                    (uiop:read-file-lines (merge-pathnames "out/lib.tsv" directory))))
+        (is = 64 (length (subseq (first (uiop:read-file-lines (merge-pathnames "out/lib.tsv" directory)))
+                                 (1+ (position #\Tab (first (uiop:read-file-lines (merge-pathnames "out/lib.tsv" directory))) :from-end t)))))
+        (true (probe-file (merge-pathnames "out/copyright/libfoo1.copyright" directory)))
+        (true (probe-file (merge-pathnames "out/lib/libfoo.so.1" directory)))
+        (multiple-value-bind (status error) (run "usr/lib/libbar.so.2")
+          (isnt = 0 status)
+          (true (search "belongs to no package" error)))
+        (delete-file (merge-pathnames "docs/libfoo1/copyright" directory))
+        (multiple-value-bind (status error) (run "usr/lib/libfoo.so.1")
+          (isnt = 0 status)
+          (true (search "has no copyright file" error)))))))

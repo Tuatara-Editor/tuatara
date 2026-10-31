@@ -6,7 +6,8 @@
 # (the package's Debian copyright file, one for each package) and lib.tsv,
 # a line FILE<TAB>PACKAGE<TAB>VERSION<TAB>SHA-256 per library sorted by file.
 # A library no package owns, or whose package has no copyright file, stops it.
-# DOC_DIR (default /usr/share/doc) is where the copyright files are.
+# DOC_DIR (default /usr/share/doc) is where the copyright files are, USR_ROOT
+# (default /usr) the folder dpkg's /lib and /bin are under.
 # Usage: tools/bundle-libraries.sh OUTDIR LIBRARY...
 set -euo pipefail
 out="$1"
@@ -19,7 +20,7 @@ for path in "$@"; do
   cp -L "$path" "$out/lib/$name"
   real="$(readlink -f "$path")"
   # dpkg lists a file under /lib where the library's real path is under /usr/lib
-  package="$({ dpkg -S "$real" "${real#/usr}" 2>/dev/null || true; } | head -1 | sed 's/: .*//; s/:[a-z0-9]*$//')"
+  package="$({ dpkg -S "$real" "${real#"${USR_ROOT:-/usr}"}" 2>/dev/null || true; } | head -1 | sed 's/: .*//; s/:[a-z0-9]*$//')"
   [ -n "$package" ] || { echo "$path belongs to no package" >&2; exit 1; }
   [ -f "$docs/$package/copyright" ] || { echo "$package has no copyright file" >&2; exit 1; }
   cp -L "$docs/$package/copyright" "$out/copyright/$package.copyright"
