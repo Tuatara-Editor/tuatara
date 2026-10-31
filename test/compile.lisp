@@ -201,9 +201,9 @@ force; *compile* killed afterwards."
       (true (row-shown-in-face f "Compile failed, exit code 3" :compile-error)))))
 
 (define-test (compiling run-only-when-trusted)
-  ;; a project not trusted: asked first, the question saying all a yes allows, and with no nothing runs
+  ;; a project not trusted: asked first, the question saying all a yes allows, answered by one key; with n nothing runs
   (with-compile-session (dir (format nil "touch ran~%") :trusted nil)
-    (let ((f (auto-save-session (compile-steps dir (list :wait 0.1) "n RET" (said "Not run:")) :width 200)))
+    (let ((f (auto-save-session (compile-steps dir (list :wait 0.1) "n" (said "Not run:")) :width 200)))
       (true (tuatara.frontend.fake:fake-frame-showing-across-rows f "its language servers start by themselves"))
       (true (tuatara.frontend.fake:fake-frame-showing-across-rows f "git runs the programs it names"))
       (true (tuatara.frontend.fake:fake-frame-showing-across-rows f "its build commands run"))

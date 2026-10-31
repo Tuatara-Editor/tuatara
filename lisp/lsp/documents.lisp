@@ -825,7 +825,7 @@ never given to a server, nor one that is not all UTF-8."
          (unserved (lsp-unserved-words buffer installed)))
     (if unserved
         (message "~a" unserved)
-        (when (every #'trust-project
+        (when (every #'trusted-when-asked-p
                      (remove-duplicates (mapcar #'first installed) :test #'string=))
           (let ((servers (lsp-connect buffer :start t)))
             (dolist (other tuatara.buffer:*buffers*)

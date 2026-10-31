@@ -23,9 +23,18 @@ or clashing."
                           (#\- "not checked out") (#\+ "at another commit") (#\U "clashing") (t "as recorded")))))
 
 (defun git-submodules (job top)
-  "On JOB's thread: the submodules of the repository at TOP (PARSE-GIT-SUBMODULES), none without a .gitmodules."
+  "On JOB's thread: the submodules of the repository at TOP (PARSE-GIT-SUBMODULES),
+none without a .gitmodules; in a repository looked at only, those its index
+records, not looked into (their own settings could name programs), each
+not looked into."
   (and (tuatara.io:path-kind (concatenate 'string top ".gitmodules") :follow nil)
-       (parse-git-submodules (git-job-output job top (list "submodule" "status")))))
+       (if (project-look-only-reason top)
+           (loop for entry in (uiop:split-string (git-job-output job top (list "ls-files" "--stage" "-z"))
+                                                 :separator (list (code-char 0)))
+                 for tab = (position #\Tab entry)
+                 when (and tab (uiop:string-prefix-p "160000 " entry))
+                   collect (list (subseq entry (1+ tab)) "not looked into"))
+           (parse-git-submodules (git-job-output job top (list "submodule" "status"))))))
 
 (defun git-ask-submodule (prompt top then)
   "Ask with PROMPT for a submodule of the repository at TOP (the one on

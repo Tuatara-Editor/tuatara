@@ -19,6 +19,11 @@
 ;;;; Git runs programs a repository names for itself (hooks on a commit,
 ;;;; filters as it compares files), so it is run only for a project you
 ;;;; trust, as language servers are: C-x g asks once for one not trusted.
+;;;; Answered look only, or for a repository that is, is in or holds an
+;;;; evidence folder, the status opens all the same, saying so at its top and
+;;;; in the mode line of each of its buffers: git only reads there and runs
+;;;; none of its programs (CALL-GIT-READING), and what would change the
+;;;; repository is shown dimmed in the menus and key hints and refused.
 
 (in-package #:tuatara.defaults)
 
@@ -194,10 +199,12 @@ wrong is said when it failed."
 commit's message or history, is for."
   (tuatara.buffer:buffer-local buffer 'git-top))
 
-(defun git-trusted-p (top)
-  "True when git may run for the repository at TOP: a project trusted
-\(TRUST-PROJECT), asked once when it is not."
-  (trust-project top))
+(defun git-may-run-p (top)
+  "True when git may run for the repository at TOP: a project trusted, or
+looked at only, git then reading it alone (ASK-PROJECT-TRUST, asked once
+when it is neither; one that is, is in or holds an evidence folder is looked
+at only, not asked of)."
+  (ask-project-trust top))
 
 (defun git-repository ()
   "The top of the repository to act on: the current status's, log's or
@@ -205,7 +212,7 @@ commit message's, else that of the current file or folder when its project
 is trusted (asked once when it is not); NIL, said so, when there is none."
   (or (git-here)
       (let ((top (git-top-said (current-buffer))))
-        (and top (git-trusted-p top) top))))
+        (and top (git-may-run-p top) top))))
 
 (defun git-top-said (buffer)
   "The top of the repository BUFFER's file or folder is in (GIT-TOP); NIL,
@@ -878,8 +885,8 @@ entries (ENTRY-LINES), when it shows only some of them: how many more files
             (git-more-line line left *git-section-lines* "  ... ~:d more file~:p" (list :more section)))))))))
 
 (defun git-status-render (buffer &optional (point :keep))
-  "Fill BUFFER, a status, with its repository's state as last read: its head,
-then its sections (GIT-STATUS-SECTIONS), each under a heading saying how many
+  "Fill BUFFER, a status, with its repository's state as last read: why it
+is looked at only, when it is (GIT-LOOK-ONLY-LINE), its head, then its sections (GIT-STATUS-SECTIONS), each under a heading saying how many
 it holds and folded as in any list in sections (SECTIONED-PIECES)."
   (let ((state (tuatara.buffer:buffer-local buffer 'git-state))
         (shown (tuatara.buffer:buffer-local buffer 'git-shown))
@@ -887,6 +894,8 @@ it holds and folded as in any list in sections (SECTIONED-PIECES)."
                     (setf (tuatara.buffer:buffer-local buffer 'git-shown-limits) (make-hash-table :test 'equal)))))
     (multiple-value-bind (head-pieces head-entries)
         (entry-lines (lambda (line)
+                       (let ((looking (git-look-only-of buffer)))
+                         (when looking (funcall line (git-look-only-line looking) :git-look-only)))
                        (if state
                            (progn (mapc line (git-status-head-lines state)) (funcall line ""))
                            (funcall line "Reading the repository..."))))
@@ -932,7 +941,8 @@ stashes, run from the editor or from anywhere else.")
 (defun git-refresh-status (buffer)
   "Read BUFFER's repository again in the background, with the changes of the
 files it shows them of, and show it once read; a file with no changes left in
-its section shows none. The stamps of git's own files are kept, and the
+its section shows none; whether it is looked at only is looked at again
+too. The stamps of git's own files are kept, and the
 folders they are in watched, for GIT-WATCH-TICK to see when the repository
 changes."
   (let ((top (tuatara.buffer:buffer-local buffer 'git-top))
@@ -941,7 +951,8 @@ changes."
         (folder (tuatara.buffer:buffer-local buffer 'git-folder))
         (previous (tuatara.buffer:buffer-local buffer 'git-state)))
     (setf (tuatara.buffer:buffer-local buffer 'git-reading) t
-          (tuatara.buffer:buffer-local buffer 'git-read-at) (get-internal-real-time))
+          (tuatara.buffer:buffer-local buffer 'git-read-at) (get-internal-real-time)
+          (tuatara.buffer:buffer-local buffer 'git-look-only) (project-look-only-reason top))
     (start-git-job "Reading the repository"
                    (lambda (job)
                      (let* ((folder (or folder (git-folder job top)))
@@ -1044,8 +1055,9 @@ it ignores folded away."
 
 (defun git-show-status (top)
   "Show the status of the repository or worktree at TOP, asking first
-whether you trust it when its project is not trusted."
-  (when (git-trusted-p top)
+whether you trust it when its project is not trusted; looked at only, it
+says so at its top (GIT-LOOK-ONLY-LINE)."
+  (when (git-may-run-p top)
     (let ((buffer (git-status-buffer top)))
       (git-status-render buffer 0)
       (show-buffer buffer)
@@ -1055,7 +1067,10 @@ whether you trust it when its project is not trusted."
   "Show the state of the git repository the current file (or folder) is in:
 the branch, the files not tracked, changed and staged, the latest commits;
 \\[describe-bindings] there lists its keys. Asks first whether you trust a
-project not trusted: git runs programs it names."
+project not trusted, git running programs it names: y trusts it, l looks
+only (git reads it and runs nothing of it, and what would change it is
+dimmed and refused), n shows nothing. A repository that is, is in or holds
+an evidence folder is looked at only at once; \\[trust-project] asks again."
   (let ((top (git-top-said (current-buffer))))
     (when top (git-show-status top))))
 
@@ -1461,7 +1476,7 @@ point, as git has the file on disk, in the background."
          (line (git-line-of buffer (tuatara.buffer:buffer-point buffer))))
     (cond ((null top))
           ((tuatara.buffer:buffer-modified-p buffer) (message "Save it first: git takes the hunk from the file on disk"))
-          ((git-trusted-p top)
+          ((git-may-run-p top)
            (start-git-job (if (eq how :stage) "Staging" "Unstaging")
                           (lambda (job)
                             (let* ((folder (tuatara.io:parent-path file))
@@ -1498,10 +1513,12 @@ at point's line."
 ;;; Buffers of git's own
 
 (defun git-set-top (buffer top)
-  "Make BUFFER one of the repository at TOP: git acts there on it, and files
-asked for from it are looked for from its top."
+  "Make BUFFER one of the repository at TOP: git acts there on it, files
+asked for from it are looked for from its top, and why it is looked at
+only, when it is, is kept for its mode line (GIT-LOOK-ONLY-OF)."
   (setf (tuatara.buffer:buffer-local buffer 'git-top) top
-        (tuatara.buffer:buffer-local buffer :directory) top))
+        (tuatara.buffer:buffer-local buffer :directory) top
+        (tuatara.buffer:buffer-local buffer 'git-look-only) (project-look-only-reason top)))
 
 (defun git-edit-buffer (control top mode text line &rest locals)
   "Show in another window a new buffer of the repository at TOP to edit, named
@@ -1570,6 +1587,87 @@ however it ended, else the work only reads."
   (git-show-output "Reading the commit" top (list "show" "--no-color" "--no-ext-diff" "--stat" "--patch" "--end-of-options" hash)
                    (format nil "*git commit ~a*" (escape-controls hash))))
 
+;;; Looked at only
+
+(defparameter *git-look-only-commands*
+  '(git git-toggle-diff git-next-section git-previous-section git-visit git-toggle-full-menus git-run-command
+    git-blame git-blame-show git-diff-file git-stash-show git-worktree-status
+    git-log git-log-other git-log-branches git-log-all git-log-file git-reflog git-log-show git-show-refs git-refs-log
+    git-diff git-diff-staged git-diff-unstaged git-diff-revision git-diff-range git-diff-commit
+    git-rewind git-rewind-older git-rewind-newer git-rewind-to git-rewind-show-commit git-rewind-copy-hash)
+  "The git commands that only read, run in a repository looked at only as
+anywhere; its menus open there too. Every other command whose name begins
+with git- is refused there and dimmed in its menus and key hints
+\(GIT-LOOK-ONLY-REFUSAL).")
+
+(defun git-look-only-of (buffer)
+  "Why the repository BUFFER, a git buffer, is for is looked at only, a
+phrase, as it was last looked at (on making the buffer, at each reading of a
+status, and when \\[trust-project] answers anew); NIL when it is not."
+  (tuatara.buffer:buffer-local buffer 'git-look-only))
+
+(defun git-look-only-line (why)
+  "The line at the top of a status of a repository looked at only for WHY, a
+phrase: that it is, why, and what that means."
+  (format nil "Look only: ~a. Git reads this repository and runs nothing of it; what would change it is dimmed~:[~; (~a trusts it)~]"
+          why (string= why "it is not trusted") (substitute-command-keys "\\[trust-project]")))
+
+(defun git-look-only-mode-line (editor buffer)
+  "Mode line function, just before the buffer's name: Look only, in
+:mode-line-look-only, in every git buffer of a repository looked at only."
+  (declare (ignore editor))
+  (and (git-look-only-of buffer) (list " Look only " :mode-line-look-only)))
+
+(defun git-command-p (command)
+  "True when COMMAND is one of git's: its name begins with git- or is git."
+  (let ((name (symbol-name command)))
+    (and (eq (symbol-package command) (find-package '#:tuatara.defaults))
+         (or (string= name "GIT") (uiop:string-prefix-p "GIT-" name)))))
+
+(defun git-look-only-refusal (command buffer)
+  "What to say instead of running COMMAND in BUFFER when it is a git command
+that changes a repository (not of *GIT-LOOK-ONLY-COMMANDS*, nor a menu) and
+BUFFER is of a repository looked at only: a git buffer of one, or a file or
+folder in one; else NIL."
+  (when (and (git-command-p command)
+             (not (member command *git-look-only-commands*))
+             (not (menu-named command)))
+    (multiple-value-bind (why top) (git-look-only-here buffer)
+      (and why
+           (format nil "~(~a~) is not run: ~a is looked at only (~a), and git only reads there"
+                   command (abbreviated-path top) why)))))
+
+(defun git-look-only-here (buffer)
+  "Why the repository BUFFER is of, a git buffer's (GIT-LOOK-ONLY-OF) or the
+one its file or folder is in, is looked at only, a phrase, and its top, as
+two values; NIL when it is not. For a buffer not of git, looked at once a
+second at most, for the menus, key hints and M-x ask it of many commands
+at a time."
+  (if (git-here buffer)
+      (values (git-look-only-of buffer) (git-here buffer))
+      (let ((seen (tuatara.buffer:buffer-local buffer 'git-look-only-seen))
+            (now (get-internal-real-time)))
+        (if (and seen (< (- now (first seen)) internal-time-units-per-second))
+            (values (third seen) (second seen))
+            (let* ((top (git-top buffer))
+                   (why (and top (project-look-only-reason top))))
+              (setf (tuatara.buffer:buffer-local buffer 'git-look-only-seen) (list now top why))
+              (values why top))))))
+
+(defun git-trust-changed (root)
+  "After whether the project at ROOT is trusted was answered anew: each git
+buffer of a repository there looks again whether it is looked at only, and
+each status shown reads its repository again."
+  (let ((real (real-folder root)))
+    (dolist (buffer tuatara.buffer:*buffers*)
+      (setf (tuatara.buffer:buffer-local buffer 'git-look-only-seen) nil)
+      (let ((top (git-here buffer)))
+        (when (and top real (equal (real-folder top) real))
+          (setf (tuatara.buffer:buffer-local buffer 'git-look-only) (project-look-only-reason top))
+          (when (typep (buffer-major-mode buffer) 'git-status-mode)
+            (git-status-render buffer)
+            (git-refresh-status buffer)))))))
+
 (commands-for-mode 'git-status-mode "a repository's status (\\[git])"
                    'git-stage 'git-unstage 'git-reverse 'git-toggle-diff 'git-next-section 'git-previous-section
                    'git-visit 'git-toggle-full-menus 'list-toggle-fold 'list-toggle-all-folds)
@@ -1580,11 +1678,16 @@ however it ended, else the work only reads."
   "Bind \\`C-x g' to \\[git] and the keys of its status (j and k left to move
 by lines, h to close and l to visit, as in every list); and let a save, and
 git run from anywhere, look at its repository again (GIT-WATCH-TICK), the
-folders of git's own files watched on disk for it."
+folders of git's own files watched on disk for it. A repository looked at
+only says so in its buffers' mode lines, refuses what would change it, and
+is looked at again when \\[trust-project] answers anew."
   (define-key *global-keymap* "C-x g" 'git)
   (define-keys *git-status-keymap* '(("s" git-stage) ("u" git-unstage) ("x" git-reverse) ("TAB" git-toggle-diff)
                                      ("RET" git-visit) ("l" git-visit) ("h" quit-window)
                                      ("n" git-next-section) ("p" git-previous-section) ("S-TAB" list-toggle-all-folds)))
   (pushnew 'git-after-save *after-save-functions*)
+  (pushnew 'git-look-only-mode-line *mode-line-name-functions*)
+  (pushnew 'git-look-only-refusal *command-refusal-functions*)
+  (pushnew 'git-trust-changed *trust-changed-functions*)
   (pushnew 'git-watch-tick *tick-functions*)
   (follow-directories-for 'git-watched-folders 'git-folders-changed))

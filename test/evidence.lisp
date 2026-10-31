@@ -780,22 +780,17 @@ cases/2026-0001/work/ (WORK), each bound to its native name ending in /."
           (is string= "kept as found" (file-text copy)))))))
 
 (define-test (evidence git-refused-in-one-sentence)
-  ;; holding evidence never trusts a repository for git; a refused write is said in one sentence
+  ;; holding evidence never trusts a repository for git: it is looked at only, said at once; a refused write is said in one sentence
   (with-case-folder (root evidence work)
     (scratch-repository root)
     (put-file (concatenate 'string work "notes.txt") "notes")
     (with-evidence-folders (`(,(concatenate 'string root "cases/*/evidence/")))
       (wait-for-evidence-links)
       (false (tuatara.defaults::project-trusted-p root))
-      (flet ((statuses ()
-               (remove-if-not (lambda (b) (typep (tuatara.defaults::buffer-major-mode b) 'tuatara.defaults::git-status-mode))
-                              tuatara.buffer:*buffers*)))
-        ;; the statuses other tests left are theirs: no new one is made
-        (let ((before (statuses)))
-          (true (tuatara.frontend.fake:fake-frame-showing
-                 (run-keys "C-x g" :file (concatenate 'string work "notes.txt") :width 400 :height 20)
-                 "is not trusted: "))
-          (false (set-difference (statuses) before))))
+      (let ((f (run-keys "C-x g" :file (concatenate 'string work "notes.txt") :width 400 :height 20)))
+        (true (tuatara.frontend.fake:fake-frame-showing f "Look only: "))
+        (true (tuatara.frontend.fake:fake-frame-showing f "is an evidence folder (*evidence-folders*: "))
+        (false (tuatara.frontend.fake:fake-frame-showing f "Trust ")))
       (handler-case (progn (tuatara.defaults::run-git root '("checkout" "--" ".")) (false t))
         (tuatara.io:writing-refused (e)
           (let ((words (princ-to-string e)))

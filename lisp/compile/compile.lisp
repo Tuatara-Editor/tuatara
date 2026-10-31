@@ -1003,9 +1003,9 @@ comes, the list of places in force then."
 
 (defun compile-in (command directory)
   "Run COMMAND in DIRECTORY (START-COMPILE) once the project there is trusted
-to run its own programs, asking when it is not (TRUST-PROJECT); with no,
+to run its own programs, asking when it is not (TRUSTED-WHEN-ASKED-P); with no,
 nothing runs."
-  (if (trust-project directory)
+  (if (trusted-when-asked-p directory)
       (start-compile command directory)
       (message "Not run: ~a is not trusted to run its build commands" (abbreviated-path directory))))
 

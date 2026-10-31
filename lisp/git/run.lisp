@@ -251,15 +251,26 @@ on its standard input. With SECONDS, git is ended once it has run that long,
 as if stopped. Git printing more octets than LIMIT (*PROGRAM-OUTPUT-LIMIT* when it is
 NIL), or with LINE a line longer than that, is ended, NIL and NIL given,
 and true as a third value. NIL, and no process at all, when
-DIRECTORY is in no repository (REPOSITORY-TOP), in one within an evidence
-folder (*EVIDENCE-FOLDERS*), where git would write in its .git, or when git
-is not found (FIND-PROGRAM)."
-  (let ((git (tuatara.io:find-program "git"))
-        (top (ignore-errors (repository-top directory))))
-    (unless (and git top (not (evidence-path-p top)))
-      (return-from run-git (values nil nil)))
-    (run-git-program git directory arguments :cancel cancel :line line :environment environment :errors errors :input input
-                                             :seconds seconds :limit limit)))
+DIRECTORY is in no repository (REPOSITORY-TOP), or when git is not found
+\(FIND-PROGRAM). In a repository looked at only (PROJECT-LOOK-ONLY-REASON:
+answered so, or one that is, is in or holds an evidence folder), git only
+reads and runs none of its programs (CALL-GIT-READING): a command that
+would do more is refused, GIT-REFUSED signalled."
+  (let* ((git (tuatara.io:find-program "git"))
+         (top (ignore-errors (repository-top directory)))
+         (looking (and git top (project-look-only-reason top))))
+    (cond ((not (and git top)) (values nil nil))
+          (looking
+           (handler-case
+               (call-git-reading git top arguments
+                                 (lambda (arguments looking-environment)
+                                   (run-git-program git directory arguments :cancel cancel :line line :errors errors :input input
+                                                                            :seconds seconds :limit limit :reading t
+                                                                            :environment (append looking-environment environment))))
+             (git-refused (e) (error e))
+             (error () (values nil nil))))
+          (t (run-git-program git directory arguments :cancel cancel :line line :environment environment :errors errors :input input
+                                                      :seconds seconds :limit limit)))))
 
 (defun git-object-name (revision path)
   "How git names the file or folder PATH of REVISION (a commit's hash, HEAD):
@@ -284,19 +295,21 @@ third when it was more than LIMIT octets."
   "The most octets of what git says on its error output kept, to say why it
 failed (RUN-GIT with ERRORS); the rest is read and let go.")
 
-(defun run-git-program (git directory arguments &key cancel line environment errors input seconds limit)
+(defun run-git-program (git directory arguments &key cancel line environment errors input seconds limit reading)
   "Run the program GIT as RUN-GIT runs git, once it has found it. A command
 that would write in the working files of a repository holding an evidence
 folder is refused, never run (CHECK-GIT-WRITING); in a repository holding
-one, git runs no hook of the repository's (core.hooksPath=/dev/null). The
-options of *GIT-SAFETY* come after any of ARGUMENTS' own before its command,
-so that they are the ones in force."
+one, git runs no hook of the repository's (core.hooksPath=/dev/null). With
+READING, ARGUMENTS only read, made so by CALL-GIT-READING, and nothing is
+looked at. The options of *GIT-SAFETY* come after any of ARGUMENTS' own
+before its command, so that they are the ones in force."
   (let* ((limit (or limit *program-output-limit*))
          (words (git-command-words arguments))
          (leading (ldiff arguments words))
          ;; the editor's own options after yours, so that they are the ones in force
          (arguments (append leading (git-safety arguments)
-                            (and (check-git-writing directory arguments environment)
+                            (and (not reading)
+                                 (check-git-writing directory arguments environment)
                                  (list "-c" "core.hooksPath=/dev/null"))
                             words)))
     (handler-case
