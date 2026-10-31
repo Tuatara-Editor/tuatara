@@ -15,7 +15,7 @@
 #     list of libraries left out;
 #   - the GitHub Actions of .github/workflows/, each pinned to a commit with its
 #     version in a comment: that the version's tag still points at the commit
-#     (a tag moved is a sign of a takeover) and the newest release, asked of
+#     (a tag moved or gone is a sign of a takeover) and the newest release, asked of
 #     the repository by git ls-remote; one commented by a branch is compared
 #     with the branch's newest commit;
 #   - the Ubuntu, Fedora and Arch images of tools/containers.sh, whose digest
@@ -247,6 +247,7 @@ grep -rhoE 'uses: +[^ ]+@[0-9a-f]{40} +# .*' "$root/.github/workflows" | sed 's/
       refs="$(GIT_TERMINAL_PROMPT=0 timeout 60 git ls-remote --tags "$repository" 2>/dev/null || true)"
       at="$(awk -v t="refs/tags/$comment" '$2 == t "^{}" { print $1; found = 1 } $2 == t && !found { plain = $1 } END { if (!found) print plain }' <<<"$refs")"
       if [ -z "$refs" ]; then printf '%s\t%s\t%s\n' "action $slug" "$comment" "(not reachable)"
+      elif [ -z "$at" ]; then printf '%s\t%s\t%s\n' "action $slug" "$comment (${commit:0:12})" "tag gone"
       elif [ "$at" != "$commit" ]; then printf '%s\t%s\t%s\n' "action $slug" "$comment (${commit:0:12})" "tag now at ${at:0:12}"
       fi
       newest="$(newest_tag <<<"$refs")"
