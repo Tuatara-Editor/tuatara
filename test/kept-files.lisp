@@ -526,3 +526,33 @@ those left out written empty, then a field of its own."
                  (/ (- (sb-ext:get-bytes-consed) before) 100))))))
     (let ((few (octets-a-count 1000)) (many (octets-a-count 20000)))
       (true (< (- many few) 1024) "~,1f octets a count of 20000, ~,1f of 1000" many few))))
+
+(define-test (kept-files fold-is-exact)
+  ;; changes waiting for a file made fewer do just what they did in turn, the limit's cuts too
+  (let ((list tuatara.defaults::*chosen-paths*))
+    (flet ((both (disk changes)
+             (values (tuatara.defaults::apply-state-changes list disk changes)
+                     (tuatara.defaults::apply-state-changes
+                      list disk (reverse (mapcar #'cdr (tuatara.defaults::compact-state-changes
+                                                         list (reverse (mapcar (lambda (c) (cons "f" c)) changes)))))))))
+      (multiple-value-bind (in-turn folded) (both '("/0" "/3") '((:put ("/1") 2) (:drop ("/0"))))
+        (is equal '("/1") in-turn)
+        (is equal in-turn folded))
+      (let ((*random-state* (sb-ext:seed-random-state 5)) (wrong 0))
+        (dotimes (trial 2000)
+          (flet ((path () (format nil "/~d" (random 6))))
+            (let* ((most (1+ (random 4)))
+                   (disk (remove-duplicates (loop repeat (random 6) collect (path)) :test #'string= :from-end t))
+                   (changes (loop repeat (1+ (random 12))
+                                  collect (case (random 3)
+                                            (0 (list :put (remove-duplicates (list (path) (path)) :test #'string=) most))
+                                            (1 (list :replace (list (path))))
+                                            (2 (list :drop (list (path))))))))
+              (multiple-value-bind (in-turn folded) (both disk changes)
+                (unless (equal in-turn folded) (incf wrong))))))
+        (is = 0 wrong "~d of 2000 folded otherwise" wrong)))))
+
+(define-test (kept-files at-sources-refused)
+  ;; a package's source never begins as a line of a new kind does
+  (fail (tuatara.defaults::check-package-where "@later/source"))
+  (finish (tuatara.defaults::check-package-where "https://example.org/tools.git")))

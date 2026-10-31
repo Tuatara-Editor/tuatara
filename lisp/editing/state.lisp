@@ -291,17 +291,19 @@ as they were."
 \(:PUT NEW MOST), NEW put first, those of ENTRIES with one of their keys taken
 out, and at most MOST kept (all when MOST is NIL); (:REPLACE NEW), each entry
 with the key of one of NEW that one instead, where it stands, those not there
-left out; or (:DROP PATHS), the entries about PATHS taken out. UNREAD, lines
-of LIST's file that make no entry, lose those about the paths each change is
-about (STATE-LINE-KEY); what is left of them is the second value."
+left out; (:DROP PATHS), the entries about PATHS taken out; (:FORGET KEYS
+PATHS), the entries of KEYS taken out; or (:CUT N), the first N kept. UNREAD,
+lines of LIST's file that make no entry, lose those about the paths each
+change is about (STATE-LINE-KEY); what is left of them is the second value."
   (flet ((forget-unread (paths)
-           (when unread
+           (when (and unread paths)
              (setf unread (remove-if (lambda (line) (member (state-line-key list line) paths :test #'equal)) unread))))
          (paths-of (new) (mapcar (state-list-path-of list) new)))
     (dolist (change changes (values entries unread))
       (case (first change)
         ((:put :replace) (forget-unread (paths-of (second change))))
-        (:drop (forget-unread (second change))))
+        (:drop (forget-unread (second change)))
+        (:forget (forget-unread (third change))))
       (setf entries (apply-state-change list entries change)))))
 
 (defun apply-state-change (list entries change)
@@ -316,7 +318,11 @@ about (STATE-LINE-KEY); what is left of them is the second value."
                   (mapcar (lambda (entry) (or (find (key entry) new :key #'key :test #'equal) entry)) entries)))
       (:drop (let ((paths (second change)))
                (remove-if (lambda (entry) (member (funcall (state-list-path-of list) entry) paths :test #'equal))
-                          entries))))))
+                          entries)))
+      (:forget (let ((keys (second change)))
+                 (remove-if (lambda (entry) (member (key entry) keys :test #'equal)) entries)))
+      (:cut (let ((most (second change)))
+              (if (> (length entries) most) (subseq entries 0 most) entries))))))
 
 (defun changes-for (file changes)
   "The changes among CHANGES (each (FILE . CHANGE), the latest first) made to
@@ -410,35 +416,68 @@ could not be written."
         (and (ignore-errors (tuatara.io:path-stamp (tuatara.io:parent-path file))) :busy))))
 
 (defun compact-state-changes (list changes)
-  "CHANGES to one file of LIST, each (FILE . CHANGE), the latest first, as at
-most three doing what they all do, the latest first: one :PUT of the latest
-entry put for each key and not taken out since, one :REPLACE of the latest
-replacement for each key not put since, and one :DROP of every path taken
-out. Nothing is cut: there are no more of them than keys and paths named."
-  (let ((file (car (first changes))) (drop '()) (replace '()) (put '()) (most nil))
-    (flet ((key (entry) (state-entry-key list entry))
-           (path (entry) (funcall (state-list-path-of list) entry)))
+  "CHANGES to one file of LIST, each (FILE . CHANGE), the latest first, as
+fewer doing just what they do to any entries, the latest first. What they put
+is one :PUT, of the latest entry for each key still there; what they replace
+of what was there before, one :REPLACE; what they do to what was there
+before, the entries taken out (:DROP, :FORGET) and the cuts of the limit
+\(:CUT), in their order, those taken out between two cuts made one of each
+kind and a cut no smaller than the one before it left out, so that there are
+at most as many as the limit and the keys and paths named. Nothing is cut that
+the changes in turn would keep."
+  (let ((file (car (first changes)))
+        (front '()) (replace '()) (program '()) (gone-paths '()) (cut nil))
+    (labels ((key (entry) (state-entry-key list entry))
+             (path (entry) (funcall (state-list-path-of list) entry))
+             (without (entries test) (remove-if test entries))
+             (take-out (kind items paths)
+               ;; taken out of what was there before: one of each kind since the last cut
+               (setf gone-paths (union paths gone-paths :test #'equal))
+               (unless (eql cut 0)
+                 (let ((same (loop for change in program
+                                   until (eq (first change) :cut)
+                                   when (eq (first change) kind) return change)))
+                   (if same
+                       (setf (second same) (union items (second same) :test #'equal))
+                       (push (if (eq kind :forget) (list :forget items '()) (list :drop items)) program)))))
+             (cut-before (n)
+               ;; the first N of what was there before kept
+               (when (or (null cut) (< n cut))
+                 (setf cut n)
+                 (if (zerop n)
+                     (setf program (list (list :cut 0)))
+                     (push (list :cut n) program))))
+             (cut-all (n)
+               (if (>= (length front) n)
+                   (setf front (subseq front 0 n)
+                         ;; nothing of what was there before stays
+                         cut (progn (cut-before 0) 0))
+                   (cut-before (- n (length front)))))
+             (forget (keys paths)
+               (setf front (without front (lambda (entry) (member (key entry) keys :test #'equal)))
+                     replace (without replace (lambda (entry) (member (key entry) keys :test #'equal))))
+               (take-out :forget keys paths)))
       (dolist (change (reverse (mapcar #'cdr changes)))
         (ecase (first change)
-          (:drop (let ((paths (second change)))
-                   (setf put (remove-if (lambda (entry) (member (path entry) paths :test #'equal)) put)
-                         replace (remove-if (lambda (entry) (member (path entry) paths :test #'equal)) replace)
-                         drop (union paths drop :test #'equal))))
+          (:put (destructuring-bind (new most) (rest change)
+                  (forget (mapcar #'key new) (mapcar #'path new))
+                  (setf front (append new front))
+                  (when most (cut-all most))))
           (:replace (dolist (new (second change))
-                      (let ((at (position (key new) put :key #'key :test #'equal)))
-                        (if at
-                            (setf (nth at put) new)
-                            (setf replace (cons new (remove (key new) replace :key #'key :test #'equal)))))))
-          (:put (destructuring-bind (new limit) (rest change)
-                  (let ((keys (mapcar #'key new)))
-                    (setf most limit
-                          replace (remove-if (lambda (entry) (member (key entry) keys :test #'equal)) replace)
-                          put (append new (remove-if (lambda (entry) (member (key entry) keys :test #'equal)) put)))
-                    (when (and most (> (length put) most))
-                      (setf put (subseq put 0 most))))))))
-      (append (and put (list (cons file (list :put put most))))
-              (and replace (list (cons file (list :replace replace))))
-              (and drop (list (cons file (list :drop drop))))))))
+                      (if (find (key new) front :key #'key :test #'equal)
+                          (setf front (mapcar (lambda (entry) (if (equal (key entry) (key new)) new entry)) front))
+                          (setf replace (cons new (without replace (lambda (entry) (equal (key entry) (key new)))))))))
+          (:drop (let ((paths (second change)))
+                   (setf front (without front (lambda (entry) (member (path entry) paths :test #'equal)))
+                         replace (without replace (lambda (entry) (member (path entry) paths :test #'equal))))
+                   (take-out :drop paths paths)))
+          (:forget (forget (second change) (third change)))
+          (:cut (cut-all (second change)))))
+      (mapcar (lambda (change) (cons file change))
+              (append (and front (list (list :put front nil)))
+                      (and replace (list (list :replace replace)))
+                      program
+                      (and gone-paths (list (list :forget '() gone-paths))))))))
 
 (defun write-state-list (list)
   "Write the changes made to LIST and not yet written, each to its file; those

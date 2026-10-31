@@ -163,12 +163,15 @@ folder, is."
 (defun check-package-where (where)
   "Signal an error unless WHERE, a package's source, is an address or a folder
 named whole (/ or ~/ first): one named from the folder Tuatara starts in would
-be another folder at each start, and one that starts with - would be read by
-git as an option."
+be another folder at each start, one that starts with - would be read by git
+as an option, and a line of the lists of packages that starts with @ is of a
+kind a later release adds."
   (unless (and (stringp where) (plusp (length where)))
     (error "A package's source is an address or a folder: ~s" where))
   (when (char= (char where 0) #\-)
     (error "A package's source cannot start with -: ~s" where))
+  (when (char= (char where 0) #\@)
+    (error "A package's source cannot start with @: ~s" where))
   (when (char= (char where 0) #\.)
     (error "A package's folder is named whole, from / or ~~/: ~s" where))
   (when (cl-ppcre:scan "^[a-z][a-z0-9+.-]*://[^/@]*@" where)
