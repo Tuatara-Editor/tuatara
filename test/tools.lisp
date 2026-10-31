@@ -176,18 +176,129 @@ names_this_machine \"$1\" 2>/dev/null && echo yes || echo no" (tools-script "ins
              (let ((path (merge-pathnames name directory)))
                (ensure-directories-exist path)
                (with-open-file (o path :direction :output :if-exists :supersede) (write-string text o)))))
-      (file "syntax/grammars.tsv" (format nil "said	https://example.org/said	0	unknown~%unsaid	https://example.org/unsaid	0	unknown~%plain	https://example.org/plain	0	unknown"))
+      (file "syntax/grammars.tsv" (format nil "said	https://example.org/said	0	unknown~%unsaid	https://example.org/unsaid	0	unknown~%plain	https://example.org/plain	0	unknown~%handed	https://example.org/handed	0	unknown~%bare	https://example.org/bare	0	unknown"))
       (dolist (name '("said" "unsaid"))
         (file (format nil "build/grammar-sources/~a/COPYING" name)
               "GNU GENERAL PUBLIC LICENSE Version 3, 29 June 2007 ... either version 3 of the License, or (at your option) any later version."))
       (file "build/grammar-sources/said/package.json" "{\"license\": \"GPL-3.0-or-later\"}")
       (file "build/grammar-sources/unsaid/package.json" "{\"license\": \"GPL-3.0\"}")
       (file "build/grammar-sources/plain/LICENSE" "Permission is hereby granted, free of charge, to any person")
+      ;; a grammar taken over under the Affero GPL, the first author's
+      ;; licence kept below it in the same file
+      (file "build/grammar-sources/handed/LICENSE"
+            (format nil "GNU AFFERO GENERAL PUBLIC LICENSE~%Version 3, 19 November 2007~%...~%~
+                         Copyright (c) 2021 A. Kaikoura~%~%Permission to use, copy, modify, and/or distribute this software~%~
+                         for any purpose with or without fee is hereby granted, provided~%~
+                         that the above copyright notice and this permission notice~%appear in all copies.~%"))
+      (file "build/grammar-sources/handed/package.json" "{\"license\": \"AGPL-3.0-or-later\"}")
+      (file "build/grammar-sources/bare/LICENSE"
+            (format nil "Permission to use, copy, modify, and/or distribute this software for~%~
+                         any purpose with or without fee is hereby granted.~%~%THE SOFTWARE IS PROVIDED \"AS IS\" ..."))
       (uiop:run-program (list "python3" "-I" (tools-script "languages/licenses.py"))
                         :directory directory :output nil :error-output nil)
-      (is equal '("GPL-3.0-or-later" "unknown" "MIT")
+      (is equal '("GPL-3.0-or-later" "unknown" "MIT" "AGPL-3.0-or-later AND ISC" "0BSD")
           (mapcar (lambda (line) (fourth (uiop:split-string line :separator '(#\Tab))))
                   (uiop:read-file-lines (merge-pathnames "syntax/grammars.tsv" directory)))))))
+
+(defun licence-names-of (&rest arguments)
+  "The exit status of tools/licence-names.sh run with ARGUMENTS, and what it
+printed, the error output after the output."
+  (multiple-value-bind (out error status)
+      (uiop:run-program (list* "bash" (tools-script "licence-names.sh") arguments)
+                        :output :string :error-output :string :ignore-error-status t)
+    (values status (concatenate 'string out error))))
+
+(define-test (tools licence-names-read-from-the-text)
+  ;; each licence a file holds is named, two in one file both; a label agrees
+  ;; with the files only when it names what they hold, all of it, a GNU
+  ;; licence whatever it says of later versions; a LICENSES/ folder may hold
+  ;; more than the label names
+  (with-test-directory (directory)
+    (let ((handed (write-test-file directory "handed/LICENSE"
+                                   (format nil "GNU AFFERO GENERAL PUBLIC LICENSE~%Version 3, 19 November 2007~%...~%~
+                                                Copyright (c) 2021 A. Kaikoura~%~%Permission to use, copy, modify, and/or distribute this software~%~
+                                                for any purpose with or without fee is hereby granted, provided~%~
+                                                that the above copyright notice and this permission notice~%appear in all copies.~%")))
+          (bare (write-test-file directory "bare/LICENSE"
+                                 (format nil "Permission to use, copy, modify, and/or distribute this software for~%~
+                                              any purpose with or without fee is hereby granted.~%~%THE SOFTWARE IS PROVIDED \"AS IS\" ...")))
+          (gpl (write-test-file directory "gpl/COPYING"
+                                (format nil "                    GNU GENERAL PUBLIC LICENSE~%                       Version 3, 29 June 2007~%~
+                                             ... the GNU Affero General Public License ...")))
+          (mit (write-test-file directory "dual/LICENSE-MIT" "Permission is hereby granted, free of charge, to any person obtaining a copy"))
+          (apache (write-test-file directory "dual/LICENSE-APACHE"
+                                   (format nil "                              Apache License~%                        Version 2.0, January 2004~%")))
+          (named (write-test-file directory "named/LICENSE" (format nil "SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception~%")))
+          (reuse (write-test-file directory "reuse/LICENSES/CC0-1.0.txt" "Creative Commons Legal Code CC0 1.0 Universal"))
+          (mpl (write-test-file directory "reuse/LICENSE.txt" "Mozilla Public License Version 2.0"))
+          (none (write-test-file directory "none/LICENSE" "All rights reserved.")))
+      (flet ((names (&rest files)
+               (multiple-value-bind (status out) (apply #'licence-names-of (mapcar #'uiop:native-namestring files))
+                 (is = 0 status)
+                 (uiop:split-string (string-right-trim '(#\Newline) out) :separator '(#\Newline))))
+             (agrees (label &rest files)
+               (multiple-value-bind (status out) (apply #'licence-names-of "--agrees" label (mapcar #'uiop:native-namestring files))
+                 (values (zerop status) out))))
+        (is equal '("AGPL-3.0" "ISC") (names handed))
+        (is equal '("0BSD") (names bare))
+        (is equal '("GPL-3.0") (names gpl))
+        (is equal '("Apache-2.0" "LLVM-exception") (names named))
+        (false (agrees "0BSD" handed))
+        (multiple-value-bind (agreed out) (agrees "0BSD" handed)
+          (declare (ignore agreed))
+          (true (search "not in the label: AGPL-3.0 ISC" out) "~a" out)
+          (true (search "in no file: 0BSD" out) "~a" out))
+        (false (agrees "AGPL-3.0-or-later" handed))
+        (true (agrees "AGPL-3.0-or-later AND ISC" handed))
+        (false (agrees "ISC" bare))
+        (true (agrees "0BSD" bare))
+        (true (agrees "GPL-3.0-only" gpl))
+        (true (agrees "GPL-3.0-or-later" gpl))
+        (false (agrees "Apache-2.0" mit apache))
+        (true (agrees "MIT OR Apache-2.0" mit apache))
+        (false (agrees "(MIT OR Apache-2.0) AND W3C-20150513" mit apache))
+        (true (agrees "Apache-2.0 WITH LLVM-exception" named))
+        (true (agrees "MPL-2.0" mpl reuse))
+        (false (agrees "MPL-2.0 AND MIT" mpl reuse))
+        (false (agrees "MIT" none))))))
+
+(define-test (tools grammars-stop-on-a-misnamed-licence)
+  ;; tools/grammars.sh compiles nothing of a grammar whose licence the manifest
+  ;; names otherwise than its licence files
+  (with-test-directory (directory)
+    (let* ((tools (merge-pathnames "tools/" directory))
+           (origin (merge-pathnames "origin/" directory))
+           (commit (progn
+                     (write-test-file origin "LICENSE"
+                                      (format nil "GNU AFFERO GENERAL PUBLIC LICENSE~%Version 3, 19 November 2007~%"))
+                     (string-trim '(#\Newline)
+                                  (bash-output "set -e; cd \"$1\"; git init -q
+git add LICENSE; git -c user.name=t -c user.email=t@example.invalid commit -q -m one
+git rev-parse HEAD" (uiop:native-namestring origin))))))
+      (ensure-directories-exist tools)
+      (dolist (script '("grammars.sh" "grammar-build.sh" "inside.sh" "licence-names.sh"))
+        (uiop:copy-file (tools-script script) (merge-pathnames script tools)))
+      ;; what the script reads to tell whether it has anything to do
+      (dolist (file '("syntax/grammar-inputs.sha256" "syntax/syntax.c" "syntax/helper.c" "syntax/safe-ctype.h"
+                      "syntax/counted-memory.h" "syntax/patches/other.patch" "syntax/licenses/other.txt"))
+        (write-test-file directory file ""))
+      (flet ((build (label)
+               (write-test-file directory "syntax/grammars.tsv"
+                                (format nil "g	file://~a	~a	~a~%" (uiop:native-namestring origin) commit label))
+               (multiple-value-bind (out error status)
+                   (uiop:run-program (list "env" "TUATARA_CONTAINER=tuatara-none-such"
+                                           "bash" (uiop:native-namestring (merge-pathnames "grammars.sh" tools)))
+                                     :output :string :error-output :string :ignore-error-status t)
+                 (values status (concatenate 'string out error)))))
+        (multiple-value-bind (status out) (build "0BSD")
+          (is = 1 status)
+          (true (search "names the licence of g otherwise" out) "~a" out)
+          (true (search "g: the label says 0BSD, the licence files hold AGPL-3.0" out) "~a" out))
+        ;; named as its file names it, it goes on to be checked and compiled
+        (multiple-value-bind (status out) (build "AGPL-3.0-or-later")
+          (declare (ignore status))
+          (false (search "otherwise than its licence files" out) "~a" out)
+          (true (probe-file (merge-pathnames "build/grammars/licenses/g/LICENSE" directory)) "~a" out))))))
 
 (define-test (tools language-generators-share-their-helpers)
   ;; the generators of tools/languages/ write Lisp strings one way, from common.py

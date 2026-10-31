@@ -56,6 +56,11 @@ a checkout of its commit with nothing changed, and only when what it compiles
 hashes as =syntax/grammar-inputs.sha256= records; once the difference is read,
 =tools/grammars.sh --record NAME= records the new hash. A grammar whose parser
 is generated again runs its =grammar.js= in bubblewrap, with no network.
+The manifest's fourth column is the SPDX expression of what the grammar's
+licence files grant (=MIT OR Apache-2.0=, =AGPL-3.0-or-later AND ISC=), and
+=tools/grammars.sh= stops on one that names other licences than the files
+hold, as =tools/licence-names.sh= reads them; a package.json or Cargo.toml
+that says otherwise does not count.
 
 =tools/fuzz-grammars.sh [NAME...]= fuzzes grammars with tree-sitter's fuzzer
 on their own test corpus and Tuatara's samples, the pin of a grammar moved

@@ -10,7 +10,9 @@
 # names in its repository when it has one, and build/grammars/licenses/NAME/
 # with its licence: its own licence files (LICENSE, COPYING, a LICENSES/
 # folder; in that directory, else at the top of its repository), else syntax/licenses/NAME.txt for one that has none; a
-# grammar with neither stops it. A grammar with syntax/patches/NAME.patch is patched
+# grammar with neither stops it, as does one whose licence the manifest's
+# fourth column names otherwise than its licence files do
+# (tools/licence-names.sh). A grammar with syntax/patches/NAME.patch is patched
 # and its parser generated again with the pinned tree-sitter program first;
 # tree-sitter itself is patched with syntax/patches/tree-sitter.patch.
 # Each is compiled from a checkout of its pinned commit with nothing changed
@@ -47,7 +49,7 @@ if [ "${1:-}" = --record ]; then
     record="all $*"
   fi
 fi
-wanted="$(cat "$root/syntax/grammars.tsv" "$root/syntax/grammar-inputs.sha256" "$root/syntax/syntax.c" "$root/syntax/helper.c" "$root/syntax/safe-ctype.h" "$root/syntax/counted-memory.h" "$root"/syntax/patches/*.patch "$root"/syntax/licenses/*.txt "$0" "$root/tools/grammar-build.sh" 2>/dev/null | sha256sum | cut -c1-16)"
+wanted="$(cat "$root/syntax/grammars.tsv" "$root/syntax/grammar-inputs.sha256" "$root/syntax/syntax.c" "$root/syntax/helper.c" "$root/syntax/safe-ctype.h" "$root/syntax/counted-memory.h" "$root"/syntax/patches/*.patch "$root"/syntax/licenses/*.txt "$0" "$root/tools/grammar-build.sh" "$root/tools/licence-names.sh" 2>/dev/null | sha256sum | cut -c1-16)"
 if [ -z "$record" ] && [ -f "$stamp" ] && [ "$(cat "$stamp")" = "$wanted" ]; then exit 0; fi
 mkdir -p "$out" "$sources" "$root/build/tools"
 . "$root/tools/inside.sh"
@@ -75,8 +77,9 @@ while IFS=$'"'"'\t'"'"' read -r name url commit license subpath; do
 done < <(manifest)
 # then the licences, to go with the release: the licence files of the grammar
 # itself, else those at the top of its repository, else the text in
-# syntax/licenses/ for a repository that has none; nothing compiled without one
-rm -rf "$out/licenses"; unlicensed=""
+# syntax/licenses/ for a repository that has none; nothing compiled without
+# one, nor with one the manifest names otherwise
+rm -rf "$out/licenses"; unlicensed=""; misnamed=""
 while IFS=$'"'"'\t'"'"' read -r name url commit license subpath; do
   [ "$name" = tree-sitter-cli ] && continue
   dir="$sources/$name"; kept="$out/licenses/$name"; found=""
@@ -91,12 +94,24 @@ while IFS=$'"'"'\t'"'"' read -r name url commit license subpath; do
     while IFS= read -r file; do cp "$file" "$kept/"; done <<< "$found"
   elif [ -f "$root/syntax/licenses/$name.txt" ]; then
     mkdir -p "$kept"; cp "$root/syntax/licenses/$name.txt" "$kept/LICENSE"
+    found="$root/syntax/licenses/$name.txt"
+  fi
+  if [ -n "$found" ]; then
+    mapfile -t files <<< "$found"
+    if ! said=$(bash "$root/tools/licence-names.sh" --agrees "$license" "${files[@]}" 2>&1); then
+      echo "  $name: $said" >&2
+      misnamed="$misnamed $name"
+    fi
   else
     unlicensed="$unlicensed $name"
   fi
 done < <(manifest)
 if [ -n "$unlicensed" ]; then
   echo "tools/grammars.sh: no licence for:$unlicensed. Its text goes in syntax/licenses/NAME.txt, or the grammar is left out." >&2
+  exit 1
+fi
+if [ -n "$misnamed" ]; then
+  echo "tools/grammars.sh: syntax/grammars.tsv names the licence of$misnamed otherwise than its licence files, as shown above. The fourth column is made to say what the files grant, or the grammar is left out." >&2
   exit 1
 fi
 # then the library and the grammars are compiled, each grammar as
