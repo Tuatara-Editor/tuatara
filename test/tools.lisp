@@ -260,36 +260,58 @@ printed, the error output after the output."
         (true (agrees "Apache-2.0 WITH LLVM-exception" named))
         (true (agrees "MPL-2.0" mpl reuse))
         (false (agrees "MPL-2.0 AND MIT" mpl reuse))
-        (false (agrees "MIT" none))))))
+        (false (agrees "MIT" none))
+        ;; a licence named by an identifier or a notice, without its text
+        (multiple-value-bind (status out) (licence-names-of "--untexted" (uiop:native-namestring named))
+          (is = 0 status)
+          (is string= (format nil "Apache-2.0~%LLVM-exception~%") out))
+        (let ((notice (write-test-file directory "notice/LICENSE.md"
+                                       (format nil "This program is free software: you can redistribute it and/or modify~%~
+                                                    it under the terms of the GNU General Public License as published by~%~
+                                                    the Free Software Foundation, either version 3 of the License, or~%~
+                                                    (at your option) any later version.~%"))))
+          (is equal '("GPL-3.0") (names notice))
+          (is string= (format nil "GPL-3.0~%") (nth-value 1 (licence-names-of "--untexted" (uiop:native-namestring notice))))
+          (is string= "" (nth-value 1 (licence-names-of "--untexted" (uiop:native-namestring notice) (uiop:native-namestring gpl)))))
+        (is string= "" (nth-value 1 (licence-names-of "--untexted" (uiop:native-namestring handed))))))))
+
+(defun grammar-origin (directory name licence)
+  "A git repository NAME under DIRECTORY with one commit, a LICENSE file of the
+text LICENCE: its address and its commit."
+  (let ((origin (merge-pathnames (format nil "~a/" name) directory)))
+    (write-test-file origin "LICENSE" licence)
+    (values (format nil "file://~a" (uiop:native-namestring origin))
+            (string-trim '(#\Newline)
+                         (bash-output "set -e; cd \"$1\"; git init -q
+git add LICENSE; git -c user.name=t -c user.email=t@example.invalid commit -q -m one
+git rev-parse HEAD" (uiop:native-namestring origin))))))
+
+(defun run-grammars-script (directory manifest)
+  "Run a copy of tools/grammars.sh in DIRECTORY with MANIFEST as its
+syntax/grammars.tsv: its exit status, and its output and error output."
+  (let ((tools (merge-pathnames "tools/" directory)))
+    (ensure-directories-exist tools)
+    (dolist (script '("grammars.sh" "grammar-build.sh" "inside.sh" "licence-names.sh"))
+      (uiop:copy-file (tools-script script) (merge-pathnames script tools)))
+    ;; what the script reads to tell whether it has anything to do
+    (dolist (file '("syntax/grammar-inputs.sha256" "syntax/syntax.c" "syntax/helper.c" "syntax/safe-ctype.h"
+                    "syntax/counted-memory.h" "syntax/patches/other.patch" "syntax/licenses/other.txt"))
+      (write-test-file directory file ""))
+    (write-test-file directory "syntax/grammars.tsv" manifest)
+    (multiple-value-bind (out error status)
+        (uiop:run-program (list "env" "TUATARA_CONTAINER=tuatara-none-such"
+                                "bash" (uiop:native-namestring (merge-pathnames "grammars.sh" tools)))
+                          :output :string :error-output :string :ignore-error-status t)
+      (values status (concatenate 'string out error)))))
 
 (define-test (tools grammars-stop-on-a-misnamed-licence)
   ;; tools/grammars.sh compiles nothing of a grammar whose licence the manifest
   ;; names otherwise than its licence files
   (with-test-directory (directory)
-    (let* ((tools (merge-pathnames "tools/" directory))
-           (origin (merge-pathnames "origin/" directory))
-           (commit (progn
-                     (write-test-file origin "LICENSE"
-                                      (format nil "GNU AFFERO GENERAL PUBLIC LICENSE~%Version 3, 19 November 2007~%"))
-                     (string-trim '(#\Newline)
-                                  (bash-output "set -e; cd \"$1\"; git init -q
-git add LICENSE; git -c user.name=t -c user.email=t@example.invalid commit -q -m one
-git rev-parse HEAD" (uiop:native-namestring origin))))))
-      (ensure-directories-exist tools)
-      (dolist (script '("grammars.sh" "grammar-build.sh" "inside.sh" "licence-names.sh"))
-        (uiop:copy-file (tools-script script) (merge-pathnames script tools)))
-      ;; what the script reads to tell whether it has anything to do
-      (dolist (file '("syntax/grammar-inputs.sha256" "syntax/syntax.c" "syntax/helper.c" "syntax/safe-ctype.h"
-                      "syntax/counted-memory.h" "syntax/patches/other.patch" "syntax/licenses/other.txt"))
-        (write-test-file directory file ""))
+    (multiple-value-bind (url commit)
+        (grammar-origin directory "origin" (format nil "GNU AFFERO GENERAL PUBLIC LICENSE~%Version 3, 19 November 2007~%"))
       (flet ((build (label)
-               (write-test-file directory "syntax/grammars.tsv"
-                                (format nil "g	file://~a	~a	~a~%" (uiop:native-namestring origin) commit label))
-               (multiple-value-bind (out error status)
-                   (uiop:run-program (list "env" "TUATARA_CONTAINER=tuatara-none-such"
-                                           "bash" (uiop:native-namestring (merge-pathnames "grammars.sh" tools)))
-                                     :output :string :error-output :string :ignore-error-status t)
-                 (values status (concatenate 'string out error)))))
+               (run-grammars-script directory (format nil "g	~a	~a	~a~%" url commit label))))
         (multiple-value-bind (status out) (build "0BSD")
           (is = 1 status)
           (true (search "names the licence of g otherwise" out) "~a" out)
@@ -298,7 +320,34 @@ git rev-parse HEAD" (uiop:native-namestring origin))))))
         (multiple-value-bind (status out) (build "AGPL-3.0-or-later")
           (declare (ignore status))
           (false (search "otherwise than its licence files" out) "~a" out)
-          (true (probe-file (merge-pathnames "build/grammars/licenses/g/LICENSE" directory)) "~a" out))))))
+          (true (probe-file (merge-pathnames "build/grammars/licenses/g/LICENSE" directory)) "~a" out))
+        ;; a text of syntax/licenses/ for a grammar whose own files hold it stops it
+        (write-test-file directory "syntax/licenses/g.txt" (format nil "GNU AFFERO GENERAL PUBLIC LICENSE~%Version 3~%"))
+        (multiple-value-bind (status out) (build "AGPL-3.0-or-later")
+          (is = 1 status)
+          (true (search "has a text for g, whose own licence files hold" out) "~a" out))))))
+
+(define-test (tools grammars-carry-the-text-of-a-licence-only-named)
+  ;; a grammar whose licence file only names its licence has the text of
+  ;; syntax/licenses/NAME.txt carried beside it; without that text it stops
+  (with-test-directory (directory)
+    (multiple-value-bind (url commit)
+        (grammar-origin directory "origin" (format nil "SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception~%"))
+      (let ((manifest (format nil "w	~a	~a	Apache-2.0 WITH LLVM-exception~%" url commit)))
+        (multiple-value-bind (status out) (run-grammars-script directory manifest)
+          (is = 1 status)
+          (true (search "w: its files name Apache-2.0 LLVM-exception without the text" out) "~a" out)
+          (true (search "name a licence without its text" out) "~a" out))
+        (write-test-file directory "syntax/licenses/w.txt"
+                         (format nil "                                 Apache License~%                           Version 2.0, January 2004~%...~%~
+                                      ---- LLVM Exceptions to the Apache 2.0 License ----~%"))
+        (multiple-value-bind (status out) (run-grammars-script directory manifest)
+          (declare (ignore status))
+          (false (search "without its text" out) "~a" out)
+          (false (search "otherwise than its licence files" out) "~a" out)
+          (true (probe-file (merge-pathnames "build/grammars/licenses/w/LICENSE" directory)) "~a" out)
+          (true (search "Version 2.0, January 2004"
+                        (uiop:read-file-string (merge-pathnames "build/grammars/licenses/w/LICENSE-TEXT" directory)))))))))
 
 (define-test (tools language-generators-share-their-helpers)
   ;; the generators of tools/languages/ write Lisp strings one way, from common.py

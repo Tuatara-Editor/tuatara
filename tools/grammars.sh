@@ -9,9 +9,13 @@
 # one NAME.so per grammar, from the directory the manifest's fifth column
 # names in its repository when it has one, and build/grammars/licenses/NAME/
 # with its licence: its own licence files (LICENSE, COPYING, a LICENSES/
-# folder; in that directory, else at the top of its repository), else syntax/licenses/NAME.txt for one that has none; a
-# grammar with neither stops it, as does one whose licence the manifest's
-# fourth column names otherwise than its licence files do
+# folder; in that directory, else at the top of its repository), else
+# syntax/licenses/NAME.txt for one that has none; that file goes beside its
+# own files too when they name a licence without holding its text (an
+# SPDX-License-Identifier line, a notice). A grammar without a licence stops
+# it, as does one whose licence is named and its text not carried, one with
+# a syntax/licenses/NAME.txt it has no need of, and one whose licence the
+# manifest's fourth column names otherwise than its licence files do
 # (tools/licence-names.sh). A grammar with syntax/patches/NAME.patch is patched
 # and its parser generated again with the pinned tree-sitter program first;
 # tree-sitter itself is patched with syntax/patches/tree-sitter.patch.
@@ -77,9 +81,10 @@ while IFS=$'"'"'\t'"'"' read -r name url commit license subpath; do
 done < <(manifest)
 # then the licences, to go with the release: the licence files of the grammar
 # itself, else those at the top of its repository, else the text in
-# syntax/licenses/ for a repository that has none; nothing compiled without
-# one, nor with one the manifest names otherwise
-rm -rf "$out/licenses"; unlicensed=""; misnamed=""
+# syntax/licenses/ for a repository that has none or only names its licence;
+# nothing compiled without one, with one named and its text not carried, nor
+# with one the manifest names otherwise
+rm -rf "$out/licenses"; unlicensed=""; misnamed=""; untexted=""; needless=""
 while IFS=$'"'"'\t'"'"' read -r name url commit license subpath; do
   [ "$name" = tree-sitter-cli ] && continue
   dir="$sources/$name"; kept="$out/licenses/$name"; found=""
@@ -89,10 +94,19 @@ while IFS=$'"'"'\t'"'"' read -r name url commit license subpath; do
               if [ -d "$place/LICENSES" ]; then find "$place/LICENSES" -maxdepth 1 -type f; fi; } | sort)
     [ -n "$found" ] && break
   done
+  text="$root/syntax/licenses/$name.txt"
   if [ -n "$found" ]; then
     mkdir -p "$kept"
     while IFS= read -r file; do cp "$file" "$kept/"; done <<< "$found"
-  elif [ -f "$root/syntax/licenses/$name.txt" ]; then
+    mapfile -t files <<< "$found"
+    if [ -f "$text" ]; then
+      if [ -n "$(bash "$root/tools/licence-names.sh" --untexted "${files[@]}")" ]; then
+        cp "$text" "$kept/LICENSE-TEXT"; found="$found"$'"'"'\n'"'"'"$text"
+      else
+        needless="$needless $name"
+      fi
+    fi
+  elif [ -f "$text" ]; then
     mkdir -p "$kept"; cp "$root/syntax/licenses/$name.txt" "$kept/LICENSE"
     found="$root/syntax/licenses/$name.txt"
   fi
@@ -102,12 +116,25 @@ while IFS=$'"'"'\t'"'"' read -r name url commit license subpath; do
       echo "  $name: $said" >&2
       misnamed="$misnamed $name"
     fi
+    without="$(bash "$root/tools/licence-names.sh" --untexted "${files[@]}")"
+    if [ -n "$without" ]; then
+      echo "  $name: its files name $(echo $without) without the text" >&2
+      untexted="$untexted $name"
+    fi
   else
     unlicensed="$unlicensed $name"
   fi
 done < <(manifest)
 if [ -n "$unlicensed" ]; then
   echo "tools/grammars.sh: no licence for:$unlicensed. Its text goes in syntax/licenses/NAME.txt, or the grammar is left out." >&2
+  exit 1
+fi
+if [ -n "$untexted" ]; then
+  echo "tools/grammars.sh: the licence files of$untexted name a licence without its text, as shown above. The text goes in syntax/licenses/NAME.txt, carried beside them." >&2
+  exit 1
+fi
+if [ -n "$needless" ]; then
+  echo "tools/grammars.sh: syntax/licenses/ has a text for$needless, whose own licence files hold the texts of their licences: delete it." >&2
   exit 1
 fi
 if [ -n "$misnamed" ]; then

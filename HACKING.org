@@ -60,7 +60,10 @@ The manifest's fourth column is the SPDX expression of what the grammar's
 licence files grant (=MIT OR Apache-2.0=, =AGPL-3.0-or-later AND ISC=), and
 =tools/grammars.sh= stops on one that names other licences than the files
 hold, as =tools/licence-names.sh= reads them; a package.json or Cargo.toml
-that says otherwise does not count.
+that says otherwise does not count. Every licence named must go with its
+text: a repository whose files only name theirs (an SPDX-License-Identifier
+line, a notice) has the official text in =syntax/licenses/NAME.txt=, carried
+beside its own files, with where it was taken from at its top.
 
 =tools/fuzz-grammars.sh [NAME...]= fuzzes grammars with tree-sitter's fuzzer
 on their own test corpus and Tuatara's samples, the pin of a grammar moved
