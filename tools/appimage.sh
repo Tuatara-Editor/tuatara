@@ -22,7 +22,8 @@
 # brought up to date with apt-get upgrade at every build; the package and exact
 # version of every library taken, with the image's digest and the build tools'
 # hashes, are written to the manifest build/Tuatara-x86_64.AppImage.libraries.txt,
-# which is also inside the AppImage (tuatara/licenses/bundled-libraries.txt) and
+# which is also inside the AppImage (tuatara/licenses/bundled-libraries.txt, with
+# each library package's copyright file in tuatara/licenses/libraries/) and
 # a release file, so that a library can be checked against advisories.
 # Usage: tools/appimage.sh
 set -euo pipefail
@@ -70,28 +71,26 @@ refresh_container "$container" 'DEBIAN_FRONTEND=noninteractive apt-get update -q
   DEBIAN_FRONTEND=noninteractive apt-get upgrade -y -qq >/dev/null &&
   DEBIAN_FRONTEND=noninteractive apt-get install -y -qq libgtk-4-1 libncursesw6 libssl3t64 libzstd1 >/dev/null'
 podman cp "$tools_dir/excludelist" "$container:/tmp/excludelist"
+podman cp tools/bundle-libraries.sh "$container:/tmp/bundle-libraries.sh"
 podman exec "$container" bash -c '
   set -euo pipefail
-  rm -rf /tmp/lib /tmp/lib.tsv.part && mkdir -p /tmp/lib
+  rm -rf /tmp/bundle && mkdir -p /tmp/bundle
   excluded=" $(grep -v "^#" /tmp/excludelist | sed "s/[ #].*//" | grep . | tr "\n" " ") "
   roots=""
   known=$(ldconfig -p)
   for name in libgtk-4.so.1 libncursesw.so.6 libcrypto.so.3 libzstd.so.1; do
     roots="$roots $(grep -m1 "^\s*$name " <<<"$known" | sed "s/.*=> //")"
   done
+  wanted=""
   for path in $roots $(ldd $roots | grep "=> /" | sed "s/.*=> //; s/ (.*//" | sort -u); do
-    name=$(basename "$path")
-    case "$excluded" in *" $name "*) continue ;; esac
-    cp -L "$path" "/tmp/lib/$name"
-    real=$(readlink -f "$path")
-    package=$({ dpkg -S "$real" "${real#/usr}" 2>/dev/null || true; } | head -1 | sed "s/: .*//; s/:[a-z0-9]*$//")
-    [ -n "$package" ] || { echo "$path belongs to no package" >&2; exit 1; }
-    printf "%s\t%s\t%s\t%s\n" "$name" "$package" "$(dpkg-query -W -f="\${Version}" "$package")" \
-      "$(sha256sum "/tmp/lib/$name" | cut -c1-64)" >> /tmp/lib.tsv.part
+    case "$excluded" in *" $(basename "$path") "*) continue ;; esac
+    wanted="$wanted $path"
   done
-  sort /tmp/lib.tsv.part > /tmp/lib.tsv'
-podman cp "$container:/tmp/lib/." "$appdir/lib/"
-podman cp "$container:/tmp/lib.tsv" "$tools_dir/lib.tsv"
+  bash /tmp/bundle-libraries.sh /tmp/bundle $wanted'
+podman cp "$container:/tmp/bundle/lib/." "$appdir/lib/"
+podman cp "$container:/tmp/bundle/lib.tsv" "$tools_dir/lib.tsv"
+mkdir -p "$appdir/tuatara/licenses/libraries"
+podman cp "$container:/tmp/bundle/copyright/." "$appdir/tuatara/licenses/libraries/"
 {
   echo "# Native libraries bundled in Tuatara-x86_64.AppImage (lib/), for checking against advisories."
   echo "# Taken from the Ubuntu 24.04 package versions below, after apt-get upgrade at build time."
