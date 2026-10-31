@@ -12,7 +12,8 @@
 (in-package #:tuatara.defaults)
 
 (defvar *bookmarks-kept* 1000
-  "How many bookmarks are kept, the latest set or gone to first.")
+  "How many bookmarks you may have before setting another says you have more.
+Every bookmark is kept whatever their number: none is ever dropped for it.")
 
 (defparameter *bookmark-context-length* 32
   "How many characters after a bookmark's place it keeps, to find the place
@@ -153,7 +154,9 @@ are chosen."
                                      had)))
                 (state-list-put *bookmarks* (list (list name target (point) (bookmark-context buffer (point)) categories
                                                         (tuatara.io:safe-visit-p buffer))))
-                (message "Bookmark ~a set~@[ in ~{~a~^, ~}~]" name categories)))))))
+                (let ((count (state-list-past-limit *bookmarks*)))
+                  (message "Bookmark ~a set~@[ in ~{~a~^, ~}~]~@[; ~d bookmarks, more than *bookmarks-kept* (~d)~]"
+                           name categories count *bookmarks-kept*))))))))
 
 (defun bookmark-kind (bookmark)
   "What BOOKMARK keeps a place in, as the bookmark manager says it: \"file\",

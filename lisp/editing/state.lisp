@@ -109,8 +109,21 @@ or NIL when it is not there."
     (and stamp (list (tuatara.io:stamp-ino stamp) (tuatara.io:stamp-size stamp) (tuatara.io:stamp-mtime stamp)))))
 
 (defun state-list-limit (list)
-  "How many entries LIST keeps now: the value of its LIMIT-VARIABLE."
+  "The value of LIST's LIMIT-VARIABLE: how many entries it keeps, or, for a
+list you make (CLASS :KEPT), how many it may have before adding one says so."
   (symbol-value (state-list-limit-variable list)))
+
+(defun state-list-most (list)
+  "How many entries LIST keeps, those past them dropped: its limit, or NIL for
+a list you make (CLASS :KEPT), of which no entry is ever dropped for its
+number."
+  (and (not (eq (state-list-class list) :kept)) (state-list-limit list)))
+
+(defun state-list-past-limit (list)
+  "How many entries LIST, a list you make (CLASS :KEPT), has, when that is
+more than its limit; NIL when it is not."
+  (let ((count (length (state-list-entries list))))
+    (and (> count (state-list-limit list)) count)))
 
 (defun state-entry-key (list entry)
   "What makes ENTRY of LIST the same as another: its KEY, or its path."
@@ -148,12 +161,13 @@ says (STATE-VERSION-LINE), or NIL when it says none."
 (defun read-state-contents (list file)
   "What FILE, LIST's file, holds (STATE-CONTENTS): its entries, the latest
 first, each once (the first of those with one key), at most as many as LIST
-keeps; the lines that make no entry, at most as many again, to be written back
+keeps (STATE-LIST-MOST); the lines that make no entry, as many again at most
+and every one for a list you make, to be written back
 as they are; the version its first line says. Empty when there is no FILE, and
 NIL when it is there and cannot be read. Lines beginning with # are comments."
   (handler-case
       (with-open-file (in (sb-ext:parse-native-namestring file) :if-does-not-exist nil :external-format '(:utf-8 :replacement #\?))
-        (let ((entries '()) (count 0) (unread '()) (unread-count 0) (version 1) (most (state-list-limit list))
+        (let ((entries '()) (count 0) (unread '()) (unread-count 0) (version 1) (most (state-list-most list))
               (seen (make-hash-table :test 'equal)) (lines (make-hash-table :test 'eq)))
           (when in
             (loop for line = (read-line in nil)
@@ -164,10 +178,10 @@ NIL when it is there and cannot be read. Lines beginning with # are comments."
                               (when said (setf version (max version said)))))
                            (t (let ((entry (ignore-errors (funcall (state-list-parse list) line))))
                                 (cond ((null entry)
-                                       (when (< unread-count most)
+                                       (when (or (null most) (< unread-count most))
                                          (push line unread)
                                          (incf unread-count)))
-                                      ((< count most)
+                                      ((or (null most) (< count most))
                                        (let ((key (state-entry-key list entry)))
                                          (unless (gethash key seen)
                                            (setf (gethash key seen) t
@@ -179,7 +193,7 @@ NIL when it is there and cannot be read. Lines beginning with # are comments."
 
 (defun read-state-file (list file)
   "The entries of LIST as FILE has them, the latest first, each once (the
-first of those with one key), at most as many as LIST keeps; empty when it
+first of those with one key), at most as many as LIST keeps (STATE-LIST-MOST); empty when it
 cannot be read. Lines that make no entry are passed over (READ-STATE-CONTENTS)."
   (let ((contents (read-state-contents list file)))
     (if contents (state-contents-entries contents) '())))
@@ -201,7 +215,7 @@ lines that made no entry, as they were."
 (defun apply-state-changes (list entries changes)
   "ENTRIES of LIST with CHANGES made to them in turn, the oldest first: each
 (:PUT NEW MOST), NEW put first, those of ENTRIES with one of their keys taken
-out, and at most MOST kept; (:REPLACE NEW), each entry with the key of one
+out, and at most MOST kept (all when MOST is NIL); (:REPLACE NEW), each entry with the key of one
 of NEW that one instead, where it stands, those not there left out; or (:DROP
 PATHS), the entries about PATHS taken out."
   (dolist (change changes entries)
@@ -210,7 +224,7 @@ PATHS), the entries about PATHS taken out."
               (let ((keys (mapcar (lambda (entry) (state-entry-key list entry)) new)))
                 (setf entries (append new (remove-if (lambda (entry) (member (state-entry-key list entry) keys :test #'equal))
                                                      entries)))
-                (when (> (length entries) most)
+                (when (and most (> (length entries) most))
                   (setf entries (subseq entries 0 most))))))
       (:replace (let ((new (second change)))
                   (setf entries (mapcar (lambda (entry)
@@ -231,7 +245,7 @@ FILE, the oldest first."
 (defun state-list-entries (list)
   "The entries of LIST, the latest first: as its file has them, read again
 once another session has changed it, with the changes made here and not yet
-written made to them; at most as many as it keeps. The same list is given
+written made to them; at most as many as it keeps (STATE-LIST-MOST). The same list is given
 again while nothing changed; empty when there is no state directory."
   (let* ((file (or (ignore-errors (state-list-path list)) (return-from state-list-entries '())))
          (stamp (state-file-stamp file))
@@ -243,7 +257,7 @@ again while nothing changed; empty when there is no state directory."
           (return-from state-list-entries (state-list-shown list)))
         (setf known t)))
     (let ((disk (if known (state-list-disk list) (read-state-file list file)))
-          (most (state-list-limit list)))
+          (most (state-list-most list)))
       (sb-thread:with-mutex (lock)
         ;; what was read kept, unless the writer has put what it wrote in place meanwhile
         (unless (and (not known) (equal file (state-list-file list)) (not (equal stamp (state-list-stamp list)))
@@ -253,7 +267,7 @@ again while nothing changed; empty when there is no state directory."
                 (state-list-disk list) disk))
         (let ((entries (apply-state-changes list (state-list-disk list)
                                             (changes-for file (append (state-list-pending list) (state-list-writing list))))))
-          (setf (state-list-shown list) (if (> (length entries) most) (subseq entries 0 most) entries)))))))
+          (setf (state-list-shown list) (if (and most (> (length entries) most)) (subseq entries 0 most) entries)))))))
 
 (defun note-state-change (list change)
   "Make CHANGE to LIST: at once in memory, and on disk in the background
@@ -268,10 +282,10 @@ again while nothing changed; empty when there is no state directory."
 
 (defun state-list-put (list entries)
   "Put ENTRIES first in LIST, in their order, those with the same keys taken
-out, at most as many kept as LIST keeps; written in the background, with
+out, at most as many kept as LIST keeps (STATE-LIST-MOST); written in the background, with
 what other sessions wrote meanwhile."
   (when entries
-    (note-state-change list (list :put entries (state-list-limit list)))))
+    (note-state-change list (list :put entries (state-list-most list)))))
 
 (defun state-list-replace (list entries)
   "Put ENTRIES in LIST where those with the same keys stand, the order kept;

@@ -289,3 +289,47 @@ pinned at, and write the sample files of that version (WRITE-KEPT-FILE-SAMPLES).
       (tuatara.defaults::finish-state-writes)
       (true (find "Unmapped" (tuatara.defaults::read-state-file list (tuatara.defaults::state-list-path list))
                   :key #'first :test #'string=)))))
+
+(define-test (kept-files bookmarks-never-dropped-for-their-number)
+  ;; past *bookmarks-kept* a bookmark set is kept and says so; none is dropped, here, on disk, from
+  ;; another session or among the lines a later release wrote; the remembered lists are still cut
+  (with-test-directory (dir)
+    (with-fresh-state
+      (let* ((tuatara.defaults::*modal-editing* nil)
+             (tuatara.defaults::*bookmark-set-asks-categories* nil)
+             (tuatara-user:*bookmarks-kept* 3)
+             (tuatara-user:*recent-files-max* 3)
+             (list tuatara.defaults::*bookmarks*)
+             (path (tuatara.defaults::state-list-path list))
+             (file (namestring (put-file (merge-pathnames "notes.txt" dir) (format nil "one~%two~%")))))
+        (flet ((mark (name) (list name "/notes/plain.txt" 0 "" () nil))
+               (names () (mapcar #'first (tuatara.defaults::read-state-file list path))))
+          (put-state-file list (format nil "zz a later release's line one~%zz two~%zz three~%zz four~%"))
+          (tuatara.defaults::state-list-put list (mapcar #'mark '("bm-e" "bm-d" "bm-c" "bm-b" "bm-a")))
+          (tuatara.defaults::finish-state-writes)
+          (is equal '("bm-e" "bm-d" "bm-c" "bm-b" "bm-a") (names))
+          (is = 5 (length (tuatara.defaults::state-list-entries list)))
+          (is = 4 (count-if (lambda (line) (uiop:string-prefix-p "zz" line))
+                            (uiop:split-string (file-text path) :separator '(#\Newline))))
+          ;; another session's put, past the limit too
+          (let ((other (another-session list)))
+            (tuatara.defaults::state-list-put other (list (mark "bm-f")))
+            (tuatara.defaults::finish-state-writes)
+            (tuatara.defaults::write-state-list other))
+          (is equal '("bm-f" "bm-e" "bm-d" "bm-c" "bm-b" "bm-a") (names))
+          ;; set by C-x m m: kept, and the echo area says how many there are
+          (let ((f (run-keys "C-x m m RET" :file file :width 120)))
+            (true (tuatara.frontend.fake:fake-frame-showing-across-rows f "7 bookmarks, more than *bookmarks-kept* (3)")))
+          (tuatara.defaults::finish-state-writes)
+          (is equal '("notes.txt" "bm-f" "bm-e" "bm-d" "bm-c" "bm-b" "bm-a") (names))
+          ;; the oldest still listed and gone to
+          (let ((f (run-keys "C-x m l" :width 120 :height 20)))
+            (true (tuatara.frontend.fake:fake-frame-showing f "notes.txt"))
+            (true (tuatara.frontend.fake:fake-frame-showing f "bm-a")))
+          (true (find "bm-a" (tuatara.defaults::bookmark-names) :test #'string=))
+          (forget-file-buffers)
+          ;; a remembered list keeps no more than its limit
+          (tuatara.defaults::state-list-put tuatara.defaults::*recent-files*
+                                            (mapcar (lambda (n) (cons (format nil "/notes/~a.txt" n) nil)) '(1 2 3 4 5)))
+          (tuatara.defaults::finish-state-writes)
+          (is = 3 (length (tuatara.defaults::read-recent-files))))))))

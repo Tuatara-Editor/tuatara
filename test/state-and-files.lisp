@@ -30,7 +30,9 @@ nothing read yet."
                                      (tuatara.defaults::state-list-limit-variable list)
                                      :header (tuatara.defaults::state-list-header list)
                                      :path-of (tuatara.defaults::state-list-path-of list)
-                                     :key (tuatara.defaults::state-list-key list)))
+                                     :key (tuatara.defaults::state-list-key list)
+                                     :version (tuatara.defaults::state-list-version list)
+                                     :class (tuatara.defaults::state-list-class list)))
 
 (defparameter *state-list-samples*
   '((tuatara.defaults::*recent-files* ("/other/one.txt" . nil) ("/mine/two.txt" . t))

@@ -678,8 +678,8 @@
   ;; out.
   ;; (setf *recent-files-auto-cleanup* nil)
 
-  ;; How many bookmarks are kept: C-x m m sets one, C-x m b goes to one, C-x m l
-  ;; manages them. Not set: 1000.
+  ;; How many bookmarks before C-x m m says you have more; none is ever dropped.
+  ;; C-x m m sets one, C-x m b goes to one, C-x m l manages them. Not set: 1000.
   ;; (setf *bookmarks-kept* 5000)
 
   ;; C-x m m asks no categories; C-x m l, c sets them. Not set: t: asked after the
