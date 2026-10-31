@@ -147,6 +147,12 @@ Installed from a package instead, Tuatara is in =/usr/lib/tuatara/= and uses
 the system's own GTK and libraries; the AppImage's =--dark= and =--light= are
 not there, and =GTK_THEME=Adwaita:dark tuatara --gui= does what =--dark= does.
 
+The libraries the AppImage brings (GTK 4 and what it needs) are Ubuntu 24.04's
+at their newest versions on the day it was built. Each release has
+=Tuatara-x86_64.AppImage.libraries.txt=, also inside the AppImage as
+=licenses/bundled-libraries.txt=: every bundled library with its package, exact
+version and SHA-256, so it can be checked against security advisories.
+
 ** Building the files yourself
 
 =tools/appimage.sh= makes the AppImage, and =tools/distro-packages.sh= the

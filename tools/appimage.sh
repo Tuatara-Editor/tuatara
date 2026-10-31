@@ -18,7 +18,12 @@
 # runs first when the AppImage is started) and the exclude list are fetched
 # once into build/appimage-tools/, each a pinned version checked against its
 # SHA-256 before it is used; the
-# container is made from the Ubuntu image pinned in tools/containers.sh.
+# container is made from the Ubuntu image pinned in tools/containers.sh and
+# brought up to date with apt-get upgrade at every build; the package and exact
+# version of every library taken, with the image's digest and the build tools'
+# hashes, are written to the manifest build/Tuatara-x86_64.AppImage.libraries.txt,
+# which is also inside the AppImage (tuatara/licenses/bundled-libraries.txt) and
+# a release file, so that a library can be checked against advisories.
 # Usage: tools/appimage.sh
 set -euo pipefail
 root="$(cd "$(dirname "$0")/.." && pwd)"
@@ -27,6 +32,7 @@ cd "$root"
 tools_dir="$root/build/appimage-tools"
 appdir="$root/build/appimage/Tuatara.AppDir"
 out="$root/build/Tuatara-x86_64.AppImage"
+manifest="$out.libraries.txt"
 container=tuatara-appimage-libs
 excludelist_url=https://raw.githubusercontent.com/AppImageCommunity/pkg2appimage/15a64c20dc23a0154622ba25829364323903b6b5/excludelist
 excludelist_sha256=50db0f894f34b169c47a5cbc0c17dbab61e9edebca5bc8269a1e6ac1bf4bdad9
@@ -59,12 +65,14 @@ cp -a build/release/tuatara "$appdir/tuatara"
 
 # the libraries, from Ubuntu 24.04: those the program loads (libzstd, which the
 # program itself needs, too) and all they need in turn, but those on the exclude list
-pinned_container "$container" "$ubuntu_image" 'DEBIAN_FRONTEND=noninteractive apt-get update -qq &&
+pinned_container "$container" "$ubuntu_image" 'true'
+refresh_container "$container" 'DEBIAN_FRONTEND=noninteractive apt-get update -qq &&
+  DEBIAN_FRONTEND=noninteractive apt-get upgrade -y -qq >/dev/null &&
   DEBIAN_FRONTEND=noninteractive apt-get install -y -qq libgtk-4-1 libncursesw6 libssl3t64 libzstd1 >/dev/null'
 podman cp "$tools_dir/excludelist" "$container:/tmp/excludelist"
 podman exec "$container" bash -c '
   set -euo pipefail
-  rm -rf /tmp/lib && mkdir -p /tmp/lib
+  rm -rf /tmp/lib /tmp/lib.tsv.part && mkdir -p /tmp/lib
   excluded=" $(grep -v "^#" /tmp/excludelist | sed "s/[ #].*//" | grep . | tr "\n" " ") "
   roots=""
   known=$(ldconfig -p)
@@ -75,8 +83,27 @@ podman exec "$container" bash -c '
     name=$(basename "$path")
     case "$excluded" in *" $name "*) continue ;; esac
     cp -L "$path" "/tmp/lib/$name"
-  done'
+    real=$(readlink -f "$path")
+    package=$({ dpkg -S "$real" "${real#/usr}" 2>/dev/null || true; } | head -1 | sed "s/: .*//; s/:[a-z0-9]*$//")
+    [ -n "$package" ] || { echo "$path belongs to no package" >&2; exit 1; }
+    printf "%s\t%s\t%s\t%s\n" "$name" "$package" "$(dpkg-query -W -f="\${Version}" "$package")" \
+      "$(sha256sum "/tmp/lib/$name" | cut -c1-64)" >> /tmp/lib.tsv.part
+  done
+  sort /tmp/lib.tsv.part > /tmp/lib.tsv'
 podman cp "$container:/tmp/lib/." "$appdir/lib/"
+podman cp "$container:/tmp/lib.tsv" "$tools_dir/lib.tsv"
+{
+  echo "# Native libraries bundled in Tuatara-x86_64.AppImage (lib/), for checking against advisories."
+  echo "# Taken from the Ubuntu 24.04 package versions below, after apt-get upgrade at build time."
+  echo "base-image	$ubuntu_image"
+  echo "appimagetool	$appimagetool_url	$appimagetool_sha256"
+  echo "runtime	$runtime_url	$runtime_sha256"
+  echo "excludelist	$excludelist_url	$excludelist_sha256"
+  echo "# file	package	version	sha256 of the file"
+  cat "$tools_dir/lib.tsv"
+} > "$manifest"
+mkdir -p "$appdir/tuatara/licenses"
+cp "$manifest" "$appdir/tuatara/licenses/bundled-libraries.txt"
 
 # how it starts: the libraries it brings first, the environment as it was given
 # back to the programs it starts (LEAVE-APPIMAGE-ENVIRONMENT); --dark or --light
@@ -110,3 +137,4 @@ ln -s tuatara.png "$appdir/.DirIcon"
 rm -f "$out"
 ARCH=x86_64 "$tools_dir/appimagetool-x86_64.AppImage" --appimage-extract-and-run --no-appstream --runtime-file "$tools_dir/runtime-x86_64" "$appdir" "$out" >/dev/null
 echo "$out"
+echo "$manifest"

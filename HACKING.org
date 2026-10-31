@@ -91,7 +91,14 @@ was built on (it refuses one that names the home folder or the account);
 it (it takes its libraries from Ubuntu 24.04, in a podman container), and
 =tools/distro-packages.sh= Fedora, Ubuntu and Arch packages (each made by its
 system's own tools in a podman container; =--check= installs each in a new
-container and runs it). The images are pinned in =tools/containers.sh=.
+container and runs it). The images are pinned by digest in =tools/containers.sh=;
+each build also brings its container's packages up to date (the system's
+update and upgrade), so the libraries bundled are the current ones, and
+=tools/appimage.sh= records them: =build/Tuatara-x86_64.AppImage.libraries.txt=
+(inside the AppImage as =licenses/bundled-libraries.txt=, and a release file)
+lists the package, exact version and SHA-256 of each bundled library with the
+base image's digest and the hashes of appimagetool, its runtime and the exclude
+list, to check against security advisories.
 
 A release carries every grammar's licence (=grammars/licenses/=), and SBCL's
 and those of the Lisp libraries compiled into the program (=licenses/=); and

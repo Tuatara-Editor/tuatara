@@ -102,6 +102,7 @@ put_stage() {
 fedora() {
   local container=tuatara-package-fedora
   pinned_container "$container" "$fedora_image" 'dnf -y -q install rpm-build >/dev/null'
+  refresh_container "$container" 'dnf -y -q upgrade --refresh >/dev/null'
   put_stage "$container" /tmp/package
   podman exec -i "$container" sh -c 'cat > /tmp/package/tuatara.spec' <<EOF
 %global debug_package %{nil}
@@ -144,6 +145,7 @@ EOF
 ubuntu() {
   local container=tuatara-package-ubuntu deb=/tmp/package/root
   pinned_container "$container" "$ubuntu_image" 'true'
+  refresh_container "$container" 'apt-get update -qq && DEBIAN_FRONTEND=noninteractive apt-get upgrade -y -qq >/dev/null'
   put_stage "$container" /tmp/package
   podman exec "$container" sh -c "mkdir -p $deb/DEBIAN $deb/usr/share/doc/tuatara &&
     { cat $deb/usr/share/licenses/tuatara/LICENSE; printf '\n%s\n' 'The licences of SBCL (sbcl/), of the Lisp libraries compiled into the program (lisp/NAME/), of the terminal library (LICENSE-ghostty) and of what it compiles in (terminal/NAME/, terminal/licenses.tsv) and of each grammar (grammars/NAME/, grammars.tsv) are in /usr/share/licenses/tuatara/.'; } > $deb/usr/share/doc/tuatara/copyright"
@@ -170,6 +172,7 @@ arch() {
   local container=tuatara-package-arch
   pinned_container "$container" "$arch_image" 'pacman -Syu --noconfirm --needed -q fakeroot >/dev/null &&
     useradd --create-home packager'
+  refresh_container "$container" 'pacman -Syu --noconfirm -q >/dev/null'
   put_stage "$container" /tmp/package
   podman exec -i "$container" sh -c 'cat > /tmp/package/PKGBUILD' <<EOF
 pkgname=tuatara

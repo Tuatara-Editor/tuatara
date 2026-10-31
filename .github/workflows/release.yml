@@ -67,7 +67,7 @@ jobs:
       - name: SHA256SUMS
         run: |
           mkdir dist
-          cp build/Tuatara-x86_64.AppImage build/packages/* build/release/tuatara-sources.tar.zst dist/
+          cp build/Tuatara-x86_64.AppImage build/Tuatara-x86_64.AppImage.libraries.txt build/packages/* build/release/tuatara-sources.tar.zst dist/
           cd dist
           sha256sum * > SHA256SUMS
           cat SHA256SUMS
