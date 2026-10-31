@@ -274,6 +274,10 @@ Tuatara says where its ideas come from:
   (=lisp/lsp/usual-tools.lisp=, made from its languages.toml).
 - tree-sitter and the authors of its grammars :: parsing. Each grammar's licence
   is named in =syntax/grammars.tsv=, and its text goes with every release.
+- tree-sitter-prolog, by Stefano Volpe and Shane Brewer :: parsing Prolog.
+  It is under the GNU Affero General Public License 3.0 or later, Shane
+  Brewer's first part of it under the ISC licence; it is the only part of the
+  release under the Affero GPL.
 - Org mode :: the Org format and how Org files behave: the parse as
   org-element makes it, folding and the indented view, links, tables and their
   formulas (worked out as Calc works them out), the agenda, clocking and

@@ -178,6 +178,9 @@ version)."
              "outlines (under the MPL 2.0), the keys that select by the syntax,"
              "the health report, and each language's servers and formatters")
     ("tree-sitter and the authors of its grammars" "parsing; each grammar's licence goes with every release")
+    ("tree-sitter-prolog, by Stefano Volpe and Shane Brewer" "parsing Prolog; under the GNU Affero GPL 3.0 or later, Shane"
+                                                            "Brewer's first part under the ISC licence: the only part of"
+                                                            "the release under the Affero GPL")
     ("Org mode" "the Org format and how Org files behave: folding, links,"
                 "tables, the agenda, clocking, source blocks, dynamic blocks,"
                 "and Org documents written as LaTeX for a PDF")
