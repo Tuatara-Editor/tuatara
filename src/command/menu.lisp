@@ -113,20 +113,24 @@ function names; HOLD too, true or false."
                       :hold ,hold))
      (define-command ,name () ,doc (open-menu (gethash ',name *menus*)))))
 
-(defparameter *menu-keeping-commands* '(menu-toggle-switch menu-set-option menu-entry-left-out menu-key-not-here menu-leave)
+(defparameter *menu-keeping-commands* '(menu-toggle-switch menu-set-option menu-entry-left-out menu-entry-refused menu-key-not-here menu-leave)
   "The commands that keep a menu open: those of its switches and options, the
-one saying an entry is left out, and in a menu that holds, the one saying a
-key is not in it and the one asking whether to leave (which closes it itself).")
+ones saying an entry is left out or cannot run here, and in a menu that
+holds, the one saying a key is not in it and the one asking whether to
+leave (which closes it itself).")
 
 (defun open-menu (menu &key arguments)
   "Open MENU: its keys before every other while its switches and options are
 typed, its entries in the panel, its arguments ARGUMENTS to begin with (none
 unless given, in the order given). The key of an entry it leaves out says so
 and keeps it open, never reaching the buffer behind it: an action's as the
-menu opens, a switch's or an option's as its key is typed. A menu that holds
+menu opens, a switch's or an option's as its key is typed. An action that
+cannot run here as the menu opens (MENU-REFUSALS) is shown dimmed, and its
+key says why and keeps the menu open. A menu that holds
 \(MENU-HOLD) takes every other key too, and \\`C-g' (MENU-LEAVE)."
   (let ((keymap (make-keymap :name (string-downcase (symbol-name (menu-name menu)))))
-        (editor *editor*))
+        (editor *editor*)
+        (refused (menu-refusals menu)))
     (dolist (entry (menu-entries menu :all t))
       (define-key keymap (menu-entry-key entry)
         ;; a switch or an option looks whether the menu has it as its key is typed,
@@ -134,15 +138,33 @@ menu opens, a switch's or an option's as its key is typed. A menu that holds
         (cond ((menu-entry-switch entry) 'menu-toggle-switch)
               ((menu-entry-option entry) 'menu-set-option)
               ((not (menu-shows-p menu entry)) 'menu-entry-left-out)
+              ((assoc entry refused) 'menu-entry-refused)
               (t (menu-entry-command entry)))))
     (define-key keymap *prefix-help-key* 'menu-describe)
     (when (menu-hold menu)
       (setf (keymap-default keymap) 'menu-key-not-here)
       (define-key keymap "C-g" 'menu-leave))
-    (setf (editor-menu editor) (list menu (reverse arguments) (reverse arguments)))
+    (setf (editor-menu editor) (list menu (reverse arguments) (reverse arguments) refused))
     (set-transient-map editor keymap
                        (lambda (command) (member command *menu-keeping-commands*))
                        (lambda () (setf (editor-menu editor) nil)))))
+
+(defun menu-refusals (menu)
+  "The actions of MENU that cannot run here now, each (ENTRY . WHY), WHY what
+*COMMAND-REFUSAL-FUNCTION* says instead of running its command."
+  (and *command-refusal-function*
+       (loop for entry in (menu-entries menu :all t)
+             for command = (menu-entry-command entry)
+             for why = (and command (funcall *command-refusal-function* command))
+             when why collect (cons entry why))))
+
+(define-command menu-entry-refused ()
+  "Say why the action of the open menu whose key was typed cannot run here;
+the menu stays open."
+  (let* ((open (editor-menu *editor*))
+         (entry (menu-entry-typed :all t)))
+    (when entry
+      (message "~a" (cdr (assoc entry (fourth open)))))))
 
 (defun menu-arguments ()
   "The arguments the menu open now has on, its switches' and its options'
@@ -273,10 +295,11 @@ switch or an option its argument in brackets, an option's with its value."
 (defun menu-panel-rows (editor width room)
   "The panel rows of EDITOR's open menu, at most ROOM: its title, then each
 group with entries shown, its title and its entries in columns, an argument
-on in :menu-argument-on and one off in :menu-argument-off, then the lines of
+on in :menu-argument-on and one off in :menu-argument-off, an action that
+cannot run here in :key-hint-unavailable, then the lines of
 its summary; where they do not all fit, the last row says that \\`C-h' lists
 them all."
-  (destructuring-bind (menu arguments &rest opened) (editor-menu editor)
+  (destructuring-bind (menu arguments opened &optional refused) (editor-menu editor)
     (declare (ignore opened))
     (let* ((summary (and (menu-summary menu)
                          (mapcar (lambda (line) (list (subseq line 0 (min (length line) width)) nil '()))
@@ -297,7 +320,9 @@ them all."
                                             (key-hint-rows (mapcar (lambda (e) (cons (menu-entry-key e) (menu-entry-text e arguments)))
                                                                    entries)
                                                            width (max 1 (- room (length rows) 1))
-                                                           :column-width column)))))
+                                                           :column-width column
+                                                           :unavailable (loop for (entry) in refused
+                                                                              collect (menu-entry-key entry)))))))
       (append (subseq rows 0 (min (length rows) room)) summary))))
 
 (defun menu-keys-pending-p (editor)

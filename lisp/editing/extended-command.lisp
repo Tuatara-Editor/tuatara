@@ -193,7 +193,7 @@ of a function of a buffer (COMMANDS-FOR-BUFFERS), true for BUFFER."
 
 (apply #'commands-for-buffers 'menu-open-p "an open menu"
        (mapcar (lambda (name) (find-symbol name '#:tuatara.command))
-               '("MENU-TOGGLE-SWITCH" "MENU-SET-OPTION" "MENU-ENTRY-LEFT-OUT" "MENU-DESCRIBE")))
+               '("MENU-TOGGLE-SWITCH" "MENU-SET-OPTION" "MENU-ENTRY-LEFT-OUT" "MENU-ENTRY-REFUSED" "MENU-DESCRIBE")))
 
 (defvar *file-changing-commands* '()
   "Commands that change files, refused in a buffer opened safely (a rimu list

@@ -208,6 +208,25 @@ is for it."
         (when chosen
           (values (first focus) chosen (remove-if (lambda (e) (member e chosen)) entries)))))))
 
+(defun key-hints-unavailable (editor entries)
+  "The keys of ENTRIES, key hints for the keys EDITOR has pending, whose
+commands cannot run here now (*COMMAND-REFUSAL-FUNCTION*), shown dimmed."
+  (when *command-refusal-function*
+    (let* ((keymaps (active-keymaps editor))
+           (pending (editor-pending editor))
+           (found '()))
+      (dolist (map keymaps)
+        (let ((target (if pending (lookup-key map pending) map)))
+          (when (keymap-p target)
+            (dolist (entry (keymap-entries target))
+              (let ((key (tuatara.frontend:key-description (car entry))))
+                (when (and (assoc key entries :test #'string=) (not (member key found :test #'string=)))
+                  (let ((command (keymaps-lookup keymaps (append pending (list (car entry))))))
+                    (when (and command (symbolp command) (not (keywordp command))
+                               (funcall *command-refusal-function* command))
+                      (push key found)))))))))
+      found)))
+
 (defun key-hint-column-width (&rest lists)
   "The width of a column of key hints holding every entry of LISTS, each a
 list of (KEY . NAME): the widest, KEY NAME, and two spaces after it. Groups
@@ -216,7 +235,7 @@ laid out with it (KEY-HINT-ROWS' COLUMN-WIDTH) line up."
              maximize (loop for (key . name) in list maximize (+ (length key) 1 (length name))))))
 
 (defun key-hint-rows (entries width max-rows
-                      &key (note (format nil "... ~a lists all" *prefix-help-key*)) column-width)
+                      &key (note (format nil "... ~a lists all" *prefix-help-key*)) column-width unavailable)
   "Lay out key-hint ENTRIES, a list of (KEY . NAME), in columns fitting WIDTH
 and at most MAX-ROWS rows, as panel rows (STRING FACE SPANS), the columns
 COLUMN-WIDTH wide when given (KEY-HINT-COLUMN-WIDTH, the same for groups
@@ -224,7 +243,8 @@ shown one under another), else as wide as the widest entry, ended by NOTE
 when not all fit (as standard, the key that lists them all, *PREFIX-HELP-KEY*): after the last row's
 entries, or on a row of its own when it is too long for that. The keys get
 :key-hint-key, prefix names (starting with +) :key-hint-prefix, commands
-:key-hint-command."
+:key-hint-command, and those of the keys UNAVAILABLE, whose commands cannot
+run here, :key-hint-unavailable."
   (let* ((entries (coerce entries 'simple-vector))
          (cells (map 'simple-vector (lambda (e) (format nil "~a ~a" (car e) (cdr e))) entries))
          (column-width (max (or column-width 1) (if (plusp (length cells)) (+ 2 (reduce #'max cells :key #'length)) 1)))
@@ -242,8 +262,9 @@ entries, or on a row of its own when it is too long for that. The keys get
                                   (let ((cell (svref cells i)))
                                     (push (list pos (+ pos (length key)) :key-hint-key) spans)
                                     (push (list (+ pos (length key) 1) (+ pos (length cell))
-                                                (if (and (plusp (length name)) (char= (char name 0) #\+))
-                                                    :key-hint-prefix :key-hint-command))
+                                                (cond ((member key unavailable :test #'string=) :key-hint-unavailable)
+                                                      ((and (plusp (length name)) (char= (char name 0) #\+)) :key-hint-prefix)
+                                                      (t :key-hint-command)))
                                           spans)
                                     (write-string cell line)
                                     (incf pos (length cell))
@@ -584,15 +605,17 @@ pending prefix key; else the echo row."
                      (length rows))))
           ((and (editor-key-hints editor) (editor-pending editor))
            (let* ((entries (prefix-entries (active-keymaps editor) (editor-pending editor)))
+                  (unavailable (key-hints-unavailable editor entries))
                   (rows (multiple-value-bind (title chosen rest) (key-hint-focus editor entries)
                           (if chosen
                               ;; what acts on what the cursor is on, under its title, then the rest
                               (let* ((column (key-hint-column-width chosen rest))
-                                     (first (key-hint-rows chosen width (- (key-hint-room editor) 2) :column-width column)))
+                                     (first (key-hint-rows chosen width (- (key-hint-room editor) 2) :column-width column
+                                                                                                    :unavailable unavailable)))
                                 (append (list (group-title-row title width)) first
                                         (key-hint-rows rest width (max 0 (- (key-hint-room editor) 2 (length first)))
-                                                       :column-width column)))
-                              (key-hint-rows entries width (1- (key-hint-room editor)))))))
+                                                       :column-width column :unavailable unavailable)))
+                              (key-hint-rows entries width (1- (key-hint-room editor)) :unavailable unavailable)))))
              (values (append rows (list (echo-row editor)))
                      (length rows))))
           (t (multiple-value-bind (rows last starts) (key-question-pieces editor)

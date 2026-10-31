@@ -48,6 +48,7 @@ colours show until a theme sets them.")
 (define-face :key-hint-prefix "Prefix keys (further keymaps) in the key-hint panel." :fg :blue)
 (define-face :menu-argument-on "An argument a menu has on (a switch, an option given a value): what its actions are given." :inherit :key-hint-key)
 (define-face :menu-argument-off "An argument a menu has off: shown, not given." :dim t)
+(define-face :key-hint-unavailable "A key in the key hints or a menu whose command cannot run here, such as one that would change a git repository looked at only: dimmed, and pressing it says why." :dim t)
 (define-face :header-line "Header lines of lists and tables, such as the column titles of *Health*." :bold t :underline t)
 ;;; Lists: one face for each kind of thing a list shows, the same in every
 ;;; list that shows it, so that a theme sets each once
@@ -471,7 +472,7 @@ steel-blue mode line. From the Ao theme by the same author."
   (:popup :fg text :bg ground-dim) (:popup-current :fg nil :bg completion-ground :bold t)
   (:popup-annotation :fg blue-warmer) (:popup-bar :bg text-dim)
   (:key-hint-key :bold t :fg magenta) (:help-key-binding :bold t :fg magenta)
-  (:key-hint-command :fg text) (:menu-argument-off :dim nil :fg text-dim)
+  (:key-hint-command :fg text) (:menu-argument-off :dim nil :fg text-dim) (:key-hint-unavailable :dim nil :fg text-dim)
   (:key-hint-prefix :fg magenta)
   (:header-line :underline nil :fg text :bg ground-dim)
   (:list-marked-other :bold t :fg blue-warmer :underline t)
