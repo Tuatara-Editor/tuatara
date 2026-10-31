@@ -78,7 +78,7 @@ are passed over (STATE-LINE-FIELDS)."
   :header (format nil "# The packages fetched, the latest first: the package, its source and the~%~
                        # version asked for; the commit fetched; its tag; whether it was let load;~%~
                        # the commit taken before it and its tag, kept to fall back on.~%")
-  :path-of #'first :fields 7 :trust t)
+  :path-of #'first :fields 7 :trust t :line-key (field-line-key 4 0))
 
 (defun fetched-package (key)
   "What is remembered of the package KEY names (PACKAGE-KEY), (KEY COMMIT TAG
@@ -1528,7 +1528,7 @@ by a key your keyring lacks. Fields after those are passed over
   :header (format nil "# The sources of packages trusted, the latest first: the address; who signed~%~
                        # the versions taken from it, a key's fingerprint, or unsigned; the signer's~%~
                        # name; an SSH signer's key. M-x package-trust-again forgets a source's.~%")
-  :path-of #'first :fields 4 :trust t)
+  :path-of #'first :fields 4 :trust t :line-key (field-line-key 4 0))
 
 (defun package-signers-file (where)
   "The allowed signers file git checks the SSH signatures of the source WHERE

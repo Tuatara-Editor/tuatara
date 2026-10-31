@@ -552,7 +552,7 @@ NIL for a line that makes no sense."
     (format nil "~d ~(~a~) ~,3f ~a" page zoom (float factor) (escape-path path))))
 
 (define-state-list *pdf-places* "pdf-places" 'parse-pdf-place-line 'pdf-place-line '*pdf-view-places-kept*
-  :path-of #'first :line-key (lambda (line) (state-line-path-after line 3)))
+  :path-of #'first :line-key (spaced-line-key 3 #'digits-word-p))
 
 (defun read-pdf-places ()
   "The PDFs' places as kept: a list of (PATH PAGE ZOOM FACTOR), the latest

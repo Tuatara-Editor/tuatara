@@ -103,12 +103,17 @@ all of the bookmarks), the later release's comment lines and its version
 line; an entry it changes loses the later fields, and a line it cannot read
 goes when an entry of the same name or path is set, changed or deleted.
 
+A line of a new kind begins with `@`: no release reads it as an entry or
+takes it for one of an entry's name or path.
+
 On a list of trust (projects trusted, package sources and the packages let
-load, grammar answers and sums) a later field may only add information, never
-narrow or condition a trust: an older release passes it over. A narrowing is
-a line of a new kind, with the version raised, which older releases leave
-unread, so that it fails closed. Such a list does not read a line of a later
-version that has more fields than it knows. The cache, the packages fetched and the grammar store are rebuilt:
+load, grammar answers and sums) an older release always fails closed on a
+later field: a release that adds one raises the list's version, and an older
+release reads no line of a later version with more fields than it knows, so
+it asks again rather than trust. A line of version 1 with more fields is
+read, its extra fields passed over; only a hand edit, or a release breaking
+this rule, writes one. A later field may still only add information, never
+narrow or condition a trust; a narrowing is a line of a new kind. The cache, the packages fetched and the grammar store are rebuilt:
 they may be deleted at any time. `test/api/kept-files.sexp` pins each file's
 class and format version, `test/kept-files/` holds the lists as each release
 wrote them, and the `kept-files` tests fail when a release no longer reads

@@ -22,7 +22,8 @@ asked (kept between sessions). Names of folders, ~ for your home folder.")
 (defvar *lsp-trusted-kept* 500
   "How many projects trusted when asked are remembered.")
 
-(define-state-list *lsp-trusted* "lsp-trusted" 'parse-absolute-path-line 'escape-path '*lsp-trusted-kept* :trust t)
+(define-state-list *lsp-trusted* "lsp-trusted" 'parse-absolute-path-line 'escape-path '*lsp-trusted-kept* :trust t
+  :line-key 'parse-absolute-path-line)
 
 (defun real-folder (path)
   "Where the folder PATH really is, every link followed and . and .. taken out,

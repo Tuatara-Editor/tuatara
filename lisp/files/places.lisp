@@ -36,7 +36,7 @@ sense."
 (define-state-list *saved-places* "places" 'parse-saved-place-line 'saved-place-line '*save-place-limit*
   :header (format nil "# Where point was in the files Tuatara visited, the latest first: the octet,~%~
                        # then the file's path (\\\\, \\n and \\r stand for \\, a newline and a return).~%")
-  :path-of #'car :line-key (lambda (line) (state-line-path-after line 1)))
+  :path-of #'car :line-key (spaced-line-key 1 #'digits-word-p))
 
 (defun read-saved-places ()
   "The places: a list of (PATH . OFFSET), the latest first, OFFSET the octet

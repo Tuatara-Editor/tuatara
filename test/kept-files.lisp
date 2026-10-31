@@ -350,7 +350,7 @@ those left out written empty, then a field of its own."
              (when (evenp i) (tuatara.defaults::state-list-drop list (list (format nil "/notes/~d.txt" (1- i)))))
              (tuatara.defaults::finish-state-writes))
         (sb-posix:chmod path #o600))
-      (true (<= (length (tuatara.defaults::state-list-pending list)) tuatara.defaults::*state-changes-waiting*)
+      (true (<= (length (tuatara.defaults::state-list-pending list)) 3)
             "~d changes wait" (length (tuatara.defaults::state-list-pending list)))
       (is equal path (tuatara.defaults::state-list-unreadable list))
       ;; written once it can be read, the latest kept
@@ -437,3 +437,92 @@ those left out written empty, then a field of its own."
                                             (mapcar (lambda (n) (cons (format nil "/notes/~a.txt" n) nil)) '(1 2 3 4 5)))
           (tuatara.defaults::finish-state-writes)
           (is = 3 (length (tuatara.defaults::read-recent-files))))))))
+
+(define-test (kept-files header-written-once)
+  ;; a later version's file written again and again keeps one header and its own comments once
+  (with-fresh-state
+    (let* ((list tuatara.defaults::*bookmarks*)
+           (path (tuatara.defaults::state-list-path list)))
+      (put-state-file list (format nil "# tuatara bookmarks 2~%~a# a comment of the later release~%7~cPlain~c/p~cctx~c~c~%"
+                                   (tuatara.defaults::state-list-header list) #\Tab #\Tab #\Tab #\Tab #\Tab))
+      (tuatara.defaults::state-list-drop list '("nothing one"))
+      (tuatara.defaults::finish-state-writes)
+      (let ((once (file-text path)))
+        (tuatara.defaults::state-list-drop list '("nothing two"))
+        (tuatara.defaults::finish-state-writes)
+        (is string= once (file-text path))
+        (is = 1 (count-matches "# Bookmarks, the latest" once))
+        (is = 1 (count-matches "# a comment of the later release" once))))))
+
+(define-test (kept-files forgotten-while-unreadable)
+  ;; a trust taken back while the file cannot be read stays taken back, however many changes follow
+  (with-fresh-state
+    (let* ((list tuatara.defaults::*lsp-trusted*)
+           (path (tuatara.defaults::state-list-path list)))
+      (tuatara.defaults::state-list-put list (list "/t/"))
+      (tuatara.defaults::finish-state-writes)
+      (sb-posix:chmod path 0)
+      (unwind-protect
+           (progn
+             (tuatara.defaults::state-list-drop list '("/t/"))
+             (tuatara.defaults::finish-state-writes)
+             (dotimes (i 70)
+               (tuatara.defaults::state-list-put list (list (format nil "/p~d/" i)))
+               (tuatara.defaults::finish-state-writes)
+               (tuatara.defaults::state-list-drop list (list (format nil "/q~d/" i)))
+               (tuatara.defaults::finish-state-writes)))
+        (sb-posix:chmod path #o600))
+      (tuatara.defaults::state-list-drop list '("/nowhere/kept-files/"))
+      (tuatara.defaults::finish-state-writes)
+      (let ((kept (tuatara.defaults::read-state-file list path)))
+        (false (member "/t/" kept :test #'equal))
+        (is = 70 (length kept))))))
+
+(define-test (kept-files new-kind-not-a-twin)
+  ;; a later release's line of a new kind is never taken for an entry's twin, nor read as one
+  (with-fresh-state
+    (let* ((list tuatara.defaults::*bookmarks*)
+           (line (format nil "category~cwork~ccolour red" #\Tab #\Tab)))
+      (put-state-file list (format nil "# tuatara bookmarks 2~%~a~%" line))
+      (tuatara.defaults::state-list-put list (list (list "work" "/w" 0 "" () nil)))
+      (tuatara.defaults::finish-state-writes)
+      (true (member line (file-lines-but-comments (file-text (tuatara.defaults::state-list-path list))) :test #'string=))))
+  (with-fresh-state
+    (let* ((list tuatara.defaults::*grammar-answers*)
+           (line (format nil "@category~cyaml" #\Tab)))
+      (put-state-file list (format nil "# tuatara grammars 2~%~a~%" line))
+      (is equal '() (tuatara.defaults::state-list-entries list))
+      (tuatara.defaults::state-list-put list (list (cons "yaml" t)))
+      (tuatara.defaults::finish-state-writes)
+      (true (member line (file-lines-but-comments (file-text (tuatara.defaults::state-list-path list))) :test #'string=))))
+  (dolist (row *kept-file-entries*)
+    (let ((list (symbol-value (first row))))
+      (false (tuatara.defaults::state-line-key list (format nil "@later~cthing" #\Tab))
+             "~a takes a line of a new kind" (tuatara.defaults::state-list-name list))
+      (dolist (entry (rest row))
+        (is equal (funcall (tuatara.defaults::state-list-path-of list) entry)
+            (tuatara.defaults::state-line-key list (funcall (tuatara.defaults::state-list-print list) entry))
+            "~a's line key" (tuatara.defaults::state-list-name list))))))
+
+(define-test (kept-files version-line-anywhere)
+  ;; the version of a file is that of its version line wherever it stands, so a list of trust
+  ;; reads none of a later version's longer lines, those before that line included
+  (with-fresh-state
+    (put-state-file tuatara.defaults::*lsp-trusted*
+                    (format nil "/a/~cX~%# tuatara lsp-trusted 2~%/b/~cY~%/c/~%" #\Tab #\Tab))
+    (is equal '("/c/") (tuatara.defaults::state-list-entries tuatara.defaults::*lsp-trusted*))))
+
+(define-test (kept-files past-limit-counted-cheaply)
+  ;; how many bookmarks there will be is counted from those shown, not by making the list again:
+  ;; what one count makes does not grow with the bookmarks
+  (flet ((octets-a-count (n)
+           (with-fresh-state
+             (let ((list tuatara.defaults::*bookmarks*))
+               (tuatara.defaults::state-list-put list (loop for i below n collect (list (format nil "b~d" i) "/p" i "" () nil)))
+               (tuatara.defaults::finish-state-writes)
+               (tuatara.defaults::state-list-entries list)
+               (let ((before (sb-ext:get-bytes-consed)))
+                 (dotimes (i 100) (tuatara.defaults::state-list-past-limit list 1))
+                 (/ (- (sb-ext:get-bytes-consed) before) 100))))))
+    (let ((few (octets-a-count 1000)) (many (octets-a-count 20000)))
+      (true (< (- many few) 1024) "~,1f octets a count of 20000, ~,1f of 1000" many few))))

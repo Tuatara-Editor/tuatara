@@ -60,7 +60,7 @@ CATEGORIES SAFE): the categories and safe last, when it has them."
                        # (\\\\, \\n and \\r stand for \\, a newline and a return).~%")
   ;; a bookmark is known by its name
   :path-of #'first :class :kept :fields 6
-  :line-key (lambda (line) (unescape-path (or (second (state-line-fields line)) ""))))
+  :line-key (field-line-key 4 1 #'digits-word-p))
 
 (defun bookmark-names ()
   "The names of the bookmarks, the latest first."
@@ -149,15 +149,16 @@ are chosen."
                                                                     :default offered))))))
           (if (zerop (length name))
               (message "No name: no bookmark set")
-              (let* ((had (bookmark-categories (find-bookmark name)))
+              (let* ((old (find-bookmark name))
+                     (had (bookmark-categories old))
                      (categories (or (and *bookmark-set-asks-categories*
                                           (read-bookmark-categories (format nil "Categories of ~a: " name)))
-                                     had)))
+                                     had))
+                     (count (state-list-past-limit *bookmarks* (if old 0 1))))
                 (state-list-put *bookmarks* (list (list name target (point) (bookmark-context buffer (point)) categories
                                                         (tuatara.io:safe-visit-p buffer))))
-                (let ((count (state-list-past-limit *bookmarks*)))
-                  (message "Bookmark ~a set~@[ in ~{~a~^, ~}~]~@[; ~d bookmarks, more than *bookmarks-kept* (~d)~]"
-                           name categories count *bookmarks-kept*))))))))
+                (message "Bookmark ~a set~@[ in ~{~a~^, ~}~]~@[; ~d bookmarks, more than *bookmarks-kept* (~d)~]"
+                         name categories count *bookmarks-kept*)))))))
 
 (defun bookmark-kind (bookmark)
   "What BOOKMARK keeps a place in, as the bookmark manager says it: \"file\",

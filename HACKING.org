@@ -169,11 +169,15 @@ code. A new list needs its class, a row in the pin, sample entries in
 =tuatara.asd=, never over a file there. A list's format changes only by
 adding (a field at the end of a line, after every field of today written
 even when empty; or a line of a new kind) with its =:version= raised; old
-samples are never edited. A list of trust (=:trust t=) takes a later field
-only when it adds information; anything that narrows or conditions a trust
-is a line of a new kind, left unread, so failing closed, by older releases,
-which also leave unread a later version's line with more than =:fields=
-fields.
+samples are never edited. A line of a new kind begins with =@=, which no
+list reads as an entry and no =:line-key= takes; each list's =:line-key=
+(=field-line-key=, =spaced-line-key=) gives NIL for a line not of its
+entries' shape. On a list of trust (=:trust t=) an older release always
+fails closed on a later field: adding one raises =:version=, and an older
+release reads no line of a later version with more than =:fields= fields,
+so it asks again. A version-1 line with extra fields is read (only a hand
+edit or a release breaking this rule writes one). A later field may only add
+information; a narrowing of a trust is a line of a new kind.
 
 * Working in a running editor
 

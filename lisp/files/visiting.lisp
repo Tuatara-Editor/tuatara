@@ -33,7 +33,8 @@ before file10), case not counted. A path opened safely, or in one of
   "How many files and directories chosen in the questions for them are kept,
 to offer again first.")
 
-(define-state-list *chosen-paths* "chosen-paths" 'parse-absolute-path-line 'escape-path '*chosen-paths-kept*)
+(define-state-list *chosen-paths* "chosen-paths" 'parse-absolute-path-line 'escape-path '*chosen-paths-kept*
+  :line-key 'parse-absolute-path-line)
 
 (defun chosen-paths-file ()
   "Where the files and directories chosen lately are kept: in the state directory."
