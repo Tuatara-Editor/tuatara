@@ -198,6 +198,7 @@
                (:file "package-trust")
                (:file "stable-surface")
                (:file "state-and-files")
+               (:file "kept-files")
                (:file "job-endings")
                (:file "job-runner")
                (:file "job-guards")

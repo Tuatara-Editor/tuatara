@@ -23,11 +23,13 @@ again once the text before it has changed.")
 for a line that makes no sense. A tab ends each field, and each is escaped
 \(ESCAPE-PATH). In order: the octet, the name, the path and the text after
 the place; then, when there are any, the categories with a comma between
-them, and the word safe for a file opened safely."
-  (let ((fields (uiop:split-string line :separator '(#\Tab))))
-    (when (and (<= 4 (length fields) 6) (plusp (length (first fields))) (every #'digit-char-p (first fields))
+them, and the word safe for a file opened safely. Fields after those are
+passed over (STATE-LINE-FIELDS)."
+  (let ((fields (state-line-fields line)))
+    (when (and (<= 4 (length fields)) (plusp (length (first fields))) (every #'digit-char-p (first fields))
                (< (length (first fields)) 19))
-      (destructuring-bind (offset name path context &optional (categories "") (safe "")) fields
+      (destructuring-bind (offset name path context &optional (categories "") (safe "") &rest later) fields
+        (declare (ignore later))
         (let ((name (unescape-path name)) (path (unescape-path path)))
           (and (plusp (length name)) (plusp (length path))
                (list name path (parse-integer offset) (unescape-path context)
@@ -56,7 +58,7 @@ CATEGORIES SAFE): the categories and safe last, when it has them."
                        # categories with a comma between them, and safe for a file opened safely~%~
                        # (\\\\, \\n and \\r stand for \\, a newline and a return).~%")
   ;; a bookmark is known by its name
-  :path-of #'first)
+  :path-of #'first :class :kept)
 
 (defun bookmark-names ()
   "The names of the bookmarks, the latest first."

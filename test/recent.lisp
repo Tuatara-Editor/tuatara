@@ -303,7 +303,7 @@ directory removed afterwards."
       (tuatara.defaults::note-chosen-path "/mine/file")
       (is equal '("/mine/file" "/other/later" "/other/session") (tuatara.defaults::chosen-paths))
       (tuatara.defaults::finish-state-writes)
-      (is string= (format nil "/mine/file~%/other/later~%/other/session~%") (file-text file))
+      (is string= (format nil "# tuatara chosen-paths 1~%/mine/file~%/other/later~%/other/session~%") (file-text file))
       ;; written again by another session: read again here
       (tuatara.io:write-private-file file (format nil "/third/one~%/mine/file~%"))
       (is equal '("/third/one" "/mine/file") (tuatara.defaults::chosen-paths)))))

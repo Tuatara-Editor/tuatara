@@ -533,16 +533,17 @@ page and zoom for the next time."
 
 (defun parse-pdf-place-line (line)
   "The entry of the PDFs' places LINE writes, (PATH PAGE ZOOM FACTOR): the
-page, page or width, the zoom factor and the PDF's path (ESCAPE-PATH); NIL
-for a line that makes no sense."
+page, page or width, the zoom factor and the PDF's path (STATE-LINE-PATH);
+NIL for a line that makes no sense."
   (let* ((first (position #\Space line))
          (second (and first (position #\Space line :start (1+ first))))
          (third (and second (position #\Space line :start (1+ second)))))
-    (when (and third (< (1+ third) (length line)))
-      (list (unescape-path (subseq line (1+ third)))
-            (max 1 (or (ignore-errors (parse-integer line :end first)) 1))
-            (if (string= (subseq line (1+ first) second) "width") :width :page)
-            (let ((n (parse-decimal (subseq line (1+ second) third))))
+    (when (and third (< (1+ third) (length line)) (< 0 first 19) (every #'digit-char-p (subseq line 0 first))
+               (member (subseq line (1+ first) second) '("page" "width") :test #'string=))
+      (let ((n (parse-decimal (subseq line (1+ second) third))))
+        (list (state-line-path line (1+ third))
+              (max 1 (parse-integer line :end first))
+              (if (string= (subseq line (1+ first) second) "width") :width :page)
               (if (and n (< 0.05 n 20)) (float n) 1))))))
 
 (defun pdf-place-line (entry)

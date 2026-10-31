@@ -35,11 +35,11 @@ be looked at just then, on a drive not answering, is kept.")
 
 (defun parse-recent-file-line (line)
   "The entry of the list of recent files LINE writes, (PATH . SAFE): file,
-or safe for a file visited safely, then its path (ESCAPE-PATH); NIL for a
-line that makes no sense."
+or safe for a file visited safely, then its path (STATE-LINE-PATH); NIL for
+a line that makes no sense."
   (let ((space (position #\Space line)))
     (when (and space (member (subseq line 0 space) '("file" "safe") :test #'string=))
-      (let ((path (unescape-path (subseq line (1+ space)))))
+      (let ((path (state-line-path line (1+ space))))
         (and (plusp (length path)) (cons path (string= "safe" line :end2 space)))))))
 
 (defun recent-file-line (entry)

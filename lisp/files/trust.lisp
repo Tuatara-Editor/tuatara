@@ -22,7 +22,13 @@ asked (kept between sessions). Names of folders, ~ for your home folder.")
 (defvar *lsp-trusted-kept* 500
   "How many projects trusted when asked are remembered.")
 
-(define-state-list *lsp-trusted* "lsp-trusted" 'unescape-path 'escape-path '*lsp-trusted-kept*)
+(defun parse-trusted-project-line (line)
+  "The folder of a project trusted when asked that LINE writes
+\(STATE-LINE-PATH), or NIL for a line that writes none: a folder begins with /."
+  (let ((path (state-line-path line)))
+    (and (plusp (length path)) (char= #\/ (char path 0)) path)))
+
+(define-state-list *lsp-trusted* "lsp-trusted" 'parse-trusted-project-line 'escape-path '*lsp-trusted-kept*)
 
 (defun real-folder (path)
   "Where the folder PATH really is, every link followed and . and .. taken out,

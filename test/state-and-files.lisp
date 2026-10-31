@@ -109,7 +109,7 @@ nothing read yet."
       (tuatara.defaults::state-list-drop list '("/other/one/"))
       (is equal '("/mine/two.txt") (tuatara.defaults::state-list-entries list))
       (tuatara.defaults::finish-state-writes)
-      (is string= (format nil "/mine/two.txt~%") (file-text (tuatara.defaults::state-list-path list))))
+      (is string= (format nil "# tuatara chosen-paths 1~%/mine/two.txt~%") (file-text (tuatara.defaults::state-list-path list))))
     ;; a PDF whose path has spaces keeps its place
     (tuatara.defaults::state-list-put tuatara.defaults::*pdf-places* (list (list "/a b/c d.pdf" 7 :width 1.5)))
     (tuatara.defaults::finish-state-writes)
@@ -135,16 +135,17 @@ nothing read yet."
       (is equal '(("/a/b c.txt" . 12) ("/x\\y" . 0)) (tuatara.defaults::read-saved-places))
       (is equal '(("/a/doc.pdf" 3 :width 1.25) ("/b/other doc.pdf" 1 :page 1.0)) (tuatara.defaults::read-pdf-places))
       (is equal '("/a/b c.txt" "/a/") (tuatara.defaults::chosen-paths))
-      ;; a change written leaves the rest as it was
+      ;; a change written leaves the rest as it was, under the line saying the version
       (tuatara.defaults::drop-recent-files '("/nowhere"))
       (tuatara.defaults::state-list-drop tuatara.defaults::*saved-places* '("/nowhere"))
       (tuatara.defaults::state-list-drop tuatara.defaults::*pdf-places* '("/nowhere"))
       (tuatara.defaults::state-list-drop tuatara.defaults::*chosen-paths* '("/nowhere"))
       (tuatara.defaults::finish-state-writes)
-      (is string= recent (file-text (tuatara.defaults::state-list-path tuatara.defaults::*recent-files*)))
-      (is string= places (file-text (tuatara.defaults::state-list-path tuatara.defaults::*saved-places*)))
-      (is string= pdf (file-text (tuatara.defaults::state-list-path tuatara.defaults::*pdf-places*)))
-      (is string= chosen (file-text (tuatara.defaults::chosen-paths-file))))))
+      (flet ((versioned (name text) (format nil "# tuatara ~a 1~%~a" name text)))
+        (is string= (versioned "recent-files" recent) (file-text (tuatara.defaults::state-list-path tuatara.defaults::*recent-files*)))
+        (is string= (versioned "places" places) (file-text (tuatara.defaults::state-list-path tuatara.defaults::*saved-places*)))
+        (is string= (versioned "pdf-places" pdf) (file-text (tuatara.defaults::state-list-path tuatara.defaults::*pdf-places*)))
+        (is string= (versioned "chosen-paths" chosen) (file-text (tuatara.defaults::chosen-paths-file)))))))
 
 (defun binary-and-text (dir)
   "Make in DIR a file binary by a zero octet 10 KB in, named as text, and a

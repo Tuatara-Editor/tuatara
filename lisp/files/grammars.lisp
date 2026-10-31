@@ -46,11 +46,12 @@ never parsed, whatever this says.")
 
 (defun parse-grammar-answer (line)
   "The answer (NAME . ON) a LINE of the list of grammar answers writes, or NIL
-for a line that is none."
-  (let ((tab (position #\Tab line)))
-    (and tab (plusp tab)
-         (member (subseq line (1+ tab)) '("on" "off") :test #'string=)
-         (cons (subseq line 0 tab) (string= (subseq line (1+ tab)) "on")))))
+for a line that is none. Fields after those are passed over
+\(STATE-LINE-FIELDS)."
+  (let ((fields (state-line-fields line)))
+    (and (rest fields) (plusp (length (first fields)))
+         (member (second fields) '("on" "off") :test #'string=)
+         (cons (first fields) (string= (second fields) "on")))))
 
 (define-state-list *grammar-answers* "grammars" 'parse-grammar-answer 'print-grammar-answer '*grammar-answers-kept*
   :path-of #'car)
@@ -153,10 +154,11 @@ so. Nothing is read from the disk."
 
 (defun parse-user-grammar-sum (line)
   "The entry (NAME . SUM) a LINE of the list of sums of grammars you added
-writes, or NIL for a line that is none."
-  (let ((tab (position #\Tab line)))
-    (and tab (plusp tab) (= 64 (- (length line) tab 1))
-         (cons (subseq line 0 tab) (subseq line (1+ tab))))))
+writes, or NIL for a line that is none. Fields after those are passed over
+\(STATE-LINE-FIELDS)."
+  (let ((fields (state-line-fields line)))
+    (and (rest fields) (plusp (length (first fields))) (= 64 (length (second fields)))
+         (cons (first fields) (second fields)))))
 
 (define-state-list *user-grammar-sums* "user-grammars" 'parse-user-grammar-sum 'print-user-grammar-sum
   '*user-grammar-sums-kept* :path-of #'car)

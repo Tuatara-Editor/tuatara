@@ -58,10 +58,12 @@ signed COMMIT as git checked it when it was taken, a key's fingerprint or
 
 (defun parse-package-line (line)
   "The entry LINE of the packages file writes, (KEY COMMIT TAG ACCEPTED
-PREVIOUS PREVIOUS-TAG SIGNER), or NIL for a line that makes no sense."
-  (let ((fields (uiop:split-string line :separator '(#\Tab))))
-    (when (member (length fields) '(4 6 7))
-      (destructuring-bind (key commit tag accepted &optional previous previous-tag signer) fields
+PREVIOUS PREVIOUS-TAG SIGNER), or NIL for a line that makes no sense. Fields
+after those are passed over (STATE-LINE-FIELDS)."
+  (let ((fields (state-line-fields line)))
+    (when (or (= (length fields) 4) (>= (length fields) 6))
+      (destructuring-bind (key commit tag accepted &optional previous previous-tag signer &rest later) fields
+        (declare (ignore later))
         (flet ((tag (text) (let ((tag (unescape-path text))) (and (plusp (length tag)) tag)))
                (commit-p (text) (cl-ppcre:scan "^(?:[0-9a-f]{7,64}|-)$" text)))
           (let ((previous (and previous (plusp (length previous)) previous)))
@@ -1508,10 +1510,12 @@ what is remembered of it, says was fetched; NIL when none was."
 for a line that makes no sense: SIGNER a key's fingerprint or \"unsigned\",
 NAME the signer's name or NIL, KEY an SSH signer's key or NIL; SIGNER is
 key: and a GPG key's fingerprint for a source whose first version was signed
-by a key your keyring lacks."
-  (let ((fields (uiop:split-string line :separator '(#\Tab))))
-    (when (= 4 (length fields))
-      (destructuring-bind (where signer name key) fields
+by a key your keyring lacks. Fields after those are passed over
+\(STATE-LINE-FIELDS)."
+  (let ((fields (state-line-fields line)))
+    (when (<= 4 (length fields))
+      (destructuring-bind (where signer name key &rest later) fields
+        (declare (ignore later))
         (and (plusp (length where))
              (or (string= signer "unsigned") (cl-ppcre:scan "^(?:SHA256:[A-Za-z0-9+/=]+|[0-9A-F]{40,64}|key:(?:[0-9A-F]{40}|[0-9A-F]{64}))$" signer))
              (or (zerop (length key)) (cl-ppcre:scan "^[a-z0-9@.-]{1,64} [A-Za-z0-9+/]+={0,2}$" key))

@@ -156,6 +156,18 @@ a change that breaks it within a major version (CONTRIBUTING.md, "Keeping what
 others build on"). =tools/pin-stable-surface.sh= writes it again; it is run
 at each version bump, its =git diff= read first.
 
+=test/api/kept-files.sexp= pins the files Tuatara keeps in your folders: each
+list kept between sessions (=define-state-list=, =lisp/editing/state.lisp=)
+with its class (=:kept= or =:remembered=) and the version of its format, and
+the other files with theirs. =test/kept-files/VERSION/= holds each list's file
+as that release wrote it; the =kept-files= tests read them all with today's
+code. A new list needs its class, a row in the pin, sample entries in
+=*kept-file-entries*= (=test/kept-files.lisp=) and a sample file:
+=tools/pin-kept-files.sh= writes the pin and the samples of the version in
+=tuatara.asd=, never over a file there. A list's format changes only by
+adding (a field at the end of a line, a line of a new kind) with its
+=:version= raised; old samples are never edited.
+
 * Working in a running editor
 
 =tools/lisp-server.sh= starts SBCL with Tuatara loaded and a Swank (SLIME) or
