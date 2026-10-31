@@ -66,11 +66,13 @@ files, code with tree-sitter colours and language servers, CSV files of many
 gigabytes, mail folders and folders of files, with DONKEY's modal keys or
 plain ones."
 # Tuatara's licence, Ghostty's (the terminal library), those of what the
-# terminal library compiles in and each grammar's
+# terminal library compiles in and each grammar's, a grammar's expression
+# taken term by term, a choice of licences kept in parentheses
 licences="GPL-3.0-or-later AND MIT"
 while IFS= read -r licence; do
   case " AND $licences AND " in *" AND $licence AND "*) ;; *) licences="$licences AND $licence" ;; esac
-done < <({ cut -f2 build/terminal/licenses/licenses.tsv; grep -v '^#' syntax/grammars.tsv | cut -f4; } | sort -u)
+done < <({ cut -f2 build/terminal/licenses/licenses.tsv; grep -v '^#' syntax/grammars.tsv | cut -f4; } |
+         sed 's/ AND /\n/g' | sed '/ OR /{/^(/!s/.*/(&)/}' | sort -u)
 # the libraries the program loads, by the names it asks for
 libraries="libgtk-4.so.1 libcairo.so.2 libncursesw.so.6 libcrypto.so.3 libzstd.so.1 libstdc++.so.6"
 
