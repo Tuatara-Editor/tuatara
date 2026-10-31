@@ -9,12 +9,19 @@
 ;;;; entries and a slow disk never holds the editor up. The list in memory is
 ;;;; read again from the file once another session has changed it.
 ;;;;
+;;;;
 ;;;; A file begins with a line naming the list and the version of its
 ;;;; format (# tuatara bookmarks 1; a file without one is version 1). A later
-;;;; release may add fields at the end of a line, or lines of a new kind: an
-;;;; earlier one reads the fields it knows, and writes back as they were the
-;;;; lines it leaves unchanged and those it cannot read, so that going from
-;;;; one release to another and back loses nothing.
+;;;; release may add fields at the end of a line, after every field of today
+;;;; written even when empty, or lines of a new kind. An earlier release reads
+;;;; the fields it knows; it writes back as they were the entries it does not
+;;;; change, the lines it cannot read (as many again as the list keeps, all of
+;;;; a list you make) and the comment lines of a later release's file. An
+;;;; entry it changes is written as it writes one, without the later fields,
+;;;; and a line it cannot read goes when an entry of the same name or path is
+;;;; put, replaced or taken out. In a list of what you trusted, a line of a
+;;;; later version with fields this release does not know is not read: what
+;;;; it would not understand is never taken as trust.
 
 (in-package #:tuatara.defaults)
 
@@ -54,8 +61,24 @@ its end or to a tab (ESCAPE-PATH writes none in a path), after which a later
 release may add fields; an empty string when there is none."
   (unescape-path (subseq line start (position #\Tab line :start start))))
 
+(defun state-line-path-after (line spaces)
+  "The path LINE, a line of a list kept between sessions, writes after its
+first SPACES spaces (STATE-LINE-PATH); an empty string when it has fewer."
+  (let ((start 0))
+    (loop repeat spaces
+          do (let ((space (position #\Space line :start start)))
+               (if space (setf start (1+ space)) (return-from state-line-path-after ""))))
+    (state-line-path line start)))
+
+(defun parse-absolute-path-line (line)
+  "The path LINE, a line of a list of paths kept between sessions, writes
+\(STATE-LINE-PATH), or NIL for a line that writes none: a path begins with /."
+  (let ((path (state-line-path line)))
+    (and (plusp (length path)) (char= #\/ (char path 0)) path)))
+
 (defstruct (state-list (:constructor make-state-list (name parse print limit-variable
-                                                      &key header (path-of #'identity) key (version 1) (class :remembered)))
+                                                      &key header (path-of #'identity) key (version 1) (class :remembered)
+                                                        (fields 1) trust line-key))
                        (:copier nil))
   "A list kept between sessions in a file of the state directory: NAME, the
 file's name there; PARSE, a function making an entry of a line (NIL for a
@@ -65,14 +88,21 @@ NIL; PATH-OF, a function giving the path an entry is about; KEY, one giving
 what makes two entries one (PATH-OF when NIL); VERSION, the version of the
 format its lines are written in, said in the file's first line; CLASS, :KEPT
 for a list you make yourself, whose loss would lose work, or :REMEMBERED for
-one of what you did, kept for convenience. What is known of it: FILE, the
+one of what you did, kept for convenience; FIELDS, how many fields parted by
+tabs a line of today's format has at most; TRUST, true for a list of what you
+trusted, whose lines of a later version with more fields are not read;
+LINE-KEY, a function giving the name or path a line is about, read or not, to
+match PATH-OF (the first field, STATE-LINE-PATH, when NIL). What is known of
+it: FILE, the
 native name of the file read last, its STAMP then and the entries it had
 then, DISK; PENDING, the changes made and not yet taken to be written, and
 WRITING, those being written, the latest first, each (FILE . CHANGE); SHOWN,
 the entries as STATE-LIST-ENTRIES gave them last; NOTED and TRIED, how many
 changes were made, and how many there were when the writer last took them;
-LOCK, held while these change."
-  name parse print limit-variable header path-of key version class
+LOCK, held while these change; UNREADABLE, the file last said could not be
+read, until it is written."
+  name parse print limit-variable header path-of key version class fields trust line-key
+  (unreadable nil)
   (file nil) (stamp nil) (disk '()) (pending '()) (writing '()) (shown nil)
   (noted 0) (tried 0)
   (lock (sb-thread:make-mutex :name "state list")))
@@ -87,7 +117,8 @@ LOCK, held while these change."
 (defmacro define-state-list (variable name &rest arguments)
   "Define VARIABLE as a list kept between sessions in the file NAME of the
 state directory, made by MAKE-STATE-LIST with ARGUMENTS (PARSE PRINT LIMIT
-and the keys: :HEADER, :PATH-OF, :KEY, :VERSION and :CLASS), and known to the
+and the keys: :HEADER, :PATH-OF, :KEY, :VERSION, :CLASS, :FIELDS, :TRUST and
+:LINE-KEY), and known to the
 writer (*STATE-LISTS*). Its file begins with the line # tuatara NAME VERSION;
 lines beginning with # are comments, never given to PARSE."
   `(progn
@@ -134,13 +165,18 @@ more than its limit; NIL when it is not."
 a place by its file; NIL when there is none."
   (find key (state-list-entries list) :key (lambda (entry) (state-entry-key list entry)) :test #'equal))
 
-(defstruct (state-contents (:constructor make-state-contents (entries unread version lines))
+(defstruct (state-contents (:constructor make-state-contents (entries unread version lines comments))
                            (:copier nil) (:predicate nil))
   "What the file of a list kept between sessions holds: ENTRIES, the latest
 first; UNREAD, the lines that are no entry this release reads, in their order;
 VERSION, the version its first line says, 1 when it says none; LINES, a table
-from each of ENTRIES to the line it was read from."
-  entries unread version lines)
+from each of ENTRIES to the line it was read from; COMMENTS, the comment lines
+of a file of a later version than the list's, but the version line."
+  entries unread version lines comments)
+
+(defun state-line-key (list line)
+  "The name or path LINE of LIST, an entry or not, is about (LINE-KEY)."
+  (ignore-errors (funcall (or (state-list-line-key list) #'state-line-path) line)))
 
 (defun state-version-line (list version)
   "The line beginning the file of LIST, a list kept between sessions, written
@@ -150,33 +186,41 @@ in the format of VERSION: # tuatara NAME VERSION."
 (defun state-line-version (list line)
   "The version of the format of LIST's file that LINE, a comment line of it,
 says (STATE-VERSION-LINE), or NIL when it says none."
-  (let ((name (state-list-name list)))
+  (let* ((name (state-list-name list)) (start (+ 11 (length name))))
     (and (uiop:string-prefix-p "# tuatara " line)
          (string= name line :start2 10 :end2 (min (length line) (+ 10 (length name))))
-         (> (length line) (+ 11 (length name)))
-         (char= #\Space (char line (+ 10 (length name))))
-         (let ((version (ignore-errors (parse-integer line :start (+ 11 (length name))))))
-           (and version (plusp version) version)))))
+         (< start (length line) (+ start 7))
+         (char= #\Space (char line (1- start)))
+         (every #'digit-char-p (subseq line start))
+         (let ((version (parse-integer line :start start)))
+           (and (plusp version) version)))))
 
 (defun read-state-contents (list file)
   "What FILE, LIST's file, holds (STATE-CONTENTS): its entries, the latest
 first, each once (the first of those with one key), at most as many as LIST
 keeps (STATE-LIST-MOST); the lines that make no entry, as many again at most
-and every one for a list you make, to be written back
-as they are; the version its first line says. Empty when there is no FILE, and
-NIL when it is there and cannot be read. Lines beginning with # are comments."
+and every one for a list you make, to be written back as they are; the
+version its first line says, and the comment lines of a later version. In a
+list of what you trusted (TRUST), a line of a later version with more fields
+than LIST's makes no entry. Empty when there is no FILE, and NIL when it is
+there and cannot be read. Lines beginning with # are comments."
   (handler-case
       (with-open-file (in (sb-ext:parse-native-namestring file) :if-does-not-exist nil :external-format '(:utf-8 :replacement #\?))
         (let ((entries '()) (count 0) (unread '()) (unread-count 0) (version 1) (most (state-list-most list))
-              (seen (make-hash-table :test 'equal)) (lines (make-hash-table :test 'eq)))
+              (comments '()) (seen (make-hash-table :test 'equal)) (lines (make-hash-table :test 'eq)))
           (when in
             (loop for line = (read-line in nil)
                   while line
                   do (cond ((zerop (length line)))
                            ((char= (char line 0) #\#)
                             (let ((said (state-line-version list line)))
-                              (when said (setf version (max version said)))))
-                           (t (let ((entry (ignore-errors (funcall (state-list-parse list) line))))
+                              (if said
+                                  (setf version (max version said))
+                                  (push line comments))))
+                           (t (let ((entry (and (not (and (state-list-trust list)
+                                                          (> version (state-list-version list))
+                                                          (> (1+ (count #\Tab line)) (state-list-fields list))))
+                                                (ignore-errors (funcall (state-list-parse list) line)))))
                                 (cond ((null entry)
                                        (when (or (null most) (< unread-count most))
                                          (push line unread)
@@ -188,7 +232,8 @@ NIL when it is there and cannot be read. Lines beginning with # are comments."
                                                  (gethash entry lines) line)
                                            (push entry entries)
                                            (incf count))))))))))
-          (make-state-contents (nreverse entries) (nreverse unread) version lines)))
+          (make-state-contents (nreverse entries) (nreverse unread) version lines
+                               (and (> version (state-list-version list)) (nreverse comments)))))
     (error () nil)))
 
 (defun read-state-file (list file)
@@ -201,40 +246,51 @@ cannot be read. Lines that make no entry are passed over (READ-STATE-CONTENTS)."
 (defun state-file-text (list contents entries)
   "The text of LIST's file holding ENTRIES, CONTENTS what it held before
 \(READ-STATE-CONTENTS): the version line, the newer of LIST's and the file's;
-LIST's header; a line for each entry, as it was read for one read; then the
-lines that made no entry, as they were."
+LIST's header and the comment lines of a later version's file; a line for
+each entry, as it was read for one read; then the lines that made no entry,
+as they were."
   (with-output-to-string (out)
     (write-line (state-version-line list (max (state-list-version list) (state-contents-version contents))) out)
     (when (state-list-header list) (write-string (state-list-header list) out))
+    (dolist (line (state-contents-comments contents))
+      (write-line line out))
     (let ((lines (state-contents-lines contents)))
       (dolist (entry entries)
         (write-line (or (gethash entry lines) (funcall (state-list-print list) entry)) out)))
     (dolist (line (state-contents-unread contents))
       (write-line line out))))
 
-(defun apply-state-changes (list entries changes)
+(defun apply-state-changes (list entries changes &optional unread)
   "ENTRIES of LIST with CHANGES made to them in turn, the oldest first: each
-(:PUT NEW MOST), NEW put first, those of ENTRIES with one of their keys taken
-out, and at most MOST kept (all when MOST is NIL); (:REPLACE NEW), each entry with the key of one
-of NEW that one instead, where it stands, those not there left out; or (:DROP
-PATHS), the entries about PATHS taken out."
-  (dolist (change changes entries)
+\(:PUT NEW MOST), NEW put first, those of ENTRIES with one of their keys taken
+out, and at most MOST kept (all when MOST is NIL); (:REPLACE NEW), each entry
+with the key of one of NEW that one instead, where it stands, those not there
+left out; or (:DROP PATHS), the entries about PATHS taken out. UNREAD, lines
+of LIST's file that make no entry, lose those about the paths each change is
+about (STATE-LINE-KEY); what is left of them is the second value."
+  (flet ((forget-unread (paths)
+           (when unread
+             (setf unread (remove-if (lambda (line) (member (state-line-key list line) paths :test #'equal)) unread))))
+         (paths-of (new) (mapcar (state-list-path-of list) new)))
+    (dolist (change changes (values entries unread))
+      (case (first change)
+        ((:put :replace) (forget-unread (paths-of (second change))))
+        (:drop (forget-unread (second change))))
+      (setf entries (apply-state-change list entries change)))))
+
+(defun apply-state-change (list entries change)
+  "ENTRIES of LIST with CHANGE made to them (APPLY-STATE-CHANGES)."
+  (flet ((key (entry) (state-entry-key list entry)))
     (ecase (first change)
       (:put (destructuring-bind (new most) (rest change)
-              (let ((keys (mapcar (lambda (entry) (state-entry-key list entry)) new)))
-                (setf entries (append new (remove-if (lambda (entry) (member (state-entry-key list entry) keys :test #'equal))
-                                                     entries)))
-                (when (and most (> (length entries) most))
-                  (setf entries (subseq entries 0 most))))))
+              (let* ((keys (mapcar #'key new))
+                     (all (append new (remove-if (lambda (entry) (member (key entry) keys :test #'equal)) entries))))
+                (if (and most (> (length all) most)) (subseq all 0 most) all))))
       (:replace (let ((new (second change)))
-                  (setf entries (mapcar (lambda (entry)
-                                          (or (find (state-entry-key list entry) new
-                                                    :key (lambda (n) (state-entry-key list n)) :test #'equal)
-                                              entry))
-                                        entries))))
+                  (mapcar (lambda (entry) (or (find (key entry) new :key #'key :test #'equal) entry)) entries)))
       (:drop (let ((paths (second change)))
-               (setf entries (remove-if (lambda (entry) (member (funcall (state-list-path-of list) entry) paths :test #'equal))
-                                        entries)))))))
+               (remove-if (lambda (entry) (member (funcall (state-list-path-of list) entry) paths :test #'equal))
+                          entries))))))
 
 (defun changes-for (file changes)
   "The changes among CHANGES (each (FILE . CHANGE), the latest first) made to
@@ -304,32 +360,60 @@ sessions wrote meanwhile."
 file read again, the changes made to what it has, and written back whole,
 readable by you alone, the lines it holds that make no entry kept
 \(STATE-FILE-TEXT). :WRITTEN, with the entries written as a second value;
-:BUSY when another session held the lock for long, or the file could not be
-read; NIL when it could not be written."
-  (let ((written nil) (unread nil) (entries '()))
+:BUSY when another session held the lock for long; :UNREADABLE when the file
+is there and could not be read, and so was not written over; NIL when it
+could not be written."
+  (let ((how nil) (entries '()))
     (if (tuatara.io:call-with-state-lock
          file
          (lambda ()
            (let ((contents (read-state-contents list file)))
              (if contents
-                 (progn
-                   (setf entries (apply-state-changes list (state-contents-entries contents) changes))
+                 (multiple-value-bind (now unread)
+                     (apply-state-changes list (state-contents-entries contents) changes (state-contents-unread contents))
+                   (setf entries now
+                         (state-contents-unread contents) unread)
                    (ignore-errors
                     (tuatara.io:write-private-file file (state-file-text list contents entries))
-                    (setf written t)))
-                 ;; never written over what could not be read
-                 (setf unread t)))
+                    (setf how :written)))
+                 (setf how :unreadable)))
            t)
          :wait 2)
-        (cond (written (values :written entries))
-              (unread :busy))
+        (if (eq how :written) (values :written entries) how)
         ;; the lock not had: another session holds it, or the directory is gone
         (and (ignore-errors (tuatara.io:path-stamp (tuatara.io:parent-path file))) :busy))))
 
+(defparameter *state-changes-waiting* 64
+  "How many changes to a list kept between sessions wait at most for its file
+to be read again, those of one kind one after another made one first.")
+
+(defun merge-state-changes (list older newer)
+  "One change to LIST doing what OLDER, then NEWER, of the same kind, do."
+  (flet ((once (entries) (remove-duplicates entries :key (lambda (entry) (state-entry-key list entry))
+                                                    :test #'equal :from-end t)))
+    (ecase (first newer)
+      (:put (let ((most (third newer)) (new (once (append (second newer) (second older)))))
+              (list :put (if (and most (> (length new) most)) (subseq new 0 most) new) most)))
+      (:replace (list :replace (once (append (second newer) (second older)))))
+      (:drop (list :drop (union (second newer) (second older) :test #'equal))))))
+
+(defun compact-state-changes (list changes)
+  "CHANGES to one file of LIST, each (FILE . CHANGE), the latest first, made
+fewer: those of one kind one after another made one (MERGE-STATE-CHANGES), and
+the latest *STATE-CHANGES-WAITING* kept."
+  (let ((out '()))
+    (dolist (change (reverse changes))
+      (let ((last (first out)))
+        (if (and last (eq (first (cdr last)) (first (cdr change))))
+            (setf (first out) (cons (car change) (merge-state-changes list (cdr last) (cdr change))))
+            (push change out))))
+    (if (> (length out) *state-changes-waiting*) (subseq out 0 *state-changes-waiting*) out)))
+
 (defun write-state-list (list)
   "Write the changes made to LIST and not yet written, each to its file; those
-another session kept from being written wait for the next time. True when
-there were any."
+another session kept from being written wait for the next time, and those to
+a file that could not be read wait, made fewer (COMPACT-STATE-CHANGES), it said
+once in the echo area and the debug log. True when there were any."
   (let ((changes (sb-thread:with-mutex ((state-list-lock list))
                    (setf (state-list-tried list) (state-list-noted list))
                    (let ((pending (state-list-pending list)))
@@ -342,16 +426,30 @@ there were any."
             ;; one that cannot be written is let go of, never in the way of the others
             (tuatara.runtime:ignoring-errors-reported ("writing ~a" file)
               (write-state-file list file (changes-for file changes)))
-          (let ((stamp (and (eq how :written) (state-file-stamp file))))
+          (let ((stamp (and (eq how :written) (state-file-stamp file)))
+                (say nil))
             (sb-thread:with-mutex ((state-list-lock list))
               (let ((mine (remove-if-not (lambda (change) (string= (car change) file)) changes)))
                 (setf (state-list-writing list) (remove-if (lambda (change) (member change mine :test #'eq)) (state-list-writing list)))
-                (when (eq how :busy)
-                  (setf (state-list-pending list) (append (state-list-pending list) mine))))
+                (case how
+                  (:busy (setf (state-list-pending list) (append (state-list-pending list) mine)))
+                  (:unreadable
+                   (let ((waiting (append (remove-if-not (lambda (change) (string= (car change) file)) (state-list-pending list))
+                                          mine)))
+                     (setf (state-list-pending list)
+                           (append (remove-if (lambda (change) (string= (car change) file)) (state-list-pending list))
+                                   (compact-state-changes list waiting))))
+                   (unless (equal file (state-list-unreadable list))
+                     (setf (state-list-unreadable list) file say t)))
+                  (:written (when (equal file (state-list-unreadable list))
+                              (setf (state-list-unreadable list) nil)))))
               (when (and (eq how :written) (equal file (state-list-file list)))
                 (setf (state-list-disk list) entries
                       (state-list-stamp list) stamp))
-              (setf (state-list-shown list) nil)))))
+              (setf (state-list-shown list) nil))
+            (when say
+              (tuatara.runtime:debug-report :file "cannot read ~a: its changes wait" file)
+              (message "Cannot read ~a: its changes wait until it can be" file)))))
       t)))
 
 (sb-ext:defglobal **state-writer** nil

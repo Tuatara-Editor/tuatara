@@ -54,7 +54,7 @@ for a line that is none. Fields after those are passed over
          (cons (first fields) (string= (second fields) "on")))))
 
 (define-state-list *grammar-answers* "grammars" 'parse-grammar-answer 'print-grammar-answer '*grammar-answers-kept*
-  :path-of #'car)
+  :path-of #'car :fields 2 :trust t)
 
 (defvar *grammar-answers-read* nil
   "The answers to whether to turn a grammar on, as last read from the list kept
@@ -161,7 +161,7 @@ writes, or NIL for a line that is none. Fields after those are passed over
          (cons (first fields) (second fields)))))
 
 (define-state-list *user-grammar-sums* "user-grammars" 'parse-user-grammar-sum 'print-user-grammar-sum
-  '*user-grammar-sums-kept* :path-of #'car)
+  '*user-grammar-sums-kept* :path-of #'car :fields 2 :trust t)
 
 (defvar *user-grammar-records* nil
   "The sums kept of the grammars you added and turned on, as read from

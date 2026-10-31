@@ -49,7 +49,7 @@ a line that makes no sense."
 (define-state-list *recent-files* "recent-files" 'parse-recent-file-line 'recent-file-line '*recent-files-max*
   :header (format nil "# The files Tuatara visited lately, the latest first: file, or safe for one~%~
                        # opened safely, then its path (\\\\, \\n and \\r stand for \\, a newline and a return).~%")
-  :path-of #'car :key #'identity)
+  :path-of #'car :key #'identity :line-key (lambda (line) (state-line-path-after line 1)))
 
 (defun read-recent-files ()
   "The list of recent files: a list of (PATH . SAFE), the latest first, SAFE

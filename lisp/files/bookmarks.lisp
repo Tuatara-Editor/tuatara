@@ -59,7 +59,8 @@ CATEGORIES SAFE): the categories and safe last, when it has them."
                        # categories with a comma between them, and safe for a file opened safely~%~
                        # (\\\\, \\n and \\r stand for \\, a newline and a return).~%")
   ;; a bookmark is known by its name
-  :path-of #'first :class :kept)
+  :path-of #'first :class :kept :fields 6
+  :line-key (lambda (line) (unescape-path (or (second (state-line-fields line)) ""))))
 
 (defun bookmark-names ()
   "The names of the bookmarks, the latest first."

@@ -58,25 +58,27 @@ signed COMMIT as git checked it when it was taken, a key's fingerprint or
 
 (defun parse-package-line (line)
   "The entry LINE of the packages file writes, (KEY COMMIT TAG ACCEPTED
-PREVIOUS PREVIOUS-TAG SIGNER), or NIL for a line that makes no sense. Fields
-after those are passed over (STATE-LINE-FIELDS)."
+PREVIOUS PREVIOUS-TAG SIGNER), or NIL for a line that makes no sense. An
+empty or missing PREVIOUS, PREVIOUS-TAG or SIGNER is none; fields after those
+are passed over (STATE-LINE-FIELDS)."
   (let ((fields (state-line-fields line)))
-    (when (or (= (length fields) 4) (>= (length fields) 6))
+    (when (>= (length fields) 4)
       (destructuring-bind (key commit tag accepted &optional previous previous-tag signer &rest later) fields
         (declare (ignore later))
         (flet ((tag (text) (let ((tag (unescape-path text))) (and (plusp (length tag)) tag)))
                (commit-p (text) (cl-ppcre:scan "^(?:[0-9a-f]{7,64}|-)$" text)))
-          (let ((previous (and previous (plusp (length previous)) previous)))
+          (let ((previous (and previous (plusp (length previous)) previous))
+                (signer (and signer (plusp (length signer)) signer)))
             (and (plusp (length key)) (commit-p commit) (or (null previous) (commit-p previous))
                  (or (null signer) (string= signer "unsigned") (cl-ppcre:scan "^(?:SHA256:[A-Za-z0-9+/=]+|[0-9A-F]{40,64})$" signer))
                  (list (unescape-path key) commit (tag tag) (string= accepted "yes")
-                       previous (and previous (tag previous-tag)) signer))))))))
+                       previous (and previous previous-tag (tag previous-tag)) signer))))))))
 
 (define-state-list *fetched-packages* "packages" 'parse-package-line 'package-line '*packages-kept*
   :header (format nil "# The packages fetched, the latest first: the package, its source and the~%~
                        # version asked for; the commit fetched; its tag; whether it was let load;~%~
                        # the commit taken before it and its tag, kept to fall back on.~%")
-  :path-of #'first)
+  :path-of #'first :fields 7 :trust t)
 
 (defun fetched-package (key)
   "What is remembered of the package KEY names (PACKAGE-KEY), (KEY COMMIT TAG
@@ -1526,7 +1528,7 @@ by a key your keyring lacks. Fields after those are passed over
   :header (format nil "# The sources of packages trusted, the latest first: the address; who signed~%~
                        # the versions taken from it, a key's fingerprint, or unsigned; the signer's~%~
                        # name; an SSH signer's key. M-x package-trust-again forgets a source's.~%")
-  :path-of #'first)
+  :path-of #'first :fields 4 :trust t)
 
 (defun package-signers-file (where)
   "The allowed signers file git checks the SSH signatures of the source WHERE

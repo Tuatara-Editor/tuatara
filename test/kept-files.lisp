@@ -234,27 +234,103 @@ pinned at, and write the sample files of that version (WRITE-KEPT-FILE-SAMPLES).
         (let ((breaks (kept-file-breaks pinned (kept-files))))
           (is equal '() breaks "Files no longer kept within ~d.x: ~s" now-major breaks))))))
 
+(defun later-line (list entry)
+  "The line a later release writes for ENTRY of LIST: every field of today's,
+those left out written empty, then a field of its own."
+  (let ((line (funcall (tuatara.defaults::state-list-print list) entry)))
+    (format nil "~a~a~clater field" line
+            (make-string (- (tuatara.defaults::state-list-fields list) (1+ (count #\Tab line))) :initial-element #\Tab)
+            #\Tab)))
+
 (define-test (kept-files later-lines-kept)
   ;; a file a later release wrote: its fields added at the ends of lines passed over, its lines
-  ;; of a new kind kept as they are, and its version line kept, when this release writes it
+  ;; of a new kind, its comment lines and its version line kept as they are when this release
+  ;; writes it; in a list of what you trusted, a later version's line with more fields is not read
   (dolist (row *kept-file-entries*)
     (let* ((list (symbol-value (first row)))
            (name (tuatara.defaults::state-list-name list))
-           (print (tuatara.defaults::state-list-print list))
-           (first-entry (second row))
-           (second-entry (third row))
-           (longer (format nil "~a~clater field" (funcall print first-entry) #\Tab))
+           (entries (rest row))
+           (longer (mapcar (lambda (entry) (later-line list entry)) entries))
            (unknown "zz a kind of line a later release writes"))
-      (with-fresh-state
-        (put-state-file list (format nil "# tuatara ~a 2~%# a comment of the later release~%~a~%~a~%" name longer unknown))
-        (is equal (list first-entry) (tuatara.defaults::state-list-entries list) "~a read" name)
-        (tuatara.defaults::state-list-put list (list second-entry))
-        (tuatara.defaults::finish-state-writes)
-        (is string= (format nil "# tuatara ~a 2~%~@[~a~]~a~%~a~%~a~%"
-                            name (tuatara.defaults::state-list-header list) (funcall print second-entry) longer unknown)
-            (file-text (tuatara.defaults::state-list-path list))
-            "~a written back" name)
-        (is equal (list second-entry first-entry) (tuatara.defaults::state-list-entries list) "~a read again" name)))))
+      (dolist (version '(1 2))
+        (with-fresh-state
+          (put-state-file list (format nil "# tuatara ~a ~d~%# a comment of the later release~%~{~a~%~}~a~%" name version longer unknown))
+          (is equal (if (and (= version 2) (tuatara.defaults::state-list-trust list)) '() entries)
+              (tuatara.defaults::state-list-entries list) "~a ~d read" name version)
+          (tuatara.defaults::state-list-drop list '("/nowhere/kept-files"))
+          (tuatara.defaults::finish-state-writes)
+          (is string= (format nil "# tuatara ~a ~d~%~@[~a~]~:[~;# a comment of the later release~%~]~{~a~%~}~a~%"
+                              name version (tuatara.defaults::state-list-header list) (= version 2) longer unknown)
+              (file-text (tuatara.defaults::state-list-path list))
+              "~a ~d written back" name version))))))
+
+(define-test (kept-files unread-twins-go)
+  ;; a line this release cannot read goes with the entry of its name or path: trust taken back
+  ;; leaves no line of a later kind trusting the same source
+  (with-fresh-state
+    (let* ((list tuatara.defaults::*package-trust*)
+           (where "https://example.org/signed.git"))
+      (put-state-file list (format nil "~a~cunsigned~c~c~%~a~cnewkind:ABC~c~c~%https://example.org/other.git~cunsigned~c~c~%"
+                                   where #\Tab #\Tab #\Tab where #\Tab #\Tab #\Tab #\Tab #\Tab #\Tab))
+      (tuatara.defaults::state-list-drop list (list where))
+      (tuatara.defaults::finish-state-writes)
+      (let ((text (file-text (tuatara.defaults::state-list-path list))))
+        (false (search where text))
+        (true (search "https://example.org/other.git" text)))))
+  (with-fresh-state
+    (let ((list tuatara.defaults::*grammar-answers*))
+      (put-state-file list (format nil "yaml~cask~%nix~coff~%" #\Tab #\Tab))
+      (tuatara.defaults::state-list-put list (list (cons "yaml" nil)))
+      (tuatara.defaults::finish-state-writes)
+      (is equal (list (format nil "yaml~coff" #\Tab) (format nil "nix~coff" #\Tab))
+          (file-lines-but-comments (file-text (tuatara.defaults::state-list-path list))))))
+  (with-fresh-state
+    (let ((list tuatara.defaults::*lsp-trusted*))
+      (put-state-file list (format nil "# tuatara lsp-trusted 2~%/projects/one/~conly some days~%/projects/two/~%" #\Tab))
+      (is equal '("/projects/two/") (tuatara.defaults::state-list-entries list))
+      (tuatara.defaults::state-list-drop list '("/projects/one/"))
+      (tuatara.defaults::finish-state-writes)
+      (is equal '("/projects/two/") (file-lines-but-comments (file-text (tuatara.defaults::state-list-path list)))))))
+
+(define-test (kept-files later-optional-fields)
+  ;; fields a line of today may leave out, written empty by a later release before its own
+  (let ((key "example https://example.org/tools.git release") (commit "0123456789abcdef0123456789abcdef01234567"))
+    (flet ((parse (&rest fields)
+             (tuatara.defaults::parse-package-line (format nil "~{~a~^~a~}" (rest (loop for field in fields collect #\Tab collect field))))))
+      (is equal (list key commit nil t "abcdef0" nil nil) (parse key commit "" "yes" "abcdef0"))
+      (is equal (list key commit nil t nil nil nil) (parse key commit "" "yes" "" "" "" "later"))
+      (is equal (list key commit "v1" t "abcdef0" "v0" nil) (parse key commit "v1" "yes" "abcdef0" "v0" "" "later"))))
+  (is equal (list "Plain" "/p" 7 "ctx" '() nil)
+      (tuatara.defaults::parse-bookmark-line (format nil "7~cPlain~c/p~cctx~c~c~cLATER" #\Tab #\Tab #\Tab #\Tab #\Tab #\Tab)))
+  ;; a version line says at most six figures
+  (let ((list tuatara.defaults::*bookmarks*))
+    (is eql 123456 (tuatara.defaults::state-line-version list "# tuatara bookmarks 123456"))
+    (false (tuatara.defaults::state-line-version list "# tuatara bookmarks 1234567"))
+    (false (tuatara.defaults::state-line-version list "# tuatara bookmarks 1x"))))
+
+(define-test (kept-files unreadable-changes-bounded)
+  ;; changes to a file that cannot be read wait, made fewer, and it is said once
+  (with-fresh-state
+    (let* ((list tuatara.defaults::*recent-files*)
+           (tuatara-user:*recent-files-max* 10)
+           (path (tuatara.defaults::state-list-path list)))
+      (put-state-file list (format nil "file /notes/first.txt~%"))
+      (sb-posix:chmod path 0)
+      (unwind-protect
+           (dotimes (i 300)
+             (tuatara.defaults::state-list-put list (list (cons (format nil "/notes/~d.txt" i) nil)))
+             (when (evenp i) (tuatara.defaults::state-list-drop list (list (format nil "/notes/~d.txt" (1- i)))))
+             (tuatara.defaults::finish-state-writes))
+        (sb-posix:chmod path #o600))
+      (true (<= (length (tuatara.defaults::state-list-pending list)) tuatara.defaults::*state-changes-waiting*)
+            "~d changes wait" (length (tuatara.defaults::state-list-pending list)))
+      (is equal path (tuatara.defaults::state-list-unreadable list))
+      ;; written once it can be read, the latest kept
+      (tuatara.defaults::state-list-drop list '("/nowhere/kept-files"))
+      (tuatara.defaults::finish-state-writes)
+      (false (tuatara.defaults::state-list-unreadable list))
+      (is equal "/notes/299.txt" (car (first (tuatara.defaults::read-state-file list path))))
+      (is = 10 (length (tuatara.defaults::read-state-file list path))))))
 
 (define-test (kept-files unreadable-not-written)
   ;; a file that cannot be read just then is never written over with only what was changed

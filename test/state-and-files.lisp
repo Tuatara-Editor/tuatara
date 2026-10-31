@@ -32,7 +32,10 @@ nothing read yet."
                                      :path-of (tuatara.defaults::state-list-path-of list)
                                      :key (tuatara.defaults::state-list-key list)
                                      :version (tuatara.defaults::state-list-version list)
-                                     :class (tuatara.defaults::state-list-class list)))
+                                     :class (tuatara.defaults::state-list-class list)
+                                     :fields (tuatara.defaults::state-list-fields list)
+                                     :trust (tuatara.defaults::state-list-trust list)
+                                     :line-key (tuatara.defaults::state-list-line-key list)))
 
 (defparameter *state-list-samples*
   '((tuatara.defaults::*recent-files* ("/other/one.txt" . nil) ("/mine/two.txt" . t))

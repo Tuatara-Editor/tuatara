@@ -94,10 +94,21 @@ folders (the init file, snippets, templates, your grammars, the auto-saved
 copies) and the bookmarks are kept: a release reads those an earlier one of
 its major version read, with the same result. The other lists in the state
 folder are remembered: read by every later release of the major version. A
-list's format grows only by adding, a field at the end of a line or a line of
-a new kind; its first line says its version (`# tuatara bookmarks 1`), and a
-release meeting lines it cannot read, or a newer version, writes them back as
-they were. The cache, the packages fetched and the grammar store are rebuilt:
+list's format grows only by adding: a field at the end of a line, after every
+field of today written even when empty, or a line of a new kind, with the
+version its first line says raised (`# tuatara bookmarks 1`). An earlier
+release reading a later one's file writes back as they were the entries it
+does not change, the lines it cannot read (as many again as the list keeps,
+all of the bookmarks), the later release's comment lines and its version
+line; an entry it changes loses the later fields, and a line it cannot read
+goes when an entry of the same name or path is set, changed or deleted.
+
+On a list of trust (projects trusted, package sources and the packages let
+load, grammar answers and sums) a later field may only add information, never
+narrow or condition a trust: an older release passes it over. A narrowing is
+a line of a new kind, with the version raised, which older releases leave
+unread, so that it fails closed. Such a list does not read a line of a later
+version that has more fields than it knows. The cache, the packages fetched and the grammar store are rebuilt:
 they may be deleted at any time. `test/api/kept-files.sexp` pins each file's
 class and format version, `test/kept-files/` holds the lists as each release
 wrote them, and the `kept-files` tests fail when a release no longer reads
