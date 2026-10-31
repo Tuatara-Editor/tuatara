@@ -1,17 +1,18 @@
 ;; The files Tuatara keeps, pinned by tools/pin-kept-files.sh at each version bump: (:state NAME CLASS VERSION),
-;; a list kept between sessions; (:file FOLDER PATH CLASS VERSION), the other files of its folders. CLASS
-;; :kept, :remembered or :rebuilt; VERSION that of the format, NIL where the file says none.
+;; a list kept between sessions, with :trust t :fields N after them for a list of trust; (:file FOLDER PATH
+;; CLASS VERSION), the other files of its folders. CLASS :kept, :remembered or :rebuilt; VERSION that of
+;; the format, NIL where the file says none.
 (:version "0.90.13")
 (:state "bookmarks" :kept 1)
 (:state "chosen-paths" :remembered 1)
-(:state "grammars" :remembered 1)
-(:state "lsp-trusted" :remembered 1)
-(:state "package-trust" :remembered 1)
-(:state "packages" :remembered 1)
+(:state "grammars" :remembered 1 :trust t :fields 2)
+(:state "lsp-trusted" :remembered 1 :trust t :fields 1)
+(:state "package-trust" :remembered 1 :trust t :fields 4)
+(:state "packages" :remembered 1 :trust t :fields 7)
 (:state "pdf-places" :remembered 1)
 (:state "places" :remembered 1)
 (:state "recent-files" :remembered 1)
-(:state "user-grammars" :remembered 1)
+(:state "user-grammars" :remembered 1 :trust t :fields 2)
 (:file "config" "init.lisp" :kept nil)
 (:file "config" "snippets/" :kept nil)
 (:file "config" "capture-templates/" :kept nil)

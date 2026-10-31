@@ -73,13 +73,18 @@ state, data or cache; PATH within it, a folder's ending in /; CLASS :KEPT,
 files hold, the latest first: the first using every field the list has, the
 others leaving out what may be left out.")
 
+(defun kept-file-state-row (list)
+  "The pinned row of LIST, a list kept between sessions: (:STATE NAME CLASS
+VERSION), and for a list of trust :TRUST T and :FIELDS, how many fields its
+lines have, which an older release must know to leave a later line unread."
+  (append (list :state (tuatara.defaults::state-list-name list) (tuatara.defaults::state-list-class list)
+                (tuatara.defaults::state-list-version list))
+          (and (tuatara.defaults::state-list-trust list)
+               (list :trust t :fields (tuatara.defaults::state-list-fields list)))))
+
 (defun kept-file-state-rows ()
-  "A row for each list kept between sessions: (:STATE NAME CLASS VERSION)."
-  (sort (mapcar (lambda (list)
-                  (list :state (tuatara.defaults::state-list-name list) (tuatara.defaults::state-list-class list)
-                        (tuatara.defaults::state-list-version list)))
-                tuatara.defaults::*state-lists*)
-        #'string< :key #'second))
+  "A row for each list kept between sessions (KEPT-FILE-STATE-ROW)."
+  (sort (mapcar #'kept-file-state-row tuatara.defaults::*state-lists*) #'string< :key #'second))
 
 (defun kept-files ()
   "The files Tuatara keeps as they are now, a row for each: the lists kept
@@ -94,17 +99,25 @@ between sessions, then the other files of its folders (*KEPT-FOLDERS*)."
   "How much is promised of a file of CLASS: more for :KEPT than :REMEMBERED, more for that than :REBUILT."
   (or (position class '(:rebuilt :remembered :kept)) -1))
 
+(defun kept-file-row-parts (row)
+  "ROW of the pin of kept files as three values: its class, its version and
+what follows them (:TRUST and :FIELDS of a list of trust)."
+  (let ((rest (nthcdr (if (eq (first row) :state) 2 3) row)))
+    (values (first rest) (second rest) (cddr rest))))
+
 (defun kept-file-breaks (pinned now)
   "The rows of PINNED, files kept, that NOW no longer keeps: a file gone,
-promised less (a kept list become remembered), or its format's version
-lowered."
+promised less (a kept list become remembered), its format's version lowered,
+or a list of trust no longer one or its lines' fields changed."
   (loop for row in pinned
         for found = (find (kept-file-row-name row) now :key #'kept-file-row-name :test #'equal)
-        for class = (car (last row 2))
-        for version = (car (last row))
         unless (and found
-                    (>= (kept-class-rank (car (last found 2))) (kept-class-rank class))
-                    (or (null version) (and (car (last found)) (>= (car (last found)) version))))
+                    (multiple-value-bind (class version more) (kept-file-row-parts row)
+                      (multiple-value-bind (class-now version-now more-now) (kept-file-row-parts found)
+                        (and (>= (kept-class-rank class-now) (kept-class-rank class))
+                             (or (null version) (and version-now (>= version-now version)))
+                             (or (not (getf more :trust))
+                                 (and (getf more-now :trust) (eql (getf more :fields) (getf more-now :fields))))))))
           collect row))
 
 (defun read-kept-files (&optional (file *kept-files-file*))
@@ -143,8 +156,9 @@ pinned at, and write the sample files of that version (WRITE-KEPT-FILE-SAMPLES).
     (with-open-file (out file :direction :output :if-exists :supersede)
       (let ((*print-case* :downcase) (*print-right-margin* 100000))
         (format out ";; The files Tuatara keeps, pinned by tools/pin-kept-files.sh at each version bump: (:state NAME CLASS VERSION),~%~
-                     ;; a list kept between sessions; (:file FOLDER PATH CLASS VERSION), the other files of its folders. CLASS~%~
-                     ;; :kept, :remembered or :rebuilt; VERSION that of the format, NIL where the file says none.~%")
+                     ;; a list kept between sessions, with :trust t :fields N after them for a list of trust; (:file FOLDER PATH~%~
+                     ;; CLASS VERSION), the other files of its folders. CLASS :kept, :remembered or :rebuilt; VERSION that of~%~
+                     ;; the format, NIL where the file says none.~%")
         (prin1 (list :version version) out)
         (terpri out)
         (dolist (row (kept-files)) (prin1 row out) (terpri out))))
@@ -212,6 +226,13 @@ pinned at, and write the sample files of that version (WRITE-KEPT-FILE-SAMPLES).
       (let ((name (tuatara.defaults::state-list-name list)))
         (true (member (tuatara.defaults::state-list-class list) '(:kept :remembered)) "~a has a class" name)
         (true (find (list :state name) pinned :key #'kept-file-row-name :test #'equal) "~a is pinned" name)
+        ;; a list of trust pinned as one, with the fields its lines have
+        (multiple-value-bind (class version more)
+            (kept-file-row-parts (or (find (list :state name) pinned :key #'kept-file-row-name :test #'equal) (list :state name)))
+          (declare (ignore class version))
+          (is eq (and (tuatara.defaults::state-list-trust list) t) (getf more :trust) "~a's trust pinned" name)
+          (when (tuatara.defaults::state-list-trust list)
+            (is eql (tuatara.defaults::state-list-fields list) (getf more :fields) "~a's fields pinned" name)))
         (true (kept-file-entries list) "~a has sample entries" name)
         (true (some (lambda (folder) (probe-file (merge-pathnames name folder))) (kept-sample-folders))
               "~a has a sample file" name)))
@@ -226,6 +247,13 @@ pinned at, and write the sample files of that version (WRITE-KEPT-FILE-SAMPLES).
         (now '((:state "bookmarks" :remembered 1) (:state "places" :remembered 1) (:state "added" :remembered 1)
                (:file "config" "snippets/" :kept nil) (:file "state" "session" :kept 2))))
     (is equal '(("bookmarks") ("places") ("gone"))
+        (mapcar (lambda (row) (rest (kept-file-row-name row))) (kept-file-breaks pinned now))))
+  ;; a list of trust stays one, its lines' fields as pinned; a list may become one
+  (let ((pinned '((:state "same" :remembered 1 :trust t :fields 4) (:state "more-fields" :remembered 1 :trust t :fields 4)
+                  (:state "no-longer" :remembered 1 :trust t :fields 2) (:state "became" :remembered 1)))
+        (now '((:state "same" :remembered 2 :trust t :fields 4) (:state "more-fields" :remembered 1 :trust t :fields 5)
+               (:state "no-longer" :remembered 1) (:state "became" :remembered 1 :trust t :fields 2))))
+    (is equal '(("more-fields") ("no-longer"))
         (mapcar (lambda (row) (rest (kept-file-row-name row))) (kept-file-breaks pinned now))))
   ;; from 1.0.0 on, what the last release pinned is kept until the major version goes up
   (multiple-value-bind (version pinned) (read-kept-files)

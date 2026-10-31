@@ -158,7 +158,9 @@ at each version bump, its =git diff= read first.
 
 =test/api/kept-files.sexp= pins the files Tuatara keeps in your folders: each
 list kept between sessions (=define-state-list=, =lisp/editing/state.lisp=)
-with its class (=:kept= or =:remembered=) and the version of its format, and
+with its class (=:kept= or =:remembered=) and the version of its format (a
+list of trust with =:trust t= and its =:fields=, which may not change within
+a major version), and
 the other files with theirs. =test/kept-files/VERSION/= holds each list's file
 as that release wrote it; the =kept-files= tests read them all with today's
 code. A new list needs its class, a row in the pin, sample entries in
