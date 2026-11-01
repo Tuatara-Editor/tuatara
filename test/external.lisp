@@ -387,3 +387,21 @@ cat \"$2\" && echo \" $*\" && echo \"$4 is gone\" >&2 && exit 1
       (setf (car gate) t)
       (when job (tuatara.runtime:forget-job job))
       (when (tuatara.io:path-kind folder :follow nil) (tuatara.io:delete-tree folder)))))
+
+(define-test (external tiff-unread-told-by-its-head)
+  ;; a TIFF whose directory cannot be read is told by its first octets, never by the error
+  (let ((path (format nil "~atuatara-tiff-~36r.tif" (uiop:native-namestring (uiop:temporary-directory))
+                      (random (expt 36 8) (make-random-state t))))
+        (head (coerce #(73 73 42 0 8 0 0 0 0 0 0 0 0 0 0 0) '(vector (unsigned-byte 8)))))
+    (alexandria:write-byte-vector-into-file head path :if-exists :supersede)
+    (sb-int:encapsulate 'tuatara.defaults::octets-kind-of-file 'test-failing
+                        (lambda (function &rest arguments)
+                          (declare (ignore function arguments))
+                          (error "a directory that cannot be read")))
+    (unwind-protect
+         (multiple-value-bind (words kind) (tuatara.defaults::file-kind path)
+           (true (keywordp kind) "~s" kind)
+           (is eq (nth-value 1 (tuatara.io:octets-kind (tuatara.io:file-head path))) kind)
+           (true (stringp words)))
+      (sb-int:unencapsulate 'tuatara.defaults::octets-kind-of-file 'test-failing)
+      (delete-file path))))

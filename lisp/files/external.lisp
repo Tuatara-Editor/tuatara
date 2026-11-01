@@ -150,7 +150,7 @@ third value, why)."
                  (tuatara.io:call-with-file path (lambda (fd native size)
                                                    (declare (ignore native size))
                                                    (octets-kind-of-file fd head))))
-             (if kind (values words kind) (tuatara.io:octets-kind head))))
+             (if (keywordp kind) (values words kind) (tuatara.io:octets-kind head))))
           (t (tuatara.io:octets-kind head)))))
 
 (defun open-externally-refusal (path &key also)
@@ -347,7 +347,8 @@ what to say of it, LABEL naming the program."
             (return-from open-copy-externally (format nil "~a changed after it was looked at: not opened" name)))
           ;; a session of its own (setsid): the program stays when the editor or its terminal goes
           (start-detached program (append arguments (list copy)) :label "opened file")
-          (tuatara.runtime:debug-report :file "opened outside Tuatara: ~a (~a) as its copy ~a, with ~a" native words copy program)
+          (tuatara.runtime:debug-report :file "opened outside Tuatara: ~a (~a) as its copy ~a, with ~a"
+                                        native words copy program)
           (format nil "Opened ~a in ~a (a copy of it, read only)" name label)))
     (error (e) (format nil "~a not opened: ~a" name e))))
 
