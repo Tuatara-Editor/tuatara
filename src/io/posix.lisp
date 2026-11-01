@@ -290,21 +290,18 @@ for a null pointer."
 
 ;;; statx: what a file is, exactly
 
-(defstruct (stamp (:constructor make-stamp (dev ino size mtime nlink mode uid gid &optional (ctime 0) (allocated 0))) (:copier nil))
+(defstruct (stamp (:constructor make-stamp (dev ino size mtime nlink mode uid gid &optional (ctime 0))) (:copier nil))
   "What the system reports about a file: DEV and INO name it; SIZE and MTIME (in
 nanoseconds) change when its content does; NLINK, the names it has; MODE,
 with its kind; UID and GID, its owners; CTIME (in nanoseconds), when it, its
-owners or its permissions last changed, which no program can set back;
-ALLOCATED, the octets it takes on the disk, fewer than its size for a file
-with holes."
+owners or its permissions last changed, which no program can set back."
   (dev 0 :type integer :read-only t) (ino 0 :type integer :read-only t)
   (size 0 :type integer :read-only t) (mtime 0 :type integer :read-only t)
   (nlink 1 :type integer :read-only t) (mode 0 :type integer :read-only t)
   (uid 0 :type integer :read-only t) (gid 0 :type integer :read-only t)
-  (ctime 0 :type integer :read-only t) (allocated 0 :type integer :read-only t))
+  (ctime 0 :type integer :read-only t))
 
-(setf (documentation 'stamp-allocated 'function) "The octets the file takes on the disk."
-      (documentation 'stamp-ctime 'function) "When the file, its owners or its permissions last changed, in nanoseconds."
+(setf (documentation 'stamp-ctime 'function) "When the file, its owners or its permissions last changed, in nanoseconds."
       (documentation 'make-stamp 'function) "Return a stamp with the given fields."
       (documentation 'stamp-p 'function) "True when OBJECT is a STAMP."
       (documentation 'stamp-dev 'function) "The device of the file system holding the file."
@@ -346,8 +343,7 @@ pipe named so is not woken.")
                  (octets-le buffer 120 4))
               (octets-le buffer 16 4) (octets-le buffer 28 2) (octets-le buffer 20 4) (octets-le buffer 24 4)
               (+ (* (octets-signed (octets-le buffer 96 8) 64) 1000000000)
-                 (octets-le buffer 104 4))
-              (* 512 (octets-le buffer 48 8))))
+                 (octets-le buffer 104 4))))
 
 (defun statx-fields (dirfd name flags &optional (mask #x7ff))
   "The 256 octets statx fills for NAME (a string, or octets) relative to the
@@ -1521,6 +1517,22 @@ in which the file is made."
              (sb-posix:close fd)))))
      :writing "write")
     path))
+
+(defun file-holes-p (path)
+  "True when the regular file at PATH, a link not followed, has holes: parts
+of it that hold no data on the disk, read as zeros (lseek's SEEK_HOLE finds
+one before its end). Opened only when it is a regular file, never waited
+on; NIL when it cannot be opened or the system cannot tell."
+  (let ((fd (ignore-errors (sb-posix:open (native path) (logior sb-posix:o-rdonly sb-posix:o-nonblock +o-nofollow+ +o-cloexec+)))))
+    (when fd
+      (unwind-protect
+           (let ((stamp (fd-stamp fd path)))
+             (and (eq (stamp-kind stamp) :regular)
+                  (plusp (stamp-size stamp))
+                  ;; SEEK_HOLE is 4: the first hole at or after 0, the file's end when it has none
+                  (let ((hole (ignore-errors (sb-posix:lseek fd 0 4))))
+                    (and hole (< hole (stamp-size stamp))))))
+        (sb-posix:close fd)))))
 
 (defun call-with-state-lock (path function &key (wait 0.1))
   "Call FUNCTION, of no arguments, holding the lock of the file at PATH, a

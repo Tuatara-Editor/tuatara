@@ -337,9 +337,11 @@ since their commit."
         (is equal '() (uiop:directory-files out))))))
 
 (define-test (git shadows-of-ended-sessions-deleted)
-  ;; shadows a session left (it ended without deleting them) are deleted when the next one starts
+  ;; shadows a session left (it ended without deleting them, before it named its machine) are deleted an hour on
   (let ((left (tuatara.defaults::private-cache-directory "git-shadow/999999999/")))
     (ensure-directories-exist (merge-pathnames "x/index" left))
+    (let ((then (- (get-universal-time) (encode-universal-time 0 0 0 1 1 1970 0) 7200)))
+      (sb-posix:utimes left then then))
     (tuatara.defaults::forget-old-git-shadows)
     (false (tuatara.io:path-kind left))))
 
@@ -440,7 +442,8 @@ since their commit."
 (define-test (git live-sessions-shadows-kept)
   ;; a folder of shadows whose owner.lock a running session holds is never taken for one left behind
   (let* ((folder (tuatara.defaults::new-private-folder (tuatara.defaults::private-cache-directory "git-shadow/") :hold nil))
-         (fd (sb-posix:open (tuatara.io:path-join folder "owner.lock") (logior sb-posix:o-rdwr sb-posix:o-creat) #o600)))
+         (fd (progn (tuatara.io:write-private-file (tuatara.io:path-join folder "owner.lock") (machine-instance))
+                    (sb-posix:open (tuatara.io:path-join folder "owner.lock") sb-posix:o-rdwr))))
     (unwind-protect
          (progn
            (true (tuatara.runtime:lock-fd fd))
@@ -453,3 +456,96 @@ since their commit."
       (sb-posix:close fd))
     (tuatara.defaults::forget-old-git-shadows)
     (false (tuatara.io:path-kind folder))))
+
+(define-test (git status-says-names-escaped)
+  ;; a folder name holding a newline, ESC and a right-to-left mark reaches the status's top escaped: one line each, no forged line
+  (with-test-directory (dir)
+    (let* ((odd (concatenate 'string (namestring dir) (format nil "odd~%Look only: none~c31m~c/" (code-char 27) (code-char #x202E))))
+           (repo (namestring (ensure-directories-exist (merge-pathnames "repo/" dir))))
+           (tuatara-user:*lsp-trusted-projects* '()))
+      (ensure-directories-exist odd)
+      (scratch-repository odd :trusted nil)
+      (scratch-repository repo :trusted nil)
+      (uiop:delete-directory-tree (pathname (concatenate 'string repo ".git/")) :validate t)
+      (alexandria:write-string-into-file (format nil "gitdir: ~a.git~%" odd) (concatenate 'string repo ".git"))
+      (with-looked-at-only (repo)
+        (let* ((top (tuatara.defaults::repository-top repo))
+               (notes (tuatara.defaults::git-elsewhere-notes top))
+               (buffer (tuatara.defaults::git-status-buffer top)))
+          (unwind-protect
+               (progn
+                 (true (find #\Newline (first notes)) "the name as it is: ~s" notes)
+                 (setf (tuatara.buffer:buffer-local buffer 'tuatara.defaults::git-elsewhere) notes
+                       (tuatara.buffer:buffer-local buffer 'tuatara.defaults::git-look-only)
+                       (format nil "it is not trusted~%Look only: none~c" (code-char #x202E)))
+                 (tuatara.defaults::git-status-render buffer 0)
+                 (let* ((text (tuatara.buffer:buffer-string buffer))
+                        (lines (uiop:split-string text :separator '(#\Newline))))
+                   (true (uiop:string-prefix-p "Look only: " (first lines)))
+                   (true (uiop:string-prefix-p "Git's own folder: " (second lines)) "~s" (second lines))
+                   (is = 1 (count-if (lambda (line) (uiop:string-prefix-p "Look only: " line)) lines))
+                   (false (find (code-char 27) text))
+                   (false (find (code-char #x202E) text))
+                   (true (search "<202E>" text))))
+            (tuatara.buffer:kill-buffer buffer)))))))
+
+(define-test (git written-over-in-place-seen-when-asked)
+  ;; a reference written over in place, its folder untouched, is seen once the status is read again when asked
+  (with-test-directory (dir)
+    (scratch-repository dir :trusted nil)
+    (git-output dir "commit" "-q" "--allow-empty" "-m" "Second")
+    (let ((top (namestring dir))
+          (first (string-trim '(#\Newline) (git-output dir "rev-parse" "HEAD~1")))
+          (tuatara-user:*lsp-trusted-projects* '()))
+      (flet ((main () (string-trim '(#\Newline) (tuatara.text:octets-string (tuatara.defaults::run-git top '("rev-parse" "refs/heads/main"))))))
+        (main)
+        (with-open-file (out (merge-pathnames ".git/refs/heads/main" dir) :direction :output :if-exists :overwrite)
+          (write-line first out))
+        (tuatara.defaults::forget-git-shadow top)
+        (is string= first (main))))))
+
+(define-test (git holes-found-where-they-are)
+  ;; holes are found by where the data is, not by the blocks a file takes: a file with a hole is told, one without is not
+  (with-test-directory (dir)
+    (let ((sparse (namestring (merge-pathnames "sparse" dir)))
+          (plain (namestring (merge-pathnames "plain" dir))))
+      (uiop:run-program (list "truncate" "-s" "8M" sparse))
+      (alexandria:write-string-into-file (make-string 100000 :initial-element #\x) plain)
+      (true (tuatara.io:file-holes-p sparse))
+      (false (tuatara.io:file-holes-p plain))
+      (is = (* 256 1024 1024) (tuatara.defaults::git-file-most "shallow")))))
+
+(define-test (git timed-out-left-alone)
+  ;; git ending past its time in a repository not trusted is not run there again this session, until asked
+  (with-test-directory (dir)
+    (scratch-repository dir :trusted nil)
+    (let* ((top (namestring dir))
+           (blob (string-trim '(#\Newline) (git-output dir "rev-parse" "HEAD:a.txt")))
+           (object (merge-pathnames (format nil ".git/objects/~a/~a" (subseq blob 0 2) (subseq blob 2)) dir))
+           (tuatara-user:*lsp-trusted-projects* '()))
+      (unwind-protect
+           (progn
+             (delete-file object)
+             (sb-posix:mkfifo (namestring object) #o600)
+             (false (nth-value 1 (tuatara.defaults::run-git top (list "cat-file" "-p" (format nil "~a" blob)) :seconds 1)))
+             (true (gethash (tuatara.defaults::repository-top top) tuatara.defaults::*git-timed-out*))
+             (let ((start (get-internal-real-time)))
+               (false (nth-value 1 (tuatara.defaults::run-git top '("rev-parse" "HEAD"))))
+               (true (< (- (get-internal-real-time) start) (/ internal-time-units-per-second 2))))
+             (tuatara.defaults::forget-git-shadow (tuatara.defaults::repository-top top))
+             (true (nth-value 1 (tuatara.defaults::run-git top '("rev-parse" "HEAD")))))
+        (remhash (tuatara.defaults::repository-top top) tuatara.defaults::*git-timed-out*)))))
+
+(define-test (git other-machines-shadows-kept)
+  ;; a folder of shadows another machine's session made is never deleted here; one of this machine's, ended, is
+  (flet ((made (host)
+           (let ((folder (tuatara.defaults::new-private-folder (tuatara.defaults::private-cache-directory "git-shadow/") :hold nil)))
+             (tuatara.io:write-private-file (tuatara.io:path-join folder "owner.lock") host)
+             folder)))
+    (let ((elsewhere (made "another-machine.example"))
+          (here (made (machine-instance))))
+      (unwind-protect
+           (progn (tuatara.defaults::forget-old-git-shadows)
+                  (true (tuatara.io:path-kind elsewhere))
+                  (false (tuatara.io:path-kind here)))
+        (ignore-errors (tuatara.io:delete-tree elsewhere))))))

@@ -236,6 +236,16 @@ has of a file or folder before it is ended.")
 PROJECT-ROOT finds a project), as a native name ending with a slash, or NIL."
   (marked-directory directory '(".git")))
 
+(defparameter *git-reading-seconds* 120
+  "How long git may read a repository not trusted, a command given no time
+of its own, before it is ended: a file of its objects that never ends
+reading (a named pipe) holds nothing up for longer.")
+
+(defvar *git-timed-out* (make-hash-table :test 'equal :synchronized t)
+  "The repositories not trusted, by their top, in which git ran too long this
+session: not run there again, the change gutter and every look left out,
+until \\[git] asks for it there (FORGET-GIT-SHADOW).")
+
 (defun run-git (directory arguments &key cancel line environment errors input seconds limit)
   "Run git with ARGUMENTS (a list of strings, never through a shell) in
 DIRECTORY, with *GIT-SAFETY* and never asking for a password on a terminal,
@@ -259,7 +269,9 @@ an evidence folder, or one whose .git leads into such a one:
 GIT-READS-ONLY-P) git only reads, on a shadow of the repository, and runs
 none of its programs (CALL-GIT-READING): ENVIRONMENT is not given it, it is
 ended after *GIT-READING-SECONDS* when SECONDS gives no time, and a command
-that would do more is refused, GIT-REFUSED signalled."
+that would do more is refused, GIT-REFUSED signalled; once git has run too
+long there, git is not run there again this session (NOTE-GIT-TIMED-OUT)
+until \\[git] asks for it."
   (let* ((git (tuatara.io:find-program "git"))
          (top (ignore-errors (repository-top directory))))
     (cond ((not (and git top)) (values nil nil))
@@ -269,15 +281,20 @@ that would do more is refused, GIT-REFUSED signalled."
                                                     :environment (cons (format nil "GIT_CEILING_DIRECTORIES=~a"
                                                                                (string-right-trim "/" (tuatara.io:parent-path top)))
                                                                        environment)))
+          ((gethash top *git-timed-out*) (values nil nil))
           (t
-           (handler-case
-               (call-git-reading top directory arguments
-                                 (lambda (arguments looking-environment here)
-                                   (run-git-program git here arguments :cancel cancel :line line :errors errors :input input
-                                                                       :seconds (or seconds *git-reading-seconds*) :limit limit :reading t
-                                                                       :environment looking-environment)))
-             (git-refused (e) (error e))
-             (error () (values nil nil)))))))
+           (let ((timed-out (list nil)))
+             (multiple-value-prog1
+                 (handler-case
+                     (call-git-reading top directory arguments
+                                       (lambda (arguments looking-environment here)
+                                         (run-git-program git here arguments :cancel cancel :line line :errors errors :input input
+                                                                             :seconds (or seconds *git-reading-seconds*) :limit limit
+                                                                             :reading t :environment looking-environment
+                                                                             :timed-out timed-out)))
+                   (git-refused (e) (error e))
+                   (error () (values nil nil)))
+               (when (car timed-out) (note-git-timed-out top))))))))
 
 (defun git-object-name (revision path)
   "How git names the file or folder PATH of REVISION (a commit's hash, HEAD):
@@ -302,13 +319,14 @@ third when it was more than LIMIT octets."
   "The most octets of what git says on its error output kept, to say why it
 failed (RUN-GIT with ERRORS); the rest is read and let go.")
 
-(defun run-git-program (git directory arguments &key cancel line environment errors input seconds limit reading options)
+(defun run-git-program (git directory arguments &key cancel line environment errors input seconds limit reading options timed-out)
   "Run the program GIT as RUN-GIT runs git, once it has found it. A command
 that would write in the working files of a repository holding an evidence
 folder is refused, never run (CHECK-GIT-WRITING); in a repository holding
 one, git runs no hook of the repository's (core.hooksPath=/dev/null). With
 READING, ARGUMENTS only read, made so by CALL-GIT-READING: nothing is looked
-at, and git is given none of your GIT_ variables. The options of
+at, and git is given none of your GIT_ variables. TIMED-OUT, a cons, has its
+car made true when git is ended for running past SECONDS. The options of
 *GIT-SAFETY*, then OPTIONS, come after any of ARGUMENTS' own before its
 command, so that they are the ones in force."
   (let* ((limit (or limit *program-output-limit*))
@@ -333,6 +351,7 @@ command, so that they are the ones in force."
                                  :name "tuatara git messages")))
                  (octets nil) (stopped nil) (cancelled nil) (too-large nil)
                  (timer (and seconds (sb-ext:make-timer (lambda () (when (sb-ext:process-alive-p process)
+                                                                      (when timed-out (setf (car timed-out) t))
                                                                       (ignore-errors (sb-ext:process-kill process 9))))
                                                         :thread t))))
              (when timer (sb-ext:schedule-timer timer seconds))

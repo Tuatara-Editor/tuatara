@@ -335,6 +335,11 @@ recorded keys does, one step a play, sets STACK to where its last step ends.")
 or what to say instead of running it: the defaults refuse a command made for
 one kind of buffer, such as a list's own keys, anywhere else.")
 
+(defun command-refusal (command)
+  "What to say instead of running COMMAND now (*COMMAND-REFUSAL-FUNCTION*),
+or NIL when it may run."
+  (and *command-refusal-function* (funcall *command-refusal-function* command)))
+
 (defun call-with-guard (thunk what stop &key (quit "Quit") said naming trace-wanted shown)
   "Call THUNK, a function of no arguments, for WHAT, a name for messages, so
 that the editor carries on whatever it meets: C-g in it says QUIT (NIL to say

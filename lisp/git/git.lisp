@@ -899,9 +899,9 @@ it holds and folded as in any list in sections (SECTIONED-PIECES)."
     (multiple-value-bind (head-pieces head-entries)
         (entry-lines (lambda (line)
                        (let ((looking (git-look-only-of buffer)))
-                         (when looking (funcall line (git-look-only-line looking) :git-look-only)))
+                         (when looking (funcall line (escape-controls (git-look-only-line looking)) :git-look-only)))
                        (dolist (note (tuatara.buffer:buffer-local buffer 'git-elsewhere))
-                         (funcall line note :git-look-only))
+                         (funcall line (escape-controls note) :git-look-only))
                        (if state
                            (progn (mapc line (git-status-head-lines state)) (funcall line ""))
                            (funcall line "Reading the repository..."))))
@@ -915,7 +915,7 @@ it holds and folded as in any list in sections (SECTIONED-PIECES)."
               (values '() '()))
         (render-pieces buffer (append head-pieces pieces) :point point
                                                            :entries (concatenate 'vector head-entries entries)
-                                                           :refill (lambda (b) (git-refresh-status b))
+                                                           :refill (lambda (b) (git-refresh-status b :fresh t))
                                                            :redraw 'git-status-render)))))
 
 (defparameter *git-watched-files* '("index" "HEAD" "logs/HEAD" "logs/refs/stash")
@@ -944,11 +944,13 @@ stashes, run from the editor or from anywhere else.")
          (file (and state (assoc (cdr key) (git-section-files state (car key)) :test #'string=))))
     (if file (git-entry-paths file) (list (cdr key)))))
 
-(defun git-refresh-status (buffer)
+(defun git-refresh-status (buffer &key fresh)
   "Read BUFFER's repository again in the background, with the changes of the
 files it shows them of, and show it once read; a file with no changes left in
 its section shows none; whether it is looked at only is looked at again
-too. The stamps of git's own files are kept, and the
+too. With FRESH, asked for (\\[git], \\[revert-buffer]), a repository read
+on a shadow has it made anew, a reference written over in place seen too,
+and one whose git took too long is tried again (FORGET-GIT-SHADOW). The stamps of git's own files are kept, and the
 folders they are in watched, for GIT-WATCH-TICK to see when the repository
 changes."
   (let ((top (tuatara.buffer:buffer-local buffer 'git-top))
@@ -961,6 +963,7 @@ changes."
           (tuatara.buffer:buffer-local buffer 'git-look-only) (git-look-only-reason top))
     (start-git-job "Reading the repository"
                    (lambda (job)
+                     (when fresh (forget-git-shadow top))
                      (let* ((folder (or folder (git-folder job top)))
                             (state (git-read-state job top folder :previous previous))
                             (diffs (loop for (key . paths) in shown
@@ -1068,7 +1071,7 @@ says so at its top (GIT-LOOK-ONLY-LINE)."
     (let ((buffer (git-status-buffer top)))
       (git-status-render buffer 0)
       (show-buffer buffer)
-      (git-refresh-status buffer))))
+      (git-refresh-status buffer :fresh t))))
 
 (define-command git ()
   "Show the state of the git repository the current file (or folder) is in:
@@ -1663,8 +1666,8 @@ folder in one; else NIL."
              (not (menu-named command)))
     (multiple-value-bind (why top) (git-look-only-here buffer)
       (and why
-           (format nil "~(~a~) is not run: ~a is looked at only (~a), and git only reads there"
-                   command (abbreviated-path top) why)))))
+           (escape-controls (format nil "~(~a~) is not run: ~a is looked at only (~a), and git only reads there"
+                                    command (abbreviated-path top) why))))))
 
 (defun git-look-only-here (buffer)
   "Why the repository BUFFER is of, a git buffer's (GIT-LOOK-ONLY-OF) or the

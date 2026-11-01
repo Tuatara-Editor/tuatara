@@ -152,11 +152,10 @@ key says why and keeps the menu open. A menu that holds
 (defun menu-refusals (menu)
   "The actions of MENU that cannot run here now, each (ENTRY . WHY), WHY what
 *COMMAND-REFUSAL-FUNCTION* says instead of running its command."
-  (and *command-refusal-function*
-       (loop for entry in (menu-entries menu :all t)
-             for command = (menu-entry-command entry)
-             for why = (and command (funcall *command-refusal-function* command))
-             when why collect (cons entry why))))
+  (loop for entry in (menu-entries menu :all t)
+        for command = (menu-entry-command entry)
+        for why = (and command (command-refusal command))
+        when why collect (cons entry why)))
 
 (define-command menu-entry-refused ()
   "Say why the action of the open menu whose key was typed cannot run here;

@@ -218,7 +218,7 @@ mapped; names to branch and tag only when listing; git config only reading."
   "Signal GIT-REFUSED: the repository at TOP is not read, why said by CONTROL
 and ARGUMENTS."
   (error 'git-refused :operation "read" :path top
-                      :reason (format nil "~a is not read: ~?" (abbreviated-path top) control arguments)))
+                      :reason (escape-controls (format nil "~a is not read: ~?" (abbreviated-path top) control arguments))))
 
 (defparameter *git-small-file-most* (* 64 1024)
   "The most octets a file of git's own that names a place (.git as a file,
@@ -307,10 +307,11 @@ hold for a shadow to be made of them.")
 
 (defparameter *git-shadow-file-most*
   '(("index" . #.(* 1024 1024 1024)) ("packed-refs" . #.(* 256 1024 1024)) ("logs" . #.(* 64 1024 1024))
-    ("references" . #.(* 64 1024)) (t . #.(* 1024 1024)))
+    ("shallow" . #.(* 256 1024 1024)) ("references" . #.(* 64 1024)) (t . #.(* 1024 1024)))
   "The most octets a file of each kind copied into a shadow may hold: the
-index (and a shared index), the packed references and the logs as a large
-repository has them, a loose reference (a hash or a name), anything else.")
+index (and a shared index), the packed references, the logs and the list of
+shallow commits as a large repository has them, a loose reference (a hash
+or a name), anything else.")
 
 (defparameter *git-shadow-most* (* 2 1024 1024 1024)
   "The most octets a shadow may hold copied, all its files together.")
@@ -338,32 +339,40 @@ long as the session runs: (FOLDER . FD), made the first time one is wanted.")
 
 (defun git-shadows-directory ()
   "Where this session's shadows are made: a folder of its own in git-shadow/
-in the private cache, its file owner.lock held locked while the session
-runs, so that no other session, whatever process numbers it sees, takes it
-for one left behind."
+in the private cache, its file owner.lock naming this machine and held
+locked while the session runs, so that no other session, whatever process
+numbers it sees, takes it for one left behind."
   (sb-thread:with-mutex (*git-shadows-folder-lock*)
     (car (or *git-shadows-folder*
              (let* ((folder (new-private-folder (private-cache-directory "git-shadow/")))
-                    (fd (sb-posix:open (tuatara.io:path-join folder "owner.lock")
-                                       (logior sb-posix:o-rdwr sb-posix:o-creat) #o600)))
+                    (lock (tuatara.io:path-join folder "owner.lock"))
+                    (fd (progn (tuatara.io:write-private-file lock (machine-instance))
+                               (sb-posix:open lock sb-posix:o-rdwr))))
                (tuatara.runtime:lock-fd fd)
                (setf *git-shadows-folder* (cons folder fd)))))))
 
 (defun forget-old-git-shadows ()
-  "Delete the shadows of sessions no longer running, as one that ended
-without deleting its own (a crash) leaves them: each folder whose
-owner.lock no session holds, or that has none."
+  "Delete the shadows of sessions on this machine no longer running, as one
+that ended without deleting its own (a crash) leaves them: each folder whose
+owner.lock names this machine and no session holds; and one with no
+owner.lock, made more than an hour ago. Another machine's, sharing the
+folder, are its own to judge."
   (let ((all (private-cache-directory "git-shadow/"))
-        (own (car *git-shadows-folder*)))
+        (own (car *git-shadows-folder*))
+        (hour-ago (- (get-universal-time) 3600)))
     (dolist (entry (ignore-errors (tuatara.io:directory-entries all)))
       (let* ((folder (tuatara.io:slash-ended (tuatara.io:path-join all (first entry))))
              (lock (tuatara.io:path-join folder "owner.lock")))
         (unless (equal folder own)
-          (let ((fd (and (eq (tuatara.io:path-kind lock :follow nil) :regular)
-                         (ignore-errors (sb-posix:open lock sb-posix:o-rdwr)))))
-            (when (or (null fd) (tuatara.runtime:lock-fd fd))
-              (ignore-errors (tuatara.io:delete-tree folder)))
-            (when fd (sb-posix:close fd))))))))
+          (if (eq (tuatara.io:path-kind lock :follow nil) :regular)
+              (let ((host (ignore-errors (tuatara.text:lenient-string (tuatara.io:file-octets lock :limit 1024))))
+                    (fd (ignore-errors (sb-posix:open lock sb-posix:o-rdwr))))
+                (when (and fd (equal host (machine-instance)) (tuatara.runtime:lock-fd fd))
+                  (ignore-errors (tuatara.io:delete-tree folder)))
+                (when fd (sb-posix:close fd)))
+              (let ((stamp (ignore-errors (tuatara.io:path-stamp folder :follow nil))))
+                (when (and stamp (< (mtime-universal-time (tuatara.io:stamp-mtime stamp)) hour-ago))
+                  (ignore-errors (tuatara.io:delete-tree folder))))))))))
 
 (defun git-file-row (path)
   "What a shadow knows of the file or folder at PATH, a link not followed:
@@ -423,7 +432,7 @@ may be (GIT-FILE-MOST), or would take the shadow past *GIT-SHADOW-MOST*."
     (cond ((null stamp))
           ((not (eq (tuatara.io:stamp-kind stamp) :regular))
            (git-refuse-reading top "its ~a ~a is not a file" what (abbreviated-path from)))
-          ((< (+ (tuatara.io:stamp-allocated stamp) 65536) (tuatara.io:stamp-size stamp))
+          ((tuatara.io:file-holes-p from)
            (git-refuse-reading top "its ~a ~a has holes, more octets than the disk holds" what (abbreviated-path from)))
           ((> (tuatara.io:stamp-size stamp) (git-file-most what))
            (git-refuse-reading top "its ~a ~a is larger than any a repository holds (~a)" what (abbreviated-path from)
@@ -785,10 +794,27 @@ blamed as HEAD has it, its own text; anything else is refused
                         (t (git-refuse-reading top "~a is not a file to blame" whole)))
                   (list "--" whole))))))
 
-(defparameter *git-reading-seconds* 120
-  "How long git may read a repository not trusted, a command given no time
-of its own, before it is ended: a file of its objects that never ends
-reading (a named pipe) holds nothing up for longer.")
+(defun note-git-timed-out (top)
+  "Note that git ran too long in the repository at TOP, not trusted, and say
+so, once: it is not run there again this session until \\[git] asks."
+  (unless (gethash top *git-timed-out*)
+    (setf (gethash top *git-timed-out*) t)
+    (message "~a" (escape-controls (format nil "git ran too long in ~a: it is not asked of it again this session, the change gutter there left out, until ~a there"
+                                           (abbreviated-path top) (substitute-command-keys "\\[git]"))))))
+
+(defun forget-git-shadow (top)
+  "Have the repository at TOP read anew when git next runs there: its shadow
+made again (a reference written over in place seen too), and git tried
+again if it ran too long there before."
+  (remhash top *git-timed-out*)
+  (let* ((folder (git-real-folder top))
+         (place (and folder (gethash folder *git-shadows*))))
+    (when place
+      (sb-thread:with-mutex ((git-shadow-place-lock place))
+        (let ((shadow (git-shadow-place-current place)))
+          (when shadow
+            (setf (git-shadow-place-current place) nil)
+            (retire-git-shadow shadow)))))))
 
 (defun git-reads-only-p (top)
   "True when git only reads the repository at TOP, on its shadow: it is not
@@ -824,8 +850,8 @@ is let go of once FUNCTION returns."
   (let ((refusal (git-reading-refusal arguments)))
     (when refusal
       (error 'git-refused :operation (or (first (git-command-words arguments)) "") :path top
-                          :reason (format nil "~a is looked at only (~a): ~a" (abbreviated-path top)
-                                          (or (project-look-only-reason top) "it is not trusted") refusal))))
+                          :reason (escape-controls (format nil "~a is looked at only (~a): ~a" (abbreviated-path top)
+                                                           (or (project-look-only-reason top) "it is not trusted") refusal)))))
   (multiple-value-bind (folder common) (git-real-folders top)
     (let ((words (git-command-words arguments)))
       (multiple-value-bind (shadow place)
