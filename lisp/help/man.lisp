@@ -32,11 +32,23 @@ link to the next, \\[man-next-section] and \\[man-previous-section] from one sec
 configuration, the databases that index the pages, and the folders of pages
 some systems keep outside /usr.")
 
+(defparameter *man-seconds* 20
+  "The seconds man may run to format a page or list the pages before it is stopped.")
+
+(defun own-pages-folder ()
+  "The folder of pages installed for oneself (~/.local/share/man), or NIL when
+there is none: the only folder of the home man is shown."
+  (let ((folder (concatenate 'string (tuatara.io:home-directory) ".local/share/man")))
+    (and (eq :directory (tuatara.io:path-kind folder)) folder)))
+
 (defun man-environment (width)
   "The environment man is run with, WIDTH columns wide: the formatting kept as
-the page is written, bold and underline, and no pager."
-  (list (list "MANWIDTH" (princ-to-string width)) (list "MAN_KEEP_FORMATTING" "1")
-        (list "MANPAGER" "cat") (list "PAGER" "cat")))
+the page is written, bold and underline, no pager, and the folder of one's own
+pages searched besides the system's."
+  (let ((own (own-pages-folder)))
+    (append (list (list "MANWIDTH" (princ-to-string width)) (list "MAN_KEEP_FORMATTING" "1")
+                  (list "MANPAGER" "cat") (list "PAGER" "cat"))
+            (and own (list (list "MANPATH" (concatenate 'string own ":")))))))
 
 (defun man-program ()
   "The path of the man program, or NIL when the system has none."
@@ -46,7 +58,7 @@ the page is written, bold and underline, and no pager."
   "What shows manual pages here, as \\[check-health] says it."
   (outside-program-health-words :man "manual pages (M-x man)" (man-program)))
 
-(defun man-run (arguments &key (width 80) cancel file seconds output-limit)
+(defun man-run (arguments &key (width 80) cancel file)
   "Run man with ARGUMENTS shut in the sandbox, as the person's environment
 would not change it, and return the octets it printed. With FILE, the file at
 that path is given on its standard input, so that it is the only file man sees.
@@ -54,75 +66,72 @@ An error saying why when man is missing, was stopped, or failed (a page it has
 not got)."
   (unless (man-program)
     (tuatara.io:program-missing "man" :why (outside-program-install-words :man)))
-  (multiple-value-bind (output outcome said)
-      (apply (if file
-                 (lambda (&rest keys)
-                   (apply #'tuatara.io:sandbox-run-on-file file "man" (append arguments (list "-")) keys))
-                 (lambda (&rest keys) (apply #'tuatara.io:sandbox-run "man" arguments keys)))
-             :environment (man-environment width) :directories *man-directories* :cancel cancel
-             :output-limit (or output-limit *man-output-limit*)
-             (and seconds (list :seconds seconds)))
-    (unless (eq outcome :done)
-      (error "~a" (tuatara.io:sandbox-outcome-words outcome said :label "man")))
-    output))
+  (let ((own (own-pages-folder)))
+    (multiple-value-bind (output outcome said)
+        (apply (if file
+                   (lambda (&rest keys)
+                     (apply #'tuatara.io:sandbox-run-on-file file "man" (append arguments (list "-")) keys))
+                   (lambda (&rest keys) (apply #'tuatara.io:sandbox-run "man" arguments keys)))
+               :environment (man-environment width) :cancel cancel :seconds *man-seconds*
+               :directories (if own (cons own *man-directories*) *man-directories*)
+               :output-limit *man-output-limit* nil)
+      (unless (eq outcome :done)
+        (error "~a" (tuatara.io:sandbox-outcome-words outcome said :label "man" :seconds-setting '*man-seconds*)))
+      output)))
 
 ;;; Reading what man printed
 
-(defun man-escape-end (text start)
-  "Where the escape sequence of TEXT beginning at START (an ESC) ends, the
-index of its last character: a control sequence at its first character from @
-to ~, an operating system command (a link) at a bell or at ESC and a
-backslash, any other at the character after the ESC. As a second value, for a
-control sequence ending in m, its numbers (SGR codes), else NIL."
-  (let* ((end (length text))
-         (kind (and (< (1+ start) end) (char text (1+ start)))))
-    (case kind
-      (#\[ (let ((stop (or (position-if (lambda (c) (char<= #\@ c #\~)) text :start (min end (+ start 2))) (1- end))))
-             (values stop (and (char= (char text stop) #\m)
-                              (or (mapcar (lambda (word) (or (parse-integer word :junk-allowed t) 0))
-                                          (uiop:split-string (subseq text (+ start 2) stop) :separator ";"))
-                                  '(0))))))
-      (#\] (let ((stop (or (position-if (lambda (c) (member c '(#\Bel #\Escape))) text :start (min end (+ start 2)))
-                           (1- end))))
-             (if (and (char= (char text stop) #\Escape) (< (1+ stop) end)) (1+ stop) stop)))
-      (t (min (1+ start) (1- end))))))
+(defun man-sgr-codes (text from end)
+  "The numbers between FROM and END of TEXT, separated by semicolons (an empty
+one is 0), as a list: the parameters of a control sequence for graphics."
+  (loop with code = 0
+        for i from from to end
+        for char = (if (< i end) (char text i) #\;)
+        if (char= char #\;) collect code and do (setf code 0)
+        else do (let ((digit (digit-char-p char)))
+                  (when digit (setf code (min 1000 (+ (* code 10) digit)))))))
 
 (defun man-formatting (text)
   "TEXT, what man printed, as two values: its plain text, and a vector holding,
 for each character of it, 1 for bold, 2 for underlined, 3 for both, 0 for
 neither. Bold and underline are read as groff writes them, as escape
 sequences (SGR) or as a character struck twice and an underscore struck under
-one, whichever; every other escape sequence and control character is left out."
-  (let ((out (make-array (length text) :element-type 'character :fill-pointer 0))
-        (marks (make-array (length text) :element-type 'fixnum :fill-pointer 0))
-        (mark 0)
-        (i 0) (end (length text)))
-    (flet ((strike (bits)
-             (setf (aref marks (1- (length marks))) (logior (aref marks (1- (length marks))) bits))))
+one, whichever; every other escape sequence and every control character,
+those of the C1 range too, is left out, a device control string with its
+payload."
+  (let* ((end (length text))
+         (out (make-string end))
+         (marks (make-array end :element-type '(unsigned-byte 8)))
+         (count 0) (mark 0) (i 0))
+    (declare (type fixnum count i mark end))
+    (flet ((strike (bits) (setf (aref marks (1- count)) (logior (aref marks (1- count)) bits))))
       (loop while (< i end)
             do (let ((c (char text i)))
-                 (cond ((char= c #\Escape)
-                        (multiple-value-bind (stop codes) (man-escape-end text i)
-                          (dolist (code codes)
-                            (case code
-                              (0 (setf mark 0))
-                              (1 (setf mark (logior mark 1)))
-                              ((3 4) (setf mark (logior mark 2)))
-                              (22 (setf mark (logandc2 mark 1)))
-                              ((23 24) (setf mark (logandc2 mark 2)))))
-                          (setf i stop)))
-                       ((and (char= c #\Backspace) (plusp (length out)) (< (1+ i) end))
-                        (let ((before (char out (1- (length out)))) (next (char text (1+ i))))
+                 (cond ((or (char= c #\Escape) (tuatara.text:c1-control-p c))
+                        (multiple-value-bind (stop final from to) (tuatara.text:escape-sequence-end text i :c1 t)
+                          (when (eql final #\m)
+                            (dolist (code (man-sgr-codes text from to))
+                              (case code
+                                (0 (setf mark 0))
+                                (1 (setf mark (logior mark 1)))
+                                ((3 4) (setf mark (logior mark 2)))
+                                (22 (setf mark (logandc2 mark 1)))
+                                ((23 24) (setf mark (logandc2 mark 2))))))
+                          (setf i (1- stop))))
+                       ((and (char= c #\Backspace) (plusp count) (< (1+ i) end))
+                        (let ((before (schar out (1- count))) (next (char text (1+ i))))
                           (cond ((char= before next) (strike 1))
-                                ((char= before #\_) (setf (char out (1- (length out))) next) (strike 2))
+                                ((char= before #\_) (setf (schar out (1- count)) next) (strike 2))
                                 ((char= next #\_) (strike 2))
-                                (t (setf (char out (1- (length out))) next)))
+                                (t (setf (schar out (1- count)) next)))
                           (incf i)))
-                       ((and (or (char= c #\Newline) (char= c #\Tab) (>= (char-code c) 32)) (/= (char-code c) 127))
-                        (vector-push c out)
-                        (vector-push mark marks))))
+                       ((or (char= c #\Newline) (char= c #\Tab) (and (>= (char-code c) 32) (/= (char-code c) 127)))
+                        (setf (schar out count) c (aref marks count) mark)
+                        (incf count))))
                (incf i)))
-    (values (coerce out 'simple-string) (coerce marks 'simple-vector))))
+    (if (= count end)
+        (values out marks)
+        (values (subseq out 0 count) (subseq marks 0 count)))))
 
 (defparameter *man-reference-pattern*
   (cl-ppcre:create-scanner "([A-Za-z0-9_][A-Za-z0-9_.+:@-]*)\\(([0-9][A-Za-z0-9]*)\\)")
@@ -133,47 +142,49 @@ one, whichever; every other escape sequence and control character is left out."
 a line of bold with no indent a heading (:MARKUP.HEADING), other bold :STRONG,
 underlined :EMPHASIS, and each reference to another page a button calling
 FOLLOW with the reference's name and section. The text is cut where its face
-or button changes."
-  (multiple-value-bind (plain marks) (man-formatting text)
+or button changes. Worked out by position in the text, so that what it makes
+besides the pieces is a few octets for each character."
+  (multiple-value-bind (plain faces) (man-formatting text)
     (let* ((size (length plain))
-           (faces (make-array size :initial-element nil))
-           (links (make-array size :initial-element nil))
+           (links '())
            (pieces '())
            (footer (let ((shown (string-right-trim '(#\Newline #\Space) plain)))
                      (1+ (or (position #\Newline shown :from-end t) -1)))))
-      (loop for line-start = 0 then (1+ line-end)
-            for line-end = (or (position #\Newline plain :start line-start) size)
-            do (let* ((first (position-if (lambda (c) (char/= c #\Space)) plain :start line-start :end line-end))
-                      (heading (and first (= first line-start)
-                                    (loop for k from line-start below line-end
-                                          always (or (char= (char plain k) #\Space) (logtest 1 (svref marks k)))))))
+      (declare (type fixnum size footer))
+      ;; FACES becomes 0 plain, 1 strong, 2 emphasis, 4 heading
+      (loop for line-start fixnum = 0 then (1+ line-end)
+            for line-end fixnum = (or (position #\Newline plain :start line-start) size)
+            do (let ((heading (and (< line-start line-end) (char/= (char plain line-start) #\Space)
+                                   (loop for k from line-start below line-end
+                                         always (or (char= (char plain k) #\Space) (logtest 1 (aref faces k)))))))
                  (loop for k from line-start below line-end
-                       for bits = (svref marks k)
-                       do (setf (svref faces k)
-                                (cond (heading :markup.heading)
-                                      ((= bits 0) nil)
-                                      ((logtest bits 1) :strong)
-                                      (t :emphasis))))
+                       for bits = (aref faces k)
+                       do (setf (aref faces k) (cond (heading 4) ((logtest bits 1) 1) ((= bits 0) 0) (t 2))))
                  ;; the page's own name in its first and last line is not a link
                  (unless (or (zerop line-start) (>= line-start footer))
                    (cl-ppcre:do-scans (from to starts ends *man-reference-pattern* plain nil
                                        :start line-start :end line-end)
-                     (fill links (list (subseq plain (svref starts 0) (svref ends 0))
-                                       (subseq plain (svref starts 1) (svref ends 1)))
-                           :start from :end to)
-                     (fill faces nil :start from :end to))))
+                     (push (vector from to (svref starts 1) (svref ends 1)) links))))
             while (< line-end size))
+      (setf links (nreverse links))
       (let ((start 0))
+        (declare (type fixnum start))
         (loop while (< start size)
-              do (let ((end (1+ start)))
-                   (loop while (and (< end size)
-                                    (eq (svref faces end) (svref faces start))
-                                    (eq (svref links end) (svref links start)))
-                         do (incf end))
-                   (push (let ((piece (subseq plain start end)) (link (svref links start)) (face (svref faces start)))
-                           (cond (link (list piece :button (lambda () (funcall follow (first link) (second link)))))
-                                 (face (cons piece face))
-                                 (t piece)))
+              do (let* ((link (and links (= start (svref (first links) 0)) (pop links)))
+                        (limit (if links (svref (first links) 0) size))
+                        (end (if link
+                                 (svref link 1)
+                                 (let ((end (1+ start)))
+                                   (declare (type fixnum end))
+                                   (loop while (and (< end limit) (= (aref faces end) (aref faces start)))
+                                         do (incf end))
+                                   end)))
+                        (piece (subseq plain start end)))
+                   (push (cond (link (let ((name (subseq plain (svref link 0) (1- (svref link 2))))
+                                           (section (subseq plain (svref link 2) (svref link 3))))
+                                       (list piece :button (lambda () (funcall follow name section)))))
+                               ((= (aref faces start) 0) piece)
+                               (t (cons piece (case (aref faces start) (1 :strong) (2 :emphasis) (t :markup.heading)))))
                          pieces)
                    (setf start end))))
       (nreverse pieces))))
@@ -204,19 +215,30 @@ candidate for each."
                       (push (make-candidate shown :annotation about) found))))))))))
     (nreverse found)))
 
+(defvar *man-pages-said* nil
+  "True once the lack of an index of the pages has been said.")
+
 (defun start-man-page-list ()
   "Start finding the names of the system's pages in the background, man shut in
 the sandbox printing them; a GATHERING (TAKE-GATHERED) that gives the
-candidates at its end, and keeps them in *MAN-PAGES*. NIL, nothing started,
-when they were found less than *MAN-PAGE-LIST-AGE* seconds ago, or there is no man."
+candidates at its end, and keeps them in *MAN-PAGES*, or, when man could not
+list them (it has no index: mandb makes it), the words saying so, which are
+kept as well, an empty list for the hour, so that it is not tried at every
+question. NIL, nothing started, when they were found less than
+*MAN-PAGE-LIST-AGE* seconds ago, or there is no man."
   (when (and (man-program)
              (not (and *man-pages* (< (- (get-universal-time) (car *man-pages*)) *man-page-list-age*))))
+    (setf *man-pages-said* nil)
     (start-gathering "tuatara man pages"
                      (lambda (give cancel)
-                       (let ((candidates (man-page-candidates
-                                          (man-run (list "--apropos" ".") :cancel cancel :seconds 20))))
-                         (setf *man-pages* (cons (get-universal-time) candidates))
-                         (funcall give candidates))))))
+                       (handler-case
+                           (let ((candidates (man-page-candidates (man-run (list "--apropos" ".") :cancel cancel))))
+                             (setf *man-pages* (cons (get-universal-time) candidates))
+                             (funcall give candidates))
+                         (error (problem)
+                           (setf *man-pages* (cons (get-universal-time) '()))
+                           (funcall give (format nil "The pages' names are not listed (~a); mandb makes the index (an administrator runs it). A page can still be asked for by name."
+                                                 problem))))))))
 
 (defun man-file-p (path)
   "True when PATH is named as the source of a manual page: a number after the
@@ -237,6 +259,7 @@ source of a page, that file is the default. Returns the answer, a string."
                                       :source (and listing
                                                    (gathering-source listing
                                                                      (lambda (new)
+                                                                       (when (stringp (first new)) (message "~a" (pop new)))
                                                                        (when new (setf offered (first new)))
                                                                        (length offered))))))))
 
@@ -285,7 +308,11 @@ else of the selected one; at least 40."
 
 (defun format-man-page (buffer)
   "Start formatting the page BUFFER shows, for the width it has now, in the
-background; the page replaces the text when it is done (a job, \\[stop-job] ends it)."
+background; the page replaces the text when it is done (a job, \\[stop-job] ends it).
+A formatting of the same page still going on is stopped."
+  (dolist (job tuatara.runtime:*jobs*)
+    (when (and (man-job-p job) (eq (tuatara.runtime:job-buffer job) buffer) (tuatara.runtime:job-running-p job))
+      (tuatara.runtime:job-stop job)))
   (let ((file (tuatara.buffer:buffer-local buffer :man-file))
         (arguments (tuatara.buffer:buffer-local buffer :man-arguments))
         (width (man-width buffer)))
