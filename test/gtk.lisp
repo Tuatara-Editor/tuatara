@@ -58,29 +58,29 @@ libraries (ffi.lisp), one after another."
     (is equal '((0d0 0d0 0d0) (1d0 1d0 1d0)) (list (tuatara.frontend.gtk::window-paper :fg) (tuatara.frontend.gtk::window-paper :bg)))))
 
 (define-test (gtk events-between-threads)
-  (let ((queue (tuatara.frontend.gtk:make-event-queue)))
+  (let ((queue (tuatara.frontend:make-event-queue)))
     ;; nothing within the time: NIL
-    (false (tuatara.frontend.gtk:queue-pop queue 0.01))
+    (false (tuatara.frontend:queue-pop queue 0.01))
     ;; one pushed from another thread arrives, and in order
     (sb-thread:join-thread (sb-thread:make-thread (lambda ()
-                                                    (tuatara.frontend.gtk:queue-push queue 1)
-                                                    (tuatara.frontend.gtk:queue-push queue 2))))
-    (is = 1 (tuatara.frontend.gtk:queue-pop queue 1))
-    (is = 2 (tuatara.frontend.gtk:queue-pop queue 1)))
+                                                    (tuatara.frontend:queue-push queue 1)
+                                                    (tuatara.frontend:queue-push queue 2))))
+    (is = 1 (tuatara.frontend:queue-pop queue 1))
+    (is = 2 (tuatara.frontend:queue-pop queue 1)))
   ;; wakes in a row are one, and no input waiting; a key is
   (let* ((f (tuatara.frontend.gtk::make-gtk-frontend))
          (queue (tuatara.frontend.gtk::gtk-queue f)))
-    (dotimes (i 5) (tuatara.frontend.gtk:queue-push queue (tuatara.frontend:make-event :tick)))
-    (is = 1 (length (tuatara.frontend.gtk::event-queue-items queue)))
+    (dotimes (i 5) (tuatara.frontend:queue-push queue (tuatara.frontend:make-event :tick)))
+    (is = 1 (length (tuatara.frontend::event-queue-items queue)))
     (false (tuatara.frontend:frontend-input-pending-p f))
-    (tuatara.frontend.gtk:queue-push queue (tuatara.frontend:make-event :key :key (tuatara.frontend:make-key #\a)))
+    (tuatara.frontend:queue-push queue (tuatara.frontend:make-event :key :key (tuatara.frontend:make-key #\a)))
     (true (tuatara.frontend:frontend-input-pending-p f)))
   ;; the window's new size is no input waiting either: work giving way to input does not stop for it
   (let* ((f (tuatara.frontend.gtk::make-gtk-frontend))
          (queue (tuatara.frontend.gtk::gtk-queue f)))
-    (tuatara.frontend.gtk:queue-push queue (tuatara.frontend:make-event :resize :width 80 :height 24))
+    (tuatara.frontend:queue-push queue (tuatara.frontend:make-event :resize :width 80 :height 24))
     (false (tuatara.frontend:frontend-input-pending-p f))
-    (tuatara.frontend.gtk:queue-push queue (tuatara.frontend:make-event :drop :files '("/tmp/a")))
+    (tuatara.frontend:queue-push queue (tuatara.frontend:make-event :drop :files '("/tmp/a")))
     (true (tuatara.frontend:frontend-input-pending-p f))))
 
 (define-test (gtk pictures)
@@ -617,7 +617,7 @@ windows side by side."
       (call (tuatara.gtk:callback tuatara.frontend.gtk::on-drag-update) 30d0 20d0)
       (call (tuatara.gtk:callback tuatara.frontend.gtk::on-drag-end) 30d0 20d0))
     (is equal '((:drag-mouse-1 5 2) (:drag-mouse-1 5 3))
-        (loop for event = (tuatara.frontend.gtk::queue-pop (tuatara.frontend.gtk::gtk-queue f) 0)
+        (loop for event = (tuatara.frontend:queue-pop (tuatara.frontend.gtk::gtk-queue f) 0)
               while event
               collect (let ((key (tuatara.frontend:event-key event)))
                         (list (tuatara.frontend:key-base key) (tuatara.frontend:key-column key)
@@ -793,7 +793,7 @@ windows side by side."
                                           (function (sb-alien:boolean 32) sb-sys:system-area-pointer sb-sys:system-area-pointer
                                                     sb-alien:double sb-alien:double sb-sys:system-area-pointer))
                       (tuatara.io:null-pointer) value 20d0 45d0 (tuatara.io:null-pointer)))
-               (let ((event (tuatara.frontend.gtk::queue-pop (tuatara.frontend.gtk::gtk-queue f) 0)))
+               (let ((event (tuatara.frontend:queue-pop (tuatara.frontend.gtk::gtk-queue f) 0)))
                  (is eq :drop (tuatara.frontend:event-kind event))
                  (is equal paths (tuatara.frontend:event-files event))
                  (is = 2 (tuatara.frontend:event-column event))
@@ -854,10 +854,10 @@ windows side by side."
 
 (define-test (gtk short-waits)
   ;; reading the event queue with a time limit, again and again, as the editor does between keys
-  (let ((queue (tuatara.frontend.gtk::make-event-queue)))
-    (true (loop repeat 500 always (null (tuatara.frontend.gtk::queue-pop queue 0.0001))))
-    (tuatara.frontend.gtk::queue-push queue (tuatara.frontend:make-event :close))
-    (is eq :close (tuatara.frontend:event-kind (tuatara.frontend.gtk::queue-pop queue 0.0001)))))
+  (let ((queue (tuatara.frontend:make-event-queue)))
+    (true (loop repeat 500 always (null (tuatara.frontend:queue-pop queue 0.0001))))
+    (tuatara.frontend:queue-push queue (tuatara.frontend:make-event :close))
+    (is eq :close (tuatara.frontend:event-kind (tuatara.frontend:queue-pop queue 0.0001)))))
 
 (define-test (gtk window-events-mid-question)
   (let* ((path (format nil "~amid-~d.txt" (namestring (uiop:temporary-directory)) (random 1000000)))

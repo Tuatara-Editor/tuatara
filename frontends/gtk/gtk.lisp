@@ -2,8 +2,8 @@
 ;;;; Copyright (C) 2026 Michael A Jones.  GPL-3.0-or-later; see LICENSE.
 ;;;;
 ;;;; GTK runs on the main thread and the editor on a thread of its own. GTK's
-;;;; callbacks put keys, resizes and the close button in a queue the editor
-;;;; reads; each frame the editor finishes is handed to the main thread, which
+;;;; callbacks put keys, resizes and the close button in the editor's queue of
+;;;; events (TUATARA.FRONTEND:EVENT-QUEUE); each frame the editor finishes is handed to the main thread, which
 ;;;; paints it on one drawing area: the rows as the editor laid them out, in the
 ;;;; faces' colours, on a grid of the font's cells.
 ;;;;
@@ -14,10 +14,11 @@
 (defpackage #:tuatara.frontend.gtk
   (:use #:cl #:tuatara.gtk)
   (:import-from #:tuatara.io #:null-pointer #:null-pointer-p #:sap-string)
+  (:import-from #:tuatara.frontend #:make-event-queue #:queue-push #:queue-pop #:queue-empty-p)
   (:import-from #:tuatara-user #:*gui-font* #:*gui-renderer* #:*gui-padding* #:*window-colours-from-desktop*)
   (:documentation "The GTK4 frontend: Tuatara in a window of its own, one drawing area painted with Pango and Cairo.")
   (:export #:gtk-frontend #:make-gtk-frontend #:run-in-window #:gdk-key #:paint-frame-to-png
-           #:call-with-painted-frame #:pixel-colour #:queue-push #:queue-pop #:make-event-queue
+           #:call-with-painted-frame #:pixel-colour
            #:make-frame #:frame-rows #:colour-rgb))
 
 (in-package #:tuatara.frontend.gtk)
@@ -70,52 +71,6 @@ GskVulkanRenderer, GskCairoRenderer), or NIL when it has none."
 (defvar *desktop-colours* nil
   "The desktop's text and ground colours as GTK's theme last gave them, a list
 of two lists of three numbers from 0 to 1, or NIL; kept by GTK's thread.")
-
-;;; Events from GTK to the editor
-
-(defstruct (event-queue (:constructor make-event-queue ()) (:copier nil))
-  "Events on their way from GTK's thread to the editor's, oldest first."
-  (items '()) (tail '())
-  (lock (sb-thread:make-mutex :name "events"))
-  (waiting (sb-thread:make-waitqueue :name "events")))
-
-(setf (documentation 'make-event-queue 'function) "An empty EVENT-QUEUE."
-      (documentation 'event-queue-p 'function) "True when OBJECT is an EVENT-QUEUE."
-      (documentation 'event-queue-items 'function) "The events in QUEUE, oldest first."
-      (documentation 'event-queue-tail 'function) "The last cons of QUEUE's items."
-      (documentation 'event-queue-lock 'function) "The mutex guarding QUEUE."
-      (documentation 'event-queue-waiting 'function) "Where the editor waits for QUEUE's next event.")
-
-(defun tick-p (event)
-  "True when EVENT is a :TICK, a wake with nothing done by you."
-  (and (typep event 'tuatara.frontend:event) (eq (tuatara.frontend:event-kind event) :tick)))
-
-(defun queue-push (queue event)
-  "Add EVENT to QUEUE, waking the editor if it waits; a :TICK after another
-waiting is one wake, not two."
-  (sb-thread:with-mutex ((event-queue-lock queue))
-    (unless (and (tick-p event)
-                 (event-queue-items queue)
-                 (tick-p (first (event-queue-tail queue))))
-      (let ((cell (list event)))
-        (if (event-queue-items queue)
-            (setf (cdr (event-queue-tail queue)) cell)
-            (setf (event-queue-items queue) cell))
-        (setf (event-queue-tail queue) cell)))
-    (sb-thread:condition-notify (event-queue-waiting queue))))
-
-(defun queue-empty-p (queue)
-  "True when QUEUE holds no events."
-  (sb-thread:with-mutex ((event-queue-lock queue))
-    (null (event-queue-items queue))))
-
-(defun queue-pop (queue seconds)
-  "The oldest event in QUEUE, waiting up to SECONDS for one (NIL: as long as it
-takes); NIL when none came."
-  (sb-thread:with-mutex ((event-queue-lock queue))
-    (tuatara.runtime:wait-on-until (event-queue-waiting queue) (event-queue-lock queue)
-                                   (lambda () (event-queue-items queue)) seconds)
-    (pop (event-queue-items queue))))
 
 ;;; Frames from the editor to GTK
 
@@ -279,10 +234,7 @@ taking the editor down with GTK's thread, never unwinding through GTK."
   (queue-push (gtk-queue f) (tuatara.frontend:make-event :tick)))
 
 (defmethod tuatara.frontend:frontend-input-pending-p ((f gtk-frontend))
-  ;; what you did waits; the wakes of work in the background, and the window's new size, are no input
-  (let ((queue (gtk-queue f)))
-    (sb-thread:with-mutex ((event-queue-lock queue))
-      (and (find-if #'tuatara.frontend:input-event-p (event-queue-items queue)) t))))
+  (tuatara.frontend:queue-input-p (gtk-queue f)))
 
 (defmethod tuatara.frontend:frontend-description ((f gtk-frontend))
   (format nil "in a GTK ~d.~d window"
