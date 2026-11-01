@@ -15,6 +15,8 @@
             (mapcar #'sb-thread:thread-name threads))
     (sb-ext:exit :code 1)))
 (ensure-directories-exist "build/")
+;; the manual pages, made from the program: build/man/
+(tuatara.terminal:write-man-pages "build/man/")
 ;; every Lisp system the program carries and the folder of its sources (none
 ;; for those SBCL carries compiled), for tools/release.sh to give their licences
 (with-open-file (out "build/lisp-systems.tsv" :direction :output :if-exists :supersede)

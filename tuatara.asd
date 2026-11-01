@@ -105,7 +105,7 @@
   :license "GPL-3.0-or-later"
   :depends-on ("tuatara/frontend-tui" "tuatara/frontend-gtk" "tuatara/defaults")
   :pathname "frontends/tui/"
-  :components ((:file "main")))
+  :components ((:file "main") (:file "man-pages")))
 
 (defsystem "tuatara/tests"
   :description "Test suite (Parachute) and the benchmark harness that enforces their budgets."
@@ -157,6 +157,7 @@
                (:file "toggles")
                (:file "help")
                (:file "man")
+               (:file "man-pages")
                (:file "debug")
                (:file "hooks")
                (:file "buffers")

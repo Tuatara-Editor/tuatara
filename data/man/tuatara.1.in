@@ -1,0 +1,251 @@
+.\" tuatara(1): the parts between @ signs are made by frontends/tui/man-pages.lisp.
+.TH TUATARA 1 "" "Tuatara @VERSION@" "User Commands"
+.ad l
+.SH NAME
+tuatara \- edit text in the terminal or in a window
+.SH SYNOPSIS
+@SYNOPSIS@
+.SH DESCRIPTION
+.B tuatara
+is a text editor.
+It opens each
+.I FILE
+named, in the terminal it is started in, or in a window of its own with
+.B \-\-gui
+or when it is started from a launcher, with no terminal, on a desktop.
+Without a file it starts in the scratch buffers, where text can be written
+and tried without making a file.
+.PP
+It reads the init file when it starts, and it starts at once: the program is
+one executable.
+Everything it does is done inside it and documented there: \fBC\-h\fR shows
+the help commands, and the handbooks teach each area.
+This page covers what is done from the terminal.
+.SH OPTIONS
+Options may stand anywhere before
+.BR \-\- ,
+among the files.
+@OPTIONS@
+.PP
+An option that is also the name of a file in the folder tuatara is started in
+is refused, so that no file there can choose the init file or what is done:
+write
+.I ./NAME
+for the file, or
+.B \-\-
+before the files.
+.SH EXIT STATUS
+.TP
+.B 0
+The session ended normally.
+.TP
+.B 1
+With
+.BR \-\-merge ,
+the merged file was not saved or conflicts are left in it.
+With
+.BR \-\-generate\-config ,
+no file was written.
+When git started tuatara to write a message (see
+.BR ENVIRONMENT ),
+\fBC\-c C\-k\fR gives the message up and ends the session with 1, so that git
+makes no commit; \fBC\-c C\-c\fR saves it and ends the session with 0.
+.TP
+.B 2
+The command line cannot be used: an option or argument that is wrong, a file
+that
+.B \-\-diff
+or
+.B \-\-merge
+names but is not there, an init file that
+.B \-c
+names but is not there, standard input that is the terminal for
+.BR \- ,
+or no terminal to read keys from (use
+.BR \-\-gui ).
+The message says which; a usage summary follows an option that is wrong.
+.SH ENVIRONMENT
+.TP
+.B HOME
+The home folder, where the folders below are when the variables that follow
+are not set.
+.TP
+.B XDG_CONFIG_HOME
+Where the configuration folder, tuatara/, is: the init file, snippets and
+templates.
+Not set: ~/.config.
+.TP
+.B XDG_STATE_HOME
+Where the state folder, tuatara/, is: what Tuatara remembers between sessions
+and the auto-saved copies.
+Not set: ~/.local/state.
+.TP
+.B XDG_DATA_HOME
+Where the data folder, tuatara/, is: the grammars you added and the packages
+fetched.
+Not set: ~/.local/share.
+.TP
+.B XDG_CACHE_HOME
+Where the cache folder, tuatara/, is: files made again when they are gone.
+Not set: ~/.cache.
+.TP
+.B XDG_RUNTIME_DIR
+Where a folder named by a setting is kept in memory while it is not there, as
+when its drive is not mounted.
+.TP
+.B NO_COLOR
+When set and not empty, tuatara uses no colours in the terminal, unless the
+setting
+.B *tui\-colours*
+says how many.
+.TP
+.B TERM
+The terminal's type, whose description says how many colours it shows.
+.TP
+.B COLORTERM
+When it is
+.B truecolor
+or
+.BR 24bit ,
+the terminal shows 24-bit colour and the theme's colours are sent exactly.
+.TP
+.BR TERMINFO ", " TERMINFO_DIRS
+Where the terminal's description is looked for, besides the usual folders.
+.TP
+.BR WAYLAND_DISPLAY ", " DISPLAY
+With neither input nor output a terminal, a desktop to show a window on.
+.TP
+.B TUATARA_HEAP_MB
+The most memory, in megabytes, tuatara's data may take.
+Not set: half the machine's memory, from 2 GB to 16 GB.
+.B \-\-dynamic\-space\-size
+overrides it.
+.TP
+.BR LC_ALL ", " LC_MESSAGES ", " LANG
+The language spelling is checked in, when no setting says.
+.TP
+.B TZ
+The time zone, when set; else the system's.
+.TP
+.B SHELL
+The shell commands typed in the editor run with.
+Not set: /bin/sh.
+.TP
+.BR GIT_EDITOR ", " EDITOR ", " VISUAL
+Not read by tuatara.
+Set to
+.B tuatara
+(or git's
+.B core.editor
+to it), git starts it to write a commit message; see
+.BR EXAMPLES .
+.SH FILES
+The folders are those of the variables above.
+.TP
+.I ~/.config/tuatara/init.lisp
+The init file, written the first time tuatara starts without one, every
+setting in it commented out.
+.BR tuatara\-init (5)
+describes it.
+.TP
+.I ~/.config/tuatara/
+Your snippets, templates and logos.
+.TP
+.I ~/.local/state/tuatara/
+What it remembers: files visited lately, places in them, bookmarks, the
+session, trust answers and the auto-saved copies.
+.TP
+.I ~/.local/share/tuatara/
+The grammars you added and the packages fetched.
+.TP
+.I ~/.cache/tuatara/
+Files made again when they are gone, the debug log (debug.log) and the errors
+of the program's own (stderr.log).
+.PP
+.BR tuatara\-init (5)
+says which of these a later release still reads and which it may remake.
+.SH FIRST KEYS
+.TP
+.B C\-x C\-c
+Quit.
+.TP
+.B C\-g
+Stop what is happening.
+.TP
+.B C\-h C\-a
+An introduction to the editor and the ways in to learn it.
+.TP
+.B C\-h k
+Name the command a key runs and say what it does.
+.TP
+.B M\-x
+Run a command by name; M\-x tuatara\-tutor, or
+.B tuatara \-\-tutor
+from the terminal, teaches the modal keys by editing a text with them.
+.SH EXAMPLES
+Open two files, the first with the cursor on line 120, column 8:
+.PP
+.RS
+.nf
+tuatara +120:8 main.lisp notes.org
+.fi
+.RE
+.PP
+Read what another program prints:
+.PP
+.RS
+.nf
+git log \-\-stat | tuatara \-
+.fi
+.RE
+.PP
+Look at a file that is not trusted, changing nothing:
+.PP
+.RS
+.nf
+tuatara \-\-safe evidence/disk.img
+.fi
+.RE
+.PP
+Show the differences of two files when git is asked for a difftool:
+.PP
+.RS
+.nf
+git config \-\-global diff.tool tuatara
+git config \-\-global difftool.tuatara.cmd \e
+  \(aqtuatara \-\-diff "$LOCAL" "$REMOTE"\(aq
+.fi
+.RE
+.PP
+Merge three versions of a file when git is asked for a mergetool; the exit
+status says whether the conflicts were resolved:
+.PP
+.RS
+.nf
+git config \-\-global merge.tool tuatara
+git config \-\-global mergetool.tuatara.cmd \e
+  \(aqtuatara \-\-merge "$LOCAL" "$BASE" "$REMOTE" "$MERGED"\(aq
+git config \-\-global mergetool.tuatara.trustExitCode true
+.fi
+.RE
+.PP
+Write commit messages in tuatara:
+.PP
+.RS
+.nf
+git config \-\-global core.editor tuatara
+.fi
+.RE
+.SH SEE ALSO
+.BR tuatara\-init (5)
+.PP
+The handbooks teach each area of the editor; they are the files
+tuatara\-NAME\-handbook in the documentation that comes with the release.
+In the editor,
+.B C\-h C\-a
+opens the introduction and
+.B M\-x man
+shows this page.
+.SH AUTHOR
+Michael A Jones.
+Free software under the GNU General Public License, version 3 or later.

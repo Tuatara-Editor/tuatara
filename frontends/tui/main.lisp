@@ -8,7 +8,7 @@
 (defpackage #:tuatara.terminal
   (:use #:cl)
   (:documentation "Tuatara in the terminal: the entry point shared by tools/tui.lisp and the saved executable.")
-  (:export #:main #:image-toplevel #:*built-heap* #:*options* #:*option-help* #:*usage-forms*))
+  (:export #:main #:image-toplevel #:*built-heap* #:*options* #:*option-help* #:*usage-forms* #:write-man-pages))
 
 (in-package #:tuatara.terminal)
 
