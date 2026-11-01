@@ -1256,6 +1256,13 @@ hide were left out of it (LEFT-OUT-NOTE)."
         for at = (search needle text :start2 start :end2 end)
         while at count t do (setf start (+ at (length needle)))))
 
+(defun insert-with-mark-before (text)
+  "Put TEXT, ready for the buffer (TEXT-FOR-BUFFER), in at point, point after
+it and the mark at its start, the mark before on the mark ring."
+  (let ((p (point)))
+    (push-mark)
+    (goto (tuatara.buffer:buffer-insert (current-buffer) p text))))
+
 (define-command yank ()
   "Insert the most recently killed text at point, or what another program
 copied to the system clipboard since, its lines ending as the buffer's do. A
@@ -1266,10 +1273,7 @@ as a block. The mark is left at its start, the mark before on the mark ring."
          (text (and kill (text-for-buffer kill (current-buffer) (point)))))
     (cond ((eq (nth-value 1 (kill-parts kill)) :block)
            (funcall 'paste-rows-at-point (kill-parts kill)))
-          (text
-           (let ((p (point)))
-             (push-mark)
-             (goto (tuatara.buffer:buffer-insert (current-buffer) p text))))
+          (text (insert-with-mark-before text))
           (t (message "The kill ring is empty")))))
 
 ;;; Mark

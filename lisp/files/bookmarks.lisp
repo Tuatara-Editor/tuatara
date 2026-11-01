@@ -169,24 +169,32 @@ are chosen."
       (:directory "folder")
       (t "file"))))
 
+(defun go-to-file-place (name path offset context safe &key other)
+  "Visit the file or folder at PATH (in another window with OTHER), safely
+when SAFE, and go to OFFSET in it, found again where the text has moved it,
+as CONTEXT, the text that followed the place, shows; a folder's in a rimu
+list of its project there is, moved there (*RIMU-REUSE-LISTS*), else in one
+of its own. Returns the buffer. A file or folder no longer there is said so
+with NAME, nothing made in its place, and NIL is returned."
+  (let* ((kind (bookmark-kind (list name path)))
+         (buffer (or (buffer-visiting path)
+                     (and (string= kind "folder") (rimu-show-in-project path :show #'identity))
+                     (and (string/= kind "gone")
+                          (visit-path path :safe safe :show #'identity)))))
+    (cond ((not (typep buffer 'tuatara.buffer:buffer))
+           (message "~a: ~a is no longer there" name (abbreviated-path path))
+           nil)
+          (t (if other (pop-to-buffer buffer :other t) (show-buffer buffer))
+             (goto-shown buffer (bookmark-place buffer offset context))
+             buffer))))
+
 (defun go-to-bookmark (bookmark &key other)
-  "Visit BOOKMARK's file (in another window with OTHER), safely when it was
-set in a file opened safely, and go to its place, found again where the text
-has moved it; a folder's in a rimu list of its project there is, moved there
-\(*RIMU-REUSE-LISTS*), else in one of its own. It becomes the latest. A file or folder no longer there is
-said so, nothing made in its place."
+  "Go to BOOKMARK's place (GO-TO-FILE-PLACE), in another window with OTHER.
+It becomes the latest."
   (destructuring-bind (name path offset context &optional categories safe) bookmark
     (declare (ignore categories))
-    (let* ((kind (bookmark-kind bookmark))
-           (buffer (or (buffer-visiting path)
-                       (and (string= kind "folder") (rimu-show-in-project path :show #'identity))
-                       (and (string/= kind "gone")
-                            (visit-path path :safe safe :show #'identity)))))
-      (if (not (typep buffer 'tuatara.buffer:buffer))
-          (message "~a: ~a is no longer there" name (abbreviated-path path))
-          (progn (if other (pop-to-buffer buffer :other t) (show-buffer buffer))
-                 (goto-shown buffer (bookmark-place buffer offset context))
-                 (state-list-put *bookmarks* (list bookmark)))))))
+    (when (go-to-file-place name path offset context safe :other other)
+      (state-list-put *bookmarks* (list bookmark)))))
 
 (defun read-bookmark (prompt)
   "A bookmark chosen with PROMPT, each listed with its file; NIL with none kept."
