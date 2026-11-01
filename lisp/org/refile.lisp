@@ -102,7 +102,9 @@ else the first."
                  (if old (setf (cdr old) (max (cdr old) levels)) (push (cons path levels) files))))))
       (loop for (where . levels) in *org-refile-targets*
             do (case where
-                 (:agenda-files (dolist (p (ignore-errors (org-agenda-file-paths))) (add p levels)))
+                 (:agenda-files (dolist (p (ignoring-errors-reported ("listing the agenda files")
+                                             (org-agenda-file-paths)))
+                                  (add p levels)))
                  (:this-file (add (and (tuatara.buffer:buffer-file buffer) (tuatara.io:native (tuatara.buffer:buffer-file buffer))) levels))
                  (t (add (tuatara.io:native (tuatara.io:expand-path where)) levels)))))
     (nreverse files)))
@@ -113,7 +115,7 @@ level, its titles from the top heading down (its path), the character it
 begins at. An agenda file's are those the agenda keeps (ORG-AGENDA-ENTRIES),
 read again only when it changed and never opened for it; another's from its
 buffer's parse."
-  (if (member path (ignore-errors (org-agenda-file-paths)) :test #'string=)
+  (if (member path (ignoring-errors-reported ("listing the agenda files") (org-agenda-file-paths)) :test #'string=)
       (let ((stack '()))
         (loop for entry in (org-agenda-entries path)
               when (eq (agenda-entry-kind entry) :headline)
@@ -121,7 +123,7 @@ buffer's parse."
                           (loop while (and stack (>= (car (first stack)) level)) do (pop stack))
                           (push (cons level (agenda-entry-title entry)) stack)
                           (list level (reverse (mapcar #'cdr stack)) (agenda-entry-position entry)))))
-      (let ((target (ignore-errors (tuatara.io:visit-file path))))
+      (let ((target (ignoring-errors-reported ("reading ~a to refile into" path) (tuatara.io:visit-file path))))
         (when target
           (let ((tree (org-tree-now target)))
             (loop for headline in (and tree (org-headlines tree))

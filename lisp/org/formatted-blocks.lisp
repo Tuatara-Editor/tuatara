@@ -130,7 +130,7 @@ read so: a category, a syntax class not listed, a backslash at the end."
                    (t (emit (string c))))
                  (setf start next-start))))
     (let ((translated (get-output-stream-string out)))
-      (and (ignore-errors (tuatara.syntax:compile-pattern translated))
+      (and (ignoring-errors-reported ("reading the pattern ~a" translated) (tuatara.syntax:compile-pattern translated))
            translated))))
 
 (defun formatted-block-scanner (params key denote)
@@ -146,9 +146,10 @@ not text (a list)."
            :bad)
           (t (let ((translated (if denote (org-regexp-to-ppcre regex) regex)))
                (or (and translated
-                        (ignore-errors (if denote
-                                           (tuatara.syntax:compile-pattern translated :case-fold t)
-                                           (tuatara.syntax:compile-pattern translated))))
+                        (ignoring-errors-reported ("reading the pattern ~a" translated)
+                          (if denote
+                              (tuatara.syntax:compile-pattern translated :case-fold t)
+                              (tuatara.syntax:compile-pattern translated))))
                    (progn (message "The block's ~(~s~) ~s is no regular expression" key regex)
                           :bad)))))))
 

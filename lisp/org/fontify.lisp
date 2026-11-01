@@ -303,7 +303,9 @@ second value; NIL for a text that cannot be read at all."
         (let ((failed (princ-to-string condition)))
           (tuatara.runtime:debug-report :parse "the Org text at version ~a was not parsed, shown plain until it changes: ~a"
                                         (org-version-number (first job)) failed)
-          (values (ignore-errors (multiple-value-call #'org-unparsed (org-job-text job))) failed))))))
+          (values (ignoring-errors-reported ("reading the Org text to show it plain")
+                    (multiple-value-call #'org-unparsed (org-job-text job)))
+                  failed))))))
 
 (defun org-parse-worker (state editor)
   "Parse in the background what STATE wants, the latest asked for, again as
@@ -373,7 +375,7 @@ which never changes."
 as written) compiled in the background, those not compiled yet: each block's
 code is coloured as soon as it is shown, the note redrawn as each is ready."
   (dolist (name names)
-    (let ((language (ignore-errors (org-src-language name))))
+    (let ((language (ignoring-errors-reported ("finding the language ~a" name) (org-src-language name))))
       (when (and language (not (rules-ready-p language)))
         (warm-rules language)))))
 

@@ -258,7 +258,7 @@ is trusted. Neither file's access time changes."
   (let* ((data (gpg-stripped-name path '(".sig" ".asc")))
          (detached (and data (tuatara.io:path-stamp data)
                         (not (search "-----BEGIN PGP SIGNED MESSAGE-----"
-                                     (tuatara.text:lenient-string (or (ignore-errors (tuatara.io:file-head path 200)) #())))))))
+                                     (tuatara.text:lenient-string (or (tuatara.io:file-head path 200) #())))))))
     (run-gpg-work (format nil "verifying ~a" (tuatara.io:native-file-name path))
                   (if detached (list "--verify" "--" :second-input "-") (list "--verify" "--" "-"))
                   (lambda (output statuses ok said)

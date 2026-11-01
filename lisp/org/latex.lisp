@@ -177,7 +177,7 @@ directory as a second value; NIL for one on the network, not readable, or
 outside the folders an export may take files from (ORG-EXPORT-FILE-ALLOWED-P)."
   (let ((name (string-trim "\" " value)))
     (unless (or (zerop (length name)) (search "://" name))
-      (let ((path (ignore-errors (org-export-path name directory))))
+      (let ((path (ignoring-errors-reported ("finding the setup file ~a" name) (org-export-path name directory))))
         (when (and path (eq :regular (tuatara.io:path-kind path))
                    (org-export-file-allowed-p path))
           (let ((text (org-latex-setup-text path)))
@@ -191,13 +191,13 @@ being exported: NIL when it cannot be read, or when it is larger than
     (multiple-value-bind (text known) (if setups (gethash path setups) (values nil nil))
       (if known
           text
-          (let ((text (ignore-errors
-                       (tuatara.io:file-text path :limit *org-file-read-limit*
-                                                  :too-large (lambda (name size)
-                                                               (declare (ignore name size))
-                                                               (export-note "~a: a setup file larger than ~a, so not read"
-                                                                            (abbreviated-path path) (octets-words *org-file-read-limit*))
-                                                               nil)))))
+          (let ((text (ignoring-errors-reported ("reading the setup file ~a" path)
+                        (tuatara.io:file-text path :limit *org-file-read-limit*
+                                                   :too-large (lambda (name size)
+                                                                (declare (ignore name size))
+                                                                (export-note "~a: a setup file larger than ~a, so not read"
+                                                                             (abbreviated-path path) (octets-words *org-file-read-limit*))
+                                                                nil)))))
             (when (and text *org-latex* (export-trusted-path-p path))
               (push text (org-latex-trusted *org-latex*)))
             (when setups (setf (gethash path setups) text))
@@ -788,10 +788,10 @@ NIL where no face is; NIL when the language is not known or not coloured."
                    (bytes (tuatara.text:rope-bytes rope))
                    (faces (make-array (length code) :initial-element nil)))
               ;; outer ranges first: the innermost face of a character is its last
-              (loop for (start end face) in (ignore-errors
-                                             (tuatara.syntax:language-highlights (injection-resolver style level)
-                                                                                 (symbol-name (language-name language))
-                                                                                 (list (cons 0 bytes)) rope 0 bytes))
+              (loop for (start end face) in (ignoring-errors-reported ("colouring the code of a ~a block" name)
+                                              (tuatara.syntax:language-highlights (injection-resolver style level)
+                                                                                  (symbol-name (language-name language))
+                                                                                  (list (cons 0 bytes)) rope 0 bytes))
                     do (loop for i from (tuatara.text:byte->char rope start) below (min (length code) (tuatara.text:byte->char rope end))
                              do (setf (aref faces i) face)))
               faces)))))))
@@ -1034,7 +1034,7 @@ its name in a box instead when it cannot be shown, is not there (which the
 export then says), or is outside the folders an export may take files from
 \(ORG-EXPORT-FILE-ALLOWED-P)."
   (let* ((path (org-property node :path))
-         (full (or (ignore-errors (org-export-path path))
+         (full (or (ignoring-errors-reported ("finding ~a" path) (org-export-path path))
                    path))
          (width (getf attributes :width))
          (height (getf attributes :height))

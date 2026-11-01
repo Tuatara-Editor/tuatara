@@ -43,7 +43,8 @@ buffer is killed (ORG-CLOCK-LIVE-BUFFER)."
   "Where CLOCK's line begins now in its buffer (octets), or NIL when it is gone."
   (let ((buffer (org-clock-buffer clock)))
     (and (live-buffer-p buffer)
-         (ignore-errors (tuatara.text:anchor-position (org-clock-line clock) (tuatara.buffer:buffer-version buffer))))))
+         (ignoring-errors-reported ("finding the line of the clock in ~a" (tuatara.buffer:buffer-name buffer))
+           (tuatara.text:anchor-position (org-clock-line clock) (tuatara.buffer:buffer-version buffer))))))
 
 (defun org-clock-hold (clock buffer octet)
   "Hold CLOCK to its CLOCK: line beginning at OCTET of BUFFER, BUFFER's file

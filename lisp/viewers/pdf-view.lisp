@@ -131,7 +131,8 @@ the last user is done."
   (sb-thread:with-mutex ((pdf-view-lock view))
     (decf (pdf-copy-users copy))
     (when (and (pdf-copy-dropped copy) (zerop (pdf-copy-users copy)))
-      (ignore-errors (sb-posix:close (pdf-copy-fd copy))))))
+      (ignoring-errors-reported ("closing the copy of ~a" (pdf-view-path view))
+        (sb-posix:close (pdf-copy-fd copy))))))
 
 (defun pdf-copy-drop (view)
   "VIEW needs its copy no more: closed now, or by its last user."
@@ -140,7 +141,8 @@ the last user is done."
       (when (pdf-copy-p copy)
         (setf (pdf-copy-dropped copy) t)
         (when (zerop (pdf-copy-users copy))
-          (ignore-errors (sb-posix:close (pdf-copy-fd copy)))))
+          (ignoring-errors-reported ("closing the copy of ~a" (pdf-view-path view))
+            (sb-posix:close (pdf-copy-fd copy)))))
       ;; work started after (an embedded file saved) makes a copy of its own, closed when done
       (setf (pdf-view-copy view) :dropped))))
 
@@ -168,7 +170,9 @@ file is copied once for all the pages drawn, not for each."
                                   ;; the file changed (or no copy yet): the old one closed once its users are done
                                   (when copy
                                     (setf (pdf-copy-dropped copy) t)
-                                    (when (zerop (pdf-copy-users copy)) (ignore-errors (sb-posix:close (pdf-copy-fd copy)))))
+                                    (when (zerop (pdf-copy-users copy))
+                                      (ignoring-errors-reported ("closing the copy of ~a" (pdf-view-path view))
+                                        (sb-posix:close (pdf-copy-fd copy)))))
                                   (setf copy (make-pdf-copy made stamp)
                                         (pdf-view-copy view) copy)))
                            (incf (pdf-copy-users copy))
@@ -948,7 +952,9 @@ size first. The PDF's words may be false: they are what it says."
                    (lambda (facts)
                      (show-help (format nil "What ~a says of itself, read in the sandbox~%~%File:           ~a~%File size:      ~:d octets~%~%~a"
                                         (tuatara.io:native-file-name path)
-                                        path (ignore-errors (tuatara.io:stamp-size (tuatara.io:path-stamp path)))
+                                        path
+                                        (let ((stamp (tuatara.io:path-stamp path :failure nil)))
+                                          (and stamp (tuatara.io:stamp-size stamp)))
                                         (or facts "Nothing could be read."))))
                    :quiet t)
     (message "Reading what ~a says of itself..." (tuatara.io:native-file-name path))))
@@ -1054,8 +1060,9 @@ by search filters, the file on the line among those they leave."
                                         :input fd :output-limit (* 64 1024 1024))
                                      (if (eq outcome :done)
                                          (handler-case
-                                             (progn (tuatara.io:replace-file target output)
-                                                    (format nil "Saved ~a (~:d octets), not opened" target (length output)))
+                                             (reporting-errors ("saving ~a" target)
+                                               (tuatara.io:replace-file target output)
+                                               (format nil "Saved ~a (~:d octets), not opened" target (length output)))
                                            (error (e) (format nil "~a could not be saved: ~a" shown e)))
                                          (format nil "~a could not be taken out: ~a" shown
                                                  (tuatara.io:sandbox-outcome-words outcome said :label "pdfdetach")))))

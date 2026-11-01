@@ -190,8 +190,8 @@ agenda keeps them (ORG-AGENDA-ENTRIES), never opened for it."
             (dolist (tag (org-file-tags text)) (pushnew tag tags :test #'string=))
             (dolist (headline (org-headlines tree))
               (dolist (tag (org-property headline :tags)) (pushnew tag tags :test #'string=)))))))
-    (dolist (path (ignore-errors (org-agenda-file-paths)))
-      (dolist (entry (ignore-errors (org-agenda-entries path)))
+    (dolist (path (ignoring-errors-reported ("listing the agenda files") (org-agenda-file-paths)))
+      (dolist (entry (ignoring-errors-reported ("reading the tags of ~a" path) (org-agenda-entries path)))
         (dolist (tag (agenda-entry-tags entry)) (pushnew tag tags :test #'string=))))
     (nreverse tags)))
 
@@ -383,7 +383,8 @@ thread: the buffers visiting an Org file, or a file the agenda reads
 \(ORG-AGENDA-FILES-IN-FORCE).
 Nothing on disk is looked at."
   (let ((named (loop for file in (org-agenda-files-in-force)
-                     for path = (ignore-errors (tuatara.io:native (tuatara.io:expand-path file)))
+                     for path = (ignoring-errors-reported ("naming the agenda file ~a" file)
+                                  (tuatara.io:native (tuatara.io:expand-path file)))
                      when path collect path)))
     (org-agenda-snapshot
      (loop for buffer in tuatara.buffer:*buffers*
@@ -421,14 +422,13 @@ a larger one is left out, and said to be.")
 a descriptor that waits on no pipe or device, a regular file of at most
 *ORG-FILE-READ-LIMIT* octets, an octet that is not UTF-8 read as a
 replacement character; NIL when it cannot be read so, said when too large."
-  (handler-case
-      (tuatara.io:file-text path :limit *org-file-read-limit* :replacement (code-char #xFFFD)
-                                 :too-large (lambda (name size)
-                                              (declare (ignore name size))
-                                              (message "~a is not read: larger than ~a" (abbreviated-path path)
-                                                       (octets-words *org-file-read-limit*))
-                                              nil))
-    (error () nil)))
+  (ignoring-errors-reported ("reading ~a for the agenda" path)
+    (tuatara.io:file-text path :limit *org-file-read-limit* :replacement (code-char #xFFFD)
+                               :too-large (lambda (name size)
+                                            (declare (ignore name size))
+                                            (message "~a is not read: larger than ~a" (abbreviated-path path)
+                                                     (octets-words *org-file-read-limit*))
+                                            nil))))
 
 (defun org-agenda-source-text (path source)
   "The text of the agenda file at PATH read from SOURCE (ORG-AGENDA-FILE-SOURCE
@@ -438,7 +438,8 @@ UTF-8 read as a replacement character; NIL when it cannot be read."
                     ((eq source :disk) (org-read-file-text path))
                     ((stringp source) source)
                     ((typep source 'tuatara.buffer:buffer) (tuatara.buffer:buffer-string source))
-                    (t (ignore-errors (tuatara.text:rope-string source))))))
+                    (t (ignoring-errors-reported ("reading ~a for the agenda" path)
+                         (tuatara.text:rope-string source))))))
     (and text (lf-newlines text))))
 
 (defun org-agenda-file-source (path)
@@ -508,7 +509,8 @@ folder as the .org files in it, a pattern (* ?) as the files it matches, each
 in order of name, every file once. The folders are listed again only when
 one of them changed (*ORG-AGENDA-PATHS-KEPT*)."
   (let* ((stamps (loop for file in files
-                       for path = (ignore-errors (tuatara.io:native (tuatara.io:expand-path file)))
+                       for path = (ignoring-errors-reported ("naming the agenda file ~a" file)
+                                    (tuatara.io:native (tuatara.io:expand-path file)))
                        for (parent name) = (and path (multiple-value-list (tuatara.io:path-folder-and-name path)))
                        for folder = (and path (cond ((find-if (lambda (c) (find c "*?")) name) parent)
                                                     ((eq :directory (tuatara.io:path-kind path)) path)
@@ -1070,21 +1072,26 @@ read before."
 (defun org-match-scanner (regex)
   "REGEX, of a match's {regex}, made ready to match as a search reads it, case
 ignored; NIL when it is no regular expression."
-  (ignore-errors (tuatara.syntax:compile-pattern regex :case-fold t)))
+  (ignoring-errors-reported ("reading the pattern ~a" regex)
+    (handler-case (tuatara.syntax:compile-pattern regex :case-fold t)
+      ((or tuatara.syntax:pattern-refused cl-ppcre:ppcre-syntax-error) () nil))))
 
 (defun org-match-compare (op left right)
   "LEFT OP RIGHT, as a match compares them: numbers as numbers, else texts, a {regex} by matching."
   (cond ((null left) (string= op "<>"))
         ((and (> (length right) 1) (char= (char right 0) #\{))
-         (let ((found (ignore-errors (cl-ppcre:scan (org-match-scanner (subseq right 1 (1- (length right)))) left))))
+         (let ((found (let ((scanner (org-match-scanner (subseq right 1 (1- (length right))))))
+                        (and scanner (cl-ppcre:scan scanner left)))))
            (if (string= op "<>") (not found) found)))
         ((and (> (length right) 1) (char= (char right 0) #\"))
          (let ((r (subseq right 1 (1- (length right)))))
            (cond ((string= op "=") (string= left r)) ((string= op "<>") (string/= left r))
                  ((string= op "<") (string< left r)) ((string= op ">") (string> left r))
                  ((string= op "<=") (string<= left r)) ((string= op ">=") (string>= left r)))))
-        (t (let ((l (let ((n (ignore-errors (org-calc-read-number left)))) (and n (org-calc-value n))))
-                 (r (let ((n (ignore-errors (org-calc-read-number right)))) (and n (org-calc-value n)))))
+        (t (let ((l (let ((n (handler-case (org-calc-read-number left) (org-formula-error () nil))))
+                      (and n (org-calc-value n))))
+                 (r (let ((n (handler-case (org-calc-read-number right) (org-formula-error () nil))))
+                      (and n (org-calc-value n)))))
              (and (realp l) (realp r)
                   (cond ((string= op "=") (= l r)) ((string= op "<>") (/= l r))
                         ((string= op "<") (< l r)) ((string= op ">") (> l r))

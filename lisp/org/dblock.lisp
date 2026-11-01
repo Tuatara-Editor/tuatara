@@ -81,13 +81,12 @@ read."
                                      (parse-integer word))
                                     ((and (= (length word) 2) (char= (char word 0) #\?)) (char word 1))
                                     (t word)))))))))
-      (handler-case
-          (loop for item = (item)
-                while item
-                unless (eq item :none) collect item
-                do (blank)
-                while (< i n))
-        (error () nil)))))
+      (ignoring-errors-reported ("reading the parameters of a dynamic block")
+        (loop for item = (item)
+              while item
+              unless (eq item :none) collect item
+              do (blank)
+              while (< i n))))))
 
 ;;; Finding and updating blocks
 
@@ -240,7 +239,8 @@ and says why."
         (setf (dblock-job-part job) 0)
         (dblock-check-stop)
         (let ((new (let ((*dblock-position* position))
-                     (handler-case (funcall writer params)
+                     (handler-case (reporting-errors ("writing the dynamic block ~a" (getf params :name))
+                                     (funcall writer params))
                        (error (e) (message "The dynamic block ~a: ~a" (getf params :name) e) nil)))))
           (setf (dblock-job-texts job) (append (dblock-job-texts job) (list (and (stringp new) new))))
           (incf (dblock-job-done job)))))
@@ -878,7 +878,7 @@ line, else the cells between the bars, each trimmed."
   "The number TEXT begins with, read as far as it goes (ORG-CALC-READ-NUMBER,
 its exponent held); 0 for none."
   (let ((match (cl-ppcre:scan-to-strings "^[-+]?(?:[0-9]+\\.?[0-9]*|\\.[0-9]+)(?:[eE][-+]?[0-9]+)?" text)))
-    (or (and match (ignore-errors (org-calc-value (org-calc-read-number match)))) 0)))
+    (or (and match (handler-case (org-calc-value (org-calc-read-number match)) (org-formula-error () nil))) 0)))
 
 (defun clocktable-sort-key (cell kind)
   "What a clock table's :sort compares CELL by, KIND #\\a (its text without
@@ -975,10 +975,10 @@ among AGENDA's files, since a file must not have the editor read elsewhere."
         (when separator
           (let ((pattern (string-trim " 	" (subseq location 0 separator))))
             (when (plusp (length pattern))
-              (let ((file (ignore-errors
-                           (tuatara.io:native
-                            (tuatara.io:expand-path (cl-ppcre:regex-replace-all "%s" pattern (lambda (&rest r) (declare (ignore r)) name) :simple-calls t)
-                                                    :directory (or folder (tuatara.io:default-directory)))))))
+              (let ((file (ignoring-errors-reported ("finding the file ~a" pattern)
+                            (tuatara.io:native
+                             (tuatara.io:expand-path (cl-ppcre:regex-replace-all "%s" pattern (lambda (&rest r) (declare (ignore r)) name) :simple-calls t)
+                                                     :directory (or folder (tuatara.io:default-directory)))))))
                 (when (and file
                            (not (member file files :test #'equal))
                            (eq :regular (tuatara.io:path-kind file))
@@ -1000,8 +1000,8 @@ buffer."
                 (folder (and file (tuatara.io:parent-path file))))
            (loop for name in scope
                  when (stringp name)
-                   append (let ((path (ignore-errors
-                                       (tuatara.io:native (tuatara.io:expand-path name :directory (or folder (tuatara.io:default-directory)))))))
+                   append (let ((path (ignoring-errors-reported ("finding the file ~a" name)
+                                        (tuatara.io:native (tuatara.io:expand-path name :directory (or folder (tuatara.io:default-directory)))))))
                             (cond ((null path) '())
                                   ((org-path-beside-p path folder agenda) (list path))
                                   (t (message "The clock table leaves ~a out: neither an agenda file nor beside this one" name)

@@ -497,7 +497,8 @@ BUFFER, drawn from the agenda files as SOURCES (ORG-AGENDA-SOURCES-KEY) found
 them, narrowed again by the search filters on it (SHOW-LIST-TEXT). POINT
 :keep keeps it on its line, :today puts it on today's date (or the first
 date), :first on the first entry; a number puts it on that line."
-  (let ((old-line (ignore-errors (tuatara.buffer:buffer-line-number buffer (tuatara.buffer:buffer-point buffer)))))
+  (let ((old-line (ignoring-errors-reported ("finding the line of point in ~a" (tuatara.buffer:buffer-name buffer))
+                    (tuatara.buffer:buffer-line-number buffer (tuatara.buffer:buffer-point buffer)))))
     (show-list-text buffer text spans '() :entries whats :key sources :refill 'org-agenda-refill)
     (setf (tuatara.buffer:buffer-local buffer 'org-agenda-drawn-view) view
           (tuatara.buffer:buffer-local buffer 'org-agenda-drawn-at) (org-now))
@@ -697,7 +698,8 @@ setting changes."
     (if (and kept (equal (car kept) files))
         (cdr kept)
         (let ((folders (loop for file in files
-                             for path = (ignore-errors (tuatara.io:native (tuatara.io:expand-path file)))
+                             for path = (ignoring-errors-reported ("naming the agenda file ~a" file)
+                                          (tuatara.io:native (tuatara.io:expand-path file)))
                              when path
                                collect (multiple-value-bind (parent name) (tuatara.io:path-folder-and-name path)
                                          (if (and (string/= name "") (not (find-if (lambda (c) (find c "*?")) name))

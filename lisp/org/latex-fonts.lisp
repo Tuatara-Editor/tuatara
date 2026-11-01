@@ -174,4 +174,6 @@ families installed (INSTALLED-FONT-FAMILIES)."
 serif parts and its code in, each as CHOSEN-FONT gives it: a list of three,
 NIL for one not found; the fonts installed looked up once."
   (let ((installed (installed-font-families)))
-    (mapcar (lambda (part) (ignore-errors (chosen-font part installed))) '(:main :sans :mono))))
+    (mapcar (lambda (part)
+              (ignoring-errors-reported ("finding the font for ~(~a~)" part) (chosen-font part installed)))
+            '(:main :sans :mono))))

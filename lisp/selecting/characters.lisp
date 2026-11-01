@@ -13,7 +13,7 @@ of code, once listed (CHARACTER-NAMES); NIL before.")
 (defun character-shown (char)
   "CHAR as a list of characters shows it: a mark that combines with the
 character before it on a dotted circle, as Unicode's charts show one."
-  (if (member (ignore-errors (sb-unicode:general-category char)) '(:mn :me))
+  (if (member (sb-unicode:general-category char) '(:mn :me))
       (format nil "~c~c" (code-char #x25CC) char)
       (string char)))
 

@@ -503,10 +503,14 @@ saying; with neither, as *ORG-FOLD-METADATA* says."
   "Show BUFFER as its #+STARTUP: lines say: folded or open, indented or not,
 the drawers and notes of its tasks folded (*ORG-FOLD-METADATA*)."
   (call-next-method)
-  (let ((options (ignore-errors (org-startup-options buffer))))
-    (ignore-errors (org-startup-metadata buffer options))
-    (ignore-errors (org-startup-visibility buffer options))
-    (ignore-errors (org-startup-indentation buffer options))))
+  (let ((options (ignoring-errors-reported ("reading the startup options of ~a" (tuatara.buffer:buffer-name buffer))
+                   (org-startup-options buffer))))
+    (ignoring-errors-reported ("folding the drawers of ~a" (tuatara.buffer:buffer-name buffer))
+      (org-startup-metadata buffer options))
+    (ignoring-errors-reported ("folding ~a as it opens" (tuatara.buffer:buffer-name buffer))
+      (org-startup-visibility buffer options))
+    (ignoring-errors-reported ("indenting ~a as it opens" (tuatara.buffer:buffer-name buffer))
+      (org-startup-indentation buffer options))))
 
 (defmethod mode-exit ((mode org-mode) buffer)
   "Let go of the view Org mode gave BUFFER (indentation, signs, folds, large

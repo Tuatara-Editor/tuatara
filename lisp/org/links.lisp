@@ -125,8 +125,10 @@ them, those from octet START below END, as ORG-HIDDEN-RANGES gives them; one
 an edit emptied left out."
   (let ((version (tuatara.buffer:buffer-version buffer)))
     (loop for (from to text) in (tuatara.buffer:buffer-local buffer 'org-hidden-anchors)
-          for s = (ignore-errors (tuatara.text:anchor-position from version))
-          for e = (ignore-errors (tuatara.text:anchor-position to version))
+          for s = (ignoring-errors-reported ("carrying a hidden part of ~a" (tuatara.buffer:buffer-name buffer))
+                    (tuatara.text:anchor-position from version))
+          for e = (ignoring-errors-reported ("carrying a hidden part of ~a" (tuatara.buffer:buffer-name buffer))
+                    (tuatara.text:anchor-position to version))
           when (and s e (< s e) (< s end) (> e start))
             collect (list s e text nil))))
 
@@ -321,7 +323,7 @@ denote:query-filenames: links match (DENOTE-FILES-SCANNER)."
 (defun formatted-files-scanner (regex)
   "A scanner for REGEX, a regular expression, ignoring case unless it has a
 capital letter (smart case); NIL when it is no regular expression."
-  (ignore-errors (tuatara.syntax:compile-pattern regex)))
+  (ignoring-errors-reported ("reading the pattern ~a" regex) (tuatara.syntax:compile-pattern regex)))
 
 (defun formatted-files-matching (regex files)
   "Those of FILES, your files with formatted names, each a list whose first is

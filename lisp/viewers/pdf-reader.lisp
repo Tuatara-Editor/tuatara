@@ -19,7 +19,7 @@
 \(each octet its character); a NUL and what follows left out."
   (let* ((end (or (position 0 octets :start start :end end) end))
          (part (subseq octets start end)))
-    (or (ignore-errors (sb-ext:octets-to-string part :external-format :utf-8))
+    (or (handler-case (sb-ext:octets-to-string part :external-format :utf-8) (sb-int:character-decoding-error () nil))
         (tuatara.text:octets-latin-1 part))))
 
 (defun zlib-octets (octets start end &key (limit (* 4 1024 1024)) errors)
@@ -33,7 +33,8 @@ why."
                    start)))
     (if errors
         (inflate octets :start start :end end :limit limit)
-        (ignore-errors (inflate octets :start start :end end :limit limit)))))
+        (ignoring-errors-reported ("inflating the zlib data at ~:d" start)
+          (handler-case (inflate octets :start start :end end :limit limit) (zip-error () nil))))))
 
 ;;; Values
 
@@ -466,16 +467,17 @@ stream whose data another file keeps is not read. Nothing in it is run."
             (when (member name *pdf-picture-filters* :test #'equal)
               (return (values data name)))
             (handler-case
-                (setf data
-                      (cond ((member name '("/FlateDecode" "/Fl") :test #'equal)
-                             (pdf-predicted (zlib-octets data 0 (length data) :limit limit :errors t) parameters))
-                            ((member name '("/LZWDecode" "/LZW") :test #'equal)
-                             (pdf-predicted (pdf-lzw-decoded data limit (if (eql (pdf-get parameters "/EarlyChange") 0) 0 1)) parameters))
-                            ((member name '("/ASCIIHexDecode" "/AHx") :test #'equal) (pdf-ascii-hex-decoded data limit))
-                            ((member name '("/ASCII85Decode" "/A85") :test #'equal) (pdf-ascii-85-decoded data limit))
-                            ((member name '("/RunLengthDecode" "/RL") :test #'equal) (pdf-run-length-decoded data limit))
-                            ((and (equal name "/Crypt") (member (pdf-get parameters "/Name") '(nil "/Identity") :test #'equal)) data)
-                            (t (return (values data (format nil "its filter ~a is not one read here" name))))))
+                (reporting-errors ("decoding a stream's ~a" name)
+                  (setf data
+                        (cond ((member name '("/FlateDecode" "/Fl") :test #'equal)
+                               (pdf-predicted (zlib-octets data 0 (length data) :limit limit :errors t) parameters))
+                              ((member name '("/LZWDecode" "/LZW") :test #'equal)
+                               (pdf-predicted (pdf-lzw-decoded data limit (if (eql (pdf-get parameters "/EarlyChange") 0) 0 1)) parameters))
+                              ((member name '("/ASCIIHexDecode" "/AHx") :test #'equal) (pdf-ascii-hex-decoded data limit))
+                              ((member name '("/ASCII85Decode" "/A85") :test #'equal) (pdf-ascii-85-decoded data limit))
+                              ((member name '("/RunLengthDecode" "/RL") :test #'equal) (pdf-run-length-decoded data limit))
+                              ((and (equal name "/Crypt") (member (pdf-get parameters "/Name") '(nil "/Identity") :test #'equal)) data)
+                              (t (return (values data (format nil "its filter ~a is not one read here" name)))))))
               (error (e) (return (values nil (format nil "it could not be decoded (~a): ~a" name e))))))))))
 
 ;;; Object streams

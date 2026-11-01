@@ -151,14 +151,15 @@ working in the background."
     (when (and pixels *office-view-pages* (not (car cancel))
                (tuatara.io:sandbox-find-program *office-page-program*) (find-pdf-decoder))
       (handler-case
-          (let ((pdf (office-pdf-copy fd (office-ending office (tuatara.io:native-file-name path)) :cancel cancel)))
-            (unwind-protect
-                 (multiple-value-bind (pdf-text pdf-notes pdf-image) (decode-pdf pdf :cancel cancel :pixels pixels :limit 4096)
-                   (declare (ignore pdf-text))
-                   ;; its pages counted; what the PDF's text was is not this text's
-                   (setf notes (remove-if-not (lambda (note) (cl-ppcre:scan "^, [0-9,]+ pages?$" (car note))) pdf-notes)
-                         image pdf-image))
-              (ignore-errors (sb-posix:close pdf))))
+          (reporting-errors ("drawing the pages of ~a" path)
+            (let ((pdf (office-pdf-copy fd (office-ending office (tuatara.io:native-file-name path)) :cancel cancel)))
+              (unwind-protect
+                   (multiple-value-bind (pdf-text pdf-notes pdf-image) (decode-pdf pdf :cancel cancel :pixels pixels :limit 4096)
+                     (declare (ignore pdf-text))
+                     ;; its pages counted; what the PDF's text was is not this text's
+                     (setf notes (remove-if-not (lambda (note) (cl-ppcre:scan "^, [0-9,]+ pages?$" (car note))) pdf-notes)
+                           image pdf-image))
+                (ignoring-errors-reported ("closing the PDF made of ~a" path) (sb-posix:close pdf)))))
         (error () (push (cons ", its pages not drawn (the debug log says why)" :comment) notes))))
     (values text notes image)))
 

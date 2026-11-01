@@ -155,7 +155,8 @@ to the debug log (*SECRET-AT-HAND*)."
   (let* ((tuatara.runtime:*secret-at-hand* t)
          (program (or (gpg-path) (tuatara.io:program-missing "gpg" :why (outside-program-install-words :gpg))))
          (most (gpg-most-output (if input-path
-                                    (or (ignore-errors (tuatara.io:stamp-size (tuatara.io:path-stamp input-path))) 0)
+                                    (let ((stamp (tuatara.io:path-stamp input-path :failure nil)))
+                                      (if stamp (tuatara.io:stamp-size stamp) 0))
                                     (length input))))
          (pipe (and passphrase (multiple-value-list (sb-posix:pipe))))
          (second (and (or second-input second-path) (multiple-value-list (sb-posix:pipe))))
@@ -188,35 +189,42 @@ to the debug log (*SECRET-AT-HAND*)."
                 (let ((fd (shiftf (second second) nil)))
                   (tuatara.runtime:make-guarded-thread
                    (lambda ()
-                     (unwind-protect (ignore-errors (gpg-feed fd second-input second-path))
-                       (ignore-errors (sb-posix:close fd))))
+                     (let ((tuatara.runtime:*secret-at-hand* t))
+                       (unwind-protect (ignoring-errors-reported ("feeding gpg its second input")
+                                         (gpg-feed fd second-input second-path))
+                         (ignoring-errors-reported ("closing gpg's second input") (sb-posix:close fd)))))
                    :name "tuatara gpg second input")))
               (let* ((status-fd (shiftf (first status) nil))
                      (writer (and (or input input-path)
                                   (tuatara.runtime:make-guarded-thread
                                    (lambda ()
-                                     (ignore-errors (gpg-feed (sb-sys:fd-stream-fd (sb-ext:process-input process)) input input-path))
-                                     (ignore-errors (close (sb-ext:process-input process))))
+                                     (let ((tuatara.runtime:*secret-at-hand* t))
+                                       (ignoring-errors-reported ("feeding gpg its input")
+                                         (gpg-feed (sb-sys:fd-stream-fd (sb-ext:process-input process)) input input-path))
+                                       (ignoring-errors-reported ("closing gpg's input")
+                                         (close (sb-ext:process-input process)))))
                                    :name "tuatara gpg input")))
                      (reader (tuatara.runtime:make-guarded-thread
                               (lambda ()
                                 (let ((lines (sb-sys:make-fd-stream status-fd :input t :external-format :latin-1 :buffering :full)))
                                   (unwind-protect
-                                       (ignore-errors
-                                        (loop for line = (tuatara.io:read-line-bounded lines 4096)
-                                              for count from 0
-                                              while line
-                                              when (and (< count 10000) (uiop:string-prefix-p "[GNUPG:] " line))
-                                                do (push (subseq line 9) statuses)))
+                                       (let ((tuatara.runtime:*secret-at-hand* t))
+                                         (ignoring-errors-reported ("reading the status gpg gives")
+                                           (loop for line = (tuatara.io:read-line-bounded lines 4096)
+                                                 for count from 0
+                                                 while line
+                                                 when (and (< count 10000) (uiop:string-prefix-p "[GNUPG:] " line))
+                                                   do (push (subseq line 9) statuses))))
                                     (close lines))))
                               :name "tuatara gpg status"))
                      (listener (tuatara.runtime:make-guarded-thread
                                 (lambda ()
-                                  (ignore-errors
-                                   (loop for line = (tuatara.io:read-line-bounded (sb-ext:process-error process) 1024)
-                                         for count from 0
-                                         while line
-                                         when (< count 200) do (push line said))))
+                                  (let ((tuatara.runtime:*secret-at-hand* t))
+                                    (ignoring-errors-reported ("reading what gpg says")
+                                      (loop for line = (tuatara.io:read-line-bounded (sb-ext:process-error process) 1024)
+                                            for count from 0
+                                            while line
+                                            when (< count 200) do (push line said)))))
                                 :name "tuatara gpg messages"))
                      (cancelled nil))
                 ;; what was decrypted is kept only in OUTPUT
@@ -237,9 +245,8 @@ to the debug log (*SECRET-AT-HAND*)."
                                (cons (format nil "GPG_TTY=~a" device)
                                      (remove-if (lambda (e) (uiop:string-prefix-p "GPG_TTY=" e)) (sb-ext:posix-environ)))
                                (sb-ext:posix-environ)))))
-      (when pipe (dolist (fd pipe) (when fd (ignore-errors (sb-posix:close fd)))))
-      (when second (dolist (fd second) (when fd (ignore-errors (sb-posix:close fd)))))
-      (dolist (fd status) (when fd (ignore-errors (sb-posix:close fd)))))
+      (dolist (fd (append pipe second)) (when fd (ignoring-errors-reported ("closing a pipe to gpg") (sb-posix:close fd))))
+      (dolist (fd status) (when fd (ignoring-errors-reported ("closing a pipe from gpg") (sb-posix:close fd)))))
     (values output (nreverse statuses)
             (and process (not too-much) (eql 0 (sb-ext:process-exit-code process)) (not (and cancel (car cancel))))
             (format nil "~{~a~^; ~}" (nreverse said)))))
@@ -306,10 +313,10 @@ its first octets are read."
 (defun set-dumpable (dumpable)
   "Allow the system to keep a core dump of the editor should it crash, or not
 \(Linux's PR_SET_DUMPABLE): not while an encrypted file's text is in memory."
-  (ignore-errors
-   (sb-alien:alien-funcall (sb-alien:extern-alien "prctl" (function sb-alien:int sb-alien:int sb-alien:unsigned-long
-                                                                    sb-alien:unsigned-long sb-alien:unsigned-long sb-alien:unsigned-long))
-                           4 (if dumpable 1 0) 0 0 0)))
+  (ignoring-errors-reported ("telling the system whether it may keep a core dump")
+    (sb-alien:alien-funcall (sb-alien:extern-alien "prctl" (function sb-alien:int sb-alien:int sb-alien:unsigned-long
+                                                                     sb-alien:unsigned-long sb-alien:unsigned-long sb-alien:unsigned-long))
+                            4 (if dumpable 1 0) 0 0 0)))
 
 (defun keep-from-disk (buffer)
   "Keep BUFFER's text, which was encrypted, from the disk and from other
@@ -566,7 +573,7 @@ keys that cannot encrypt too."
 (defun key-owners (ids)
   "IDS, keys' or subkeys' IDs a file is encrypted to, each with its owner's
 name as your keyring has it, as (ID . NAME); those you do not have left out."
-  (let ((keys (ignore-errors (gpg-keys))))
+  (let ((keys (ignoring-errors-reported ("listing your keys") (gpg-keys))))
     (loop for id in ids
           for key = (find-if (lambda (k) (member id (cons (getf k :id) (getf k :subkeys)) :test #'string-equal)) keys)
           when (and key (getf key :name)) collect (cons id (getf key :name)))))

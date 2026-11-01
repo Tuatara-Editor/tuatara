@@ -443,7 +443,8 @@ the text of edits and of who made the file as programs keep it."
           for start = (search start-mark octets :start2 at)
           for end = (and start (search end-mark octets :start2 start))
           while end
-          do (let ((tree (ignore-errors (xml-parse (octets-text octets start (+ end (length end-mark)))))))
+          do (let ((tree (ignoring-errors-reported ("reading an XMP packet")
+                           (xml-parse (octets-text octets start (+ end (length end-mark)))))))
                (when tree
                  (push (metadata-section (format nil "XMP~@[ (packet ~d)~]" (and (or sections (search start-mark octets :start2 (1+ end))) (1+ (length sections))))
                                          (xmp-fields tree))
@@ -607,7 +608,8 @@ of KIND, says of itself: the first section of the note its reader makes."
   (let* ((office (office-preview-format kind (tuatara.io:native-file-name path)))
          (read (and office (getf office :read))))
     (when read
-      (let* ((note (handler-case (funcall read path) (error (e) (format nil "* About this file~%It could not be read: ~a~%" e))))
+      (let* ((note (handler-case (reporting-errors ("reading what ~a says of itself" path) (funcall read path))
+                     (error (e) (format nil "* About this file~%It could not be read: ~a~%" e))))
              (start (search (format nil "~%* About this") note))
              (start (if start (1+ start) (and (uiop:string-prefix-p "* About this" note) 0)))
              (end (and start (search (format nil "~%* ") note :start2 (1+ start)))))
@@ -623,7 +625,7 @@ of KIND, says of itself: the first section of the note its reader makes."
   "The section of the note giving what the system knows of the file at PATH:
 its STAMP, KIND and WORDS (by its contents) and its SHA-256 SUM."
   (let* ((name (tuatara.io:native-file-name path))
-         (link (ignore-errors (sb-posix:readlink (tuatara.io:native path))))
+         (link (handler-case (sb-posix:readlink (tuatara.io:native path)) (sb-posix:syscall-error () nil)))
          (times (tuatara.io:path-times path))
          (owner (tuatara.io:owner-name (tuatara.io:stamp-uid stamp)))
          (group (tuatara.io:owner-group-name (tuatara.io:stamp-gid stamp))))
@@ -656,7 +658,8 @@ label, ACLs)."
          for value = (tuatara.io:fd-xattr-value fd name)
          collect (cons name (cond ((null value) "(cannot be read)")
                                   ((and (every (lambda (o) (or (>= o 32) (member o '(0 9 10 13)))) value)
-                                        (ignore-errors (sb-ext:octets-to-string value :external-format :utf-8)))
+                                        (handler-case (sb-ext:octets-to-string value :external-format :utf-8)
+                                          (sb-int:character-decoding-error () nil)))
                                    (string-right-trim (string (code-char 0)) (sb-ext:octets-to-string value :external-format :utf-8)))
                                   (t (format nil "~a (~:d octets)" (tuatara.text:octets-hex value :end (min 64 (length value)) :upper-case t) (length value))))))))
 
@@ -853,7 +856,7 @@ packets, nothing decrypted."
 (defmacro metadata-part (&body body)
   "The sections BODY gives, or, when it fails (a file made to break what reads
 it, say), one saying what could not be read, so that the rest is still shown."
-  `(handler-case (progn ,@body)
+  `(handler-case (reporting-errors ("reading what a file says of itself") ,@body)
      (error (e) (list (format nil "* Not read~%Some of what it says of itself could not be read: ~a~%~%"
                               (metadata-value (princ-to-string e)))))))
 

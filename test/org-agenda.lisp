@@ -2488,3 +2488,23 @@ buffer of FILE killed first."
     (let ((tuatara.defaults::*org-agenda-files-added-seconds* 0))
       (tuatara.defaults::org-agenda-files-in-force)
       (is = 3 asked))))
+
+(define-test (org agenda-unreadable-file-reported)
+  ;; a file the agenda cannot read is no text, the failure in the debug log while debug mode
+  ;; is on; a match's {regex} that is none is no scanner, which is nothing to report
+  (with-test-directory (dir)
+    (let ((path (tuatara.io:native dir)))
+      (drain-debug-reports)
+      (unwind-protect
+           (progn
+             (false (tuatara.defaults::org-read-file-text path))
+             (true (sb-concurrency:queue-empty-p tuatara.runtime:*debug-reports*))
+             (tuatara.runtime:set-debug t)
+             (false (tuatara.defaults::org-read-file-text path))
+             (false (tuatara.defaults::org-match-scanner "("))
+             (let ((texts (loop for report = (sb-concurrency:dequeue tuatara.runtime:*debug-reports*)
+                                while report collect (princ-to-string (fourth report)))))
+               (true (find-if (lambda (text) (search (format nil "reading ~a for the agenda failed" path) text)) texts)
+                     "~s" texts)
+               (false (find-if (lambda (text) (search "reading the pattern" text)) texts) "~s" texts)))
+        (drain-debug-reports)))))

@@ -419,7 +419,7 @@ and footers, sorted, each once (TEMPLATE-PLACES)."
   "What to say of the template NAME's two halves when they ask for different
 places: its LaTeX half's places its Word half (PARTS) has not, and the other
 way, but those only LaTeX has use for (*LATEX-ONLY-PLACES*)."
-  (let ((latex (ignore-errors (latex-template-for name directory))))
+  (let ((latex (ignoring-errors-reported ("reading the template ~a" name) (latex-template-for name directory))))
     (when latex
       (let* ((tex (set-difference (template-places latex) *latex-only-places* :test #'string=))
              ;; its contents a LaTeX template writes with \\tableofcontents

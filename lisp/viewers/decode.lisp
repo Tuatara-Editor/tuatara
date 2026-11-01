@@ -143,8 +143,9 @@ line saying where each page after the first begins."
 printed) gives its size and turn, in points, exact, as a list; NIL when INFO
 does not say its size."
   (let* ((size (info-field info "Page size"))
-         (numbers (and size (ignore-errors (let ((words (uiop:split-string size)))
-                                             (list (parse-decimal (first words)) (parse-decimal (third words)))))))
+         (numbers (and size (ignoring-errors-reported ("reading the page size ~a" size)
+                              (let ((words (uiop:split-string size)))
+                                (list (parse-decimal (first words)) (parse-decimal (third words)))))))
          (turn (whole-number (info-field info "Page rot"))))
     (when (and numbers (every (lambda (n) (and (realp n) (plusp n))) numbers))
       (if (member turn '(90 270)) (reverse numbers) numbers))))
@@ -294,7 +295,8 @@ JPEG needs little whatever its size, decoded at a fraction of it.")
   "How many pixels the picture open as FD, whose first octets are HEAD, has,
 as their kind gives its size (TUATARA.IO:OCTETS-PICTURE-SIZE: 12000 × 9000);
 NIL when it gives none."
-  (multiple-value-bind (width height) (and head (ignore-errors (tuatara.io:octets-picture-size head)))
+  (multiple-value-bind (width height) (and head (ignoring-errors-reported ("reading the size of a picture")
+                                                  (tuatara.io:octets-picture-size head)))
     (cond (width (* width height))
           ;; a TIFF whose first directory stands after its pixels, past HEAD
           ((and head (tuatara.io:tiff-octets-p head))
@@ -332,7 +334,8 @@ and the keyword of TUATARA.IO:OCTETS-KIND, a TIFF's size read where its first
 directory stands when that is past them (TIFF-FILE-SIZE)."
   (multiple-value-bind (words kind) (tuatara.io:octets-kind octets)
     (if (and (eq kind :tiff) (not (search "×" words)))
-        (multiple-value-bind (width height) (ignore-errors (tiff-file-size fd octets))
+        (multiple-value-bind (width height) (ignoring-errors-reported ("reading the size of a TIFF")
+                                              (tiff-file-size fd octets))
           (values (if width (format nil "~a, ~a" words (tuatara.io:size-words width height)) words) kind))
         (values words kind))))
 
@@ -387,7 +390,7 @@ taken for both, or :jxl) open as FD, whose first octets are HEAD, says of
 itself in its header (TUATARA.IO:J2K-HEADER, TUATARA.IO:JXL-FILE-HEADER), a
 file kept in boxes read from FD where its codestream begins when that is
 past HEAD; NIL when its header does not say, or for another kind."
-  (let* ((size (ignore-errors (sb-posix:stat-size (sb-posix:fstat fd))))
+  (let* ((size (handler-case (sb-posix:stat-size (sb-posix:fstat fd)) (sb-posix:syscall-error () nil)))
          (read (lambda (at count)
                  (let ((count (and size (min count (- size at)))))
                    (and count (plusp count) (tuatara.io:read-fd-exactly fd count at))))))
@@ -652,7 +655,8 @@ else, or fewer pixels than they say."
                  (and (eql maxval 255) (image width height depth))))
               ((equal magic "P6")
                (let ((size (line)) (maxval (line)))
-                 (destructuring-bind (&optional width height) (and size (ignore-errors (mapcar #'parse-integer (uiop:split-string size))))
+                 (destructuring-bind (&optional width height)
+                     (and size (handler-case (mapcar #'parse-integer (uiop:split-string size)) (parse-error () nil)))
                    (and (equal maxval "255") (image width height 3))))))))))
 
 (defun decode-image (fd kind width height &key cancel density)
@@ -679,8 +683,9 @@ for print."
                       (getf (first *image-decoders*) :name) (first (getf (first *image-decoders*) :program)))
               :comment)
         (done nil))
-      (let* ((octets (ignore-errors (sb-posix:stat-size (sb-posix:fstat fd))))
-             (head (and octets (ignore-errors (tuatara.io:read-fd-start fd "the picture" octets 65536))))
+      (let* ((octets (handler-case (sb-posix:stat-size (sb-posix:fstat fd)) (sb-posix:syscall-error () nil)))
+             (head (and octets (ignoring-errors-reported ("reading the head of a picture")
+                                 (tuatara.io:read-fd-start fd "the picture" octets 65536))))
              (header (and head (member kind *pictures-sized-first*) (coded-picture-header fd head kind)))
              (pixels (if header (* (getf header :width) (getf header :height)) (picture-pixels fd head)))
              (seconds (if header (picture-seconds pixels) tuatara-user:*sandbox-seconds*))
@@ -772,7 +777,7 @@ Waits for the program: call it from a thread working in the background; in
 a job, stopping the job (CANCEL, the job's own by default) stops it too."
   (let ((fd (tuatara.io:memory-file "tuatara-picture" octets :kept nil)))
     (unwind-protect (decode-image fd kind width height :cancel cancel)
-      (ignore-errors (sb-posix:close fd)))))
+      (ignoring-errors-reported ("closing the copy of a picture") (sb-posix:close fd)))))
 
 (defun sandboxed-mode-line (editor buffer)
   "What the mode line of a buffer adds when what it shows was made by a

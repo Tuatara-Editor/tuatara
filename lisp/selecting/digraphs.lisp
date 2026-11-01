@@ -93,7 +93,7 @@ ACUTE), or an empty string for one that has none: a control character, or a
 code with no character given it yet."
   (let ((name (char-name char)))
     (if (and name (> (length name) 1)
-             (not (eq (ignore-errors (sb-unicode:general-category char)) :cc))
+             (not (eq (sb-unicode:general-category char) :cc))
              (not (cl-ppcre:scan "^U[0-9A-F]+$" name)))
         (substitute #\Space #\_ (string-upcase name))
         "")))

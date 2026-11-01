@@ -124,21 +124,21 @@ ten of its glyphs that width. NIL otherwise."
     (when (and bar (member family (mapcar (lambda (name) (string-trim " " name))
                                           (uiop:split-string (subseq found 0 bar) :separator '(#\,)))
                            :test #'string-equal))
-      (ignore-errors
-       (let* ((octets (tuatara.io:file-octets (subseq found (1+ bar))))
-              (tables (font-file-tables octets)))
-         (flet ((table (tag) (second (assoc tag tables :test #'string=))))
-           (let ((head (table "head")) (hhea (table "hhea")) (hmtx (table "hmtx")))
-             (when (and head hhea hmtx)
-               (let* ((units (tuatara.io:octets-be octets (+ head 18) 2))
-                      (metrics (tuatara.io:octets-be octets (+ hhea 34) 2))
-                      (widths (loop for i below metrics collect (tuatara.io:octets-be octets (+ hmtx (* 4 i)) 2)))
-                      (counts (make-hash-table)))
-                 (dolist (w widths) (when (plusp w) (incf (gethash w counts 0))))
-                 (let ((common 0) (most 0))
-                   (maphash (lambda (w n) (when (> n most) (setf common w most n))) counts)
-                   (and (plusp units) (>= (* 10 most) (* 9 (count-if #'plusp widths)))
-                        (/ common units))))))))))))
+      (ignoring-errors-reported ("measuring the font ~a" family)
+        (let* ((octets (tuatara.io:file-octets (subseq found (1+ bar))))
+               (tables (font-file-tables octets)))
+          (flet ((table (tag) (second (assoc tag tables :test #'string=))))
+            (let ((head (table "head")) (hhea (table "hhea")) (hmtx (table "hmtx")))
+              (when (and head hhea hmtx)
+                (let* ((units (tuatara.io:octets-be octets (+ head 18) 2))
+                       (metrics (tuatara.io:octets-be octets (+ hhea 34) 2))
+                       (widths (loop for i below metrics collect (tuatara.io:octets-be octets (+ hmtx (* 4 i)) 2)))
+                       (counts (make-hash-table)))
+                  (dolist (w widths) (when (plusp w) (incf (gethash w counts 0))))
+                  (let ((common 0) (most 0))
+                    (maphash (lambda (w n) (when (> n most) (setf common w most n))) counts)
+                    (and (plusp units) (>= (* 10 most) (* 9 (count-if #'plusp widths)))
+                         (/ common units))))))))))))
 
 (defparameter *docx-column-gap* 360
   "The space between the columns of a section of columns, in twentieths of a point (0.635 cm).")
@@ -371,7 +371,8 @@ the text; a note when it cannot be shown or is outside the folders an export
 may take files from (ORG-EXPORT-FILE-ALLOWED-P), and its name in its place.
 A picture your own template ASKED the note for ({{{logo:path}}}) shows from
 wherever the note names it, as the PDF export's does."
-  (let* ((full (or (ignore-errors (org-export-path (org-property link :path)))
+  (let* ((full (or (ignoring-errors-reported ("finding ~a" (org-property link :path))
+                     (org-export-path (org-property link :path)))
                    (org-property link :path)))
          (picture (multiple-value-bind (made why) (if (or asked (org-export-file-allowed-p full)) (latex-picture full) (values nil :outside))
                     (cond ((and made (member (string-downcase (or (tuatara.io:native-file-type made) "")) '("png" "jpg" "jpeg") :test #'string=))
@@ -1122,7 +1123,7 @@ a third what else to say of it, a list of sentences."
       (docx-template-start parts)
       (when own
         ;; its LaTeX half setting tables against the left margin: the Word half's there too
-        (let ((latex (ignore-errors (latex-template-for named directory))))
+        (let ((latex (ignoring-errors-reported ("reading the template ~a" named) (latex-template-for named directory))))
           (when (and latex (cl-ppcre:scan "\\\\setlength\\s*\\{?\\s*\\\\LTleft\\s*\\}?\\s*\\{\\s*0(pt|cm|mm|em)?\\s*\\}" latex))
             (setf (getf (docx-section *docx*) :tables-left) t))))
       (when (and named (null own))

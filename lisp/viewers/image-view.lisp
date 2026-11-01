@@ -68,7 +68,7 @@ as DECODE-IMAGE gives them."
   "What the file at NATIVE is by its octets, as two values, a keyword and
 words, when it is an image this view draws (one of *IMAGE-FORMATS*, not
 SVG); else NIL."
-  (multiple-value-bind (words kind) (ignore-errors (file-kind native))
+  (multiple-value-bind (words kind) (ignoring-errors-reported ("finding what ~a is" native) (file-kind native))
     (and kind (not (eq kind :svg)) (assoc kind *image-formats*)
          (values kind words))))
 

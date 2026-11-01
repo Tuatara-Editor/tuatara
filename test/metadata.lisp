@@ -537,3 +537,20 @@ integers (SHORT, LONG) or of fractions (N . D) (RATIONAL), or octets."
               (tuatara.buffer:kill-buffer shown)))
           (let ((visited (tuatara.buffer:find-buffer "message.dat")))
             (when visited (tuatara.buffer:kill-buffer visited)))))))
+
+(define-test (metadata part-failure-reported)
+  ;; a reader that breaks gives a section saying what could not be read, and the failure is in
+  ;; the debug log while debug mode is on
+  (drain-debug-reports)
+  (unwind-protect
+       (progn
+         (tuatara.runtime:set-debug t)
+         (let ((sections (tuatara.defaults::metadata-part (error "a reader broke"))))
+           (true (search "could not be read" (first sections)) "~s" sections)
+           (true (search "a reader broke" (first sections)) "~s" sections))
+         (let ((texts (loop for report = (sb-concurrency:dequeue tuatara.runtime:*debug-reports*)
+                            while report collect (princ-to-string (fourth report)))))
+           (true (find-if (lambda (text) (search "reading what a file says of itself failed: a reader broke" text))
+                          texts)
+                 "~s" texts)))
+    (drain-debug-reports)))
