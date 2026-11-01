@@ -97,8 +97,8 @@ them."
 passed over."
   (loop for range in (uiop:split-string text :separator '(#\Space #\Newline))
         for dash = (position #\- range)
-        for first = (ignore-errors (parse-integer range :end dash :radix 16))
-        for last = (if dash (ignore-errors (parse-integer range :start (1+ dash) :radix 16)) first)
+        for first = (whole-number range :end dash :radix 16)
+        for last = (if dash (whole-number range :start (1+ dash) :radix 16) first)
         when (and first last) collect (cons first last)))
 
 (defun installed-font-families (&key every-kind)

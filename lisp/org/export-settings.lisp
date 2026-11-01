@@ -87,7 +87,7 @@ lines are looked at where they are read."
            (unless (or (assoc value *org-latex-font-sizes* :test #'string-equal) (char= (char value 0) #\\))
              (format nil "font: ~a is none of ~{~a~^, ~}; left out" value (mapcar #'car *org-latex-font-sizes*))))
           ((string= name "columns")
-           (unless (let ((n (ignore-errors (parse-integer value)))) (and n (plusp n)))
+           (unless (let ((n (whole-number value))) (and n (plusp n)))
              (format nil "columns: ~a is no number of columns; left out" value))))))
 
 (defun org-export-drawer-p (node)
@@ -234,7 +234,7 @@ between lines (1 single, 1.5, 2 double); NIL for none, or what is no number."
   "How many columns NODE's columns setting sets its text in, two or more;
 NIL for one."
   (let* ((value (org-latex-setting node "columns"))
-         (n (and value (ignore-errors (parse-integer value)))))
+         (n (and value (whole-number value))))
     (and n (> n 1) n)))
 
 (defun export-setting-no-p (node name)

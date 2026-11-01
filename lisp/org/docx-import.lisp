@@ -266,7 +266,7 @@ heading, by its style's outline level or name; NIL for a paragraph that is
 no heading (the contents' heading neither)."
   (let ((style (xml-value paragraph-xml "w:pStyle"))
         (own (xml-value paragraph-xml "w:outlineLvl")))
-    (docx-read-heading-level style (and own (ignore-errors (parse-integer own))))))
+    (docx-read-heading-level style (and own (whole-number own)))))
 
 (defun docx-import-split (document)
   "The document's XML DOCUMENT split: as values its front (the XML before

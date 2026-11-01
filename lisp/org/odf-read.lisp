@@ -63,7 +63,7 @@ numbered levels."
             (when text
               (flet ((on (name) (let ((v (xml-attribute text name))) (and v (not (member v '("none" "normal") :test #'string=)) v))))
                 (let ((weight (on "fo:font-weight")))
-                  (when (and weight (or (string= weight "bold") (>= (or (ignore-errors (parse-integer weight)) 0) 600))) (push :bold look)))
+                  (when (and weight (or (string= weight "bold") (>= (or (whole-number weight) 0) 600))) (push :bold look)))
                 (when (on "fo:font-style") (push :italic look))
                 (when (on "style:text-underline-style") (push :underline look))
                 (when (on "style:text-line-through-style") (push :strike look))
@@ -82,7 +82,7 @@ numbered levels."
                                           (xml-children style)))
                         :list (loop for level in (xml-children style)
                                     when (equal (xml-name level) "text:list-level-style-number")
-                                      collect (ignore-errors (parse-integer (xml-attribute level "text:level"))))))))))
+                                      collect (whole-number (xml-attribute level "text:level")))))))))
     styles))
 
 (defun odf-style (name key &optional (depth 0))

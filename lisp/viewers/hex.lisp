@@ -130,7 +130,7 @@ octets as raw bytes' characters, which encode back to the same octets."
   "The offset TEXT gives: hexadecimal after 0x, else decimal with digits grouped as the mode line shows them; NIL when it is neither."
   (let ((text (string-trim " " text)))
     (cond ((and (> (length text) 2) (string-equal "0x" text :end2 2))
-           (ignore-errors (parse-integer text :start 2 :radix 16)))
+           (whole-number text :start 2 :radix 16))
           (t (parse-line-number text)))))
 
 (defvar *hex-view-functions* '()

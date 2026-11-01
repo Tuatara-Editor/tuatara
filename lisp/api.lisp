@@ -84,7 +84,7 @@ it is NIL, whatever *SENTENCE-END-DOUBLE-SPACE* says."
     ;; octets, text and dates
     tuatara.text:octets tuatara.io:octets-at-p tuatara.io:octets-le tuatara.io:octets-signed tuatara.io:base64-octets tuatara.io:octets-words
     tuatara.text:octets-string tuatara.text:octets-latin-1 tuatara.text:charset-text tuatara.text:utf-16-text tuatara.text:string-octets
-    tuatara.text:string-octet-length tuatara.text:string-line-start tuatara.text:parse-decimal
+    tuatara.text:string-octet-length tuatara.text:string-line-start tuatara.text:parse-decimal tuatara.text:whole-number
     tuatara.text:lenient-string tuatara.text:merge-ranges tuatara.text:string-hash
     tuatara.text:xml-entity tuatara.text:xml-tag-end tuatara.text:xml-text-value tuatara.io:fd-octets tuatara.io:file-octets tuatara.text:xml-escape
     tuatara.text:xml-name tuatara.text:xml-attribute tuatara.text:xml-children tuatara.text:xml-child tuatara.text:xml-root

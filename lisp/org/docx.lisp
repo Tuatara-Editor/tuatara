@@ -318,7 +318,7 @@ file as a hyperlink, a place in the note as a link to its bookmark."
        (when (string-equal (org-property node :back-end) "docx")
          (let ((value (org-property node :value)))
            (when (uiop:string-prefix-p "redacted:" value)
-             (write-string (docx-redaction (or (ignore-errors (parse-integer value :start 9)) 1)) out)))))
+             (write-string (docx-redaction (or (whole-number value :start 9) 1)) out)))))
       (footnote-reference (docx-footnote node out))
       (link (docx-link node out))
       (target (write-string (docx-bookmarked node "") out))

@@ -186,7 +186,7 @@ cursor's move, a shell's marks) left out."
                         ;; underline, 58:2::R:G:B an underline's colour); 38 and 48 take theirs
                         ;; either way: 38;2;R;G;B or 38:2::R:G:B
                         (let ((codes (mapcar (lambda (p)
-                                               (let ((parts (mapcar (lambda (x) (or (ignore-errors (parse-integer x)) 0))
+                                               (let ((parts (mapcar (lambda (x) (or (whole-number x) 0))
                                                                     (uiop:split-string p :separator ":"))))
                                                  (if (rest parts) parts (first parts))))
                                              (uiop:split-string (subseq text from end) :separator ";"))))

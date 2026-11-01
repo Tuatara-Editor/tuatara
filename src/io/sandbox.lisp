@@ -281,7 +281,7 @@ there is no such process."
 
 (defun process-parent (pid)
   "The number of the parent of the process numbered PID; NIL when there is no such process."
-  (ignore-errors (parse-integer (second (process-stat pid)))))
+  (tuatara.text:whole-number (second (process-stat pid))))
 
 (defun process-group-and-session (pid buffer)
   "The process group and the session of the process numbered PID, as two

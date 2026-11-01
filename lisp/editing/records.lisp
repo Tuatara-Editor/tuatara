@@ -131,7 +131,7 @@ record\" or $*); :UNKNOWN for anything else."
           ((second (find answer offered :key #'first :test #'equal)))
           ((second (find answer offered :key #'first :test (lambda (a b) (and b (string-equal a b))))))
           (keyed answer)
-          (t (let ((number (ignore-errors (parse-integer (string-left-trim "$" answer)))))
+          (t (let ((number (whole-number (string-left-trim "$" answer))))
                (if (and number (>= number 0)) number :unknown))))))
 
 (defun read-offered-field (offered keyed prompt &key (words (lambda (field) (if (integerp field) (format nil "$~d" field) field))))

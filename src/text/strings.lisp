@@ -69,6 +69,27 @@ letters, digits and _."
 the empty ones left out; NIL for NIL."
   (and string (remove "" (uiop:split-string string :separator separators) :test #'string=)))
 
+(defun whole-number (text &key (start 0) end (radix 10))
+  "TEXT, a string, or its part from START to END, read as a whole number in
+RADIX: digits, a + or - right before them, and spaces, tabs or line breaks
+around, as CL:PARSE-INTEGER reads them (\" -42\" is -42, \"ff\" in radix 16
+is 255). NIL when TEXT is not a string, when START or END are not within it,
+and when the part is anything else: empty, blanks alone, a sign alone, a
+stray character anywhere."
+  (when (stringp text)
+    (let ((end (or end (length text))))
+      (when (and (integerp start) (integerp end) (<= 0 start end (length text)))
+        (flet ((blank-p (char) (member char '(#\Space #\Tab #\Newline #\Return #\Page))))
+          (let ((at start))
+            (loop while (and (< at end) (blank-p (char text at))) do (incf at))
+            (when (and (< at end) (member (char text at) '(#\+ #\-))) (incf at))
+            (let ((digits at))
+              (loop while (and (< at end) (digit-char-p (char text at) radix)) do (incf at))
+              (when (> at digits)
+                (loop while (and (< at end) (blank-p (char text at))) do (incf at))
+                (when (= at end)
+                  (parse-integer text :start start :end end :radix radix))))))))))
+
 (defun parse-decimal (text &key (most-digits 12))
   "TEXT, digits with perhaps a point and more digits after (as 595.276), as
 an exact number; NIL when it is anything else or has more than MOST-DIGITS

@@ -1340,7 +1340,7 @@ when it has none."
          (children (ignore-errors
                     (with-open-file (in (format nil "/proc/~d/task/~d/children" pid pid))
                       (read-line in nil "")))))
-    (or (and children (ignore-errors (parse-integer children :junk-allowed t))) pid)))
+    (or (and children (parse-integer children :junk-allowed t)) pid)))
 
 (defun group-alive-p (group)
   "True while a process of the process group GROUP is there."

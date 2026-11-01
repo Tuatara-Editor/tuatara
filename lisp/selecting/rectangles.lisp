@@ -610,7 +610,7 @@ block's left column on its line. A rectangle over more text than
          (ask (prefix-argument))
          (first (if ask
                     (let ((text (read-string "Number to count from: " :initial "1" :select-initial t)))
-                      (or (ignore-errors (parse-integer text))
+                      (or (whole-number text)
                           (error "Not a whole number: ~a" text)))
                     1))
          (default (format nil "%~dd~:[ ~;~]" (length (princ-to-string (+ first (max 0 (1- rows))))) replace))

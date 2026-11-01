@@ -401,7 +401,7 @@ there is when there is no text."
   (let ((text (pdf-view-job-text job))
         (info (or (pdf-view-job-info job) "")))
     (setf (pdf-view-info view) info
-          (pdf-view-pages view) (ignore-errors (parse-integer (info-field info "Pages")))
+          (pdf-view-pages view) (whole-number (info-field info "Pages"))
           (pdf-view-page-starts view) (or (pdf-view-job-result job) (make-array 0)))
     (set-made-text buffer (or text (format nil "~a has no text~{~a~}.~%" (tuatara.io:native-file-name (pdf-view-path view))
                                             (mapcar #'car (pdf-view-job-notes job)))))
@@ -443,7 +443,7 @@ the window, so the page is fitted again to the rows left."
               ;; what pdfinfo said, while the text is still being taken out: enough to draw the pages
               (when (and text (not (pdf-view-job-done text)) (pdf-view-job-info text) (string= "" (pdf-view-info view)))
                 (setf (pdf-view-info view) (pdf-view-job-info text)
-                      (pdf-view-pages view) (ignore-errors (parse-integer (info-field (pdf-view-info view) "Pages")))))
+                      (pdf-view-pages view) (whole-number (info-field (pdf-view-info view) "Pages"))))
               ;; the pages drawn, taken in
               (dolist (job (reverse (pdf-view-job view)))
                 (when (pdf-view-job-done job)
@@ -770,7 +770,7 @@ the pages, and which in the text does what KEYS do in any text (PDF-VIEW-USUAL).
   "Turn to a page of the PDF by its number, asked for; in its text, go to where it begins."
   (let* ((last (pdf-view-pages view))
          (typed (read-string (format nil "Go to page~@[ (1-~d)~]: " last)))
-         (page (ignore-errors (parse-integer typed))))
+         (page (whole-number typed)))
     (if page
         (pdf-view-go page)
         (message "No page number: ~a" typed))))
@@ -975,7 +975,7 @@ a line of its own in it goes on with that line, never taken for another file."
   (let ((names '()))
     (dolist (line (uiop:split-string listing :separator '(#\Newline)) (nreverse names))
       (let* ((colon (position #\: line))
-             (number (and colon (ignore-errors (parse-integer line :end colon)))))
+             (number (and colon (whole-number line :end colon))))
         (cond ((and number (= number (1+ (length names))))
                (push (list number (string-trim " " (subseq line (1+ colon)))) names))
               ((and names (plusp (length line)))

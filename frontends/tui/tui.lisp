@@ -297,7 +297,7 @@ switching themes back and forth never uses the pairs up."
   "The modifiers a terminal's modifier FIELD stands for (one more than the sum
 of 1 Shift, 2 Alt, 4 Control, as xterm and kitty send it; NIL for none), as
 three values: shift, meta and control."
-  (let* ((number (or (and field (ignore-errors (parse-integer (first (uiop:split-string field :separator ":"))))) 1))
+  (let* ((number (or (and field (tuatara.text:whole-number (first (uiop:split-string field :separator ":")))) 1))
          (bits (max 0 (1- number))))
     (values (logtest bits 1) (logtest bits 2) (logtest bits 4))))
 
@@ -757,8 +757,8 @@ it (by a US keyboard when the terminal does not say); Shift stays only on
 keys that type nothing."
   (let* ((fields (uiop:split-string parameters :separator ";"))
          (codes (uiop:split-string (first fields) :separator ":"))
-         (code (ignore-errors (parse-integer (first codes))))
-         (shifted-code (and (second codes) (plusp (length (second codes))) (ignore-errors (parse-integer (second codes))))))
+         (code (tuatara.text:whole-number (first codes)))
+         (shifted-code (and (second codes) (plusp (length (second codes))) (tuatara.text:whole-number (second codes)))))
     (multiple-value-bind (shift meta ctrl) (modifier-bits (second fields))
       (when code
         (let ((special (cdr (assoc code *kitty-key-codes*))))
@@ -793,7 +793,7 @@ answer among them."
                       (#\Z (return-from csi-key (tuatara.frontend:make-key :tab :shift t)))
                       (#\A :up) (#\B :down) (#\C :right) (#\D :left) (#\H :home) (#\F :end)
                       (#\P :f1) (#\Q :f2) (#\S :f4)
-                      (#\~ (cdr (assoc (ignore-errors (parse-integer (first fields))) *csi-tilde-keys*))))))
+                      (#\~ (cdr (assoc (tuatara.text:whole-number (first fields)) *csi-tilde-keys*))))))
           (and base (tuatara.frontend:make-key base :ctrl ctrl :meta meta :shift shift)))))))
 
 (defconstant +key-mouse+ 409 "ncurses' code for the start of a report of the mouse.")
@@ -809,7 +809,7 @@ first button's press (a second or third on the cell soon after, a double or
 triple), its moves while held, its letting go, the middle button's press,
 the wheel; at the cell of the editor's screen (the padding taken off), with
 Control, Meta and Shift as held. NIL for the other buttons."
-  (let ((fields (mapcar (lambda (field) (ignore-errors (parse-integer field))) (uiop:split-string (subseq parameters 1) :separator ";"))))
+  (let ((fields (mapcar (lambda (field) (tuatara.text:whole-number field)) (uiop:split-string (subseq parameters 1) :separator ";"))))
     (destructuring-bind (&optional button x y &rest more) fields
       (declare (ignore more))
       (when (and button x y)

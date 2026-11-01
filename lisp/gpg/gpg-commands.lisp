@@ -236,7 +236,7 @@ far the key is trusted, or why the signature does not hold."
       (cond ((gpg-status-p statuses "GOODSIG")
              (format nil "Good signature by ~a (key ~a)~@[, made ~a~], by ~a"
                      (field "GOODSIG" 2) (second (uiop:split-string (gpg-status-p statuses "GOODSIG") :separator '(#\Space)))
-                     (and valid (let ((n (ignore-errors (parse-integer (third (uiop:split-string valid :separator '(#\Space)))))))
+                     (and valid (let ((n (whole-number (third (uiop:split-string valid :separator '(#\Space))))))
                                   (and n (time-words (+ n +unix-epoch+))))) trust))
             ((gpg-status-p statuses "BADSIG")
              (format nil "BAD signature by ~a: the file was changed after it was signed, or the signature is not for it" (field "BADSIG" 2)))
@@ -500,7 +500,7 @@ each line written as the editor shows them (ESCAPE-CONTROLS)."
   "What an import did, as words, from gpg's STATUSES."
   (let ((result (gpg-status-p statuses "IMPORT_RES")))
     (if result
-        (let ((n (mapcar (lambda (w) (or (ignore-errors (parse-integer w)) 0)) (rest (uiop:split-string result :separator '(#\Space))))))
+        (let ((n (mapcar (lambda (w) (or (whole-number w) 0)) (rest (uiop:split-string result :separator '(#\Space))))))
           ;; IMPORT_RES count no-user-id imported imported-rsa unchanged uids subkeys signatures revocations
           ;; secrets-read secrets-imported ...
           (format nil "Keys imported: ~d new, ~d unchanged~@[, ~d secret~]" (nth 2 n) (nth 4 n)

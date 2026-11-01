@@ -855,7 +855,7 @@ columns, :font in that type (\\small); with PLAIN, those two are not read."
   (let* ((value (string-right-trim '(#\Newline) value))
          (enhanced (org-latex-enhanced *org-latex*))
          (attributes (and node enhanced (not plain) (org-latex-attributes node "latex")))
-         (columns (let ((c (getf attributes :columns))) (and c (ignore-errors (parse-integer c)))))
+         (columns (let ((c (getf attributes :columns))) (and c (whole-number c))))
          (font (let ((f (getf attributes :font))) (and f (plusp (length f)) f))))
     (when (or (and columns (> columns 1)) font)
       (let ((inner (with-output-to-string (s) (org-latex-verbatim value s :caption caption :node node :plain t))))
