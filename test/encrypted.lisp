@@ -466,3 +466,49 @@ scratch file, given to the clipboard unasked, nor exported unasked; no core dump
                                            (true (plusp (length output))))
                                          (- (sb-ext:get-bytes-consed) before)))))
             (true (< consed (/ size 4)) "~:d octets made for a file of ~:d" consed size))))))
+
+(define-test (encrypted secrets-kept-from-the-debug-log)
+  ;; an error inside a decrypt with a passphrase: the debug log says that it failed, never the
+  ;; passphrase or the text, in its words or in the calls under way; nor does a job on such a text
+  (if (null (tuatara.defaults::gpg-path))
+      (skip "gpg is not installed here" (true nil))
+      (with-test-directory (dir)
+        (let* ((file (gpg-test-file (merge-pathnames "secret.txt.gpg" dir) "plain kiwi words" :passphrase "kea secret pass"))
+               (tuatara-user:*gpg-passphrase-from* :minibuffer)
+               (octets (alexandria:read-file-into-byte-vector file)))
+          (flet ((reported ()
+                   (loop for report = (sb-concurrency:dequeue tuatara.runtime:*debug-reports*)
+                         while report collect (princ-to-string (fourth report)))))
+            (drain-debug-reports)
+            (tuatara.runtime:set-debug t)
+            (sb-int:encapsulate 'tuatara.defaults::gpg-status-p 'test-failing
+                                (lambda (function &rest arguments)
+                                  (declare (ignore function arguments))
+                                  (error 'type-error :datum "kea secret pass plain kiwi words" :expected-type 'integer)))
+            (unwind-protect
+                 (progn
+                   (false (ignore-errors
+                           (tuatara.runtime:reporting-errors ("decrypting in a test")
+                             (tuatara.defaults::decrypt-naming-keys octets :passphrase (copy-seq "kea secret pass")))))
+                   (let ((texts (reported)))
+                     (true (find-if (lambda (text) (search "decrypting in a test failed: a type-error" text)) texts)
+                           "~s" texts)
+                     (false (find-if (lambda (text) (or (search "kea secret" text) (search "kiwi" text))) texts)
+                            "~s" texts)))
+              (sb-int:unencapsulate 'tuatara.defaults::gpg-status-p 'test-failing))
+            ;; a job on a buffer whose text is secret
+            (let ((buffer (tuatara.buffer:make-buffer "*secret test*")))
+              (setf (tuatara.io:buffer-plaintext-p buffer) t)
+              (unwind-protect
+                   (let ((job (tuatara.defaults::make-decrypt-job buffer "/tmp/x.txt.gpg" nil)))
+                     (tuatara.runtime:start-job-thread job (lambda (job) (declare (ignore job))
+                                                             (error "plain kiwi words")))
+                     (loop repeat 500 while (tuatara.runtime:job-running-p job) do (sleep 0.01))
+                     (let ((texts (reported)))
+                       (true (find-if (lambda (text) (search "failed" text)) texts) "~s" texts)
+                       (false (find-if (lambda (text) (search "kiwi" text)) texts) "~s" texts)))
+                (tuatara.buffer:kill-buffer buffer)))
+            ;; a decrypt job prints by its file's name alone
+            (let ((job (tuatara.defaults::make-decrypt-job nil "/tmp/x.txt.gpg" "kea secret pass")))
+              (false (search "kea" (prin1-to-string job))))
+            (drain-debug-reports))))))

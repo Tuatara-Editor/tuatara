@@ -361,8 +361,16 @@ name NAMING, a function of no arguments, gives then, when given;
 running out of memory or stack says Stopped and what ran out. The calls are
 captured in debug mode, or when TRACE-WANTED, a function of no arguments,
 says so, and SHOWN, when given, is called with the error and them. NIL then,
-else what THUNK returns."
-  (let ((trace nil))
+else what THUNK returns. Work in a buffer whose text is secret
+\(TUATARA.RUNTIME:SECRET-BUFFER-P) counts as a secret at hand: the debug log
+gets no strings of it."
+  (let ((trace nil)
+        (tuatara.runtime:*secret-at-hand* (or tuatara.runtime:*secret-at-hand*
+                                              (let ((editor *editor*))
+                                                (tuatara.runtime:secret-buffer-p
+                                                 (or *current-buffer*
+                                                     (and editor (editor-window editor)
+                                                          (tuatara.display:window-buffer (editor-window editor)))))))))
     (flet ((what () (if naming (funcall naming) what)))
       (handler-case
           (handler-bind ((error (lambda (e)
@@ -374,7 +382,8 @@ else what THUNK returns."
         (error (e)
           (let ((words (tuatara.runtime:condition-words e)))
             (message "~a" (if said (funcall said words) (format nil "Error in ~(~a~): ~a" what words)))
-            (tuatara.runtime:debug-report :error "~(~a~): ~a~{~%    ~a~}" (what) words trace))
+            (tuatara.runtime:debug-report :error "~(~a~): ~a~{~%    ~a~}"
+                                          (what) (tuatara.runtime:failure-words e) trace))
           (when shown (funcall shown e trace))
           nil)
         (storage-condition (e)

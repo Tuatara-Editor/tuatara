@@ -11,7 +11,8 @@
            ;; hooks
            #:quit #:run-hook #:run-hook-until-success #:run-hook-until-done #:call-hook-function #:hook-function-name
            #:*hook-failure-function* #:*hook-failures-said*
-           #:*secret-at-hand* #:note-editor-busy #:start-hang-watch #:*hang-report-seconds* #:lock-fd #:open-rotated-log
+           #:*secret-at-hand* #:*secret-buffer-function* #:secret-buffer-p #:failure-words #:note-editor-busy
+           #:start-hang-watch #:*hang-report-seconds* #:lock-fd #:open-rotated-log
            ;; work stopped at once
            #:stoppable #:stoppable-work #:stop-work #:check-stopped #:*slow-call-seconds*
            ;; jobs in the background

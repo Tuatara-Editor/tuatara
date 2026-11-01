@@ -138,17 +138,37 @@ one just before, to debug.log.3. NIL when there is no debug log to open."
 encrypted or just decrypted): the calls written to the debug log then show
 their strings and octets by their length alone (BACKTRACE-LINES).")
 
+(defvar *secret-buffer-function* nil
+  "A function of a buffer, true when its text is kept secret (decrypted), so
+that work on it counts as a secret at hand (SECRET-BUFFER-P); NIL for none.")
+
+(defun secret-buffer-p (buffer)
+  "True when BUFFER's text is kept secret (*SECRET-BUFFER-FUNCTION*), so that
+work on it is to keep it out of the debug log as *SECRET-AT-HAND* does."
+  (and buffer *secret-buffer-function* (funcall *secret-buffer-function* buffer) t))
+
+(defun failure-words (condition)
+  "CONDITION in words for the debug log: as CONDITION-WORDS says it, or only
+its kind while a secret is at hand (*SECRET-AT-HAND*), whose words could hold
+the secret."
+  (if *secret-at-hand*
+      (format nil "a ~(~a~)" (type-of condition))
+      (condition-words condition)))
+
+(defun secret-free (value &optional (depth 0))
+  "VALUE with each string or vector of octets in it written as its length
+alone, as what the debug log shows while a secret is at hand."
+  (typecase value
+    (string (make-symbol (format nil "#<~d characters>" (length value))))
+    ((vector (unsigned-byte 8)) (make-symbol (format nil "#<~d octets>" (length value))))
+    (cons (if (> depth 3) (make-symbol "#<...>") (mapcar (lambda (v) (secret-free v (1+ depth))) value)))
+    (t value)))
+
 (defun secret-free-call (frame)
   "The call FRAME makes, as a list of its function's name and its arguments,
 each string or vector of octets in them written as its length alone."
   (multiple-value-bind (name arguments) (sb-debug::frame-call frame)
-    (labels ((hide (value depth)
-               (typecase value
-                 (string (make-symbol (format nil "#<~d characters>" (length value))))
-                 ((vector (unsigned-byte 8)) (make-symbol (format nil "#<~d octets>" (length value))))
-                 (cons (if (> depth 3) (make-symbol "#<...>") (mapcar (lambda (v) (hide v (1+ depth))) value)))
-                 (t value))))
-      (cons name (mapcar (lambda (argument) (hide argument 0)) arguments)))))
+    (cons name (mapcar #'secret-free arguments))))
 
 (defun backtrace-lines (&key (count 60) stop (package *package*))
   "The calls under way now, innermost first, as a list of strings, each printed
@@ -232,14 +252,52 @@ while the editor works, once a second. Returns the watching thread."
                        (queue-debug-report :error (format nil "busy for ~d s:~{~%    ~a~}" (round (seconds-since since)) lines)))))))))))
    :name "tuatara hang watch"))
 
+(defparameter *error-reports-per-second* 4
+  "The most reports of failures made at one place (REPORTING-ERRORS) in a
+second; those beyond are counted and said with the next one kept.")
+
+(defvar *error-report-places* (make-hash-table :test 'equal :synchronized t)
+  "For each place failures were reported from, by the words saying what was
+being done there, (SECOND COUNT LEFT-OUT): the second of its latest reports,
+how many were made in it, and how many were left out since the last one
+kept.")
+
+(defun report-error (control arguments condition)
+  "Put CONDITION, an error signalled while doing what CONTROL and ARGUMENTS
+say, in the debug log: with the calls under way the first time from that
+place, as one line after, at most *ERROR-REPORTS-PER-SECOND* times a second
+from it. While a secret is at hand (*SECRET-AT-HAND*) only the kind of error
+and the lengths of the strings in ARGUMENTS are written, never the calls.
+\\`C-g' (QUIT) is no error to report, and a failure to report never takes
+the place of the error itself."
+  (unless (typep condition 'quit)
+    (ignore-errors
+     (let* ((now (floor (get-internal-real-time) internal-time-units-per-second))
+            (place (gethash control *error-report-places*))
+            (first (null place))
+            (place (or place (setf (gethash control *error-report-places*) (list now 0 0)))))
+       (if (/= (first place) now)
+           (setf (first place) now (second place) 1)
+           (incf (second place)))
+       (if (> (second place) *error-reports-per-second*)
+           (incf (third place))
+           (let ((left-out (shiftf (third place) 0))
+                 (secret *secret-at-hand*))
+             (queue-debug-report
+              :error (format nil "~? failed: ~a~@[ (~d more like it left out)~]~{~%    ~a~}"
+                             control (if secret (mapcar #'secret-free arguments) arguments)
+                             (failure-words condition)
+                             (and (plusp left-out) left-out)
+                             (and first (not secret) (backtrace-lines))))))))))
+
 (defmacro reporting-errors ((control &rest arguments) &body body)
   "Run BODY; when an error is signalled in it while debug mode is on, report it
-with the calls under way, CONTROL and ARGUMENTS saying what was being done, and
-let it go on to whatever handles it. \\`C-g' (QUIT) is no error to report."
+in the debug log, CONTROL and ARGUMENTS saying what was being done
+\(REPORT-ERROR), and let it go on to whatever handles it. \\`C-g' (QUIT) is
+no error to report."
   `(handler-bind ((error (lambda (condition)
-                           (when (and *debug-on* (not (typep condition 'quit)))
-                             (queue-debug-report :error (format nil "~? failed: ~a~{~%    ~a~}" ,control (list ,@arguments)
-                                                                condition (backtrace-lines)))))))
+                           (when *debug-on*
+                             (report-error ,control (list ,@arguments) condition)))))
      ,@body))
 
 (defmacro ignoring-errors-reported ((control &rest arguments) &body body)

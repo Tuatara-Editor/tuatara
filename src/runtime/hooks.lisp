@@ -51,7 +51,9 @@ as failing for the first time. Called before the calls under way are left."
          (first (not (gethash key *hook-failures*)))
          (text (format nil "~a failed and was left out: ~a" (hook-function-name function) (condition-words condition))))
     (setf (gethash key *hook-failures*) t)
-    (debug-report :error "~a~{~%    ~a~}" text (and first (backtrace-lines)))
+    (debug-report :error "~a failed and was left out: ~a~{~%    ~a~}"
+                  (hook-function-name function) (failure-words condition)
+                  (and first (not *secret-at-hand*) (backtrace-lines)))
     (let ((say *hook-failure-function*))
       (when (and first say *hook-failures-said*) (funcall say text)))))
 

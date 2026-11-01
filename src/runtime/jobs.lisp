@@ -302,9 +302,13 @@ reached EVENT (started, ended), DETAILS, a string or NIL, said after it."
   (debug-report :job "~a in ~a ~a~@[: ~a~]" (job-description job) (job-buffer-name job) event details))
 
 (defun report-job-ended (job)
-  "Report in the debug log that JOB has ended, how, and why when it failed."
+  "Report in the debug log that JOB has ended, how, and why when it failed,
+unless its buffer's text is secret (SECRET-BUFFER-P)."
   (report-job job "ended" (format nil "~(~a~)~@[, ~a~]" (job-status job)
-                                  (and (eq (job-status job) :failed) (job-error job)))))
+                                  (and (eq (job-status job) :failed)
+                                       (if (or *secret-at-hand* (secret-buffer-p (job-buffer job)))
+                                           "its words left out, its buffer's text being secret"
+                                           (job-error job))))))
 
 ;;; Running
 
@@ -350,7 +354,8 @@ Returns JOB."
   (flet ((run ()
            (unwind-protect
                 (handler-case
-                    (let ((*job* job))
+                    (let ((*job* job)
+                          (*secret-at-hand* (or *secret-at-hand* (secret-buffer-p (job-buffer job)))))
                       (reporting-errors ("~a in ~a" (job-description job) (job-buffer-name job))
                         ;; M-x stop-job reaches into a call that never looks (STOP-WORK)
                         (stoppable-work ((job-cancel job))

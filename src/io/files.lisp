@@ -586,6 +586,8 @@ clipboard, exports and code files leave it alone."
 \(BUFFER-PLAINTEXT-P)."
   (setf (tuatara.buffer:buffer-local buffer :plaintext) value))
 
+(setf tuatara.runtime:*secret-buffer-function* 'buffer-plaintext-p)
+
 (defun buffer-scratch-directory (buffer)
   "Where the scratch files of work on BUFFER's text go (the runs of a sort,
 rewritten text): as SCRATCH-DIRECTORY has it for its file and a text of its
@@ -750,7 +752,8 @@ NIL. What is opened is what is decided on, however a link is changed meanwhile."
                                                       (start-snapshot mapping fd path stamp
                                                                       (if safe
                                                                           (cache-directory)
-                                                                          (snapshot-directory path class :room size)))))))
+                                                                          (snapshot-directory path class
+                                                                                              :room size)))))))
                                  (values (rope-over mapping) mapping stamp (if snapshot :pending :direct)
                                          snapshot class))))))))))))
       (unless keep-fd (sb-posix:close fd)))))

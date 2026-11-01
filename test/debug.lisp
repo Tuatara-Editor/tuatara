@@ -247,3 +247,40 @@ reports not yet shown."
       (tuatara.runtime:note-editor-busy nil)
       (sb-thread:join-thread watch :default nil :timeout 5)
       (sb-thread:join-thread rest :default nil :timeout 5))))
+
+(define-test (debug-reports failures-at-one-place-kept-few)
+  ;; failures at one place: the calls under way the first time, one line after, a few a second,
+  ;; those left out counted with the next one kept; a C-g is no failure
+  (drain-debug-reports)
+  (clrhash tuatara.runtime::*error-report-places*)
+  (unwind-protect
+       (flet ((reports ()
+                (loop for report = (sb-concurrency:dequeue tuatara.runtime:*debug-reports*)
+                      while report collect (princ-to-string (fourth report)))))
+         (tuatara.runtime:set-debug t)
+         (dotimes (i 50)
+           (tuatara.runtime:ignoring-errors-reported ("failing in a test ~d" i) (error "boom")))
+         (let ((texts (reports)))
+           (true (<= 1 (length texts) (* 2 tuatara.runtime::*error-reports-per-second*)) "~s" texts)
+           (true (search (format nil "~%    ") (first texts)) "the calls the first time: ~s" (first texts))
+           (true (every (lambda (text) (not (find #\Newline text))) (rest texts)) "~s" texts))
+         (sleep 1.1)
+         (tuatara.runtime:ignoring-errors-reported ("failing in a test ~d" 50) (error "boom"))
+         (let ((texts (reports)))
+           (is = 1 (length texts))
+           (true (search "more like it left out" (first texts)) "~s" texts))
+         (tuatara.runtime:ignoring-errors-reported ("quitting in a test") (error 'tuatara.runtime:quit))
+         (is equal '() (reports)))
+    (drain-debug-reports)))
+
+(define-test (debug-reports failing-report-keeps-the-error)
+  ;; a report that cannot be made never takes the place of the error being reported
+  (drain-debug-reports)
+  (unwind-protect
+       (progn
+         (tuatara.runtime:set-debug t)
+         (let ((condition (make-condition 'simple-error :format-control "~a" :format-arguments '())))
+           (is eq condition
+               (nth-value 1 (tuatara.runtime:ignoring-errors-reported ("failing in a test")
+                              (error condition))))))
+    (drain-debug-reports)))

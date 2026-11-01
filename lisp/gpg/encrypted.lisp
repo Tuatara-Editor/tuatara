@@ -200,7 +200,8 @@ to the debug log (*SECRET-AT-HAND*)."
                                    (lambda ()
                                      (let ((tuatara.runtime:*secret-at-hand* t))
                                        (ignoring-errors-reported ("feeding gpg its input")
-                                         (gpg-feed (sb-sys:fd-stream-fd (sb-ext:process-input process)) input input-path))
+                                         (gpg-feed (sb-sys:fd-stream-fd (sb-ext:process-input process))
+                                                   input input-path))
                                        (ignoring-errors-reported ("closing gpg's input")
                                          (close (sb-ext:process-input process)))))
                                    :name "tuatara gpg input")))
@@ -221,7 +222,8 @@ to the debug log (*SECRET-AT-HAND*)."
                                 (lambda ()
                                   (let ((tuatara.runtime:*secret-at-hand* t))
                                     (ignoring-errors-reported ("reading what gpg says")
-                                      (loop for line = (tuatara.io:read-line-bounded (sb-ext:process-error process) 1024)
+                                      (loop for line = (tuatara.io:read-line-bounded (sb-ext:process-error process)
+                                                                                     1024)
                                             for count from 0
                                             while line
                                             when (< count 200) do (push line said)))))
@@ -245,7 +247,8 @@ to the debug log (*SECRET-AT-HAND*)."
                                (cons (format nil "GPG_TTY=~a" device)
                                      (remove-if (lambda (e) (uiop:string-prefix-p "GPG_TTY=" e)) (sb-ext:posix-environ)))
                                (sb-ext:posix-environ)))))
-      (dolist (fd (append pipe second)) (when fd (ignoring-errors-reported ("closing a pipe to gpg") (sb-posix:close fd))))
+      (dolist (fd (append pipe second))
+        (when fd (ignoring-errors-reported ("closing a pipe to gpg") (sb-posix:close fd))))
       (dolist (fd status) (when fd (ignoring-errors-reported ("closing a pipe from gpg") (sb-posix:close fd)))))
     (values output (nreverse statuses)
             (and process (not too-much) (eql 0 (sb-ext:process-exit-code process)) (not (and cancel (car cancel))))
@@ -271,29 +274,33 @@ to the debug log (*SECRET-AT-HAND*)."
 a plist of what is known of how: :KEYS, the IDs of the keys it is encrypted
 to; :SYMMETRIC, true when a passphrase opens it; :NEEDS-PASSPHRASE, true when
 it failed for want of one; :ERROR, why it failed (NIL when it did not)."
-  (multiple-value-bind (output statuses ok said)
-      (gpg-run (list "--decrypt" "--output" "-") :input octets :passphrase passphrase :cancel cancel)
-    (let ((keys (loop for s in statuses
-                      when (uiop:string-prefix-p "ENC_TO " s)
-                        collect (second (uiop:split-string s :separator '(#\Space)))))
-          (symmetric (and (gpg-status-p statuses "NEED_PASSPHRASE_SYM") t))
-          (decrypted (and ok (gpg-status-p statuses "DECRYPTION_OKAY"))))
-      (values (and decrypted output)
-              (list :keys (remove-duplicates keys :test #'string=) :symmetric symmetric
-                    :needs-passphrase (and (not decrypted) (not passphrase)
-                                           (or (gpg-status-p statuses "MISSING_PASSPHRASE") (gpg-status-p statuses "NO_PASSPHRASE")
-                                               (gpg-status-p statuses "NEED_PASSPHRASE_SYM") (gpg-status-p statuses "NEED_PASSPHRASE"))
-                                           t)
-                    :error (and (not decrypted) (gpg-failure-words statuses said)))))))
+  (let ((tuatara.runtime:*secret-at-hand* t))
+    (multiple-value-bind (output statuses ok said)
+        (gpg-run (list "--decrypt" "--output" "-") :input octets :passphrase passphrase :cancel cancel)
+      (let ((keys (loop for s in statuses
+                        when (uiop:string-prefix-p "ENC_TO " s)
+                          collect (second (uiop:split-string s :separator '(#\Space)))))
+            (symmetric (and (gpg-status-p statuses "NEED_PASSPHRASE_SYM") t))
+            (decrypted (and ok (gpg-status-p statuses "DECRYPTION_OKAY"))))
+        (values (and decrypted output)
+                (list :keys (remove-duplicates keys :test #'string=) :symmetric symmetric
+                      :needs-passphrase (and (not decrypted) (not passphrase)
+                                             (or (gpg-status-p statuses "MISSING_PASSPHRASE")
+                                                 (gpg-status-p statuses "NO_PASSPHRASE")
+                                                 (gpg-status-p statuses "NEED_PASSPHRASE_SYM")
+                                                 (gpg-status-p statuses "NEED_PASSPHRASE"))
+                                             t)
+                      :error (and (not decrypted) (gpg-failure-words statuses said))))))))
 
 (defun decrypt-naming-keys (octets &key passphrase cancel)
   "OCTETS decrypted as GPG-DECRYPT does, its plist of how with :KEY-WORDS
 besides, the keys it is encrypted to as words (ENCRYPTION-KEY-WORDS), looked
 up once it is decrypted."
-  (multiple-value-bind (text info) (gpg-decrypt octets :passphrase passphrase :cancel cancel)
-    (values text (if (and text (getf info :keys))
-                     (list* :key-words (encryption-key-words (getf info :keys)) info)
-                     info))))
+  (let ((tuatara.runtime:*secret-at-hand* t))
+    (multiple-value-bind (text info) (gpg-decrypt octets :passphrase passphrase :cancel cancel)
+      (values text (if (and text (getf info :keys))
+                       (list* :key-words (encryption-key-words (getf info :keys)) info)
+                       info)))))
 
 (defun openpgp-symmetric-p (path)
   "True when the encrypted file at PATH begins with a passphrase's packet (a
@@ -315,7 +322,8 @@ its first octets are read."
 \(Linux's PR_SET_DUMPABLE): not while an encrypted file's text is in memory."
   (ignoring-errors-reported ("telling the system whether it may keep a core dump")
     (sb-alien:alien-funcall (sb-alien:extern-alien "prctl" (function sb-alien:int sb-alien:int sb-alien:unsigned-long
-                                                                     sb-alien:unsigned-long sb-alien:unsigned-long sb-alien:unsigned-long))
+                                                                     sb-alien:unsigned-long sb-alien:unsigned-long
+                                                                     sb-alien:unsigned-long))
                             4 (if dumpable 1 0) 0 0 0)))
 
 (defun keep-from-disk (buffer)
@@ -361,6 +369,11 @@ of how; STAMP, the file's as read."
   path passphrase text info stamp)
 
 (setf (documentation 'decrypt-job-p 'function) "True when OBJECT is a DECRYPT-JOB.")
+
+(defmethod print-object ((job decrypt-job) stream)
+  "Print JOB by the name of the file it decrypts, never its passphrase or text."
+  (print-unreadable-object (job stream :type t :identity t)
+    (format stream "~a" (tuatara.io:native-file-name (decrypt-job-path job)))))
 
 (tuatara.runtime:define-job-words decrypt-job
   :doing "Decrypting"
@@ -423,7 +436,8 @@ pinentry, when it asks there (WITH-GPG-TERMINAL)."
       (tuatara.io:call-with-file
        path
        (lambda (fd native size)
-         (let ((octets (tuatara.io:read-fd-octets fd :path native :size-hint (1+ size)))
+         (let ((tuatara.runtime:*secret-at-hand* t)
+               (octets (tuatara.io:read-fd-octets fd :path native :size-hint (1+ size)))
                (stamp (tuatara.io:fd-stamp fd native)))
            (multiple-value-bind (text info)
                (with-gpg-terminal (format nil "decrypting ~a" (tuatara.io:native-file-name native))
@@ -437,15 +451,17 @@ pinentry, when it asks there (WITH-GPG-TERMINAL)."
   (tuatara.runtime:start-job-thread
    (make-decrypt-job buffer path passphrase)
    (lambda (job)
-     (tuatara.io:call-with-file
-      (decrypt-job-path job)
-      (lambda (fd native size)
-        (let ((octets (tuatara.io:read-fd-octets fd :path native :size-hint (1+ size))))
-          (setf (decrypt-job-stamp job) (tuatara.io:fd-stamp fd native))
-          (multiple-value-bind (text info)
-              (unwind-protect (decrypt-naming-keys octets :passphrase (decrypt-job-passphrase job) :cancel (tuatara.runtime:job-cancel job))
-                (wipe-string (decrypt-job-passphrase job)))
-            (setf (decrypt-job-text job) text (decrypt-job-info job) info))))))
+     (let ((tuatara.runtime:*secret-at-hand* t))
+       (tuatara.io:call-with-file
+        (decrypt-job-path job)
+        (lambda (fd native size)
+          (let ((octets (tuatara.io:read-fd-octets fd :path native :size-hint (1+ size))))
+            (setf (decrypt-job-stamp job) (tuatara.io:fd-stamp fd native))
+            (multiple-value-bind (text info)
+                (unwind-protect (decrypt-naming-keys octets :passphrase (decrypt-job-passphrase job)
+                                                            :cancel (tuatara.runtime:job-cancel job))
+                  (wipe-string (decrypt-job-passphrase job)))
+              (setf (decrypt-job-text job) text (decrypt-job-info job) info)))))))
    :name "tuatara decrypt"))
 
 (define-command decrypt-with-passphrase ()
@@ -515,7 +531,8 @@ save is refused."
             (name (tuatara.buffer:buffer-name buffer)))
         (when (eq (gpg-asker) :terminal)
           ;; encrypted now, the terminal lent to the pinentry: the save writes what it gave
-          (let* ((plain (tuatara.text:rope-octets (tuatara.text:version-rope (tuatara.buffer:buffer-version buffer)))))
+          (let* ((tuatara.runtime:*secret-at-hand* t)
+                 (plain (tuatara.text:rope-octets (tuatara.text:version-rope (tuatara.buffer:buffer-version buffer)))))
             (multiple-value-bind (output statuses ok said)
                 (unwind-protect (with-gpg-terminal (format nil "encrypting ~a" name)
                                                    (lambda () (gpg-run (gpg-encrypt-arguments encryption) :input plain)))
@@ -524,7 +541,8 @@ save is refused."
                 (error "gpg could not encrypt ~a: ~a" name (gpg-failure-words statuses said)))
               (return-from encrypted-save-transform (lambda (rope) (declare (ignore rope)) output)))))
         (lambda (rope)
-          (let ((plain (tuatara.text:rope-octets rope)))
+          (let ((tuatara.runtime:*secret-at-hand* t)
+                (plain (tuatara.text:rope-octets rope)))
             (multiple-value-bind (output statuses ok said)
                 (unwind-protect (gpg-run (gpg-encrypt-arguments encryption) :input plain :passphrase passphrase)
                   (fill plain 0)

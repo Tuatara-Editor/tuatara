@@ -10,6 +10,7 @@ asked twice, an error when the two differ. Returns the string, which the
 caller should wipe (WIPE-STRING) once it has handed it on. Every copy not
 returned is wiped, the question given up (\\[keyboard-quit]) too."
   (let* ((*minibuffer-hidden* t)
+         (tuatara.runtime:*secret-at-hand* t)
          (first (read-string prompt))
          (returned nil))
     (if (not confirm)
