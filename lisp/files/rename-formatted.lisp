@@ -138,7 +138,8 @@ Returns a sentence when it was not written, else NIL."
            (format nil "~a has changes not saved: its header was not written" name))
           ((> (if buffer
                   (tuatara.buffer:buffer-size buffer)
-                  (or (ignore-errors (tuatara.io:stamp-size (tuatara.io:path-stamp path))) 0))
+                  (let ((stamp (tuatara.io:path-stamp path :failure nil)))
+                    (if stamp (tuatara.io:stamp-size stamp) 0)))
               *formatted-header-limit*)
            (format nil "~a is larger than ~a (*formatted-header-limit*): its header was not written"
                    (escape-controls name) (octets-words *formatted-header-limit*)))
@@ -154,7 +155,8 @@ Returns a sentence when it was not written, else NIL."
                       nil))))
           (t
            (let* ((octets (tuatara.io:file-octets path :limit *formatted-header-limit*))
-                  (old (ignore-errors (sb-ext:octets-to-string octets :external-format :utf-8)))
+                  (old (ignoring-errors-reported ("reading ~a as text" path)
+                         (sb-ext:octets-to-string octets :external-format :utf-8)))
                   (new (and old (text-octets-p old octets) (text-with-header old type title keywords identifier time))))
              (cond ((null new) (format nil "~a is not all text, or its lines end two ways: its header was not written" name))
                    (t (unless (string= old new)
@@ -175,7 +177,8 @@ Returns the new path, and as a second value a sentence of what was not done."
     (let ((to (tuatara.io:path-join (tuatara.io:parent-path path) name)))
       (unless (string= (tuatara.io:native path) to)
         (rename-path-following (tuatara.io:native path) to :tell nil))
-      (values to (handler-case (write-formatted-header to title keywords identifier)
+      (values to (handler-case (reporting-errors ("writing the header of ~a" to)
+                                 (write-formatted-header to title keywords identifier))
                    (error (e) (format nil "its header was not written: ~a" e)))))))
 
 (defun rename-formatted-targets ()
@@ -214,8 +217,9 @@ them read again."
     (dolist (path paths)
       (multiple-value-bind (title keywords) (funcall title-and-keywords path)
         (handler-case
-            (multiple-value-bind (to note) (rename-file-formatted path title keywords)
-              (incf done) (setf last (tuatara.io:native-file-name to)) (push note notes))
+            (reporting-errors ("renaming ~a" path)
+              (multiple-value-bind (to note) (rename-file-formatted path title keywords)
+                (incf done) (setf last (tuatara.io:native-file-name to)) (push note notes)))
           (error (e) (push (format nil "~a: ~a" (tuatara.io:native-file-name path) e) notes)))))
     (message "~:[~d files renamed~*~;Renamed to ~*~a~]~@[; ~{~a~^; ~}~]"
              (= done 1) done last (reverse (remove nil notes)))

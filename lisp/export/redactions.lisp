@@ -246,7 +246,8 @@ what the export writes is not encrypted. Never into an evidence folder
     (return-from export-target-allowed-p nil))
   (let* ((file (tuatara.io:native (tuatara.io:expand-path (tuatara.buffer:buffer-file buffer))))
          (named (and (eq (export-kind buffer) :org)
-                     (ignore-errors (org-export-file-name (or text (tuatara.buffer:buffer-string buffer)) file))))
+                     (ignoring-errors-reported ("naming the export of ~a" file)
+                       (org-export-file-name (or text (tuatara.buffer:buffer-string buffer)) file))))
          (kept (append (mapcar #'funcall *export-kept-folders*) *export-trusted-folders*))
          ;; links followed: a folder in the note's that is a link to elsewhere is elsewhere
          (outside (and named (notevery (lambda (type)

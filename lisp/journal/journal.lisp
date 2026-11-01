@@ -92,7 +92,7 @@ asked for when it is NIL."
 a list of (PATH . DAY), DAY the day number of the identifier's date, the
 latest first."
   (let ((entries '()))
-    (dolist (file (ignore-errors (files-under (journal-directory))))
+    (dolist (file (ignoring-errors-reported ("listing the journal") (files-under (journal-directory))))
       (multiple-value-bind (identifier signature title keywords) (name-parts (tuatara.io:native-file-name (car file)))
         (declare (ignore signature title))
         (let ((time (and identifier (identifier-at-start-p identifier) (identifier-time identifier))))

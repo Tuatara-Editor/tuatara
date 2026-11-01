@@ -133,7 +133,8 @@ as (\"blank\" . \"\"), then each file in NOTE-TEMPLATES-DIRECTORY as (NAME
 its own text, or its file's with %date% today's date and %author% your name."
   (let ((value (cdr template)))
     (if (and (consp value) (eq (first value) :file))
-        (let* ((text (handler-case (read-file-text (second value))
+        (let* ((text (handler-case (reporting-errors ("reading the template ~a" (first template))
+                                     (read-file-text (second value)))
                        (error (e) (message "The template ~a could not be read: ~a" (first template) e) "")))
                (text (cl-ppcre:regex-replace-all "%date%" text (format-time "%Y-%m-%d" (get-universal-time)))))
           (cl-ppcre:regex-replace-all "%author%" text (lambda (match) (declare (ignore match)) (user-full-name)) :simple-calls t))
@@ -179,12 +180,11 @@ repeats dropped, sorted when *FORMATTED-FILE-SORT-KEYWORDS* says so."
 (defun identifier-time (identifier)
   "The universal time the IDENTIFIER of a formatted name (20260927T213446)
 says, in local time; NIL when it says no time there is."
-  (ignore-errors
-   (flet ((part (start end) (parse-integer identifier :start start :end end)))
-     (let ((year (part 0 4)) (month (part 4 6)) (day (part 6 8))
-           (hour (part 9 11)) (minute (part 11 13)) (second (part 13 15)))
-       (and (valid-date-p year month day) (<= 0 hour 23) (<= 0 minute 59) (<= 0 second 59)
-            (day-universal-time (day-number year month day) hour minute second))))))
+  (flet ((part (start end) (whole-number identifier :start start :end end)))
+    (let ((year (part 0 4)) (month (part 4 6)) (day (part 6 8))
+          (hour (part 9 11)) (minute (part 11 13)) (second (part 13 15)))
+      (and (valid-date-p year month day) hour minute second (<= 0 hour 23) (<= 0 minute 59) (<= 0 second 59)
+           (day-universal-time (day-number year month day) hour minute second)))))
 
 (defun formatted-file-name (identifier title keywords extension)
   "The formatted name of a file: IDENTIFIER, then -- and TITLE's slug, then __

@@ -140,15 +140,16 @@ read where its first directory stands when that is past them
 third value, why)."
   (let ((head (tuatara.io:file-head path)))
     (cond ((null head)
-           (handler-case (progn (tuatara.io:call-with-file path (constantly nil))
-                                (values nil nil "it cannot be read"))
+           (handler-case (reporting-errors ("reading ~a" path)
+                           (tuatara.io:call-with-file path (constantly nil))
+                           (values nil nil "it cannot be read"))
              (error (e) (values nil nil (princ-to-string e)))))
           ((tuatara.io:tiff-octets-p head)
            (multiple-value-bind (words kind)
-               (ignore-errors
-                (tuatara.io:call-with-file path (lambda (fd native size)
-                                                  (declare (ignore native size))
-                                                  (octets-kind-of-file fd head))))
+               (ignoring-errors-reported ("reading ~a" path)
+                 (tuatara.io:call-with-file path (lambda (fd native size)
+                                                   (declare (ignore native size))
+                                                   (octets-kind-of-file fd head))))
              (if kind (values words kind) (tuatara.io:octets-kind head))))
           (t (tuatara.io:octets-kind head)))))
 
@@ -205,12 +206,12 @@ used, in universal time.")
 folders a session still uses (*PRIVATE-FOLDERS-HELD*): copies whose programs
 have them open still, or are long done."
   (let ((day-ago (- (get-universal-time) 86400)))
-    (dolist (entry (ignore-errors (tuatara.io:directory-entries directory)))
+    (dolist (entry (ignoring-errors-reported ("listing ~a" directory) (tuatara.io:directory-entries directory)))
       (let* ((path (tuatara.io:path-join directory (first entry)))
              (stamp (tuatara.io:path-stamp path :follow nil :failure nil)))
         (when (and stamp (< (mtime-universal-time (tuatara.io:stamp-mtime stamp)) day-ago)
                    (not (gethash (tuatara.io:slash-ended path) *private-folders-held*)))
-          (ignore-errors (tuatara.io:delete-tree path)))))))
+          (ignoring-errors-reported ("deleting ~a" path) (tuatara.io:delete-tree path)))))))
 
 (defun new-private-folder (directory &key (hold t))
   "A new folder of its own in DIRECTORY, its name random, for you alone,
@@ -248,24 +249,25 @@ owner.lock, made more than an hour ago. OWN, a folder of this session, stays.
 Another machine's, sharing the folder, are its own to judge."
   (let ((all (private-cache-directory name))
         (hour-ago (- (get-universal-time) 3600)))
-    (dolist (entry (ignore-errors (tuatara.io:directory-entries all)))
+    (dolist (entry (ignoring-errors-reported ("listing ~a" all) (tuatara.io:directory-entries all)))
       (let* ((folder (tuatara.io:slash-ended (tuatara.io:path-join all (first entry))))
              (lock (tuatara.io:path-join folder "owner.lock")))
         (unless (equal folder own)
           (if (eq (tuatara.io:path-kind lock :follow nil) :regular)
-              (let ((host (ignore-errors (tuatara.text:lenient-string (tuatara.io:file-octets lock :limit 1024))))
-                    (fd (ignore-errors (sb-posix:open lock sb-posix:o-rdwr))))
+              (let ((host (ignoring-errors-reported ("reading ~a" lock)
+                            (tuatara.text:lenient-string (tuatara.io:file-octets lock :limit 1024))))
+                    (fd (ignoring-errors-reported ("opening ~a" lock) (sb-posix:open lock sb-posix:o-rdwr))))
                 (when (and fd (equal host (machine-instance)) (tuatara.runtime:lock-fd fd))
-                  (ignore-errors (tuatara.io:delete-tree folder)))
+                  (ignoring-errors-reported ("deleting ~a" folder) (tuatara.io:delete-tree folder)))
                 (when fd (sb-posix:close fd)))
               (let ((stamp (tuatara.io:path-stamp folder :follow nil :failure nil)))
                 (when (and stamp (< (mtime-universal-time (tuatara.io:stamp-mtime stamp)) hour-ago))
-                  (ignore-errors (tuatara.io:delete-tree folder))))))))))
+                  (ignoring-errors-reported ("deleting ~a" folder) (tuatara.io:delete-tree folder))))))))))
 
 (defun delete-private-folder (folder)
   "Delete FOLDER, a private folder NEW-PRIVATE-FOLDER made, and all in it; it
 is held no longer."
-  (ignore-errors (tuatara.io:delete-tree folder))
+  (ignoring-errors-reported ("deleting ~a" folder) (tuatara.io:delete-tree folder))
   (remhash folder *private-folders-held*))
 
 (defun keep-private-folders-fresh (editor)
@@ -280,7 +282,7 @@ it is next wanted."
       (setf *private-folders-touched* now)
       (maphash (lambda (folder held)
                  (declare (ignore held))
-                 (ignore-errors (tuatara.io:touch-path folder)))
+                 (ignoring-errors-reported ("marking ~a as used" folder) (tuatara.io:touch-path folder)))
                *private-folders-held*))
     (max 60 (- (+ *private-folders-touched* (* 6 3600)) now))))
 
@@ -317,7 +319,10 @@ it on standard input, output or error; it is waited for in the background.
 Returns its process."
   (let ((process (multiple-value-bind (run given) (tuatara.io:setsid-command program arguments)
                    (sb-ext:run-program run given :wait nil :input nil :output nil :error nil))))
-    (tuatara.runtime:make-guarded-thread (lambda () (ignore-errors (sb-ext:process-wait process) (sb-ext:process-close process)))
+    (tuatara.runtime:make-guarded-thread (lambda ()
+                                           (ignoring-errors-reported ("waiting for ~a" label)
+                                             (sb-ext:process-wait process)
+                                             (sb-ext:process-close process)))
                                          :name (format nil "tuatara ~a" label))
     process))
 
@@ -328,21 +333,22 @@ given ARGUMENTS before its name: copy it where only you can read it
 file changed after it was looked at is not opened; and open the copy. Returns
 what to say of it, LABEL naming the program."
   (handler-case
-      (let* ((copy (private-copy-path name))
-             (place (tuatara.io:parent-path copy)))
-        ;; the content copied into a new file of its own: a link is followed to its file, never made again
-        (unless (eq :regular (tuatara.io:path-kind native))
-          (return-from open-copy-externally (format nil "~a is not a plain file: not opened" name)))
-        (unless (tuatara.io:copy-regular-file native copy)
-          (return-from open-copy-externally (format nil "~a could not be copied whole: not opened" name)))
-        (sb-posix:chmod copy #o400)
-        (unless (eq kind (nth-value 1 (file-kind copy)))
-          (ignore-errors (tuatara.io:delete-tree place))
-          (return-from open-copy-externally (format nil "~a changed after it was looked at: not opened" name)))
-        ;; a session of its own (setsid): the program stays when the editor or its terminal goes
-        (start-detached program (append arguments (list copy)) :label "opened file")
-        (tuatara.runtime:debug-report :file "opened outside Tuatara: ~a (~a) as its copy ~a, with ~a" native words copy program)
-        (format nil "Opened ~a in ~a (a copy of it, read only)" name label))
+      (reporting-errors ("opening ~a outside Tuatara" native)
+        (let* ((copy (private-copy-path name))
+               (place (tuatara.io:parent-path copy)))
+          ;; the content copied into a new file of its own: a link is followed to its file, never made again
+          (unless (eq :regular (tuatara.io:path-kind native))
+            (return-from open-copy-externally (format nil "~a is not a plain file: not opened" name)))
+          (unless (tuatara.io:copy-regular-file native copy)
+            (return-from open-copy-externally (format nil "~a could not be copied whole: not opened" name)))
+          (sb-posix:chmod copy #o400)
+          (unless (eq kind (nth-value 1 (file-kind copy)))
+            (ignoring-errors-reported ("deleting ~a" place) (tuatara.io:delete-tree place))
+            (return-from open-copy-externally (format nil "~a changed after it was looked at: not opened" name)))
+          ;; a session of its own (setsid): the program stays when the editor or its terminal goes
+          (start-detached program (append arguments (list copy)) :label "opened file")
+          (tuatara.runtime:debug-report :file "opened outside Tuatara: ~a (~a) as its copy ~a, with ~a" native words copy program)
+          (format nil "Opened ~a in ~a (a copy of it, read only)" name label)))
     (error (e) (format nil "~a not opened: ~a" name e))))
 
 (defun open-externally-file (path &key also)
@@ -473,7 +479,8 @@ the same packages.")
 (defun system-package-family ()
   "Which packages this system takes, by its /etc/os-release: :FEDORA,
 :DEBIAN (Ubuntu too) or :ARCH; NIL for another or when it does not say."
-  (let ((text (ignore-errors (tuatara.io:file-text "/etc/os-release" :limit 65536))))
+  (let ((text (ignoring-errors-reported ("reading /etc/os-release")
+                (tuatara.io:file-text "/etc/os-release" :limit 65536))))
     (when text
       (let ((ids (loop for line in (uiop:split-string text :separator '(#\Newline))
                        when (or (uiop:string-prefix-p "ID=" line) (uiop:string-prefix-p "ID_LIKE=" line))

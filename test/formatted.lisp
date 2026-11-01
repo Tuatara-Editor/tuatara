@@ -1351,3 +1351,16 @@ file sets them."
       (let ((tuatara.defaults::*formatted-header-limit* 100000))
         (false (tuatara.defaults::write-formatted-header path "Bigger" '("log") "20260927T213446"))
         (true (search "Bigger" (alexandria:read-file-into-string path)))))))
+
+(define-test (formatted identifier-time-of-any-text)
+  ;; an identifier that says no time is NIL, never an error, and nothing for the debug log
+  (drain-debug-reports)
+  (tuatara.runtime:set-debug t)
+  (unwind-protect
+       (progn
+         (is = (local-time 2026 9 27 21 34 46) (tuatara.defaults::identifier-time "20260927T213446"))
+         (dolist (text '("2026x927T213446" "20260230T000000" "20260927T253446" "20260927T21" "2026" ""
+                         "20260927T21344x"))
+           (false (tuatara.defaults::identifier-time text) "~s" text))
+         (true (sb-concurrency:queue-empty-p tuatara.runtime:*debug-reports*)))
+    (drain-debug-reports)))

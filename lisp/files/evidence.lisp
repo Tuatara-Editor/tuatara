@@ -214,7 +214,8 @@ setting is read again, what is kept of each folder dropped (EVIDENCE-KEEPER).")
 entries match not looked for yet: quick, on whichever thread asks."
   (let ((entries '()) (problems '()))
     (dolist (given (setting-list '*evidence-folders* value))
-      (handler-case (push (read-evidence-entry given) entries)
+      (handler-case (reporting-errors ("reading the evidence folder ~s" given)
+                      (push (read-evidence-entry given) entries))
         (error (e) (push (cons given (princ-to-string e)) problems))))
     (make-evidence-rules value (copy-tree value) (nreverse entries) (nreverse problems))))
 
@@ -262,11 +263,12 @@ meanwhile. Ends once other rules are in force, or none, or the setting
 names no folder."
   (unless (evidence-rules-linked rules)
     (link-evidence-rules rules))
-  (let ((seen (ignore-errors (uiop:read-file-string *mounts-info-file*))))
+  (let ((seen (ignoring-errors-reported ("reading ~a" *mounts-info-file*) (uiop:read-file-string *mounts-info-file*))))
     (loop
       (sleep (max 1/20 *mounts-look-interval*))
       (unless (and *evidence-folders* (eq *evidence-rules* rules)) (return))
-      (let ((now (ignore-errors (uiop:read-file-string *mounts-info-file*))))
+      (let ((now (ignoring-errors-reported ("reading ~a" *mounts-info-file*)
+                   (uiop:read-file-string *mounts-info-file*))))
         (unless (equal now seen)
           (setf seen now)
           (let ((fresh (read-evidence-rules (evidence-rules-setting rules))))
@@ -331,7 +333,8 @@ starts (*EVIDENCE-SAVING*): none runs while the program is saved."
         *evidence-rules* nil)
   (let ((keeper *evidence-keeper*))
     (when (and keeper (sb-thread:thread-alive-p keeper))
-      (ignore-errors (sb-thread:join-thread keeper :timeout 5 :default nil))))
+      (ignoring-errors-reported ("waiting for the evidence keeper to end")
+        (sb-thread:join-thread keeper :timeout 5 :default nil))))
   (setf *evidence-keeper* nil))
 
 (defun evidence-saved ()
@@ -423,7 +426,8 @@ were looked for: :WHOLE, :CAPPED (the folders there were more) or :ANYWHERE."
                                       (when (and (eq kind :directory) (eq own :symlink))
                                         (let ((link (concatenate 'string folder name)))
                                           (when (evidence-entry-matches-p entry link)
-                                            (let ((real (ignore-errors (tuatara.io:real-path link))))
+                                            (let ((real (ignoring-errors-reported ("finding where ~a leads" link)
+                                                          (tuatara.io:real-path link))))
                                               (when real (pushnew (nfc-name real) found :test #'string=))))))))
                                   t)
                                 :max-depth depth :same-device t :limit *evidence-link-search-folders*)
@@ -449,7 +453,7 @@ once when first wanted.")
   "The other paths that lead to the folder FOLDER (a real path) through a
 drive, or a folder of one, mounted in more than one place."
   (when (eq *mounts* :unread)
-    (setf *mounts* (ignore-errors (mounts-shown))))
+    (setf *mounts* (ignoring-errors-reported ("reading the drives mounted") (mounts-shown))))
   (let ((here (loop with best = nil
                     for mount in *mounts*
                     when (and (tuatara.io:path-within-p folder (third mount))
@@ -529,7 +533,7 @@ it leads."
 folder it leads to evidence by ENTRY too from now on, what is kept of each
 folder dropped."
   (when (eq :symlink (tuatara.io:path-kind folder :follow nil))
-    (let ((real (ignore-errors (tuatara.io:real-path folder))))
+    (let ((real (ignoring-errors-reported ("finding where ~a leads" folder) (tuatara.io:real-path folder))))
       (when (and real (not (member (nfc-name real) (evidence-entry-targets entry) :test #'string-equal)))
         (push (nfc-name real) (evidence-entry-targets entry))
         (forget-kept-answers rules)))))
@@ -768,7 +772,8 @@ told of its new one. NIL at once when the setting names no folder."
         (evidence-rules)
         (if (and kept (eql (first kept) *evidence-generation*) (equal (second kept) file))
             (cddr kept)
-            (let ((folder (ignore-errors (evidence-path-p (tuatara.io:native file)))))
+            (let ((folder (ignoring-errors-reported ("asking whether ~a is evidence" file)
+                            (evidence-path-p (tuatara.io:native file)))))
               (setf (tuatara.buffer:buffer-local buffer :evidence) (list* *evidence-generation* file folder))
               folder))))))
 

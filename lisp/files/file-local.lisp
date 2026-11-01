@@ -152,7 +152,9 @@ a mode that runs what is typed (the Lisp prompt, *scratch*'s Lisp)."
 when it is one Tuatara takes and VALUE suits it; true when it was taken."
   (flet ((whole (low high) (and (integerp value) (<= low value high))))
     (cond ((string= name "mode")
-           (let ((mode (and (stringp value) (ignore-errors (mode-named (make-symbol (string-upcase value)))))))
+           (let ((mode (and (stringp value)
+                            (ignoring-errors-reported ("finding the mode ~a" value)
+                              (mode-named (make-symbol (string-upcase value)))))))
              (when (and mode (file-mode-p mode))
                (set-major-mode buffer mode)
                t)))

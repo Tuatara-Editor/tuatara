@@ -50,7 +50,7 @@ alone or with a name after, in any number. A ======= line alone is no marker
 \(a heading underlined in a text is one) and counts only where another kind
 is in the file, which is then not resolved all the same. Changes not saved in
 its buffer do not count."
-  (let ((octets (ignore-errors (tuatara.io:file-octets path))))
+  (let ((octets (ignoring-errors-reported ("reading ~a" path) (tuatara.io:file-octets path))))
     (and octets
          (conflict-map-markers (tuatara.text:octets->rope (coerce octets 'tuatara.text:octets))
                                (lambda (kind at)

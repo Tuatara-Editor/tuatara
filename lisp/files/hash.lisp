@@ -101,7 +101,7 @@ first. Signals, with what the program said, when it prints no sum."
                   ;; it ended without reading everything: what it printed says why
                   (tuatara.io:file-system-error () (return)))
                 (incf (car (hash-job-done job)) n)))
-     (ignore-errors (close (sb-ext:process-input process)))
+     (ignoring-errors-reported ("closing the input of ~a" program) (close (sb-ext:process-input process)))
      (sb-ext:process-wait process)
      (unless (car (hash-job-cancel job))
        (let* ((output (with-output-to-string (s)
@@ -162,7 +162,7 @@ here. Returns the job."
                                             (program-sum job source buffer *hash-program*))))
                               (when (and sum finish) (funcall finish sum))
                               sum)
-                         (when finish (ignore-errors (funcall finish nil))))))
+                         (when finish (ignoring-errors-reported ("ending the sum") (funcall finish nil))))))
               (setf (hash-job-sum job) sum (hash-job-status job) (if sum :done :stopped)))))
      :name "tuatara sum" :details (format nil "~:d octets" total))))
 
@@ -195,10 +195,10 @@ sums; NIL when it cannot be read or CANCEL's car turns true first."
   (let* ((carrier (%make-hash-job :what path :cancel cancel :done done))
          (buffer (or buffer (make-array *hash-piece* :element-type '(unsigned-byte 8))))
          (source (file-source fd path)))
-    (ignore-errors
-     (if (hash-library-p)
-         (library-sum carrier source buffer)
-         (program-sum carrier source buffer *hash-program*)))))
+    (ignoring-errors-reported ("summing ~a" path)
+      (if (hash-library-p)
+          (library-sum carrier source buffer)
+          (program-sum carrier source buffer *hash-program*)))))
 
 (defun file-sha256 (path &key (cancel (list nil)) (done (list 0)) buffer)
   "The SHA-256 sum, in hex, of the file at PATH as it is on disk, summed on the
@@ -206,10 +206,10 @@ thread that asks (as \\[sha256-sum] sums, read without changing its access time
 where the system allows), the car of DONE counting the octets summed; NIL when
 it cannot be read or CANCEL's car turns true first. BUFFER, octets to read
 into, is made when not given."
-  (let ((fd (ignore-errors (tuatara.io:open-for-reading path t))))
+  (let ((fd (ignoring-errors-reported ("opening ~a" path) (tuatara.io:open-for-reading path t))))
     (when fd
       (unwind-protect (fd-sha256 fd path :cancel cancel :done done :buffer buffer)
-        (ignore-errors (sb-posix:close fd))))))
+        (ignoring-errors-reported ("closing ~a" path) (sb-posix:close fd))))))
 
 (defun copy-file-checked (source target &key sum (cancel (list nil)))
   "Copy the file SOURCE (where it leads, when it is a link) to TARGET, a new
@@ -233,20 +233,22 @@ less."
                     (tuatara.runtime:job-check-stop)
                     (return-from copy-file-checked nil))
                   (wrong (words)
-                    (ignore-errors (tuatara.io:remove-file target))
+                    (ignoring-errors-reported ("taking away ~a" target) (tuatara.io:remove-file target))
                     (error words)))
              (let ((original (or sum (fd-sha256 in source :cancel cancel :buffer buffer))))
                (unless original
                  (when (car cancel) (stopped))
                  (error "~a could not be summed: nothing copied" source))
                (unless (tuatara.io:copy-open-file-to in source target :cancel cancel)
-                 (ignore-errors (tuatara.io:remove-file target))
+                 (ignoring-errors-reported ("taking away ~a" target) (tuatara.io:remove-file target))
                  (stopped))
                (unless (tuatara.io:same-content-p before (tuatara.io:fd-stamp in source))
                  (wrong (format nil "~a changed while it was copied: the copy at ~a taken away" source target)))
                (let ((copy (file-sha256 target :cancel cancel :buffer buffer)))
                  (unless (equal original copy)
-                   (when (car cancel) (ignore-errors (tuatara.io:remove-file target)) (stopped))
+                   (when (car cancel)
+                     (ignoring-errors-reported ("taking away ~a" target) (tuatara.io:remove-file target))
+                     (stopped))
                    (wrong (format nil "the copy at ~a does not have its original's SHA-256: taken away" target)))
                  (values copy original)))))
       (sb-posix:close in))))

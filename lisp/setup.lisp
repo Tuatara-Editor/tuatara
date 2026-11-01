@@ -121,7 +121,7 @@ when there is none."
   "Call FUNCTION, a step of starting the editor that follows the init file's
 settings; when it fails, say in *Messages* that WHAT failed and why, and go
 on, so that a setting written wrong never stops the editor starting."
-  (handler-case (funcall function)
+  (handler-case (reporting-errors ("~a" what) (funcall function))
     (error (e)
       (message "~a failed (check the init file's settings): ~a" what e)
       nil)))
@@ -298,9 +298,12 @@ so that \\`C-c' shows, and runs, what the buffer at hand can do in every mode
     (after-init-step "Moving the logs to *cache-directory*"
                      (lambda ()
                        ;; each folder the init file named looked at now, so that one not there is said at once
-                       (when *cache-directory* (ignore-errors (tuatara.io:cache-directory)))
-                       (when *state-directory* (ignore-errors (tuatara.io:state-directory)))
-                       (when *packages-directory* (ignore-errors (packages-directory)))
+                       (when *cache-directory*
+                         (ignoring-errors-reported ("making the cache directory") (tuatara.io:cache-directory)))
+                       (when *state-directory*
+                         (ignoring-errors-reported ("making the state directory") (tuatara.io:state-directory)))
+                       (when *packages-directory*
+                         (ignoring-errors-reported ("making the packages directory") (packages-directory)))
                        (let ((words (tuatara.io:directories-in-memory-words)))
                          (when words (message "~{~a~^; ~}" words)))
                        (tuatara.io:move-session-log)

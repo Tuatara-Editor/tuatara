@@ -20,7 +20,7 @@ a name looked for where the sandbox finds programs (SANDBOX-FIND-PROGRAM)."
 
 (defun appimage-p (path)
   "True when the file at PATH is an AppImage: an ELF program with the AppImage type 2 mark."
-  (let ((head (ignore-errors (tuatara.io:file-head path 12))))
+  (let ((head (ignoring-errors-reported ("reading ~a" path) (tuatara.io:file-head path 12))))
     (and head (>= (length head) 11)
          (tuatara.io:octets-at-p head '(#x7f 69 76 70))
          (= (aref head 8) 65) (= (aref head 9) 73) (= (aref head 10) 2))))
@@ -37,14 +37,17 @@ heeded once it is done."
          (folder (tuatara.io:path-join root (format nil "~d-~d/" (tuatara.io:stamp-size stamp) (tuatara.io:stamp-mtime stamp))))
          (unpacked (concatenate 'string folder "squashfs-root/")))
     (unless (eq :regular (tuatara.io:path-kind (concatenate 'string unpacked "AppRun")))
-      (dolist (old (ignore-errors (tuatara.io:directory-entries root)))
-        (ignore-errors (tuatara.io:delete-tree (tuatara.io:path-join root (first old)))))
+      (dolist (old (ignoring-errors-reported ("listing ~a" root) (tuatara.io:directory-entries root)))
+        (ignoring-errors-reported ("deleting ~a~a" root (first old))
+          (tuatara.io:delete-tree (tuatara.io:path-join root (first old)))))
       (tuatara.io:ensure-private-directory folder)
       (let ((ended-well (nth-value 1 (tuatara.io:program-output (list program "--appimage-extract")
                                                                 :capture nil :seconds 600 :directory folder))))
-        (when (car cancel) (ignore-errors (tuatara.io:delete-tree folder)) (tuatara.runtime:job-check-stop))
+        (when (car cancel)
+          (ignoring-errors-reported ("deleting ~a" folder) (tuatara.io:delete-tree folder))
+          (tuatara.runtime:job-check-stop))
         (unless (and ended-well (eq :regular (tuatara.io:path-kind (concatenate 'string unpacked "AppRun"))))
-          (ignore-errors (tuatara.io:delete-tree folder))
+          (ignoring-errors-reported ("deleting ~a" folder) (tuatara.io:delete-tree folder))
           (error "~a could not be unpacked" (abbreviated-path program)))))
     unpacked))
 
@@ -99,7 +102,8 @@ copies RUN-ON-COPIES gives back."
 AppImage may print a line of its own before; NIL when there is none."
   (let* ((text (tuatara.text:lenient-string output))
          (start (position #\{ text)))
-    (and start (ignore-errors (tuatara.text:json-read text :start start)))))
+    (and start (ignoring-errors-reported ("reading a program's output as JSON")
+                 (tuatara.text:json-read text :start start)))))
 
 (defun run-on-copies (program groups arguments &rest keys &key cancel (memory tuatara-user:*sandbox-memory*) directories
                       &allow-other-keys)

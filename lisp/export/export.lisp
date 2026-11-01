@@ -72,7 +72,7 @@ release first, for a program of *LATEX-ENGINES* the PATH does not have.")
   "The full path of the program NAME in the newest TeX Live release under
 *TEX-LIVE-DIRECTORIES* that has it, or NIL."
   (dolist (root *tex-live-directories*)
-    (let ((root (ignore-errors (tuatara.io:native (tuatara.io:expand-path root)))))
+    (let ((root (ignoring-errors-reported ("expanding ~a" root) (tuatara.io:native (tuatara.io:expand-path root)))))
       (when root
         (dolist (release (sort (loop for (entry kind) in (tuatara.io:directory-entries root)
                                      when (and (eq kind :directory) (every #'digit-char-p entry)) collect entry)
@@ -345,13 +345,16 @@ pictures or PDFs by their contents (*LATEX-PICTURE-FILE-KINDS*): those a
 LaTeX program shut in is shown, each alone and read only, wherever they are.
 A note's own text, or a file that came with it, cannot have a file of yours
 from elsewhere shown, however it writes its name."
-  (let ((text (ignore-errors (tuatara.io:file-text tex :limit (* 64 1024 1024)))) (files '()))
+  (let ((text (ignoring-errors-reported ("reading ~a" tex) (tuatara.io:file-text tex :limit (* 64 1024 1024))))
+        (files '()))
     (when text
       (cl-ppcre:do-register-groups (name) ("\\\\includegraphics\\s*(?:\\[[^\\]]*\\])?\\s*\\{([^}\\n]+)\\}" text)
         (let ((native (and (or (uiop:string-prefix-p "/" name) (uiop:string-prefix-p "~/" name))
                            (some (lambda (own) (search name own)) trusted)
-                           (ignore-errors (tuatara.io:native (tuatara.io:expand-path name))))))
-          (when (and native (member (nth-value 1 (ignore-errors (file-kind native))) *latex-picture-file-kinds*))
+                           (ignoring-errors-reported ("expanding ~a" name)
+                             (tuatara.io:native (tuatara.io:expand-path name))))))
+          (when (and native (member (nth-value 1 (ignoring-errors-reported ("reading ~a" native) (file-kind native)))
+                                    *latex-picture-file-kinds*))
             (pushnew native files :test #'string=)))))
     (nreverse files)))
 
@@ -375,13 +378,16 @@ LaTeX file exported as it is when it stands in your own folders
         (list :directories (append (let ((folders (list (tuatara.io:parent-path tex) (tuatara.io:parent-path (pdf-export-source job)))))
                                      (if (every #'shown-whole-p folders) folders (list tex)))
                                    (loop for folder in *export-trusted-folders*
-                                         for native = (ignore-errors (tuatara.io:native (tuatara.io:expand-path folder)))
+                                         for native = (ignoring-errors-reported ("expanding ~a" folder)
+                                                        (tuatara.io:native (tuatara.io:expand-path folder)))
                                          when (and native (shown-whole-p native)) collect native)
                                    (pdf-export-pictures job)
                                    trees
                                    (latex-picture-files tex (if (eq (pdf-export-kind job) :latex)
                                                                 ;; a LaTeX file of your own, in your own folders
-                                                                (let ((text (and (export-trusted-path-p tex) (ignore-errors (tuatara.io:file-text tex :limit (* 64 1024 1024))))))
+                                                                (let ((text (and (export-trusted-path-p tex)
+                                                                                  (ignoring-errors-reported ("reading ~a" tex)
+                                                                                    (tuatara.io:file-text tex :limit (* 64 1024 1024))))))
                                                                   (and text (list text)))
                                                                 (pdf-export-trusted job)))
                                    (list (format nil "~a/fontconfig" config) (format nil "~a/fontconfig" cache))
@@ -516,16 +522,16 @@ where it says what went wrong and whether to run it again.")
   "The end of LOG, a LaTeX program's log, as text: its last *LATEX-LOG-TAIL*
 octets, from the first line that begins within them; an empty string when
 there is none."
-  (or (ignore-errors
-       (tuatara.io:call-with-file
-        log
-        (lambda (fd path size)
-          (let* ((from (max 0 (- size *latex-log-tail*)))
-                 (octets (make-array (- size from) :element-type '(unsigned-byte 8)))
-                 (text (tuatara.text:lenient-string octets :end (tuatara.io:read-fd-at fd octets from :path path))))
-            (if (plusp from)
-                (subseq text (1+ (or (position #\Newline text) (1- (length text)))))
-                text)))))
+  (or (ignoring-errors-reported ("reading ~a" log)
+        (tuatara.io:call-with-file
+         log
+         (lambda (fd path size)
+           (let* ((from (max 0 (- size *latex-log-tail*)))
+                  (octets (make-array (- size from) :element-type '(unsigned-byte 8)))
+                  (text (tuatara.text:lenient-string octets :end (tuatara.io:read-fd-at fd octets from :path path))))
+             (if (plusp from)
+                 (subseq text (1+ (or (position #\Newline text) (1- (length text)))))
+                 text)))))
       ""))
 
 (defun latex-errors (log)
@@ -565,7 +571,8 @@ to the folder followed, under the name it was found by (xelatex, which may
 itself be a link to another program that reads its name): so that it, its
 folder and the folders of TeX kpsewhich names agree. PATH as it is when its
 folder is not there."
-  (let ((folder (ignore-errors (tuatara.io:real-path (tuatara.io:parent-path path)))))
+  (let ((folder (ignoring-errors-reported ("finding where ~a is" path)
+                  (tuatara.io:real-path (tuatara.io:parent-path path)))))
     (if folder (tuatara.io:path-join folder (tuatara.io:native-file-name path)) path)))
 
 (defun run-latex (job tex engine path)
@@ -606,7 +613,8 @@ with no network. Where there is no sandbox (bwrap missing, or turned off by
                           ;; its full name, which a name beginning with - cannot be taken for an option in
                           tex)))
     (flet ((attempt ()
-             (ignore-errors (tuatara.io:remove-file pdf))
+             (ignoring-errors-reported ("deleting ~a" pdf)
+               (handler-case (tuatara.io:remove-file pdf) (tuatara.io:file-system-error () nil)))
              (loop for run from 1 to *latex-runs*
                    do (setf (pdf-export-step job) (format nil "running ~a~:[~*~; (~:r time)~]" engine (> run 1) run))
                       (let ((before (cross-references directory stem)))
@@ -627,8 +635,10 @@ with no network. Where there is no sandbox (bwrap missing, or turned off by
         (multiple-value-bind (made why) (attempt)
           (if (or made (not had-files))
               (values made why)
-              (progn (dolist (entry (ignore-errors (tuatara.io:directory-entries directory)))
-                       (ignore-errors (tuatara.io:delete-tree (tuatara.io:path-join directory (first entry)))))
+              (progn (dolist (entry (ignoring-errors-reported ("listing ~a" directory)
+                                      (tuatara.io:directory-entries directory)))
+                       (ignoring-errors-reported ("deleting ~a~a" directory (first entry))
+                         (tuatara.io:delete-tree (tuatara.io:path-join directory (first entry)))))
                      (attempt))))))))
 
 (defun put-pdf (made target)
@@ -636,10 +646,12 @@ with no network. Where there is no sandbox (bwrap missing, or turned off by
 of TARGET reads either the old PDF or the new, never half of one."
   (let ((temporary (tuatara.io:scratch-name (tuatara.io:parent-path target) "pdf")))
     (unless (tuatara.io:copy-regular-file made temporary)
-      (ignore-errors (tuatara.io:remove-file temporary))
+      (ignoring-errors-reported ("deleting ~a" temporary) (tuatara.io:remove-file temporary))
       (error "~a could not be written" target))
     (handler-case (tuatara.io:rename-path temporary target :replace t)
-      (error (e) (ignore-errors (tuatara.io:remove-file temporary)) (error e)))))
+      (error (e)
+        (ignoring-errors-reported ("deleting ~a" temporary) (tuatara.io:remove-file temporary))
+        (error e)))))
 
 (defun error-place (job problem)
   "Where PROBLEM, one of LATEX-ERRORS, is in what JOB was asked to make a PDF

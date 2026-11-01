@@ -398,7 +398,7 @@ a date asked for reads (READ-DATE-TEXT: fri, +3d, oct 3); NIL for none."
     (multiple-value-bind (y m d at) (written-date-at text 0 end :iso)
       (cond ((eql at end) (day-number y m d))
             (month (and (<= 1 month 12) (day-number (fixed-digits text 0 4 end) month 1)))
-            (t (values (ignore-errors (read-date-text text (org-today)))))))))
+            (t (values (ignoring-errors-reported ("reading the date ~a" text) (read-date-text text (org-today)))))))))
 
 (define-command calendar-goto-date ()
   "Move point to a date asked for: 2026-12-24, 2026-12, or as any date asked

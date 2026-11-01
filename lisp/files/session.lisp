@@ -43,7 +43,8 @@ not kept (help, lists, terminals, buffers with no file, an encrypted file's text
          ;; a view (a PDF's pages, a picture, an Office document's pages or text) kept by the file it shows
          (file (and (not directory)
                     (or (tuatara.buffer:buffer-file buffer)
-                        (ignore-errors (shown-file buffer))
+                        (ignoring-errors-reported ("finding the file ~a shows" (tuatara.buffer:buffer-name buffer))
+                          (shown-file buffer))
                         (tuatara.buffer:buffer-local buffer 'office-reading)))))
     (cond ((tuatara.io:buffer-plaintext-p buffer) nil)
           (directory (list :directory 0 directory))
@@ -98,9 +99,9 @@ puts back an older session. It returns NIL when it could not write."
       (sb-thread:with-mutex (*session-lock*)
         (when (> number (cdr *session-numbers*))
           (setf (cdr *session-numbers*) number)
-          (ignore-errors
-           (tuatara.io:write-private-file (session-path) (format nil "~{~a~%~}" lines))
-           t))))))
+          (ignoring-errors-reported ("writing the session")
+            (tuatara.io:write-private-file (session-path) (format nil "~{~a~%~}" lines))
+            t))))))
 
 (defvar *session-looked* nil
   "When the session was last looked at to be written (an internal real time), or NIL.")
@@ -114,7 +115,7 @@ the seconds until the next look."
            (due (if *session-looked* (+ *session-looked* (* *keep-session-interval* internal-time-units-per-second)) now)))
       (if (< now due)
           (/ (- due now) internal-time-units-per-second)
-          (let ((lines (ignore-errors (session-lines editor))))
+          (let ((lines (ignoring-errors-reported ("gathering the session") (session-lines editor))))
             (setf *session-looked* now)
             (when (and lines (not (equal lines *session-written*)))
               (setf *session-written* lines)
@@ -124,7 +125,7 @@ the seconds until the next look."
 (defun session-at-exit (editor)
   "Write the session as the editor stops (*KEEP-SESSION*)."
   (when *keep-session*
-    (let ((lines (ignore-errors (session-lines editor))))
+    (let ((lines (ignoring-errors-reported ("gathering the session") (session-lines editor))))
       (when lines (funcall (session-writer lines))))))
 
 ;;; Read again
@@ -135,7 +136,8 @@ TARGET), and the windows' layout, a tree of (:SPLIT ARRANGEMENT SHARES .
 CHILDREN) and (:WINDOW SELECTED START ENTRY), ENTRY NIL for a window whose
 buffer is not kept; NIL when there is none or it is not one this editor
 wrote. Read as text: nothing in it is evaluated."
-  (let* ((text (ignore-errors (tuatara.io:file-text (session-path) :limit (* 4 1024 1024))))
+  (let* ((text (ignoring-errors-reported ("reading the session")
+                 (tuatara.io:file-text (session-path) :limit (* 4 1024 1024))))
          (lines (and text (uiop:split-string text :separator '(#\Newline)))))
     (when (and lines (string= (first lines) "tuatara session 1"))
       (let ((rest (rest lines)) (buffers '()))
@@ -164,7 +166,7 @@ wrote. Read as text: nothing in it is evaluated."
                                       (and (not (string= (fourth words) "none")) (entry (nthcdr 3 words))))))
                              (t (error "Not a line of the session file: ~a" line)))))))
           (handler-case
-              (progn
+              (reporting-errors ("reading the session")
                 (loop while (and rest (uiop:string-prefix-p "buffer " (first rest)))
                       do (let ((entry (entry (rest (words (pop rest))))))
                            (when entry (push entry buffers))))
@@ -183,12 +185,12 @@ else."
   "Open again the buffer ENTRY of the session (KIND POINT TARGET), point where it
 was; NIL when it cannot be (a file no longer there)."
   (destructuring-bind (kind point target) entry
-    (let ((buffer (ignore-errors
-                   (case kind
-                     ((:file :safe) (and (tuatara.io:path-stamp target)
-                                         (nth-value 0 (visit-path target :safe (eq kind :safe) :show #'identity))))
-                     (:directory (and (tuatara.io:path-stamp target) (nth-value 0 (visit-path target :show #'identity))))
-                     (:scratch (tuatara.buffer:find-buffer target))))))
+    (let ((buffer (ignoring-errors-reported ("opening ~a again" target)
+                    (case kind
+                      ((:file :safe) (and (tuatara.io:path-stamp target)
+                                          (nth-value 0 (visit-path target :safe (eq kind :safe) :show #'identity))))
+                      (:directory (and (tuatara.io:path-stamp target) (nth-value 0 (visit-path target :show #'identity))))
+                      (:scratch (tuatara.buffer:find-buffer target))))))
       (when (and buffer (not (eq kind :directory)))
         (setf (tuatara.buffer:buffer-point buffer) (min point (tuatara.buffer:buffer-size buffer))))
       buffer)))
@@ -252,7 +254,7 @@ first window there; windows that do not fit are left out. Started with files,
 the session's files opened behind them instead (SESSION-BUFFERS-BEHIND)."
   (setf *tick-functions* (remove 'session-layout-tick *tick-functions*))
   (when (and *keep-session* (not *session-opened*))
-    (ignore-errors (session-buffers-behind editor)))
+    (ignoring-errors-reported ("opening the session's files") (session-buffers-behind editor)))
   (let ((layout (shiftf *session-layout* nil)))
     (when layout
       (destructuring-bind (tree . opened) layout
@@ -273,14 +275,15 @@ the session's files opened behind them instead (SESSION-BUFFERS-BEHIND)."
                            (let ((windows (list window)) (side (if (eq arrangement :stacked) :below :right)))
                              (dolist (child (rest children))
                                (declare (ignore child))
-                               (let ((new (ignore-errors (split-window (car (last windows)) side))))
+                               (let ((new (ignoring-errors-reported ("splitting a window")
+                                            (split-window (car (last windows)) side))))
                                  (when new (setf windows (append windows (list new))))))
                              ;; the shares as they were, among the windows made
                              (let ((made (subseq shares 0 (length windows))))
                                (loop for w in windows for share in made
                                      do (setf (tuatara.display:area-share w) (/ share (reduce #'+ made)))))
                              (loop for w in windows for child in children do (build w child)))))))
-            (ignore-errors (build (editor-window editor) tree)))
+            (ignoring-errors-reported ("laying out the session's windows") (build (editor-window editor) tree)))
           (fit-windows editor)
           (when selected (select-window selected editor))))))
   nil)

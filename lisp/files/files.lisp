@@ -529,16 +529,21 @@ where their links lead (PATH-WITHIN-P, REALLY-WITHIN-P), or NIL; T when
 *SAFE-DIRECTORIES* cannot be read, every file then counting as in one.
 Where a link leads is looked for only when there are directories."
   (handler-case
-      (let ((directories (safe-directories)))
-        (when directories
-          (let* ((path (or (ignore-errors (tuatara.io:native (tuatara.io:expand-path path))) path))
-                 (leads-to (or (ignore-errors (tuatara.io:real-path-so-far path)) path)))
-            (find-if (lambda (directory)
-                       (let ((directory (tuatara.io:native (tuatara.io:expand-path directory))))
-                         (or (tuatara.io:path-within-p path directory)
-                             (tuatara.io:path-within-p leads-to directory)
-                             (tuatara.io:really-within-p path directory))))
-                     directories))))
+      (reporting-errors ("looking for ~a in the safe directories" path)
+        (let ((directories (safe-directories)))
+          (when directories
+            (let* ((path (or (ignoring-errors-reported ("expanding ~a" path)
+                               (tuatara.io:native (tuatara.io:expand-path path)))
+                             path))
+                   (leads-to (or (ignoring-errors-reported ("following the links of ~a" path)
+                                   (tuatara.io:real-path-so-far path))
+                                 path)))
+              (find-if (lambda (directory)
+                         (let ((directory (tuatara.io:native (tuatara.io:expand-path directory))))
+                           (or (tuatara.io:path-within-p path directory)
+                               (tuatara.io:path-within-p leads-to directory)
+                               (tuatara.io:really-within-p path directory))))
+                       directories)))))
     (error () t)))
 
 (defun visit-safely-reason (path &optional stamp)
@@ -604,7 +609,7 @@ the same object as before, or alike, costs nothing to compare: a directory
 kept read has tens of thousands), and tell each part of those found changed."
   (declare (ignore editor))
   (let ((wanted (loop for (want) in *directory-followers*
-                      collect (ignore-errors (funcall want)))))
+                      collect (ignoring-errors-reported ("asking which directories to follow") (funcall want)))))
     (unless (and (= (length wanted) (length *directories-followed*))
                  (every (lambda (new old) (or (eq new old) (equal new old))) wanted *directories-followed*))
       (setf *directories-followed* wanted)
@@ -612,7 +617,7 @@ kept read has tens of thousands), and tell each part of those found changed."
     (let ((changed (tuatara.io:take-directory-news)))
       (when changed
         (loop for (nil . told) in *directory-followers*
-              do (ignore-errors (funcall told changed))))))
+              do (ignoring-errors-reported ("telling of directories changed") (funcall told changed))))))
   nil)
 
 (defun follow-directories-for (wanted changed)

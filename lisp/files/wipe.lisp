@@ -23,7 +23,7 @@ that does not (a copy-on-write file system, a solid-state drive).")
 (defun wipe-caveat (paths)
   "What wiping PATHS cannot promise, in a few words: a copy-on-write file
 system keeps old copies of their blocks; a solid-state drive may."
-  (if (some (lambda (path) (ignore-errors (tuatara.io:copy-on-write-p path))) paths)
+  (if (some (lambda (path) (ignoring-errors-reported ("examining ~a" path) (tuatara.io:copy-on-write-p path))) paths)
       "its file system keeps old copies (copy-on-write)"
       "an SSD may keep old copies"))
 
@@ -70,25 +70,29 @@ at PATH, a named pipe or a device, is refused without being opened."
                            always (and (<= (+ at n) (length octets))
                                        (not (mismatch piece octets :end1 n :start2 at :end2 (+ at n)))))
                   (fill piece 0))))
-      (ignore-errors (sb-posix:close fd)))))
+      (ignoring-errors-reported ("closing ~a" path) (sb-posix:close fd)))))
 
 (defun start-wiping (paths &key same-as)
   "Wipe PATHS in the background (TUATARA.IO:WIPE-FILE, *WIPE-PASSES* times);
 with SAME-AS, octets, the one path only once it is seen to hold them
 \(FILE-HOLDS-P), none wiped else, and SAME-AS overwritten with zeros after."
-  (let ((total (* *wipe-passes* (loop for path in paths sum (or (ignore-errors (tuatara.io:stamp-size (tuatara.io:path-stamp path))) 0)))))
+  (let ((total (* *wipe-passes* (loop for path in paths
+                                      sum (let ((stamp (tuatara.io:path-stamp path :failure nil)))
+                                            (if stamp (tuatara.io:stamp-size stamp) 0))))))
     (tuatara.runtime:start-job-thread
      (make-wipe-job (current-buffer) paths total)
      (let ((passes *wipe-passes*))
        (lambda (job)
-         (if (and same-as (not (unwind-protect (ignore-errors (file-holds-p (first paths) same-as))
+         (if (and same-as (not (unwind-protect (ignoring-errors-reported ("comparing ~a" (first paths))
+                                                 (file-holds-p (first paths) same-as))
                                  (fill same-as 0))))
              (setf (wipe-job-refused job)
                    (format nil "~a is not wiped: what was encrypted does not hold the same octets"
                            (tuatara.io:native-file-name (first paths))))
              (let ((before 0))
                (dolist (path (wipe-job-paths job))
-                 (let ((size (* passes (or (ignore-errors (tuatara.io:stamp-size (tuatara.io:path-stamp path))) 0))))
+                 (let ((size (* passes (let ((stamp (tuatara.io:path-stamp path :failure nil)))
+                                         (if stamp (tuatara.io:stamp-size stamp) 0)))))
                    (when (eq :stopped (tuatara.io:wipe-file path :passes passes :cancel (tuatara.runtime:job-cancel job)
                                                                   :progress (lambda (n) (setf (wipe-job-done job) (+ before n)))))
                      (tuatara.runtime:job-check-stop))
@@ -127,7 +131,7 @@ one of your own keys among its :KEYS."
         (some (lambda (key)
                 (and (getf key :secret)
                      (some (lambda (id) (member id ids :test #'string-equal)) (cons (getf key :id) (getf key :subkeys)))))
-              (ignore-errors (gpg-keys))))))
+              (ignoring-errors-reported ("listing the keys") (gpg-keys))))))
 
 (defun wipe-original-question (what encryption caveat)
   "The question whether to wipe WHAT once encrypted as ENCRYPTION says, CAVEAT

@@ -97,7 +97,8 @@ NAME.so in the folder you add them to, or kept from it, whose name Tuatara
 has no grammar of."
   (remove-duplicates
    (loop for folder in (remove nil (list (tuatara.syntax:user-grammar-directory) (tuatara.syntax:user-grammar-store)))
-         append (loop for path in (ignore-errors (directory (merge-pathnames "*.so" folder) :resolve-symlinks nil))
+         append (loop for path in (ignoring-errors-reported ("listing ~a" folder)
+                                    (directory (merge-pathnames "*.so" folder) :resolve-symlinks nil))
                       for name = (pathname-name path)
                       when (tuatara.syntax:user-grammar-p name) collect name))
    :test #'string=))
@@ -201,9 +202,10 @@ the disk: the file is looked at when the grammar is loaded."
 and its size: a plain file there, not a link (never followed); NIL when
 there is none such."
   (let* ((path (uiop:native-namestring (merge-pathnames (format nil "~a.so" name) (tuatara.syntax:user-grammar-directory))))
-         (fd (ignore-errors (sb-posix:open path (logior sb-posix:o-rdonly sb-posix:o-nofollow #o2000000)))))
+         (fd (handler-case (sb-posix:open path (logior sb-posix:o-rdonly sb-posix:o-nofollow #o2000000))
+               (sb-posix:syscall-error () nil))))
     (when fd
-      (let ((stat (ignore-errors (sb-posix:fstat fd))))
+      (let ((stat (handler-case (sb-posix:fstat fd) (sb-posix:syscall-error () nil))))
         (if (and stat (= (logand (sb-posix:stat-mode stat) sb-posix:s-ifmt) sb-posix:s-ifreg))
             (values fd (sb-posix:stat-size stat))
             (progn (sb-posix:close fd) nil))))))
@@ -243,7 +245,8 @@ is not a plain file there, is larger than *USER-GRAMMAR-LARGEST*, or could
 not be kept (a full disk, the folder no use), said once."
   (multiple-value-bind (fd size) (open-user-grammar name)
     (when fd
-      (let ((octets (unwind-protect (ignore-errors (tuatara.io:fd-octets fd name size *user-grammar-largest*))
+      (let ((octets (unwind-protect (ignoring-errors-reported ("reading the ~a grammar" name)
+                                      (tuatara.io:fd-octets fd name size *user-grammar-largest*))
                       (sb-posix:close fd)))
             (store (tuatara.syntax:user-grammar-store)))
         (cond ((null octets) nil)
@@ -252,15 +255,16 @@ not be kept (a full disk, the folder no use), said once."
                         (new (merge-pathnames (format nil "~a.so.~a" name (tuatara.io:random-name)) store))
                         (sum (octets-sha256 octets)))
                    (handler-case
-                       (progn (tuatara.io:write-new-file new octets :sync t)
-                              (sb-posix:rename (uiop:native-namestring new) (uiop:native-namestring path))
-                              (state-list-put *user-grammar-sums* (list (cons name sum)))
-                              (setf (gethash name (user-grammar-records)) sum)
-                              (remhash name *user-grammar-verdicts*)
-                              (remhash name *store-failures-said*)
-                              sum)
+                       (reporting-errors ("keeping the ~a grammar" name)
+                         (tuatara.io:write-new-file new octets :sync t)
+                         (sb-posix:rename (uiop:native-namestring new) (uiop:native-namestring path))
+                         (state-list-put *user-grammar-sums* (list (cons name sum)))
+                         (setf (gethash name (user-grammar-records)) sum)
+                         (remhash name *user-grammar-verdicts*)
+                         (remhash name *store-failures-said*)
+                         sum)
                      (error (e)
-                       (ignore-errors (delete-file new))
+                       (ignoring-errors-reported ("deleting ~a" new) (delete-file new))
                        (store-failed name (tuatara.text:one-line (princ-to-string e))))))))))))
 
 (defun user-grammar-allowed-p (name)
@@ -297,7 +301,7 @@ loading it."
 (defun language-words (language)
   "LANGUAGE named for a person: the mode-line name of its first mode, else its own name."
   (let ((mode (first (language-modes language))))
-    (or (and mode (ignore-errors (tuatara.modes:mode-lighter mode)))
+    (or (and mode (ignoring-errors-reported ("naming ~(~a~)" mode) (tuatara.modes:mode-lighter mode)))
         (string-downcase (symbol-name (language-name language))))))
 
 (defun note-grammar-answer (language on)

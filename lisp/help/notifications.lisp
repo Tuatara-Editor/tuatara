@@ -71,8 +71,9 @@ same. Title and words are kept on one line, cut where they are long
         (defer-action (lambda () (log-notification line)))
         (log-notification line))
     (cond (program
-           (handler-case (progn (start-detached program (notify-arguments title words) :label "notification") t)
-             (error () nil)))
+           (values (ignoring-errors-reported ("starting ~a" program)
+                     (start-detached program (notify-arguments title words) :label "notification")
+                     t)))
           ((and desktop *notify-program* (not **notify-missing-said**))
            (setf **notify-missing-said** t)
            (message "~a is not installed: notifications are kept in *Notifications* only (\\[view-notifications]); ~a"

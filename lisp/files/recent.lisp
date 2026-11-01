@@ -97,7 +97,8 @@ can be chosen. The file of the current buffer is left out, so that
 file selected is shown meanwhile, opened safely."
   (let* ((current (let ((file (tuatara.buffer:buffer-file (current-buffer))))
                     (and file (tuatara.io:native file))))
-         (entries (remove current (ignore-errors (read-recent-files)) :key #'car :test #'equal)))
+         (entries (remove current (ignoring-errors-reported ("reading the recent files") (read-recent-files))
+                          :key #'car :test #'equal)))
     (if (null entries)
         (message "No recent files")
         (let* ((stamps (make-hash-table :test 'equal))
@@ -135,7 +136,7 @@ just renamed, visited safely or not as it was."
   "The paths of ENTRIES, (PATH . SAFE) of the list of recent files, that name
 no file any more. One that cannot be looked at is not counted gone."
   (remove-duplicates (loop for (path) in entries
-                           when (ignore-errors (null (tuatara.io:path-stamp path)))
+                           when (ignoring-errors-reported ("examining ~a" path) (null (tuatara.io:path-stamp path)))
                              collect path)
                      :test #'string=))
 
@@ -150,13 +151,15 @@ the list then loses (RECENT-FILES-TICK), so that a drive not answering cannot
 hold the editor up. How many went is said, and kept in *Messages*."
   (when (and *remember-recent-files* *recent-files-auto-cleanup* (not *recent-files-cleaned*))
     (setf *recent-files-cleaned* t)
-    (let ((entries (ignore-errors (read-recent-files))))
+    (let ((entries (ignoring-errors-reported ("reading the recent files") (read-recent-files))))
       (if (null entries)
           (say-recent-files-cleaned 0)
           (setf *recent-files-cleaner*
                 (tuatara.runtime:make-guarded-thread
                  (lambda ()
-                   (setf *recent-files-gone* (handler-case (gone-recent-files entries) (error () :failed)))
+                   (setf *recent-files-gone* (handler-case (reporting-errors ("looking for recent files gone")
+                                                             (gone-recent-files entries))
+                                               (error () :failed)))
                    (wake-editor editor))
                  :name "tuatara recent files"))))))
 

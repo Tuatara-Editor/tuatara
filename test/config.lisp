@@ -441,3 +441,25 @@ commented inside another one commented (;;   ;; (setf ...) in a load-package's
                                 (tuatara.defaults::lisp-definitions name)))))
       (dolist (name names) (fmakunbound name))
       (uiop:delete-directory-tree dir :validate (lambda (p) (search "/init-" (namestring p)))))))
+
+(define-test (config starter-config-failure-reported)
+  ;; a folder that may not be looked into: not written, and why; with debug mode on, in its log too
+  (with-test-directory (dir)
+    (let* ((folder (ensure-directories-exist (merge-pathnames "closed/" dir)))
+           (file (namestring (merge-pathnames "tuatara/init.lisp" folder))))
+      (drain-debug-reports)
+      (sb-posix:chmod (namestring folder) 0)
+      (unwind-protect
+           (progn
+             (multiple-value-bind (written why) (tuatara.defaults::write-starter-config file)
+               (false written)
+               (true (stringp why)))
+             (tuatara.runtime:set-debug t)
+             (false (tuatara.defaults::write-starter-config file))
+             (let ((texts (loop for report = (sb-concurrency:dequeue tuatara.runtime:*debug-reports*)
+                                while report collect (princ-to-string (fourth report)))))
+               (true (find-if (lambda (text) (search (format nil "writing the starter init file ~a failed" file) text))
+                              texts)
+                     "~s" texts)))
+        (sb-posix:chmod (namestring folder) #o700)
+        (drain-debug-reports)))))

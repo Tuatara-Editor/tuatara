@@ -474,7 +474,7 @@ the editor woken when it took in all there was before."
         (setf (compile-job-asleep job) nil wake t)))
     (when wake
       (let ((waker (tuatara.runtime:job-wake job)))
-        (when waker (ignore-errors (funcall waker)))))))
+        (when waker (ignoring-errors-reported ("waking the compilation's reader") (funcall waker)))))))
 
 (defstruct (output-scan (:constructor make-output-scan (run offset &aux (line-start offset))) (:copier nil))
   "Where the reading of a compile's output has got, for finding its lines of

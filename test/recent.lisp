@@ -307,3 +307,24 @@ directory removed afterwards."
       ;; written again by another session: read again here
       (tuatara.io:write-private-file file (format nil "/third/one~%/mine/file~%"))
       (is equal '("/third/one" "/mine/file") (tuatara.defaults::chosen-paths)))))
+
+(define-test (recent-files unexamined-not-gone)
+  ;; a file in a folder that may not be looked into is not counted gone, and with debug mode on
+  ;; why it could not be looked at is in its log; a file not there is gone
+  (with-test-directory (dir)
+    (let* ((folder (ensure-directories-exist (merge-pathnames "closed/" dir)))
+           (path (tuatara.io:native (put-file (merge-pathnames "inside.txt" folder) "text")))
+           (missing (tuatara.io:native (merge-pathnames "missing.txt" dir))))
+      (drain-debug-reports)
+      (sb-posix:chmod (namestring folder) 0)
+      (unwind-protect
+           (progn
+             (is equal (list missing) (tuatara.defaults::gone-recent-files (list (list path) (list missing))))
+             (tuatara.runtime:set-debug t)
+             (is equal (list missing) (tuatara.defaults::gone-recent-files (list (list path) (list missing))))
+             (let ((texts (loop for report = (sb-concurrency:dequeue tuatara.runtime:*debug-reports*)
+                                while report collect (princ-to-string (fourth report)))))
+               (true (find-if (lambda (text) (search (format nil "examining ~a failed" path) text)) texts)
+                     "~s" texts)))
+        (sb-posix:chmod (namestring folder) #o700)
+        (drain-debug-reports)))))

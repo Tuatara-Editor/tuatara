@@ -44,7 +44,8 @@ again.")
 (defun real-folder (path)
   "Where the folder PATH really is, every link followed and . and .. taken out,
 ending in /; NIL when it is not there."
-  (let ((real (ignore-errors (tuatara.io:real-path (tuatara.io:native (tuatara.io:expand-path path))))))
+  (let ((real (ignoring-errors-reported ("finding where ~a is" path)
+                (tuatara.io:real-path (tuatara.io:native (tuatara.io:expand-path path))))))
     (and real (tuatara.io:slash-ended real))))
 
 (defvar *trusted-folders-seen* '()
@@ -96,7 +97,8 @@ only when asked, *LSP-TRUSTED-PROJECTS* or *EVIDENCE-FOLDERS* change."
         (cdr seen)
         ;; where the file really is, every link followed: a link in a trusted
         ;; project to a file elsewhere lends it no trust
-        (let* ((real (and file (ignore-errors (tuatara.io:real-path (tuatara.io:native (tuatara.io:expand-path file))))))
+        (let* ((real (and file (ignoring-errors-reported ("finding where ~a is" file)
+                                 (tuatara.io:real-path (tuatara.io:native (tuatara.io:expand-path file))))))
                (answer (and real
                             (let ((root (project-root (tuatara.io:parent-path real))))
                               (and root (project-trusted-p root) t)))))
@@ -194,7 +196,9 @@ folder of *LSP-TRUSTED-PROJECTS* stays trusted whatever is answered."
   (let* ((buffer (current-buffer))
          (root (or (tuatara.buffer:buffer-local buffer 'git-top)
                    (let ((directory (buffer-directory buffer)))
-                     (and directory (or (ignore-errors (repository-top directory)) (project-root directory) directory))))))
+                     (and directory (or (ignoring-errors-reported ("finding the repository of ~a" directory)
+                                           (repository-top directory))
+                                         (project-root directory) directory))))))
     (if (null root)
         (message "~a is in no project" (tuatara.buffer:buffer-name buffer))
         (multiple-value-bind (answer evidence) (ask-project-trust root :again t)

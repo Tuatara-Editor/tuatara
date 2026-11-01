@@ -120,7 +120,9 @@ as a link that shows it there (VISIT-SOURCE); NIL when it is not known. A
 function the init file defined is in the init file (INIT-FILE-DEFINITION);
 others are where SBCL's source records say."
   (let* ((init (and (eq kind :function) (init-file-definition symbol)))
-         (sources (and (not init) (ignore-errors (sb-introspect:find-definition-sources-by-name symbol kind))))
+         (sources (and (not init)
+                       (ignoring-errors-reported ("finding where ~s is defined" symbol)
+                         (sb-introspect:find-definition-sources-by-name symbol kind))))
          (file (if init
                    (first init)
                    (and sources (sb-introspect:definition-source-pathname (first sources))))))
@@ -205,7 +207,7 @@ defined, the file a link that shows the definition. The one named at point in a 
 first: \\<minibuffer>\\[minibuffer-done] alone describes it."
   (let* ((b (current-buffer))
          (here (and (typep (buffer-major-mode b) 'lisp-mode)
-                    (let ((name (ignore-errors (symbol-at-point b))))
+                    (let ((name (ignoring-errors-reported ("reading the name at point") (symbol-at-point b))))
                       (and name (let ((symbol (lisp-symbol-named name (lisp-package b))))
                                   (and symbol (fboundp symbol) symbol))))))
          (chosen (completing-read "Describe function: " (function-candidates)

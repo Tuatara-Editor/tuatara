@@ -73,9 +73,9 @@ not one of the system's made-up files."
 when there is one."
   (let ((copy (auto-save-path file)))
     (when (and copy (tuatara.io:path-stamp copy))
-      (ignore-errors (tuatara.io:remove-file copy))
-      (ignore-errors (tuatara.io:remove-file (concatenate 'string copy ".path")))
-      (ignore-errors (refill-open-list "*Auto-saves*" 'auto-saves-mode)))))
+      (ignoring-errors-reported ("deleting ~a" copy) (tuatara.io:remove-file copy))
+      (ignoring-errors-reported ("deleting ~a.path" copy) (tuatara.io:remove-file (concatenate 'string copy ".path")))
+      (ignoring-errors-reported ("listing the auto-saves again") (refill-open-list "*Auto-saves*" 'auto-saves-mode)))))
 
 (defun delete-auto-save (buffer)
   "Delete BUFFER's auto-saved copy, and its name kept beside it, when there is
@@ -237,11 +237,13 @@ to say."
 :SIZE, its octets; :STATE, :NEWER (than the file), :OLDER or :GONE (the file
 is not there)."
   (let ((directory (auto-save-directory)) (copies '()))
-    (loop for (name nil nil own stamp) in (and directory (ignore-errors (tuatara.io:directory-entries directory :stamps t)))
+    (loop for (name nil nil own stamp) in (and directory (ignoring-errors-reported ("listing ~a" directory)
+                                                           (tuatara.io:directory-entries directory :stamps t)))
           for copy = (concatenate 'string directory name)
           do (when (and stamp (eq own :regular) (not (uiop:string-suffix-p name ".path")))
-          (let* ((file (or (ignore-errors (string-right-trim '(#\Newline) (tuatara.io:file-text (concatenate 'string copy ".path"))))
-                           (ignore-errors (tuatara.io:percent-decoded name))))
+          (let* ((file (or (ignoring-errors-reported ("reading ~a.path" copy)
+                             (string-right-trim '(#\Newline) (tuatara.io:file-text (concatenate 'string copy ".path"))))
+                           (ignoring-errors-reported ("reading the name ~a" name) (tuatara.io:percent-decoded name))))
                  (file-stamp (and file (tuatara.io:path-stamp file :failure nil))))
             (when (and file (plusp (length file)) (char= (char file 0) #\/))
               (push (list :copy copy :file file :time (mtime-universal-time (tuatara.io:stamp-mtime stamp))
@@ -330,8 +332,9 @@ file no longer there is opened as a new one."
     (if (yes-or-no-p* (format nil "~a?" (list-question "Delete the auto-saved changes of" "file" copies :the nil
                                                        :name-of (lambda (copy) (abbreviated-path (getf copy :file))))))
         (progn (dolist (copy copies)
-                 (ignore-errors (tuatara.io:remove-file (getf copy :copy)))
-                 (ignore-errors (tuatara.io:remove-file (concatenate 'string (getf copy :copy) ".path"))))
+                 (ignoring-errors-reported ("deleting ~a" (getf copy :copy)) (tuatara.io:remove-file (getf copy :copy)))
+                 (ignoring-errors-reported ("deleting ~a.path" (getf copy :copy))
+                   (tuatara.io:remove-file (concatenate 'string (getf copy :copy) ".path"))))
                (unmark-list list)
                (message "Deleted ~d auto-saved cop~:@p" (length copies)))
         (message "Kept"))))
@@ -355,7 +358,8 @@ twentieth of a second until they are."
                                    '(*auto-save-directory*)
                                    (lambda (give cancel)
                                      (declare (ignore cancel))
-                                     (funcall give (count :newer (ignore-errors (auto-save-copies))
+                                     (funcall give (count :newer (ignoring-errors-reported ("listing the auto-saves")
+                                                                   (auto-save-copies))
                                                           :key (lambda (c) (getf c :state))))))))
            1/20)
           ((not (gathering-done counting)) 1/20)

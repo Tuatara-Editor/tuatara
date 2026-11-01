@@ -690,4 +690,6 @@ without one of these roles leaves that colour to the terminal's palette.")
 of a terminal (*TERMINAL-PALETTE-ROLES*); NIL when it gives none."
   (let ((theme (and tuatara.display:*current-theme* (tuatara.display:find-theme tuatara.display:*current-theme*))))
     (and theme (< -1 index 16)
-         (ignore-errors (tuatara.display:theme-role-colour theme (aref *terminal-palette-roles* index))))))
+         (ignoring-errors-reported ("finding the terminal colour ~d" index)
+           (handler-case (tuatara.display:theme-role-colour theme (aref *terminal-palette-roles* index))
+             (simple-error () nil))))))

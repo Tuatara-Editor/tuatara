@@ -74,7 +74,7 @@ nearest place within a megabyte that does, else its offset (within the text)."
 (defun file-place-kind (path)
   "What the place at PATH is in, as the bookmark manager says it: \"file\",
 \"folder\", or \"gone\" when it is no longer there."
-  (let ((kind (ignore-errors (tuatara.io:path-kind path))))
+  (let ((kind (tuatara.io:path-kind path)))
     (case kind
       ((nil) "gone")
       (:directory "folder")

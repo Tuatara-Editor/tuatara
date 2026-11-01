@@ -89,9 +89,11 @@ away: what the editor uses stays as it is."
         collect (cons kind
                       (cond ((null source) :none)
                             ((null grammar) :unchecked)
-                            (t (handler-case (progn (tuatara.syntax:compile-query grammar source
-                                                                                  (format nil "~(~a~) (health check)" kind))
-                                                    :good)
+                            (t (handler-case (reporting-errors ("compiling the ~(~a~) rules of ~(~a~)"
+                                                                kind (language-name language))
+                                               (tuatara.syntax:compile-query grammar source
+                                                                             (format nil "~(~a~) (health check)" kind))
+                                               :good)
                                  (error (e) (cons :bad (substitute #\Space #\Newline (princ-to-string e))))))))))
 
 (defun health-grammar (name)
@@ -128,7 +130,8 @@ them to start, and in a window, how it draws each way it can
              (mapcar #'check-language-rules languages (health-check-grammars check))
              (health-check-drawing check)
              (loop for renderer in renderers
-                   collect (cons renderer (ignore-errors (tuatara.frontend:frontend-measure-drawing frontend renderer))))
+                   collect (cons renderer (ignoring-errors-reported ("measuring drawing with ~(~a~)" renderer)
+                                            (tuatara.frontend:frontend-measure-drawing frontend renderer))))
              (health-check-renderer check)
              in-use
              (health-check-evidence check)
@@ -254,7 +257,8 @@ editor's own buffers, never a file's."
 
 (defun report-width ()
   "The columns of the window the report is made from, or 100 without one."
-  (or (and *editor* (ignore-errors (tuatara.display:window-width (current-window)))) 100))
+  (or (and *editor* (ignoring-errors-reported ("measuring the window") (tuatara.display:window-width (current-window))))
+      100))
 
 (defun write-health-report (check)
   "Write the report of CHECK, which is done, into *HEALTH-PIECES*."

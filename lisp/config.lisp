@@ -187,11 +187,12 @@ a line away.")
 there already, or a link, is never touched. True when written; NIL when
 not, and why as a second value when it could not be."
   (handler-case
-      (unless (tuatara.io:path-kind path :follow nil)
-        (ensure-directories-exist path)
-        ;; made new or not at all: a link there, even one leading nowhere, is never written through
-        (tuatara.io:write-new-file path *starter-config* :mode #o600)
-        t)
+      (reporting-errors ("writing the starter init file ~a" path)
+        (unless (tuatara.io:path-kind path :follow nil)
+          (ensure-directories-exist path)
+          ;; made new or not at all: a link there, even one leading nowhere, is never written through
+          (tuatara.io:write-new-file path *starter-config* :mode #o600)
+          t))
     (error (e) (values nil (princ-to-string e)))))
 
 (defvar *init-file-stop* nil
@@ -266,7 +267,8 @@ from 1. NIL when the whole of TEXT was read; else where reading stopped, as
         (incf line (count #\Newline text :start counted :end start))
         (setf counted start))
       (multiple-value-bind (form next)
-          (handler-case (read-from-string text nil text :start at)
+          (handler-case (reporting-errors ("reading the form on line ~d" line)
+                          (read-from-string text nil text :start at))
             (error (e) (return (cons line e))))
         (when (eq form text) (return nil))
         (funcall function form line)
@@ -289,6 +291,8 @@ defined in FILE (NOTE-INIT-FILE-DEFINITION), where help shows them."
              (message "Error in ~a, line ~d: ~a" (namestring file) line e)))
       (let* ((path (namestring (truename file)))
              (stopped (map-text-forms text (lambda (form line)
-                                             (handler-case (progn (eval form) (note-init-file-definition form path line))
+                                             (handler-case (reporting-errors ("the init file's line ~d" line)
+                                                             (eval form)
+                                                             (note-init-file-definition form path line))
                                                (error (e) (fail line e)))))))
         (when stopped (fail (car stopped) (cdr stopped)))))))

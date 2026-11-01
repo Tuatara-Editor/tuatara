@@ -95,7 +95,8 @@ read-only or shown as a hex dump, or a list is shown already."
                (complete-paths-p buffer))
       (multiple-value-bind (start name-start name-end directory) (path-at-point buffer (tuatara.buffer:buffer-point buffer))
         (declare (ignore name-start name-end))
-        (let ((expanded (and start (ignore-errors (path-directory directory buffer))))
+        (let ((expanded (and start (ignoring-errors-reported ("expanding ~a" directory)
+                                     (path-directory directory buffer))))
               (chosen (and *last-used-first* (chosen-paths))))
           (when expanded
             (when *path-listing* (stop-gathering (fourth *path-listing*)))
@@ -105,7 +106,8 @@ read-only or shown as a hex dump, or a list is shown already."
                                          (lambda (give cancel)
                                            (declare (ignore cancel))
                                            (funcall give (path-listing-order
-                                                          (ignore-errors (directory-candidates expanded chosen))))))))))))))
+                                                          (ignoring-errors-reported ("listing ~a" expanded)
+                                                            (directory-candidates expanded chosen))))))))))))))
 
 (defun path-listing-order (candidates)
   "CANDIDATES, the entries of a folder as DIRECTORY-CANDIDATES gives them,
@@ -163,8 +165,9 @@ stands in when it does not start with / or ~ (PATH-DIRECTORY), or without the
 full stop, comma, colon or the like that ends a sentence after it; NIL when
 nothing is there."
   (flet ((there (path)
-           (let ((native (ignore-errors (tuatara.io:clean-path (tuatara.io:native (path-directory path buffer))))))
-             (and native (ignore-errors (tuatara.io:path-kind native)) native))))
+           (let ((native (ignoring-errors-reported ("expanding ~a" path)
+                           (tuatara.io:clean-path (tuatara.io:native (path-directory path buffer))))))
+             (and native (tuatara.io:path-kind native) native))))
     (or (there typed)
         (let ((trimmed (string-right-trim ".,:;!?" typed)))
           (and (plusp (length trimmed)) (string/= trimmed typed) (there trimmed))))))
@@ -187,7 +190,7 @@ safely or the buffer it is written in is open safely."
                ;; a path written in a file opened safely is evidence too: not remembered
                (unless (tuatara.io:safe-visit-p b)
                  (note-visited-path native buffer
-                                    :directory (eq :directory (ignore-errors (tuatara.io:path-kind native))))))))))
+                                    :directory (eq :directory (tuatara.io:path-kind native)))))))))
 
 (defun install-paths-in-text (editor)
   "List the entries of a path's directory beside the cursor as the path is

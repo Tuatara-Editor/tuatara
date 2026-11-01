@@ -128,7 +128,10 @@ work."
                         (loop for path in paths
                               collect (subseq (string-right-trim "/" path) (length root))
                               collect (code-char 0)))))
-    (handler-bind ((serious-condition (lambda (e) (declare (ignore e)) (ignore-errors (tuatara.io:remove-file passing)))))
+    (handler-bind ((serious-condition (lambda (e)
+                                        (declare (ignore e))
+                                        (ignoring-errors-reported ("taking away ~a" passing)
+                                          (tuatara.io:remove-file passing)))))
       (run-tar (append (list "--create" "--file" (tuatara.io:path-join (tuatara.io:real-place folder)
                                                                        (tuatara.io:native-file-name passing)))
                        (and (second kind) (list (second kind)))
@@ -162,7 +165,8 @@ error saying why when it does not work; what was unpacked before stays."
                            (setf unpacked t))
       ;; a folder made for it that nothing went into is taken away again
       (when (and made (not unpacked))
-        (ignore-errors (sb-posix:rmdir (string-right-trim "/" directory)))))
+        (handler-case (sb-posix:rmdir (string-right-trim "/" directory))
+          (sb-posix:syscall-error () nil))))
     directory))
 
 (defun unpack-archive (reading archive directory cancel)

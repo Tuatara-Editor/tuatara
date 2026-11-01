@@ -322,7 +322,8 @@ folder wanted was gone through, NIL when CANCEL or LIMIT ended it."
     (labels ((entries (directory)
                (if list
                    (funcall list directory)
-                   (ignore-errors (tuatara.io:directory-entries directory :stamps t))))
+                   (ignoring-errors-reported ("listing ~a" directory)
+                     (tuatara.io:directory-entries directory :stamps t))))
              (enter (directory relative depth)
                (when (or (and cancel (car cancel)) (and limit (>= entered limit)))
                  (return-from walk-directory nil))

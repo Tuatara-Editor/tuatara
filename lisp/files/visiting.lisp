@@ -13,7 +13,7 @@
   "The buffer visiting the file at PATH (a native name or a pathname), found
 as \\[find-file] finds one, by the file and not the name it was opened by
 \(TUATARA.IO:BUFFER-FOR-FILE), other than EXCEPT; NIL when there is none."
-  (let ((expanded (ignore-errors (tuatara.io:expand-path path))))
+  (let ((expanded (ignoring-errors-reported ("expanding ~a" path) (tuatara.io:expand-path path))))
     (and expanded (tuatara.io:buffer-for-file expanded :except except))))
 
 (defvar *last-used-first* t
@@ -65,7 +65,7 @@ in the state folder, with what other sessions chose (STATE-LIST-PUT).
 Nothing is remembered of a path opened safely (SAFE, or a buffer showing it
 so: SHOWN-SAFELY-P) or in one of *SAFE-DIRECTORIES*: a later question
 neither starts there nor offers it."
-  (let ((native (ignore-errors (tuatara.io:native (tuatara.io:expand-path path)))))
+  (let ((native (ignoring-errors-reported ("expanding ~a" path) (tuatara.io:native (tuatara.io:expand-path path)))))
     (when (and native (plusp (length native)) (not safe)
                (not (safe-directory-of native)) (not (shown-safely-p native)))
       (state-list-put *chosen-paths*
@@ -82,9 +82,10 @@ shown), as NOTE-CHOSEN-PATH does, unless BUFFER shows it opened safely."
 names as written (PATH-WITHIN-P), or a buffer shows it opened safely; true
 for every path when *SAFE-DIRECTORIES* cannot be read. The disk is not asked."
   (or (shown-safely-p native)
-      (handler-case (some (lambda (directory)
-                            (tuatara.io:path-within-p native (tuatara.io:native (tuatara.io:expand-path directory))))
-                          (safe-directories))
+      (handler-case (reporting-errors ("looking for ~a in the safe directories" native)
+                      (some (lambda (directory)
+                              (tuatara.io:path-within-p native (tuatara.io:native (tuatara.io:expand-path directory))))
+                            (safe-directories)))
         (error () t))))
 
 (defun writing-chosen-p (native)
@@ -490,7 +491,7 @@ binary one safely); elsewhere, at once."
 (defun file-view-path (path)
   "The native path of PATH when it is a regular file a view of *FILE-VIEWS*
 may show; NIL otherwise."
-  (let ((native (ignore-errors (tuatara.io:native (tuatara.io:expand-path path)))))
+  (let ((native (ignoring-errors-reported ("expanding ~a" path) (tuatara.io:native (tuatara.io:expand-path path)))))
     (and native (eq :regular (tuatara.io:path-kind native)) native)))
 
 (defun file-view-can-draw-p (native decoder install)
@@ -622,7 +623,7 @@ file with no name; SCRATCH, that file's descriptor, and SIZE, the octets in it."
   "Show what was read from standard input in its buffer, read only, or why it could not be read."
   (let ((scratch (standard-input-job-scratch job)))
     (if (and scratch (not (live-buffer-p (tuatara.runtime:job-buffer job))))
-        (ignore-errors (sb-posix:close scratch))
+        (ignoring-errors-reported ("closing the copy of standard input") (sb-posix:close scratch))
         (show-reading-result job "standard input"
                              (lambda (buffer)
                                (multiple-value-bind (rope mapping)
@@ -650,7 +651,7 @@ acted on. Returns the buffer at once."
                 (tuatara.io:copy-descriptor-to-scratch (standard-input-job-descriptor job))
               (setf (standard-input-job-scratch job) scratch
                     (standard-input-job-size job) size))
-         (ignore-errors (sb-posix:close (standard-input-job-descriptor job)))))
+         (ignoring-errors-reported ("closing standard input") (sb-posix:close (standard-input-job-descriptor job)))))
      :name "tuatara standard input")
     buffer))
 
@@ -741,7 +742,8 @@ nothing in it opened."
   (let ((*file-view-said* nil)
         (*visiting-safely* (and safe t)))
     (unless (and (or safe (safe-directory-of path) (evidence-path-p path))
-                 (not (eq :directory (ignore-errors (tuatara.io:path-kind (tuatara.io:native (tuatara.io:expand-path path)))))))
+                 (not (eq :directory (ignoring-errors-reported ("examining ~a" path)
+                                       (tuatara.io:path-kind (tuatara.io:native (tuatara.io:expand-path path)))))))
       (let ((view (run-hook-until-done *file-views* path show)))
         (when view (return-from visit-path-once view))))
     (visit-path-as-text path safe show)))
@@ -1022,15 +1024,16 @@ it is."
                              (tuatara.io:native-file-name to)))
                    (t
                     (handler-case
-                        (let ((written (tuatara.io:path-stamp from :follow nil)))
-                          ;; a file not written yet has only its buffer to rename
-                          (rename-path-following from to :on-disk written)
-                          (take-mode-of-name b)
-                          (if written
-                              (message "Renamed to ~a" (abbreviated-path to))
-                              (message "~a now visits ~a, not written yet: ~a writes it"
-                                       (tuatara.buffer:buffer-name b) (abbreviated-path to)
-                                       (substitute-command-keys "\\[save-buffer]"))))
+                        (reporting-errors ("renaming ~a" from)
+                          (let ((written (tuatara.io:path-stamp from :follow nil)))
+                            ;; a file not written yet has only its buffer to rename
+                            (rename-path-following from to :on-disk written)
+                            (take-mode-of-name b)
+                            (if written
+                                (message "Renamed to ~a" (abbreviated-path to))
+                                (message "~a now visits ~a, not written yet: ~a writes it"
+                                         (tuatara.buffer:buffer-name b) (abbreviated-path to)
+                                         (substitute-command-keys "\\[save-buffer]")))))
                       (error (e)
                         (message "~a is not renamed: ~a~@[; \\[write-file] writes it there, the old file left as it is~]"
                                  old e (not (equal (tuatara.io:parent-path from) (tuatara.io:parent-path to)))))))))))))
