@@ -63,6 +63,8 @@ tools/release.sh >/dev/null
 rm -rf "$root/build/appimage"
 mkdir -p "$appdir/lib"
 cp -a build/release/tuatara "$appdir/tuatara"
+# no man path to install the pages on: --help and the handbooks say what they do
+rm -rf "$appdir/tuatara/man"
 
 # the libraries, from Ubuntu 24.04: those the program loads (libzstd, which the
 # program itself needs, too) and all they need in turn, but those on the exclude list

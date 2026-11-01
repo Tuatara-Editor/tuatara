@@ -8,7 +8,8 @@
 # terminal/ (the terminal library, its layout, Ghostty's license and in
 # terminal/licenses/ those of what the library compiles in), syntax/
 # (the grammars' rules), icons/, the license and the README; grammars/licenses/
-# holds each grammar's licence (tools/grammars.sh), licenses/ those of SBCL and
+# holds each grammar's licence (tools/grammars.sh), man/ the manual pages
+# (tuatara.1, tuatara-init.5), licenses/ those of SBCL and
 # of the Lisp libraries the program carries. Beside it,
 # build/release/tuatara-sources.tar.zst holds what the release is made from, to
 # go with it wherever it is given: Tuatara at the last commit, the Lisp
@@ -139,6 +140,8 @@ done
 # each grammar's repository, commit and license
 cp syntax/grammars.tsv "$out/syntax/"
 cp -r data/icons "$out/icons"
+# tuatara(1) and tuatara-init(5), made by the program just built (tools/build-image.lisp)
+cp -r "$work/src/build/man" "$out/man"
 cp LICENSE README.org "$out/"
 # nothing given to others names this machine, the program checked above
 named=0

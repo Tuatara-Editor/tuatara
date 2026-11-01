@@ -79,8 +79,12 @@ libraries="libgtk-4.so.1 libcairo.so.2 libncursesw.so.6 libcrypto.so.3 libzstd.s
 tools/release.sh >/dev/null
 rm -rf "$stage"
 mkdir -p "$stage/usr/lib" "$stage/usr/bin" "$stage/usr/share/applications" \
-         "$stage/usr/share/licenses/tuatara"
+         "$stage/usr/share/licenses/tuatara" "$stage/usr/share/man/man1" "$stage/usr/share/man/man5"
 cp -a build/release/tuatara "$stage/usr/lib/tuatara"
+# the manual pages go where man looks, gzipped as each system's packages have them
+rm -rf "$stage/usr/lib/tuatara/man"
+gzip -9n -c build/release/tuatara/man/tuatara.1 > "$stage/usr/share/man/man1/tuatara.1.gz"
+gzip -9n -c build/release/tuatara/man/tuatara-init.5 > "$stage/usr/share/man/man5/tuatara-init.5.gz"
 ln -s ../lib/tuatara/tuatara "$stage/usr/bin/tuatara"
 sed "s|@EXEC@|tuatara|" data/tuatara.desktop.in > "$stage/usr/share/applications/tuatara.desktop"
 cp -r data/icons "$stage/usr/share/icons"
@@ -131,6 +135,8 @@ cp -a /tmp/package/root/. %{buildroot}/
 /usr/bin/tuatara
 /usr/share/applications/tuatara.desktop
 /usr/share/icons/hicolor/*/apps/tuatara.*
+/usr/share/man/man1/tuatara.1*
+/usr/share/man/man5/tuatara-init.5*
 %license /usr/share/licenses/tuatara
 
 %changelog
