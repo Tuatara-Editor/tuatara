@@ -526,7 +526,8 @@ leaves is a hidden .tuatara-copy-... name."
              (rename-checked scratch to)
              (setf named t))
            (and named whole))
-      (unless named (ignore-errors (delete-tree scratch))))))
+      (unless named (tuatara.runtime:ignoring-errors-reported ("taking away the unfinished copy ~a" scratch)
+                      (delete-tree scratch))))))
 
 (defun delete-entry-at (dirfd name path cancel &optional (depth 0))
   "DELETE-TREE for the entry NAME (octets) of the directory open as DIRFD, PATH
@@ -602,7 +603,8 @@ COPY-PATH-TREE has it."
               (delete-tree from)
               (progn
                 ;; what was copied of it taken away again: it stays where it was, whole
-                (when (path-stamp to :follow nil) (ignore-errors (delete-tree to)))
+                (when (path-stamp to :follow nil)
+                  (tuatara.runtime:ignoring-errors-reported ("taking away what was copied to ~a" to) (delete-tree to)))
                 (error 'file-system-error :operation "move" :path from
                                           :reason (format nil "not all of it could be copied to ~a; it is left where it was" to))))
           (error e))))
@@ -648,7 +650,7 @@ from it that is on the same device."
   "Make TRASH, a trash directory, with its files/ and info/, for you alone
 where they are made; TRASH as it is."
   (dolist (path (list (path-join trash "files/") (path-join trash "info/")))
-    (ignore-errors (ensure-private-directory path)))
+    (tuatara.runtime:ignoring-errors-reported ("making ~a" path) (ensure-private-directory path)))
   (unless (and (path-stamp (path-join trash "files/")) (path-stamp (path-join trash "info/")))
     (error 'file-system-error :operation "make the trash" :path trash :reason "it cannot be made there"))
   trash)
@@ -699,7 +701,8 @@ not a link), else .Trash-UID; on another drive, only a trash that is sound
                                  (list (path-join top (format nil ".Trash-~d/" uid))))
                          (error 'file-system-error :operation "put in the trash" :path path
                                                    :reason "the trash on its drive has links in it or is not yours"))
-            (when (and (ignore-errors (ensure-trash trash)) (drive-trash-sound-p trash top))
+            (when (and (tuatara.runtime:ignoring-errors-reported ("making the trash ~a" trash) (ensure-trash trash))
+                       (drive-trash-sound-p trash top))
               (return (values trash top))))))))
 
 (defun clean-path (path &key strict)
@@ -727,8 +730,9 @@ within it: /data/case/x is within /data/case, /data/cases/x is not."
   "Where the file at PATH (native) really is, every link followed and . and ..
 taken out (REAL-PATH); for a file not there, where its folder really is with
 its name after; NIL when neither is there."
-  (or (ignore-errors (real-path path))
-      (let ((folder (ignore-errors (real-path (parent-path path))))
+  (or (tuatara.runtime:ignoring-errors-reported ("finding where ~a really is" path) (real-path path))
+      (let ((folder (tuatara.runtime:ignoring-errors-reported ("finding where the folder of ~a really is" path)
+                      (real-path (parent-path path))))
             (name (native-file-name path)))
         (and folder name (not (member name '("." "..") :test #'string=))
              (path-join folder name)))))
@@ -824,7 +828,7 @@ trash for it."
                              :path info)
             (sb-posix:close fd))
           (handler-case (rename-checked path (target n))
-            (error (e) (ignore-errors (remove-file info)) (error e)))
+            (error (e) (tuatara.runtime:ignoring-errors-reported ("taking away ~a" info) (remove-file info)) (error e)))
           (target n))))))
 
 ;;; New names

@@ -98,7 +98,8 @@ a slash."
 when it differs (*HOME-NAMES*), found once for each HOME."
   (let ((home (sb-ext:native-namestring (user-homedir-pathname))))
     (unless (equal (car *home-names*) home)
-      (let ((true (ignore-errors (probe-file (user-homedir-pathname)))))
+      (let ((true (tuatara.runtime:ignoring-errors-reported ("finding the home directory ~a" home)
+                    (probe-file (user-homedir-pathname)))))
         (setf *home-names* (cons home (remove-duplicates (list home (if true (sb-ext:native-namestring true) home))
                                                          :test #'string= :from-end t)))))
     (cdr *home-names*)))
@@ -157,7 +158,8 @@ every frame asks the file system nothing."
              (< (- now (second found)) internal-time-units-per-second))
         (cddr found)
         (let ((named (and *default-directory*
-                          (ignore-errors (directory-pathname (expand-path *default-directory* :directory (uiop:getcwd)))))))
+                          (tuatara.runtime:ignoring-errors-reported ("finding the folder ~a" *default-directory*)
+                            (directory-pathname (expand-path *default-directory* :directory (uiop:getcwd)))))))
           (if (and named (eq :directory (path-kind named)))
               (progn (setf *default-directory-found* (list* *default-directory* now named))
                      named)
@@ -551,7 +553,9 @@ files go beside the file they serve, for a save to share their blocks.")
   "The magic number of the file system holding PATH, a symbolic link followed
 unless FOLLOW is NIL, or NIL when it cannot be examined. Only a name for it is
 opened (O_PATH): a named pipe or a device there is not woken."
-  (let ((fd (ignore-errors (sb-posix:open (native path) (logior +o-path+ +o-cloexec+ (if follow 0 +o-nofollow+))))))
+  (let ((fd (tuatara.runtime:ignoring-errors-reported ("examining the file system of ~a" path)
+              (handler-case (sb-posix:open (native path) (logior +o-path+ +o-cloexec+ (if follow 0 +o-nofollow+)))
+                (sb-posix:syscall-error () nil)))))
     (and fd (unwind-protect (fd-file-system fd) (sb-posix:close fd)))))
 
 (defun file-system-class (magic)
@@ -884,7 +888,10 @@ read, fewer only where the file ends."
   "COUNT octets of the open file FD from OFFSET, read with pread (READ-FD-AT);
 NIL when the file ends before them or cannot be read."
   (let ((octets (make-array count :element-type '(unsigned-byte 8))))
-    (and (= count (or (ignore-errors (read-fd-at fd octets offset)) 0)) octets)))
+    (and (= count (or (tuatara.runtime:ignoring-errors-reported ("reading ~d octets at ~d" count offset)
+                        (read-fd-at fd octets offset))
+                      0))
+         octets)))
 
 (defun advise-will-need (fd offset length)
   "Tell the system that LENGTH octets of the open file FD from OFFSET will be
@@ -979,8 +986,8 @@ a pipe already full is awake enough."
 
 (defun close-wake-pipe (pipe)
   "Close both ends of PIPE (MAKE-WAKE-PIPE)."
-  (ignore-errors (sb-posix:close (car pipe)))
-  (ignore-errors (sb-posix:close (cdr pipe)))
+  (tuatara.runtime:ignoring-errors-reported ("closing a wake pipe") (sb-posix:close (car pipe)))
+  (tuatara.runtime:ignoring-errors-reported ("closing a wake pipe") (sb-posix:close (cdr pipe)))
   nil)
 
 (defconstant +watch-events+ (logior #x2 #x4 #x8 #x40 #x80 #x100 #x200 #x400 #x800 #x1000000)
@@ -1092,28 +1099,29 @@ or NIL when it has none or it cannot be read."
 file systems and your rights allow (SELinux label, ACLs, user attributes);
 those that cannot be set are left out, as on file systems without them."
   (dolist (name (fd-xattr-names from))
-    (ignore-errors
-     (let ((value (fd-xattr-value from name)))
-       (when value
-         ;; an empty value set from a buffer of one octet, none of it given
-         (let ((buffer (if (plusp (length value)) value (make-array 1 :element-type '(unsigned-byte 8))))
-               (key (path-octets name)))
-           (with-octets-sap (sap buffer)
-             (with-octets-sap (key-sap key)
-               (sb-alien:alien-funcall
-                (sb-alien:extern-alien "fsetxattr" (function sb-alien:int sb-alien:int sb-sys:system-area-pointer
-                                                             sb-sys:system-area-pointer sb-alien:unsigned-long
-                                                             sb-alien:int))
-                to key-sap sap (length value) 0)))))))))
+    (tuatara.runtime:ignoring-errors-reported ("copying the extended attribute ~a" name)
+      (let ((value (fd-xattr-value from name)))
+        (when value
+          ;; an empty value set from a buffer of one octet, none of it given
+          (let ((buffer (if (plusp (length value)) value (make-array 1 :element-type '(unsigned-byte 8))))
+                (key (path-octets name)))
+            (with-octets-sap (sap buffer)
+              (with-octets-sap (key-sap key)
+                (sb-alien:alien-funcall
+                 (sb-alien:extern-alien "fsetxattr" (function sb-alien:int sb-alien:int sb-sys:system-area-pointer
+                                                              sb-sys:system-area-pointer sb-alien:unsigned-long
+                                                              sb-alien:int))
+                 to key-sap sap (length value) 0)))))))))
 
 ;;; Directories and unnamed files
 
 (defun sync-directory (directory)
   "Ask the system to put a rename in DIRECTORY on disk, where it can: a file
 renamed over another is then there after a power cut too."
-  (let ((fd (ignore-errors (sb-posix:open (native directory) (logior sb-posix:o-rdonly sb-posix:o-directory)))))
+  (let ((fd (tuatara.runtime:ignoring-errors-reported ("opening ~a to sync it" directory)
+              (sb-posix:open (native directory) (logior sb-posix:o-rdonly sb-posix:o-directory)))))
     (when fd
-      (ignore-errors (sb-posix:fsync fd))
+      (tuatara.runtime:ignoring-errors-reported ("syncing ~a" directory) (sb-posix:fsync fd))
       (sb-posix:close fd))))
 
 (defconstant +o-noatime+ #o1000000
@@ -1236,10 +1244,10 @@ NUMBER, looked up once and kept (*OWNER-NAMES*); NIL when it has none."
         (if found
             name
             (setf (gethash key *owner-names*)
-                  (ignore-errors
-                   (if (eq kind :user)
-                       (let ((entry (sb-posix:getpwuid number))) (and entry (sb-posix:passwd-name entry)))
-                       (let ((entry (sb-posix:getgrgid number))) (and entry (sb-posix:group-name entry)))))))))))
+                  (tuatara.runtime:ignoring-errors-reported ("looking up the name of ~(~a~) ~d" kind number)
+                    (if (eq kind :user)
+                        (let ((entry (sb-posix:getpwuid number))) (and entry (sb-posix:passwd-name entry)))
+                        (let ((entry (sb-posix:getgrgid number))) (and entry (sb-posix:group-name entry)))))))))))
 
 (defun owner-name (uid)
   "The name of the account whose number is UID (a file's owner: STAMP-UID), or
@@ -1319,7 +1327,7 @@ nothing; TELL-WRITING calls it, from any thread.")
 (defun tell-writing (words)
   "Say WORDS of a file written, through *WRITING-TOLD-FUNCTION*."
   (let ((function *writing-told-function*))
-    (when function (ignore-errors (funcall function words)))))
+    (when function (tuatara.runtime:ignoring-errors-reported ("telling of a file written") (funcall function words)))))
 
 (defun fd-real-path (fd)
   "Where the file or folder open as FD really is, as a native name with every
@@ -1335,7 +1343,8 @@ say, or the file has no name any more."
   "True when this process may write PATH: the file's contents, or for a
 directory, files made and taken away in it; never a place the editor writes
 nothing in (WRITING-REFUSAL)."
-  (and (ignore-errors (sb-posix:access (native path) sb-posix:w-ok) t)
+  (and (tuatara.runtime:ignoring-errors-reported ("examining whether ~a may be written" path)
+         (handler-case (progn (sb-posix:access (native path) sb-posix:w-ok) t) (sb-posix:syscall-error () nil)))
        (not (writing-refusal path))))
 
 (defvar *cache-directory* nil
@@ -1433,9 +1442,10 @@ stderr.log.3, so that what a session that ended badly wrote is still there
 once the next has begun. A line first says WHAT the session is (the window,
 the terminal), its process and when it began. NIL when the log cannot be made."
   (setf *session-log-words* what)
-  (let ((directory (ignore-errors (cache-directory))))
+  (let ((directory (tuatara.runtime:ignoring-errors-reported ("finding the cache folder") (cache-directory))))
     (when directory
-      (let ((fd (ignore-errors (tuatara.runtime:open-rotated-log (native (merge-pathnames "stderr.log" directory)) :rotate t))))
+      (let ((fd (tuatara.runtime:ignoring-errors-reported ("opening the session log in ~a" directory)
+                  (tuatara.runtime:open-rotated-log (native (merge-pathnames "stderr.log" directory)) :rotate t))))
         (when fd
           (let ((octets (sb-ext:string-to-octets
                          (format nil "Tuatara ~a on SBCL ~a, ~a, process ~d, began ~a~%"
@@ -1443,7 +1453,7 @@ the terminal), its process and when it began. NIL when the log cannot be made."
                                  (tuatara.dates:format-time "%F %T" (get-universal-time)))
                          :external-format :utf-8)))
             (with-octets-sap (sap octets)
-              (ignore-errors (sb-posix:write fd sap (length octets)))))
+              (handler-case (sb-posix:write fd sap (length octets)) (sb-posix:syscall-error () nil))))
           fd)))))
 
 (defun move-session-log ()
@@ -1455,16 +1465,17 @@ file was read was only the line saying what it is. Called once the init file
 is read."
   (let ((standard (native (uiop:xdg-cache-home "tuatara/stderr.log"))))
     (when (and *cache-directory* *session-log-words*
-               (equal (ignore-errors (sb-posix:readlink "/proc/self/fd/2")) standard))
+               (equal (handler-case (sb-posix:readlink "/proc/self/fd/2") (sb-posix:syscall-error () nil)) standard))
       (let ((fd (session-log *session-log-words*)))
         (when fd
           (sb-posix:dup2 fd 2)
           (sb-posix:close fd)
           (unless (tuatara.runtime:log-in-use-p standard)
             (dolist (n '("" ".1" ".2" ".3"))
-              (ignore-errors (sb-posix:unlink (concatenate 'string standard n))))
+              (handler-case (sb-posix:unlink (concatenate 'string standard n)) (sb-posix:syscall-error () nil)))
             ;; the folder too, when nothing else is in it
-            (ignore-errors (sb-posix:rmdir (native (uiop:xdg-cache-home "tuatara/"))))))))))
+            (handler-case (sb-posix:rmdir (native (uiop:xdg-cache-home "tuatara/")))
+              (sb-posix:syscall-error () nil))))))))
 
 (defun state-directory ()
   "The editor's state directory, made if needed, for you alone: what it keeps
@@ -1494,7 +1505,10 @@ made and renamed."
              (openat-octets dirfd (tuatara.text:string-octets temporary)
                             (logior sb-posix:o-wronly sb-posix:o-creat sb-posix:o-excl +o-nofollow+ +o-cloexec+) mode)
            (unless fd (fail "write" name errno))
-           (handler-bind ((error (lambda (e) (declare (ignore e)) (ignore-errors (unlink-entry-at dirfd temporary)))))
+           (handler-bind ((error (lambda (e)
+                                   (declare (ignore e))
+                                   (tuatara.runtime:ignoring-errors-reported ("taking away ~a" temporary)
+                                     (unlink-entry-at dirfd temporary)))))
              (unwind-protect (progn (write-octets fd octets :path name)
                                     (flush-fd fd name))
                (sb-posix:close fd))
@@ -1532,7 +1546,10 @@ in which the file is made."
        (multiple-value-bind (fd errno)
            (openat-octets dirfd own (logior sb-posix:o-wronly sb-posix:o-creat sb-posix:o-excl +o-nofollow+ +o-cloexec+) mode)
          (unless fd (fail "write" name errno))
-         (handler-bind ((error (lambda (e) (declare (ignore e)) (ignore-errors (unlink-entry-at dirfd (native-file-name name))))))
+         (handler-bind ((error (lambda (e)
+                                 (declare (ignore e))
+                                 (tuatara.runtime:ignoring-errors-reported ("taking away ~a" name)
+                                   (unlink-entry-at dirfd (native-file-name name))))))
            (unwind-protect (progn (write-octets fd octets :end (or end (length octets)) :path name)
                                   (when sync (sb-posix:fsync fd)))
              (sb-posix:close fd)))))
@@ -1544,14 +1561,17 @@ in which the file is made."
 of it that hold no data on the disk, read as zeros (lseek's SEEK_HOLE finds
 one before its end). Opened only when it is a regular file, never waited
 on; NIL when it cannot be opened or the system cannot tell."
-  (let ((fd (ignore-errors (sb-posix:open (native path) (logior sb-posix:o-rdonly sb-posix:o-nonblock +o-nofollow+ +o-cloexec+)))))
+  (let ((fd (tuatara.runtime:ignoring-errors-reported ("opening ~a to look for holes" path)
+              (handler-case (sb-posix:open (native path)
+                                           (logior sb-posix:o-rdonly sb-posix:o-nonblock +o-nofollow+ +o-cloexec+))
+                (sb-posix:syscall-error () nil)))))
     (when fd
       (unwind-protect
            (let ((stamp (fd-stamp fd path)))
              (and (eq (stamp-kind stamp) :regular)
                   (plusp (stamp-size stamp))
                   ;; SEEK_HOLE is 4: the first hole at or after 0, the file's end when it has none
-                  (let ((hole (ignore-errors (sb-posix:lseek fd 0 4))))
+                  (let ((hole (handler-case (sb-posix:lseek fd 0 4) (sb-posix:syscall-error () nil))))
                     (and hole (< hole (stamp-size stamp))))))
         (sb-posix:close fd)))))
 
@@ -1565,11 +1585,11 @@ FUNCTION not called, when another holds the lock for more than WAIT seconds
 or the lock file cannot be made, so that the editor is never held up; nor
 in a place nothing may be written in (WRITING-REFUSAL), told by the folder
 opened."
-  (let ((fd (ignore-errors
-             (call-with-parent (concatenate 'string (native path) ".lock")
-                               (lambda (dirfd own)
-                                 (values (openat-octets dirfd own (logior sb-posix:o-rdwr sb-posix:o-creat +o-nofollow+ +o-cloexec+) #o600)))
-                               :writing "lock"))))
+  (let ((fd (tuatara.runtime:ignoring-errors-reported ("making the lock file of ~a" path)
+              (call-with-parent (concatenate 'string (native path) ".lock")
+                                (lambda (dirfd own)
+                                  (values (openat-octets dirfd own (logior sb-posix:o-rdwr sb-posix:o-creat +o-nofollow+ +o-cloexec+) #o600)))
+                                :writing "lock"))))
     (when fd
       (unwind-protect
            (when (tuatara.runtime:lock-fd fd :wait wait)

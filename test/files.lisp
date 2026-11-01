@@ -540,6 +540,43 @@ second value."
       (false (tuatara.io:path-stamp (format nil "~amissing" (tuatara.io:native folder)) :failure nil))
       (true (tuatara.io:path-stamp path :failure nil)))))
 
+(define-test (visiting-and-saving file-status-failure-reported)
+  ;; a visited file whose folder may no longer be looked into: its state on disk is not known,
+  ;; and debug mode keeps why in its log
+  (with-test-directory (dir)
+    (let* ((folder (ensure-directories-exist (merge-pathnames "shut/" dir)))
+           (path (tuatara.io:native (put-file (merge-pathnames "kept.txt" folder) "text"))))
+      (with-visited (b path)
+        (drain-debug-reports)
+        (sb-posix:chmod (namestring folder) 0)
+        (unwind-protect
+             (progn
+               (is eq :unknown (tuatara.io:file-status b))
+               (tuatara.runtime:set-debug t)
+               (is eq :unknown (tuatara.io:file-status b))
+               (let ((texts (loop for report = (sb-concurrency:dequeue tuatara.runtime:*debug-reports*)
+                                  while report collect (princ-to-string (fourth report)))))
+                 (true (find-if (lambda (text) (search (format nil "examining ~a failed" path) text)) texts)
+                       "~s" texts)))
+          (sb-posix:chmod (namestring folder) #o700)
+          (drain-debug-reports))))))
+
+(define-test (visiting-and-saving writing-told-failure-reported)
+  ;; a failing teller of files written fails nothing else, and is in the debug log; a folder
+  ;; that is not there cannot be written, and that is no failure
+  (drain-debug-reports)
+  (unwind-protect
+       (let ((tuatara.io:*writing-told-function* (lambda (words) (error "cannot tell of ~a" words))))
+         (tuatara.runtime:set-debug t)
+         (false (tuatara.io:tell-writing "a file"))
+         (false (tuatara.io:writable-p "/nonexistent-tuatara-folder/file"))
+         (let ((texts (loop for report = (sb-concurrency:dequeue tuatara.runtime:*debug-reports*)
+                            while report collect (princ-to-string (fourth report)))))
+           (true (find-if (lambda (text) (search "telling of a file written failed: cannot tell of a file" text)) texts)
+                 "~s" texts)
+           (false (find-if (lambda (text) (search "nonexistent-tuatara-folder" text)) texts) "~s" texts)))
+    (drain-debug-reports)))
+
 (define-test (visiting-and-saving saving-keeps-what-the-file-was)
   (with-test-directory (dir)
     (let ((path (put-file (merge-pathnames "data.txt" dir) "one")))

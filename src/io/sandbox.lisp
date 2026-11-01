@@ -108,7 +108,7 @@ PATH), or NAME itself when it has a slash and can be run; NIL when there is no
 such program. Only directories named from the root (starting with /) are
 looked in: an empty entry, . or bin/ would mean wherever the editor happens
 to be, which may be a folder of files not to be trusted."
-  (flet ((runnable (path) (and (ignore-errors (sb-posix:access path sb-posix:x-ok) t)
+  (flet ((runnable (path) (and (handler-case (sb-posix:access path sb-posix:x-ok) (sb-posix:syscall-error () nil))
                                (eq :regular (path-kind path))
                                path)))
     (if (find #\/ name)
@@ -159,7 +159,8 @@ which kills what is left if it is itself ended first."
                          when (eql child (nth-value 1 (process-group-and-session child buffer)))
                            collect child)))
     ;; its group's number is its own while it is not reaped
-    (ignore-errors (sb-ext:process-kill process sb-unix:sigterm :process-group))
+    (tuatara.runtime:ignoring-errors-reported ("ending ~a" process)
+      (sb-ext:process-kill process sb-unix:sigterm :process-group))
     (tuatara.runtime:make-guarded-thread
      (lambda ()
        (let ((buffer (make-array 1024 :element-type '(unsigned-byte 8))))
@@ -178,8 +179,8 @@ which kills what is left if it is itself ended first."
                                        (null (processes-in groups sessions buffer))))
                         do (sleep 0.05)))
              (signal-all sb-unix:sigkill)
-             (ignore-errors (sb-ext:process-wait process))
-             (ignore-errors (sb-ext:process-close process))))))
+             (tuatara.runtime:ignoring-errors-reported ("waiting for ~a to end" process) (sb-ext:process-wait process))
+             (tuatara.runtime:ignoring-errors-reported ("closing ~a" process) (sb-ext:process-close process))))))
      :name "program ending")))
 
 (defun call-with-program (command function &key job input output error directory (environment nil environment-p)
@@ -204,8 +205,9 @@ so that none is left behind; one ended already is waited for and closed."
     (unwind-protect (funcall function process)
       (if (sb-ext:process-alive-p process)
           (end-unwanted-program process)
-          (progn (ignore-errors (sb-ext:process-wait process))
-                 (ignore-errors (sb-ext:process-close process)))))))
+          (progn (tuatara.runtime:ignoring-errors-reported ("waiting for ~a to end" process)
+                   (sb-ext:process-wait process))
+                 (tuatara.runtime:ignoring-errors-reported ("closing ~a" process) (sb-ext:process-close process)))))))
 
 ;;; Programs in a session of their own
 
@@ -226,10 +228,11 @@ starts. COMMAND as it is when setsid is not there."
 (defun proc-text (path)
   "The file at PATH under /proc read whole, each octet a character (a
 program's name there may be any octets); NIL when it cannot be read."
-  (let ((fd (ignore-errors (sb-posix:open path sb-posix:o-rdonly))))
+  (let ((fd (handler-case (sb-posix:open path sb-posix:o-rdonly) (sb-posix:syscall-error () nil))))
     (when fd
       (unwind-protect
-           (ignore-errors (map 'string #'code-char (read-fd-octets fd :path path :size-hint 1024)))
+           (handler-case (map 'string #'code-char (read-fd-octets fd :path path :size-hint 1024))
+             (file-system-error () nil))
         (sb-posix:close fd)))))
 
 (defun process-unreaped-p (process)
@@ -258,16 +261,17 @@ or once PROCESS has ended, its number no longer its own."
 
 (defun process-numbers ()
   "The numbers of every process there is, from /proc; NIL when it cannot be read."
-  (let ((fd (ignore-errors (sb-posix:open "/proc" (logior sb-posix:o-rdonly sb-posix:o-directory))))
+  (let ((fd (handler-case (sb-posix:open "/proc" (logior sb-posix:o-rdonly sb-posix:o-directory))
+              (sb-posix:syscall-error () nil)))
         (numbers '()))
     (when fd
       (unwind-protect
-           (ignore-errors
-            (map-directory-fd (lambda (name)
-                                (when (and (plusp (length name)) (every (lambda (octet) (<= 48 octet 57)) name))
-                                  (push (reduce (lambda (number octet) (+ (* number 10) (- octet 48))) name :initial-value 0)
-                                        numbers)))
-                              fd "/proc"))
+           (tuatara.runtime:ignoring-errors-reported ("listing the processes")
+             (map-directory-fd (lambda (name)
+                                 (when (and (plusp (length name)) (every (lambda (octet) (<= 48 octet 57)) name))
+                                   (push (reduce (lambda (number octet) (+ (* number 10) (- octet 48))) name :initial-value 0)
+                                         numbers)))
+                               fd "/proc"))
         (sb-posix:close fd)))
     numbers))
 
@@ -287,9 +291,10 @@ there is no such process."
   "The process group and the session of the process numbered PID, as two
 values, read from /proc into BUFFER, octets enough for the line it reads
 \(1024); NIL when there is no such process."
-  (let ((fd (ignore-errors (sb-posix:open (format nil "/proc/~d/stat" pid) sb-posix:o-rdonly))))
+  (let ((fd (handler-case (sb-posix:open (format nil "/proc/~d/stat" pid) sb-posix:o-rdonly)
+              (sb-posix:syscall-error () nil))))
     (when fd
-      (let* ((n (unwind-protect (or (ignore-errors (read-fd-into fd buffer)) 0)
+      (let* ((n (unwind-protect (or (handler-case (read-fd-into fd buffer) (file-system-error () nil)) 0)
                   (sb-posix:close fd)))
              ;; pid (name) state ppid pgrp session ...: the fields after the name's closing parenthesis
              (name-end (position 41 buffer :end n :from-end t)))
@@ -337,7 +342,8 @@ its number once TEST is true. True when it was sent."
                   (and (funcall test) (pidfd-signal fd 0) (pidfd-signal fd signal))
                (sb-posix:close fd)))
             ((= (sb-alien:get-errno) sb-posix:enosys)
-             (and (funcall test) (ignore-errors (sb-posix:kill pid signal) t)))))))
+             (and (funcall test)
+                  (handler-case (progn (sb-posix:kill pid signal) t) (sb-posix:syscall-error () nil))))))))
 
 (defun signal-session (process session signal)
   "Send SIGNAL to PROCESS, started by SESSION-COMMAND, with its group, while
@@ -345,10 +351,11 @@ it has not ended (its number may be another's after), and to every process
 of the session numbered SESSION (SESSION-LEADER), when known. True when one
 of the session's processes was still there."
   (when (process-unreaped-p process)
-    (ignore-errors (sb-ext:process-kill process signal :process-group)))
+    (tuatara.runtime:ignoring-errors-reported ("signalling ~a" process)
+      (sb-ext:process-kill process signal :process-group)))
   (let ((there (and session (session-processes session))))
     (dolist (pid there)
-      (ignore-errors (sb-posix:kill pid signal)))
+      (handler-case (sb-posix:kill pid signal) (sb-posix:syscall-error () nil)))
     (and there t)))
 
 (defun program-output (command &key input (capture t) (seconds 1) wait (environment nil environment-p) directory
@@ -366,29 +373,34 @@ serving the clipboard) is not waited for: only the one started."
   (let* ((started (list nil))
          (worker (tuatara.runtime:make-guarded-thread
                   (lambda ()
-                    (ignore-errors
-                     (call-with-program
-                      command
-                      (lambda (process)
-                        (setf (car started) process)
-                        (when input
-                          (ignore-errors (write-string input (sb-ext:process-input process)))
-                          (ignore-errors (close (sb-ext:process-input process))))
-                        (multiple-value-bind (octets too-much)
-                            (and capture (ignore-errors (read-stream-octets (sb-ext:process-output process) :limit most)))
-                          (unless too-much (sb-ext:process-wait process))
-                          (list (and octets (tuatara.text:octets-string octets))
-                                (and (not too-much) (eql 0 (sb-ext:process-exit-code process))))))
-                      :input (and input :stream) :output (and capture :stream)
-                      :directory directory
-                      :environment (if environment-p environment (sb-ext:posix-environ)))))
+                    (tuatara.runtime:ignoring-errors-reported ("running ~a" (first command))
+                      (call-with-program
+                       command
+                       (lambda (process)
+                         (setf (car started) process)
+                         (when input
+                           (tuatara.runtime:ignoring-errors-reported ("giving ~a its input" (first command))
+                             (write-string input (sb-ext:process-input process)))
+                           (tuatara.runtime:ignoring-errors-reported ("closing the input of ~a" (first command))
+                             (close (sb-ext:process-input process))))
+                         (multiple-value-bind (octets too-much)
+                             (and capture
+                                  (tuatara.runtime:ignoring-errors-reported ("reading what ~a writes" (first command))
+                                    (read-stream-octets (sb-ext:process-output process) :limit most)))
+                           (unless too-much (sb-ext:process-wait process))
+                           (list (and octets (tuatara.text:octets-string octets))
+                                 (and (not too-much) (eql 0 (sb-ext:process-exit-code process))))))
+                       :input (and input :stream) :output (and capture :stream)
+                       :directory directory
+                       :environment (if environment-p environment (sb-ext:posix-environ)))))
                   :name "program")))
     (if wait
         (funcall wait worker seconds)
         (sb-thread:join-thread worker :timeout seconds :default nil))
     (if (sb-thread:thread-alive-p worker)
         (progn (let ((process (car started)))
-                 (when process (ignore-errors (sb-ext:process-kill process 15))))
+                 (when process (tuatara.runtime:ignoring-errors-reported ("ending ~a" process)
+                                 (sb-ext:process-kill process 15))))
                (values nil nil))
         (values-list (sb-thread:join-thread worker :default nil)))))
 
@@ -416,15 +428,20 @@ when it did not exit of itself; and true when it printed more than LIMIT."
            (flet ((reader (stream most drain name)
                     (tuatara.runtime:make-guarded-thread
                      (lambda ()
-                       (multiple-value-bind (octets too-much) (ignore-errors (read-stream-octets stream :limit most :drain drain))
+                       (multiple-value-bind (octets too-much)
+                           (tuatara.runtime:ignoring-errors-reported ("reading what ~a writes" (first command))
+                             (read-stream-octets stream :limit most :drain drain))
                          ;; ended, so that it waits on no one reading what it prints
-                         (when (and too-much (not drain)) (ignore-errors (sb-ext:process-kill process 15)))
+                         (when (and too-much (not drain))
+                           (tuatara.runtime:ignoring-errors-reported ("ending ~a" process)
+                             (sb-ext:process-kill process 15)))
                          (list octets too-much)))
                      :name name)))
              (let ((output (reader (sb-ext:process-output process) limit nil "program output"))
                    (said (reader (sb-ext:process-error process) *program-said-limit* t "program messages")))
                (unwind-protect (funcall write (sb-sys:fd-stream-fd (sb-ext:process-input process)))
-                 (ignore-errors (close (sb-ext:process-input process))))
+                 (tuatara.runtime:ignoring-errors-reported ("closing the input of ~a" (first command))
+                   (close (sb-ext:process-input process))))
                (destructuring-bind (&optional octets too-much) (sb-thread:join-thread output :default nil)
                  (let ((spoken (first (sb-thread:join-thread said :default nil))))
                    (sb-ext:process-wait process)
@@ -481,7 +498,7 @@ links in the sandbox too) or directories of their own on others, and what
 programs read to find libraries and alternatives."
   (append (list "--ro-bind" "/usr" "/usr")
           (loop for directory in '("/bin" "/sbin" "/lib" "/lib64" "/lib32")
-                for target = (ignore-errors (sb-posix:readlink directory))
+                for target = (handler-case (sb-posix:readlink directory) (sb-posix:syscall-error () nil))
                 append (cond (target (list "--symlink" target directory))
                              ((eq :directory (path-kind directory))
                               (list "--ro-bind" directory directory))))
@@ -608,7 +625,10 @@ error signalled, when it cannot be made, filled or sealed."
              (sb-alien:extern-alien "memfd_create" (function sb-alien:int sb-alien:c-string sb-alien:unsigned-int))
              name (if kept 2 3))))                          ; MFD_ALLOW_SEALING, and MFD_CLOEXEC when not kept
     (when (minusp fd) (fail "make a file in memory called" name))
-    (handler-bind ((error (lambda (e) (declare (ignore e)) (ignore-errors (sb-posix:close fd)))))
+    (handler-bind ((error (lambda (e)
+                            (declare (ignore e))
+                            (tuatara.runtime:ignoring-errors-reported ("closing the file in memory ~a" name)
+                              (sb-posix:close fd)))))
       (funcall fill fd)
       (when (minusp (fcntl-int fd 1033 15))                 ; F_ADD_SEALS: SEAL, SHRINK, GROW, WRITE
         (fail "seal" "a file in memory"))
@@ -631,7 +651,7 @@ it leads to, as two values, or NIL when its top is no link or a directory the
 sandbox makes itself (*SANDBOX-OWN-DIRECTORIES*)."
   (let* ((top (subseq path 0 (or (position #\/ path :start 1) (length path))))
          (target (and (> (length top) 1) (not (member top *sandbox-own-directories* :test #'string=))
-                      (ignore-errors (sb-posix:readlink top)))))
+                      (handler-case (sb-posix:readlink top) (sb-posix:syscall-error () nil)))))
     (and target (values top target))))
 
 (defun root-link-arguments (paths)
@@ -819,12 +839,13 @@ program started is ended the same way, with what it started."
     (let ((pid (sb-ext:process-pid process)))
       (dolist (child (process-children process))
         (signal-process-if child (lambda () (eql pid (process-parent child))) sb-unix:sigkill))
-      (ignore-errors (sb-ext:process-kill process sb-unix:sigkill :process-group))))
+      (tuatara.runtime:ignoring-errors-reported ("ending ~a" process)
+        (sb-ext:process-kill process sb-unix:sigkill :process-group))))
   (sb-thread:with-mutex (**sandboxes-lock**)
     (setf **sandboxes** (remove process **sandboxes** :key #'car)))
   (flet ((reap ()
-           (ignore-errors (sb-ext:process-wait process))
-           (ignore-errors (sb-ext:process-close process))))
+           (tuatara.runtime:ignoring-errors-reported ("waiting for ~a to end" process) (sb-ext:process-wait process))
+           (tuatara.runtime:ignoring-errors-reported ("closing ~a" process) (sb-ext:process-close process))))
     (if wait
         (reap)
         (tuatara.runtime:make-guarded-thread #'reap :name "sandbox ending"))))
@@ -931,8 +952,10 @@ can stop this thread, to keep it where the caller ends it."
                  (end-sandbox process))
                process)))
       ;; bwrap has its own descriptors of them once started
-      (when seccomp (ignore-errors (sb-posix:close seccomp)))
-      (dolist (file data) (ignore-errors (sb-posix:close (cdr file)))))))
+      (when seccomp (tuatara.runtime:ignoring-errors-reported ("closing the sandbox's system call filter")
+                      (sb-posix:close seccomp)))
+      (dolist (file data) (tuatara.runtime:ignoring-errors-reported ("closing ~a" (car file))
+                            (sb-posix:close (cdr file)))))))
 
 (defun sandbox-start (program arguments stdin &key memory directories (processes *sandbox-process-limit*) descriptors)
   "Start PROGRAM (a full path to one it is shown) with ARGUMENTS shut in as
@@ -1020,7 +1043,8 @@ ended first (END-SANDBOXES-LEFT)."
                  (tuatara.runtime:debug-report :job "sandbox: ~d left behind by an editor gone, ended" left)))
              (let ((version (said-text (sb-ext:string-to-octets (version-text path)))))
                (multiple-value-bind (output outcome said)
-                   (handler-case (%sandbox-run path "true" '() nil 10 (* 64 1024 1024) 0 nil '(0))
+                   (handler-case (tuatara.runtime:reporting-errors ("trying the sandbox ~a" path)
+                                   (%sandbox-run path "true" '() nil 10 (* 64 1024 1024) 0 nil '(0)))
                      (error (e) (values nil :failed (princ-to-string e))))
                  (declare (ignore output))
                  (setf **sandbox-scope** (try-scope))
@@ -1087,7 +1111,9 @@ trying then started in the background."
           ((null *sandbox-program*) :off)
           ((null (find-program *sandbox-program*)) :missing)
           (t (unless (sb-thread:mutex-owner **sandbox-lock**)
-               (tuatara.runtime:make-guarded-thread (lambda () (ignore-errors (sandbox-status))) :name "sandbox trial"))
+               (tuatara.runtime:make-guarded-thread
+                (lambda () (tuatara.runtime:ignoring-errors-reported ("trying the sandbox") (sandbox-status)))
+                :name "sandbox trial"))
              :unknown))))
 
 (defun sandbox-run (program arguments &key input (seconds *sandbox-seconds*) (memory *sandbox-memory*)

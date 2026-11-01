@@ -498,6 +498,21 @@ cat ~a/l.txt; echo; echo new > ~a/n.txt && cat ~a/n.txt; cat ~a/h.txt 2>/dev/nul
       (is string= (concatenate 'string outside "/file")
           (tuatara.io::real-path-so-far (concatenate 'string safe "/new/../link/file"))))))
 
+(define-test (sandbox program-not-started-reported)
+  ;; a program that cannot be started gives no output and no success, and debug mode keeps why
+  (drain-debug-reports)
+  (unwind-protect
+       (progn
+         (tuatara.runtime:set-debug t)
+         (multiple-value-bind (output ok) (tuatara.io:program-output (list "/nonexistent-tuatara-program") :seconds 5)
+           (false output)
+           (false ok))
+         (let ((texts (loop for report = (sb-concurrency:dequeue tuatara.runtime:*debug-reports*)
+                            while report collect (princ-to-string (fourth report)))))
+           (true (find-if (lambda (text) (search "running /nonexistent-tuatara-program failed" text)) texts)
+                 "~s" texts)))
+    (drain-debug-reports)))
+
 (define-test (sandbox program-output-read-in-blocks)
   ;; a program's output read a block at a time: little made besides the text given back
   ;; (4 octets a character); 9 octets a character when it was read a character at a time
