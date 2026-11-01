@@ -325,19 +325,58 @@ directory stands when that is past them (TIFF-FILE-SIZE)."
           (values (if width (format nil "~a, ~a" words (tuatara.io:size-words width height)) words) kind))
         (values words kind))))
 
-(defun picture-memory (kind pixels octets)
+(defun picture-memory (kind pixels octets &optional (channels 0))
   "The memory the program drawing a picture of KIND of PIXELS pixels (NIL:
 not known), its file OCTETS long, is given: *SANDBOX-MEMORY*, or what a large
-one needs, its file read whole first; a JPEG's the first, decoded at a
-fraction of its size; a camera's raw what its file's size calls for, developed
-whole, up to *PICTURE-MEMORY*."
+one needs, its file read whole first, and four octets a pixel more for each of
+its CHANNELS that its decoder keeps apart (a JPEG 2000 picture's components,
+a JPEG XL picture's channels); a JPEG's the first, decoded at a fraction of
+its size; a camera's raw what its file's size calls for, developed whole, up
+to *PICTURE-MEMORY*."
   (cond ((eq kind :raw)
          ;; its size not in its first octets (they hold a thumbnail's): reckoned from its file's
          (let ((need (+ (* 1024 1024 1024) (* 64 (or octets 0)))))
            (max (or tuatara-user:*sandbox-memory* 0) (if *picture-memory* (min need *picture-memory*) need))))
         ((and pixels (not (eq kind :jpeg)))
-         (max (or tuatara-user:*sandbox-memory* 0) (+ (* 512 1024 1024) (* 32 pixels) (or octets 0))))
+         (max (or tuatara-user:*sandbox-memory* 0) (+ (* 512 1024 1024) (* (+ 32 (* 4 channels)) pixels) (or octets 0))))
         (t tuatara-user:*sandbox-memory*)))
+
+(defparameter *pictures-sized-first* '(:jp2 :j2k :jxl)
+  "The kinds of picture drawn only when their header, read before anything of
+them is decoded (CODED-PICTURE-HEADER), gives their size, and that size is
+within what *PICTURE-MEMORY* allows: JPEG 2000 and JPEG XL.")
+
+(defun coded-picture-header (fd head kind)
+  "What the JPEG 2000 or JPEG XL picture of KIND (:jp2 or :j2k, either
+taken for both, or :jxl) open as FD, whose first octets are HEAD, says of
+itself in its header (TUATARA.IO:J2K-HEADER, TUATARA.IO:JXL-FILE-HEADER), a
+JP2 file's codestream read where it begins when that is past HEAD; NIL when
+its header does not say, or for another kind."
+  (case kind
+    (:jxl (tuatara.io:jxl-file-header head))
+    ((:jp2 :j2k)
+     (if (tuatara.io:octets-at-p head '(#xFF #x4F #xFF #x51))
+         (tuatara.io:j2k-header head)
+         (or (tuatara.io:jp2-header head)
+             (let* ((size (ignore-errors (sb-posix:stat-size (sb-posix:fstat fd))))
+                    (start (and size (tuatara.io:box-contents-start
+                                      head '("jp2c")
+                                      :read (lambda (at count) (tuatara.io:read-fd-exactly fd count at)))))
+                    (codestream (and start (< start size)
+                                     (tuatara.io:read-fd-exactly fd (min 65536 (- size start)) start))))
+               (and codestream (tuatara.io:j2k-header codestream))))))))
+
+(defun coded-picture-refusal (kind header)
+  "Why the JPEG 2000 or JPEG XL picture of KIND whose header
+\(CODED-PICTURE-HEADER) is HEADER is not drawn before anything of it is
+decoded, in words: no size in its header, or a header no such picture has
+\(more tiles or bits than JPEG 2000 allows); NIL when it may be drawn."
+  (cond ((not (member kind *pictures-sized-first*)) nil)
+        ((null header) "its header gives no size, or is damaged")
+        ((and (getf header :tiles) (> (getf header :tiles) 65535))
+         (format nil "its header is damaged (~:d tiles, more than JPEG 2000 allows)" (getf header :tiles)))
+        ((and (getf header :precision) (> (getf header :precision) 38))
+         (format nil "its header is damaged (~d-bit samples, more than JPEG 2000 allows)" (getf header :precision)))))
 
 (defvar *large-picture-turn* (sb-thread:make-semaphore :count 1 :name "tuatara large picture")
   "Held while a large picture is drawn, one given more memory than
@@ -379,11 +418,20 @@ only PAM pixels, no program started (delegates), no filters, no file named by
 
 (defparameter *image-formats*
   '((:png . "PNG") (:jpeg . "JPEG") (:gif . "GIF") (:webp . "WEBP") (:bmp . "BMP") (:tiff . "TIFF") (:raw . "DNG")
-    (:ico . "ICO") (:heif . "HEIC") (:avif . "AVIF") (:svg . "SVG"))
+    (:ico . "ICO") (:heif . "HEIC") (:avif . "AVIF") (:svg . "SVG") (:jp2 . "JP2") (:j2k . "J2K") (:jxl . "JXL"))
   "The kinds of image (TUATARA.IO:OCTETS-KIND's keywords) turned into pixels
 for a preview, each with the name of its format that the decoding program is
 told, so that it reads the file as that and nothing else: a camera's raw is
-developed by ImageMagick's LibRaw reader (DNG), whatever its maker.")
+developed by ImageMagick's LibRaw reader (DNG), whatever its maker; a JPEG
+2000 file or codestream is read by its OpenJPEG reader, a JPEG XL one by its
+libjxl reader.")
+
+(defparameter *image-format-libraries*
+  '((:jp2 . "OpenJPEG") (:j2k . "OpenJPEG") (:jxl . "libjxl") (:heif . "libheif") (:avif . "libheif")
+    (:raw . "LibRaw") (:webp . "libwebp") (:svg . "librsvg"))
+  "For the kinds of *IMAGE-FORMATS* that the decoding program reads only when
+a library of their own is installed with it, that library's name, said when
+a picture is not shown for the want of it.")
 
 (defun find-image-decoder ()
   "The first of *IMAGE-DECODERS* whose program the sandbox finds, or NIL."
@@ -469,9 +517,16 @@ for print."
         (done nil))
       (let* ((octets (ignore-errors (sb-posix:stat-size (sb-posix:fstat fd))))
              (head (and octets (ignore-errors (tuatara.io:read-fd-start fd "the picture" octets 65536))))
-             (pixels (picture-pixels fd head))
-             (memory (picture-memory kind pixels octets))
+             (header (and head (member kind *pictures-sized-first*) (coded-picture-header fd head kind)))
+             (pixels (if header (* (getf header :width) (getf header :height)) (picture-pixels fd head)))
+             (memory (picture-memory kind pixels octets (cond ((getf header :components))
+                                                              (header (+ 3 (getf header :extra-channels)))
+                                                              (t 0))))
              (large (and memory tuatara-user:*sandbox-memory* (> memory tuatara-user:*sandbox-memory*))))
+        (let ((refusal (coded-picture-refusal kind header)))
+          (when refusal
+            (note (format nil ", not shown: ~a" refusal) :comment)
+            (done nil)))
         (when (and memory *picture-memory* (> memory *picture-memory*))
           (note (format nil ", not shown: ~:[it~;~:*~,1f megapixels~] would take ~a to draw, more than *picture-memory* allows (~a)"
                         (and pixels (/ pixels 1d6)) (octets-words memory) (octets-words *picture-memory*))
@@ -518,13 +573,19 @@ for print."
              (let ((preview (and (eq kind :raw) (raf-preview fd head))))
                (when preview
                  (return-from decode-image (decode-picture preview :jpeg width height :cancel cancel))))
-             (note (format nil ", not shown: ~a" (tuatara.io:sandbox-outcome-words outcome said :label program)) :comment)
+             (note (if (and (eq outcome :failed) (cl-ppcre:scan "(?i)no decode delegate" (or said "")))
+                       (format nil ", not shown: ~a here cannot read ~a pictures~@[ (~a, not installed with it)~]"
+                               program format (cdr (assoc kind *image-format-libraries*)))
+                       (format nil ", not shown: ~a" (tuatara.io:sandbox-outcome-words outcome said :label program)))
+                   :comment)
              (done nil)))))))))
 
 (defun decode-picture (octets kind width height
                        &key (cancel (and tuatara.runtime:*job* (tuatara.runtime:job-cancel tuatara.runtime:*job*))))
   "The picture OCTETS hold, of KIND (TUATARA.IO:OCTETS-KIND's keyword: :jpeg,
-:png, :tiff...), turned into pixels in the sandbox as DECODE-IMAGE turns a
+:png, :tiff, :jxl, :jp2 for a JPEG 2000 file or :j2k for a bare JPEG 2000
+codestream, either read as both, as a PDF's /JPXDecode picture is one or
+the other...), turned into pixels in the sandbox as DECODE-IMAGE turns a
 file's, no larger than WIDTH by HEIGHT pixels, as two values: a
 TUATARA.FRONTEND:IMAGE, NIL when it could not be made, and notes saying
 why. For a package reading pictures it finds in other files: only plain

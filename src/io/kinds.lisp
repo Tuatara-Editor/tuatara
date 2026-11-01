@@ -204,6 +204,174 @@ values (a height written negative, for rows kept top first, made positive)."
   "The width and height of the Photoshop image whose first octets are O, as two values."
   (values (octets-be o 18 4) (octets-be o 14 4)))
 
+(defparameter *jp2-signature* '(0 0 0 12 #x6A #x50 #x20 #x20 13 10 #x87 10)
+  "The twelve octets a JPEG 2000 file (JP2, JPX, JPM or Motion JPEG 2000) starts
+with, its signature box.")
+
+(defparameter *jxl-signature* '(0 0 0 12 #x4A #x58 #x4C #x20 13 10 #x87 10)
+  "The twelve octets a JPEG XL file kept in boxes starts with, its signature
+box; a bare JPEG XL codestream starts with FF 0A instead.")
+
+(defun box-contents-start (octets types &key (read (lambda (at count) (and (<= (+ at count) (length octets))
+                                                                           (subseq octets at (+ at count))))))
+  "Where the contents of the first box at the top level of a file kept in
+boxes (JPEG 2000, JPEG XL) whose type is one of TYPES begin, and as a second
+value its type; NIL when none is found among its first 1,000 boxes. Each box's
+header is read with READ, a function of where in the file and how many octets
+giving them or NIL, from OCTETS, the file's first octets, unless given: the
+box found may begin past them."
+  (let ((at 0))
+    (loop repeat 1000
+          do (let ((header (or (funcall read at 16) (funcall read at 8))))
+               (unless header (return nil))
+               (let ((size (octets-be header 0 4))
+                     (type (octets-ascii header 4 8))
+                     (length 8))
+                 (when (= size 1)
+                   (setf size (octets-be header 8 8) length 16)
+                   (unless size (return nil)))
+                 (when (member type types :test #'equal) (return (values (+ at length) type)))
+                 ;; a box running to the end of the file, or one shorter than its own header
+                 (when (< size length) (return nil))
+                 (incf at size))))))
+
+(defun j2k-header (o &optional (at 0))
+  "What the JPEG 2000 codestream at AT in O says of its picture in its main
+header, as a list of :WIDTH and :HEIGHT, :COMPONENTS (colours and the
+like, alpha too), :PRECISION (the most bits of any one, NIL when not all are
+among O) and :TILES (how many pieces the picture is cut in); NIL when its
+size marker is not there or holds values no codestream has."
+  (flet ((n (offset count) (octets-be o (+ at offset) count)))
+    (let ((x (n 8 4)) (y (n 12 4)) (xo (n 16 4)) (yo (n 20 4))
+          (xt (n 24 4)) (yt (n 28 4)) (xto (n 32 4)) (yto (n 36 4))
+          (count (n 40 2)))
+      (when (and (octets-at-p o '(#xFF #x4F #xFF #x51) at) count
+                 (< xo x) (< yo y) (plusp xt) (plusp yt) (<= xto xo) (<= yto yo)
+                 (< xo (+ xto xt)) (< yo (+ yto yt)) (<= 1 count 16384)
+                 (eql (n 4 2) (+ 38 (* 3 count))))
+        (list :width (- x xo) :height (- y yo) :components count
+              :precision (and (<= (+ at 42 (* 3 count)) (length o))
+                              (loop for i below count maximize (1+ (logand (aref o (+ at 42 (* 3 i))) #x7F))))
+              :tiles (* (ceiling (- x xto) xt) (ceiling (- y yto) yt)))))))
+
+(defun j2k-size (o)
+  "The width and height of the picture of the JPEG 2000 codestream whose
+first octets are O, as two values (J2K-HEADER); NIL when they are not there."
+  (let ((header (j2k-header o)))
+    (values (getf header :width) (getf header :height))))
+
+(defun jp2-header (o)
+  "What the codestream of the JPEG 2000 file whose first octets are O says of
+its picture (J2K-HEADER), when its codestream box begins among them; NIL
+otherwise."
+  (let ((start (box-contents-start o '("jp2c"))))
+    (and start (j2k-header o start))))
+
+(defun jp2-size (o)
+  "The width and height of the picture of the JPEG 2000 file whose first
+octets are O, as two values, as its codestream says (JP2-HEADER); NIL when
+that is not among O."
+  (let ((header (jp2-header o)))
+    (values (getf header :width) (getf header :height))))
+
+(defun jp2-words (o)
+  "A file starting with the JPEG 2000 signature box described by the brand
+its file type box names, and its keyword: a JPEG 2000 image (JP2, or JPX read
+as one) with its size, a compound document (JPM), a Motion JPEG 2000 video."
+  (let ((brand (and (octets-at-p o "ftyp" 16) (octets-ascii o 20 24))))
+    (cond ((equal brand "jpm ") (values "JPEG 2000 compound document (JPM)" :jpm))
+          ((equal brand "mjp2") (values "Motion JPEG 2000 video" :mj2))
+          (t (values (joined-words (if (equal brand "jpx ") "JPEG 2000 image (JPX)" "JPEG 2000 image")
+                                   (multiple-value-call #'size-words (jp2-size o)))
+                     :jp2)))))
+
+(defun jxl-header (o &optional (at 0))
+  "What the JPEG XL codestream at AT in O (starting FF 0A) says of its
+picture in its first fields, as a list of :WIDTH and :HEIGHT,
+:EXTRA-CHANNELS (alpha and the like, beside the colours), :BITS (a sample's
+bits), :FLOAT (true when samples are floating point) and :ANIMATED; NIL when
+those fields are not all among O."
+  (when (octets-at-p o '(#xFF #x0A) at)
+    (let ((bit (* 8 (+ at 2))))
+      (labels ((bits (count)
+                 (let ((value 0))
+                   (dotimes (k count value)
+                     (let ((octet (octet-at o (floor bit 8))))
+                       (unless octet (return-from jxl-header nil))
+                       (setf value (logior value (ash (ldb (byte 1 (mod bit 8)) octet) k)))
+                       (incf bit)))))
+               (flag () (= 1 (bits 1)))
+               (choice (&rest choices)
+                 ;; two bits choose among CHOICES: a number, or (BITS . OFFSET), so many bits more and that added
+                 (let ((choice (nth (bits 2) choices)))
+                   (if (consp choice) (+ (bits (car choice)) (cdr choice)) choice)))
+               (size ()
+                 (let* ((small (flag))
+                        (height (if small (* 8 (1+ (bits 5))) (choice '(9 . 1) '(13 . 1) '(18 . 1) '(30 . 1))))
+                        (ratio (bits 3)))
+                   (values (if (zerop ratio)
+                               (if small (* 8 (1+ (bits 5))) (choice '(9 . 1) '(13 . 1) '(18 . 1) '(30 . 1)))
+                               (destructuring-bind (across down) (nth (1- ratio) '((1 1) (12 10) (4 3) (3 2) (16 9) (5 4) (2 1)))
+                                 (floor (* height across) down)))
+                           height)))
+               (preview-size ()
+                 (let ((eighths (flag)))
+                   (flet ((side () (if eighths
+                                       (choice 16 32 '(5 . 1) '(9 . 33))
+                                       (choice '(6 . 1) '(8 . 65) '(10 . 321) '(12 . 1345)))))
+                     (side)
+                     (when (zerop (bits 3)) (side))))))
+        (multiple-value-bind (width height) (size)
+          (let ((depth 8) (float nil) (extra 0) (animated nil))
+            (unless (flag)
+              (when (flag)
+                (bits 3)
+                (when (flag) (size))
+                (when (flag) (preview-size))
+                (when (flag)
+                  (setf animated t)
+                  (choice 100 1000 '(10 . 1) '(30 . 1))
+                  (choice 1 1001 '(8 . 1) '(10 . 1))
+                  (choice 0 '(3 . 0) '(16 . 0) '(32 . 0))
+                  (flag)))
+              (setf float (flag)
+                    depth (if float (prog1 (choice 32 16 24 '(6 . 1)) (bits 4)) (choice 8 10 12 '(6 . 1))))
+              (flag)
+              (setf extra (choice 0 1 '(4 . 2) '(12 . 1))))
+            (list :width width :height height :extra-channels extra :bits depth :float float :animated animated)))))))
+
+(defun jxl-file-header (o)
+  "What the JPEG XL file whose first octets are O says of its picture
+\(JXL-HEADER), a bare codestream or one kept in boxes, when its first fields
+are among O; NIL otherwise."
+  (if (octets-at-p o *jxl-signature*)
+      (multiple-value-bind (start type) (box-contents-start o '("jxlc" "jxlp"))
+        (cond ((null start) nil)
+              ((equal type "jxlc") (jxl-header o start))
+              ;; a codestream in parts: the parts among O joined, its first fields may span two
+              (t (let ((joined (make-array 0 :element-type '(unsigned-byte 8) :adjustable t :fill-pointer 0))
+                       (at (- start 8)))
+                   (loop repeat 64
+                         for size = (octets-be o at 4)
+                         while (and size (>= size 12) (octets-at-p o "jxlp" (+ at 4)) (< (+ at 12) (length o)))
+                         do (loop for i from (+ at 12) below (min (+ at size) (length o))
+                                  do (vector-push-extend (aref o i) joined))
+                            (incf at size))
+                   (jxl-header joined)))))
+      (jxl-header o)))
+
+(defun jxl-size (o)
+  "The width and height of the JPEG XL picture whose file's first octets are
+O, as two values (JXL-FILE-HEADER); NIL when they are not among O."
+  (let ((header (jxl-file-header o)))
+    (values (getf header :width) (getf header :height))))
+
+(defun jxl-words (o)
+  "A JPEG XL image described: its size, and whether it moves."
+  (let ((header (jxl-file-header o)))
+    (joined-words "JPEG XL image" (size-words (getf header :width) (getf header :height))
+                  (and (getf header :animated) "animated"))))
+
 (defun tiff-octets-p (octets)
   "True when OCTETS begin as a TIFF-shaped file does: II*0, its numbers least
 significant first, or MM0*, most significant first."
@@ -454,7 +622,8 @@ plain text, and as a second value its kind."
     (:tiff "tif" "tiff") (:raw "dng" "nef" "nrw" "cr2" "cr3" "crw" "arw" "orf" "rw2" "rwl" "pef" "srw" "raf" "mrw"
                                 "3fr" "fff" "iiq" "mos" "mef" "erf" "kdc" "dcr" "x3f")
     (:ico "ico" "cur") (:heif "heic" "heif")
-    (:avif "avif") (:psd "psd" "psb") (:xcf "xcf") (:svg "svg") (:pdf "pdf") (:postscript "ps" "eps" "ai")
+    (:avif "avif") (:jp2 "jp2" "jpx" "jpf" "jph") (:j2k "j2k" "j2c" "jpc" "jhc") (:jxl "jxl")
+    (:psd "psd" "psb") (:xcf "xcf") (:svg "svg") (:pdf "pdf") (:postscript "ps" "eps" "ai")
     (:rtf "rtf") (:ole "doc" "xls" "ppt" "msg" "msi" "vsd" "pub" "dot" "xlt" "pot" "pps")
     (:docx "docx" "docm" "dotx" "dotm") (:xlsx "xlsx" "xlsm" "xltx" "xltm") (:pptx "pptx" "pptm" "potx" "potm" "ppsx" "ppsm")
     (:odt "odt" "ott") (:ods "ods" "ots") (:odp "odp" "otp") (:epub "epub") (:apk "apk") (:jar "jar" "war" "ear")
@@ -531,6 +700,10 @@ octets, up to 64 KB, the more kinds are told (a disc image's mark is 32 KB in)."
         ;; images
         ((is (list #x89 80 78 71 13 10 26 10)) (values (png-words o) :png))
         ((is (list #xFF #xD8 #xFF)) (values (jpeg-words o) :jpeg))
+        ((is *jp2-signature*) (jp2-words o))
+        ((is (list #xFF #x4F #xFF #x51))
+         (values (joined-words "JPEG 2000 codestream" (multiple-value-call #'size-words (j2k-size o))) :j2k))
+        ((or (is *jxl-signature*) (is (list #xFF #x0A))) (values (jxl-words o) :jxl))
         ((or (is "GIF87a") (is "GIF89a")) (values (joined-words "GIF image" (multiple-value-call #'size-words (gif-size o))) :gif))
         ((and (is "RIFF") (is "WEBP" 8)) (values (webp-words o) :webp))
         ((and (is "BM") (member (octets-le o 14 4) '(12 40 52 56 64 108 124)))
@@ -630,7 +803,8 @@ octets, up to 64 KB, the more kinds are told (a disc image's mark is 32 KB in)."
 
 (defparameter *picture-size-functions*
   '((:png . png-size) (:jpeg . jpeg-size) (:gif . gif-size) (:webp . webp-size) (:bmp . bmp-size)
-    (:tiff . tiff-size) (:heif . ispe-size) (:avif . ispe-size) (:psd . psd-size))
+    (:tiff . tiff-size) (:heif . ispe-size) (:avif . ispe-size) (:psd . psd-size)
+    (:jp2 . jp2-size) (:j2k . j2k-size) (:jxl . jxl-size))
   "For each kind of picture OCTETS-KIND gives the size of, the function of its
 first octets giving its width and height.")
 

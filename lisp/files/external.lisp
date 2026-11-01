@@ -35,6 +35,7 @@ program. The program is run as it is, never by a shell. For example:
 (defparameter *kind-mime-types*
   '((:png "image/png") (:jpeg "image/jpeg") (:gif "image/gif") (:webp "image/webp") (:bmp "image/bmp")
     (:tiff "image/tiff") (:raw "image/x-dcraw") (:ico "image/vnd.microsoft.icon") (:heif "image/heif") (:avif "image/avif")
+    (:jp2 "image/jp2") (:j2k "image/x-jp2-codestream") (:jxl "image/jxl")
     (:xcf "image/x-xcf") (:psd "image/vnd.adobe.photoshop") (:svg "image/svg+xml") (:pdf "application/pdf")
     (:mp4 "video/mp4" ("m4a" . "audio/mp4") ("m4b" . "audio/mp4") ("mov" . "video/quicktime") ("qt" . "video/quicktime")
      ("3gp" . "video/3gpp") ("3g2" . "video/3gpp2"))
@@ -114,7 +115,7 @@ not found."
       (format nil "~a was not found: install xdg-utils to open files in the desktop's programs" given)))
 
 (defvar *open-externally-kinds*
-  '(:png :jpeg :gif :webp :bmp :tiff :raw :ico :heif :avif :xcf :psd :pdf
+  '(:png :jpeg :gif :webp :bmp :tiff :raw :ico :heif :avif :jp2 :j2k :jxl :xcf :psd :pdf
     :mp4 :matroska :avi :mpeg :mp3 :ogg :flac :wav :aiff :midi
     :docx :xlsx :pptx :odt :ods :odp)
   "The kinds of file \\[open-externally] opens in the desktop's own program, as
