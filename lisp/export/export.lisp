@@ -870,19 +870,21 @@ as four values: its text, the document's keyword lines put before it, as
 whole lines of the file; the line of the file each of its lines comes from,
 a vector; the file's lines; and words for it (the subtree \"Findings\").
 NIL when there is no such part (no headline at point)."
-  (multiple-value-bind (tree text) (org-buffer-tree buffer)
-    (let* ((lines (coerce (uiop:split-string text :separator '(#\Newline)) 'vector))
+  (let ((parse (org-buffer-parse buffer)))
+    (let* ((tree (org-parse-tree parse))
+           (text (org-parse-text parse))
+           (lines (coerce (uiop:split-string text :separator '(#\Newline)) 'vector))
            (starts (let ((v (make-array (length lines))) (at 0))
                      (dotimes (i (length lines) v)
                        (setf (aref v i) at)
                        (incf at (1+ (length (aref lines i)))))))
            (line-of (lambda (position) (max 0 (1- (or (position-if (lambda (start) (> start position)) starts) (length lines))))))
            ;; at the very end of the text, its last character's headline
-           (point (min (org-byte->char buffer (tuatara.buffer:buffer-point buffer)) (max 0 (1- (length text)))))
+           (point (min (org-parse-point parse) (max 0 (1- (length text)))))
            (headline (and (eq scope :subtree) (org-current-headline tree point)))
            (range (ecase scope
                     (:selection (multiple-value-bind (start end) (selection-range)
-                                  (and start (cons (org-byte->char buffer start) (org-byte->char buffer (max start (1- end)))))))
+                                  (and start (cons (org-parse-char parse start) (org-parse-char parse (max start (1- end)))))))
                     (:subtree (and headline (cons (org-node-begin headline)
                                                   (max (org-node-begin headline)
                                                        (1- (- (org-node-end headline) (org-node-post-blank headline))))))))))

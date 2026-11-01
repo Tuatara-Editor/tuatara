@@ -63,7 +63,8 @@ file or the line is no longer there, or the buffer had no file."
     (if (live-buffer-p buffer)
         buffer
         (let* ((buffer (and path (eq (tuatara.io:path-kind path) :regular) (tuatara.io:visit-file path)))
-               (text (and buffer (nth-value 1 (org-tree-now buffer))))
+               (parse (and buffer (org-parse-now buffer)))
+               (text (and parse (org-parse-text parse)))
                (line (format nil "CLOCK: ~a" (org-timestamp-text (org-clock-started clock))))
                (at (and text (loop for at = (search line text) then (search line text :start2 (1+ at))
                                    while at
@@ -71,7 +72,7 @@ file or the line is no longer there, or the buffer had no file."
                                      do (multiple-value-bind (from to) (org-read-clock-line text (string-line-start text at))
                                           (when (and from (not to)) (return at)))))))
           (if at
-              (progn (org-clock-hold clock buffer (org-char->byte buffer (string-line-start text at)))
+              (progn (org-clock-hold clock buffer (org-parse-octet parse (string-line-start text at)))
                      buffer)
               (progn (when (eq *org-clock* clock) (setf *org-clock* nil))
                      (message "The clock's open CLOCK: line is no longer ~:[there~;~:*in ~a~]: the clock stopped (~a)"
@@ -132,28 +133,29 @@ below the headline. Saved when that is BUFFER's only change
 \(ORG-SAVE-CHANGED), so that the clock runs again after a restart."
   ;; the clock running stopped first: its line changes the text the new one goes into
   (when *org-clock* (org-clock-out-now :now now))
-  (multiple-value-bind (tree text) (org-tree-now buffer)
-    (let* ((*org-current-text* (or text ""))
-           (position (org-point-char buffer))
-           (item (and tree (org-checkbox-item-at tree text position)))
-           (owner (or item (and tree (org-current-headline tree position)))))
-      (if (null owner)
-          (message "Not under a headline: clock in on a task")
-          (let* ((started (org-minute now))
-                 (line (format nil "CLOCK: ~a" (org-timestamp-text started)))
-                 (title (if item (org-checkbox-title item text) (or (org-property owner :raw-value) "")))
-                 (edit (org-log-edit owner text (list line) :drawer (or item *org-clock-into-drawer*)))
-                 (at (search line (third edit)))
-                 ;; where the clock's line begins in the text after the edit
-                 (line-start (+ (first edit) (string-line-start (third edit) at)))
-                 (modified (tuatara.io:changes-unsaved-p buffer)))
-            ;; the task's headline may be above the part of the buffer shown
-            (tuatara.buffer:with-narrowing-lifted (buffer)
-              (org-apply-edits buffer (list edit) :point position))
-            (setf *org-clock* (make-org-clock :started started :task title))
-            (org-clock-hold *org-clock* buffer (org-char->byte buffer line-start))
-            (org-save-changed buffer modified :existing t)
-            (message "Clock starts at ~a: ~a" (format-time "%R" started) title))))))
+  (let* ((parse (org-parse-now buffer))
+         (tree (and parse (org-parse-tree parse)))
+         (text (and parse (org-parse-text parse)))
+         (position (and parse (org-parse-point parse)))
+         (item (and tree (org-checkbox-item-at tree text position)))
+         (owner (or item (and tree (org-current-headline tree position)))))
+    (if (null owner)
+        (message "Not under a headline: clock in on a task")
+        (let* ((started (org-minute now))
+               (line (format nil "CLOCK: ~a" (org-timestamp-text started)))
+               (title (if item (org-checkbox-title item text) (or (org-property owner :raw-value) "")))
+               (edit (org-log-edit owner text (list line) :drawer (or item *org-clock-into-drawer*)))
+               (at (search line (third edit)))
+               ;; where the clock's line begins in the text after the edit
+               (line-start (+ (first edit) (string-line-start (third edit) at)))
+               (modified (tuatara.io:changes-unsaved-p buffer)))
+          ;; the task's headline may be above the part of the buffer shown
+          (tuatara.buffer:with-narrowing-lifted (buffer)
+            (org-apply-edits parse (list edit) :point position))
+          (setf *org-clock* (make-org-clock :started started :task title))
+          (org-clock-hold *org-clock* buffer (org-parse-octet parse line-start))
+          (org-save-changed buffer modified :existing t)
+          (message "Clock starts at ~a: ~a" (format-time "%R" started) title)))))
 
 (define-command org-clock-in ()
   "Clock in on the task point is under (\\`C-c C-x C-i'): CLOCK: and the time go into its :LOGBOOK: drawer, made
@@ -258,10 +260,11 @@ left open in the agenda files, as after a restart, runs again
                                    when (or (zerop line) (eql (tuatara.buffer:buffer-char-at buffer line) #\*)) return line)
                       :open start)))))
 
-(defun org-update-clock-line (buffer text position)
-  "When the line of the character POSITION of BUFFER (TEXT its text) is a
+(defun org-update-clock-line (parse position)
+  "When the line of the character POSITION of PARSE (an ORG-PARSE) is a
 finished CLOCK: line, write its duration again from its two times; true when it was."
-  (let* ((start (string-line-start text position))
+  (let* ((text (org-parse-text parse))
+         (start (string-line-start text position))
          (line (org-line-at text start)))
     (multiple-value-bind (from-text to-text) (org-read-clock-line line)
       (let ((from (and to-text (org-ts-universal-time from-text))) (to (and to-text (org-ts-universal-time to-text))))
@@ -269,7 +272,7 @@ finished CLOCK: line, write its duration again from its two times; true when it 
           (let* ((minutes (floor (- to from) 60))
                  (new (format nil "~a => ~a" (subseq line 0 (+ (search to-text line :from-end t) (length to-text)))
                               (org-duration-text minutes))))
-            (org-replace-chars buffer start (+ start (length line)) new :point (min position (+ start (length new))))
+            (org-replace-chars parse start (+ start (length line)) new :point (min position (+ start (length new))))
             (message "Clock line: ~a" (string-left-trim " " (org-duration-text minutes)))
             t))))))
 

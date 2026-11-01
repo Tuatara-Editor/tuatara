@@ -169,10 +169,11 @@ and is not ready (PROSE-READY-P)."
 in prose, for positions asked in order from the first: an Org buffer's parse
 read once for all of them."
   (if (typep (buffer-major-mode buffer) 'org-mode)
-      (multiple-value-bind (tree text) (org-tree-now buffer)
-        (let ((ranges (org-buffer-laid-out-ranges buffer tree text)))
-          (lambda (position)
-            (let ((at (org-byte->char buffer position)))
-              (loop while (and ranges (<= (cdar ranges) at)) do (pop ranges))
-              (org-text-prose-p ranges text at)))))
+      (let* ((parse (org-parse-now buffer))
+             (text (and parse (org-parse-text parse)))
+             (ranges (org-buffer-laid-out-ranges buffer (and parse (org-parse-tree parse)) text)))
+        (lambda (position)
+          (let ((at (org-parse-char parse position)))
+            (loop while (and ranges (<= (cdar ranges) at)) do (pop ranges))
+            (org-text-prose-p ranges text at))))
       (lambda (position) (prose-p buffer position))))

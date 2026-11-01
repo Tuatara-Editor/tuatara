@@ -114,8 +114,8 @@ buffer's parse: the place its writer works from (a clock table's subtree).")
 ;;; Made in the background
 
 (defvar *dblock-own* nil
-  "While dynamic blocks are made on a thread of their own: the parse of the
-buffer holding them as it was when they were asked for, (TREE TEXT).")
+  "While dynamic blocks are made on a thread of their own: the ORG-PARSE of the
+buffer holding them as it was when they were asked for.")
 
 (defvar *dblock-sources* nil
   "While dynamic blocks are made on a thread of their own: the text of each
@@ -221,18 +221,17 @@ ORG-READ-FILE-TEXT reads files."
         (org-agenda-source-text path (if found source :disk)))
       (org-agenda-source-text path (org-agenda-file-source path))))
 
-(defun dblock-make (job tree text sources)
-  "Make the blocks of JOB on the thread it runs on, from TREE and TEXT, its
-buffer's parse, with the SOURCES (*DBLOCK-SOURCES*) taken when it was asked
+(defun dblock-make (job parse sources)
+  "Make the blocks of JOB on the thread it runs on, from PARSE, its buffer's
+ORG-PARSE, with the SOURCES (*DBLOCK-SOURCES*) taken when it was asked
 for; it ends :DONE, or :STOPPED when asked to stop
 \(TUATARA.RUNTIME:JOB-STOPPED). A writer that fails leaves its block as it was,
 and says why."
   (let ((*dblock-job* job)
         (*messages-kept* (dblock-job-messages job))
         (*dblock-sources* sources)
-        (*dblock-own* (list tree text))
-        (*current-buffer* (dblock-job-buffer job))
-        (*org-current-text* text))
+        (*dblock-own* parse)
+        (*current-buffer* (dblock-job-buffer job)))
     (dolist (piece (dblock-job-pieces job))
       (destructuring-bind (begin start end first writer params position) piece
         (declare (ignore begin start end first))
@@ -247,17 +246,18 @@ and says why."
     (dblock-check-stop)
     (setf (dblock-job-status job) :done)))
 
-(defun dblock-start (buffer tree text blocks &key count)
-  "Make BLOCKS of BUFFER again (as DBLOCK-BLOCKS gives them, of TEXT, BUFFER's
-parse as it is now with TREE), each by the writer its
-#+BEGIN: line names, on a thread of their own, as a job of BUFFER: put in at
-once when they are made within *DBLOCK-WAIT* seconds, else once they are
-made, as the job is taken in, the editor free meanwhile. A job running in BUFFER
-already has this one wait its turn. COUNT, when BLOCKS are all of BUFFER's,
-how many, said once they are put in."
-  (let* ((returns (org-returns-of buffer))
+(defun dblock-start (parse blocks &key count)
+  "Make BLOCKS again (as DBLOCK-BLOCKS gives them) of PARSE, the ORG-PARSE of
+its buffer as it is now, each by the writer its #+BEGIN: line names, on a
+thread of their own, as a job of the buffer: put in at once when they are
+made within *DBLOCK-WAIT* seconds, else once they are made, as the job is
+taken in, the editor free meanwhile. A job running in the buffer already has
+this one wait its turn. COUNT, when BLOCKS are all of the buffer's, how many,
+said once they are put in."
+  (let* ((buffer (org-parse-buffer parse))
+         (text (org-parse-text parse))
          (words (if count "Making the dynamic blocks again" "Making a dynamic block again")))
-    (unless (queue-if-busy buffer words (list (cons (org-char->byte buffer (first (first blocks)) returns) :after))
+    (unless (queue-if-busy buffer words (list (cons (org-parse-octet parse (first (first blocks))) :after))
                            (lambda (offset) (dblock-start-queued buffer offset count)))
       (let* ((version (tuatara.buffer:buffer-version buffer))
              (pieces (loop for (begin content end name params) in blocks
@@ -265,9 +265,9 @@ how many, said once they are put in."
                            if (null writer)
                              do (message "No writer for the dynamic block ~a: define-dblock-writer makes one" name)
                            else
-                             collect (list (tuatara.text:make-anchor version (org-char->byte buffer begin returns) :bias :after)
-                                           (tuatara.text:make-anchor version (org-char->byte buffer content returns))
-                                           (tuatara.text:make-anchor version (org-char->byte buffer end returns) :bias :after)
+                             collect (list (tuatara.text:make-anchor version (org-parse-octet parse begin) :bias :after)
+                                           (tuatara.text:make-anchor version (org-parse-octet parse content))
+                                           (tuatara.text:make-anchor version (org-parse-octet parse end) :bias :after)
                                            (subseq text begin content)
                                            writer
                                            (append (dblock-read-params params) (list :name name :content (subseq text content end)))
@@ -276,7 +276,7 @@ how many, said once they are put in."
         (let ((sources (dblock-snapshot-sources)))
           (tuatara.runtime:start-job-thread job (tuatara.runtime:carry-settings
                                                  *dblock-carried-settings*
-                                                 (lambda (job) (dblock-make job tree text sources)))
+                                                 (lambda (job) (dblock-make job parse sources)))
                                             :name "tuatara dynamic blocks"
                                             :details (format nil "~d block~:p" (length pieces)))
           (take-in-soon job *dblock-wait*))))))
@@ -286,14 +286,14 @@ how many, said once they are put in."
 begins at its octet OFFSET, or with COUNT all of its blocks, from its text as
 it is now."
   (let ((*current-buffer* buffer))
-    (with-org-structure (buffer tree text position)
+    (with-org-structure (parse buffer tree text position)
       (let ((blocks (if count
                         (dblock-blocks tree text)
-                        (let ((block (dblock-at tree text (org-byte->char buffer offset))))
+                        (let ((block (dblock-at tree text (org-parse-char parse offset))))
                           (and block (list block))))))
         (cond ((null blocks) (message "The dynamic block is no longer there"))
               ((buffer-read-only-p buffer) (message "~a is read-only" (tuatara.buffer:buffer-name buffer)))
-              (t (dblock-start buffer tree text blocks :count (and count (length blocks)))))))))
+              (t (dblock-start parse blocks :count (and count (length blocks)))))))))
 
 (defun dblock-piece-place (buffer piece)
   "Where the text of PIECE, a block of a job of BUFFER, stands in BUFFER now,
@@ -361,10 +361,10 @@ buffer killed, or when it may no longer take them (RESULT-REFUSED-P)."
                (when (and count (zerop moved))
                  (message "~[No dynamic block here~;Made 1 dynamic block again~:;Made ~:*~d dynamic blocks again~]" count))))))))
 
-(defun dblock-update (buffer tree text block)
-  "Make BLOCK of BUFFER (as DBLOCK-BLOCKS gives it, of TEXT, BUFFER's parse
-with TREE) again by its writer, in the background (DBLOCK-START)."
-  (dblock-start buffer tree text (list block)))
+(defun dblock-update (parse block)
+  "Make BLOCK of PARSE, its buffer's ORG-PARSE (as DBLOCK-BLOCKS gives it),
+again by its writer, in the background (DBLOCK-START)."
+  (dblock-start parse (list block)))
 
 (defun dblock-at (tree text position)
   "The dynamic block of TREE, the parse of TEXT, the character POSITION is in
@@ -381,21 +381,21 @@ background, the editor free meanwhile. With \\[universal-argument], every
 dynamic block of the buffer."
   (if (prefix-argument)
       (org-update-all-dblocks)
-      (with-org-structure (buffer tree text position)
+      (with-org-structure (parse buffer tree text position)
         (let ((block (dblock-at tree text position)))
           (if block
-              (progn (check-writable buffer) (dblock-update buffer tree text block))
+              (progn (check-writable buffer) (dblock-update parse block))
               (message "Not in a dynamic block (#+BEGIN: ... #+END:)"))))))
 
 (define-command org-update-all-dblocks ()
   "Make every dynamic block of the current Org buffer again: each written from
 the text as it is now, in the
 background, the editor free meanwhile, and put in together, in one step to undo."
-  (with-org-structure (buffer tree text position)
+  (with-org-structure (parse buffer tree text position)
     (check-writable buffer)
     (let ((blocks (dblock-blocks tree text)))
       (if blocks
-          (dblock-start buffer tree text blocks :count (length blocks))
+          (dblock-start parse blocks :count (length blocks))
           (message "No dynamic block here")))))
 
 ;;; New blocks
@@ -422,7 +422,7 @@ empty line and #+END:; then make it (in the background), point on its #+BEGIN:
 line."
   (if (not (typep (buffer-major-mode (current-buffer)) 'org-mode))
       (message "Dynamic blocks are Org's: this buffer is not in Org mode")
-      (with-org-structure (buffer tree text position)
+      (with-org-structure (parse buffer tree text position)
         (check-writable buffer)
         (let* ((line-start (string-line-start text position))
                (line-end (string-line-end text position))
@@ -432,10 +432,10 @@ line."
                (first (format nil "#+BEGIN: ~a~{ ~a~}" name (mapcar #'dblock-param-text params)))
                (new (format nil "~:[~%~;~]~a~%~%~a#+END:~%" blank first (make-string column :initial-element #\Space)))
                (begin (if blank at (1+ at))))
-          (org-apply-edits buffer (list (list at at new)) :point begin :final t)
-          (with-org-structure (buffer tree text position)
+          (org-apply-edits parse (list (list at at new)) :point begin :final t)
+          (with-org-structure (parse buffer tree text position)
             (let ((block (dblock-at tree text position)))
-              (when block (dblock-update buffer tree text block))))))))
+              (when block (dblock-update parse block))))))))
 
 (define-command org-dynamic-block-insert-dblock ()
   "Put a new dynamic block in (\\`C-c C-x x'): its kind asked for among those
@@ -451,15 +451,15 @@ that kind asks."
 subtree point is in, or the file before the
 first headline, its depth two levels. With \\[universal-argument], the first clock table of
 the buffer, point moved to it."
-  (with-org-structure (buffer tree text position)
+  (with-org-structure (parse buffer tree text position)
     (let* ((first (and (prefix-argument)
                        (find "clocktable" (dblock-blocks tree text) :key #'fourth :test #'string-equal)))
            (here (or first (let ((block (dblock-at tree text position)))
                              (and block (string-equal (fourth block) "clocktable") block)))))
       (cond (here
              (check-writable buffer)
-             (when first (org-goto-char buffer (first first)))
-             (dblock-update buffer tree text here))
+             (when first (org-goto-char parse (first first)))
+             (dblock-update parse here))
             (t (dblock-insert "clocktable"
                               (list :scope (if (org-current-headline tree position) 'subtree 'file) :maxlevel 2)))))))
 
@@ -1039,12 +1039,16 @@ its buffer when it is open, else from the disk, read once for a table
                        (parsed (dblock-source-text path))
                        (let ((source (org-agenda-file-source path)))
                          (if (typep source 'tuatara.buffer:buffer)
-                             (org-tree-now source)
+                             (let ((parse (org-parse-now source)))
+                               (and parse (values (org-parse-tree parse) (org-parse-text parse))))
                              (parsed (and source (org-agenda-source-text path source))))))))))
 
 (defun clocktable-own-tree (buffer)
   "The parse of BUFFER, the one holding the block, as two values, read once for a table (*CLOCKTABLE-PARSES*)."
-  (memo-values *clocktable-parses* :own (lambda () (if *dblock-own* (values-list *dblock-own*) (org-tree-now buffer)))))
+  (memo-values *clocktable-parses* :own
+               (lambda ()
+                 (let ((parse (or *dblock-own* (org-parse-now buffer))))
+                   (and parse (values (org-parse-tree parse) (org-parse-text parse)))))))
 
 (defun clocktable-week-start (params)
   "The day a clock table's PARAMS begin the week on (:wstart), Sunday 0 to Saturday 6; Monday without one."
@@ -1089,12 +1093,12 @@ timestamp as written; NIL for none."
                    (loop for path in files
                          collect (multiple-value-bind (tree text) (clocktable-file-tree path)
                                    (if tree
-                                       (let ((*org-current-text* text))
-                                         (clocktable-file-table tree text path params tstart tend :link-path path))
+                                       (clocktable-file-table tree text path params tstart tend :link-path path)
                                        (list path 0 '()))))
                    (multiple-value-bind (tree text) (clocktable-own-tree buffer)
                      (let ((root (and (member scope '("subtree" "tree") :test #'equal)
-                                      (let ((here (org-current-headline tree (or *dblock-position* (org-point-char buffer)))))
+                                      (let ((here (org-current-headline
+                                                   tree (or *dblock-position* (org-parse-point (org-parse-now buffer))))))
                                         (if (string= scope "tree")
                                             (loop for h = here then (org-node-parent h)
                                                   while (and h (eq (org-node-type (org-node-parent h)) 'headline))

@@ -601,7 +601,7 @@ seconds; the editor draws after it as it does when woken."
 (define-test (org keys-wait-for-no-parse-on-plain-lines)
   ;; RET and TAB on a line that can hold no link, table or checkbox: the file is not parsed for them
   (let ((calls 0))
-    (sb-int:encapsulate 'tuatara.defaults::org-tree-now 'count
+    (sb-int:encapsulate 'tuatara.defaults::org-parse-now 'count
                         (lambda (function &rest arguments) (incf calls) (apply function arguments)))
     (unwind-protect
          (flet ((parses (keys text)
@@ -615,7 +615,7 @@ seconds; the editor draws after it as it does when woken."
              (true (< (parses "" link) (parses "RET" link))))
            (let ((table (format nil "| a | b |~%| c | d |~%")))
              (true (< (parses "" table) (parses "TAB" table)))))
-      (sb-int:unencapsulate 'tuatara.defaults::org-tree-now 'count))))
+      (sb-int:unencapsulate 'tuatara.defaults::org-parse-now 'count))))
 
 (define-test (org largest-file-opens-as-text)
   ;; an Org file larger than Org's readers take opens in text mode: no whole-buffer parse of gigabytes

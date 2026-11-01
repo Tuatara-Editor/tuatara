@@ -258,19 +258,20 @@ character AT of several with its titles; returns the buffer it went into and
 where it begins there (an octet)."
   (let ((buffer (org-capture-target-buffer target day)))
     (check-writable buffer)
-    (values buffer
-            (case (first target)
-              (:file-headline
-               (let ((headline (org-headline-titled (org-tree-now buffer) (third target))))
-                 (if headline
-                     (org-insert-entry buffer text :headline headline)
-                     (org-insert-entry buffer text :title (third target)))))
-              (:olp
-               (let ((headline (org-headline-at-path (org-tree-now buffer) (cddr target) at)))
-                 (unless headline
-                   (refuse "~a is not there" (if *secret-at-hand* "The heading" (org-olp-text target))))
-                 (org-insert-entry buffer text :headline headline)))
-              (t (org-insert-entry buffer text))))))
+    (let ((parse (org-parse-now buffer)))
+      (values buffer
+              (case (first target)
+                (:file-headline
+                 (let ((headline (org-headline-titled (org-parse-tree parse) (third target))))
+                   (if headline
+                       (org-insert-entry parse text :headline headline)
+                       (org-insert-entry parse text :title (third target)))))
+                (:olp
+                 (let ((headline (org-headline-at-path (org-parse-tree parse) (cddr target) at)))
+                   (unless headline
+                     (refuse "~a is not there" (if *secret-at-hand* "The heading" (org-olp-text target))))
+                   (org-insert-entry parse text :headline headline)))
+                (t (org-insert-entry parse text)))))))
 
 (defun org-capture-clock (buffer at started resume)
   "Clock the heading of BUFFER at the octet AT from the universal time

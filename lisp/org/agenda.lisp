@@ -185,10 +185,10 @@ agenda keeps them (ORG-AGENDA-ENTRIES), never opened for it."
   (let ((tags '()))
     (dolist (buffer buffers)
       (when buffer
-        (multiple-value-bind (tree text) (org-tree-now buffer)
-          (when tree
-            (dolist (tag (org-file-tags text)) (pushnew tag tags :test #'string=))
-            (dolist (headline (org-headlines tree))
+        (let ((parse (org-parse-now buffer)))
+          (when parse
+            (dolist (tag (org-file-tags (org-parse-text parse))) (pushnew tag tags :test #'string=))
+            (dolist (headline (org-headlines (org-parse-tree parse)))
               (dolist (tag (org-property headline :tags)) (pushnew tag tags :test #'string=)))))))
     (dolist (path (ignoring-errors-reported ("listing the agenda files") (org-agenda-file-paths)))
       (dolist (entry (ignoring-errors-reported ("reading the tags of ~a" path) (org-agenda-entries path)))

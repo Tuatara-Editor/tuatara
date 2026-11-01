@@ -681,9 +681,10 @@ ORG-FORMULA-ERROR, the table as it was, when one cannot be worked out at all."
 
 ;;; The table's #+TBLFM: line in the model
 
-(defun org-table-formulas-of (tree position)
-  "The formulas of the first #+TBLFM: line of the Org table holding the character POSITION, as texts."
-  (let ((table (org-table-at tree position)))
+(defun org-table-formulas-of (parse)
+  "The formulas of the first #+TBLFM: line of the Org table of PARSE (an
+ORG-PARSE) point is in, as texts."
+  (let ((table (org-table-at (org-parse-tree parse) (org-parse-text parse) (org-parse-point parse))))
     (and table (org-table-formula-texts (or (first (org-property table :tblfm)) "")))))
 
 (defun org-store-formula (texts lhs rhs)
@@ -712,11 +713,10 @@ first rule (in every row when it has none), field formulas (@4$2=vsum(@2..@3))
 and range formulas (@2$2..@3$3=$1*10), worked out with the table
 arithmetic. Formulas in Emacs Lisp are left out: nothing in a file is run."
   (let ((done (with-org-table (buffer model)
-                (multiple-value-bind (tree) (org-tree-now buffer)
-                  (let ((texts (org-table-formulas-of tree (org-point-char buffer))))
-                    (cond ((null texts) (message "This table has no formulas (#+TBLFM:)") :not-done)
-                          ((org-table-recalculate-model model texts) t)
-                          (t :not-done)))))))
+                (let ((texts (org-table-formulas-of (org-parse-now buffer))))
+                  (cond ((null texts) (message "This table has no formulas (#+TBLFM:)") :not-done)
+                        ((org-table-recalculate-model model texts) t)
+                        (t :not-done))))))
     (unless done (message "Not in a table"))))
 
 (defun org-tblfm-line-table (tree text position)
@@ -728,9 +728,12 @@ arithmetic. Formulas in Emacs Lisp are left out: nothing in a file is run."
                      (and (eq (org-node-type node) 'table) (eq (org-property node :type) 'org)
                           (org-node-contents-end node) (>= line-start (org-node-contents-end node))))))))
 
-(defun org-recalculate-from-tblfm (buffer tree text position)
-  "When point is on the #+TBLFM: line of an Org table, work its formulas out, point staying; true when it was."
-  (let ((table (org-tblfm-line-table tree text position)))
+(defun org-recalculate-from-tblfm (parse position)
+  "When point, at the character POSITION of PARSE (an ORG-PARSE), is on the
+#+TBLFM: line of an Org table, work its formulas out, point staying; true when
+it was."
+  (let* ((text (org-parse-text parse))
+         (table (org-tblfm-line-table (org-parse-tree parse) text position)))
     (when table
       (let* ((model (org-table-read text table (org-node-contents-begin table)))
              (texts (org-table-formula-texts (or (first (org-property table :tblfm)) ""))))
@@ -738,7 +741,7 @@ arithmetic. Formulas in Emacs Lisp are left out: nothing in a file is run."
           (multiple-value-bind (new) (org-table-render model)
             (let ((begin (org-table-begin model)) (end (org-table-end model)))
               (unless (string= new (subseq text begin end))
-                (org-replace-chars buffer begin end new :point (+ position (- (length new) (- end begin)))))))))
+                (org-replace-chars parse begin end new :point (+ position (- (length new) (- end begin)))))))))
       t)))
 
 (defun org-table-store-and-apply (model lhs rhs)

@@ -44,9 +44,10 @@ RESULT, WAITED the last version colouring waited for. RETURNS, where TEXT,
 with the carriage returns before its newlines left out, lost one
 \(ORG-STRIP-RETURNS). PARSE-SECONDS, how long the worker's last parse took.
 FAILED, what went wrong when the latest parse could not be made, the text
-then read as holding nothing Org shows (ORG-PARSE-FAILED)."
+then read as holding nothing Org shows (ORG-PARSE-FAILED). PARSE, for a whole
+buffer, its TREE as an ORG-PARSE (ORG-BUFFER-PARSE)."
   (version -1) tree text returns result worker wanted (lock (sb-thread:make-mutex :name "org parse"))
-  (done (sb-thread:make-waitqueue)) waited parse-seconds failed)
+  (done (sb-thread:make-waitqueue)) waited parse-seconds failed parse)
 
 (setf (documentation 'org-state-p 'function) "True when OBJECT is an ORG-STATE.")
 

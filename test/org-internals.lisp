@@ -537,8 +537,8 @@ out), a CLOCK: line, where a logged line goes, and clocking in from any key.")
                  (format nil "a~c~%b~c~%c" #\Return #\Return)
                  (format nil "a~%b~%c")))
            (given () (format nil "a~c~%b~%c" #\Return)))
-      (is string= (wanted) (after (lambda (b) (tuatara.defaults::org-replace-chars b 0 0 (given)))) "~a" ending)
-      (is string= (wanted) (after (lambda (b) (tuatara.defaults::org-apply-edits b (list (list 0 0 (given)))))) "~a" ending))))
+      (is string= (wanted) (after (lambda (b) (tuatara.defaults::org-replace-chars (tuatara.defaults::org-parse-now b) 0 0 (given)))) "~a" ending)
+      (is string= (wanted) (after (lambda (b) (tuatara.defaults::org-apply-edits (tuatara.defaults::org-parse-now b) (list (list 0 0 (given)))))) "~a" ending))))
 
 (define-test (org-internals long-lists-and-sections-found-by-halves)
   :time-limit 900
@@ -655,3 +655,52 @@ out), a CLOCK: line, where a logged line goes, and clocking in from any key.")
   (dolist (words '("Cost $5 [[file:x]] \\input{y} @@latex:z@@ {{{m}}}" "\\dollar{} as written" "plain"))
     (is string= words (tuatara.defaults::org-safe-line-words (tuatara.defaults::org-safe-line words))))
   (is string= "two lines" (tuatara.defaults::org-safe-line-words (tuatara.defaults::org-safe-line (format nil "two~%lines")))))
+
+(define-test (org-internals parse-positions-and-octets)
+  ;; a parse turns its characters into the buffer's octets and back, the carriage returns before
+  ;; newlines it left out and characters of several octets counted in; after an edit, the text then
+  (let ((buffer (org-internals-buffer (format nil "* Tēnā koe~c~%- [ ] kai~c~%* Two~c~%" #\Return #\Return #\Return))))
+    (setf (tuatara.buffer:buffer-local buffer :line-ending) :crlf)
+    (unwind-protect
+         (let* ((parse (tuatara.defaults::org-parse-now buffer))
+                (text (tuatara.defaults::org-parse-text parse))
+                (rope (tuatara.buffer:buffer-text buffer)))
+           (is string= (format nil "* Tēnā koe~%- [ ] kai~%* Two~%") text)
+           (is eq buffer (tuatara.defaults::org-parse-buffer parse))
+           (dotimes (char (length text))
+             (let ((octet (tuatara.defaults::org-parse-octet parse char)))
+               (is = char (tuatara.defaults::org-parse-char parse octet) "~d" char)
+               (unless (char= (char text char) #\Newline)
+                 (is char= (char text char) (tuatara.text:rope-char-at rope octet) "~d" char))))
+           ;; the end of a line stands before its carriage return
+           (let ((line-end (position #\Newline text)))
+             (is = 13 (tuatara.text:rope-octet rope (tuatara.defaults::org-parse-octet parse line-end))))
+           (setf (tuatara.buffer:buffer-point buffer) (tuatara.defaults::org-parse-octet parse (search "Two" text)))
+           (is = (search "Two" text) (tuatara.defaults::org-parse-point parse))
+           ;; the root's end is its text's: a headline at the very end is found by its subtree
+           (is string= "Two" (tuatara.defaults::org-property
+                              (tuatara.defaults::org-current-headline (tuatara.defaults::org-parse-tree parse) (length text))
+                              :raw-value))
+           ;; one edit, then a position of the text after it
+           (tuatara.defaults::org-replace-chars parse 0 0 (format nil "* New~%") :point 2)
+           (is string= (format nil "* New~c~%* Tēnā koe~c~%" #\Return #\Return)
+               (subseq (tuatara.buffer:buffer-string buffer) 0 19))
+           (is = 2 (tuatara.buffer:buffer-point buffer))
+           (is = (tuatara.defaults::org-parse-octet (tuatara.defaults::org-parse-now buffer) 30)
+               (tuatara.defaults::org-parse-octet parse 30)))
+      (tuatara.buffer:buffer-mark-saved buffer)
+      (tuatara.buffer:kill-buffer buffer))))
+
+(define-test (org-internals parse-object-made-once)
+  ;; the parse of a buffer is one object for each version, made again only after a change
+  (let ((buffer (org-internals-buffer (format nil "* One~%* Two~%"))))
+    (unwind-protect
+         (let ((parse (tuatara.defaults::org-parse-now buffer)))
+           (is eq parse (tuatara.defaults::org-parse-now buffer))
+           (is eq parse (tuatara.defaults::org-buffer-parse buffer))
+           (tuatara.buffer:buffer-insert buffer 0 "x")
+           (let ((again (tuatara.defaults::org-parse-now buffer)))
+             (isnt eq parse again)
+             (is string= (format nil "x* One~%* Two~%") (tuatara.defaults::org-parse-text again))))
+      (tuatara.buffer:buffer-mark-saved buffer)
+      (tuatara.buffer:kill-buffer buffer))))

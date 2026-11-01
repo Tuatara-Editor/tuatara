@@ -369,7 +369,7 @@ when you say so. Nothing in a block is ever run."
   (let ((buffer (current-buffer)))
     (if (not (typep (buffer-major-mode buffer) 'org-mode))
         (message "tangle-code-files writes the code of an Org file's source blocks: this is no Org buffer")
-        (let ((tree (org-tree-now buffer)))
+        (let ((tree (org-parse-tree (org-parse-now buffer))))
           (let* ((org-file (let ((file (tuatara.buffer:buffer-file buffer))) (and file (tuatara.io:native file))))
                  (files (mapcar #'check-code-file (org-code-files tree org-file)))
                  (to-write (remove-if-not (lambda (f) (member (code-file-state f) '(:new :changed))) files)))

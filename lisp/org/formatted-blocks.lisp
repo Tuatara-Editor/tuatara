@@ -425,7 +425,7 @@ of the note IDENTIFIER (IDENTIFIER::#CUSTOM-ID), in order."
 
 (defun formatted-own-custom-id ()
   "The CUSTOM_ID of the headline the block being made is under, or NIL."
-  (let* ((tree (first *dblock-own*))
+  (let* ((tree (and *dblock-own* (org-parse-tree *dblock-own*)))
          (headline (and tree *dblock-position* (org-current-headline tree *dblock-position*))))
     (and headline (org-headline-property headline "CUSTOM_ID"))))
 
@@ -626,7 +626,7 @@ be made: the block is then left as it is."
            (concatenate 'string (formatted-block-name-line params) (formatted-link-lines files id-only include-date))))
         ((string= kind "missing-links")
          (let* ((all (files))
-                (linked (formatted-linked-identifiers *org-current-text* :org))
+                (linked (formatted-linked-identifiers (org-parse-text *dblock-own*) :org))
                 (missing (remove-if (lambda (file) (gethash (formatted-identifier file) linked)) all)))
            ;; under its denote- name, a note that links to none of them is given none
            (when (and denote (zerop (hash-table-count linked)))

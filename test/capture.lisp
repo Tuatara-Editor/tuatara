@@ -210,7 +210,7 @@ templates those in DIRECTORY's capture-templates/ (none unless a test makes them
     (alexandria:write-string-into-file *refile-agenda* agenda :if-exists :supersede)
     (let* ((buffer (tuatara.io:visit-file agenda))
            (names (mapcar #'tuatara.command:candidate-string
-                          (tuatara.defaults::org-refile-candidates buffer :exclude (list buffer 0 (search "* Commitments" *refile-agenda*))))))
+                          (tuatara.defaults::org-refile-candidates buffer :exclude (list (tuatara.defaults::org-parse-now buffer) 0 (search "* Commitments" *refile-agenda*))))))
       (false (find "agenda.org/Inbox" names :test #'string=))
       (false (find "agenda.org/Inbox/Call back" names :test #'string=))
       (true (find "agenda.org/Commitments and Jobs/Old" names :test #'string=)))))
@@ -282,7 +282,7 @@ templates those in DIRECTORY's capture-templates/ (none unless a test makes them
   (with-capture (dir agenda)
     (alexandria:write-string-into-file (format nil "* Projects~%** Notes~%first~%** Notes~%second~%* Inbox~%** Item~%") agenda :if-exists :supersede)
     (let* ((buffer (tuatara.io:visit-file agenda))
-           (tree (tuatara.defaults::org-tree-now buffer))
+           (tree (tuatara.defaults::org-parse-tree (tuatara.defaults::org-parse-now buffer)))
            (item (find "Item" (tuatara.defaults::org-headlines tree) :key (lambda (h) (tuatara.defaults::org-property h :raw-value)) :test #'string=))
            (second-notes (second (remove "Notes" (tuatara.defaults::org-headlines tree) :key (lambda (h) (tuatara.defaults::org-property h :raw-value)) :test-not #'string=))))
       ;; offered twice, told apart by where each begins

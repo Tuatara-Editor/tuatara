@@ -127,9 +127,6 @@ planning line and properties, outside any drawer.")
   "What Org notes when a task that repeats is done: :TIME the change of state
 and LAST_REPEAT with the time; NIL nothing.")
 
-(defvar *org-current-text* ""
-  "The text of the Org buffer a command works on, as parsed.")
-
 ;;; The parse of a buffer, kept up
 
 (defun org-strip-returns (string)
@@ -242,7 +239,7 @@ change; NIL for a buffer whose lines end with a newline alone."
     (setf lo (tuatara.runtime:bisect (mid lo hi) (< (aref returns mid) position)) hi lo)
     lo))
 
-(defun org-char->byte (buffer position &optional (returns (org-returns-of buffer)) (base 0))
+(defun org-char->byte (buffer position returns &optional (base 0))
   "The octet of BUFFER where the character POSITION of the text Org reads of
 it is: the carriage returns it left out (RETURNS) counted back in, a position
 at a line's end standing before its carriage return and line feed (CR LF). For
@@ -251,7 +248,7 @@ begins at, RETURNS those the part's text left out."
   (tuatara.text:char->byte (tuatara.buffer:buffer-text buffer)
                            (+ base (if returns (+ position (org-returns-before returns position)) position))))
 
-(defun org-byte->char (buffer byte &optional (returns (org-returns-of buffer)) (base 0))
+(defun org-byte->char (buffer byte returns &optional (base 0))
   "The character of the text Org reads of BUFFER at its octet BYTE: the
 carriage returns before it (RETURNS) left out, one itself taken as its
 newline. For a text read from a part of BUFFER, BASE is the character of
@@ -420,18 +417,16 @@ colours coming with the parse."
                    (tuatara.runtime:wait-on (org-state-done state) (org-state-lock state) left))
               finally (return t))))))
 
-(defun org-buffer-tree (buffer)
-  "BUFFER's parse, as two values: the tree and the text it is of (characters,
-as the tree's positions count them, the carriage returns before newlines
-left out: ORG-CHAR->BYTE and ORG-BYTE->CHAR go between them and the
-buffer). Made of the parses of BUFFER's parts (ORG-ASSEMBLE), each part
-parsed again only after a change within it, when BUFFER changed: at once
-while it is small (*ORG-PARSE-AT-ONCE*), else in the background, the latest
-text first, waited for a moment (*ORG-PARSE-WAIT*) and the parse before
-returned until that one is done; NIL while there has been none. A text the
-parser cannot read is read as holding nothing (ORG-UNPARSED) until it
-changes, what went wrong kept in the ORG-STATE's FAILED and said in the
-debug log."
+(defun org-buffer-parse (buffer)
+  "BUFFER's ORG-PARSE, of its text as it is now or a little before. Made of
+the parses of BUFFER's parts (ORG-ASSEMBLE), each part parsed again only
+after a change within it, when BUFFER changed: at once while it is small
+\(*ORG-PARSE-AT-ONCE*), else in the background, the latest text first,
+waited for a moment (*ORG-PARSE-WAIT*) and the parse before returned until
+that one is done; NIL while there has been none. A text the parser cannot
+read is read as holding nothing (ORG-UNPARSED) until it changes, what went
+wrong kept in the ORG-STATE's FAILED and said in the debug log. ORG-PARSE-NOW
+gives the parse of the text as it is now."
   (let ((state (org-buffer-state buffer))
         (version (tuatara.buffer:buffer-version buffer)))
     (org-take-parse state)
@@ -464,11 +459,85 @@ debug log."
               (org-state-text state) text
               (org-state-returns state) returns
               (org-state-version state) version)))
-    (values (org-state-tree state) (org-state-text state))))
+    (org-state-parse-of buffer state)))
 
 (defun org-parse-current-p (buffer)
   "True when BUFFER's parse is of its text as it is now."
   (eql (org-state-version (org-buffer-state buffer)) (tuatara.buffer:buffer-version buffer)))
+
+(defun org-parse-now (buffer)
+  "BUFFER's ORG-PARSE of its text as it is now, NIL when it has no Org
+structure: a small buffer parsed at once (*ORG-PARSE-AT-ONCE*); a large one
+whose parse is behind its text waited for while it is parsed in the
+background, the editor reading keys meanwhile (\\`C-g' gives the command up)."
+  (let ((state (org-buffer-state buffer))
+        (version (tuatara.buffer:buffer-version buffer)))
+    (if (or (<= (tuatara.buffer:buffer-size buffer) *org-parse-at-once*)
+            (org-parse-current-p buffer)
+            (null *editor*))
+        (let ((*org-parse-at-once* most-positive-fixnum))
+          (org-buffer-parse buffer))
+        (progn
+          ;; asked for: the worker parses it, the parse before taken meanwhile
+          (org-buffer-parse buffer)
+          (flet ((ready-p ()
+                   (let ((result (org-state-result state)))
+                     (and result (>= (org-version-number (third result)) (org-version-number version))))))
+            (unless (or (ready-p) (wait-until-interruptibly #'ready-p :message "Reading the file..."))
+              (keyboard-quit-signal)))
+          (org-buffer-parse buffer)))))
+
+;;; A parse and the buffer it is of
+
+(defstruct (org-parse (:constructor make-org-parse (buffer version tree text returns)) (:copier nil) (:predicate nil))
+  "The parse of an Org buffer, as ORG-BUFFER-PARSE and ORG-PARSE-NOW give it:
+TREE, its elements and objects (ORG-NODE), whose positions are characters of
+TEXT, the text BUFFER had at VERSION as Org reads it. A position of the parse
+goes to an octet of BUFFER by ORG-PARSE-OCTET and back by ORG-PARSE-CHAR;
+RETURNS is theirs to use."
+  buffer version tree text returns)
+
+(defun org-state-parse-of (buffer state)
+  "The ORG-PARSE of STATE, BUFFER's whole parse, made once for each tree; NIL
+while it has none."
+  (let ((tree (org-state-tree state))
+        (kept (org-state-parse state)))
+    (cond ((null tree) nil)
+          ((and kept (eq (org-parse-tree kept) tree) (eql (org-parse-version kept) (org-state-version state))) kept)
+          (t (setf (org-state-parse state)
+                   (make-org-parse buffer (org-state-version state) tree
+                                   (org-state-text state) (org-state-returns state)))))))
+
+(defun org-text-now (buffer)
+  "BUFFER's text as Org reads it now (ORG-BUFFER-TEXT), as an ORG-PARSE with
+no tree, for a command that reads the text without parsing it: its
+positions go to the buffer's octets as a parse's do."
+  (make-org-parse buffer (tuatara.buffer:buffer-version buffer) nil (org-buffer-text buffer) (org-returns-of buffer)))
+
+(defun org-parse-returns-now (parse)
+  "Where the text Org reads of PARSE's buffer, as it is now, lost a carriage
+return before a newline: PARSE's own while the buffer is as it was parsed."
+  (let ((buffer (org-parse-buffer parse)))
+    (if (eql (org-parse-version parse) (tuatara.buffer:buffer-version buffer))
+        (org-parse-returns parse)
+        (org-returns-of buffer))))
+
+(defun org-parse-octet (parse position)
+  "The octet of PARSE's buffer, as it is now, where the character POSITION of
+PARSE's text is; a position at a line's end stands before its carriage
+return and line feed. After an edit, POSITION is a character of the text
+after it."
+  (org-char->byte (org-parse-buffer parse) position (org-parse-returns-now parse)))
+
+(defun org-parse-char (parse octet)
+  "The character of PARSE's text at OCTET of its buffer, as it is now: a
+carriage return before a newline taken as that newline."
+  (org-byte->char (org-parse-buffer parse) octet (org-parse-returns-now parse)))
+
+(defun org-parse-point (parse)
+  "The point of PARSE's buffer as a character of PARSE's text."
+  (let ((buffer (org-parse-buffer parse)))
+    (org-parse-char parse (tuatara.buffer:buffer-point buffer))))
 
 ;;; Colouring
 

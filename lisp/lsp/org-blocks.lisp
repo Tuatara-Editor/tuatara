@@ -84,7 +84,7 @@ Complexity: O(parts + those lines x log of the text)."
 merges its header arguments (ORG-BLOCK-HEADER-ARGUMENTS), each with the
 block's language as written, from the note's last parse; NIL before there is
 one."
-  (let ((tree (org-buffer-tree buffer))
+  (let ((tree (let ((parse (org-buffer-parse buffer))) (and parse (org-parse-tree parse))))
         (found '()))
     (labels ((walk (node)
                (when (and (eq (org-node-type node) 'src-block) (not (org-commented-p node))
@@ -369,9 +369,9 @@ else the note's own name with LANGUAGE's ending."
 
 (defun org-blocks-languages (buffer)
   "The languages a server knows of BUFFER's source blocks, a note, in the
-order they first come: from its last parse (ORG-BUFFER-TREE), those of
+order they first come: from its last parse (ORG-BUFFER-PARSE), those of
 commented subtrees left out; from its text before there is one."
-  (let ((tree (org-buffer-tree buffer))
+  (let ((tree (let ((parse (org-buffer-parse buffer))) (and parse (org-parse-tree parse))))
         (languages '()))
     (flet ((take (name)
              (let ((language (org-src-language (or name ""))))
@@ -428,7 +428,7 @@ not again for text typed elsewhere; again when the files open change
                                               (lambda (b &optional doc stretches) (org-blocks-shadow b language doc stretches))
                                               (org-blocks-size buffer blocks language))))))
             ;; kept only when read from the parse of the text as it is now
-            (when (and (org-buffer-tree buffer) (org-parse-current-p buffer))
+            (when (and (org-buffer-parse buffer) (org-parse-current-p buffer))
               (setf (tuatara.buffer:buffer-local buffer 'org-block-specs) (cons key specs)))
             specs)))))
 

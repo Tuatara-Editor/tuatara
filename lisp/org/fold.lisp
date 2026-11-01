@@ -28,28 +28,6 @@ changed, a fold left after a line that no longer folds is opened
 
 ;;; Subtrees
 
-(defun org-tree-now (buffer)
-  "BUFFER's parse as its text is now, as two values, the tree and its text: a
-small buffer parsed at once (*ORG-PARSE-AT-ONCE*); a large one whose parse
-is behind its text waited for while it is parsed in the background, the
-editor reading keys meanwhile (\\`C-g' gives the command up)."
-  (let ((state (org-buffer-state buffer))
-        (version (tuatara.buffer:buffer-version buffer)))
-    (if (or (<= (tuatara.buffer:buffer-size buffer) *org-parse-at-once*)
-            (org-parse-current-p buffer)
-            (null *editor*))
-        (let ((*org-parse-at-once* most-positive-fixnum))
-          (org-buffer-tree buffer))
-        (progn
-          ;; asked for: the worker parses it, the parse before taken meanwhile
-          (org-buffer-tree buffer)
-          (flet ((ready-p ()
-                   (let ((result (org-state-result state)))
-                     (and result (>= (org-version-number (third result)) (org-version-number version))))))
-            (unless (or (ready-p) (wait-until-interruptibly #'ready-p :message "Reading the file..."))
-              (keyboard-quit-signal)))
-          (org-buffer-tree buffer)))))
-
 (defun org-headlines (tree)
   "Every headline of TREE, in order."
   (let ((found '()))
@@ -80,10 +58,10 @@ the newline ending its last line that is not blank (or TO)."
                     unless (member (char text i) '(#\Space #\Tab #\Newline #\Return)) return i)))
     (if last (string-line-end text last) from)))
 
-(defun org-fold-chars (buffer from to)
-  "Fold BUFFER's characters FROM below TO, its text's as parsed."
+(defun org-fold-chars (parse from to)
+  "Fold the characters FROM below TO of PARSE (an ORG-PARSE) in its buffer."
   (when (< from to)
-    (tuatara.display:fold-region buffer (org-char->byte buffer from) (org-char->byte buffer to))))
+    (tuatara.display:fold-region (org-parse-buffer parse) (org-parse-octet parse from) (org-parse-octet parse to))))
 
 (defun org-fold-range (node text &optional (limit (org-node-end node)))
   "The characters of TEXT folding NODE, a headline or a list item, hides,
@@ -100,11 +78,13 @@ headline, (START . END) as ORG-FOLD-RANGE has them; NIL when there is none."
   (let ((child (first (org-child-headlines headline))))
     (org-fold-range headline text (if child (org-node-begin child) (org-node-end headline)))))
 
-(defun org-folded-p (buffer range)
-  "True when BUFFER's folds hide the whole of RANGE, characters (START . END) of its parse."
-  (let* ((start (org-char->byte buffer (car range)))
-         (end (org-char->byte buffer (cdr range))))
-    (find-if (lambda (fold) (and (<= (car fold) start) (>= (cdr fold) end))) (tuatara.display:buffer-folds buffer))))
+(defun org-folded-p (parse range)
+  "True when the folds of PARSE's buffer hide the whole of RANGE, characters
+\(START . END) of PARSE (an ORG-PARSE)."
+  (let* ((start (org-parse-octet parse (car range)))
+         (end (org-parse-octet parse (cdr range))))
+    (find-if (lambda (fold) (and (<= (car fold) start) (>= (cdr fold) end)))
+             (tuatara.display:buffer-folds (org-parse-buffer parse)))))
 
 (defvar *org-cycle-hide-drawers* t
   "True for drawers (:LOGBOOK:, :PROPERTIES:) and a task's notes
@@ -242,11 +222,17 @@ of it, then folded again."
          (fold range)
          (message "Folded"))))))
 
-(defun org-cycle-headline (buffer headline text)
-  "Cycle HEADLINE's subtree: folded, then its children, then all of it, then folded again."
-  (flet ((bytes (r) (and r (cons (org-char->byte buffer (car r)) (org-char->byte buffer (cdr r))))))
-    (org-cycle-ranges buffer (bytes (org-fold-range headline text))
-                      (mapcar (lambda (child) (bytes (org-fold-range child text))) (org-child-headlines headline)))))
+(defun org-octet-range (parse range)
+  "RANGE, characters (START . END) of PARSE (an ORG-PARSE), as octets of its
+buffer; NIL for none."
+  (and range (cons (org-parse-octet parse (car range)) (org-parse-octet parse (cdr range)))))
+
+(defun org-cycle-headline (parse headline)
+  "Cycle HEADLINE's subtree, of PARSE: folded, then its children, then all of it, then folded again."
+  (let ((text (org-parse-text parse)))
+    (org-cycle-ranges (org-parse-buffer parse) (org-octet-range parse (org-fold-range headline text))
+                      (mapcar (lambda (child) (org-octet-range parse (org-fold-range child text)))
+                              (org-child-headlines headline)))))
 
 (defun org-stars (rope line)
   "The level of the headline whose line starts at the octet LINE of ROPE (how
@@ -355,16 +341,17 @@ NIL for \\`TAB' there to indent.")
   "The list item of TREE beginning at the character POSITION (a line's start), or NIL."
   (org-node-at tree position (lambda (node) (and (eq (org-node-type node) 'item) (= (org-node-begin node) position)))))
 
-(defun org-cycle-item (buffer item text)
-  "Cycle the list ITEM as ORG-CYCLE-HEADLINE cycles a headline: folded, then its
-sub-items, then all of it; one with nothing under its first line is said to
-be empty."
-  (let ((range (org-fold-range item text)))
+(defun org-cycle-item (parse item)
+  "Cycle the list ITEM, of PARSE, as ORG-CYCLE-HEADLINE cycles a headline:
+folded, then its sub-items, then all of it; one with nothing under its first
+line is said to be empty."
+  (let* ((text (org-parse-text parse))
+         (range (org-fold-range item text)))
     (if (null range)
         (message "Empty entry")
-        (flet ((bytes (r) (and r (cons (org-char->byte buffer (car r)) (org-char->byte buffer (cdr r))))))
-          (org-cycle-ranges buffer (bytes range)
-                            (mapcar (lambda (child) (bytes (org-fold-range child text))) (org-child-items item)))))
+        (org-cycle-ranges (org-parse-buffer parse) (org-octet-range parse range)
+                          (mapcar (lambda (child) (org-octet-range parse (org-fold-range child text)))
+                                  (org-child-items item))))
     t))
 
 (defparameter *org-drawer-look-back* 256
@@ -424,7 +411,7 @@ to the next field. After a snippet's key (<s for a source block), the snippet
     ;; a list item of a large file whose parse is not ready: said, the parse under way
     (when (and (not (uiop:string-prefix-p "*" line)) (not (uiop:string-prefix-p "|" bare)) (not (uiop:string-prefix-p "<" bare))
                (> (tuatara.buffer:buffer-size buffer) *org-parse-at-once*)
-               (progn (org-buffer-tree buffer)
+               (progn (org-buffer-parse buffer)
                       (not (org-parse-current-p buffer))))
       (return-from org-cycle (message "The list folds once the file is read, in a moment")))
     ;; a headline of a large file whose parse is not ready: its subtree found by its lines, nothing parsed
@@ -433,46 +420,48 @@ to the next field. After a snippet's key (<s for a source block), the snippet
                (not (org-parse-current-p buffer)))
       (when (org-cycle-headline-at buffer start)
         (return-from org-cycle)))
-    (multiple-value-bind (tree text) (org-tree-now buffer)
-      (let* ((headline (and tree (org-headline-on-line tree text (org-byte->char buffer (point))))))
-        (cond ((org-table-next-field))
-              ((expand-snippet-at-point))
-              (headline (org-cycle-headline buffer headline text))
-              ((and *org-cycle-include-plain-lists* tree
-                    (let ((item (org-item-on-line tree (string-line-start text (org-byte->char buffer (point))))))
-                      (and item (org-cycle-item buffer item text)))))
-              (t (indent-for-tab-command)))))))
+    (let* ((parse (org-parse-now buffer))
+           (tree (and parse (org-parse-tree parse)))
+           (text (and parse (org-parse-text parse)))
+           (headline (and tree (org-headline-on-line tree text (org-parse-point parse)))))
+      (cond ((org-table-next-field))
+            ((expand-snippet-at-point))
+            (headline (org-cycle-headline parse headline))
+            ((and *org-cycle-include-plain-lists* tree
+                  (let ((item (org-item-on-line tree (string-line-start text (org-parse-point parse)))))
+                    (and item (org-cycle-item parse item)))))
+            (t (indent-for-tab-command))))))
 
-(defun org-overview (buffer tree text)
-  "Show only BUFFER's headlines of the first level, all else folded."
-  (tuatara.display:unfold-all buffer)
-  (dolist (headline (org-node-children tree))
+(defun org-overview (parse)
+  "Show only the headlines of the first level of PARSE's buffer, all else folded."
+  (tuatara.display:unfold-all (org-parse-buffer parse))
+  (dolist (headline (org-node-children (org-parse-tree parse)))
     (when (eq (org-node-type headline) 'headline)
-      (let ((range (org-fold-range headline text)))
-        (when range (org-fold-chars buffer (car range) (cdr range)))))))
+      (let ((range (org-fold-range headline (org-parse-text parse))))
+        (when range (org-fold-chars parse (car range) (cdr range)))))))
 
-(defun org-contents (buffer tree text)
-  "Show all of BUFFER's headlines, their own text folded."
-  (tuatara.display:unfold-all buffer)
-  (dolist (headline (org-headlines tree))
-    (let ((section (org-section-range headline text)))
-      (when section (org-fold-chars buffer (car section) (cdr section))))))
+(defun org-contents (parse)
+  "Show all the headlines of PARSE's buffer, their own text folded."
+  (tuatara.display:unfold-all (org-parse-buffer parse))
+  (dolist (headline (org-headlines (org-parse-tree parse)))
+    (let ((section (org-section-range headline (org-parse-text parse))))
+      (when section (org-fold-chars parse (car section) (cdr section))))))
 
 (define-command org-global-cycle ()
   "Cycle the whole buffer: its overview (the headlines of the first level),
 then its contents (every headline), then everything, and the overview again.
 In a table, go back a field, aligned."
   (let ((buffer (current-buffer)))
-    (multiple-value-bind (tree text) (org-tree-now buffer)
-      (when (and tree (not (org-table-previous-field)))
+    (let ((parse (org-parse-now buffer)))
+      (when (and parse (not (org-table-previous-field)))
         (case (tuatara.buffer:buffer-local buffer 'org-global-view)
-          (:overview (org-contents buffer tree text)
+          (:overview (org-contents parse)
                      (setf (tuatara.buffer:buffer-local buffer 'org-global-view) :contents)
                      (message "Contents"))
           (:contents (tuatara.display:unfold-all buffer)
                      (setf (tuatara.buffer:buffer-local buffer 'org-global-view) :all)
                      (message "Show all"))
-          (t (org-overview buffer tree text)
+          (t (org-overview parse)
              (setf (tuatara.buffer:buffer-local buffer 'org-global-view) :overview)
              (message "Overview")))
         (tuatara.display:point-out-of-folds buffer nil)))))
@@ -483,12 +472,12 @@ last of them saying: overview (or fold), content, or showall (nofold); the
 file parsed only when one of the first two does."
   (let ((choice (org-startup-choice options '("overview" "fold" "content" "showall" "nofold"))))
     (when (member choice '("overview" "fold" "content") :test #'string=)
-      (multiple-value-bind (tree text) (org-tree-now buffer)
-        (when tree
+      (let ((parse (org-parse-now buffer)))
+        (when parse
           (if (string= choice "content")
-              (progn (org-contents buffer tree text)
+              (progn (org-contents parse)
                      (setf (tuatara.buffer:buffer-local buffer 'org-global-view) :contents))
-              (progn (org-overview buffer tree text)
+              (progn (org-overview parse)
                      (setf (tuatara.buffer:buffer-local buffer 'org-global-view) :overview))))))))
 
 (defun org-startup-metadata (buffer options)

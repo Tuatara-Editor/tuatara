@@ -463,11 +463,11 @@ window draws them with (set-face :org-level-1 :height 2)."
                                    (tuatara.display:unfold-all b)
                                    (loop repeat 4 do (funcall cycle) collect (tuatara.display:buffer-folds b))))
                             (let ((parsed (steps (lambda ()
-                                                   (multiple-value-bind (tree text) (tuatara.defaults::org-tree-now b)
-                                                     (let ((tuatara.defaults::*org-current-text* text))
-                                                       (tuatara.defaults::org-cycle-headline
-                                                        b (tuatara.defaults::org-headline-on-line tree text (tuatara.defaults::org-byte->char b line))
-                                                        text))))))
+                                                   (let* ((parse (tuatara.defaults::org-parse-now b))
+                                                          (headline (tuatara.defaults::org-headline-on-line
+                                                                     (tuatara.defaults::org-parse-tree parse) (tuatara.defaults::org-parse-text parse)
+                                                                     (tuatara.defaults::org-parse-char parse line))))
+                                                     (tuatara.defaults::org-cycle-headline parse headline)))))
                                   (read (steps (lambda () (tuatara.defaults::org-cycle-headline-at b line)))))
                               (when (some #'identity parsed) (incf compared))
                               (unless (equal parsed read) (push (list line parsed read) differences))))))))

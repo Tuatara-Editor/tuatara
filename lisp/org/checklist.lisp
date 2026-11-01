@@ -67,17 +67,16 @@ so that the log and the agenda's log mode keep no tick that did not stay."
 
 (defun call-on-checkbox-item (function)
   "When point is on the first line of a list item with a checkbox in the
-current Org buffer, call FUNCTION with the buffer, its parse (tree and text),
-point as a character of it and the item, and return true; else NIL."
+current Org buffer, call FUNCTION with its ORG-PARSE, point as a character of
+it and the item, and return true; else NIL."
   (let ((buffer (current-buffer)))
     (when (org-checkbox-line-p (org-line-head buffer (point)))
-      (multiple-value-bind (tree text) (org-tree-now buffer)
-        (let* ((*org-current-text* (or text ""))
-               (position (org-point-char buffer))
-               (item (and tree (org-checkbox-item-at tree text position))))
-          (when item
-            (funcall function buffer tree text position item)
-            t))))))
+      (let* ((parse (org-parse-now buffer))
+             (position (and parse (org-parse-point parse)))
+             (item (and parse (org-checkbox-item-at (org-parse-tree parse) (org-parse-text parse) position))))
+        (when item
+          (funcall function parse position item)
+          t)))))
 
 (defvar *org-todo-follows-checkboxes* t
   "True for a TODO headline with a statistics cookie ([2/3], [66%]) to become
@@ -96,50 +95,50 @@ to date from its TODO sub-headlines, and that headline made done, with
 CLOSED:, or not, as all it counts are done or not
 \(*ORG-TODO-FOLLOWS-CHECKBOXES*); then the same for the headline above it
 when this one changed; point kept where it is."
-  (multiple-value-bind (tree text) (org-tree-now buffer)
-    (let* ((*org-current-text* text)
-           (headline (and tree (org-current-headline tree position))))
-      (when headline
-        (multiple-value-bind (total done) (org-cookie-counts headline)
-          (let ((point (tuatara.text:make-anchor (tuatara.buffer:buffer-version buffer)
-                                                 (tuatara.buffer:buffer-point buffer) :bias :before))
-                (begin (org-node-begin headline))
-                (changed nil))
-            ;; its cookies, when it counts TODO sub-headlines
-            (when (plusp (org-headline-todo-counts headline))
-              (let ((edits (org-cookie-edits headline done total)))
-                (when edits (org-apply-edits buffer edits :point (org-point-char buffer)))))
-            (when (and *org-todo-follows-checkboxes* (org-property headline :todo-keyword) (org-cookies-of headline) (plusp total))
-              (let* ((keyword (org-property headline :todo-keyword))
-                     (sequence (org-keyword-sequence text))
-                     (cycled (member keyword sequence :test #'string=))
-                     (done-keywords (cdr (org-todo-keywords-of text)))
-                     (is-done (member keyword done-keywords :test #'string=))
-                     (target (cond ((not cycled) nil)
-                                   ((and (= done total) (not is-done))
-                                    (find-if (lambda (k) (member k done-keywords :test #'string=)) sequence))
-                                   ((and is-done (< done total))
-                                    (find-if-not (lambda (k) (member k done-keywords :test #'string=)) sequence)))))
-                (when target
-                  (setf (tuatara.buffer:buffer-point buffer) (org-char->byte buffer begin))
-                  ;; done by itself: noted with CLOSED: and when, whatever *org-log-done* says
-                  (let ((*org-log-done* :time))
-                    (org-set-todo-to target))
-                  (setf changed t))))
-            (setf (tuatara.buffer:buffer-point buffer)
-                  (tuatara.text:anchor-position point (tuatara.buffer:buffer-version buffer)))
-            ;; the headline above, counting this one among its TODO sub-headlines
-            (when changed
-              (let ((parent (org-node-parent headline)))
-                (when (and parent (eq (org-node-type parent) 'headline))
-                  (org-summary-todo buffer (org-node-begin parent)))))))))))
+  (let* ((parse (org-parse-now buffer))
+         (text (and parse (org-parse-text parse)))
+         (headline (and parse (org-current-headline (org-parse-tree parse) position))))
+    (when headline
+      (multiple-value-bind (total done) (org-cookie-counts headline)
+        (let ((point (tuatara.text:make-anchor (tuatara.buffer:buffer-version buffer)
+                                               (tuatara.buffer:buffer-point buffer) :bias :before))
+              (begin (org-node-begin headline))
+              (changed nil))
+          ;; its cookies, when it counts TODO sub-headlines
+          (when (plusp (org-headline-todo-counts headline))
+            (let ((edits (org-cookie-edits headline text done total)))
+              (when edits (org-apply-edits parse edits :point (org-parse-point parse)))))
+          (when (and *org-todo-follows-checkboxes* (org-property headline :todo-keyword) (org-cookies-of headline text)
+                     (plusp total))
+            (let* ((keyword (org-property headline :todo-keyword))
+                   (sequence (org-keyword-sequence text))
+                   (cycled (member keyword sequence :test #'string=))
+                   (done-keywords (cdr (org-todo-keywords-of text)))
+                   (is-done (member keyword done-keywords :test #'string=))
+                   (target (cond ((not cycled) nil)
+                                 ((and (= done total) (not is-done))
+                                  (find-if (lambda (k) (member k done-keywords :test #'string=)) sequence))
+                                 ((and is-done (< done total))
+                                  (find-if-not (lambda (k) (member k done-keywords :test #'string=)) sequence)))))
+              (when target
+                (setf (tuatara.buffer:buffer-point buffer) (org-parse-octet parse begin))
+                ;; done by itself: noted with CLOSED: and when, whatever *org-log-done* says
+                (let ((*org-log-done* :time))
+                  (org-set-todo-to target))
+                (setf changed t))))
+          (setf (tuatara.buffer:buffer-point buffer)
+                (tuatara.text:anchor-position point (tuatara.buffer:buffer-version buffer)))
+          ;; the headline above, counting this one among its TODO sub-headlines
+          (when changed
+            (let ((parent (org-node-parent headline)))
+              (when (and parent (eq (org-node-type parent) 'headline))
+                (org-summary-todo buffer (org-node-begin parent))))))))))
 
 (defun org-todo-changed (buffer)
   "After the TODO keyword of the headline point is on changed in BUFFER: the
 headline above brought up to date, as ORG-SUMMARY-TODO does."
-  (multiple-value-bind (tree text) (org-tree-now buffer)
-    (let* ((*org-current-text* text)
-           (headline (and tree (org-current-headline tree (org-point-char buffer))))
-           (parent (and headline (org-node-parent headline))))
-      (when (and parent (eq (org-node-type parent) 'headline))
-        (org-summary-todo buffer (org-node-begin parent))))))
+  (let* ((parse (org-parse-now buffer))
+         (headline (and parse (org-current-headline (org-parse-tree parse) (org-parse-point parse))))
+         (parent (and headline (org-node-parent headline))))
+    (when (and parent (eq (org-node-type parent) 'headline))
+      (org-summary-todo buffer (org-node-begin parent)))))

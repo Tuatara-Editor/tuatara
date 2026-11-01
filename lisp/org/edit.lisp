@@ -14,19 +14,15 @@
 ;;; Where point is in the structure
 
 
-(defun org-point-char (buffer)
-  "BUFFER's point as a character of its parse."
-  (org-byte->char buffer (tuatara.buffer:buffer-point buffer)))
-
 (defun org-current-headline (tree position)
-  "The innermost headline of TREE whose subtree holds the character POSITION
-(the end of the text the last one's), or NIL: down the tree, never through
-every headline."
+  "The innermost headline of TREE, the root of a parse, whose subtree holds
+the character POSITION (the end of the text the last one's), or NIL: down the
+tree, never through every headline."
   (let ((found nil))
     (labels ((holds-p (node)
                (and (<= (org-node-begin node) position)
                     (or (< position (org-node-end node))
-                        (and (= position (org-node-end node)) (= position (length *org-current-text*))))))
+                        (and (= position (org-node-end node)) (= position (org-node-end tree))))))
              (walk (node)
                (when (eq (org-node-type node) 'headline) (setf found node))
                (let ((child (find-if (lambda (c) (and (eq (org-node-type c) 'headline) (holds-p c))) (org-node-children node))))
@@ -38,12 +34,11 @@ every headline."
   "The subtree of the headline POSITION of BUFFER is under, its headline
 with it; NIL before the first headline."
   (declare (ignore mode))
-  (multiple-value-bind (tree text) (org-tree-now buffer)
-    (let* ((*org-current-text* (or text ""))
-           (headline (and tree (org-current-headline tree (org-byte->char buffer position)))))
-      (when headline
-        (values (org-char->byte buffer (org-node-begin headline))
-                (org-char->byte buffer (org-node-end headline)))))))
+  (let* ((parse (org-parse-now buffer))
+         (headline (and parse (org-current-headline (org-parse-tree parse) (org-parse-char parse position)))))
+    (when headline
+      (values (org-parse-octet parse (org-node-begin headline))
+              (org-parse-octet parse (org-node-end headline))))))
 
 (defun org-siblings (headline tree)
   "The headlines beside HEADLINE, under the same parent (TREE's top for the first level), in order."
@@ -97,29 +92,32 @@ edit did not make changes, in a file of one kind of line end or of several."
                      (progn (write-string (string-right-trim '(#\Return) line) out) (write-string newline out))))
         (write-string (car (last new-lines)) out)))))
 
-(defun org-replace-chars (buffer from to text &key point)
-  "Put TEXT in place of BUFFER's characters FROM below TO (of its parse), one
-step to undo, and point at the character POINT (of the text after) when given.
-Each line keeps the line end it had (ORG-LINE-ENDS-KEPT), a new one taking
-the buffer's own."
-  (let* ((returns (org-returns-of buffer))
-         (start (org-char->byte buffer from returns))
-         (end (org-char->byte buffer to returns)))
+(defun org-replace-chars (parse from to text &key point)
+  "Put TEXT in place of the characters FROM below TO of PARSE (an ORG-PARSE)
+in its buffer, one step to undo, and point at the character POINT (of the
+text after) when given. Each line keeps the line end it had
+\(ORG-LINE-ENDS-KEPT), a new one taking the buffer's own."
+  (let* ((buffer (org-parse-buffer parse))
+         (start (org-parse-octet parse from))
+         (end (org-parse-octet parse to)))
     (tuatara.buffer:buffer-replace buffer start end (org-line-ends-kept buffer start end text))
     (when point
-      (setf (tuatara.buffer:buffer-point buffer) (org-char->byte buffer point)))))
+      (setf (tuatara.buffer:buffer-point buffer) (org-parse-octet parse point)))))
 
-(defmacro with-org-structure ((buffer tree text position) &body body)
-  "Run BODY with BUFFER the current Org buffer, TREE and TEXT its parse as it
-is now and POSITION its point as a character of it."
-  `(let ((,buffer (current-buffer)))
-     (multiple-value-bind (,tree ,text) (org-tree-now ,buffer)
-       (let ((*org-current-text* (or ,text ""))
-             (,position (org-point-char ,buffer)))
-         (declare (ignorable ,position))
-         (if (null ,tree)
-             (message "No Org structure here")
-             (progn ,@body))))))
+(defmacro with-org-structure ((parse buffer tree text position) &body body)
+  "Run BODY with PARSE the ORG-PARSE of the current Org buffer as it is now,
+BUFFER that buffer, TREE and TEXT the parse's tree and text and POSITION
+point as a character of it; said instead when the buffer has no Org
+structure."
+  `(let* ((,parse (org-parse-now (current-buffer))))
+     (if (null ,parse)
+         (message "No Org structure here")
+         (let ((,buffer (org-parse-buffer ,parse))
+               (,tree (org-parse-tree ,parse))
+               (,text (org-parse-text ,parse))
+               (,position (org-parse-point ,parse)))
+           (declare (ignorable ,buffer ,tree ,text ,position))
+           ,@body))))
 
 (defun org-ends-with-newline-p (string)
   "True when STRING ends with a newline."
@@ -146,7 +144,7 @@ is now and POSITION its point as a character of it."
 (defun org-move-subtree (direction)
   "Move the subtree point is in over its sibling in DIRECTION, :up or :down,
 point going with it, each kept folded when it was."
-  (with-org-structure (buffer tree text position)
+  (with-org-structure (parse buffer tree text position)
     (let ((headline (org-current-headline tree position)))
       (if (null headline)
           (message "Not in a subtree")
@@ -166,24 +164,23 @@ point going with it, each kept folded when it was."
                        (moved (concatenate 'string (org-ensure-newline second-text) (org-ensure-newline first-text)))
                        (moved (if ended moved (subseq moved 0 (1- (length moved)))))
                        ;; folded before: folded after, where each went
-                       (first-folded (let ((r (org-fold-range first text))) (and r (org-folded-p buffer r))))
-                       (second-folded (let ((r (org-fold-range second text))) (and r (org-folded-p buffer r))))
+                       (first-folded (let ((r (org-fold-range first text))) (and r (org-folded-p parse r))))
+                       (second-folded (let ((r (org-fold-range second text))) (and r (org-folded-p parse r))))
                        (offset (- position (org-node-begin headline)))
                        ;; after the move, SECOND stands at FROM and FIRST after it
                        (second-at from)
                        (first-at (+ from (length (org-ensure-newline second-text))))
                        (new-begin (if (eq direction :down) first-at second-at)))
-                  (org-replace-chars buffer from to moved :point (+ new-begin offset))
+                  (org-replace-chars parse from to moved :point (+ new-begin offset))
                   (when (or first-folded second-folded)
-                    (multiple-value-bind (tree text) (org-tree-now buffer)
-                      (let ((*org-current-text* text))
-                        (flet ((refold (begin)
-                                 (let ((h (find begin (org-headlines tree) :key #'org-node-begin)))
-                                   (when h
-                                     (let ((r (org-fold-range h text)))
-                                       (when r (org-fold-chars buffer (car r) (cdr r))))))))
-                          (when first-folded (refold first-at))
-                          (when second-folded (refold second-at)))))))))))))
+                    (let ((moved (org-parse-now buffer)))
+                      (flet ((refold (begin)
+                               (let ((h (find begin (org-headlines (org-parse-tree moved)) :key #'org-node-begin)))
+                                 (when h
+                                   (let ((r (org-fold-range h (org-parse-text moved))))
+                                     (when r (org-fold-chars moved (car r) (cdr r))))))))
+                        (when first-folded (refold first-at))
+                        (when second-folded (refold second-at))))))))))))
 
 (define-command org-move-subtree-down ()
   "Move the subtree point is in down, past its next sibling."
@@ -195,10 +192,11 @@ point going with it, each kept folded when it was."
 
 ;;; Promoting and demoting
 
-(defun org-change-levels (buffer headlines text by)
-  "Change the levels of HEADLINES of BUFFER (whose parse's text is TEXT) by BY
-stars, one step to undo, point staying on its character."
-  (let* ((position (org-point-char buffer))
+(defun org-change-levels (parse headlines by)
+  "Change the levels of HEADLINES of PARSE (an ORG-PARSE) by BY stars, one
+step to undo, point staying on its character."
+  (let* ((text (org-parse-text parse))
+         (position (org-parse-point parse))
          (from (reduce #'min headlines :key #'org-node-begin))
          (to (reduce #'max headlines :key (lambda (h) (+ (org-node-begin h) (org-property h :level)))))
          (shift 0)
@@ -212,17 +210,17 @@ stars, one step to undo, point staying on its character."
         (when (<= (+ begin level) position) (incf shift by))
         (setf at (+ begin level))))
     (push (subseq text at to) pieces)
-    (org-replace-chars buffer from to (apply #'concatenate 'string (nreverse pieces))
+    (org-replace-chars parse from to (apply #'concatenate 'string (nreverse pieces))
                        :point (max from (+ position shift)))))
 
 (defun org-promote (subtree by)
   "Change the level of the headline point is in by BY (-1 promotes, 1
 demotes), with SUBTREE all the headlines under it too."
-  (with-org-structure (buffer tree text position)
+  (with-org-structure (parse buffer tree text position)
     (let ((headline (org-current-headline tree position)))
       (cond ((null headline) (message "Not in a subtree"))
             ((and (minusp by) (= 1 (org-property headline :level))) (message "Cannot promote to level 0"))
-            (t (org-change-levels buffer (if subtree (org-headlines headline) (list headline)) text by))))))
+            (t (org-change-levels parse (if subtree (org-headlines headline) (list headline)) by))))))
 
 (define-command org-do-promote ()
   "Promote the headline point is in a level, its subtree's other headlines as
@@ -424,8 +422,8 @@ sub-tasks were opened, as a second value."
                  (push (if (cl-ppcre:scan "^\\*+[ \\t]" line) (org-cookies-nought line) line) out)))))
     (values (nreverse out) opened)))
 
-(defun org-repeat-entry (buffer headline text position old done now &key cancelling-time)
-  "Repeat the task of HEADLINE (in BUFFER, TEXT its text), with timestamps
+(defun org-repeat-entry (parse headline position old done now &key cancelling-time)
+  "Repeat the task of HEADLINE (of PARSE, an ORG-PARSE), with timestamps
 that repeat, as it goes from OLD to the done keyword DONE at the universal
 time NOW: those timestamps moved to their next time, its keyword the first of
 its sequence again, and with *ORG-LOG-REPEAT* LAST_REPEAT set and the change
@@ -442,7 +440,8 @@ The times cancelled one at a time
 \(ORG-OCCURRENCE-NOTES) are passed over. CANCELLING-TIME, an occurrence, is
 the time this one is cancelled, not done: noted as such
 \(ORG-OCCURRENCE-NOTE), whatever *ORG-LOG-REPEAT* says."
-  (let* ((begin (org-node-begin headline))
+  (let* ((text (org-parse-text parse))
+         (begin (org-node-begin headline))
          (line-end (string-line-end text begin))
          (end (org-entry-end headline text))
          (cancelled (org-entry-notes headline text))
@@ -458,7 +457,7 @@ the time this one is cancelled, not done: noted as such
                        (append (multiple-value-list (org-boxes-ticked (org-text-lines (subseq text line-end end)))) (list nil)))))
          (entry (org-entry-with-log headline text
                                     (cond (cancelling-time (list (org-occurrence-note :cancelled cancelling-time nil now)))
-                                          ((and *org-log-repeat* (plusp (second ticked)) (org-cookies-of headline))
+                                          ((and *org-log-repeat* (plusp (second ticked)) (org-cookies-of headline text))
                                            ;; a note's own words go on the lines after its \\, as Org writes them
                                            (list (concatenate 'string (org-state-note done old now) " \\\\")
                                                  (format nil *org-boxes-ticked-note* (first ticked) (second ticked) (third ticked))))
@@ -486,7 +485,7 @@ the time this one is cancelled, not done: noted as such
     (when (plusp (second reopened))
       (setf new (concatenate 'string (org-ensure-newline new)
                              (format nil "~{~a~^~%~}~:[~;~%~]" (first reopened) (org-ends-with-newline-p subtree)))))
-    (org-replace-chars buffer begin (if (plusp (second reopened)) subtree-end end) new
+    (org-replace-chars parse begin (if (plusp (second reopened)) subtree-end end) new
                        :point (if (<= position line-end) (min position (+ begin (length headline-text))) begin))
     ;; said: what it was done or cancelled for, and a rule's next day
     (let* ((for-day (cond (cancelling-time (car cancelling-time))
@@ -503,14 +502,14 @@ the time this one is cancelled, not done: noted as such
 from it in the document's sequence (ORG-KEYWORD-SEQUENCE), none past either
 end; from none, or from a keyword the sequence passes over, the first with
 STEP 1 and the last with -1. As ORG-PUT-TODO sets it."
-  (with-org-structure (buffer tree text position)
+  (with-org-structure (parse buffer tree text position)
     (let ((headline (org-current-headline tree position)))
       (if (null headline)
           (message "Not in a subtree")
           (let* ((sequence (org-keyword-sequence text))
                  (old (org-property headline :todo-keyword))
                  (index (and old (position old sequence :test #'string=))))
-            (org-put-todo buffer text position headline
+            (org-put-todo parse position headline
                           (if index
                               (let ((next (+ index step))) (and (< -1 next (length sequence)) (nth next sequence)))
                               (if (plusp step) (first sequence) (car (last sequence))))))))))
@@ -518,19 +517,20 @@ STEP 1 and the last with -1. As ORG-PUT-TODO sets it."
 (defun org-set-todo-to (keyword)
   "Set the TODO keyword of the headline point is in to KEYWORD, NIL for none,
 as ORG-PUT-TODO sets it."
-  (with-org-structure (buffer tree text position)
+  (with-org-structure (parse buffer tree text position)
     (let ((headline (org-current-headline tree position)))
       (if (null headline)
           (message "Not in a subtree")
-          (org-put-todo buffer text position headline keyword)))))
+          (org-put-todo parse position headline keyword)))))
 
-(defun org-put-todo (buffer text position headline new &key (repeat t))
-  "Make NEW, a TODO keyword or NIL for none, the keyword of HEADLINE in BUFFER,
-TEXT its text and POSITION point as a character of it: reaching a done
+(defun org-put-todo (parse position headline new &key (repeat t))
+  "Make NEW, a TODO keyword or NIL for none, the keyword of HEADLINE of PARSE
+\(an ORG-PARSE), POSITION point as a character of it: reaching a done
 keyword from one not done notes when (CLOSED:), leaving it takes that away.
 A task whose date repeats, made done, is done this time and moves on to its
 next date instead, unless REPEAT is NIL."
-  (let* ((done-keywords (cdr (org-todo-keywords-of text)))
+  (let* ((text (org-parse-text parse))
+         (done-keywords (cdr (org-todo-keywords-of text)))
          (old (org-property headline :todo-keyword))
          (begin (org-node-begin headline))
          (level (org-property headline :level))
@@ -548,7 +548,7 @@ next date instead, unless REPEAT is NIL."
                    (let ((rule (org-rule-timestamp-in text line-end (org-entry-end headline text))))
                      (and rule (org-rule-goes-on-p rule (org-headline-property headline "LAST_REPEAT") now
                                                    (org-entry-notes headline text))))))
-      (return-from org-put-todo (org-repeat-entry buffer headline text (org-point-char buffer) old new now)))
+      (return-from org-put-todo (org-repeat-entry parse headline (org-parse-point parse) old new now)))
     ;; the planning line under the headline: CLOSED: added or taken away
     (let* ((next-line (min (length text) (1+ line-end)))
            (planning (and (< next-line (length text))
@@ -578,7 +578,7 @@ next date instead, unless REPEAT is NIL."
                       (setf region-end (min (length text) (1+ planning-end)))
                       (format nil "~a~%" headline-text))
                      (t (format nil "~a~%~a" headline-text new-planning)))))
-        (org-replace-chars buffer begin region-end replacement :point position)
+        (org-replace-chars parse begin region-end replacement :point position)
         (message "~:[No keyword~;~:*~a~]" new)))))
 
 (define-command org-todo ()
@@ -588,8 +588,7 @@ document's (#+TODO:, else TODO, WAIT and DONE), none after the last, those of
 \\[org-cancel-task] sets); a task done is noted with CLOSED: and when. On a
 list item's line with a checkbox, tick it, or clear it, as a task done or
 not, logged (*org-log-checkboxes*)."
-  (unless (call-on-checkbox-item (lambda (buffer tree text position item)
-                                   (org-toggle-checkbox buffer tree text position item)))
+  (unless (call-on-checkbox-item #'org-toggle-checkbox)
     (org-set-todo 1)
     (org-todo-changed (current-buffer))))
 
@@ -622,35 +621,35 @@ what is open. True when it handled the line."
   ;; the file parsed only for a line that is a headline
   (when (and *org-return-cycles-todo* (typep (buffer-major-mode buffer) 'org-mode)
              (cl-ppcre:scan "^\\*+ " (org-line-head buffer (tuatara.buffer:buffer-point buffer))))
-    (multiple-value-bind (tree text) (org-tree-now buffer)
-      (let* ((*org-current-text* text)
-             (headline (and tree (org-headline-on-line tree text (org-point-char buffer))))
-             (keyword (and headline (org-property headline :todo-keyword))))
-        (when keyword
-          (let* ((sequence (org-keyword-sequence text))
-                 (done-keywords (cdr (org-todo-keywords-of text)))
-                 (count (length sequence))
-                 (index (or (position keyword sequence :test #'string=) -1)))
-            (multiple-value-bind (boxes tasks) (org-open-under headline)
-              (let* ((open (plusp (+ boxes tasks)))
-                     (target (loop for k from 1 to count
-                                   for candidate = (nth (mod (+ index k) count) sequence)
-                                   unless (and open (member candidate done-keywords :test #'string=))
-                                     return candidate)))
-                (check-writable buffer)
-                (if (or (null target) (string= target keyword))
-                    (let ((done (find-if (lambda (k) (member k done-keywords :test #'string=)) sequence)))
-                      (message "Not ~a yet: ~@[~a~]~:[~; and ~]~@[~a~] still open; ~a makes it ~a all the same"
-                               done
-                               (and (plusp boxes) (format nil "~d checkbox~:*~[es~;~:;es~]" boxes))
-                               (and (plusp boxes) (plusp tasks))
-                               (and (plusp tasks) (format nil "~d task~:p" tasks))
-                               (substitute-command-keys "\\<org-mode>\\[org-todo]") done))
-                    (progn
-                      ;; straight to it: round from the last to the first without passing through none
-                      (org-set-todo-to target)
-                      (org-todo-changed buffer))))
-              t)))))))
+    (let* ((parse (org-parse-now buffer))
+           (text (and parse (org-parse-text parse)))
+           (headline (and parse (org-headline-on-line (org-parse-tree parse) text (org-parse-point parse))))
+           (keyword (and headline (org-property headline :todo-keyword))))
+      (when keyword
+        (let* ((sequence (org-keyword-sequence text))
+               (done-keywords (cdr (org-todo-keywords-of text)))
+               (count (length sequence))
+               (index (or (position keyword sequence :test #'string=) -1)))
+          (multiple-value-bind (boxes tasks) (org-open-under headline)
+            (let* ((open (plusp (+ boxes tasks)))
+                   (target (loop for k from 1 to count
+                                 for candidate = (nth (mod (+ index k) count) sequence)
+                                 unless (and open (member candidate done-keywords :test #'string=))
+                                   return candidate)))
+              (check-writable buffer)
+              (if (or (null target) (string= target keyword))
+                  (let ((done (find-if (lambda (k) (member k done-keywords :test #'string=)) sequence)))
+                    (message "Not ~a yet: ~@[~a~]~:[~; and ~]~@[~a~] still open; ~a makes it ~a all the same"
+                             done
+                             (and (plusp boxes) (format nil "~d checkbox~:*~[es~;~:;es~]" boxes))
+                             (and (plusp boxes) (plusp tasks))
+                             (and (plusp tasks) (format nil "~d task~:p" tasks))
+                             (substitute-command-keys "\\<org-mode>\\[org-todo]") done))
+                  (progn
+                    ;; straight to it: round from the last to the first without passing through none
+                    (org-set-todo-to target)
+                    (org-todo-changed buffer))))
+            t))))))
 
 (define-command org-shiftright ()
   "On a headline, its next TODO keyword, as \\[org-todo] does."
@@ -725,23 +724,25 @@ times from today on."
                   (when day (push (cons day time) open))))))
           (first (sort open #'org-occurrence<))))))
 
-(defun org-log-note (buffer headline text position note)
-  "Note NOTE in the log of HEADLINE's entry in BUFFER (TEXT its text, POSITION
+(defun org-log-note (parse headline position note)
+  "Note NOTE in the log of HEADLINE's entry of PARSE (an ORG-PARSE, POSITION
 point as a character of it), point kept on the headline's line, else put at
 its start."
-  (let ((begin (org-node-begin headline)))
-    (org-replace-chars buffer begin (org-entry-end headline text)
+  (let ((text (org-parse-text parse))
+        (begin (org-node-begin headline)))
+    (org-replace-chars parse begin (org-entry-end headline text)
                        (org-entry-with-log headline text (list note) *org-log-into-drawer*)
                        :point (if (<= position (string-line-end text begin)) position begin))))
 
-(defun org-cancel-occurrence (buffer headline text position occurrence)
-  "Cancel one time of the repeating entry of HEADLINE in BUFFER (TEXT its
-text, POSITION point as a character of it), the rest going on: OCCURRENCE,
+(defun org-cancel-occurrence (parse headline position occurrence)
+  "Cancel one time of the repeating entry of HEADLINE of PARSE (an ORG-PARSE,
+POSITION point as a character of it), the rest going on: OCCURRENCE,
 or the one open now (ORG-OPEN-OCCURRENCE) when it is NIL, where it was moved
 to when it was. Noted in its log (ORG-OCCURRENCE-NOTE), which the agenda and
 the repeats read; a task's open time cancelled moves it on to its next, as
 done does."
-  (let* ((now (org-now))
+  (let* ((text (org-parse-text parse))
+         (now (org-now))
          (keyword (org-property headline :todo-keyword))
          (task (org-task-keyword-p keyword text))
          (open (org-open-occurrence headline text now task)))
@@ -752,18 +753,19 @@ done does."
                (message "~a is cancelled already" (org-occurrence-words wanted)))
               ;; the time open now, where it is or where it was moved to
               ((and task open (or (= (car wanted) (car open)) (equal wanted (org-moved-target moved open))))
-               (org-repeat-entry buffer headline text position keyword "CANCELLED" now :cancelling-time wanted))
-              (t (org-log-note buffer headline text position (org-occurrence-note :cancelled wanted nil now))
+               (org-repeat-entry parse headline position keyword "CANCELLED" now :cancelling-time wanted))
+              (t (org-log-note parse headline position (org-occurrence-note :cancelled wanted nil now))
                  (message "Cancelled for ~a; the rest of it goes on" (org-occurrence-words wanted))))))))
 
-(defun org-move-occurrence (buffer headline text position occurrence to)
-  "Move one time of the repeating entry of HEADLINE in BUFFER (TEXT its text,
+(defun org-move-occurrence (parse headline position occurrence to)
+  "Move one time of the repeating entry of HEADLINE of PARSE (an ORG-PARSE,
 POSITION point as a character of it) to the occurrence TO, its own time of
 day kept when TO has none, the rest as it was: OCCURRENCE, or the one open
 now (ORG-OPEN-OCCURRENCE) when it is NIL, where it was moved to when it was.
 Noted in its log (ORG-OCCURRENCE-NOTE), which the agenda reads: that time
 listed on TO's day, and a task done there done for the time it was."
-  (let* ((now (org-now))
+  (let* ((text (org-parse-text parse))
+         (now (org-now))
          (task (org-task-keyword-p (org-property headline :todo-keyword) text)))
     (multiple-value-bind (cancelled moved) (org-entry-notes headline text)
       (let* ((from (let ((at (or occurrence (org-open-occurrence headline text now task))))
@@ -773,7 +775,7 @@ listed on TO's day, and a task done there done for the time it was."
               ((org-cancelled-p cancelled (car from) (cdr from))
                (message "~a is cancelled already" (org-occurrence-words from)))
               ((equal from to) (message "~a is where it is already" (org-occurrence-words from)))
-              (t (org-log-note buffer headline text position (org-occurrence-note :moved from to now))
+              (t (org-log-note parse headline position (org-occurrence-note :moved from to now))
                  (message "Moved ~a to ~a; the rest of it goes on" (org-occurrence-words from) (org-occurrence-words to))))))))
 
 (defun org-occurrence-choice (verb)
@@ -782,7 +784,7 @@ Schedule) whether to act on one time of it, the agenda's line's
 \(*ORG-AGENDA-OCCURRENCE*) or the one open now, or on the whole of it:
 :THIS for \\`t', :SERIES for \\`s', :NONE for any other key, said to do
 nothing; \\`C-g' quits. :SERIES unasked when it does not repeat."
-  (with-org-structure (buffer tree text position)
+  (with-org-structure (parse buffer tree text position)
     (let ((headline (org-current-headline tree position)))
       (if (not (and headline
                     (org-repeats-in-p text (string-line-end text (org-node-begin headline)) (org-entry-end headline text))))
@@ -801,8 +803,8 @@ nothing; \\`C-g' quits. :SERIES unasked when it does not repeat."
 its time too if it changes (READ-ORG-DATE), and move it (ORG-MOVE-OCCURRENCE)."
   (let ((ts (read-org-date "Move this time to: ")))
     (if (org-ts-p ts)
-        (with-org-structure (buffer tree text position)
-          (org-move-occurrence buffer (org-current-headline tree position) text position *org-agenda-occurrence*
+        (with-org-structure (parse buffer tree text position)
+          (org-move-occurrence parse (org-current-headline tree position) position *org-agenda-occurrence*
                                (cons (org-ts-day-number ts) (org-ts-time-of-day ts))))
         (org-no-date))))
 
@@ -818,15 +820,15 @@ cancelled moves on to its next, as done does. \\`s' cancels the series,
 ended, not moved on."
   (if (org-checkbox-line-p (org-line-head (current-buffer) (point)))
       (message "A list item's checkbox is ticked or cleared, not cancelled: \\<org-mode>\\[org-todo] ticks it")
-      (with-org-structure (buffer tree text position)
+      (with-org-structure (parse buffer tree text position)
         (let* ((headline (org-current-headline tree position))
                (keyword (org-cancel-keyword text))
                (choice (org-occurrence-choice "Cancel")))
           (cond ((null headline) (message "Not in a subtree"))
                 ((eq choice :none))
-                ((eq choice :this) (org-cancel-occurrence buffer headline text position *org-agenda-occurrence*))
+                ((eq choice :this) (org-cancel-occurrence parse headline position *org-agenda-occurrence*))
                 ((null keyword) (message "No CANCELLED among this file's #+TODO: keywords"))
-                (t (org-put-todo buffer text position headline keyword :repeat nil)
+                (t (org-put-todo parse position headline keyword :repeat nil)
                    (org-todo-changed buffer)))))))
 
 ;;; Tags and notes
@@ -883,7 +885,7 @@ says, by default one space after its text. With \\[universal-argument], the
 tags of every headline of the buffer put there instead (\\[org-align-all-tags])."
   (when (prefix-argument)
     (return-from org-set-tags-command (org-align-all-tags)))
-  (with-org-structure (buffer tree text position)
+  (with-org-structure (parse buffer tree text position)
     (let ((headline (org-current-headline tree position)))
       (if (null headline)
           (message "Not under a headline")
@@ -895,7 +897,7 @@ tags of every headline of the buffer put there instead (\\[org-align-all-tags]).
                  (new (org-headline-with-tags line tags)))
             (if (string= new line)
                 (message "Tags as they were")
-                (progn (org-replace-chars buffer begin line-end new
+                (progn (org-replace-chars parse begin line-end new
                                           :point (if (> position line-end)
                                                      (+ position (- (length new) (- line-end begin)))
                                                      (min position (+ begin (length new)))))
@@ -913,11 +915,11 @@ HEADLINES that has any where *ORG-TAGS-COLUMN* says; none for those already ther
         when (and new (string/= new line))
           collect (list begin line-end new)))
 
-(defun org-align-tags-in (buffer headlines text position)
-  "Put the tags of HEADLINES of BUFFER (TEXT its parse, point at the character
+(defun org-align-tags-in (parse headlines position)
+  "Put the tags of HEADLINES of PARSE (an ORG-PARSE, point at the character
 POSITION) where *ORG-TAGS-COLUMN* says, in one step to undo; point kept by the
 text it is in, or by the tags it is in; how many lines changed."
-  (let* ((edits (org-tags-alignment-edits headlines text))
+  (let* ((edits (org-tags-alignment-edits headlines (org-parse-text parse)))
          ;; on a line that changes, as far from its end as it was, past the edits before the line
          (inside (find-if (lambda (edit) (<= (first edit) position (second edit))) edits))
          (point (if inside
@@ -931,8 +933,8 @@ text it is in, or by the tags it is in; how many lines changed."
                                (max (+ begin title-end) (- (+ begin (length new)) (- line-end position)))))))
                     position)))
     (when edits
-      (check-writable buffer)
-      (org-apply-edits buffer edits :point point :final (and inside t)))
+      (check-writable (org-parse-buffer parse))
+      (org-apply-edits parse edits :point point :final (and inside t)))
     (length edits)))
 
 (define-command org-align-tags ()
@@ -942,19 +944,19 @@ by default one space after its text. With
 \(\\[org-align-all-tags])."
   (if (prefix-argument)
       (org-align-all-tags)
-      (with-org-structure (buffer tree text position)
+      (with-org-structure (parse buffer tree text position)
         (let ((headline (org-current-headline tree position)))
           (cond ((null headline) (message "Not under a headline"))
                 ((null (org-property headline :tags)) (message "No tags on this headline"))
-                ((zerop (org-align-tags-in buffer (list headline) text position)) (message "Tags in place already"))
+                ((zerop (org-align-tags-in parse (list headline) position)) (message "Tags in place already"))
                 (t (message "Tags put in place")))))))
 
 (define-command org-align-all-tags ()
   "Put the tags of every headline of the buffer where *ORG-TAGS-COLUMN* says:
 by default one space after each one's text, in
 one step to undo."
-  (with-org-structure (buffer tree text position)
-    (let ((count (org-align-tags-in buffer (org-headlines tree) text position)))
+  (with-org-structure (parse buffer tree text position)
+    (let ((count (org-align-tags-in parse (org-headlines tree) position)))
       (message (if (zerop count) "Tags in place already" (format nil "Tags put in place on ~d headline~:p" count))))))
 
 (define-command org-add-note ()
@@ -964,7 +966,7 @@ the note is asked for, and logged where Org logs notes, at the top of its
 properties: - Note taken on [2026-10-01 Thu 18:00] \\\\ and the note under it.
 On a list item's line with a checkbox, on that item, in a :LOGBOOK: drawer
 under it. An empty note is not kept."
-  (with-org-structure (buffer tree text position)
+  (with-org-structure (parse buffer tree text position)
     (let* ((item (org-checkbox-item-at tree text position))
            (owner (or item (org-current-headline tree position))))
       (if (null owner)
@@ -973,9 +975,9 @@ under it. An empty note is not kept."
             (if (zerop (length note))
                 (message "No note taken: it was empty")
                 (progn
-                  (org-apply-edits buffer (list (org-log-edit owner text (list (format nil "- Note taken on ~a \\\\" (org-timestamp-text (org-now)))
-                                                                               (format nil "  ~a" note))
-                                                              :drawer (or item *org-log-into-drawer*)))
+                  (org-apply-edits parse (list (org-log-edit owner text (list (format nil "- Note taken on ~a \\\\" (org-timestamp-text (org-now)))
+                                                                              (format nil "  ~a" note))
+                                                             :drawer (or item *org-log-into-drawer*)))
                                    :point position)
                   (message "Note taken"))))))))
 
@@ -996,7 +998,7 @@ after the one point is in and its sub-items, of the same kind (its bullet, the
 next number, a checkbox [ ] when it has one); else a headline of the level
 point is under after its subtree, with
 TODO a task."
-  (with-org-structure (buffer tree text position)
+  (with-org-structure (parse buffer tree text position)
     (let ((item (and (not todo) (org-current-item tree text position)))
           (headline (org-current-headline tree position)))
       (cond
@@ -1011,7 +1013,7 @@ TODO a task."
                                               :simple-calls t))
                 (new (format nil "~%~a~a ~:[~;[ ] ~]" indent next (org-property item :checkbox)))
                 (after (rest (member item (org-node-children (org-node-parent item))))))
-           (org-apply-edits buffer
+           (org-apply-edits parse
                             (cons (list end end new)
                                   (when (digit-char-p (char next 0))
                                     (loop for each in after
@@ -1024,11 +1026,11 @@ TODO a task."
                 (content-end (org-last-content-end text (org-node-begin headline) (org-node-end headline)))
                 (blank (< (1+ content-end) (org-node-end headline)))
                 (new (format nil "~%~:[~;~%~]~a ~:[~;TODO ~]" blank (make-string level :initial-element #\*) todo)))
-           (org-replace-chars buffer content-end content-end new :point (+ content-end (length new)))))
+           (org-replace-chars parse content-end content-end new :point (+ content-end (length new)))))
         (t
          (let* ((line-end (string-line-end text position))
                 (new (format nil "~%* ~:[~;TODO ~]" todo)))
-           (org-replace-chars buffer line-end line-end new :point (+ line-end (length new)))))))))
+           (org-replace-chars parse line-end line-end new :point (+ line-end (length new)))))))))
 
 (defun org-renumber-edit (text item number)
   "The edit, a list of one (FROM TO NEW), giving the numbered ITEM of TEXT the

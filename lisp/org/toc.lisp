@@ -323,15 +323,16 @@ there is one. A table as it should be already is left alone. QUIET says
 nothing of it. The text is read as it is, nothing parsed, and looked at no
 further when no :TOC appears in it. A buffer in Markdown mode has it written
 as Markdown."
-  (let ((text (org-buffer-text buffer)))
+  (let* ((parse (org-text-now buffer))
+         (text (org-parse-text parse)))
     (multiple-value-bind (start end replacement count)
         (if (cl-ppcre:scan "(?i):toc" text) (toc-change text :markdown (toc-markdown-p buffer)) nil)
       (case start
         ((nil) nil)
         (:same (unless quiet (message "The table of contents is up to date")) t)
         (:style (message "The table of contents is not made: no style ~s (gh or org)" end) t)
-        (t (let ((p (org-point-char buffer)))
-             (org-replace-chars buffer start end replacement
+        (t (let ((p (org-parse-point parse)))
+             (org-replace-chars parse start end replacement
                                 :point (cond ((<= p start) p)
                                              ((>= p end) (+ p (- (length replacement) (- end start))))
                                              (t start))))
@@ -420,10 +421,11 @@ visited. True when point is on a link."
     (multiple-value-bind (label target) (and column (markdown-link-at line column))
       (when target
         (cond ((uiop:string-prefix-p "#" target)
-               (let* ((text (org-buffer-text buffer))
+               (let* ((parse (org-text-now buffer))
+                      (text (org-parse-text parse))
                       (at (or (toc-target-position text target :markdown t) (markdown-heading-named text label))))
                  (if at
-                     (org-goto-char buffer at)
+                     (org-goto-char parse at)
                      (message "No heading here for ~a" target))))
               ((open-address-p target) (open-address target))
               ((string= target "") (message "The link leads nowhere"))

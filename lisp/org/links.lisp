@@ -171,9 +171,10 @@ entities as their characters again (\\`C-c C-x L'). The text is not changed."
   (org-node-at tree position (lambda (node) (and (eq (org-node-type node) 'link) (org-before-blank-p node position)))
                :titles t))
 
-(defun org-goto-char (buffer position)
-  "Put BUFFER's point at the character POSITION of its parse, shown in the window, the fold it is in opened."
-  (goto-shown buffer (org-char->byte buffer position)))
+(defun org-goto-char (parse position)
+  "Put the point of PARSE's buffer at the character POSITION of PARSE (an
+ORG-PARSE), shown in the window, the fold it is in opened."
+  (goto-shown (org-parse-buffer parse) (org-parse-octet parse position)))
 
 (defun org-find-in-tree (tree predicate)
   "The first node of TREE, a headline's title too, PREDICATE (a function of a
@@ -201,11 +202,12 @@ of that title (:TITLE). Following a link and exporting one both go by it."
         ((uiop:string-prefix-p "#" target) (list (cons :custom-id (subseq target 1))))
         (t (list (cons :target target) (cons :name target) (cons :title target)))))
 
-(defun org-search-target (buffer tree text target)
-  "Go to TARGET in BUFFER (TREE and TEXT its parse), what a link of that text
+(defun org-search-target (parse target)
+  "Go to TARGET in the buffer of PARSE (an ORG-PARSE), what a link of that text
 leads to (ORG-LINK-TARGET-KINDS); failing those, the headline a link of the
 table of contents leads to (TOC-ORG-INSERT-TOC). True when found."
-  (let* ((node
+  (let* ((tree (org-parse-tree parse))
+         (node
           (loop for (kind . value) in (org-link-target-kinds target)
                 thereis (ecase kind
                           (:title (org-headline-titled tree value))
@@ -214,9 +216,9 @@ table of contents leads to (TOC-ORG-INSERT-TOC). True when found."
                                                                                 (equal (org-property n :value) value)))))
                           (:name (org-find-in-tree tree (lambda (n) (equal (org-property n :name) value)))))))
          ;; a link of the table of contents (#a-github-anchor, or a title as it lists it)
-         (listed (and (null node) (toc-target-position text target))))
-    (cond (node (org-goto-char buffer (org-node-begin node)) t)
-          (listed (org-goto-char buffer listed) t))))
+         (listed (and (null node) (toc-target-position (org-parse-text parse) target))))
+    (cond (node (org-goto-char parse (org-node-begin node)) t)
+          (listed (org-goto-char parse listed) t))))
 
 (defvar *org-notes-search* nil
   "The search of your notes under way for a link followed (ORG-SEARCH-NOTES),
@@ -272,19 +274,19 @@ it runs."
   "Visit the Org file at PATH and go to its headline whose ID is ID."
   (let ((other (visit-path path)))
     (show-buffer other)
-    (let* ((other-tree (org-tree-now other))
-           (headline (and other-tree (org-headline-with-property other-tree "ID" id))))
-      (when headline (org-goto-char other (org-node-begin headline))))))
+    (let* ((parse (org-parse-now other))
+           (headline (and parse (org-headline-with-property (org-parse-tree parse) "ID" id))))
+      (when headline (org-goto-char parse (org-node-begin headline))))))
 
-(defun org-follow-id (buffer tree id)
-  "Go to the headline whose ID is ID: in BUFFER at once, else in the Org files
+(defun org-follow-id (parse id)
+  "Go to the headline whose ID is ID: in PARSE's buffer at once, else in the Org files
 of your notes, looked through in the background (ORG-SEARCH-NOTES): each as
 its buffer has it when one is open, else read from disk as the agenda reads
 it, untouched (ORG-READ-FILE-TEXT); found, it is shown. True when found here
 or looked for."
-  (let ((here (org-headline-with-property tree "ID" id)))
+  (let ((here (org-headline-with-property (org-parse-tree parse) "ID" id)))
     (if here
-        (progn (org-goto-char buffer (org-node-begin here)) t)
+        (progn (org-goto-char parse (org-node-begin here)) t)
         (let ((scanner (cl-ppcre:create-scanner (format nil "(?im)^[ \\t]*:ID:[ \\t]+~a[ \\t]*$" (cl-ppcre:quote-meta-chars id))))
               ;; the Org files open now, as their buffers have them
               (open (org-agenda-open-snapshot)))
@@ -481,10 +483,11 @@ or news address, a DOI's at https://doi.org/; NIL for a link of any other type."
   (when (member type *org-address-link-types* :test #'string=)
     (if (string= type "doi") (format nil "https://doi.org/~a" path) (format nil "~a:~a" type path))))
 
-(defun org-follow-link (buffer tree text link)
-  "Follow LINK, a link of BUFFER's parse (TREE, TEXT): visit the file or the
-place in this one it leads to, or open the address outside it."
-  (let ((type (org-property link :type)) (path (org-property link :path)) (raw (org-property link :raw-link)))
+(defun org-follow-link (parse link)
+  "Follow LINK, a link of PARSE (an ORG-PARSE): visit the file or the place in
+its buffer it leads to, or open the address outside it."
+  (let ((buffer (org-parse-buffer parse))
+        (type (org-property link :type)) (path (org-property link :path)) (raw (org-property link :raw-link)))
     ;; a type Org itself does not know, read as text to search for: denote: leads to a file by its identifier
     (when (and (string= type "fuzzy") (uiop:string-prefix-p "denote:" path))
       (setf type "denote" path (subseq path 7)))
@@ -493,7 +496,7 @@ place in this one it leads to, or open the address outside it."
     (flet ((not-found () (message "No match for ~a" raw)))
       (cond
         ((member type '("fuzzy" "custom-id") :test #'string=)
-         (unless (org-search-target buffer tree text (if (string= type "custom-id") (concatenate 'string "#" path) path))
+         (unless (org-search-target parse (if (string= type "custom-id") (concatenate 'string "#" path) path))
            (not-found)))
         ((string= type "file")
          (let* ((search (let ((at (search "::" raw))) (and at (subseq raw (+ at 2)))))
@@ -502,9 +505,9 @@ place in this one it leads to, or open the address outside it."
                 (other (visit-path file)))
            (show-buffer other)
            (when (and search (plusp (length search)))
-             (multiple-value-bind (other-tree other-text) (org-tree-now other)
-               (when other-tree (org-search-target other other-tree other-text search))))))
-        ((string= type "id") (unless (org-follow-id buffer tree path) (not-found)))
+             (let ((other-parse (org-parse-now other)))
+               (when other-parse (org-search-target other-parse search))))))
+        ((string= type "id") (unless (org-follow-id parse path) (not-found)))
         ((and (string= type "denote") (uiop:string-prefix-p "query-filenames:" path))
          (follow-denote-files-link (subseq path (length "query-filenames:"))))
         ((string= type "formatted-match") (follow-formatted-files-link path))
@@ -518,10 +521,10 @@ place in this one it leads to, or open the address outside it."
   "Follow the link point is on (\\`C-c C-o'):
 to a headline, a custom ID or a target here, a file, an ID, a note by its
 identifier, or a web or mail address in the desktop's program, after asking."
-  (with-org-structure (buffer tree text position)
+  (with-org-structure (parse buffer tree text position)
     (let ((link (org-link-at tree position)))
       (if link
-          (org-follow-link buffer tree text link)
+          (org-follow-link parse link)
           (message "No link here")))))
 
 (defun org-line-may-hold-link-p (buffer position)
@@ -540,12 +543,11 @@ in Org mode and *ORG-RETURN-FOLLOWS-LINK* is true; true when it did. A line
 that can hold no link (ORG-LINE-MAY-HOLD-LINK-P) is not parsed for one."
   (when (and *org-return-follows-link* (typep (buffer-major-mode buffer) 'org-mode)
              (org-line-may-hold-link-p buffer (tuatara.buffer:buffer-point buffer)))
-    (multiple-value-bind (tree text) (org-tree-now buffer)
-      (let ((*org-current-text* (or text "")))
-        (let ((link (and tree (org-link-at tree (org-point-char buffer)))))
-          (when link
-            (org-follow-link buffer tree text link)
-            t))))))
+    (let* ((parse (org-parse-now buffer))
+           (link (and parse (org-link-at (org-parse-tree parse) (org-parse-point parse)))))
+      (when link
+        (org-follow-link parse link)
+        t))))
 
 (define-command org-return ()
   "\\`RET' in Org: on a link, follow it (*org-return-follows-link*); in a table,

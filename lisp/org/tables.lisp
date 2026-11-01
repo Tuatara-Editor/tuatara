@@ -23,9 +23,10 @@ FORMULAS, the formulas of its #+TBLFM: line, FORMULAS-END where that line ends
 (NIL when it has none), FORMULAS-CHANGED true when they are to be written."
   indent rows row field offset begin end newline formulas formulas-end formulas-changed)
 
-(defun org-table-at (tree position)
-  "The Org table (not a table.el one) of TREE whose rows hold the line of the character POSITION, or NIL."
-  (let ((line-start (string-line-start *org-current-text* position)))
+(defun org-table-at (tree text position)
+  "The Org table (not a table.el one) of TREE, a parse of TEXT, whose rows hold
+the line of the character POSITION, or NIL."
+  (let ((line-start (string-line-start text position)))
     (org-node-at tree line-start
                  (lambda (node)
                    (and (eq (org-node-type node) 'table) (eq (org-property node :type) 'org)
@@ -180,9 +181,10 @@ not empty are numbers."
        (when (org-table-newline model) (write-char #\Newline out)))
      point)))
 
-(defun org-table-write (buffer model)
-  "Put MODEL's table, aligned, in place of its rows in BUFFER (its #+TBLFM: line
-too when its formulas changed), one step to undo, point where MODEL has it."
+(defun org-table-write (parse model)
+  "Put MODEL's table, aligned, in place of its rows of PARSE (an ORG-PARSE) in
+its buffer (its #+TBLFM: line too when its formulas changed), one step to
+undo, point where MODEL has it."
   (multiple-value-bind (new point) (org-table-render model)
     (let ((begin (org-table-begin model)) (end (org-table-end model)))
       (when (org-table-formulas-changed model)
@@ -194,29 +196,28 @@ too when its formulas changed), one step to undo, point where MODEL has it."
                 end (or (org-table-formulas-end model) end))
           (when (and (not (org-table-newline model)) (null formulas))
             (setf new (string-right-trim '(#\Newline) new)))))
-      (if (string= new (subseq *org-current-text* begin end))
-          (setf (tuatara.buffer:buffer-point buffer)
-                (org-char->byte buffer (+ begin point)))
-          (org-replace-chars buffer begin end new :point (+ begin point))))))
+      (if (string= new (subseq (org-parse-text parse) begin end))
+          (setf (tuatara.buffer:buffer-point (org-parse-buffer parse)) (org-parse-octet parse (+ begin point)))
+          (org-replace-chars parse begin end new :point (+ begin point))))))
 
 (defmacro with-org-table ((buffer model) &body body)
   "Run BODY with MODEL the Org table point is in as an ORG-TABLE-MODEL and BUFFER
 the current buffer, then write the table back aligned; true when point was in a
 table. BODY returning :NOT-DONE leaves the table as it was. A line that does
 not begin with | is no table's, and the file is not parsed for it."
-  (let ((tree (gensym)) (text (gensym)) (position (gensym)) (table (gensym)) (result (gensym)))
-    `(let ((,buffer (current-buffer)))
-       (multiple-value-bind (,tree ,text) (and (uiop:string-prefix-p "|" (string-left-trim " 	" (org-line-head ,buffer (point))))
-                                               (org-tree-now ,buffer))
-         (when ,tree
-           (let* ((*org-current-text* ,text)
-                  (,position (org-point-char ,buffer))
-                  (,table (org-table-at ,tree ,position)))
-             (when ,table
-               (let* ((,model (org-table-read ,text ,table ,position))
-                      (,result (progn ,@body)))
-                 (unless (eq ,result :not-done) (org-table-write ,buffer ,model))
-                 t))))))))
+  (let ((parse (gensym)) (text (gensym)) (position (gensym)) (table (gensym)) (result (gensym)))
+    `(let* ((,buffer (current-buffer))
+            (,parse (and (uiop:string-prefix-p "|" (string-left-trim " 	" (org-line-head ,buffer (point))))
+                         (org-parse-now ,buffer))))
+       (when ,parse
+         (let* ((,text (org-parse-text ,parse))
+                (,position (org-parse-point ,parse))
+                (,table (org-table-at (org-parse-tree ,parse) ,text ,position)))
+           (when ,table
+             (let* ((,model (org-table-read ,text ,table ,position))
+                    (,result (progn ,@body)))
+               (unless (eq ,result :not-done) (org-table-write ,parse ,model))
+               t)))))))
 
 (defun org-table-data-row-p (model index)
   "True when MODEL's row INDEX is a row of fields, not a rule."
