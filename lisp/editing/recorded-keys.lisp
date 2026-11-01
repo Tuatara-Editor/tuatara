@@ -159,7 +159,7 @@ recording begins."
 %-3d with spaces after, %% a per cent sign, the rest as it is (Item %d.
 writes Item 7.)."
   (let* ((format (read-string "Counter format (%d the number, %03d in three digits): " :initial *keys-counter-format*))
-         (formatter (handler-case (number-formatter format)
+         (formatter (handler-case (reporting-errors ("reading the counter format ~s" format) (number-formatter format))
                       (error (e) (message "~a" (tuatara.runtime:condition-words e)) nil))))
     (when formatter
       (setf *keys-counter-format* format)
@@ -217,7 +217,7 @@ number or another thing than that symbol (-5, 1e3), or a name of Lisp's own
            (message "A name is letters, digits and - _ + * / < > = ! ? %, not digits alone") nil)
           (t (let ((symbol (intern (string-upcase name) '#:tuatara-user))
                    (read (let ((*package* (find-package '#:tuatara-user)) (*read-eval* nil))
-                           (ignore-errors (read-from-string name)))))
+                           (ignoring-errors-reported ("reading the name ~a" name) (read-from-string name)))))
                (cond ((not (eq read symbol))
                       (message "~a reads as ~:[something else~;~:*~s~], not as a name" name read) nil)
                      ((eq (symbol-package symbol) (find-package '#:common-lisp))
@@ -254,7 +254,8 @@ and it is only inserted: putting it in the init file is left to you."
           (check-writable (current-buffer))
           (if (or (find :paste events :key #'tuatara.frontend:event-kind)
                   (not (equal (map 'list (lambda (event) (tuatara.frontend:key-spec (tuatara.frontend:event-key event))) events)
-                              (ignore-errors (tuatara.frontend:parse-key-sequence text)))))
+                              (ignoring-errors-reported ("reading back the keys ~a" text)
+                                (tuatara.frontend:parse-key-sequence text)))))
               (message "These keys cannot all be written as text: ~a" text)
               (let ((name (read-recorded-keys-name "Name of the command" *last-recorded-keys-name*)))
                 (when name

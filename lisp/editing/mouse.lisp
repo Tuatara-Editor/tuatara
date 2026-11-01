@@ -225,10 +225,11 @@ when *OPEN-DROPPED-FILES-SAFELY*), with VISIT-PATH, without showing it: a PDF
 or a picture as such, a binary file in the hex view, why a file opened safely
 said. Its buffer, or NIL and why not."
   (handler-case
-      (multiple-value-bind (buffer existing) (visit-path path :safe *open-dropped-files-safely* :show #'identity)
-        (if (and *open-dropped-files-safely* existing (not (tuatara.io:safe-visit-p buffer)))
-            (values buffer (format nil "~a is open already, with its mode" (tuatara.buffer:buffer-name buffer)))
-            buffer))
+      (reporting-errors ("opening ~a, dropped on the window" path)
+        (multiple-value-bind (buffer existing) (visit-path path :safe *open-dropped-files-safely* :show #'identity)
+          (if (and *open-dropped-files-safely* existing (not (tuatara.io:safe-visit-p buffer)))
+              (values buffer (format nil "~a is open already, with its mode" (tuatara.buffer:buffer-name buffer)))
+              buffer)))
     (error (e) (values nil (princ-to-string e)))))
 
 (define-command open-dropped-files ()

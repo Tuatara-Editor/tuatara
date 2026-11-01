@@ -295,7 +295,8 @@ whose text cannot be had is not matched by it."
           (return-from entry-matches-p (and cell (search-filter-match-p filter cell))))))
     (or (and (null where) line-matched)
         (and text
-             (let ((more (handler-case (funcall text entry where) (error () nil))))
+             (let ((more (ignoring-errors-reported ("reading an entry's text to filter it")
+                           (funcall text entry where))))
                (and (stringp more) (search-filter-match-p filter more)))))))
 
 (defun entry-end (entries index)

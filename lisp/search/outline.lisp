@@ -240,23 +240,23 @@ the search does not end at once then, BUFFER's file stays mapped for it
 \(BUFFER-LENT-P) while it ends on its own."
   (let* ((halted nil) (result nil) (failure nil)
          (copy (and tree (tuatara.syntax:copy-tree-pointer tree)))
-         (thread (ignore-errors
-                  (tuatara.runtime:make-guarded-thread
-                   (lambda ()
-                     (let ((halt (lambda () halted)))
-                       (unwind-protect
-                            (handler-case
-                                (tuatara.runtime:reporting-errors ("finding the headings")
-                                  (setf result
-                                        (outline-entries
-                                         (funcall finder rope copy halt) rope tab-width
-                                         (and colours copy
-                                              (lambda (start end)
-                                                (tuatara.syntax:rich-highlights colours copy rope start end faces)))
-                                         halt)))
-                              (error (e) (setf failure e)))
-                         (when copy (tuatara.syntax:delete-tree copy)))))
-                   :name "tuatara outline"))))
+         (thread (ignoring-errors-reported ("starting the search for headings")
+                   (tuatara.runtime:make-guarded-thread
+                    (lambda ()
+                      (let ((halt (lambda () halted)))
+                        (unwind-protect
+                             (handler-case
+                                 (tuatara.runtime:reporting-errors ("finding the headings")
+                                   (setf result
+                                         (outline-entries
+                                          (funcall finder rope copy halt) rope tab-width
+                                          (and colours copy
+                                               (lambda (start end)
+                                                 (tuatara.syntax:rich-highlights colours copy rope start end faces)))
+                                          halt)))
+                               (error (e) (setf failure e)))
+                          (when copy (tuatara.syntax:delete-tree copy)))))
+                    :name "tuatara outline"))))
     (cond ((null thread)
            (when copy (tuatara.syntax:delete-tree copy))
            (error "There is no thread to find the headings in"))

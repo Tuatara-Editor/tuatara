@@ -211,9 +211,9 @@ OFFSET), as TUATARA.FRONTEND:FRONTEND-PUT-IMAGE takes them."
 
 (defun callback-failed (name condition)
   "Report on the error output that the window's callback NAME failed with CONDITION."
-  (ignore-errors
-   (format *error-output* "~&Tuatara: the window's ~(~a~) failed: ~a~%" name condition)
-   (finish-output *error-output*)))
+  (tuatara.runtime:ignoring-errors-reported ("saying the window's ~(~a~) failed" name)
+    (format *error-output* "~&Tuatara: the window's ~(~a~) failed: ~a~%" name condition)
+    (finish-output *error-output*)))
 
 (eval-when (:compile-toplevel :load-toplevel :execute)
   (defun remove-ignored (declarations)
@@ -241,8 +241,9 @@ taking the editor down with GTK's thread, never unwinding through GTK."
            ;; each argument named, used or not: a callable's body takes no declarations
            ,@names
            (let ((,result (handler-case
-                              (let (,@(loop for text in texts collect `(,text (sap-string ,text))))
-                                (locally ,@(remove-ignored declarations) ,@forms))
+                              (tuatara.runtime:reporting-errors ("the window's ~(~a~)" ',name)
+                                (let (,@(loop for text in texts collect `(,text (sap-string ,text))))
+                                  (locally ,@(remove-ignored declarations) ,@forms)))
                             (serious-condition (condition)
                               (callback-failed ',name condition)
                               ,failed))))

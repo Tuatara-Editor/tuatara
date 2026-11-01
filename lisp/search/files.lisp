@@ -56,21 +56,23 @@ that a gigantic file never passes through memory for a search that would not
 keep it. Its access time is left alone where the system allows, and a named
 pipe cannot hold it up."
   (unless (encrypted-name-p (tuatara.io:native-file-name path))
-    (ignore-errors
-     (tuatara.io:call-with-file
-      path
-      (lambda (fd path size)
-        ;; a small file read whole at once; of a larger one, the part that tells it binary
-        (let ((head (tuatara.io:read-fd-start fd path size tuatara.io:+binary-sample+ :past-size t)))
-          (unless (or (tuatara.io:binary-head-p head)
-                      (encrypted-head-p (subseq head 0 (min (length head) 200)))
-                      ;; a kind of file told by its first octets: a picture, a PDF, an archive, a disk image
-                      (not (member (nth-value 1 (tuatara.io:octets-kind head)) '(nil :svg :utf-8))))
-            (cond ((and most (> (max size (length head)) most)) (values nil :too-large))
-                  ((< (length head) (min tuatara.io:+binary-sample+ (max 8192 (1+ size)))) head)
-                  ;; larger than the system said (/proc, /sys) or than the head: read whole
-                  (t (let ((octets (tuatara.io:read-fd-octets fd :path path :size-hint (1+ size))))
-                       (and (not (tuatara.io:binary-head-p octets)) octets)))))))))))
+    (ignoring-errors-reported ("reading ~a to search" path)
+      (handler-case
+          (tuatara.io:call-with-file
+           path
+           (lambda (fd path size)
+             ;; a small file read whole at once; of a larger one, the part that tells it binary
+             (let ((head (tuatara.io:read-fd-start fd path size tuatara.io:+binary-sample+ :past-size t)))
+               (unless (or (tuatara.io:binary-head-p head)
+                           (encrypted-head-p (subseq head 0 (min (length head) 200)))
+                           ;; a kind of file told by its first octets: a picture, a PDF, an archive, a disk image
+                           (not (member (nth-value 1 (tuatara.io:octets-kind head)) '(nil :svg :utf-8))))
+                 (cond ((and most (> (max size (length head)) most)) (values nil :too-large))
+                       ((< (length head) (min tuatara.io:+binary-sample+ (max 8192 (1+ size)))) head)
+                       ;; larger than the system said (/proc, /sys) or than the head: read whole
+                       (t (let ((octets (tuatara.io:read-fd-octets fd :path path :size-hint (1+ size))))
+                            (and (not (tuatara.io:binary-head-p octets)) octets))))))))
+        (tuatara.io:file-system-error (condition) (values nil condition))))))
 
 (defun corpus-file-at (corpus position)
   "The index in CORPUS of the file holding byte POSITION of its text."
@@ -306,10 +308,11 @@ car turns true."
     (when (and (uiop:string-prefix-p inside relative)
                (multiple-value-bind (octets why) (read-text-file path :most 0)
                  (or octets (eq why :too-large))))
-      (let ((fd (ignore-errors (tuatara.io:open-for-reading path t))))
+      (let ((fd (ignoring-errors-reported ("opening ~a to search" path) (tuatara.io:open-for-reading path t))))
         (when fd
           (unwind-protect
-               (let* ((size (let ((stamp (ignore-errors (tuatara.io:fd-stamp fd path))))
+               (let* ((size (let ((stamp (ignoring-errors-reported ("examining ~a" path)
+                                           (tuatara.io:fd-stamp fd path))))
                               (if stamp (tuatara.io:stamp-size stamp) *search-disk-piece*)))
                       (ahead (max *search-disk-piece* tuatara.syntax:*regex-longest-match*))
                       (limit (+ *search-disk-longest-line* ahead))
@@ -318,7 +321,9 @@ car turns true."
                       (offset 0) (lines-before 0) (carry nil))
                  (loop
                    (when (or (car cancel) (>= count most)) (return))
-                   (let ((got (or (ignore-errors (tuatara.io:read-fd-at fd buffer offset :path path)) 0)))
+                   (let ((got (or (ignoring-errors-reported ("reading ~a to search" path)
+                                    (tuatara.io:read-fd-at fd buffer offset :path path))
+                                  0)))
                      (when (zerop got) (return))
                      (let* ((whole (or (< got (length buffer)) (>= (+ offset got) size)))
                             ;; the piece: up to its last line end before what is read ahead
@@ -349,7 +354,7 @@ car turns true."
                                      (incf lines-before (tuatara.text:octets-line-ends buffer 0 end got))
                                      (incf offset end)
                                      (setf carry (and reach (> reach end) (- reach end))))))))))))
-            (ignore-errors (sb-posix:close fd))))))
+            (ignoring-errors-reported ("closing ~a" path) (sb-posix:close fd))))))
     (nreverse found)))
 
 (defun grown-octets (octets limit)

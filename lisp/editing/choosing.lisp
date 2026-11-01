@@ -138,7 +138,8 @@ narrowed again after."
          (funcall function
                   (lambda (candidate)
                     (multiple-value-bind (buffer position)
-                        (and candidate (ignore-errors (funcall show candidate (lambda (b) (pushnew b made)))))
+                        (and candidate (ignoring-errors-reported ("showing a choice")
+                                         (funcall show candidate (lambda (b) (pushnew b made)))))
                       ;; nothing selected for a moment (the list being worked out again):
                       ;; what is shown stays, rather than the window's own buffer and back
                       (let ((buffer (if candidate (or buffer original) (tuatara.display:window-buffer window))))

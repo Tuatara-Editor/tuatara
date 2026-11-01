@@ -39,7 +39,8 @@ the same way. Rules larger than *RULES-LARGEST*, as a file or once what
 they inherit is put in, are not used: NIL, and said."
   (let ((path (probe-file (merge-pathnames (format nil "~a.scm" name) directory))))
     (when path
-      (let ((size (ignore-errors (with-open-file (in path :element-type '(unsigned-byte 8)) (file-length in)))))
+      (let ((size (ignoring-errors-reported ("reading ~a" path)
+                    (with-open-file (in path :element-type '(unsigned-byte 8)) (file-length in)))))
         (if (or (null size) (> size *rules-largest*))
             (progn (rules-failed "The rules ~a are larger than ~:d characters: not used" (namestring path) *rules-largest*)
                    nil)
@@ -212,7 +213,8 @@ package runs Lisp with all the rights Tuatara has."
                name name)
       (return-from register-language nil)))
   (when injection-names
-    (handler-case (cl-ppcre:create-scanner (format nil "^(?i)(~a)$" injection-names))
+    (handler-case (reporting-errors ("reading the injection names of ~(~a~)" name)
+                    (cl-ppcre:create-scanner (format nil "^(?i)(~a)$" injection-names)))
       (error (e)
         (error "The injection names of ~(~a~), ~s, are not a regular expression: ~a" name injection-names e))))
   (let* ((old (find-language name))
@@ -646,7 +648,7 @@ Returns the thread, or NIL."
                           (language-compiled-query language :colouring) (language-compiled-query language :injection) (language-compiled-query language :locals))
                      (sb-ext:atomic-incf (car tuatara.syntax:*rules-generation*))
                      (let ((wake tuatara.syntax:*syntax-wake-function*))
-                       (when wake (ignore-errors (funcall wake)))))))))
+                       (when wake (ignoring-errors-reported ("waking the editor for new rules") (funcall wake)))))))))
 
 (defun thread-once (table key function)
   "The thread running FUNCTION for KEY, kept in TABLE (a synchronized table)
@@ -708,7 +710,8 @@ file called NAME gets; NIL when this editor has none."
                       (or (find-if (lambda (l) (string-equal (language-grammar l) (symbol-name (language-name l)))) users)
                           (first users)))
                     (find-if (lambda (l) (let ((names (language-injection-names l)))
-                                           (and names (ignore-errors (cl-ppcre:scan (format nil "^(?i)(~a)$" names) name)))))
+                                           (and names (ignoring-errors-reported ("matching injection names ~s" names)
+                                                        (cl-ppcre:scan (format nil "^(?i)(~a)$" names) name)))))
                              *languages*)))))
           (setf (gethash name *injection-languages*) (or language :none))
           language))))
@@ -794,7 +797,9 @@ a text left alone be parsed afresh (SYNTAX-REFRESH-TICK)."
         tuatara.syntax:*user-grammar-function* 'user-grammar-allowed-p)
   ;; the helpers all share started now, in the background: the first start
   ;; looks for the sandbox, which may take a moment
-  (sb-thread:make-thread (lambda () (ignore-errors (tuatara.syntax:rules-helper) (tuatara.syntax:shared-helper)))
+  (sb-thread:make-thread (lambda ()
+                           (ignoring-errors-reported ("starting the syntax helpers")
+                             (tuatara.syntax:rules-helper) (tuatara.syntax:shared-helper)))
                          :name "syntax helpers starting")
   (pushnew 'syntax-refresh-tick *tick-functions*))
 

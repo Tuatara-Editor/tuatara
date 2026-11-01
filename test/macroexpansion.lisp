@@ -100,6 +100,19 @@ in *Pp Macroexpand Output*; with C-u the expansion goes in after the call.")
     (is string= "(if a b)" (squeezed (expansion-shown)))
     (false (probe-file marker))))
 
+(define-test (macroexpansion unreadable-call-reported)
+  ;; a call that cannot be read is refused as before, and debug mode keeps why in its log
+  (let ((package (find-package :tuatara-user)))
+    (drain-debug-reports)
+    (unwind-protect
+         (progn
+           (tuatara.runtime:set-debug t)
+           (true (search "cannot be read" (nth-value 1 (tuatara.defaults::read-expansion-call "(when a |b)" package))))
+           (let ((texts (loop for report = (sb-concurrency:dequeue tuatara.runtime:*debug-reports*)
+                              while report collect (princ-to-string (fourth report)))))
+             (true (find-if (lambda (text) (search "reading a macro call to expand failed" text)) texts) "~s" texts)))
+      (drain-debug-reports))))
+
 (define-test (macroexpansion form-at-a-bracket)
   ;; the form opening at a bracket, for C-M-x's top-level form and the call C-c C-m expands alike
   (let* ((text (format nil "(defun f ()~%  (list 1 2))~%(g)~%(open"))

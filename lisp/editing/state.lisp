@@ -198,7 +198,8 @@ of a file of a later version than the list's, but the version line."
 a line not of the shape of LIST's entries, a line of a new kind beginning with
 @ among them."
   (and (char/= (char line 0) #\@)
-       (let ((key (ignore-errors (funcall (or (state-list-line-key list) #'state-line-path) line))))
+       (let ((key (ignoring-errors-reported ("reading a line of ~a" (state-list-name list))
+                    (funcall (or (state-list-line-key list) #'state-line-path) line))))
          (and key (plusp (length key)) key))))
 
 (defun state-version-line (list version)
@@ -229,38 +230,38 @@ no line of a file of a later version with more fields than LIST's makes an
 entry. Empty when there is no FILE, and NIL when it is there and cannot be
 read. Lines beginning with # are comments, and lines beginning with @ are of
 a kind a later release adds, never read as entries."
-  (handler-case
-      (with-open-file (in (sb-ext:parse-native-namestring file) :if-does-not-exist nil :external-format '(:utf-8 :replacement #\?))
-        (let ((all (and in (loop for line = (read-line in nil) while line when (plusp (length line)) collect line)))
-              (entries '()) (count 0) (unread '()) (unread-count 0) (version 1) (most (state-list-most list))
-              (comments '()) (seen (make-hash-table :test 'equal)) (lines (make-hash-table :test 'eq)))
+  (ignoring-errors-reported ("reading ~a" file)
+    (with-open-file (in (sb-ext:parse-native-namestring file) :if-does-not-exist nil :external-format '(:utf-8 :replacement #\?))
+      (let ((all (and in (loop for line = (read-line in nil) while line when (plusp (length line)) collect line)))
+            (entries '()) (count 0) (unread '()) (unread-count 0) (version 1) (most (state-list-most list))
+            (comments '()) (seen (make-hash-table :test 'equal)) (lines (make-hash-table :test 'eq)))
+        (dolist (line all)
+          (let ((said (and (char= (char line 0) #\#) (state-line-version list line))))
+            (when said (setf version (max version said)))))
+        (let ((fence (and (state-list-trust list) (> version (state-list-version list))))
+              (own (and (state-list-header list)
+                        (uiop:split-string (string-right-trim '(#\Newline) (state-list-header list)) :separator '(#\Newline)))))
           (dolist (line all)
-            (let ((said (and (char= (char line 0) #\#) (state-line-version list line))))
-              (when said (setf version (max version said)))))
-          (let ((fence (and (state-list-trust list) (> version (state-list-version list))))
-                (own (and (state-list-header list)
-                          (uiop:split-string (string-right-trim '(#\Newline) (state-list-header list)) :separator '(#\Newline)))))
-            (dolist (line all)
-              (cond ((char= (char line 0) #\#)
-                     (unless (or (state-line-version list line) (member line own :test #'string=))
-                       (push line comments)))
-                    (t (let ((entry (and (char/= (char line 0) #\@)
-                                         (not (and fence (> (1+ (count #\Tab line)) (state-list-fields list))))
-                                         (ignore-errors (funcall (state-list-parse list) line)))))
-                         (cond ((null entry)
-                                (when (or (null most) (< unread-count most))
-                                  (push line unread)
-                                  (incf unread-count)))
-                               ((or (null most) (< count most))
-                                (let ((key (state-entry-key list entry)))
-                                  (unless (gethash key seen)
-                                    (setf (gethash key seen) t
-                                          (gethash entry lines) line)
-                                    (push entry entries)
-                                    (incf count))))))))))
-          (make-state-contents (nreverse entries) (nreverse unread) version lines
-                               (and (> version (state-list-version list)) (nreverse comments)))))
-    (error () nil)))
+            (cond ((char= (char line 0) #\#)
+                   (unless (or (state-line-version list line) (member line own :test #'string=))
+                     (push line comments)))
+                  (t (let ((entry (and (char/= (char line 0) #\@)
+                                       (not (and fence (> (1+ (count #\Tab line)) (state-list-fields list))))
+                                       (ignoring-errors-reported ("reading a line of ~a" file)
+                                         (funcall (state-list-parse list) line)))))
+                       (cond ((null entry)
+                              (when (or (null most) (< unread-count most))
+                                (push line unread)
+                                (incf unread-count)))
+                             ((or (null most) (< count most))
+                              (let ((key (state-entry-key list entry)))
+                                (unless (gethash key seen)
+                                  (setf (gethash key seen) t
+                                        (gethash entry lines) line)
+                                  (push entry entries)
+                                  (incf count))))))))))
+        (make-state-contents (nreverse entries) (nreverse unread) version lines
+                             (and (> version (state-list-version list)) (nreverse comments)))))))
 
 (defun read-state-file (list file)
   "The entries of LIST as FILE has them, the latest first, each once (the
@@ -335,7 +336,8 @@ FILE, the oldest first."
 once another session has changed it, with the changes made here and not yet
 written made to them; at most as many as it keeps (STATE-LIST-MOST). The same list is given
 again while nothing changed; empty when there is no state directory."
-  (let* ((file (or (ignore-errors (state-list-path list)) (return-from state-list-entries '())))
+  (let* ((file (or (ignoring-errors-reported ("finding the file of ~a" (state-list-name list)) (state-list-path list))
+                   (return-from state-list-entries '())))
          (stamp (state-file-stamp file))
          (lock (state-list-lock list))
          (known nil))
@@ -360,7 +362,7 @@ again while nothing changed; empty when there is no state directory."
 (defun note-state-change (list change)
   "Make CHANGE to LIST: at once in memory, and on disk in the background
 \(START-STATE-WRITER); none when there is no state directory."
-  (let ((file (ignore-errors (state-list-path list))))
+  (let ((file (ignoring-errors-reported ("finding the file of ~a" (state-list-name list)) (state-list-path list))))
     (when file
       (sb-thread:with-mutex ((state-list-lock list))
         (push (cons file change) (state-list-pending list))
@@ -405,9 +407,9 @@ could not be written."
                      (apply-state-changes list (state-contents-entries contents) changes (state-contents-unread contents))
                    (setf entries now
                          (state-contents-unread contents) unread)
-                   (ignore-errors
-                    (tuatara.io:write-private-file file (state-file-text list contents entries))
-                    (setf how :written)))
+                   (ignoring-errors-reported ("writing ~a" file)
+                     (tuatara.io:write-private-file file (state-file-text list contents entries))
+                     (setf how :written)))
                  (setf how :unreadable)))
            t)
          :wait 2)
@@ -574,8 +576,10 @@ ended; as an editor started bare writes none, it is always gone."
                     (tuatara.runtime:join-within thread))))
     (when *bare-state-folder*
       (if ended
-          (progn (ignore-errors (tuatara.io:delete-tree (car *bare-state-folder*)))
-                 (ignore-errors (sb-posix:close (cdr *bare-state-folder*)))
+          (progn (ignoring-errors-reported ("deleting ~a" (car *bare-state-folder*))
+                   (tuatara.io:delete-tree (car *bare-state-folder*)))
+                 (ignoring-errors-reported ("closing ~a" (car *bare-state-folder*))
+                   (sb-posix:close (cdr *bare-state-folder*)))
                  (setf *bare-state-folder* nil))
           (tuatara.runtime:debug-report :file "the state writer is still running: ~a is left" (car *bare-state-folder*))))))
 

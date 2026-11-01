@@ -188,7 +188,12 @@ with a carriage return and a newline, $ matches before the carriage return."
           ((or (not regex)
                (and (not compiled) (not past-ascii) (plusp (length pattern)) (tuatara.syntax:literal-pattern-p pattern)))
            (%make-matcher :literal pattern nil fold))
-          (t (handler-case (%make-matcher :regex pattern (tuatara.syntax:compile-regex pattern :case-fold fold :crlf crlf) fold)
+          (t (handler-case
+                 (reporting-errors ("compiling a search pattern")
+                   (handler-case (%make-matcher :regex pattern
+                                                (tuatara.syntax:compile-regex pattern :case-fold fold :crlf crlf) fold)
+                     ((or tuatara.syntax:pattern-refused cl-ppcre:ppcre-syntax-error) (e)
+                       (values nil (regex-problem e)))))
                (error (e) (values nil (regex-problem e))))))))
 
 (defun map-matcher-matches (function rope matcher from to &key (bound to) texts halt empty)

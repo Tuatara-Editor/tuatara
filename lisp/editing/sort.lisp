@@ -234,7 +234,7 @@ numbers sort as the numbers they are."
         (cond ((zerop digits) 0d0)
               ;; past what a double holds: the largest there is, of the sign
               (t (handler-case (coerce (* sign value) 'double-float)
-                   (error () (if (minusp sign) most-negative-double-float most-positive-double-float)))))))))
+                   (arithmetic-error () (if (minusp sign) most-negative-double-float most-positive-double-float)))))))))
 
 (defun column-bounds (octets start end from to &optional (tab-width 8))
   "Where the text in display columns FROM below TO of the line from START below
@@ -560,13 +560,13 @@ disk full) or returns NIL. Otherwise what it returns holds the file open."
   (let ((result (gensym "RESULT")))
     `(let ((,fd (tuatara.io:open-scratch-file ,directory)) (,result nil))
        (unwind-protect (setf ,result (multiple-value-list (progn ,@body)))
-         (unless (first ,result) (ignore-errors (sb-posix:close ,fd))))
+         (unless (first ,result) (ignoring-errors-reported ("closing a file of sorted lines") (sb-posix:close ,fd))))
        (values-list ,result))))
 
 (defun discard-run (run)
   "Let go of RUN's file, a run or a piece's output (FD ...)."
   (let ((fd (if (consp run) (first run) (run-fd run))))
-    (when fd (ignore-errors (sb-posix:close fd)))))
+    (when fd (ignoring-errors-reported ("closing a file of sorted lines") (sb-posix:close fd)))))
 
 (defun sort-piece (job rope piece key reverse crlf fold directory)
   "Sort the lines of PIECE, (START END) of ROPE, into an unnamed run file in
@@ -677,7 +677,8 @@ stopped. The runs' files are mapped for the merge and let go after."
                                 (progn (setf (aref heap 0) (aref heap (1- size))) (decf size) (down 0)))))))
           (dolist (run runs)
             (when (run-mapping run) (tuatara.text:close-mapping (run-mapping run)))
-            (when (run-fd run) (ignore-errors (sb-posix:close (run-fd run))))))))))
+            (when (run-fd run)
+              (ignoring-errors-reported ("closing a file of sorted lines") (sb-posix:close (run-fd run))))))))))
 
 (defun line-end-code (octets end next)
   "The code of the end of a line of OCTETS whose text ends at END, the next

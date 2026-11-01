@@ -220,7 +220,9 @@ CAPTURE is NIL, when it is that whole list being narrowed again. Returns BUFFER.
          (old-first (tuatara.buffer:buffer-local buffer 'list-first-line 0))
          (windows (and *editor* (buffer-windows buffer)))
          (own-points (remove-if-not #'tuatara.display:window-point-anchor windows)))
-    (labels ((line-of (position) (ignore-errors (tuatara.buffer:buffer-line-number buffer position)))
+    (labels ((line-of (position)
+               (ignoring-errors-reported ("finding the line of ~d in ~a" position (tuatara.buffer:buffer-name buffer))
+                 (tuatara.buffer:buffer-line-number buffer position)))
              (place (position)
                ;; where POSITION is: its line, its column, and the index among ENTRIES of its entry
                (let ((line (line-of position)))

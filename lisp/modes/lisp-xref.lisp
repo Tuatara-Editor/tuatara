@@ -33,7 +33,9 @@ where \\[xref-go-back] goes back to; the newest *HISTORY-KEPT* of them.")
   (destructuring-bind (b . anchor) marker
     (show-buffer b)
     (goto-shown b (min (tuatara.buffer:buffer-size b)
-                       (or (ignore-errors (tuatara.text:anchor-position anchor (tuatara.buffer:buffer-version b))) 0)))))
+                       (or (ignoring-errors-reported ("finding a place in ~a" (tuatara.buffer:buffer-name b))
+                             (tuatara.text:anchor-position anchor (tuatara.buffer:buffer-version b)))
+                           0)))))
 
 (defun live-marker-p (marker)
   "True when MARKER's buffer is still alive."
@@ -334,12 +336,15 @@ were evaluated from in this session."
           unless (or (and (eq type :function) (fboundp symbol)
                           (or (macro-function symbol) (typep (fdefinition symbol) 'generic-function)))
                      (and (eq type :function) (init-file-definition symbol)))
-          do (dolist (source (ignore-errors (sb-introspect:find-definition-sources-by-name symbol type)))
+          do (dolist (source (ignoring-errors-reported ("finding where ~s is defined" symbol)
+                               (sb-introspect:find-definition-sources-by-name symbol type)))
                (let* ((path (sb-introspect:definition-source-pathname source))
                       (offset (sb-introspect:definition-source-character-offset source))
                       (form-path (sb-introspect:definition-source-form-path source))
-                      (file (and path (ignore-errors (namestring (translate-logical-pathname path)))))
-                      (description (ignore-errors (sb-introspect::definition-source-description source)))
+                      (file (and path (ignoring-errors-reported ("naming the file of ~s" symbol)
+                                        (namestring (translate-logical-pathname path)))))
+                      (description (ignoring-errors-reported ("describing a definition of ~s" symbol)
+                                     (sb-introspect::definition-source-description source)))
                       (key (list file offset form-path description)))
                  (when (and file (not (gethash key seen)))
                    (setf (gethash key seen) t)
@@ -359,7 +364,7 @@ were evaluated from in this session."
 (defmethod mode-name-at-point ((mode lisp-mode) buffer position)
   "The Lisp name at point in BUFFER."
   (declare (ignore position))
-  (ignore-errors (symbol-at-point buffer)))
+  (ignoring-errors-reported ("reading the name at point") (symbol-at-point buffer)))
 
 (defmethod mode-find-definitions ((mode lisp-mode) buffer name)
   "Where NAME, read in BUFFER's package, is defined."

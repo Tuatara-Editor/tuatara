@@ -322,7 +322,7 @@ description names (KEY-NAME-KEY)."
            (multiple-value-bind (group n) (floor (- code 265) 12)
              (tuatara.frontend:make-key (intern (format nil "F~d" (1+ n)) :keyword)
                                         :shift (and (member group '(1 3)) t) :ctrl (and (member group '(2 3)) t) :meta (= group 4))))
-          (t (key-name-key (ignore-errors (%keyname code)))))))
+          (t (key-name-key (tuatara.runtime:ignoring-errors-reported ("naming the key ~d" code) (%keyname code)))))))
 
 (defvar *kitty-keyboard-decided* nil
   "True once the terminal frontend has decided on the kitty keyboard protocol,
@@ -393,8 +393,9 @@ sessions before are kept beside it (TUATARA.IO:SESSION-LOG)."
 (defun restore-stderr ()
   "Give standard error back to the terminal (DIVERT-STDERR)."
   (when *saved-stderr*
-    (ignore-errors (sb-posix:dup2 *saved-stderr* 2))
-    (ignore-errors (sb-posix:close *saved-stderr*))
+    (tuatara.runtime:ignoring-errors-reported ("giving standard error back to the terminal")
+      (sb-posix:dup2 *saved-stderr* 2))
+    (tuatara.runtime:ignoring-errors-reported ("closing the saved standard error") (sb-posix:close *saved-stderr*))
     (setf *saved-stderr* nil)))
 
 (defun set-terminal-modes (modes on)
@@ -507,7 +508,7 @@ and the screen painted whole, as what was drawn on it meanwhile is gone."
   (restore-stderr))
 
 (defmethod tuatara.frontend:frontend-terminal-device ((f tui-frontend))
-  (and (tui-window f) (ignore-errors (%ttyname 0))))
+  (and (tui-window f) (tuatara.runtime:ignoring-errors-reported ("naming the terminal") (%ttyname 0))))
 
 (defmethod tuatara.frontend:frontend-lend-terminal ((f tui-frontend) function)
   (if (null (tui-window f))
@@ -634,7 +635,9 @@ octets so far, is true."
 first time anything wants to know): :KEYBOARD, the kitty keyboard protocol;
 :PICTURES, kitty's pictures; :SHARED, pictures read from shared memory."
   (when (eq *terminal-answers* :unasked)
-    (setf *terminal-answers* (or (ignore-errors (ask-terminal)) '())))
+    (setf *terminal-answers* (or (tuatara.runtime:ignoring-errors-reported ("asking the terminal what it does")
+                                   (ask-terminal))
+                                 '())))
   (getf *terminal-answers* key))
 
 (defun ask-terminal ()
@@ -664,7 +667,8 @@ answers as TERMINAL-ANSWERS-IN reads them."
              (give-back-keys (cl-ppcre:regex-replace-all (format nil "~c\\[\\?[0-9;]*[uc]|~c_G[^~c]*~c\\\\" #\Escape #\Escape #\Escape #\Escape)
                                                          text ""))
              (terminal-answers-in text)))
-      (when shared (ignore-errors (sb-posix:unlink (shared-picture-path shared)))))))
+      (when shared
+        (handler-case (sb-posix:unlink (shared-picture-path shared)) (sb-posix:syscall-error () nil))))))
 
 (defun multiplexer-p ()
   "True when Tuatara runs inside tmux or screen, which take a picture's
@@ -699,11 +703,13 @@ user alone; NIL when none could be made."
   (let* ((name (shared-picture-name))
          (path (shared-picture-path name))
          (fd (handler-case (sb-posix:open path (logior sb-posix:o-creat sb-posix:o-excl sb-posix:o-rdwr) #o600)
-               (error () nil))))
+               (sb-posix:syscall-error () nil))))
     (when fd
       (unwind-protect
-           (handler-case (progn (tuatara.io:write-octets fd octets :path name) name)
-             (error () (ignore-errors (sb-posix:unlink path)) nil))
+           (handler-case (tuatara.runtime:reporting-errors ("writing a picture to ~a" path)
+                           (tuatara.io:write-octets fd octets :path name)
+                           name)
+             (error () (tuatara.runtime:ignoring-errors-reported ("deleting ~a" path) (sb-posix:unlink path)) nil))
         (sb-posix:close fd)))))
 
 (defun terminal-answers-in (text)
@@ -1169,17 +1175,18 @@ cannot say when it changes)."
          (read (second programs))
          (echo (tuatara.io:find-program "echo")))
     (when (and read echo (search "wl-paste" (first read)))
-      (let ((process (ignore-errors
-                      (sb-ext:run-program (first read) (list "--watch" echo "changed")
-                                          :input nil :output :stream :error nil :wait nil
-                                          :external-format :utf-8))))
+      (let ((process (tuatara.runtime:ignoring-errors-reported ("starting ~a to watch the clipboard" (first read))
+                       (sb-ext:run-program (first read) (list "--watch" echo "changed")
+                                           :input nil :output :stream :error nil :wait nil
+                                           :external-format :utf-8))))
         (when process
           (let ((watch (make-clipboard-watch :process process)))
             (setf (clipboard-watch-thread watch)
                   (tuatara.runtime:make-guarded-thread
                    (lambda ()
                        (unwind-protect
-                            (loop for line = (ignore-errors (read-line (sb-ext:process-output process) nil))
+                            (loop for line = (tuatara.runtime:ignoring-errors-reported ("reading the clipboard watch")
+                                               (read-line (sb-ext:process-output process) nil))
                                   while line
                                   do (sb-thread:with-mutex ((clipboard-watch-lock watch))
                                        (setf (clipboard-watch-state watch) :reading))
@@ -1192,7 +1199,8 @@ cannot say when it changes)."
                          (sb-thread:with-mutex ((clipboard-watch-lock watch))
                            (setf (clipboard-watch-state watch) :ended)
                            (sb-thread:condition-broadcast (clipboard-watch-changed watch)))
-                         (ignore-errors (sb-ext:process-close process))))
+                         (tuatara.runtime:ignoring-errors-reported ("closing the clipboard watch")
+                           (sb-ext:process-close process))))
                    :name "clipboard watch"))
             watch))))))
 
@@ -1200,7 +1208,8 @@ cannot say when it changes)."
   "Stop watching the clipboard."
   (let ((watch (shiftf *clipboard-watch* nil)))
     (when (and watch (not (eq watch :none)))
-      (ignore-errors (sb-ext:process-kill (clipboard-watch-process watch) 15)))))
+      (tuatara.runtime:ignoring-errors-reported ("stopping the clipboard watch")
+        (sb-ext:process-kill (clipboard-watch-process watch) 15)))))
 
 (defun watched-clipboard ()
   "The clipboard's text as the watch has it, waiting a moment for a change
@@ -1359,7 +1368,7 @@ terminal, which reads it and removes it. NIL when no object could be made."
 (defun forget-shared-pictures ()
   "Remove the shared memory objects of pictures the terminal has not read."
   (dolist (name *shared-pictures*)
-    (ignore-errors (sb-posix:unlink (shared-picture-path name))))
+    (handler-case (sb-posix:unlink (shared-picture-path name)) (sb-posix:syscall-error () nil)))
   (setf *shared-pictures* '()))
 
 (defun send-image (image number)

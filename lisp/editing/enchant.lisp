@@ -158,7 +158,7 @@ of it may differ.")
   "Have the editor redraw with the answers."
   (sb-ext:atomic-incf (car *spelling-generation*))
   (let ((wake *spelling-wake-function*))
-    (when wake (ignore-errors (funcall wake)))))
+    (when wake (ignoring-errors-reported ("waking the editor for the spelling") (funcall wake)))))
 
 (defun spelling-known (languages word)
   "What is known of WORD's spelling in LANGUAGES: :RIGHT, :WRONG, or NIL

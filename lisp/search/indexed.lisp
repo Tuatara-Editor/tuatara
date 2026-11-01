@@ -144,7 +144,7 @@ one octet a character when every part is such a string already."
 (INDEX-DIRECTORY): its files and directories by name, hidden names (but with
 HIDDEN), backups and links to directories left out, each entry examined once
 \(TUATARA.IO:DIRECTORY-ENTRIES); with RULES, those of its .gitignore read."
-  (let* ((all (ignore-errors (tuatara.io:directory-entries path :stamps t)))
+  (let* ((all (ignoring-errors-reported ("listing ~a" path) (tuatara.io:directory-entries path :stamps t)))
          (entries (loop for (name kind nil own stamp) in all
                         unless (or (and (not hidden) (char= (char name 0) #\.)) (backup-name-p name))
                           if (and (eq kind :directory) (eq own :directory))
@@ -386,9 +386,10 @@ left to the other when it holds the lock long."
                  (setf (index-piece-file p) name)
                  ;; read from the file kept from now on: its text out of the heap
                  (setf (index-piece-corpus p)
-                       (or (ignore-errors (mapped-piece-corpus (concatenate 'string directory name) (tuatara.text:rope-bytes rope)
-                                                               (file-corpus-paths corpus) (file-corpus-starts corpus)
-                                                               (file-corpus-root corpus)))
+                       (or (ignoring-errors-reported ("reading back ~a~a" directory name)
+                             (mapped-piece-corpus (concatenate 'string directory name) (tuatara.text:rope-bytes rope)
+                                                  (file-corpus-paths corpus) (file-corpus-starts corpus)
+                                                  (file-corpus-root corpus)))
                            corpus))))
              (push (index-piece-file p) used))
     (tuatara.io:write-private-file
@@ -406,55 +407,56 @@ left to the other when it holds the lock long."
        (maphash (lambda (relative stamp) (format out "N ~a ~a~%" (stamp-words stamp) (escape-path relative)))
                 (directory-index-not-text index))))
     ;; pieces no longer used
-    (dolist (entry (ignore-errors (tuatara.io:directory-entries directory)))
+    (dolist (entry (ignoring-errors-reported ("listing ~a" directory) (tuatara.io:directory-entries directory)))
       (let ((name (first entry)))
         (when (and (uiop:string-prefix-p "piece-" name) (not (member name used :test #'string=)))
-          (ignore-errors (sb-posix:unlink (concatenate 'string directory name))))))))
+          (ignoring-errors-reported ("deleting ~a~a" directory name)
+            (sb-posix:unlink (concatenate 'string directory name))))))))
 
 (defun load-index (index directory)
   "Take into INDEX what SAVE-INDEX kept in DIRECTORY: its pieces of text and
 the files found not to be text. True when they were taken; NIL, and nothing
 taken, when there is nothing kept, it cannot be made sense of, or it was kept
 for another directory than INDEX's."
-  (let ((text (ignore-errors (tuatara.io:file-text (concatenate 'string directory "index"))))
+  (let ((text (ignoring-errors-reported ("reading the index kept in ~a" directory)
+                (tuatara.io:file-text (concatenate 'string directory "index") :missing nil)))
         (head (format nil "tuatara index 2~%R ~a~%" (escape-path (directory-index-root index)))))
     (when (and text (uiop:string-prefix-p head text))
-      (handler-case
-          (let ((pieces '()) (not-text (make-hash-table :test 'equal)) (current nil))
-            (labels ((numbers (words) (mapcar (lambda (w) (if (string= w "-") nil (parse-integer w))) words))
-                     (stamp (words)
-                       (let ((n (numbers words)))
-                         (and (first n) (apply #'tuatara.io:make-stamp n))))
-                     (close-piece ()
-                       (when current
-                         (destructuring-bind (file bytes files) current
-                           (let ((files (nreverse files)))
-                             (push (make-index-piece
-                                    (mapped-piece-corpus (concatenate 'string directory file) bytes
-                                                         (map 'simple-vector #'third files) (map 'simple-vector #'first files)
-                                                         (directory-index-root index))
-                                    (map 'simple-vector #'second files) file)
-                                   pieces)))
-                         (setf current nil))))
-              (dolist (line (uiop:split-string (subseq text (length head)) :separator '(#\Newline)))
-                (when (plusp (length line))
-                  (let ((words (uiop:split-string line :separator " ")))
-                    (cond ((string= (first words) "P")
-                           (close-piece)
-                           (setf current (list (second words) (parse-integer (fourth words)) '())))
-                          ((string= (first words) "F")
-                           ;; F START eight numbers PATH (the path may hold spaces)
-                           (push (list (parse-integer (second words)) (stamp (subseq words 2 10))
-                                       (unescape-path (format nil "~{~a~^ ~}" (subseq words 10))))
-                                 (third current)))
-                          ((string= (first words) "N")
-                           (setf (gethash (unescape-path (format nil "~{~a~^ ~}" (subseq words 9))) not-text)
-                                 (stamp (subseq words 1 9))))))))
-              (close-piece))
-            (setf (directory-index-pieces index) (coerce (nreverse pieces) 'simple-vector)
-                  (directory-index-not-text index) not-text)
-            t)
-        (error () nil)))))
+      (ignoring-errors-reported ("reading the index kept in ~a" directory)
+        (let ((pieces '()) (not-text (make-hash-table :test 'equal)) (current nil))
+          (labels ((numbers (words) (mapcar (lambda (w) (if (string= w "-") nil (parse-integer w))) words))
+                   (stamp (words)
+                     (let ((n (numbers words)))
+                       (and (first n) (apply #'tuatara.io:make-stamp n))))
+                   (close-piece ()
+                     (when current
+                       (destructuring-bind (file bytes files) current
+                         (let ((files (nreverse files)))
+                           (push (make-index-piece
+                                  (mapped-piece-corpus (concatenate 'string directory file) bytes
+                                                       (map 'simple-vector #'third files) (map 'simple-vector #'first files)
+                                                       (directory-index-root index))
+                                  (map 'simple-vector #'second files) file)
+                                 pieces)))
+                       (setf current nil))))
+            (dolist (line (uiop:split-string (subseq text (length head)) :separator '(#\Newline)))
+              (when (plusp (length line))
+                (let ((words (uiop:split-string line :separator " ")))
+                  (cond ((string= (first words) "P")
+                         (close-piece)
+                         (setf current (list (second words) (parse-integer (fourth words)) '())))
+                        ((string= (first words) "F")
+                         ;; F START eight numbers PATH (the path may hold spaces)
+                         (push (list (parse-integer (second words)) (stamp (subseq words 2 10))
+                                     (unescape-path (format nil "~{~a~^ ~}" (subseq words 10))))
+                               (third current)))
+                        ((string= (first words) "N")
+                         (setf (gethash (unescape-path (format nil "~{~a~^ ~}" (subseq words 9))) not-text)
+                               (stamp (subseq words 1 9))))))))
+            (close-piece))
+          (setf (directory-index-pieces index) (coerce (nreverse pieces) 'simple-vector)
+                (directory-index-not-text index) not-text)
+          t)))))
 
 (defun read-directory-index (index changed limit piece &optional kept-on-disk)
   "Bring INDEX up to date on the thread reading it: the whole of its directory
@@ -465,7 +467,8 @@ DIRECTORY-INDEX keeps them, its text in pieces of about PIECE octets, at most
 LIMIT in all. With KEPT-ON-DISK, the pieces kept at the last session are
 taken first, at the start, and what changed is kept again after (SAVE-INDEX)."
   (let* ((root (directory-index-root index))
-         (cache (and kept-on-disk (ignore-errors (index-cache-directory root)))))
+         (cache (and kept-on-disk (ignoring-errors-reported ("making the folder to keep ~a in" root)
+                                     (index-cache-directory root)))))
     (when (and cache (null (directory-index-tree index)) (zerop (length (directory-index-pieces index))))
       (load-index index cache))
     (let ((outer (outer-gitignore-rules root)))
@@ -480,7 +483,7 @@ taken first, at the start, and what changed is kept again after (SAVE-INDEX)."
       (multiple-value-bind (pieces large)
           (index-pieces texts (directory-index-pieces index) (directory-index-not-text index) root limit piece)
         (setf (directory-index-pieces index) pieces)
-        (when cache (ignore-errors (save-index index cache)))
+        (when cache (ignoring-errors-reported ("keeping the index of ~a" root) (save-index index cache)))
         (list (stable-sort files #'> :key (lambda (file) (if (cdr file) (tuatara.io:stamp-mtime (cdr file)) 0)))
               (map 'simple-vector #'index-piece-corpus pieces)
               more
@@ -521,7 +524,10 @@ noted, and read once it is over."
   "Tick function: keep an index of each of *INDEXED-DIRECTORIES*, read in the
 background, and put in place what was read. True while one is read."
   (declare (ignore editor))
-  (let ((wanted (remove-duplicates (mapcar (lambda (d) (ignore-errors (directory-name d))) (setting-list '*indexed-directories* *indexed-directories*))
+  (let ((wanted (remove-duplicates (mapcar (lambda (d)
+                                              (ignoring-errors-reported ("reading the directory name ~s" d)
+                                                (directory-name d)))
+                                            (setting-list '*indexed-directories* *indexed-directories*))
                                    :test #'equal)))
     ;; those no longer asked for go; those newly asked for are read
     (setf *directory-indexes*
@@ -577,7 +583,7 @@ CHANGED: only those directories listed again."
   "The index kept read that holds DIRECTORY (its root, or a directory under
 it), once it has been read, and as a second value DIRECTORY's path from its
 root (\"\" for the root itself); NIL when there is none."
-  (let ((wanted (ignore-errors (directory-name directory))))
+  (let ((wanted (ignoring-errors-reported ("reading the directory name ~s" directory) (directory-name directory))))
     (when wanted
       (dolist (index *directory-indexes*)
         (let ((root (directory-index-root index)))

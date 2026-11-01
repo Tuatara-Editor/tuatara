@@ -263,7 +263,7 @@ dropped on it and the focus."
   "When standard error goes to no terminal, as when the desktop starts the
 window, send it to stderr.log in the cache directory (TUATARA.IO:SESSION-LOG),
 so that what goes wrong is kept for reading afterwards."
-  (unless (ignore-errors (= 1 (sb-unix:unix-isatty 2)))
+  (unless (= 1 (sb-unix:unix-isatty 2))
     (let ((fd (tuatara.io:session-log "the window")))
       (when fd
         (sb-posix:dup2 fd 2)
@@ -427,7 +427,7 @@ figures to the file OUT."
 node under /dev/dri); without one, GL and Vulkan are only done by the
 processor, as in many virtual machines."
   (some (lambda (path) (uiop:string-prefix-p "renderD" (file-namestring path)))
-        (ignore-errors (uiop:directory-files "/dev/dri/"))))
+        (tuatara.runtime:ignoring-errors-reported ("listing /dev/dri/") (uiop:directory-files "/dev/dri/"))))
 
 (defmethod tuatara.frontend:frontend-renderers ((f gtk-frontend))
   ;; with no graphics card, Cairo too: drawn by the processor, it may then be the faster
@@ -479,10 +479,10 @@ never one someone else made taken over."
                                                  (some (lambda (key) (uiop:string-prefix-p key pair))
                                                        '("GSK_RENDERER=" "TUATARA_" "XDG_STATE_HOME=" "XDG_CACHE_HOME=" "XDG_DATA_HOME=")))
                                                (sb-ext:posix-environ))))
-              (let ((figures (ignore-errors
-                              (with-open-file (in out)
-                                (with-standard-io-syntax
-                                  (let ((*read-eval* nil)) (read in)))))))
+              (let ((figures (tuatara.runtime:ignoring-errors-reported ("reading ~a" out)
+                               (with-open-file (in out)
+                                 (with-standard-io-syntax
+                                   (let ((*read-eval* nil)) (read in)))))))
                 (and (listp figures) (getf figures :median) figures)))
           (tuatara.io:delete-tree (uiop:native-namestring directory)))))))
 

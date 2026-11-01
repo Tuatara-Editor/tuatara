@@ -57,9 +57,10 @@ is to stay as it is this time."
   "A window for a preview beside LIST-WINDOW, showing BUFFER: on its right
 when half of LIST-WINDOW is still LIST-WIDTH columns wide, the columns the
 list needs, else below it; NIL when there is no room."
-  (let ((window (ignore-errors
-                 (split-window list-window (if (>= (floor (tuatara.display:window-width list-window) 2) list-width) :right :below)
-                               :buffer buffer))))
+  (let ((window (ignoring-errors-reported ("making a window for the preview")
+                  (split-window list-window
+                                (if (>= (floor (tuatara.display:window-width list-window) 2) list-width) :right :below)
+                                :buffer buffer))))
     (when window
       (setf (tuatara.display:window-quit-restore window) :delete))
     window))

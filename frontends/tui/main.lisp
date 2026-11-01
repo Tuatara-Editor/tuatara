@@ -133,15 +133,17 @@ sets it): a heap of another size was asked for with --dynamic-space-size.")
 
 (defun file-first-line (path)
   "The first line of the file at PATH, or NIL when it cannot be read."
-  (ignore-errors (with-open-file (in path) (read-line in nil))))
+  (tuatara.runtime:ignoring-errors-reported ("reading ~a" path)
+    (with-open-file (in path :if-does-not-exist nil)
+      (and in (read-line in nil)))))
 
 (defun memory-limit-kb (&key (root "/sys/fs/cgroup")
-                             (group (let ((line (ignore-errors
-                                                 (with-open-file (in "/proc/self/cgroup")
-                                                   (loop for line = (read-line in nil)
-                                                         while line
-                                                         when (uiop:string-prefix-p "0::" line)
-                                                           return line)))))
+                             (group (let ((line (tuatara.runtime:ignoring-errors-reported ("reading /proc/self/cgroup")
+                                                  (with-open-file (in "/proc/self/cgroup")
+                                                    (loop for line = (read-line in nil)
+                                                          while line
+                                                          when (uiop:string-prefix-p "0::" line)
+                                                            return line)))))
                                       (and line (subseq line 3)))))
   "The lowest memory limit, in kilobytes, set on GROUP (this process's control
 group, as /proc/self/cgroup names it) or a group above it: memory.max under
@@ -159,12 +161,12 @@ ROOT. NIL when none is set, or they cannot be read."
 (defun memory-kb ()
   "The memory Tuatara may use, in kilobytes: the machine's, as /proc/meminfo
 says, or less under a memory limit (MEMORY-LIMIT-KB). NIL when unknown."
-  (let ((total (ignore-errors
-                (with-open-file (in "/proc/meminfo")
-                  (loop for line = (read-line in nil)
-                        while line
-                        when (uiop:string-prefix-p "MemTotal:" line)
-                          return (parse-integer line :start 9 :junk-allowed t)))))
+  (let ((total (tuatara.runtime:ignoring-errors-reported ("reading /proc/meminfo")
+                 (with-open-file (in "/proc/meminfo")
+                   (loop for line = (read-line in nil)
+                         while line
+                         when (uiop:string-prefix-p "MemTotal:" line)
+                           return (parse-integer line :start 9 :junk-allowed t)))))
         (limit (memory-limit-kb)))
     (if (and total limit) (min total limit) (or total limit))))
 
@@ -173,7 +175,7 @@ says, or less under a memory limit (MEMORY-LIMIT-KB). NIL when unknown."
 a number, else half of MEMORY (kilobytes, the machine's), from 2 GB to 16 GB,
 so that a replacement across a file of many gigabytes has room while the heap
 cannot outgrow the memory. NIL when neither is known."
-  (or (ignore-errors (let ((mb (parse-integer setting))) (and (plusp mb) mb)))
+  (or (let ((mb (tuatara.text:whole-number setting))) (and mb (plusp mb) mb))
       (and memory (max 2048 (min 16384 (floor memory 2048))))))
 
 (defun heap-to-restart-with (&key (now (sb-ext:dynamic-space-size)) (built *built-heap*)
@@ -202,7 +204,7 @@ as octets FROM the system's record of it, each octet that is not UTF-8 kept
 as its raw byte's character, so that such a file name still opens, the
 runtime's options (*RUNTIME-OPTIONS-WITH-VALUES*) left out as it leaves them out."
   (or argv
-      (let* ((octets (ignore-errors (tuatara.io:file-octets from)))
+      (let* ((octets (tuatara.runtime:ignoring-errors-reported ("reading ~a" from) (tuatara.io:file-octets from)))
              (parts (and octets
                          (loop with start = 0
                                for end = (position 0 octets :start start)
@@ -217,7 +219,7 @@ runtime's options (*RUNTIME-OPTIONS-WITH-VALUES*) left out as it leaves them out
 
 (defun terminal-p (fd)
   "True when the file descriptor FD is a terminal."
-  (eql 1 (ignore-errors (sb-unix:unix-isatty fd))))
+  (eql 1 (sb-unix:unix-isatty fd)))
 
 (defun window-wanted-p (&key (input (terminal-p 0)) (output (terminal-p 1))
                              (desktop (or (uiop:getenv "WAYLAND_DISPLAY") (uiop:getenv "DISPLAY"))))
@@ -231,7 +233,7 @@ its output are a terminal, DESKTOP whether there is a desktop to show a window o
 \(INPUT-TERMINAL), or the terminal it was started in can be opened (TTY, the
 file that is it)."
   (or input-terminal
-      (let ((fd (ignore-errors (sb-posix:open tty sb-posix:o-rdwr))))
+      (let ((fd (handler-case (sb-posix:open tty sb-posix:o-rdwr) (sb-posix:syscall-error () nil))))
         (when fd (sb-posix:close fd) t))))
 
 (defun read-keys-from-terminal ()
@@ -240,7 +242,7 @@ file that is it)."
 was started in (/dev/tty) instead; what came in on the input is not read as
 keys. KEYBOARD-AVAILABLE-P says first whether there is such a terminal."
   (unless (terminal-p 0)
-    (let ((fd (ignore-errors (sb-posix:open "/dev/tty" sb-posix:o-rdwr))))
+    (let ((fd (handler-case (sb-posix:open "/dev/tty" sb-posix:o-rdwr) (sb-posix:syscall-error () nil))))
       (when fd
         (sb-posix:dup2 fd 0)
         (sb-posix:close fd)))))
@@ -287,7 +289,8 @@ or -- before the files. After --, every argument is a file's name."
                 ;; a file named as an option, as * gives one in a folder holding it: never read as
                 ;; one, so that no file there chooses the init file or what is done
                 ((and (or (option-p argument) (option-like-p argument))
-                      (ignore-errors (tuatara.io:path-kind (tuatara.io:expand-path argument :directory directory) :follow nil)))
+                      (tuatara.runtime:ignoring-errors-reported ("examining ~a" argument)
+                        (tuatara.io:path-kind (tuatara.io:expand-path argument :directory directory) :follow nil)))
                  (fail "~a is a file here too: write ./~a, or -- before the files" argument argument))
                 ((member argument '("--version" "-V") :test #'string=) (given :version))
                 ((member argument '("--help" "-h") :test #'string=) (given :help))
@@ -364,7 +367,8 @@ DIRECTORY."
                (push (if line (list (second argument) line column) (second argument)) files)
                (setf line nil column nil))
               ((and (or asked-line (string= argument "-"))
-                    (ignore-errors (tuatara.io:path-kind (tuatara.io:expand-path argument :directory directory) :follow nil)))
+                    (tuatara.runtime:ignoring-errors-reported ("examining ~a" argument)
+                      (tuatara.io:path-kind (tuatara.io:expand-path argument :directory directory) :follow nil)))
                (return-from read-places
                  (format nil "~a is a file here too: write ./~a, or -- before the files" argument argument)))
               ((string= argument "-")
@@ -404,7 +408,10 @@ written out, to be put on the terminal."
 
 (defun missing-file (names)
   "The first of NAMES, files, that is not there, or NIL."
-  (find-if-not (lambda (name) (ignore-errors (tuatara.io:path-kind (named-here name)))) names))
+  (find-if-not (lambda (name)
+                 (tuatara.runtime:ignoring-errors-reported ("examining ~a" name)
+                   (tuatara.io:path-kind (named-here name))))
+               names))
 
 (defconstant +f-dupfd-cloexec+ 1030
   "fcntl's request for a copy of a descriptor that no program started from here inherits.")
@@ -488,7 +495,9 @@ what the session left (*EXIT-CODE*); 2 for options it cannot take."
            (format *error-output* "tuatara: ~a is not there: nothing to merge~%"
                    (shown (missing-file (list (first (getf options :merge)) (third (getf options :merge))))))
            2)
-          ((and config (not (eq (ignore-errors (tuatara.io:path-kind config-path)) :regular)))
+          ((and config (not (eq (tuatara.runtime:ignoring-errors-reported ("examining ~a" config-path)
+                                  (tuatara.io:path-kind config-path))
+                                :regular)))
            (format *error-output* "tuatara: no init file at ~a (tuatara --generate-config writes one to start from)~%" (shown config))
            2)
           ((and (not (or (getf options :gui) (window-wanted-p))) (not (keyboard-available-p)))
@@ -551,7 +560,8 @@ it instead, its arguments never looked at
   (sb-ext:disable-debugger)
   (setf sb-ext:*posix-argv* (command-line-arguments))
   (fresh-random-state)
-  (setf tuatara.io:*saved-program* (ignore-errors (namestring (truename "/proc/self/exe"))))
+  (setf tuatara.io:*saved-program* (tuatara.runtime:ignoring-errors-reported ("finding this program")
+                                     (namestring (truename "/proc/self/exe"))))
   (let ((mb (heap-to-restart-with)))
     (when mb (restart-with-heap mb)))
   (sb-posix:unsetenv "TUATARA_HEAP_DECIDED")

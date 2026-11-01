@@ -180,6 +180,26 @@ the list."
       (true (tuatara.defaults::entry-matches-p filtering (tuatara.defaults::make-search-filter "green" :where :colour) "x" "x"))
       (tuatara.buffer:kill-buffer buffer))))
 
+(define-test (search-filters failing-text-reported)
+  ;; an entry whose more text fails is not matched, and debug mode keeps the failure in its log
+  (let* ((buffer (tuatara.buffer:make-buffer (tuatara.buffer:unique-buffer-name "filter failing")))
+         (filtering (tuatara.defaults::list-filtering-made buffer))
+         (filter (tuatara.defaults::make-search-filter "an" :where :colour)))
+    (setf (tuatara.defaults::list-filtering-text filtering)
+          (lambda (entry where) (declare (ignore where)) (error "no text for ~a" entry)))
+    (drain-debug-reports)
+    (unwind-protect
+         (progn
+           (false (tuatara.defaults::entry-matches-p filtering filter "banana" "banana"))
+           (true (sb-concurrency:queue-empty-p tuatara.runtime:*debug-reports*))
+           (tuatara.runtime:set-debug t)
+           (false (tuatara.defaults::entry-matches-p filtering filter "banana" "banana"))
+           (let ((texts (loop for report = (sb-concurrency:dequeue tuatara.runtime:*debug-reports*)
+                              while report collect (princ-to-string (fourth report)))))
+             (true (find-if (lambda (text) (search "filter it failed: no text for banana" text)) texts) "~s" texts)))
+      (drain-debug-reports)
+      (tuatara.buffer:kill-buffer buffer))))
+
 (define-test (search-filters searches-narrow)
   ;; a list that asks for it is narrowed by C-s itself
   (multiple-value-bind (f editor list) (filtered-session "C-s c h RET" :searches t)

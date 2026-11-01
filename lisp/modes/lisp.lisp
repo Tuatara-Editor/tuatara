@@ -154,7 +154,8 @@ none: nothing is made, as reading would."
 case, or NIL when it names no function, macro or special operator whose
 parameters are known."
   (when (and symbol (fboundp symbol))
-    (multiple-value-bind (parameters known) (ignore-errors (values (sb-introspect:function-lambda-list symbol) t))
+    (multiple-value-bind (parameters known) (ignoring-errors-reported ("finding the parameters of ~s" symbol)
+                                              (values (sb-introspect:function-lambda-list symbol) t))
       (when known
         (labels ((show (x)
                    ;; a parameter by its name, whatever package it was written in
@@ -220,7 +221,9 @@ to say, show the parameters of the function or macro whose call point is in."
              (seen (tuatara.buffer:buffer-local buffer 'lisp-eldoc-seen))
              (name (if (and seen (eq (first seen) version) (eql (second seen) point))
                        (third seen)
-                       (let ((name (ignore-errors (operator-at buffer point))))
+                       (let ((name (ignoring-errors-reported ("finding the call around point in ~a"
+                                                              (tuatara.buffer:buffer-name buffer))
+                                     (operator-at buffer point))))
                          (setf (tuatara.buffer:buffer-local buffer 'lisp-eldoc-seen) (list version point name))
                          name)))
              (signature (and name (lisp-signature (lisp-symbol-named name (lisp-package buffer))))))
@@ -386,9 +389,10 @@ working buffer; else the one shown in the selected window."
             :name "tuatara evaluation")))
     (unless (wait-interruptibly thread :message "Evaluating..." :grace *evaluation-grace*
                                        :stop (lambda (thread)
-                                               (ignore-errors
-                                                (sb-thread:interrupt-thread
-                                                 thread (lambda () (throw 'stop-evaluation :stopped))))))
+                                               (handler-case
+                                                   (sb-thread:interrupt-thread
+                                                    thread (lambda () (throw 'stop-evaluation :stopped)))
+                                                 (sb-thread:interrupt-thread-error () nil))))
       (unless result
         (setf result (list :outcome :stopped :output "" :warnings 0 :package (car box)))))
     result))
@@ -396,7 +400,7 @@ working buffer; else the one shown in the selected window."
 (defun printed-value (value)
   "VALUE printed readably, or #<a value that cannot be printed: WHY> when
 printing it fails."
-  (handler-case (prin1-to-string value)
+  (handler-case (reporting-errors ("printing a value") (prin1-to-string value))
     (error (e) (format nil "#<a value that cannot be printed: ~a>" (tuatara.runtime:condition-words e)))))
 
 (defun write-output-and-values (out output values)
@@ -506,8 +510,9 @@ goes to *Messages*."
   "TEXT, a form of BUFFER, as \\[eval-top-level-form] evaluates it: a DEFVAR
 with a value as a DEFPARAMETER, so that the variable takes the value again
 when it has one already, as a list of that form; else TEXT itself."
-  (let ((form (ignore-errors (let ((*package* (lisp-package buffer)) (*read-eval* nil))
-                               (read-from-string text)))))
+  (let ((form (ignoring-errors-reported ("reading a form of ~a" (tuatara.buffer:buffer-name buffer))
+                (let ((*package* (lisp-package buffer)) (*read-eval* nil))
+                  (read-from-string text)))))
     (if (and (consp form) (eq (first form) 'defvar) (consp (cdr form)) (consp (cddr form)))
         (list (list* 'defparameter (rest form)))
         text)))

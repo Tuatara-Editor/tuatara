@@ -95,7 +95,8 @@ of FACE (the editor's own for NIL)."
   "The font the window is written in: *GUI-FONT*, or the desktop's monospace
 font, or Monospace 11."
   (or *gui-font*
-      (ignore-errors (g-settings-string "org.gnome.desktop.interface" "monospace-font-name"))
+      (tuatara.runtime:ignoring-errors-reported ("asking the desktop for its font")
+        (g-settings-string "org.gnome.desktop.interface" "monospace-font-name"))
       "Monospace 11"))
 
 (defun make-fonts (name &optional (scale 1))
@@ -1077,7 +1078,7 @@ from an offset, cut to its cells, painted whole by the drawing area."
                (notany #'sixth (frame-images frame)))
           (progn
             (drawn-on-card f t)
-            (handler-case (place-pieces f frame)
+            (handler-case (tuatara.runtime:reporting-errors ("showing the rows") (place-pieces f frame))
               (error (e) (format *error-output* "~&Tuatara could not show the rows: ~a~%" e))))
           (progn
             (drawn-on-card f nil)
@@ -1119,7 +1120,8 @@ pictures, what the input method is composing, the cursor."
     (when f
       (follow-display-scale f area)
       (let ((frame (sb-thread:with-mutex ((gtk-lock f)) (gtk-shown f))))
-        (handler-case (paint-frame f cr width height frame (gtk-focused f))
+        (handler-case (tuatara.runtime:reporting-errors ("painting the window")
+                        (paint-frame f cr width height frame (gtk-focused f)))
           (error (e) (format *error-output* "~&Tuatara could not paint: ~a~%" e)))
         ;; where the cursor is, for the input method's window
         (when frame

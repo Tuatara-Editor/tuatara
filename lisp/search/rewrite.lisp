@@ -240,7 +240,8 @@ so files a process may have open."
 (defun discard-piece-files (files)
   "Close every file of FILES, what was written to them let go."
   (loop for (nil . writer) in (shiftf (piece-files-writers files) '())
-        do (ignore-errors (sb-posix:close (tuatara.io:writer-fd writer)))))
+        do (ignoring-errors-reported ("closing a file of rewritten text")
+             (sb-posix:close (tuatara.io:writer-fd writer)))))
 
 (defun piece-files-ropes (files outputs)
   "A rope for each of OUTPUTS, lists beginning (WRITER START END): the octets
@@ -442,7 +443,7 @@ ends, the files not mapped by then are closed."
                       (if counted
                           (setf (rewrite-result job) counted (rewrite-status job) :done)
                           (setf (rewrite-status job) :stopped)))))))
-    (when (rewrite-files job) (ignore-errors (discard-piece-files (rewrite-files job))))))
+    (when (rewrite-files job) (discard-piece-files (rewrite-files job)))))
 
 ;;; Mapping offsets between the text read and the text written
 

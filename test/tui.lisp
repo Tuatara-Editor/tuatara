@@ -33,6 +33,26 @@
     (false (window t t ":0"))
     (false (window nil nil nil))))
 
+(define-test (tui first-line-of-a-closed-file)
+  ;; a file not there and one that may not be read both give no line; only the second is
+  ;; kept in the debug log, as a failure
+  (let ((path (format nil "~a/tuatara-first-line-~d" (uiop:getenv "XDG_CACHE_HOME") (sb-posix:getpid))))
+    (with-open-file (out path :direction :output :if-exists :supersede) (format out "max~%"))
+    (drain-debug-reports)
+    (unwind-protect
+         (progn
+           (is string= "max" (tuatara.terminal::file-first-line path))
+           (sb-posix:chmod path 0)
+           (tuatara.runtime:set-debug t)
+           (false (tuatara.terminal::file-first-line (format nil "~a.missing" path)))
+           (true (sb-concurrency:queue-empty-p tuatara.runtime:*debug-reports*))
+           (false (tuatara.terminal::file-first-line path))
+           (let ((texts (loop for report = (sb-concurrency:dequeue tuatara.runtime:*debug-reports*)
+                              while report collect (princ-to-string (fourth report)))))
+             (true (find-if (lambda (text) (search (format nil "reading ~a failed" path) text)) texts) "~s" texts)))
+      (drain-debug-reports)
+      (delete-file path))))
+
 (define-test (tui input-pending-counts-what-is-kept)
   ;; with nothing on the terminal's input, a resize kept to hand over and keys handed
   ;; back to ncurses are input waiting all the same

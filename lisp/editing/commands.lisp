@@ -1338,7 +1338,8 @@ back to the mark before; NIL, as standard, for it to set the mark.")
 
 (defun anchor-in (buffer anchor)
   "Where ANCHOR, made in BUFFER, stands in it now; NIL when it no longer can."
-  (let ((position (ignore-errors (tuatara.text:anchor-position anchor (tuatara.buffer:buffer-version buffer)))))
+  (let ((position (ignoring-errors-reported ("finding a mark in ~a" (tuatara.buffer:buffer-name buffer))
+                    (tuatara.text:anchor-position anchor (tuatara.buffer:buffer-version buffer)))))
     (and position (<= 0 position (tuatara.buffer:buffer-size buffer)) position)))
 
 (defun push-mark (&key (position (point)) quiet activate (buffer (current-buffer)))
