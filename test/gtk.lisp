@@ -74,6 +74,13 @@ libraries (ffi.lisp), one after another."
     (is = 1 (length (tuatara.frontend.gtk::event-queue-items queue)))
     (false (tuatara.frontend:frontend-input-pending-p f))
     (tuatara.frontend.gtk:queue-push queue (tuatara.frontend:make-event :key :key (tuatara.frontend:make-key #\a)))
+    (true (tuatara.frontend:frontend-input-pending-p f)))
+  ;; the window's new size is no input waiting either: work giving way to input does not stop for it
+  (let* ((f (tuatara.frontend.gtk::make-gtk-frontend))
+         (queue (tuatara.frontend.gtk::gtk-queue f)))
+    (tuatara.frontend.gtk:queue-push queue (tuatara.frontend:make-event :resize :width 80 :height 24))
+    (false (tuatara.frontend:frontend-input-pending-p f))
+    (tuatara.frontend.gtk:queue-push queue (tuatara.frontend:make-event :drop :files '("/tmp/a")))
     (true (tuatara.frontend:frontend-input-pending-p f))))
 
 (define-test (gtk pictures)

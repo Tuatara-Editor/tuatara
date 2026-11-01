@@ -145,16 +145,25 @@ change made meanwhile, for a job that waits its turn."
                                                     (tuatara.text:anchor-position (cdr anchors) now)))
              held)))))
 
+(defvar *give-way-after* 1/20
+  "Seconds work just started is waited for (TAKE-IN-SOON) before a key you
+typed meanwhile is answered first, the work going on behind it: work quicker
+than this is done before the key, as if it had taken no time.")
+
 (defun take-in-soon (job seconds &optional words then)
-  "Wait up to SECONDS for JOB, just started, to end, or until a key is pressed,
-whichever comes first: when it has ended, take it in now, with the other jobs
-of its kind that have ended, so that quick work looks done at once; else, with
-WORDS, say that it goes on in the background, and THEN after it when given
-\(SAY-IN-BACKGROUND). A key pressed meanwhile is answered at once, the work
-going on behind it."
-  (let ((deadline (tuatara.runtime:deadline-in seconds)))
+  "Wait up to SECONDS for JOB, just started, to end, or, after
+*GIVE-WAY-AFTER*, until a key is pressed, whichever comes first: when it has
+ended, take it in now, with the other jobs of its kind that have ended, so
+that quick work looks done at once; else, with WORDS, say that it goes on in
+the background, and THEN after it when given (SAY-IN-BACKGROUND). A key
+pressed meanwhile is answered then, the work going on behind it; keys played
+from a recording never are, so that what they do is the same however fast
+the work."
+  (let ((deadline (tuatara.runtime:deadline-in seconds))
+        (patient (tuatara.runtime:deadline-in (min seconds *give-way-after*))))
     (loop for left = (tuatara.runtime:seconds-left deadline)
-          while (and (plusp left) (tuatara.runtime:job-running-p job) (not (key-waiting-p)))
+          while (and (plusp left) (tuatara.runtime:job-running-p job)
+                     (not (and (tuatara.runtime:deadline-passed-p patient) (not (keys-playing-p)) (key-waiting-p))))
           do (sb-thread:join-thread (tuatara.runtime:job-thread job) :timeout (min left 1/100) :default nil)))
   (if (tuatara.runtime:job-running-p job)
       (when words (say-in-background words then))

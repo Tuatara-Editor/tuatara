@@ -126,6 +126,12 @@ when the frontend can deliver nothing more."
       (documentation 'event-row 'function) "The row of the cell a :drop EVENT happened on."
       (documentation 'event-text 'function) "The text of a :paste EVENT.")
 
+(defun input-event-p (item)
+  "True when ITEM, an event a frontend has queued, is something you did and
+wait to see answered: a key or a mouse button, text pasted, files dropped, the
+window asked to close; not a wake, nor a change of the window's size."
+  (and (event-p item) (member (event-kind item) '(:key :paste :drop :close)) t))
+
 ;;; The painter interface
 
 (defgeneric frontend-start (frontend)

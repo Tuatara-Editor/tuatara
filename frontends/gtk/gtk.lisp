@@ -278,10 +278,10 @@ taking the editor down with GTK's thread, never unwinding through GTK."
   (queue-push (gtk-queue f) (tuatara.frontend:make-event :tick)))
 
 (defmethod tuatara.frontend:frontend-input-pending-p ((f gtk-frontend))
-  ;; what you did waits; the wakes of work in the background are no input
+  ;; what you did waits; the wakes of work in the background, and the window's new size, are no input
   (let ((queue (gtk-queue f)))
     (sb-thread:with-mutex ((event-queue-lock queue))
-      (and (find-if-not #'tick-p (event-queue-items queue)) t))))
+      (and (find-if #'tuatara.frontend:input-event-p (event-queue-items queue)) t))))
 
 (defmethod tuatara.frontend:frontend-description ((f gtk-frontend))
   (format nil "in a GTK ~d.~d window"

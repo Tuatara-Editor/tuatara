@@ -675,6 +675,41 @@ second value."
           (true (< waited 0.2) "the key after the save was answered ~,2f s after it began" waited)))
       (is string= "xtext" (file-text path)))))
 
+(define-test (visiting-and-saving save-waited-for-while-keys-play)
+  ;; keys played from a recording never cut the wait for a save short, however soon they come, so
+  ;; that what they do is the same however fast the save; a key typed does, once quick work had its time
+  (with-test-directory (dir)
+    (let ((path (namestring (put-file (merge-pathnames "slow.txt" dir) "text")))
+          (results '())
+          (f (tuatara.frontend.fake:make-fake-frontend :width 80 :height 8)))
+      (setf (tuatara.frontend.fake:fake-pending f) t)
+      (flet ((save-and-wait (playing)
+               (let ((b (tuatara.command:current-buffer)))
+                 (tuatara.buffer:buffer-insert b 0 "x")
+                 (let ((job (tuatara.io:start-save b))
+                       (tuatara.command::*keys-playing* playing)
+                       (began (get-internal-real-time)))
+                   (tuatara.defaults::take-in-soon job 5)
+                   (push (list playing (tuatara.runtime:job-running-p job)
+                               (/ (- (get-internal-real-time) began) internal-time-units-per-second))
+                         results)
+                   (sb-thread:join-thread (tuatara.io:save-job-thread job) :default nil)
+                   (tuatara.io:finish-saves)))))
+        (queue-test-keys f (list (lambda () (save-and-wait t)) (lambda () (save-and-wait nil))))
+        (with-functions-replaced ((tuatara.io::save-transform
+                                   (lambda (buffer path)
+                                     (declare (ignore buffer path))
+                                     (lambda (rope) (sleep 0.5) rope))))
+          (call-without-grammar-questions
+           (lambda () (tuatara.command:run-editor f :files (list path) :setup #'tuatara.defaults:install-defaults)))))
+      (destructuring-bind ((typed typed-running typed-waited) (played played-running played-waited)) results
+        (false typed)
+        (true typed-running "a typed key is answered before the save ends")
+        (true (< typed-waited 0.3) "~,2f s" typed-waited)
+        (true played)
+        (false played-running "played keys wait for the save")
+        (true (>= played-waited 0.4) "~,2f s" played-waited)))))
+
 (define-test (visiting-and-saving watcher)
   (with-test-directory (dir)
     (let ((path (put-file (merge-pathnames "watched.txt" dir) "original")))
