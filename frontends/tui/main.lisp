@@ -18,6 +18,8 @@
        tuatara [--gui] [-Q] [-c INIT-FILE] --merge LOCAL BASE REMOTE MERGED
        tuatara [--gui] [-Q] [-c INIT-FILE] --tutor
 Edit the FILEs in this terminal, or start in the scratch buffers without any.
+Options may stand anywhere before --; --safe and --hex hold for every FILE of
+the call, a +LINE for the FILE after it.
 Written by Michael A Jones; free software under the GNU General Public
 License, version 3 or later.
   --gui       open a window of its own instead (as when started with no terminal)
@@ -26,8 +28,9 @@ License, version 3 or later.
               ~/.config/tuatara/init.lisp
   +LINE[:COLUMN]
               before a file: open it with the cursor on that line (from 1;
-              the last line when the file has fewer) and column (from 1),
-              as in tuatara +120:8 main.lisp +3 notes.org
+              the last line when the file has fewer) and column (from 1;
+              the C in the mode line counts from 0), as in
+              tuatara +120:8 main.lisp +3 notes.org
   --diff OLD NEW
               open the differences between the two files, or two folders, as
               M-x diff-files shows them, and exit when you quit; for git, as
@@ -200,26 +203,37 @@ the equals sign), and +LINE before a file besides.")
   (or (member argument *options* :test #'string=)
       (uiop:string-prefix-p "--config=" argument)))
 
+(defun option-like-p (argument)
+  "True when ARGUMENT is written as an option: it starts with a dash and is
+more than a dash."
+  (and (> (length argument) 1) (char= (char argument 0) #\-)))
+
 (defun read-options (arguments &key (directory (uiop:getcwd)))
   "The options of ARGUMENTS, the program's (strings), as a plist: :GUI,
 :CONFIG (the init file -c names), :GENERATE-CONFIG, :VERSION, :HELP,
 :DIFF (the two names after --diff), :MERGE (the four after --merge), :SAFE,
-:HEX, :TUTOR, :BARE (-Q) and :FILES, the arguments after the options; or :ERROR, what is wrong with them, among them an option or a
-+LINE that is also a file's name in DIRECTORY, where the program was
-started. A file after a +LINE[:COLUMN] is (NAME LINE COLUMN) in :FILES, the
-column NIL when none was given, and a - (standard input) is (:STANDARD-INPUT);
-after --, every argument is a file's name."
-  (let ((options '()) (literal nil))
-    (loop
-      (let ((argument (pop arguments)))
-        (flet ((given (key) (setf (getf options key) t)))
+:HEX, :TUTOR, :BARE (-Q) and :FILES, the files named; or :ERROR, what is
+wrong with them. Options may stand anywhere before --, among the files; --safe
+and --hex hold for every file of the call, a +LINE[:COLUMN] for the file after
+it, which is then (NAME LINE COLUMN) in :FILES, the column NIL when none was
+given; a - (standard input) is (:STANDARD-INPUT). What starts with a dash and
+is no option is refused, and so is an option or +LINE that is also a file's
+name in DIRECTORY, where the program was started: write ./NAME for the file,
+or -- before the files. After --, every argument is a file's name."
+  (let ((options '()) (named '()))
+    (flet ((given (key) (setf (getf options key) t))
+           (fail (&rest words) (return-from read-options (list :error (apply #'format nil words)))))
+      (loop
+        (let ((argument (pop arguments)))
           (cond ((null argument) (return))
+                ((string= argument "--")
+                 (dolist (rest arguments) (push (list :literal rest) named))
+                 (return))
                 ;; a file named as an option, as * gives one in a folder holding it: never read as
                 ;; one, so that no file there chooses the init file or what is done
-                ((and (option-p argument) (ignore-errors (tuatara.io:path-kind (tuatara.io:expand-path argument :directory directory) :follow nil)))
-                 (return-from read-options
-                   (list :error (format nil "~a is a file here too: write ./~a, or -- before the files" argument argument))))
-                ((string= argument "--") (setf literal t) (return))
+                ((and (or (option-p argument) (option-like-p argument))
+                      (ignore-errors (tuatara.io:path-kind (tuatara.io:expand-path argument :directory directory) :follow nil)))
+                 (fail "~a is a file here too: write ./~a, or -- before the files" argument argument))
                 ((member argument '("--version" "-V") :test #'string=) (given :version))
                 ((member argument '("--help" "-h") :test #'string=) (given :help))
                 ((string= argument "--gui") (given :gui))
@@ -231,33 +245,34 @@ after --, every argument is a file's name."
                 ((string= argument "--merge")
                  (if (and (>= (length arguments) 4) (every #'plusp (mapcar #'length (subseq arguments 0 4))))
                      (setf (getf options :merge) (loop repeat 4 collect (pop arguments)))
-                     (return-from read-options
-                       (list :error "--merge needs four files after it: LOCAL BASE REMOTE MERGED"))))
+                     (fail "--merge needs four files after it: LOCAL BASE REMOTE MERGED")))
                 ((string= argument "--diff")
                  (if (and (second arguments) (plusp (length (first arguments))) (plusp (length (second arguments))))
                      (setf (getf options :diff) (list (pop arguments) (pop arguments)))
-                     (return-from read-options (list :error "--diff needs two files after it, the old and the new"))))
+                     (fail "--diff needs two files after it, the old and the new")))
                 ((member argument '("-c" "--config") :test #'string=)
                  (let ((path (pop arguments)))
                    (if (and path (plusp (length path)))
                        (setf (getf options :config) path)
-                       (return-from read-options (list :error (format nil "~a needs the init file after it" argument))))))
+                       (fail "~a needs the init file after it" argument))))
                 ((uiop:string-prefix-p "--config=" argument)
                  (setf (getf options :config) (subseq argument (length "--config="))))
-                (t (push argument arguments) (return))))))
-    (cond ((and (getf options :diff) arguments)
-           (list :error (format nil "--diff takes the two files to compare, not ~a too" (first arguments))))
-          ((and (getf options :merge) arguments)
-           (list :error (format nil "--merge takes the four files to merge, not ~a too" (first arguments))))
-          ((and (getf options :diff) (getf options :merge))
-           (list :error "--diff and --merge are not given together"))
-          ((and (getf options :tutor) arguments)
-           (list :error (format nil "--tutor takes no files, not ~a" (first arguments))))
-          (literal (list* :files arguments options))
-          (t (let ((files (read-places arguments directory)))
-               (if (stringp files)
-                   (list :error files)
-                   (list* :files files options)))))))
+                ((option-like-p argument)
+                 (fail "~a is not an option of tuatara (--help lists them): write ./~a, or -- before the files, for a file" argument argument))
+                (t (push argument named)))))
+      (setf named (nreverse named))
+      (cond ((and (getf options :diff) named)
+             (fail "--diff takes the two files to compare, not ~a too" (let ((n (first named))) (if (consp n) (second n) n))))
+            ((and (getf options :merge) named)
+             (fail "--merge takes the four files to merge, not ~a too" (let ((n (first named))) (if (consp n) (second n) n))))
+            ((and (getf options :diff) (getf options :merge))
+             (fail "--diff and --merge are not given together"))
+            ((and (getf options :tutor) named)
+             (fail "--tutor takes no files, not ~a" (let ((n (first named))) (if (consp n) (second n) n)))))
+      (let ((files (read-places named directory)))
+        (if (stringp files)
+            (list :error files)
+            (list* :files files options))))))
 
 (defun place-argument (argument)
   "The line and the column (NIL when none) a command-line argument such as
@@ -278,8 +293,11 @@ after it, two of them before a file, or one that is also a file's name in
 DIRECTORY."
   (let ((line nil) (column nil) (files '()))
     (dolist (argument arguments)
-      (multiple-value-bind (asked-line asked-column) (place-argument argument)
-        (cond ((and (or asked-line (string= argument "-"))
+      (multiple-value-bind (asked-line asked-column) (and (stringp argument) (place-argument argument))
+        (cond ((consp argument)
+               (push (if line (list (second argument) line column) (second argument)) files)
+               (setf line nil column nil))
+              ((and (or asked-line (string= argument "-"))
                     (ignore-errors (tuatara.io:path-kind (tuatara.io:expand-path argument :directory directory) :follow nil)))
                (return-from read-places
                  (format nil "~a is a file here too: write ./~a, or -- before the files" argument argument)))

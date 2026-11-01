@@ -93,7 +93,7 @@ rope up to the init file.
    applications, as /Tuatara/.
 
    =tuatara +120:8 main.lisp= opens the file with the cursor on line 120,
-   column 8 (the line alone, =+120=, is enough; a file with fewer lines opens
+   column 8 (columns count from 1, while the =C= of the mode line counts from 0; the line alone, =+120=, is enough; a file with fewer lines opens
    at its last, and that is said); each file may have its own, as in
    =tuatara +3 a.txt +40 b.txt=. =tuatara --diff OLD NEW= shows what differs
    between two files, or two folders, and ends when you quit it; for git, run
@@ -115,7 +115,8 @@ rope up to the init file.
    the tutor; =tuatara -Q= (=--no-init=) starts without the init file and
    packages, what Tuatara keeps between sessions kept apart for that session
    and the real one neither read nor changed. After =--= every argument is a
-   file's name. =tuatara --help= lists the rest.
+   file's name. Options may stand anywhere before =--=, =--safe= and =--hex= holding for every
+   file of the call. =tuatara --help= lists the rest.
 
 5. *First steps.* =M-x tuatara-tutor= teaches the keys by editing a text with
    them (=M-x= is Alt and x). =M-x check-health= says which of the programs

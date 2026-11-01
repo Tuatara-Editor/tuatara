@@ -326,6 +326,32 @@ frontend, the editor, and the options read."
           (is = 2 (tuatara.terminal:main (list "--merge" "/nonexistent/l" a a a))))
         (true (search "/nonexistent/l is not there: nothing to merge" (get-output-stream-string said)))))))
 
+(define-test (command-line options-among-the-files)
+  (with-test-directory (dir)
+    (let ((a (namestring (put-file (merge-pathnames "a.txt" dir) (lines-saying-their-number 5))))
+          (b (namestring (put-file (merge-pathnames "b.txt" dir) (lines-saying-their-number 5)))))
+      (flet ((read-it (&rest arguments) (tuatara.terminal::read-options arguments :directory (namestring dir))))
+        ;; an option after the files is an option; --safe holds for every file, +LINE for the next
+        (let ((read (read-it a "--safe" "+3" b)))
+          (false (getf read :error))
+          (true (getf read :safe))
+          (is equal (list a (list b 3 nil)) (getf read :files)))
+        (true (getf (read-it a "-R") :safe))
+        (true (getf (read-it a b "--hex") :hex))
+        (is equal (list a) (getf (read-it a "-Q") :files))
+        ;; what starts with a dash and is no option is refused, never taken as a file
+        (true (search "-x is not an option" (getf (read-it a "-x") :error)))
+        (true (search "--frobnicate is not an option" (getf (read-it "--frobnicate" a) :error)))
+        ;; after -- everything is a file
+        (is equal (list a "-x" "--safe") (getf (read-it a "--" "-x" "--safe") :files))
+        (false (getf (read-it a "--" "--safe") :safe))
+        (is equal (list a) (getf (read-it "--" a) :files)))
+      ;; end to end: both files open safely though --safe came last
+      (multiple-value-bind (f editor) (session-from-arguments (list a b "--safe") :directory dir)
+        (declare (ignore f editor))
+        (true (tuatara.io:safe-visit-p (tuatara.defaults::buffer-visiting a)))
+        (true (tuatara.io:safe-visit-p (tuatara.defaults::buffer-visiting b)))))))
+
 (define-test (command-line one-file-one-buffer)
   ;; a file reached by x, ./x or through a link and .. is one buffer; the file the .. leads to
   ;; lexically, with the link in the way, is another
