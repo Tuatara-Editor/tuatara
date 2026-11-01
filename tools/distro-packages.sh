@@ -185,6 +185,8 @@ depends=(glibc gcc-libs gtk4 cairo ncurses openssl zstd)
 optdepends=('enchant: spelling'
             'bubblewrap: pictures, programs and grammars run shut in'
             'imagemagick: pictures'
+            'openjpeg2: pictures'
+            'libjxl: pictures'
             'poppler: PDF files'
             'git: the git interface'
             'libnotify: notifications told on the desktop'

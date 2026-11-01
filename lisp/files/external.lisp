@@ -435,7 +435,7 @@ MISSING, what to do about it (install readpst)."
     (:sandbox :name "bubblewrap" :what "pictures, programs and grammars run shut in"
      :fedora ("bubblewrap") :debian ("bubblewrap") :arch ("bubblewrap") :weight :recommends)
     (:pictures :name "ImageMagick" :what "pictures"
-     :fedora ("ImageMagick") :debian ("imagemagick") :arch ("imagemagick") :weight :recommends)
+     :fedora ("ImageMagick") :debian ("imagemagick") :arch ("imagemagick" "openjpeg2" "libjxl") :weight :recommends)
     (:pdf :name "poppler" :what "PDF files"
      :fedora ("poppler-utils") :debian ("poppler-utils") :arch ("poppler") :weight :recommends)
     (:git :name "git" :what "the git interface"
@@ -456,6 +456,8 @@ MISSING, what to do about it (install readpst)."
 :NAME what it is called, :WHAT what it is for, the packages it comes in on
 Fedora, on Debian and Ubuntu, and on Arch (:FEDORA, :DEBIAN, :ARCH), and
 whether Tuatara's own packages recommend it or only suggest it (:WEIGHT).
+Arch's ImageMagick reads JPEG 2000 and JPEG XL pictures only with openjpeg2
+and libjxl installed beside it, so they are named with it.
 \\[check-health] says what to install from it; tools/distro-packages.sh names
 the same packages.")
 
