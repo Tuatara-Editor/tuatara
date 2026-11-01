@@ -115,10 +115,10 @@ first. Signals, with what the program said, when it prints no sum."
    :job job :input :stream :output :stream :error :output :external-format :default))
 
 (defun file-source (fd path)
-  "A source for LIBRARY-SUM of the octets of the open file FD (PATH for
-messages) to its end, read at explicit offsets while the system reads ahead;
-to the end found, not the size reported, which is 0 for the files the kernel
-makes up as they are read (/proc)."
+  "A source for LIBRARY-SUM of the octets of the file open as file descriptor
+(FD) (PATH for messages) to its end, read at explicit offsets while the
+system reads ahead; to the end found, not the size reported, which is 0 for
+the files the kernel makes up as they are read (/proc)."
   (let ((at 0))
     (lambda (buffer)
       (let ((n (tuatara.io:read-fd-at fd buffer at :path path)))
@@ -189,9 +189,10 @@ said instead, except for the files the kernel makes up as they are read."
     started))
 
 (defun fd-sha256 (fd path &key (cancel (list nil)) (done (list 0)) buffer)
-  "The SHA-256 sum, in hex, of the file open as FD (PATH, for messages), read
-from its start at explicit offsets on the thread that asks, as FILE-SHA256
-sums; NIL when it cannot be read or CANCEL's car turns true first."
+  "The SHA-256 sum, in hex, of the file open as file descriptor (FD) (PATH,
+for messages), read from its start at explicit offsets on the thread that
+asks, as FILE-SHA256 sums; NIL when it cannot be read or CANCEL's car turns
+true first."
   (let* ((carrier (%make-hash-job :what path :cancel cancel :done done))
          (buffer (or buffer (make-array *hash-piece* :element-type '(unsigned-byte 8))))
          (source (file-source fd path)))

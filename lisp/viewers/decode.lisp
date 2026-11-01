@@ -77,12 +77,13 @@ may take.")
 
 (defun sandbox-pdf (program arguments fd &key (label program) files directories cancel)
   "The PDF PROGRAM, run shut in with ARGUMENTS (TUATARA.IO:SANDBOX-RUN),
-prints of the document open at FD, given on its standard input, as a sealed
-file in memory: it is shown your fonts (SANDBOX-FONT-DIRECTORIES), and FILES
-and DIRECTORIES as SANDBOX-RUN takes them, and held to
-*PAGE-DRAWING-SECONDS* and *PAGE-DRAWING-MEMORY*. An error saying why, LABEL
-naming the program, when it prints no PDF. CANCEL, a cons, stops it when its
-car turns true. Waits for it: call it from a thread working in the background."
+prints of the document open at file descriptor (FD), given on its standard
+input, as a sealed file in memory: it is shown your fonts
+(SANDBOX-FONT-DIRECTORIES), and FILES and DIRECTORIES as SANDBOX-RUN takes
+them, and held to *PAGE-DRAWING-SECONDS* and *PAGE-DRAWING-MEMORY*. An error
+saying why, LABEL naming the program, when it prints no PDF. CANCEL, a cons,
+stops it when its car turns true. Waits for it: call it from a thread working
+in the background."
   (multiple-value-bind (octets outcome said)
       (tuatara.io:sandbox-run program arguments :input fd :seconds *page-drawing-seconds* :memory *page-drawing-memory*
                                                 :cancel cancel :files files
@@ -161,17 +162,18 @@ WIDTH by HEIGHT; NIL when INFO does not say its size."
           (list (max 1 (round (* across scale))) (max 1 (round (* down scale)))))))))
 
 (defun decode-pdf (fd &key cancel (limit (expt 2 20)) pixels on-info)
-  "The text of the PDF open as FD, taken out in the sandbox, as four values:
-the text of its first *PDF-TEXT-PAGES* pages, up to LIMIT octets (1 MB unless
-given; NIL when there is none); notes about it for a line over it, each (TEXT
-. FACE): how many pages, JavaScript and encryption in :warning, or why there
-is no text in :comment; and with PIXELS, a list of the most width and height
-in pixels, its first page drawn as large as fits there (a
-TUATARA.FRONTEND:IMAGE), or NIL; and what its :INFO program said of it (pages,
-their size), as text. Waits for the programs: call it from a thread working in
-the background. CANCEL, a cons, stops them when its car turns true; NIL, NIL,
-NIL then. ON-INFO, when given, is called with what the :INFO program said as
-soon as it has, before the text is taken out."
+  "The text of the PDF open as file descriptor (FD), taken out in the sandbox,
+as four values: the text of its first *PDF-TEXT-PAGES* pages, up to LIMIT
+octets (1 MB unless given; NIL when there is none); notes about it for a
+line over it, each (TEXT . FACE): how many pages, JavaScript and encryption
+in :warning, or why there is no text in :comment; and with PIXELS, a list
+of the most width and height in pixels, its first page drawn as large as
+fits there (a TUATARA.FRONTEND:IMAGE), or NIL; and what its :INFO program
+said of it (pages, their size), as text. Waits for the programs: call it
+from a thread working in the background. CANCEL, a cons, stops them when
+its car turns true; NIL, NIL, NIL then. ON-INFO, when given, is called with
+what the :INFO program said as soon as it has, before the text is taken
+out."
   (let ((status (tuatara.io:sandbox-status))
         (decoder (find-pdf-decoder))
         (notes '())
@@ -227,11 +229,12 @@ soon as it has, before the text is taken out."
               info))))
 
 (defun decode-pdf-page (fd page width height &key info cancel (decoder (find-pdf-decoder)))
-  "Page PAGE (from 1) of the PDF open as FD, drawn in the sandbox as large as
-fits in WIDTH by HEIGHT pixels, as a TUATARA.FRONTEND:IMAGE; NIL when it could
-not be drawn, or CANCEL, a cons, had a true car. INFO, what the :INFO program
-of DECODER printed, gives the pages' size; without it the page is drawn WIDTH
-wide. Waits for the program: call it from a thread working in the background."
+  "Page PAGE (from 1) of the PDF open as file descriptor (FD), drawn in the
+sandbox as large as fits in WIDTH by HEIGHT pixels, as a
+TUATARA.FRONTEND:IMAGE; NIL when it could not be drawn, or CANCEL, a cons,
+had a true car. INFO, what the :INFO program of DECODER printed, gives the
+pages' size; without it the page is drawn WIDTH wide. Waits for the
+program: call it from a thread working in the background."
   (let ((spec (getf decoder :page)))
     (when (and spec (eq (tuatara.io:sandbox-status) :ready) (tuatara.io:sandbox-find-program (first spec)))
       (destructuring-bind (across down) (or (page-pixels (or info "") width height) (list width -1))
@@ -292,9 +295,9 @@ octets a pixel, a hundred-megapixel PNG some 3.9 GB), never less than
 JPEG needs little whatever its size, decoded at a fraction of it.")
 
 (defun picture-pixels (fd head)
-  "How many pixels the picture open as FD, whose first octets are HEAD, has,
-as their kind gives its size (TUATARA.IO:OCTETS-PICTURE-SIZE: 12000 × 9000);
-NIL when it gives none."
+  "How many pixels the picture open as file descriptor (FD), whose first
+octets are HEAD, has, as their kind gives its size
+(TUATARA.IO:OCTETS-PICTURE-SIZE: 12000 × 9000); NIL when it gives none."
   (multiple-value-bind (width height) (and head (ignoring-errors-reported ("reading the size of a picture")
                                                   (tuatara.io:octets-picture-size head)))
     (cond (width (* width height))
@@ -304,9 +307,10 @@ NIL when it gives none."
              (and width (* width height)))))))
 
 (defun raf-preview (fd head)
-  "The JPEG a Fujifilm raw open as FD, whose first octets are HEAD, carries
-of its picture (its header gives where, at octet 84, and how long, at 88),
-read with pread; NIL when FD is no such raw or the JPEG is not where it says."
+  "The JPEG a Fujifilm raw open as file descriptor (FD), whose first octets
+are HEAD, carries of its picture (its header gives where, at octet 84, and
+how long, at 88), read with pread; NIL when FD is no such raw or the JPEG
+is not where it says."
   (when (and head (tuatara.io:octets-at-p head "FUJIFILMCCD-RAW"))
     (let ((offset (tuatara.io:octets-be head 84 4))
           (length (tuatara.io:octets-be head 88 4)))
@@ -315,9 +319,9 @@ read with pread; NIL when FD is no such raw or the JPEG is not where it says."
           (and jpeg (tuatara.io:octets-at-p jpeg '(#xFF #xD8 #xFF)) jpeg))))))
 
 (defun tiff-file-size (fd head)
-  "The width and height of the first image of the TIFF open as FD, whose
-first octets are HEAD, its first directory read where it stands, as two
-values; NIL when it cannot be."
+  "The width and height of the first image of the TIFF open as file descriptor
+(FD), whose first octets are HEAD, its first directory read where it
+stands, as two values; NIL when it cannot be."
   (let* ((little (= (aref head 0) 73))
          (ifd (tuatara.io:octets-integer head 4 4 :big-endian (not little)))
          (count-octets (and ifd (tuatara.io:read-fd-exactly fd 2 ifd)))
@@ -329,9 +333,10 @@ values; NIL when it cannot be."
     (and width height (values width height))))
 
 (defun octets-kind-of-file (fd octets)
-  "What the file open as FD is by its first OCTETS, as two values, the words
-and the keyword of TUATARA.IO:OCTETS-KIND, a TIFF's size read where its first
-directory stands when that is past them (TIFF-FILE-SIZE)."
+  "What the file open as file descriptor (FD) is by its first OCTETS, as two
+values, the words and the keyword of TUATARA.IO:OCTETS-KIND, a TIFF's size
+read where its first directory stands when that is past them
+(TIFF-FILE-SIZE)."
   (multiple-value-bind (words kind) (tuatara.io:octets-kind octets)
     (if (and (eq kind :tiff) (not (search "×" words)))
         (multiple-value-bind (width height) (ignoring-errors-reported ("reading the size of a TIFF")
@@ -386,10 +391,11 @@ a picture of 20 megapixels is given 40 seconds, *SANDBOX-SECONDS* at 10.")
 
 (defun coded-picture-header (fd head kind)
   "What the JPEG 2000 or JPEG XL picture of KIND (:jp2 or :j2k, either
-taken for both, or :jxl) open as FD, whose first octets are HEAD, says of
-itself in its header (TUATARA.IO:J2K-HEADER, TUATARA.IO:JXL-FILE-HEADER), a
-file kept in boxes read from FD where its codestream begins when that is
-past HEAD; NIL when its header does not say, or for another kind."
+taken for both, or :jxl) open as file descriptor (FD), whose first octets are
+HEAD, says of itself in its header (TUATARA.IO:J2K-HEADER,
+TUATARA.IO:JXL-FILE-HEADER), a file kept in boxes read from FD where its
+codestream begins when that is past HEAD; NIL when its header does not say, or
+for another kind."
   (let* ((size (handler-case (sb-posix:stat-size (sb-posix:fstat fd)) (sb-posix:syscall-error () nil)))
          (read (lambda (at count)
                  (let ((count (and size (min count (- size at)))))
@@ -660,14 +666,14 @@ else, or fewer pixels than they say."
                    (and (equal maxval "255") (image width height 3))))))))))
 
 (defun decode-image (fd kind width height &key cancel density)
-  "The picture in the image open as FD, of KIND (TUATARA.IO:OCTETS-KIND's
-keyword), turned into pixels in the sandbox, no larger than WIDTH by HEIGHT
-pixels, as two values: the picture (a TUATARA.FRONTEND:IMAGE), NIL when it
-could not be made; and notes about it for a line over it, as DECODE-PDF
-gives them. Waits for the program: call it from a thread working in the
-background. CANCEL, a cons, stops it when its car turns true; NIL, NIL then.
-DENSITY, dots an inch, draws a drawing (SVG) that finely before it is sized,
-for print."
+  "The picture in the image open as file descriptor (FD), of KIND
+(TUATARA.IO:OCTETS-KIND's keyword), turned into pixels in the sandbox, no
+larger than WIDTH by HEIGHT pixels, as two values: the picture (a
+TUATARA.FRONTEND:IMAGE), NIL when it could not be made; and notes about it
+for a line over it, as DECODE-PDF gives them. Waits for the program: call
+it from a thread working in the background. CANCEL, a cons, stops it when
+its car turns true; NIL, NIL then. DENSITY, dots an inch, draws a drawing
+(SVG) that finely before it is sized, for print."
   (let ((status (tuatara.io:sandbox-status))
         (decoder (find-image-decoder))
         (format (cdr (assoc kind *image-formats*)))

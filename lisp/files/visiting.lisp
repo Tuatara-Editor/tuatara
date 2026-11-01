@@ -694,10 +694,10 @@ window; the view stays as it was."
 
 (defvar *hex-view-binary-files* t
   "True to show a file that looks binary in the hex view (\\[hex-mode]) when it
-is opened: one with a NUL octet in its first 64 KB, as executables, archives
-and disk images have and text has not. Pictures and PDFs shown as such keep
-their views; \\[hex-mode] shows any file as text again. NIL to show them as
-text.")
+is opened: one with a null (NUL) octet in its first 64 KB, as executables,
+archives and disk images have and text has not. Pictures and PDFs shown as
+such keep their views; \\[hex-mode] shows any file as text again. NIL to show
+them as text.")
 
 (defun show-binary-in-hex (buffer)
   "Show BUFFER, a file just opened, in the hex view when its file looks binary

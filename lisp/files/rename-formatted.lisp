@@ -69,7 +69,8 @@ colon, as title: and tags:) or a line of dashes under them."
   "TEXT, a file of TYPE (an entry of *FORMATTED-FILE-TYPES*), with its header
 saying TITLE and KEYWORDS: the lines holding them written anew when it has a
 header, else the header a new file of TYPE has put before it. Lines ending in
-CR LF keep those ends; NIL for TEXT with lines of both ends, left as it is."
+carriage return and line feed (CR LF) keep those ends; NIL for TEXT with lines
+of both ends, left as it is."
   (let ((crlf (search (coerce '(#\Return #\Newline) 'string) text)))
     (cond ((null crlf) (%text-with-header text type title keywords identifier time))
           ;; every line ending in CR LF, or none: else which a new line takes is not known

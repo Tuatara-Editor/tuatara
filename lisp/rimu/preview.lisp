@@ -50,11 +50,11 @@ opened it."
 (defvar *preview-text-functions* '()
   "Functions giving the preview of a file a text of their own, for kinds of
 file rimu's preview does not know (a package's): each is called, on the
-preview's own thread, with the file open as FD, its PATH, its SIZE in
-octets, its KIND (TUATARA.IO:OCTETS-KIND's keyword, or NIL) and its first
-OCTETS, and returns the text to show, read only, or NIL to leave the file to
-the next and at last to its octets. The text is the file read by Tuatara
-itself, nothing in it run.")
+preview's own thread, with the file open as file descriptor (FD), its PATH,
+its SIZE in octets, its KIND (TUATARA.IO:OCTETS-KIND's keyword, or NIL) and
+its first OCTETS, and returns the text to show, read only, or NIL to leave the
+file to the next and at last to its octets. The text is the file read by
+Tuatara itself, nothing in it run.")
 
 (defstruct (rimu-preview-job (:constructor make-rimu-preview-job (entry directory)) (:copier nil))
   "The start of the file ENTRY of DIRECTORY read on THREAD for the preview:
@@ -398,9 +398,9 @@ name has when that is not one of the kind's."
 moved on to another entry meanwhile: a PDF's first page and its text, an
 image's picture and its octets, the picture shown where the frontend shows
 pictures and the list has not been switched to text (\\<rimu-mode>\\[rimu-toggle-picture]);
-a binary file, one with a NUL octet in its first 64 KB, in the hex view; a
-text file with the major mode its name calls for, unless it would be visited
-safely or the list is opened safely."
+a binary file, one with a null (NUL) octet in its first 64 KB, in the hex
+view; a text file with the major mode its name calls for, unless it would be
+visited safely or the list is opened safely."
   (let ((entry (rimu-preview-job-entry job)))
     (when (eq entry (car (rimu-preview-wanted state)))
       (let ((name (escape-controls (tuatara.io:listed-name entry))))

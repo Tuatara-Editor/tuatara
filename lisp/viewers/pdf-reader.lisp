@@ -16,7 +16,7 @@
 
 (defun octets-text (octets start end)
   "OCTETS from START below END as text: UTF-8 when it is, else as Latin-1
-\(each octet its character); a NUL and what follows left out."
+\(each octet its character); a null (NUL) and what follows left out."
   (let* ((end (or (position 0 octets :start start :end end) end))
          (part (subseq octets start end)))
     (or (handler-case (sb-ext:octets-to-string part :external-format :utf-8) (sb-int:character-decoding-error () nil))
@@ -47,8 +47,8 @@ else each octet its character."
         (t (tuatara.text:octets-latin-1 octets))))
 
 (defun pdf-white-p (octet)
-  "True when OCTET is white space in a PDF: NUL, tab, line feed, form feed,
-carriage return or space."
+  "True when OCTET is white space in a PDF: null (NUL), tab, line feed, form
+feed, carriage return or space."
   (member octet '(0 9 10 12 13 32)))
 
 (defun pdf-skip-space (octets i)
@@ -67,7 +67,8 @@ comment begins; the length of OCTETS when nothing does."
   (member c '(32 9 10 13 12 0 40 41 60 62 91 93 123 125 47 37)))
 
 (defun pdf-line-end-after (octets i)
-  "Where the line end at I in OCTETS (CR LF, LF or CR) ends; I when there is none."
+  "Where the line end at I in OCTETS (carriage return and line feed (CR LF),
+line feed (LF) or carriage return (CR)) ends; I when there is none."
   (let ((n (length octets)))
     (cond ((and (< (1+ i) n) (= (aref octets i) 13) (= (aref octets (1+ i)) 10)) (+ i 2))
           ((and (< i n) (member (aref octets i) '(10 13))) (1+ i))

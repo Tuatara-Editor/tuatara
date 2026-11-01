@@ -19,7 +19,8 @@ a name looked for where the sandbox finds programs (SANDBOX-FIND-PROGRAM)."
       (tuatara.io:sandbox-find-program name)))
 
 (defun appimage-p (path)
-  "True when the file at PATH is an AppImage: an ELF program with the AppImage type 2 mark."
+  "True when the file at PATH is an AppImage: an executable and linkable
+format (ELF) program with the AppImage type 2 mark."
   (let ((head (ignoring-errors-reported ("reading ~a" path) (tuatara.io:file-head path 12))))
     (and head (>= (length head) 11)
          (tuatara.io:octets-at-p head '(#x7f 69 76 70))

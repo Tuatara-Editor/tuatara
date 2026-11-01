@@ -37,8 +37,9 @@ rest is left out, and that is said.")
 
 (defvar *file-metadata-functions* '()
   "Functions of a file's PATH, its kind (TUATARA.IO:OCTETS-KIND's keyword), the
-open descriptor FD and its SIZE, each returning a section of an Org note of
-what the file says of itself, or NIL: the readers M-x file-metadata asks.")
+open file descriptor (FD) and its SIZE, each returning a section of an Org
+note of what the file says of itself, or NIL: the readers M-x file-metadata
+asks.")
 
 ;;; The note's sections
 
@@ -56,8 +57,8 @@ those with no value left out; an empty string when none has one."
 ;;; Reading octets safely
 
 (defun file-octets-for-metadata (fd size)
-  "The octets of the file open as FD, of SIZE octets, read to find what it
-says of itself: all of it, or its first and last halves of
+  "The octets of the file open as file descriptor (FD), of SIZE octets, read
+to find what it says of itself: all of it, or its first and last halves of
 *METADATA-LARGEST-READ* octets when it is larger (two values: the octets, and
 true when they are cut so)."
   (let ((limit *metadata-largest-read*))
@@ -513,7 +514,7 @@ great many it does not have is read in a bounded time."
 
 (defun id3-split (octets start end encoding)
   "Where the first string of ENCODING in OCTETS from START below END ends,
-and where the next begins, past its NUL (two octets wide in UTF-16)."
+and where the next begins, past its null (NUL) (two octets wide in UTF-16)."
   (if (member encoding '(1 2))
       (loop for i from start below (1- end) by 2
             when (and (zerop (aref octets i)) (zerop (aref octets (1+ i)))) return (values i (+ i 2))
@@ -650,8 +651,8 @@ its STAMP, KIND and WORDS (by its contents) and its SHA-256 SUM."
 
 (defun xattr-section (fd)
   "The section of the note giving the extended attributes of the file open as
-FD (where a browser keeps the address it was downloaded from, the SELinux
-label, ACLs)."
+file descriptor (FD) (where a browser keeps the address it was downloaded
+from, the SELinux label, ACLs)."
   (metadata-section
    "Extended attributes"
    (loop for name in (tuatara.io:fd-xattr-names fd)
@@ -861,9 +862,10 @@ it, say), one saying what could not be read, so that the rest is still shown."
                               (metadata-value (princ-to-string e)))))))
 
 (defun built-in-metadata (path kind fd size)
-  "The sections of the note giving what the file at PATH, of KIND, open as FD,
-of SIZE octets, says of itself, by the readers of this file: its pictures',
-PDF's, sound's and video's own fields, and XMP wherever it is kept."
+  "The sections of the note giving what the file at PATH, of KIND, open as
+file descriptor (FD), of SIZE octets, says of itself, by the readers of
+this file: its pictures', PDF's, sound's and video's own fields, and XMP
+wherever it is kept."
   (declare (ignore path))
   (multiple-value-bind (octets cut) (file-octets-for-metadata fd size)
     (append (metadata-part
@@ -888,7 +890,8 @@ PDF's, sound's and video's own fields, and XMP wherever it is kept."
             (metadata-part (xmp-sections octets)))))
 
 (defun office-metadata-function (path kind fd size)
-  "What the Office or OpenDocument file at PATH, of KIND, says of itself (OFFICE-METADATA); FD and SIZE unused."
+  "What the Office or OpenDocument file at PATH, of KIND, says of itself
+(OFFICE-METADATA); file descriptor (FD) and SIZE unused."
   (declare (ignore fd size))
   (office-metadata path kind))
 

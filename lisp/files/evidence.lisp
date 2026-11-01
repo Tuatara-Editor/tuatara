@@ -593,9 +593,9 @@ evidence (EVIDENCE-PATH-P)."
   "Why nothing may be written at PATH, the words of EVIDENCE-WORDS, when it is
 evidence: told by the path as written (a relative one taken from the
 process's folder, as the system takes it) and by where the thing open as
-FD, or the folder open as DIRFD with PATH's name in it, really is, else by
-where PATH leads; NIL when it is not. With PATH NIL, true when
-*EVIDENCE-FOLDERS* names any folder. The core asks this before it writes
+file descriptor (FD), or the folder open as DIRFD with PATH's name in it,
+really is, else by where PATH leads; NIL when it is not. With PATH NIL, true
+when *EVIDENCE-FOLDERS* names any folder. The core asks this before it writes
 \(TUATARA.IO:*WRITING-REFUSAL-FUNCTION*)."
   (let ((rules (evidence-rules)))
     (cond ((null rules) nil)

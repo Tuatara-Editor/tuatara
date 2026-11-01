@@ -119,9 +119,9 @@ cons, stops it when its car turns true."
 
 (defstruct (pdf-copy (:constructor make-pdf-copy (fd stamp)) (:copier nil))
   "A PDF's octets in memory, sealed (TUATARA.IO:SEALED-COPY), for its view's
-programs to read: FD, the copy; STAMP, the file's when it was made; USERS,
-how many are reading it; DROPPED once the view needs it no more, closed when
-the last user is done."
+programs to read: file descriptor (FD), the copy; STAMP, the file's when it
+was made; USERS, how many are reading it; DROPPED once the view needs it no
+more, closed when the last user is done."
   fd stamp (users 0) dropped)
 
 (setf (documentation 'pdf-copy-p 'function) "True when OBJECT is a PDF-COPY.")

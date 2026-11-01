@@ -21,16 +21,17 @@ program in *OPEN-EXTERNALLY-PROGRAMS* goes there instead.")
 
 (defvar *open-externally-programs* '()
   "Programs to open files and addresses in instead of the one the desktop
-would choose (xdg-open), by MIME type as xdg-mime names them: a list of
-(TYPE . PROGRAM). TYPE is a MIME type, \"application/pdf\", or a group of
-them, \"video/*\"; for web and mail addresses in Org links,
-\"x-scheme-handler/https\" or \"x-scheme-handler/mailto\". PROGRAM is a
-program's name, looked for on the PATH, or its full path, or a list of it and
-the arguments to give before the file's name. A file's type is told by its
-contents, not its name (*KIND-MIME-TYPES*); the entry for the exact type
-wins over one for its group, and a type with none goes to the desktop's
-program. The program is run as it is, never by a shell. For example:
-'((\"application/pdf\" . \"zathura\") (\"video/*\" \"mpv\" \"--fs\")).")
+would choose (xdg-open), by Multipurpose Internet Mail Extensions (MIME) type
+as xdg-mime names them: a list of (TYPE . PROGRAM). TYPE is a MIME type,
+\"application/pdf\", or a group of them, \"video/*\"; for web and mail
+addresses in Org links, \"x-scheme-handler/https\" or
+\"x-scheme-handler/mailto\". PROGRAM is a program's name, looked for on the
+PATH, or its full path, or a list of it and the arguments to give before the
+file's name. A file's type is told by its contents, not its name
+(*KIND-MIME-TYPES*); the entry for the exact type wins over one for its group,
+and a type with none goes to the desktop's program. The program is run as it
+is, never by a shell. For example: '((\"application/pdf\" . \"zathura\")
+(\"video/*\" \"mpv\" \"--fs\")).")
 
 (defparameter *kind-mime-types*
   '((:png "image/png") (:jpeg "image/jpeg") (:gif "image/gif") (:webp "image/webp") (:bmp "image/bmp")
@@ -62,17 +63,19 @@ program. The program is run as it is, never by a shell. For example:
      ("ppt" . "application/vnd.ms-powerpoint") ("pot" . "application/vnd.ms-powerpoint") ("pps" . "application/vnd.ms-powerpoint"))
     (:odt "application/vnd.oasis.opendocument.text") (:ods "application/vnd.oasis.opendocument.spreadsheet")
     (:odp "application/vnd.oasis.opendocument.presentation"))
-  "The MIME type of each kind of file \\[open-externally] may open, by
-*OPEN-EXTERNALLY-PROGRAMS*: (KIND TYPE (EXTENSION . TYPE)...), KIND as
-TUATARA.IO:OCTETS-KIND tells it by the file's contents, TYPE its type, and
-where the kind holds more than one sort of thing (sound or video, a
-document or its template, an Office document of before 2007), the type a name
-ending in EXTENSION has instead (an Ogg file named .ogv is video/ogg, a
-compound file named .xls application/vnd.ms-excel).")
+  "The Multipurpose Internet Mail Extensions (MIME) type of each kind of file
+\\[open-externally] may open, by *OPEN-EXTERNALLY-PROGRAMS*: (KIND TYPE
+(EXTENSION . TYPE)...), KIND as TUATARA.IO:OCTETS-KIND tells it by the
+file's contents, TYPE its type, and where the kind holds more than one sort
+of thing (sound or video, a document or its template, an Office document of
+before 2007), the type a name ending in EXTENSION has instead (an Ogg file
+named .ogv is video/ogg, a compound file named .xls
+application/vnd.ms-excel).")
 
 (defun file-mime-type (kind name)
-  "The MIME type of a file of KIND, as its contents tell, named NAME
-(*KIND-MIME-TYPES*); NIL for a kind with none."
+  "The Multipurpose Internet Mail Extensions (MIME) type of a file of KIND, as
+its contents tell, named NAME (*KIND-MIME-TYPES*); NIL for a kind with
+none."
   (let ((entry (assoc kind *kind-mime-types*)))
     (when entry
       (let ((extension (tuatara.io:native-file-type name)))
@@ -80,10 +83,10 @@ compound file named .xls application/vnd.ms-excel).")
             (second entry))))))
 
 (defun chosen-program (type)
-  "The program *OPEN-EXTERNALLY-PROGRAMS* gives the MIME type TYPE, the exact
-type before its group, as three values: its full path (NIL when it is not
-found), the arguments to give before the name, and the program as given; NIL
-when it gives none."
+  "The program *OPEN-EXTERNALLY-PROGRAMS* gives the Multipurpose Internet Mail
+Extensions (MIME) type TYPE, the exact type before its group, as three
+values: its full path (NIL when it is not found), the arguments to give
+before the name, and the program as given; NIL when it gives none."
   (when type
     (let* ((group (concatenate 'string (subseq type 0 (or (position #\/ type) (length type))) "/*"))
            (entry (or (assoc type *open-externally-programs* :test #'string-equal)
@@ -96,11 +99,12 @@ when it gives none."
           (values (tuatara.io:find-program (first words)) (rest words) (first words)))))))
 
 (defun external-opener (type)
-  "What opens a file or an address of the MIME type TYPE outside Tuatara, as
-four values: the program's full path (NIL when not found), the arguments to
-give before the name, the program as given, and how to speak of it (the
-desktop's program, or the program's name); a program of your choosing
-(*OPEN-EXTERNALLY-PROGRAMS*) before the desktop's (*OPEN-EXTERNALLY-PROGRAM*)."
+  "What opens a file or an address of the Multipurpose Internet Mail
+Extensions (MIME) type TYPE outside Tuatara, as four values: the program's
+full path (NIL when not found), the arguments to give before the name, the
+program as given, and how to speak of it (the desktop's program, or the
+program's name); a program of your choosing (*OPEN-EXTERNALLY-PROGRAMS*)
+before the desktop's (*OPEN-EXTERNALLY-PROGRAM*)."
   (multiple-value-bind (path arguments given) (chosen-program type)
     (if given
         (values path arguments given (tuatara.io:native-file-name given))
@@ -108,8 +112,8 @@ desktop's program, or the program's name); a program of your choosing
                 '() *open-externally-program* "the desktop's program"))))
 
 (defun opener-missing (given type)
-  "What to say when GIVEN, the program to open the MIME type TYPE with, is
-not found."
+  "What to say when GIVEN, the program to open the Multipurpose Internet Mail
+Extensions (MIME) type TYPE with, is not found."
   (if (nth-value 2 (chosen-program type))
       (format nil "~a, the program for ~a in *open-externally-programs*, was not found" given type)
       (format nil "~a was not found: install xdg-utils to open files in the desktop's programs" given)))
@@ -417,12 +421,12 @@ PROMPT."
 
 (define-command open-externally ()
   "Open the file shown, in the desktop's own program for its kind (xdg-open),
-or the one *OPEN-EXTERNALLY-PROGRAMS* gives its MIME type, for what Tuatara
-does not do: printing, forms, playing. In a list of a
-directory, the entry on the line; in a PDF's view, the PDF. That program is
-not shut in the sandbox: only a picture, a PDF, a sound or a video
-(*OPEN-EXTERNALLY-KINDS*), by its contents and with a name that agrees, is
-opened, after asking (*OPEN-EXTERNALLY-ASK*)."
+or the one *OPEN-EXTERNALLY-PROGRAMS* gives its Multipurpose Internet Mail
+Extensions (MIME) type, for what Tuatara does not do: printing, forms,
+playing. In a list of a directory, the entry on the line; in a PDF's view, the
+PDF. That program is not shut in the sandbox: only a picture, a PDF, a sound
+or a video (*OPEN-EXTERNALLY-KINDS*), by its contents and with a name that
+agrees, is opened, after asking (*OPEN-EXTERNALLY-ASK*)."
   (let ((path (shown-file (current-buffer))))
     (if (null path)
         (message "~a shows no file" (tuatara.buffer:buffer-name (current-buffer)))

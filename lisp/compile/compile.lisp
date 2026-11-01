@@ -372,12 +372,12 @@ yet in BUFFER, octet vectors or ropes, the latest first, WAITING octets in
 all, under LOCK; the reading waits on ROOM while too many wait. ASLEEP is
 true once the editor has taken in all there was, to be woken for the next.
 SESSION is the number of the session its command runs in (SESSION-COMMAND).
-EXIT, how its command ended, (STATUS CODE) as SBCL gives them; ENDED, the
-internal real time it did; LEFT-OUT, the octets past *COMPILE-OUTPUT-MOST*
-not kept; LEFT-OPEN, true when a program it started held the output open
-after it ended. ENDING is true once it has ended and the rest of its output
-is being put in; THEN, a function of no arguments called once that is done
-\(the compile asked for meanwhile)."
+EXIT, how its command ended, (STATUS CODE) as Steel Bank Common Lisp (SBCL)
+gives them; ENDED, the internal real time it did; LEFT-OUT, the octets past
+*COMPILE-OUTPUT-MOST* not kept; LEFT-OPEN, true when a program it started held
+the output open after it ended. ENDING is true once it has ended and the rest
+of its output is being put in; THEN, a function of no arguments called once
+that is done \(the compile asked for meanwhile)."
   run environment most
   (lock (sb-thread:make-mutex :name "compile output"))
   (room (sb-thread:make-waitqueue :name "compile output taken"))
@@ -668,15 +668,15 @@ which is written again."
         (output-scan-length scan) 0))
 
 (defun read-compile-output (job fd process)
-  "Read JOB's output from FD until its end, a piece at a time as it comes,
-each piece handed to the editor (HAND-OUTPUT) once its lines of note are
-found; a character cut by the end of a piece goes with the next. Past
-JOB's most octets (*COMPILE-OUTPUT-MOST*) the output is read on and counted, not kept.
-Once PROCESS, the command, has ended, what its programs still write is read
-for *COMPILE-OPEN-GRACE* seconds more, then reading stops, the output said
-held open, however much is still written; stopped, reading stops once
-the command and its session have ended, whatever outside it holds the
-output open."
+  "Read JOB's output from file descriptor (FD) until its end, a piece at a
+time as it comes, each piece handed to the editor (HAND-OUTPUT) once its
+lines of note are found; a character cut by the end of a piece goes with
+the next. Past JOB's most octets (*COMPILE-OUTPUT-MOST*) the output is read
+on and counted, not kept. Once PROCESS, the command, has ended, what its
+programs still write is read for *COMPILE-OPEN-GRACE* seconds more, then
+reading stops, the output said held open, however much is still written;
+stopped, reading stops once the command and its session have ended,
+whatever outside it holds the output open."
   (let* ((scan (make-output-scan (compile-job-run job) (compile-run-base (compile-job-run job))))
          (returns (make-output-returns))
          (most (compile-job-most job))

@@ -349,10 +349,11 @@ safely."
   (and (tuatara.io:safe-visit-p buffer) "Safe"))
 
 (defun files-mode-line (editor buffer)
-  "Mode line function: CRLF for a buffer whose lines end as Windows ends them,
-CR for one whose lines end with a carriage return alone, Counting lines while
-a large file's lines are counted, the saves running (this buffer's first), and what has become of
-this buffer's file on disk."
+  "Mode line function: carriage return and line feed (CRLF) for a buffer whose
+lines end as Windows ends them, carriage return (CR) for one whose lines
+end with a carriage return alone, Counting lines while a large file's lines
+are counted, the saves running (this buffer's first), and what has become
+of this buffer's file on disk."
   (declare (ignore editor))
   (let ((saves (sort (copy-list (tuatara.io:saves-running)) #'<
                      :key (lambda (job) (if (eq (tuatara.io:save-job-buffer job) buffer) 0 1))))
@@ -482,8 +483,9 @@ line. \\[end-safe-visit] opens one as usual after all.")
 
 (defvar *open-binary-files-safely* t
   "True to open safely, as \\[find-file-safely] does, a file that looks binary:
-one with a NUL octet in its first 64 KB, as executables, archives and disk
-images have and text has not. \\[end-safe-visit] opens one as usual after all.")
+one with a null (NUL) octet in its first 64 KB, as executables, archives and
+disk images have and text has not. \\[end-safe-visit] opens one as usual after
+all.")
 
 
 (defun paths-common-directory (paths)
@@ -498,10 +500,10 @@ images have and text has not. \\[end-safe-visit] opens one as usual after all.")
   (concatenate 'string "file://" (tuatara.io:url-path (tuatara.io:native path))))
 
 (defun uri-path (uri &key (hosts '("localhost")))
-  "The native path of the file: address URI, its . and .. taken as they lead;
-NIL for another kind of address, one holding a NUL, and one not from the
-root or of a computer other than those HOSTS name (in any case): only
-file:///PATH and file://HOST/PATH are taken."
+  "The native path of the file: address uniform resource identifier (URI), its
+. and .. taken as they lead; NIL for another kind of address, one holding a
+null (NUL), and one not from the root or of a computer other than those
+HOSTS name (in any case): only file:///PATH and file://HOST/PATH are taken."
   (when (and (stringp uri) (> (length uri) 7) (string-equal "file://" uri :end2 7))
     (let* ((rest (subseq uri 7))
            (slash (position #\/ rest)))

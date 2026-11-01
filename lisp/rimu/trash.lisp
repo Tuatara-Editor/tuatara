@@ -72,9 +72,9 @@ the drives are found (TRASH-DIRECTORIES).")
 
 (defun trash-directories ()
   "The trash directories there are: your own, and those for you on the
-drives mounted (.Trash/UID or .Trash-UID at their tops), each with the
-top the paths in it are counted from (NIL for your own), as a list of
-\(DIRECTORY . TOP)."
+drives mounted (.Trash/UID or .Trash-UID, with your user id (UID), at their
+tops), each with the top the paths in it are counted from (NIL for your own),
+as a list of \(DIRECTORY . TOP)."
   (let ((uid (sb-posix:getuid))
         (found (list (cons (tuatara.io:home-trash) nil))))
     (with-open-file (in *mounts-file* :if-does-not-exist nil)
@@ -292,7 +292,7 @@ thing's name, when it went and where it was. There \\<rimu-trash-mode>\\[list-vi
 or NIL when it may be: that place must be a whole path in your own trash, and
 within its drive in a drive's (the folders on the way as they really are,
 links followed); it may not climb with .. anywhere, nor hold a control
-character (a NUL among them)."
+character (a null (NUL) among them)."
   (let ((path (trashed-path thing))
         (top (trashed-top thing)))
     (cond ((find-if (lambda (c) (or (char< c #\Space) (char= c #\Rubout))) path)

@@ -85,12 +85,12 @@ layout the first time it is needed."
 library: TERMINAL, RENDER-STATE, ITERATOR and CELLS are the library's handles;
 ENCODER and EVENT turn keys into what the program reads, MOUSE-ENCODER and
 MOUSE-EVENT what the mouse does; PROCESS the program,
-FD the pseudo-terminal's side the editor holds. LOCK
-guards the library's state; WANTED is set while the editor's thread wants a
-frame, the reader waiting on TURN meanwhile; CHANGED is set when the program
-printed since the last frame; CLOSED once the program's side is gone. WAKE,
-when given, is called when a frame is wanted after quiet. LAST-OUTPUT is when
-the program last printed (internal real time); TO-COMPRESS is set while its
+file descriptor (FD) the pseudo-terminal's side the editor holds. LOCK guards
+the library's state; WANTED is set while the editor's thread wants a frame,
+the reader waiting on TURN meanwhile; CHANGED is set when the program printed
+since the last frame; CLOSED once the program's side is gone. WAKE, when
+given, is called when a frame is wanted after quiet. LAST-OUTPUT is when the
+program last printed (internal real time); TO-COMPRESS is set while its
 scrollback has not been compressed since. CELL-WIDTH and CELL-HEIGHT are a
 cell's pixels where known (0 else); PLACEMENTS the library's iterator over the
 pictures shown, when pictures are on, PICTURE-MEMORY the most octets of
@@ -213,9 +213,10 @@ its layout), or NIL when it gives none."
       (sb-concurrency:send-message (emulator-outbox emulator) (cons :reply (tuatara.io:sap-octets data size))))))
 
 (defun set-window-size (fd columns rows &optional (cell-width 0) (cell-height 0))
-  "Tell the pseudo-terminal FD its size, COLUMNS by ROWS of cells CELL-WIDTH by
-CELL-HEIGHT pixels (0 when not known), which the program reads (TIOCSWINSZ):
-a program sending pictures sizes them by it."
+  "Tell the pseudo-terminal open as file descriptor (FD) its size, COLUMNS by
+ROWS of cells CELL-WIDTH by CELL-HEIGHT pixels (0 when not known), which
+the program reads (TIOCSWINSZ): a program sending pictures sizes them by
+it."
   (tuatara.io:set-terminal-window-size fd rows columns (* columns cell-width) (* rows cell-height)))
 
 (defun resize-library (emulator columns rows cell-width cell-height)

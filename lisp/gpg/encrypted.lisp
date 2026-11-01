@@ -123,8 +123,8 @@ refused."
   (max *gpg-least-output-limit* (* 32 size)))
 
 (defun gpg-feed (fd octets path)
-  "Write to FD, a pipe gpg reads, OCTETS, or the file at PATH a block at a
-time (FILE-SOURCE), never read whole into memory."
+  "Write to file descriptor (FD), a pipe gpg reads, OCTETS, or the file at
+PATH a block at a time (FILE-SOURCE), never read whole into memory."
   (if path
       (tuatara.io:call-with-file path
                                  (lambda (in name size)
