@@ -395,3 +395,21 @@ and a JP2 file with alpha at half."
                                 :jp2 64 48)
       (false image)
       (is equal ", not shown: sh here cannot read JP2 pictures (OpenJPEG, not installed with it)" (car (first notes))))))
+
+(define-test (image-view coded-picture-given-time)
+  ;; a large JPEG 2000 or JPEG XL picture is given time for its size, up to *picture-seconds*, and says
+  ;; plainly when that was not enough (a stand-in decoder taking two seconds, then printing one pixel)
+  (let ((tuatara.defaults::*image-decoders*
+          '((:name "stand-in"
+             :program ("sh" "-c" "sleep 2; printf 'P7\\nWIDTH 1\\nHEIGHT 1\\nDEPTH 3\\nMAXVAL 255\\nTUPLTYPE RGB\\nENDHDR\\n\\001\\002\\003'"))))
+        (tuatara-user:*sandbox-seconds* 1)
+        (octets (concatenate '(vector (unsigned-byte 8)) (j2k-octets 5472 3648) (make-array 64 :element-type '(unsigned-byte 8)))))
+    (is = 31 (tuatara.defaults::picture-seconds (* 5472 3648)))
+    (multiple-value-bind (image notes) (tuatara:decode-picture octets :j2k 64 48)
+      (true image "~s" notes)
+      (when image (is equalp #(1 2 3) (tuatara:image-pixels image))))
+    (let ((tuatara-user:*picture-seconds* 1))
+      (multiple-value-bind (image notes) (tuatara:decode-picture octets :j2k 64 48)
+        (false image)
+        (is equal ", not shown: sh was stopped after 1 second, all a picture of 20.0 megapixels is given (*sandbox-seconds*, *picture-seconds*)"
+            (car (first notes)))))))

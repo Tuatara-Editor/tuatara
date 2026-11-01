@@ -88,7 +88,7 @@ available unqualified, and the public API of TUATARA is used.")
            #:*save-place-limit* #:*default-input-method* #:*input-method-keys* #:*mark-ring-max*
            #:*global-mark-ring-max* #:*set-mark-command-repeat-pop*
            ;; the sandbox programs decoding files run in
-           #:*sandbox-program* #:*sandbox-seconds* #:*sandbox-memory* #:*sandbox-input-limit* #:*program-output-limit* #:*deepest-folder-tree* #:*office-note-largest* #:*office-value-longest* #:*docx-read-most-stand-ins* #:*sandbox-total-memory* #:*sandbox-seccomp* #:*magick-largest-side* #:*picture-memory* #:*pdf-view-dark-pages* #:*office-view-pages* #:*user-full-name*
+           #:*sandbox-program* #:*sandbox-seconds* #:*sandbox-memory* #:*sandbox-input-limit* #:*program-output-limit* #:*deepest-folder-tree* #:*office-note-largest* #:*office-value-longest* #:*docx-read-most-stand-ins* #:*sandbox-total-memory* #:*sandbox-seccomp* #:*magick-largest-side* #:*picture-memory* #:*picture-seconds* #:*pdf-view-dark-pages* #:*office-view-pages* #:*user-full-name*
            #:*open-externally-program* #:*open-externally-programs* #:*hex-view-binary-files* #:*open-externally-kinds* #:*open-externally-ask* #:*rimu-delete-to-trash* #:*latex-engines* #:*latex-main-font* #:*latex-sans-font* #:*latex-mono-font* #:*latex-redaction-commands* #:*export-trusted-folders* #:*logos-directory* #:*org-macro-limit*
            ;; the cursor, and its look in each of the modal states
            #:*cursor-shape* #:*cursor-colour*

@@ -1466,6 +1466,10 @@
   ;; up to 8 GB to be drawn. Not set: 4 GB; a JPEG needs little whatever its size.
   ;; (setf *picture-memory* (* 8 1024 1024 1024))
 
+  ;; A JPEG 2000 or JPEG XL picture is given more time the larger it is, up to
+  ;; 5 minutes here. Not set: 2 minutes; nil: no such limit.
+  ;; (setf *picture-seconds* 300)
+
   ;; All of one file's decoding together 4 GB. Not set: 2 GB, where systemd-run
   ;; holds it; nil: no limit.
   ;; (setf *sandbox-total-memory* (* 4 1024 1024 1024))

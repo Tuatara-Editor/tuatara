@@ -17,7 +17,7 @@
 (defparameter *decoding-carried-settings*
   '(tuatara-user:*sandbox-program* tuatara-user:*sandbox-seconds* tuatara-user:*sandbox-memory*
     tuatara-user:*sandbox-total-memory* *pdf-decoders* *pdf-text-pages* *image-decoders* *magick-largest-side*
-    *picture-memory* *image-view-largest*)
+    *picture-memory* *picture-seconds* *image-view-largest*)
   "The settings that decoding reads, carried to the thread that draws a PDF's
 page, takes out its text, draws an image or makes a preview, as they are on
 the editor's when that starts (TUATARA.RUNTIME:CARRY-SETTINGS).")
@@ -346,6 +346,32 @@ to *PICTURE-MEMORY*."
 them is decoded (CODED-PICTURE-HEADER), gives their size, and that size is
 within what *PICTURE-MEMORY* allows: JPEG 2000 and JPEG XL.")
 
+(defvar *picture-seconds* 120
+  "The most seconds the program drawing a JPEG 2000 or JPEG XL picture is
+given (2 minutes), however large the picture says it is: it is given
+*SANDBOX-SECONDS* and *PICTURE-SECONDS-PER-MEGAPIXEL* more for each
+megapixel, up to this. A picture not drawn in that time says so; NIL for no
+such limit.")
+
+(defparameter *picture-seconds-per-megapixel* 3/2
+  "The seconds, beyond *SANDBOX-SECONDS*, the program drawing a JPEG 2000 or
+JPEG XL picture is given for each megapixel its header claims (PICTURE-SECONDS).
+The slowest honest picture is a lossless JPEG 2000 of noise: 0.7 processor
+seconds a megapixel (5 MP 3.5 s, 20 MP 13.8 s, 40 MP 27.3 s) on a 2025
+laptop processor; a lossless JPEG XL of noise takes 0.5, lossy pictures far
+less. This is twice the slowest, for slower processors.")
+
+(defun picture-seconds (pixels)
+  "The seconds, of the clock and of the processor, the program drawing a JPEG
+2000 or JPEG XL picture of PIXELS pixels is given: *SANDBOX-SECONDS* and
+*PICTURE-SECONDS-PER-MEGAPIXEL* for each megapixel, no more than
+*PICTURE-SECONDS* (nor less than *SANDBOX-SECONDS*); NIL when
+*SANDBOX-SECONDS* is NIL, no limit."
+  (let ((base tuatara-user:*sandbox-seconds*))
+    (when base
+      (let ((seconds (ceiling (+ base (* *picture-seconds-per-megapixel* (/ pixels 1000000))))))
+        (if *picture-seconds* (max base (min seconds *picture-seconds*)) seconds)))))
+
 (defun coded-picture-header (fd head kind)
   "What the JPEG 2000 or JPEG XL picture of KIND (:jp2 or :j2k, either
 taken for both, or :jxl) open as FD, whose first octets are HEAD, says of
@@ -519,6 +545,7 @@ for print."
              (head (and octets (ignore-errors (tuatara.io:read-fd-start fd "the picture" octets 65536))))
              (header (and head (member kind *pictures-sized-first*) (coded-picture-header fd head kind)))
              (pixels (if header (* (getf header :width) (getf header :height)) (picture-pixels fd head)))
+             (seconds (if header (picture-seconds pixels) tuatara-user:*sandbox-seconds*))
              (memory (picture-memory kind pixels octets (cond ((getf header :components))
                                                               (header (+ 3 (getf header :extra-channels)))
                                                               (t 0))))
@@ -550,7 +577,7 @@ for print."
                              :jpeg-hint (and (eq kind :jpeg) (getf decoder :jpeg-hint)
                                              (destructuring-bind (option value) (getf decoder :jpeg-hint)
                                                (list option (format nil value (max 1 width) (max 1 height)))))))
-                      :input fd :cancel cancel :output-limit (+ 4096 (* 4 (max 1 width) (max 1 height)))
+                      :input fd :cancel cancel :seconds seconds :output-limit (+ 4096 (* 4 (max 1 width) (max 1 height)))
                       ;; a TIFF read from a pipe is copied to a file of the sandbox's first
                       :file-limit (max tuatara.io:*sandbox-file-limit* (+ (* 1024 1024) (or octets 0)))
                       (and (getf decoder :sandbox) (funcall (getf decoder :sandbox)))))))
@@ -563,7 +590,11 @@ for print."
                (when (and image damage) (note (format nil ", damaged: ~a" damage) :warning))
                (done image)))
             (:timeout
-             (note (format nil ", not shown: ~a" (tuatara.io:sandbox-outcome-words outcome said :label program)) :comment)
+             (note (if header
+                       (format nil ", not shown: ~a was stopped after ~d second~:p, all a picture of ~,1f megapixels is given (*sandbox-seconds*, *picture-seconds*)"
+                               program seconds (/ pixels 1d6))
+                       (format nil ", not shown: ~a" (tuatara.io:sandbox-outcome-words outcome said :label program)))
+                   :comment)
              (done nil))
             (t
              ;; a TIFF-shaped file LibRaw does not develop, a scanner's say: drawn as a TIFF
