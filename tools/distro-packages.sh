@@ -218,8 +218,7 @@ EOF
 # /tmp/package/FILE there (and script, which gives Tuatara a terminal):
 # installed in a new container, then run; the container is removed whether it
 # passes or not. The container is made with podman's masks over /proc lifted
-# and no SELinux label, so that bwrap can mount a /proc of its own in it;
-# /sys stays masked and seccomp stays.
+# and no SELinux label, /sys still masked and seccomp kept (HACKING.org).
 check_package() {
   local container="tuatara-check-$1" file status=0
   file=$(package_file "$1")

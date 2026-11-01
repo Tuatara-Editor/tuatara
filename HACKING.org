@@ -394,6 +394,20 @@ says what it is for.
   theme in force.
 - Nothing in a file is ever run: pictures, PDFs and Office documents are drawn in
   the sandbox, links are followed only when asked.
+- Pictures (=lisp/viewers/decode.lisp=): OpenJPEG and libjxl make every pixel
+  of a JPEG 2000 or JPEG XL picture before ImageMagick can count them, so
+  their size is read from the header in the editor first and the picture
+  refused before anything runs when it needs more than =*picture-memory*=.
+  Their time grows with that size: a lossless JPEG 2000 of noise, the
+  slowest honest kind, took 0.7 processor seconds a megapixel (5 MP 3.5 s,
+  20 MP 13.8 s, 40 MP 27.3 s, on a 2025 laptop), a lossless JPEG XL of noise
+  0.5; =*picture-seconds-per-megapixel*= is twice the slowest, for slower
+  machines. ImageMagick reads every =policy.xml= on its configure path and
+  merges them, so each one it lists besides Tuatara's is given Tuatara's
+  policy in its place, or the program is not run. ImageMagick 6 enlarges a
+  JPEG to the =jpeg:size= it is told, so that hint is never larger than the
+  JPEG; ImageMagick's =jp2:reduce-factor= gives a crop of the reduced picture
+  (7.1.2-32), so JPEG 2000 is decoded whole.
 - Each source file starts with its name, a one-line description, and the
   copyright and license line.
 - A new setting: its name in =tuatara-user='s export list (=src/package.lisp=),

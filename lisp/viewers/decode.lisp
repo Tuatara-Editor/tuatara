@@ -360,16 +360,14 @@ within what *PICTURE-MEMORY* allows: JPEG 2000 and JPEG XL.")
   "The most seconds the program drawing a JPEG 2000 or JPEG XL picture is
 given (2 minutes), however large the picture says it is: it is given
 *SANDBOX-SECONDS* and *PICTURE-SECONDS-PER-MEGAPIXEL* more for each
-megapixel, up to this. A picture not drawn in that time says so; NIL for no
-such limit.")
+megapixel, up to this. A picture not drawn in that time says so. NIL: no
+such cap, the time then growing with the size the picture claims, which
+*PICTURE-MEMORY* bounds.")
 
 (defparameter *picture-seconds-per-megapixel* 3/2
   "The seconds, beyond *SANDBOX-SECONDS*, the program drawing a JPEG 2000 or
-JPEG XL picture is given for each megapixel its header claims (PICTURE-SECONDS).
-The slowest honest picture is a lossless JPEG 2000 of noise: 0.7 processor
-seconds a megapixel (5 MP 3.5 s, 20 MP 13.8 s, 40 MP 27.3 s) on a 2025
-laptop processor; a lossless JPEG XL of noise takes 0.5, lossy pictures far
-less. This is twice the slowest, for slower processors.")
+JPEG XL picture is given for each megapixel its header claims (PICTURE-SECONDS):
+a picture of 20 megapixels is given 40 seconds, *SANDBOX-SECONDS* at 10.")
 
 (defun picture-seconds (pixels)
   "The seconds, of the clock and of the processor, the program drawing a JPEG
@@ -721,7 +719,7 @@ for print."
                              :density (and density (list "-density" (princ-to-string density)))
                              :jpeg-hint (and (eq kind :jpeg) (getf decoder :jpeg-hint)
                                              (destructuring-bind (option value) (getf decoder :jpeg-hint)
-                                               ;; never more than the JPEG's own size: ImageMagick 6 would enlarge it
+                                               ;; no larger than the JPEG itself
                                                (multiple-value-bind (across down) (and head (tuatara.io:octets-picture-size head))
                                                  (list option (format nil value (max 1 (min width (or across width)))
                                                                       (max 1 (min height (or down height))))))))))
