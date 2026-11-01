@@ -391,12 +391,15 @@ frontend, the editor, and the options read."
         (let ((ev (concatenate 'string evidence "y.org")) (wk (concatenate 'string work "x.org")))
           (put-file ev (format nil "* kept as found~%"))
           (sb-posix:link ev wk)
-          ;; the work name first
-          (session-from-arguments (list wk ev) :directory root)
-          (let ((e (tuatara.defaults::buffer-visiting ev)))
+          ;; the work name first: opened safely, as one name may be evidence, and the buffer both names
+          ;; share; it stays safe however it is asked
+          (let ((f (session-from-arguments (list wk ev) :directory root
+                                                         :keys "M-x e n d - s a f e - v i s i t RET"))
+                (e (tuatara.defaults::buffer-visiting ev)))
             (true (tuatara.io:safe-visit-p e))
             (true (tuatara.buffer:buffer-local e :read-only))
-            (is string= (tuatara.io:native ev) (tuatara.io:native (tuatara.buffer:buffer-file e))))
+            (is = (tuatara.io:stamp-ino (tuatara.io:path-stamp ev)) (tuatara.io:stamp-ino (tuatara.io:buffer-file-stamp e)))
+            (true (tuatara.frontend.fake:fake-frame-showing f "stays opened safely")))
           (kill-buffers-visiting root)
           ;; the evidence name first: the work name finds that buffer, not an editable one
           (multiple-value-bind (f editor) (session-from-arguments (list ev wk) :directory root)

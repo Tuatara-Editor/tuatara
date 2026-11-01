@@ -836,6 +836,13 @@ rules change, never on the editor's)."
             (not (car answer))
             (and (gethash (cons (tuatara.io:stamp-dev stamp) (tuatara.io:stamp-ino stamp)) (cdr answer)) t))))))
 
+(defun evidence-elsewhere-p (buffer)
+  "True when BUFFER's file, wherever it is named, has another name that is or
+may be in an evidence folder (EVIDENCE-INODE-P): it stays opened safely, as
+evidence does."
+  (let ((stamp (tuatara.io:buffer-file-stamp buffer)))
+    (and stamp (evidence-inode-p stamp))))
+
 (defun evidence-visit-reason (path)
   "Why the file at PATH opens safely when it is evidence, a phrase; NIL when it
 is not. A link counts when the file it leads to is evidence."
@@ -878,7 +885,7 @@ one value when it has not changed."
 (defun end-safe-visit-words (buffer)
   "What is said of ending BUFFER's safe visit: how to (\\[end-safe-visit]), or
 that a file of evidence stays opened safely."
-  (if (buffer-evidence buffer)
+  (if (or (buffer-evidence buffer) (evidence-elsewhere-p buffer))
       "it stays so, being evidence"
       (substitute-command-keys "\\[end-safe-visit] opens it as usual")))
 

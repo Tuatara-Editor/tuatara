@@ -910,7 +910,8 @@ write the file, and it gets what \\[find-file] gives a file: its major mode
 (or keeps the one chosen meanwhile, its colours now shown), version control,
 and a place among the files visited lately that opens it as usual. Point,
 changes not saved and undo stay as they are. A file of evidence
-\(*EVIDENCE-FOLDERS*) stays opened safely."
+\(*EVIDENCE-FOLDERS*), or one with another name that may be evidence, stays
+opened safely."
   (let* ((b (current-buffer))
          (evidence (buffer-evidence b)))
     (cond
@@ -919,6 +920,9 @@ changes not saved and undo stay as they are. A file of evidence
       (evidence
        (message "~a stays opened safely: ~a" (tuatara.buffer:buffer-name b)
                 (evidence-visit-reason (tuatara.io:native (tuatara.buffer:buffer-file b)))))
+      ((evidence-elsewhere-p b)
+       (message "~a stays opened safely: it has more than one name, and one may be in an evidence folder"
+                (tuatara.buffer:buffer-name b)))
       (t
        (visit-as-usual b)
        (message "~a is open as usual now~:[~;; read-only, since you may not write it~]"
