@@ -102,7 +102,7 @@ available unqualified, and the public API of TUATARA is used.")
            ;; files with formatted names, searching files
            #:set-formatted-file-header
            #:*formatted-file-directory* #:*formatted-file-extension* #:*formatted-file-keywords* #:*formatted-file-sort-keywords* #:*formatted-file-prompts* #:*formatted-file-type*
-           #:*formatted-file-types* #:*search-files-min-input* #:*search-files-limit* #:*indexed-directories* #:*processing-indicator* #:*indexing-indicator* #:*searching-indicator* #:*indexes-kept-on-disk* #:*preview-files* #:*preview-formatted-files* #:*preview-formatted-search* #:*preview-file-search* #:*preview-buffers*
+           #:*formatted-file-types* #:*search-files-min-input* #:*search-files-limit* #:*indexed-directories* #:*processing-indicator* #:*indexing-indicator* #:*searching-indicator* #:*indexes-kept-on-disk* #:*preview-files* #:*preview-formatted-files* #:*preview-formatted-search* #:*preview-file-search* #:*preview-buffers* #:*search-results-save-files*
            #:*search-files-max-lines* #:*search-filter-screen-seconds* #:*typing-pause* #:*typing-pause-octets* #:*line-record-modes*
            ;; the kill ring and the system clipboard
            #:*kill-ring-max* #:*kill-ring-max-size* #:*undo-limit* #:*use-system-clipboard* #:*clipboard-max-size*

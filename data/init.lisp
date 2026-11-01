@@ -705,6 +705,11 @@
   ;; The line found shown while searching files with M-s g. Not set: nil.
   ;; (setf *preview-file-search* t)
 
+  ;; Save the files that lines found by M-s g (C-c C-l lists them, C-c C-c there writes the lines
+  ;; you changed back) are written into; nil leaves each changed and not saved for you to look at.
+  ;; Not set: t.
+  ;; (setf *search-results-save-files* nil)
+
   ;; The buffer selected shown while choosing one (C-x b). Not set: nil.
   ;; (setf *preview-buffers* t)
 

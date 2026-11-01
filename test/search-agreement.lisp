@@ -463,7 +463,7 @@ left, or with KEEP false those it does not find it on."
             (let* ((tuatara.defaults::*search-disk-piece* piece)
                    (scanned (mapcar (lambda (line) (subseq line 1 3))
                                     (tuatara.defaults::corpus-lines corpus pattern :parallel nil :most 100000)))
-                   (from-disk (mapcar (lambda (candidate) (rest (tuatara.command::candidate-value candidate)))
+                   (from-disk (mapcar (lambda (candidate) (subseq (rest (tuatara.command::candidate-value candidate)) 0 2))
                                       (tuatara.defaults::lines-on-disk (uiop:native-namestring file) "x.txt" "/tmp/" pattern
                                                                        :parallel nil :most 100000)))
                    (apart (mismatch scanned from-disk :test #'equal)))

@@ -1,0 +1,228 @@
+;;;; test/search-results.lisp --- Lines a search of files found, changed in place and written back into their files.
+;;;; Copyright (C) 2026 Michael A Jones.  GPL-3.0-or-later; see LICENSE.
+
+(in-package #:tuatara.tests)
+
+(define-test search-results
+  :description "The lines found by a search of files listed in a buffer: the text after path:line: changed and written back into the files, a line only while the file still holds what was found, nothing written in evidence, a file that may not be written or a read-only buffer, changes thrown away, many files at once, a file open in a buffer changed there.")
+
+(defun found-candidate (path line text)
+  "The candidate a search of files lists for the line LINE of the file PATH, holding TEXT."
+  (let ((shown (string-left-trim '(#\Space #\Tab) text)))
+    (tuatara.command:make-candidate (format nil "~a:~d: ~a" (tuatara.io:native-file-name path) line shown)
+                                    :value (list path line 0 shown))))
+
+(defun results-done-p ()
+  "True when no job is writing lines found back into files."
+  (notany (lambda (job) (and (tuatara.defaults::write-back-job-p job) (tuatara.runtime:job-running-p job)))
+          tuatara.runtime:*jobs*))
+
+(defun results-wait (&optional (until #'results-done-p))
+  "Turns that let the editor deal with files handed over by a job writing lines back, until UNTIL
+is true, a tenth of a second between two looks at most fifty times."
+  (loop repeat 150 append (list (lambda () (unless (funcall until) (sleep 0.02))) :tick)))
+
+(defun results-lines-in (editor)
+  "The text of the buffer of lines found the session ends with."
+  (session-text editor))
+
+(defun change-found-line (index text)
+  "A turn that puts TEXT in the place of the text after path:line: of the INDEXth (from 0) line found
+shown, by an ordinary change of the buffer."
+  (lambda ()
+    (let* ((buffer (tuatara.command:current-buffer))
+           (start (tuatara.buffer:buffer-goto-line buffer index))
+           (entry (tuatara.defaults::list-entry-at buffer start)))
+      (tuatara.buffer:buffer-replace buffer (+ start (tuatara.defaults::result-line-prefix-octets entry))
+                                     (tuatara.buffer:buffer-line-end buffer start) text))))
+
+(defun refused-p (change)
+  "True when CHANGE, a function of no arguments making a change, is refused with an error."
+  (handler-case (progn (funcall change) nil) (error () t)))
+
+(defun said-so (text)
+  "True when *Messages* has TEXT in it; with no text, what it holds."
+  (let ((all (tuatara.buffer:buffer-string (tuatara.buffer:find-buffer "*Messages*"))))
+    (if (zerop (length text)) all (search text all))))
+
+(defun list-found (&rest candidates)
+  "A turn that lists CANDIDATES as a search of files lists the lines it found."
+  (lambda () (tuatara.defaults::show-search-results candidates "kiwi")))
+
+(define-test (search-results edits-are-written-back)
+  (with-test-directory (dir)
+    (let ((a (put-file (merge-pathnames "a.txt" dir) (format nil "alpha kiwi one~%second~%kiwi two~%")))
+          (b (put-file (merge-pathnames "b.txt" dir) (format nil "  indented kiwi~%other~%"))))
+      (multiple-value-bind (f editor)
+          (run-keys (append (list (list-found (found-candidate (tuatara.io:native a) 1 "alpha kiwi one")
+                                              (found-candidate (tuatara.io:native a) 3 "kiwi two")
+                                              (found-candidate (tuatara.io:native b) 1 "  indented kiwi"))
+                                  "C-x C-q"
+                                  (change-found-line 0 "alpha fig one")
+                                  (change-found-line 2 "indented fig")
+                                  "C-c C-c")
+                            (results-wait (lambda () (and (results-done-p)
+                                                          (string= (file-text b) (format nil "  indented fig~%other~%"))
+                                                          (string= (file-text a) (format nil "alpha fig one~%second~%kiwi two~%"))))))
+                    :width 120 :height 10)
+        (declare (ignorable f editor))
+        (is string= (format nil "alpha fig one~%second~%kiwi two~%") (file-text a))
+        (is string= (format nil "  indented fig~%other~%") (file-text b))
+        (true (said-so "Wrote 2 lines in 2 files") "~a" (said-so ""))
+        ;; nothing waits to be written: the lines are read-only again
+        (false (tuatara.defaults::results-editing-p (session-buffer editor)))
+        (true (tuatara.buffer:buffer-local (session-buffer editor) :read-only))))))
+
+(define-test (search-results prefix-and-line-breaks-stay)
+  (with-test-directory (dir)
+    (let ((a (put-file (merge-pathnames "a.txt" dir) (format nil "alpha kiwi~%"))))
+      (multiple-value-bind (f editor)
+          (run-keys (list (list-found (found-candidate (tuatara.io:native a) 1 "alpha kiwi"))
+                          "C-x C-q"
+                          (lambda ()
+                            (let ((buffer (tuatara.command:current-buffer)))
+                              ;; the path and line number
+                              (true (refused-p (lambda () (tuatara.buffer:buffer-replace buffer 0 1 "x"))))
+                              (true (refused-p (lambda () (tuatara.buffer:buffer-insert buffer 0 "x"))))
+                              ;; a line broken or joined
+                              (let ((end (tuatara.buffer:buffer-line-end buffer 0)))
+                                (true (refused-p (lambda () (tuatara.buffer:buffer-insert buffer end (string #\Newline)))))
+                                (true (refused-p (lambda () (tuatara.buffer:buffer-delete buffer end (1+ end))))))
+                              ;; the text itself changes
+                              (tuatara.buffer:buffer-insert buffer (tuatara.buffer:buffer-line-end buffer 0) "!"))))
+                    :width 100)
+        (declare (ignorable f editor))
+        (true (search "alpha kiwi!" (results-lines-in editor)))
+        (is string= (format nil "alpha kiwi~%") (file-text a))))))
+
+(define-test (search-results stale-line-is-refused)
+  (with-test-directory (dir)
+    (let ((a (put-file (merge-pathnames "a.txt" dir) (format nil "alpha kiwi~%kiwi two~%"))))
+      (multiple-value-bind (f editor)
+          (run-keys (append (list (list-found (found-candidate (tuatara.io:native a) 1 "alpha kiwi")
+                                              (found-candidate (tuatara.io:native a) 2 "kiwi two"))
+                                  "C-x C-q"
+                                  (change-found-line 0 "alpha fig")
+                                  (change-found-line 1 "fig two")
+                                  ;; the file changes meanwhile: its first line is another
+                                  (lambda () (put-file a (format nil "something else~%kiwi two~%")))
+                                  "C-c C-c")
+                            (results-wait))
+                    :width 160 :height 10)
+        (declare (ignorable f editor))
+        (is string= (format nil "something else~%fig two~%") (file-text a))
+        (true (said-so "Wrote 1 line in 1 file; 1 not written") "~a" (said-so ""))
+        ;; the line not written stays changed here, still to be written or thrown away
+        (true (tuatara.defaults::results-editing-p (session-buffer editor)))
+        (true (search "alpha fig" (results-lines-in editor)))))))
+
+(define-test (search-results evidence-is-refused)
+  (with-case-folder (root evidence work)
+    (let ((kept (concatenate 'string evidence "a.txt"))
+          (loose (put-file (concatenate 'string work "w.txt") (format nil "kiwi~%"))))
+      (put-file kept (format nil "kiwi kept~%"))
+      (with-evidence-folders ((list (concatenate 'string root "cases/*/evidence/")))
+        (multiple-value-bind (f editor)
+            (run-keys (append (list (list-found (found-candidate kept 1 "kiwi kept") (found-candidate loose 1 "kiwi"))
+                                    "C-x C-q"
+                                    (change-found-line 0 "fig kept")
+                                    (change-found-line 1 "fig")
+                                    "C-c C-c")
+                              (results-wait (lambda () (and (results-done-p) (string= (file-text loose) (format nil "fig~%"))))))
+                      :width 160 :height 10)
+        (declare (ignorable f editor))
+          (is string= (format nil "kiwi kept~%") (file-text kept))
+          (is string= (format nil "fig~%") (file-text loose))
+          (true (said-so "Wrote 1 line in 1 file; 1 not written") "~a" (said-so ""))
+          ;; the evidence file was not even opened
+          (false (tuatara.io:buffer-for-file kept)))))))
+
+(define-test (search-results unwritable-file-is-refused)
+  (with-test-directory (dir)
+    (let ((a (put-file (merge-pathnames "a.txt" dir) (format nil "kiwi~%"))))
+      (sb-posix:chmod (namestring a) #o444)
+      (multiple-value-bind (f editor)
+          (run-keys (append (list (list-found (found-candidate (tuatara.io:native a) 1 "kiwi"))
+                                  "C-x C-q" (change-found-line 0 "fig") "C-c C-c")
+                            (results-wait))
+                    :width 160 :height 10)
+        (declare (ignorable f editor))
+        (is string= (format nil "kiwi~%") (file-text a))
+        (true (said-so "Wrote 0 lines in 0 files; 1 not written") "~a" (said-so ""))))))
+
+(define-test (search-results changes-can-be-thrown-away)
+  (with-test-directory (dir)
+    (let ((a (put-file (merge-pathnames "a.txt" dir) (format nil "kiwi~%"))))
+      (multiple-value-bind (f editor)
+          (run-keys (append (list (list-found (found-candidate (tuatara.io:native a) 1 "kiwi"))
+                                  "C-x C-q" (change-found-line 0 "fig") "C-c C-k")
+                            (results-wait))
+                    :width 100)
+        (declare (ignorable f editor))
+        (let ((buffer (session-buffer editor)))
+          (true (search "kiwi" (results-lines-in editor)))
+          (false (search "fig" (results-lines-in editor)))
+          (false (tuatara.defaults::results-editing-p buffer))
+          (true (tuatara.buffer:buffer-local buffer :read-only))
+          (false (tuatara.buffer:buffer-modified-p buffer)))
+        (is string= (format nil "kiwi~%") (file-text a))))))
+
+(define-test (search-results many-files-are-written-in-the-background)
+  (with-test-directory (dir)
+    (let* ((count 60)
+           (paths (loop for i below count
+                        collect (put-file (merge-pathnames (format nil "f~2,'0d.txt" i) dir) (format nil "kiwi ~d~%" i)))))
+      (multiple-value-bind (f editor)
+          (run-keys (append (list (lambda ()
+                                    (tuatara.defaults::show-search-results
+                                     (loop for path in paths for i from 0
+                                           collect (found-candidate (tuatara.io:native path) 1 (format nil "kiwi ~d" i)))
+                                     "kiwi"))
+                                  "C-x C-q")
+                            (loop for i below count collect (change-found-line i (format nil "fig ~d" i)))
+                            (list "C-c C-c")
+                            (results-wait (lambda () (and (results-done-p)
+                                                          (every (lambda (path i) (string= (file-text path) (format nil "fig ~d~%" i)))
+                                                                 paths (loop for i below count collect i))))))
+                    :width 120 :height 10)
+        (declare (ignorable f editor))
+        (true (said-so "Wrote 60 lines in 60 files") "~a" (said-so ""))
+        (loop for path in paths for i from 0
+              do (is string= (format nil "fig ~d~%" i) (file-text path)))
+        ;; none of the buffers made to change them is left
+        (false (some #'tuatara.io:buffer-for-file (mapcar #'tuatara.io:native paths)))))))
+
+(define-test (search-results open-buffer-is-changed-there)
+  (with-test-directory (dir)
+    (let ((a (put-file (merge-pathnames "a.txt" dir) (format nil "kiwi~%rest~%"))))
+      (dolist (save '(t nil))
+        (put-file a (format nil "kiwi~%rest~%"))
+        (let ((tuatara.defaults::*search-results-save-files* save)
+              (buffer (tuatara.io:visit-file (tuatara.io:native a))))
+          (unwind-protect
+               (progn
+                 (run-keys (append (list (list-found (found-candidate (tuatara.io:native a) 1 "kiwi"))
+                                         "C-x C-q" (change-found-line 0 "fig") "C-c C-c")
+                                   (results-wait (lambda () (and (results-done-p)
+                                                                 (or (not save) (string= (file-text a) (format nil "fig~%rest~%")))))))
+                           :width 100)
+                 (is string= (format nil "fig~%rest~%") (tuatara.buffer:buffer-string buffer))
+                 (is string= (if save (format nil "fig~%rest~%") (format nil "kiwi~%rest~%")) (file-text a))
+                 ;; the change is a step of the buffer's own undo
+                 (tuatara.buffer:buffer-undo buffer)
+                 (is string= (format nil "kiwi~%rest~%") (tuatara.buffer:buffer-string buffer)))
+            (tuatara.buffer:kill-buffer buffer)))))))
+
+(define-test (search-results listed-from-the-search-of-files)
+  (with-test-directory (dir)
+    (let ((a (put-file (merge-pathnames "a.txt" dir) (format nil "alpha kiwi~%other~%kiwi two~%"))))
+      (multiple-value-bind (f editor)
+          (run-keys (list (format nil "C-x C-f ~a RET M-s g k i w i" (key-string (tuatara.io:native a))) :wait "C-c C-l")
+                    :width 100 :height 12)
+        (declare (ignorable f editor))
+        (let ((buffer (session-buffer editor)))
+          (true (uiop:string-prefix-p "*Found: kiwi" (tuatara.buffer:buffer-name buffer)))
+          (is = 2 (length (tuatara.buffer:buffer-local buffer 'tuatara.defaults::list-entries)))
+          (true (search "a.txt:1: alpha kiwi" (session-text editor)))
+          (true (search "a.txt:3: kiwi two" (session-text editor)))
+          (is string= (format nil "alpha kiwi~%other~%kiwi two~%") (file-text a)))))))

@@ -382,15 +382,18 @@ its car turns true."
 
 (defun line-candidates (corpus lines &optional (inside ""))
   "Completion candidates for LINES of CORPUS (CORPUS-LINES): path:line: text,
-each standing for (PATH LINE OFFSET); with INSIDE, a directory's path from
+each standing for (PATH LINE OFFSET TEXT), TEXT the line as listed, NIL for one cut
+short (\\[search-files-list] edits the others); with INSIDE, a directory's path from
 the corpus's root, only those of files in it, their paths from it."
   (loop for (index line offset text) in lines
         for path = (aref (file-corpus-paths corpus) index)
         when (uiop:string-prefix-p inside path)
-          collect (let ((shown (string-left-trim '(#\Space #\Tab) text)))
+          collect (let* ((shown (string-left-trim '(#\Space #\Tab) text))
+                         (long (> (length shown) 200)))
                     (make-candidate (format nil "~a:~d: ~a" (subseq path (length inside)) line
-                                            (if (> (length shown) 200) (subseq shown 0 200) shown))
-                                    :value (list (concatenate 'string (file-corpus-root corpus) path) line offset)))))
+                                            (if long (subseq shown 0 200) shown))
+                                    :value (list (concatenate 'string (file-corpus-root corpus) path) line offset
+                                                 (and (not long) shown))))))
 
 (defparameter *search-files-piece* (* 4 1024 1024)
   "About how many octets of text each piece of the files read for a search
@@ -568,11 +571,31 @@ or before it (-1), at that line, as choosing it in the search does."
   (let* ((lines (found-lines-lines places))
          (next (+ (found-lines-index places) direction)))
     (if (< -1 next (length lines))
-        (destructuring-bind (path line offset) (svref lines next)
+        (destructuring-bind (path line offset &optional text) (svref lines next)
+          (declare (ignore text))
           (setf (found-lines-index places) next)
           (show-file-line path line :offset offset)
           (message "Line ~:d of ~:d found" (1+ next) (length lines)))
         (say-places-end places direction))))
+
+(defvar *list-found-lines* nil
+  "While \\[search-in-files] asks: a function of no arguments that ends its question
+and has the lines found listed in a buffer of their own, for \\[search-files-list].")
+
+(defvar *search-files-keymap* (make-keymap :name "search-files" :parent *pattern-keymap*)
+  "The keys of the question \\[search-in-files] asks: those of *PATTERN-KEYMAP*, and
+\\<search-files>\\[search-files-list].")
+
+(define-command search-files-list ()
+  "While searching files (\\[search-in-files]): list the lines found so far in a
+buffer of their own, one each as path:line: text, to go through with
+\\<search-results-mode>\\[list-visit] or to change at once, with \\[search-results-edit], and write
+back into their files."
+  (if *list-found-lines*
+      (funcall *list-found-lines*)
+      (message "Lines found are listed while searching files")))
+
+(define-keys *search-files-keymap* '(("C-c C-l" search-files-list)))
 
 (defun search-files-as-read (root prompt &key (left-out-words "Searching the first ~:d files only") preview)
   "Ask with PROMPT for words to find in the files under ROOT, read in the
@@ -610,6 +633,8 @@ opened safely (CALL-WITH-WINDOW-PREVIEW)."
            (left-out nil)
            ;; the search of the input typed last, and the lines it found
            (searching nil) (searched-input nil) (found '())
+           ;; true once the lines found are to be listed in a buffer, not one of them visited
+           (listing nil)
            ;; whether what is typed is a regular expression's words, else literal text;
            ;; TOGGLED once it is switched, till the lines are worked out again
            (regex t) (toggled nil)
@@ -704,10 +729,15 @@ opened safely (CALL-WITH-WINDOW-PREVIEW)."
                           (start-search input))
                         found))))
         (unwind-protect
-             (let ((chosen (let ((*toggle-pattern-kind* (lambda () (setf regex (not regex) toggled t))))
+             (let ((chosen (let ((*toggle-pattern-kind* (lambda () (setf regex (not regex) toggled t)))
+                                 (*list-found-lines* (lambda ()
+                                                       (if found
+                                                           (progn (setf listing t) (finish-minibuffer))
+                                                           (message "No lines found yet")))))
                              (call-with-window-preview
                             (lambda (candidate made)
-                              (destructuring-bind (path line offset) (candidate-value candidate)
+                              (destructuring-bind (path line offset &optional text) (candidate-value candidate)
+                                (declare (ignore text))
                                 (let ((buffer (preview-file-buffer path made)))
                                   (when buffer
                                     (values buffer (+ (tuatara.buffer:buffer-goto-line buffer (1- line)) offset))))))
@@ -717,13 +747,16 @@ opened safely (CALL-WITH-WINDOW-PREVIEW)."
                                                                  (problem (editor-minibuffer-text *editor*))))
                                                #'lines
                                                :separator (code-char 0) :filter nil :require-match t
-                                               :source #'take :keymap *pattern-keymap*
+                                               :source #'take :keymap *search-files-keymap*
                                                :preview (and preview show)))))))
+               (when listing
+                 (show-search-results found (or (first searched-input) "")))
                (when (consp chosen)
                  ;; the lines found, for M-g n and M-g p to go on from the one chosen
                  (let ((lines (map 'vector #'candidate-value found)))
                    (use-places (make-found-lines lines (or (position chosen lines :test #'eq) 0) (or (first searched-input) ""))))
-                 (destructuring-bind (path line offset) chosen
+                 (destructuring-bind (path line offset &optional text) chosen
+                   (declare (ignore text))
                    (show-file-line path line :offset offset))))
           (when reading (stop-gathering reading))
           (when searching (stop-gathering searching)))))))
@@ -754,9 +787,11 @@ is typed found as it stands, spaces and all, and back.
 \\<minibuffer>\\[minibuffer-done] visits the file at that line (the first, once all are
 read, unless you moved to one), and then \\[next-place] and \\[previous-place] go to the
 lines listed after it and before it; with *preview-file-search*, the file of the line
-selected is shown meanwhile, at that line, opened safely. Hidden files and
-directories, backups, binary files and what .gitignore files exclude are left
-out; the access times of those read are not changed."
+selected is shown meanwhile, at that line, opened safely. \\<search-files>\\[search-files-list] lists
+the lines found in a buffer instead, to change them and write them back into
+their files. Hidden files and directories, backups, binary files and what
+.gitignore files exclude are left out; the access times of those read are not
+changed."
   (let* ((here (buffer-directory (current-buffer)))
          (root (if (prefix-argument)
                    (read-directory-path "Search files in: " :initial (abbreviated-path here))

@@ -69,6 +69,7 @@ says how it was read."
     (:search . ,*search-keymap*)
     (:pattern . ,*pattern-keymap*)
     (:pattern-answer . ,*pattern-answer-keymap*)
+    (:search-files . ,*search-files-keymap*)
     (:path-question . ,*path-question-keymap*)
     (:popup . ,*popup-keymap*)
     ,@(when *editor* `((:minibuffer . ,(editor-minibuffer-keymap *editor*))))))
