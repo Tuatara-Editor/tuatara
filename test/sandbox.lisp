@@ -543,3 +543,16 @@ cat ~a/l.txt; echo; echo new > ~a/n.txt && cat ~a/n.txt; cat ~a/h.txt 2>/dev/nul
     (false output)
     (false exit)
     (true too-much)))
+
+(define-test (sandbox limits-set-by-every-shell)
+  ;; the limits are set by the system's /bin/sh, which on Debian and Ubuntu is dash: its ulimit names
+  ;; the process limit -p, not -u. Run here by bash made to answer as dash does, the limits are set
+  ;; all the same and the program run
+  (let* ((arguments (tuatara.io::sandbox-arguments "/bin/bash" '("-c" "ulimit -u; ulimit -t") 7 nil :file-limit nil :processes 77))
+         (shell (member "/bin/sh" arguments :test #'equal))
+         (as-dash "ulimit() { case \"$1\" in -u) echo \"ulimit: Illegal option -u\" >&2; return 2;; -p) shift; builtin ulimit -u \"$@\";; *) builtin ulimit \"$@\";; esac; }; "))
+    (true shell)
+    (is equal "-c" (second shell))
+    (is equal (format nil "77~%7~%")
+        (uiop:run-program (list* "bash" "-c" (concatenate 'string as-dash (third shell)) (nthcdr 3 shell))
+                          :output :string :ignore-error-status t))))

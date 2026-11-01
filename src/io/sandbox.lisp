@@ -740,7 +740,7 @@ DESCRIPTORS, when given, is the most files it may have open at once."
           (and seccomp (list "--seccomp" (princ-to-string seccomp)))
           (list "--chdir" directory
                 "--" "/bin/sh" "-c"
-                "ulimit -c 0 && ulimit -v \"$1\" && ulimit -t \"$2\" && ulimit -f \"$3\" && ulimit -u \"$4\" && { [ \"$5\" = as-is ] || ulimit -n \"$5\"; } && shift 5 && exec \"$@\""
+                "ulimit -c 0 && ulimit -v \"$1\" && ulimit -t \"$2\" && ulimit -f \"$3\" && { ulimit -u \"$4\" 2>/dev/null || ulimit -p \"$4\"; } && { [ \"$5\" = as-is ] || ulimit -n \"$5\"; } && shift 5 && exec \"$@\""
                 "sh"
                 (if memory (princ-to-string (ceiling memory 1024)) "unlimited")
                 (if seconds (princ-to-string (max 1 (ceiling seconds))) "unlimited")
