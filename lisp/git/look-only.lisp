@@ -339,40 +339,16 @@ long as the session runs: (FOLDER . FD), made the first time one is wanted.")
 
 (defun git-shadows-directory ()
   "Where this session's shadows are made: a folder of its own in git-shadow/
-in the private cache, its file owner.lock naming this machine and held
-locked while the session runs, so that no other session, whatever process
-numbers it sees, takes it for one left behind."
+in the private cache (MAKE-OWNED-FOLDER), made the first time one is wanted."
   (sb-thread:with-mutex (*git-shadows-folder-lock*)
     (car (or *git-shadows-folder*
-             (let* ((folder (new-private-folder (private-cache-directory "git-shadow/")))
-                    (lock (tuatara.io:path-join folder "owner.lock"))
-                    (fd (progn (tuatara.io:write-private-file lock (machine-instance))
-                               (sb-posix:open lock sb-posix:o-rdwr))))
-               (tuatara.runtime:lock-fd fd)
-               (setf *git-shadows-folder* (cons folder fd)))))))
+             (setf *git-shadows-folder* (multiple-value-call #'cons (make-owned-folder "git-shadow/")))))))
 
 (defun forget-old-git-shadows ()
   "Delete the shadows of sessions on this machine no longer running, as one
-that ended without deleting its own (a crash) leaves them: each folder whose
-owner.lock names this machine and no session holds; and one with no
-owner.lock, made more than an hour ago. Another machine's, sharing the
-folder, are its own to judge."
-  (let ((all (private-cache-directory "git-shadow/"))
-        (own (car *git-shadows-folder*))
-        (hour-ago (- (get-universal-time) 3600)))
-    (dolist (entry (ignore-errors (tuatara.io:directory-entries all)))
-      (let* ((folder (tuatara.io:slash-ended (tuatara.io:path-join all (first entry))))
-             (lock (tuatara.io:path-join folder "owner.lock")))
-        (unless (equal folder own)
-          (if (eq (tuatara.io:path-kind lock :follow nil) :regular)
-              (let ((host (ignore-errors (tuatara.text:lenient-string (tuatara.io:file-octets lock :limit 1024))))
-                    (fd (ignore-errors (sb-posix:open lock sb-posix:o-rdwr))))
-                (when (and fd (equal host (machine-instance)) (tuatara.runtime:lock-fd fd))
-                  (ignore-errors (tuatara.io:delete-tree folder)))
-                (when fd (sb-posix:close fd)))
-              (let ((stamp (ignore-errors (tuatara.io:path-stamp folder :follow nil))))
-                (when (and stamp (< (mtime-universal-time (tuatara.io:stamp-mtime stamp)) hour-ago))
-                  (ignore-errors (tuatara.io:delete-tree folder))))))))))
+that ended without deleting its own (a crash) leaves them
+\(FORGET-ABANDONED-FOLDERS)."
+  (forget-abandoned-folders "git-shadow/" (car *git-shadows-folder*)))
 
 (defun git-file-row (path)
   "What a shadow knows of the file or folder at PATH, a link not followed:

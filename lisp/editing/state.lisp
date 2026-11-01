@@ -524,8 +524,9 @@ once in the echo area and the debug log. True when there were any."
 
 (defvar *bare-state-folder* nil
   "The folder of the state of an editor started without its init file
-\(START-BARE), deleted once the lists kept between sessions have been written
-as it stops; NIL for the usual state folder.")
+\(START-BARE) and the descriptor of the lock it holds on it, as (FOLDER . FD),
+deleted once the lists kept between sessions have been written as it stops;
+NIL for the usual state folder.")
 
 (sb-ext:defglobal **state-writer** nil
   "The thread writing the lists kept between sessions, while it runs.")
@@ -573,9 +574,10 @@ ended; as an editor started bare writes none, it is always gone."
                     (tuatara.runtime:join-within thread))))
     (when *bare-state-folder*
       (if ended
-          (progn (ignore-errors (tuatara.io:delete-tree *bare-state-folder*))
+          (progn (ignore-errors (tuatara.io:delete-tree (car *bare-state-folder*)))
+                 (ignore-errors (sb-posix:close (cdr *bare-state-folder*)))
                  (setf *bare-state-folder* nil))
-          (tuatara.runtime:debug-report :file "the state writer is still running: ~a is left" *bare-state-folder*)))))
+          (tuatara.runtime:debug-report :file "the state writer is still running: ~a is left" (car *bare-state-folder*))))))
 
 (defun install-state-lists ()
   "Write what is left of the lists kept between sessions as the editor stops,

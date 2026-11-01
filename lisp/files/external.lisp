@@ -225,6 +225,42 @@ do."
       (setf (gethash place *private-folders-held*) t))
     place))
 
+(defun make-owned-folder (name)
+  "A new folder of its own in NAME (ending in /, in the cache directory), its
+file owner.lock naming this machine and locked from now on while the session
+runs, so that no other session, whatever process numbers it sees, takes it
+for one left behind (FORGET-ABANDONED-FOLDERS). Returns the folder, a native
+name ending in /, and the descriptor of the lock, to close when the folder is
+deleted."
+  (let* ((folder (new-private-folder (private-cache-directory name)))
+         (lock (tuatara.io:path-join folder "owner.lock"))
+         (fd (progn (tuatara.io:write-private-file lock (machine-instance))
+                    (sb-posix:open lock sb-posix:o-rdwr))))
+    (tuatara.runtime:lock-fd fd)
+    (values folder fd)))
+
+(defun forget-abandoned-folders (name &optional own)
+  "Delete the folders in NAME (in the cache directory) that sessions on this
+machine no longer running made with MAKE-OWNED-FOLDER and left (they crashed):
+each whose owner.lock names this machine and no session holds; and one with no
+owner.lock, made more than an hour ago. OWN, a folder of this session, stays.
+Another machine's, sharing the folder, are its own to judge."
+  (let ((all (private-cache-directory name))
+        (hour-ago (- (get-universal-time) 3600)))
+    (dolist (entry (ignore-errors (tuatara.io:directory-entries all)))
+      (let* ((folder (tuatara.io:slash-ended (tuatara.io:path-join all (first entry))))
+             (lock (tuatara.io:path-join folder "owner.lock")))
+        (unless (equal folder own)
+          (if (eq (tuatara.io:path-kind lock :follow nil) :regular)
+              (let ((host (ignore-errors (tuatara.text:lenient-string (tuatara.io:file-octets lock :limit 1024))))
+                    (fd (ignore-errors (sb-posix:open lock sb-posix:o-rdwr))))
+                (when (and fd (equal host (machine-instance)) (tuatara.runtime:lock-fd fd))
+                  (ignore-errors (tuatara.io:delete-tree folder)))
+                (when fd (sb-posix:close fd)))
+              (let ((stamp (ignore-errors (tuatara.io:path-stamp folder :follow nil))))
+                (when (and stamp (< (mtime-universal-time (tuatara.io:stamp-mtime stamp)) hour-ago))
+                  (ignore-errors (tuatara.io:delete-tree folder))))))))))
+
 (defun delete-private-folder (folder)
   "Delete FOLDER, a private folder NEW-PRIVATE-FOLDER made, and all in it; it
 is held no longer."

@@ -182,11 +182,20 @@ a launcher rather than a shell. INPUT and OUTPUT say whether its input and
 its output are a terminal, DESKTOP whether there is a desktop to show a window on."
   (and (not input) (not output) desktop t))
 
+(defun keyboard-available-p (&key (input-terminal (terminal-p 0)) (tty "/dev/tty"))
+  "True when Tuatara can read keys in a terminal: its input is one
+\(INPUT-TERMINAL), or the terminal it was started in can be opened (TTY, the
+file that is it)."
+  (or input-terminal
+      (let ((fd (ignore-errors (sb-posix:open tty sb-posix:o-rdwr))))
+        (when fd (sb-posix:close fd) t))))
+
 (defun read-keys-from-terminal ()
-  "When Tuatara's input is not a terminal but its output is, as in
+  "When Tuatara's input is not a terminal, as in
 `find . -name \"*.org\" | xargs tuatara', read the keys from the terminal it
-was started in (/dev/tty) instead; what came in on the input is not read."
-  (when (and (not (terminal-p 0)) (terminal-p 1))
+was started in (/dev/tty) instead; what came in on the input is not read as
+keys. KEYBOARD-AVAILABLE-P says first whether there is such a terminal."
+  (unless (terminal-p 0)
     (let ((fd (ignore-errors (sb-posix:open "/dev/tty" sb-posix:o-rdwr))))
       (when fd
         (sb-posix:dup2 fd 0)
@@ -274,10 +283,17 @@ or -- before the files. After --, every argument is a file's name."
             (list :error files)
             (list* :files files options))))))
 
+(defun place-like-p (argument)
+  "True when ARGUMENT looks like a place asked for: a + and then only digits
+and colons, as +120, +120:8, +5: or +:3."
+  (and (> (length argument) 1) (char= (char argument 0) #\+)
+       (every (lambda (c) (or (digit-char-p c) (char= c #\:))) (subseq argument 1))))
+
 (defun place-argument (argument)
   "The line and the column (NIL when none) a command-line argument such as
-+120 or +120:8 asks for, as two values; NIL when ARGUMENT is not one."
-  (when (and (> (length argument) 1) (char= (char argument 0) #\+))
++120 or +120:8 asks for, as two values; NIL when ARGUMENT is not that, of
+numbers of up to nine digits."
+  (when (place-like-p argument)
     (let* ((colon (position #\: argument))
            (line (subseq argument 1 colon))
            (column (and colon (subseq argument (1+ colon)))))
@@ -294,7 +310,11 @@ DIRECTORY."
   (let ((line nil) (column nil) (files '()))
     (dolist (argument arguments)
       (multiple-value-bind (asked-line asked-column) (and (stringp argument) (place-argument argument))
-        (cond ((consp argument)
+        (cond ((and (stringp argument) (place-like-p argument) (null asked-line))
+               (return-from read-places
+                 (format nil "~a is not +LINE or +LINE:COLUMN, numbers of up to nine digits: write ./~a for a file, or -- before the files"
+                         argument argument)))
+              ((consp argument)
                (push (if line (list (second argument) line column) (second argument)) files)
                (setf line nil column nil))
               ((and (or asked-line (string= argument "-"))
@@ -304,6 +324,8 @@ DIRECTORY."
               ((string= argument "-")
                (when line
                  (return-from read-places (format nil "+~d needs a file, not standard input" line)))
+               (when (find '(:standard-input) files :test #'equal)
+                 (return-from read-places "- is given twice: standard input is read once"))
                (push (list :standard-input) files))
               (asked-line
                (when line
@@ -325,6 +347,11 @@ the error output. The exit code: 0 when written, 1 when not."
             (why (format *error-output* "tuatara: no init file written at ~a: ~a~%" path why) 1)
             (t (format *error-output* "tuatara: ~a is there already; move it away to write a new one~%" path) 1)))))
 
+(defun shown (text)
+  "TEXT, a name or a sentence with names in it, with its control characters
+written out, to be put on the terminal."
+  (values (tuatara.command::escape-controls text)))
+
 (defun named-here (name)
   "The file NAME as the system names it, from where Tuatara was started."
   (tuatara.io:native (tuatara.io:expand-path name :directory (uiop:getcwd))))
@@ -332,6 +359,9 @@ the error output. The exit code: 0 when written, 1 when not."
 (defun missing-file (names)
   "The first of NAMES, files, that is not there, or NIL."
   (find-if-not (lambda (name) (ignore-errors (tuatara.io:path-kind (named-here name)))) names))
+
+(defconstant +f-dupfd-cloexec+ 1030
+  "fcntl's request for a copy of a descriptor that no program started from here inherits.")
 
 (defun startup-from (options &key (input 0))
   "What the editor is started with for OPTIONS (READ-OPTIONS), as two values:
@@ -349,7 +379,7 @@ START-FUNCTION for the rest. With -Q the editor is set to start bare first
          (places '())
          (files (loop for file in (if merge (list (fourth merge)) (getf options :files))
                       collect (cond ((stringp file) (startup-file (named-here file) safe hex))
-                                    ((eq (first file) :standard-input) (list :standard-input (sb-posix:dup input)))
+                                    ((eq (first file) :standard-input) (list :standard-input (sb-posix:fcntl input +f-dupfd-cloexec+ 3)))
                                     (t (let ((path (named-here (first file))))
                                          (push (list path (second file) (third file)) places)
                                          (startup-file path safe hex)))))))
@@ -392,7 +422,7 @@ what the session left (*EXIT-CODE*); 2 for options it cannot take."
          ;; named from where Tuatara was started, as the files are
          (config-path (and config (tuatara.io:expand-path config :directory (uiop:getcwd)))))
     (cond ((getf options :error)
-           (format *error-output* "tuatara: ~a~%~a" (getf options :error) *usage*)
+           (format *error-output* "tuatara: ~a~%~a" (shown (getf options :error)) *usage*)
            2)
           ((getf options :version)
            (format t "~a~%" (tuatara:version-line))
@@ -403,17 +433,20 @@ what the session left (*EXIT-CODE*); 2 for options it cannot take."
           ((getf options :generate-config)
            (generate-config))
           ((missing-file (getf options :diff))
-           (format *error-output* "tuatara: ~a is not there: nothing to compare~%" (missing-file (getf options :diff)))
+           (format *error-output* "tuatara: ~a is not there: nothing to compare~%" (shown (missing-file (getf options :diff))))
            2)
           ((and (find '(:standard-input) (getf options :files) :test #'equal) (terminal-p 0))
            (format *error-output* "tuatara: - reads standard input, which is the terminal here: pipe something in~%")
            2)
           ((missing-file (let ((merge (getf options :merge))) (and merge (list (first merge) (third merge)))))
            (format *error-output* "tuatara: ~a is not there: nothing to merge~%"
-                   (missing-file (list (first (getf options :merge)) (third (getf options :merge)))))
+                   (shown (missing-file (list (first (getf options :merge)) (third (getf options :merge))))))
            2)
           ((and config (not (eq (ignore-errors (tuatara.io:path-kind config-path)) :regular)))
-           (format *error-output* "tuatara: no init file at ~a (tuatara --generate-config writes one to start from)~%" config)
+           (format *error-output* "tuatara: no init file at ~a (tuatara --generate-config writes one to start from)~%" (shown config))
+           2)
+          ((and (not (or (getf options :gui) (window-wanted-p))) (not (keyboard-available-p)))
+           (format *error-output* "tuatara: its input is not a terminal and there is none to read keys from (/dev/tty): run it in a terminal, or with --gui~%")
            2)
           (t
            (tuatara.defaults::set-collection-policy)

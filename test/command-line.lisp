@@ -408,6 +408,18 @@ frontend, the editor, and the options read."
               (true (tuatara.io:safe-visit-p (shown-buffer editor)))))
           (is string= (format nil "* kept as found~%") (file-text ev)))))))
 
+(define-test (command-line keys-need-a-terminal)
+  (true (tuatara.terminal::keyboard-available-p :input-terminal t :tty "/nonexistent/tty"))
+  (false (tuatara.terminal::keyboard-available-p :input-terminal nil :tty "/nonexistent/tty"))
+  (true (tuatara.terminal::keyboard-available-p :input-terminal nil :tty "/dev/null"))
+  ;; started with input that is no terminal and no terminal to read keys from: refused, plainly
+  (unless (or (tuatara.terminal::terminal-p 0) (tuatara.terminal::keyboard-available-p))
+    (with-test-directory (dir)
+      (let ((a (namestring (put-file (merge-pathnames "a.txt" dir) "x"))) (said (make-string-output-stream)))
+        (let ((*error-output* said))
+          (is = 2 (tuatara.terminal:main (list a))))
+        (true (search "there is none to read keys from" (get-output-stream-string said)))))))
+
 (define-test (command-line standard-input-large-and-once)
   ;; more than is read into memory: read to a file with no name and mapped, not held in the heap
   (with-test-directory (dir)
@@ -431,6 +443,55 @@ frontend, the editor, and the options read."
         (sb-thread:join-thread feeder)
         (ignore-errors (sb-posix:close reader))
         (ignore-errors (tuatara.buffer:kill-buffer (tuatara.buffer:find-buffer "*stdin*")))))))
+
+(define-test (command-line standard-input-once-and-private)
+  ;; one -, no more; and the copy of the descriptor is not passed on to programs started
+  (with-test-directory (dir)
+    (is string= "- is given twice: standard input is read once"
+        (getf (tuatara.terminal::read-options (list "-" "-") :directory (namestring dir)) :error))
+    (multiple-value-bind (reader writer) (sb-posix:pipe)
+      (let* ((options (tuatara.terminal::read-options (list "-") :directory (namestring dir)))
+             (files (tuatara.terminal::startup-from options :input reader))
+             (fd (second (first files))))
+        (true (logtest 1 (sb-posix:fcntl fd 1 0)) "close-on-exec")
+        (sb-posix:close fd) (sb-posix:close reader) (sb-posix:close writer)))))
+
+(define-test (command-line places-written-wrongly)
+  (with-test-directory (dir)
+    (let ((a (namestring (put-file (merge-pathnames "a.txt" dir) "x"))))
+      (dolist (bad '("+12345678901" "+5:" "+:3" "+5:6:7" "+1234567890"))
+        (true (search "is not +LINE or +LINE:COLUMN" (getf (tuatara.terminal::read-options (list bad a) :directory (namestring dir)) :error))
+              "~a refused" bad))
+      (false (getf (tuatara.terminal::read-options (list "+123456789:123456789" a) :directory (namestring dir)) :error))
+      ;; names in a message have their control characters written out
+      (let ((said (make-string-output-stream)))
+        (let ((*error-output* said))
+          (is = 2 (tuatara.terminal:main (list "--diff" (format nil "x~ay" #\Newline) a))))
+        (let ((text (get-output-stream-string said)))
+          (true (search "x^Jy is not there" text)))))))
+
+(define-test (command-line old-bare-folders-swept)
+  ;; judged by the lock a session holds on its folder and the machine named in it, as the git shadows are
+  (with-test-directory (dir)
+    (multiple-value-bind (dead dead-lock) (tuatara.defaults::make-owned-folder "bare-state/")
+      (multiple-value-bind (live live-lock) (tuatara.defaults::make-owned-folder "bare-state/")
+        (multiple-value-bind (elsewhere elsewhere-lock) (tuatara.defaults::make-owned-folder "bare-state/")
+          (let ((was-config tuatara.defaults::*config-file*) (was-state tuatara-user:*state-directory*))
+            (unwind-protect
+                 (progn
+                   ;; one of a session that ended (its lock let go), one of another machine
+                   (sb-posix:close dead-lock)
+                   (sb-posix:close elsewhere-lock)
+                   (put-file (concatenate 'string elsewhere "owner.lock") "another-machine.example")
+                   (unwind-protect (session-from-arguments (list "-Q") :directory dir)
+                     (setf tuatara.defaults::*config-file* was-config
+                           tuatara-user:*state-directory* was-state))
+                   (false (probe-file dead) "a folder of a session that ended is swept")
+                   (true (probe-file live) "one a session holds locked stays, whatever process numbers it sees")
+                   (true (probe-file elsewhere) "another machine's stays"))
+              (sb-posix:close live-lock)
+              (dolist (folder (list dead live elsewhere))
+                (ignore-errors (tuatara.io:delete-tree folder))))))))))
 
 (define-test (command-line options-on-the-stable-surface)
   ;; the options the program takes are pinned, +LINE among them
