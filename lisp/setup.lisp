@@ -252,6 +252,7 @@ so that \\`C-c' shows, and runs, what the buffer at hand can do in every mode
     (install-char-help)
     (install-debug editor)
     (install-notifications)
+    (install-man)
     (install-outline)
     (install-buffers)
     (install-rimu editor)
