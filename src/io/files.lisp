@@ -647,6 +647,15 @@ own files)."
     (when (logtest flags +o-noatime+)
       (sb-posix:fcntl fd sb-posix:f-setfl (logandc2 flags +o-noatime+)))))
 
+(defun decision-on-file (decide fd path stamp)
+  "What DECIDE, a function of where the open file FD really is and its STAMP, answers; a check that
+fails is answered by a phrase saying so, so that the file opens safely, and is told in the debug log."
+  (handler-case (funcall decide (or (fd-real-path fd) path) stamp)
+    (error (condition)
+      (tuatara.runtime:debug-report :file "whether ~a opens safely could not be told, so it does: ~a"
+                                    (native path) (tuatara.runtime:condition-words condition))
+      (format nil "the check whether it opens safely failed (~a)" (tuatara.runtime:condition-words condition)))))
+
 (defun open-file-text (path &key safe decide)
   "The text of the file at PATH, as six values: a rope, the mapping it reads
 (or NIL), the file's STAMP, how the text is kept from other programs' changes
@@ -658,19 +667,19 @@ file's header for which file gets which.
 SAFE keeps the file system the file is on exactly as it was: no clone and
 no copy is made beside the file (copies go to the cache directory), and its
 access time is left alone where the system allows. DECIDE, a function of
-a path, is asked, unless SAFE, with where the file opened really is (links
-followed, as the descriptor says), and a phrase it answers makes the file
+a path and a stamp, is asked, unless SAFE, with where the file opened really is
+(links followed, as the descriptor says) and its stamp, and a phrase it answers makes the file
 opened SAFE, its access time never changed: a seventh value, that phrase or
 NIL. What is opened is what is decided on, however a link is changed meanwhile."
   (let ((fd (open-for-reading path t :accept '(:regular) :wanted "a file of text"))
         (keep-fd nil) (why nil))
     (unwind-protect
          (multiple-value-call (lambda (&rest values) (values-list (append values (list why))))
-          (progn
-           (setf why (and decide (not safe) (ignore-errors (funcall decide (or (fd-real-path fd) path)))))
-           (let ((safe (or safe (and why t))))
-            (unless safe (clear-noatime fd))
-            (let ((stamp (fd-stamp fd path)))
+          (let* ((stamp (fd-stamp fd path))
+                 (why (setf why (and decide (not safe) (decision-on-file decide fd path stamp))))
+                 (safe (or safe (and why t))))
+            ;; a file with another name may be evidence under it: its access time is never given back
+            (unless (or safe (> (stamp-nlink stamp) 1)) (clear-noatime fd))
            (let ((class (file-system-class (fd-file-system fd)))
                  (size (stamp-size stamp)))
              (if (or (eq class :pseudo) (<= size *memory-read-limit*))
@@ -711,7 +720,7 @@ NIL. What is opened is what is decided on, however a link is changed meanwhile."
                                                      (start-snapshot mapping fd path stamp
                                                                      (if safe (cache-directory) (snapshot-directory path class :room size)))))))
                                  (values (rope-over mapping) mapping stamp (if snapshot :pending :direct)
-                                         snapshot class))))))))))))))
+                                         snapshot class))))))))))))
       (unless keep-fd (sb-posix:close fd)))))
 
 (defvar *visit-safely-function* nil

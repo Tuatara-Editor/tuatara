@@ -864,13 +864,54 @@ cases/2026-0001/work/ (WORK), each bound to its native name ending in /."
   (with-test-directory (dir)
     (let ((file (put-file (merge-pathnames "p.txt" dir) "x"))
           (calls 0)
-          (old tuatara-user:*safe-directories*))
+          (old tuatara-user:*safe-directories*)
+          (functions '(tuatara.io:real-path-so-far tuatara.io:real-path tuatara.io:resolve-links)))
       (setf tuatara-user:*safe-directories* '())
-      (sb-int:encapsulate 'tuatara.io:real-path-so-far 'counting
-                          (lambda (f &rest arguments) (incf calls) (apply #'funcall f arguments)))
+      (dolist (function functions)
+        (sb-int:encapsulate function 'counting (lambda (f &rest arguments) (incf calls) (apply f arguments))))
       (unwind-protect
            (with-evidence-folders ('())
              (false (tuatara.defaults::visit-safely-reason (tuatara.io:native file)))
              (is = 0 calls))
-        (sb-int:unencapsulate 'tuatara.io:real-path-so-far 'counting)
+        (dolist (function functions) (sb-int:unencapsulate function 'counting))
         (setf tuatara-user:*safe-directories* old)))))
+
+(define-test (evidence hard-link-to-evidence)
+  ;; another name outside the folder of an evidence file is evidence: opened safely, access time kept;
+  ;; an ordinary file with two names is opened as usual once the evidence folders are gone through
+  (with-case-folder (root evidence work)
+    (let* ((a (concatenate 'string evidence "a.txt"))
+           (hard (concatenate 'string work "hard.txt"))
+           (plain (put-file (concatenate 'string work "plain.txt") "plain"))
+           (twin (concatenate 'string work "twin.txt")))
+      (sb-posix:link a hard)
+      (sb-posix:link (tuatara.io:native plain) twin)
+      (sb-posix:utimes a 1000 (- (get-universal-time) 100000))
+      (with-evidence-folders ((list (concatenate 'string root "cases/*/evidence/")))
+        (dolist (waited '(nil t))
+          (when waited
+            (loop repeat 1000
+                  until (let ((state (cdr tuatara.defaults::*evidence-inodes*))) (and (consp state) (car state)))
+                  do (sleep 1/100)))
+          (let ((buffer (tuatara.io:visit-file hard)))
+            (unwind-protect
+                 (progn (true (tuatara.io:safe-visit-p buffer) "waited ~s" waited)
+                        (is = 1000 (atime-of a)))
+              (tuatara.buffer:kill-buffer buffer))))
+        (let ((buffer (tuatara.io:visit-file twin)))
+          (unwind-protect (false (tuatara.io:safe-visit-p buffer))
+            (tuatara.buffer:kill-buffer buffer)))))))
+
+(define-test (evidence failed-check-opens-safely)
+  ;; when the check whether a file opens safely cannot be made, the file opens safely
+  (with-test-directory (dir)
+    (let ((file (put-file (merge-pathnames "p.txt" dir) "x")))
+      (sb-int:encapsulate 'tuatara.defaults::visit-safely-reason 'failing
+                          (lambda (f &rest arguments) (declare (ignore f arguments)) (error "no way to tell")))
+      (unwind-protect
+           (let ((buffer (tuatara.io:visit-file (tuatara.io:native file))))
+             (unwind-protect
+                  (progn (true (tuatara.io:safe-visit-p buffer))
+                         (true (search "no way to tell" (tuatara.io:safe-visit-reason buffer))))
+               (tuatara.buffer:kill-buffer buffer)))
+        (sb-int:unencapsulate 'tuatara.defaults::visit-safely-reason 'failing)))))

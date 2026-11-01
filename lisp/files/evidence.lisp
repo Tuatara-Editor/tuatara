@@ -778,6 +778,59 @@ told of its new one. NIL at once when the setting names no folder."
   (declare (ignore editor))
   (and (buffer-evidence buffer) (list " Evidence " :mode-line-evidence)))
 
+(defvar *evidence-inodes* (list nil)
+  "What is known of the files that have more than one name and are in evidence folders, for the rules in
+force: (RULES . STATE), STATE :LOOKING while a thread of its own goes through the folders, then
+\(COMPLETE . TABLE), TABLE holding (DEVICE . INODE) of each such file found, COMPLETE true when every folder
+of every entry was gone through.")
+
+(defvar *evidence-inodes-lock* (sb-thread:make-mutex :name "tuatara evidence inodes")
+  "Held while *EVIDENCE-INODES* is changed.")
+
+(defun look-for-evidence-inodes (rules)
+  "Go through the folders the entries of RULES make evidence and note the files with more than one name: a
+cons of whether every folder was gone through and a table of (DEVICE . INODE)."
+  (let ((table (make-hash-table :test 'equal)) (whole t))
+    (dolist (entry (evidence-rules-entries rules))
+      (if (null (entry-search-root entry))
+          (setf whole nil)
+          (multiple-value-bind (folders complete) (entry-folders-found entry)
+            (unless complete (setf whole nil))
+            (dolist (folder folders)
+              (unless (walk-directory (tuatara.io:slash-ended folder)
+                                      (lambda (directory relative there)
+                                        (declare (ignore directory relative))
+                                        (let ((stamp (and there (fifth there))))
+                                          (when (and stamp (> (tuatara.io:stamp-nlink stamp) 1))
+                                            (setf (gethash (cons (tuatara.io:stamp-dev stamp) (tuatara.io:stamp-ino stamp))
+                                                           table)
+                                                  t)))
+                                        t))
+                (setf whole nil))))))
+    (cons whole table)))
+
+(defun evidence-inode-p (stamp)
+  "True when the file with STAMP, which has more than one name, may be named in an evidence folder too: when
+it is one of those found there, and while they are still looked for or could not all be (the files found
+are those under the folders the entries make evidence, looked for by a thread of its own whenever the
+rules change, never on the editor's)."
+  (let ((rules (evidence-rules)))
+    (when (and rules (> (tuatara.io:stamp-nlink stamp) 1))
+      (let ((answer (sb-thread:with-mutex (*evidence-inodes-lock*)
+                      (unless (eq (car *evidence-inodes*) rules)
+                        (setf *evidence-inodes* (cons rules :looking))
+                        (let ((state *evidence-inodes*))
+                          (tuatara.runtime:make-guarded-thread
+                           (lambda ()
+                             (let ((found (look-for-evidence-inodes rules)))
+                               (sb-thread:with-mutex (*evidence-inodes-lock*)
+                                 (when (eq *evidence-inodes* state) (setf (cdr state) found)))))
+                           :name "tuatara evidence inodes")))
+                      (cdr *evidence-inodes*))))
+        (or (eq answer :looking)
+            (not (car answer))
+            (and (gethash (cons (tuatara.io:stamp-dev stamp) (tuatara.io:stamp-ino stamp)) (cdr answer)) t))))))
+
 (defun evidence-visit-reason (path)
   "Why the file at PATH opens safely when it is evidence, a phrase; NIL when it
 is not. A link counts when the file it leads to is evidence."

@@ -439,8 +439,8 @@ lines count as written once the save has ended."
                      (incf (write-back-job-files-written job))
                      (push (format nil "~a ~a" (abbreviated-path given) note) (write-back-job-left job))))
               (cond ((not *search-results-save-files*) (keep-open "is changed in its buffer, not saved"))
-                    (kept-modified (keep-open (concatenate 'string "has changes of yours not saved: the lines are changed"
-                                                           " in its buffer, left unsaved")))
+                    (kept-modified
+                     (keep-open "has changes of yours not saved: the lines are in its buffer, unsaved"))
                     (t (let ((record (list buffer (length lines) (not existing) nil)))
                          (push record (write-back-job-saving job))
                          (unless (let ((*save-wait* 0))

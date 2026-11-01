@@ -541,15 +541,17 @@ Where a link leads is looked for only when there are directories."
                      directories))))
     (error () t)))
 
-(defun visit-safely-reason (path)
+(defun visit-safely-reason (path &optional stamp)
   "Why the file at PATH opens safely although that was not asked for: it is
 evidence (*EVIDENCE-FOLDERS*), it is in one of *SAFE-DIRECTORIES*, or it looks
-binary while *OPEN-BINARY-FILES-SAFELY* is true, by its own name or by the
-file a link leads to; NIL for none. When
+binary while *OPEN-BINARY-FILES-SAFELY* is true, by its own name, by the
+file a link leads to, or, given its STAMP, by another name it has; NIL for none. When
 *SAFE-DIRECTORIES* cannot be read, every file opens safely, and the reason
 says so."
   (let ((directory (safe-directory-of path)))
     (cond ((evidence-visit-reason path))
+          ((and stamp (evidence-inode-p stamp))
+           "it has more than one name, and one may be in an evidence folder (*evidence-folders*)")
           ((eq directory t) "*safe-directories* could not be read")
           (directory (format nil "it is in ~a (*safe-directories*)" directory))
           ((and *open-binary-files-safely* (tuatara.io:binary-head-p (tuatara.io:file-head path)))
