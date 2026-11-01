@@ -184,7 +184,7 @@ background, is stopped and says so."
                    (let ((spent (tuatara.runtime:milliseconds-since began)))
                      (when (>= spent *slow-frame*)
                        (tuatara.runtime:debug-report :redisplay "a frame drawn in ~,1f ms" spent)))))
-               (let ((event (or (pop (editor-deferred editor)) (read-event editor :timeout wait :ticks t))))
+               (let ((event (or (pop (editor-deferred editor)) (read-event editor :timeout wait :ticks t :between-commands t))))
                  (when (and event (not (functionp event)))
                    (setf *last-input-time* (get-internal-real-time)))
                  ;; whatever escapes the command's own guards: said, never the end of the editor

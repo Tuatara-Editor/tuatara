@@ -219,3 +219,15 @@ of no arguments; returns the job."
     (fail (tuatara.command::remove-frame editor first))
     (is equal (list first) (tuatara.command::editor-frames editor))
     (false (tuatara.command::frame-deleted first))))
+
+(define-test (frames keys-wait-for-their-frame-while-a-question-takes-in-work)
+  ;; a question whose candidates come from the background (finding a file) reads keys as wakes
+  ;; come; a key typed in another frame meanwhile still waits for that frame, the question keeping
+  ;; its own frame and text
+  (with-frames (editor (first second)) '((1 "C-x b k i w i C-j i") (0 "C-x C-f") (1 "x") (0 "C-g"))
+    (is equal '("kiwi" "x") (frame-buffer-text second))
+    (is equal '("*scratch*" "") (frame-buffer-text first))
+    (false (tuatara.command::frame-minibuffer-active first))
+    (false (tuatara.command::frame-minibuffer-active second))
+    ;; the key waiting in the second frame ran last, there
+    (is eq second (tuatara.command::editor-frame editor))))

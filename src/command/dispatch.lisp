@@ -219,17 +219,18 @@ in, which has none, taken from that frame's; NIL when there is none."
       (let ((frame (find-if #'frame-unread frames)))
         (and frame (pop (frame-unread frame)))))))
 
-(defun take-to-its-frame (editor event ticks)
+(defun take-to-its-frame (editor event between-commands)
   "Deal with EVENT, just read, as the frame of EDITOR it happened in wants:
 true when it is to be handled now, in the frame worked in. One of no frame, or
 of the frame worked in, is; one of a frame that has gone is dropped. Between
-commands (TICKS), what you do in another frame makes it the one worked in,
-and that frame's window resized is drawn again there; while a command asks
-or works, the event waits among that frame's unread events for its turn."
+commands (BETWEEN-COMMANDS, the command loop's own read), what you do in
+another frame makes it the one worked in, and that frame's window resized is
+drawn again there; while a command asks or works, the event waits among that
+frame's unread events for its turn."
   (let ((frame (tuatara.frontend:event-frame event)))
     (cond ((or (null frame) (eq frame (editor-frame editor))) t)
           ((frame-deleted frame) nil)
-          ((not ticks) (setf (frame-unread frame) (append (frame-unread frame) (list event))) nil)
+          ((not between-commands) (setf (frame-unread frame) (append (frame-unread frame) (list event))) nil)
           ((tuatara.frontend:input-event-p event) (select-frame editor frame) t)
           ((eq (tuatara.frontend:event-kind event) :resize)
            (call-in-frame editor frame (lambda ()
@@ -257,7 +258,7 @@ there (TAKE-TO-ITS-FRAME): \\`C-g' there stops nothing here."
      nil)
     (t nil)))
 
-(defun read-event (editor &key timeout ticks pastes)
+(defun read-event (editor &key timeout ticks pastes between-commands)
   "Read the next event from the frontend, handling a resize here: the screen is
 painted again at the new size at once. With TICKS (the command loop), an event
 of kind :TICK comes back when another thread wakes the editor, after a resize,
@@ -270,21 +271,22 @@ While it waits the editor counts as idle (TUATARA.RUNTIME:NOTE-EDITOR-BUSY).
 While recorded keys are played their keys come first (PLAYED-EVENT); while
 keys are recorded each key and paste read as typed is added (RECORD-EVENT).
 An event of another frame goes to that frame (TAKE-TO-ITS-FRAME); with
-TICKS, what was left unread in another frame comes once the frame worked in
-has none left."
+BETWEEN-COMMANDS, for the command loop's read alone, it may make that frame
+the one worked in, and what was left unread in another frame comes once the
+frame worked in has none left."
   (loop
     (let* ((frame (editor-frame editor))
            (playing (frame-keys-playing frame))
            (event (cond (playing (played-event editor playing timeout ticks))
                         ((frame-unread frame) (pop (frame-unread frame)))
-                        ((and ticks (other-frames-unread editor)))
+                        ((and between-commands (other-frames-unread editor)))
                         (t (tuatara.runtime:note-editor-busy nil)
                            (prog1 (if timeout
                                       (tuatara.frontend:frontend-read-event-timeout (frame-frontend frame) timeout)
                                       (tuatara.frontend:frontend-read-event (frame-frontend frame)))
                              (tuatara.runtime:note-editor-busy t))))))
       ;; keys played are the frame's that plays them, wherever they were recorded
-      (when (or playing (take-to-its-frame editor event ticks))
+      (when (or playing (take-to-its-frame editor event between-commands))
         (let ((recording (editor-keys-recording editor)))
           (case (tuatara.frontend:event-kind event)
             (:resize (resize editor (tuatara.frontend:event-width event) (tuatara.frontend:event-height event))
