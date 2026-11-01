@@ -29,26 +29,12 @@ at only.")
 (define-state-list *lsp-trusted* "lsp-trusted" 'parse-absolute-path-line 'escape-path '*lsp-trusted-kept* :trust t
   :line-key 'parse-absolute-path-line)
 
-(defun parse-look-only-line (line)
-  "The entry a line of the list of projects looked at only makes: the path a
-line beginning with / names (UNESCAPE-PATH); NIL for a line of its heading
-\(beginning with #); any other line kept as it is, (:KEPT LINE), written
-back unchanged and naming no project, for a later version may write such
-lines."
-  (cond ((uiop:string-prefix-p "#" line) nil)
-        ((uiop:string-prefix-p "/" line) (unescape-path line))
-        (t (list :kept line))))
-
-(defun look-only-line (entry)
-  "The line of the list of projects looked at only for ENTRY: a path
-\(ESCAPE-PATH), or a line kept as it was read."
-  (if (stringp entry) (escape-path entry) (second entry)))
-
-(define-state-list *look-only* "look-only" 'parse-look-only-line 'look-only-line '*lsp-trusted-kept*
-  :header (format nil "# tuatara look-only 1~%~
-                       # Projects looked at only, never trusted to run their own programs: git~%~
+(define-state-list *look-only* "look-only" 'parse-absolute-path-line 'escape-path '*lsp-trusted-kept*
+  :header (format nil "# Projects looked at only, never trusted to run their own programs: git~%~
                        # reads them and runs nothing they name. One folder a line, where it~%~
-                       # really is (\\\\, \\n and \\r stand for \\, a newline and a return).~%"))
+                       # really is (\\\\, \\n and \\r stand for \\, a newline and a return).~%")
+  ;; not a list of trust: a later line naming a folder, whatever fields follow, is read, and keeps it looked at only
+  :line-key 'parse-absolute-path-line)
 
 (defvar *trust-changed-functions* '()
   "Functions of a project's folder, called when whether it is trusted, or
@@ -127,7 +113,7 @@ nothing else of it runs, whatever trusts it or a folder holding it."
 (defun real-folder-look-only-p (real)
   "True when REAL, a folder where it really is, is or is within a folder
 answered look only."
-  (and (some (lambda (folder) (and (stringp folder) (tuatara.io:path-within-p real folder)))
+  (and (some (lambda (folder) (tuatara.io:path-within-p real folder))
              (state-list-entries *look-only*))
        t))
 

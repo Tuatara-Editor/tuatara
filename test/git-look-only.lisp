@@ -181,13 +181,14 @@ since their commit."
                (false (tuatara.defaults::project-look-only-reason top))))
         (tuatara.defaults::state-list-drop tuatara.defaults::*lsp-trusted* (list real))))))
 
-(define-test (git look-only-list-keeps-unknown-lines)
-  ;; the list of projects looked at only says its version, and keeps a line it cannot read as it is
-  (is equal '(:kept "later kind of line") (tuatara.defaults::parse-look-only-line "later kind of line"))
-  (is string= "later kind of line" (tuatara.defaults::look-only-line '(:kept "later kind of line")))
-  (false (tuatara.defaults::parse-look-only-line "# tuatara look-only 1"))
-  (is string= "/a/b/" (tuatara.defaults::parse-look-only-line "/a/b/"))
-  (true (search "# tuatara look-only 1" (tuatara.defaults::state-list-header tuatara.defaults::*look-only*))))
+(define-test (git look-only-list-fails-closed)
+  ;; the list of projects looked at only is kept as every list is; a line of a later release naming a folder,
+  ;; whatever fields follow, is still read, so that the folder stays looked at only
+  (is string= "look-only" (tuatara.defaults::state-list-name tuatara.defaults::*look-only*))
+  (false (tuatara.defaults::state-list-trust tuatara.defaults::*look-only*))
+  (is string= "/cases/seized/" (tuatara.defaults::parse-absolute-path-line (format nil "/cases/seized/~cfield of later" #\Tab)))
+  (is string= "/cases/seized/" (funcall (tuatara.defaults::state-list-line-key tuatara.defaults::*look-only*)
+                                        (format nil "/cases/seized/~cfield of later" #\Tab))))
 
 (define-test (evidence seized-repository-read-untouched)
   ;; a repository in an evidence folder: read in look-only mode, and nothing of it changes, its index included

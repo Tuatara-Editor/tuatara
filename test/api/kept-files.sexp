@@ -6,6 +6,7 @@
 (:state "bookmarks" :kept 1)
 (:state "chosen-paths" :remembered 1)
 (:state "grammars" :remembered 1 :trust t :fields 2)
+(:state "look-only" :remembered 1)
 (:state "lsp-trusted" :remembered 1 :trust t :fields 1)
 (:state "package-trust" :remembered 1 :trust t :fields 4)
 (:state "packages" :remembered 1 :trust t :fields 7)

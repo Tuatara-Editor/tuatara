@@ -57,6 +57,8 @@ state, data or cache; PATH within it, a folder's ending in /; CLASS :KEPT,
      ("Plain" "/notes/plain.txt" 7 ,(format nil "text~%after") () nil))
     (tuatara.defaults::*lsp-trusted*
      "/projects/one/" "/projects/two three/")
+    (tuatara.defaults::*look-only*
+     "/cases/2026-0001/seized repo/" "/cases/2026-0002/")
     (tuatara.defaults::*package-trust*
      ("https://example.org/signed.git" "SHA256:abcDEF0123456789+/=" "Mere Rotorua" "mere@example.org AAAAC3NzaC1lZDI1NTE5AAAAIExample+/=")
      ("https://example.org/tools.git" "unsigned" nil nil))
