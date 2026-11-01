@@ -627,7 +627,7 @@ drawn), looked at again a moment later."
 window selected and kept for them (PLACE-BUFFERS)."
   (let ((place tuatara-user:*terminal-place*))
     (unless (member place '(:bottom :top :left :right :full))
-      (error "*terminal-place* is ~s: use :bottom, :top, :left, :right or :full" place))
+      (refuse "*terminal-place* is ~s: use :bottom, :top, :left, :right or :full" place))
     (place-buffers 'terminal-mode (if (eq place :full) :here place)
                    :size (terminal-place-size place) :keep t :select t)))
 
@@ -691,7 +691,7 @@ program, and the program ending (exit) kills the buffer; a terminal that
 cannot be shown or started leaves no buffer behind. The sixteen basic
 colours a program picks are the theme's (*TERMINAL-PALETTE-ROLES*)."
   (unless (terminal-library-p)
-    (error "The terminal library is not there (tools/terminal-library.sh builds it)"))
+    (refuse "The terminal library is not there (tools/terminal-library.sh builds it)"))
   (let* ((editor *editor*)
          (here (tuatara.io:native (buffer-directory (current-buffer))))
          (careful (cond ((tuatara.io:safe-visit-p (current-buffer))
@@ -715,7 +715,7 @@ colours a program picks are the theme's (*TERMINAL-PALETTE-ROLES*)."
       (unwind-protect
            (progn
              (unless (show-terminal buffer place)
-               (error "There is no room for a terminal there"))
+               (refuse "There is no room for a terminal there"))
              (multiple-value-bind (columns rows) (terminal-window-size (editor-window editor))
                (setf (tuatara.buffer:buffer-local buffer :emulator)
                      (multiple-value-bind (cell-width cell-height) (terminal-cell-pixels)
@@ -782,7 +782,7 @@ paste."
          (emulator (live-emulator buffer)))
     (take-in-clipboard)
     (let ((kill (first (editor-kill-ring *editor*))))
-      (unless kill (error "Nothing has been copied"))
+      (unless kill (refuse "Nothing has been copied"))
       (paste-into-terminal buffer emulator (if (stringp kill) kill (tuatara.text:rope-string kill))))))
 
 (define-command terminal-paste-primary ()
@@ -801,7 +801,7 @@ terminal, was shown, into BUFFER's program (PASTE-INTO-TERMINAL)."
 saying no program runs there."
   (let ((emulator (tuatara.buffer:buffer-local buffer :emulator)))
     (unless (and emulator (emulator-alive-p emulator))
-      (error "No program runs in this buffer"))
+      (refuse "No program runs in this buffer"))
     emulator))
 
 (defun paste-into-terminal (buffer emulator text)

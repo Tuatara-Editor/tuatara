@@ -15,7 +15,7 @@ did. A window kept for other buffers (PLACE-BUFFERS with :keep) is left as it
 is: BUFFER is shown in another window, which is selected. A buffer that has
 been killed is not shown: that is an error."
   (unless (live-buffer-p buffer)
-    (error "~a has been killed" (tuatara.buffer:buffer-name buffer)))
+    (refuse "~a has been killed" (tuatara.buffer:buffer-name buffer)))
   (let* ((editor *editor*)
          (window (editor-window editor)))
     (if (and (tuatara.display:window-kept window)
@@ -85,7 +85,11 @@ and what is typed on the last row, else the message there."
   (let ((frontend (editor-frontend editor)))
     (tuatara.runtime:ignoring-errors-reported ("painting a frame saying why the window cannot be shown")
      (tuatara.frontend:frontend-begin-frame frontend)
-     (tuatara.frontend:frontend-put-row frontend 0 (format nil "This window cannot be shown: ~a." (tuatara.runtime:condition-words condition :headline t)))
+     (tuatara.frontend:frontend-put-row
+      frontend 0 (format nil "This window cannot be shown: ~a."
+                         (if tuatara.runtime:*secret-at-hand*
+                             (tuatara.runtime:failure-words condition)
+                             (tuatara.runtime:condition-words condition :headline t))))
      (tuatara.frontend:frontend-put-row
       frontend 1 (substitute-command-keys "\\[switch-to-buffer] shows another buffer, \\[kill-buffer] kills this one, \\[save-buffers-kill-editor] quits; if its file changed on disk, \\[revert-buffer] reads it again."))
      (tuatara.frontend:frontend-put-row
@@ -105,8 +109,10 @@ and what is typed on the last row, else the message there."
   "Redisplay EDITOR's frame; when that fails, paint one saying why and the way
 out, the minibuffer shown as it reads (PAINT-TROUBLE), and report it, with the
 calls under way in debug mode: so that \\[execute-extended-command] and the questions of
-\\[save-buffers-kill-editor] still work whatever a window's drawing does."
-  (let ((trace nil))
+\\[save-buffers-kill-editor] still work whatever a window's drawing does. While a window shows a
+secret buffer (FRAME-SECRET-P), only the kind of failure is said."
+  (let ((trace nil)
+        (tuatara.runtime:*secret-at-hand* (or tuatara.runtime:*secret-at-hand* (frame-secret-p editor))))
     (handler-case
         (handler-bind ((error (lambda (e)
                                 (declare (ignore e))
@@ -114,7 +120,8 @@ calls under way in debug mode: so that \\[execute-extended-command] and the ques
                                   (setf trace (capture-backtrace :stop 'redisplay-or-say))))))
           (redisplay editor))
       (error (e)
-        (tuatara.runtime:debug-report :redisplay "the screen could not be drawn: ~a~{~%    ~a~}" e trace)
+        (tuatara.runtime:debug-report :redisplay "the screen could not be drawn: ~a~{~%    ~a~}"
+                                      (tuatara.runtime:failure-words e) trace)
         (paint-trouble editor e)))))
 
 (defvar *dropped* nil
@@ -134,7 +141,7 @@ whose :PASTE-HANDLER local is a function of the buffer and the text (a
 terminal, which hands it to the program in it), that function takes it."
   (let ((text (and *pasted* (tuatara.frontend:event-text *pasted*)))
         (buffer (current-buffer)))
-    (unless text (error "Nothing has been pasted"))
+    (unless text (refuse "Nothing has been pasted"))
     (let ((handler (tuatara.buffer:buffer-local buffer :paste-handler)))
       (cond (handler (funcall handler buffer text))
             ((plusp (length text))
@@ -332,7 +339,7 @@ On the editor's own thread, or with no editor running, FUNCTION is called at
 once. An error when the editor stops before it waits."
   (if (not (away-from-editor-p))
       (funcall function)
-      (let ((hold (or (hold-editor words stop) (error "The editor stopped before the work could be done"))))
+      (let ((hold (or (hold-editor words stop) (refuse "The editor stopped before the work could be done"))))
         (unwind-protect (let ((*editor* (editor-hold-editor hold))) (funcall function))
           (setf (editor-hold-state hold) :released)
           (sb-thread:signal-semaphore (editor-hold-go-on hold))))))

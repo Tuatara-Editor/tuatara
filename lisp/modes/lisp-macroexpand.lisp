@@ -30,7 +30,7 @@ itself written #1= ... #1#, so that printing it ends."
                     (with-output-to-string (out)
                       (pprint expansion out)
                       (terpri out)))
-      (error (e) (format nil "~%;; the expansion cannot be printed: ~a~%" (tuatara.runtime:condition-words e))))))
+      (error (e) (format nil "~%;; the expansion cannot be printed: ~a~%" (tuatara.runtime:failure-words e :said t))))))
 
 (defun show-expansion (text)
   "Show TEXT in *Pp Macroexpand Output*, in Lisp mode, beside the window in use."
@@ -66,8 +66,8 @@ MACROLET's macros run their own code as they expand, so one is refused."
     (reader-error (e)
       (values nil (if (search "*READ-EVAL*" (string-upcase (tuatara.runtime:condition-words e)))
                       "#. in it would run code as it is read"
-                      (format nil "it cannot be read: ~a" (tuatara.runtime:condition-words e)))))
-    (error (e) (values nil (format nil "it cannot be read: ~a" (tuatara.runtime:condition-words e))))))
+                      (format nil "it cannot be read: ~a" (tuatara.runtime:failure-words e :said t)))))
+    (error (e) (values nil (format nil "it cannot be read: ~a" (tuatara.runtime:failure-words e :said t))))))
 
 (defun macroexpand-at-point (all)
   "Expand the macro call at point (EXPRESSION-AT-OR-BEFORE) once, or with ALL
@@ -87,7 +87,7 @@ prefix argument put it in after the call."
               (cond (refusal (message "Not expanded: ~a" refusal))
                     ((eq outcome :stopped) (message "Expanding stopped"))
                     ((eq (first outcome) :error)
-                     (message "Error: ~a" (tuatara.runtime:condition-words (second outcome)))
+                     (message "Error: ~a" (tuatara.runtime:failure-words (second outcome) :said t))
                      (when (and (getf result :backtrace) *backtrace-function*)
                        (funcall *backtrace-function* (second outcome) (getf result :backtrace))))
                     (t (let ((expansion (expansion-text (first (second outcome)) (getf result :package)

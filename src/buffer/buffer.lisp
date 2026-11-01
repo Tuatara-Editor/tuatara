@@ -112,7 +112,7 @@ swapped. O(functions) when they have nothing to say of EDITS."
   "Create and return a buffer called NAME holding TEXT (a string, an octet vector or
 a rope), visiting FILE if given. NAME must not be in use."
   (when (find-buffer name)
-    (error "A buffer named ~s already exists." name))
+    (refuse "A buffer named ~s already exists." name))
   (let* ((rope (text-rope text))
          (version (tuatara.text:make-version rope))
          (buffer (make-instance 'buffer :name name :version version :file file)))
@@ -259,9 +259,9 @@ mark, ordered, or NIL when no mark is set."
   "Signal an error unless BYTE is a character boundary inside BUFFER."
   (let ((rope (buffer-text buffer)))
     (unless (and (typep byte 'fixnum) (<= 0 byte (tuatara.text:rope-bytes rope)))
-      (error "Position ~a is outside buffer ~s (0..~a)." byte (buffer-name buffer) (tuatara.text:rope-bytes rope)))
+      (refuse "Position ~a is outside buffer ~s (0..~a)." byte (buffer-name buffer) (tuatara.text:rope-bytes rope)))
     (unless (tuatara.text:char-boundary-p rope byte)
-      (error "Position ~a in buffer ~s is inside a character." byte (buffer-name buffer)))))
+      (refuse "Position ~a in buffer ~s is inside a character." byte (buffer-name buffer)))))
 
 ;;; Narrowing
 
@@ -397,7 +397,7 @@ and that widening (the key *WIDEN-KEY-FUNCTION* gives) shows the rest."
 (defun refuse-outside-narrowing (buffer)
   "Signal the error that says a change would reach outside the part of
 BUFFER shown (OUTSIDE-NARROWING-WORDS)."
-  (error "~a" (outside-narrowing-words buffer)))
+  (refuse "~a" (outside-narrowing-words buffer)))
 
 (defun check-within-narrowing (buffer start end)
   "Signal an error when an edit of BUFFER from octet START to END reaches
@@ -563,7 +563,7 @@ deleted, unless *HEX-VIEW-RESIZING* is true."
   "Signal an error when an edit changing BUFFER's size by CHANGE octets is
 refused there because it is shown in the hex view (HEX-VIEW-REFUSES-P)."
   (when (hex-view-refuses-p buffer change)
-    (error "The hex view types over octets: nothing is inserted or deleted here (M-x hex-mode leaves it)")))
+    (refuse "The hex view types over octets: nothing is inserted or deleted here (M-x hex-mode leaves it)")))
 
 (defun buffer-edit (buffer edits &key group)
   "Apply EDITS (a sequence of TUATARA.TEXT:EDIT, sorted, not overlapping, at
@@ -579,7 +579,7 @@ outside the part of it shown when it is narrowed. A text whose lines are still b
 at once: the count is made again around the edits once it ends
 \(TUATARA.IO:FINISH-INDEXING)."
   (when (buffer-read-only-p buffer)
-    (error "Buffer ~a is read-only." (buffer-name buffer)))
+    (refuse "Buffer ~a is read-only." (buffer-name buffer)))
   (when (hex-view-p buffer)
     (check-hex-view-size buffer (reduce #'+ edits :key (lambda (e) (- (tuatara.text:edit-insert-length e)
                                                                       (tuatara.text:edit-delete-length e))))))
@@ -661,7 +661,7 @@ offset just after ROPE; NIL, nothing done, for no SPANS."
     (map nil (lambda (span)
                (check-position buffer (car span)) (check-position buffer (cdr span))
                (unless (<= before (car span) (cdr span))
-                 (error "The spans of a splice must be in order and apart: ~a." span))
+                 (refuse "The spans of a splice must be in order and apart: ~a." span))
                (setf before (cdr span)))
          spans))
   (check-hex-view-size buffer (- (if rope (tuatara.text:rope-bytes rope) 0)
@@ -763,7 +763,7 @@ whole text changed first, and may refuse it. Returns the batch."
   "Make ROPE the whole text of BUFFER, as BUFFER-SWAP-TEXT does, without
 putting the change on the undo stack; return its batch."
   (when (buffer-read-only-p buffer)
-    (error "Buffer ~a is read-only." (buffer-name buffer)))
+    (refuse "Buffer ~a is read-only." (buffer-name buffer)))
   (check-hex-view-size buffer (- (tuatara.text:rope-bytes rope) (buffer-size buffer)))
   (run-before-edit buffer :all)
   (let ((batch (commit-swap-without-record buffer rope forward backward)))
@@ -831,7 +831,7 @@ read-only.
 *BEFORE-EDIT-FUNCTIONS* see each change taken back first; when one refuses,
 the text is left as it was and the group stays to undo."
   (when (buffer-read-only-p buffer)
-    (error "Buffer ~a is read-only." (buffer-name buffer)))
+    (refuse "Buffer ~a is read-only." (buffer-name buffer)))
   (let ((part (and (buffer-narrowing buffer) (multiple-value-list (buffer-bounds buffer))))
         (before (buffer-version buffer))
         (group (pop (buffer-undo-stack buffer))))
@@ -1132,7 +1132,7 @@ redo. Signals an error when the buffer is read-only.
 *BEFORE-EDIT-FUNCTIONS* see each change made again first; when one refuses,
 the text is left as it was and the group stays to redo."
   (when (buffer-read-only-p buffer)
-    (error "Buffer ~a is read-only." (buffer-name buffer)))
+    (refuse "Buffer ~a is read-only." (buffer-name buffer)))
   (let ((group (pop (buffer-redo-stack buffer))))
     (when group
       (let ((new-group '()) (last-position nil) (table (buffer-batch-contents buffer)) (done nil))
@@ -1359,7 +1359,7 @@ the background counting (*INDEX-WAIT-FUNCTION*), or count them now."
         (funcall *index-wait-function* buffer)
         (buffer-adopt-text buffer (tuatara.text:index-rope (buffer-text buffer))))
     (unless (buffer-indexed-p buffer)
-      (error "The lines of ~a are not counted yet." (buffer-name buffer)))))
+      (refuse "The lines of ~a are not counted yet." (buffer-name buffer)))))
 
 (defvar *counted-line-function* nil
   "A function of a buffer and a byte offset returning the line, from 0, there

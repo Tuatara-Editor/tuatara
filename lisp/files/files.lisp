@@ -457,7 +457,7 @@ a command loop the lines are counted there and then (NIL with LINE)."
           (let ((start (and line (tuatara.io:counted-line-start buffer line))))
             (when start (return start)))
           (when (eq (tuatara.buffer:buffer-local buffer :index-failed) (tuatara.buffer:buffer-text buffer))
-            (error "The lines of ~a could not be counted: ~a" (tuatara.buffer:buffer-name buffer)
+            (refuse "The lines of ~a could not be counted: ~a" (tuatara.buffer:buffer-name buffer)
                    (tuatara.buffer:buffer-local buffer :index-error)))
           (let ((job (or (tuatara.io:index-job-of buffer) (tuatara.io:start-indexing buffer))))
             (unless job (return nil))

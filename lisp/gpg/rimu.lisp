@@ -14,7 +14,7 @@ naming them, where they are too when that is elsewhere (RIMU-QUESTION); an
 error saying why when there is none to VERB."
   (let* ((buffer (current-buffer))
          (paths (or (rimu-chosen-paths buffer :files-only t)
-                    (error "~a" (rimu-nothing-words buffer verb :files-only t :none "No file here: mark files, or put the cursor on one")))))
+                    (refuse "~a" (rimu-nothing-words buffer verb :files-only t :none "No file here: mark files, or put the cursor on one")))))
     (values paths (rimu-question nil paths :here (tuatara.buffer:buffer-local buffer 'rimu-directory)))))
 
 (define-command rimu-encrypt-files ()

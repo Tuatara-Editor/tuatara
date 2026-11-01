@@ -570,7 +570,8 @@ and pipe the first line has most of, or has once one is typed there.
             (detect-delimiter (tuatara.buffer:buffer-text buffer))
             (let ((char (separator-char answer)))
               (unless char
-                (error "Not a separator: ~a (one character of ASCII, not a line end or a double quote)" answer))
+                (refuse "Not a separator~@[: ~a~] (one character of ASCII, not a line end or a double quote)"
+                        (and (not *secret-at-hand*) answer)))
               (char-code char)))
       (setf (tuatara.buffer:buffer-local buffer :csv-delimiter) octet
             (tuatara.buffer:buffer-local buffer :csv-detecting) (and detect (if found :done :open)))

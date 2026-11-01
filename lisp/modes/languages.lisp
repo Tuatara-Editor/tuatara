@@ -216,7 +216,7 @@ package runs Lisp with all the rights Tuatara has."
     (handler-case (reporting-errors ("reading the injection names of ~(~a~)" name)
                     (cl-ppcre:create-scanner (format nil "^(?i)(~a)$" injection-names)))
       (error (e)
-        (error "The injection names of ~(~a~), ~s, are not a regular expression: ~a" name injection-names e))))
+        (refuse "The injection names of ~(~a~), ~s, are not a regular expression: ~a" name injection-names e))))
   (let* ((old (find-language name))
          (queries (or queries grammar))
          (textobjects (let ((read (read-textobjects queries)))
@@ -507,17 +507,17 @@ file: (set-colouring 'rust :sparse), (set-colouring 'csv-mode :sparse),
 (set-colouring t :sparse)."
   (let ((found (colouring-of language)))
     (cond ((null found)
-           (error "No language or major mode called ~(~a~); the languages are csv, ~{~(~a~)~^, ~}."
+           (refuse "No language or major mode called ~(~a~); the languages are csv, ~{~(~a~)~^, ~}."
                   language (mapcar #'language-name *languages*)))
           ((eq found :nothing)
-           (error "No language is coloured in ~(~a~) or a mode made from it." language)))
+           (refuse "No language is coloured in ~(~a~) or a mode made from it." language)))
     (unless (member style *colouring-styles*)
-      (error "The style must be one of ~{~s~^, ~}, not ~s." *colouring-styles* style))
+      (refuse "The style must be one of ~{~s~^, ~}, not ~s." *colouring-styles* style))
     (when level
       (when (eq found :csv)
-        (error "CSV and TSV are coloured without levels: no :level for ~(~a~)." language))
+        (refuse "CSV and TSV are coloured without levels: no :level for ~(~a~)." language))
       (unless (and (integerp level) (<= 1 level 4))
-        (error "The level must be from 1 to 4, not ~s." level)))
+        (refuse "The level must be from 1 to 4, not ~s." level)))
     (cond ((eq found :csv) (setf *csv-colouring* style))
           ((symbolp found)
            (setf *colouring-rules* (cons (list found style level) (remove found *colouring-rules* :key #'first))))
@@ -530,9 +530,9 @@ file: (set-colouring 'rust :sparse), (set-colouring 'csv-mode :sparse),
 indent by levels: \\<normal>\\[indent-selection-or-line] and a new line's
 indentation use it. For example, in the init file: (set-indentation 'c 2)."
   (let ((found (find-language language)))
-    (unless found (error "No language called ~(~a~); there are ~{~(~a~)~^, ~}." language (mapcar #'language-name *languages*)))
+    (unless found (refuse "No language called ~(~a~); there are ~{~(~a~)~^, ~}." language (mapcar #'language-name *languages*)))
     (unless (and (integerp columns) (<= 1 columns 16))
-      (error "The columns must be a whole number from 1 to 16, not ~s." columns))
+      (refuse "The columns must be a whole number from 1 to 16, not ~s." columns))
     (setf (language-indent found) columns)))
 
 ;;; Faces for captures

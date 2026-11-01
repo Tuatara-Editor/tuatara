@@ -388,12 +388,12 @@ away, so that no file is left with part of what it should hold."
           ;; a copy stopped or failed half-way leaves nothing under its name (COPY-PATH-TREE)
           (:copy (let ((whole (tuatara.io:copy-path-tree from to :cancel cancel :skipped #'skip)))
                    (cond ((and (not whole) (car cancel))
-                          (error "stopped; what was copied of it taken away"))
+                          (refuse "stopped; what was copied of it taken away"))
                          ((not whole)
-                          (error "not all copied~@[, left out: ~{~a~^, ~}~]" (reverse skipped))))))
+                          (refuse "not all copied~@[, left out: ~{~a~^, ~}~]" (reverse skipped))))))
           (:move (handler-case (tuatara.io:move-path from to :cancel cancel :skipped #'skip)
                    (tuatara.io:file-system-error (e)
-                     (if skipped (error "~a; left out: ~{~a~^, ~}" e (reverse skipped)) (error e)))))
+                     (if skipped (refuse "~a; left out: ~{~a~^, ~}" e (reverse skipped)) (error e)))))
           (:symlink (tuatara.io:make-symbolic-link (string-right-trim "/" from) to))
           (:hardlink (tuatara.io:make-hard-link (string-right-trim "/" from) to))
           (:extract (extract-archive from to :cancel cancel))
@@ -458,7 +458,7 @@ that is said, and NIL returned."
                        (handler-case
                            (reporting-errors ("~(~a~) ~a" verb (car pair))
                              (when (and (cdr pair) (rimu-same-file-p (car pair) (cdr pair)))
-                               (error "it is there already, the very same file"))
+                               (refuse "it is there already, the very same file"))
                              (when (and replace (cdr pair) (tuatara.io:path-stamp (cdr pair) :follow nil))
                                (tuatara.io:trash-path (cdr pair))
                                (incf (rimu-operation-replaced operation)))
@@ -750,7 +750,7 @@ those of a name there already left as they are. tar does it in the
 background, shut in the sandbox."
   (let* ((buffer (current-buffer))
          (paths (or (rimu-chosen-paths buffer :files-only t)
-                    (error "~a" (rimu-nothing-words buffer "extract" :files-only t
+                    (refuse "~a" (rimu-nothing-words buffer "extract" :files-only t
                                                     :none "No file here: mark archives, or put the cursor on one"))))
          (here (tuatara.buffer:buffer-local buffer 'rimu-directory))
          (offered (if (rest paths)
@@ -1114,7 +1114,7 @@ list shows it, point on it."
   "Wipe the files marked (or the one on the line) as \\[wipe-file] does, asked once: overwritten, then deleted."
   (let* ((buffer (current-buffer))
          (paths (or (rimu-chosen-paths buffer :files-only t)
-                    (error "~a" (rimu-nothing-words buffer "wipe" :files-only t :none "No file here: mark files, or put the cursor on one")))))
+                    (refuse "~a" (rimu-nothing-words buffer "wipe" :files-only t :none "No file here: mark files, or put the cursor on one")))))
     (when (confirm-wipe paths (rimu-question nil paths :here (tuatara.buffer:buffer-local buffer 'rimu-directory)))
       (start-wiping paths))))
 

@@ -188,7 +188,7 @@ else the current buffer's file. Refused in a buffer opened safely, whose
 files stay as they are."
   (let ((buffer (current-buffer)))
     (when (tuatara.io:safe-visit-p buffer)
-      (error "~a is opened safely: its files are not renamed" (tuatara.buffer:buffer-name buffer)))
+      (refuse "~a is opened safely: its files are not renamed" (tuatara.buffer:buffer-name buffer)))
     (or (and (fboundp 'rimu-chosen-paths) (funcall 'rimu-chosen-paths buffer :files-only t :here-only t))
         (let ((file (tuatara.buffer:buffer-file buffer)))
           (and file (list (tuatara.io:native file)))))))

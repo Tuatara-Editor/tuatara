@@ -259,7 +259,7 @@ the search does not end at once then, BUFFER's file stays mapped for it
                     :name "tuatara outline"))))
     (cond ((null thread)
            (when copy (tuatara.syntax:delete-tree copy))
-           (error "There is no thread to find the headings in"))
+           (refuse "There is no thread to find the headings in"))
           ((multiple-value-bind (done state)
                    (wait-interruptibly thread :message "Finding the headings..."
                                               :stop (lambda (thread) (declare (ignore thread)) (setf halted t)))
@@ -267,7 +267,7 @@ the search does not end at once then, BUFFER's file stays mapped for it
                (setf (tuatara.buffer:buffer-lent-p buffer) t))
              (not done))
            (keyboard-quit-signal))
-          (failure (error "The headings could not be found: ~a" failure))
+          (failure (refuse "The headings could not be found: ~a" (tuatara.runtime:failure-words failure :said t)))
           (t result))))
 
 ;;; Choosing one

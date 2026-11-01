@@ -360,7 +360,7 @@ files PATHS beginning at STARTS from ROOT: the file mapped, not read, so
 that its text is outside the heap and garbage collection never copies it;
 counted for lines on this thread. An error when it is not BYTES long."
   (let ((rope (tuatara.text:open-file-rope path)))
-    (unless (= (tuatara.text:rope-bytes rope) bytes) (error "piece ~a is not whole" path))
+    (unless (= (tuatara.text:rope-bytes rope) bytes) (refuse "piece ~a is not whole" path))
     (make-file-corpus (tuatara.text:index-rope rope :threads 1) paths starts root)))
 
 (defun save-index (index directory)

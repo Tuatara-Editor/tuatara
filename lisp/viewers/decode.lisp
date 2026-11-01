@@ -88,7 +88,7 @@ car turns true. Waits for it: call it from a thread working in the background."
                                                 :cancel cancel :files files
                                                 :directories (append directories (sandbox-font-directories)))
     (unless (and (eq outcome :done) (tuatara.io:octets-at-p octets "%PDF"))
-      (error "~a" (or (tuatara.io:sandbox-outcome-words outcome said :label label :seconds-setting '*page-drawing-seconds*)
+      (refuse "~a" (or (tuatara.io:sandbox-outcome-words outcome said :label label :seconds-setting '*page-drawing-seconds*)
                       (format nil "~a drew no pages" label))))
     (tuatara.io:memory-file "tuatara-pages" octets :kept nil)))
 

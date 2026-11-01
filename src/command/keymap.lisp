@@ -70,7 +70,7 @@ instead with REPLACE, else that is an error. Called with the keymaps held
   (let ((next (gethash spec (keymap-table keymap))))
     (cond ((keymap-p next) next)
           ((and next (not replace))
-           (error "~a is bound to ~(~a~), not a prefix key." (tuatara.frontend:key-description spec) next))
+           (refuse "~a is bound to ~(~a~), not a prefix key." (tuatara.frontend:key-description spec) next))
           (t (incf *keymaps-generation*)
              (setf (gethash spec (keymap-table keymap))
                    (make-keymap :name (tuatara.frontend:key-description spec)))))))
@@ -82,7 +82,7 @@ of its keymap. NIL takes the label away. A prefix before the last key is made
 when KEYS has none yet; a key bound to a command is no prefix, which is an
 error."
   (let ((specs (if (stringp keys) (tuatara.frontend:parse-key-sequence keys) keys)))
-    (when (null specs) (error "Empty key sequence."))
+    (when (null specs) (refuse "Empty key sequence."))
     (with-keymaps-held
      (loop for (spec . rest) on specs
           do (if rest
@@ -115,7 +115,7 @@ the key away from the keymaps consulted after KEYMAP too, as a major mode takes
 the modal keys away in its buffers) in KEYMAP. Prefix keymaps are created as
 needed."
   (let ((specs (if (stringp keys) (tuatara.frontend:parse-key-sequence keys) keys)))
-    (when (null specs) (error "Empty key sequence."))
+    (when (null specs) (refuse "Empty key sequence."))
     (with-keymaps-held
      (incf *keymaps-generation*)
      (loop for (spec . rest) on specs

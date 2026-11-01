@@ -150,7 +150,8 @@ record. An error for no such field."
          (answer (completing-read prompt candidates :keep-order t))
          (field (answered-field answer offered keyed)))
     (when (eq field :unknown)
-      (error "No such column: ~a (~:[~;a name, or ~]a number from 0)" (string-trim " " answer) (some #'first offered)))
+      (refuse "No such column~@[: ~a~] (~:[~;a name, or ~]a number from 0)"
+              (and (not *secret-at-hand*) (string-trim " " answer)) (some #'first offered)))
     (values field (and field (funcall words field)))))
 
 (defun read-record-field (buffer fields prompt)

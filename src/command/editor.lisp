@@ -417,11 +417,18 @@ showing its end goes on showing it."
     (dolist (window following)
       (setf (tuatara.display:window-point window) (tuatara.buffer:buffer-size buffer)))))
 
+(defvar *secret-messages* (make-hash-table :test 'eq :weakness :key :synchronized t)
+  "The messages said while a secret was at hand (TUATARA.RUNTIME:*SECRET-AT-HAND*),
+shown but never kept in *Messages* (LOG-MESSAGE).")
+
 (defun log-message (text)
   "Add TEXT, a message just shown, to the *Messages* buffer (made when there is
 none): a line of its own, or the last line counted up when it says the same
-(\"Saved [2 times]\"). The buffer keeps *MESSAGE-LOG-MAX* lines (ADD-TO-LOG)."
-  (when (and *message-log-max* (plusp (length text)))
+(\"Saved [2 times]\"). The buffer keeps *MESSAGE-LOG-MAX* lines (ADD-TO-LOG).
+A message said while a secret is, or was, at hand is not kept: its words may
+hold the secret."
+  (when (and *message-log-max* (plusp (length text))
+             (not tuatara.runtime:*secret-at-hand*) (not (gethash text *secret-messages*)))
     (add-to-log (messages-buffer) *message-log-max*
                 (lambda (buffer)
                   (let* ((size (tuatara.buffer:buffer-size buffer))
@@ -516,8 +523,10 @@ in :help-key-binding. Said by work away from the editor's thread, while
 *MESSAGES-KEPT* holds a cell, it is kept there to be shown later; said there
 otherwise, it is handed to the editor's thread, which shows it as soon as it
 is woken. What the command running said too (SAY-WITH-COMMAND-MESSAGES) is
-shown after it."
+shown after it. Said while a secret is at hand, it is shown but not kept."
   (let ((text (unmark-keys (apply #'format nil (substitute-command-keys control :marks t :for-format t) arguments))))
+    (when tuatara.runtime:*secret-at-hand*
+      (setf (gethash text *secret-messages*) t))
     (cond (*messages-kept*
            (push text (car *messages-kept*)))
           ((away-from-editor-p)

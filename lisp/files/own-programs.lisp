@@ -48,7 +48,7 @@ heeded once it is done."
           (tuatara.runtime:job-check-stop))
         (unless (and ended-well (eq :regular (tuatara.io:path-kind (concatenate 'string unpacked "AppRun"))))
           (ignoring-errors-reported ("deleting ~a" folder) (tuatara.io:delete-tree folder))
-          (error "~a could not be unpacked" (abbreviated-path program)))))
+          (refuse "~a could not be unpacked" (abbreviated-path program)))))
     unpacked))
 
 (defun shut-in-program (program cancel)
@@ -135,7 +135,7 @@ being the job's."
                                            do (unless (tuatara.io:copy-regular-file path (concatenate 'string folder name)
                                                                                     :cancel cancel)
                                                 (tuatara.runtime:job-check-stop)
-                                                (error "~a could not be copied for ~a" (abbreviated-path path)
+                                                (refuse "~a could not be copied for ~a" (abbreviated-path path)
                                                        (tuatara.io:native-file-name program)))
                                               (setf (gethash copy names) path)
                                            collect copy)))
@@ -172,7 +172,7 @@ report it prints (COPIES-OUTPUT-JSON). Returns three values: the report, or
 NIL; the table of the copies' names to their files' paths; and with no
 report, why, as a sentence beginning with LABEL (RUN-ON-COPIES-FAILURE).
 Call it from a job's thread, the job's CANCEL given; the job stopping ends it."
-  (let ((path (or (user-program-path program) (error "~a" missing))))
+  (let ((path (or (user-program-path program) (refuse "~a" missing))))
     (multiple-value-bind (output outcome said names)
         (apply #'run-on-copies path groups arguments :seconds (symbol-value seconds-setting)
                (alexandria:remove-from-plist keys :label :missing :seconds-setting))

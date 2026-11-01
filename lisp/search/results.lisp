@@ -137,7 +137,7 @@ puts a line break in it."
                                        (result-line-prefix-octets entry)))
                           (<= (tuatara.text:edit-end edit) (tuatara.buffer:buffer-line-end buffer start))
                           (notany (lambda (octet) (member octet '(10 13))) (tuatara.text:edit-insert edit)))
-               (error "Only the text after path:line: of a line that is not cut short changes here, ~
+               (refuse "Only the text after path:line: of a line that is not cut short changes here, ~
                        and a line stays one")))))
 
 (defun end-results-editing (buffer)
@@ -316,7 +316,8 @@ asked to stop between the files; at the end wait for the saves to end."
                      (refuse given lines why)
                      (let ((where (handler-case (reporting-errors ("finding the lines of ~a" path)
                                                   (locate-lines path (mapcar #'first lines)))
-                                    (error (condition) (refuse given lines (tuatara.runtime:condition-words condition))
+                                    (error (condition)
+                                      (refuse given lines (tuatara.runtime:failure-words condition :said t))
                                       nil))))
                        (when where
                          (dolist (line (remove-if (lambda (line) (assoc (first line) where)) lines))
@@ -405,7 +406,7 @@ lines count as written once the save has ended."
     (multiple-value-bind (buffer existing)
         (handler-case (reporting-errors ("visiting ~a to write lines back" path)
                         (let ((tuatara.buffer:*find-file-functions* '())) (tuatara.io:visit-file path)))
-          (error (condition) (return-from write-back-file (refuse (tuatara.runtime:condition-words condition)))))
+          (error (condition) (return-from write-back-file (refuse (tuatara.runtime:failure-words condition :said t)))))
       (flet ((give-up (why)
                (unless existing (tuatara.buffer:kill-buffer buffer))
                (return-from write-back-file (refuse why))))
@@ -434,7 +435,7 @@ lines count as written once the save has ended."
                             (tuatara.buffer:with-narrowing-lifted (buffer) (tuatara.buffer:buffer-edit buffer edits)))
               (error (condition)
                 (unless existing (tuatara.buffer:kill-buffer buffer))
-                (return-from write-back-file (refuse (tuatara.runtime:condition-words condition) lines))))
+                (return-from write-back-file (refuse (tuatara.runtime:failure-words condition :said t) lines))))
             (dolist (line lines)
               (dolist (entry (second line))
                 (setf (result-line-text entry) (cddr line))))

@@ -147,25 +147,36 @@ that work on it counts as a secret at hand (SECRET-BUFFER-P); NIL for none.")
 work on it is to keep it out of the debug log as *SECRET-AT-HAND* does."
   (and buffer *secret-buffer-function* (funcall *secret-buffer-function* buffer) t))
 
+(define-condition refusal (simple-error) ()
+  (:documentation "The editor saying no to what was asked, in words of its own (REFUSE): told in
+full even while a secret is at hand, so its words never hold text of a buffer."))
+
+(defun refuse (control &rest arguments)
+  "Say no to what was asked, in the words FORMAT makes of CONTROL and
+ARGUMENTS, as an error (a REFUSAL): the command stops and the words are told
+as they are, a secret at hand or not. ARGUMENTS may name a buffer, a file or
+a key, never hold a buffer's text."
+  (error 'refusal :format-control control :format-arguments arguments))
+
 (defun failure-words (condition &key said)
   "CONDITION in words, for the debug log, or with SAID for telling the person
 what failed: as CONDITION-WORDS says it, or only its kind while a secret is at
 hand (*SECRET-AT-HAND*), whose words could hold the secret. Told the person, a
-simple error keeps its words even then: they are the editor's own (\"nothing
-chosen to encrypt it to\")."
-  (if (and *secret-at-hand* (not (and said (typep condition 'simple-error))))
+REFUSAL keeps its words even then: they are the editor's own."
+  (if (and *secret-at-hand* (not (and said (typep condition 'refusal))))
       (format nil "a ~(~a~)" (type-of condition))
       (condition-words condition)))
 
 (defun secret-free (value &optional (depth 0))
   "VALUE with each string or vector of octets in it written as its length
-alone and every other object but a number or a symbol as its kind, as what
-the debug log shows while a secret is at hand."
+alone, a character as ?, and every other object but a number or a symbol as
+its kind, as what the debug log shows while a secret is at hand."
   (typecase value
     (string (make-symbol (format nil "#<~d characters>" (length value))))
     ((vector (unsigned-byte 8)) (make-symbol (format nil "#<~d octets>" (length value))))
     (cons (if (> depth 3) (make-symbol "#<...>") (mapcar (lambda (v) (secret-free v (1+ depth))) value)))
     ((or number symbol) value)
+    (character #\?)
     (t (make-symbol (format nil "#<a ~(~a~)>" (type-of value))))))
 
 (defun backtrace-lines (&key (count 60) stop (package *package*))
@@ -286,10 +297,11 @@ whose second is not NOW, their counts then cleared; called with
 (defun say-left-out ()
   "Report how many failures were left out at each place whose second has
 passed (LEFT-OUT-LINES)."
-  (let ((lines (sb-thread:with-mutex (*error-report-lock*)
-                 (left-out-lines (floor (get-internal-real-time) internal-time-units-per-second)))))
-    (when lines
-      (queue-debug-report :error (format nil "~{~a~^~%    ~}" lines)))))
+  (ignore-errors
+   (let ((lines (sb-thread:with-mutex (*error-report-lock*)
+                  (left-out-lines (floor (get-internal-real-time) internal-time-units-per-second)))))
+     (when lines
+       (queue-debug-report :error (format nil "~{~a~^~%    ~}" lines))))))
 
 (defun report-error (control arguments condition)
   "Put CONDITION, an error signalled while doing what CONTROL and ARGUMENTS
@@ -306,7 +318,8 @@ report never takes the place of the error itself."
      (let* ((now (floor (get-internal-real-time) internal-time-units-per-second))
             (secret *secret-at-hand*)
             (key (cons control (type-of condition)))
-            (doing (apply #'format nil control (if secret (mapcar #'secret-free arguments) arguments)))
+            (doing (handler-case (apply #'format nil control (if secret (mapcar #'secret-free arguments) arguments))
+                     (error () control)))
             (kept nil) (calls nil) (own-left-out 0) (others '()))
        (sb-thread:with-mutex (*error-report-lock*)
          (let ((place (or (gethash key *error-report-places*)

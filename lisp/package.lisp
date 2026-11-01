@@ -15,7 +15,7 @@
   (:import-from #:tuatara.buffer #:buffer-read-only-p)
   (:import-from #:tuatara.buffer #:buffer-crlf-p #:lf-newlines #:crlf-newlines #:cr-newlines #:text-for-buffer)
   (:import-from #:tuatara.runtime #:foreign-library-p #:foreign-call #:jobs-of
-                #:reporting-errors #:ignoring-errors-reported
+                #:reporting-errors #:ignoring-errors-reported #:refusal #:refuse #:*secret-at-hand*
                 #:run-hook #:run-hook-until-success #:run-hook-until-done #:call-hook-function
                 #:hook-function-name)
   (:import-from #:tuatara.display #:next-tab-stop)

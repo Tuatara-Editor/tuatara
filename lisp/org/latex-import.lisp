@@ -726,7 +726,7 @@ cannot be read; writes over nothing that exists."
          (finish (and begin (search "\\end{document}" text :start2 begin))))
     (template-import-check-free (list tex note media))
     (unless (and begin finish)
-      (error "~a has no \\begin{document} and \\end{document}: no LaTeX document to fill in" (tuatara.io:native-file-name path)))
+      (refuse "~a has no \\begin{document} and \\end{document}: no LaTeX document to fill in" (tuatara.io:native-file-name path)))
     (let ((*latex-org-levels* (let ((present (remove-if-not (lambda (n) (latex-find-command text (list n (format nil "~a*" n)) begin finish))
                                                             '("part" "chapter"))))
                                 (append present '("section" "subsection" "subsubsection" "paragraph" "subparagraph"))))

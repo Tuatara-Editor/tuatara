@@ -2017,9 +2017,9 @@ snapshot."
 (defun check-savable (buffer path)
   "Signal an error unless BUFFER can be saved as PATH: it has a file or PATH,
 and its text is still what was read (not stale)."
-  (unless path (error "Buffer ~a has no file to save to." (tuatara.buffer:buffer-name buffer)))
+  (unless path (refuse "Buffer ~a has no file to save to." (tuatara.buffer:buffer-name buffer)))
   (when (eq (file-disk-state buffer) :stale)
-    (error "Buffer ~a cannot be saved: its file was rewritten on disk while the buffer was shown from it, ~
+    (refuse "Buffer ~a cannot be saved: its file was rewritten on disk while the buffer was shown from it, ~
 so its text is no longer what was read. Revert it to read the file again."
            (tuatara.buffer:buffer-name buffer))))
 
@@ -2135,7 +2135,7 @@ the buffer stays usable, edits included. Checks the file on disk first as
 SAVE-BUFFER-FILE does. Returns the job; FINISH-SAVES takes it in."
   (check-savable buffer path)
   (when (save-of buffer)
-    (error "Buffer ~a is already being saved." (tuatara.buffer:buffer-name buffer)))
+    (refuse "Buffer ~a is already being saved." (tuatara.buffer:buffer-name buffer)))
   (let* ((path (expand-path path))
          (expected (save-expected buffer path force)))
     (unless (or (eq expected :any) (eq (tuatara.buffer:buffer-local buffer :file-class) :pseudo))
@@ -2230,7 +2230,7 @@ BUFFER."
       (funcall reread buffer)
       (return-from revert-buffer-file buffer)))
   (let* ((path (or (tuatara.buffer:buffer-file buffer)
-                   (error "Buffer ~a visits no file." (tuatara.buffer:buffer-name buffer))))
+                   (refuse "Buffer ~a visits no file." (tuatara.buffer:buffer-name buffer))))
          (stale (eq (file-disk-state buffer) :stale))
          (safe (safe-visit-p buffer))
          (read-only (if stale
@@ -2238,7 +2238,7 @@ BUFFER."
                         (tuatara.buffer:buffer-read-only-p buffer)))
          (old-size (tuatara.buffer:buffer-size buffer)))
     (when (save-of buffer)
-      (error "Buffer ~a is being saved; revert it once the save is done." (tuatara.buffer:buffer-name buffer)))
+      (refuse "Buffer ~a is being saved; revert it once the save is done." (tuatara.buffer:buffer-name buffer)))
     (tuatara.buffer:run-before-edit buffer :all)
     (stop-snapshots-of buffer)
     (multiple-value-bind (rope mapping stamp isolation guard class reason)

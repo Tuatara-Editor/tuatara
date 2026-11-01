@@ -269,7 +269,8 @@ vector of the numbers. A line with too few fields stops the sort, naming it."
           ((:field :numeric)
            (multiple-value-bind (fs fe) (field-bounds octets s e (second key))
              (unless fs
-               (error "A line has too few fields for field ~d: ~a" (second key) (line-preview octets s e)))
+               (refuse "A line has too few fields for field ~d~@[: ~a~]"
+                       (second key) (and (not *secret-at-hand*) (line-preview octets s e))))
              (setf (aref key-starts i) fs (aref key-ends i) fe)
              (when numbers (setf (aref numbers i) (field-number octets fs fe)))))
           (:columns

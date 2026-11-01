@@ -112,7 +112,8 @@ what was printed, then each value readably on a line of its own, or the error."
     (with-output-to-string (out)
       (write-output-and-values out (getf result :output "") values)
       (cond ((eq outcome :stopped) (format out "*** Evaluation stopped~%"))
-            ((eq (first outcome) :error) (format out "*** Eval error ***  ~a~%" (tuatara.runtime:condition-words (second outcome))))
+            ((eq (first outcome) :error)
+             (format out "*** Eval error ***  ~a~%" (tuatara.runtime:failure-words (second outcome) :said t)))
             ((null values) (format out "; No values~%"))))))
 
 (defun ielm-evaluate (buffer)

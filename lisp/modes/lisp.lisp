@@ -318,7 +318,7 @@ forms there were."
           (with-input-from-string (in text)
             (loop for form = (handler-case (read in nil eof)
                                (end-of-file ()
-                                 (error "The text ends inside a form: a bracket or a string is not closed.")))
+                                 (refuse "The text ends inside a form: a bracket or a string is not closed.")))
                   until (eq form eof)
                   do (evaluate form)))))
     (values values count)))
@@ -401,7 +401,7 @@ working buffer; else the one shown in the selected window."
   "VALUE printed readably, or #<a value that cannot be printed: WHY> when
 printing it fails."
   (handler-case (reporting-errors ("printing a value") (prin1-to-string value))
-    (error (e) (format nil "#<a value that cannot be printed: ~a>" (tuatara.runtime:condition-words e)))))
+    (error (e) (format nil "#<a value that cannot be printed: ~a>" (tuatara.runtime:failure-words e :said t)))))
 
 (defun write-output-and-values (out output values)
   "Write to OUT what an evaluation printed, OUTPUT, the blanks at its end
@@ -462,7 +462,7 @@ value is said after what was evaluated, on one line: (setf x 1) => 1."
     (setf (tuatara.buffer:buffer-local buffer :lisp-package) (package-name (getf result :package)))
     (cond ((eq outcome :stopped) (message "Evaluation stopped~@[~a~]" note))
           ((eq (first outcome) :error)
-           (message "Error: ~a~@[~a~]" (tuatara.runtime:condition-words (second outcome)) note)
+           (message "Error: ~a~@[~a~]" (tuatara.runtime:failure-words (second outcome) :said t) note)
            (when (and (getf result :backtrace) *backtrace-function*)
              (funcall *backtrace-function* (second outcome) (getf result :backtrace))))
           (t (destructuring-bind (values count) (rest outcome)

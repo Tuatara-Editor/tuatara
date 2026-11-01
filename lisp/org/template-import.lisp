@@ -67,7 +67,7 @@ date's; CHOICES, a list's. A key met before keeps its first description."
 makes, is free: an import writes over nothing that exists."
   (dolist (place places)
     (when (tuatara.io:path-stamp place)
-      (error "~a exists already: nothing made" (abbreviated-path place)))))
+      (refuse "~a exists already: nothing made" (abbreviated-path place)))))
 
 (defun template-import-media (note name)
   "The folder the pictures of the note template NOTE of the template NAME are

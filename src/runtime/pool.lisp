@@ -55,7 +55,7 @@ told."
               ((plusp online) online)
               (t 4)))
     (error (e)
-      (report-error "counting the processors" '() e)
+      (when *debug-on* (report-error "counting the processors" '() e))
       4)))
 
 (defun worker-count ()

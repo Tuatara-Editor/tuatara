@@ -124,7 +124,7 @@ a divider, it moves that instead, sizing the windows on either side."
   "Insert where the middle button was pressed the text selected last in any
 program (the desktop's primary selection); the mark at its start."
   (let ((text (tuatara.frontend:frontend-primary-selection (editor-frontend *editor*))))
-    (unless (and text (plusp (length text))) (error "Nothing is selected anywhere"))
+    (unless (and text (plusp (length text))) (refuse "Nothing is selected anywhere"))
     (mouse-set-point)
     (let ((p (point)))
       (push-mark)

@@ -99,7 +99,7 @@ org-mode. Signals an error when there is none."
   (let ((modes (mode-names)))
     (or (find (symbol-name name) modes :key #'symbol-name :test #'string=)
         (find (concatenate 'string (symbol-name name) "-MODE") modes :key #'symbol-name :test #'string=)
-        (error "No major mode called ~(~a~); there are ~{~(~a~)~^, ~}." name modes))))
+        (refuse "No major mode called ~(~a~); there are ~{~(~a~)~^, ~}." name modes))))
 
 (defun tuatara-user:set-tab-width (mode columns)
   "Put the tab stops COLUMNS columns apart (1 to 64) in buffers of major mode
@@ -110,7 +110,7 @@ mode's name, with or without -mode. For example, in the init file:
 language."
   (let ((found (mode-named mode)))
     (unless (tuatara.display:sensible-tab-width columns nil)
-      (error "The columns must be a whole number from 1 to 64, not ~s." columns))
+      (refuse "The columns must be a whole number from 1 to 64, not ~s." columns))
     (setf (gethash found *mode-tab-widths*) columns)))
 
 (defun tuatara-user:set-indent-tabs-mode (mode tabs)

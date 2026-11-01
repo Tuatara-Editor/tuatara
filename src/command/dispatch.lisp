@@ -188,7 +188,7 @@ answering did."
                    (keyboard-quit-signal))
                  (sleep (min (or timeout 1/20) 1/20))))
            (tuatara.frontend:make-event :tick))
-          (t (error "The recorded keys ended before the question they were answering")))))
+          (t (refuse "The recorded keys ended before the question they were answering")))))
 
 (defun put-back-events (editor events)
   "Have EVENTS, keys read before they could be handled, read again next, in
@@ -387,8 +387,8 @@ gets no strings of it."
                  (words (tuatara.runtime:failure-words e :said t)))
             (message "~a" (if said (funcall said words) (format nil "Error in ~(~a~): ~a" what words)))
             (tuatara.runtime:debug-report :error "~(~a~): ~a~{~%    ~a~}"
-                                          (what) (tuatara.runtime:failure-words e) trace))
-          (when shown (funcall shown e trace))
+                                          (what) (tuatara.runtime:failure-words e) trace)
+            (when shown (funcall shown e trace)))
           nil)
         (storage-condition (e)
           (let ((headline (tuatara.runtime:condition-words e :headline t)))

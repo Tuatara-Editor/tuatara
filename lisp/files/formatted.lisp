@@ -101,7 +101,7 @@ encrypted when saved, their text never written as it is; a name ending in
 (set-formatted-file-header :org (format nil \"#+title: {title}~%#+date: {date}~2%\"))."
   (let ((type (assoc kind *formatted-file-types*)))
     (unless type
-      (error "~s is no kind of file; use one of ~{~(~s~)~^ ~}." kind (mapcar #'first *formatted-file-types*)))
+      (refuse "~s is no kind of file; use one of ~{~(~s~)~^ ~}." kind (mapcar #'first *formatted-file-types*)))
     (setf (fourth type) header)
     kind))
 
@@ -827,7 +827,7 @@ nothing in it acted on; an error says so when it is larger than
   (tuatara.io:file-text path :limit *insert-file-limit*
                              :too-large (lambda (name size)
                                           (declare (ignore size))
-                                          (error "~a is larger than ~a (*insert-file-limit*): not read"
+                                          (refuse "~a is larger than ~a (*insert-file-limit*): not read"
                                                  (tuatara.io:native-file-name name) (octets-words *insert-file-limit*)))))
 
 (define-command insert-note-template ()

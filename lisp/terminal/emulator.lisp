@@ -66,7 +66,7 @@ layout the first time it is needed."
 (declaim (inline layout-cell-value))
 (defun layout-cell-value (cell)
   "The value CELL, one of *LAYOUT-CELLS*, holds; an error when the layout has none."
-  (or (cdr cell) (error "The terminal library's layout says nothing of ~s" (car cell))))
+  (or (cdr cell) (refuse "The terminal library's layout says nothing of ~s" (car cell))))
 
 (defun vt (key)
   "The value KEY has in the terminal library's layout (*TERMINAL-LAYOUT*)."
@@ -146,7 +146,7 @@ what you type is never dropped.")
 return the pointer, or signal an error when it returns other than success."
   (sb-alien:with-alien ((place sb-sys:system-area-pointer (tuatara.io:null-pointer)))
     (let ((result (apply function (append arguments (list (sb-alien:alien-sap (sb-alien:addr place)))))))
-      (unless (eql result (vt :success)) (error "The terminal library refused (~d)" result)))
+      (unless (eql result (vt :success)) (refuse "The terminal library refused (~d)" result)))
     place))
 
 (defmacro vt-new (constructor &rest arguments)
@@ -250,7 +250,7 @@ function of no arguments, is called on the reader's thread when the program
 printed after quiet, so that a frame is drawn. Returns the EMULATOR; an error
 when the library cannot be loaded."
   (unless (terminal-library-p)
-    (error "The terminal library is not there (tools/terminal-library.sh builds it)"))
+    (refuse "The terminal library is not there (tools/terminal-library.sh builds it)"))
   (let* ((id (1+ (sb-ext:atomic-incf (car *emulator-count*))))
          (terminal (vt-new "ghostty_terminal_new" ((sb-alien:unsigned 16) columns) ((sb-alien:unsigned 16) rows)))
          (emulator (%make-emulator :id id :terminal terminal :columns columns :rows rows :wake wake
@@ -488,7 +488,7 @@ read it, nor for the library. Returns true when it was marked."
                                    ((sb-alien:boolean 8) bracketed)
                                    (sb-sys:system-area-pointer (sb-sys:vector-sap out)) ((sb-alien:unsigned 64) room)
                                    (sb-sys:system-area-pointer (sb-alien:alien-sap (sb-alien:addr written)))))
-          (error "The terminal library could not make the paste")))
+          (refuse "The terminal library could not make the paste")))
       (emulator-input emulator (subseq out 0 written)))
     bracketed))
 
@@ -582,7 +582,7 @@ in *LOOK-ATTRIBUTES*.")
 (defmacro look-bit (attribute)
   "The bit of a look standing for ATTRIBUTE, one of *LOOK-ATTRIBUTES*."
   (ash 1 (+ +look-attributes-shift+ (or (position attribute *look-attributes*)
-                                         (error "~s is not an attribute of a look" attribute)))))
+                                         (refuse "~s is not an attribute of a look" attribute)))))
 
 (declaim (inline rgb-code palette-code sap-rgb-code style-colour))
 (defun rgb-code (red green blue)
@@ -819,7 +819,7 @@ so to be called away from the editor's thread for a long scrollback."
                                    (sb-alien:int (if styled 1 0))
                                    (sb-sys:system-area-pointer (sb-alien:alien-sap (sb-alien:addr out)))
                                    (sb-sys:system-area-pointer (sb-alien:alien-sap (sb-alien:addr length)))))
-          (error "The terminal's text could not be made"))
+          (refuse "The terminal's text could not be made"))
         (let ((octets (if (zerop length)
                           (make-array 0 :element-type '(unsigned-byte 8))
                           (prog1 (tuatara.io:sap-octets out length)

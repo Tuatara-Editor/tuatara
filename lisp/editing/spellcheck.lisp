@@ -366,9 +366,9 @@ have been drawn anew meanwhile."
 
 (defun spelling-ready (buffer)
   "Signal an error unless BUFFER's words can be checked here."
-  (cond ((spellcheck-never-p buffer) (error "Spelling is never checked in a file opened safely or shown as octets"))
-        ((null (spellcheck-kind buffer)) (error "Spelling is not checked in ~a" (tuatara.buffer:buffer-name buffer)))
-        ((not (enchant-p)) (error "Spellcheck needs enchant (libenchant-2), which could not be loaded"))))
+  (cond ((spellcheck-never-p buffer) (refuse "Spelling is never checked in a file opened safely or shown as octets"))
+        ((null (spellcheck-kind buffer)) (refuse "Spelling is not checked in ~a" (tuatara.buffer:buffer-name buffer)))
+        ((not (enchant-p)) (refuse "Spellcheck needs enchant (libenchant-2), which could not be loaded"))))
 
 (defun spelling-word-at (buffer position)
   "The word around POSITION in BUFFER, as SPELLING-WORDS finds words, (START

@@ -3,6 +3,7 @@
 
 (defpackage #:tuatara.buffer
   (:use #:cl #:alexandria)
+  (:import-from #:tuatara.runtime #:refuse)
   (:import-from #:tuatara-user #:*undo-limit*)
   (:documentation "Buffer objects: rope plus anchors plus buffer-local variables, change hooks, modification counters, versions and undo.")
   (:export #:buffer #:*buffers* #:make-buffer #:find-buffer #:live-buffer-p #:kill-buffer #:buffer-name #:buffer-version

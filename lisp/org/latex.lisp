@@ -322,7 +322,7 @@ its arguments in."
             (t
              (let ((definition (assoc key (org-macro-definitions) :test #'string-equal)))
                (when (and (null definition) (org-hiding-kind key))
-                 (error "{{{~a(...)}}} hides text only in the enhanced export (M-x org-export-latex-pdf-enhanced), ~
+                 (refuse "{{{~a(...)}}} hides text only in the enhanced export (M-x org-export-latex-pdf-enhanced), ~
                          or with a #+macro: ~a line of your own" key key))
                (when definition
                  (let ((body (cdr definition)))
@@ -1832,7 +1832,7 @@ from the PDF as they are written."
 as written (:RAW or :PATH) and one holds a name to hide: printed as written,
 the call hides nothing."
   (when (and (member way '(:raw :path)) (some #'org-latex-hidden-call-p values))
-    (error "#+~(~a~): holds {{{redact(...)}}} or {{{protect(...)}}}, which the template prints as written, ~
+    (refuse "#+~(~a~): holds {{{redact(...)}}} or {{{protect(...)}}}, which the template prints as written, ~
             its text with it: not exported" name)))
 
 (defun org-latex-hidden-call-p (string)
@@ -1866,7 +1866,7 @@ alone)."
             (let* ((position (org-latex-original-position at))
                    (line (1+ (count #\Newline original :end (min position (length original)))))
                    (line (if lines (aref lines (min (1- (length lines)) (1- line))) line)))
-              (error "{{{~a(...)}}} on line ~d is where Org reads no macros (a code or example block, a link's address, ~
+              (refuse "{{{~a(...)}}} on line ~d is where Org reads no macros (a code or example block, a link's address, ~
                       raw LaTeX): its text would be printed, not hidden; not exported" kind line)))
           (setf start (1+ at)))))))
 

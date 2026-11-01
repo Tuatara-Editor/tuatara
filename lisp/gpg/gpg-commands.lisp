@@ -271,7 +271,7 @@ is trusted. Neither file's access time changes."
 (defun region-or-error (buffer)
   "BUFFER's selection (SELECTED-REGION), as two values, its start and end; an
 error when no text is selected."
-  (values-list (or (selected-region buffer) (error "Select the text first"))))
+  (values-list (or (selected-region buffer) (refuse "Select the text first"))))
 
 (defun replace-region-when-unchanged (buffer start end version text words)
   "Replace BUFFER's text from START below END with TEXT (octets) as one edit, when

@@ -831,7 +831,7 @@ always for a block's rows (BLOCK), whose parts of lines are matched as text.
 Signals why when it does not compile."
   (multiple-value-bind (matcher problem)
       (make-pattern-matcher regexp :regex t :compiled block :crlf (buffer-crlf-p buffer))
-    (or matcher (error "Regexp ~a: ~a" regexp problem))))
+    (or matcher (refuse "Regexp ~a: ~a" regexp problem))))
 
 (defun piece-matches (function rope matcher scope groups from to halt &key texts)
   "Call FUNCTION as STRETCH-MATCHES does for each match of MATCHER in the
@@ -1433,7 +1433,7 @@ rows."
 
 (defun live-split ()
   "The split in force in this buffer; signals when there is none."
-  (unless (split-here-p) (error "No split here"))
+  (unless (split-here-p) (refuse "No split here"))
   *split*)
 
 (define-command split-insert ()

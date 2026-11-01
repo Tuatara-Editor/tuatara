@@ -67,13 +67,13 @@ NIL when JOB is stopped first. SOURCE is a function that fills BUFFER with the
 next octets and returns how many, 0 at the end; each piece counts in JOB's DONE."
   (let ((ctx (foreign-call "EVP_MD_CTX_new" sb-sys:system-area-pointer))
         (null (sb-sys:int-sap 0)))
-    (when (sb-sys:sap= ctx null) (error "~a could not start a sum" *hash-library*))
+    (when (sb-sys:sap= ctx null) (refuse "~a could not start a sum" *hash-library*))
     (unwind-protect
          (progn
            (unless (= 1 (foreign-call "EVP_DigestInit_ex" sb-alien:int (sb-sys:system-area-pointer ctx)
                                      (sb-sys:system-area-pointer (foreign-call "EVP_sha256" sb-sys:system-area-pointer))
                                      (sb-sys:system-area-pointer null)))
-             (error "~a could not start a SHA-256 sum" *hash-library*))
+             (refuse "~a could not start a SHA-256 sum" *hash-library*))
            (loop for n = (if (car (hash-job-cancel job)) (return-from library-sum nil) (funcall source buffer))
                  while (plusp n)
                  do (sb-sys:with-pinned-objects (buffer)
@@ -92,7 +92,7 @@ next octets and returns how many, 0 at the end; each piece counts in JOB's DONE.
 written through a pipe to PROGRAM, which prints it; NIL when JOB is stopped
 first. Signals, with what the program said, when it prints no sum."
   (tuatara.io:call-with-program
-   (list (or (tuatara.io:find-program program) (error "There is no program ~a to take the sum with" program)))
+   (list (or (tuatara.io:find-program program) (refuse "There is no program ~a to take the sum with" program)))
    (lambda (process)
      (let ((fd (sb-sys:fd-stream-fd (sb-ext:process-input process))))
        (loop for n = (if (car (hash-job-cancel job)) 0 (funcall source buffer))
@@ -111,7 +111,7 @@ first. Signals, with what the program said, when it prints no sum."
          (if (and (eql (sb-ext:process-exit-code process) 0) (>= (length said) 64)
                   (every (lambda (c) (digit-char-p c 16)) (subseq said 0 64)))
              (string-downcase (subseq said 0 64))
-             (error "~a failed~@[: ~a~]" program (and (plusp (length said)) said))))))
+             (refuse "~a failed~@[: ~a~]" program (and (plusp (length said)) said))))))
    :job job :input :stream :output :stream :error :output :external-format :default))
 
 (defun file-source (fd path)
@@ -183,7 +183,7 @@ said instead, except for the files the kernel makes up as they are read."
                                  (lambda (sum)
                                    (if sum
                                        (unless (or made-up (tuatara.io:same-content-p stamp (tuatara.io:fd-stamp fd path)))
-                                         (error "~a changed while being summed; sum it again" (abbreviated-path path)))
+                                         (refuse "~a changed while being summed; sum it again" (abbreviated-path path)))
                                        (sb-posix:close fd)))))))
       (unless started (sb-posix:close fd)))
     started))
@@ -238,7 +238,7 @@ less."
              (let ((original (or sum (fd-sha256 in source :cancel cancel :buffer buffer))))
                (unless original
                  (when (car cancel) (stopped))
-                 (error "~a could not be summed: nothing copied" source))
+                 (refuse "~a could not be summed: nothing copied" source))
                (unless (tuatara.io:copy-open-file-to in source target :cancel cancel)
                  (ignoring-errors-reported ("taking away ~a" target) (tuatara.io:remove-file target))
                  (stopped))

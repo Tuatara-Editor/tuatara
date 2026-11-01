@@ -3,6 +3,7 @@
 
 (defpackage #:tuatara.modes
   (:use #:cl #:alexandria)
+  (:import-from #:tuatara.runtime #:refuse)
   (:documentation "Major modes: a class tree rooted at FUNDAMENTAL-MODE, each mode with a keymap that
 inherits its parent's, a modal class for modal editing, hooks, and the rules that choose a
 mode for a file by name, extension or #! line. Behaviour that differs by mode is a

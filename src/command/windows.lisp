@@ -272,11 +272,11 @@ to the window.
   (let ((which (if (listp which) which (list which))))
     (dolist (item which)
       (unless (or (stringp item) (symbolp item))
-        (error "~s names no buffers: use a name, a kind such as :help, or a major mode." item)))
+        (refuse "~s names no buffers: use a name, a kind such as :help, or a major mode." item)))
     (unless (member place *places*)
-      (error "~s is no place; use one of ~{~(~s~)~^ ~}." place *places*))
+      (refuse "~s is no place; use one of ~{~(~s~)~^ ~}." place *places*))
     (unless (or (null size) (eq size :fit) (and (realp size) (plusp size)))
-      (error "~s is no size; use a fraction such as 0.3, a number of rows or columns, or :fit." size))
+      (refuse "~s is no size; use a fraction such as 0.3, a number of rows or columns, or :fit." size))
     (let ((rule (make-buffer-place which place size keep select)))
       (setf *buffer-places* (cons rule (remove which *buffer-places* :key #'buffer-place-which :test #'equal)))
       rule)))
@@ -459,7 +459,7 @@ will do. AT :START shows it from its start, point there; AT :END with point at
 its end. The window is selected only when the rule says so. A buffer that has
 been killed is not shown: that is an error."
   (unless (live-buffer-p buffer)
-    (error "~a has been killed" (tuatara.buffer:buffer-name buffer)))
+    (refuse "~a has been killed" (tuatara.buffer:buffer-name buffer)))
   (let* ((editor *editor*)
          (rule (buffer-place-for buffer))
          (place (if rule (buffer-place-place rule) :other))
@@ -512,9 +512,9 @@ rules take it (half of what is split when not given), which quitting closes;
 shown already in a window, that one. Returns the window, or NIL when there
 is no room for a new one."
   (unless (live-buffer-p buffer)
-    (error "~a has been killed" (tuatara.buffer:buffer-name buffer)))
+    (refuse "~a has been killed" (tuatara.buffer:buffer-name buffer)))
   (unless (member place '(:here :bottom :top :left :right))
-    (error "~s is no place for it; use :here, :bottom, :top, :left or :right." place))
+    (refuse "~s is no place for it; use :here, :bottom, :top, :left or :right." place))
   (let ((editor *editor*))
     (fit-windows editor)
     (let ((window (cond ((eq place :here) (show-in-window (editor-window editor) buffer nil))

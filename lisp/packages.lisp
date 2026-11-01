@@ -97,7 +97,7 @@ the first version taken is remembered and asked of every later one. An
 address of http:// or git:// is allowed only by :plain t on the
 load-package of each package fetched from it."
   (unless (and (stringp name) (plusp (length name)))
-    (error "package-source takes a name and an address or a folder: ~s ~s" name where))
+    (refuse "package-source takes a name and an address or a folder: ~s ~s" name where))
   (check-package-where where)
   (note-package-source-terms where signers)
   (setf *package-sources* (acons name where (remove name *package-sources* :key #'car :test #'string=)))
@@ -123,13 +123,13 @@ written."
 as package-source and load-package give them; an error for SIGNERS that is no
 list of fingerprints."
   (unless (listp signers)
-    (error "A source's :signers are a list of keys' fingerprints: ~s" signers))
+    (refuse "A source's :signers are a list of keys' fingerprints: ~s" signers))
   (dolist (signer signers)
     (let ((bare (and (stringp signer) (remove #\Space signer))))
       (cond ((and bare (cl-ppcre:scan "^(?:SHA256:[A-Za-z0-9+/]{43}=?|[0-9A-Fa-f]{40}|[0-9A-Fa-f]{64})$" bare)))
             ((and bare (cl-ppcre:scan "^(?:0x)?[0-9A-Fa-f]{8,16}$" bare))
-             (error "~s in :signers is a GPG key's ID: name its whole fingerprint, the 40 hexadecimal digits gpg --fingerprint shows for the key itself (pub), not a subkey's" signer))
-            (t (error "~s in :signers is no key's fingerprint: an SSH key's SHA256:... (ssh-keygen -lf KEY.pub) or a GPG key's 40 hexadecimal digits (gpg --fingerprint)" signer)))))
+             (refuse "~s in :signers is a GPG key's ID: name its whole fingerprint, the 40 hexadecimal digits gpg --fingerprint shows for the key itself (pub), not a subkey's" signer))
+            (t (refuse "~s in :signers is no key's fingerprint: an SSH key's SHA256:... (ssh-keygen -lf KEY.pub) or a GPG key's 40 hexadecimal digits (gpg --fingerprint)" signer)))))
   (when signers
     (setf *package-signers* (acons where (mapcar #'signer-fingerprint signers)
                                    (remove where *package-signers* :key #'car :test #'string=)))))
@@ -167,17 +167,17 @@ be another folder at each start, one that starts with - would be read by git
 as an option, and a line of the lists of packages that starts with @ is of a
 kind a later release adds."
   (unless (and (stringp where) (plusp (length where)))
-    (error "A package's source is an address or a folder: ~s" where))
+    (refuse "A package's source is an address or a folder: ~s" where))
   (when (char= (char where 0) #\-)
-    (error "A package's source cannot start with -: ~s" where))
+    (refuse "A package's source cannot start with -: ~s" where))
   (when (char= (char where 0) #\@)
-    (error "A package's source cannot start with @: ~s" where))
+    (refuse "A package's source cannot start with @: ~s" where))
   (when (char= (char where 0) #\.)
-    (error "A package's folder is named whole, from / or ~~/: ~s" where))
+    (refuse "A package's folder is named whole, from / or ~~/: ~s" where))
   (when (cl-ppcre:scan "^[a-z][a-z0-9+.-]*://[^/@]*@" where)
-    (error "A package's address cannot hold a name or a password (@): ~s" where))
+    (refuse "A package's address cannot hold a name or a password (@): ~s" where))
   (when (cl-ppcre:scan "(?i)^ftps?://" where)
-    (error "A package is fetched over https://, ssh or from a folder of your disk, not over ftp: ~s" where)))
+    (refuse "A package is fetched over https://, ssh or from a folder of your disk, not over ftp: ~s" where)))
 
 (defun package-key (name where version)
   "What a package called NAME from WHERE, VERSION asked for, is remembered by."
@@ -271,19 +271,19 @@ there is said to be inside this one, a parenthesis left open before it."
                (when (and (rest items) (not (member key '(:commands :modes :init :config))))
                  (let ((extra (first (last items 2))))
                    (if (and (consp extra) (symbolp (first extra)) (string-equal (first extra) "LOAD-PACKAGE"))
-                       (error "load-package ~s is inside this one, after ~(~s~): a parenthesis is left open before it"
+                       (refuse "load-package ~s is inside this one, after ~(~s~): a parenthesis is left open before it"
                               (second extra) key)
-                       (error "load-package's ~(~s~) takes one value, not also ~s" key extra))))
+                       (refuse "load-package's ~(~s~) takes one value, not also ~s" key extra))))
                (setf (getf parsed key) (reverse items)))))
       (dolist (item options)
         (if (and (keywordp item) (or (member item *load-package-keywords*) (null key) (not (member key '(:init :config)))))
             (progn
               (unless (member item *load-package-keywords*)
-                (error "load-package takes ~{~(~s~)~^, ~}, not ~(~s~)" *load-package-keywords* item))
+                (refuse "load-package takes ~{~(~s~)~^, ~}, not ~(~s~)" *load-package-keywords* item))
               (close-key)
               (setf key item items '()))
             (progn
-              (unless key (error "load-package takes a keyword after the name, not ~s" item))
+              (unless key (refuse "load-package takes a keyword after the name, not ~s" item))
               (push item items))))
       (close-key))
     parsed))
@@ -546,11 +546,11 @@ NIL when it is loaded later or nothing is."
       (pushnew (list name source) *left-out-packages* :test #'equal))
     (return-from declare-package nil))
   (unless (and (stringp name) (cl-ppcre:scan "^[a-z0-9][a-z0-9-]*$" name))
-    (error "A package's name is small letters, digits and -: ~s" name))
+    (refuse "A package's name is small letters, digits and -: ~s" name))
   (when (and after (not (and (stringp after) (cl-ppcre:scan "^[a-z0-9][a-z0-9-]*$" after))))
-    (error "A package's :after is another package's name: ~s" after))
+    (refuse "A package's :after is another package's name: ~s" after))
   (dolist (command commands)
-    (unless (symbolp command) (error "A package's :commands are commands' names: ~s" command)))
+    (unless (symbolp command) (refuse "A package's :commands are commands' names: ~s" command)))
   (setf modes (mapcar (lambda (mode) (if (stringp mode) (intern (string-upcase mode) :keyword) mode)) modes))
   (mapc #'mode-named modes)
   (setf *package-configs* (acons name config (remove name *package-configs* :key #'car :test #'string=)))
@@ -567,17 +567,17 @@ NIL when it is loaded later or nothing is."
     (cond (source
            (run-package-forms name :init init)
            (unless (and (stringp source) (plusp (length source)))
-             (error "A package's :source is a source's name, an address or a folder: ~s" source))
+             (refuse "A package's :source is a source's name, an address or a folder: ~s" source))
            (check-package-where (package-where source))
            (note-package-source-terms (package-where source) signers)
            (setf *package-plain-allowed* (remove name *package-plain-allowed* :key #'car :test #'string=))
            (when plain (push (cons name (package-where source)) *package-plain-allowed*))
            (when (and version (not (and (stringp version) (cl-ppcre:scan "^[^\\s~^:?*\\[\\\\]+$" version))))
-             (error "A package's :version is a tag, a branch or a commit: ~s" version))
+             (refuse "A package's :version is a tag, a branch or a commit: ~s" version))
            (when (and file (not (and (stringp file) (cl-ppcre:scan "^[A-Za-z0-9._-]+\\.lisp$" file))))
-             (error "A package's :file is a .lisp file of its folder: ~s" file))
+             (refuse "A package's :file is a .lisp file of its folder: ~s" file))
            (when (and folder (not (and (stringp folder) (cl-ppcre:scan "^[A-Za-z0-9_][A-Za-z0-9._-]*$" folder))))
-             (error "A package's :folder is the name of a folder in its repository or source folder: ~s" folder))
+             (refuse "A package's :folder is the name of a folder in its repository or source folder: ~s" folder))
            (declared (list name source version file folder))
            (arrange (lambda () (load-package-from name source version file))))
           (t
@@ -587,7 +587,7 @@ NIL when it is loaded later or nothing is."
              (unless (or mode (string= name "tuatara"))
                (setf near (known-package-name-near name))
                (when near
-                 (error "No package or mode called ~a: did you mean ~a?" name near)))
+                 (refuse "No package or mode called ~a: did you mean ~a?" name near)))
              (run-package-forms name :init init)
              (arrange (lambda ()
                         (let ((start (get-internal-real-time)))
@@ -919,7 +919,7 @@ finds the old one or the new, and the new one's names with it."
                            (with-compilation-unit (:override t)
                              (compile-file file :output-file temporary :verbose nil :print nil))))))
            (unless output
-             (error "~a could not be compiled~@[: ~a~]" (abbreviated-path (tuatara.io:native file))
+             (refuse "~a could not be compiled~@[: ~a~]" (abbreviated-path (tuatara.io:native file))
                     (or (compile-failure-words (get-output-stream-string report)) (first said))))
            ;; the names first: a fasl is never there before the names it needs
            (write-kept-list (beside-fasl fasl "needs") needed)
@@ -1003,7 +1003,7 @@ editor, a buffer, or changes outside Tuatara (files written, programs
 started). Where it fails there, the package is compiled as it loads in the
 editor instead."
   (let ((file (tuatara-user:package-file name)))
-    (unless (probe-file file) (error "The package has no file ~a" (abbreviated-path (tuatara.io:native file))))
+    (unless (probe-file file) (refuse "The package has no file ~a" (abbreviated-path (tuatara.io:native file))))
     (if (or *package-check* (not *loading-package-name*))
         (load-checked-file file *package-check*)
         (let* ((check (make-package-check *loading-package-name* (beside-fasl (package-fasl file) "refused")))
@@ -1026,11 +1026,11 @@ its own. An error when NAME does not begin with OWNER's name (*NAME-), or is
 already a setting of Tuatara or of another package."
   (let ((prefix (format nil "*~a-" (package-name owner))))
     (unless (and (> (length name) (length prefix)) (string= prefix name :end2 (length prefix)))
-      (error "A setting of the package ~(~a~) is named ~(~a~)...*, not ~(~a~)" (package-name owner) prefix name))
+      (refuse "A setting of the package ~(~a~) is named ~(~a~)...*, not ~(~a~)" (package-name owner) prefix name))
     (multiple-value-bind (symbol status) (find-symbol name :tuatara-user)
       (when (and status (not (eq status :internal))
                  (not (equal (get symbol 'package-setting) (package-name owner))))
-        (error "~(~a~) is already a setting of ~a" name
+        (refuse "~(~a~) is already a setting of ~a" name
                (let ((other (get symbol 'package-setting))) (if other (format nil "the package ~(~a~)" other) "Tuatara"))))
       (let ((symbol (or symbol (intern name :tuatara-user)))
             (own (find-symbol name owner)))
@@ -1139,7 +1139,7 @@ when given, its files compiled when they have changed since; one that needs
 a newer Tuatara (PACKAGE-NEEDED-VERSION) is an error, nothing of it loaded.
 Returns its entry's file."
   (let ((entry (or (package-entry folder name file)
-                   (error "The package ~a has no ~:[~a.lisp or load.lisp~;~:*~a~] in ~a" name file name
+                   (refuse "The package ~a has no ~:[~a.lisp or load.lisp~;~:*~a~] in ~a" name file name
                           (abbreviated-path (tuatara.io:native folder)))))
         (needed (unfitting-version folder name file)))
     (when needed
@@ -1232,7 +1232,7 @@ made by init is given *PACKAGE-ATTRIBUTES* as its own."
                                                                  :seconds *package-git-seconds*))
     (declare (ignore too-large))
     (unless ok
-      (error "~a" (git-failure-words (first arguments) (or said ""))))
+      (refuse "~a" (git-failure-words (first arguments) (or said ""))))
     (when (equal (first arguments) "init")
       (let ((info (format nil "~a.git/info/" (tuatara.io:native directory))))
         (tuatara.io:ensure-private-directory info)
@@ -1244,7 +1244,7 @@ made by init is given *PACKAGE-ATTRIBUTES* as its own."
 one (GIT-HASH-P, 7 to 64 hexadecimal digits); an error otherwise."
   (let ((name (string-trim '(#\Newline #\Space #\Tab) text)))
     (unless (git-hash-p name :short t)
-      (error "~a gave no commit's name: ~s" where (subseq name 0 (min 80 (length name)))))
+      (refuse "~a gave no commit's name: ~s" where (subseq name 0 (min 80 (length name)))))
     name))
 
 (defun package-commit (directory where version)
@@ -1257,7 +1257,7 @@ one (PACKAGE-COMMIT-NAME)."
   (labels ((first-word (text) (first (uiop:split-string (string-trim '(#\Newline #\Space) text) :separator '(#\Space #\Tab))))
            (newest-commit ()
              (values (package-commit-name (or (first-word (package-git directory "ls-remote" where "HEAD"))
-                                              (error "~a has no main branch" where))
+                                              (refuse "~a has no main branch" where))
                                           where)
                      nil))
            (newest-tag ()
@@ -1274,7 +1274,7 @@ one (PACKAGE-COMMIT-NAME)."
            (cond ((plusp (length (string-trim '(#\Newline #\Space) (package-git directory "ls-remote" "--tags" where))))
                   (newest-tag))
                  ((null version) (newest-commit))
-                 (t (error "~a has no tagged version; :version \"latest\" takes its newest commit" where))))
+                 (t (refuse "~a has no tagged version; :version \"latest\" takes its newest commit" where))))
           (t
            (let* ((listed (package-git directory "ls-remote" where
                                        (format nil "refs/tags/~a" version) (format nil "refs/tags/~a^{}" version)
@@ -1285,9 +1285,9 @@ one (PACKAGE-COMMIT-NAME)."
                                   (and (search "refs/tags/" (or peeled (first lines))) version)))
                    ((git-hash-p version) (values version nil))
                    ((git-hash-p version :short t)
-                    (error "~a has no tag or branch called ~a, and a commit is fetched by its whole name, ~
+                    (refuse "~a has no tag or branch called ~a, and a commit is fetched by its whole name, ~
                             40 hexadecimal digits (git log shows it)" where version))
-                   (t (error "~a has no tag, branch or commit called ~a" where version))))))))
+                   (t (refuse "~a has no tag, branch or commit called ~a" where version))))))))
 
 (defun delete-package-folder (folder)
   "Delete FOLDER, with all in it, or a file, when it is inside the folders
@@ -1296,7 +1296,7 @@ an error for any other folder."
   (let ((native (tuatara.io:native folder)))
     (unless (or (tuatara.io:path-within-p native (tuatara.io:native (packages-directory)))
                 (tuatara.io:path-within-p native (format nil "~apackages/" (tuatara.io:native (tuatara.io:cache-directory)))))
-      (error "~a is no folder of the packages': not deleted" (abbreviated-path native)))
+      (refuse "~a is no folder of the packages': not deleted" (abbreviated-path native)))
     (tuatara.io:delete-tree native)))
 
 (defparameter *package-most-octets* (* 512 1024 1024)
@@ -2005,7 +2005,7 @@ waits for a package to load (*PACKAGE-COMPILING* :REFUSED), for FILE changed
 after the package was compiled apart; said on the output the first time in
 a process compiling a package apart (:APART)."
   (case *package-compiling*
-    (:refused (error "~a changed while the package was being compiled; it loads as changed the next time it is loaded"
+    (:refused (refuse "~a changed while the package was being compiled; it loads as changed the next time it is loaded"
                      (abbreviated-path (tuatara.io:native file))))
     (:apart (format t "~&~a~%" *package-compiling-line*)
      (finish-output)
@@ -2674,7 +2674,7 @@ not be read on is said, the packages after it unseen. The package manager
 became is in *Messages* (\\[view-echo-area-messages])."
   (let ((file (config-file)))
     (unless (probe-file file)
-      (error "No init file at ~a" (abbreviated-path file)))
+      (refuse "No init file at ~a" (abbreviated-path file)))
     (multiple-value-bind (results stopped) (scan-init-file-packages file)
       (loop for (name line inside outcome) in results
             do (log-message (format nil "package-scan: ~a, line ~d~:[~;, inside another form (a parenthesis left open before it?)~]: ~a"

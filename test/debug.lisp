@@ -313,3 +313,27 @@ reports not yet shown."
                (nth-value 1 (tuatara.runtime:ignoring-errors-reported ("failing in a test")
                               (error condition))))))
     (drain-debug-reports)))
+
+(define-test (debug-reports refusals-said-whole-under-a-secret)
+  ;; under a secret, the editor's own refusals keep their words for the person, any other error
+  ;; says its kind alone; a character among the arguments of what was being done still prints
+  (let ((tuatara.runtime:*secret-at-hand* t))
+    (is string= "nothing chosen to encrypt it to"
+        (tuatara.runtime:failure-words (nth-value 1 (ignore-errors (tuatara.runtime:refuse "nothing chosen to encrypt it to")))
+                                       :said t))
+    (is string= "a simple-error"
+        (tuatara.runtime:failure-words (nth-value 1 (ignore-errors (error "plain kiwi words"))) :said t))
+    (is string= "a type-error"
+        (tuatara.runtime:failure-words (make-condition 'type-error :datum "plain kiwi words" :expected-type 'integer))))
+  (drain-debug-reports)
+  (clrhash tuatara.runtime::*error-report-places*)
+  (unwind-protect
+       (progn
+         (tuatara.runtime:set-debug t)
+         (let ((tuatara.runtime:*secret-at-hand* t))
+           (tuatara.runtime:ignoring-errors-reported ("typing ~c in a test" #\k) (error "plain kiwi words")))
+         (let ((texts (loop for report = (sb-concurrency:dequeue tuatara.runtime:*debug-reports*)
+                            while report collect (princ-to-string (fourth report)))))
+           (true (find "typing ? in a test failed: a simple-error" texts :test #'search) "~s" texts)
+           (false (find "kiwi" texts :test #'search) "~s" texts)))
+    (drain-debug-reports)))

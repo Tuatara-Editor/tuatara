@@ -121,7 +121,7 @@ to be, which may be a folder of files not to be trusted."
   "Signal that the program NAME is not installed, saying how to install it
 (INSTALL, \"Fedora: sudo dnf install gnupg2\") and what is not done without it
 \(WHY), each when given: (or (find-program \"git\") (program-missing \"git\"))."
-  (error "~a is not installed~@[ (~a)~]~@[: ~a~]" name install why))
+  (refuse "~a is not installed~@[ (~a)~]~@[: ~a~]" name install why))
 
 (defun setsid-command (program arguments &rest setsid-flags)
   "How to start PROGRAM with ARGUMENTS in a session of its own (setsid), so

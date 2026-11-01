@@ -24,7 +24,7 @@ error saying why when it cannot be done."
                                             (mapcar #'sandbox-seen-directory (remove "/dev/null" (list local base remote) :test #'equal))
                                             :test #'string=))
     (unless (eq outcome :done)
-      (error "~a" (tuatara.io:sandbox-outcome-words outcome said :label "git merge-file")))
+      (refuse "~a" (tuatara.io:sandbox-outcome-words outcome said :label "git merge-file")))
     output))
 
 (defstruct (merge-job (:include tuatara.runtime:job) (:constructor make-merge-job (buffer local base remote version))

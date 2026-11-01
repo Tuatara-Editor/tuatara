@@ -76,7 +76,7 @@ not got)."
                :directories (if own (cons own *man-directories*) *man-directories*)
                :output-limit *man-output-limit* nil)
       (unless (eq outcome :done)
-        (error "~a" (tuatara.io:sandbox-outcome-words outcome said :label "man" :seconds-setting '*man-seconds*)))
+        (refuse "~a" (tuatara.io:sandbox-outcome-words outcome said :label "man" :seconds-setting '*man-seconds*)))
       output)))
 
 ;;; Reading what man printed
@@ -275,11 +275,11 @@ with a dash, is refused: man would take it for a file or an option."
       (cl-ppcre:scan-to-strings (concatenate 'string "^\\s*(?:([^\\s/()]+)\\(([0-9][A-Za-z0-9]*)\\)"
                                                     "|([0-9][A-Za-z0-9]*)\\s+([^\\s/()]+)|([^\\s/()]+))\\s*$")
                                 asked)
-    (unless all (error "~a is not the name of a manual page" (tuatara.display:shorten-string asked 40)))
+    (unless all (refuse "~a is not the name of a manual page" (tuatara.display:shorten-string asked 40)))
     (let ((name (or (aref groups 0) (aref groups 3) (aref groups 4)))
           (section (or (aref groups 1) (aref groups 2))))
       (when (char= (char name 0) #\-)
-        (error "~a is not the name of a manual page" (tuatara.display:shorten-string asked 40)))
+        (refuse "~a is not the name of a manual page" (tuatara.display:shorten-string asked 40)))
       (append (list "--") (and section (list section)) (list name)))))
 
 (defun man-buffer-name (asked file)

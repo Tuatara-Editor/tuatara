@@ -102,7 +102,7 @@ second (*KEYS-PLAY-PROGRESS*); between plays keys typed are looked at,
 plays were done, then why they stopped: NIL when all were done, :FAILED when a
 command among the keys failed, its words the third value, or :QUIT."
   (when (>= *keys-plays-within* *keys-plays-within-most*)
-    (error "Recorded keys play other keys more than ~d deep" *keys-plays-within-most*))
+    (refuse "Recorded keys play other keys more than ~d deep" *keys-plays-within-most*))
   (let* ((editor *editor*)
          (*keys-plays-within* (1+ *keys-plays-within*))
          (outermost (= *keys-plays-within* 1))

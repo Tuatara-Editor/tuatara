@@ -50,7 +50,7 @@ were. Text pasted is recorded too, and pasted again as it was; the mouse is
 not recorded. The counter \\[insert-keys-counter]
 inserts starts again at 1, or at the number \\[set-keys-counter] set since
 the last recording began, however far plays took it meanwhile."
-  (cond ((keys-playing-p) (error "Keys are not recorded while recorded keys play"))
+  (cond ((keys-playing-p) (refuse "Keys are not recorded while recorded keys play"))
         ((keys-recording-p)
          (drop-command-keys)
          (message "Keys are being recorded already: \\[stop-recording-keys] ends the recording"))
@@ -160,7 +160,7 @@ recording begins."
 writes Item 7.)."
   (let* ((format (read-string "Counter format (%d the number, %03d in three digits): " :initial *keys-counter-format*))
          (formatter (handler-case (reporting-errors ("reading the counter format ~s" format) (number-formatter format))
-                      (error (e) (message "~a" (tuatara.runtime:condition-words e)) nil))))
+                      (error (e) (message "~a" (tuatara.runtime:failure-words e :said t)) nil))))
     (when formatter
       (setf *keys-counter-format* format)
       (message "The counter is written ~a" (funcall formatter *keys-counter*)))))
@@ -183,12 +183,12 @@ one given to recorded keys before, which then plays these.
                      (coerce keys 'simple-vector)))
          (text (recorded-keys-text events))
          (other (command-symbol name)))
-    (when (zerop (length events)) (error "No keys to play"))
+    (when (zerop (length events)) (refuse "No keys to play"))
     (when (or (not (symbolp name)) (null name) (eq (symbol-package name) (find-package '#:common-lisp)))
-      (error "~s cannot name recorded keys: it is not a name, or is one of Lisp's own" name))
+      (refuse "~s cannot name recorded keys: it is not a name, or is one of Lisp's own" name))
     (when (or (and (fboundp name) (not (get name 'recorded-keys)))
               (and other (not (eq other name))))
-      (error "~(~a~) is the name of a command or function already" name))
+      (refuse "~(~a~) is the name of a command or function already" name))
     (setf (fdefinition name) (lambda () (play-keys-saying events (play-count)))
           (documentation name 'function)
           (or documentation

@@ -20,7 +20,7 @@ returned is wiped, the question given up (\\[keyboard-quit]) too."
                (unwind-protect
                     (if (string= first second)
                         (setf returned first)
-                        (error "The two passphrases differ: nothing done"))
+                        (refuse "The two passphrases differ: nothing done"))
                  (wipe-string second)))
           (unless returned (wipe-string first))))))
 
@@ -59,7 +59,7 @@ them; NIL otherwise.")
 For the commands of a question's own keys (READ-STRING's KEYMAP) that end it."
   (if *minibuffer-finish*
       (funcall *minibuffer-finish*)
-      (error "The minibuffer is not reading.")))
+      (refuse "The minibuffer is not reading.")))
 
 (defun read-string (prompt &key (initial "") complete select-initial changed update keymap history)
   "Read a line of text with PROMPT in the echo area. Returns the
@@ -100,7 +100,7 @@ HISTORY, a list of earlier answers, newest first, is gone back through with
         (*minibuffer-initial-selected* (and select-initial (plusp (length initial))))
         (*minibuffer-question-keymap* keymap)
         (*minibuffer-history* (and history (list history -1 nil))))
-    (when (editor-minibuffer-active editor) (error "The minibuffer is already in use."))
+    (when (editor-minibuffer-active editor) (refuse "The minibuffer is already in use."))
     ;; a list of completions in a buffer closes when the minibuffer asks something
     (close-popup editor)
     (setf (editor-minibuffer-prompt editor) prompt

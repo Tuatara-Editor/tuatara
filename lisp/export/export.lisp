@@ -469,7 +469,7 @@ saying why; with WOULD, what it asks before it runs so."
 does not exist: an export never makes folders, wherever #+EXPORT_FILE_NAME
 points."
   (unless (tuatara.io:path-stamp (tuatara.io:parent-path path))
-    (error "~a does not exist (#+export_file_name)" (tuatara.io:parent-path path))))
+    (refuse "~a does not exist (#+export_file_name)" (tuatara.io:parent-path path))))
 
 (defun org-to-latex (job engine)
   "Write the Org text of JOB as LaTeX for the program ENGINE (ORG-LATEX-DOCUMENT),
@@ -647,7 +647,7 @@ of TARGET reads either the old PDF or the new, never half of one."
   (let ((temporary (tuatara.io:scratch-name (tuatara.io:parent-path target) "pdf")))
     (unless (tuatara.io:copy-regular-file made temporary)
       (ignoring-errors-reported ("deleting ~a" temporary) (tuatara.io:remove-file temporary))
-      (error "~a could not be written" target))
+      (refuse "~a could not be written" target))
     (handler-case (tuatara.io:rename-path temporary target :replace t)
       (error (e)
         (ignoring-errors-reported ("deleting ~a" temporary) (tuatara.io:remove-file temporary))
@@ -710,7 +710,7 @@ it in turn until one does, put beside the LaTeX file."
       (setf (pdf-export-step job) "waiting for the save")
       (sb-thread:join-thread (tuatara.io:save-job-thread save) :default nil)
       (unless (eq :done (tuatara.io:save-job-status save))
-        (error "~a was not saved" (export-name job)))))
+        (refuse "~a was not saved" (export-name job)))))
   (let* ((tex (if (eq (pdf-export-kind job) :org)
                   (org-to-latex job (or (car (first (latex-engines-found))) "xelatex"))
                   (pdf-export-source job)))
@@ -730,7 +730,7 @@ it in turn until one does, put beside the LaTeX file."
               (append (pdf-export-errors job) (list (cons (car engine) errors))))))
     ;; the first problem the first program met, where it is in what was written
     (let ((first (first (cdr (first (pdf-export-errors job))))))
-      (error "~{~a~^ and ~} failed~@[ (~a)~]; *LaTeX errors* has what they said"
+      (refuse "~{~a~^ and ~} failed~@[ (~a)~]; *LaTeX errors* has what they said"
              (reverse (pdf-export-failed job)) (and first (error-words job first))))))
 
 (defun show-buffer-place (buffer position)

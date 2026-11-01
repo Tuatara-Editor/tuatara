@@ -15,8 +15,8 @@ for the current buffer. Signals an error when there is no such buffer."
   (cond ((null buffer-or-name) (current-buffer))
         ((typep buffer-or-name 'tuatara.buffer:buffer) buffer-or-name)
         ((stringp buffer-or-name)
-         (or (tuatara.buffer:find-buffer buffer-or-name) (error "No buffer named ~a" buffer-or-name)))
-        (t (error "Wrong type argument: ~s is neither a buffer nor a buffer's name" buffer-or-name))))
+         (or (tuatara.buffer:find-buffer buffer-or-name) (refuse "No buffer named ~a" buffer-or-name)))
+        (t (refuse "Wrong type argument: ~s is neither a buffer nor a buffer's name" buffer-or-name))))
 
 (defun position-at (buffer byte)
   "Offset BYTE of BUFFER as a position: characters counted from 1."
@@ -32,9 +32,9 @@ with CLAMP is taken to the nearer end."
          (first (position-at buffer (tuatara.buffer:buffer-start buffer)))
          (last (position-at buffer (tuatara.buffer:buffer-end buffer))))
     (unless (integerp position)
-      (error "Wrong type argument: ~s is not a position" position))
+      (refuse "Wrong type argument: ~s is not a position" position))
     (unless (or clamp (<= first position last))
-      (error "Args out of range: position ~d is outside ~d to ~d" position first last))
+      (refuse "Args out of range: position ~d is outside ~d to ~d" position first last))
     (tuatara.text:char->byte rope (1- (max first (min last position))))))
 
 (defun range-at (buffer start end)

@@ -3,6 +3,7 @@
 
 (defpackage #:tuatara.command
   (:use #:cl #:alexandria)
+  (:import-from #:tuatara.runtime #:refuse)
   (:import-from #:tuatara-user #:*cursor-shape* #:*cursor-colour* #:message #:current-buffer #:*message-log-max* #:*mode-line-name-max* #:*gui-title* #:place-buffers #:*split-height-threshold* #:*split-width-threshold*
                 #:*show-completion-count* #:*prompt-above-candidates* #:*key-hint-rows* #:*debug-on-error*)
   (:import-from #:tuatara.buffer #:live-buffer-p)

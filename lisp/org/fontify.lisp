@@ -271,8 +271,8 @@ BUFFER the part begins at, RETURNS those the part's text left out."
   "The text JOB, as ORG-WANT-PARSE asks for it, has parsed, as Org reads it:
 two values, the text and where it lost a carriage return before a newline
 \(ORG-STRIP-RETURNS)."
-  (destructuring-bind (version source crlf keywords) job
-    (declare (ignore version keywords))
+  (destructuring-bind (version source crlf keywords &optional secret) job
+    (declare (ignore version keywords secret))
     (if (org-snapshot-p source)
         (org-snapshot-text source)
         (let ((raw (if (stringp source)
@@ -292,15 +292,17 @@ as holding nothing Org shows (ORG-EMPTY-TREE)."
 PLACES), PLACES where the parts are in a whole buffer's parse (ORG-ASSEMBLE).
 For a text the parser cannot read, the text read as holding nothing
 \(ORG-UNPARSED), what went wrong said in the debug log and given as a
-second value; NIL for a text that cannot be read at all."
-  (let ((source (second job)))
+second value; NIL for a text that cannot be read at all. The text of a
+buffer kept secret (its fifth, true) leaves only the kind of failure said."
+  (let ((source (second job))
+        (tuatara.runtime:*secret-at-hand* (or tuatara.runtime:*secret-at-hand* (fifth job))))
     (handler-case
         (if (org-snapshot-p source)
             (multiple-value-list (org-assemble source))
             (multiple-value-bind (text returns) (org-job-text job)
               (list (org-parse text :todo-keywords (fourth job)) text returns nil)))
       (error (condition)
-        (let ((failed (princ-to-string condition)))
+        (let ((failed (tuatara.runtime:failure-words condition)))
           (tuatara.runtime:debug-report :parse "the Org text at version ~a was not parsed, shown plain until it changes: ~a"
                                         (org-version-number (first job)) failed)
           (values (ignoring-errors-reported ("reading the Org text to show it plain")
@@ -350,7 +352,7 @@ which never changes."
                      (cond ((org-snapshot-p what) what)
                            (mapped (tuatara.buffer:buffer-string buffer :start (car what) :end (cdr what)))
                            (t (list (tuatara.buffer:buffer-text buffer) (car what) (cdr what))))
-                     (buffer-crlf-p buffer) todo-keywords))))
+                     (buffer-crlf-p buffer) todo-keywords (tuatara.runtime:secret-buffer-p buffer)))))
       (sb-thread:with-mutex ((org-state-lock state))
         (unless (eql (car (org-state-wanted state)) version)
           (cond ((let ((worker (org-state-worker state))) (and worker (sb-thread:thread-alive-p worker)))

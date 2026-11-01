@@ -70,13 +70,13 @@ Signals, saying what there is, when there is no such template."
              ;; a pair named without .tex (./report): its LaTeX half report.tex, its Word half the folder report/
              (path (if (uiop:string-suffix-p (string-downcase path) ".tex") path (concatenate 'string path ".tex"))))
         (cond ((not (eq :regular (tuatara.io:path-kind path)))
-               (error "There is no LaTeX template at ~a (#+template:)" (abbreviated-path path)))
+               (refuse "There is no LaTeX template at ~a (#+template:)" (abbreviated-path path)))
               ((not (template-path-allowed-p path directory))
-               (error "The template ~a is outside the note's folder (#+template:); *export-trusted-folders* names the folders it may also come from"
+               (refuse "The template ~a is outside the note's folder (#+template:); *export-trusted-folders* names the folders it may also come from"
                       (abbreviated-path path)))
               (t (values (tuatara.io:file-text path :limit *org-file-read-limit*) path))))
       (or (find-latex-template value)
-          (error "There is no LaTeX template called ~a (#+template:): yours are in ~a, and there are ~
+          (refuse "There is no LaTeX template called ~a (#+template:): yours are in ~a, and there are ~
                   ~{~a~^, ~}; a file of its own is named by its path (./report.tex, ~~/Templates/report.tex)"
                  value (abbreviated-path (latex-templates-directory)) (latex-template-names)))))
 
@@ -119,7 +119,7 @@ place, as in \\title{{{{title}}}}, stays a brace."
                                           (closing (format nil "{{{/~a}}}" key))
                                           (stop (search closing template :start2 after :test #'char-equal))
                                           (present (let ((v (funcall field key :text))) (and v (plusp (length v))))))
-                                     (unless stop (error "The template has ~a with no {{{/~a}}}" (subseq template i after) key))
+                                     (unless stop (refuse "The template has ~a with no {{{/~a}}}" (subseq template i after) key))
                                      (when (if (char= (getf place :condition) #\#) present (not present))
                                        (fill-from after stop out))
                                      (setf i (+ stop (length closing)))))

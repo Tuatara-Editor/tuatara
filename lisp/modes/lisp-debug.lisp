@@ -29,7 +29,8 @@ its window: the error as a heading, the calls' numbers dim."
   (let ((b (buffer-in-mode "*Backtrace*" 'backtrace-mode)))
     (setf (buffer-kind b) :backtrace)
     ;; on the innermost call
-    (render-pieces b (list* (cons (format nil "Debugger entered--Lisp error: ~a [~(~a~)]" (tuatara.runtime:condition-words condition) (type-of condition))
+    (render-pieces b (list* (cons (format nil "Debugger entered--Lisp error: ~a [~(~a~)]"
+                                              (tuatara.runtime:failure-words condition :said t) (type-of condition))
                                   :heading)
                             (string #\Newline)
                             (loop for frame in frames

@@ -80,7 +80,7 @@ does not end well (TAR-FAILURE-WORDS)."
                                               :cancel cancel :directories directories :writable writable :files files
                                               :environment (tar-environment))
     (unless (eq outcome :done)
-      (error "~a" (tuatara.io:sandbox-outcome-words outcome (tar-failure-words said) :label "tar"
+      (refuse "~a" (tuatara.io:sandbox-outcome-words outcome (tar-failure-words said) :label "tar"
                                                     :seconds-setting '*archive-seconds*)))
     (and output-limit (tuatara.text:octets-string output))))
 
@@ -89,7 +89,7 @@ does not end well (TAR-FAILURE-WORDS)."
 *ARCHIVE-KINDS*, is not installed where tar finds it shut in."
   (let ((program (and (second kind) (subseq (second kind) 2))))
     (when (and program (not (tuatara.io:sandbox-find-program program)))
-      (error "~a is not installed: install it for archives compressed so" program))))
+      (refuse "~a is not installed: install it for archives compressed so" program))))
 
 (defun archive-reading-arguments (archive)
   "tar's arguments reading the archive ARCHIVE, compressed with gzip, bzip2,
@@ -100,7 +100,7 @@ An error when it is no tar archive."
          (kind (or (find by-octets *archive-kinds* :key #'first)
                    ;; tar archives of before POSIX have no mark to be told by
                    (and (null by-octets) (eq :tar (first (archive-kind-of-name archive))) (first *archive-kinds*))
-                   (error "it is no tar archive, compressed or not"))))
+                   (refuse "it is no tar archive, compressed or not"))))
     (check-compressor kind)
     (list* "--file" (tuatara.io:path-join (tuatara.io:real-place (tuatara.io:parent-path archive))
                                           (tuatara.io:native-file-name archive))
@@ -115,7 +115,7 @@ what is there already moved to the trash first with REPLACE; nothing is left
 when it fails or CANCEL's car turns true. An error saying why when it does not
 work."
   (let* ((kind (or (archive-kind-of-name archive)
-                   (error "~a is not named as a tar archive is" (tuatara.io:native-file-name archive))))
+                   (refuse "~a is not named as a tar archive is" (tuatara.io:native-file-name archive))))
          ;; one in a folder also given goes in with the folder, once
          (paths (remove-if (lambda (path) (some (lambda (other) (and (string/= path other) (tuatara.io:path-within-p path other)))
                                                 paths))
@@ -142,7 +142,7 @@ work."
                :writable (list folder)
                :files (list (cons "/tmp/names" names)))
       (when (and cancel (car cancel))
-        (error "stopped"))
+        (refuse "stopped"))
       (when (and replace (tuatara.io:path-stamp archive :follow nil))
         (tuatara.io:trash-path archive))
       (tuatara.io:rename-path passing archive))
@@ -175,7 +175,7 @@ already, as EXTRACT-ARCHIVE says: stopped when CANCEL's car turns true, or
 before the drive has less than *ARCHIVE-FREE-RESERVE* free, said so."
   (flet ((room-left () (- (or (tuatara.io:free-bytes directory) most-positive-fixnum) *archive-free-reserve*))
          (full ()
-           (error "unpacking stopped: ~a has less than ~a free (*archive-free-reserve*)"
+           (refuse "unpacking stopped: ~a has less than ~a free (*archive-free-reserve*)"
                   (abbreviated-path directory) (tuatara.io:octets-words *archive-free-reserve*))))
     (unless (plusp (room-left)) (full))
     ;; tar is stopped by the watch below once the drive is nearly full, and

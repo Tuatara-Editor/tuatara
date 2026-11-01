@@ -153,7 +153,7 @@ at, which tells it from another of the same titles."
          (chosen (completing-read prompt candidates :require-match t)))
     (if (and (consp chosen) (consp (first chosen)) (eq (first (first chosen)) :olp))
         (values (first chosen) (second chosen))
-        (error "No heading chosen"))))
+        (refuse "No heading chosen"))))
 
 (defun org-olp-text (target)
   "TARGET (:olp FILE TITLE ...) in words: agenda.org/Commitments and Jobs."
@@ -194,7 +194,8 @@ be filed. Both files saved as filing saves them."
            (into-was-modified (tuatara.io:changes-unsaved-p into)))
       (check-writable into)
       (let* ((under (or (org-headline-at-path (org-tree-now into) (cddr target) target-at)
-                        (error "~a is no longer there" (org-olp-text target))))
+                        (refuse "~a is no longer there"
+                                (if *secret-at-hand* "The heading" (org-olp-text target)))))
              ;; where the target is, held while the entry is taken out above it
              (anchor (tuatara.text:make-anchor (tuatara.buffer:buffer-version into)
                                                (org-char->byte into (org-node-begin under)) :bias :after))
@@ -203,7 +204,8 @@ be filed. Both files saved as filing saves them."
         (unwind-protect
              (let* ((under-at (org-byte->char into (tuatara.text:anchor-position anchor (tuatara.buffer:buffer-version into))))
                     (under (or (org-headline-at-path (org-tree-now into) (cddr target) under-at)
-                               (error "~a is no longer there" (org-olp-text target)))))
+                               (refuse "~a is no longer there"
+                                       (if *secret-at-hand* "The heading" (org-olp-text target))))))
                (multiple-value-bind (at to) (org-insert-entry into text :headline under)
                  (setf filed t)
                  (when clocked (org-clock-follow into at to))))
@@ -228,7 +230,7 @@ agenda saves its files. With \\[universal-argument], go to the heading chosen in
         (multiple-value-bind (tree chars) (org-tree-now buffer)
           (declare (ignore chars))
           (let ((headline (and tree (org-current-headline tree (org-point-char buffer)))))
-            (unless headline (error "Not under a headline: nothing to refile"))
+            (unless headline (refuse "Not under a headline: nothing to refile"))
             (multiple-value-bind (target at)
                 (org-read-refile-target
                  (format nil "Refile “~a” to: " (org-property headline :raw-value)) buffer

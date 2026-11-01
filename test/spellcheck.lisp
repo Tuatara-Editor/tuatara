@@ -266,7 +266,7 @@ each of them and at the end, the editor woken to redraw."
                           (if (string= word "boom") (error "the speller failed") (funcall function languages word))))
     (unwind-protect
          (progn
-           (setf tuatara.defaults::*spelling-wanted* (list (list* '() table '("boom")) (list* '() table '("fine"))))
+           (setf tuatara.defaults::*spelling-wanted* (list (list* '() table nil '("boom")) (list* '() table nil '("fine"))))
            (tuatara.defaults::spelling-drain)
            (is eq :right (gethash "boom" table))
            (is eq :right (gethash "fine" table))
@@ -378,3 +378,27 @@ each of them and at the end, the editor woken to redraw."
            (true (plusp calls)))
       (sb-int:unencapsulate 'tuatara.defaults::spelling-words 'counted)
       (remhash "xx_KEPT" tuatara.defaults::*spelling-answers*))))
+
+(define-test (spellcheck secret-lot-failing-told-by-its-kind)
+  ;; a lot of words of a secret text the speller fails on: the debug log says the kind of failure only
+  (let ((tuatara.defaults::*spelling-wanted* '())
+        (tuatara.defaults::*spelling-draining* t)
+        (tuatara.defaults::*spelling-wake-function* nil)
+        (table (make-hash-table :test 'equal)))
+    (setf (gethash "kiwi" table) :asked)
+    (drain-debug-reports)
+    (sb-int:encapsulate 'tuatara.defaults::spelling-of 'test-failing
+                        (lambda (function languages word)
+                          (declare (ignore function languages))
+                          (error "the speller failed on ~a words" word)))
+    (unwind-protect
+         (progn
+           (tuatara.runtime:set-debug t)
+           (setf tuatara.defaults::*spelling-wanted* (list (list* '() table t '("kiwi"))))
+           (tuatara.defaults::spelling-drain)
+           (let ((texts (loop for report = (sb-concurrency:dequeue tuatara.runtime:*debug-reports*)
+                              while report collect (princ-to-string (fourth report)))))
+             (true (find "a simple-error" texts :test #'search) "~s" texts)
+             (false (find "kiwi" texts :test #'search) "~s" texts)))
+      (sb-int:unencapsulate 'tuatara.defaults::spelling-of 'test-failing)
+      (drain-debug-reports))))

@@ -302,13 +302,9 @@ reached EVENT (started, ended), DETAILS, a string or NIL, said after it."
   (debug-report :job "~a in ~a ~a~@[: ~a~]" (job-description job) (job-buffer-name job) event details))
 
 (defun report-job-ended (job)
-  "Report in the debug log that JOB has ended, how, and why when it failed,
-unless its buffer's text is secret (SECRET-BUFFER-P)."
+  "Report in the debug log that JOB has ended, how, and why when it failed."
   (report-job job "ended" (format nil "~(~a~)~@[, ~a~]" (job-status job)
-                                  (and (eq (job-status job) :failed)
-                                       (if (or *secret-at-hand* (secret-buffer-p (job-buffer job)))
-                                           "its words left out, its buffer's text being secret"
-                                           (job-error job))))))
+                                  (and (eq (job-status job) :failed) (job-error job)))))
 
 ;;; Running
 
@@ -328,7 +324,7 @@ short a call of FUNCTION's that does not look at it (STOPPABLE-WORK)."
      (lambda ()
        (let ((value (handler-case (reporting-errors ("~a" name)
                                     (if cancel (stoppable-work (cancel) (funcall function)) (funcall function)))
-                      (serious-condition (condition) (list :error (condition-words condition))))))
+                      (serious-condition (condition) (list :error (failure-words condition :said t))))))
          (unless (and cancel (car cancel))
            (setf (car cell) value)
            (when wake (funcall wake)))))
@@ -353,20 +349,21 @@ Returns JOB."
   (report-job job "started" details)
   (flet ((run ()
            (unwind-protect
-                (handler-case
-                    (let ((*job* job)
-                          (*secret-at-hand* (or *secret-at-hand* (secret-buffer-p (job-buffer job)))))
-                      (reporting-errors ("~a in ~a" (job-description job) (job-buffer-name job))
-                        ;; M-x stop-job reaches into a call that never looks (STOP-WORK)
-                        (stoppable-work ((job-cancel job))
-                          (funcall work job)))
-                      (when (job-running-p job)
-                        (setf (job-status job) (if (car (job-cancel job)) :stopped :done))))
-                  (job-stopped () (setf (job-status job) :stopped))
-                  (serious-condition (condition)
-                    (if (car (job-cancel job))
-                        (setf (job-status job) :stopped)
-                        (setf (job-error job) (condition-words condition) (job-status job) :failed))))
+                (let ((*job* job)
+                      (*secret-at-hand* (or *secret-at-hand* (secret-buffer-p (job-buffer job)))))
+                  (handler-case
+                      (progn
+                        (reporting-errors ("~a in ~a" (job-description job) (job-buffer-name job))
+                          ;; M-x stop-job reaches into a call that never looks (STOP-WORK)
+                          (stoppable-work ((job-cancel job))
+                            (funcall work job)))
+                        (when (job-running-p job)
+                          (setf (job-status job) (if (car (job-cancel job)) :stopped :done))))
+                    (job-stopped () (setf (job-status job) :stopped))
+                    (serious-condition (condition)
+                      (if (car (job-cancel job))
+                          (setf (job-status job) :stopped)
+                          (setf (job-error job) (failure-words condition :said t) (job-status job) :failed)))))
              ;; cut short, the thread ended from outside: never left running
              (when (job-running-p job)
                (setf (job-status job) (if (car (job-cancel job)) :stopped :failed)))
@@ -375,7 +372,9 @@ Returns JOB."
                     (setf (job-thread job) (make-guarded-thread #'run :name name)))
       ;; no thread to be had (too many, no memory): the job ends at once, failed
       (serious-condition (condition)
-        (setf (job-error job) (condition-words condition) (job-status job) :failed)
+        (setf (job-error job) (let ((*secret-at-hand* (or *secret-at-hand* (secret-buffer-p (job-buffer job)))))
+                                (failure-words condition :said t))
+              (job-status job) :failed)
         (job-wake-editor job))))
   job)
 

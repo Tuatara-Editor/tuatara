@@ -31,7 +31,7 @@ DISPLAY-TOGGLEs, the last made first.")
 (defun find-display-toggle (name)
   "The display toggle called NAME (a DISPLAY-TOGGLE); an error when there is none."
   (or (find name *display-toggles* :key #'display-toggle-name)
-      (error "No display toggle called ~(~a~)." name)))
+      (refuse "No display toggle called ~(~a~)." name)))
 
 (defun switched-by-count (on)
   "Whether a command that switches something on or off leaves it on, ON

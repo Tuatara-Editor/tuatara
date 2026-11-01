@@ -644,15 +644,15 @@ a cons, stops the reading when its car turns true. Signals ZIP-ERROR or an
 error when it cannot be read, or is locked with a password."
   (let ((*docx-reading* (docx-reading-of path octets cancel)))
     (when (odf-locked-p)
-      (error "~a is locked with a password, and is not read" (tuatara.io:native-file-name path)))
+      (refuse "~a is locked with a password, and is not read" (tuatara.io:native-file-name path)))
     (let* ((content (docx-reading-part "content.xml"))
            (root (and content (xml-root content)))
            (body (and root (equal (xml-name root) "office:document-content") (xml-child root "office:body")))
            (kind (and body (find-if #'consp (xml-children body))))
            (*odf-styles* (odf-read-styles)))
       (office-note path
-                   (cond ((null kind) (error "~a holds no OpenDocument text, spreadsheet or presentation" (tuatara.io:native-file-name path)))
+                   (cond ((null kind) (refuse "~a holds no OpenDocument text, spreadsheet or presentation" (tuatara.io:native-file-name path)))
                          ((equal (xml-name kind) "office:text") (odf-read-text-note path kind))
                          ((equal (xml-name kind) "office:spreadsheet") (odf-read-spreadsheet-note path kind))
                          ((member (xml-name kind) '("office:presentation" "office:drawing") :test #'equal) (odf-read-presentation-note path kind))
-                         (t (error "~a holds ~a, which is not read as text" (tuatara.io:native-file-name path) (xml-local-name kind))))))))
+                         (t (refuse "~a holds ~a, which is not read as text" (tuatara.io:native-file-name path) (xml-local-name kind))))))))

@@ -249,7 +249,7 @@ number, today unless given), made when there is none."
                     (let ((window (current-window)))
                       (prog1 (journal-make-entry day)
                         (show-buffer (tuatara.display:window-buffer window)))))))
-    (t (error "No such capture target: ~s" target))))
+    (t (refuse "No such capture target: ~s" target))))
 
 (defun org-capture-file (text target &optional (day (org-today)) at)
   "File TEXT where TARGET says (ORG-INSERT-ENTRY), one change to undo, the
@@ -267,7 +267,8 @@ where it begins there (an octet)."
                      (org-insert-entry buffer text :title (third target)))))
               (:olp
                (let ((headline (org-headline-at-path (org-tree-now buffer) (cddr target) at)))
-                 (unless headline (error "~a is not there" (org-olp-text target)))
+                 (unless headline
+                   (refuse "~a is not there" (if *secret-at-hand* "The heading" (org-olp-text target))))
                  (org-insert-entry buffer text :headline headline)))
               (t (org-insert-entry buffer text))))))
 
@@ -413,7 +414,7 @@ back to where you were; with its template's clock, clock it."
   "File the text of this *Capture* buffer under a heading chosen as
 \\<org-mode>\\[org-refile] chooses one, instead of where its template says."
   (let ((capture (tuatara.buffer:buffer-local (current-buffer) 'org-capture)))
-    (unless capture (error "This is no capture buffer"))
+    (unless capture (refuse "This is no capture buffer"))
     (multiple-value-bind (target at) (org-read-refile-target "File the capture under: " (current-buffer))
       (org-capture-finish target at))))
 
@@ -425,7 +426,7 @@ capture began."
   (let* ((buffer (current-buffer))
          (capture (tuatara.buffer:buffer-local buffer 'org-capture))
          (text (string-right-trim '(#\Space #\Tab #\Newline) (tuatara.buffer:buffer-string buffer))))
-    (unless capture (error "This is no capture buffer"))
+    (unless capture (refuse "This is no capture buffer"))
     (destructuring-bind (&key description target clock-in clock-resume started day) capture
       (when elsewhere (setf target elsewhere))
       (if (zerop (length (string-trim '(#\Space #\Tab #\Newline) text)))
@@ -443,6 +444,6 @@ capture began."
 (define-command org-capture-kill ()
   "Throw away what this *Capture* buffer holds, and go back to where you were."
   (let ((buffer (current-buffer)))
-    (unless (tuatara.buffer:buffer-local buffer 'org-capture) (error "This is no capture buffer"))
+    (unless (tuatara.buffer:buffer-local buffer 'org-capture) (refuse "This is no capture buffer"))
     (org-capture-done buffer)
     (message "Capture thrown away")))

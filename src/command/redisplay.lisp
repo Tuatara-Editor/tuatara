@@ -880,6 +880,14 @@ that are not UTF-8 as \\xNN, as the mode line writes them (ESCAPE-CONTROLS)."
                                       (format nil *gui-title* name))
                                     name)))))))
 
+(defun frame-secret-p (editor)
+  "True when a window of EDITOR shows a buffer whose text is secret
+\(TUATARA.RUNTIME:SECRET-BUFFER-P), or the buffer commands act on is one:
+drawing the frame counts then as having a secret at hand."
+  (or (tuatara.runtime:secret-buffer-p *current-buffer*)
+      (some (lambda (window) (tuatara.runtime:secret-buffer-p (tuatara.display:window-buffer window)))
+            (editor-windows editor))))
+
 (defun redisplay (editor)
   "Lay out every window with its point visible and paint a frame: each
 window's text rows and its mode line, the selected window's in :mode-line and
@@ -888,69 +896,70 @@ the bottom panel (echo area, or the minibuffer with its candidates, or the key
 hints), and the cursor. Nothing here waits for a large file's lines to be
 counted: what needs them shows without them meanwhile. While recorded keys
 play, only the candidates of a question are brought up to date: nothing is
-drawn."
-  (update-candidates editor)
-  (when *keys-playing* (return-from redisplay nil))
-  (preview-selection editor)
-  (popup-follow editor)
-  (multiple-value-bind (panel minibuffer-row) (panel-rows editor)
-    (let* ((frame (editor-frame editor))
-           (frontend (frame-frontend frame))
-           (tree-rows (fit-windows editor (length panel)))
-           (selected (frame-window frame))
-           (screen (make-array tree-rows :initial-element '()))
-           (width (frame-width frame))
-           (*frame-images* '()))
-      (dolist (window (editor-windows editor))
-        ;; what fails while a secret buffer is drawn is reported without its text
-        (let ((tuatara.runtime:*secret-at-hand*
-                (or tuatara.runtime:*secret-at-hand*
-                    (tuatara.runtime:secret-buffer-p (tuatara.display:window-buffer window)))))
-          (window-pieces editor window (eq window selected) screen)))
-      (let ((boxes (popup-boxes editor tree-rows minibuffer-row)))
-        (tuatara.frontend:frontend-begin-frame frontend)
-        (dotimes (r tree-rows)
-          (put-screen-row frontend r (or (aref screen r) (list (list 0 width "" nil nil))) width boxes))
-        (loop for (string face spans) in panel
-              for r from tree-rows
-              do (multiple-value-bind (string spans) (escape-controls string spans :raw-bytes)
-                   (multiple-value-bind (string spans face) (lay-boxes-over string spans face r boxes width)
-                     (tuatara.frontend:frontend-put-row frontend r string :face face :spans spans))))
-        ;; a picture a completion list lies over is left out while it is there: the list stays readable;
-        ;; one in a window with no room for it, too
-        (loop for (image row column columns rows offset) in *frame-images*
-              unless (or (not (plusp rows)) (not (plusp columns))
-                         (some (lambda (box) (box-over-area-p box row column columns rows)) boxes))
-                do (tuatara.frontend:frontend-put-image frontend image row column columns rows offset)))
-      (cond
-        ((editor-minibuffer-active editor)
-         ;; the minibuffer's cursor: the look for all, *CURSOR-SHAPE* and *CURSOR-COLOUR*
-         (tuatara.frontend:frontend-set-cursor
-          frontend (+ tree-rows minibuffer-row)
-          (minibuffer-column editor (editor-minibuffer-point editor))
-          (or *cursor-shape* :block) *cursor-colour*))
-        ((echo-question-p editor)
-         ;; a question in the echo area: the cursor after it, as the minibuffer's
-         (tuatara.frontend:frontend-set-cursor
-          frontend (+ tree-rows minibuffer-row) (echo-cursor-column editor)
-          (or *cursor-shape* :block) *cursor-colour*))
-        (t
-         (multiple-value-bind (row column) (tuatara.display:window-point-position selected)
-           (multiple-value-bind (shape colour) (cursor-look editor)
-             (if (and row (< row (tuatara.display:window-rows-drawn selected)))
-                 (tuatara.frontend:frontend-set-cursor
-                  frontend
-                  (+ (tuatara.display:window-text-top selected) row)
-                  (+ (tuatara.display:area-left selected) (tuatara.display:window-margin selected)
-                     (cursor-column-past-line selected column (tuatara.display:row-scale (aref (tuatara.display:window-rows selected) row))))
-                  ;; no cursor over a picture shown in place of the text, nor while one is on its
-                  ;; way, nor where the buffer marks point itself (the calendar's day)
-                  (let ((buffer (tuatara.display:window-buffer selected)))
-                    (if (or (shown-as-picture-p frontend buffer) (point-marked-p buffer)) :hidden shape))
-                  colour)
-                 ;; point is under the panel for now: the cursor waits after the echo row's text
-                 (tuatara.frontend:frontend-set-cursor
-                  frontend (+ tree-rows minibuffer-row)
-                  (min (panel-columns (first (nth minibuffer-row panel))) (1- (editor-width editor))) shape colour))))))
-      (tuatara.frontend:frontend-end-frame frontend)
-      (show-title editor (tuatara.display:window-buffer selected)))))
+drawn. While a window shows a secret buffer (FRAME-SECRET-P), a failure in
+drawing is reported without its text."
+  ;; what fails while a secret buffer is shown is reported without its text
+  (let ((tuatara.runtime:*secret-at-hand* (or tuatara.runtime:*secret-at-hand* (frame-secret-p editor))))
+    (update-candidates editor)
+    (when *keys-playing* (return-from redisplay nil))
+    (preview-selection editor)
+    (popup-follow editor)
+    (multiple-value-bind (panel minibuffer-row) (panel-rows editor)
+      (let* ((frame (editor-frame editor))
+             (frontend (frame-frontend frame))
+             (tree-rows (fit-windows editor (length panel)))
+             (selected (frame-window frame))
+             (screen (make-array tree-rows :initial-element '()))
+             (width (frame-width frame))
+             (*frame-images* '()))
+        (dolist (window (editor-windows editor))
+          (window-pieces editor window (eq window selected) screen))
+        (let ((boxes (popup-boxes editor tree-rows minibuffer-row)))
+          (tuatara.frontend:frontend-begin-frame frontend)
+          (dotimes (r tree-rows)
+            (put-screen-row frontend r (or (aref screen r) (list (list 0 width "" nil nil))) width boxes))
+          (loop for (string face spans) in panel
+                for r from tree-rows
+                do (multiple-value-bind (string spans) (escape-controls string spans :raw-bytes)
+                     (multiple-value-bind (string spans face) (lay-boxes-over string spans face r boxes width)
+                       (tuatara.frontend:frontend-put-row frontend r string :face face :spans spans))))
+          ;; a picture a completion list lies over is left out while it is there: the list stays readable;
+          ;; one in a window with no room for it, too
+          (loop for (image row column columns rows offset) in *frame-images*
+                unless (or (not (plusp rows)) (not (plusp columns))
+                           (some (lambda (box) (box-over-area-p box row column columns rows)) boxes))
+                  do (tuatara.frontend:frontend-put-image frontend image row column columns rows offset)))
+        (cond
+          ((editor-minibuffer-active editor)
+           ;; the minibuffer's cursor: the look for all, *CURSOR-SHAPE* and *CURSOR-COLOUR*
+           (tuatara.frontend:frontend-set-cursor
+            frontend (+ tree-rows minibuffer-row)
+            (minibuffer-column editor (editor-minibuffer-point editor))
+            (or *cursor-shape* :block) *cursor-colour*))
+          ((echo-question-p editor)
+           ;; a question in the echo area: the cursor after it, as the minibuffer's
+           (tuatara.frontend:frontend-set-cursor
+            frontend (+ tree-rows minibuffer-row) (echo-cursor-column editor)
+            (or *cursor-shape* :block) *cursor-colour*))
+          (t
+           (multiple-value-bind (row column) (tuatara.display:window-point-position selected)
+             (multiple-value-bind (shape colour) (cursor-look editor)
+               (if (and row (< row (tuatara.display:window-rows-drawn selected)))
+                   (tuatara.frontend:frontend-set-cursor
+                    frontend
+                    (+ (tuatara.display:window-text-top selected) row)
+                    (+ (tuatara.display:area-left selected) (tuatara.display:window-margin selected)
+                       (cursor-column-past-line selected column
+                                                (tuatara.display:row-scale (aref (tuatara.display:window-rows selected) row))))
+                    ;; no cursor over a picture shown in place of the text, nor while one is on its
+                    ;; way, nor where the buffer marks point itself (the calendar's day)
+                    (let ((buffer (tuatara.display:window-buffer selected)))
+                      (if (or (shown-as-picture-p frontend buffer) (point-marked-p buffer)) :hidden shape))
+                    colour)
+                   ;; point is under the panel for now: the cursor waits after the echo row's text
+                   (tuatara.frontend:frontend-set-cursor
+                    frontend (+ tree-rows minibuffer-row)
+                    (min (panel-columns (first (nth minibuffer-row panel))) (1- (editor-width editor)))
+                    shape colour))))))
+        (tuatara.frontend:frontend-end-frame frontend)
+        (show-title editor (tuatara.display:window-buffer selected))))))

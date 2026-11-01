@@ -847,7 +847,7 @@ files): what it writes would land at the old name once moved."
     (let ((file (tuatara.buffer:buffer-file buffer)))
       (when (and file (tuatara.io:save-of buffer)
                  (some (lambda (path) (tuatara.io:path-within-p (tuatara.io:native file) path)) paths))
-        (error "~a is being saved: try again once it is" (tuatara.buffer:buffer-name buffer))))))
+        (refuse "~a is being saved: try again once it is" (tuatara.buffer:buffer-name buffer))))))
 
 (defun rename-path-following (from to &key (on-disk t) (tell t))
   "Rename the file or folder FROM to TO, native names, the buffers visiting it

@@ -3,6 +3,7 @@
 
 (defpackage #:tuatara.io
   (:use #:cl #:alexandria)
+  (:import-from #:tuatara.runtime #:refuse)
   (:import-from #:tuatara-user #:*default-directory* #:*cache-directory* #:*state-directory* #:*sandbox-program* #:*sandbox-seconds* #:*sandbox-memory* #:*sandbox-input-limit* #:*sandbox-total-memory* #:*sandbox-seccomp* #:*program-output-limit* #:*deepest-folder-tree*)
   (:documentation "Files: visiting them so that no other program can change the text shown,
 saving them so that no crash or power cut loses a file, noticing when they change on

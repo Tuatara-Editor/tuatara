@@ -79,7 +79,7 @@ says how it was read."
 KEYMAP-REGISTRY."
   (cond ((keymap-p map) map)
         ((cdr (assoc map (keymap-registry))))
-        (t (error "Unknown keymap ~s; use a major mode's name or one of ~{~s~^ ~}." map (mapcar #'car (keymap-registry))))))
+        (t (refuse "Unknown keymap ~s; use a major mode's name or one of ~{~s~^ ~}." map (mapcar #'car (keymap-registry))))))
 
 (defun mode-keymaps (map mode)
   "The keymaps bind-key's MAP and MODE stand for: MAP's (KEYMAP-NAMED) without
@@ -92,11 +92,11 @@ mode's own keys, as with MAP :global and MODE that mode."
          (mode-keymaps :global map))
         ((null mode) (list (keymap-named map)))
         (t (loop for given in (if (listp mode) mode (list mode))
-                 for name = (if (and given (symbolp given)) (mode-named given) (error "No major mode called ~s." given))
+                 for name = (if (and given (symbolp given)) (mode-named given) (refuse "No major mode called ~s." given))
                  collect (case map
                            (:global (mode-keymap name))
                            ((:normal :insert :support :leader) (mode-layer name map))
-                           (t (error "With :mode, :map is :global, :normal, :insert, :support or :leader, not ~s." map)))))))
+                           (t (refuse "With :mode, :map is :global, :normal, :insert, :support or :leader, not ~s." map)))))))
 
 (defun tuatara-user:bind-key (keys command &key (map :global) mode label)
   "Bind KEYS (keys apart by spaces, C- for Control, M- for Meta and S- for
@@ -125,7 +125,7 @@ binding left as it is: (bind-key \"t\" nil :map :leader :label \"toggle\") shows
   (let* ((label (or label (and (consp command) (car command))))
          (command (if (consp command) (cdr command) command))
          (symbol (and (or command (null label))
-                      (or (command-symbol command) (error "No command named ~(~a~)." command)))))
+                      (or (command-symbol command) (refuse "No command named ~(~a~)." command)))))
     (dolist (keymap (mode-keymaps map mode))
       (cond ((and (null command) label) (set-key-label keymap keys label))
             (t (define-key keymap keys symbol)

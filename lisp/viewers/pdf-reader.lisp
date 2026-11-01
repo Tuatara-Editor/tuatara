@@ -382,7 +382,7 @@ SIZE of them, at most LIMIT."
 (defun pdf-decoded-put (out octet limit)
   "Put OCTET at the end of OUT (PDF-DECODED-OUT); an error past LIMIT octets."
   (when (>= (fill-pointer out) limit)
-    (error "it decodes to more than ~:d octets" limit))
+    (refuse "it decodes to more than ~:d octets" limit))
   (vector-push-extend octet out))
 
 (defun pdf-ascii-hex-decoded (data limit)

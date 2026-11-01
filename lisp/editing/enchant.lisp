@@ -60,7 +60,9 @@ the words asked about: :RIGHT, :WRONG, or :ASKED while the answer is on its way.
                             (lambda ()
                               (loop (let ((work (sb-concurrency:receive-message mailbox)))
                                       (handler-case (funcall work)
-                                        (error (e) (tuatara.runtime:debug-report :spelling "~a" e))))))
+                                        (error (e)
+                                          (tuatara.runtime:debug-report :spelling "~a"
+                                                                        (tuatara.runtime:failure-words e)))))))
                             :name "tuatara speller")
                            mailbox)))))))
 
@@ -178,7 +180,8 @@ again: the words on the screen are answered first, however fast it moves.")
 
 (defvar *spelling-wanted* '()
   "The lots of words waiting for the speller, newest first, each (LANGUAGES
-TABLE . WORDS); taken newest first by SPELLING-DRAIN.")
+TABLE SECRET . WORDS), SECRET true for words of a text kept secret; taken
+newest first by SPELLING-DRAIN.")
 
 (defun spelling-drain ()
   "On the speller thread: answer the lots of words waiting, the newest first,
@@ -191,12 +194,13 @@ asked again and again, and the words after it are still answered."
            (let ((lot (sb-thread:with-mutex (*spelling-wanted-lock*)
                         (or (pop *spelling-wanted*) (progn (setf *spelling-draining* nil) nil)))))
              (unless lot (setf done t) (return))
-             (destructuring-bind (languages table . words) lot
+             (destructuring-bind (languages table secret . words) lot
                (handler-case
                    (dolist (w words)
                      (when (eq (gethash w table) :asked) (setf (gethash w table) (spelling-of languages w))))
                  (error (e)
-                   (tuatara.runtime:debug-report :spelling "~a" e)
+                   (let ((*secret-at-hand* (or *secret-at-hand* secret)))
+                     (tuatara.runtime:debug-report :spelling "~a" (tuatara.runtime:failure-words e)))
                    (dolist (w words) (when (eq (gethash w table) :asked) (setf (gethash w table) :right))))))
              (spelling-answered)))
       ;; ended any other way: the next words asked about start it again
@@ -218,12 +222,12 @@ some were asked about."
       (when (and new (enchant-p))
         (let ((start nil))
           (sb-thread:with-mutex (*spelling-wanted-lock*)
-            (push (list* languages table new) *spelling-wanted*)
+            (push (list* languages table *secret-at-hand* new) *spelling-wanted*)
             ;; the oldest lots over the backlog: dropped, their words to be asked again when shown
             (let ((old (nthcdr *spelling-backlog* *spelling-wanted*)))
               (when old
                 (setf *spelling-wanted* (ldiff *spelling-wanted* old))
-                (loop for (nil old-table . old-words) in old
+                (loop for (nil old-table nil . old-words) in old
                       do (dolist (w old-words) (when (eq (gethash w old-table) :asked) (remhash w old-table))))))
             (unless *spelling-draining* (setf *spelling-draining* t start t)))
           (when start (speller-run #'spelling-drain)))

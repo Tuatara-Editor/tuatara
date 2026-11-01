@@ -173,7 +173,7 @@ no WHAT (a Word document) otherwise."
   (let ((tree (docx-reading-part (docx-main-part usual))))
     (if (and tree (equal (xml-local-name (xml-root tree)) root))
         tree
-        (error "~a holds no ~a" (tuatara.io:native-file-name path) what))))
+        (refuse "~a holds no ~a" (tuatara.io:native-file-name path) what))))
 
 (defun docx-entry (name)
   "The zip entry of the part NAME of the document being read: of that name,
@@ -252,7 +252,7 @@ when it has none; an error when they would take the document's parts past
   (let ((entry (docx-entry name)))
     (when entry
       (when (> (incf (docx-reading-unpacked *docx-reading*) (getf entry :size)) *docx-largest-unpacked*)
-        (error "The document's parts unpacked take more than ~:d octets together" *docx-largest-unpacked*))
+        (refuse "The document's parts unpacked take more than ~:d octets together" *docx-largest-unpacked*))
       (zip-entry-octets (docx-reading-octets *docx-reading*) entry))))
 
 (defun docx-reading-text (name)
@@ -260,7 +260,7 @@ when it has none; an error when they would take the document's parts past
 or NIL; an error when it is larger than *DOCX-LARGEST-XML*."
   (let ((entry (docx-entry name)))
     (when (and entry (> (getf entry :size) *docx-largest-xml*))
-      (error "The document's part ~a takes ~:d octets unpacked, more than ~:d" name (getf entry :size) *docx-largest-xml*)))
+      (refuse "The document's part ~a takes ~:d octets unpacked, more than ~:d" name (getf entry :size) *docx-largest-xml*)))
   (let ((octets (docx-reading-octets-of name)))
     (and octets (tuatara.text:lenient-string octets))))
 

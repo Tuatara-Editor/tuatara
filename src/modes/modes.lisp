@@ -66,7 +66,7 @@ expression compiled once.")
 (defun mode-keymap (name)
   "The keymap of major mode NAME."
   (let ((info (find-mode name)))
-    (unless info (error "No major mode named ~(~a~)." name))
+    (unless info (refuse "No major mode named ~(~a~)." name))
     (mode-info-keymap info)))
 
 (defun mode-lighter (name)
@@ -323,7 +323,7 @@ defined again."
 keymap and name, call MODE-ENTER, then run the hooks of NAME and its ancestors,
 the root's first. Returns the new mode instance."
   (let ((old (tuatara.buffer:buffer-local buffer :major-mode))
-        (info (or (find-mode name) (error "No major mode named ~(~a~)." name))))
+        (info (or (find-mode name) (refuse "No major mode named ~(~a~)." name))))
     (when old (mode-exit old buffer))
     (let ((mode (make-instance name)))
       (setf (tuatara.buffer:buffer-local buffer :major-mode) mode

@@ -91,7 +91,7 @@ when it gives none."
       (when entry
         (let ((words (if (listp (cdr entry)) (cdr entry) (list (cdr entry)))))
           (unless (and words (every #'stringp words) (plusp (length (first words))))
-            (error "*open-externally-programs*: the program for ~a is not a name, or a list of a name and its arguments"
+            (refuse "*open-externally-programs*: the program for ~a is not a name, or a list of a name and its arguments"
                    (car entry)))
           (values (tuatara.io:find-program (first words)) (rest words) (first words)))))))
 
@@ -475,7 +475,7 @@ the same packages.")
 
 (defun outside-program (key)
   "The entry of *OUTSIDE-PROGRAMS* for KEY, a property list; an error when there is none."
-  (or (rest (assoc key *outside-programs*)) (error "No outside program is known as ~s" key)))
+  (or (rest (assoc key *outside-programs*)) (refuse "No outside program is known as ~s" key)))
 
 (defun system-package-family ()
   "Which packages this system takes, by its /etc/os-release: :FEDORA,

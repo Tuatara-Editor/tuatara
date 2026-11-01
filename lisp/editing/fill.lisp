@@ -225,7 +225,7 @@ paragraph of its own. An error when the paragraph is larger than
 *FILL-PARAGRAPH-LIMIT*."
   (let ((from line) (to line))
     (flet ((too-large ()
-             (error "The paragraph is larger than ~d KB, *fill-paragraph-limit*: it is not filled"
+             (refuse "The paragraph is larger than ~d KB, *fill-paragraph-limit*: it is not filled"
                     (floor *fill-paragraph-limit* 1024))))
       (loop while (and (> from low) (not (and item-start-p (funcall item-start-p from))))
             do (let ((before (tuatara.buffer:buffer-line-start buffer (1- from))))

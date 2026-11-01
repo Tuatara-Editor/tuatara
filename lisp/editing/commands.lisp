@@ -24,9 +24,9 @@ would take the editor away for too long.")
   "The count of a command that inserts that many: the prefix argument, or 1;
 an error when it is negative or more than *INSERT-COUNT-LIMIT*."
   (let ((n (prefix)))
-    (cond ((minusp n) (error "Repetition argument has to be non-negative"))
+    (cond ((minusp n) (refuse "Repetition argument has to be non-negative"))
           ((> n *insert-count-limit*)
-           (error "~:d is more than can be inserted at once (at most ~:d)" n *insert-count-limit*))
+           (refuse "~:d is more than can be inserted at once (at most ~:d)" n *insert-count-limit*))
           (t n))))
 
 ;;; Point kept out of folds
@@ -493,7 +493,7 @@ comes first."
                     (tuatara.text:rope-find-any-octet rope *sexp-boundary-octets* :start position :end scan))))
     (cond (found (if backward (1+ found) found))
           ((= scan (if backward 0 size)) scan)
-          (t (error "No ~:[end~;start~] of the expression within ~a" backward (scan-limit-words))))))
+          (t (refuse "No ~:[end~;start~] of the expression within ~a" backward (scan-limit-words))))))
 
 ;;; Words, read by their octets
 
@@ -550,9 +550,9 @@ once whatever the count. Refused when *TEXT-SCAN-LIMIT* comes first."
     (loop repeat count
           until (>= p limit)
           do (setf p (word-run-end buffer p nil scan))
-             (when (and (= p scan) (< scan limit)) (error "No word within ~a" (scan-limit-words)))
+             (when (and (= p scan) (< scan limit)) (refuse "No word within ~a" (scan-limit-words)))
              (setf p (word-run-end buffer p t scan))
-             (when (and (= p scan) (< scan limit)) (error "No end of the word within ~a" (scan-limit-words))))
+             (when (and (= p scan) (< scan limit)) (refuse "No end of the word within ~a" (scan-limit-words))))
     p))
 
 (defun words-backward (buffer position count &optional (limit (tuatara.buffer:buffer-start buffer)))
@@ -564,9 +564,9 @@ Refused when *TEXT-SCAN-LIMIT* comes first."
     (loop repeat count
           until (<= p limit)
           do (setf p (word-run-start buffer p nil scan))
-             (when (and (= p scan) (> scan limit)) (error "No word within ~a before point" (scan-limit-words)))
+             (when (and (= p scan) (> scan limit)) (refuse "No word within ~a before point" (scan-limit-words)))
              (setf p (word-run-start buffer p t scan))
-             (when (and (= p scan) (> scan limit)) (error "No start of the word within ~a" (scan-limit-words))))
+             (when (and (= p scan) (> scan limit)) (refuse "No start of the word within ~a" (scan-limit-words))))
     p))
 
 (defun sexp-end-after (buffer position)
@@ -876,7 +876,7 @@ so that this one's change joins its undo step."
   "Show what FOLD of BUFFER, (START . END), hides, and refuse the command
 with MESSAGE."
   (tuatara.display:unfold-region buffer (car fold) (cdr fold))
-  (error "~a" message))
+  (refuse "~a" message))
 
 (defun refuse-hidden-deletion (buffer start end)
   "Refuse to delete the text of BUFFER from START below END when that would
@@ -925,12 +925,12 @@ filters hide is refused outright, whole or not (REFUSE-HIDDEN-LINES)."
                    (push fold cut) (setf start (cdr fold))))
         (when cut
           (tuatara.display:unfold-ranges buffer (coerce (nreverse cut) 'simple-vector))
-          (error "That would delete hidden text, shown now: the same key again deletes it"))))))
+          (refuse "That would delete hidden text, shown now: the same key again deletes it"))))))
 
 (defun refuse-hidden-lines ()
   "Refuse a command that would change the lines search filters hide: they
 are never changed by an edit of the lines shown."
-  (error "~a" (substitute-command-keys
+  (refuse "~a" (substitute-command-keys
                "That would change lines the search filters hide: \\[remove-search-filters] shows them")))
 
 (defun check-hidden-lines (buffer start end)
@@ -948,7 +948,7 @@ the newline it ends at."
 (defun check-writable (buffer)
   "Signal an error when BUFFER is read-only."
   (when (buffer-read-only-p buffer)
-    (error "Buffer is read-only: ~a" (tuatara.buffer:buffer-name buffer))))
+    (refuse "Buffer is read-only: ~a" (tuatara.buffer:buffer-name buffer))))
 
 (defun delete-spans (buffer spans &key replacements folds-checked before group)
   "Delete SPANS of BUFFER, each (START . END) or (START END ...), in order and
@@ -1657,7 +1657,7 @@ NIL to stay."
       (let ((tuatara.runtime:*hook-failures-said* nil)) (apply #'call-hook-function function arguments))
     (if (typep failure 'error)
         (yes-or-no-p* (format nil "~a failed (~a); ~a anyway?" (hook-function-name function)
-                              (tuatara.runtime:condition-words failure) going))
+                              (tuatara.runtime:failure-words failure :said t) going))
         answer)))
 
 (defun kill-buffer-allowed-p (buffer)

@@ -384,7 +384,7 @@ and at the mark change places."
            (let ((pos1 (if (> (car pos1) (cdr pos1)) (cons (cdr pos1) (car pos1)) pos1))
                  (pos2 (if (> (car pos2) (cdr pos2)) (cons (cdr pos2) (car pos2)) pos2)))
              (when (> (car pos1) (car pos2)) (rotatef pos1 pos2))
-             (when (> (cdr pos1) (car pos2)) (error "Don't have two things to transpose"))
+             (when (> (cdr pos1) (car pos2)) (refuse "Don't have two things to transpose"))
              (if (> (- (cdr pos2) (car pos1)) tuatara.buffer:*large-edit-octets*)
                  ;; far apart or large: the three texts moved as they are, nothing copied
                  (let ((second (tuatara.buffer:buffer-slice buffer (car pos2) (cdr pos2))))
@@ -400,7 +400,7 @@ and at the mark change places."
              (values (car pos1) (- (cdr pos1) (car pos1)) (car pos2) (- (cdr pos2) (car pos2))))))
     (cond ((zerop arg)
            (let ((mark (tuatara.buffer:buffer-mark buffer)) (point (point)))
-             (unless mark (error "No mark set in this buffer"))
+             (unless mark (refuse "No mark set in this buffer"))
              (let ((pos1 (funcall aux buffer point 1))
                    (pos2 (funcall aux buffer mark 1)))
                (multiple-value-bind (a1 l1 a2 l2) (swap pos1 pos2)
@@ -452,7 +452,7 @@ them in BUFFER's language."
 symbol; between expressions, the one after the blanks and comments."
   (flet ((at (p) (tuatara.buffer:buffer-char-at buffer p))
          (motion (p n)
-           (or (sexp-motion buffer p n) (error "Not between two complete sexps"))))
+           (or (sexp-motion buffer p n) (refuse "Not between two complete sexps"))))
     (if (if (plusp count)
             (sexp-symbol-char-p buffer (at position))
             (and (plusp position) (sexp-symbol-char-p buffer (at (1- position)))))
@@ -529,7 +529,7 @@ key is said to be no character FOR that."
             ((and (characterp base) (not (tuatara.frontend:key-ctrl key)) (not (tuatara.frontend:key-meta key))) base)
             ((eq base :enter) #\Newline)
             ((eq base :tab) #\Tab)
-            (t (error "~a is no character ~a" (tuatara.frontend:key-description (tuatara.frontend:key-spec key)) for))))))
+            (t (refuse "~a is no character ~a" (tuatara.frontend:key-description (tuatara.frontend:key-spec key)) for))))))
 
 (defun find-char-occurrence (buffer position char count fold)
   "Where the COUNTth CHAR after POSITION of BUFFER ends, or where the -COUNTth
@@ -574,8 +574,9 @@ any other in either case."
                      p))
            (found (find-char-occurrence b from char count fold)))
       (cond ((eq found :far)
-             (error "~s not found within ~d MB" (string char) (floor *text-scan-limit* (* 1024 1024))))
-            ((null found) (error "Search failed: ~s" (string char))))
+             (refuse "~:[~s~;The character~*~] not found within ~d MB"
+                     *secret-at-hand* (string char) (floor *text-scan-limit* (* 1024 1024))))
+            ((null found) (refuse "Search failed~:[: ~s~;~*~]" *secret-at-hand* (string char))))
       (let ((end (if up-to
                      (if forward
                          (tuatara.buffer:buffer-forward-char b found -1)

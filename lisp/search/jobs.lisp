@@ -104,7 +104,7 @@ those and the places named, if any.")
   "The word of *JOB-VERBS* for KIND in FORM, :DOING (Cutting), :DONE (Cut) or
 :VERB (cut); with WORDS, the places named, followed by them, after the kind's
 preposition when it has one: Writing at the other lines."
-  (destructuring-bind (doing done verb preposition) (rest (or (assoc kind *job-verbs*) (error "No words for ~s" kind)))
+  (destructuring-bind (doing done verb preposition) (rest (or (assoc kind *job-verbs*) (refuse "No words for ~s" kind)))
     (let ((word (ecase form (:doing doing) (:done done) (:verb verb))))
       (if words (format nil "~a~@[ ~a~] ~a" word preposition words) word))))
 
@@ -482,15 +482,15 @@ spoil it. O(jobs of BUFFER) when none of them guards text."
                                           (tuatara.runtime:guard-touched guards start end))))))
         (when job
           (when (getf (car notes) :spoiling-edits-refused)
-            (error "~a" (tuatara.runtime:job-guard-refusal job)))
+            (refuse "~a" (tuatara.runtime:job-guard-refusal job)))
           (let ((version (tuatara.buffer:buffer-version buffer)))
             (if (let ((*edit-asked-about* buffer))
                   (y-or-n-p* (tuatara.runtime:job-guard-question job) :fresh t))
                 (tuatara.runtime:job-stop job)
                 (progn (setf (getf (car notes) :spoiling-edits-refused) t)
-                       (error "~a" (tuatara.runtime:job-guard-refusal job))))
+                       (refuse "~a" (tuatara.runtime:job-guard-refusal job))))
             (unless (eq version (tuatara.buffer:buffer-version buffer))
-              (error "Not changed: the text changed meanwhile; do it again"))))))))
+              (refuse "Not changed: the text changed meanwhile; do it again"))))))))
 
 ;;; The list of jobs
 

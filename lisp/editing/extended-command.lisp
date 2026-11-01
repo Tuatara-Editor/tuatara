@@ -222,7 +222,7 @@ NIL when it may run."
                    (multiple-value-bind (refusal failure) (call-hook-function function command buffer)
                      (cond ((typep failure 'error)
                             (return (format nil "~(~a~) could not be checked (~a): not run"
-                                            command (tuatara.runtime:condition-words failure))))
+                                            command (tuatara.runtime:failure-words failure :said t))))
                            (refusal (return refusal)))))))))))
 
 (defun mode-command-refusal (command)

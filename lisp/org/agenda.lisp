@@ -477,8 +477,8 @@ file. In a job in the background asked to stop, it ends the job instead
             (let ((text (org-agenda-source-text path source)))
               (when text
                 (let ((entries (handler-bind ((error (lambda (condition)
-                                                       (error "~a could not be read: ~a" (file-namestring path)
-                                                              (tuatara.runtime:condition-words condition)))))
+                                                       (refuse "~a could not be read: ~a" (file-namestring path)
+                                                               (tuatara.runtime:failure-words condition)))))
                                  (org-agenda-file-entries path text))))
                   (setf (gethash path *org-agenda-file-cache*) (cons key entries))
                   entries))))))))
@@ -567,7 +567,7 @@ lines and the line of now."))
 compiled."
   (dolist (type types)
     (unless (member type *org-agenda-item-types* :test #'equal)
-      (error "~s is no kind of agenda line: ~{~a~^, ~}" type *org-agenda-item-types*)))
+      (refuse "~s is no kind of agenda line: ~{~a~^, ~}" type *org-agenda-item-types*)))
   `(member (org-item-type ,item) ',types :test #'string=))
 
 (defstruct (org-agenda-item (:conc-name org-item-))

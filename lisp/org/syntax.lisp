@@ -167,7 +167,7 @@ of the line after its last character that is not blank (not before FLOOR)."
 Alnum, a letter or digit of any script; Alpha, a letter."
   (cond ((string= name "Alnum") #'alphanumericp)
         ((string= name "Alpha") #'alpha-char-p)
-        (t (error "No such character property in Org's patterns: ~a" name))))
+        (t (refuse "No such character property in Org's patterns: ~a" name))))
 
 (defvar *org-parse-scanners* nil
   "While a text is parsed, the scanners ORG-RE gave it, by the pattern

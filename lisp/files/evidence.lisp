@@ -101,9 +101,9 @@ glob kept as written and with its fixed front where it really is, the whole
 of it followed when it holds no * ? or [ (a link named as the evidence
 folder counts as the folder it leads to); an error saying why it cannot be."
   (when (zerop (length (string-trim " " given)))
-    (error "an empty path names no folder"))
+    (refuse "an empty path names no folder"))
   (unless (or (char= (char given 0) #\/) (char= (char given 0) #\~))
-    (error "~s is not a path from the root or from ~~/" given))
+    (refuse "~s is not a path from the root or from ~~/" given))
   (let* ((glob (nfc-name (written-folder-name given)))
          (end (glob-fixed-end glob))
          (front (if (plusp end) (string-right-trim "/" (nfc-name (real-folder-name (subseq glob 0 end)))) "")))
@@ -114,7 +114,7 @@ folder counts as the folder it leads to); an error saying why it cannot be."
   "The folder :within names, WITHIN, as written and where it really is; an
 error when it is not a path from the root or from ~/."
   (unless (and (stringp within) (plusp (length within)) (find (char within 0) "/~"))
-    (error ":within ~s is not a folder's path from the root or from ~~/" within))
+    (refuse ":within ~s is not a folder's path from the root or from ~~/" within))
   (remove-duplicates (list (nfc-name (written-folder-name within)) (nfc-name (real-folder-name within))) :test #'string=))
 
 (defun read-list-entry (given)
@@ -122,33 +122,33 @@ error when it is not a path from the root or from ~/."
 error saying why it cannot be. A regular expression matches a folder's
 whole name: it is read as \\A(?:RE)\\z."
   (unless (and (keywordp (first given)) (evenp (length given)))
-    (error "~s is not :name or :regex followed by keywords and their values" given))
+    (refuse "~s is not :name or :regex followed by keywords and their values" given))
   (loop for (key) on given by #'cddr
         unless (member key '(:name :regex :within :then))
-          do (error "~s is none of :name, :regex, :within and :then" key))
+          do (refuse "~s is none of :name, :regex, :within and :then" key))
   (let ((name (getf given :name)) (regex (getf given :regex))
         (within (getf given :within)) (then (getf given :then)))
-    (when (and name regex) (error "an entry has :name or :regex, not both"))
+    (when (and name regex) (refuse "an entry has :name or :regex, not both"))
     (let ((withins (and within (read-folder-within within))))
       (cond (name
              (unless (and (stringp name) (plusp (length name)) (not (find #\/ name)))
-               (error ":name ~s is not the name of one folder" name))
-             (when then (error ":then goes with :regex"))
+               (refuse ":name ~s is not the name of one folder" name))
+             (when then (refuse ":then goes with :regex"))
              (make-evidence-entry given :name (nfc-name name) withins nil))
             (regex
-             (unless (stringp regex) (error ":regex ~s is not a string" regex))
+             (unless (stringp regex) (refuse ":regex ~s is not a string" regex))
              (handler-case (tuatara.syntax:compile-pattern regex :case-fold t)
-               (error (e) (error ":regex ~s cannot be used: ~a" regex e)))
+               (error (e) (refuse ":regex ~s cannot be used: ~a" regex e)))
              (let ((scanner (tuatara.syntax:compile-pattern (format nil "\\A(?:~a)\\z" regex) :case-fold t))
                    (names (and then
                                (if (and (stringp then) (plusp (length then)) (char/= (char then 0) #\/))
                                    (mapcar #'nfc-name
                                            (remove "" (uiop:split-string (string-right-trim "/" then) :separator "/") :test #'string=))
-                                   (error ":then ~s is not a folder's name, or path, inside the one matched" then)))))
+                                   (refuse ":then ~s is not a folder's name, or path, inside the one matched" then)))))
                (when (intersection names '("." "..") :test #'string=)
-                 (error ":then ~s leads out of the folder matched" then))
+                 (refuse ":then ~s leads out of the folder matched" then))
                (make-evidence-entry given :regex scanner withins names)))
-            (t (error "~s has neither :name nor :regex" given))))))
+            (t (refuse "~s has neither :name nor :regex" given))))))
 
 (defun read-evidence-entry (given)
   "GIVEN, an entry of *EVIDENCE-FOLDERS*, as an EVIDENCE-ENTRY, the links it
@@ -156,7 +156,7 @@ matches not looked for yet (EVIDENCE-KEEPER does, in the background); an
 error saying why it cannot be read."
   (cond ((stringp given) (read-glob-entry given))
         ((consp given) (read-list-entry given))
-        (t (error "~s is neither a folder's path nor a list beginning with :name or :regex" given))))
+        (t (refuse "~s is neither a folder's path nor a list beginning with :name or :regex" given))))
 
 ;;; The setting in force
 

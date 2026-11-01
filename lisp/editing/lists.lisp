@@ -458,7 +458,7 @@ follows."
 goes from there. Signals an error when its brackets do not balance."
   (multiple-value-bind (end why) (sexp-motion buffer start 1)
     (declare (ignore why))
-    (or end (error "The brackets do not balance"))))
+    (or end (refuse "The brackets do not balance"))))
 
 (defun bracket-end-of-defun (buffer position count)
   "Where \\[end-of-defun] goes from POSITION in BUFFER with COUNT, for

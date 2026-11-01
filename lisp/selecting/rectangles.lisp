@@ -504,7 +504,7 @@ goes to the rectangle store alone."
 point taken as its rectangle; the selection is let go afterwards."
   (let ((b (current-buffer)))
     (unless (tuatara.buffer:buffer-mark b)
-      (error "The mark is not set now, so there is no region"))
+      (refuse "The mark is not set now, so there is no region"))
     (unless (rectangle-live-p b)
       (end-rectangle b)
       (setf (tuatara.buffer:buffer-local b :rectangle) t
@@ -546,7 +546,7 @@ column on each line. Point goes after the text on the last line. The text
 given last time is offered. A rectangle over more text than
 *REWRITE-THRESHOLD* is rewritten in the background."
   (unless (tuatara.buffer:buffer-mark (current-buffer))
-    (error "The mark is not set now, so there is no region"))
+    (refuse "The mark is not set now, so there is no region"))
   (let ((text (read-string "String rectangle: " :initial *last-rectangle-string* :select-initial t)))
     (setf *last-rectangle-string* text)
     (call-on-region-rectangle
@@ -604,14 +604,14 @@ block's left column on its line. A rectangle over more text than
 (REPLACE true) do, a format and a number to count from asked for with
 \\[universal-argument]."
   (unless (tuatara.buffer:buffer-mark (current-buffer))
-    (error "The mark is not set now, so there is no region"))
+    (refuse "The mark is not set now, so there is no region"))
   (let* ((b (current-buffer))
          (rows (nth-value 4 (rectangle-lines b)))
          (ask (prefix-argument))
          (first (if ask
                     (let ((text (read-string "Number to count from: " :initial "1" :select-initial t)))
                       (or (whole-number text)
-                          (error "Not a whole number: ~a" text)))
+                          (refuse "Not a whole number: ~a" text)))
                     1))
          (default (format nil "%~dd~:[ ~;~]" (length (princ-to-string (+ first (max 0 (1- rows))))) replace))
          (formatter (number-formatter (if ask (read-string "Format string: " :initial default) default))))

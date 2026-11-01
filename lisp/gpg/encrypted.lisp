@@ -519,12 +519,12 @@ save is refused."
              (not (uiop:string-suffix-p (string-downcase (tuatara.io:native path)) ".gpg"))
              (not (yes-or-no-p* (format nil "~a holds text decrypted in place; save it unencrypted?"
                                         (tuatara.buffer:buffer-name buffer)))))
-    (error "~a is not saved: it holds text decrypted in place" (tuatara.buffer:buffer-name buffer)))
+    (refuse "~a is not saved: it holds text decrypted in place" (tuatara.buffer:buffer-name buffer)))
   (when (or (encrypted-buffer-p buffer) (uiop:string-suffix-p (string-downcase (tuatara.io:native path)) ".gpg"))
     (let ((encryption (tuatara.buffer:buffer-local buffer :encrypted)))
       (unless (or (getf encryption :keys) (getf encryption :symmetric))
         (setf encryption (or (read-encryption (tuatara.buffer:buffer-name buffer))
-                             (error "~a is not saved: nothing chosen to encrypt it to" (tuatara.buffer:buffer-name buffer)))))
+                             (refuse "~a is not saved: nothing chosen to encrypt it to" (tuatara.buffer:buffer-name buffer)))))
       (note-encrypted buffer encryption)
       (let ((passphrase (and (getf encryption :symmetric) (gpg-minibuffer-p)
                              (gpg-read-passphrase (format nil "Passphrase to encrypt ~a with: " (tuatara.buffer:buffer-name buffer)) :confirm t)))
@@ -538,7 +538,7 @@ save is refused."
                                                    (lambda () (gpg-run (gpg-encrypt-arguments encryption) :input plain)))
                   (fill plain 0))
               (unless (and ok output (plusp (length output)))
-                (error "gpg could not encrypt ~a: ~a" name (gpg-failure-words statuses said)))
+                (refuse "gpg could not encrypt ~a: ~a" name (gpg-failure-words statuses said)))
               (return-from encrypted-save-transform (lambda (rope) (declare (ignore rope)) output)))))
         (lambda (rope)
           (let ((tuatara.runtime:*secret-at-hand* t)
@@ -548,7 +548,7 @@ save is refused."
                   (fill plain 0)
                   (wipe-string passphrase))
               (unless (and ok output (plusp (length output)))
-                (error "gpg could not encrypt ~a: ~a" name (gpg-failure-words statuses said)))
+                (refuse "gpg could not encrypt ~a: ~a" name (gpg-failure-words statuses said)))
               output)))))))
 
 ;;; Choosing keys

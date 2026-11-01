@@ -273,7 +273,7 @@ no heading (the contents' heading neither)."
 its first heading), its text's top elements' XML, the w:sectPr of the
 section its text begins in, the XML before the body's content and after
 it, and the w:sectPr of the section each of the text's top elements is in, in order."
-  (let* ((body (or (xml-element document "w:body") (error "The document has no body: nothing made")))
+  (let* ((body (or (xml-element document "w:body") (refuse "The document has no body: nothing made")))
          (inner-start (nth-value 0 (xml-element-inner document body)))
          (inner-end (nth-value 1 (xml-element-inner document body)))
          (tops (xml-top-elements document inner-start inner-end))
@@ -668,11 +668,11 @@ an error when it cannot be read; writes over nothing that exists."
     ;; a part named to land outside the template's folder (../../init.lisp): nothing made at all
     (let ((unsafe (find-if-not #'docx-safe-file-name-p (docx-reading-entries *docx-reading*) :key (lambda (e) (getf e :name)))))
       (when unsafe
-        (error "~a holds a part named ~s, outside the document: nothing made" (tuatara.io:native-file-name path) (getf unsafe :name))))
+        (refuse "~a holds a part named ~s, outside the document: nothing made" (tuatara.io:native-file-name path) (getf unsafe :name))))
     (unless (string-equal (docx-main-part) "word/document.xml")
-      (error "~a keeps its text in ~a, not word/document.xml as a template's is: nothing made"
+      (refuse "~a keeps its text in ~a, not word/document.xml as a template's is: nothing made"
              (tuatara.io:native-file-name path) (docx-main-part)))
-    (let ((document (or (docx-reading-text "word/document.xml") (error "~a holds no Word document" (tuatara.io:native-file-name path)))))
+    (let ((document (or (docx-reading-text "word/document.xml") (refuse "~a holds no Word document" (tuatara.io:native-file-name path)))))
       (multiple-value-bind (front text-xml section before after governing) (docx-import-split document)
         (multiple-value-bind (front contents) (docx-import-contents front)
           (let* ((front (docx-import-fields-in front :front t))

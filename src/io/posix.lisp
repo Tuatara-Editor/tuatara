@@ -1172,7 +1172,7 @@ writing. Where the file system has no unnamed files (NFS, FUSE, SMB and others),
 a named one removed at once, which comes to the same. Refused
 \(WRITING-REFUSED) where nothing may be written, told by the folder opened."
   (unless directory
-    (error "This text is not written to a scratch file on disk (the text of an encrypted file): too large to work on in memory"))
+    (refuse "This text is not written to a scratch file on disk (the text of an encrypted file): too large to work on in memory"))
   (call-with-folder
    directory
    (lambda (dirfd)
