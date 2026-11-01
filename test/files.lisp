@@ -653,6 +653,28 @@ second value."
           (is string= (concatenate 'string "BA" text) (tuatara.buffer:buffer-string b))))
       (is equal '("big.txt") (directory-names dir)))))
 
+(define-test (visiting-and-saving save-answers-the-next-key-at-once)
+  ;; a save that takes long is waited for only until a key comes: the key after C-x C-s is answered at once
+  (with-test-directory (dir)
+    (let ((path (namestring (put-file (merge-pathnames "slow.txt" dir) "text")))
+          (started nil)
+          (answered nil)
+          (f (tuatara.frontend.fake:make-fake-frontend :width 80 :height 8)))
+      (setf (tuatara.frontend.fake:fake-pending f) (lambda (f) (tuatara.frontend.fake::fake-events f)))
+      (queue-test-keys f (list "i x C-x C-s" (lambda () (setf answered (get-internal-real-time))) "y"))
+      ;; the save's writing takes a second
+      (with-functions-replaced ((tuatara.io::save-transform
+                                 (lambda (buffer path)
+                                   (declare (ignore buffer path))
+                                   (lambda (rope) (setf started (get-internal-real-time)) (sleep 1) rope))))
+        (without-grammar-questions
+          (tuatara.command:run-editor f :files (list path) :setup #'tuatara.defaults:install-defaults)))
+      (true (and started answered))
+      (when (and started answered)
+        (let ((waited (/ (- answered started) internal-time-units-per-second)))
+          (true (< waited 0.2) "the key after the save was answered ~,2f s after it began" waited)))
+      (is string= "xtext" (file-text path)))))
+
 (define-test (visiting-and-saving watcher)
   (with-test-directory (dir)
     (let ((path (put-file (merge-pathnames "watched.txt" dir) "original")))

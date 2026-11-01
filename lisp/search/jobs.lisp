@@ -146,12 +146,16 @@ change made meanwhile, for a job that waits its turn."
              held)))))
 
 (defun take-in-soon (job seconds &optional words then)
-  "Wait up to SECONDS for JOB, just started, to end: when it has, take it in
-now, with the other jobs of its kind that have ended, so that quick work looks
-done at once; else, with WORDS, say that it goes on in the background, and
-THEN after it when given (SAY-IN-BACKGROUND)."
-  (when (plusp seconds)
-    (sb-thread:join-thread (tuatara.runtime:job-thread job) :timeout seconds :default nil))
+  "Wait up to SECONDS for JOB, just started, to end, or until a key is pressed,
+whichever comes first: when it has ended, take it in now, with the other jobs
+of its kind that have ended, so that quick work looks done at once; else, with
+WORDS, say that it goes on in the background, and THEN after it when given
+\(SAY-IN-BACKGROUND). A key pressed meanwhile is answered at once, the work
+going on behind it."
+  (let ((deadline (tuatara.runtime:deadline-in seconds)))
+    (loop for left = (tuatara.runtime:seconds-left deadline)
+          while (and (plusp left) (tuatara.runtime:job-running-p job) (not (key-waiting-p)))
+          do (sb-thread:join-thread (tuatara.runtime:job-thread job) :timeout (min left 1/100) :default nil)))
   (if (tuatara.runtime:job-running-p job)
       (when words (say-in-background words then))
       (let ((kind (type-of job)))
