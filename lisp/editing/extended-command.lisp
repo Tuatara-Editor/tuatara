@@ -261,8 +261,8 @@ its docstring at the right."
   (:documentation "What completing at POSITION of BUFFER in MODE offers, as six values: the
 start and end of the word there, the candidates for it (a list of CANDIDATE),
 and the functions giving what is said beside a candidate, its documentation,
-and whether a character can be part of a word (see COMPLETE-IN-TEXT); NIL when
-MODE completes nothing.")
+whether a character can be part of a word (see COMPLETE-IN-TEXT), and true for the
+candidates to be kept in the order given; NIL when MODE completes nothing.")
   (:method (mode buffer position) (declare (ignore mode buffer position)) nil))
 
 (define-command completion-at-point ()
@@ -274,20 +274,28 @@ beside it and the chosen one's parameters and documentation beside the list.
 Typing narrows the list, words in any order;
 \\<popup>\\[popup-next] and \\[popup-previous] choose, \\[popup-insert] or
 \\`TAB' put the chosen one in, \\[popup-quit] closes it. When one name alone
-fits, it goes in at once."
+fits, it goes in at once. Where the mode offers nothing, the words of the
+buffers that start with the text before point, as \\[complete-word] lists them."
   (let ((b (current-buffer)))
     (cond ((hex-view-here-p) (message "Nothing to complete in the hex view"))
           ((tuatara.buffer:buffer-local b :read-only) (message "Buffer is read-only: ~a" (tuatara.buffer:buffer-name b)))
-          (t (complete-at-point-in b)))))
+          (t (complete-at-point-in b :words t)))))
 
-(defun complete-at-point-in (b &key quiet)
+(defun complete-at-point-in (b &key quiet words)
   "Complete the word at point of B as its major mode offers (MODE-COMPLETION-AT-POINT);
-where it offers nothing, say so, unless QUIET."
-  (multiple-value-bind (start end candidates annotate document constituent)
-      (mode-completion-at-point (buffer-major-mode b) b (point))
+where it offers nothing, with WORDS the words of the buffers (WORD-COMPLETION-AT-POINT),
+or with WORDS :ONLY those alone; where nothing is offered, say so, unless QUIET."
+  (multiple-value-bind (start end candidates annotate document constituent keep-order)
+      (if (eq words :only)
+          (word-completion-at-point b (point))
+          (multiple-value-bind (start end candidates annotate document constituent keep-order)
+              (mode-completion-at-point (buffer-major-mode b) b (point))
+            (if (or start (not words))
+                (values start end candidates annotate document constituent keep-order)
+                (word-completion-at-point b (point)))))
     (if (null start)
         (unless quiet (message "Nothing to complete here"))
-        (complete-in-text b start end candidates :annotate annotate :document document
+        (complete-in-text b start end candidates :annotate annotate :document document :keep-order keep-order
                                                  :constituent (or constituent #'graphic-char-p)))))
 
 (define-command execute-extended-command ()

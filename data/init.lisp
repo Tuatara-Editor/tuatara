@@ -484,6 +484,12 @@
   ;; The list of a path's folder by major mode, before the global setting.
   ;; (setf *complete-paths-modes* '((org-mode . nil) (prog-mode . t)))
 
+  ;; Completing a word from the words in the buffers (M-/ puts them in one
+  ;; after another, C-M-/ lists them) finds words whatever their case and
+  ;; keeps the case typed: foo typed, Foobar put in as foobar. Not set: t;
+  ;; nil: only words that start with exactly what is typed, put in as found.
+  ;; (setf *word-completion-keep-case* nil)
+
   ;; Beside files their date, never an age such as 3 h ago. Not set: 14 days.
   ;; (setf *relative-age-limit* 0)
 
