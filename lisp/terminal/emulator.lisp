@@ -315,9 +315,11 @@ when the program's side of the pseudo-terminal is gone."
                  (wake-compressor))
                (unless (emulator-changed emulator)
                  (setf (emulator-changed emulator) t)
-                 (when (emulator-wake emulator) (ignore-errors (funcall (emulator-wake emulator))))))))
+                 (when (emulator-wake emulator)
+                   (ignoring-errors-reported ("waking the editor") (funcall (emulator-wake emulator))))))))
       (setf (emulator-closed emulator) t)
-      (when (emulator-wake emulator) (ignore-errors (funcall (emulator-wake emulator)))))))
+      (when (emulator-wake emulator)
+        (ignoring-errors-reported ("waking the editor") (funcall (emulator-wake emulator)))))))
 
 (defun write-program-input (emulator)
   "What EMULATOR's writer thread does: write what is sent to its outbox to the
@@ -848,7 +850,9 @@ when it cannot be told: what the system says of the program's own process,
 so that it follows cd whatever the shell is and however it is set up."
   (let ((process (emulator-process emulator)))
     (when (and process (not (emulator-closed emulator)))
-      (let ((directory (ignore-errors (sb-posix:readlink (format nil "/proc/~d/cwd" (program-group process))))))
+      (let ((directory (ignoring-errors-reported ("finding the directory of the terminal's program")
+                         (handler-case (sb-posix:readlink (format nil "/proc/~d/cwd" (program-group process)))
+                           (sb-posix:syscall-error () nil)))))
         (and directory (char= (char directory 0) #\/) (tuatara.io:slash-ended directory))))))
 
 ;;; Pictures programs send (kitty's graphics protocol)
@@ -876,24 +880,23 @@ into the pixels the library keeps (red, green, blue and alpha), in memory
 from ALLOCATOR, described at OUT (a GhosttySysImage): drawn by the program
 the sandbox shuts in, as every picture from outside is (DECODE-IMAGE), never
 by the editor itself (DECODE-PICTURE). True when it was drawn."
-  (handler-case
-      (let ((image (decode-picture (tuatara.io:sap-octets data size) :png *terminal-picture-largest* *terminal-picture-largest*)))
-        (when image
-          (let* ((width (tuatara.frontend:image-width image)) (height (tuatara.frontend:image-height image))
-                 (channels (tuatara.frontend:image-channels image)) (pixels (tuatara.frontend:image-pixels image))
-                 (length (* width height 4))
-                 (buffer (foreign-call "ghostty_alloc" sb-sys:system-area-pointer (sb-sys:system-area-pointer allocator)
-                                  ((sb-alien:unsigned 64) length))))
-            (unless (tuatara.io:null-pointer-p buffer)
-              (dotimes (i (* width height))
-                (dotimes (c 3) (setf (sb-sys:sap-ref-8 buffer (+ (* 4 i) c)) (aref pixels (+ (* channels i) c))))
-                (setf (sb-sys:sap-ref-8 buffer (+ (* 4 i) 3)) (if (= channels 4) (aref pixels (+ (* channels i) 3)) 255)))
-              (setf (sb-sys:sap-ref-32 out (vt :sys-image-width)) width
-                    (sb-sys:sap-ref-32 out (vt :sys-image-height)) height
-                    (sb-sys:sap-ref-sap out (vt :sys-image-data)) buffer
-                    (sb-sys:sap-ref-64 out (vt :sys-image-length)) length)
-              t))))
-    (error () nil)))
+  (ignoring-errors-reported ("drawing a picture the terminal's program sent")
+    (let ((image (decode-picture (tuatara.io:sap-octets data size) :png *terminal-picture-largest* *terminal-picture-largest*)))
+      (when image
+        (let* ((width (tuatara.frontend:image-width image)) (height (tuatara.frontend:image-height image))
+               (channels (tuatara.frontend:image-channels image)) (pixels (tuatara.frontend:image-pixels image))
+               (length (* width height 4))
+               (buffer (foreign-call "ghostty_alloc" sb-sys:system-area-pointer (sb-sys:system-area-pointer allocator)
+                                ((sb-alien:unsigned 64) length))))
+          (unless (tuatara.io:null-pointer-p buffer)
+            (dotimes (i (* width height))
+              (dotimes (c 3) (setf (sb-sys:sap-ref-8 buffer (+ (* 4 i) c)) (aref pixels (+ (* channels i) c))))
+              (setf (sb-sys:sap-ref-8 buffer (+ (* 4 i) 3)) (if (= channels 4) (aref pixels (+ (* channels i) 3)) 255)))
+            (setf (sb-sys:sap-ref-32 out (vt :sys-image-width)) width
+                  (sb-sys:sap-ref-32 out (vt :sys-image-height)) height
+                  (sb-sys:sap-ref-sap out (vt :sys-image-data)) buffer
+                  (sb-sys:sap-ref-64 out (vt :sys-image-length)) length)
+            t))))))
 
 (defun allow-pictures (emulator)
   "Have EMULATOR keep the pictures its program sends, *TERMINAL-PICTURE-MEMORY*
@@ -1337,9 +1340,10 @@ until one prints, never waking for nothing."
 setsid started, which leads a session and a group of its own; PROCESS's own
 when it has none."
   (let* ((pid (sb-ext:process-pid process))
-         (children (ignore-errors
-                    (with-open-file (in (format nil "/proc/~d/task/~d/children" pid pid))
-                      (read-line in nil "")))))
+         (children (ignoring-errors-reported ("finding the program of process ~d" pid)
+                     (handler-case (with-open-file (in (format nil "/proc/~d/task/~d/children" pid pid))
+                                     (read-line in nil ""))
+                       (file-error () nil)))))
     (or (and children (parse-integer children :junk-allowed t)) pid)))
 
 (defun group-alive-p (group)
@@ -1355,21 +1359,25 @@ is done at once, the waiting and the rest on a thread of its own."
   (let* ((process (emulator-process emulator))
          (group (and process (sb-ext:process-alive-p process) (program-group process))))
     (when group
-      (ignore-errors (sb-posix:kill (- group) sb-posix:sighup)))
+      (handler-case (sb-posix:kill (- group) sb-posix:sighup) (sb-posix:syscall-error () nil)))
     (flet ((finish ()
              (when group
                (loop repeat 100 while (group-alive-p group) do (sleep 0.02))
                (when (group-alive-p group)
-                 (ignore-errors (sb-posix:kill (- group) sb-posix:sigkill))
+                 (handler-case (sb-posix:kill (- group) sb-posix:sigkill) (sb-posix:syscall-error () nil))
                  (loop repeat 50 while (group-alive-p group) do (sleep 0.02)))
                ;; setsid, waiting for its program, ends with it
                (loop repeat 50 while (sb-ext:process-alive-p process) do (sleep 0.02))
-               (when (sb-ext:process-alive-p process) (ignore-errors (sb-ext:process-kill process sb-posix:sigkill))))
+               (when (sb-ext:process-alive-p process)
+                 (ignoring-errors-reported ("ending the terminal's program")
+                   (sb-ext:process-kill process sb-posix:sigkill))))
              (sb-concurrency:send-message (emulator-outbox emulator) :stop)
-             (when process (ignore-errors (close (sb-ext:process-pty process))))
+             (when process (ignoring-errors-reported ("closing the terminal") (close (sb-ext:process-pty process))))
              (dolist (thread (list (emulator-reader emulator) (emulator-writer emulator)))
-               (when thread (ignore-errors (sb-thread:join-thread thread :timeout 2 :default nil))))
-             (when process (ignore-errors (sb-ext:process-close process)))
+               (when thread
+                 (ignoring-errors-reported ("waiting for ~a to end" (sb-thread:thread-name thread))
+                   (sb-thread:join-thread thread :timeout 2 :default nil))))
+             (when process (ignoring-errors-reported ("closing the terminal's program") (sb-ext:process-close process)))
              ;; the encoders too, which typing uses holding only their own lock
              (sb-thread:with-mutex ((emulator-lock emulator))
                (sb-thread:with-mutex ((emulator-input-lock emulator))

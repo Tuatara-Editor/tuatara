@@ -128,7 +128,7 @@ one); the rename is staged, and the buffers visiting the file follow it."
                                                   (tuatara.io:path-join (tuatara.io:slash-ended there) (tuatara.io:native-file-name from))
                                                   there)))
                                   (handler-case
-                                      (progn
+                                      (reporting-errors ("renaming ~a" path)
                                         (check-not-saving (list from))
                                         (git-run "Renaming a file" top (list "mv" "--" path to)
                                                  (format nil "Renamed ~a to ~a" (escape-controls path) (escape-controls to))

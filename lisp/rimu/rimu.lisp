@@ -144,7 +144,8 @@ read, for a list read again to keep that column while they are unchanged
   "Read DIRECTORY, a native name ending in /, into a RIMU-LISTING."
   (multiple-value-bind (entries reason) (tuatara.io:list-directory directory :labels t)
     (make-rimu-listing directory (coerce entries 'simple-vector)
-                       (and (null reason) (ignore-errors (tuatara.io:free-bytes directory)))
+                       (and (null reason) (ignoring-errors-reported ("finding the free space of ~a" directory)
+                                             (tuatara.io:free-bytes directory)))
                        reason)))
 
 (defun rimu-kind (entry)
@@ -261,7 +262,8 @@ is given, empty when CELLS gave nothing, never pending for ever. Returns :PENDIN
               (progn (rimu-column-ready column entries (funcall cells names))
                      (setf given t))
            (unless given
-             (ignore-errors (rimu-column-ready column entries (make-array (length entries) :initial-element nil)))))))
+             (ignoring-errors-reported ("emptying the column ~(~a~)" (rimu-column-name column))
+               (rimu-column-ready column entries (make-array (length entries) :initial-element nil)))))))
      :name thread-name)
     :pending))
 
@@ -273,8 +275,9 @@ background. A column whose function fails shows nothing."
         (name (rimu-column-name column)))
     (or (gethash name table)
         (setf (gethash name table)
-              (or (ignore-errors (funcall (rimu-column-cells column)
-                                          (rimu-listing-directory listing) (rimu-listing-entries listing)))
+              (or (ignoring-errors-reported ("finding the column ~(~a~) of ~a" name (rimu-listing-directory listing))
+                    (funcall (rimu-column-cells column)
+                             (rimu-listing-directory listing) (rimu-listing-entries listing)))
                   (make-array (length (rimu-listing-entries listing)) :initial-element nil))))))
 
 (defun rimu-cell-pieces (cell)
@@ -883,11 +886,12 @@ In a list of files found, reading again looks at those files again
             (lambda ()
              (unwind-protect
                   (handler-case
-                      (let ((listing (or listing (cond (found (rimu-found-again old))
-                                                       (rewound (rimu-read-at-commit (car rewound) (cdr rewound) directory))
-                                                       (t (rimu-carry-cells old (rimu-read directory) view))))))
-                        (setf (rimu-job-layout job) (rimu-lay-out listing view)
-                              (rimu-job-listing job) listing))
+                      (reporting-errors ("listing ~a" directory)
+                        (let ((listing (or listing (cond (found (rimu-found-again old))
+                                                         (rewound (rimu-read-at-commit (car rewound) (cdr rewound) directory))
+                                                         (t (rimu-carry-cells old (rimu-read directory) view))))))
+                          (setf (rimu-job-layout job) (rimu-lay-out listing view)
+                                (rimu-job-listing job) listing)))
                     (serious-condition (e) (setf (rimu-job-reason job) (princ-to-string e))))
                (setf (rimu-job-done job) t)
                (when editor (wake-editor editor)))))
@@ -911,7 +915,8 @@ out and the same staged (GIT-STAMPS); the sizes, worked out again in the
 background, showing the old ones of the same names meanwhile. Returns NEW."
   (let* ((columns (mapcar #'rimu-column-name (rimu-view-columns view)))
          (git (and (member :git columns)
-                   (let ((top (ignore-errors (repository-top (rimu-listing-directory new)))))
+                   (let ((top (ignoring-errors-reported ("finding the repository of ~a" (rimu-listing-directory new))
+                                (repository-top (rimu-listing-directory new)))))
                      (and top (let ((stamps (git-stamps (concatenate 'string top ".git/"))))
                                 (and (some #'identity stamps) stamps)))))))
     (setf (rimu-listing-git-stamps new) git)
@@ -1141,7 +1146,7 @@ in a list of its own, opened safely. Returns the list, or NIL (said) when
 DIRECTORY is no directory."
   (let* ((directory (directory-name directory :clean t))
          (reused (and *rimu-reuse-lists* (not safe)
-                      (eq :directory (ignore-errors (tuatara.io:path-kind directory)))
+                      (eq :directory (tuatara.io:path-kind directory))
                       (notany (lambda (b) (and (rimu-list-p b) (not (rimu-rewound-p b))
                                                (equal (tuatara.buffer:buffer-local b 'rimu-directory) directory)))
                               tuatara.buffer:*buffers*)
@@ -1157,7 +1162,8 @@ DIRECTORY is no directory."
 list, when it is a directory: what visiting a directory gives (tuatara
 ~/src/ in a terminal), opened safely when it is visited safely
 \(*VISITING-SAFELY*). Returns the list, or NIL for a file visited as usual."
-  (let ((native (ignore-errors (tuatara.io:native (tuatara.io:expand-path path)))))
+  (let ((native (ignoring-errors-reported ("finding the directory ~a" path)
+                  (tuatara.io:native (tuatara.io:expand-path path)))))
     (when (and native (eq :directory (tuatara.io:path-kind native)))
       (rimu-show-directory native :show show :safe *visiting-safely*))))
 

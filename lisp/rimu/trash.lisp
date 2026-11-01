@@ -114,12 +114,14 @@ file, a link followed, never a named pipe or a device, at most
 *TRASH-INFO-LIMIT* octets, its access time kept where the system allows."
   (let ((things '()))
     (loop for (trash . top) in (trash-directories)
-          do (dolist (entry (ignore-errors (tuatara.io:directory-entries (tuatara.io:path-join trash "info/"))))
+          do (dolist (entry (ignoring-errors-reported ("reading the trash ~a" trash)
+                              (tuatara.io:directory-entries (tuatara.io:path-join trash "info/"))))
                (let ((info (first entry)))
                  (when (and (> (length info) 10) (string= ".trashinfo" info :start2 (- (length info) 10))
                             (not (member (subseq info 0 (- (length info) 10)) '("." "..") :test #'string=)))
-                   (let* ((text (ignore-errors (tuatara.io:file-text (tuatara.io:path-join trash (format nil "info/~a" info))
-                                                                     :limit *trash-info-limit* :too-large (constantly nil))))
+                   (let* ((text (ignoring-errors-reported ("reading ~a in the trash ~a" info trash)
+                                  (tuatara.io:file-text (tuatara.io:path-join trash (format nil "info/~a" info))
+                                                        :limit *trash-info-limit* :too-large (constantly nil))))
                           (lines (and text (uiop:split-string text :separator '(#\Newline))))
                           (path (loop for line in lines
                                       when (uiop:string-prefix-p "Path=" line) return (tuatara.io:percent-decoded (subseq line 5))))
@@ -132,8 +134,8 @@ file, a link followed, never a named pipe or a device, at most
                                                  (tuatara.io:path-join top path)
                                                  path)
                                              (or date "")
-                                             (eq :directory (ignore-errors (tuatara.io:path-kind
-                                                                            (tuatara.io:path-join trash (format nil "files/~a" name))))))
+                                             (eq :directory (tuatara.io:path-kind
+                                                             (tuatara.io:path-join trash (format nil "files/~a" name)))))
                                things))))))))
     (sort things #'string> :key #'trashed-date)))
 
@@ -317,12 +319,14 @@ it went, or NIL (said why)."
                      target)))
     (when target
       (handler-case
-          (let ((above (tuatara.io:parent-path target)))
-            (unless (tuatara.io:path-stamp above)
-              (tuatara.io:ensure-directories above))
-            (tuatara.io:rename-path (trashed-files-path thing) target)
-            (ignore-errors (tuatara.io:remove-file (trashed-info-path thing)))
-            target)
+          (reporting-errors ("putting back ~a" target)
+            (let ((above (tuatara.io:parent-path target)))
+              (unless (tuatara.io:path-stamp above)
+                (tuatara.io:ensure-directories above))
+              (tuatara.io:rename-path (trashed-files-path thing) target)
+              (ignoring-errors-reported ("removing ~a" (trashed-info-path thing))
+                (tuatara.io:remove-file (trashed-info-path thing)))
+              target))
         (error (e) (message "~a not put back: ~a" (tuatara.io:native-file-name (trashed-path thing)) e) nil)))))
 
 (defun trash-restore-question (things refused)

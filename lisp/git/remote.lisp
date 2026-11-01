@@ -214,7 +214,10 @@ itself, never a program or an alias of a repository's or yours."
   (or *git-built-in-commands*
       (setf *git-built-in-commands*
             (let ((git (tuatara.io:find-program "git")))
-              (and git (uiop:split-string (string-trim '(#\Newline) (or (ignore-errors (uiop:run-program (list git "--list-cmds=builtins") :output :string)) ""))
+              (and git (uiop:split-string (string-trim '(#\Newline)
+                                                       (or (ignoring-errors-reported ("asking ~a for its own commands" git)
+                                                             (uiop:run-program (list git "--list-cmds=builtins") :output :string))
+                                                           ""))
                                           :separator '(#\Newline)))))))
 
 (defparameter *git-config-reading-options*

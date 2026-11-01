@@ -192,7 +192,7 @@ wrong is said when it failed."
   (let ((directory (or (let ((file (tuatara.buffer:buffer-file buffer))) (and file (tuatara.io:parent-path file)))
                        (tuatara.buffer:buffer-local buffer 'git-top)
                        (buffer-directory buffer))))
-    (and directory (ignore-errors (repository-top directory)))))
+    (and directory (ignoring-errors-reported ("finding the repository of ~a" directory) (repository-top directory)))))
 
 (defun git-here (&optional (buffer (current-buffer)))
   "The top of the repository BUFFER (the current buffer), a status, log,

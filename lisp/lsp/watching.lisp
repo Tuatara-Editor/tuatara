@@ -92,7 +92,8 @@ table by folder, as WATCHED-TREE's STAMPS): hidden ones and those
                           (not (watch-skipped-p (first entry)))
                           (push directory found)))
                     :list (lambda (directory)
-                            (let ((entries (ignore-errors (tuatara.io:directory-entries directory :stamps t))))
+                            (let ((entries (ignoring-errors-reported ("reading ~a" directory)
+                                             (tuatara.io:directory-entries directory :stamps t))))
                               (setf (gethash directory stamps) (entries-contents entries))
                               entries))
                     :breadth-first t :follow-links t :limit *lsp-watched-most*)
@@ -106,7 +107,8 @@ table by folder, as WATCHED-TREE's STAMPS): hidden ones and those
 (defun folder-contents (directory)
   "What DIRECTORY holds, a table by name of each file's STAMP, or :DIRECTORY
 for a folder; NIL when it cannot be read."
-  (entries-contents (ignore-errors (tuatara.io:directory-entries directory :stamps t))))
+  (entries-contents (ignoring-errors-reported ("reading ~a" directory)
+                      (tuatara.io:directory-entries directory :stamps t))))
 
 (defun entries-contents (entries)
   "ENTRIES of a folder, as TUATARA.IO:DIRECTORY-ENTRIES gives them with stamps,

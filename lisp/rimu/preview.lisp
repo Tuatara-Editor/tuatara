@@ -319,39 +319,40 @@ of its own, or shown in the buffer visiting it already; the rest at once."
                              (lambda ()
                                (unwind-protect
                                     (handler-case
-                                        (rimu-call-with-entry
-                                         rewound directory (tuatara.io:listed-octets entry)
-                                         (lambda (fd path size)
-                                           (let* ((octets (tuatara.io:read-fd-start fd path size limit))
-                                                  (kind (multiple-value-list (octets-kind-of-file fd octets)))
-                                                  (office (office-preview-format (second kind) (tuatara.io:listed-name entry))))
-                                             (setf (rimu-preview-job-octets job) octets
-                                                   (rimu-preview-job-size job) size
-                                                   (rimu-preview-job-kind job) kind)
-                                             (cond (office
-                                                    (multiple-value-bind (text notes image)
-                                                        (office-preview fd path size office :pixels pixels :cancel (rimu-preview-job-cancel job))
-                                                      (setf (rimu-preview-job-text job) text
-                                                            (rimu-preview-job-image job) image
-                                                            (rimu-preview-job-notes job) notes)))
-                                                   ((eq (second kind) :pdf)
-                                                    (multiple-value-bind (text notes image)
-                                                        (decode-pdf fd :cancel (rimu-preview-job-cancel job) :limit limit :pixels pixels)
-                                                      (setf (rimu-preview-job-text job) text
-                                                            (rimu-preview-job-image job) image
-                                                            (rimu-preview-job-notes job) notes)))
-                                                   ((and pixels (assoc (second kind) *image-formats*))
-                                                    (multiple-value-bind (image notes)
-                                                        (decode-image fd (second kind) (first pixels) (second pixels)
-                                                                      :cancel (rimu-preview-job-cancel job))
-                                                      (setf (rimu-preview-job-image job) image
-                                                            (rimu-preview-job-notes job) notes)))
-                                                   (t
-                                                    (let ((text (run-hook-until-success *preview-text-functions*
-                                                                                       fd path size (second kind) octets)))
-                                                      (when text
+                                        (reporting-errors ("previewing ~a" (tuatara.io:listed-name entry))
+                                          (rimu-call-with-entry
+                                           rewound directory (tuatara.io:listed-octets entry)
+                                           (lambda (fd path size)
+                                             (let* ((octets (tuatara.io:read-fd-start fd path size limit))
+                                                    (kind (multiple-value-list (octets-kind-of-file fd octets)))
+                                                    (office (office-preview-format (second kind) (tuatara.io:listed-name entry))))
+                                               (setf (rimu-preview-job-octets job) octets
+                                                     (rimu-preview-job-size job) size
+                                                     (rimu-preview-job-kind job) kind)
+                                               (cond (office
+                                                      (multiple-value-bind (text notes image)
+                                                          (office-preview fd path size office :pixels pixels :cancel (rimu-preview-job-cancel job))
                                                         (setf (rimu-preview-job-text job) text
-                                                              (rimu-preview-job-read-here job) t))))))))
+                                                              (rimu-preview-job-image job) image
+                                                              (rimu-preview-job-notes job) notes)))
+                                                     ((eq (second kind) :pdf)
+                                                      (multiple-value-bind (text notes image)
+                                                          (decode-pdf fd :cancel (rimu-preview-job-cancel job) :limit limit :pixels pixels)
+                                                        (setf (rimu-preview-job-text job) text
+                                                              (rimu-preview-job-image job) image
+                                                              (rimu-preview-job-notes job) notes)))
+                                                     ((and pixels (assoc (second kind) *image-formats*))
+                                                      (multiple-value-bind (image notes)
+                                                          (decode-image fd (second kind) (first pixels) (second pixels)
+                                                                        :cancel (rimu-preview-job-cancel job))
+                                                        (setf (rimu-preview-job-image job) image
+                                                              (rimu-preview-job-notes job) notes)))
+                                                     (t
+                                                      (let ((text (run-hook-until-success *preview-text-functions*
+                                                                                         fd path size (second kind) octets)))
+                                                        (when text
+                                                          (setf (rimu-preview-job-text job) text
+                                                                (rimu-preview-job-read-here job) t)))))))))
                                       (serious-condition (e) (setf (rimu-preview-job-reason job) (princ-to-string e))))
                                  ;; however it ends, the preview is over and shown
                                  (setf (rimu-preview-job-done job) t)
@@ -413,15 +414,18 @@ safely or the list is opened safely."
               (cond
                 ;; an Office document read as text, an Org note
                 ((and text office)
-                 (ignore-errors (set-major-mode buffer 'org-mode)))
+                 (ignoring-errors-reported ("giving the preview of ~a its mode" path)
+                   (set-major-mode buffer 'org-mode)))
                 (text)
                 ((tuatara.io:binary-head-p octets)
                  (hex-view-on buffer))
                 ((not (or (tuatara.io:safe-visit-p (tuatara.display:window-buffer (rimu-preview-list-window state)))
-                          (ignore-errors (visit-safely-reason path))))
+                          (ignoring-errors-reported ("asking whether ~a opens safely" path)
+                            (visit-safely-reason path))))
                  (let ((first-line (tuatara.text:octets-string octets :end (or (tuatara.text:octets-line-end-position octets 0 (min (length octets) 512))
                                                                                (min (length octets) 512)))))
-                   (ignore-errors (set-major-mode buffer (mode-for-file path (string-right-trim '(#\Return) first-line)))))))
+                   (ignoring-errors-reported ("giving the preview of ~a its mode" path)
+                     (set-major-mode buffer (mode-for-file path (string-right-trim '(#\Return) first-line)))))))
               (setf (buffer-read-only-p buffer) t
                     ;; an Office document's text read by Tuatara itself, its page alone drawn in the sandbox
                     (tuatara.buffer:buffer-local buffer :sandboxed) (and (or (and text (not office) (not (rimu-preview-job-read-here job)))
@@ -503,7 +507,7 @@ the same place. A binary file (TUATARA.IO:BINARY-HEAD-P of its first 64 KB) the 
 the hex view, as its preview is; one open before stays as it is shown. With no
 room beside the list, the file is shown in the list's window."
   (let* ((path (rimu-path directory entry))
-         (expanded (ignore-errors (tuatara.io:expand-path path)))
+         (expanded (ignoring-errors-reported ("finding ~a" path) (tuatara.io:expand-path path)))
          (before (or (buffer-visiting path)
                      ;; a PDF shown as its pages already
                      (find (and expanded (tuatara.io:native expanded)) *pdf-views*

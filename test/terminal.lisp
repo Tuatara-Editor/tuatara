@@ -866,3 +866,20 @@ be shown 4 columns by 2 rows, then prints ready and waits."
                    (true (search "xxxxxx" (tuatara.buffer:buffer-string buffer))))))
           (tuatara.defaults::stop-emulator e)
           (tuatara.buffer:kill-buffer buffer))))))
+
+(define-test (terminal unknown-key-reported)
+  ;; a key written wrongly in a list of keys matches nothing, the others still do; debug mode keeps why in its log
+  (let ((key (tuatara.frontend:make-key #\x :ctrl t)))
+    (drain-debug-reports)
+    (unwind-protect
+         (progn
+           (true (tuatara.defaults::key-among-p key '("C-<nokey>" "C-x")))
+           (false (tuatara.defaults::key-among-p key '("C-<nokey>")))
+           (true (sb-concurrency:queue-empty-p tuatara.runtime:*debug-reports*))
+           (tuatara.runtime:set-debug t)
+           (false (tuatara.defaults::key-among-p key '("C-<nokey>")))
+           (let ((texts (loop for report = (sb-concurrency:dequeue tuatara.runtime:*debug-reports*)
+                              while report collect (princ-to-string (fourth report)))))
+             (true (find-if (lambda (text) (search "reading the keys \"C-<nokey>\" failed" text)) texts)
+                   "~s" texts)))
+      (drain-debug-reports))))

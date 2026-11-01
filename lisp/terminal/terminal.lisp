@@ -224,7 +224,10 @@ cursor's move, a shell's marks) left out."
   "True when KEY is one of KEYS, each written as keys are written for
 bind-key (\"C-x\", \"S-<insert>\")."
   (let ((spec (tuatara.frontend:key-spec key)))
-    (some (lambda (keys) (equal spec (first (ignore-errors (tuatara.frontend:parse-key-sequence keys))))) keys)))
+    (some (lambda (keys)
+            (equal spec (first (ignoring-errors-reported ("reading the keys ~s" keys)
+                                 (tuatara.frontend:parse-key-sequence keys)))))
+          keys)))
 
 (defun terminal-editor-key-p (key)
   "True when KEY stays the editor's in a terminal: one of
@@ -706,7 +709,7 @@ colours a program picks are the theme's (*TERMINAL-PALETTE-ROLES*)."
           (tuatara.buffer:buffer-local buffer :paste-handler) 'terminal-paste-handler
           (buffer-given-directory buffer) directory)
     (dolist (toggle '(line-numbers hl-line cursor-column soft-wrap spellcheck visual-line centred-text))
-      (ignore-errors (choose-display buffer toggle nil)))
+      (ignoring-errors-reported ("turning ~(~a~) off" toggle) (choose-display buffer toggle nil)))
     ;; shown where *terminal-place* says, and its program started, or the buffer killed again
     (let ((started nil))
       (unwind-protect

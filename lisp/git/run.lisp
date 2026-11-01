@@ -165,7 +165,8 @@ place is refused."
   (let* ((words (git-command-words arguments))
          (doing (format nil "run git ~a in" (or (first words) ""))))
       (multiple-value-bind (here git-dir work-tree) (git-places directory arguments environment)
-        (let ((top (or work-tree (ignore-errors (repository-top here)))))
+        (let ((top (or work-tree (ignoring-errors-reported ("finding the repository of ~a" here)
+                                   (repository-top here)))))
           (dolist (place (remove nil (list git-dir top)))
             (tuatara.io:check-writing place doing))
           (dolist (path (git-output-paths words))
@@ -215,7 +216,7 @@ paths a reading command is given after -- are let be (GIT-WORDS-CHECKED)."
     (dolist (place (git-argument-places word))
       (let ((path (if (uiop:string-prefix-p "/" place) place (tuatara.io:path-join here place))))
         (tuatara.io:check-writing path doing)
-        (let ((real (ignore-errors (tuatara.io:real-path path))))
+        (let ((real (ignoring-errors-reported ("finding where ~a leads" path) (tuatara.io:real-path path))))
           (when real (tuatara.io:check-writing real doing)))))))
 
 (defun git-hash-p (text &key short)
@@ -273,7 +274,7 @@ that would do more is refused, GIT-REFUSED signalled; once git has run too
 long there, git is not run there again this session (NOTE-GIT-TIMED-OUT)
 until \\[git] asks for it."
   (let* ((git (tuatara.io:find-program "git"))
-         (top (ignore-errors (repository-top directory))))
+         (top (ignoring-errors-reported ("finding the repository of ~a" directory) (repository-top directory))))
     (cond ((not (and git top)) (values nil nil))
           ((not (git-reads-only-p top))
            (run-git-program git directory arguments :cancel cancel :line line :errors errors :input input
@@ -286,12 +287,13 @@ until \\[git] asks for it."
            (let ((timed-out (list nil)))
              (multiple-value-prog1
                  (handler-case
-                     (call-git-reading top directory arguments
-                                       (lambda (arguments looking-environment here)
-                                         (run-git-program git here arguments :cancel cancel :line line :errors errors :input input
-                                                                             :seconds (or seconds *git-reading-seconds*) :limit limit
-                                                                             :reading t :environment looking-environment
-                                                                             :timed-out timed-out)))
+                     (reporting-errors ("reading ~a with git" top)
+                       (call-git-reading top directory arguments
+                                         (lambda (arguments looking-environment here)
+                                           (run-git-program git here arguments :cancel cancel :line line :errors errors :input input
+                                                                               :seconds (or seconds *git-reading-seconds*) :limit limit
+                                                                               :reading t :environment looking-environment
+                                                                               :timed-out timed-out))))
                    (git-refused (e) (error e))
                    (error () (values nil nil)))
                (when (car timed-out) (note-git-timed-out top))))))))
@@ -339,51 +341,53 @@ command, so that they are the ones in force."
                                  (list "-c" "core.hooksPath=/dev/null"))
                             words)))
     (handler-case
-        (tuatara.io:call-with-program
-         (list* git "-C" (tuatara.io:native directory) arguments)
-         (lambda (process)
-           (let ((stream (sb-ext:process-output process))
-                 (listener (and errors
-                                (tuatara.runtime:make-guarded-thread
-                                 (lambda ()
-                                   (ignore-errors
-                                    (tuatara.io:read-stream-octets (sb-ext:process-error process) :limit *git-said-limit* :drain t)))
-                                 :name "tuatara git messages")))
-                 (octets nil) (stopped nil) (cancelled nil) (too-large nil)
-                 (timer (and seconds (sb-ext:make-timer (lambda () (when (sb-ext:process-alive-p process)
-                                                                      (when timed-out (setf (car timed-out) t))
-                                                                      (ignore-errors (sb-ext:process-kill process 9))))
-                                                        :thread t))))
-             (when timer (sb-ext:schedule-timer timer seconds))
-             (when input
-               (let ((in (sb-ext:process-input process)))
-                 (ignore-errors (write-string input in))
-                 (ignore-errors (close in))))
-             (unwind-protect
-                  (if line
-                      (loop (multiple-value-bind (text cut) (tuatara.io:read-line-bounded stream limit)
-                              (cond ((null text) (return))
-                                    (cut (setf too-large t) (return))
-                                    ((and cancel (car cancel)) (setf cancelled t) (return))
-                                    ((funcall line text) (setf stopped t) (return)))))
-                      (setf (values octets too-large cancelled)
-                            (tuatara.io:read-stream-octets stream :limit limit :cancel cancel)))
-               (when timer (sb-ext:unschedule-timer timer)))
-             ;; read to its end: git is done, and how it ended is known once it is waited for
-             (unless (or stopped cancelled too-large) (sb-ext:process-wait process))
-             (when (and listener (or stopped cancelled too-large) (sb-ext:process-alive-p process))
-               (ignore-errors (sb-ext:process-kill process 15)))
-             (let ((said (and listener
-                              (let ((octets (sb-thread:join-thread listener :default nil)))
-                                (if octets (tuatara.text:lenient-string octets) ""))))
-                   (ok (and (not too-large) (not cancelled) (or stopped (eql 0 (sb-ext:process-exit-code process))))))
-               (cond ((and too-large listener) (values nil nil t said))
-                     (too-large (values nil nil t))
-                     (listener (values (and (not line) (not cancelled) octets) ok nil said))
-                     (t (values (and (not line) (not cancelled) octets) ok))))))
-         :job tuatara.runtime:*job* :input (and input :stream) :output :stream :error (and errors :stream)
-         :environment (append environment (list "GIT_TERMINAL_PROMPT=0")
-                              (if reading
-                                  (remove-if (lambda (setting) (uiop:string-prefix-p "GIT_" setting)) (sb-ext:posix-environ))
-                                  (sb-ext:posix-environ))))
+        (reporting-errors ("running git ~a in ~a" (or (first words) "") directory)
+          (tuatara.io:call-with-program
+           (list* git "-C" (tuatara.io:native directory) arguments)
+           (lambda (process)
+             (let ((stream (sb-ext:process-output process))
+                   (listener (and errors
+                                  (tuatara.runtime:make-guarded-thread
+                                   (lambda ()
+                                     (ignoring-errors-reported ("reading what git says")
+                                       (tuatara.io:read-stream-octets (sb-ext:process-error process) :limit *git-said-limit* :drain t)))
+                                   :name "tuatara git messages")))
+                   (octets nil) (stopped nil) (cancelled nil) (too-large nil)
+                   (timer (and seconds (sb-ext:make-timer (lambda () (when (sb-ext:process-alive-p process)
+                                                                        (when timed-out (setf (car timed-out) t))
+                                                                        (ignoring-errors-reported ("ending git")
+                                                                          (sb-ext:process-kill process 9))))
+                                                          :thread t))))
+               (when timer (sb-ext:schedule-timer timer seconds))
+               (when input
+                 (let ((in (sb-ext:process-input process)))
+                   (ignoring-errors-reported ("giving git its input") (write-string input in))
+                   (ignoring-errors-reported ("closing git's input") (close in))))
+               (unwind-protect
+                    (if line
+                        (loop (multiple-value-bind (text cut) (tuatara.io:read-line-bounded stream limit)
+                                (cond ((null text) (return))
+                                      (cut (setf too-large t) (return))
+                                      ((and cancel (car cancel)) (setf cancelled t) (return))
+                                      ((funcall line text) (setf stopped t) (return)))))
+                        (setf (values octets too-large cancelled)
+                              (tuatara.io:read-stream-octets stream :limit limit :cancel cancel)))
+                 (when timer (sb-ext:unschedule-timer timer)))
+               ;; read to its end: git is done, and how it ended is known once it is waited for
+               (unless (or stopped cancelled too-large) (sb-ext:process-wait process))
+               (when (and listener (or stopped cancelled too-large) (sb-ext:process-alive-p process))
+                 (ignoring-errors-reported ("ending git") (sb-ext:process-kill process 15)))
+               (let ((said (and listener
+                                (let ((octets (sb-thread:join-thread listener :default nil)))
+                                  (if octets (tuatara.text:lenient-string octets) ""))))
+                     (ok (and (not too-large) (not cancelled) (or stopped (eql 0 (sb-ext:process-exit-code process))))))
+                 (cond ((and too-large listener) (values nil nil t said))
+                       (too-large (values nil nil t))
+                       (listener (values (and (not line) (not cancelled) octets) ok nil said))
+                       (t (values (and (not line) (not cancelled) octets) ok))))))
+           :job tuatara.runtime:*job* :input (and input :stream) :output :stream :error (and errors :stream)
+           :environment (append environment (list "GIT_TERMINAL_PROMPT=0")
+                                (if reading
+                                    (remove-if (lambda (setting) (uiop:string-prefix-p "GIT_" setting)) (sb-ext:posix-environ))
+                                    (sb-ext:posix-environ)))))
       (error () (values nil nil)))))

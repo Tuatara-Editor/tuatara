@@ -1214,3 +1214,23 @@ entry file of a package of a source nothing names, kept in it."
                     (list :wait 0.2))
               :width 200)))
       (false (tuatara.frontend.fake:fake-frame-showing f "already running")))))
+
+(define-test (packages kept-list-unreadable-reported)
+  ;; a kept list that cannot be read is none, as before; debug mode keeps why in its log
+  (with-test-directory (dir)
+    (let ((good (tuatara.io:native (merge-pathnames "good.needs" dir)))
+          (broken (tuatara.io:native (put-file (merge-pathnames "broken.needs" dir) "(:needs ("))))
+      (tuatara.defaults::write-kept-list good '(:needs ()))
+      (drain-debug-reports)
+      (unwind-protect
+           (progn
+             (is equal '((:needs ()) t) (multiple-value-list (tuatara.defaults::read-kept-list good)))
+             (is equal '(nil) (multiple-value-list (tuatara.defaults::read-kept-list broken)))
+             (true (sb-concurrency:queue-empty-p tuatara.runtime:*debug-reports*))
+             (tuatara.runtime:set-debug t)
+             (is equal '(nil) (multiple-value-list (tuatara.defaults::read-kept-list broken)))
+             (let ((texts (loop for report = (sb-concurrency:dequeue tuatara.runtime:*debug-reports*)
+                                while report collect (princ-to-string (fourth report)))))
+               (true (find-if (lambda (text) (search (format nil "reading ~a failed" broken) text)) texts)
+                     "~s" texts)))
+        (drain-debug-reports)))))

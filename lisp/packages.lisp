@@ -359,7 +359,8 @@ named before its package defines it): one that fails is said, with why, and
 the others still evaluated."
   (let ((*package* (find-package :tuatara-user)))
     (dolist (form forms)
-      (handler-case (handler-bind ((warning #'muffle-warning)) (eval form))
+      (handler-case (reporting-errors ("evaluating ~a's ~(~s~)" name what)
+                      (handler-bind ((warning #'muffle-warning)) (eval form)))
         (error (e)
           (message "~a's ~(~s~): ~a failed: ~a" name what (let ((*print-length* 4) (*print-level* 2)) (prin1-to-string form)) e))))))
 
@@ -403,7 +404,7 @@ loaded. Returns LOADED, or NIL when it failed."
     (if failure
         (failed failure)
         (handler-case
-            (progn
+            (reporting-errors ("ending the loading of the package ~a" name)
               (package-loaded name)
               (let ((ms (round (tuatara.runtime:milliseconds-since start))))
                 (when *start-package-times* (push (cons name ms) (cdr *start-package-times*)))
@@ -443,7 +444,9 @@ returned is returned, or NIL."
                                          (message "The package ~a is compiled and loaded" name))
                                        (if given (funcall then loaded stopped) (funcall then loaded)))))
                nil)
-        (multiple-value-bind (loaded failure) (handler-case (funcall load) (error (e) (values nil e)))
+        (multiple-value-bind (loaded failure) (handler-case (reporting-errors ("loading the package ~a" name)
+                                                              (funcall load))
+                                                (error (e) (values nil e)))
           (funcall then (package-load-ended name where start loaded failure))))))
 
 (defun package-command-stub (command name start)
@@ -578,7 +581,8 @@ NIL when it is loaded later or nothing is."
            (declared (list name source version file folder))
            (arrange (lambda () (load-package-from name source version file))))
           (t
-           (let ((mode (and (string/= name "tuatara") (ignore-errors (mode-named (intern (string-upcase name) :keyword)))))
+           (let ((mode (and (string/= name "tuatara") (ignoring-errors-reported ("finding the mode ~a" name)
+                                                        (mode-named (intern (string-upcase name) :keyword)))))
                  (near nil))
              (unless (or mode (string= name "tuatara"))
                (setf near (known-package-name-near name))
@@ -638,7 +642,8 @@ of other ones are deleted the first time it is asked for."
                        (tuatara.io:percent-encoded (lisp-implementation-version) :safe "._-")))
          (here (format nil "~a~a/" sbcl (tuatara-identity))))
     (unless (probe-file here)
-      (dolist (other (append (ignore-errors (uiop:subdirectories sbcl)) (ignore-errors (uiop:directory-files sbcl))))
+      (dolist (other (append (ignoring-errors-reported ("reading ~a" sbcl) (uiop:subdirectories sbcl))
+                             (ignoring-errors-reported ("reading ~a" sbcl) (uiop:directory-files sbcl))))
         (delete-package-folder (namestring other))))
     here))
 
@@ -734,13 +739,14 @@ only you may read."
 (defun read-kept-list (file)
   "The list WRITE-KEPT-LIST wrote to FILE, nothing in it evaluated, and true
 as a second value; NIL when there is none or it cannot be read."
-  (let ((text (ignore-errors (and (probe-file file) (tuatara.io:file-text file)))))
+  (let ((text (ignoring-errors-reported ("reading ~a" file) (and (probe-file file) (tuatara.io:file-text file)))))
     (when text
-      (handler-case (with-standard-io-syntax
-                      (let* ((*read-eval* nil)
-                             (*package* (find-package :common-lisp))
-                             (list (read-from-string text)))
-                        (and (listp list) (values list t))))
+      (handler-case (reporting-errors ("reading ~a" file)
+                      (with-standard-io-syntax
+                        (let* ((*read-eval* nil)
+                               (*package* (find-package :common-lisp))
+                               (list (read-from-string text)))
+                          (and (listp list) (values list t)))))
         (error () nil)))))
 
 (defvar *package-check* nil
@@ -832,7 +838,7 @@ rest). Faces and settings they define stay, doing nothing."
       (do-external-symbols (name :tuatara)
         (when (and (boundp name) (not (constantp name)))
           (let ((value (symbol-value name)))
-            (when (and (consp value) (ignore-errors (list-length value)) (some #'theirs-p value))
+            (when (and (consp value) (handler-case (list-length value) (type-error () nil)) (some #'theirs-p value))
               (setf (symbol-value name) (remove-if #'theirs-p value)))))))
     (dolist (package own)
       (dolist (user (package-used-by-list package))
@@ -852,8 +858,9 @@ names the editor has may be missing: the editor refuses it as it loads."
          (words (sort (remove-duplicates (mapcar (lambda (n) (needed-name-words n own)) needed) :test #'string=)
                       #'string<)))
     (when (and (package-check-refusal check) (package-check-sources check))
-      (ignore-errors (write-kept-list (package-check-refusal check)
-                                      (list :sources (package-check-sources check) :needs needed))))
+      (ignoring-errors-reported ("writing ~a" (package-check-refusal check))
+        (write-kept-list (package-check-refusal check)
+                         (list :sources (package-check-sources check) :needs needed))))
     (tuatara.runtime:debug-report :package "~a refused, its code using names this Tuatara lacks: ~{~a~^, ~}"
                                   (package-check-name check) words)
     (forget-package-code own)
@@ -868,19 +875,21 @@ compiled apart (REFUSE-PACKAGE)."
   (let ((file (and (not (member *package-compiling* '(:apart :apart-said))) (package-check-refusal check))))
     (multiple-value-bind (kept read) (read-kept-list file)
       (when read
-        (let* ((needs (ignore-errors (getf kept :needs)))
-               (sources (ignore-errors (getf kept :sources)))
+        (let* ((needs (handler-case (getf kept :needs) (type-error () nil)))
+               (sources (handler-case (getf kept :sources) (type-error () nil)))
                (missing (and (listp needs) (remove-if #'needed-name-present-p (remove-if-not #'needed-name-p needs))))
-               (kept-at (or (ignore-errors (file-write-date file)) 0)))
+               (kept-at (or (ignoring-errors-reported ("reading the time of ~a" file) (file-write-date file)) 0)))
           ;; file times are whole seconds: a file of the refusal's second may have changed after it
-          (if (and missing (consp sources) (ignore-errors (list-length sources))
+          (if (and missing (consp sources) (handler-case (list-length sources) (type-error () nil))
                    (every (lambda (source)
                             (and (consp source) (stringp (car source)) (integerp (cdr source))
-                                 (eql (ignore-errors (file-write-date (car source))) (cdr source))
+                                 (eql (ignoring-errors-reported ("reading the time of ~a" (car source))
+                                        (file-write-date (car source)))
+                                      (cdr source))
                                  (< (cdr source) kept-at)))
                           sources))
               (refuse-package check missing)
-              (ignore-errors (delete-file file))))))))
+              (handler-case (delete-file file) (file-error () nil))))))))
 
 (defun compile-package-file (file fasl)
   "Compile FILE, of a package, into FASL, and keep beside it the names its
@@ -919,7 +928,7 @@ finds the old one or the new, and the new one's names with it."
              (log-message (format nil "~a compiled with ~d warning~:p: ~a" (abbreviated-path (tuatara.io:native file))
                                   (length said) (first (last said)))))
            needed)
-      (when (probe-file temporary) (ignore-errors (delete-file temporary))))))
+      (when (probe-file temporary) (handler-case (delete-file temporary) (file-error () nil))))))
 
 (defvar *package-load-stop* nil
   "While a package loads in the background (START-PACKAGE-LOAD), a cons whose
@@ -951,7 +960,7 @@ the loading was asked to stop (*PACKAGE-LOAD-STOP*)."
                     ;; file times are whole seconds: a fasl of the same second as its file may
                     ;; be older than the file's last change, and is made again, unless it was
                     ;; just made apart for this very load (made again at the next one)
-                    (if (and read (ignore-errors (every #'needed-name-p kept))
+                    (if (and read (handler-case (every #'needed-name-p kept) (type-error () nil))
                              (probe-file fasl)
                              (funcall (if (eq *package-compiling* :refused) #'>= #'>)
                                       (file-write-date fasl) (file-write-date file)))
@@ -1078,9 +1087,9 @@ entry file's header (NEEDED-VERSION-IN), read and never run; NIL when it
 says none, or has no entry."
   (let ((entry (package-entry folder name file)))
     (when entry
-      (let ((octets (ignore-errors
-                     (tuatara.io:call-with-file (tuatara.io:native (merge-pathnames entry folder))
-                                                (lambda (fd path size) (tuatara.io:read-fd-start fd path size *package-header-octets*))))))
+      (let ((octets (ignoring-errors-reported ("reading the header of ~a" entry)
+                      (tuatara.io:call-with-file (tuatara.io:native (merge-pathnames entry folder))
+                                                 (lambda (fd path size) (tuatara.io:read-fd-start fd path size *package-header-octets*))))))
         (and octets (needed-version-in (tuatara.text:lenient-string octets)))))))
 
 (defun version-numbers (text)
@@ -1315,7 +1324,9 @@ THUNK has ended by then."
                                      (when (and (not too-large) (funcall too-large-p))
                                        (setf too-large t)
                                        (let ((process (and job (tuatara.runtime:job-process job))))
-                                         (when process (ignore-errors (sb-ext:process-kill process 15))))))
+                                         (when process
+                                           (ignoring-errors-reported ("ending the fetching of ~a" where)
+                                             (sb-ext:process-kill process 15))))))
                                    :thread t)))
     (flet ((refuse () (error 'package-too-large :where where)))
       (sb-ext:schedule-timer timer 1 :repeat-interval 1)
@@ -1383,8 +1394,9 @@ none when FLOOR is not in that history."
   (package-git probe "fetch" "--quiet" "--filter=tree:0" "--depth=2147483647" where "HEAD" "+refs/tags/*:refs/tags/*")
   (remove-if-not (lambda (version)
                    (or (string= (car version) floor)
-                       (handler-case (progn (package-git probe "merge-base" "--is-ancestor" floor (car version)) t)
-                         (error () nil))))
+                       (ignoring-errors-reported ("asking whether ~a is built on ~a" (car version) floor)
+                         (package-git probe "merge-base" "--is-ancestor" floor (car version))
+                         t)))
                  versions))
 
 (defun fetch-package (name where version &key file floor walk-p signature-of)
@@ -1440,7 +1452,7 @@ tag is fetched apart, into a repository of its own), gives the fifth value."
                            (looked (if tag (tag-repository commit tag) folder)))
                        (if needed (values nil needed looked) (values folder nil looked)))
                      (let ((files (format nil "~afiles-~a/" scratch commit)))
-                       (handler-case (check-out files commit tag t)
+                       (handler-case (reporting-errors ("checking out ~a" commit) (check-out files commit tag t))
                          (package-too-large (e) (error e))
                          (error ()
                            (delete-package-folder files)
@@ -1591,7 +1603,7 @@ none."
   "TEXT, a signer's name as a key gives it, on one line and without the
 characters that change how text is laid out (right to left, hidden ones), so
 that it shows as it is; NIL for NIL or nothing left."
-  (let ((name (tuatara.text:one-line (and text (remove-if (lambda (c) (eq (ignore-errors (sb-unicode:general-category c)) :cf)) text)))))
+  (let ((name (tuatara.text:one-line (and text (remove-if (lambda (c) (eq (sb-unicode:general-category c) :cf)) text)))))
     (and name (plusp (length name)) (tuatara.display:shorten-string name 80))))
 
 (defun commit-signature (fields object)
@@ -1710,7 +1722,7 @@ whom); :FINGERPRINT (the primary key's), :SUBKEY, :NAME and for an SSH key
                                       (search "signature for trusted with" (nth-value 1 (git alone "verify-tag" "--raw" "FETCH_HEAD")))
                                       (string= "G" (trimmed (git alone "log" "-1" "--format=%G?" commit)))))
                        (setf (getf signature :key) nil))))
-              (ignore-errors (delete-file alone)))))
+              (handler-case (delete-file alone) (file-error () nil)))))
         signature))))
 
 (defun signer-words (signature)
@@ -1792,7 +1804,8 @@ loaded, and fetches that version again when it next needs it."
                        collect (second entry)
                        and when (fifth entry) collect (fifth entry)))
          (loaded (second (assoc name *loaded-package-folders* :test #'string=))))
-    (dolist (folder (ignore-errors (uiop:subdirectories (package-kept-folder where name))))
+    (dolist (folder (ignoring-errors-reported ("reading the folders of ~a" name)
+                      (uiop:subdirectories (package-kept-folder where name))))
       (let ((native (tuatara.io:native folder))
             (commit (car (last (pathname-directory folder)))))
         (unless (or (not (git-hash-p commit :short t))
@@ -1944,14 +1957,15 @@ when it was stopped on purpose. Returns the job, or NIL."
        (lambda (job)
          (multiple-value-bind (loaded failure)
              (handler-case
-                 (let ((apart (and compile (funcall compile job))))
-                   (tuatara.runtime:job-check-stop)
-                   (let ((stop (list nil)))
-                     (call-with-editor-held (lambda () (let ((*package-compiling* (if apart :refused nil))
-                                                             (*package-load-stop* stop))
-                                                         (funcall load)))
-                                            :words (format nil "Loading the package ~a" name)
-                                            :stop (lambda () (setf (car stop) t)))))
+                 (reporting-errors ("loading the package ~a" name)
+                   (let ((apart (and compile (funcall compile job))))
+                     (tuatara.runtime:job-check-stop)
+                     (let ((stop (list nil)))
+                       (call-with-editor-held (lambda () (let ((*package-compiling* (if apart :refused nil))
+                                                               (*package-load-stop* stop))
+                                                           (funcall load)))
+                                              :words (format nil "Loading the package ~a" name)
+                                              :stop (lambda () (setf (car stop) t))))))
                (error (e) (values nil e)))
            (setf (package-fetch-loaded job) loaded
                  (package-fetch-failure job) failure)))
@@ -2074,7 +2088,7 @@ could not be made, why in *Messages*."
                      (sb-posix:chmod temporary #o600)
                      (sb-posix:rename temporary core)
                      core)
-                    (t (ignore-errors (delete-file temporary))
+                    (t (handler-case (delete-file temporary) (file-error () nil))
                        (let ((words (format nil "No core to compile packages apart from could be made: ~a"
                                             (tuatara.text:one-line (or said "it failed")))))
                          (defer-action (lambda () (log-message words))))
@@ -2145,7 +2159,7 @@ is refused for names this Tuatara lacks only as it loads in the editor
                       ;; *Messages* is the editor's
                       (defer-action (lambda () (log-message words))))
                     nil)))
-      (ignore-errors (delete-file request)))))
+      (handler-case (delete-file request) (file-error () nil)))))
 
 (defun package-request-allowed-p (request token cache)
   "True when REQUEST, a file, is one the editor wrote for a process compiling
@@ -2154,7 +2168,7 @@ the folder of compiled packages the editor named, called compile-*.request,
 yours and read and written by you alone; and TOKEN, given in the
 environment, is the one it holds (checked by COMPILE-PACKAGE-CHILD)."
   (let ((stat (and request (plusp (length request)) token (plusp (length token)) cache
-                   (ignore-errors (sb-posix:lstat request))))
+                   (ignoring-errors-reported ("examining ~a" request) (sb-posix:lstat request))))
         (name (and request (tuatara.io:native-file-name request))))
     (and stat
          (= (logand (sb-posix:stat-mode stat) #o170000) #o100000)
@@ -2184,20 +2198,22 @@ failed, why printed, 2 when the request was not taken."
       (format t "~&Not a request of the editor's: nothing compiled~%")
       (return-from compile-package-child 2))
     (handler-case
-        (let ((plist (with-standard-io-syntax
-                       (let ((*read-eval* nil)) (read-from-string (tuatara.io:file-text request))))))
-          (unless (and (listp plist) (equal (getf plist :token) token))
-            (format t "~&Not a request of the editor's: nothing compiled~%")
-            (return-from compile-package-child 2))
-          (setf *tuatara-identity* (getf plist :identity)
-                tuatara-user:*cache-directory* (getf plist :cache)
-                tuatara-user:*packages-directory* (getf plist :packages))
-          (let ((*package-compiling* :apart))
-            (loop for (name folder file) in (getf plist :prelude)
-                  do (handler-case (load-package-entry (pathname folder) name file)
-                       (error (e) (format t "~&~a was left out: ~a~%" name e))))
-            (load-package-entry (pathname (getf plist :folder)) (getf plist :name) (getf plist :file)))
-          0)
+        (reporting-errors ("compiling as ~a asks" request)
+          (let ((plist (with-standard-io-syntax
+                         (let ((*read-eval* nil)) (read-from-string (tuatara.io:file-text request))))))
+            (unless (and (listp plist) (equal (getf plist :token) token))
+              (format t "~&Not a request of the editor's: nothing compiled~%")
+              (return-from compile-package-child 2))
+            (setf *tuatara-identity* (getf plist :identity)
+                  tuatara-user:*cache-directory* (getf plist :cache)
+                  tuatara-user:*packages-directory* (getf plist :packages))
+            (let ((*package-compiling* :apart))
+              (loop for (name folder file) in (getf plist :prelude)
+                    do (handler-case (reporting-errors ("loading the package ~a" name)
+                                       (load-package-entry (pathname folder) name file))
+                         (error (e) (format t "~&~a was left out: ~a~%" name e))))
+              (load-package-entry (pathname (getf plist :folder)) (getf plist :name) (getf plist :file)))
+            0))
       (serious-condition (e)
         (format t "~&~a~%" e)
         1))))
@@ -2631,14 +2647,15 @@ the reading stopped, (LINE . WHY), or NIL."
                            (if (member before '("loaded" "fetching" "loading" "later" "waiting") :test #'equal)
                                before
                                (handler-case
-                                   (let ((*package* (find-package :tuatara-user)))
-                                     (setf *package-failures* (remove name *package-failures* :key #'car :test #'string=)
-                                           *refused-packages* (remove name *refused-packages* :test #'string=))
-                                     (eval form)
-                                     (let ((declared (declared-package name)))
-                                       (if declared
-                                           (package-condition name (package-state name (second declared) (third declared)))
-                                           "not named")))
+                                   (reporting-errors ("evaluating the package ~a" name)
+                                     (let ((*package* (find-package :tuatara-user)))
+                                       (setf *package-failures* (remove name *package-failures* :key #'car :test #'string=)
+                                             *refused-packages* (remove name *refused-packages* :test #'string=))
+                                       (eval form)
+                                       (let ((declared (declared-package name)))
+                                         (if declared
+                                             (package-condition name (package-state name (second declared) (third declared)))
+                                             "not named"))))
                                  (error (e) (format nil "failed: ~a" e)))))))
      stopped)))
 
@@ -2769,7 +2786,8 @@ scratch) and anything that is not a folder of its own (a symbolic link)."
          (found '()))
     (flet ((own-folders (folder)
              ;; the folders directly in FOLDER, links never followed, nor names beginning with .
-             (loop for entry in (ignore-errors (directory (merge-pathnames "*/" folder) :resolve-symlinks nil))
+             (loop for entry in (ignoring-errors-reported ("reading ~a" folder)
+                                  (directory (merge-pathnames "*/" folder) :resolve-symlinks nil))
                    for name = (car (last (pathname-directory entry)))
                    for native = (tuatara.io:native entry)
                    when (and (stringp name) (plusp (length name)) (char/= (char name 0) #\.)
@@ -2974,7 +2992,7 @@ delete them one by one, each looked at again first (SWEEP-NEXT)."
 (defun package-readme (folder)
   "The README of the package in FOLDER: README.org, README.md, README.txt or
 README, in any case; NIL when it has none."
-  (let ((files (ignore-errors (uiop:directory-files folder))))
+  (let ((files (ignoring-errors-reported ("reading ~a" folder) (uiop:directory-files folder))))
     (loop for name in '("readme.org" "readme.md" "readme.txt" "readme")
           for file = (find name files :key #'file-namestring :test #'string-equal)
           when file return file)))

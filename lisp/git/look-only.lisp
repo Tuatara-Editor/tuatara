@@ -238,7 +238,8 @@ named pipe or a device is never opened; WHAT names it when it cannot be."
 (defun git-folder-from (base text)
   "The folder TEXT, as a file of git's own names it, from BASE when it is
 relative, where it really is, ending in /; NIL when it is not there."
-  (let ((real (ignore-errors (tuatara.io:real-path (if (uiop:string-prefix-p "/" text) text (tuatara.io:path-join base text))))))
+  (let ((real (ignoring-errors-reported ("finding the folder ~a" text)
+                (tuatara.io:real-path (if (uiop:string-prefix-p "/" text) text (tuatara.io:path-join base text))))))
     (and real (eq (tuatara.io:path-kind real) :directory) (tuatara.io:slash-ended real))))
 
 (defun git-real-folders (top)
@@ -460,7 +461,7 @@ format newer than 1, or one needing an extension that is neither one of
         '()
         (let* ((text (unwind-protect (git-helper-output top (git-shadow-folder shadow)
                                                         (list "config" "--file" copy "--no-includes" "-z" "--list"))
-                       (ignore-errors (delete-file (sb-ext:parse-native-namestring copy)))))
+                       (handler-case (delete-file (sb-ext:parse-native-namestring copy)) (file-error () nil))))
                (entries (loop for entry in (uiop:split-string text :separator (list (code-char 0)))
                               for newline = (position #\Newline entry)
                               when (plusp (length entry))
@@ -503,7 +504,8 @@ must be a folder. GIT-REFUSED otherwise."
                  (unless (member real found :test #'string=)
                    (push real found)
                    (dolist (inside '("pack/" "info/" "info/commit-graphs/"))
-                     (dolist (entry (ignore-errors (tuatara.io:directory-entries (tuatara.io:path-join real inside))))
+                     (dolist (entry (ignoring-errors-reported ("reading ~a~a" real inside)
+                                      (tuatara.io:directory-entries (tuatara.io:path-join real inside))))
                        (unless (member (fourth entry) '(:regular :directory))
                          (git-refuse-reading top "~a~a~a is not a file" (abbreviated-path real) inside (first entry)))))
                    (let ((alternates (tuatara.io:path-join real "info/alternates")))
@@ -531,12 +533,13 @@ were copied last."
     (unless (equal key (git-shadow-logs-stamps shadow))
       (let ((to (tuatara.io:path-join (git-shadow-folder shadow) (if (eq which :stash) "logs/refs/stash" "logs/"))))
         (if (eq which :stash)
-            (progn (ignore-errors (delete-file (sb-ext:parse-native-namestring to)))
+            (progn (handler-case (delete-file (sb-ext:parse-native-namestring to)) (file-error () nil))
                    (git-copy-file top from to "logs" shadow))
-            (progn (ignore-errors (tuatara.io:delete-tree to))
+            (progn (ignoring-errors-reported ("deleting the copy ~a" to) (tuatara.io:delete-tree to))
                    (git-copy-tree top from to "logs" shadow)
                    (unless (string= folder common)
-                     (ignore-errors (delete-file (sb-ext:parse-native-namestring (tuatara.io:path-join to "HEAD"))))
+                     (handler-case (delete-file (sb-ext:parse-native-namestring (tuatara.io:path-join to "HEAD")))
+                       (file-error () nil))
                      (git-copy-file top (tuatara.io:path-join folder "logs/HEAD") (tuatara.io:path-join to "HEAD") "logs" shadow)))))
       (setf (git-shadow-logs-stamps shadow) key))))
 
@@ -573,7 +576,7 @@ an empty one to run in. Its objects' folders are looked at first
   "What a shadow's copy of the index in git's own FOLDER is made again by:
 the state of the index and of each shared index beside it (sharedindex.*)."
   (cons (git-file-row (tuatara.io:path-join folder "index"))
-        (loop for entry in (ignore-errors (tuatara.io:directory-entries folder))
+        (loop for entry in (ignoring-errors-reported ("reading ~a" folder) (tuatara.io:directory-entries folder))
               when (uiop:string-prefix-p "sharedindex." (first entry))
                 collect (cons (first entry) (git-file-row (tuatara.io:path-join folder (first entry)))))))
 
@@ -592,7 +595,7 @@ has no index. GIT-REFUSED when one is not a file."
           (if (tuatara.io:path-kind from :follow nil)
               (progn (git-copy-file top from fresh "index" shadow)
                      (tuatara.io:rename-path fresh to :replace t))
-              (ignore-errors (delete-file (sb-ext:parse-native-namestring to))))))
+              (handler-case (delete-file (sb-ext:parse-native-namestring to)) (file-error () nil)))))
       (setf (git-shadow-index-stamps shadow) rows))))
 
 (defparameter *git-commands-without-index*
@@ -798,7 +801,8 @@ trusted (PROJECT-TRUSTED-P); or it is, but git's own folder its .git leads
 to, or the common one, is of a repository looked at only (a folder answered
 so, or within one, or an evidence folder or one holding it)."
   (or (not (project-trusted-p top))
-      (multiple-value-bind (folder common) (ignore-errors (git-real-folders top))
+      (multiple-value-bind (folder common) (ignoring-errors-reported ("finding git's own folder for ~a" top)
+                                             (handler-case (git-real-folders top) (git-refused () nil)))
         (and folder
              (or (project-look-only-reason (tuatara.io:parent-path (string-right-trim "/" common)))
                  (project-look-only-reason folder)
@@ -809,7 +813,8 @@ so, or within one, or an evidence folder or one holding it)."
   "Git's own folder for the repository at TOP when it is not TOP's .git, as
 a .git file or link, or a worktree's common folder, leads elsewhere; NIL
 when it is there, or there is none."
-  (multiple-value-bind (folder common) (ignore-errors (git-real-folders top))
+  (multiple-value-bind (folder common) (ignoring-errors-reported ("finding git's own folder for ~a" top)
+                                         (handler-case (git-real-folders top) (git-refused () nil)))
     (let ((own (let ((real (real-folder top))) (and real (tuatara.io:path-join real ".git/")))))
       (and folder (not (and own (string= folder own) (string= common own)))
            (if (string= folder common) folder (format nil "~a (its common folder ~a)" folder common))))))
