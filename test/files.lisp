@@ -776,7 +776,9 @@ second value."
 (define-test (visiting-and-saving saved-files-counted-once-saved)
   ;; saving several files says how many once they are on disk, saved in the background or not
   (with-test-directory (dir)
-    (let ((one (namestring (put-file (merge-pathnames "one.txt" dir) "one")))
+    ;; a log that keeps its last lines only moves the text under an offset taken before: keep all of it
+    (let ((tuatara.command:*message-log-max* most-positive-fixnum)
+          (one (namestring (put-file (merge-pathnames "one.txt" dir) "one")))
           (two (namestring (put-file (merge-pathnames "two.txt" dir) "two")))
           (said-before (length (tuatara.buffer:buffer-string (tuatara.command::messages-buffer))))
           (f (tuatara.frontend.fake:make-fake-frontend :width 80 :height 8)))
