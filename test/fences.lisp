@@ -54,6 +54,11 @@
     (format out "[user]~%	name = Test~%	email = test@example.invalid~%[commit]~%	gpgsign = false~%[init]~%	defaultBranch = main~%"))
   (sb-posix:setenv "GIT_CONFIG_GLOBAL" (namestring settings) 1)
   (sb-posix:setenv "GIT_CONFIG_NOSYSTEM" "1" 1))
+;; Nor read the developer's own agenda files (the clocks left open are looked for in them as
+;; a session starts), and no tick works out notifications from any agenda files meanwhile
+;; (the notification tests start theirs): the next is never due.
+(setf tuatara.defaults::*org-agenda-files* (list "/nonexistent/tuatara-test-agenda/agenda.org"))
+(setf (second tuatara.defaults::**org-notify-state**) most-positive-fixnum)
 ;; Nor copy changes not saved anywhere: the auto-save tests turn it on for themselves.
 (setf tuatara-user:*auto-save* nil)
 ;; The fake frontend has no screen to flicker: work in the background is looked
