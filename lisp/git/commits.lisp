@@ -123,21 +123,22 @@ and the like), the editor run by git commit, say."
   (and (tuatara.buffer:buffer-file buffer) (typep (buffer-major-mode buffer) 'git-commit-mode)))
 
 (defun git-message-file-done (buffer &key give-up)
-  "Be done with BUFFER, a message git asked the editor for: saved, or with
-GIVE-UP left as it was; when the editor was started for it, the editor ends,
-so that git goes on (with GIVE-UP, the editor ends with 1, and git makes
-nothing); else the buffer is closed."
-  (unless give-up (save-buffer-with-care buffer))
-  (cond ((and (not give-up) (tuatara.buffer:buffer-modified-p buffer))
-         ;; not saved (asked, refused): git would take the message as it was
-         nil)
-        ((member buffer *startup-buffers*)
-         (when give-up
-           (setf *exit-code* 1)
-           (tuatara.buffer:buffer-mark-saved buffer))
-         (save-buffers-kill-editor))
-        (t (tuatara.buffer:kill-buffer buffer)
-           (message (if give-up "Given up: the message is as it was" "Saved: git takes it")))))
+  "Be done with BUFFER, a message git asked the editor for: once it is saved,
+or with GIVE-UP left as it was, the editor ends when it was started for it, so
+that git goes on (with GIVE-UP, the editor ends with 1, and git makes
+nothing); else the buffer is closed. Not saved (asked, refused), nothing more
+is done: git would take the message as it was."
+  (flet ((done (buffer)
+           (cond ((member buffer *startup-buffers*)
+                  (when give-up
+                    (setf *exit-code* 1)
+                    (tuatara.buffer:buffer-mark-saved buffer))
+                  (save-buffers-kill-editor))
+                 (t (tuatara.buffer:kill-buffer buffer)
+                    (message (if give-up "Given up: the message is as it was" "Saved: git takes it"))))))
+    (if give-up
+        (done buffer)
+        (save-buffer-with-care buffer :then #'done))))
 
 (define-command git-commit-finish ()
   "Commit with the message of this buffer (lines beginning with # left out),

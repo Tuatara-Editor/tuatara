@@ -52,14 +52,24 @@ what reading again says.")
   "Background saves that give their buffer a new file, whose buffer takes the
 file's name when they are done.")
 
+(defvar *save-continuations* '()
+  "The saves under way whose command goes on once they are done, each (JOB .
+THEN): THEN, a function of the buffer, runs as the next command once JOB has
+saved it (SAVE-BUFFER-WITH-CARE's THEN).")
+
 (defmethod tuatara.runtime:job-take-in :after ((job tuatara.io:save-job))
   "Say how the background save JOB ended; after a save, give a buffer saved as
 another file that file's name, and the major mode that name calls for when it
 calls for one (a scratch buffer saved as notes.org is in Org mode then; a
-buffer opened safely keeps showing its text as it is), and run
-*AFTER-SAVE-FUNCTIONS*."
+buffer opened safely keeps showing its text as it is), run
+*AFTER-SAVE-FUNCTIONS*, and go on with what was to follow the save
+\(*SAVE-CONTINUATIONS*)."
   (let ((buffer (tuatara.io:save-job-buffer job))
-        (seconds (tuatara.runtime:seconds-since (tuatara.io:save-job-started job))))
+        (seconds (tuatara.runtime:seconds-since (tuatara.io:save-job-started job)))
+        (then (cdr (assoc job *save-continuations*))))
+    (setf *save-continuations* (remove job *save-continuations* :key #'car))
+    (when (and then (eq (tuatara.io:save-job-status job) :done) (live-buffer-p buffer))
+      (defer-action (lambda () (funcall then buffer))))
     (ecase (tuatara.io:save-job-status job)
       (:done
        (when (and (member job *saves-as*) (live-buffer-p buffer))
@@ -112,7 +122,12 @@ the buffer's own file."
   "The file the save being made writes, when it is saved as another: for
 *BEFORE-SAVE-FUNCTIONS* that make it again later.")
 
-(defun save-buffer-with-care (buffer &key path)
+(defvar *save-then* nil
+  "What is to follow the save being made, a function of the buffer, or NIL:
+for *BEFORE-SAVE-FUNCTIONS* that make it again later (SAVE-BUFFER-WITH-CARE's
+THEN).")
+
+(defun save-buffer-with-care (buffer &key path then)
   "Save BUFFER to its file, or to PATH (save as), as \\[save-buffer] does: ask
 before overwriting a file changed on disk since it was read, a write-protected
 file, or another existing file; then save on a thread of its own, waiting up to
@@ -125,7 +140,10 @@ would be there to read. Nor is a buffer that work still writes into
 another buffer visits, that buffer is killed after asking, or the save is
 refused when it has changes not saved. A function of
 *BEFORE-SAVE-FUNCTIONS* that returns :LATER (formatting first) has the save
-wait: it saves the buffer itself once ready."
+wait: it saves the buffer itself once ready. THEN, a function of the buffer,
+runs once the buffer is saved, as the next command when the save went on in
+the background, or at once when nothing needed saving; never when it was not
+saved. True when BUFFER is saved, or being saved; NIL when it was not."
   (let* ((file (save-target buffer path))
          (name (tuatara.buffer:buffer-name buffer))
          (as (and path (not (equal file (tuatara.buffer:buffer-file buffer)))))
@@ -143,7 +161,9 @@ wait: it saves the buffer itself once ready."
                 name))
       ((and (not as) existing (not (tuatara.buffer:buffer-modified-p buffer))
             (null (tuatara.io:check-file buffer)))
-       (message "(No changes need to be saved)"))
+       (message "(No changes need to be saved)")
+       (when then (funcall then buffer))
+       (return-from save-buffer-with-care t))
       ((and other (tuatara.buffer:buffer-modified-p other))
        (message "~a is open in ~a with changes not saved: not saved" called (tuatara.buffer:buffer-name other)))
       ((and other (not (and (kill-buffer-allowed-p other)
@@ -166,10 +186,10 @@ wait: it saves the buffer itself once ready."
        (unless (tuatara.io:path-stamp (tuatara.io:parent-path target))
          (tuatara.io:ensure-directories (tuatara.io:parent-path target)))
        (when other (tuatara.buffer:kill-buffer other))
-       (when (let ((*save-path* path))
+       (when (let ((*save-path* path) (*save-then* then))
                (loop for function in *before-save-functions*
                      thereis (eq :later (call-hook-function function buffer))))
-         (return-from save-buffer-with-care nil))
+         (return-from save-buffer-with-care t))
        ;; saved as a file out of evidence, it may be changed once written (SAVED-OUT-OF-EVIDENCE)
        (when as
          (setf (tuatara.buffer:buffer-local buffer :saved-from-evidence)
@@ -182,7 +202,10 @@ wait: it saves the buffer itself once ready."
                           (progn (message "Not saved") nil))))))
          (when job
            (when as (push job *saves-as*))
-           (take-in-soon job *save-wait* (format nil "Saving ~a" name))))))))
+           (when then (push (cons job then) *save-continuations*))
+           (take-in-soon job *save-wait* (format nil "Saving ~a" name))
+           (return-from save-buffer-with-care t)))))
+    nil))
 
 (defun following-p (buffer)
   "True when BUFFER keeps up with its file on disk by itself: as

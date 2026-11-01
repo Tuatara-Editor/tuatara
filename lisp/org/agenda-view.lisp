@@ -1217,26 +1217,27 @@ so that the mode line shows the clock from the start. NIL: not again."
                                     (defer-action (lambda () (org-clock-take-up found))))))))
   nil)
 
-(defun save-org-buffers-where (test)
+(defun save-org-buffers-where (test words)
   "Save each Org buffer visiting a file with changes not saved that TEST, a
-function of the buffer, is true of; how many were saved."
-  (save-buffers-where (lambda (buffer) (and (typep (buffer-major-mode buffer) 'org-mode) (funcall test buffer)))))
+function of the buffer, is true of, and say WORDS of them once they are
+saved (SAVE-BUFFERS-WHERE); how many are saved or being saved."
+  (save-buffers-where (lambda (buffer) (and (typep (buffer-major-mode buffer) 'org-mode) (funcall test buffer)))
+                      words))
 
 (define-command org-save-all-org-buffers ()
   "Save every Org buffer with changes not saved:
 those the agenda changed among them, and any other. \\<org-agenda-mode>\\[org-agenda-save-all-buffers]
 saves only the agenda files."
-  (message "~[No Org buffer to save~;Saved 1 Org buffer~:;Saved ~:*~d Org buffers~]"
-           (save-org-buffers-where (constantly t))))
+  (save-org-buffers-where (constantly t) "~[No Org buffer to save~;Saved 1 Org buffer~:;Saved ~:*~d Org buffers~]"))
 
 (define-command org-agenda-save-all-buffers ()
   "Save the buffers of the agenda files (*org-agenda-files*, and those added to them) with changes not
 saved, those the agenda changed among them; other Org buffers are left as they
 are (\\[org-save-all-org-buffers] saves them all)."
   (let ((paths (org-agenda-file-paths)))
-    (message "~[No agenda file to save~;Saved 1 agenda file~:;Saved ~:*~d agenda files~]"
-             (save-org-buffers-where
-              (lambda (buffer) (member (tuatara.io:native (tuatara.buffer:buffer-file buffer)) paths :test #'equal))))))
+    (save-org-buffers-where (lambda (buffer)
+                              (member (tuatara.io:native (tuatara.buffer:buffer-file buffer)) paths :test #'equal))
+                            "~[No agenda file to save~;Saved 1 agenda file~:;Saved ~:*~d agenda files~]")))
 
 ;;; The calendar and the agenda
 

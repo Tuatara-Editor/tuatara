@@ -214,9 +214,8 @@ buffer on the current line."
                  (let ((files (remove-if-not #'tuatara.buffer:buffer-file targets)))
                    (if (null files)
                        (message "~:[~a has~;~*None of them has~] no file" (rest targets) (tuatara.buffer:buffer-name (first targets)))
-                       (progn (dolist (b files) (save-buffer-with-care b))
-                              (buffers-render list)
-                              (when (rest files) (message "Saved ~d buffers" (length files)))))))
+                       (progn (save-buffers-saying files (and (rest files) "Saved ~d buffers"))
+                              (buffers-render list)))))
                "buffer"))
 
 (defun project-buffers (root)

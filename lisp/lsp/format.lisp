@@ -242,12 +242,12 @@ and has changed since it last was."
 start formatting it and return :LATER, the save made once that is over,
 laid out or, when the formatter failed, as it is."
   (when (and (format-wanted-p buffer) (not (formatting-p buffer)))
-    (let ((path *save-path*))
+    (let ((path *save-path*) (then *save-then*))
       (start-formatting buffer :then (lambda (b formatted)
                                        (declare (ignore formatted))
                                        ;; formatted or not, not tried again for this save
                                        (setf (tuatara.buffer:buffer-local b 'formatted-at) (tuatara.buffer:buffer-content-number b))
-                                       (save-buffer-with-care b :path path)))
+                                       (save-buffer-with-care b :path path :then then)))
       :later)))
 
 (defun install-format ()

@@ -1696,15 +1696,29 @@ about: one visiting a file, or one made by \\[new-empty-buffer], modified."
   (and (or (tuatara.buffer:buffer-file buffer) (tuatara.buffer:buffer-local buffer 'unsaved-asked))
        (tuatara.buffer:buffer-modified-p buffer)))
 
-(defun save-buffers-where (test)
+(defun save-buffers-saying (buffers words)
+  "Save each of BUFFERS as \\[save-buffer] does (SAVE-BUFFER-WITH-CARE) and, once
+those saved are all on disk, say WORDS, a format string given how many: at
+once when none is, else when the last save in the background is done. Returns
+how many are saved or being saved."
+  (let ((started 0) (done 0) (all nil))
+    (flet ((say () (when (and all words (= done started)) (message words started))))
+      (dolist (buffer buffers)
+        (when (save-buffer-with-care buffer :then (lambda (buffer) (declare (ignore buffer)) (incf done) (say)))
+          (incf started)))
+      (setf all t)
+      (say)
+      started)))
+
+(defun save-buffers-where (test words)
   "Save each buffer visiting a file with changes not saved that TEST, a
-function of the buffer, is true of; how many were saved."
-  (let ((saved 0))
-    (dolist (buffer (copy-list tuatara.buffer:*buffers*) saved)
-      (when (and (tuatara.buffer:buffer-file buffer) (tuatara.buffer:buffer-modified-p buffer) (funcall test buffer))
-        (let ((*current-buffer* buffer))
-          (save-buffer))
-        (unless (tuatara.buffer:buffer-modified-p buffer) (incf saved))))))
+function of the buffer, is true of, and say WORDS of them as
+SAVE-BUFFERS-SAYING does; how many are saved or being saved."
+  (save-buffers-saying (remove-if-not (lambda (buffer) (and (tuatara.buffer:buffer-file buffer)
+                                                            (tuatara.buffer:buffer-modified-p buffer)
+                                                            (funcall test buffer)))
+                                      tuatara.buffer:*buffers*)
+                       words))
 
 (define-command save-some-buffers ()
   "Save every buffer visiting a file with changes not saved, after asking once,
@@ -1713,7 +1727,7 @@ the files named: the files a rename across a project changed, say."
                                 tuatara.buffer:*buffers*)))
     (cond ((null changed) (message "(No files need saving)"))
           ((y-or-n-p* (format nil "Save ~d changed file~:p: ~{~a~^, ~}?" (length changed) (mapcar #'tuatara.buffer:buffer-name changed)))
-           (message "Saved ~d file~:p" (save-buffers-where (lambda (b) (member b changed)))))
+           (save-buffers-where (lambda (b) (member b changed)) "Saved ~d file~:p"))
           (t (message "Nothing saved")))))
 
 (define-command save-buffers-kill-editor ()

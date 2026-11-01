@@ -710,6 +710,29 @@ second value."
         (false played-running "played keys wait for the save")
         (true (>= played-waited 0.4) "~,2f s" played-waited)))))
 
+(define-test (visiting-and-saving saved-files-counted-once-saved)
+  ;; saving several files says how many once they are on disk, saved in the background or not
+  (with-test-directory (dir)
+    (let ((one (namestring (put-file (merge-pathnames "one.txt" dir) "one")))
+          (two (namestring (put-file (merge-pathnames "two.txt" dir) "two")))
+          (said-before (length (tuatara.buffer:buffer-string (tuatara.command::messages-buffer))))
+          (f (tuatara.frontend.fake:make-fake-frontend :width 80 :height 8)))
+      (setf (tuatara.frontend.fake:fake-pending f) t)
+      (queue-test-keys f (list (format nil "C-x C-f C-a C-k ~a RET i x C-g" (rimu-typed one))
+                               (format nil "C-x C-f C-a C-k ~a RET i x C-g" (rimu-typed two))
+                               "C-x s y"))
+      (with-functions-replaced ((tuatara.io::save-transform
+                                 (lambda (buffer path)
+                                   (declare (ignore buffer path))
+                                   (lambda (rope) (sleep 0.3) rope))))
+        (call-without-grammar-questions
+         (lambda () (tuatara.command:run-editor f :setup #'tuatara.defaults:install-defaults))))
+      (is string= "xone" (file-text one))
+      (is string= "xtwo" (file-text two))
+      (let ((said (subseq (tuatara.buffer:buffer-string (tuatara.command::messages-buffer)) said-before)))
+        (true (search "Saved 2 files" said))
+        (false (search "Saved 0 files" said))))))
+
 (define-test (visiting-and-saving watcher)
   (with-test-directory (dir)
     (let ((path (put-file (merge-pathnames "watched.txt" dir) "original")))
