@@ -128,7 +128,8 @@ for *BEFORE-SAVE-FUNCTIONS* that make it again later (SAVE-BUFFER-WITH-CARE's
 THEN).")
 
 (defun save-question (quiet function prompt)
-  "Ask PROMPT with FUNCTION (YES-OR-NO-P*, Y-OR-N-P*) unless QUIET, when it is not asked and counts as answered no."
+  "Ask PROMPT with FUNCTION (YES-OR-NO-P*, Y-OR-N-P*) unless QUIET, when it
+is not asked and counts as answered no."
   (and (not quiet) (funcall function prompt)))
 
 (defun save-buffer-with-care (buffer &key path then quiet)
@@ -147,8 +148,9 @@ refused when it has changes not saved. A function of
 wait: it saves the buffer itself once ready. THEN, a function of the buffer,
 runs once the buffer is saved, as the next command when the save went on in
 the background, or at once when nothing needed saving; never when it was not
-saved. True when BUFFER is saved, or being saved; NIL when it was not. With QUIET nothing is asked, each question counting as
-answered no (the file changed on disk, write-protected, another file's name): the save is refused."
+saved. True when BUFFER is saved, or being saved; NIL when it was not. With
+QUIET nothing is asked, each question counting as answered no (the file
+changed on disk, write-protected, another file's name): the save is refused."
   (let* ((file (save-target buffer path))
          (name (tuatara.buffer:buffer-name buffer))
          (as (and path (not (equal file (tuatara.buffer:buffer-file buffer)))))
@@ -522,19 +524,22 @@ tail, counts every directory it names."
 
 (defun safe-directory-of (path)
   "The directory of *SAFE-DIRECTORIES* that the file or directory at PATH is,
-or is in or below, by the names as given, by the file a link leads to, or by where their links lead
-\(PATH-WITHIN-P, REALLY-WITHIN-P), or NIL; T when *SAFE-DIRECTORIES* cannot be
-read, every file then counting as in one."
-  (let* ((path (or (ignore-errors (tuatara.io:native (tuatara.io:expand-path path))) path))
-         (leads-to (or (ignore-errors (tuatara.io:native (tuatara.io:resolve-links path))) path)))
-    (handler-case (find-if (lambda (directory)
-                             (let ((directory (tuatara.io:native (tuatara.io:expand-path directory))))
-                               (or (tuatara.io:path-within-p path directory)
-                                   (tuatara.io:path-within-p leads-to directory)
-                                   (tuatara.io:really-within-p path directory)
-                                   (tuatara.io:really-within-p leads-to directory))))
-                           (safe-directories))
-      (error () t))))
+or is in or below, by the names as given, by the file a link leads to, or by
+where their links lead (PATH-WITHIN-P, REALLY-WITHIN-P), or NIL; T when
+*SAFE-DIRECTORIES* cannot be read, every file then counting as in one.
+Where a link leads is looked for only when there are directories."
+  (handler-case
+      (let ((directories (safe-directories)))
+        (when directories
+          (let* ((path (or (ignore-errors (tuatara.io:native (tuatara.io:expand-path path))) path))
+                 (leads-to (or (ignore-errors (tuatara.io:real-path-so-far path)) path)))
+            (find-if (lambda (directory)
+                       (let ((directory (tuatara.io:native (tuatara.io:expand-path directory))))
+                         (or (tuatara.io:path-within-p path directory)
+                             (tuatara.io:path-within-p leads-to directory)
+                             (tuatara.io:really-within-p path directory))))
+                     directories))))
+    (error () t)))
 
 (defun visit-safely-reason (path)
   "Why the file at PATH opens safely although that was not asked for: it is

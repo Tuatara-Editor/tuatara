@@ -787,7 +787,9 @@ is not. A link counts when the file it leads to is evidence."
     (multiple-value-bind (folder entry) (evidence-path-p path)
       (if folder
           (reason folder entry)
-          (let ((leads-to (ignore-errors (tuatara.io:resolve-links path))))
+          (let ((leads-to (and (evidence-rules)
+                               (ignore-errors (tuatara.io:real-path-so-far
+                                               (tuatara.io:native (tuatara.io:expand-path path)))))))
             (when leads-to
               (multiple-value-bind (folder entry) (evidence-path-p leads-to)
                 (and folder (reason folder entry)))))))))

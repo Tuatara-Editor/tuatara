@@ -820,3 +820,57 @@ cases/2026-0001/work/ (WORK), each bound to its native name ending in /."
                (progn (true (tuatara.io:safe-visit-p buffer))
                       (true (tuatara.buffer:buffer-local buffer :read-only)))
             (tuatara.buffer:kill-buffer buffer)))))))
+
+(defun atime-of (path)
+  "The access time of the file at PATH, in seconds."
+  (sb-posix:stat-atime (sb-posix:stat path)))
+
+(define-test (evidence links-through-folders-and-parent-names)
+  ;; a folder link and .. on the way: the file opened is evidence, and its access time is not changed
+  (with-case-folder (root evidence work)
+    (let ((a (concatenate 'string evidence "a.txt")))
+      (sb-posix:symlink (string-right-trim "/" (concatenate 'string evidence "sub/")) (concatenate 'string work "dl"))
+      (sb-posix:symlink "dl/../a.txt" (concatenate 'string work "dotdot.txt"))
+      (sb-posix:utimes a 1000 (- (get-universal-time) 100000))
+      (with-evidence-folders ((list (concatenate 'string root "cases/*/evidence/")))
+        (let ((buffer (tuatara.io:visit-file (concatenate 'string work "dotdot.txt"))))
+          (unwind-protect
+               (progn (true (tuatara.io:safe-visit-p buffer))
+                      (is string= "kept as found" (tuatara.buffer:buffer-string buffer))
+                      (is = 1000 (atime-of a)))
+            (tuatara.buffer:kill-buffer buffer)))))))
+
+(define-test (evidence link-changed-before-it-is-read)
+  ;; a buffer of an ordinary file whose link now leads to evidence: read again, it is opened safely
+  (with-case-folder (root evidence work)
+    (let ((link (concatenate 'string work "link.txt"))
+          (plain (put-file (concatenate 'string work "plain.txt") "plain")))
+      (sb-posix:symlink (tuatara.io:native plain) link)
+      (with-evidence-folders ((list (concatenate 'string root "cases/*/evidence/")))
+        (let ((buffer (tuatara.io:visit-file link)))
+          (unwind-protect
+               (progn
+                 (false (tuatara.io:safe-visit-p buffer))
+                 (sb-posix:unlink link)
+                 (sb-posix:symlink (concatenate 'string evidence "a.txt") link)
+                 (tuatara.io:revert-buffer-file buffer)
+                 (true (tuatara.io:safe-visit-p buffer))
+                 (true (tuatara.buffer:buffer-local buffer :read-only))
+                 (is string= "kept as found" (tuatara.buffer:buffer-string buffer)))
+            (tuatara.buffer:kill-buffer buffer)))))))
+
+(define-test (evidence links-looked-at-only-when-wanted)
+  ;; with no evidence folder and no safe directory a link is not followed to decide
+  (with-test-directory (dir)
+    (let ((file (put-file (merge-pathnames "p.txt" dir) "x"))
+          (calls 0)
+          (old tuatara-user:*safe-directories*))
+      (setf tuatara-user:*safe-directories* '())
+      (sb-int:encapsulate 'tuatara.io:real-path-so-far 'counting
+                          (lambda (f &rest arguments) (incf calls) (apply #'funcall f arguments)))
+      (unwind-protect
+           (with-evidence-folders ('())
+             (false (tuatara.defaults::visit-safely-reason (tuatara.io:native file)))
+             (is = 0 calls))
+        (sb-int:unencapsulate 'tuatara.io:real-path-so-far 'counting)
+        (setf tuatara-user:*safe-directories* old)))))

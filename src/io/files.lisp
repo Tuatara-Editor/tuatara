@@ -641,7 +641,13 @@ own files)."
   (open-examined +at-fdcwd+ (tuatara.text:string-octets (native path)) (logior sb-posix:o-rdonly sb-posix:o-nonblock) path
                  :accept accept :safe safe :operation operation :wanted wanted))
 
-(defun open-file-text (path &key safe)
+(defun clear-noatime (fd)
+  "Let reading from the open file FD change its access time again."
+  (let ((flags (sb-posix:fcntl fd sb-posix:f-getfl)))
+    (when (logtest flags +o-noatime+)
+      (sb-posix:fcntl fd sb-posix:f-setfl (logandc2 flags +o-noatime+)))))
+
+(defun open-file-text (path &key safe decide)
   "The text of the file at PATH, as six values: a rope, the mapping it reads
 (or NIL), the file's STAMP, how the text is kept from other programs' changes
 (see FILE-ISOLATION), what keeps it so (the lease for :LEASED, the snapshot
@@ -651,11 +657,20 @@ it, so that a named pipe or a device is never waited on or woken. See this
 file's header for which file gets which.
 SAFE keeps the file system the file is on exactly as it was: no clone and
 no copy is made beside the file (copies go to the cache directory), and its
-access time is left alone where the system allows."
-  (let ((fd (open-for-reading path safe :accept '(:regular) :wanted "a file of text"))
-        (keep-fd nil))
+access time is left alone where the system allows. DECIDE, a function of
+a path, is asked, unless SAFE, with where the file opened really is (links
+followed, as the descriptor says), and a phrase it answers makes the file
+opened SAFE, its access time never changed: a seventh value, that phrase or
+NIL. What is opened is what is decided on, however a link is changed meanwhile."
+  (let ((fd (open-for-reading path t :accept '(:regular) :wanted "a file of text"))
+        (keep-fd nil) (why nil))
     (unwind-protect
-         (let ((stamp (fd-stamp fd path)))
+         (multiple-value-call (lambda (&rest values) (values-list (append values (list why))))
+          (progn
+           (setf why (and decide (not safe) (ignore-errors (funcall decide (or (fd-real-path fd) path)))))
+           (let ((safe (or safe (and why t))))
+            (unless safe (clear-noatime fd))
+            (let ((stamp (fd-stamp fd path)))
            (let ((class (file-system-class (fd-file-system fd)))
                  (size (stamp-size stamp)))
              (if (or (eq class :pseudo) (<= size *memory-read-limit*))
@@ -696,7 +711,7 @@ access time is left alone where the system allows."
                                                      (start-snapshot mapping fd path stamp
                                                                      (if safe (cache-directory) (snapshot-directory path class :room size)))))))
                                  (values (rope-over mapping) mapping stamp (if snapshot :pending :direct)
-                                         snapshot class)))))))))))
+                                         snapshot class))))))))))))))
       (unless keep-fd (sb-posix:close fd)))))
 
 (defvar *visit-safely-function* nil
@@ -1037,14 +1052,15 @@ buffer visited the file already (it comes as it is)."
         (values existing t)
         (let* ((name (tuatara.buffer:unique-buffer-name (native-file-name path)))
                (buffer nil)
-               (why (and (not safe) *visit-safely-function* (path-stamp path)
-                         (ignore-errors (funcall *visit-safely-function* path))))
-               (safe (or safe (and why t))))
+               (why nil))
           (when (and safe (null (path-stamp path)))
             (error 'file-system-error :operation "open" :path path :reason "there is no such file"))
           (if (path-stamp path)
-              (multiple-value-bind (rope mapping stamp isolation guard class) (open-file-text path :safe safe)
-                (setf buffer (tuatara.buffer:make-buffer name :text rope :file path)
+              (multiple-value-bind (rope mapping stamp isolation guard class reason)
+                  (open-file-text path :safe safe :decide *visit-safely-function*)
+                (setf why reason
+                      safe (or safe (and why t))
+                      buffer (tuatara.buffer:make-buffer name :text rope :file path)
                       (tuatara.buffer:buffer-mapping buffer) mapping
                       (tuatara.buffer:buffer-local buffer :file-stamp) stamp
                       (tuatara.buffer:buffer-local buffer :file-isolation) isolation
@@ -2148,7 +2164,11 @@ BUFFER."
       (error "Buffer ~a is being saved; revert it once the save is done." (tuatara.buffer:buffer-name buffer)))
     (tuatara.buffer:run-before-edit buffer :all)
     (stop-snapshots-of buffer)
-    (multiple-value-bind (rope mapping stamp isolation guard class) (open-file-text path :safe safe)
+    (multiple-value-bind (rope mapping stamp isolation guard class reason)
+        (open-file-text path :safe safe :decide *visit-safely-function*)
+      (when reason
+        (setf safe t
+              (tuatara.buffer:buffer-local buffer :safe-visit) reason))
       (let ((new-size (tuatara.text:rope-bytes rope)) (done nil))
         ;; the file's own text coming back: a read-only buffer takes it too
         (tuatara.buffer:with-read-only-lifted (buffer :after (if done (or safe read-only) (or stale read-only)))
