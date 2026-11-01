@@ -44,12 +44,6 @@ PLACE is where in BUFFER's undo history it was given
   "While a job whose turn has come is started, its buffer's undo stack where it
 was given (QUEUED-JOB-PLACE), else NIL.")
 
-(defun editor-job-waker ()
-  "A function waking the editor, for the thread of work begun now to call when
-it has something new to show; NIL without an editor."
-  (let ((editor *editor*))
-    (and editor (lambda () (wake-editor editor)))))
-
 (defun running-jobs ()
   "The jobs running in the background, of every buffer, the oldest first."
   (remove-if-not #'tuatara.runtime:job-running-p tuatara.runtime:*jobs*))
@@ -604,15 +598,14 @@ after one stopped move up."
                (and waiting (length waiting)) (and waiting running) (and running (length running))))))
 
 (defun install-jobs ()
-  "Have the jobs in the background wake the editor and be taken in as they
-end, the jobs waiting their turn start as each buffer's job ends, their text
-painted, and the jobs running or waiting asked about before their buffer is
-killed or the editor left, and stopped when their buffer is killed; and an
-edit by a command that would spoil the work of a job running over the text it
-touches asked about first (GUARD-JOB-EDITS). The mode line's sign of the work
+  "Have the jobs in the background be taken in as they end, the jobs waiting
+their turn start as each buffer's job ends, their text painted, and the jobs
+running or waiting asked about before their buffer is killed or the editor
+left, and stopped when their buffer is killed; and an edit by a command that
+would spoil the work of a job running over the text it touches asked about
+first (GUARD-JOB-EDITS). The mode line's sign of the work
 \(PROCESSING-MODE-LINE) is shown with those of directories kept read
 \(MODE-LINE-SIGNS)."
-  (setf tuatara.runtime:*job-start-function* 'tie-job-to-editor)
   (pushnew 'job-queue-tick *tick-functions*)
   (pushnew 'jobs-tick *tick-functions*)
   (pushnew 'queue-highlights *job-highlight-functions*)

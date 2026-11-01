@@ -54,6 +54,12 @@ that job; NIL otherwise.")
 its thread calls to wake the editor (JOB-WAKE), unless it has one, and the
 frame it was begun in (JOB-FRAME). NIL for none; the editor sets it.")
 
+(defvar *job-take-in-function* nil
+  "A function of a job and a function of no arguments, calling the second, the
+job's taking in (TAKE-IN-JOBS), where the job belongs in the editor: with the
+frame it was begun in the one worked in, so that what it says shows there.
+NIL to call it as it is; the editor sets it.")
+
 (defvar *job-buffer-name* (lambda (buffer) (if buffer (princ-to-string buffer) "no buffer"))
   "A function of a buffer, or NIL, giving its name, for what the jobs report;
 the buffers' package sets it.")
@@ -388,7 +394,8 @@ Returns JOB."
 (defun take-in-jobs (&optional (test (constantly t)))
   "Take in the jobs that have ended and pass TEST, a function of a job, on the
 editor's thread, the oldest first: each leaves *JOBS*, its end is reported in
-the debug log, and JOB-TAKE-IN takes it in. Returns the jobs taken in."
+the debug log, and JOB-TAKE-IN takes it in, where the job belongs in the
+editor (*JOB-TAKE-IN-FUNCTION*). Returns the jobs taken in."
   (let ((taken '()))
     (dolist (job (copy-list *jobs*))
       (when (and (not (job-running-p job)) (member job *jobs*) (funcall test job))
@@ -397,7 +404,9 @@ the debug log, and JOB-TAKE-IN takes it in. Returns the jobs taken in."
         (push job taken)
         (let ((*job-taken-in* job)
               (*secret-at-hand* (or *secret-at-hand* (secret-buffer-p (job-buffer job)))))
-          (job-take-in job))))
+          (if *job-take-in-function*
+              (funcall *job-take-in-function* job (lambda () (job-take-in job)))
+              (job-take-in job)))))
     (nreverse taken)))
 
 (defun stop-and-settle (job)

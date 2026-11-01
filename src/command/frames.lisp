@@ -87,13 +87,30 @@ be said in it is said in the frame worked in."
       (tuatara.frontend:frontend-stop (frame-frontend frame)))
     frame))
 
+(defun editor-job-waker ()
+  "A function waking the editor, for the thread of work begun now to call when
+it has something new to show; NIL without an editor."
+  (let ((editor *editor*))
+    (and editor (lambda () (wake-editor editor)))))
+
 (defun tie-job-to-editor (job)
-  "Tie JOB, starting now, to the editor running, as
-TUATARA.RUNTIME:*JOB-START-FUNCTION* does: its thread wakes the editor,
-unless it has a way of its own, and what it says is shown in the frame it is
-begun in (THREAD-FRAME)."
+  "Tie JOB, starting now, to the editor running (TUATARA.RUNTIME:*JOB-START-FUNCTION*):
+its thread wakes the editor (EDITOR-JOB-WAKER), unless it has a way of its
+own, and what it says is shown in the frame it is begun in (THREAD-FRAME)."
   (let ((editor *editor*))
     (when editor
       (unless (tuatara.runtime:job-wake job)
-        (setf (tuatara.runtime:job-wake job) (lambda () (wake-editor editor))))
+        (setf (tuatara.runtime:job-wake job) (editor-job-waker)))
       (setf (tuatara.runtime:job-frame job) (editor-frame editor)))))
+
+(defun call-in-job-frame (job function)
+  "Call FUNCTION, JOB's taking in (TUATARA.RUNTIME:*JOB-TAKE-IN-FUNCTION*),
+with the frame JOB was begun in the one worked in while it is open, else the
+frame worked in, so that what the taking in says shows there."
+  (let ((editor *editor*))
+    (if editor
+        (call-in-frame editor (frame-or-current editor (tuatara.runtime:job-frame job)) function)
+        (funcall function))))
+
+(setf tuatara.runtime:*job-start-function* 'tie-job-to-editor
+      tuatara.runtime:*job-take-in-function* 'call-in-job-frame)

@@ -239,3 +239,33 @@ of no arguments; returns the job."
     (true (every (lambda (event) (null (tuatara.frontend:event-frame event))) tuatara.defaults::*last-recorded-keys*))
     (is equal '("kiwi" "ab") (frame-buffer-text second))
     (is equal '("*scratch*" "ab") (frame-buffer-text first))))
+
+(defstruct (frames-taken-job (:include frames-test-job) (:constructor make-frames-taken-job ()))
+  "A job of the frames' tests that notes the frame it is taken in with, and says so.")
+
+(defvar *frames-taken-in* '()
+  "The frames the FRAMES-TAKEN-JOBs were taken in with, the latest first.")
+
+(defmethod tuatara.runtime:job-take-in ((job frames-taken-job))
+  "Note the frame worked in as JOB is taken in, and say Kōkako."
+  (push (tuatara.command::editor-frame tuatara.command:*editor*) *frames-taken-in*)
+  (tuatara.command:message "Kōkako"))
+
+(define-test (frames jobs-taken-in-where-begun)
+  ;; a job begun in a frame is taken in with that frame the one worked in, what it says shown
+  ;; there, though another frame is worked in when it ends; that one is worked in again after
+  (let ((go (sb-thread:make-semaphore)) (job nil) (*frames-taken-in* '()))
+    (with-frames (editor (first second))
+        (list '(1 "C-x b k i w i C-j")
+              (list 1 (lambda ()
+                        (setf job (tuatara.runtime:start-job-thread
+                                   (make-frames-taken-job)
+                                   (lambda (job)
+                                     (declare (ignore job))
+                                     (sb-thread:wait-on-semaphore go :timeout 5))))))
+              '(0 "C-n")
+              (list 0 (lambda () (sb-thread:signal-semaphore go) (wait-for-job job)))
+              '(0 "C-n"))
+      (is equal (list second) *frames-taken-in*)
+      (is equal "Kōkako" (tuatara.command::frame-message second))
+      (is eq first (tuatara.command::editor-frame editor)))))
