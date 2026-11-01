@@ -17,7 +17,7 @@
   :serial t
   :components ((:file "package")
                (:file "version")
-               (:module "runtime"  :serial t :components ((:file "package") (:file "resources") (:file "stopping") (:file "pool") (:file "debug") (:file "threads") (:file "jobs")))
+               (:module "runtime"  :serial t :components ((:file "package") (:file "resources") (:file "stopping") (:file "pool") (:file "debug") (:file "threads") (:file "jobs") (:file "hooks")))
                (:module "dates"    :serial t :components ((:file "package") (:file "dates")))
                (:module "text"     :serial t :components ((:file "package") (:file "utf8") (:file "mapping") (:file "rope") (:file "edits") (:file "strings") (:file "version") (:file "json") (:file "xml")))
                (:module "buffer"   :serial t :components ((:file "package") (:file "buffer")))
@@ -156,6 +156,7 @@
                (:file "toggles")
                (:file "help")
                (:file "debug")
+               (:file "hooks")
                (:file "buffers")
                (:file "rimu")
                (:file "pdf-view")

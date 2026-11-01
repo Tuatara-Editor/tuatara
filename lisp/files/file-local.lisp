@@ -188,11 +188,11 @@ mode first, and say which of them are left alone; then call
                             (remove "mode" settings :key #'car :test #'string=)))
            (left (loop for (name . value) in ordered
                        if (or (apply-file-local-setting buffer name value)
-                              (some (lambda (f) (funcall f buffer name value)) *file-local-setting-functions*))
+                              (run-hook-until-success *file-local-setting-functions* buffer name value))
                          do (note-file-declares buffer name value)
                        else unless (member name '("coding" "lexical-binding") :test #'string=)
                               collect name)))
-      (dolist (f *file-local-taken-functions*) (funcall f buffer))
+      (run-hook *file-local-taken-functions* buffer)
       (when left
         (message "~a names settings for itself that are left alone: ~{~a~^, ~}"
                  (tuatara.buffer:buffer-name buffer) (remove-duplicates left :test #'string=))))))

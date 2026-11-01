@@ -528,7 +528,7 @@ before are given up."
              (plusp (length (calendar-days-of buffer))))
     (multiple-value-bind (first last) (calendar-shown-range buffer)
       (let* ((works (loop for f in *calendar-mark-functions*
-                          for work = (ignore-errors (funcall f first last))
+                          for work = (call-hook-function f first last)
                           when work collect work))
              (job (make-calendar-marks buffer works))
              (before (tuatara.buffer:buffer-local buffer 'calendar-marks-job)))

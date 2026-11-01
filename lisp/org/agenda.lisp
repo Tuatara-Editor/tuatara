@@ -64,10 +64,7 @@ else asked again."
              (< (- now (second kept)) (* *org-agenda-files-added-seconds* internal-time-units-per-second)))
         (cddr kept)
         (let ((files (loop for function in *org-agenda-file-functions*
-                           append (handler-case (copy-list (funcall function))
-                                    (error (e)
-                                      (tuatara.runtime:debug-report :error "Agenda files from ~a not had: ~a" function e)
-                                      nil)))))
+                           append (copy-list (call-hook-function function)))))
           (setf *org-agenda-files-added* (list* (copy-list *org-agenda-file-functions*) now files))
           files))))
 

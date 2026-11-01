@@ -119,7 +119,7 @@ them to start, and in a window, how it draws each way it can
              (multiple-value-list (tuatara.io:sandbox-status :again t))
              (health-check-decoders check)
              (append (list (pdf-decoder-words) (office-page-words) (image-decoder-words) (external-program-words) (notify-health-words) (encrypted-health-words) (git-health-words))
-                     (remove nil (mapcar (lambda (f) (ignore-errors (funcall f))) *health-decoder-functions*)))
+                     (remove nil (mapcar #'call-hook-function *health-decoder-functions*)))
              (health-check-exporters check)
              (remove nil (list (latex-export-words) (latex-language-words)))
              (health-check-tools check)

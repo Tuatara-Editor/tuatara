@@ -168,7 +168,7 @@ prefix says, each kept for \\[shrink-selection] to go back. True when it grew."
 (defun selection-ranges-step (b)
   "A step for GROW-SELECTION through the pieces *SELECTION-RANGES-FUNCTIONS*
 give around point in B."
-  (let ((ranges (some (lambda (f) (funcall f b (tuatara.buffer:buffer-point b))) *selection-ranges-functions*)))
+  (let ((ranges (run-hook-until-success *selection-ranges-functions* b (tuatara.buffer:buffer-point b))))
     (lambda (start end)
       (let ((next (find-if (lambda (r) (and (<= (car r) start) (<= end (cdr r)) (< (- end start) (- (cdr r) (car r)))))
                            ranges)))

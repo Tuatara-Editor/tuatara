@@ -178,6 +178,18 @@
     (false (tuatara.buffer:live-buffer-p b))
     (false (member b tuatara.buffer:*buffers*))))
 
+(define-test (buffer kill-gone-after-quit)
+  ;; C-g in a function run on killing stops the others, and the buffer is gone all the same
+  (let* ((b (tuatara.buffer:make-buffer "*quit while killed*" :text "x"))
+         (ran '())
+         (tuatara.buffer:*kill-buffer-functions*
+           (list (lambda (buffer) (declare (ignore buffer)) (error 'tuatara.command:quit))
+                 (lambda (buffer) (push :after ran) buffer))))
+    (fail (tuatara.buffer:kill-buffer b) tuatara.command:quit)
+    (false ran)
+    (false (tuatara.buffer:live-buffer-p b))
+    (false (member b tuatara.buffer:*buffers*))))
+
 ;;; The undo limit
 
 (define-test (buffer undo-of-swap-then-edit-in-one-group)

@@ -733,16 +733,14 @@ Consecutively typed characters form one undo group. With an input method on
           ((and method (not (hex-view-here-p)))
            ;; through the buffer's input method; what it takes as typed goes on as typing does
            (when (input-method-type (current-buffer) method (tuatara.frontend:key-base key))
-             (dolist (f *post-self-insert-functions*)
-               (funcall f (current-buffer) (tuatara.frontend:key-base key)))))
+             (run-hook *post-self-insert-functions* (current-buffer) (tuatara.frontend:key-base key))))
           ((hex-view-here-p)
            ;; the hex view types over octets: hex digits, or characters in its text
            (hex-type string))
           (t
            (goto (tuatara.buffer:buffer-insert (current-buffer) (point) string :group (typing-goes-on-p)))
            (unless (prefix-argument)
-             (dolist (f *post-self-insert-functions*)
-               (funcall f (current-buffer) (tuatara.frontend:key-base key))))))))))
+             (run-hook *post-self-insert-functions* (current-buffer) (tuatara.frontend:key-base key)))))))))
 
 ;;; Indenting lines
 
@@ -1027,7 +1025,7 @@ unseen: the fold is shown instead, and the key pressed again deletes."
   (let* ((b (current-buffer)) (p (point))
          (start (tuatara.buffer:whole-line-ends b (tuatara.buffer:buffer-forward-char b p (- (prefix))) p)))
     (unless (and (null (prefix-argument))
-                 (some (lambda (f) (funcall f b)) *delete-backward-functions*))
+                 (run-hook-until-done *delete-backward-functions* b))
       (when (< start p)
         (refuse-hidden-deletion b start p)
         (tuatara.buffer:buffer-delete b start p :group (typing-goes-on-p)) (goto start)))))
@@ -1466,7 +1464,7 @@ shown until then lets go (a search's matches lit after it ended).")
   "Abandon the current operation and deactivate the region; what stays shown
 until then goes, such as the matches of the last search."
   (setf (tuatara.buffer:buffer-mark-active-p (current-buffer)) nil)
-  (mapc #'funcall *keyboard-quit-functions*)
+  (run-hook *keyboard-quit-functions*)
   (keyboard-quit-signal))
 
 (defun quit-key-text ()
@@ -1648,9 +1646,23 @@ to stay, true to go ahead, or a function of no arguments to call once the
 exit is certain (stopping its work), so that staying after all changes
 nothing.")
 
+(defun query-answer (function going &rest arguments)
+  "What FUNCTION, one of a hook's questions before GOING (\"kill\",
+\"exit\"), answers when called with ARGUMENTS. When it fails, you are asked
+whether to go ahead all the same, with its failure said, so that a broken
+question neither lets work go unasked nor keeps you from going: T then, or
+NIL to stay."
+  (multiple-value-bind (answer failure)
+      (let ((tuatara.runtime:*hook-failures-said* nil)) (apply #'call-hook-function function arguments))
+    (if (typep failure 'error)
+        (yes-or-no-p* (format nil "~a failed (~a); ~a anyway?" (hook-function-name function)
+                              (tuatara.runtime:condition-words failure) going))
+        answer)))
+
 (defun kill-buffer-allowed-p (buffer)
-  "True when every one of *KILL-BUFFER-QUERY-FUNCTIONS* lets BUFFER be killed."
-  (every (lambda (f) (funcall f buffer)) *kill-buffer-query-functions*))
+  "True when every one of *KILL-BUFFER-QUERY-FUNCTIONS* lets BUFFER be killed
+\(QUERY-ANSWER)."
+  (every (lambda (function) (query-answer function "kill" buffer)) *kill-buffer-query-functions*))
 
 (defun kill-buffer-asking (buffer &key before)
   "Kill BUFFER, asking first when it has changes not saved, once every one of
@@ -1709,12 +1721,12 @@ the files named: the files a rename across a project changed, say."
 \\[new-empty-buffer], has unsaved changes. Other buffers without a file, such as the
 scratch buffers, are not asked about."
   (let ((answers (loop for query in *quit-query-functions*
-                       for answer = (funcall query)
+                       for answer = (query-answer query "exit")
                        unless answer return :stay
                        collect answer)))
     (when (and (not (eq answers :stay))
                (or (notany #'unsaved-p tuatara.buffer:*buffers*)
                    (yes-or-no-p* "Modified buffers exist; exit anyway?")))
       ;; what the questions said to stop, now that the exit is certain
-      (dolist (answer answers) (when (functionp answer) (funcall answer)))
+      (dolist (answer answers) (when (functionp answer) (call-hook-function answer)))
       (setf (editor-running *editor*) nil))))

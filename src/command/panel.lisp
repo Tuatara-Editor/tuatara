@@ -200,7 +200,7 @@ leave it to the next. The keys bound are shown under TITLE, then the others.")
 *KEY-HINT-FOCUS-FUNCTIONS*: three values, the title, the entries for what the
 cursor is on, in the order the function gives, and the rest; NIL when none
 is for it."
-  (let ((focus (some (lambda (f) (ignore-errors (funcall f editor (editor-pending editor)))) *key-hint-focus-functions*)))
+  (let ((focus (tuatara.runtime:run-hook-until-success *key-hint-focus-functions* editor (editor-pending editor))))
     (when focus
       (let ((chosen (loop for key in (rest focus)
                           for entry = (find key entries :key #'car :test #'string=)

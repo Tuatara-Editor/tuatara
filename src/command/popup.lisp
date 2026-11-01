@@ -203,8 +203,7 @@ it, and close the list, whether the text could go in or not; then call
                  (let ((after (tuatara.buffer:buffer-replace target start end text)))
                    (setf (tuatara.buffer:buffer-point target) after)
                    (close-popup *editor*)
-                   (dolist (f *popup-insert-functions*)
-                     (funcall f target candidate start after)))))))
+                   (tuatara.runtime:run-hook *popup-insert-functions* target candidate start after))))))
     (close-popup *editor*)))
 
 ;;; Keys

@@ -716,7 +716,7 @@ ANY-SIZE."
   (when (null (lsp-refusal buffer))
     (remove-if-not (lambda (spec) (and (or all (lsp-language-on-p (first spec)))
                                        (or any-size (<= (fourth spec) *lsp-largest-document*))))
-                   (or (some (lambda (f) (funcall f buffer)) *lsp-doc-spec-functions*)
+                   (or (run-hook-until-success *lsp-doc-spec-functions* buffer)
                        (let ((language (buffer-language buffer)))
                          (and language (list (list language (path-uri (tuatara.buffer:buffer-file buffer)) nil
                                                    (tuatara.buffer:buffer-size buffer)))))))))

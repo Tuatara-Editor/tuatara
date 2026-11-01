@@ -134,19 +134,20 @@ a rope), visiting FILE if given. NAME must not be in use."
   "Remove BUFFER from the live buffers and release its file mapping, after
 running *KILL-BUFFER-FUNCTIONS*. The mapping of a buffer whose text is kept
 elsewhere (BUFFER-LENT-P) is released once nothing reads it any more. A
-function that fails does not stop the others or the removal: the first
-failure is signalled once the buffer is gone."
+function that fails does not stop the others or the removal
+\(TUATARA.RUNTIME:RUN-HOOK): the first failure is signalled once the buffer
+is gone, for the command killing it to say. \\`C-g' in one of them stops the
+rest, the buffer still removed."
   (let ((failure nil))
-    (dolist (f *kill-buffer-functions*)
-      (handler-case (tuatara.runtime:reporting-errors ("~(~a~) for ~a" f (buffer-name buffer))
-                      (funcall f buffer))
-        (error (condition) (unless failure (setf failure condition)))))
-    (setf *buffers* (remove buffer *buffers*)
-          (buffer-killed-p buffer) t)
-    (when (buffer-mapping buffer)
-      (unless (buffer-lent-p buffer)
-        (tuatara.text:close-mapping (buffer-mapping buffer)))
-      (setf (buffer-mapping buffer) nil))
+    (unwind-protect
+         (setf failure (let ((tuatara.runtime:*hook-failures-said* nil))
+                         (tuatara.runtime:run-hook *kill-buffer-functions* buffer)))
+      (setf *buffers* (remove buffer *buffers*)
+            (buffer-killed-p buffer) t)
+      (when (buffer-mapping buffer)
+        (unless (buffer-lent-p buffer)
+          (tuatara.text:close-mapping (buffer-mapping buffer)))
+        (setf (buffer-mapping buffer) nil)))
     (when failure (error failure)))
   nil)
 
@@ -531,7 +532,7 @@ to be taken in. The first time, *UNDO-LET-GO-FUNCTIONS* are told."
                                (buffer-undo-held buffer) kept)
                          (unless (buffer-local buffer 'undo-let-go)
                            (setf (buffer-local buffer 'undo-let-go) t)
-                           (dolist (f *undo-let-go-functions*) (funcall f buffer)))
+                           (tuatara.runtime:run-hook *undo-let-go-functions* buffer))
                          (return))
                        (incf kept held)))))))))
 
@@ -589,7 +590,7 @@ at once: the count is made again around the edits once it ends
     (setf (buffer-version buffer) version)
     (note-new-content buffer batch)
     (record-batch buffer batch group)
-    (dolist (f (buffer-change-functions buffer)) (funcall f buffer batch))
+    (tuatara.runtime:run-hook (buffer-change-functions buffer) buffer batch)
     (tuatara.text:batch-positions batch)))
 
 (defvar *large-edit-octets* (* 64 1024 1024)
@@ -735,14 +736,14 @@ A text whose lines are still being counted is edited at once, as BUFFER-EDIT
 does."
   (multiple-value-bind (version batch) (tuatara.text:version-commit (buffer-version buffer) edits)
     (setf (buffer-version buffer) version)
-    (dolist (f (buffer-change-functions buffer)) (funcall f buffer batch))
+    (tuatara.runtime:run-hook (buffer-change-functions buffer) buffer batch)
     batch))
 
 (defun commit-swap-without-record (buffer rope forward backward)
   "Swap BUFFER's whole text for ROPE without touching the undo stacks; return the batch."
   (multiple-value-bind (version batch) (tuatara.text:version-swap (buffer-version buffer) rope forward backward)
     (setf (buffer-version buffer) version)
-    (dolist (f (buffer-change-functions buffer)) (funcall f buffer batch))
+    (tuatara.runtime:run-hook (buffer-change-functions buffer) buffer batch)
     batch))
 
 (defun buffer-swap-text (buffer rope forward backward)
@@ -1342,7 +1343,7 @@ version of its own that changes nothing, so point, the mark and undo stay as
 they are and the buffer is no more modified than it was. Returns the batch."
   (multiple-value-bind (version batch) (tuatara.text:version-adopt (buffer-version buffer) rope)
     (setf (buffer-version buffer) version)
-    (dolist (f (buffer-change-functions buffer)) (funcall f buffer batch))
+    (tuatara.runtime:run-hook (buffer-change-functions buffer) buffer batch)
     batch))
 
 (defun ensure-indexed (buffer)

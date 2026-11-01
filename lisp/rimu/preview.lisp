@@ -347,8 +347,8 @@ of its own, or shown in the buffer visiting it already; the rest at once."
                                                       (setf (rimu-preview-job-image job) image
                                                             (rimu-preview-job-notes job) notes)))
                                                    (t
-                                                    (let ((text (some (lambda (function) (funcall function fd path size (second kind) octets))
-                                                                      *preview-text-functions*)))
+                                                    (let ((text (run-hook-until-success *preview-text-functions*
+                                                                                       fd path size (second kind) octets)))
                                                       (when text
                                                         (setf (rimu-preview-job-text job) text
                                                               (rimu-preview-job-read-here job) t))))))))

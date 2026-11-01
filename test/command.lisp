@@ -767,7 +767,7 @@ TEXTS with the mode line's sign of work, P, lit in :mode-line-sign."
       (declare (ignore editor))
       (true (> calls 1))
       (true (search "one" (tuatara.frontend.fake:fake-screen-line f 0)))
-      (true (search "failed and is left out of the screen: broken on purpose"
+      (true (search "failed and was left out: broken on purpose"
                     (tuatara.buffer:buffer-string (tuatara.buffer:find-buffer "*Messages*"))))
       (is = 1 (count-matches "broken on purpose" (tuatara.buffer:buffer-string (tuatara.buffer:find-buffer "*Messages*")))))))
 

@@ -155,7 +155,7 @@ in hex, every octet of it being shown there: \\[widen] first."
     (when (and on (tuatara.buffer:buffer-narrowed-p b))
       (message "~a is narrowed, and the hex view shows every octet: \\[widen] first" (tuatara.buffer:buffer-name b))
       (return-from hex-mode nil))
-    (when (some (lambda (function) (funcall function b)) *hex-view-functions*)
+    (when (run-hook-until-done *hex-view-functions* b)
       (return-from hex-mode nil))
     (if on
         (hex-view-on b (point))

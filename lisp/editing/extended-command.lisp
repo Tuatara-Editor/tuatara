@@ -210,13 +210,20 @@ files as they are now.")
 for buffers of another major mode, or for other buffers
 \(COMMANDS-FOR-BUFFERS); :SAFE when it changes files (*FILE-CHANGING-COMMANDS*)
 and the buffer is opened safely; else what one of *COMMAND-REFUSAL-FUNCTIONS*
-says. NIL when it may run."
+says, the first that fails refusing it too, saying it could not be checked.
+NIL when it may run."
   (when *editor*
     (let ((entries (gethash command *mode-commands*))
           (buffer (current-buffer)))
       (cond ((and entries (notany (lambda (entry) (command-place-p (car entry) buffer)) entries)) :elsewhere)
             ((and (member command *file-changing-commands*) (tuatara.io:safe-visit-p buffer)) :safe)
-            (t (some (lambda (function) (funcall function command buffer)) *command-refusal-functions*))))))
+            (t (let ((tuatara.runtime:*hook-failures-said* nil))
+                 (dolist (function *command-refusal-functions*)
+                   (multiple-value-bind (refusal failure) (call-hook-function function command buffer)
+                     (cond ((typep failure 'error)
+                            (return (format nil "~(~a~) could not be checked (~a): not run"
+                                            command (tuatara.runtime:condition-words failure))))
+                           (refusal (return refusal)))))))))))
 
 (defun mode-command-refusal (command)
   "What to say instead of running COMMAND, made for buffers of another major mode

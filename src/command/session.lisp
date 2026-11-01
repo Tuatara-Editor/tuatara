@@ -72,8 +72,7 @@ another call, or NIL when none does. Sets *BACKGROUND-WORK*."
           (when (eq wanted t) (setf working t))
           (let ((seconds (if (realp wanted) wanted *tick-interval*)))
             (setf soonest (if soonest (min soonest seconds) seconds))))))
-    (dolist (f *after-tick-functions*)
-      (funcall f editor))
+    (tuatara.runtime:run-hook *after-tick-functions* editor)
     (setf *background-work* working)
     soonest))
 

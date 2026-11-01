@@ -198,7 +198,7 @@ folder of *LSP-TRUSTED-PROJECTS* stays trusted whatever is answered."
     (if (null root)
         (message "~a is in no project" (tuatara.buffer:buffer-name buffer))
         (multiple-value-bind (answer evidence) (ask-project-trust root :again t)
-          (dolist (function *trust-changed-functions*) (funcall function root))
+          (run-hook *trust-changed-functions* root)
           (message "~a ~a" (abbreviated-path root)
                    (cond (evidence (format nil "cannot be trusted: ~a" evidence))
                          ((eq answer :trusted) "is trusted")

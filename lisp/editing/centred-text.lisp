@@ -39,7 +39,7 @@ width as it goes (the buffer's :text-width)."
     (if (centred-text-p buffer)
         (let* ((others (loop for p in *gutter-providers*
                              unless (eq (getf p :name) :centred-text)
-                               sum (funcall (getf p :width) editor window)))
+                               sum (gutter-width editor window p)))
                ;; the margin takes a column between the gutters and the text
                (room (- (tuatara.display:window-width window) others 1 *centred-text-width*)))
           (setf (tuatara.buffer:buffer-local buffer :text-width) *centred-text-width*)

@@ -112,7 +112,7 @@ the first that did something returns true (Org follows a link).")
 always in the hex view, nothing, so that it changes no text."
   (let ((buffer (current-buffer)))
     (unless (hex-view-here-p)
-      (some (lambda (function) (funcall function buffer)) *enter-dwim-functions*))))
+      (run-hook-until-done *enter-dwim-functions* buffer))))
 
 (define-command tuatara-normal-inert ()
   "Do nothing: NORMAL state keeps BACKSPACE and DELETE inert in editing buffers."

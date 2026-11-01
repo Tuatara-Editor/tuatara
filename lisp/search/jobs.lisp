@@ -312,7 +312,7 @@ line shows it as a job of the buffer, the list of jobs (\\[list-jobs]) what it i
 (defun outside-work (&optional (buffer nil buffer-p))
   "The work *OUTSIDE-WORK-FUNCTIONS* give for BUFFER, or with none given all of it."
   (loop for f in *outside-work-functions*
-        append (if buffer-p (funcall f buffer) (funcall f))))
+        append (if buffer-p (call-hook-function f buffer) (call-hook-function f))))
 
 (defvar *processing-indicator* "P"
   "What the mode line shows first, before [-] and the signs of directories

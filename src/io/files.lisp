@@ -1041,7 +1041,7 @@ buffer visited the file already (it comes as it is)."
                             (writable-p path)
                             (writable-p (parent-path path)))
                   (setf (tuatara.buffer:buffer-local buffer :read-only) t))
-                (dolist (f tuatara.buffer:*find-file-functions*) (funcall f buffer))))
+                (tuatara.runtime:run-hook tuatara.buffer:*find-file-functions* buffer)))
           (values buffer nil)))))
 
 (defconstant +tail-sample+ 4096

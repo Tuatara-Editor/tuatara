@@ -71,7 +71,7 @@ buffer opened safely keeps showing its text as it is), and run
        (message "Wrote ~a~:[~*~; (~a in ~,1f s)~]" (escape-controls (abbreviated-path (tuatara.io:save-job-target job)))
                 (> seconds *save-wait*) (octets-words (tuatara.io:save-job-total job)) seconds)
        (when (live-buffer-p buffer)
-         (dolist (f *after-save-functions*) (funcall f buffer))))
+         (run-hook *after-save-functions* buffer)))
       ((:stopped :failed) (message "~a" (tuatara.runtime:job-ending-words job))))
     (setf *saves-as* (remove job *saves-as*))))
 
@@ -168,8 +168,7 @@ wait: it saves the buffer itself once ready."
        (when other (tuatara.buffer:kill-buffer other))
        (when (let ((*save-path* path))
                (loop for function in *before-save-functions*
-                     thereis (eq :later (handler-case (funcall function buffer)
-                                          (error (e) (tuatara.runtime:debug-report :error "before saving ~a, ~a: ~a" name function e) nil)))))
+                     thereis (eq :later (call-hook-function function buffer))))
          (return-from save-buffer-with-care nil))
        ;; saved as a file out of evidence, it may be changed once written (SAVED-OUT-OF-EVIDENCE)
        (when as
@@ -196,8 +195,9 @@ wait: it saves the buffer itself once ready."
 first line of each window showing it staying on the same text (TEXT-MAPPING), once
 *BEFORE-RELOAD-FUNCTIONS* have run; then *AFTER-RELOAD-FUNCTIONS*. Returns BUFFER, and what those functions
 said they did, joined in one string, or NIL."
-  (let* ((said (format nil "~{~a~^; ~}" (remove-if-not #'stringp (mapcar (lambda (function) (funcall function buffer))
-                                                                          *before-reload-functions*))))
+  (let* ((said (format nil "~{~a~^; ~}"
+                       (remove-if-not #'stringp (mapcar (lambda (function) (call-hook-function function buffer))
+                                                        *before-reload-functions*))))
          (forward nil))
     (tuatara.display:call-keeping-window-starts
      (buffer-windows buffer)
@@ -207,7 +207,7 @@ said they did, joined in one string, or NIL."
                                                       (setf forward f)
                                                       (values f b))))
        forward))
-    (dolist (function *after-reload-functions*) (funcall function buffer))
+    (run-hook *after-reload-functions* buffer)
     (values buffer (and (plusp (length said)) said))))
 
 (defun catch-up (buffer)

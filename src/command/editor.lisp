@@ -9,10 +9,6 @@
 
 (in-package #:tuatara.command)
 
-(define-condition quit (error) ()
-  (:documentation "Signalled by keyboard-quit (\\`C-g') to abandon the current command or minibuffer.")
-  (:report (lambda (c s) (declare (ignore c)) (format s "Quit"))))
-
 (defstruct (frame (:constructor make-frame (frontend)) (:copier nil))
   "One screen of the editor. FRONTEND paints it and reads its events; WINDOW
 is its selected window, the one commands act on, in a layout of one or more;

@@ -8,7 +8,7 @@
   (:import-from #:tuatara.buffer #:live-buffer-p)
   (:documentation "Events, keymaps and key-sequence reading in precedence order, interactive calls, hooks, the minibuffer core, the modal state slot.")
   (:export #:escape-controls)
-  (:shadow #:quit)
+  (:import-from #:tuatara.runtime #:quit)
   (:export #:keymap #:keymap-p #:make-keymap #:define-key #:define-keys #:label-keys #:lookup-key #:keymaps-lookup #:map-keymap-bindings #:keymap-parent #:keymap-entries #:keymap-name #:unbind-commands-if
            #:define-command #:find-command #:command-symbol #:command-names #:*commands* #:forget-command
            #:quit #:keyboard-quit-signal #:editor #:editor-p #:make-editor #:*editor* #:current-buffer #:*current-buffer* #:*command-refusal-function* #:current-window
@@ -29,7 +29,7 @@
            #:keymap-called #:keymap-summary #:valid-key-text-p #:*key-keymaps-function* #:*keymap-named-function*
            #:completing-read #:completing-read-value #:key-waiting-p #:completion #:editor-completion #:editor-key-hints #:editor-width #:editor-height
            #:active-keymaps #:*state-keys-function* #:*prefix-help-function* #:resolve-keys #:candidate-score #:panel-rows #:*highlight-functions* #:*key-hint-focus-functions* #:*job-highlight-functions* #:*syntax-highlight-functions* #:*text-highlight-functions* #:window-highlights-for #:window-syntax #:read-key #:read-answer-key #:read-event #:*tick-functions* #:*last-input-time* #:*after-tick-functions* #:*title-functions* #:*background-work* #:*tick-interval* #:run-tick-functions
-           #:*gutter-providers* #:window-margin-for #:gutter-cells #:*ruler-functions*
+           #:*gutter-providers* #:gutter-width #:window-margin-for #:gutter-cells #:*ruler-functions*
            #:editor-minibuffer-prompt #:editor-minibuffer-text #:editor-minibuffer-point
            ;; windows
            #:editor-windows #:buffer-window #:buffer-windows #:editor-selections #:one-window-p #:fit-windows #:select-window #:split-window

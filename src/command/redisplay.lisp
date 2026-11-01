@@ -27,7 +27,7 @@ says, else *CURSOR-SHAPE* and *CURSOR-COLOUR*; a colour of
   (multiple-value-bind (shape colour typing)
       (and (editor-cursor-shape-function editor) (funcall (editor-cursor-shape-function editor) editor))
     (values (or shape *cursor-shape* :block)
-            (or (some (lambda (function) (funcall function editor)) *cursor-colour-functions*) colour *cursor-colour*)
+            (or (tuatara.runtime:run-hook-until-success *cursor-colour-functions* editor) colour *cursor-colour*)
             typing)))
 
 (defvar *gutter-providers* '()
@@ -38,7 +38,14 @@ PREPARE-FN, once a frame, with (EDITOR WINDOW ROWS), the rows shown, and
 returns what its cells are worked out from; CELL-FN with (EDITOR WINDOW ROW
 LINE), and that as a fifth argument when it has a PREPARE-FN, where LINE is
 the 0-based line number of ROW's start, or NIL for a continuation row, and
-returns two values, the text for that row (padded to the width) and its face.")
+returns two values, the text for that row (padded to the width) and its face.
+A function that fails is said once (TUATARA.RUNTIME:CALL-HOOK-FUNCTION): its
+provider shows nothing, the rest of the gutter and the screen drawn.")
+
+(defun gutter-width (editor window provider)
+  "The columns PROVIDER, one of *GUTTER-PROVIDERS*, wants in WINDOW: 0 when
+its width function fails."
+  (or (tuatara.runtime:call-hook-function (getf provider :width) editor window) 0))
 
 (defun window-margin-for (editor window)
   "The margin WINDOW needs: the widths of the gutter providers plus one
@@ -46,7 +53,7 @@ separating column when any is visible; none in the hex view, whose offsets
 stand where line numbers would."
   (if (tuatara.display:hex-view-p (tuatara.display:window-buffer window))
       0
-      (let ((total (loop for p in *gutter-providers* sum (funcall (getf p :width) editor window))))
+      (let ((total (loop for p in *gutter-providers* sum (gutter-width editor window p))))
         (if (plusp total) (1+ total) 0))))
 
 (defparameter *gutter-count-reach* 65536
@@ -58,10 +65,11 @@ fold hiding more is looked past.")
   "For each row of ROWS, a list of (STRING . FACE) gutter pieces, in provider order."
   (when *gutter-providers*
     (let* ((buffer (tuatara.display:window-buffer window))
-           (widths (mapcar (lambda (p) (funcall (getf p :width) editor window)) *gutter-providers*))
+           (widths (mapcar (lambda (p) (gutter-width editor window p)) *gutter-providers*))
            (prepared (loop for p in *gutter-providers*
                            for width in widths
-                           collect (and (plusp width) (getf p :prepare) (funcall (getf p :prepare) editor window rows))))
+                           collect (and (plusp width) (getf p :prepare)
+                                       (tuatara.runtime:call-hook-function (getf p :prepare) editor window rows))))
            ;; not waited for while the lines are counted: known where the count has passed
            (line (and (plusp (length rows))
                       (tuatara.buffer:buffer-known-line-number buffer (tuatara.display:row-start (aref rows 0))))))
@@ -73,9 +81,14 @@ fold hiding more is looked past.")
                                    for ready in prepared
                                    when (plusp width)
                                      collect (multiple-value-bind (text face)
-                                                 (if (getf p :prepare)
-                                                     (funcall (getf p :cell) editor window row row-line ready)
-                                                     (funcall (getf p :cell) editor window row row-line))
+                                                 (let ((cell (getf p :cell)))
+                                                   (if (getf p :prepare)
+                                                       (tuatara.runtime:call-hook-function
+                                                        cell editor window row row-line ready)
+                                                       (tuatara.runtime:call-hook-function
+                                                        cell editor window row row-line)))
+                                               ;; a cell that failed gives its error in the face's place
+                                               (when (typep face 'error) (setf face nil))
                                                (cons (let ((s (or text "")))
                                                        (if (< (length s) width)
                                                            (concatenate 'string (make-string (- width (length s)) :initial-element #\Space) s)
@@ -186,20 +199,11 @@ POINT, when that is past the end of its line. The text is read once
   (rectangle-rows buffer (tuatara.buffer:buffer-point buffer) (tuatara.buffer:buffer-mark buffer)
                   :from from :to to :point-column (rectangle-point-column buffer)))
 
-(defvar *failed-highlights* (make-hash-table :test 'eq :synchronized t)
-  "The highlight functions that have failed, each said once.")
-
 (defun highlights-of (function &rest arguments)
   "What the highlight FUNCTION gives for ARGUMENTS, a copy; NIL when it fails,
-which is said once (in the echo area and the debug log), so that one way of
+which is said once (TUATARA.RUNTIME:CALL-HOOK-FUNCTION), so that one way of
 marking text that goes wrong leaves the rest of the screen drawn."
-  (handler-case (copy-list (apply function arguments))
-    (error (e)
-      (unless (gethash function *failed-highlights*)
-        (setf (gethash function *failed-highlights*) t)
-        (tuatara.runtime:debug-report :redisplay "~(~a~) failed and is left out: ~a" function e)
-        (message "~(~a~) failed and is left out of the screen: ~a" function e))
-      nil)))
+  (copy-list (apply #'tuatara.runtime:call-hook-function function arguments)))
 
 (defun window-syntax (editor window rows)
   "The ranges the text in ROWS of WINDOW is coloured in by its syntax,
@@ -352,7 +356,7 @@ of their own, each (START END FACE)."
          (before (with-output-to-string (out)
                    (flet ((parts (functions)
                             (loop for f in functions
-                                  for lead = (funcall f editor buffer)
+                                  for lead = (tuatara.runtime:call-hook-function f editor buffer)
                                   ;; one part, or several written together
                                   for pieces = (cond ((stringp lead) (list (list lead nil)))
                                                      ((and (consp lead) (consp (first lead))) lead)
@@ -376,7 +380,7 @@ of their own, each (START END FACE)."
                         (tuatara.buffer:buffer-column buffer point :most tuatara.display:*screen-column-reach*)
                         (tuatara.buffer:buffer-local buffer :mode-name)))
          (extras (loop for f in *mode-line-functions*
-                       for extra = (funcall f editor buffer)
+                       for extra = (tuatara.runtime:call-hook-function f editor buffer)
                        when (stringp extra) collect (list extra nil)
                        when (consp extra) collect (list (first extra) (second extra))))
          (text (concatenate 'string before
@@ -501,7 +505,7 @@ selected or not.")
 (defun point-marked-p (buffer)
   "True when BUFFER shows where point is in a look of its own
 \(*POINT-MARKED-FUNCTIONS*), so that no cursor is drawn over it."
-  (some (lambda (function) (funcall function buffer)) *point-marked-functions*))
+  (tuatara.runtime:run-hook-until-success *point-marked-functions* buffer))
 
 (defun row-at (rows position)
   "The index of the row of ROWS showing POSITION, or at whose end it stands;
@@ -551,7 +555,7 @@ point in its own way (*POINT-MARKED-FUNCTIONS*)."
                                    (not (assoc r ends)))
                               (push (cons r face) ends))))))))
           (dolist (f *other-cursor-functions*)
-            (dolist (p (funcall f editor window rows))
+            (dolist (p (tuatara.runtime:call-hook-function f editor window rows))
               (place p split-face)))
           (when point (place point :cursor-inactive)))
         (values (nreverse ranges) ends)))))
@@ -676,7 +680,7 @@ cells, a terminal's) are noted too, its text shown as it is."
              (cells (gutter-cells editor window rows))
              ;; the screen columns marked down the window
              (rulers (let ((shift (if (tuatara.display:window-wraps-p window) 0 (tuatara.display:window-hscroll window))))
-                       (loop for (column face) in (loop for f in *ruler-functions* append (funcall f window))
+                       (loop for (column face) in (loop for f in *ruler-functions* append (tuatara.runtime:call-hook-function f window))
                              for at = (+ margin (- column shift))
                              when (and (<= margin at) (< at width)) collect (list at face)))))
         (when (plusp (tuatara.display:window-header-rows window))
@@ -826,7 +830,8 @@ match."
                         collect (list (aref moved (min start (length text))) (aref moved (min end (length text))) face))))
         (values text spans))))
 
-(setf tuatara.io:*said-shown-function* #'escape-controls)
+(setf tuatara.io:*said-shown-function* #'escape-controls
+      tuatara.runtime:*hook-failure-function* (lambda (text) (message "~a" (escape-controls text))))
 
 (defun shown-name (text)
   "TEXT, a name from elsewhere, as a list, a menu or the window's title shows
@@ -840,7 +845,7 @@ what *TITLE-FUNCTIONS* add before it, when that has changed since it was last
 given; control and direction characters in it are written out, and octets
 that are not UTF-8 as \\xNN, as the mode line writes them (ESCAPE-CONTROLS)."
   (let* ((name (tuatara.buffer:buffer-name buffer))
-         (extra (format nil "~{~a ~}" (remove nil (mapcar (lambda (f) (ignore-errors (funcall f editor))) *title-functions*))))
+         (extra (format nil "~{~a ~}" (remove nil (mapcar (lambda (f) (tuatara.runtime:call-hook-function f editor)) *title-functions*))))
          (shown (editor-title-shown editor)))
     (unless (and shown (eq name (first shown)) (eq *gui-title* (second shown)) (equal extra (third shown)))
       (setf (editor-title-shown editor) (list name *gui-title* extra))

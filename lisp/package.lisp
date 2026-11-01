@@ -13,7 +13,9 @@
   (:import-from #:tuatara.io #:fd-octets #:crc32 #:zip-octets #:zip-entries #:zip-entry-octets #:inflate #:zip-error
                 #:*zip-largest-entry* #:*zip-largest-ratio*)
   (:import-from #:tuatara.buffer #:buffer-crlf-p #:lf-newlines #:crlf-newlines #:cr-newlines #:text-for-buffer)
-  (:import-from #:tuatara.runtime #:foreign-library-p #:foreign-call #:jobs-of)
+  (:import-from #:tuatara.runtime #:foreign-library-p #:foreign-call #:jobs-of
+                #:run-hook #:run-hook-until-success #:run-hook-until-done #:call-hook-function
+                #:hook-function-name)
   (:import-from #:tuatara.display #:next-tab-stop)
   (:import-from #:tuatara.text #:word-char-p #:name-char-p #:number-formatter)
   (:import-from #:tuatara.text #:string-line-start #:string-line-end #:xml-entity #:xml-tag-end #:xml-text-value #:utf-16-text #:parse-decimal #:+fnv-offset+

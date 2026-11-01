@@ -742,7 +742,7 @@ nothing in it opened."
         (*visiting-safely* (and safe t)))
     (unless (and (or safe (safe-directory-of path) (evidence-path-p path))
                  (not (eq :directory (ignore-errors (tuatara.io:path-kind (tuatara.io:native (tuatara.io:expand-path path)))))))
-      (let ((view (some (lambda (function) (funcall function path show)) *file-views*)))
+      (let ((view (run-hook-until-done *file-views* path show)))
         (when view (return-from visit-path-once view))))
     (visit-path-as-text path safe show)))
 
@@ -779,7 +779,7 @@ another buffer, has *SHOWN-AGAIN-FUNCTIONS* called with it."
       (unless existing (show-binary-in-hex buffer))
       (funcall show buffer)
       (when (and existing (not (eq buffer from)))
-        (dolist (function *shown-again-functions*) (funcall function buffer)))
+        (run-hook *shown-again-functions* buffer))
       (when (and safe existing (not (tuatara.io:safe-visit-p buffer)))
         (message "~a is open already, with its mode; kill that buffer to open the file safely"
                  (tuatara.buffer:buffer-name buffer)))
@@ -808,7 +808,7 @@ removed by a command, so that the lists showing them read them again.")
 (defun paths-changed (paths)
   "Tell each of *PATHS-CHANGED-FUNCTIONS* that the native PATHS were just
 made, renamed, written or removed."
-  (dolist (function *paths-changed-functions*) (funcall function paths)))
+  (run-hook *paths-changed-functions* paths))
 
 (defvar *file-renamed-functions* '()
   "Functions called with FROM and TO, native paths, once the file FROM is
@@ -824,7 +824,7 @@ it, and tell *FILE-RENAMED-FUNCTIONS*."
         (when (string= (tuatara.buffer:buffer-name buffer) old-name)
           (setf (tuatara.buffer:buffer-name buffer)
                 (tuatara.buffer:unique-buffer-name (tuatara.io:native-file-name to)))))))
-  (dolist (function *file-renamed-functions*) (funcall function from to)))
+  (run-hook *file-renamed-functions* from to))
 
 (defun follow-moved-paths (pairs)
   "Have the buffers visiting a file moved by PAIRS, each (FROM . TO) of native
@@ -934,8 +934,10 @@ files visited lately)."
       ;; the mode stays as it is set up, its language now parsed
       (let ((language (mode-language mode)))
         (when language (start-parsing b language))))
-    (dolist (f tuatara.buffer:*find-file-functions*)
-      (unless (and chosen (eq f 'set-auto-mode)) (funcall f b)))))
+    (run-hook (if chosen
+                  (remove 'set-auto-mode tuatara.buffer:*find-file-functions*)
+                  tuatara.buffer:*find-file-functions*)
+              b)))
 
 (define-command read-only-mode ()
   "Make the current buffer read-only, or editable again if it is; with a
