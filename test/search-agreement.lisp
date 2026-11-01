@@ -471,3 +471,12 @@ left, or with KEEP false those it does not find it on."
               (false apart "~a in pieces of ~d~:[~;, CRLF~]: ~d lines against ~d, apart at ~a: ~s against ~s"
                      pattern piece crlf (length scanned) (length from-disk) apart
                      (and apart (nth apart scanned)) (and apart (nth apart from-disk))))))))))
+
+(define-test (search-agreement byte-order-mark-is-text)
+  ;; UTF-8 text starting with a byte order mark is searched, its first line too
+  (uiop:with-temporary-file (:stream s :pathname file :direction :output :type "txt" :element-type '(unsigned-byte 8))
+    (write-sequence (append (list #xEF #xBB #xBF) (coerce (sb-ext:string-to-octets (format nil "kiwi one~%two~%kiwi three~%")) 'list)) s)
+    (finish-output s)
+    (is equal '(1 3) (mapcar (lambda (candidate) (second (tuatara.command::candidate-value candidate)))
+                             (tuatara.defaults::lines-on-disk (uiop:native-namestring file) "bom.txt" "/tmp/" "kiwi"
+                                                              :parallel nil)))))

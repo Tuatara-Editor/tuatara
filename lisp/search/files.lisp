@@ -47,7 +47,7 @@ offset in ROPE where each begins, in the same order."
 regular file, looks binary (a zero octet among its first 64 KB, as pictures,
 video and programs have: TUATARA.IO:BINARY-HEAD-P, as opening a file tells
 it), is of a kind its first octets tell (TUATARA.IO:OCTETS-KIND: a PDF, a
-picture, an archive, a disk image; a drawing written as text, SVG, is text),
+picture, an archive, a disk image; a drawing written as text, SVG, is text, and so is UTF-8 with a byte order mark),
 or is encrypted, as its name or its header says (ENCRYPTED-FILE-P), so that
 only text is read for searching and the text of an encrypted file never is.
 With MOST, a file larger than MOST octets is not read beyond its first 64 KB,
@@ -65,7 +65,7 @@ pipe cannot hold it up."
           (unless (or (tuatara.io:binary-head-p head)
                       (encrypted-head-p (subseq head 0 (min (length head) 200)))
                       ;; a kind of file told by its first octets: a picture, a PDF, an archive, a disk image
-                      (not (member (nth-value 1 (tuatara.io:octets-kind head)) '(nil :svg))))
+                      (not (member (nth-value 1 (tuatara.io:octets-kind head)) '(nil :svg :utf-8))))
             (cond ((and most (> (max size (length head)) most)) (values nil :too-large))
                   ((< (length head) (min tuatara.io:+binary-sample+ (max 8192 (1+ size)))) head)
                   ;; larger than the system said (/proc, /sys) or than the head: read whole
