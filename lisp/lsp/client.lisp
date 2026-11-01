@@ -138,7 +138,8 @@ let go."
                   (handler-case
                       (reporting-errors ("writing to ~a" (lsp-server-name server))
                         (write-sequence (tuatara.text:string-octets
-                                         (format nil "Content-Length: ~d~c~c~c~c" (length octets) #\Return #\Newline #\Return #\Newline))
+                                         (format nil "Content-Length: ~d~c~c~c~c"
+                                                 (length octets) #\Return #\Newline #\Return #\Newline))
                                         stream)
                         (write-sequence octets stream)
                         (finish-output stream))

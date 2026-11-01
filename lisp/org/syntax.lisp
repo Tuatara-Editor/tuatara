@@ -1126,7 +1126,8 @@ are never closed."
                                         :properties (append (list :bullet bullet)
                                                             (and checkbox
                                                                  (list :checkbox (case (char checkbox 1) (#\X 'on) (#\- 'trans) (t 'off))))
-                                                            (and counter (list :counter (or (whole-number counter) counter)))
+                                                            (and counter (list :counter (or (whole-number counter)
+                                                                                            counter)))
                                                             (and tag (list :tag tag))))))
         (setf (org-node-post-blank node) (org-count-lines (or contents-end begin) end))
         node))))

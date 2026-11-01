@@ -881,7 +881,8 @@ from ALLOCATOR, described at OUT (a GhosttySysImage): drawn by the program
 the sandbox shuts in, as every picture from outside is (DECODE-IMAGE), never
 by the editor itself (DECODE-PICTURE). True when it was drawn."
   (ignoring-errors-reported ("drawing a picture the terminal's program sent")
-    (let ((image (decode-picture (tuatara.io:sap-octets data size) :png *terminal-picture-largest* *terminal-picture-largest*)))
+    (let ((image (decode-picture (tuatara.io:sap-octets data size)
+                                 :png *terminal-picture-largest* *terminal-picture-largest*)))
       (when image
         (let* ((width (tuatara.frontend:image-width image)) (height (tuatara.frontend:image-height image))
                (channels (tuatara.frontend:image-channels image)) (pixels (tuatara.frontend:image-pixels image))

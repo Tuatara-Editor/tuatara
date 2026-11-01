@@ -318,7 +318,8 @@ path, from the Org file's folder when it is in it."
                                 (cond ((null mode) "")
                                       ((eq mode :executable) ", executable")
                                       (t (format nil ", mode ~3,'0o" mode))))
-                              (and (eq (code-file-state file) :new) (not (tuatara.io:path-stamp (tuatara.io:parent-path path) :failure nil)))))
+                              (and (eq (code-file-state file) :new)
+                                   (not (tuatara.io:path-stamp (tuatara.io:parent-path path) :failure nil)))))
                   (if inside (subseq path (length home)) (abbreviated-path path))
                   (and (code-file-real file) (abbreviated-path (code-file-real file)))
                   (or inside (null home)))
@@ -344,7 +345,10 @@ over."
           (let ((mode (code-file-mode file)))
             (tuatara.io:write-text-file (tuatara.text:make-rope (code-file-text file)) (code-file-place file)
                                         :expected (code-file-stamp file) :follow-links nil
-                                        :mode (and mode (lambda (now) (if (eq mode :executable) (logior (logand now #o777) #o111) mode)))))
+                                        :mode (and mode (lambda (now)
+                                                          (if (eq mode :executable)
+                                                              (logior (logand now #o777) #o111)
+                                                              mode)))))
           nil))
     (error (e) (format nil "~a" e))))
 

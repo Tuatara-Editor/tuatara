@@ -977,7 +977,11 @@ among AGENDA's files, since a file must not have the editor read elsewhere."
             (when (plusp (length pattern))
               (let ((file (ignoring-errors-reported ("finding the file ~a" pattern)
                             (tuatara.io:native
-                             (tuatara.io:expand-path (cl-ppcre:regex-replace-all "%s" pattern (lambda (&rest r) (declare (ignore r)) name) :simple-calls t)
+                             (tuatara.io:expand-path (cl-ppcre:regex-replace-all "%s" pattern
+                                                                                 (lambda (&rest r)
+                                                                                   (declare (ignore r))
+                                                                                   name)
+                                                                                 :simple-calls t)
                                                      :directory (or folder (tuatara.io:default-directory)))))))
                 (when (and file
                            (not (member file files :test #'equal))
@@ -1001,7 +1005,10 @@ buffer."
            (loop for name in scope
                  when (stringp name)
                    append (let ((path (ignoring-errors-reported ("finding the file ~a" name)
-                                        (tuatara.io:native (tuatara.io:expand-path name :directory (or folder (tuatara.io:default-directory)))))))
+                                        (tuatara.io:native
+                                         (tuatara.io:expand-path name
+                                                                 :directory (or folder
+                                                                                (tuatara.io:default-directory)))))))
                             (cond ((null path) '())
                                   ((org-path-beside-p path folder agenda) (list path))
                                   (t (message "The clock table leaves ~a out: neither an agenda file nor beside this one" name)

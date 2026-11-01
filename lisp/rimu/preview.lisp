@@ -325,19 +325,23 @@ of its own, or shown in the buffer visiting it already; the rest at once."
                                            (lambda (fd path size)
                                              (let* ((octets (tuatara.io:read-fd-start fd path size limit))
                                                     (kind (multiple-value-list (octets-kind-of-file fd octets)))
-                                                    (office (office-preview-format (second kind) (tuatara.io:listed-name entry))))
+                                                    (office (office-preview-format (second kind)
+                                                                                   (tuatara.io:listed-name entry))))
                                                (setf (rimu-preview-job-octets job) octets
                                                      (rimu-preview-job-size job) size
                                                      (rimu-preview-job-kind job) kind)
                                                (cond (office
                                                       (multiple-value-bind (text notes image)
-                                                          (office-preview fd path size office :pixels pixels :cancel (rimu-preview-job-cancel job))
+                                                          (office-preview fd path size office
+                                                                          :pixels pixels
+                                                                          :cancel (rimu-preview-job-cancel job))
                                                         (setf (rimu-preview-job-text job) text
                                                               (rimu-preview-job-image job) image
                                                               (rimu-preview-job-notes job) notes)))
                                                      ((eq (second kind) :pdf)
                                                       (multiple-value-bind (text notes image)
-                                                          (decode-pdf fd :cancel (rimu-preview-job-cancel job) :limit limit :pixels pixels)
+                                                          (decode-pdf fd :cancel (rimu-preview-job-cancel job)
+                                                                      :limit limit :pixels pixels)
                                                         (setf (rimu-preview-job-text job) text
                                                               (rimu-preview-job-image job) image
                                                               (rimu-preview-job-notes job) notes)))
@@ -349,7 +353,8 @@ of its own, or shown in the buffer visiting it already; the rest at once."
                                                               (rimu-preview-job-notes job) notes)))
                                                      (t
                                                       (let ((text (run-hook-until-success *preview-text-functions*
-                                                                                         fd path size (second kind) octets)))
+                                                                                         fd path size (second kind)
+                                                                                         octets)))
                                                         (when text
                                                           (setf (rimu-preview-job-text job) text
                                                                 (rimu-preview-job-read-here job) t)))))))))

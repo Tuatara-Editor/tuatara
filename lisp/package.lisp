@@ -20,7 +20,8 @@
                 #:hook-function-name)
   (:import-from #:tuatara.display #:next-tab-stop)
   (:import-from #:tuatara.text #:word-char-p #:name-char-p #:number-formatter)
-  (:import-from #:tuatara.text #:string-line-start #:string-line-end #:xml-entity #:xml-tag-end #:xml-text-value #:utf-16-text #:parse-decimal #:whole-number #:+fnv-offset+
+  (:import-from #:tuatara.text #:string-line-start #:string-line-end #:xml-entity #:xml-tag-end #:xml-text-value
+                #:utf-16-text #:parse-decimal #:whole-number #:+fnv-offset+
                 #:xml-name #:xml-attribute #:xml-children #:xml-child #:xml-root #:xml-local-name #:xml-local-children #:xml-find-all #:xml-all-text)
   (:import-from #:tuatara.text #:xml-first-text #:xml-parse #:*xml-deepest* #:*xml-most-elements* #:xml-escape
                 #:xml-elements #:xml-element #:xml-top-elements #:xml-element-inner #:xml-element-inside #:xml-replace-elements #:xml-value)

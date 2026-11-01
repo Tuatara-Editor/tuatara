@@ -1588,7 +1588,10 @@ opened."
   (let ((fd (tuatara.runtime:ignoring-errors-reported ("making the lock file of ~a" path)
               (call-with-parent (concatenate 'string (native path) ".lock")
                                 (lambda (dirfd own)
-                                  (values (openat-octets dirfd own (logior sb-posix:o-rdwr sb-posix:o-creat +o-nofollow+ +o-cloexec+) #o600)))
+                                  (values (openat-octets dirfd own
+                                                         (logior sb-posix:o-rdwr sb-posix:o-creat
+                                                                   +o-nofollow+ +o-cloexec+)
+                                                         #o600)))
                                 :writing "lock"))))
     (when fd
       (unwind-protect

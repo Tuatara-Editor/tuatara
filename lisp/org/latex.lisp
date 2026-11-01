@@ -196,7 +196,8 @@ being exported: NIL when it cannot be read, or when it is larger than
                                                    :too-large (lambda (name size)
                                                                 (declare (ignore name size))
                                                                 (export-note "~a: a setup file larger than ~a, so not read"
-                                                                             (abbreviated-path path) (octets-words *org-file-read-limit*))
+                                                                             (abbreviated-path path)
+                                                                             (octets-words *org-file-read-limit*))
                                                                 nil)))))
             (when (and text *org-latex* (export-trusted-path-p path))
               (push text (org-latex-trusted *org-latex*)))

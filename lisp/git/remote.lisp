@@ -216,7 +216,8 @@ itself, never a program or an alias of a repository's or yours."
             (let ((git (tuatara.io:find-program "git")))
               (and git (uiop:split-string (string-trim '(#\Newline)
                                                        (or (ignoring-errors-reported ("asking ~a for its own commands" git)
-                                                             (uiop:run-program (list git "--list-cmds=builtins") :output :string))
+                                                             (uiop:run-program (list git "--list-cmds=builtins")
+                                                                               :output :string))
                                                            ""))
                                           :separator '(#\Newline)))))))
 

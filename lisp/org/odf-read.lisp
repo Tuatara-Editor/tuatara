@@ -63,7 +63,8 @@ numbered levels."
             (when text
               (flet ((on (name) (let ((v (xml-attribute text name))) (and v (not (member v '("none" "normal") :test #'string=)) v))))
                 (let ((weight (on "fo:font-weight")))
-                  (when (and weight (or (string= weight "bold") (>= (or (whole-number weight) 0) 600))) (push :bold look)))
+                  (when (and weight (or (string= weight "bold") (>= (or (whole-number weight) 0) 600)))
+                    (push :bold look)))
                 (when (on "fo:font-style") (push :italic look))
                 (when (on "style:text-underline-style") (push :underline look))
                 (when (on "style:text-line-through-style") (push :strike look))

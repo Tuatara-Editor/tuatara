@@ -1001,7 +1001,8 @@ when a line does not do, none, and why is said."
           (let ((why (rimu-names-refusal directory names finals changes)))
             (when why (refuse "~a" why)))
           (handler-case (reporting-errors ("renaming in ~a" directory)
-                          (check-not-saving (mapcar (lambda (change) (tuatara.io:path-join directory (car change))) changes)))
+                          (check-not-saving (mapcar (lambda (change) (tuatara.io:path-join directory (car change)))
+                                            changes)))
             (error (e) (refuse "~a" e)))
           ;; two steps, so that names can be swapped: each to a name of its own, then to its new name
           (let* ((temporary (loop for change in changes
@@ -1025,7 +1026,9 @@ when a line does not do, none, and why is said."
                   for temp in temporary
                   do (handler-case (reporting-errors ("renaming ~a" old)
                                      (tuatara.io:rename-path temp (tuatara.io:path-join directory new))
-                                     (push (cons (tuatara.io:path-join directory old) (tuatara.io:path-join directory new)) done))
+                                     (push (cons (tuatara.io:path-join directory old)
+                                           (tuatara.io:path-join directory new))
+                                     done))
                        (error (e)
                          (push (if (ignoring-errors-reported ("putting back ~a" old)
                                      (tuatara.io:rename-path temp (tuatara.io:path-join directory old))

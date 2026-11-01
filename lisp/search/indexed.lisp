@@ -434,7 +434,8 @@ for another directory than INDEX's."
                          (let ((files (nreverse files)))
                            (push (make-index-piece
                                   (mapped-piece-corpus (concatenate 'string directory file) bytes
-                                                       (map 'simple-vector #'third files) (map 'simple-vector #'first files)
+                                                       (map 'simple-vector #'third files)
+                                                       (map 'simple-vector #'first files)
                                                        (directory-index-root index))
                                   (map 'simple-vector #'second files) file)
                                  pieces)))

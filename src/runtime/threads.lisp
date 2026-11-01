@@ -50,8 +50,10 @@ most), whichever thread started it; nothing where that cannot be done, as a
 thread may not stand higher than the one that started it without leave."
   (ignoring-errors-reported ("standing ~d below the editor" niceness)
     (let* ((tid (sb-alien:alien-funcall (sb-alien:extern-alien "gettid" (function sb-alien:int))))
-           (getpriority (sb-alien:extern-alien "getpriority" (function sb-alien:int sb-alien:int sb-alien:unsigned-int)))
-           (setpriority (sb-alien:extern-alien "setpriority" (function sb-alien:int sb-alien:int sb-alien:unsigned-int sb-alien:int)))
+           (getpriority (sb-alien:extern-alien "getpriority"
+                                               (function sb-alien:int sb-alien:int sb-alien:unsigned-int)))
+           (setpriority (sb-alien:extern-alien "setpriority"
+                                               (function sb-alien:int sb-alien:int sb-alien:unsigned-int sb-alien:int)))
            ;; PRIO_PROCESS by a thread id: that thread alone; the process's own id is its first thread's
            (wanted (min 19 (+ (sb-alien:alien-funcall getpriority 0 (sb-posix:getpid)) niceness))))
       (unless (= wanted (sb-alien:alien-funcall getpriority 0 tid))

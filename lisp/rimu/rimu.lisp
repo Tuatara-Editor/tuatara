@@ -888,7 +888,8 @@ In a list of files found, reading again looks at those files again
                   (handler-case
                       (reporting-errors ("listing ~a" directory)
                         (let ((listing (or listing (cond (found (rimu-found-again old))
-                                                         (rewound (rimu-read-at-commit (car rewound) (cdr rewound) directory))
+                                                         (rewound (rimu-read-at-commit (car rewound) (cdr rewound)
+                                                                                       directory))
                                                          (t (rimu-carry-cells old (rimu-read directory) view))))))
                           (setf (rimu-job-layout job) (rimu-lay-out listing view)
                                 (rimu-job-listing job) listing)))

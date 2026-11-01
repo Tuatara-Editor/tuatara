@@ -189,7 +189,8 @@ was; NIL when it cannot be (a file no longer there)."
                     (case kind
                       ((:file :safe) (and (tuatara.io:path-stamp target)
                                           (nth-value 0 (visit-path target :safe (eq kind :safe) :show #'identity))))
-                      (:directory (and (tuatara.io:path-stamp target) (nth-value 0 (visit-path target :show #'identity))))
+                      (:directory (and (tuatara.io:path-stamp target)
+                                       (nth-value 0 (visit-path target :show #'identity))))
                       (:scratch (tuatara.buffer:find-buffer target))))))
       (when (and buffer (not (eq kind :directory)))
         (setf (tuatara.buffer:buffer-point buffer) (min point (tuatara.buffer:buffer-size buffer))))

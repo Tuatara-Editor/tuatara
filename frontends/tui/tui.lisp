@@ -815,7 +815,8 @@ first button's press (a second or third on the cell soon after, a double or
 triple), its moves while held, its letting go, the middle button's press,
 the wheel; at the cell of the editor's screen (the padding taken off), with
 Control, Meta and Shift as held. NIL for the other buttons."
-  (let ((fields (mapcar (lambda (field) (tuatara.text:whole-number field)) (uiop:split-string (subseq parameters 1) :separator ";"))))
+  (let ((fields (mapcar (lambda (field) (tuatara.text:whole-number field))
+                        (uiop:split-string (subseq parameters 1) :separator ";"))))
     (destructuring-bind (&optional button x y &rest more) fields
       (declare (ignore more))
       (when (and button x y)

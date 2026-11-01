@@ -1089,7 +1089,8 @@ says none, or has no entry."
     (when entry
       (let ((octets (ignoring-errors-reported ("reading the header of ~a" entry)
                       (tuatara.io:call-with-file (tuatara.io:native (merge-pathnames entry folder))
-                                                 (lambda (fd path size) (tuatara.io:read-fd-start fd path size *package-header-octets*))))))
+                                                 (lambda (fd path size)
+                                                   (tuatara.io:read-fd-start fd path size *package-header-octets*))))))
         (and octets (needed-version-in (tuatara.text:lenient-string octets)))))))
 
 (defun version-numbers (text)
@@ -1603,7 +1604,8 @@ none."
   "TEXT, a signer's name as a key gives it, on one line and without the
 characters that change how text is laid out (right to left, hidden ones), so
 that it shows as it is; NIL for NIL or nothing left."
-  (let ((name (tuatara.text:one-line (and text (remove-if (lambda (c) (eq (sb-unicode:general-category c) :cf)) text)))))
+  (let ((name (tuatara.text:one-line (and text (remove-if (lambda (c) (eq (sb-unicode:general-category c) :cf))
+                                                          text)))))
     (and name (plusp (length name)) (tuatara.display:shorten-string name 80))))
 
 (defun commit-signature (fields object)
@@ -2649,12 +2651,14 @@ the reading stopped, (LINE . WHY), or NIL."
                                (handler-case
                                    (reporting-errors ("evaluating the package ~a" name)
                                      (let ((*package* (find-package :tuatara-user)))
-                                       (setf *package-failures* (remove name *package-failures* :key #'car :test #'string=)
+                                       (setf *package-failures* (remove name *package-failures*
+                                                                        :key #'car :test #'string=)
                                              *refused-packages* (remove name *refused-packages* :test #'string=))
                                        (eval form)
                                        (let ((declared (declared-package name)))
                                          (if declared
-                                             (package-condition name (package-state name (second declared) (third declared)))
+                                             (package-condition name
+                                                                (package-state name (second declared) (third declared)))
                                              "not named"))))
                                  (error (e) (format nil "failed: ~a" e)))))))
      stopped)))

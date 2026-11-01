@@ -231,7 +231,8 @@ entry. Empty when there is no FILE, and NIL when it is there and cannot be
 read. Lines beginning with # are comments, and lines beginning with @ are of
 a kind a later release adds, never read as entries."
   (ignoring-errors-reported ("reading ~a" file)
-    (with-open-file (in (sb-ext:parse-native-namestring file) :if-does-not-exist nil :external-format '(:utf-8 :replacement #\?))
+    (with-open-file (in (sb-ext:parse-native-namestring file)
+                        :if-does-not-exist nil :external-format '(:utf-8 :replacement #\?))
       (let ((all (and in (loop for line = (read-line in nil) while line when (plusp (length line)) collect line)))
             (entries '()) (count 0) (unread '()) (unread-count 0) (version 1) (most (state-list-most list))
             (comments '()) (seen (make-hash-table :test 'equal)) (lines (make-hash-table :test 'eq)))
@@ -240,7 +241,8 @@ a kind a later release adds, never read as entries."
             (when said (setf version (max version said)))))
         (let ((fence (and (state-list-trust list) (> version (state-list-version list))))
               (own (and (state-list-header list)
-                        (uiop:split-string (string-right-trim '(#\Newline) (state-list-header list)) :separator '(#\Newline)))))
+                        (uiop:split-string (string-right-trim '(#\Newline) (state-list-header list))
+                                           :separator '(#\Newline)))))
           (dolist (line all)
             (cond ((char= (char line 0) #\#)
                    (unless (or (state-line-version list line) (member line own :test #'string=))

@@ -585,7 +585,8 @@ closes alike, each level one more of it on either side."
         (loop repeat (1- levels)
               do (when (zerop (car span)) (error "No enclosing `~a' beyond that level" open))
                  (setf span (handler-case (reporting-errors ("finding the pair around ~a" open)
-                                            (pair-around buffer (tuatara.buffer:buffer-forward-char buffer (car span) -1)
+                                            (pair-around buffer
+                                                         (tuatara.buffer:buffer-forward-char buffer (car span) -1)
                                                          open close nil))
                               (error () (error "No enclosing `~a' beyond that level" open))))))
     span))

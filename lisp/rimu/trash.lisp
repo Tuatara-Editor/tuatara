@@ -135,7 +135,8 @@ file, a link followed, never a named pipe or a device, at most
                                                  path)
                                              (or date "")
                                              (eq :directory (tuatara.io:path-kind
-                                                             (tuatara.io:path-join trash (format nil "files/~a" name)))))
+                                                             (tuatara.io:path-join trash
+                                                                                   (format nil "files/~a" name)))))
                                things))))))))
     (sort things #'string> :key #'trashed-date)))
 

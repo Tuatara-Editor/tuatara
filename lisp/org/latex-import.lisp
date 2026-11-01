@@ -241,7 +241,10 @@ ending tried when it has none); else words saying what it was."
                            when (and (eq :regular (tuatara.io:path-kind path))
                                      (org-path-beside-p path *latex-org-directory*)
                                      (<= (or (ignoring-errors-reported ("measuring ~a" path)
-                                               (tuatara.io:call-with-file path (lambda (fd p size) (declare (ignore fd p)) size)))
+                                               (tuatara.io:call-with-file path
+                                                                          (lambda (fd p size)
+                                                                            (declare (ignore fd p))
+                                                                            size)))
                                              (1+ *latex-import-picture-limit*))
                                          *latex-import-picture-limit*))
                              return path))))

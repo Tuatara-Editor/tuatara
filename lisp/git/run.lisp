@@ -290,10 +290,11 @@ until \\[git] asks for it."
                      (reporting-errors ("reading ~a with git" top)
                        (call-git-reading top directory arguments
                                          (lambda (arguments looking-environment here)
-                                           (run-git-program git here arguments :cancel cancel :line line :errors errors :input input
-                                                                               :seconds (or seconds *git-reading-seconds*) :limit limit
-                                                                               :reading t :environment looking-environment
-                                                                               :timed-out timed-out))))
+                                           (run-git-program git here arguments
+                                                            :cancel cancel :line line :errors errors :input input
+                                                            :seconds (or seconds *git-reading-seconds*) :limit limit
+                                                            :reading t :environment looking-environment
+                                                            :timed-out timed-out))))
                    (git-refused (e) (error e))
                    (error () (values nil nil)))
                (when (car timed-out) (note-git-timed-out top))))))))
@@ -350,7 +351,8 @@ command, so that they are the ones in force."
                                   (tuatara.runtime:make-guarded-thread
                                    (lambda ()
                                      (ignoring-errors-reported ("reading what git says")
-                                       (tuatara.io:read-stream-octets (sb-ext:process-error process) :limit *git-said-limit* :drain t)))
+                                       (tuatara.io:read-stream-octets (sb-ext:process-error process)
+                                                                      :limit *git-said-limit* :drain t)))
                                    :name "tuatara git messages")))
                    (octets nil) (stopped nil) (cancelled nil) (too-large nil)
                    (timer (and seconds (sb-ext:make-timer (lambda () (when (sb-ext:process-alive-p process)
@@ -388,6 +390,7 @@ command, so that they are the ones in force."
            :job tuatara.runtime:*job* :input (and input :stream) :output :stream :error (and errors :stream)
            :environment (append environment (list "GIT_TERMINAL_PROMPT=0")
                                 (if reading
-                                    (remove-if (lambda (setting) (uiop:string-prefix-p "GIT_" setting)) (sb-ext:posix-environ))
+                                    (remove-if (lambda (setting) (uiop:string-prefix-p "GIT_" setting))
+                                               (sb-ext:posix-environ))
                                     (sb-ext:posix-environ)))))
       (error () (values nil nil)))))

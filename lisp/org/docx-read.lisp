@@ -270,7 +270,8 @@ or NIL; an error when it is larger than *DOCX-LARGEST-XML*."
     (let ((styles (docx-reading-part "word/styles.xml")))
       (dolist (style (and styles (xml-find-all styles "w:style")))
         (let* ((name (let ((n (xml-child style "w:name"))) (and n (xml-attribute n "w:val"))))
-               (outline (let ((o (xml-find-all style "w:outlineLvl"))) (and o (whole-number (xml-attribute (first o) "w:val"))))))
+               (outline (let ((o (xml-find-all style "w:outlineLvl")))
+                          (and o (whole-number (xml-attribute (first o) "w:val"))))))
           (setf (gethash (xml-attribute style "w:styleId") (docx-reading-styles r)) (list name outline)))))
     (let ((numbering (docx-reading-part "word/numbering.xml")))
       (when numbering
@@ -531,12 +532,15 @@ a level below 0 or past 8 none."
          (style (let ((s (and ppr (xml-child ppr "w:pStyle")))) (and s (xml-attribute s "w:val"))))
          (known (and style (gethash style (docx-reading-styles *docx-reading*))))
          (heading (docx-read-heading-level
-                   style (let ((o (and ppr (xml-child ppr "w:outlineLvl")))) (and o (whole-number (xml-attribute o "w:val"))))))
+                   style (let ((o (and ppr (xml-child ppr "w:outlineLvl"))))
+                           (and o (whole-number (xml-attribute o "w:val"))))))
          (numpr (and ppr (xml-child ppr "w:numPr"))))
     (cond (heading (list :heading heading))
           ((and style (cl-ppcre:scan "(?i)^title$" (or (first known) style))) (list :title))
           (numpr (let* ((id (let ((e (xml-child numpr "w:numId"))) (and e (xml-attribute e "w:val"))))
-                        (level (max 0 (min 8 (or (let ((e (xml-child numpr "w:ilvl"))) (and e (whole-number (xml-attribute e "w:val")))) 0))))
+                        (level (max 0 (min 8 (or (let ((e (xml-child numpr "w:ilvl")))
+                                                   (and e (whole-number (xml-attribute e "w:val"))))
+                                                 0))))
                         (format (cdr (assoc level (gethash id (docx-reading-numbering *docx-reading*))))))
                    (and id (not (equal id "0"))
                         (list :item level (and format (not (member format '("bullet" "none") :test #'string=))))))))))
@@ -551,7 +555,12 @@ a level below 0 or past 8 none."
                                                        (xml-find-all cell "w:p")))))
                              ;; a cell spanning columns, empty ones after it, so that the columns line up;
                              ;; each cell takes room in the note, an empty one too
-                             (let ((span (max 1 (min 63 (or (whole-number (xml-attribute (first (xml-find-all (xml-child cell "w:tcPr") "w:gridSpan")) "w:val")) 1)))))
+                             (let ((span (max 1 (min 63 (or (whole-number
+                                                             (xml-attribute
+                                                              (first (xml-find-all (xml-child cell "w:tcPr")
+                                                                                    "w:gridSpan"))
+                                                              "w:val"))
+                                                            1)))))
                                (office-spend (+ (length text) span))
                                (cons text (make-list (1- span) :initial-element "")))))
                          (remove-if-not (lambda (n) (equal (xml-name n) "w:tc")) (xml-children row))))
