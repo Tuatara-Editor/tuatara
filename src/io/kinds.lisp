@@ -212,28 +212,45 @@ with, its signature box.")
   "The twelve octets a JPEG XL file kept in boxes starts with, its signature
 box; a bare JPEG XL codestream starts with FF 0A instead.")
 
-(defun box-contents-start (octets types &key (read (lambda (at count) (and (<= (+ at count) (length octets))
-                                                                           (subseq octets at (+ at count))))))
+(defun octets-reader (octets)
+  "A function of where and how many octets giving that many of OCTETS from
+there, fewer at their end, NIL past it: how the readers of files kept in
+boxes read octets in hand (BOX-CONTENTS-START)."
+  (lambda (at count)
+    (let ((end (min (length octets) (+ at count))))
+      (and (<= 0 at) (< at end) (subseq octets at end)))))
+
+(defun box-header-at (read at)
+  "The box of a file kept in boxes (JPEG 2000, JPEG XL) whose header is at AT,
+read with READ (OCTETS-READER), as three values: its type, where its contents
+begin and where it ends (NIL for one running to the end of the file), its
+size read in the long form too; NIL when no header is there or its size is
+shorter than its header."
+  (let ((header (funcall read at 16)))
+    (when (and header (>= (length header) 8))
+      (let ((size (octets-be header 0 4))
+            (type (octets-ascii header 4 8)))
+        (case size
+          (0 (values type (+ at 8) nil))
+          (1 (let ((large (octets-be header 8 8)))
+               (and large (>= large 16) (values type (+ at 16) (+ at large)))))
+          (t (and (>= size 8) (values type (+ at 8) (+ at size)))))))))
+
+(defun box-contents-start (octets types &key (read (octets-reader octets)))
   "Where the contents of the first box at the top level of a file kept in
-boxes (JPEG 2000, JPEG XL) whose type is one of TYPES begin, and as a second
-value its type; NIL when none is found among its first 1,000 boxes. Each box's
-header is read with READ, a function of where in the file and how many octets
-giving them or NIL, from OCTETS, the file's first octets, unless given: the
-box found may begin past them."
+boxes (JPEG 2000, JPEG XL) whose type is one of TYPES begin, and as second
+and third values its type and where it ends (NIL: the end of the file); NIL
+when none is found among its first 1,000 boxes. The boxes are read with
+READ, a function of where in the file and how many octets giving them,
+fewer at its end (OCTETS-READER), from OCTETS, the file's first octets,
+unless given: the box found may begin past them."
   (let ((at 0))
     (loop repeat 1000
-          do (let ((header (or (funcall read at 16) (funcall read at 8))))
-               (unless header (return nil))
-               (let ((size (octets-be header 0 4))
-                     (type (octets-ascii header 4 8))
-                     (length 8))
-                 (when (= size 1)
-                   (setf size (octets-be header 8 8) length 16)
-                   (unless size (return nil)))
-                 (when (member type types :test #'equal) (return (values (+ at length) type)))
-                 ;; a box running to the end of the file, or one shorter than its own header
-                 (when (< size length) (return nil))
-                 (incf at size))))))
+          do (multiple-value-bind (type start end) (box-header-at read at)
+               (cond ((null type) (return nil))
+                     ((member type types :test #'equal) (return (values start type end)))
+                     ((null end) (return nil))
+                     (t (setf at end)))))))
 
 (defun j2k-header (o &optional (at 0))
   "What the JPEG 2000 codestream at AT in O says of its picture in its main
@@ -340,23 +357,24 @@ those fields are not all among O."
               (setf extra (choice 0 1 '(4 . 2) '(12 . 1))))
             (list :width width :height height :extra-channels extra :bits depth :float float :animated animated)))))))
 
-(defun jxl-file-header (o)
+(defun jxl-file-header (o &key (read (octets-reader o)))
   "What the JPEG XL file whose first octets are O says of its picture
-\(JXL-HEADER), a bare codestream or one kept in boxes, when its first fields
-are among O; NIL otherwise."
+\(JXL-HEADER), a bare codestream or one kept in boxes, in a jxlc box or in
+jxlp parts, joined; NIL when its first fields cannot be read. A file kept in
+boxes is read with READ (BOX-CONTENTS-START), its codestream perhaps past O."
   (if (octets-at-p o *jxl-signature*)
-      (multiple-value-bind (start type) (box-contents-start o '("jxlc" "jxlp"))
+      (multiple-value-bind (start type end) (box-contents-start o '("jxlc" "jxlp") :read read)
         (cond ((null start) nil)
-              ((equal type "jxlc") (jxl-header o start))
-              ;; a codestream in parts: the parts among O joined, its first fields may span two
-              (t (let ((joined (make-array 0 :element-type '(unsigned-byte 8) :adjustable t :fill-pointer 0))
-                       (at (- start 8)))
+              ((equal type "jxlc")
+               (let ((codestream (funcall read start (if end (min 1024 (- end start)) 1024))))
+                 (and codestream (jxl-header codestream))))
+              ;; a codestream in parts, each after an index of four octets: its first fields may span two
+              (t (let ((joined (make-array 0 :element-type '(unsigned-byte 8) :adjustable t :fill-pointer 0)))
                    (loop repeat 64
-                         for size = (octets-be o at 4)
-                         while (and size (>= size 12) (octets-at-p o "jxlp" (+ at 4)) (< (+ at 12) (length o)))
-                         do (loop for i from (+ at 12) below (min (+ at size) (length o))
-                                  do (vector-push-extend (aref o i) joined))
-                            (incf at size))
+                         while (and type (equal type "jxlp") end (< (length joined) 1024))
+                         do (let ((part (and (< (+ start 4) end) (funcall read (+ start 4) (min 1024 (- end start 4))))))
+                              (loop for octet across (or part #()) do (vector-push-extend octet joined))
+                              (multiple-value-setq (type start end) (box-header-at read end))))
                    (jxl-header joined)))))
       (jxl-header o)))
 
@@ -703,7 +721,7 @@ octets, up to 64 KB, the more kinds are told (a disc image's mark is 32 KB in)."
         ((is *jp2-signature*) (jp2-words o))
         ((is (list #xFF #x4F #xFF #x51))
          (values (joined-words "JPEG 2000 codestream" (multiple-value-call #'size-words (j2k-size o))) :j2k))
-        ((or (is *jxl-signature*) (is (list #xFF #x0A))) (values (jxl-words o) :jxl))
+        ((or (is *jxl-signature*) (and (is (list #xFF #x0A)) (jxl-header o))) (values (jxl-words o) :jxl))
         ((or (is "GIF87a") (is "GIF89a")) (values (joined-words "GIF image" (multiple-value-call #'size-words (gif-size o))) :gif))
         ((and (is "RIFF") (is "WEBP" 8)) (values (webp-words o) :webp))
         ((and (is "BM") (member (octets-le o 14 4) '(12 40 52 56 64 108 124)))

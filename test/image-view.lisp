@@ -225,10 +225,14 @@ TILE-WIDTH by TILE-HEIGHT, and nothing after them."
                  (be components 2)
                  (loop repeat components append (list (1- precision) 1 1)))))
 
-(defun picture-box (type octets)
-  "OCTETS in a box of TYPE, as JPEG 2000 and JPEG XL files keep their parts."
-  (let ((size (+ 8 (length octets))))
-    (kind-octets (loop for i from 3 downto 0 collect (ldb (byte 8 (* 8 i)) size)) type (coerce octets 'list))))
+(defun picture-box (type octets &key long)
+  "OCTETS in a box of TYPE, as JPEG 2000 and JPEG XL files keep their parts;
+LONG writes its size in the long form (size 1, then eight octets)."
+  (if long
+      (let ((size (+ 16 (length octets))))
+        (kind-octets (list 0 0 0 1) type (loop for i from 7 downto 0 collect (ldb (byte 8 (* 8 i)) size)) (coerce octets 'list)))
+      (let ((size (+ 8 (length octets))))
+        (kind-octets (loop for i from 3 downto 0 collect (ldb (byte 8 (* 8 i)) size)) type (coerce octets 'list)))))
 
 (defun jp2-octets (codestream &key (before #()))
   "CODESTREAM kept in a JP2 file: its signature, its file type box, BEFORE
@@ -249,11 +253,13 @@ and nothing after."
                  (loop for rest on bits by (lambda (l) (nthcdr 8 l))
                        collect (loop for k below 8 for b in rest sum (ash b k))))))
 
-(defun jxl-boxed (codestream &key parts)
+(defun jxl-boxed (codestream &key parts long (before #()))
   "CODESTREAM kept in a JPEG XL file of boxes: its signature, its file type
-box and a jxlc box, or with PARTS, in that many jxlp boxes."
+box, BEFORE (octets of boxes) and a jxlc box, or with PARTS, in that many
+jxlp boxes, their sizes in the long form with LONG."
   (concatenate '(vector (unsigned-byte 8))
                (kind-octets tuatara.io::*jxl-signature*) (picture-box "ftyp" (kind-octets "jxl " (list 0 0 0 0) "jxl "))
+               before
                (if parts
                    (let ((step (ceiling (length codestream) parts)))
                      (apply #'concatenate '(vector (unsigned-byte 8))
@@ -262,7 +268,8 @@ box and a jxlc box, or with PARTS, in that many jxlp boxes."
                                   collect (picture-box "jxlp" (concatenate '(vector (unsigned-byte 8))
                                                                            (vector (if (= i (1- parts)) #x80 0) 0 0 i)
                                                                            (subseq codestream (min start (length codestream))
-                                                                                   (min (+ start step) (length codestream))))))))
+                                                                                   (min (+ start step) (length codestream))))
+                                                       :long long))))
                    (picture-box "jxlc" codestream))))
 
 (define-test (image-view jpeg-2000-and-xl-told)
@@ -495,3 +502,27 @@ else ~a; fi" pixel)
     (true (search "name=\"map\" value=\"1536MiB\"" policy))
     (true (search "name=\"disk\" value=\"1536MiB\"" policy)))
   (clrhash tuatara.defaults::*magick-checked*))
+
+(define-test (image-view jpeg-xl-boxes-read-wherever)
+  ;; a JPEG XL kept in boxes is read wherever its codestream begins: past the first 64 KB (after a
+  ;; long box of XML, as a large Exif or C2PA box puts it), and in parts whose sizes are in the long
+  ;; form; two octets FF 0A alone are no JPEG XL
+  (with-test-directory (dir)
+    (let* ((png (namestring (merge-pathnames "flat.png" dir)))
+           (jxl (namestring (merge-pathnames "flat.jxl" dir)))
+           (codestream (progn (uiop:run-program (list "magick" "-size" "64x48" "xc:#336699" png))
+                              (uiop:run-program (list "magick" png "-quality" "100" jxl))
+                              (alexandria:read-file-into-byte-vector jxl)))
+           (far (jxl-boxed codestream :before (picture-box "xml " (make-array 70000 :element-type '(unsigned-byte 8)
+                                                                                    :initial-element 32)))))
+      (is eq :jxl (nth-value 1 (tuatara.io:octets-kind far)))
+      (multiple-value-bind (image notes) (tuatara:decode-picture far :jxl 64 48)
+        (true image "~s" notes)
+        (when image (is = 64 (tuatara:image-width image))))
+      (let ((long (jxl-boxed codestream :parts 3 :long t)))
+        (is equal '("JPEG XL image, 64 × 48" :jxl) (multiple-value-list (tuatara.io:octets-kind long)))
+        (true (tuatara:decode-picture long :jxl 64 48)))))
+  (is equal '("JPEG XL image, 5000 × 3000" :jxl)
+      (multiple-value-list (tuatara.io:octets-kind (jxl-boxed (jxl-octets 5000 3000) :parts 2 :long t))))
+  (false (eq :jxl (nth-value 1 (tuatara.io:octets-kind (kind-octets (list #xFF #x0A 0))))))
+  (is eq :jxl (nth-value 1 (tuatara.io:octets-kind (jxl-octets 64 48)))))

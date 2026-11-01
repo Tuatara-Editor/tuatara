@@ -386,21 +386,22 @@ less. This is twice the slowest, for slower processors.")
   "What the JPEG 2000 or JPEG XL picture of KIND (:jp2 or :j2k, either
 taken for both, or :jxl) open as FD, whose first octets are HEAD, says of
 itself in its header (TUATARA.IO:J2K-HEADER, TUATARA.IO:JXL-FILE-HEADER), a
-JP2 file's codestream read where it begins when that is past HEAD; NIL when
-its header does not say, or for another kind."
-  (case kind
-    (:jxl (tuatara.io:jxl-file-header head))
-    ((:jp2 :j2k)
-     (if (tuatara.io:octets-at-p head '(#xFF #x4F #xFF #x51))
-         (tuatara.io:j2k-header head)
-         (or (tuatara.io:jp2-header head)
-             (let* ((size (ignore-errors (sb-posix:stat-size (sb-posix:fstat fd))))
-                    (start (and size (tuatara.io:box-contents-start
-                                      head '("jp2c")
-                                      :read (lambda (at count) (tuatara.io:read-fd-exactly fd count at)))))
-                    (codestream (and start (< start size)
-                                     (tuatara.io:read-fd-exactly fd (min 65536 (- size start)) start))))
-               (and codestream (tuatara.io:j2k-header codestream))))))))
+file kept in boxes read from FD where its codestream begins when that is
+past HEAD; NIL when its header does not say, or for another kind."
+  (let* ((size (ignore-errors (sb-posix:stat-size (sb-posix:fstat fd))))
+         (read (lambda (at count)
+                 (let ((count (and size (min count (- size at)))))
+                   (and count (plusp count) (tuatara.io:read-fd-exactly fd count at))))))
+    (case kind
+      (:jxl (or (tuatara.io:jxl-file-header head)
+                (tuatara.io:jxl-file-header head :read read)))
+      ((:jp2 :j2k)
+       (if (tuatara.io:octets-at-p head '(#xFF #x4F #xFF #x51))
+           (tuatara.io:j2k-header head)
+           (or (tuatara.io:jp2-header head)
+               (let* ((start (tuatara.io:box-contents-start head '("jp2c") :read read))
+                      (codestream (and start (funcall read start 65536))))
+                 (and codestream (tuatara.io:j2k-header codestream)))))))))
 
 (defun coded-picture-refusal (kind header)
   "Why the JPEG 2000 or JPEG XL picture of KIND whose header
