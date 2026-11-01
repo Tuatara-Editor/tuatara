@@ -41,6 +41,8 @@
     ("C-x SPC" rectangle-mark-mode) ("C-x r k" kill-rectangle) ("C-x r M-w" copy-rectangle-as-kill)
     ("C-x r d" delete-rectangle) ("C-x r y" yank-rectangle) ("C-x r t" string-rectangle)
     ("C-x r c" clear-rectangle) ("C-x r N" number-rectangle-lines)
+    ("C-x r s" copy-to-register) ("C-x r p" point-to-register) ("C-x r n" number-to-register)
+    ("C-x r +" add-to-register) ("C-x r i" insert-register) ("C-x r j" jump-to-register) ("C-x r l" list-registers)
     ("C-/" undo) ("C-_" undo) ("M-_" redo) ("C-?" redo) ("C-M-_" redo) ("C-g" keyboard-quit) ("C-u" universal-argument)
     ("M-^" delete-indentation) ("M-\\" delete-horizontal-space) ("M-SPC" cycle-spacing) ("C-o" open-line)
     ("M-m" back-to-indentation) ("C-x C-o" delete-blank-lines)
@@ -126,7 +128,7 @@ on, so that a setting written wrong never stops the editor starting."
 
 (defparameter *global-prefix-labels*
   '(("C-x n" "notes") ("C-x a" "agenda") ("C-x T" "toggles") ("C-x w" "windows") ("C-x x" "buffers") ("C-x 8" "characters")
-    ("C-x r" "rectangles") ("C-x m" "bookmarks") ("C-x p" "project") ("C-x 4" "other window") ("C-x RET" "input method") ("C-x /" "filters"))
+    ("C-x r" "rectangles and registers") ("C-x m" "bookmarks") ("C-x p" "project") ("C-x 4" "other window") ("C-x RET" "input method") ("C-x /" "filters"))
   "What the key hints call the prefixes of the standard keys.")
 
 ;;; C-c in every mode
@@ -220,6 +222,7 @@ so that \\`C-c' shows, and runs, what the buffer at hand can do in every mode
     (install-gpg-commands)
     (install-places)
     (install-bookmarks)
+    (install-registers)
     (install-packages)
     (install-file-local-variables)
     (install-snippets editor)

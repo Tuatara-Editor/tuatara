@@ -73,7 +73,7 @@
                (:module "modal-states" :pathname "modal" :components ((:file "states")))
                (:module "selecting" :serial t
                 :components ((:file "selecting") (:file "selection-objects") (:file "paragraphs") (:file "mark-run")
-                             (:file "rectangles") (:file "banked-lines") (:file "wrapping") (:file "split")
+                             (:file "rectangles") (:file "registers") (:file "banked-lines") (:file "wrapping") (:file "split")
                              (:file "cursors") (:file "digraph-table")
                              (:file "input-method-table") (:file "input-methods") (:file "digraphs") (:file "characters")))
                (:module "modal"   :serial t :components ((:file "modal") (:file "tutor")))
@@ -191,6 +191,7 @@
                (:file "command-line")
                (:file "places")
                (:file "bookmarks")
+               (:file "registers")
                (:file "file-local")
                (:file "snippets")
                (:file "git")
