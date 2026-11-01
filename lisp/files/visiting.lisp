@@ -603,14 +603,11 @@ octets in the hex view, never shown as text or as a view of its kind first."
         buffer)
       (nth-value 0 (visit-path path :safe safe :show #'identity))))
 
-(defvar *standard-input-limit* (* 1024 1024 1024)
-  "The most octets of standard input read into a buffer (1 GB); what comes
-after is left unread, and that is said.")
-
 (defstruct (standard-input-job (:include tuatara.runtime:job) (:constructor make-standard-input-job (buffer descriptor))
                                (:copier nil))
-  "Standard input being read for BUFFER, a job, from the open DESCRIPTOR; OCTETS, what was read."
-  descriptor octets)
+  "Standard input being read for BUFFER, a job, from the open DESCRIPTOR into a
+file with no name; SCRATCH, that file's descriptor, and SIZE, the octets in it."
+  descriptor scratch size)
 
 (setf (documentation 'standard-input-job-p 'function) "True when OBJECT is a STANDARD-INPUT-JOB.")
 
@@ -623,19 +620,24 @@ after is left unread, and that is said.")
 
 (defmethod tuatara.runtime:job-take-in ((job standard-input-job))
   "Show what was read from standard input in its buffer, read only, or why it could not be read."
-  (let ((octets (standard-input-job-octets job)))
-    (show-reading-result job "standard input"
-                         (lambda (buffer)
-                           (set-made-text buffer (tuatara.text:octets->rope (coerce octets 'tuatara.text:octets)))
-                           (setf (tuatara.buffer:buffer-point buffer) 0)
-                           (when (> (length octets) *standard-input-limit*)
-                             (message "Standard input is longer than ~:d octets: the rest was not read" *standard-input-limit*)))
-                         "~a could not be read: ~a~%")))
+  (let ((scratch (standard-input-job-scratch job)))
+    (if (and scratch (not (live-buffer-p (tuatara.runtime:job-buffer job))))
+        (ignore-errors (sb-posix:close scratch))
+        (show-reading-result job "standard input"
+                             (lambda (buffer)
+                               (multiple-value-bind (rope mapping)
+                                   (tuatara.io:scratch-file-text scratch (standard-input-job-size job) "standard input")
+                                 (set-made-text buffer rope)
+                                 (setf (tuatara.buffer:buffer-mapping buffer) mapping
+                                       (tuatara.buffer:buffer-point buffer) 0)))
+                             "~a could not be read: ~a~%"))))
 
 (defun visit-standard-input (descriptor)
   "Make a buffer of what is read from the open DESCRIPTOR, standard input, in
-the background: called *stdin*, not a file's, read only and opened safely, so
-that nothing in it is acted on. Returns the buffer at once."
+the background, into a file with no name in the cache folder and from there
+as a large file is read, so that its size is bounded by the disk: called
+*stdin*, not a file's, read only and opened safely, so that nothing in it is
+acted on. Returns the buffer at once."
   (let ((buffer (tuatara.buffer:make-buffer (tuatara.buffer:unique-buffer-name "*stdin*")
                                             :text (format nil "Reading standard input...~%"))))
     (setf (tuatara.buffer:buffer-local buffer :read-only) t
@@ -644,9 +646,10 @@ that nothing in it is acted on. Returns the buffer at once."
      (make-standard-input-job buffer descriptor)
      (lambda (job)
        (unwind-protect
-            (setf (standard-input-job-octets job)
-                  (tuatara.io:read-fd-octets (standard-input-job-descriptor job) :path "standard input"
-                                                                                  :most *standard-input-limit*))
+            (multiple-value-bind (scratch size)
+                (tuatara.io:copy-descriptor-to-scratch (standard-input-job-descriptor job))
+              (setf (standard-input-job-scratch job) scratch
+                    (standard-input-job-size job) size))
          (ignore-errors (sb-posix:close (standard-input-job-descriptor job)))))
      :name "tuatara standard input")
     buffer))
@@ -781,7 +784,11 @@ another buffer, has *SHOWN-AGAIN-FUNCTIONS* called with it."
         (message "~a is open already, with its mode; kill that buffer to open the file safely"
                  (tuatara.buffer:buffer-name buffer)))
       (when (and (not safe) existing (tuatara.io:safe-visit-p buffer))
-        (message "~a is open safely; ~a" (tuatara.buffer:buffer-name buffer) (end-safe-visit-words buffer)))
+        (if (equal (tuatara.buffer:buffer-file buffer) (tuatara.io:expand-path path))
+            (message "~a is open safely; ~a" (tuatara.buffer:buffer-name buffer) (end-safe-visit-words buffer))
+            (message "~a is the same file as ~a, which is open safely~@[ (~a)~]: that buffer is shown"
+                     (escape-controls (abbreviated-path path)) (escape-controls (abbreviated-path (tuatara.buffer:buffer-file buffer)))
+                     (tuatara.io:safe-visit-reason buffer))))
       (let ((said (and (not (eq *file-view-said* :none)) *file-view-said*)))
         (cond ((and (not existing) (tuatara.io:safe-visit-reason buffer)) (say-why-safe buffer said))
               (said (message "~a" said))

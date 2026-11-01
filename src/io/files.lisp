@@ -929,28 +929,66 @@ once it is let go, so that what was read is left only in the vector given."
         (when spare (fill spare 0)))
       (values octets too-large cancelled))))
 
-(defun same-file-p (path other)
-  "True when PATH and OTHER name one file: the same device and inode (as the
-system has them, links followed), or, for names with no file there yet,
-the same place once the links in them are followed (REAL-PATH-SO-FAR)."
-  (or (equal path other)
-      (let ((a (ignore-errors (path-stamp path))) (b (ignore-errors (path-stamp other))))
-        (if (and a b)
-            (and (= (stamp-dev a) (stamp-dev b)) (= (stamp-ino a) (stamp-ino b)))
-            (and (null a) (null b)
-                 (equal (real-path-so-far (native path)) (real-path-so-far (native other))))))))
+(defun copy-descriptor-to-scratch (input &key (path "standard input"))
+  "Copy everything the open descriptor INPUT gives, to its end, into a new file
+with no name in the cache directory (OPEN-SCRATCH-FILE), so that its size is
+bounded by the disk and not by memory. Returns the descriptor of that file
+and the octets it holds, as two values. Waits: call it from a thread doing
+work in the background."
+  (let ((fd (open-scratch-file (cache-directory)))
+        (block (make-array (* 1024 1024) :element-type '(unsigned-byte 8)))
+        (size 0)
+        (done nil))
+    (unwind-protect
+         (progn
+           (loop (let ((got (read-fd-into input block :path path)))
+                   (when (zerop got) (return))
+                   (write-octets fd block :end got :path path)
+                   (incf size got)))
+           (setf done t)
+           (values fd size))
+      (unless done (ignore-errors (sb-posix:close fd))))))
 
-(defun buffer-for-file (path &key except)
+(defun scratch-file-text (fd size path)
+  "The text of the file open as FD of SIZE octets (COPY-DESCRIPTOR-TO-SCRATCH),
+as two values: a rope, and the mapping it reads, or NIL. One of at most
+*MEMORY-READ-LIMIT* octets is read into memory and FD closed; a larger one is
+mapped, as a large file is, and the mapping owns FD from then on."
+  (if (<= size *memory-read-limit*)
+      (unwind-protect
+           (progn (sb-posix:lseek fd 0 sb-posix:seek-set)
+                  (values (tuatara.text:octets->rope (read-fd-octets fd :path path :size-hint size)) nil))
+        (ignore-errors (sb-posix:close fd)))
+      (let ((mapping (tuatara.text:map-fd fd size path)))
+        (values (rope-over mapping) mapping))))
+
+(defun same-stamped-file-p (stamp other)
+  "True when the STAMP OTHER, a file's, names the same file as STAMP: the same device and inode."
+  (and stamp other (= (stamp-dev stamp) (stamp-dev other)) (= (stamp-ino stamp) (stamp-ino other))))
+
+(defun buffer-for-file (path &key except safe)
   "The buffer visiting the file at PATH, other than EXCEPT, found by the file
-itself (SAME-FILE-P) and not by the name: x, ./x, dir/x through a link, and
-a/../x are one file and have one buffer. NIL when there is none."
-  (let ((path (expand-path path)))
+itself and not by the name: x, ./x and a/../x are one file and have one
+buffer. NIL when there is none. A file with two names (a link) shares a
+buffer between them only as far as that is safe: a buffer opened safely
+\(evidence, a safe folder, or asked) is the one for both names, but a buffer
+that is not is never given to a name asked SAFE, nor to one that
+*VISIT-SAFELY-FUNCTION* says is to be visited safely, which gets a buffer of
+its own. One stat of PATH, none of the buffers (their STAMP is kept)."
+  (let ((path (visited-path path)))
     (or (find-if (lambda (buffer) (and (not (eq buffer except)) (equal (tuatara.buffer:buffer-file buffer) path)))
                  tuatara.buffer:*buffers*)
-        (find-if (lambda (buffer)
-                   (let ((file (tuatara.buffer:buffer-file buffer)))
-                     (and file (not (eq buffer except)) (same-file-p path file))))
-                 tuatara.buffer:*buffers*))))
+        (let ((stamp (ignore-errors (path-stamp path))))
+          (when stamp
+            (let ((same (remove-if-not
+                         (lambda (buffer)
+                           (and (not (eq buffer except)) (tuatara.buffer:buffer-file buffer)
+                                (same-stamped-file-p stamp (tuatara.buffer:buffer-local buffer :file-stamp))))
+                         tuatara.buffer:*buffers*)))
+              (or (find-if #'safe-visit-p same)
+                  (and same
+                       (not (or safe (and *visit-safely-function* (ignore-errors (funcall *visit-safely-function* path)))))
+                       (first same)))))))))
 
 (defun visited-path (path)
   "PATH as a file is visited under: expanded, and, when it has a .. in it, as
@@ -974,7 +1012,7 @@ visited SAFE is all the same when *VISIT-SAFELY-FUNCTION* gives a reason, kept
 for SAFE-VISIT-REASON. Returns the buffer, and true as a second value when a
 buffer visited the file already (it comes as it is)."
   (let* ((path (visited-path path))
-         (existing (buffer-for-file path)))
+         (existing (buffer-for-file path :safe safe)))
     (if existing
         (values existing t)
         (let* ((name (tuatara.buffer:unique-buffer-name (native-file-name path)))

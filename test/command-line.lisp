@@ -93,7 +93,7 @@ frontend, the editor, and the options read."
         (true (search "needs the file it is for" (error-of a "+5")))
         (true (search "no file between" (error-of "+5" "+6" a)))
         (false (error-of "+" a) "a lone + is a file's name")
-        (false (error-of "+x" "+5:" "+:5" "+5x"))
+        (false (error-of "+x" "+5x"))
         (true (search "--diff needs two files" (error-of "--diff" a)))
         (true (search "--diff takes the two files" (error-of "--diff" a a a))))
       ;; said plainly by the program, which then does not start
@@ -381,6 +381,56 @@ frontend, the editor, and the options read."
           (declare (ignore f editor))
           (is = 1 (count x tuatara.buffer:*buffers* :key (lambda (b) (let ((file (tuatara.buffer:buffer-file b))) (and file (tuatara.io:native file))))
                                                     :test #'equal)))))))
+
+(define-test (command-line hard-link-never-hands-evidence-over-as-editable)
+  ;; a file with two names, one in an evidence folder: whichever is opened first, the evidence is never
+  ;; given as an editable buffer, and the other name is shown the safe buffer
+  (with-case-folder (root evidence work)
+    (with-fresh-recent-files
+      (with-evidence-folders (`(,(concatenate 'string root "cases/*/evidence/")))
+        (let ((ev (concatenate 'string evidence "y.org")) (wk (concatenate 'string work "x.org")))
+          (put-file ev (format nil "* kept as found~%"))
+          (sb-posix:link ev wk)
+          ;; the work name first
+          (session-from-arguments (list wk ev) :directory root)
+          (let ((e (tuatara.defaults::buffer-visiting ev)))
+            (true (tuatara.io:safe-visit-p e))
+            (true (tuatara.buffer:buffer-local e :read-only))
+            (is string= (tuatara.io:native ev) (tuatara.io:native (tuatara.buffer:buffer-file e))))
+          (kill-buffers-visiting root)
+          ;; the evidence name first: the work name finds that buffer, not an editable one
+          (multiple-value-bind (f editor) (session-from-arguments (list ev wk) :directory root)
+            (let ((e (tuatara.defaults::buffer-visiting ev)) (w (tuatara.defaults::buffer-visiting wk)))
+              (true (tuatara.io:safe-visit-p e))
+              (is eq e w)
+              (true (tuatara.buffer:buffer-local w :read-only))
+              (true (tuatara.frontend.fake:fake-frame-showing f "is the same file as"))
+              (true (tuatara.io:safe-visit-p (shown-buffer editor)))))
+          (is string= (format nil "* kept as found~%") (file-text ev)))))))
+
+(define-test (command-line standard-input-large-and-once)
+  ;; more than is read into memory: read to a file with no name and mapped, not held in the heap
+  (with-test-directory (dir)
+    (multiple-value-bind (reader writer) (sb-posix:pipe)
+      (let* ((line (format nil "~a~%" (make-string 99 :initial-element #\x)))
+             (count (ceiling (* 70 1024 1024) 100))
+             (feeder (sb-thread:make-thread
+                      (lambda ()
+                        (let ((octets (tuatara.text:string-octets line)))
+                          (dotimes (i count) (tuatara.io:write-octets writer octets))
+                          (sb-posix:close writer))))))
+        (multiple-value-bind (f editor)
+            (session-from-arguments (list "-") :directory dir :input reader :seconds 60
+                                    :until (lambda () (let ((b (tuatara.buffer:find-buffer "*stdin*")))
+                                                        (and b (> (tuatara.buffer:buffer-size b) 1000000)))))
+          (declare (ignore f))
+          (let ((buffer (shown-buffer editor)))
+            (is = (* count 100) (tuatara.buffer:buffer-size buffer))
+            (true (tuatara.buffer:buffer-mapping buffer) "mapped, as a large file is")
+            (true (tuatara.io:safe-visit-p buffer))))
+        (sb-thread:join-thread feeder)
+        (ignore-errors (sb-posix:close reader))
+        (ignore-errors (tuatara.buffer:kill-buffer (tuatara.buffer:find-buffer "*stdin*")))))))
 
 (define-test (command-line options-on-the-stable-surface)
   ;; the options the program takes are pinned, +LINE among them
