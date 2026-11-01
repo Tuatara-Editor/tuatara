@@ -393,7 +393,8 @@ the debug log, and JOB-TAKE-IN takes it in. Returns the jobs taken in."
         (forget-job job)
         (report-job-ended job)
         (push job taken)
-        (let ((*job-taken-in* job))
+        (let ((*job-taken-in* job)
+              (*secret-at-hand* (or *secret-at-hand* (secret-buffer-p (job-buffer job)))))
           (job-take-in job))))
     (nreverse taken)))
 

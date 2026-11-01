@@ -365,6 +365,7 @@ else what THUNK returns. Work in a buffer whose text is secret
 \(TUATARA.RUNTIME:SECRET-BUFFER-P) counts as a secret at hand: the debug log
 gets no strings of it."
   (let ((trace nil)
+        (secret-then nil)
         (tuatara.runtime:*secret-at-hand* (or tuatara.runtime:*secret-at-hand*
                                               (let ((editor *editor*))
                                                 (tuatara.runtime:secret-buffer-p
@@ -374,13 +375,16 @@ gets no strings of it."
     (flet ((what () (if naming (funcall naming) what)))
       (handler-case
           (handler-bind ((error (lambda (e)
+                                  ;; a secret at hand where it was signalled stays so as it is said
+                                  (setf secret-then tuatara.runtime:*secret-at-hand*)
                                   (when (and (or tuatara.runtime:*debug-on* (and trace-wanted (funcall trace-wanted)))
                                              (not (typep e 'quit)))
                                     (setf trace (capture-backtrace :stop stop))))))
             (funcall thunk))
         (quit () (when quit (message "~a" quit)) nil)
         (error (e)
-          (let ((words (tuatara.runtime:condition-words e)))
+          (let* ((tuatara.runtime:*secret-at-hand* (or tuatara.runtime:*secret-at-hand* secret-then))
+                 (words (tuatara.runtime:failure-words e :said t)))
             (message "~a" (if said (funcall said words) (format nil "Error in ~(~a~): ~a" what words)))
             (tuatara.runtime:debug-report :error "~(~a~): ~a~{~%    ~a~}"
                                           (what) (tuatara.runtime:failure-words e) trace))

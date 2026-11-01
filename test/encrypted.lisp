@@ -512,3 +512,60 @@ scratch file, given to the clipboard unasked, nor exported unasked; no core dump
             (let ((job (tuatara.defaults::make-decrypt-job nil "/tmp/x.txt.gpg" "kea secret pass")))
               (false (search "kea" (prin1-to-string job))))
             (drain-debug-reports))))))
+
+(define-test (encrypted decrypted-buffer-failures-kept-secret)
+  ;; failures while a decrypted Org text is worked on away from the editor's thread (its outline),
+  ;; taken in, and drawn (a header line, in a window not selected): said in the debug log by their
+  ;; kind alone, never with the text or the calls under way
+  (if (null (tuatara.defaults::gpg-path))
+      (skip "gpg is not installed here" (true nil))
+      (with-test-directory (dir)
+        (let* ((key (gpg-test-key))
+               (file (gpg-test-file (merge-pathnames "kiwi.org.gpg" dir) (format nil "* Heading~%plain kiwi words~%") :key key))
+               (tuatara.defaults::*modal-editing* nil)
+               (tuatara-user:*gpg-passphrase-from* :minibuffer)
+               (kiwi (lambda (&rest arguments)
+                       (declare (ignore arguments))
+                       (error 'type-error :datum "plain kiwi words" :expected-type 'integer))))
+          (drain-debug-reports)
+          (clrhash tuatara.runtime::*error-report-places*)
+          ;; debug mode on in the editors the test starts
+          (setf tuatara-user:*debug-mode* t)
+          (tuatara.runtime:set-debug t)
+          (sb-int:encapsulate 'tuatara.defaults::outline-entries 'test-failing (lambda (f &rest a) (apply kiwi f a)))
+          (sb-int:encapsulate 'tuatara.defaults::decrypted-in 'test-failing
+                              (lambda (f &rest arguments) (apply f arguments) (funcall kiwi)))
+          (unwind-protect
+               (progn
+                 (auto-save-session (list (format nil "C-x C-f C-a C-k ~a RET" (rimu-typed file))
+                                          (list :until (lambda () (not (decrypting-p))))
+                                          (list :wait 0.2)
+                                          "M-g o" (list :wait 0.5) "C-g"
+                                          (list :wait 0.2)))
+                 (let ((buffer (tuatara.buffer:find-buffer "kiwi.org.gpg")))
+                   (true buffer)
+                   (when buffer
+                     (setf (tuatara.display:buffer-header-line buffer) (lambda (window) (declare (ignore window))
+                                                                          (funcall kiwi)))
+                     ;; drawn in the window not selected
+                     (auto-save-session (list "C-x 2 C-x o" (format nil "C-x b ~a RET" (rimu-typed "kiwi.org.gpg"))
+                                              "C-x o" (list :wait 0.3) "C-n" (list :wait 0.2)))
+                     (tuatara.buffer:kill-buffer buffer)))
+                 ;; the editor shows its reports in *Debug* as they come: read from the debug log
+                 (let ((texts (list (if (probe-file *test-debug-log*)
+                                        (alexandria:read-file-into-string *test-debug-log*)
+                                        ""))))
+                   (true (find-if (lambda (text) (search "finding the headings failed: a type-error" text)) texts)
+                         "~s" texts)
+                   (true (find-if (lambda (text) (search "drawing a header line failed: a type-error" text)) texts)
+                         "~s" texts)
+                   (false (find-if (lambda (text) (search "kiwi words" text)) texts) "~s" texts)
+                   ;; no calls under way after either
+                   (dolist (said '("finding the headings failed" "drawing a header line failed"))
+                     (let* ((text (first texts)) (at (search said text))
+                            (next (and at (position #\Newline text :start at))))
+                       (false (and next (search (format nil "~%    (") text :start2 next :end2 (min (length text) (+ next 6))))
+                              "~a: ~s" said text)))))
+            (sb-int:unencapsulate 'tuatara.defaults::outline-entries 'test-failing)
+            (sb-int:unencapsulate 'tuatara.defaults::decrypted-in 'test-failing)
+            (drain-debug-reports))))))

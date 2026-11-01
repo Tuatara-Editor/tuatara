@@ -33,7 +33,7 @@ lack of memory too, ends that work and is reported in the debug log, never
 ending the editor with it. NIL then, else what BODY returns."
   `(handler-case (progn ,@body)
      (serious-condition (e)
-       (ignore-errors (debug-report :thread "~a stopped: ~a" ,name e))
+       (ignore-errors (debug-report :thread "~a stopped: ~a" ,name (failure-words e)))
        nil)))
 
 (defparameter *background-niceness* 5
@@ -65,14 +65,18 @@ thread may not stand higher than the one that started it without leave."
 ending its work alone (WITH-THREAD-GUARD), never the editor. It stands
 NICENESS below the editor's thread for the processor, whichever thread makes
 it (*BACKGROUND-NICENESS*, STAND-BELOW-EDITOR): 0 for a thread whose work is
-looked at as it comes, as a terminal's output is."
+looked at as it comes, as a terminal's output is. A secret at hand where it
+is made (*SECRET-AT-HAND*) is at hand in it."
   (let ((keys (loop for (key value) on keys by #'cddr
-                    unless (eq key :niceness) append (list key value))))
+                    unless (eq key :niceness) append (list key value)))
+        (secret *secret-at-hand*))
     (apply #'sb-thread:make-thread
            (lambda (&rest arguments)
-             (stand-below-editor niceness)
-             (with-thread-guard ((or name "a thread"))
-               (apply function arguments)))
+             ;; a secret at hand where the thread is made is at hand in it
+             (let ((*secret-at-hand* secret))
+               (stand-below-editor niceness)
+               (with-thread-guard ((or name "a thread"))
+                 (apply function arguments))))
            keys)))
 
 (defun carry-settings (settings function)

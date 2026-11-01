@@ -902,7 +902,11 @@ drawn."
            (width (frame-width frame))
            (*frame-images* '()))
       (dolist (window (editor-windows editor))
-        (window-pieces editor window (eq window selected) screen))
+        ;; what fails while a secret buffer is drawn is reported without its text
+        (let ((tuatara.runtime:*secret-at-hand*
+                (or tuatara.runtime:*secret-at-hand*
+                    (tuatara.runtime:secret-buffer-p (tuatara.display:window-buffer window)))))
+          (window-pieces editor window (eq window selected) screen)))
       (let ((boxes (popup-boxes editor tree-rows minibuffer-row)))
         (tuatara.frontend:frontend-begin-frame frontend)
         (dotimes (r tree-rows)

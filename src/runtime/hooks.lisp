@@ -49,13 +49,13 @@ and the first time through *HOOK-FAILURE-FUNCTION*, while
 as failing for the first time. Called before the calls under way are left."
   (let* ((key (if (and (symbolp function) (fboundp function)) (fdefinition function) function))
          (first (not (gethash key *hook-failures*)))
-         (text (format nil "~a failed and was left out: ~a" (hook-function-name function) (condition-words condition))))
+         (text (format nil "~a failed and was left out: ~a" (hook-function-name function) (failure-words condition))))
     (setf (gethash key *hook-failures*) t)
-    (debug-report :error "~a failed and was left out: ~a~{~%    ~a~}"
-                  (hook-function-name function) (failure-words condition)
-                  (and first (not *secret-at-hand*) (backtrace-lines)))
+    (debug-report :error "~a~{~%    ~a~}" text (and first (not *secret-at-hand*) (backtrace-lines)))
     (let ((say *hook-failure-function*))
-      (when (and first say *hook-failures-said*) (funcall say text)))))
+      (when (and first say *hook-failures-said*)
+        (funcall say (format nil "~a failed and was left out: ~a"
+                             (hook-function-name function) (failure-words condition :said t)))))))
 
 (defmacro with-failure-said ((function condition) form &body failed)
   "The values of FORM, a call of FUNCTION from a hook; when it fails (signals

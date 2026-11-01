@@ -17,7 +17,7 @@
   :serial t
   :components ((:file "package")
                (:file "version")
-               (:module "runtime"  :serial t :components ((:file "package") (:file "resources") (:file "stopping") (:file "pool") (:file "debug") (:file "threads") (:file "jobs") (:file "hooks")))
+               (:module "runtime"  :serial t :components ((:file "package") (:file "resources") (:file "stopping") (:file "debug") (:file "pool") (:file "threads") (:file "jobs") (:file "hooks")))
                (:module "dates"    :serial t :components ((:file "package") (:file "dates")))
                (:module "text"     :serial t :components ((:file "package") (:file "utf8") (:file "mapping") (:file "rope") (:file "edits") (:file "strings") (:file "version") (:file "json") (:file "xml") (:file "escapes")))
                (:module "buffer"   :serial t :components ((:file "package") (:file "buffer")))
