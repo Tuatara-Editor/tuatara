@@ -770,7 +770,8 @@ it may have open at once."
                 (if file-limit (princ-to-string (ceiling file-limit 512)) "unlimited")
                 (princ-to-string processes)
                 (if descriptors (princ-to-string descriptors) "as-is")
-                program)
+                ;; a path run where the sandbox shows it, as its directories are shown (SANDBOX-PLACE)
+                (if (uiop:absolute-pathname-p program) (real-place program) program))
           arguments))
 
 (defun said-text (octets)

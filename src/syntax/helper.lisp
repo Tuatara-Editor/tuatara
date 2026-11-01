@@ -656,10 +656,11 @@ editor's, does not wait when it cannot be read or written at once."
 
 (defun syntax-helper-program (&optional (directories (grammar-directories)))
   "The path of the program that parses for the editor, in the first of
-DIRECTORIES that has it, or NIL: without it, no text is parsed."
+DIRECTORIES that has it, as that directory is written, or NIL: without it, no
+text is parsed. Shut in, it is run where its directory is shown."
   (loop for directory in directories
-        for path = (probe-file (merge-pathnames *helper-program* directory))
-        when path return path))
+        for path = (merge-pathnames *helper-program* directory)
+        when (probe-file path) return path))
 
 (sb-ext:defglobal **starter** nil
   "The thread helpers are started from, kept as long as the editor runs: a

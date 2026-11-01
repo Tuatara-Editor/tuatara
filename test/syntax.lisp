@@ -3297,3 +3297,26 @@ bound to the fake frontend and the editor; the file and its buffer go afterwards
       (sb-int:unencapsulate 'tuatara.syntax::send-query 'dead)
       (remhash language tuatara.defaults::*rules-unanswered*)
       (setf (tuatara.defaults::language-query language) kept))))
+
+(define-test (syntax helper-run-where-its-directory-is-shown)
+  ;; the program that parses, found in a directory written through a link, is run, shut in, at a
+  ;; path within the place that directory is shown: through a link in /tmp, which the sandbox has
+  ;; as its own, the path as written; through one elsewhere, the place the link leads to
+  (with-test-directory (directory)
+    (let* ((real (ensure-directories-exist (merge-pathnames "grammars/" directory)))
+           (elsewhere (uiop:native-namestring (merge-pathnames "linked" directory)))
+           (in-tmp (format nil "/tmp/tuatara-test-~d-~36r" (sb-posix:getpid) (random (expt 36 8)))))
+      (alexandria:write-string-into-file "" (merge-pathnames "tuatara-syntax-helper" real))
+      (tuatara.io:make-symbolic-link (string-right-trim "/" (uiop:native-namestring real)) elsewhere)
+      (tuatara.io:make-symbolic-link (string-right-trim "/" (uiop:native-namestring real)) in-tmp)
+      (unwind-protect
+           (dolist (link (list in-tmp elsewhere))
+             (let* ((program (tuatara.syntax:syntax-helper-program
+                              (list (uiop:ensure-directory-pathname link))))
+                    (arguments (tuatara.io::sandbox-arguments (uiop:native-namestring program) '() nil nil
+                                                              :directories (list link)))
+                    (shown (tuatara.io:real-place link)))
+               (true (member shown arguments :test #'string=) "~a shown" shown)
+               (true (uiop:string-prefix-p (concatenate 'string shown "/") (car (last arguments)))
+                     "~a run within ~a" (car (last arguments)) shown)))
+        (tuatara.io:remove-file in-tmp)))))
