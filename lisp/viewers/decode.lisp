@@ -609,7 +609,10 @@ for print."
                              :density (and density (list "-density" (princ-to-string density)))
                              :jpeg-hint (and (eq kind :jpeg) (getf decoder :jpeg-hint)
                                              (destructuring-bind (option value) (getf decoder :jpeg-hint)
-                                               (list option (format nil value (max 1 width) (max 1 height)))))))
+                                               ;; never more than the JPEG's own size: ImageMagick 6 would enlarge it
+                                               (multiple-value-bind (across down) (and head (tuatara.io:octets-picture-size head))
+                                                 (list option (format nil value (max 1 (min width (or across width)))
+                                                                      (max 1 (min height (or down height))))))))))
                       :input fd :cancel cancel :seconds seconds :output-limit (+ 4096 (* 4 (max 1 width) (max 1 height)))
                       ;; a TIFF read from a pipe is copied to a file of the sandbox's first
                       :file-limit (max tuatara.io:*sandbox-file-limit* (+ (* 1024 1024) (or octets 0)))

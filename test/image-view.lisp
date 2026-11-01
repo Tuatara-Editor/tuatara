@@ -440,3 +440,19 @@ and a JP2 file with alpha at half."
   (let ((words (tuatara.defaults::image-decoder-words)))
     (when (search "magick (ImageMagick)" words)
       (false (search "without readers" words) "~a" words))))
+
+(define-test (image-view jpeg-never-decoded-larger)
+  ;; a JPEG smaller than the room it is shown in is decoded at its own size, never more (ImageMagick 6
+  ;; enlarges it to the size it is told); a larger one at no more than the room
+  (with-test-directory (dir)
+    (let ((small (namestring (merge-pathnames "small.jpg" dir)))
+          (large (namestring (merge-pathnames "large.jpg" dir)))
+          (tuatara.defaults::*image-decoders*
+            '((:name "stand-in" :program ("sh" "-c" "echo \"$*\" >&2; exit 1" "sh" :jpeg-hint :input)
+               :jpeg-hint ("-define" "jpeg:size=~dx~d")))))
+      (uiop:run-program (list "magick" "-size" "40x30" "xc:#336699" small))
+      (uiop:run-program (list "magick" "-size" "400x300" "xc:#336699" large))
+      (flet ((told (path)
+               (car (first (nth-value 1 (tuatara:decode-picture (alexandria:read-file-into-byte-vector path) :jpeg 64 48))))))
+        (true (search "-define jpeg:size=40x30 JPEG:-[0]" (told small)) "~a" (told small))
+        (true (search "-define jpeg:size=64x48 JPEG:-[0]" (told large)) "~a" (told large))))))
