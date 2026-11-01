@@ -3172,44 +3172,6 @@ bound to the fake frontend and the editor; the file and its buffer go afterwards
                  (true (< consed (* 16 1024)) "~:d matches consed ~:d octets" (floor matches 4) consed)))
           (release-parse tree parser))))))
 
-(defun colouring-garbage-per-key (text height)
-  "The octets working out and painting the colours of a Lisp TEXT make for
-each key typed in a window HEIGHT rows tall, and how many times its colours
-were worked out while those keys were typed, as two values."
-  (let ((path (records-file text :type "lisp"))
-        (keys "a b c d DEL DEL DEL DEL a b c d DEL DEL DEL DEL")
-        (counting nil) (octets 0) (worked-out 0) (buffer nil)
-        (measured '(tuatara.command::window-highlights-for tuatara.display:apply-highlights)))
-    (dolist (name measured)
-      (sb-int:encapsulate name 'garbage-per-key
-                          (lambda (function &rest arguments)
-                            (if counting
-                                (let ((before (tuatara.bench::bytes-consed)))
-                                  (multiple-value-prog1 (apply function arguments)
-                                    (incf octets (- (tuatara.bench::bytes-consed) before))))
-                                (apply function arguments)))))
-    (sb-int:encapsulate 'tuatara.syntax:rich-highlights 'garbage-per-key
-                        (lambda (function &rest arguments)
-                          (when counting (incf worked-out))
-                          (apply function arguments)))
-    (unwind-protect
-         ;; each key's colours from the text parsed after it
-         (let ((tuatara.syntax:*syntax-wait* 30) (tuatara.defaults::*rules-wait* 30))
-           (run-keys (list (lambda ()
-                             (setf buffer (tuatara.command:current-buffer))
-                             ;; its grammar loaded first, as it is a moment after a start
-                             (loop repeat 600
-                                   for language = (tuatara.buffer:buffer-local buffer :syntax-pending)
-                                   until (tuatara.syntax:buffer-syntax buffer)
-                                   do (when language (tuatara.defaults::start-parsing buffer language))
-                                      (sleep 0.05)))
-                           "C-v i" (lambda () (setf counting t)) keys (lambda () (setf counting nil)))
-                     :file path :width 100 :height height))
-      (dolist (name (cons 'tuatara.syntax:rich-highlights measured))
-        (sb-int:unencapsulate name 'garbage-per-key))
-      (kill-records buffer path))
-    (values (/ octets (1+ (count #\Space keys))) worked-out)))
-
 (define-test (syntax colouring-garbage-flat-with-rows)
   ;; typing in a coloured buffer: the garbage of its colours, worked out
   ;; afresh after each key, does not grow with the rows the window shows
@@ -3217,8 +3179,8 @@ were worked out while those keys were typed, as two values."
                 (dotimes (i 300)
                   (format s "(defun f~d (x &key (y ~d))~%  \"Doc ~d.\" (list :k x y 'f~d #\\a \"s~d\" (+ 1 2)))~%"
                           i i i i i)))))
-    (multiple-value-bind (low low-worked) (colouring-garbage-per-key text 20)
-      (multiple-value-bind (high high-worked) (colouring-garbage-per-key text 60)
+    (multiple-value-bind (low low-worked) (typing-garbage-per-key text "lisp" 20 *colouring-functions*)
+      (multiple-value-bind (high high-worked) (typing-garbage-per-key text "lisp" 60 *colouring-functions*)
         ;; the colours were worked out again for each key that changed the text
         (true (>= low-worked 16) "~d colourings" low-worked)
         (true (>= high-worked 16) "~d colourings" high-worked)

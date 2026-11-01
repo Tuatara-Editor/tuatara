@@ -121,6 +121,51 @@ a list, has the frontend show pictures."
                                                   :buffer (tuatara.buffer:find-buffer "*scratch*")))))
       (values f editor))))
 
+(defparameter *colouring-functions* '(tuatara.command::window-highlights-for tuatara.display:apply-highlights)
+  "The functions that work out and paint the colours of a window's text.")
+
+(defun typing-garbage-per-key (text type height measured &key less)
+  "The octets the functions named in MEASURED make, less those the functions
+named in LESS make, for each key typed in a window HEIGHT rows tall on a file
+of TYPE holding TEXT, its colours worked out afresh after each key; and how
+many times its colours were worked out while those keys were typed, as a
+second value."
+  (let ((path (records-file text :type type))
+        (keys "a b c d DEL DEL DEL DEL a b c d DEL DEL DEL DEL")
+        (counting nil) (octets 0) (worked-out 0) (buffer nil))
+    (flet ((count-octets (names sign)
+             (dolist (name names)
+               (sb-int:encapsulate name 'garbage-per-key
+                                   (lambda (function &rest arguments)
+                                     (if counting
+                                         (let ((before (tuatara.bench::bytes-consed)))
+                                           (multiple-value-prog1 (apply function arguments)
+                                             (incf octets (* sign (- (tuatara.bench::bytes-consed) before)))))
+                                         (apply function arguments)))))))
+      (count-octets measured 1)
+      (count-octets less -1))
+    (sb-int:encapsulate 'tuatara.syntax:rich-highlights 'garbage-per-key
+                        (lambda (function &rest arguments)
+                          (when counting (incf worked-out))
+                          (apply function arguments)))
+    (unwind-protect
+         ;; each key's colours from the text parsed after it
+         (let ((tuatara.syntax:*syntax-wait* 30) (tuatara.defaults::*rules-wait* 30))
+           (run-keys (list (lambda ()
+                             (setf buffer (tuatara.command:current-buffer))
+                             ;; its grammar loaded first, as it is a moment after a start
+                             (loop repeat 600
+                                   for language = (tuatara.buffer:buffer-local buffer :syntax-pending)
+                                   until (or (null language) (tuatara.syntax:buffer-syntax buffer))
+                                   do (tuatara.defaults::start-parsing buffer language)
+                                      (sleep 0.05)))
+                           "C-v i" (lambda () (setf counting t)) keys (lambda () (setf counting nil)))
+                     :file path :width 100 :height height))
+      (dolist (name (list* 'tuatara.syntax:rich-highlights (append measured less)))
+        (sb-int:unencapsulate name 'garbage-per-key))
+      (kill-records buffer path))
+    (values (/ octets (1+ (count #\Space keys))) worked-out)))
+
 (defmacro with-functions-replaced ((&rest bindings) &body body)
   "Run BODY with each (NAME FUNCTION) of BINDINGS standing in for the global
 function NAME, which is put back afterwards."

@@ -677,6 +677,133 @@ shows (scrolling, moving to a row of it) while nothing is drawn."
     (when (plusp (tuatara.display:area-height window))
       (lay-out-window editor window))))
 
+(defun text-row-piece (row pieces margin left width cursor rulers shift)
+  "The piece of a screen row (see PUT-SCREEN-ROW) showing ROW of a window LEFT
+columns from the screen's edge and WIDTH wide: its gutter of MARGIN columns
+from PIECES, each (STRING . FACE), its text in its faces, CURSOR (the face of
+another cursor after the end of its line, or NIL), the columns RULERS marks,
+each (AT FACE), and SHIFT, how far rows drawn large above move it down."
+  (let* ((gutter (if (plusp margin)
+                     (concatenate 'string (apply #'concatenate 'string (mapcar #'car pieces)) " ")
+                     ""))
+         ;; the gutter's colours only where it is shown (not in the hex view, whose offsets stand there)
+         (spans (append (and (plusp margin)
+                             (let ((pos 0))
+                               (loop for (text . face) in pieces
+                                     collect (prog1 (list pos (+ pos (length text)) face) (incf pos (length text))))))
+                        (mapcar (lambda (span)
+                                  (list (+ (first span) (length gutter)) (+ (second span) (length gutter)) (third span)))
+                                (tuatara.display:row-spans row))))
+         (text (concatenate 'string gutter (tuatara.display:row-string row)))
+         (cursor-cell (and (< (+ (length gutter) (tuatara.display:row-columns row)) width) cursor))
+         (extend (tuatara.display:row-extend row))
+         ;; a face carried past the line's end fills the row to the window's edge
+         (fill (if extend
+                   (max 0 (- width (length gutter) (tuatara.display:row-columns row) (if cursor-cell 1 0)))
+                   0)))
+    ;; another cursor after the end of the line's text
+    (when cursor-cell
+      (setf spans (append spans (list (list (length text) (1+ (length text)) cursor-cell)))
+            text (concatenate 'string text " ")))
+    (when (plusp fill)
+      (let ((last (car (last spans))) (end (+ (length text) fill)))
+        (setf spans (if (and last (= (second last) (length text)) (equal (third last) extend))
+                        (append (butlast spans) (list (list (first last) end extend)))
+                        (append spans (list (list (length text) end extend))))
+              text (concatenate 'string text (make-string fill :initial-element #\Space)))))
+    (multiple-value-bind (text spans) (ruler-cells text (remove nil spans :key #'third) rulers)
+      ;; a row drawn large, from after its gutter, or moved down by those above
+      (let ((scale (tuatara.display:row-scale row)))
+        (list left width text spans nil
+              (and (or (/= scale 1) (plusp shift)) (list (length gutter) scale shift))
+              (tuatara.display:string-columns gutter))))))
+
+(defstruct (drawn-row (:constructor make-drawn-row ()) (:copier nil))
+  "What a window's screen row was last drawn from, and the PIECE made of it
+\(ROW-PIECE): the TEXT of the row of the buffer it showed and the FACES of its
+characters (copies), its EXTEND, COLUMNS and SCALE, the GUTTER pieces, the
+CURSOR, the RULERS, the LEFT, WIDTH and MARGIN of the window and the SHIFT of
+the rows above. TEXT is NIL for a row past the buffer's text."
+  (text nil) (faces nil) (extend nil) (columns 0) (scale 1) (gutter nil) (cursor nil) (rulers nil)
+  (left 0) (width 0) (margin 0) (shift 0) (piece nil))
+
+(setf (documentation 'drawn-row-p 'function) "True when OBJECT is a DRAWN-ROW."
+      (documentation 'make-drawn-row 'function) "A DRAWN-ROW of nothing drawn yet."
+      (documentation 'drawn-row-text 'function) "The text of the buffer's row drawn, or NIL past the text."
+      (documentation 'drawn-row-faces 'function) "The faces of the row's characters drawn."
+      (documentation 'drawn-row-extend 'function) "The face carried past the end of the row's line."
+      (documentation 'drawn-row-columns 'function) "The columns the row's text took."
+      (documentation 'drawn-row-scale 'function) "How large the row was drawn."
+      (documentation 'drawn-row-gutter 'function) "The gutter's pieces beside the row."
+      (documentation 'drawn-row-cursor 'function) "The face of another cursor after the row's line, or NIL."
+      (documentation 'drawn-row-rulers 'function) "The columns marked down the window."
+      (documentation 'drawn-row-left 'function) "The window's left column."
+      (documentation 'drawn-row-width 'function) "The window's width."
+      (documentation 'drawn-row-margin 'function) "The width of the window's gutter."
+      (documentation 'drawn-row-shift 'function) "How far rows drawn large above moved the row down."
+      (documentation 'drawn-row-piece 'function) "The piece of the screen row made, or NIL before.")
+
+(defvar *drawn-rows* (make-hash-table :test 'eq :weakness :key :synchronized t)
+  "For each window, a vector of the DRAWN-ROW of each of its screen rows.")
+
+(defun drawn-row (window r)
+  "The DRAWN-ROW of WINDOW's screen row R."
+  (let ((rows (gethash window *drawn-rows*)))
+    (when (<= (length rows) r)
+      (setf rows (setf (gethash window *drawn-rows*)
+                       (let ((more (make-array (max (1+ r) (* 2 (length rows))))))
+                         (replace more rows)
+                         (loop for i from (length rows) below (length more)
+                               do (setf (svref more i) (make-drawn-row)))
+                         more))))
+    (svref rows r)))
+
+(defun drawn-as-before-p (drawn row pieces margin left width cursor rulers shift)
+  "True when DRAWN, a DRAWN-ROW, was drawn from what the screen row is to be
+drawn from now: ROW of the buffer (NIL past its text), with PIECES, MARGIN,
+LEFT, WIDTH, CURSOR, RULERS and SHIFT as ROW-PIECE takes them."
+  (and (drawn-row-piece drawn)
+       (if row
+           (let ((text (drawn-row-text drawn)) (faces (drawn-row-faces drawn))
+                 (now (tuatara.display:row-faces row)))
+             (and text (string= text (tuatara.display:row-string row))
+                  (= (length faces) (length now))
+                  (loop for i from 0 below (length faces) always (equal (svref faces i) (aref now i)))
+                  (equal (drawn-row-extend drawn) (tuatara.display:row-extend row))
+                  (= (drawn-row-columns drawn) (tuatara.display:row-columns row))
+                  (eql (drawn-row-scale drawn) (tuatara.display:row-scale row))
+                  (equal (drawn-row-gutter drawn) pieces)
+                  (equal (drawn-row-cursor drawn) cursor)))
+           (null (drawn-row-text drawn)))
+       (equal (drawn-row-rulers drawn) rulers)
+       (= (drawn-row-left drawn) left) (= (drawn-row-width drawn) width)
+       (= (drawn-row-margin drawn) margin) (= (drawn-row-shift drawn) shift)))
+
+(defun row-piece (window r row pieces margin left width cursor rulers shift)
+  "The piece of WINDOW's screen row R (see PUT-SCREEN-ROW): ROW of its buffer
+as TEXT-ROW-PIECE makes it from PIECES, MARGIN, LEFT, WIDTH, CURSOR, RULERS
+and SHIFT, or with no ROW a row past the text. The piece made the last time
+the row was drawn is given again while it is drawn from the same: a row is
+made only when something it shows has changed."
+  (let ((drawn (drawn-row window r)))
+    (if (drawn-as-before-p drawn row pieces margin left width cursor rulers shift)
+        (drawn-row-piece drawn)
+        (progn
+          (setf (drawn-row-text drawn) (and row (copy-seq (tuatara.display:row-string row)))
+                (drawn-row-faces drawn) (and row (coerce (copy-seq (tuatara.display:row-faces row)) 'simple-vector))
+                (drawn-row-extend drawn) (and row (tuatara.display:row-extend row))
+                (drawn-row-columns drawn) (if row (tuatara.display:row-columns row) 0)
+                (drawn-row-scale drawn) (and row (tuatara.display:row-scale row))
+                (drawn-row-gutter drawn) pieces (drawn-row-cursor drawn) cursor (drawn-row-rulers drawn) rulers
+                (drawn-row-left drawn) left (drawn-row-width drawn) width (drawn-row-margin drawn) margin
+                (drawn-row-shift drawn) shift)
+          (setf (drawn-row-piece drawn)
+                (if row
+                    (text-row-piece row pieces margin left width cursor rulers shift)
+                    (multiple-value-bind (text spans) (ruler-cells "" '() rulers)
+                      ;; below rows moved down: left to them
+                      (list left width text spans nil (and (plusp shift) (list 0 0 0))))))))))
+
 (defun window-pieces (editor window selected screen)
   "Lay WINDOW out with its point visible and add what it shows to SCREEN, a
 vector of the pieces of each screen row (PUT-SCREEN-ROW): its buffer's header
@@ -704,7 +831,8 @@ cells, a terminal's) are noted too, its text shown as it is."
                                    (nconc (window-highlights-for editor window rows) (list ranges)))
                             ends))
              (margin (tuatara.display:window-margin window))
-             (cells (gutter-cells editor window rows))
+             ;; a gutter's cells only where it is shown
+             (cells (and (plusp margin) (gutter-cells editor window rows)))
              ;; the screen columns marked down the window
              (rulers (let ((shift (if (tuatara.display:window-wraps-p window) 0 (tuatara.display:window-hscroll window))))
                        (loop for (column face) in (loop for f in *ruler-functions* append (tuatara.runtime:call-hook-function f window))
@@ -747,46 +875,11 @@ cells, a terminal's) are noted too, its text shown as it is."
         (let ((shift 0) (drawn (min (length rows) (tuatara.display:window-rows-drawn window))))
          (dotimes (r height)
           (push (if (< r drawn)
-                    (let* ((row (aref rows r))
-                           (pieces (pop cells))
-                           (gutter (if (plusp margin)
-                                       (concatenate 'string (apply #'concatenate 'string (mapcar #'car pieces)) " ")
-                                       ""))
-                           ;; the gutter's colours only where it is shown (not in the hex view, whose offsets stand there)
-                           (spans (append (and (plusp margin)
-                                               (let ((pos 0))
-                                                 (loop for (text . face) in pieces
-                                                       collect (prog1 (list pos (+ pos (length text)) face) (incf pos (length text))))))
-                                          (mapcar (lambda (span) (list (+ (first span) (length gutter)) (+ (second span) (length gutter)) (third span)))
-                                                  (tuatara.display:row-spans row))))
-                           (text (concatenate 'string gutter (tuatara.display:row-string row)))
-                           (cursor-cell (and (< (+ (length gutter) (tuatara.display:row-columns row)) width)
-                                             (cdr (assoc r cursor-ends))))
-                           (extend (tuatara.display:row-extend row))
-                           ;; a face carried past the line's end fills the row to the window's edge
-                           (fill (if extend
-                                     (max 0 (- width (length gutter) (tuatara.display:row-columns row) (if cursor-cell 1 0)))
-                                     0)))
-                      ;; another cursor after the end of the line's text
-                      (when cursor-cell
-                        (setf spans (append spans (list (list (length text) (1+ (length text)) cursor-cell)))
-                              text (concatenate 'string text " ")))
-                      (when (plusp fill)
-                        (let ((last (car (last spans))) (end (+ (length text) fill)))
-                          (setf spans (if (and last (= (second last) (length text)) (equal (third last) extend))
-                                          (append (butlast spans) (list (list (first last) end extend)))
-                                          (append spans (list (list (length text) end extend))))
-                                text (concatenate 'string text (make-string fill :initial-element #\Space)))))
-                      (multiple-value-bind (text spans) (ruler-cells text (remove nil spans :key #'third) rulers)
-                        ;; a row drawn large, from after its gutter, or moved down by those above
-                        (let ((scale (tuatara.display:row-scale row)))
-                          (prog1 (list left width text spans nil
-                                       (and (or (/= scale 1) (plusp shift)) (list (length gutter) scale shift))
-                                       (tuatara.display:string-columns gutter))
-                            (incf shift (1- scale))))))
-                    (multiple-value-bind (text spans) (ruler-cells "" '() rulers)
-                      ;; below rows moved down: left to them
-                      (list left width text spans nil (and (plusp shift) (list 0 0 0)))))
+                    (let ((row (aref rows r)))
+                      (prog1 (row-piece window r row (pop cells) margin left width (cdr (assoc r cursor-ends))
+                                        rulers shift)
+                        (incf shift (1- (tuatara.display:row-scale row)))))
+                    (row-piece window r nil nil margin left width nil rulers shift))
                 (aref screen (+ top r)))
           (when (tuatara.display:window-divider window)
             (push (list (+ left width) 1 *window-divider* '((0 1 :vertical-border)) nil) (aref screen (+ top r))))))

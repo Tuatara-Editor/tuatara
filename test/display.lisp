@@ -906,3 +906,15 @@
       (let ((fit (fastest (lambda () (tuatara.command::fit-to-columns row 130))))
             (count (fastest (lambda () (tuatara.display:string-columns row)))))
         (true (< fit count) "fitting took ~,1f µs, counting ~,1f µs" (* 500 fit) (* 500 count))))))
+
+(define-test (display rows-shown-as-before-not-made-again)
+  ;; typing on one line: the screen rows that show what they showed are not
+  ;; made again, so a taller window makes no more garbage for each key
+  (let ((text (with-output-to-string (s)
+                (dotimes (i 300) (format s "Line ~d of a plain text, long enough to fill a row of the window.~%" i))))
+        (made-elsewhere '(tuatara.command::lay-out-window tuatara.command::window-highlights-for
+                          tuatara.display:apply-highlights)))
+    (let ((low (typing-garbage-per-key text "txt" 20 '(tuatara.command::window-pieces) :less made-elsewhere))
+          (high (typing-garbage-per-key text "txt" 60 '(tuatara.command::window-pieces) :less made-elsewhere)))
+      (true (< (/ (- high low) 40) 64) "~,1f octets a key at 20 rows, ~,1f at 60: ~,1f more for each row"
+            low high (/ (- high low) 40)))))
