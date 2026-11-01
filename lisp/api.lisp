@@ -19,6 +19,78 @@
 it is NIL, whatever *SENTENCE-END-DOUBLE-SPACE* says."
   (setf (tuatara.buffer:buffer-local buffer :sentence-end-double-space) value))
 
+(defun agenda-entry-get (entry field)
+  "What the agenda entry ENTRY (as ORG-AGENDA-FILE-ENTRIES gives them) holds
+for FIELD: :FILE, the path of its file; :TEXT, the whole text of that file as
+it was read; :POSITION and :END, the characters of that text its headline
+begins at and its own text ends at, its headlines below left out; :LEVEL, how
+many stars it has; :TODO, its TODO keyword, or NIL; :TODO-TYPE, TODO or DONE
+for that keyword, NIL for none; :TITLE, its headline without stars, keyword,
+priority and tags; :HEADING, its headline after the stars as written; :TAGS,
+its tags, those it inherits first; :LOCAL-TAGS, its own, on its headline;
+:SCHEDULED, :DEADLINE and :CLOSED, the texts of those timestamps, or NIL;
+:PROPERTIES, an alist of names and values; :STAMPS, the texts of the active
+timestamps in its text, its planning line's left out; :RANGES, its ranges of
+days, each (FROM TO), the two timestamps' texts."
+  (ecase field
+    (:file (agenda-entry-file entry))
+    (:text (agenda-entry-text entry))
+    (:position (agenda-entry-position entry))
+    (:end (agenda-entry-end entry))
+    (:level (agenda-entry-level entry))
+    (:todo (agenda-entry-todo entry))
+    (:todo-type (agenda-entry-todo-type entry))
+    (:title (agenda-entry-title entry))
+    (:heading (agenda-entry-heading entry))
+    (:tags (agenda-entry-tags entry))
+    (:local-tags (agenda-entry-local-tags entry))
+    (:scheduled (agenda-entry-scheduled entry))
+    (:deadline (agenda-entry-deadline entry))
+    (:closed (agenda-entry-closed entry))
+    (:properties (agenda-entry-properties entry))
+    (:stamps (agenda-entry-stamps entry))
+    (:ranges (agenda-entry-ranges entry))))
+
+(defun org-ts-get (ts field)
+  "What the timestamp TS (as ORG-READ-TS reads one) holds for FIELD: :ACTIVE,
+true for <...>, NIL for [...]; :YEAR, :MONTH and :DAY, its date as written;
+:DAY-NUMBER, its day as a day number (DAY-NUMBER), a date past its month's
+end counted on into the next; :HOUR and :MINUTE, its time, NIL without one;
+:END-HOUR and :END-MINUTE, the end of its time range, NIL without one;
+:REPEATER, how it repeats, :CUMULATE (+), :CATCH-UP (++) or :RESTART (.+), NIL
+when it does not; :REPEAT-VALUE and :REPEAT-UNIT, how often, the unit #\\h,
+#\\d, #\\w, #\\m or #\\y."
+  (ecase field
+    (:active (org-ts-active ts))
+    (:year (org-ts-year ts))
+    (:month (org-ts-month ts))
+    (:day (org-ts-day ts))
+    (:day-number (org-ts-day-number ts))
+    (:hour (org-ts-hour ts))
+    (:minute (org-ts-minute ts))
+    (:end-hour (org-ts-end-hour ts))
+    (:end-minute (org-ts-end-minute ts))
+    (:repeater (org-ts-repeater ts))
+    (:repeat-value (org-ts-repeat-value ts))
+    (:repeat-unit (org-ts-repeat-unit ts))))
+
+(defun org-rule-get (rule field)
+  "What the date by rule RULE (as ORG-READ-RULE reads one) holds for FIELD:
+:KIND, one of :FLOAT (the Nth or last weekday of a month), :CYCLIC (every N
+days), :BLOCK (every day from one date to another), :ANNIVERSARY (a day each
+year), :DATE (the days whose year, month and day are as given), :WEEKDAYS
+\(the days of the week listed, 0 for Sunday to 6 for Saturday), :ALL (the days
+all its rules take) or :ANY (the days any of them takes); :ARGUMENTS, what
+its form says, as ORG-READ-RULE reads them; :HOUR, :MINUTE, :END-HOUR and
+:END-MINUTE, the time written after it, or NIL."
+  (ecase field
+    (:kind (org-rule-kind rule))
+    (:arguments (org-rule-arguments rule))
+    (:hour (org-rule-hour rule))
+    (:minute (org-rule-minute rule))
+    (:end-hour (org-rule-end-hour rule))
+    (:end-minute (org-rule-end-minute rule))))
+
 (defparameter *api*
   '(;; defining commands, modes, keys, faces, settings and background work
     tuatara.command:define-command tuatara.modes:define-major-mode define-language define-face define-package-setting
@@ -65,8 +137,9 @@ it is NIL, whatever *SENTENCE-END-DOUBLE-SPACE* says."
     tuatara.runtime:jobs-of tuatara.runtime:make-guarded-thread tuatara.runtime:deadline-in tuatara.runtime:deadline-passed-p
     tuatara.runtime:job-take-in tuatara.runtime:job-percent tuatara.runtime:job-state-words tuatara.runtime:job-status
     tuatara.runtime:job-program-started tuatara.runtime:running-job take-in-soon
-    ;; failures nothing can be done about, kept in the debug log
+    ;; failures nothing can be done about, kept in the debug log, and failures said
     tuatara.runtime:ignoring-errors-reported tuatara.runtime:reporting-errors tuatara.runtime:*secret-at-hand*
+    tuatara.runtime:failure-words
     ;; hooks, each a list a package adds its function to
     *post-self-insert-functions* tuatara.buffer:*kill-buffer-functions* *kill-buffer-query-functions* tuatara.command:*mode-line-functions*
     *health-decoder-functions* *preview-text-functions* *file-local-setting-functions* *file-local-taken-functions* *file-views*
@@ -101,12 +174,8 @@ it is NIL, whatever *SENTENCE-END-DOUBLE-SPACE* says."
     tuatara.dates:zone-rule tuatara.dates:make-zone-rule tuatara.dates:zone-rule-standard-name tuatara.dates:zone-rule-standard-offset
     tuatara.dates:zone-rule-daylight-name tuatara.dates:zone-rule-daylight-offset tuatara.dates:zone-rule-to-daylight tuatara.dates:zone-rule-to-standard
     ;; Org entries as the agenda reads them, their timestamps, dates by rule and times cancelled or moved
-    org-agenda-file-entries agenda-entry-file agenda-entry-text agenda-entry-position agenda-entry-end agenda-entry-level
-    agenda-entry-todo agenda-entry-todo-type agenda-entry-title agenda-entry-heading agenda-entry-tags agenda-entry-local-tags
-    agenda-entry-scheduled agenda-entry-deadline agenda-entry-closed agenda-entry-properties agenda-entry-stamps agenda-entry-ranges
-    org-read-ts make-org-ts org-ts-text org-ts-day-number org-ts-active org-ts-year org-ts-month org-ts-day org-ts-hour org-ts-minute
-    org-ts-end-hour org-ts-end-minute org-ts-repeater org-ts-repeat-value org-ts-repeat-unit org-ts-time-text org-day-timestamp-text
-    org-read-rule org-rule-text-p org-rule-next org-rule-kind org-rule-arguments org-rule-hour org-rule-minute org-rule-end-hour org-rule-end-minute
+    org-agenda-file-entries agenda-entry-get org-read-ts make-org-ts org-ts-get org-ts-text org-ts-time-text
+    org-day-timestamp-text org-read-rule org-rule-get org-rule-text-p org-rule-next
     org-occurrence-notes org-occurrence-note repeat-rule-text repeat-months repeat-open-end org-agenda-main-file org-capture-with
     org-planning-line-p org-ends-with-newline-p org-ensure-newline tuatara.io:file-text
     ;; an Org file written to while it may be open: its buffer, its new text by lines, saved

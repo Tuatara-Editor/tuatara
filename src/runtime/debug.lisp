@@ -159,10 +159,14 @@ a key, never hold a buffer's text."
   (error 'refusal :format-control control :format-arguments arguments))
 
 (defun failure-words (condition &key said)
-  "CONDITION in words, for the debug log, or with SAID for telling the person
-what failed: as CONDITION-WORDS says it, or only its kind while a secret is at
-hand (*SECRET-AT-HAND*), whose words could hold the secret. Told the person, a
-REFUSAL keeps its words even then: they are the editor's own."
+  "CONDITION, an error caught, in words, for the debug log or, with SAID true,
+for a message saying what failed: what the condition itself says (\"No such
+file\"), or, while a secret is at hand (*SECRET-AT-HAND* true, as the editor
+makes it around work on a buffer kept secret), only its kind, \"a
+file-error\", since what it says could hold the secret. With SAID, a REFUSAL
+keeps its words even then: they are the editor's own. Say a failure through
+it rather than writing the condition into a message yourself, and nothing
+secret is ever shown."
   (if (and *secret-at-hand* (not (and said (typep condition 'refusal))))
       (format nil "a ~(~a~)" (type-of condition))
       (condition-words condition)))
