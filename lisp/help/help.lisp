@@ -118,7 +118,7 @@ place, list them in *xref*."
 pieces: Defined in, then its file within the source tree (SOURCE-FILE-WORDS)
 as a link that shows it there (VISIT-SOURCE); NIL when it is not known. A
 function the init file defined is in the init file (INIT-FILE-DEFINITION);
-others are where SBCL's source records say."
+others are where Steel Bank Common Lisp (SBCL)'s source records say."
   (let* ((init (and (eq kind :function) (init-file-definition symbol)))
          (sources (and (not init)
                        (ignoring-errors-reported ("finding where ~s is defined" symbol)
@@ -384,8 +384,8 @@ is in it already."
 
 (define-command tuatara-version ()
   "Say which Tuatara this is: its version, the commit it was built from and
-when, the SBCL it runs on, and where it shows (a window, the terminal). With
-\\[universal-argument], put that at point instead."
+when, the Steel Bank Common Lisp (SBCL) it runs on, and where it shows (a
+window, the terminal). With \\[universal-argument], put that at point instead."
   (let ((line (tuatara:version-line (tuatara.frontend:frontend-description (editor-frontend *editor*)))))
     (if (prefix-argument)
         (goto (tuatara.buffer:buffer-insert (current-buffer) (point) line))

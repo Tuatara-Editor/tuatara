@@ -499,8 +499,8 @@ file in conflict's, how both sides changed it (GIT-UNMERGED-WORD)."
     state))
 
 (defun git-records (text count)
-  "TEXT, lines git printed each of COUNT fields apart by NUL, as a list of
-the lists of their fields; a line of another count of fields left out."
+  "TEXT, lines git printed each of COUNT fields apart by null (NUL), as a list
+of the lists of their fields; a line of another count of fields left out."
   (loop for line in (uiop:split-string text :separator '(#\Newline))
         for fields = (uiop:split-string line :separator (list (code-char 0)))
         when (= count (length fields)) collect fields))
@@ -1115,7 +1115,8 @@ or submodules, none."
 input (GIT-PATHS-INPUT), however many there are.")
 
 (defun git-paths-input (paths)
-  "PATHS as git reads them with *GIT-PATHS-FROM-INPUT*: each ended by a NUL."
+  "PATHS as git reads them with *GIT-PATHS-FROM-INPUT*: each ended by a null
+(NUL)."
   (with-output-to-string (out)
     (dolist (path paths) (write-string path out) (write-char (code-char 0) out))))
 

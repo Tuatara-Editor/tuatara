@@ -261,7 +261,8 @@ no place."
           (t (file-location-definition server uri (tuatara.text:json-get range "start"))))))
 
 (defun file-location-definition (server uri start)
-  "The place START, a position SERVER sent, of the file URI names, as a DEFINITION."
+  "The place START, a position SERVER sent, of the file uniform resource
+identifier (URI) names, as a DEFINITION."
   (let ((path (uri-path uri))
         (line (tuatara.text:json-integer start "line")))
     (make-definition (format nil "~d: ~a" (1+ line) (if path (location-line server path line) ""))
@@ -541,7 +542,8 @@ narrowed to another part, as a server's changes reach the whole file."
 
 (defun workspace-edit-changes (edit)
   "The changes of EDIT, a server's WorkspaceEdit, a file at a time: each (URI
-. EDITS); and as a second value how many files it would make, rename or delete."
+. EDITS) with the file's uniform resource identifier (URI) first; and as a
+second value how many files it would make, rename or delete."
   (let ((changes '()) (others 0))
     (let ((by-uri (tuatara.text:json-get edit "changes")))
       (when (hash-table-p by-uri)
@@ -553,9 +555,10 @@ narrowed to another part, as a server's changes reach the whole file."
     (values (nreverse changes) others)))
 
 (defun lsp-apply-file-edits (server uri edits)
-  "Make EDITS, SERVER's TextEdits of what the address URI names, in its
-buffer as one change, the file opened when no buffer has it: true when it
-changed, NIL when there was nothing to change; else words saying why not."
+  "Make EDITS, SERVER's TextEdits of what the address uniform resource
+identifier (URI) names, in its buffer as one change, the file opened when
+no buffer has it: true when it changed, NIL when there was nothing to
+change; else words saying why not."
   (let ((path (uri-path uri)))
     (cond ((null path) (format nil "~a is no file here" uri))
           ((safe-directory-of path) (format nil "~a is in one of *safe-directories*" (abbreviated-path path)))

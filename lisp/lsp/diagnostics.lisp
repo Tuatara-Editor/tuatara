@@ -119,8 +119,9 @@ name: each a list of (SERVER . DIAGNOSTICS), DIAGNOSTICS as the server sent
 them.")
 
 (defun keep-file-diagnostics (server uri items)
-  "Keep ITEMS, what SERVER found wrong in the file URI names, not open, when
-the file is in its project; the list of them shown again."
+  "Keep ITEMS, what SERVER found wrong in the file uniform resource identifier
+(URI) names, not open, when the file is in its project; the list of them
+shown again."
   (let ((path (uri-path uri)))
     (when (and path (tuatara.io:really-within-p path (lsp-server-root server)))
       (let ((others (remove server (gethash path *lsp-file-diagnostics*) :key #'car)))

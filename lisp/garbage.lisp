@@ -30,8 +30,9 @@ octets, or when it is NIL a quarter of the heap free now (HEAP-FREE)."
 
 (defparameter *nursery-octets* (* 256 1024 1024)
   "How many octets of new data are made between two collections of garbage:
-more than SBCL's standard, so that collections come seldom; each takes as
-long as what is still in use takes to copy, not as long as this.")
+more than Steel Bank Common Lisp (SBCL)'s standard, so that collections come
+seldom; each takes as long as what is still in use takes to copy, not as long
+as this.")
 
 (defun set-collection-policy ()
   "Have garbage collected as Tuatara wants it (*NURSERY-OCTETS*), as the
@@ -93,9 +94,9 @@ about, or a key waits to be answered, look again when that time is up."
 ;;; How long each collection stood still
 
 (defvar *gc-time-seen* 0
-  "SBCL's time stood still for collections (SB-EXT:*GC-REAL-TIME*) as it was
-after the last collection, in internal time units: what the last one took is
-the difference.")
+  "Steel Bank Common Lisp (SBCL)'s time stood still for collections
+(SB-EXT:*GC-REAL-TIME*) as it was after the last collection, in internal
+time units: what the last one took is the difference.")
 
 (defun report-gc ()
   "After each collection of garbage: note what it took and the data made so
@@ -111,10 +112,10 @@ stood still for it and how much of the heap is in use."
                                       (generation-megabytes))))))
 
 (defun generation-megabytes ()
-  "How many megabytes each of SBCL's generations 0 to 5 holds now, the
-youngest first: data that lives on is moved from one to the next, and a
-collection of one copies what lives in it and every younger one, so that a
-long pause shows as an older generation that has shrunk."
+  "How many megabytes each of Steel Bank Common Lisp (SBCL)'s generations 0 to
+5 holds now, the youngest first: data that lives on is moved from one to
+the next, and a collection of one copies what lives in it and every younger
+one, so that a long pause shows as an older generation that has shrunk."
   (loop for generation from 0 to 5
         collect (/ (sb-ext:generation-bytes-allocated generation) 1048576.0)))
 

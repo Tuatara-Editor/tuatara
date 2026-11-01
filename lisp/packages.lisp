@@ -90,12 +90,12 @@ ACCEPTED), or NIL."
 your home folder), as the source NAME, for load-package's :source:
 \(package-source \"mine\" \"https://example.org/my-packages.git\").
 
-SIGNERS, a list of the keys' fingerprints that sign its versions (an SSH
-key's SHA256:..., a GPG key's 40 hexadecimal digits), takes from it only
-versions signed by one of them, from the first; without it, whoever signed
-the first version taken is remembered and asked of every later one. An
-address of http:// or git:// is allowed only by :plain t on the
-load-package of each package fetched from it."
+SIGNERS, a list of the keys' fingerprints that sign its versions (a secure
+shell (SSH) key's SHA256:..., a GNU Privacy Guard (GPG) key's 40 hexadecimal
+digits), takes from it only versions signed by one of them, from the first;
+without it, whoever signed the first version taken is remembered and asked of
+every later one. An address of http:// or git:// is allowed only by :plain t
+on the load-package of each package fetched from it."
   (unless (and (stringp name) (plusp (length name)))
     (refuse "package-source takes a name and an address or a folder: ~s ~s" name where))
   (check-package-where where)
@@ -113,8 +113,8 @@ or git:// by :plain t on their load-package, each (NAME . WHERE).")
 
 (defun signer-fingerprint (text)
   "The key's fingerprint TEXT writes, as it is compared: spaces taken out, and
-a GPG key's hexadecimal digits in capitals; an SSH key's (SHA256:...) as
-written."
+a GNU Privacy Guard (GPG) key's hexadecimal digits in capitals; a secure shell
+(SSH) key's (SHA256:...) as written."
   (let ((bare (remove #\Space text)))
     (if (every (lambda (c) (digit-char-p c 16)) bare) (string-upcase bare) bare)))
 
@@ -636,8 +636,9 @@ changed."
                                 maximize (or (file-write-date file) 0))))))))
 
 (defun package-cache ()
-  "The folder packages are compiled into for this Tuatara and this SBCL; those
-of other ones are deleted the first time it is asked for."
+  "The folder packages are compiled into for this Tuatara and this Steel Bank
+Common Lisp (SBCL); those of other ones are deleted the first time it is
+asked for."
   (let* ((sbcl (format nil "~apackages/~a/" (tuatara.io:native (tuatara.io:cache-directory))
                        (tuatara.io:percent-encoded (lisp-implementation-version) :safe "._-")))
          (here (format nil "~a~a/" sbcl (tuatara-identity))))
@@ -649,8 +650,9 @@ of other ones are deleted the first time it is asked for."
 
 (defun package-fasl (file)
   "Where the compiled FILE of a package is kept: in the cache, by which
-Tuatara and which SBCL compile it (PACKAGE-CACHE), in folders as the file's
-own are, fetched/ for a package fetched and local/ for one of a folder of yours."
+Tuatara and which Steel Bank Common Lisp (SBCL) compile it (PACKAGE-CACHE), in
+folders as the file's own are, fetched/ for a package fetched and local/ for
+one of a folder of yours."
   (let* ((native (tuatara.io:native file))
          (fetched (tuatara.io:native (packages-directory)))
          (inside (if (uiop:string-prefix-p fetched native)
@@ -1526,10 +1528,10 @@ what is remembered of it, says was fetched; NIL when none was."
 (defun parse-trust-line (line)
   "The entry LINE of the trust file writes, (WHERE SIGNER NAME KEY), or NIL
 for a line that makes no sense: SIGNER a key's fingerprint or \"unsigned\",
-NAME the signer's name or NIL, KEY an SSH signer's key or NIL; SIGNER is
-key: and a GPG key's fingerprint for a source whose first version was signed
-by a key your keyring lacks. Fields after those are passed over
-\(STATE-LINE-FIELDS)."
+NAME the signer's name or NIL, KEY a secure shell (SSH) signer's key or NIL;
+SIGNER is key: and a GNU Privacy Guard (GPG) key's fingerprint for a source
+whose first version was signed by a key your keyring lacks. Fields after those
+are passed over \(STATE-LINE-FIELDS)."
   (let ((fields (state-line-fields line)))
     (when (<= 4 (length fields))
       (destructuring-bind (where signer name key &rest later) fields
@@ -1547,14 +1549,14 @@ by a key your keyring lacks. Fields after those are passed over
   :path-of #'first :fields 4 :trust t :line-key (field-line-key 4 0))
 
 (defun package-signers-file (where)
-  "The allowed signers file git checks the SSH signatures of the source WHERE
-against, kept beside its packages."
+  "The allowed signers file git checks the secure shell (SSH) signatures of
+the source WHERE against, kept beside its packages."
   (format nil "~a~a/.allowed-signers" (packages-directory) (tuatara.io:path-file-name where)))
 
 (defun write-package-signers-file (where)
   "Write the allowed signers file of the source WHERE (PACKAGE-SIGNERS-FILE)
-anew: the SSH key trusted for it (*PACKAGE-TRUST*), or nothing. Returns its
-name."
+anew: the secure shell (SSH) key trusted for it (*PACKAGE-TRUST*), or nothing.
+Returns its name."
   (let ((file (package-signers-file where))
         (trusted (state-list-find *package-trust* where)))
     (tuatara.io:ensure-private-directory (directory-namestring file))
@@ -1579,10 +1581,10 @@ text, where git appends it. NIL when it has none there."
         (values begin (or (position #\Newline text :start end) (length text)))))))
 
 (defun ssh-signature-key (text kind)
-  "The public key the SSH signature of the git object TEXT, of KIND :commit
-or :tag (SIGNATURE-BLOCK), was made with, as an allowed signers file writes
-it (TYPE BASE64), read from the signature's own octets; NIL when it has
-none."
+  "The public key the secure shell (SSH) signature of the git object TEXT, of
+KIND :commit or :tag (SIGNATURE-BLOCK), was made with, as an allowed
+signers file writes it (TYPE BASE64), read from the signature's own octets;
+NIL when it has none."
   (multiple-value-bind (begin end) (signature-block text kind)
     (let ((mark "-----BEGIN SSH SIGNATURE-----"))
       (when (and begin (string= mark text :start2 begin :end2 (min (length text) (+ begin (length mark)))))
@@ -1596,7 +1598,8 @@ none."
                    (format nil "~a ~a" type (tuatara.io:base64-string blob))))))))))
 
 (defun ssh-signature-p (text kind)
-  "True when the signature of the git object TEXT, of KIND :commit or :tag, is an SSH one."
+  "True when the signature of the git object TEXT, of KIND :commit or :tag, is
+a secure shell (SSH) one."
   (let ((begin (signature-block text kind)))
     (and begin (string= "-----BEGIN SSH SIGNATURE-----" text :start2 begin :end2 (min (length text) (+ begin 29))))))
 
@@ -1612,8 +1615,8 @@ that it shows as it is; NIL for NIL or nothing left."
   "The signature of a commit, as PACKAGE-SIGNATURE gives it, from FIELDS,
 what git's log said of it (%G?, %GF, %GP, %GS and %GK), and OBJECT, the
 commit's object; :ERROR when it is signed but git could not say by whom. A
-GPG signature whose key your keyring lacks is :UNCHECKED, its key's
-fingerprint left to MISSING-KEY."
+GNU Privacy Guard (GPG) signature whose key your keyring lacks is :UNCHECKED,
+its key's fingerprint left to MISSING-KEY."
   (destructuring-bind (&optional (grade "") subkey primary signer key-id &rest more) fields
     (declare (ignore more))
     (let ((ssh (ssh-signature-p object :commit))
@@ -1655,11 +1658,11 @@ verify-tag --raw said of it, and OBJECT, the tag's object."
               (t (list :status :error))))))
 
 (defun missing-key (said)
-  "The fingerprint of the key that made a GPG signature your keyring lacks,
-from SAID, gpg's status lines (ERRSIG's seventh field, the issuer's
-fingerprint, 40 or 64 hexadecimal digits): the signing key itself, a
-subkey or the primary key; NIL when gpg did not give it, as for an old
-signature naming only a 64-bit ID, which is too short to hold to."
+  "The fingerprint of the key that made a GNU Privacy Guard (GPG) signature
+your keyring lacks, from SAID, gpg's status lines (ERRSIG's seventh field,
+the issuer's fingerprint, 40 or 64 hexadecimal digits): the signing key
+itself, a subkey or the primary key; NIL when gpg did not give it, as for
+an old signature naming only a 64-bit ID, which is too short to hold to."
   (let ((fingerprint (seventh (gnupg-status said "ERRSIG"))))
     (and fingerprint (cl-ppcre:scan "^(?:[0-9A-Fa-f]{40}|[0-9A-Fa-f]{64})$" fingerprint)
          (signer-fingerprint fingerprint))))
@@ -1679,13 +1682,14 @@ with gpg or ssh-keygen, before it is ended and the version not taken.")
   "Who signed COMMIT of the repository at WHERE, kept in FOLDER: the tag TAG
 it was fetched by now when that is signed (its object, FETCH_HEAD, naming
 TAG and COMMIT), else the commit. Checked by git, with gpg and your keyring
-for a GPG signature, with ssh-keygen and the allowed signers file of the key
-trusted for WHERE for an SSH one (WRITE-PACKAGE-SIGNERS-FILE); nothing of
-the repository is run. A list: :STATUS, :GOOD, :BAD (it does not hold, or
-its key is revoked), :UNCHECKED (by a GPG key your keyring lacks, its
-fingerprint :KEY-ID), :NONE (unsigned) or :ERROR (signed, but git could not say by
-whom); :FINGERPRINT (the primary key's), :SUBKEY, :NAME and for an SSH key
-:KEY of a good one, the key seen to have made the signature."
+for a GNU Privacy Guard (GPG) signature, with ssh-keygen and the allowed
+signers file of the key trusted for WHERE for a secure shell (SSH) one
+(WRITE-PACKAGE-SIGNERS-FILE); nothing of the repository is run. A list:
+:STATUS, :GOOD, :BAD (it does not hold, or its key is revoked), :UNCHECKED (by
+a GPG key your keyring lacks, its fingerprint :KEY-ID), :NONE (unsigned) or
+:ERROR (signed, but git could not say by whom); :FINGERPRINT (the primary
+key's), :SUBKEY, :NAME and for an SSH key :KEY of a good one, the key seen to
+have made the signature."
   (labels ((git (allowed &rest arguments)
              (multiple-value-bind (octets ok too-large said)
                  (run-git-program (git-for-packages) folder arguments
@@ -1760,11 +1764,11 @@ only a version one of them signed is taken. Else the signer of the first
 version taken is remembered: later ones signed by that key are taken, and
 others refused, unsigned ones too; a source whose first version was
 unsigned has its unsigned versions taken, and the first signed one taken
-makes its signer the one remembered. A GPG signature whose key your keyring
-lacks is refused until the key is imported, its fingerprint remembered for
-a source's first version so that only that key (or the key it is a subkey
-of) is taken then. A signature
-that does not hold, or one git could not check, is refused always."
+makes its signer the one remembered. A GNU Privacy Guard (GPG) signature whose
+key your keyring lacks is refused until the key is imported, its fingerprint
+remembered for a source's first version so that only that key (or the key it
+is a subkey of) is taken then. A signature that does not hold, or one git
+could not check, is refused always."
   (let* ((status (getf signature :status))
          (fingerprint (getf signature :fingerprint))
          (good (eq status :good))
@@ -2064,14 +2068,14 @@ asks (COMPILE-PACKAGE-CHILD), then exit with its code."
     (sb-ext:exit :code code :abort t)))
 
 (defun compiler-core ()
-  "Run from Tuatara's sources, the SBCL core a process compiling a package
-apart starts from, so that it starts at once: SBCL with Quicklisp and these
-sources loaded, saved once into the folder of compiled packages, which is
-this Tuatara's alone (PACKAGE-CACHE: another source tree, or the same one
-changed, has another), and made again only when it is not there. Made in a
-process of its own (save-lisp-and-die cannot run where threads do), under a
-name of its own and renamed into place whole. Its path, or NIL when it
-could not be made, why in *Messages*."
+  "Run from Tuatara's sources, the Steel Bank Common Lisp (SBCL) core a
+process compiling a package apart starts from, so that it starts at once:
+SBCL with Quicklisp and these sources loaded, saved once into the folder of
+compiled packages, which is this Tuatara's alone (PACKAGE-CACHE: another
+source tree, or the same one changed, has another), and made again only
+when it is not there. Made in a process of its own (save-lisp-and-die
+cannot run where threads do), under a name of its own and renamed into
+place whole. Its path, or NIL when it could not be made, why in *Messages*."
   (let ((core (format nil "~acompiler-~36r.core" (package-cache)
                       (sxhash (uiop:native-namestring (asdf:system-source-directory :tuatara))))))
     (sb-thread:with-mutex (*compiler-core-lock*)
@@ -2099,8 +2103,8 @@ could not be made, why in *Messages*."
 (defun package-compiler-command ()
   "The command that runs this Tuatara again to compile a package apart, told
 what to do by its environment (PACKAGE-CHILD-ENVIRONMENT): the saved
-executable, or, run from its sources, SBCL started from the core made for
-that (COMPILER-CORE); NIL when there is none."
+executable, or, run from its sources, Steel Bank Common Lisp (SBCL) started
+from the core made for that (COMPILER-CORE); NIL when there is none."
   (if tuatara.io:*saved-program*
       (list tuatara.io:*saved-program*)
       (let ((core (compiler-core)))

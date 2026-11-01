@@ -332,8 +332,9 @@ worktree's own.")
 files are looked at before git is run.")
 
 (defvar *git-shadows-folder* nil
-  "This session's folder of shadows and the descriptor of its lock, held as
-long as the session runs: (FOLDER . FD), made the first time one is wanted.")
+  "This session's folder of shadows and the file descriptor (FD) of its lock,
+held as long as the session runs: (FOLDER . FD), made the first time one is
+wanted.")
 
 (defvar *git-shadows-folder-lock* (sb-thread:make-mutex :name "tuatara git shadows folder")
   "Held while this session's folder of shadows is made.")

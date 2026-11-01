@@ -42,25 +42,25 @@ FORMAT-PROJECT-DIRECTORY finds it, a native name ending in /."
 ;;; Documents: what a server sees of a buffer
 
 (defstruct (lsp-doc (:constructor make-lsp-doc (buffer language uri &optional shadow)) (:copier nil))
-  "What servers of LANGUAGE see of BUFFER, by the address URI: its whole text,
-or, with SHADOW, the code of its LANGUAGE alone (a note's source blocks):
-SHADOW is then a function of the buffer returning that text, line for line
-with the buffer (the lines of no such code empty), and the stretches of the
-buffer's lines that are code, a vector in order of (FIRST LAST OCTETS): the
-lines FIRST below LAST, OCTETS the octets left out at the start of each, or
-NIL for code of another language. Called with the document too and the
-stretches of the buffer changed since it was last sent (CHANGED-STRETCHES),
-it returns what changed in that text instead, as DOC-CHANGES does, and that
-vector as it is now; NIL when it is to be sent whole.
-ROPE and SKIPPED keep that text and vector as last sent, positions being
-reckoned with them; SENT, the buffer's text as last sent (a
-TUATARA.TEXT:VERSION). SERVERS, the servers it is open
-in; VERSION, the number of the text last sent; KEPT, the texts last sent
-that a server may yet speak of, the newest first, each (VERSION SENT ROPE
-SKIPPED) as they were then (DOC-AS-SENT); HEARD, the number of the newest
-text each server has said what it found in, each (SERVER . VERSION); SAVED,
-the one of KEPT that was last sent when the file was last saved, kept while
-KEPT has room for what a check of the file saved says of it."
+  "What servers of LANGUAGE see of BUFFER, by the address uniform resource
+identifier (URI): its whole text, or, with SHADOW, the code of its LANGUAGE
+alone (a note's source blocks): SHADOW is then a function of the buffer
+returning that text, line for line with the buffer (the lines of no such
+code empty), and the stretches of the buffer's lines that are code, a
+vector in order of (FIRST LAST OCTETS): the lines FIRST below LAST, OCTETS
+the octets left out at the start of each, or NIL for code of another
+language. Called with the document too and the stretches of the buffer
+changed since it was last sent (CHANGED-STRETCHES), it returns what changed
+in that text instead, as DOC-CHANGES does, and that vector as it is now;
+NIL when it is to be sent whole. ROPE and SKIPPED keep that text and vector
+as last sent, positions being reckoned with them; SENT, the buffer's text
+as last sent (a TUATARA.TEXT:VERSION). SERVERS, the servers it is open in;
+VERSION, the number of the text last sent; KEPT, the texts last sent that a
+server may yet speak of, the newest first, each (VERSION SENT ROPE SKIPPED)
+as they were then (DOC-AS-SENT); HEARD, the number of the newest text each
+server has said what it found in, each (SERVER . VERSION); SAVED, the one
+of KEPT that was last sent when the file was last saved, kept while KEPT
+has room for what a check of the file saved says of it."
   buffer language uri shadow rope skipped sent (servers '()) (version 0) (kept '()) (heard '()) (saved nil))
 
 (setf (documentation 'lsp-doc-p 'function) "True when OBJECT is an LSP-DOC.")
@@ -74,16 +74,17 @@ KEPT has room for what a check of the file saved says of it."
   (remove-duplicates (loop for doc in (buffer-docs buffer) append (lsp-doc-servers doc))))
 
 (defun lsp-doc-of-uri (uri)
-  "The document of an open buffer whose address is URI, or NIL."
+  "The document of an open buffer whose address is uniform resource identifier
+(URI), or NIL."
   (loop for buffer in tuatara.buffer:*buffers*
         thereis (find uri (buffer-docs buffer) :key #'lsp-doc-uri :test #'equal)))
 
 (defun uri-buffer (uri &key visit)
-  "The buffer of what the address URI names, and its document named so (or
-NIL), as two values: the buffer it is open in (a note, for its source
-blocks), or the one visiting the file it names; with VISIT, the file opened
-when no buffer has it, if there is such a file (none is made). NIL when there
-is no such buffer."
+  "The buffer of what the address uniform resource identifier (URI) names, and
+its document named so (or NIL), as two values: the buffer it is open in (a
+note, for its source blocks), or the one visiting the file it names; with
+VISIT, the file opened when no buffer has it, if there is such a file (none
+is made). NIL when there is no such buffer."
   (let ((doc (lsp-doc-of-uri uri))
         (path (uri-path uri)))
     (cond (doc (values (lsp-doc-buffer doc) doc))
@@ -95,9 +96,10 @@ is no such buffer."
              (and (typep buffer 'tuatara.buffer:buffer) buffer))))))
 
 (defun uri-place (server uri position &key visit)
-  "The buffer of what the address URI names (URI-BUFFER, VISIT as it takes
-it) and its byte at POSITION, a position SERVER sent, as two values: the
-start of the text when POSITION is none; NIL when there is no such buffer."
+  "The buffer of what the address uniform resource identifier (URI) names
+(URI-BUFFER, VISIT as it takes it) and its byte at POSITION, a position
+SERVER sent, as two values: the start of the text when POSITION is none;
+NIL when there is no such buffer."
   (multiple-value-bind (buffer doc) (uri-buffer uri :visit visit)
     (when buffer
       (values buffer (min (tuatara.buffer:buffer-size buffer)
@@ -702,17 +704,17 @@ which is kept for what they say of it while there is room (SAVED)."
 
 (defvar *lsp-doc-spec-functions* '()
   "Functions of a buffer giving what servers see of it instead of its whole
-text, each a list of (LANGUAGE URI SHADOW SIZE), as an LSP-DOC is made from,
-SIZE the octets of the text SHADOW gives, or NIL to leave it to the next: a
-note's source blocks.")
+text, each a list of (LANGUAGE uniform resource identifier (URI) SHADOW SIZE),
+as an LSP-DOC is made from, SIZE the octets of the text SHADOW gives, or NIL
+to leave it to the next: a note's source blocks.")
 
 (defun lsp-doc-specs (buffer &key all any-size)
-  "What servers see of BUFFER, as a list of (LANGUAGE URI SHADOW SIZE): its
-source blocks for a note (*LSP-DOC-SPEC-FUNCTIONS*), else its whole text in
-its language, SIZE the octets of each; NIL for a buffer no server may see
-\(LSP-REFUSAL). Those of a language *LSP-LANGUAGES* leaves out are left out
-too, unless ALL, and those larger than *LSP-LARGEST-DOCUMENT*, unless
-ANY-SIZE."
+  "What servers see of BUFFER, as a list of (LANGUAGE uniform resource
+identifier (URI) SHADOW SIZE): its source blocks for a note
+(*LSP-DOC-SPEC-FUNCTIONS*), else its whole text in its language, SIZE the
+octets of each; NIL for a buffer no server may see \(LSP-REFUSAL). Those of
+a language *LSP-LANGUAGES* leaves out are left out too, unless ALL, and
+those larger than *LSP-LARGEST-DOCUMENT*, unless ANY-SIZE."
   (when (null (lsp-refusal buffer))
     (remove-if-not (lambda (spec) (and (or all (lsp-language-on-p (first spec)))
                                        (or any-size (<= (fourth spec) *lsp-largest-document*))))
