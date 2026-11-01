@@ -780,11 +780,17 @@ told of its new one. NIL at once when the setting names no folder."
 
 (defun evidence-visit-reason (path)
   "Why the file at PATH opens safely when it is evidence, a phrase; NIL when it
-is not."
-  (multiple-value-bind (folder entry) (evidence-path-p path)
-    (and folder
-         (let ((*print-pretty* nil))
-           (format nil "it is in the evidence folder ~a (*evidence-folders*: ~s)" (abbreviated-path folder) entry)))))
+is not. A link counts when the file it leads to is evidence."
+  (flet ((reason (folder entry)
+           (let ((*print-pretty* nil))
+             (format nil "it is in the evidence folder ~a (*evidence-folders*: ~s)" (abbreviated-path folder) entry))))
+    (multiple-value-bind (folder entry) (evidence-path-p path)
+      (if folder
+          (reason folder entry)
+          (let ((leads-to (ignore-errors (tuatara.io:resolve-links path))))
+            (when leads-to
+              (multiple-value-bind (folder entry) (evidence-path-p leads-to)
+                (and folder (reason folder entry)))))))))
 
 (defvar *evidence-folders-seen* (list nil)
   "The value of *EVIDENCE-FOLDERS* when the buffers were last told of it, and

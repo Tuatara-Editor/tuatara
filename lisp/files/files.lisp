@@ -517,14 +517,18 @@ tail, counts every directory it names."
 
 (defun safe-directory-of (path)
   "The directory of *SAFE-DIRECTORIES* that the file or directory at PATH is,
-or is in or below, by the names as given or by where their links lead
+or is in or below, by the names as given, by the file a link leads to, or by
+where their links lead
 \(PATH-WITHIN-P, REALLY-WITHIN-P), or NIL; T when *SAFE-DIRECTORIES* cannot be
 read, every file then counting as in one."
-  (let ((path (or (ignore-errors (tuatara.io:native (tuatara.io:expand-path path))) path)))
+  (let* ((path (or (ignore-errors (tuatara.io:native (tuatara.io:expand-path path))) path))
+         (leads-to (or (ignore-errors (tuatara.io:native (tuatara.io:resolve-links path))) path)))
     (handler-case (find-if (lambda (directory)
                              (let ((directory (tuatara.io:native (tuatara.io:expand-path directory))))
                                (or (tuatara.io:path-within-p path directory)
-                                   (tuatara.io:really-within-p path directory))))
+                                   (tuatara.io:path-within-p leads-to directory)
+                                   (tuatara.io:really-within-p path directory)
+                                   (tuatara.io:really-within-p leads-to directory))))
                            (safe-directories))
       (error () t))))
 

@@ -807,3 +807,16 @@ cases/2026-0001/work/ (WORK), each bound to its native name ending in /."
   ;; every question taking :writing is a name packages may use
   (dolist (name '("READ-PATH" "READ-FILE-PATH" "READ-DIRECTORY-PATH" "READ-NATIVE-PATH" "READ-NEW-NATIVE-PATH"))
     (is eq :external (nth-value 1 (find-symbol name :tuatara)) "~a" name)))
+
+(define-test (evidence link-to-evidence-opens-safely)
+  ;; a symbolic link outside the evidence folder to a file in it is evidence too
+  (with-case-folder (root evidence work)
+    (with-evidence-folders ((list (concatenate 'string root "cases/*/evidence/")))
+      (let ((link (concatenate 'string work "link.txt")))
+        (sb-posix:symlink (concatenate 'string evidence "a.txt") link)
+        (true (tuatara.defaults::visit-safely-reason link))
+        (let ((buffer (tuatara.io:visit-file link)))
+          (unwind-protect
+               (progn (true (tuatara.io:safe-visit-p buffer))
+                      (true (tuatara.buffer:buffer-local buffer :read-only)))
+            (tuatara.buffer:kill-buffer buffer)))))))
