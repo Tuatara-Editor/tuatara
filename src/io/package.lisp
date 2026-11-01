@@ -37,7 +37,7 @@ running programs, shut in a sandbox when they read files from elsewhere.")
    #:sap-string #:with-c-string #:c-type #:define-c-function
    ;; visiting, checking, saving, reverting
    #:*memory-read-limit* #:*lease-large-files* #:*clone-large-files* #:*snapshot-large-files* #:*snapshot-free-margin*
-   #:open-for-reading #:open-file-text #:visit-file #:safe-visit-p #:end-safe-visit #:safe-visit-reason #:*visit-safely-function* #:binary-head-p #:+binary-sample+ #:file-head #:call-with-file-heads #:open-examined
+   #:open-for-reading #:open-file-text #:visit-file #:buffer-for-file #:safe-visit-p #:end-safe-visit #:safe-visit-reason #:*visit-safely-function* #:binary-head-p #:+binary-sample+ #:file-head #:call-with-file-heads #:open-examined
    #:*index-at-open-limit* #:*index-job-hook* #:index-job-of #:index-job-status #:index-progress #:start-indexing #:finish-indexing #:stop-indexing
    #:counted-line-number #:counted-line-start #:counted-lines #:file-isolation #:file-status #:finish-snapshots #:snapshots
    #:check-file #:file-disk-state #:finish-leases #:leases-moving-p #:take-file-looks #:directory-class

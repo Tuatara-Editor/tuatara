@@ -326,6 +326,36 @@ frontend, the editor, and the options read."
           (is = 2 (tuatara.terminal:main (list "--merge" "/nonexistent/l" a a a))))
         (true (search "/nonexistent/l is not there: nothing to merge" (get-output-stream-string said)))))))
 
+(define-test (command-line one-file-one-buffer)
+  ;; a file reached by x, ./x or through a link and .. is one buffer; the file the .. leads to
+  ;; lexically, with the link in the way, is another
+  (with-test-directory (dir)
+    (let* ((root (namestring dir))
+           (x (namestring (put-file (merge-pathnames "x" dir) "decoy")))
+           (real (namestring (put-file (progn (ensure-directories-exist (merge-pathnames "real/sub/" dir))
+                                              (merge-pathnames "real/x" dir))
+                                       "real"))))
+      (sb-posix:symlink (concatenate 'string root "real/sub") (concatenate 'string root "a"))
+      (let ((plain (tuatara.io:visit-file x))
+            (dotted (tuatara.io:visit-file (concatenate 'string root "./x")))
+            (doubled (tuatara.io:visit-file (concatenate 'string root "/./x")))
+            (through (tuatara.io:visit-file (concatenate 'string root "a/../x")))
+            (true-real (tuatara.io:visit-file real)))
+        (is eq plain dotted)
+        (is eq plain doubled)
+        (is eq through true-real)
+        (false (eq through plain))
+        (is string= "real" (tuatara.buffer:buffer-string through))
+        (is string= real (tuatara.io:native (tuatara.buffer:buffer-file through)))
+        (is string= x (tuatara.io:native (tuatara.buffer:buffer-file dotted)))
+        (is eq plain (tuatara.defaults::buffer-visiting (concatenate 'string root "./x"))))
+      ;; through the program's own start, one file named twice is one buffer
+      (uiop:with-current-directory (dir)
+        (multiple-value-bind (f editor) (session-from-arguments (list "./x" "x") :directory dir)
+          (declare (ignore f editor))
+          (is = 1 (count x tuatara.buffer:*buffers* :key (lambda (b) (let ((file (tuatara.buffer:buffer-file b))) (and file (tuatara.io:native file))))
+                                                    :test #'equal)))))))
+
 (define-test (command-line options-on-the-stable-surface)
   ;; the options the program takes are pinned, +LINE among them
   (multiple-value-bind (version pinned) (read-stable-surface)

@@ -11,11 +11,10 @@
 
 (defun buffer-visiting (path &key except)
   "The buffer visiting the file at PATH (a native name or a pathname), found
-as \\[find-file] finds one, other than EXCEPT; NIL when there is none."
+as \\[find-file] finds one, by the file and not the name it was opened by
+\(TUATARA.IO:BUFFER-FOR-FILE), other than EXCEPT; NIL when there is none."
   (let ((expanded (ignore-errors (tuatara.io:expand-path path))))
-    (and expanded
-         (find-if (lambda (buffer) (and (not (eq buffer except)) (equal (tuatara.buffer:buffer-file buffer) expanded)))
-                  tuatara.buffer:*buffers*))))
+    (and expanded (tuatara.io:buffer-for-file expanded :except except))))
 
 (defvar *last-used-first* t
   "True for the questions that choose a file or a folder (\\[find-file], \\[rimu]

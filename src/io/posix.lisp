@@ -114,13 +114,22 @@ typed there is taken from it, and \\[search-in-files] searches it. ~ is your
 home directory; NIL for the directory Tuatara was started in. A buffer with a
 file has its file's directory.")
 
+(defun without-dot-components (pathname)
+  "PATHNAME without the . in its directory: /a/./b is /a/b, whatever links
+are in it (a . leads nowhere else). A .. is left, which a link may make lead
+elsewhere than the lexical way back."
+  (let ((directory (pathname-directory pathname)))
+    (if (member "." directory :test #'equal)
+        (make-pathname :directory (remove "." directory :test #'equal) :defaults pathname)
+        pathname)))
+
 (defun expand-path (path &key directory (tilde t))
   "PATH as an absolute pathname: a string is taken literally, so that [, *, ?
 and \\ in a file's name are only characters, and with TILDE a leading ~ or ~/
 means your home directory (HOME-DIRECTORY); a relative one is taken from
 DIRECTORY, a pathname or a string taken literally too, by default the
 DEFAULT-DIRECTORY, asked for only then: an absolute path asks the file
-system nothing."
+system nothing. Its . components are taken out (WITHOUT-DOT-COMPONENTS)."
   (let ((pathname (if (pathnamep path)
                       path
                       (sb-ext:parse-native-namestring
@@ -129,9 +138,10 @@ system nothing."
                                ((and tilde (> (length path) 1) (string= "~/" path :end2 2))
                                 (concatenate 'string home (subseq path 2)))
                                (t path)))))))
-    (if (uiop:absolute-pathname-p pathname)
-        pathname
-        (merge-pathnames pathname (directory-pathname (or directory (default-directory)))))))
+    (without-dot-components
+     (if (uiop:absolute-pathname-p pathname)
+         pathname
+         (merge-pathnames pathname (directory-pathname (or directory (default-directory))))))))
 
 (defvar *default-directory-found* nil
   "The directory DEFAULT-DIRECTORY last found, as (SETTING TIME . PATHNAME):

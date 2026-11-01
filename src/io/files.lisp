@@ -929,6 +929,38 @@ once it is let go, so that what was read is left only in the vector given."
         (when spare (fill spare 0)))
       (values octets too-large cancelled))))
 
+(defun same-file-p (path other)
+  "True when PATH and OTHER name one file: the same device and inode (as the
+system has them, links followed), or, for names with no file there yet,
+the same place once the links in them are followed (REAL-PATH-SO-FAR)."
+  (or (equal path other)
+      (let ((a (ignore-errors (path-stamp path))) (b (ignore-errors (path-stamp other))))
+        (if (and a b)
+            (and (= (stamp-dev a) (stamp-dev b)) (= (stamp-ino a) (stamp-ino b)))
+            (and (null a) (null b)
+                 (equal (real-path-so-far (native path)) (real-path-so-far (native other))))))))
+
+(defun buffer-for-file (path &key except)
+  "The buffer visiting the file at PATH, other than EXCEPT, found by the file
+itself (SAME-FILE-P) and not by the name: x, ./x, dir/x through a link, and
+a/../x are one file and have one buffer. NIL when there is none."
+  (let ((path (expand-path path)))
+    (or (find-if (lambda (buffer) (and (not (eq buffer except)) (equal (tuatara.buffer:buffer-file buffer) path)))
+                 tuatara.buffer:*buffers*)
+        (find-if (lambda (buffer)
+                   (let ((file (tuatara.buffer:buffer-file buffer)))
+                     (and file (not (eq buffer except)) (same-file-p path file))))
+                 tuatara.buffer:*buffers*))))
+
+(defun visited-path (path)
+  "PATH as a file is visited under: expanded, and, when it has a .. in it, as
+the file system leads (REAL-PATH-SO-FAR), so that it is named as the file
+is, not as a link made the way back look."
+  (let ((path (expand-path path)))
+    (if (find-if (lambda (part) (member part '(:up :back ".."))) (pathname-directory path))
+        (expand-path (real-path-so-far (native path)))
+        path)))
+
 (defun visit-file (path &key safe)
   "The buffer visiting the file at PATH, made if no live buffer does: its text
 kept safe from other programs (OPEN-FILE-TEXT); for a file not there yet, an
@@ -941,8 +973,8 @@ directory (\\[read-only-mode] makes it editable). A file not asked to be
 visited SAFE is all the same when *VISIT-SAFELY-FUNCTION* gives a reason, kept
 for SAFE-VISIT-REASON. Returns the buffer, and true as a second value when a
 buffer visited the file already (it comes as it is)."
-  (let* ((path (expand-path path))
-         (existing (find path tuatara.buffer:*buffers* :key #'tuatara.buffer:buffer-file :test #'equal)))
+  (let* ((path (visited-path path))
+         (existing (buffer-for-file path)))
     (if existing
         (values existing t)
         (let* ((name (tuatara.buffer:unique-buffer-name (native-file-name path)))
