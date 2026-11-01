@@ -593,7 +593,6 @@ b")))
   (multiple-value-bind (b carried) (counted-carried (mixed-line-ends 3000))
     (unwind-protect
          (multiple-value-bind (other running) (counted-carried (mixed-line-ends 3000))
-           (declare (ignore other))
            (let ((job (tuatara.io::%make-index-job b (tuatara.buffer:buffer-text b) nil)))
              (setf (tuatara.io::index-job-carried job)
                    (tuatara.text:carry-tally (tuatara.text::carried-tally-tally running)
