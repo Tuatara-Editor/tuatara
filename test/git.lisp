@@ -6,8 +6,10 @@
 (define-test git
   :description "C-x g shows the state of the repository a file is in: its branch, files not tracked, changed and staged, its latest commits; s stages, u unstages, x reverses changes (files, hunks or lines selected) or moves untracked files to the trash, TAB shows a file's changes, n and p go by files and hunks, c commits, L lists the log; only for a project trusted.")
 
-(defun scratch-repository (dir)
-  "Make DIR a git repository of its own, signing nothing, holding a.txt committed."
+(defun scratch-repository (dir &key (trusted t))
+  "Make DIR a git repository of its own, signing nothing, holding a.txt
+committed; trusted, as when asked, unless TRUSTED is NIL (a test directory
+forgets it: WITH-TEST-DIRECTORY)."
   (flet ((git (&rest arguments)
            (uiop:run-program (list* "git" "-C" (namestring dir) arguments) :ignore-error-status t)))
     (git "init" "-q" "-b" "main")
@@ -16,7 +18,20 @@
     (git "config" "commit.gpgsign" "false")
     (alexandria:write-string-into-file (format nil "one~%") (merge-pathnames "a.txt" dir))
     (git "add" "a.txt")
-    (git "commit" "-q" "-m" "First")))
+    (git "commit" "-q" "-m" "First"))
+  (when trusted (trust-test-repository dir)))
+
+(defun trust-test-repository (dir)
+  "Trust the repository at DIR, as when asked (a test directory forgets it: WITH-TEST-DIRECTORY)."
+  (tuatara.defaults::state-list-put tuatara.defaults::*lsp-trusted* (list (tuatara.defaults::real-folder (namestring dir)))))
+
+(defmacro with-trusted-folders ((folders) &body body)
+  "Run BODY with *LSP-TRUSTED-PROJECTS* FOLDERS for every thread, the git
+jobs' too, set back after."
+  (let ((old (gensym)))
+    `(let ((,old tuatara-user:*lsp-trusted-projects*))
+       (unwind-protect (progn (setf tuatara-user:*lsp-trusted-projects* ,folders) ,@body)
+         (setf tuatara-user:*lsp-trusted-projects* ,old)))))
 
 (defun git-output (dir &rest arguments)
   "What git prints with ARGUMENTS in DIR."
@@ -82,7 +97,7 @@
 (define-test (git trusted-only)
   ;; a project not trusted: asked, and with no, git never runs
   (with-test-directory (dir)
-    (scratch-repository dir)
+    (scratch-repository dir :trusted nil)
     (let ((tuatara.defaults::*modal-editing* nil)
           (tuatara-user:*lsp-trusted-projects* '()))
       (let ((f (auto-save-session (list (format nil "C-x C-f C-a C-k ~a RET" (rimu-typed (namestring (merge-pathnames "a.txt" dir))))
@@ -253,6 +268,7 @@ DIR is visited and its status read, the project trusted. Returns the frontend."
   (with-test-directory (dir)
     (flet ((git (&rest arguments) (apply #'git-output dir arguments)))
       (git "init" "-q" "-b" "main")
+      (trust-test-repository dir)
       (put-file (merge-pathnames "new.txt" dir) "new")
       (git "add" "new.txt")
       (flet ((untracked () (tuatara.defaults::git-state-untracked (git-state-here)))
@@ -562,8 +578,8 @@ DIR is visited and its status read, the project trusted. Returns the frontend."
           (tree (native-in dir "wt")))
       (ensure-directories-exist repo)
       (scratch-repository repo)
-      (let ((tuatara.defaults::*modal-editing* nil)
-            (tuatara-user:*lsp-trusted-projects* (list (namestring dir))))
+      (with-trusted-folders ((list (namestring dir)))
+      (let ((tuatara.defaults::*modal-editing* nil))
         (let ((f (auto-save-session
                   (list (format nil "C-x C-f C-a C-k ~a RET" (rimu-typed (native-in repo "a.txt")))
                         "C-x g" (list :until #'git-state-here)
@@ -581,7 +597,7 @@ DIR is visited and its status read, the project trusted. Returns the frontend."
           (true (tuatara.frontend.fake:fake-frame-showing f "The new branch work checked out in"))
           (true (tuatara.frontend.fake:fake-frame-showing f "Deleted the worktree"))
           (false (probe-file (concatenate 'string tree "/")))
-          (true (member "work" (git-branch-names repo) :test #'string=)))))))
+          (true (member "work" (git-branch-names repo) :test #'string=))))))))
 
 (defun git-log-subjects (dir)
   "The subjects of the commits of the repository DIR, the latest first."
@@ -1453,6 +1469,7 @@ DIR is visited and its status read, the project trusted. Returns the frontend."
   ;; d d in a repository with no commit yet shows the changes, against nothing
   (with-test-directory (dir)
     (git-output dir "init" "-q" "-b" "main")
+    (trust-test-repository dir)
     (put-file (merge-pathnames "f.txt" dir) (format nil "first~%"))
     (git-output dir "add" "f.txt")
     (let ((f (git-session dir "f.txt" (list "d d" (list :until (lambda () (tuatara.buffer:find-buffer "*git diff*")))))))
@@ -1464,6 +1481,7 @@ DIR is visited and its status read, the project trusted. Returns the frontend."
   ;; status's does
   (with-test-directory (dir)
     (git-output dir "init" "-q" "-b" "main")
+    (trust-test-repository dir)
     (put-file (merge-pathnames "f.txt" dir) (format nil "first~%"))
     (git-output dir "add" "f.txt")
     (flet ((staged () (git-output dir "diff" "--cached" "--name-only")))

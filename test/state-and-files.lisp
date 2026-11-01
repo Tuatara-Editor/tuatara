@@ -281,6 +281,8 @@ file of text; their native names, as two values."
       (git dir "config" "commit.gpgsign" "false")
       (put-file file (format nil "one~%two~%"))
       (git dir "add" "data.txt") (git dir "commit" "-q" "-m" "base")
+      ;; trusted: a repository not trusted is read through a shadow, made by a git process of its own
+      (trust-test-repository dir)
       (put-file file (format nil "one~%two~%three~%"))
       (let ((threads '()))
         (sb-int:encapsulate 'tuatara.defaults::run-git 'note-thread

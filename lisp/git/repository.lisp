@@ -24,11 +24,10 @@ or clashing."
 
 (defun git-submodules (job top)
   "On JOB's thread: the submodules of the repository at TOP (PARSE-GIT-SUBMODULES),
-none without a .gitmodules; in a repository looked at only, those its index
-records, not looked into (their own settings could name programs), each
-not looked into."
+none without a .gitmodules; in a repository not trusted, those its index
+records, each not looked into (their own settings could name programs)."
   (and (tuatara.io:path-kind (concatenate 'string top ".gitmodules") :follow nil)
-       (if (project-look-only-reason top)
+       (if (git-look-only-reason top)
            (loop for entry in (uiop:split-string (git-job-output job top (list "ls-files" "--stage" "-z"))
                                                  :separator (list (code-char 0)))
                  for tab = (position #\Tab entry)

@@ -57,10 +57,19 @@ thread may take is multiplied by it."
     (setf *slowdown-sink* sum)
     (max 1 (/ (- (get-internal-real-time) real) (max 1 (- (thread-cpu-time) cpu))))))
 
+(defun forget-trusted-under (directory)
+  "Take the projects within DIRECTORY out of those trusted when asked."
+  (let ((top (string-right-trim "/" (or (tuatara.defaults::real-folder (namestring directory)) (namestring directory)))))
+    (tuatara.defaults::state-list-drop
+     tuatara.defaults::*lsp-trusted*
+     (remove-if-not (lambda (entry) (and (stringp entry) (tuatara.io:path-within-p entry top)))
+                    (tuatara.defaults::state-list-entries tuatara.defaults::*lsp-trusted*)))))
+
 (defmacro with-test-directory ((directory) &body body)
   "Run BODY with DIRECTORY bound to a new empty directory in the cache directory
 (on the file system of your home, which shares blocks on btrfs), removed
-afterwards with everything in it, and the buffers visiting its files killed."
+afterwards with everything in it, the buffers visiting its files killed and
+the projects within it trusted no more."
   `(let ((,directory (ensure-directories-exist
                       (merge-pathnames (format nil "test-~d-~36r/" (sb-posix:getpid) (random (expt 36 8) (load-time-value (make-random-state t))))
                                        (tuatara.io:cache-directory)))))
@@ -68,6 +77,7 @@ afterwards with everything in it, and the buffers visiting its files killed."
        (kill-buffers-under ,directory)
        (forget-kept-indexes ,directory)
        (forget-committed-lines)
+       (forget-trusted-under ,directory)
        (uiop:delete-directory-tree ,directory :validate (lambda (p) (search "/tuatara/test-" (namestring p)))))))
 
 (defmacro with-visited ((buffer path) &body body)

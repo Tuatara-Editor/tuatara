@@ -252,25 +252,30 @@ as if stopped. Git printing more octets than LIMIT (*PROGRAM-OUTPUT-LIMIT* when 
 NIL), or with LINE a line longer than that, is ended, NIL and NIL given,
 and true as a third value. NIL, and no process at all, when
 DIRECTORY is in no repository (REPOSITORY-TOP), or when git is not found
-\(FIND-PROGRAM). In a repository looked at only (PROJECT-LOOK-ONLY-REASON:
-answered so, or one that is, is in or holds an evidence folder), git only
-reads and runs none of its programs (CALL-GIT-READING): a command that
-would do more is refused, GIT-REFUSED signalled."
+\(FIND-PROGRAM). In a repository you trust (PROJECT-TRUSTED-P) git looks
+for no repository above its top and takes no bare one it finds on the way.
+In any other (never asked, answered look only, or one that is, is in or
+holds an evidence folder) git only reads, on a shadow of the repository,
+and runs none of its programs (CALL-GIT-READING): ENVIRONMENT is not given
+it, and a command that would do more is refused, GIT-REFUSED signalled."
   (let* ((git (tuatara.io:find-program "git"))
-         (top (ignore-errors (repository-top directory)))
-         (looking (and git top (project-look-only-reason top))))
+         (top (ignore-errors (repository-top directory))))
     (cond ((not (and git top)) (values nil nil))
-          (looking
+          ((project-trusted-p top)
+           (run-git-program git directory arguments :cancel cancel :line line :errors errors :input input
+                                                    :seconds seconds :limit limit :options (list "-c" "safe.bareRepository=explicit")
+                                                    :environment (cons (format nil "GIT_CEILING_DIRECTORIES=~a"
+                                                                               (string-right-trim "/" (tuatara.io:parent-path top)))
+                                                                       environment)))
+          (t
            (handler-case
-               (call-git-reading git top arguments
-                                 (lambda (arguments looking-environment)
-                                   (run-git-program git directory arguments :cancel cancel :line line :errors errors :input input
-                                                                            :seconds seconds :limit limit :reading t
-                                                                            :environment (append looking-environment environment))))
+               (call-git-reading top directory arguments
+                                 (lambda (arguments looking-environment here)
+                                   (run-git-program git here arguments :cancel cancel :line line :errors errors :input input
+                                                                       :seconds seconds :limit limit :reading t
+                                                                       :environment looking-environment)))
              (git-refused (e) (error e))
-             (error () (values nil nil))))
-          (t (run-git-program git directory arguments :cancel cancel :line line :environment environment :errors errors :input input
-                                                      :seconds seconds :limit limit)))))
+             (error () (values nil nil)))))))
 
 (defun git-object-name (revision path)
   "How git names the file or folder PATH of REVISION (a commit's hash, HEAD):
@@ -295,19 +300,20 @@ third when it was more than LIMIT octets."
   "The most octets of what git says on its error output kept, to say why it
 failed (RUN-GIT with ERRORS); the rest is read and let go.")
 
-(defun run-git-program (git directory arguments &key cancel line environment errors input seconds limit reading)
+(defun run-git-program (git directory arguments &key cancel line environment errors input seconds limit reading options)
   "Run the program GIT as RUN-GIT runs git, once it has found it. A command
 that would write in the working files of a repository holding an evidence
 folder is refused, never run (CHECK-GIT-WRITING); in a repository holding
 one, git runs no hook of the repository's (core.hooksPath=/dev/null). With
-READING, ARGUMENTS only read, made so by CALL-GIT-READING, and nothing is
-looked at. The options of *GIT-SAFETY* come after any of ARGUMENTS' own
-before its command, so that they are the ones in force."
+READING, ARGUMENTS only read, made so by CALL-GIT-READING: nothing is looked
+at, and git is given none of your GIT_ variables. The options of
+*GIT-SAFETY*, then OPTIONS, come after any of ARGUMENTS' own before its
+command, so that they are the ones in force."
   (let* ((limit (or limit *program-output-limit*))
          (words (git-command-words arguments))
          (leading (ldiff arguments words))
          ;; the editor's own options after yours, so that they are the ones in force
-         (arguments (append leading (git-safety arguments)
+         (arguments (append leading (git-safety arguments) options
                             (and (not reading)
                                  (check-git-writing directory arguments environment)
                                  (list "-c" "core.hooksPath=/dev/null"))
@@ -355,5 +361,8 @@ before its command, so that they are the ones in force."
                      (listener (values (and (not line) (not cancelled) octets) ok nil said))
                      (t (values (and (not line) (not cancelled) octets) ok))))))
          :job tuatara.runtime:*job* :input (and input :stream) :output :stream :error (and errors :stream)
-         :environment (append environment (list "GIT_TERMINAL_PROMPT=0") (sb-ext:posix-environ)))
+         :environment (append environment (list "GIT_TERMINAL_PROMPT=0")
+                              (if reading
+                                  (remove-if (lambda (setting) (uiop:string-prefix-p "GIT_" setting)) (sb-ext:posix-environ))
+                                  (sb-ext:posix-environ))))
       (error () (values nil nil)))))

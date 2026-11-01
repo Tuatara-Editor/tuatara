@@ -83,24 +83,28 @@ again each time."
 (defun project-trusted-p (root)
   "True when the project at ROOT may run its own programs: it, where it really
 is, was trusted when asked (kept by where it really was then), or is in one
-of *LSP-TRUSTED-PROJECTS* (where they really are); never one that is, or
-holds, an evidence folder (FOLDER-HOLDS-EVIDENCE-P), whose programs could
-write there."
+of *LSP-TRUSTED-PROJECTS* (where they really are); never one that is, is in
+or holds an evidence folder (FOLDER-HOLDS-EVIDENCE-P), whose programs could
+write there, nor one within a folder answered look only
+\(PROJECT-LOOK-ONLY-P): the answer that runs less wins."
   (let ((real (real-folder root)))
     (and real
          (or (member real (state-list-entries *lsp-trusted*) :test #'equal)
              (some (lambda (trusted) (tuatara.io:path-within-p real trusted))
                    (trusted-setting-folders)))
+         (not (real-folder-look-only-p real))
          ;; asked only of a project trusted, and told from the setting, not by reading the project
+         (not (evidence-path-p real))
          (not (folder-holds-evidence-p real)))))
 
 (defun buffer-in-trusted-project-p (buffer)
   "True when BUFFER visits a file of a project you trust (PROJECT-TRUSTED-P):
 its text is then parsed by the program shared by such files, not one of its
-own. Looked up again only when the file, the projects trusted when asked,
-*LSP-TRUSTED-PROJECTS* or *EVIDENCE-FOLDERS* change."
+own. Looked up again only when the file, the projects trusted or looked at
+only when asked, *LSP-TRUSTED-PROJECTS* or *EVIDENCE-FOLDERS* change."
   (let* ((file (tuatara.buffer:buffer-file buffer))
-         (key (list file (state-list-entries *lsp-trusted*) *lsp-trusted-projects* (evidence-generation)))
+         (key (list file (state-list-entries *lsp-trusted*) (state-list-entries *look-only*) *lsp-trusted-projects*
+                    (evidence-generation)))
          (seen (tuatara.buffer:buffer-local buffer :trusted-project-seen)))
     (if (and seen (equal (car seen) key))
         (cdr seen)
@@ -114,13 +118,18 @@ own. Looked up again only when the file, the projects trusted when asked,
           answer))))
 
 (defun project-look-only-p (root)
-  "True when the project at ROOT, where it really is, was answered look only
-and is not trusted (PROJECT-TRUSTED-P): git reads it and runs nothing of
-it, and nothing else of it runs."
+  "True when the project at ROOT, where it really is, is or is within a
+folder answered look only: git reads it and runs nothing of it, and
+nothing else of it runs, whatever trusts it or a folder holding it."
   (let ((real (real-folder root)))
-    (and real
-         (member real (state-list-entries *look-only*) :test #'equal)
-         (not (project-trusted-p root)))))
+    (and real (real-folder-look-only-p real))))
+
+(defun real-folder-look-only-p (real)
+  "True when REAL, a folder where it really is, is or is within a folder
+answered look only."
+  (and (some (lambda (folder) (and (stringp folder) (tuatara.io:path-within-p real folder)))
+             (state-list-entries *look-only*))
+       t))
 
 (defun project-evidence-words (root)
   "Why the project at ROOT can never be trusted, a phrase, or NIL: it is in
@@ -151,11 +160,14 @@ again."
 :LOOK-ONLY, or NIL when not, and as a second value why it can never be
 trusted when it is evidence (PROJECT-EVIDENCE-WORDS). Trusted already, or
 answered look only already, or asked now (with AGAIN, asked whatever was
-answered before): y trusts it and l keeps it to looking only, each
-remembered; n leaves it to be asked again, and with AGAIN forgets what was
-answered. The question (TRUST-QUESTION) says all a yes allows, whatever
-asks it, and only a key pressed once it is shown answers it. A project that
-is, is in or holds an evidence folder is looked at only, never asked of."
+answered before): y, then yes typed (trusting cannot be taken back once its
+programs ran), trusts it, unless a folder holding it is looked at only; l
+keeps it to looking only, each remembered; n leaves it to be asked again,
+and with AGAIN forgets what was answered. The question (TRUST-QUESTION) says
+all a yes allows, whatever asks it, and only a key pressed once it is shown
+answers it. A project that is, is in or holds an evidence folder, or is
+within a folder answered look only, is looked at only, never asked of
+\(asked again with AGAIN, it stays so)."
   (let ((real (real-folder root))
         (evidence (project-evidence-words root)))
     (cond (evidence (values :look-only evidence))
@@ -163,9 +175,10 @@ is, is in or holds an evidence folder is looked at only, never asked of."
           ((and (not again) (project-look-only-p root)) :look-only)
           ((null real) nil)
           (t (case (read-answer-key (trust-question real) '(#\y #\l #\n) :fresh t)
-               (#\y (state-list-drop *look-only* (list real))
-                (state-list-put *lsp-trusted* (list real))
-                :trusted)
+               (#\y (when (yes-or-no-p* (format nil "Trust ~a to run its own programs?" (abbreviated-path real)))
+                      (state-list-drop *look-only* (list real))
+                      (state-list-put *lsp-trusted* (list real))
+                      (if (project-look-only-p real) :look-only :trusted)))
                (#\l (state-list-drop *lsp-trusted* (list real))
                 (state-list-put *look-only* (list real))
                 :look-only)
@@ -204,5 +217,8 @@ folder of *LSP-TRUSTED-PROJECTS* stays trusted whatever is answered."
                    (cond (evidence (format nil "cannot be trusted: ~a" evidence))
                          ((eq answer :trusted) "is trusted")
                          ((project-trusted-p root) "is trusted all the same: it is in *lsp-trusted-projects*")
+                         ((and (eq answer :look-only)
+                               (not (member (real-folder root) (state-list-entries *look-only*) :test #'equal)))
+                          "is looked at only all the same: a folder holding it is")
                          ((eq answer :look-only) "is looked at only")
                          (t "will be asked about again")))))))

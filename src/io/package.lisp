@@ -15,7 +15,7 @@ running programs, shut in a sandbox when they read files from elsewhere.")
    #:file-changed-on-disk #:file-changed-on-disk-path
    ;; what the system says about files
    #:stamp #:stamp-p #:path-stamp #:fd-stamp #:stamp-kind #:make-stamp #:same-content-p
-   #:stamp-dev #:stamp-ino #:stamp-size #:stamp-mtime #:stamp-nlink #:stamp-mode #:stamp-uid #:stamp-gid
+   #:stamp-dev #:stamp-ino #:stamp-size #:stamp-mtime #:stamp-nlink #:stamp-mode #:stamp-uid #:stamp-gid #:stamp-ctime
    #:fd-file-system #:file-system-class #:free-bytes #:read-only-mount-p #:can-give-owner-p #:writable-p #:writing-refused #:*writing-refusal-function* #:writing-refusal #:writing-refused-anywhere-p #:check-writing #:check-tree-writing #:fd-real-path #:*writing-told-function* #:tell-writing
    #:take-read-lease #:lease-breaking-p #:release-lease
    ;; copies and scratch files
