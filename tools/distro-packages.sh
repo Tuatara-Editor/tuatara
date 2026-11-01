@@ -217,15 +217,14 @@ EOF
 # $1 a system, $2 its image, $3 the command that installs its package
 # /tmp/package/FILE there (and script, which gives Tuatara a terminal):
 # installed in a new container, then run; the container is removed whether it
-# passes or not. Tuatara parses and decodes only in its sandbox, which needs
-# to mount a /proc of its own: the container is made without podman's masks
-# over /proc and its SELinux label, as a desktop system is, so that bwrap
-# can run in it.
+# passes or not. The container is made with podman's masks over /proc lifted
+# and no SELinux label, so that bwrap can mount a /proc of its own in it;
+# /sys stays masked and seccomp stays.
 check_package() {
   local container="tuatara-check-$1" file status=0
   file=$(package_file "$1")
   podman rm -f -t 0 "$container" >/dev/null 2>&1 || true
-  podman run -d --name "$container" --security-opt unmask=ALL --security-opt label=disable "$2" sleep infinity >/dev/null
+  podman run -d --name "$container" --security-opt unmask=/proc/* --security-opt label=disable "$2" sleep infinity >/dev/null
   podman exec "$container" mkdir -p /tmp/package &&
   podman cp "$out/$file" "$container:/tmp/package/$file" &&
   podman exec "$container" sh -c "$3" >/dev/null &&

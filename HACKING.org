@@ -91,7 +91,10 @@ was built on (it refuses one that names the home folder or the account);
 it (it takes its libraries from Ubuntu 24.04, in a podman container), and
 =tools/distro-packages.sh= Fedora, Ubuntu and Arch packages (each made by its
 system's own tools in a podman container; =--check= installs each in a new
-container and runs it). The images are pinned by digest in =tools/containers.sh=;
+container and runs it: Tuatara colours code only where its sandbox runs, and
+bwrap cannot mount a =/proc= of its own under podman's masks over =/proc= or
+its SELinux label, so the check's container is made without those, =/sys=
+still masked and seccomp kept). The images are pinned by digest in =tools/containers.sh=;
 each build also brings its container's packages up to date (the system's
 update and upgrade), so the libraries bundled are the current ones, and
 =tools/appimage.sh= records them: =build/Tuatara-x86_64.AppImage.libraries.txt=
