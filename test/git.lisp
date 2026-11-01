@@ -1931,22 +1931,21 @@ DIR is visited and its status read, the project trusted. Returns the frontend."
   ;; a key typed ahead while the message is saved does not leave git waiting: the buffer is
   ;; done with once the save is, however long it takes
   (with-test-directory (dir)
-    (let ((file (namestring (merge-pathnames "COMMIT_EDITMSG" dir)))
-          (said-before (length (tuatara.buffer:buffer-string (tuatara.command::messages-buffer))))
-          (f (tuatara.frontend.fake:make-fake-frontend :width 80 :height 10)))
-      (alexandria:write-string-into-file (format nil "~%# Please enter the commit message.~%") file)
-      (setf (tuatara.frontend.fake:fake-pending f) t)
-      (queue-test-keys f (list (format nil "C-x C-f C-a C-k ~a RET" (rimu-typed file)) "F i x C-c C-c"))
-      (with-functions-replaced ((tuatara.io::save-transform
-                                 (lambda (buffer path)
-                                   (declare (ignore buffer path))
-                                   (lambda (rope) (sleep 0.5) rope))))
-        (call-without-grammar-questions
-         (lambda () (tuatara.command:run-editor f :setup #'tuatara.defaults:install-defaults))))
-      (is string= (format nil "Fix~%# Please enter the commit message.~%") (file-text file))
-      (false (tuatara.buffer:find-buffer "COMMIT_EDITMSG") "the message's buffer is closed once saved")
-      (true (search "Saved: git takes it"
-                    (subseq (tuatara.buffer:buffer-string (tuatara.command::messages-buffer)) said-before))))))
+    (with-messages-said (said)
+      (let ((file (namestring (merge-pathnames "COMMIT_EDITMSG" dir)))
+            (f (tuatara.frontend.fake:make-fake-frontend :width 80 :height 10)))
+        (alexandria:write-string-into-file (format nil "~%# Please enter the commit message.~%") file)
+        (setf (tuatara.frontend.fake:fake-pending f) t)
+        (queue-test-keys f (list (format nil "C-x C-f C-a C-k ~a RET" (rimu-typed file)) "F i x C-c C-c"))
+        (with-functions-replaced ((tuatara.io::save-transform
+                                   (lambda (buffer path)
+                                     (declare (ignore buffer path))
+                                     (lambda (rope) (sleep 0.5) rope))))
+          (call-without-grammar-questions
+           (lambda () (tuatara.command:run-editor f :setup #'tuatara.defaults:install-defaults))))
+        (is string= (format nil "Fix~%# Please enter the commit message.~%") (file-text file))
+        (false (tuatara.buffer:find-buffer "COMMIT_EDITMSG") "the message's buffer is closed once saved")
+        (true (search "Saved: git takes it" (said)))))))
 
 (define-test (git message-git-asked-for)
   ;; Tuatara run by git commit as its editor: C-c C-c saves the message and ends

@@ -72,6 +72,17 @@ for the editor woken there once, a function called there."
                  (tuatara.frontend.fake:fake-queue-keys f part)))))
       (tuatara.frontend.fake:fake-queue-keys f keys)))
 
+(defmacro with-messages-said ((said) &body body)
+  "Run BODY with *Messages* keeping every line said, and SAID, a function of
+none, giving the text said since BODY began; a log that keeps only its last
+lines would move the text under an offset taken before."
+  (let ((log (gensym "LOG")) (start (gensym "START")))
+    `(let* ((tuatara.command:*message-log-max* most-positive-fixnum)
+            (,log (tuatara.command::messages-buffer))
+            (,start (tuatara.buffer:buffer-size ,log)))
+       (flet ((,said () (tuatara.buffer:buffer-string ,log :start (min ,start (tuatara.buffer:buffer-size ,log)))))
+         ,@body))))
+
 (defvar *grammar-questions-wanted* nil
   "True while a test looks at the question whether to turn a grammar on
 \(WITH-GRAMMAR-ANSWERS-FORGOTTEN); otherwise a session asks none, as a key typed

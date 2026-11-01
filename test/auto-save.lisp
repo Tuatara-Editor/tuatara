@@ -26,7 +26,8 @@ bound on a wait that never ends, the test failing past it. As a step begins,
 *SESSION-MESSAGES-START* is where the step before it began. With PENDING,
 what is queued counts as typed meanwhile, as keys pressed while the editor
 waits are. Returns the frontend and the editor."
-  (let* ((f (tuatara.frontend.fake:make-fake-frontend :width width :height height))
+  (let* ((tuatara.command:*message-log-max* most-positive-fixnum)
+         (f (tuatara.frontend.fake:make-fake-frontend :width width :height height))
          (log (lambda () (tuatara.buffer:buffer-size (tuatara.command::messages-buffer))))
          (begun nil)
          (step-start (funcall log)))
