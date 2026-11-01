@@ -198,6 +198,32 @@ not, and why as a second value when it could not be."
 \(LINE . WHY), or NIL when it was read to its end: a form that failed, or
 text that could not be read on.")
 
+(defun start-bare ()
+  "Have the editor start without the init file, so without packages, and with
+a state folder of its own, new and empty, made in the cache folder and deleted
+when the editor ends: what the editor keeps between sessions (the files
+visited lately, the session, auto-saved text, bookmarks) is neither read
+nor written, so that nothing of the real state is changed or lost. The
+configuration folder (snippets, templates) is read as always. Call it before
+the editor starts."
+  (let ((folder (tuatara.io:ensure-private-directory
+                 (merge-pathnames (format nil "bare-~a/" (tuatara.io:random-name)) (tuatara.io:cache-directory)))))
+    (setf *config-file* (merge-pathnames "no-init-file.lisp" folder)
+          tuatara-user:*state-directory* folder)
+    (setf tuatara.command:*exit-functions*
+          (append tuatara.command:*exit-functions*
+                  (list (lambda (editor)
+                          (declare (ignore editor))
+                          ;; work still ending in the background may write in it meanwhile
+                          (loop repeat 20
+                                do (ignore-errors (tuatara.io:delete-tree folder))
+                                until (null (tuatara.io:path-kind folder))
+                                do (sleep 0.1))))))))
+
+(defun say-started-bare ()
+  "Say that the editor started without its init file and packages, with state of its own."
+  (message "Started with -Q: no init file, no packages, and what is kept between sessions kept apart"))
+
 (defun load-user-config ()
   "Load the init file if it exists, in the TUATARA-USER package, form by form
 \(READ-INIT-FILE), the packages it loads said with their times

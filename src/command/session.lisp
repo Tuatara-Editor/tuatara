@@ -356,20 +356,31 @@ end, and must not take the editor with it."
   (ignore-errors (setf (sb-alien:extern-alien "lose_on_corruption_p" (sb-alien:unsigned 8)) 0)))
 
 (defvar *visit-file-function* nil
-  "A function of a file's path that visits it as the editor's commands do (a
-PDF as its pages, a binary file safely in the hex view) and returns its buffer,
-for the files the editor is started with. The defaults set it.")
+  "A function of a file's path, and keys :SAFE (visit it safely) and :HEX (show
+it in the hex view, never first as text), that visits it as the editor's
+commands do (a PDF as its pages, a binary file safely in the hex view) and
+returns its buffer, for the files the editor is started with. The defaults set it.")
 
-(defun visit-startup-file (path)
-  "Visit PATH, a file the editor was started with, as *VISIT-FILE-FUNCTION*
-does, or else its text, saying why it opened safely when it did."
-  (if *visit-file-function*
-      (funcall *visit-file-function* path)
-      (let* ((buffer (tuatara.io:call-with-file-heads (lambda () (tuatara.io:visit-file path))))
-             (why (tuatara.io:safe-visit-reason buffer)))
-        (when why
-          (message "~a opened safely: ~a; \\[end-safe-visit] opens it as usual" (tuatara.buffer:buffer-name buffer) why))
-        buffer)))
+(defvar *visit-standard-input-function* nil
+  "A function of an open descriptor that makes a buffer of what is read from
+it, in the background, and returns the buffer, for - among the files the
+editor is started with. The defaults set it.")
+
+(defun visit-startup-file (entry)
+  "Visit ENTRY, a file the editor was started with: a path, or a list of it
+and :SAFE and :HEX as asked, or (:STANDARD-INPUT DESCRIPTOR); as
+*VISIT-FILE-FUNCTION* does, or else its text, saying why it opened safely
+when it did."
+  (if (and (consp entry) (eq (first entry) :standard-input))
+      (funcall *visit-standard-input-function* (second entry))
+      (destructuring-bind (path &key safe hex) (alexandria:ensure-list entry)
+        (if *visit-file-function*
+            (funcall *visit-file-function* path :safe safe :hex hex)
+            (let* ((buffer (tuatara.io:call-with-file-heads (lambda () (tuatara.io:visit-file path :safe safe))))
+                   (why (tuatara.io:safe-visit-reason buffer)))
+              (when why
+                (message "~a opened safely: ~a; \\[end-safe-visit] opens it as usual" (tuatara.buffer:buffer-name buffer) why))
+              buffer)))))
 
 (defvar *startup-buffers* '()
   "The buffers of the files the editor was started with, in order: those a
@@ -379,19 +390,20 @@ program that runs it as its editor (git) waits on.")
   "The code the editor ends with: 0, or what a command leaving it sets, 1 for
 a program that runs it as its editor to give up (git's commit not made).")
 
-(defun visit-startup-files (paths)
-  "Visit each of PATHS, the files the editor was started with, as
+(defun visit-startup-files (entries)
+  "Visit each of ENTRIES, the files the editor was started with, as
 VISIT-STARTUP-FILE does, and return their buffers in order. A file that
 cannot be opened is said in the echo area and left out; the others open."
-  (loop for path in paths
-        for buffer = (call-with-guard (lambda () (visit-startup-file path)) 'visit-startup-file 'visit-startup-files
-                                      :said (lambda (words) (format nil "~a: ~a" path words)))
+  (loop for entry in entries
+        for buffer = (call-with-guard (lambda () (visit-startup-file entry)) 'visit-startup-file 'visit-startup-files
+                                      :said (lambda (words) (format nil "~a: ~a" (if (consp entry) (first entry) entry) words)))
         when buffer collect buffer))
 
-(defun run-editor (frontend &key files (setup nil) buffer)
+(defun run-editor (frontend &key files (setup nil) buffer start)
   "Start FRONTEND, call SETUP with the editor if given (this is where the
 defaults install keymaps, modes, themes and the init file), then show the
-first of FILES that opens, or BUFFER, or what *STARTUP-BUFFER-FUNCTION* returns, run the
+first of FILES that opens, or BUFFER, or what *STARTUP-BUFFER-FUNCTION* returns, call
+START, if given, with the editor once that is shown, run the
 command loop, and stop the frontend when it ends. Setup runs before any
 buffer is shown, so what it installs (major modes, the startup buffers)
 applies to them. Returns the editor."
@@ -422,6 +434,7 @@ applies to them. Returns the editor."
              (note-selected-buffer first)
              ;; let per-command bookkeeping (modal state, gutters) see the buffer now shown
              (dolist (f (editor-post-command-functions editor)) (call-guarded f f editor))
+             (when start (call-guarded start start editor))
              (tuatara.runtime:start-hang-watch sb-thread:*current-thread* :while (lambda () (editor-running editor)))
              (command-loop editor)
              ;; stopped, however: what is kept between sessions is written now

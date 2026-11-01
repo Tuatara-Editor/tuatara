@@ -593,6 +593,65 @@ how JOB ended, point at its start."
             (t (set-made-text buffer shown)
                (setf (tuatara.buffer:buffer-point buffer) 0))))))
 
+(defun visit-start-file (path &key safe hex)
+  "Visit PATH, a file the editor is started with, as \\[find-file] does and
+return its buffer, without showing it: with SAFE safely; with HEX as its
+octets in the hex view, never shown as text or as a view of its kind first."
+  (if hex
+      (let ((buffer (tuatara.io:call-with-file-heads
+                     (lambda () (nth-value 0 (visit-path-as-text path safe #'identity))))))
+        (hex-view-on buffer)
+        buffer)
+      (nth-value 0 (visit-path path :safe safe :show #'identity))))
+
+(defvar *standard-input-limit* (* 1024 1024 1024)
+  "The most octets of standard input read into a buffer (1 GB); what comes
+after is left unread, and that is said.")
+
+(defstruct (standard-input-job (:include tuatara.runtime:job) (:constructor make-standard-input-job (buffer descriptor))
+                               (:copier nil))
+  "Standard input being read for BUFFER, a job, from the open DESCRIPTOR; OCTETS, what was read."
+  descriptor octets)
+
+(setf (documentation 'standard-input-job-p 'function) "True when OBJECT is a STANDARD-INPUT-JOB.")
+
+(tuatara.runtime:define-job-words standard-input-job
+  :doing "Reading standard input"
+  :description "Reading standard input"
+  :verb "read"
+  :left-words "standard input not read"
+  :at-exit :quiet)
+
+(defmethod tuatara.runtime:job-take-in ((job standard-input-job))
+  "Show what was read from standard input in its buffer, read only, or why it could not be read."
+  (let ((octets (standard-input-job-octets job)))
+    (show-reading-result job "standard input"
+                         (lambda (buffer)
+                           (set-made-text buffer (tuatara.text:octets->rope (coerce octets 'tuatara.text:octets)))
+                           (setf (tuatara.buffer:buffer-point buffer) 0)
+                           (when (> (length octets) *standard-input-limit*)
+                             (message "Standard input is longer than ~:d octets: the rest was not read" *standard-input-limit*)))
+                         "~a could not be read: ~a~%")))
+
+(defun visit-standard-input (descriptor)
+  "Make a buffer of what is read from the open DESCRIPTOR, standard input, in
+the background: called *stdin*, not a file's, read only and opened safely, so
+that nothing in it is acted on. Returns the buffer at once."
+  (let ((buffer (tuatara.buffer:make-buffer (tuatara.buffer:unique-buffer-name "*stdin*")
+                                            :text (format nil "Reading standard input...~%"))))
+    (setf (tuatara.buffer:buffer-local buffer :read-only) t
+          (tuatara.buffer:buffer-local buffer :safe-visit) "it came from standard input")
+    (tuatara.runtime:start-job-thread
+     (make-standard-input-job buffer descriptor)
+     (lambda (job)
+       (unwind-protect
+            (setf (standard-input-job-octets job)
+                  (tuatara.io:read-fd-octets (standard-input-job-descriptor job) :path "standard input"
+                                                                                  :most *standard-input-limit*))
+         (ignore-errors (sb-posix:close (standard-input-job-descriptor job)))))
+     :name "tuatara standard input")
+    buffer))
+
 (defun hex-view-on (buffer &optional (at 0))
   "Show BUFFER in the hex view (\\[hex-mode]), its cursor on the octet AT."
   (setf (tuatara.buffer:buffer-local buffer :hex-view) t

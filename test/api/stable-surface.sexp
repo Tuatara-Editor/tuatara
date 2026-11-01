@@ -1,6 +1,7 @@
 ;; The stable surface, pinned by tools/pin-stable-surface.sh at each version bump: (:api NAME KIND [ARGUMENTS]),
 ;; ARGUMENTS (REQUIRED OPTIONAL KEYS REST OTHER-KEYS); (:setting NAME); (:init NAME KIND ARGUMENTS), the init
-;; file's functions and macros; (:keywords LOAD-PACKAGE KEYWORDS); (:command PACKAGE NAME).
+;; file's functions and macros; (:keywords LOAD-PACKAGE KEYWORDS); (:flag OPTION), the command line's
+;; options; (:command PACKAGE NAME).
 (:version "0.90.13")
 (:api "*BUILD*" :variable)
 (:api "*BUILT-AT*" :variable)
@@ -1848,6 +1849,25 @@
 (:command "TUATARA.DEFAULTS" "ZAP-UP-TO-CHAR")
 (:command "TUATARA.DEFAULTS" "ZIG-MODE")
 (:command "TUATARA.MODES" "FUNDAMENTAL-MODE")
+(:flag "+LINE")
+(:flag "-")
+(:flag "--")
+(:flag "--config")
+(:flag "--diff")
+(:flag "--generate-config")
+(:flag "--gui")
+(:flag "--help")
+(:flag "--hex")
+(:flag "--merge")
+(:flag "--no-init")
+(:flag "--safe")
+(:flag "--tutor")
+(:flag "--version")
+(:flag "-Q")
+(:flag "-R")
+(:flag "-V")
+(:flag "-c")
+(:flag "-h")
 (:init "BACKWARD-CHAR" :function (0 ("N") nil nil nil))
 (:init "BIND-KEY" :function (2 nil ("LABEL" "MAP" "MODE") nil nil))
 (:init "BOBP" :function (0 nil nil nil nil))

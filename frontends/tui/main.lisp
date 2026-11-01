@@ -8,12 +8,15 @@
 (defpackage #:tuatara.terminal
   (:use #:cl)
   (:documentation "Tuatara in the terminal: the entry point shared by tools/tui.lisp and the saved executable.")
-  (:export #:main #:image-toplevel #:*built-heap*))
+  (:export #:main #:image-toplevel #:*built-heap* #:*options*))
 
 (in-package #:tuatara.terminal)
 
 (defparameter *usage*
-  "Usage: tuatara [--gui] [-c INIT-FILE] [FILE...]
+  "Usage: tuatara [--gui] [-Q] [-c INIT-FILE] [--safe] [--hex] [[+LINE[:COLUMN]] FILE...]
+       tuatara [--gui] [-Q] [-c INIT-FILE] --diff OLD NEW
+       tuatara [--gui] [-Q] [-c INIT-FILE] --merge LOCAL BASE REMOTE MERGED
+       tuatara [--gui] [-Q] [-c INIT-FILE] --tutor
 Edit the FILEs in this terminal, or start in the scratch buffers without any.
 Written by Michael A Jones; free software under the GNU General Public
 License, version 3 or later.
@@ -21,6 +24,32 @@ License, version 3 or later.
   -c INIT-FILE, --config INIT-FILE (or --config=INIT-FILE)
               read INIT-FILE as the init file instead of
               ~/.config/tuatara/init.lisp
+  +LINE[:COLUMN]
+              before a file: open it with the cursor on that line (from 1;
+              the last line when the file has fewer) and column (from 1),
+              as in tuatara +120:8 main.lisp +3 notes.org
+  --diff OLD NEW
+              open the differences between the two files, or two folders, as
+              M-x diff-files shows them, and exit when you quit; for git, as
+              git config difftool.tuatara.cmd 'tuatara --diff \"$LOCAL\" \"$REMOTE\"'
+  --merge LOCAL BASE REMOTE MERGED
+              merge the three files into MERGED, the conflicts marked there to
+              resolve, then save it; exits 0 when MERGED is saved with no
+              conflict left, else 1; for git, as git config
+              mergetool.tuatara.cmd 'tuatara --merge \"$LOCAL\" \"$BASE\"
+              \"$REMOTE\" \"$MERGED\"' and mergetool.tuatara.trustExitCode true
+  --safe, -R  open the files safely, whatever folder they are in: read only,
+              no mode or hook acting on them, nothing written
+  --hex       open the files in the hex view, never first as text
+  -           as a file: read standard input into a buffer, *stdin*, opened
+              safely (tuatara - < data, or ... | tuatara -); the terminal stays
+              the keyboard
+  --tutor     start in the tutor
+  -Q, --no-init
+              start without the init file and so without packages, with what
+              Tuatara keeps between sessions (files visited lately, the
+              session, bookmarks) kept apart in a folder that goes with the
+              session, the real one neither read nor changed
   --generate-config
               write the init file Tuatara writes when there is none, every
               setting in it commented out, as
@@ -30,7 +59,7 @@ License, version 3 or later.
   --version, -V
               show the version and exit
   --          the arguments after it are all files, even when one starts with a
-              dash
+              dash or a plus
   --install-desktop
               (the AppImage) copy it to ~/.local/bin/tuatara and put Tuatara
               in the desktop's applications, its icon too
@@ -160,18 +189,27 @@ was started in (/dev/tty) instead; what came in on the input is not read."
         (sb-posix:dup2 fd 0)
         (sb-posix:close fd)))))
 
+(defparameter *options*
+  '("--" "-" "--version" "-V" "--help" "-h" "--gui" "--diff" "--merge" "--safe" "-R" "--hex" "--tutor"
+    "-Q" "--no-init" "--generate-config" "-c" "--config")
+  "The options the program takes, as written (--config= takes its value after
+the equals sign), and +LINE before a file besides.")
+
 (defun option-p (argument)
   "True when ARGUMENT is one of the program's options."
-  (or (member argument '("--" "--version" "-V" "--help" "-h" "--gui" "--generate-config" "-c" "--config") :test #'string=)
+  (or (member argument *options* :test #'string=)
       (uiop:string-prefix-p "--config=" argument)))
 
 (defun read-options (arguments &key (directory (uiop:getcwd)))
   "The options of ARGUMENTS, the program's (strings), as a plist: :GUI,
-:CONFIG (the init file -c names), :GENERATE-CONFIG, :VERSION, :HELP and
-:FILES, the arguments after the options (all after --); or :ERROR, what is
-wrong with them, among them an option that is also a file's name in
-DIRECTORY, where the program was started."
-  (let ((options '()))
+:CONFIG (the init file -c names), :GENERATE-CONFIG, :VERSION, :HELP,
+:DIFF (the two names after --diff), :MERGE (the four after --merge), :SAFE,
+:HEX, :TUTOR, :BARE (-Q) and :FILES, the arguments after the options; or :ERROR, what is wrong with them, among them an option or a
++LINE that is also a file's name in DIRECTORY, where the program was
+started. A file after a +LINE[:COLUMN] is (NAME LINE COLUMN) in :FILES, the
+column NIL when none was given, and a - (standard input) is (:STANDARD-INPUT);
+after --, every argument is a file's name."
+  (let ((options '()) (literal nil))
     (loop
       (let ((argument (pop arguments)))
         (flet ((given (key) (setf (getf options key) t)))
@@ -181,11 +219,24 @@ DIRECTORY, where the program was started."
                 ((and (option-p argument) (ignore-errors (tuatara.io:path-kind (tuatara.io:expand-path argument :directory directory) :follow nil)))
                  (return-from read-options
                    (list :error (format nil "~a is a file here too: write ./~a, or -- before the files" argument argument))))
-                ((string= argument "--") (return))
+                ((string= argument "--") (setf literal t) (return))
                 ((member argument '("--version" "-V") :test #'string=) (given :version))
                 ((member argument '("--help" "-h") :test #'string=) (given :help))
                 ((string= argument "--gui") (given :gui))
                 ((string= argument "--generate-config") (given :generate-config))
+                ((member argument '("--safe" "-R") :test #'string=) (given :safe))
+                ((string= argument "--hex") (given :hex))
+                ((string= argument "--tutor") (given :tutor))
+                ((member argument '("-Q" "--no-init") :test #'string=) (given :bare))
+                ((string= argument "--merge")
+                 (if (and (>= (length arguments) 4) (every #'plusp (mapcar #'length (subseq arguments 0 4))))
+                     (setf (getf options :merge) (loop repeat 4 collect (pop arguments)))
+                     (return-from read-options
+                       (list :error "--merge needs four files after it: LOCAL BASE REMOTE MERGED"))))
+                ((string= argument "--diff")
+                 (if (and (second arguments) (plusp (length (first arguments))) (plusp (length (second arguments))))
+                     (setf (getf options :diff) (list (pop arguments) (pop arguments)))
+                     (return-from read-options (list :error "--diff needs two files after it, the old and the new"))))
                 ((member argument '("-c" "--config") :test #'string=)
                  (let ((path (pop arguments)))
                    (if (and path (plusp (length path)))
@@ -194,7 +245,57 @@ DIRECTORY, where the program was started."
                 ((uiop:string-prefix-p "--config=" argument)
                  (setf (getf options :config) (subseq argument (length "--config="))))
                 (t (push argument arguments) (return))))))
-    (list* :files arguments options)))
+    (cond ((and (getf options :diff) arguments)
+           (list :error (format nil "--diff takes the two files to compare, not ~a too" (first arguments))))
+          ((and (getf options :merge) arguments)
+           (list :error (format nil "--merge takes the four files to merge, not ~a too" (first arguments))))
+          ((and (getf options :diff) (getf options :merge))
+           (list :error "--diff and --merge are not given together"))
+          ((and (getf options :tutor) arguments)
+           (list :error (format nil "--tutor takes no files, not ~a" (first arguments))))
+          (literal (list* :files arguments options))
+          (t (let ((files (read-places arguments directory)))
+               (if (stringp files)
+                   (list :error files)
+                   (list* :files files options)))))))
+
+(defun place-argument (argument)
+  "The line and the column (NIL when none) a command-line argument such as
++120 or +120:8 asks for, as two values; NIL when ARGUMENT is not one."
+  (when (and (> (length argument) 1) (char= (char argument 0) #\+))
+    (let* ((colon (position #\: argument))
+           (line (subseq argument 1 colon))
+           (column (and colon (subseq argument (1+ colon)))))
+      (flet ((number-p (text) (and (plusp (length text)) (< (length text) 10) (every #'digit-char-p text))))
+        (when (and (number-p line) (or (null column) (number-p column)))
+          (values (parse-integer line) (and column (parse-integer column))))))))
+
+(defun read-places (arguments directory)
+  "ARGUMENTS, the files named on the command line, each with the line and
+column a +LINE[:COLUMN] before it asked for: a plain name where none was, else
+\(NAME LINE COLUMN). A string says what is wrong instead: a +LINE with no file
+after it, two of them before a file, or one that is also a file's name in
+DIRECTORY."
+  (let ((line nil) (column nil) (files '()))
+    (dolist (argument arguments)
+      (multiple-value-bind (asked-line asked-column) (place-argument argument)
+        (cond ((and (or asked-line (string= argument "-"))
+                    (ignore-errors (tuatara.io:path-kind (tuatara.io:expand-path argument :directory directory) :follow nil)))
+               (return-from read-places
+                 (format nil "~a is a file here too: write ./~a, or -- before the files" argument argument)))
+              ((string= argument "-")
+               (when line
+                 (return-from read-places (format nil "+~d needs a file, not standard input" line)))
+               (push (list :standard-input) files))
+              (asked-line
+               (when line
+                 (return-from read-places (format nil "~a comes after +~d with no file between them" argument line)))
+               (setf line asked-line column asked-column))
+              (line (push (list argument line column) files) (setf line nil column nil))
+              (t (push argument files)))))
+    (when line
+      (return-from read-places (format nil "+~d~@[:~d~] needs the file it is for after it" line column)))
+    (nreverse files)))
 
 (defun generate-config ()
   "Write the starter init file as generated-init.lisp in the configuration
@@ -206,12 +307,66 @@ the error output. The exit code: 0 when written, 1 when not."
             (why (format *error-output* "tuatara: no init file written at ~a: ~a~%" path why) 1)
             (t (format *error-output* "tuatara: ~a is there already; move it away to write a new one~%" path) 1)))))
 
+(defun named-here (name)
+  "The file NAME as the system names it, from where Tuatara was started."
+  (tuatara.io:native (tuatara.io:expand-path name :directory (uiop:getcwd))))
+
+(defun missing-file (names)
+  "The first of NAMES, files, that is not there, or NIL."
+  (find-if-not (lambda (name) (ignore-errors (tuatara.io:path-kind (named-here name)))) names))
+
+(defun startup-from (options &key (input 0))
+  "What the editor is started with for OPTIONS (READ-OPTIONS), as two values:
+the files to open, as RUN-EDITOR takes them (a name, or a list of it and
+:SAFE and :HEX as asked, or (:STANDARD-INPUT FD) for a copy of the input kept
+for - before the terminal takes its place: of INPUT, the descriptor of
+standard input), the names from where Tuatara was started; and
+START-FUNCTION for the rest. With -Q the editor is set to start bare first
+\(TUATARA.DEFAULTS::START-BARE)."
+  (when (getf options :bare)
+    (tuatara.defaults::start-bare))
+  (let* ((safe (getf options :safe))
+         (hex (getf options :hex))
+         (merge (mapcar #'named-here (getf options :merge)))
+         (places '())
+         (files (loop for file in (if merge (list (fourth merge)) (getf options :files))
+                      collect (cond ((stringp file) (startup-file (named-here file) safe hex))
+                                    ((eq (first file) :standard-input) (list :standard-input (sb-posix:dup input)))
+                                    (t (let ((path (named-here (first file))))
+                                         (push (list path (second file) (third file)) places)
+                                         (startup-file path safe hex)))))))
+    (values files
+            (start-function :places (nreverse places) :diff (mapcar #'named-here (getf options :diff))
+                            :merge merge :tutor (getf options :tutor) :bare (getf options :bare)))))
+
+(defun startup-file (path safe hex)
+  "PATH, a file to open, as RUN-EDITOR takes it: with SAFE and HEX as asked."
+  (if (or safe hex) (list path :safe safe :hex hex) path))
+
+(defun start-function (&key places diff merge tutor bare)
+  "What the editor does once the files are shown, as a function of the editor,
+or NIL when there is nothing to do: go to the line each of PLACES asks for,
+\(PATH LINE COLUMN); show the differences of DIFF, the old and the new file;
+merge MERGE, the local, base and remote file and the one the merge goes into;
+open the tutor; and say that it started BARE."
+  (when (or places diff merge tutor bare)
+    (lambda (editor)
+      (declare (ignore editor))
+      (when places (tuatara.defaults::show-start-places places))
+      (when diff
+        (tuatara.defaults::compare-paths (first diff) (second diff))
+        (tuatara.command:only-window (tuatara.command:current-window)))
+      (when merge (tuatara.defaults::merge-files-into (first merge) (second merge) (third merge) (fourth merge)))
+      (when tutor (tuatara.defaults::tuatara-tutor))
+      (when bare (tuatara.defaults::say-started-bare)))))
+
 (defun main (arguments)
   "Run Tuatara in this terminal on the files named in ARGUMENTS (strings), or
 in the scratch buffers when there are none, as its options say
 \(READ-OPTIONS): --version, --help and --generate-config do what they say
-instead; -c names the init file; -- before the files lets a file's name
-start with a dash. With --gui, or when started with no terminal on a
+instead; --diff OLD NEW shows what differs between two files; -c names the
+init file; +LINE[:COLUMN] before a file opens it there; -- before the files
+lets a file's name start with a dash or a plus. With --gui, or when started with no terminal on a
 desktop, Tuatara opens a window of its own. Returns the exit code: 0, or
 what the session left (*EXIT-CODE*); 2 for options it cannot take."
   (let* ((options (read-options arguments))
@@ -229,6 +384,16 @@ what the session left (*EXIT-CODE*); 2 for options it cannot take."
            0)
           ((getf options :generate-config)
            (generate-config))
+          ((missing-file (getf options :diff))
+           (format *error-output* "tuatara: ~a is not there: nothing to compare~%" (missing-file (getf options :diff)))
+           2)
+          ((and (find '(:standard-input) (getf options :files) :test #'equal) (terminal-p 0))
+           (format *error-output* "tuatara: - reads standard input, which is the terminal here: pipe something in~%")
+           2)
+          ((missing-file (let ((merge (getf options :merge))) (and merge (list (first merge) (third merge)))))
+           (format *error-output* "tuatara: ~a is not there: nothing to merge~%"
+                   (missing-file (list (first (getf options :merge)) (third (getf options :merge)))))
+           2)
           ((and config (not (eq (ignore-errors (tuatara.io:path-kind config-path)) :regular)))
            (format *error-output* "tuatara: no init file at ~a (tuatara --generate-config writes one to start from)~%" config)
            2)
@@ -236,24 +401,23 @@ what the session left (*EXIT-CODE*); 2 for options it cannot take."
            (tuatara.defaults::set-collection-policy)
            (when config
              (setf tuatara.defaults::*config-file* (pathname config-path)))
-           (let* ((gui (or (getf options :gui) (window-wanted-p)))
-                  ;; named from where Tuatara was started, not *default-directory*
-                  (files (mapcar (lambda (file) (tuatara.io:native (tuatara.io:expand-path file :directory (uiop:getcwd))))
-                                 (getf options :files))))
-             ;; a copy started to measure how the window draws (check-health): no init
-             ;; file, the window's font as the one measuring has it
-             (let ((measure (uiop:getenv "TUATARA_MEASURE_DRAWING")))
-               (when measure
-                 (setf tuatara.defaults::*config-file* (merge-pathnames "no-init-file.lisp" measure)
-                       tuatara-user:*gui-font* (uiop:getenv "TUATARA_MEASURE_FONT"))))
-             (if gui
-                 (tuatara.frontend.gtk:run-in-window files #'tuatara.defaults:install-defaults)
-                 (progn
-                   (read-keys-from-terminal)
-                   (tuatara.command:run-editor (tuatara.frontend.tui:make-tui-frontend)
-                                               :files files
-                                               :setup #'tuatara.defaults:install-defaults)))
-             tuatara.command:*exit-code*)))))
+           (multiple-value-bind (files start) (startup-from options)
+             (let ((gui (or (getf options :gui) (window-wanted-p))))
+               ;; a copy started to measure how the window draws (check-health): no init
+               ;; file, the window's font as the one measuring has it
+               (let ((measure (uiop:getenv "TUATARA_MEASURE_DRAWING")))
+                 (when measure
+                   (setf tuatara.defaults::*config-file* (merge-pathnames "no-init-file.lisp" measure)
+                         tuatara-user:*gui-font* (uiop:getenv "TUATARA_MEASURE_FONT"))))
+               (if gui
+                   (tuatara.frontend.gtk:run-in-window files #'tuatara.defaults:install-defaults :start start)
+                   (progn
+                     (read-keys-from-terminal)
+                     (tuatara.command:run-editor (tuatara.frontend.tui:make-tui-frontend)
+                                                 :files files
+                                                 :setup #'tuatara.defaults:install-defaults
+                                                 :start start)))
+               tuatara.command:*exit-code*))))))
 
 (defun leave-appimage-environment ()
   "Run from Tuatara's AppImage (its AppRun says so in TUATARA_APPIMAGE), give

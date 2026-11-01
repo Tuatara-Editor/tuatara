@@ -48,6 +48,19 @@ there is none in force any more, its text not kept for it."
 \\[previous-place] go through. Returns PLACES."
   (setf *places-in-force* places))
 
+(defun line-place (buffer line &key (offset 0) column)
+  "The octet in BUFFER's text where the line LINE (from 1; the last line for a
+number past it) is entered: OFFSET octets in, or with COLUMN that many
+characters in from 1, never past the line's end. Second value: true when LINE
+is past the last line."
+  (let* ((start (tuatara.buffer:buffer-goto-line buffer (max 0 (1- line))))
+         (rope (tuatara.buffer:buffer-text buffer))
+         (end (tuatara.text:rope-line-end rope start)))
+    (values (if column
+                (min end (cluster-forward buffer start (max 0 (1- column))))
+                (tuatara.text:rope-char-start rope (min end (+ start offset))))
+            (> line (tuatara.buffer:buffer-line-count buffer)))))
+
 (defun show-file-line (path line &key (offset 0) column other)
   "Visit the file at PATH as \\[find-file] does and put point on its line LINE
 \(from 1; its last line for one past it), OFFSET octets in, or with COLUMN
@@ -64,14 +77,28 @@ longer there is said, not made. Returns the buffer, or NIL then."
                                            (lambda (buffer) (show-buffer buffer))))))
     (when (and (tuatara.buffer:buffer-file buffer)
                (eq buffer (tuatara.display:window-buffer (current-window))))
-      (let* ((start (tuatara.buffer:buffer-goto-line buffer (max 0 (1- line))))
-             (rope (tuatara.buffer:buffer-text buffer))
-             (end (tuatara.text:rope-line-end rope start)))
-        (goto-shown buffer (if column
-                               (min end (cluster-forward buffer start (max 0 (1- column))))
-                               (tuatara.text:rope-char-start rope (min end (+ start offset)))))
-        (tuatara.display:window-recenter (current-window))))
+      (goto-shown buffer (line-place buffer line :offset offset :column column))
+      (tuatara.display:window-recenter (current-window)))
     buffer))
+
+(defun show-start-places (places)
+  "Put point on the line asked for in each of PLACES, the files the editor was
+started with, each (PATH LINE COLUMN) with COLUMN or NIL: a line past the end
+goes to the last line, and that is said, as is a file not shown as text. The
+file in the selected window is shown with the line in the middle."
+  (let ((notes '()))
+    (loop for (path line column) in places
+          for buffer = (buffer-visiting path)
+          do (cond ((null buffer))
+                   ((not (and (tuatara.buffer:buffer-file buffer) (not (tuatara.display:hex-view-p buffer))))
+                    (push (format nil "~a is not shown as text: line ~d not gone to" (abbreviated-path path) line) notes))
+                   (t (multiple-value-bind (byte past) (line-place buffer line :column column)
+                        (goto-shown buffer byte)
+                        (when past
+                          (push (format nil "~a has no line ~:d: at its last line" (abbreviated-path path) line) notes))
+                        (when (eq buffer (tuatara.display:window-buffer (current-window)))
+                          (tuatara.display:window-recenter (current-window)))))))
+    (when notes (message "~{~a~^; ~}" (nreverse notes)))))
 
 (define-command next-place ()
   "Go to the next place of the list of places used last: the next line naming

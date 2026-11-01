@@ -486,9 +486,9 @@ never one someone else made taken over."
                 (and (listp figures) (getf figures :median) figures)))
           (tuatara.io:delete-tree (uiop:native-namestring directory)))))))
 
-(defun run-in-window (files setup)
-  "Run the editor in a window of its own on FILES, calling SETUP with it as
-RUN-EDITOR does: GTK on this thread, which must be the main one, the editor on
+(defun run-in-window (files setup &key start)
+  "Run the editor in a window of its own on FILES, calling SETUP with it, and
+START once the files are shown, as RUN-EDITOR does: GTK on this thread, which must be the main one, the editor on
 a thread of its own. Returns when the editor ends and the window has closed.
 Standard error goes to the cache directory's stderr.log when no terminal
 shows it (LOG-STDERR-UNLESS-TERMINAL)."
@@ -509,7 +509,7 @@ shows it (LOG-STDERR-UNLESS-TERMINAL)."
       (renderer-chosen)
       (let ((editor (sb-thread:make-thread
                      (lambda ()
-                       (unwind-protect (tuatara.command:run-editor f :files files :setup setup)
+                       (unwind-protect (tuatara.command:run-editor f :files files :setup setup :start start)
                          (unless (gtk-done f) (tuatara.frontend:frontend-stop f))))
                      :name "editor")))
         (let ((out (uiop:getenv "TUATARA_MEASURE_DRAWING")))

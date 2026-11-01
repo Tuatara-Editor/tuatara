@@ -591,7 +591,8 @@ them, a buffer's private folder be deleted when it is killed
 \(FORGET-PRIVATE-FOLDER) and kept fresh while it lives (KEEP-PRIVATE-FOLDERS-FRESH), \\[wipe-file] be refused in a buffer opened safely, and
 nothing be written in an evidence folder (INSTALL-EVIDENCE)."
   (pushnew 'wipe-file *file-changing-commands*)
-  (setf tuatara.command:*visit-file-function* (lambda (path) (nth-value 0 (visit-path path :show #'identity)))
+  (setf tuatara.command:*visit-file-function* 'visit-start-file
+        tuatara.command:*visit-standard-input-function* 'visit-standard-input
         tuatara.buffer:*index-wait-function* 'wait-for-counting
         tuatara.buffer:*counted-line-function* 'tuatara.io:counted-line-number
         tuatara.io:*visit-safely-function* 'visit-safely-reason)

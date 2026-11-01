@@ -5,8 +5,8 @@
 ;;;; those of the libraries it lets packages use, with the arguments its
 ;;;; functions and macros take), what an init file is written with (the
 ;;;; settings, the variables TUATARA-USER exports; its functions and macros,
-;;;; with their arguments; the keywords load-package takes) and the names of
-;;;; the commands keys are bound to. test/api/stable-surface.sexp pins it as
+;;;; with their arguments; the keywords load-package takes), the options of
+;;;; the command line and the names of the commands keys are bound to. test/api/stable-surface.sexp pins it as
 ;;;; the last release had it; tools/pin-stable-surface.sh writes it again at
 ;;;; each version bump. From 1.0.0 on, a name pinned that is gone, or a function
 ;;;; whose old calls no longer fit its arguments, fails the test unless the
@@ -82,9 +82,12 @@ three for a command (its package too)."
 (defun stable-surface ()
   "The stable surface as it is now, a row for each name: the package API's
 and the libraries' it lets packages use, the init file's settings, functions
-and macros, the keywords load-package takes, Tuatara's commands."
-  (let ((rows (list (list :keywords "LOAD-PACKAGE"
-                          (sort (mapcar #'symbol-name tuatara.defaults::*load-package-keywords*) #'string<)))))
+and macros, the keywords load-package takes, the command line's options,
+Tuatara's commands."
+  (let ((rows (list* (list :keywords "LOAD-PACKAGE"
+                           (sort (mapcar #'symbol-name tuatara.defaults::*load-package-keywords*) #'string<))
+                     (list :flag "+LINE")
+                     (mapcar (lambda (option) (list :flag option)) tuatara.terminal:*options*))))
     (do-external-symbols (symbol :tuatara) (push (api-row symbol) rows))
     (dolist (symbol tuatara.defaults::*api-from-libraries*) (push (api-row symbol (library-name symbol)) rows))
     (do-external-symbols (symbol :tuatara-user)
@@ -128,7 +131,8 @@ keyword no longer taken."
     (let ((*print-case* :downcase) (*print-right-margin* 100000))
       (format out ";; The stable surface, pinned by tools/pin-stable-surface.sh at each version bump: (:api NAME KIND [ARGUMENTS]),~%~
                    ;; ARGUMENTS (REQUIRED OPTIONAL KEYS REST OTHER-KEYS); (:setting NAME); (:init NAME KIND ARGUMENTS), the init~%~
-                   ;; file's functions and macros; (:keywords LOAD-PACKAGE KEYWORDS); (:command PACKAGE NAME).~%")
+                   ;; file's functions and macros; (:keywords LOAD-PACKAGE KEYWORDS); (:flag OPTION), the command line's~%~
+                   ;; options; (:command PACKAGE NAME).~%")
       (prin1 (list :version (asdf:component-version (asdf:find-system :tuatara))) out)
       (terpri out)
       (dolist (row (stable-surface)) (prin1 row out) (terpri out)))))
