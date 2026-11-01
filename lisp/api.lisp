@@ -65,6 +65,8 @@ it is NIL, whatever *SENTENCE-END-DOUBLE-SPACE* says."
     tuatara.runtime:jobs-of tuatara.runtime:make-guarded-thread tuatara.runtime:deadline-in tuatara.runtime:deadline-passed-p
     tuatara.runtime:job-take-in tuatara.runtime:job-percent tuatara.runtime:job-state-words tuatara.runtime:job-status
     tuatara.runtime:job-program-started tuatara.runtime:running-job take-in-soon
+    ;; failures nothing can be done about, kept in the debug log
+    tuatara.runtime:ignoring-errors-reported tuatara.runtime:reporting-errors
     ;; hooks, each a list a package adds its function to
     *post-self-insert-functions* tuatara.buffer:*kill-buffer-functions* *kill-buffer-query-functions* tuatara.command:*mode-line-functions*
     *health-decoder-functions* *preview-text-functions* *file-local-setting-functions* *file-local-taken-functions* *file-views*

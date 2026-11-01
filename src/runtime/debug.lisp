@@ -235,9 +235,9 @@ while the editor works, once a second. Returns the watching thread."
 (defmacro reporting-errors ((control &rest arguments) &body body)
   "Run BODY; when an error is signalled in it while debug mode is on, report it
 with the calls under way, CONTROL and ARGUMENTS saying what was being done, and
-let it go on to whatever handles it."
+let it go on to whatever handles it. \\`C-g' (QUIT) is no error to report."
   `(handler-bind ((error (lambda (condition)
-                           (when *debug-on*
+                           (when (and *debug-on* (not (typep condition 'quit)))
                              (queue-debug-report :error (format nil "~? failed: ~a~{~%    ~a~}" ,control (list ,@arguments)
                                                                 condition (backtrace-lines)))))))
      ,@body))
