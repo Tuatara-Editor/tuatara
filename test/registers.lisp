@@ -93,7 +93,7 @@ text, a rectangle or a number in, C-x r j goes back to a place, C-x r + adds, C-
         ;; the buffer is closed; the file changed meanwhile, lines put above the place
         (let ((place (register-value-of #\a)))
           (false (tuatara.defaults::register-place-buffer place))
-          (is = 5 (tuatara.defaults::register-place-offset place)))
+          (is = 5 (tuatara.defaults::file-place-offset (tuatara.defaults::register-place-place place))))
         (alexandria:write-string-into-file (format nil "zero~%one~%two~%three~%") path :if-exists :supersede)
         (multiple-value-bind (f editor) (run-keys "C-x r j a" :width 80)
           (declare (ignore f))
@@ -157,3 +157,68 @@ text, a rectangle or a number in, C-x r j goes back to a place, C-x r + adds, C-
        (let ((editor (nth-value 1 (run-keys "v l l l C-x r s a g l C-x r i a" :text "one two"))))
          (is string= "one twoone" (session-text editor)))
     (clrhash tuatara.defaults::*registers*)))
+
+(define-test (registers place-follows-a-renamed-file)
+  ;; a file saved under another name before the buffer is closed: the register goes to the new name
+  (with-test-directory (dir)
+    (with-clean-registers
+      (let ((old (merge-pathnames "old.txt" dir)) (new (merge-pathnames "new.txt" dir)))
+        (alexandria:write-string-into-file (format nil "one~%two~%") old)
+        (run-keys "C-n C-x r p a" :file (namestring old) :width 80)
+        (let ((buffer (tuatara.buffer:find-buffer "old.txt")))
+          (rename-file old new)
+          (setf (tuatara.buffer:buffer-file buffer) (tuatara.io:native new))
+          (tuatara.buffer:kill-buffer buffer))
+        (is string= (tuatara.io:native new)
+            (tuatara.defaults::file-place-path (tuatara.defaults::register-place-place (register-value-of #\a))))
+        (let ((editor (nth-value 1 (run-keys "C-x r j a" :width 80))))
+          (is string= "new.txt" (tuatara.buffer:buffer-name (session-buffer editor)))
+          (is = 4 (session-point editor)))))))
+
+(define-test (registers rectangle-store-kept-when-copying-fails)
+  (with-clean-registers
+    (let ((tuatara.defaults::*killed-rectangle* (list "keep")))
+      (with-functions-replaced ((tuatara.defaults::copy-selected-rectangle
+                                 (lambda ()
+                                   (setf tuatara.defaults::*killed-rectangle* (list "half"))
+                                   (error "copying failed"))))
+        (run-keys "M-x r e c t a n g l e - m a r k - m o d e RET C-n C-f C-x r s a" :text (format nil "abc~%def")))
+      (is equal '("keep") tuatara.defaults::*killed-rectangle*)
+      (false (register-value-of #\a)))))
+
+(define-test (registers safe-places-reopen-safely)
+  ;; a place set in a file opened safely, and one in an evidence folder, reopen as safe buffers
+  (with-case-folder (root evidence work)
+    (with-fresh-recent-files
+      (with-clean-registers
+        (let ((plain (concatenate 'string work "plain.txt")) (a (concatenate 'string evidence "a.txt")))
+          (put-file plain (format nil "one~%two~%"))
+          (run-keys (format nil "C-u C-x C-f C-a C-k ~a RET C-n C-x r p a" (rimu-typed plain)) :width 200)
+          (forget-file-buffers)
+          (let ((editor (nth-value 1 (run-keys "C-x r j a" :width 200))))
+            (true (tuatara.io:safe-visit-p (session-buffer editor)))
+            (is = 4 (session-point editor)))
+          (forget-file-buffers)
+          (with-evidence-folders (`(,(concatenate 'string root "cases/*/evidence/")))
+            (run-keys (format nil "C-x C-f C-a C-k ~a RET C-x r p b" (key-string a)) :width 200)
+            (forget-file-buffers)
+            (let ((editor (nth-value 1 (run-keys "C-x r j b" :width 200))))
+              (true (tuatara.io:safe-visit-p (session-buffer editor))))))))))
+
+(define-test (registers insert-refused-in-read-only-buffers)
+  (with-case-folder (root evidence work)
+    (with-fresh-recent-files
+      (with-clean-registers
+        (let ((plain (concatenate 'string work "plain.txt")))
+          (put-file plain "one")
+          (run-keys "C-u 7 C-x r n n")
+          ;; a buffer read-only
+          (let ((editor (nth-value 1 (run-keys (format nil "C-x C-f C-a C-k ~a RET M-x r e a d - o n l y - m o d e RET C-x r i n"
+                                                       (key-string plain))
+                                               :width 200))))
+            (is string= "one" (session-text editor)))
+          (forget-file-buffers)
+          ;; a buffer opened safely
+          (let ((editor (nth-value 1 (run-keys (format nil "C-u C-x C-f C-a C-k ~a RET C-x r i n" (rimu-typed plain))
+                                               :width 200))))
+            (is string= "one" (session-text editor))))))))

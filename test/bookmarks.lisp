@@ -183,11 +183,13 @@
   (let ((b (tuatara.buffer:make-buffer "euros" :text (make-string 100 :initial-element (code-char #x20AC)))))
     (unwind-protect
          (progn
-           (is string= (make-string 32 :initial-element (code-char #x20AC)) (tuatara.defaults::bookmark-context b 3))
-           (is string= (make-string 32 :initial-element (code-char #x20AC)) (tuatara.defaults::bookmark-context b 4))
-           (is = 3 (tuatara.defaults::bookmark-place b 4 (string (code-char #x20AC))))
-           (is = 3 (tuatara.defaults::bookmark-place b 5 "not there"))
-           (is = 300 (tuatara.defaults::bookmark-place b 1000 "")))
+           (is string= (make-string 32 :initial-element (code-char #x20AC)) (tuatara.defaults::text-after-place b 3))
+           (is string= (make-string 32 :initial-element (code-char #x20AC)) (tuatara.defaults::text-after-place b 4))
+           (flet ((found (offset context)
+                    (tuatara.defaults::file-place-found b (tuatara.defaults::make-file-place "x" offset context nil))))
+             (is = 3 (found 4 (string (code-char #x20AC))))
+             (is = 3 (found 5 "not there"))
+             (is = 300 (found 1000 ""))))
       (tuatara.buffer:kill-buffer b))))
 
 (define-test (bookmarks gone-said-so)
@@ -308,6 +310,6 @@
            (file (concatenate 'string root "notes [old].txt")))
       (tuatara.io:ensure-directories (concatenate 'string folder "/"))
       (tuatara.io:write-private-file file "x")
-      (is string= "folder" (tuatara.defaults::bookmark-kind (list "f" folder)))
-      (is string= "file" (tuatara.defaults::bookmark-kind (list "n" file)))
-      (is string= "gone" (tuatara.defaults::bookmark-kind (list "g" (concatenate 'string root "none")))))))
+      (is string= "folder" (tuatara.defaults::file-place-kind folder))
+      (is string= "file" (tuatara.defaults::file-place-kind file))
+      (is string= "gone" (tuatara.defaults::file-place-kind (concatenate 'string root "none"))))))

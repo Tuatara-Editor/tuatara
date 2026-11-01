@@ -4,7 +4,7 @@
 ;;;; A register is a short-lived bookmark or kill: one character names it, it
 ;;;; lasts as long as the editor runs, and it keeps one of four things. A place
 ;;;; is an anchor in its buffer (so it follows the text through edits) with the
-;;;; file, octet and following text a bookmark keeps (so it is found again once
+;;;; file place a bookmark keeps (so it is found again once
 ;;;; the buffer is closed). Text is a kill, a block the rectangle store's own
 ;;;; kind of value, a number a whole number.
 
@@ -19,13 +19,11 @@ a REGISTER-PLACE, a string or a rope (as the kill ring holds), a rectangle
 (setf (documentation 'make-register 'function) "Return a REGISTER of KIND keeping VALUE."
       (documentation 'register-p 'function) "True when OBJECT is a REGISTER.")
 
-(defstruct (register-place (:constructor make-register-place (buffer anchor path offset context safe))
-                           (:copier nil))
+(defstruct (register-place (:constructor make-register-place (buffer anchor place)) (:copier nil))
   "A place a register keeps: in BUFFER, at ANCHOR, which follows the text through
-edits. Once BUFFER is closed, BUFFER is NIL and the file at PATH (NIL for a
-buffer with none) is gone back to, at OFFSET or where CONTEXT, the text that
-followed the place, now stands; SAFE when the file was opened safely."
-  buffer anchor path offset context safe)
+edits, and PLACE, the FILE-PLACE to go back to once BUFFER is closed (NIL for a
+buffer with no file). BUFFER is NIL once it is closed."
+  buffer anchor place)
 
 (setf (documentation 'make-register-place 'function) "Return a REGISTER-PLACE."
       (documentation 'register-place-p 'function) "True when OBJECT is a REGISTER-PLACE.")
@@ -75,9 +73,11 @@ region's text as :TEXT. Two values, the kind and the value; NIL, said why,
 when there is nothing to keep."
   (if (rectangle-live-p buffer)
       (let ((before *killed-rectangle*))
-        (copy-selected-rectangle)
-        (unless (eq before *killed-rectangle*)
-          (values :block (shiftf *killed-rectangle* before))))
+        (unwind-protect
+             (progn (copy-selected-rectangle)
+                    (unless (eq before *killed-rectangle*)
+                      (values :block *killed-rectangle*)))
+          (setf *killed-rectangle* before)))
       (multiple-value-bind (start end) (tuatara.buffer:buffer-region buffer)
         (cond ((and start (< start end))
                (multiple-value-prog1 (values :text (region-text buffer start end))
@@ -108,9 +108,7 @@ beyond this session is a bookmark (\\[bookmark-set])."
              (offset (point))
              (anchor (tuatara.text:make-anchor (tuatara.buffer:buffer-version buffer) offset)))
         (setf (gethash name *registers*)
-              (make-register :position
-                             (make-register-place buffer anchor (bookmark-target buffer) offset
-                                                  (bookmark-context buffer offset) (tuatara.io:safe-visit-p buffer))))
+              (make-register :position (make-register-place buffer anchor (file-place-here buffer offset))))
         (message "Register ~a keeps this place" name)))))
 
 (define-command number-to-register ()
@@ -169,12 +167,9 @@ A place in a buffer that kept no file, once closed, is said to be gone."
     (cond ((live-buffer-p buffer)
            (if other (pop-to-buffer buffer :other t) (show-buffer buffer))
            (goto-shown buffer (or (anchor-in buffer (register-place-anchor place))
-                                  (bookmark-place buffer (register-place-offset place)
-                                                  (register-place-context place)))))
-          ((register-place-path place)
-           (go-to-file-place (format nil "Register ~a" name) (register-place-path place)
-                             (register-place-offset place) (register-place-context place)
-                             (register-place-safe place) :other other))
+                                  (file-place-found buffer (register-place-place place)))))
+          ((register-place-place place)
+           (go-to-file-place (format nil "Register ~a" name) (register-place-place place) :other other))
           (t (message "Register ~a: its buffer was closed and had no file to go back to" name)))))
 
 (define-command jump-to-register ()
@@ -206,18 +201,24 @@ times across; a number as digits. The register keeps what it had."
 ;;; Registers whose buffer is closed
 
 (defun keep-registered-places (buffer)
-  "Kill-buffer function: each place registers keep in BUFFER becomes the file,
-octet and text following it that BUFFER had last, so that the register still
-leads there."
-  (loop for name in (register-names)
-        for register = (gethash name *registers*)
-        for place = (and (eq (register-kind register) :position) (register-value register))
-        when (and place (eq (register-place-buffer place) buffer))
-          do (let ((offset (or (anchor-in buffer (register-place-anchor place)) (register-place-offset place))))
-               (setf (gethash name *registers*)
-                     (make-register :position
-                                    (make-register-place nil nil (register-place-path place) offset
-                                                         (bookmark-context buffer offset) (register-place-safe place)))))))
+  "Kill-buffer function: each place registers keep in BUFFER becomes the file
+place BUFFER has now (its file as it is named now, the octet and the text
+following), so that the register still leads there."
+  (when (plusp (hash-table-count *registers*))
+    (maphash (lambda (name register)
+               (let ((kept (and (eq (register-kind register) :position) (register-value register))))
+                 (when (and kept (eq (register-place-buffer kept) buffer))
+                   (let* ((old (register-place-place kept))
+                          (offset (or (anchor-in buffer (register-place-anchor kept))
+                                      (and old (file-place-offset old))
+                                      0))
+                          (now (or (file-place-here buffer offset)
+                                   (and old (make-file-place (file-place-path old) offset
+                                                             (text-after-place buffer offset)
+                                                             (file-place-safe old))))))
+                     (setf (gethash name *registers*)
+                           (make-register :position (make-register-place nil nil now)))))))
+             *registers*)))
 
 ;;; The list
 
@@ -247,11 +248,12 @@ a place, the start of a text and how long it is, a block's size, a number."
       (:position (let ((buffer (register-place-buffer value)))
                    (format nil "~a, octet ~:d" (if (live-buffer-p buffer)
                                                     (tuatara.buffer:buffer-name buffer)
-                                                    (if (register-place-path value)
-                                                        (abbreviated-path (register-place-path value))
+                                                    (if (register-place-place value)
+                                                        (abbreviated-path (file-place-path (register-place-place value)))
                                                         "buffer closed"))
                            (or (and buffer (anchor-in buffer (register-place-anchor value)))
-                               (register-place-offset value)))))
+                               (and (register-place-place value) (file-place-offset (register-place-place value)))
+                               0))))
       (:text (format nil "~a (~:d character~:p)"
                      (if (stringp value)
                          (tuatara.display:shorten-string value 60 :one-line t)
