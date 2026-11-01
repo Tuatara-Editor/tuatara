@@ -457,7 +457,8 @@ after."
       (unwind-protect
            (progn
              ;; the command line names files, never the mode
-             (is equal '("--compile-package" "a") (getf (tuatara.terminal::read-options '("--compile-package" "a") :directory (namestring dir)) :files))
+             (is equal '("--compile-package" "a")
+                 (getf (tuatara.terminal::read-options '("--" "--compile-package" "a") :directory (namestring dir)) :files))
              ;; no request in the environment, as when started by hand
              (is = 2 (compile-child-with nil nil))
              ;; a request outside the folder of compiled packages, its token right or not
