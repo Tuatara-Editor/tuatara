@@ -394,7 +394,7 @@ and a JP2 file with alpha at half."
         (tuatara:decode-picture (jp2-octets (concatenate '(vector (unsigned-byte 8)) (j2k-octets 64 48) (make-array 64 :element-type '(unsigned-byte 8))))
                                 :jp2 64 48)
       (false image)
-      (is equal ", not shown: sh here cannot read JP2 pictures (OpenJPEG, not installed with it)" (car (first notes))))))
+      (is equal ", not shown: sh here cannot read JP2 pictures: it was built or installed without OpenJPEG" (car (first notes))))))
 
 (define-test (image-view coded-picture-given-time)
   ;; a large JPEG 2000 or JPEG XL picture is given time for its size, up to *picture-seconds*, and says
@@ -413,3 +413,30 @@ and a JP2 file with alpha at half."
         (false image)
         (is equal ", not shown: sh was stopped after 1 second, all a picture of 20.0 megapixels is given (*sandbox-seconds*, *picture-seconds*)"
             (car (first notes)))))))
+
+(define-test (image-view imagemagick-6-driven)
+  ;; where ImageMagick 6 is all there is (convert-im6.q16, as Ubuntu 24.04 has it): driven as magick
+  ;; is, with the same arguments and the same policy of its own
+  (let ((seven (find "magick" tuatara.defaults::*image-decoders* :key (lambda (d) (first (getf d :program))) :test #'string=)))
+    (dolist (name '("convert-im6.q16" "convert-im6.q16hdri"))
+      (let ((six (find name tuatara.defaults::*image-decoders* :key (lambda (d) (first (getf d :program))) :test #'string=)))
+        (true six "~a" name)
+        (when six
+          (is equal (rest (getf seven :program)) (rest (getf six :program)))
+          (is equal (getf seven :jpeg-hint) (getf six :jpeg-hint))
+          (is eq 'tuatara.defaults::magick-sandbox (getf six :sandbox))
+          ;; after magick, before GraphicsMagick
+          (true (< (position seven tuatara.defaults::*image-decoders*) (position six tuatara.defaults::*image-decoders*)
+                   (position "gm" tuatara.defaults::*image-decoders* :key (lambda (d) (first (getf d :program))) :test #'string=))))))))
+
+(define-test (image-view readers-missing-said)
+  ;; M-x check-health names the kinds of picture the program here has no reader for, and the library
+  (let ((tuatara.defaults::*image-decoders*
+          (list (list :name "stand-in"
+                      :program (list "sh" "-c" (format nil "for f in ~{~a~^ ~}; do echo \"   $f* $f rw-  a format\"; done"
+                                                       (remove "JXL" (mapcar #'cdr tuatara.defaults::*image-formats*) :test #'string=)))))))
+    (is equal "pictures by sh (stand-in), without readers for JXL (libjxl)" (tuatara.defaults::image-decoder-words)))
+  ;; the program here, when it reads every kind, has nothing said
+  (let ((words (tuatara.defaults::image-decoder-words)))
+    (when (search "magick (ImageMagick)" words)
+      (false (search "without readers" words) "~a" words))))

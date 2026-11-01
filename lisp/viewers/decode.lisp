@@ -251,10 +251,20 @@ wide. Waits for the program: call it from a thread working in the background."
      :program ("magick" :density :jpeg-hint :input "-auto-orient" "-resize" :size "-alpha" "on" "-depth" "8" "PAM:-")
      :jpeg-hint ("-define" "jpeg:size=~dx~d")
      :sandbox magick-sandbox)
+    (:name "ImageMagick"
+     :program ("convert-im6.q16" :density :jpeg-hint :input "-auto-orient" "-resize" :size "-alpha" "on" "-depth" "8" "PAM:-")
+     :jpeg-hint ("-define" "jpeg:size=~dx~d")
+     :sandbox magick-sandbox)
+    (:name "ImageMagick"
+     :program ("convert-im6.q16hdri" :density :jpeg-hint :input "-auto-orient" "-resize" :size "-alpha" "on" "-depth" "8" "PAM:-")
+     :jpeg-hint ("-define" "jpeg:size=~dx~d")
+     :sandbox magick-sandbox)
     (:name "GraphicsMagick"
      :program ("gm" "convert" :density :jpeg-hint :input "-auto-orient" "-resize" :size "-depth" "8" "PAM:-")
      :jpeg-hint ("-size" "~dx~d")))
-  "The programs known to turn an image into pixels, the first found used: each
+  "The programs known to turn an image into pixels, the first found used
+\(ImageMagick 7's magick, then ImageMagick 6's convert as some systems still
+have it, under the same policy, then GraphicsMagick): each
 a list of :NAME, the package they come in, and :PROGRAM, the program and its
 arguments, :INPUT standing for the image on standard input, its format named
 (PNG:-[0], its first frame), :SIZE for the most it may be (640x480>, made
@@ -463,11 +473,31 @@ a picture is not shown for the want of it.")
   "The first of *IMAGE-DECODERS* whose program the sandbox finds, or NIL."
   (find-if (lambda (decoder) (tuatara.io:sandbox-find-program (first (getf decoder :program)))) *image-decoders*))
 
+(defun image-readers-missing (decoder)
+  "The kinds of *IMAGE-FORMATS* the program of DECODER cannot read here, by
+what it lists of the formats it reads (-list format), run in the sandbox;
+NIL when it reads them all, or when the sandbox cannot run it."
+  (let ((words (loop for word in (getf decoder :program) until (keywordp word) collect word)))
+    (when (eq (tuatara.io:sandbox-status) :ready)
+      (multiple-value-bind (output outcome) (tuatara.io:sandbox-run (first words) (append (rest words) (list "-list" "format"))
+                                                                    :output-limit (* 1024 1024))
+        (when (eq outcome :done)
+          (let ((listed (loop for line in (uiop:split-string (tuatara.text:lenient-string output) :separator '(#\Newline))
+                              for word = (first (tuatara.text:split-words line))
+                              when word collect (string-right-trim "*" word))))
+            (loop for (kind . format) in *image-formats*
+                  unless (member format listed :test #'string-equal) collect kind)))))))
+
 (defun image-decoder-words ()
-  "What turns images into pixels here, as M-x check-health says it."
+  "What turns images into pixels here, as M-x check-health says it, with the
+kinds of picture it has no reader for (IMAGE-READERS-MISSING) and the
+library each needs."
   (let ((decoder (find-image-decoder)))
     (if decoder
-        (format nil "pictures by ~a (~a)" (first (getf decoder :program)) (getf decoder :name))
+        (format nil "pictures by ~a (~a)~@[, without readers for ~{~a~^, ~}~]" (first (getf decoder :program)) (getf decoder :name)
+                (mapcar (lambda (kind)
+                          (format nil "~a~@[ (~a)~]" (cdr (assoc kind *image-formats*)) (cdr (assoc kind *image-format-libraries*))))
+                        (image-readers-missing decoder)))
         (format nil "pictures by none of ~{~a~^, ~}: ~a, or ~{~a~^ or ~}"
                 (mapcar (lambda (d) (first (getf d :program))) *image-decoders*)
                 (outside-program-install-words :pictures)
@@ -605,7 +635,7 @@ for print."
                (when preview
                  (return-from decode-image (decode-picture preview :jpeg width height :cancel cancel))))
              (note (if (and (eq outcome :failed) (cl-ppcre:scan "(?i)no decode delegate" (or said "")))
-                       (format nil ", not shown: ~a here cannot read ~a pictures~@[ (~a, not installed with it)~]"
+                       (format nil ", not shown: ~a here cannot read ~a pictures~@[: it was built or installed without ~a~]"
                                program format (cdr (assoc kind *image-format-libraries*)))
                        (format nil ", not shown: ~a" (tuatara.io:sandbox-outcome-words outcome said :label program)))
                    :comment)
