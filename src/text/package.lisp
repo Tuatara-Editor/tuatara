@@ -41,7 +41,8 @@
    #:batch #:batch-p #:batch-edits #:batch-deltas #:batch-positions #:batch-swap
    #:swap #:swap-p #:make-swap #:swap-before #:swap-after #:swap-forward #:swap-backward
    #:map-position #:map-forward #:changed-stretches
-   #:carried-tally #:carried-tally-p #:carry-tally #:carried-line-number #:carried-line-start #:carried-counted-lines
+   #:carried-tally #:carried-tally-p #:carry-tally #:carried-lost-p
+   #:carried-line-number #:carried-line-start #:carried-counted-lines
    #:*carried-count-octets*
    #:anchor #:anchor-p #:make-anchor #:anchor-position #:anchor-move #:anchor-link #:anchor-bias
    ;; invariants

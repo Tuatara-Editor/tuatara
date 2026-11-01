@@ -346,8 +346,9 @@ before, or NIL) has counted where the text is still the same: PROGRESS is a
 cons of the octets read and those to read; RESULT the counted rope once done.
 TALLY is what is counted so far, from the start of the text: the line
 numbers there are known before the whole text is counted
-\(COUNTED-LINE-NUMBER, COUNTED-LINE-START)."
-  rope donor (progress (cons 0 0)) result (tally (tuatara.text:make-tally)))
+\(COUNTED-LINE-NUMBER, COUNTED-LINE-START); CARRIED, that tally carried from
+the version counted through the edits made since (TUATARA.TEXT:CARRY-TALLY)."
+  rope donor (progress (cons 0 0)) result (tally (tuatara.text:make-tally)) carried)
 
 (setf (documentation 'index-job-p 'function) "True when OBJECT is an INDEX-JOB."
       (documentation 'index-job-status 'function)
@@ -380,7 +381,8 @@ counted again, and one stopped too, so that it is not started again by itself."
         (:done
          (setf (tuatara.buffer:buffer-local buffer :index-donor) (index-job-result job))
          (when (eq (tuatara.buffer:buffer-text buffer) (index-job-rope job))
-           (tuatara.buffer:buffer-adopt-text buffer (index-job-result job))))))))
+           (tuatara.buffer:buffer-adopt-text buffer (index-job-result job))
+           (setf (tuatara.buffer:buffer-local buffer :counted-so-far) nil)))))))
 
 (defvar *index-job-hook* nil
   "A function each counting calls before it begins, or NIL. Tests use it to keep
@@ -401,10 +403,15 @@ one running long enough to act while it runs.")
 (defun counted-so-far (buffer)
   "The count of BUFFER's lines made in the background, running or ended,
 carried through the edits made since (TUATARA.TEXT:CARRY-TALLY), while its
-text is not counted itself; NIL once it is."
-  (let ((carried (tuatara.buffer:buffer-local buffer :counted-so-far)))
+text is not counted itself; NIL once it is. One that can no longer be carried
+gives way to the count running, when there is one."
+  (let ((carried (tuatara.buffer:buffer-local buffer :counted-so-far))
+        (job (index-job-of buffer)))
     (cond ((null carried) nil)
           ((tuatara.buffer:buffer-indexed-p buffer) (setf (tuatara.buffer:buffer-local buffer :counted-so-far) nil))
+          ((and job (index-job-carried job) (not (eq carried (index-job-carried job)))
+                (tuatara.text:carried-lost-p carried (tuatara.buffer:buffer-version buffer)))
+           (setf (tuatara.buffer:buffer-local buffer :counted-so-far) (index-job-carried job)))
           (t carried))))
 
 (defun counted-line-number (buffer byte)
@@ -441,11 +448,11 @@ where it is the same. Returns the job, or NIL."
                                     (tuatara.buffer:buffer-local buffer :index-donor)))
               (kept (counted-so-far buffer))
               (version (tuatara.buffer:buffer-version buffer)))
+          (setf (index-job-carried job) (tuatara.text:carry-tally (index-job-tally job) version))
           ;; a whole count carried to the text now serves until this one is done
           (unless (and kept (eql (nth-value 1 (tuatara.text:carried-counted-lines kept version))
                                  (tuatara.buffer:buffer-size buffer)))
-            (setf (tuatara.buffer:buffer-local buffer :counted-so-far)
-                  (tuatara.text:carry-tally (index-job-tally job) version)))
+            (setf (tuatara.buffer:buffer-local buffer :counted-so-far) (index-job-carried job)))
           (tuatara.runtime:start-job-thread
            job
            (lambda (job)

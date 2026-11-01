@@ -270,103 +270,216 @@ Complexity: O(edits + stretches) for each version between."
 of one version of a text gives the line numbers of later versions
 \(CARRY-TALLY); past it they wait for the text to be counted again.")
 
-(defstruct (carried-tally (:constructor carry-tally (tally version &aux (rope (version-rope version)) (at version)))
-                          (:copier nil))
-  "TALLY, the count of the lines of the text of a version, ROPE, carried to
-later versions of it: the line numbers of a text edited while it is counted,
+(defstruct (change-window (:constructor make-change-window ()) (:copier nil))
+  "A stretch of a text that differs between the version a count of its lines
+was made of and a later one, with an octet more on each side: from OLD-START
+below OLD-END in the text counted, from NEW-START below NEW-END in the later
+one. BEFORE and AFTER are the line ends the text has gained before the window
+and through it; FIRST-LINE the line at OLD-START once the count has passed
+it, else -1; OLD-LINES and NEW-LINES the line ends in the window on each
+side."
+  (old-start 0 :type fixnum)
+  (old-end 0 :type fixnum)
+  (new-start 0 :type fixnum)
+  (new-end 0 :type fixnum)
+  (before 0 :type fixnum)
+  (after 0 :type fixnum)
+  (first-line -1 :type fixnum)
+  (old-lines 0 :type fixnum)
+  (new-lines 0 :type fixnum))
+
+(setf (documentation 'make-change-window 'function) "Return a CHANGE-WINDOW, for CARRIED-WINDOWS to fill in."
+      (documentation 'change-window-p 'function) "True when OBJECT is a CHANGE-WINDOW."
+      (documentation 'change-window-old-start 'function) "Where a CHANGE-WINDOW begins in the text counted."
+      (documentation 'change-window-old-end 'function) "Where a CHANGE-WINDOW ends in the text counted."
+      (documentation 'change-window-new-start 'function) "Where a CHANGE-WINDOW begins in the text now."
+      (documentation 'change-window-new-end 'function) "Where a CHANGE-WINDOW ends in the text now."
+      (documentation 'change-window-before 'function) "The line ends the text has gained before a CHANGE-WINDOW."
+      (documentation 'change-window-after 'function) "The line ends the text has gained up to a CHANGE-WINDOW's end."
+      (documentation 'change-window-first-line 'function)
+      "The line at a CHANGE-WINDOW's start in the text counted, or -1 while the count has not passed it."
+      (documentation 'change-window-old-lines 'function) "The line ends in a CHANGE-WINDOW in the text counted."
+      (documentation 'change-window-new-lines 'function) "The line ends in a CHANGE-WINDOW in the text now.")
+
+(defstruct (carried-tally (:constructor %carry-tally (tally rope at)) (:copier nil))
+  "TALLY, the count of the lines of ROPE, the text of one version, carried to
+the versions after it: the line numbers of a text edited while it is counted,
 known as soon as the count has passed them, as exact as the count. AT is the
-latest version it was carried to, STRETCHES what differs between ROPE and AT's
-text (CHANGED-STRETCHES), WINDOWS those stretches with an octet more on each
-side, joined where they meet, each a vector of OLD-START OLD-END NEW-START
-NEW-END BEFORE AFTER: BEFORE and AFTER, the line ends the text has gained
-before the window and through it. LOST turns true once the edits cannot be carried (the whole
-text swapped, more changed than *CARRIED-COUNT-OCTETS*)."
+link (VERSION-LINK) of the latest version it was carried to, which holds no
+text; STRETCHES what differs between ROPE and that version's text
+\(CHANGED-STRETCHES); WINDOWS those stretches as CHANGE-WINDOWs, in order;
+TOUCHED, pairs of offsets, the stretches the edits reached since the carry
+before, in the text now. LOST is :LOST once the edits cannot be carried (the
+whole text swapped, a version not after the last, more changed than
+*CARRIED-COUNT-OCTETS*), else NIL."
   (tally nil :type tally :read-only t)
   (rope nil :type rope :read-only t)
-  (at nil :type version)
+  (at nil :type link)
   (stretches '())
   (windows '())
+  (touched (make-array 16 :element-type 'fixnum :adjustable t :fill-pointer 0) :read-only t)
   (lost nil))
 
-(setf (documentation 'carry-tally 'function)
-      "Return TALLY, a count of the lines of VERSION's text, ready to be carried to the versions after it."
-      (documentation 'carried-tally-p 'function) "True when OBJECT is a CARRIED-TALLY.")
+(setf (documentation 'carried-tally-p 'function) "True when OBJECT is a CARRIED-TALLY."
+      (documentation 'carried-tally-tally 'function) "The count of lines a CARRIED-TALLY carries."
+      (documentation 'carried-tally-rope 'function) "The text a CARRIED-TALLY's count is of."
+      (documentation 'carried-tally-at 'function) "The link of the latest version a CARRIED-TALLY was carried to."
+      (documentation 'carried-tally-stretches 'function)
+      "What differs between a CARRIED-TALLY's text and the latest it was carried to (CHANGED-STRETCHES)."
+      (documentation 'carried-tally-windows 'function) "The CHANGE-WINDOWs of a CARRIED-TALLY, in order."
+      (documentation 'carried-tally-touched 'function)
+      "Pairs of offsets: the stretches the edits since a CARRIED-TALLY was last carried reached."
+      (documentation 'carried-tally-lost 'function) "LOST once a CARRIED-TALLY cannot be carried, else NIL.")
+
+(defun carry-tally (tally version)
+  "Return TALLY, a count of the lines of VERSION's text, ready to be carried
+to the versions after it (CARRIED-LINE-NUMBER and the others)."
+  (%carry-tally tally (version-rope version) (version-link version)))
+
+(defun note-touched (touched batch)
+  "Carry TOUCHED, pairs of offsets, through BATCH, and add the stretches its
+edits wrote, as offsets in the text after it."
+  (loop for i from 0 below (fill-pointer touched) by 2
+        do (setf (aref touched i) (map-position (aref touched i) batch :before)
+                 (aref touched (1+ i)) (map-position (aref touched (1+ i)) batch :after)))
+  (let ((edits (batch-edits batch)) (deltas (batch-deltas batch)))
+    (dotimes (k (length edits))
+      (let* ((edit (svref edits k))
+             (start (+ (edit-start edit) (if (zerop k) 0 (aref deltas (1- k))))))
+        (vector-push-extend start touched)
+        (vector-push-extend (+ start (edit-insert-length edit)) touched)))))
+
+(defun touched-p (touched start end)
+  "True when one of TOUCHED's stretches reaches from START to END, both
+included."
+  (loop for i from 0 below (fill-pointer touched) by 2
+          thereis (and (<= (aref touched i) end) (>= (aref touched (1+ i)) start))))
 
 (defun carried-windows (carried version)
-  "Carry CARRIED to VERSION, the current version of its text or an earlier one
-after its own: the windows of its changes (CARRIED-TALLY), :LOST when they
-cannot be carried. Reads only the changed text, and makes the windows in
-those it had. Complexity: O(edits since it was last carried + changed octets)."
-  (cond ((carried-tally-lost carried) :lost)
-        ((eq (carried-tally-at carried) version) (carried-tally-windows carried))
-        (t (let ((at (carried-tally-at carried)) (stretches (carried-tally-stretches carried)))
-             (loop until (eq at version)
-                   do (let* ((next (version-next at))
-                             (batch (and next (version-batch next))))
-                        (when (or (null batch) (batch-swap batch))
-                          (return-from carried-windows (setf (carried-tally-lost carried) :lost)))
-                        (setf stretches (stretches-through stretches batch) at next)))
-             (let* ((old (carried-tally-rope carried)) (new (version-rope version))
-                    (old-size (rope-bytes old)) (new-size (rope-bytes new))
-                    (spare (carried-tally-windows carried)) (windows '()) (gained 0) (read 0))
-               (declare (type fixnum gained read))
-               (dolist (stretch stretches)
-                 (destructuring-bind (old-start old-end new-start new-end) stretch
-                   (declare (type fixnum old-start old-end new-start new-end))
-                   (let ((last (first windows)))
-                     (if (and last (< (max 0 (1- old-start)) (aref last 1)))
-                         (setf (aref last 1) (min old-size (1+ old-end)) (aref last 3) (min new-size (1+ new-end)))
-                         (let ((cell (or spare (list (make-array 6 :element-type 'fixnum)))))
-                           (setf spare (cdr cell) (cdr cell) windows windows cell)
-                           (let ((window (car cell)))
-                             (setf (aref window 0) (max 0 (1- old-start))
-                                   (aref window 1) (min old-size (1+ old-end))
-                                   (aref window 2) (max 0 (1- new-start))
-                                   (aref window 3) (min new-size (1+ new-end)))))))))
-               (setf windows (nreverse windows))
-               (dolist (window windows)
-                 (incf read (+ (- (aref window 1) (aref window 0)) (- (aref window 3) (aref window 2))))
-                 (when (> read *carried-count-octets*)
-                   (return-from carried-windows (setf (carried-tally-lost carried) :lost)))
-                 (setf (aref window 4) gained)
-                 (incf gained (- (rope-count-newlines new (aref window 2) (aref window 3))
-                                 (rope-count-newlines old (aref window 0) (aref window 1))))
-                 (setf (aref window 5) gained))
-               (setf (carried-tally-at carried) version
-                     (carried-tally-stretches carried) stretches
-                     (carried-tally-windows carried) windows))))))
+  "Carry CARRIED to VERSION, the version it was last carried to or one after
+it: its CHANGE-WINDOWs, :LOST when the edits cannot be carried. The line ends
+of a window are counted again only when the edits since reached it, those of
+its old side only when it is new. Complexity: O(edits since it was last
+carried + windows + the octets of the windows the edits reached)."
+  (let ((link (version-link version)))
+    (cond ((carried-tally-lost carried) :lost)
+          ((eq (carried-tally-at carried) link) (carried-tally-windows carried))
+          (t (let ((at (carried-tally-at carried))
+                   (stretches (carried-tally-stretches carried))
+                   (touched (carried-tally-touched carried)))
+               (setf (fill-pointer touched) 0)
+               (flet ((lose ()
+                        (setf (carried-tally-stretches carried) '() (carried-tally-windows carried) '()
+                              (carried-tally-lost carried) :lost)
+                        (return-from carried-windows :lost)))
+                 (loop until (eq at link)
+                       do (let* ((next (link-next at))
+                                 (map (and next (link-map next))))
+                            (unless (batch-p map) (lose))
+                            (setf stretches (stretches-through stretches map))
+                            (note-touched touched map)
+                            (setf at next)))
+                 (let ((old (carried-tally-rope carried)) (new (version-rope version))
+                       (spare (carried-tally-windows carried)) (free '()) (windows '()) (size 0)
+                       (from -1) (to 0) (new-from 0) (new-to 0))
+                   (declare (type fixnum size from to new-from new-to))
+                   (flet ((finish ()
+                            ;; the window from FROM below TO, as the one before it where it is the same
+                            (incf size (+ (- to from) (- new-to new-from)))
+                            (when (> size *carried-count-octets*) (lose))
+                            (loop while (and spare (< (change-window-old-start (car spare)) from))
+                                  do (let ((cell spare)) (setf spare (cdr cell) (cdr cell) free free cell)))
+                            (let* ((same (and spare (= (change-window-old-start (car spare)) from)
+                                              (= (change-window-old-end (car spare)) to)))
+                                   (cell (cond (same (let ((cell spare)) (setf spare (cdr cell)) cell))
+                                               (free (let ((cell free)) (setf free (cdr cell)) cell))
+                                               (t (list (make-change-window)))))
+                                   (window (car cell)))
+                              (if same
+                                  (when (or (/= (- new-to new-from)
+                                                (- (change-window-new-end window) (change-window-new-start window)))
+                                            (touched-p touched new-from new-to))
+                                    (setf (change-window-new-lines window) -1))
+                                  (setf (change-window-old-start window) from (change-window-old-end window) to
+                                        (change-window-first-line window) -1
+                                        (change-window-old-lines window) (rope-count-newlines old from to)
+                                        (change-window-new-lines window) -1))
+                              (setf (change-window-new-start window) new-from (change-window-new-end window) new-to)
+                              (when (minusp (change-window-new-lines window))
+                                (setf (change-window-new-lines window) (rope-count-newlines new new-from new-to)))
+                              (setf (cdr cell) windows windows cell))))
+                     (dolist (stretch stretches)
+                       (destructuring-bind (old-start old-end new-start new-end) stretch
+                         (declare (type fixnum old-start old-end new-start new-end))
+                         (let ((start (max 0 (1- old-start))))
+                           (if (and (>= from 0) (< start to))
+                               (setf to (min (rope-bytes old) (1+ old-end))
+                                     new-to (min (rope-bytes new) (1+ new-end)))
+                               (progn (when (>= from 0) (finish))
+                                      (setf from start
+                                            to (min (rope-bytes old) (1+ old-end))
+                                            new-from (max 0 (1- new-start))
+                                            new-to (min (rope-bytes new) (1+ new-end))))))))
+                     (when (>= from 0) (finish)))
+                   (setf windows (nreverse windows))
+                   (let ((gained 0))
+                     (declare (type fixnum gained))
+                     (dolist (window windows)
+                       (setf (change-window-before window) gained)
+                       (incf gained (- (change-window-new-lines window) (change-window-old-lines window)))
+                       (setf (change-window-after window) gained)))
+                   (setf (carried-tally-at carried) at
+                         (carried-tally-stretches carried) stretches
+                         (carried-tally-windows carried) windows))))))))
 
-(defun last-window (windows index offset)
-  "The last of WINDOWS (CARRIED-WINDOWS) whose start, element INDEX of it (0
-in the text counted, 2 in the text now), is at most OFFSET; NIL when none is."
+(defun carried-lost-p (carried version)
+  "True when CARRIED cannot be carried to VERSION (CARRIED-TALLY's LOST): its
+line numbers are then those of a count made again."
+  (eq :lost (carried-windows carried version)))
+
+(defun last-window (windows offset &key old)
+  "The last of WINDOWS (CHANGE-WINDOWs) beginning at OFFSET or before, in the
+text now, or with OLD in the text counted; NIL when none does."
   (let ((found nil))
     (dolist (window windows found)
-      (if (<= (aref window index) offset)
+      (if (<= (if old (change-window-old-start window) (change-window-new-start window)) offset)
           (setf found window)
           (return found)))))
+
+(defun window-first-line (carried window)
+  "The line at WINDOW's start in CARRIED's text counted, kept once the count
+has passed it; NIL before."
+  (if (>= (change-window-first-line window) 0)
+      (change-window-first-line window)
+      (let ((line (tally-line-number (carried-tally-tally carried) (carried-tally-rope carried)
+                                     (change-window-old-start window))))
+        (when line (setf (change-window-first-line window) line))
+        line)))
 
 (defun carried-line-number (carried version byte)
   "The line, from 0, holding offset BYTE of VERSION's text, from CARRIED's
 count once it has passed that place; NIL before, or when the edits since
-cannot be carried. Reads at most a segment of the text and the changed text."
+cannot be carried. Reads at most a segment of the text and the part of a
+changed window before BYTE."
   (let ((windows (carried-windows carried version))
         (tally (carried-tally-tally carried)) (old (carried-tally-rope carried)))
     (unless (eq windows :lost)
-      (let ((window (last-window windows 2 byte)))
+      (let ((window (last-window windows byte)))
         (cond ((null window) (tally-line-number tally old byte))
-              ((< byte (aref window 3))
-               (let ((line (tally-line-number tally old (aref window 0))))
-                 (and line (+ line (aref window 4) (rope-count-newlines (version-rope version) (aref window 2) byte)))))
-              (t (let ((line (tally-line-number tally old (+ (aref window 1) (- byte (aref window 3))))))
-                   (and line (+ line (aref window 5))))))))))
+              ((< byte (change-window-new-end window))
+               (let ((line (window-first-line carried window)))
+                 (and line (+ line (change-window-before window)
+                              (rope-count-newlines (version-rope version) (change-window-new-start window) byte)))))
+              (t (let ((line (tally-line-number tally old (+ (change-window-old-end window)
+                                                            (- byte (change-window-new-end window))))))
+                   (and line (+ line (change-window-after window))))))))))
 
 (defun carried-line-start (carried version line)
   "Where line LINE, from 0, of VERSION's text starts, from CARRIED's count once
 it has passed that line; NIL before, or when the edits since cannot be
-carried."
+carried. Reads at most a segment of the text, or of a changed window."
   (let ((windows (carried-windows carried version))
         (tally (carried-tally-tally carried)) (old (carried-tally-rope carried))
-        (new (version-rope version))
         (shift 0) (gained 0))
     (declare (type fixnum shift gained))
     (unless (eq windows :lost)
@@ -374,14 +487,16 @@ carried."
                (let ((start (tally-line-start tally old (- line gained))))
                  (and start (+ start shift)))))
         (dolist (window windows (in-gap))
-          (let ((first (tally-line-number tally old (aref window 0))))
+          (let ((first (window-first-line carried window)))
             (unless first (return nil))
-            (let ((first (+ first (aref window 4))))
+            (let ((first (+ first (change-window-before window))))
               (when (<= line first) (return (in-gap)))
-              (when (<= line (+ first (rope-count-newlines new (aref window 2) (aref window 3))))
-                (let ((end (rope-nth-newline new (aref window 2) (aref window 3) (- line first))))
+              (when (<= line (+ first (change-window-new-lines window)))
+                (let ((end (rope-nth-newline (version-rope version) (change-window-new-start window)
+                                             (change-window-new-end window) (- line first))))
                   (return (and end (1+ end)))))))
-          (setf shift (- (aref window 3) (aref window 1)) gained (aref window 5)))))))
+          (setf shift (- (change-window-new-end window) (change-window-old-end window))
+                gained (change-window-after window)))))))
 
 (defun carried-counted-lines (carried version)
   "Two values: the line ends CARRIED's count has passed in VERSION's text, from
@@ -389,12 +504,13 @@ its start, and the offset there; NIL when the edits since cannot be carried."
   (let ((windows (carried-windows carried version)))
     (unless (eq windows :lost)
       (multiple-value-bind (lines reached) (tally-counted-lines (carried-tally-tally carried))
-        (let ((window (last-window windows 0 reached)))
+        (let ((window (last-window windows reached :old t)))
           (cond ((null window) (values lines reached))
-                ((< reached (aref window 1))
-                 (let ((line (carried-line-number carried version (aref window 2))))
-                   (and line (values line (aref window 2)))))
-                (t (values (+ lines (aref window 5)) (+ (aref window 3) (- reached (aref window 1)))))))))))
+                ((< reached (change-window-old-end window))
+                 (let ((line (carried-line-number carried version (change-window-new-start window))))
+                   (and line (values line (change-window-new-start window)))))
+                (t (values (+ lines (change-window-after window))
+                           (+ (change-window-new-end window) (- reached (change-window-old-end window)))))))))))
 
 ;;; Anchors
 
