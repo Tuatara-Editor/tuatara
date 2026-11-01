@@ -463,11 +463,14 @@ developed by ImageMagick's LibRaw reader (DNG), whatever its maker; a JPEG
 libjxl reader.")
 
 (defparameter *image-format-libraries*
-  '((:jp2 . "OpenJPEG") (:j2k . "OpenJPEG") (:jxl . "libjxl") (:heif . "libheif") (:avif . "libheif")
-    (:raw . "LibRaw") (:webp . "libwebp") (:svg . "librsvg"))
-  "For the kinds of *IMAGE-FORMATS* that the decoding program reads only when
-a library of their own is installed with it, that library's name, said when
-a picture is not shown for the want of it.")
+  '((:jpeg "libjpeg" "libjpeg-turbo") (:tiff "libtiff" "libtiff") (:webp "libwebp" "libwebp")
+    (:heif "libheif" "libheif") (:avif "libheif" "libheif") (:svg "librsvg" "librsvg") (:raw "LibRaw" "libraw")
+    (:jp2 "OpenJPEG" "openjpeg2") (:j2k "OpenJPEG" "openjpeg2") (:jxl "libjxl" "libjxl"))
+  "For the kinds of *IMAGE-FORMATS* that the decoding program reads only with
+a library of their own, each (KIND LIBRARY ARCH): the library's name, said
+when a picture is not shown for the want of it, and Arch's package of it,
+which Arch's ImageMagick leaves to be installed beside it (*OUTSIDE-PROGRAMS*
+names them all).")
 
 (defun find-image-decoder ()
   "The first of *IMAGE-DECODERS* whose program the sandbox finds, or NIL."
@@ -496,7 +499,7 @@ library each needs."
     (if decoder
         (format nil "pictures by ~a (~a)~@[, without readers for ~{~a~^, ~}~]" (first (getf decoder :program)) (getf decoder :name)
                 (mapcar (lambda (kind)
-                          (format nil "~a~@[ (~a)~]" (cdr (assoc kind *image-formats*)) (cdr (assoc kind *image-format-libraries*))))
+                          (format nil "~a~@[ (~a)~]" (cdr (assoc kind *image-formats*)) (second (assoc kind *image-format-libraries*))))
                         (image-readers-missing decoder)))
         (format nil "pictures by none of ~{~a~^, ~}: ~a, or ~{~a~^ or ~}"
                 (mapcar (lambda (d) (first (getf d :program))) *image-decoders*)
@@ -636,7 +639,7 @@ for print."
                  (return-from decode-image (decode-picture preview :jpeg width height :cancel cancel))))
              (note (if (and (eq outcome :failed) (cl-ppcre:scan "(?i)no decode delegate" (or said "")))
                        (format nil ", not shown: ~a here cannot read ~a pictures~@[: it was built or installed without ~a~]"
-                               program format (cdr (assoc kind *image-format-libraries*)))
+                               program format (second (assoc kind *image-format-libraries*)))
                        (format nil ", not shown: ~a" (tuatara.io:sandbox-outcome-words outcome said :label program)))
                    :comment)
              (done nil)))))))))

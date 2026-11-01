@@ -207,6 +207,12 @@ a moment.")
                       when (and end (or (search "optdepends=(" line) (uiop:string-prefix-p "            '" line)))
                         collect (subseq line (1+ start) end))
                 #'string<))))
+  ;; Arch's ImageMagick reads most pictures only with their libraries beside it: each is named with it
+  (dolist (entry tuatara.defaults::*image-format-libraries*)
+    (true (member (third entry) (getf (tuatara.defaults::outside-program :pictures) :arch) :test #'string=)
+          "~a for ~a" (third entry) (first entry)))
+  (true (search "Arch: imagemagick libjpeg-turbo libtiff libwebp libheif librsvg libraw openjpeg2 libjxl"
+                (tuatara.defaults::outside-program-install-words :pictures nil)))
   (is string= "install GnuPG (Fedora: gnupg2)" (tuatara.defaults::outside-program-install-words :gpg :fedora))
   (true (search "Debian and Ubuntu: gnupg; Arch: gnupg" (tuatara.defaults::outside-program-install-words :gpg nil)))
   (let ((words (tuatara.defaults::git-health-words)))
