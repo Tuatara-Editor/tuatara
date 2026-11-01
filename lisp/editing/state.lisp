@@ -522,6 +522,11 @@ once in the echo area and the debug log. True when there were any."
               (message "Cannot read ~a: its changes wait until it can be" file)))))
       t)))
 
+(defvar *bare-state-folder* nil
+  "The folder of the state of an editor started without its init file
+\(START-BARE), deleted once the lists kept between sessions have been written
+as it stops; NIL for the usual state folder.")
+
 (sb-ext:defglobal **state-writer** nil
   "The thread writing the lists kept between sessions, while it runs.")
 
@@ -540,9 +545,10 @@ while more are made, then end."
 
 (defun start-state-writer ()
   "Start the thread writing the lists kept between sessions, unless it runs
-already; one at a time, so that changes made together are written together."
+already; one at a time, so that changes made together are written together.
+None starts for the editor started bare (*BARE-STATE-FOLDER*), which keeps nothing."
   (sb-thread:with-mutex (**state-writer-lock**)
-    (unless **state-writer**
+    (unless (or **state-writer** *bare-state-folder*)
       (setf **state-writer**
             (tuatara.runtime:make-guarded-thread
              (lambda ()
@@ -556,13 +562,20 @@ already; one at a time, so that changes made together are written together."
 (defun finish-state-writes (&optional editor)
   "Wait a moment (TUATARA.RUNTIME:*STOP-WAIT*) for the lists kept between
 sessions to be written, those another session kept from being written tried
-once more: as the editor stops. EDITOR is not used."
+once more: as the editor stops. EDITOR is not used. Then the state folder of
+a bare start (*BARE-STATE-FOLDER*) is deleted, but only when the writer has
+ended; as an editor started bare writes none, it is always gone."
   (declare (ignore editor))
   (when (some (lambda (list) (state-list-pending list)) *state-lists*)
     (start-state-writer))
-  (let ((thread (sb-thread:with-mutex (**state-writer-lock**) **state-writer**)))
-    (when (and thread (not (eq thread sb-thread:*current-thread*)))
-      (tuatara.runtime:join-within thread))))
+  (let* ((thread (sb-thread:with-mutex (**state-writer-lock**) **state-writer**))
+         (ended (or (null thread) (eq thread sb-thread:*current-thread*)
+                    (tuatara.runtime:join-within thread))))
+    (when *bare-state-folder*
+      (if ended
+          (progn (ignore-errors (tuatara.io:delete-tree *bare-state-folder*))
+                 (setf *bare-state-folder* nil))
+          (tuatara.runtime:debug-report :file "the state writer is still running: ~a is left" *bare-state-folder*)))))
 
 (defun install-state-lists ()
   "Write what is left of the lists kept between sessions as the editor stops,

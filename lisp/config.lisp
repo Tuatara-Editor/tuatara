@@ -201,7 +201,7 @@ text that could not be read on.")
 (defun start-bare ()
   "Have the editor start without the init file, so without packages, and with
 a state folder of its own, new and empty, made in the cache folder and deleted
-when the editor ends: what the editor keeps between sessions (the files
+when the editor ends, once the last of what is kept has been written (FINISH-STATE-WRITES): what the editor keeps between sessions (the files
 visited lately, the session, auto-saved text, bookmarks) is neither read
 nor written, so that nothing of the real state is changed or lost. The
 configuration folder (snippets, templates) is read as always. Call it before
@@ -210,15 +210,7 @@ the editor starts."
                  (merge-pathnames (format nil "bare-~a/" (tuatara.io:random-name)) (tuatara.io:cache-directory)))))
     (setf *config-file* (merge-pathnames "no-init-file.lisp" folder)
           tuatara-user:*state-directory* folder)
-    (setf tuatara.command:*exit-functions*
-          (append tuatara.command:*exit-functions*
-                  (list (lambda (editor)
-                          (declare (ignore editor))
-                          ;; work still ending in the background may write in it meanwhile
-                          (loop repeat 20
-                                do (ignore-errors (tuatara.io:delete-tree folder))
-                                until (null (tuatara.io:path-kind folder))
-                                do (sleep 0.1))))))))
+    (setf *bare-state-folder* folder)))
 
 (defun say-started-bare ()
   "Say that the editor started without its init file and packages, with state of its own."

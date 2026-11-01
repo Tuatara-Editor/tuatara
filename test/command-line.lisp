@@ -261,10 +261,13 @@ frontend, the editor, and the options read."
            (progn
              (put-file (merge-pathnames "keep.txt" real) "kept")
              (let ((before (mapcar #'namestring (directory (merge-pathnames "*.*" real)))))
-               (session-from-arguments (list "-Q" a) :directory dir
-                                       :until (lambda ()
-                                                (setf inside tuatara-user:*state-directory*)
-                                                t))
+               (dotimes (i 15)
+                 (session-from-arguments (list "-Q" a) :directory dir
+                                         :until (lambda ()
+                                                  (setf inside tuatara-user:*state-directory*)
+                                                  t))
+                 (false (probe-file inside) "its own state folder is gone with the session: ~s"
+                        (and (probe-file inside) (directory (merge-pathnames "**/*.*" inside)))))
                (is equal before (mapcar #'namestring (directory (merge-pathnames "*.*" real)))
                    "the real state folder is as it was")
                (is string= "kept" (file-text (merge-pathnames "keep.txt" real))))
@@ -279,6 +282,7 @@ frontend, the editor, and the options read."
 
 (define-test (command-line three-files-merged)
   (with-test-directory (dir)
+   (let ((tuatara.command:*exit-functions* tuatara.command:*exit-functions*))
     (flet ((file (name text) (namestring (put-file (merge-pathnames name dir) text))))
       (let* ((base (file "base.txt" (format nil "one~%two~%three~%")))
              (local (file "local.txt" (format nil "one~%TWO~%three~%")))
@@ -310,7 +314,7 @@ frontend, the editor, and the options read."
             ;; resolved and saved: 0, and MERGED holds the merge
             (merging '("C-c ^ n C-c ^ l C-x C-s"))
             (is = 0 tuatara.command:*exit-code*)
-            (is string= (format nil "one~%2~%three~%") (file-text merged))))))))
+            (is string= (format nil "one~%2~%three~%") (file-text merged)))))))))
 
 (define-test (command-line merge-wrongly-given)
   (with-test-directory (dir)
