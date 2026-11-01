@@ -620,7 +620,9 @@ at most one segment of the text."
                                     (+ (second last) (rope-count-newlines rope (first last) byte))
                                     (- (second last) (rope-count-newlines rope byte (first last))))
                                 (+ (aref (tally-cumulative tally) i) (rope-count-newlines rope start byte)))))
-                 (setf (tally-last tally) (list byte line))
+                 (if last
+                     (setf (first last) byte (second last) line)
+                     (setf (tally-last tally) (list byte line)))
                  line))))))
 
 (defun tally-line-start (tally rope line)

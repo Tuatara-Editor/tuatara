@@ -398,31 +398,35 @@ one running long enough to act while it runs.")
   "How much of JOB's counting is done, from 0 to 100."
   (tuatara.runtime:part-percent (index-job-progress job)))
 
-(defun counting-tally (buffer)
-  "The tally of the counting of BUFFER's lines, while it runs over the text the
-buffer has now; else NIL."
-  (let ((job (index-job-of buffer)))
-    (and job (eq (index-job-status job) :running)
-         (eq (tuatara.buffer:buffer-text buffer) (index-job-rope job))
-         (index-job-tally job))))
+(defun counted-so-far (buffer)
+  "The count of BUFFER's lines made in the background, running or ended,
+carried through the edits made since (TUATARA.TEXT:CARRY-TALLY), while its
+text is not counted itself; NIL once it is."
+  (let ((carried (tuatara.buffer:buffer-local buffer :counted-so-far)))
+    (cond ((null carried) nil)
+          ((tuatara.buffer:buffer-indexed-p buffer) (setf (tuatara.buffer:buffer-local buffer :counted-so-far) nil))
+          (t carried))))
 
 (defun counted-line-number (buffer byte)
   "While BUFFER's lines are being counted: the line, from 0, holding offset
-BYTE, when the count has passed it from the start; else NIL."
-  (let ((tally (counting-tally buffer)))
-    (and tally (tuatara.text:tally-line-number tally (tuatara.buffer:buffer-text buffer) byte))))
+BYTE, when the count has passed it from the start, edits made meanwhile
+included; else NIL."
+  (let ((carried (counted-so-far buffer)))
+    (and carried (tuatara.text:carried-line-number carried (tuatara.buffer:buffer-version buffer) byte))))
 
 (defun counted-line-start (buffer line)
   "While BUFFER's lines are being counted: where line LINE, from 0, starts,
-when the count has passed it from the start; else NIL."
-  (let ((tally (counting-tally buffer)))
-    (and tally (tuatara.text:tally-line-start tally (tuatara.buffer:buffer-text buffer) line))))
+when the count has passed it from the start, edits made meanwhile included;
+else NIL."
+  (let ((carried (counted-so-far buffer)))
+    (and carried (tuatara.text:carried-line-start carried (tuatara.buffer:buffer-version buffer) line))))
 
 (defun counted-lines (buffer)
   "While BUFFER's lines are being counted: two values, the newlines counted from
-the start of its text so far and the offset the count has reached; else NIL."
-  (let ((tally (counting-tally buffer)))
-    (and tally (tuatara.text:tally-counted-lines tally))))
+the start of its text so far and the offset the count has reached, edits made
+meanwhile included; else NIL."
+  (let ((carried (counted-so-far buffer)))
+    (and carried (tuatara.text:carried-counted-lines carried (tuatara.buffer:buffer-version buffer)))))
 
 (defun start-indexing (buffer)
   "Start counting the lines of BUFFER's text in the background, a job, unless
@@ -432,9 +436,18 @@ where it is the same. Returns the job, or NIL."
   (or (index-job-of buffer)
       (unless (or (tuatara.buffer:buffer-indexed-p buffer)
                   (eq (tuatara.buffer:buffer-local buffer :index-failed) (tuatara.buffer:buffer-text buffer)))
-        (let ((hook *index-job-hook*))
+        (let ((hook *index-job-hook*)
+              (job (%make-index-job buffer (tuatara.buffer:buffer-text buffer)
+                                    (tuatara.buffer:buffer-local buffer :index-donor)))
+              (kept (counted-so-far buffer))
+              (version (tuatara.buffer:buffer-version buffer)))
+          ;; a whole count carried to the text now serves until this one is done
+          (unless (and kept (eql (nth-value 1 (tuatara.text:carried-counted-lines kept version))
+                                 (tuatara.buffer:buffer-size buffer)))
+            (setf (tuatara.buffer:buffer-local buffer :counted-so-far)
+                  (tuatara.text:carry-tally (index-job-tally job) version)))
           (tuatara.runtime:start-job-thread
-           (%make-index-job buffer (tuatara.buffer:buffer-text buffer) (tuatara.buffer:buffer-local buffer :index-donor))
+           job
            (lambda (job)
              (when hook (funcall hook))
              (let ((result (tuatara.text:index-rope (index-job-rope job) :donor (index-job-donor job)
