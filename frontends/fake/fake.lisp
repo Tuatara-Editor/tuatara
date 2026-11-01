@@ -95,8 +95,8 @@ during it; or a function of the frontend asked each time.")
       (documentation 'fake-images 'function) "The pictures put in the fake frontend's last frame, each (IMAGE ROW COLUMN COLUMNS ROWS OFFSET)."
       (documentation 'fake-image-history 'function) "The pictures of every frame the fake frontend painted, newest first.")
 
-(defun make-fake-frontend (&key (width 40) (height 8) (colours 256) font-steps fonts font-faces desktop-style cell-pixels
-                                joining)
+(defun make-fake-frontend (&key (width 40) (height 8) (colours 256) font-steps fonts font-faces desktop-style
+                                cell-pixels joining)
   "Return a fake frontend with a WIDTH by HEIGHT screen showing COLOURS colours;
 FONT-STEPS, a number, makes it a window whose font can be scaled, FONTS the
 font families it offers, FONT-FACES what it lists of them with their variants,

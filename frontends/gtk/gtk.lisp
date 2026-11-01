@@ -3,9 +3,10 @@
 ;;;;
 ;;;; GTK runs on the main thread and the editor on a thread of its own. GTK's
 ;;;; callbacks put keys, resizes and the close button in the editor's queue of
-;;;; events (TUATARA.FRONTEND:EVENT-QUEUE); each frame the editor finishes is handed to the main thread, which
-;;;; paints it on one drawing area: the rows as the editor laid them out, in the
-;;;; faces' colours, on a grid of the font's cells.
+;;;; events (TUATARA.FRONTEND:EVENT-QUEUE); each frame the editor finishes is
+;;;; handed to the main thread, which paints it on one drawing area: the rows as
+;;;; the editor laid them out, in the faces' colours, on a grid of the font's
+;;;; cells.
 ;;;;
 ;;;; This file holds the frontend and what passes between the threads;
 ;;;; input.lisp the keys and the mouse, paint.lisp the painting, window.lisp

@@ -135,6 +135,7 @@ frame being worked in."
 wait to see answered: a key or a mouse button, text pasted, files dropped, the
 window asked to close; not a wake, nor a change of the window's size."
   (and (event-p item) (member (event-kind item) '(:key :paste :drop :close)) t))
+
 ;;; A queue of events, for frontends that deliver them from threads of their
 ;;; own; the frames that share a source of events share one
 
@@ -188,7 +189,6 @@ takes); NIL when none came."
     (tuatara.runtime:wait-on-until (event-queue-waiting queue) (event-queue-lock queue)
                                    (lambda () (event-queue-items queue)) seconds)
     (pop (event-queue-items queue))))
-
 
 ;;; The painter interface
 

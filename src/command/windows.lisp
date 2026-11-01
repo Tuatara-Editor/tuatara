@@ -580,11 +580,13 @@ every window's history, in every frame. Runs from the kill-buffer functions."
            (dolist (window (editor-windows editor))
              (when (eq (tuatara.display:window-buffer window) buffer)
                (if (and (tuatara.display:area-parent window)
-                        (or (tuatara.display:window-kept window) (eq (tuatara.display:window-quit-restore window) :delete)))
+                        (or (tuatara.display:window-kept window)
+                            (eq (tuatara.display:window-quit-restore window) :delete)))
                    (remove-window window)
                    (progn
                      (setf (tuatara.display:window-kept window) nil
                            (tuatara.display:window-quit-restore window) nil)
-                     (tuatara.display:set-window-buffer window (replacement-buffer window buffer) :remember nil)))))))))))
+                     (tuatara.display:set-window-buffer window (replacement-buffer window buffer)
+                                                        :remember nil)))))))))))
 
 (pushnew 'replace-buffer-in-windows tuatara.buffer:*kill-buffer-functions*)
