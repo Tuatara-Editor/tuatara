@@ -102,7 +102,8 @@ description (C-x C-f), the first by KEY-DESCRIPTION<; NIL when none has."
 command's name."
   (or (and (> (length text) 4) (string= "M-x " text :end2 4))
       (and (plusp (length text))
-           (ignore-errors (tuatara.frontend:parse-key-sequence text) t))))
+           (handler-case (progn (tuatara.frontend:parse-key-sequence text) t)
+             (simple-error () nil)))))
 
 (defvar *substituted-texts* (make-hash-table :test 'eq :weakness :key :synchronized t)
   "What SUBSTITUTE-COMMAND-KEYS gave lately, by the text it was given: for each

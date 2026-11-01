@@ -256,3 +256,19 @@ questions asked, the first first."
     (is eq :error (first (car cell)))
     (true (search "stack" (second (car cell))))
     (true woken)))
+
+(define-test (job-runner background-result-failure-reported)
+  ;; a result worked out in the background that fails is delivered as an error, and
+  ;; debug mode keeps the failure in its log, with the calls under way
+  (drain-debug-reports)
+  (unwind-protect
+       (progn
+         (tuatara.runtime:set-debug t)
+         (let ((cell (tuatara.runtime:start-background-result (lambda () (error "No figures to add.")) "tuatara adding" nil)))
+           (loop repeat 1000 until (car cell) do (sleep 0.01))
+           (is equal '(:error "No figures to add.") (car cell))
+           (let ((texts (loop for report = (sb-concurrency:dequeue tuatara.runtime:*debug-reports*)
+                              while report collect (princ-to-string (fourth report)))))
+             (true (find-if (lambda (text) (search "tuatara adding failed: No figures to add." text)) texts)
+                   "~s" texts))))
+    (drain-debug-reports)))

@@ -373,7 +373,10 @@ deal with; the editor carries on."
             (parse-job-finished job) t)
       (sb-thread:condition-broadcast (syntax-done syntax))))
   (let ((wake (parse-job-wake job)))
-    (when wake (ignore-errors (funcall wake)))))
+    (when wake
+      (tuatara.runtime:ignoring-errors-reported ("waking the editor after parsing ~a"
+                                                 (tuatara.buffer:buffer-name (syntax-buffer syntax)))
+        (funcall wake)))))
 
 (defun parse-thread-loop (syntax)
   "What SYNTAX's parse thread does: run each parse handed to it (SYNTAX-NEXT),
@@ -396,8 +399,9 @@ waiting. True when handed over; NIL when no thread could be started."
     (let ((worker (syntax-worker syntax)))
       (unless (and worker (sb-thread:thread-alive-p worker))
         (setf (syntax-worker syntax)
-              (ignore-errors (tuatara.runtime:make-guarded-thread #'parse-thread-loop :name "tuatara parse"
-                                                                    :arguments (list syntax))))))
+              (tuatara.runtime:ignoring-errors-reported ("starting a parse thread")
+                (tuatara.runtime:make-guarded-thread #'parse-thread-loop :name "tuatara parse"
+                                                     :arguments (list syntax))))))
     (when (syntax-worker syntax)
       (setf (syntax-next syntax) job)
       (sb-thread:condition-broadcast (syntax-done syntax))
@@ -491,7 +495,9 @@ another parse if the tree is not current."
                ;; not parsed again, which would take as long, or as much
                (setf (syntax-broken syntax) (parse-job-slow job))
                (when *syntax-slow-function*
-                 (ignore-errors (funcall *syntax-slow-function* syntax))))
+                 (tuatara.runtime:ignoring-errors-reported ("saying parsing ~a is given up"
+                                                            (tuatara.buffer:buffer-name (syntax-buffer syntax)))
+                   (funcall *syntax-slow-function* syntax))))
               ((not (parse-job-obsolete job))
                ;; not stopped on purpose: the text could not be read
                (setf (syntax-broken syntax) t)))))
@@ -539,7 +545,9 @@ have (a GRAMMAR-FAILURE); and *SYNTAX-FAULT-FUNCTION* says so."
   (setf (syntax-broken syntax) t
         (syntax-parser syntax) nil)
   (when *syntax-fault-function*
-    (ignore-errors (funcall *syntax-fault-function* syntax))))
+    (tuatara.runtime:ignoring-errors-reported ("saying the grammar failed on ~a"
+                                               (tuatara.buffer:buffer-name (syntax-buffer syntax)))
+      (funcall *syntax-fault-function* syntax))))
 
 (defun parse-under-way-p (syntax &optional (seconds 0))
   "True when a parse of SYNTAX's text is under way, after waiting at most

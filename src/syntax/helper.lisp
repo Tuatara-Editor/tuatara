@@ -53,10 +53,10 @@ alone. The program running grammars loads them from here. NIL, with why in
 else's; a folder of yours others may read or write is made yours alone."
   (let* ((folder (merge-pathnames "grammar-store/" (tuatara.io:state-directory)))
          (name (string-right-trim "/" (uiop:native-namestring folder)))
-         (stat (ignore-errors (sb-posix:lstat name))))
+         (stat (handler-case (sb-posix:lstat name) (sb-posix:syscall-error () nil))))
     (unless stat
-      (ignore-errors (sb-posix:mkdir name #o700))
-      (setf stat (ignore-errors (sb-posix:lstat name))))
+      (handler-case (sb-posix:mkdir name #o700) (sb-posix:syscall-error () nil))
+      (setf stat (handler-case (sb-posix:lstat name) (sb-posix:syscall-error () nil))))
     (let ((why (cond ((null stat) "it cannot be made")
                      ((/= (logand (sb-posix:stat-mode stat) sb-posix:s-ifmt) sb-posix:s-ifdir) "it is a link or no folder")
                      ((/= (sb-posix:stat-uid stat) (sb-posix:getuid)) "it is someone else's"))))
@@ -340,7 +340,8 @@ when HELPER has ended or no connection can be made."
   (or (sb-thread:with-mutex ((helper-write-lock helper))
         (and (helper-alive helper) (pop (helper-idle helper))))
       (and (helper-alive helper)
-           (multiple-value-bind (mine theirs) (ignore-errors (socket-pair))
+           (multiple-value-bind (mine theirs)
+               (tuatara.runtime:ignoring-errors-reported ("making a connection to the syntax helper") (socket-pair))
              (when mine
                (let ((sent (sb-thread:with-mutex ((helper-write-lock helper))
                              (and (helper-alive helper) (send-descriptor (helper-fd helper) theirs)))))
@@ -364,7 +365,8 @@ when HELPER has ended or no connection can be made."
 
 (defun close-call (call)
   "Close the connection CALL and let go of its memory."
-  (ignore-errors (sb-posix:close (call-fd call)))
+  (tuatara.runtime:ignoring-errors-reported ("closing a connection to the syntax helper")
+    (sb-posix:close (call-fd call)))
   (dolist (sap (list (call-out call) (call-in call) (call-header call) (call-text call)))
     (foreign-free sap)))
 
@@ -516,10 +518,12 @@ INPUT, which the parse asked on CALL reads: up to +READ-SIZE+ octets of it,
 none past its end, by DEADLINE; as TRANSFER says."
   (let ((out (call-text call)) (size 0))
     (handler-case
-        (let* ((rope (parse-input-rope input))
-               (total (min (parse-input-end input) (tuatara.text:rope-bytes rope))))
-          (when (and (< byte total) (not (parse-input-over input)))
-            (setf size (tuatara.text:rope-copy-to-sap rope byte (min total (+ byte +read-size+)) (sb-sys:sap+ out 12)))))
+        (tuatara.runtime:reporting-errors ("giving the syntax helper text from octet ~d" byte)
+          (let* ((rope (parse-input-rope input))
+                 (total (min (parse-input-end input) (tuatara.text:rope-bytes rope))))
+            (when (and (< byte total) (not (parse-input-over input)))
+              (setf size (tuatara.text:rope-copy-to-sap rope byte (min total (+ byte +read-size+))
+                                                        (sb-sys:sap+ out 12))))))
       (serious-condition ()
         (setf (parse-input-failed input) t size 0)))
     (setf (sb-sys:sap-ref-32 out 0) size (sb-sys:sap-ref-32 out 4) id (sb-sys:sap-ref-32 out 8) 0)
@@ -730,7 +734,8 @@ is under way, :BUSY at once, FUNCTION not called; and given up on after
 ended. HELD when the caller holds **STARTING** already. UNTAKEN, a function,
 is called when FUNCTION was given up on before it was ever called."
   (unless (or held (sb-thread:grab-mutex **starting** :waitp (not at-once)))
-    (when untaken (ignore-errors (funcall untaken)))
+    (when untaken
+      (tuatara.runtime:ignoring-errors-reported ("letting go of a helper's start not taken") (funcall untaken)))
     (return-from in-starter :busy))
   (unwind-protect (in-starter-now function (if at-once *at-once-wait* *starter-wait*) (not at-once) untaken)
     (unless held (sb-thread:release-mutex **starting**))))
@@ -760,7 +765,9 @@ seconds; the starting thread RETIRE'd when it did not answer in them."
                ;; never taken: what it would have closed is closed here
                (when (eq (car **starter-work**) token)
                  (setf **starter-work** nil)
-                 (when untaken (ignore-errors (funcall untaken))))
+                 (when untaken
+                   (tuatara.runtime:ignoring-errors-reported ("letting go of a helper's start not taken")
+                     (funcall untaken))))
                (cond (retire
                       ;; dead or stuck: retired, the next start made from another
                       (push starter **retired**)
@@ -783,7 +790,8 @@ when it is that of a project you trust. NIL."
     (tuatara.runtime:debug-report :error "no syntax helper started: there is no sandbox~:[~; (*syntax-helper-unconfined* not set)~]"
                                   trusted)
     (when *helper-refused-function*
-      (ignore-errors (funcall *helper-refused-function* trusted))))
+      (tuatara.runtime:ignoring-errors-reported ("saying no syntax helper is started")
+        (funcall *helper-refused-function* trusted))))
   nil)
 
 (defun helpers-refused-p (kind)
@@ -883,7 +891,9 @@ a buffer, or what an export of a text is known by (TEXT-KEY); NIL for none.")
 path of FILE, every link followed, else a digest of TEXT (a rope or a
 string), the same however often it is opened or exported."
   (if file
-      (or (ignore-errors (tuatara.io:real-path (tuatara.io:native (tuatara.io:expand-path file)))) file)
+      (or (tuatara.runtime:ignoring-errors-reported ("finding where ~a really is" file)
+            (tuatara.io:real-path (tuatara.io:native (tuatara.io:expand-path file))))
+          file)
       (list :text (octets-digest (if (stringp text) (tuatara.text:string->rope text) text)))))
 
 (sb-ext:defglobal **faults-by-key** (make-hash-table :test 'equal :synchronized t)
@@ -952,7 +962,8 @@ helper wanted in its place is started afresh."
                (sb-alien:alien-funcall (sb-alien:extern-alien "shutdown" (function sb-alien:int sb-alien:int sb-alien:int))
                                        fd 2)))
         (shut (helper-fd helper))
-        (ignore-errors (sb-posix:close (helper-fd helper)))
+        (tuatara.runtime:ignoring-errors-reported ("closing the syntax helper's connection")
+          (sb-posix:close (helper-fd helper)))
         ;; the connections in use end for their callers, closed when given back
         (let ((idle (sb-thread:with-mutex ((helper-write-lock helper))
                       (dolist (call (helper-connections helper)) (shut (call-fd call)))
@@ -966,7 +977,8 @@ helper wanted in its place is started afresh."
       (unless (eq why :stopped)
         (tuatara.runtime:debug-report :error "syntax helper (~(~a~)) ~(~a~)" (helper-kind helper) why)
         (when *helper-ended-function*
-          (ignore-errors (funcall *helper-ended-function* helper)))))))
+          (tuatara.runtime:ignoring-errors-reported ("saying the syntax helper ended")
+            (funcall *helper-ended-function* helper)))))))
 
 (defun reply-malformed (helper)
   "End HELPER, whose reply cannot be right: what it holds is not trusted, and
@@ -987,8 +999,10 @@ before a saved image is made and when it ends."
   (dolist (starter (sb-thread:with-mutex (**starter-lock**)
                      (prog1 **starters** (setf **starters** '() **retired** '() **starter** nil))))
     (when (sb-thread:thread-alive-p starter)
-      (ignore-errors (sb-thread:terminate-thread starter))
-      (ignore-errors (sb-thread:join-thread starter :default nil :timeout 2)))))
+      (tuatara.runtime:ignoring-errors-reported ("ending the thread starting helpers")
+        (sb-thread:terminate-thread starter))
+      (tuatara.runtime:ignoring-errors-reported ("waiting for the thread starting helpers to end")
+        (sb-thread:join-thread starter :default nil :timeout 2)))))
 
 (pushnew 'forget-buffer-helper tuatara.buffer:*kill-buffer-functions*)
 (pushnew 'stop-helpers sb-ext:*save-hooks*)
@@ -1000,7 +1014,9 @@ helper to start (the editor's own); NIL for none.")
 
 (defun waiting-allowed-p ()
   "True when this thread may wait for a helper to start (*MUST-NOT-WAIT-FUNCTION*)."
-  (not (and *must-not-wait-function* (ignore-errors (funcall *must-not-wait-function*)))))
+  (not (and *must-not-wait-function*
+            (tuatara.runtime:ignoring-errors-reported ("asking whether this thread may wait")
+              (funcall *must-not-wait-function*)))))
 
 (sb-ext:defglobal **kept-locks** (list (cons :shared (sb-thread:make-mutex :name "shared syntax helper"))
                                        (cons :rules (sb-thread:make-mutex :name "rules syntax helper")))
@@ -1126,7 +1142,8 @@ in the background AT-ONCE."
   "True when BUFFER's text is that of a project you trust
 \(*SYNTAX-HELPER-SHARED-FUNCTION*)."
   (and *syntax-helper-shared-function*
-       (ignore-errors (funcall *syntax-helper-shared-function* buffer))
+       (tuatara.runtime:ignoring-errors-reported ("asking whether ~a is trusted" (tuatara.buffer:buffer-name buffer))
+         (funcall *syntax-helper-shared-function* buffer))
        t))
 
 (defun buffer-helper (buffer)
@@ -1185,9 +1202,12 @@ editor (*SYNTAX-WAKE-FUNCTION*) to show what it now parses."
   (let ((settings (helper-settings)))
     (sb-thread:make-thread (lambda ()
                              (progv *helper-setting-names* settings
-                               (ignore-errors (funcall function)))
+                               (tuatara.runtime:ignoring-errors-reported ("starting a syntax helper in the background")
+                                 (funcall function)))
                              (let ((wake (and (boundp '*syntax-wake-function*) (symbol-value '*syntax-wake-function*))))
-                               (when wake (ignore-errors (funcall wake)))))
+                               (when wake
+                                 (tuatara.runtime:ignoring-errors-reported ("waking the editor after a helper started")
+                                   (funcall wake)))))
                            :name "syntax helper starting in the background")))
 
 (defvar *helper-in-use-function* nil
@@ -1200,7 +1220,9 @@ or parsing for a buffer that is shown (*HELPER-IN-USE-FUNCTION*)."
   (or (helper-kept helper)
       (plusp (car (helper-parsing helper)))
       (let ((buffer (helper-buffer helper)))
-        (and buffer *helper-in-use-function* (ignore-errors (funcall *helper-in-use-function* buffer))))))
+        (and buffer *helper-in-use-function*
+             (tuatara.runtime:ignoring-errors-reported ("asking whether a buffer is shown")
+               (funcall *helper-in-use-function* buffer))))))
 
 (defun make-room-for-helper (&key (wait t))
   "End the helpers buffers have of their own that were used longest ago, so

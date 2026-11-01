@@ -226,7 +226,7 @@ are dealt with after it."
               (progn (setf (editor-unread editor) (append (editor-unread editor) (list event)))
                      nil)))
     (:resize (resize editor (tuatara.frontend:event-width event) (tuatara.frontend:event-height event))
-             (ignore-errors (redisplay editor))
+             (tuatara.runtime:ignoring-errors-reported ("drawing the resized window") (redisplay editor))
              nil)
     ((:close :drop :paste) (setf (editor-deferred editor) (append (editor-deferred editor) (list event)))
      nil)

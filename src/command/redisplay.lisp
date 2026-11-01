@@ -706,8 +706,8 @@ cells, a terminal's) are noted too, its text shown as it is."
         (when (plusp (tuatara.display:window-header-rows window))
           (let ((header-top (tuatara.display:area-top window)))
             (multiple-value-bind (text spans)
-                (ignore-errors (funcall (tuatara.display:buffer-header-line (tuatara.display:window-buffer window))
-                                        window))
+                (tuatara.runtime:ignoring-errors-reported ("drawing a header line")
+                  (funcall (tuatara.display:buffer-header-line (tuatara.display:window-buffer window)) window))
               (push (list left width (or text "") (remove nil spans :key #'third) :header-line) (aref screen header-top)))
             (when (tuatara.display:window-divider window)
               (push (list (+ left width) 1 *window-divider* '((0 1 :vertical-border)) nil) (aref screen header-top)))))
@@ -872,7 +872,10 @@ that are not UTF-8 as \\xNN, as the mode line writes them (ESCAPE-CONTROLS)."
       (setf (editor-title-shown editor) (list name *gui-title* extra))
       (tuatara.frontend:frontend-set-title
        (editor-frontend editor)
-       (shown-name (concatenate 'string extra (or (ignore-errors (format nil *gui-title* name)) name)))))))
+       (shown-name (concatenate 'string extra
+                                (or (tuatara.runtime:ignoring-errors-reported ("making the title of ~a" name)
+                                      (format nil *gui-title* name))
+                                    name)))))))
 
 (defun redisplay (editor)
   "Lay out every window with its point visible and paint a frame: each

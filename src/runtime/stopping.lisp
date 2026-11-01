@@ -172,11 +172,12 @@ one aside, to leave it (STOP-STOPPABLE-CALL)."
                       (let ((entry (gethash cancel **stop-entries**)))
                         (and entry (copy-list (stop-entry-threads entry))))))
       (unless (or (eq thread self) (not (thread-in-stoppable-call thread)))
-        (ignore-errors (sb-thread:interrupt-thread thread #'stop-stoppable-call))))))
+        (handler-case (sb-thread:interrupt-thread thread #'stop-stoppable-call)
+          (sb-thread:interrupt-thread-error () nil))))))
 
 (defun thread-in-stoppable-call (thread)
   "Which of THREAD's stoppable calls it is in (*STOPPABLE-CALL*), or NIL when it is in none."
-  (ignore-errors (values (sb-thread:symbol-value-in-thread '*stoppable-call* thread nil))))
+  (values (sb-thread:symbol-value-in-thread '*stoppable-call* thread nil)))
 
 (sb-ext:defglobal **calls-seen** (make-hash-table :test 'eq)
   "For the watching thread: each thread seen in a stoppable call of work given
@@ -188,7 +189,7 @@ in it.")
   "The seconds THREAD has been seen in its stoppable call CALL, up to NOW, an
 internal real time, kept for the next look in **CALLS-SEEN**."
   (let ((seen (gethash thread **calls-seen**))
-        (counter (ignore-errors (values (sb-thread:symbol-value-in-thread '*stoppable-calls* thread nil)))))
+        (counter (values (sb-thread:symbol-value-in-thread '*stoppable-calls* thread nil))))
     (if (and seen (eq (first seen) counter) (eql (second seen) call))
         (/ (- now (third seen)) internal-time-units-per-second)
         (progn (setf (gethash thread **calls-seen**) (list counter call now)) 0))))
@@ -198,7 +199,7 @@ internal real time, kept for the next look in **CALLS-SEEN**."
   (find-if (lambda (cancel)
              (let ((entry (gethash cancel **stop-entries**)))
                (and entry (stop-entry-slow entry))))
-           (ignore-errors (values (sb-thread:symbol-value-in-thread '*stop-cells* thread nil)))))
+           (values (sb-thread:symbol-value-in-thread '*stop-cells* thread nil))))
 
 (defun watch-stoppable-work ()
   "What the watching thread does, for as long as the editor runs: every few

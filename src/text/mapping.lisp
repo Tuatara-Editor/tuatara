@@ -29,8 +29,10 @@ held; RETARGET-MAPPING adds one when the octets are moved to a snapshot."
 (defun release-resources (resources)
   "Unmap and close every (ADDRESS LENGTH FD) in the car of RESOURCES, once."
   (loop for (address length fd) in (shiftf (car resources) '())
-        do (ignore-errors (sb-posix:munmap (sb-sys:int-sap address) length))
-           (ignore-errors (sb-posix:close fd))))
+        do (tuatara.runtime:ignoring-errors-reported ("unmapping ~d octets" length)
+             (sb-posix:munmap (sb-sys:int-sap address) length))
+           (tuatara.runtime:ignoring-errors-reported ("closing the mapped file's descriptor ~d" fd)
+             (sb-posix:close fd))))
 
 (defun map-fd (fd size path)
   "Map SIZE octets of the open file FD read-only and return a MAPPING that owns
@@ -42,11 +44,11 @@ The mapping is released when it is garbage collected or closed explicitly."
          (mapping (%make-mapping sap size path fd resources)))
     ;; Ask the kernel to start reading the file in; the index pass follows soon.
     ;; madvise(2) with MADV_WILLNEED (3 on Linux); sb-posix does not wrap it.
-    (ignore-errors
-     (sb-alien:alien-funcall
-      (sb-alien:extern-alien "madvise" (function sb-alien:int sb-sys:system-area-pointer
-                                                 sb-alien:unsigned-long sb-alien:int))
-      sap size 3))
+    (tuatara.runtime:ignoring-errors-reported ("asking for ~a to be read in" path)
+      (sb-alien:alien-funcall
+       (sb-alien:extern-alien "madvise" (function sb-alien:int sb-sys:system-area-pointer
+                                                  sb-alien:unsigned-long sb-alien:int))
+       sap size 3))
     (sb-ext:finalize mapping (lambda () (release-resources resources)) :dont-save t)
     mapping))
 

@@ -9,9 +9,9 @@ for any other, which is left as written."
   (cond ((string= name "lt") "<") ((string= name "gt") ">") ((string= name "amp") "&")
         ((string= name "quot") "\"") ((string= name "apos") "'")
         ((and (> (length name) 1) (char= (char name 0) #\#))
-         (let ((code (ignore-errors (if (char-equal (char name 1) #\x)
-                                        (parse-integer name :start 2 :radix 16)
-                                        (parse-integer name :start 1)))))
+         (let ((code (if (char-equal (char name 1) #\x)
+                         (whole-number name :start 2 :radix 16)
+                         (whole-number name :start 1))))
            (and code (<= 0 code) (< code char-code-limit) (not (<= #xD800 code #xDFFF)) (string (code-char code)))))))
 
 (defun xml-tag-end (text start)

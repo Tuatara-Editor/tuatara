@@ -181,7 +181,8 @@ closed or files dropped, to be handled once it is done, oldest first.")
   "Wake EDITOR's frames, from any thread, to show what work in the background
 has for them; an error waking one is ignored."
   (dolist (frame (editor-frames editor))
-    (ignore-errors (tuatara.frontend:frontend-wake (frame-frontend frame)))))
+    (tuatara.runtime:ignoring-errors-reported ("waking a frame")
+      (tuatara.frontend:frontend-wake (frame-frontend frame)))))
 
 (defvar *editor* nil
   "The editor whose command is running.")
@@ -477,7 +478,7 @@ given to DEFER-ACTION there run as EDITOR's next commands, in that order too."
               actions (shiftf *actions-from-threads* '())))
       (dolist (text (reverse texts))
         (setf (editor-message editor) text)
-        (ignore-errors (log-message text)))
+        (tuatara.runtime:ignoring-errors-reported ("keeping a message in *Messages*") (log-message text)))
       (when actions
         (setf (editor-deferred editor) (append (editor-deferred editor) (reverse actions)))))))
 
@@ -524,7 +525,7 @@ shown after it."
           (t
            (when *editor*
              (setf (editor-message *editor*) (with-command-notes-said text)))
-           (ignore-errors (log-message text))))
+           (tuatara.runtime:ignoring-errors-reported ("keeping a message in *Messages*") (log-message text))))
     text))
 
 (defun echo (control &rest arguments)

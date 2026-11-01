@@ -175,7 +175,7 @@ and nothing elsewhere."
 
 (defun regular-file-p (path)
   "True when PATH is a plain file itself, not a link nor anything else."
-  (let ((stat (ignore-errors (sb-posix:lstat (uiop:native-namestring path)))))
+  (let ((stat (handler-case (sb-posix:lstat (uiop:native-namestring path)) (sb-posix:syscall-error () nil))))
     (and stat (= (logand (sb-posix:stat-mode stat) sb-posix:s-ifmt) sb-posix:s-ifreg))))
 
 (defun user-grammar-file (name)
@@ -191,9 +191,13 @@ kept from it (USER-GRAMMAR-STORE), Tuatara having none of that name. Such a
 grammar is loaded only as *USER-GRAMMAR-FUNCTION* allows."
   (and (grammar-name-p name)
        (not (own-grammar-p name))
-       (or (ignore-errors (sb-posix:lstat (uiop:native-namestring (merge-pathnames (format nil "~a.so" name) (user-grammar-directory)))))
-           (let ((store (user-grammar-store)))
-             (and store (ignore-errors (sb-posix:lstat (uiop:native-namestring (merge-pathnames (format nil "~a.so" name) store)))))))
+       (flet ((there-p (directory)
+                (let ((file (merge-pathnames (format nil "~a.so" name) directory)))
+                  (handler-case (sb-posix:lstat (uiop:native-namestring file))
+                    (sb-posix:syscall-error () nil)))))
+         (or (there-p (user-grammar-directory))
+             (let ((store (user-grammar-store)))
+               (and store (there-p store)))))
        t))
 
 (defvar *user-grammar-function* nil
@@ -562,8 +566,10 @@ LONGEST octets ends the helper (REPLY-OVERRUN)."
 (defun compile-regex-for-query (string)
   "A scanner for the regular expression STRING of a #match? predicate; one that
 never matches when STRING is not a regular expression this editor reads."
-  (handler-case (cl-ppcre:create-scanner string)
-    (error () (constantly nil))))
+  (or (tuatara.runtime:ignoring-errors-reported ("reading the regular expression ~s" string)
+        (handler-case (cl-ppcre:create-scanner string)
+          (cl-ppcre:ppcre-syntax-error () nil)))
+      (constantly nil)))
 
 (defvar *local-references* nil
   "While a language's colouring rules run: the names in the text coloured that

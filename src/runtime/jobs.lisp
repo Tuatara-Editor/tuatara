@@ -85,7 +85,7 @@ end and run of spaces in it one space; a few words of its kind when it cannot
 be printed (a lack of memory may leave none to print with). With HEADLINE,
 only its first words, up to its first stop, colon or parenthesis, in lower
 case: \"control stack exhausted\"."
-  (let* ((text (or (ignore-errors (princ-to-string condition))
+  (let* ((text (or (ignoring-errors-reported ("printing ~(~a~)" (type-of condition)) (princ-to-string condition))
                    (string-downcase (type-of condition))))
          (blank nil)
          (words (string-trim " " (with-output-to-string (out)
@@ -162,7 +162,8 @@ any, is ended with every program that one started (END-PROGRAM).")
   "End PROCESS, a program a job runs, and every program it started (a hook, a
 helper), so that none keeps the job waiting: the programs run in a process
 group of their own."
-  (ignore-errors (sb-ext:process-kill process sb-unix:sigterm :process-group)))
+  (ignoring-errors-reported ("ending the program ~a" process)
+    (sb-ext:process-kill process sb-unix:sigterm :process-group)))
 
 (defun job-program-started (job process)
   "Keep PROCESS as the program JOB runs, ended when JOB is stopped; ended at
@@ -310,7 +311,7 @@ reached EVENT (started, ended), DETAILS, a string or NIL, said after it."
 (defun job-wake-editor (job)
   "Wake the editor for JOB's thread, when JOB has a way to."
   (let ((wake (job-wake job)))
-    (when wake (ignore-errors (funcall wake)))))
+    (when wake (ignoring-errors-reported ("waking the editor for ~a" (job-description job)) (funcall wake)))))
 
 (defun start-background-result (function name wake &optional cancel)
   "Call FUNCTION on a thread of its own named NAME, and return a cell whose car
@@ -321,7 +322,8 @@ short a call of FUNCTION's that does not look at it (STOPPABLE-WORK)."
   (let ((cell (list nil)))
     (make-guarded-thread
      (lambda ()
-       (let ((value (handler-case (if cancel (stoppable-work (cancel) (funcall function)) (funcall function))
+       (let ((value (handler-case (reporting-errors ("~a" name)
+                                    (if cancel (stoppable-work (cancel) (funcall function)) (funcall function)))
                       (serious-condition (condition) (list :error (condition-words condition))))))
          (unless (and cancel (car cancel))
            (setf (car cell) value)
@@ -364,7 +366,8 @@ Returns JOB."
              (when (job-running-p job)
                (setf (job-status job) (if (car (job-cancel job)) :stopped :failed)))
              (job-wake-editor job))))
-    (handler-case (setf (job-thread job) (make-guarded-thread #'run :name name))
+    (handler-case (reporting-errors ("starting a thread for ~a" (job-description job))
+                    (setf (job-thread job) (make-guarded-thread #'run :name name)))
       ;; no thread to be had (too many, no memory): the job ends at once, failed
       (serious-condition (condition)
         (setf (job-error job) (condition-words condition) (job-status job) :failed)

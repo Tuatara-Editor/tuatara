@@ -16,9 +16,10 @@ end and what follows left out."
          (big (cond ((and (< (1+ start) end) (= (aref octets start) #xFE) (= (aref octets (1+ start)) #xFF)) (incf start 2) t)
                     ((and (< (1+ start) end) (= (aref octets start) #xFF) (= (aref octets (1+ start)) #xFE)) (incf start 2) nil)
                     (t big-endian)))
-         (text (or (ignore-errors (sb-ext:octets-to-string (coerce octets '(simple-array (unsigned-byte 8) (*)))
-                                                          :start start :end end
-                                                          :external-format (list (if big :utf-16be :utf-16le) :replacement #\?)))
+         (text (or (tuatara.runtime:ignoring-errors-reported ("reading ~d octets as UTF-16" (- end start))
+                     (sb-ext:octets-to-string (coerce octets '(simple-array (unsigned-byte 8) (*)))
+                                              :start start :end end
+                                              :external-format (list (if big :utf-16be :utf-16le) :replacement #\?)))
                    "")))
     (subseq text 0 (or (position (code-char 0) text) (length text)))))
 
@@ -40,7 +41,8 @@ decodes; NIL for UTF-8 or a charset not known."
            (alias (assoc name *charset-aliases* :test #'string=))
            (encoding (if alias (cdr alias) (find-symbol (string-upcase name) :keyword))))
       (and encoding (not (eq encoding :utf-8))
-           (ignore-errors (sb-ext:octets-to-string (make-array 0 :element-type '(unsigned-byte 8)) :external-format encoding))
+           (tuatara.runtime:ignoring-errors-reported ("reading the charset ~a" charset)
+             (sb-ext:octets-to-string (make-array 0 :element-type '(unsigned-byte 8)) :external-format encoding))
            encoding))))
 
 (defun charset-text (octets charset &key (start 0) (end (length octets)))
@@ -51,8 +53,9 @@ not UTF-8 kept as its raw byte."
   (let ((octets (coerce octets '(simple-array (unsigned-byte 8) (*))))
         (encoding (charset-encoding charset)))
     (or (and encoding
-             (ignore-errors (sb-ext:octets-to-string octets :start start :end end
-                                                            :external-format (list encoding :replacement (code-char #xFFFD)))))
+             (tuatara.runtime:ignoring-errors-reported ("reading text in the charset ~a" charset)
+               (sb-ext:octets-to-string octets :start start :end end
+                                               :external-format (list encoding :replacement (code-char #xFFFD)))))
         (octets-string octets :start start :end end))))
 
 (defun word-char-p (char)

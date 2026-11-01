@@ -407,11 +407,14 @@ NIL when no window may be split."
             (twice-height (* 2 tuatara.display:*window-min-height*))
             (twice-width (* 2 tuatara.display:*window-min-width*)))
         (let ((new (or (and (>= height (max *split-height-threshold* twice-height))
-                            (ignore-errors (split-window window :below :buffer buffer)))
+                            (tuatara.runtime:ignoring-errors-reported ("splitting a window below")
+                              (split-window window :below :buffer buffer)))
                        (and (>= width (max *split-width-threshold* twice-width))
-                            (ignore-errors (split-window window :right :buffer buffer)))
+                            (tuatara.runtime:ignoring-errors-reported ("splitting a window beside")
+                              (split-window window :right :buffer buffer)))
                        (and (null (tuatara.display:area-parent window)) (>= height twice-height)
-                            (ignore-errors (split-window window :below :buffer buffer))))))
+                            (tuatara.runtime:ignoring-errors-reported ("splitting a lone window below")
+                              (split-window window :below :buffer buffer))))))
           (when new (return new)))))))
 
 (defun new-window-for (buffer place rule)
@@ -422,9 +425,9 @@ window, made the only one and showing BUFFER."
          (root (tuatara.display:area-root selected))
          (size (and rule (buffer-place-size rule))))
     (flet ((make (area side)
-             (ignore-errors
-              (split-window area side :buffer buffer
-                                      :size (place-size size area (tuatara.display:arrangement-of side) buffer)))))
+             (tuatara.runtime:ignoring-errors-reported ("splitting a window ~(~a~)" side)
+               (split-window area side :buffer buffer
+                                       :size (place-size size area (tuatara.display:arrangement-of side) buffer)))))
       (case place
         (:below (make selected :below))
         (:beside (make selected :right))

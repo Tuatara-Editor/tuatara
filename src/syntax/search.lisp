@@ -1346,7 +1346,7 @@ words why)."
 
 (defun compile-engine-pattern (regex case-fold thorough)
   "COMPILE-REGEX's work on REGEX, as ENGINE-PATTERN gives it."
-  (let* ((tree (ignore-errors (cl-ppcre:parse-string regex)))
+  (let* ((tree (handler-case (cl-ppcre:parse-string regex) (cl-ppcre:ppcre-syntax-error () nil)))
          (filtered (and tree (search *filter-mark* regex)))
          (lines (and tree (line-tree tree)))
          (scanner (let ((cl-ppcre:*use-bmh-matchers* t))
@@ -1369,7 +1369,10 @@ words why)."
       ;; whether it stays within a line, cannot be read from the text then
       (let ((flags (tree-has tree :flags :case-insensitive-p :case-sensitive-p :multi-line-mode-p
                              :not-multi-line-mode-p :single-line-mode-p :not-single-line-mode-p)))
-        (multiple-value-bind (literal prefix-p) (and (not flags) (ignore-errors (required-literal regex)))
+        (multiple-value-bind (literal prefix-p)
+            (and (not flags)
+                 (tuatara.runtime:ignoring-errors-reported ("finding the text every match of ~s holds" regex)
+                   (required-literal regex)))
           ;; octet folding knows ASCII only: letters beyond it keep the full scan
           (unless (or (not case-fold)
                       (every (lambda (c) (or (< (char-code c) 128) (not (both-case-p c)))) (or literal "")))
@@ -1404,7 +1407,9 @@ groups among them; 0 for a pattern that cannot be used."
                (when (consp x)
                  (when (member (first x) '(:register :named-register)) (incf count))
                  (mapc #'walk (rest x)))))
-      (walk (ignore-errors (with-pattern-syntax (cl-ppcre:parse-string (engine-pattern pattern))))))
+      (walk (tuatara.runtime:ignoring-errors-reported ("counting the groups of ~s" pattern)
+              (handler-case (with-pattern-syntax (cl-ppcre:parse-string (engine-pattern pattern)))
+                ((or cl-ppcre:ppcre-syntax-error pattern-refused) () nil)))))
     count))
 
 (defun compile-pattern (pattern &key (regex t) (case-fold nil fold-given) or-text)
@@ -1421,7 +1426,10 @@ COMPILE-REGEX does."
          (regex ()
            (compile-regex pattern :case-fold (if fold-given case-fold (regex-case-fold-p pattern)))))
     (cond ((not regex) (text))
-          (or-text (handler-case (regex) (error () (text))))
+          (or-text (or (tuatara.runtime:ignoring-errors-reported ("reading ~s as a regular expression" pattern)
+                         (handler-case (regex)
+                           ((or cl-ppcre:ppcre-syntax-error pattern-refused) () nil)))
+                       (text)))
           (t (regex)))))
 
 (defstruct (decoder (:constructor make-decoder ()) (:copier nil))

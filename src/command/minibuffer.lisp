@@ -317,7 +317,7 @@ when given, the debug log. With no editor showing, it simply waits."
                (unless (equal text shown)
                  (setf shown text)
                  (echo "~a" text)
-                 (ignore-errors (redisplay editor))))))
+                 (tuatara.runtime:ignoring-errors-reported ("drawing while waiting") (redisplay editor))))))
       (when (running-p grace)
         (show)
         (loop

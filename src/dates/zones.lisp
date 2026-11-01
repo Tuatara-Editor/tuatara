@@ -235,7 +235,9 @@ when it says none this reads."
 
 (defun zoneinfo-file-octets (path)
   "The octets of the zoneinfo file at PATH, NIL when it cannot be read or is larger than *ZONEINFO-LARGEST*."
-  (ignore-errors (tuatara.io:file-octets path :limit *zoneinfo-largest*)))
+  (tuatara.runtime:ignoring-errors-reported ("reading the zoneinfo file ~a" path)
+    (handler-case (tuatara.io:file-octets path :limit *zoneinfo-largest*)
+      (tuatara.io:file-system-error () nil))))
 
 (defvar *zones* (make-hash-table :test 'equal :synchronized t)
   "The time zones read from the zoneinfo, by name; NIL for a name that is none.")
@@ -258,7 +260,7 @@ neither names one."
   (let ((tz (sb-posix:getenv "TZ")))
     (or (and tz (let ((name (string-left-trim ":" tz))) (and (zone-named name) name)))
         ;; the link followed to its end: a toolbox's leads through /run/host
-        (let* ((path (ignore-errors (namestring (truename "/etc/localtime"))))
+        (let* ((path (handler-case (namestring (truename "/etc/localtime")) (file-error () nil)))
                (at (and path (search "zoneinfo/" path)))
                (name (and at (subseq path (+ at 9))))
                (name (if (and name (eql 0 (search "posix/" name))) (subseq name 6) name)))

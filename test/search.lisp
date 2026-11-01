@@ -458,3 +458,17 @@ newlines and some multibyte characters."
                             while at collect at do (setf i (+ at n)))
                 (loop with i = 0 for at = (tuatara.syntax::scan-chunk chunk needle fold i size size other-case)
                       while at collect at do (setf i (+ at n))))))))))
+
+(define-test (search unreadable-pattern-quiet)
+  ;; a pattern that is no regular expression is taken as text, or has no groups,
+  ;; as before; being one typed wrong, it is no failure for the debug log
+  (drain-debug-reports)
+  (unwind-protect
+       (progn
+         (tuatara.runtime:set-debug t)
+         (true (cl-ppcre:scan (tuatara.syntax:compile-pattern "a(b" :or-text t) "xa(by"))
+         (is = 0 (tuatara.syntax:pattern-group-count "a(b"))
+         (is = 0 (tuatara.syntax:pattern-group-count "[[:nosuchclass:]]"))
+         (is = 1 (tuatara.syntax:pattern-group-count "a(b)"))
+         (true (sb-concurrency:queue-empty-p tuatara.runtime:*debug-reports*)))
+    (drain-debug-reports)))

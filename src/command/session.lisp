@@ -83,7 +83,7 @@ editor stays usable: the way out is said, and the minibuffer is shown as it
 reads (\\[execute-extended-command], the questions \\[save-buffers-kill-editor] asks), its prompt
 and what is typed on the last row, else the message there."
   (let ((frontend (editor-frontend editor)))
-    (ignore-errors
+    (tuatara.runtime:ignoring-errors-reported ("painting a frame saying why the window cannot be shown")
      (tuatara.frontend:frontend-begin-frame frontend)
      (tuatara.frontend:frontend-put-row frontend 0 (format nil "This window cannot be shown: ~a." (tuatara.runtime:condition-words condition :headline t)))
      (tuatara.frontend:frontend-put-row
@@ -277,7 +277,8 @@ waiting going on, said; other keys are kept for after."
                                      (format nil "~a is taking long~:[~*~;; ~a stops it where it safely can~]"
                                              (editor-hold-words hold) (editor-hold-stop hold)
                                              (substitute-command-keys "\\`C-g'"))))
-                      (ignore-errors (redisplay editor)))))
+                      (tuatara.runtime:ignoring-errors-reported ("drawing while the editor is held")
+                        (redisplay editor)))))
              (tuatara.runtime:debug-report :hang "~a has held the editor for more than ~d seconds"
                                            (editor-hold-words hold) *editor-held-seconds*)
              (say nil)
@@ -352,7 +353,8 @@ choose a scratch buffer. When NIL, a buffer called *scratch* is used.")
 rather than end the process as it does when started with --script (which
 implies --lose-on-corruption): code evaluated in the editor may recurse without
 end, and must not take the editor with it."
-  (ignore-errors (setf (sb-alien:extern-alien "lose_on_corruption_p" (sb-alien:unsigned 8)) 0)))
+  (tuatara.runtime:ignoring-errors-reported ("having running out of stack caught")
+    (setf (sb-alien:extern-alien "lose_on_corruption_p" (sb-alien:unsigned 8)) 0)))
 
 (defvar *visit-file-function* nil
   "A function of a file's path, and keys :SAFE (visit it safely) and :HEX (show
