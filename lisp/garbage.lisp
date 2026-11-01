@@ -50,12 +50,14 @@ editor starts."
   "Between commands, once a session: in the first second nothing is typed
 after the editor starts, collect at once the garbage starting it made (the
 init file read, packages compiled), so that this longer pause comes while
-nothing is typed rather than later, between keys."
+nothing is typed rather than later, between keys; never while a key waits
+to be answered."
   (declare (ignore editor))
   (unless *start-up-garbage-collected*
     (let ((now (get-internal-real-time)))
       (cond ((and *start-up-tick-time*
-                  (>= (- now *start-up-tick-time*) (* 9/10 internal-time-units-per-second)))
+                  (>= (- now *start-up-tick-time*) (* 9/10 internal-time-units-per-second))
+                  (not (key-waiting-p)))
              (setf *start-up-garbage-collected* t)
              (sb-ext:gc :full t)
              nil)
@@ -80,13 +82,13 @@ last collected.")
   "Between commands: when you have left the editor alone for
 *IDLE-COLLECTION-SECONDS* and half a nursery of new data (*NURSERY-OCTETS*)
 waits to be collected, collect it now; while it waits and you are still
-about, look again when that time is up."
+about, or a key waits to be answered, look again when that time is up."
   (declare (ignore editor))
   (when (and *idle-collection-seconds* (>= (consed-since-gc) (floor *nursery-octets* 2)))
     (let ((idle (/ (- (get-internal-real-time) tuatara.command:*last-input-time*) internal-time-units-per-second)))
-      (if (>= idle *idle-collection-seconds*)
-          (progn (sb-ext:gc) nil)
-          (- *idle-collection-seconds* idle)))))
+      (cond ((key-waiting-p) *idle-collection-seconds*)
+            ((>= idle *idle-collection-seconds*) (sb-ext:gc) nil)
+            (t (- *idle-collection-seconds* idle))))))
 
 ;;; How long each collection stood still
 

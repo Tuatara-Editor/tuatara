@@ -39,6 +39,35 @@
       (setf garbage nil)
       (false (tuatara.defaults::idle-garbage-tick nil)))))
 
+(define-test (garbage none-collected-while-a-key-waits)
+  ;; a key waiting to be answered is answered first: neither the start-up collection nor an idle one comes before it
+  (let ((f (tuatara.frontend.fake:make-fake-frontend :width 80 :height 8))
+        (results nil))
+    (setf (tuatara.frontend.fake:fake-pending f) t)
+    (queue-test-keys
+     f (list (lambda ()
+               (let ((tuatara.defaults::*start-up-garbage-collected* nil)
+                     (tuatara.defaults::*start-up-tick-time*
+                       (- (get-internal-real-time) (* 2 internal-time-units-per-second)))
+                     (tuatara.defaults::*nursery-octets* (* 4 1024 1024))
+                     (tuatara-user:*idle-collection-seconds* 0.3)
+                     (tuatara.command:*last-input-time* (- (get-internal-real-time) internal-time-units-per-second))
+                     (garbage (loop repeat 4096 collect (make-array 1024 :element-type '(unsigned-byte 8))))
+                     (before sb-ext:*gc-run-time*))
+                 (setf results (list (tuatara.defaults::start-up-garbage-tick nil)
+                                     tuatara.defaults::*start-up-garbage-collected*
+                                     (tuatara.defaults::idle-garbage-tick nil)
+                                     (- sb-ext:*gc-run-time* before)
+                                     (length garbage)))))))
+    (call-without-grammar-questions
+     (lambda () (tuatara.command:run-editor f :setup #'tuatara.defaults:install-defaults)))
+    (destructuring-bind (start-up collected idle collecting made) results
+      (is = 4096 made)
+      (is eql 1 start-up)
+      (false collected)
+      (true (realp idle) "~a" idle)
+      (is = 0 collecting))))
+
 (define-test (garbage room-in-the-heap)
   ;; room asked for: there, or after collecting; never more than the heap
   (true (tuatara.defaults::heap-room-p 1024))
