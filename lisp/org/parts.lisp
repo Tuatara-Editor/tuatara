@@ -37,7 +37,8 @@ step, FAILED what went wrong when there is no TREE,
 PLACES where the parts are in a whole buffer's parse with the snapshot it
 was made of, let go once taken (ORG-KEEP-WHOLE-PLACES); WORKER,
 the thread parsing in the background, one at a time, and WANTED, the
-\(VERSION SOURCE CRLF KEYWORDS) it parses next, the latest asked for
+VERSION, SOURCE, KEYWORDS and whether its lines end with carriage return and
+line feed (CRLF) of what it parses next, the latest asked for
 \(ORG-WANT-PARSE), guarded by LOCK, DONE woken as each parse is put in
 RESULT, WAITED the last version colouring waited for. RETURNS, where TEXT,
 with the carriage returns before its newlines left out, lost one
@@ -619,11 +620,11 @@ once and kept with it."
                                         :start (org-part-start parts index) :end (org-part-end parts index)))))))
 
 (defun org-parts-returns (buffer)
-  "Where the text Org reads of BUFFER, a buffer whose lines end with CR LF,
-lost a carriage return before a newline, as ORG-STRIP-RETURNS gives them:
-put together from its parts', each found once and kept until the part
-changes. Complexity: O(parts x log of the text + the returns), and the
-octets of the parts changed."
+  "Where the text Org reads of BUFFER, a buffer whose lines end with carriage
+return and line feed (CR LF), lost a carriage return before a newline, as
+ORG-STRIP-RETURNS gives them: put together from its parts', each found once
+and kept until the part changes. Complexity: O(parts x log of the text +
+the returns), and the octets of the parts changed."
   (let* ((parts (org-buffer-parts buffer))
          (rope (tuatara.buffer:buffer-text buffer))
          (returns (make-array 64 :element-type 'fixnum :adjustable t :fill-pointer 0))
@@ -659,8 +660,9 @@ order, SOURCE the part's own parse (TREE TEXT RETURNS), or (:WHOLE NODE
 START LENGTH TEXT RETURNS) where the whole parse made before holds it as it
 is, or the part's text, a string or (ROPE START END); or, for a whole parse
 made afresh, WHOLE, the whole text, a string or a rope. The TODO KEYWORDS
-the parts are parsed with; CRLF, true when its lines end with CR LF;
-VERSION, the number of the buffer's version it was taken at."
+the parts are parsed with; carriage return and line feed (CRLF), true when its
+lines end that way; VERSION, the number of the buffer's version it was taken
+at."
   parts keywords entries crlf whole version)
 
 (setf (documentation 'org-snapshot-p 'function) "True when OBJECT is an ORG-SNAPSHOT.")

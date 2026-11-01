@@ -179,8 +179,9 @@ several times faster and finds the same matches, unless COMPILED asks for it
 compiled whatever it is (a rectangle's rows are matched as text); literal text
 is compiled when case is ignored and it has letters beyond ASCII, whose other
 case only the regular expression knows, and when it holds a raw byte, which
-then matches only a byte standing on its own, never one inside a character. With CRLF, for text whose lines end
-with a carriage return and a newline, $ matches before the carriage return."
+then matches only a byte standing on its own, never one inside a character.
+With carriage return and line feed (CRLF), for text whose lines end with a
+carriage return and a newline, $ matches before the carriage return."
   (let ((past-ascii (and fold (some (lambda (c) (and (>= (char-code c) 128) (both-case-p c))) pattern)))
         (raw (some (lambda (c) (tuatara.text:raw-byte-code-p (char-code c))) pattern)))
     (cond ((and (not regex) (or past-ascii raw))

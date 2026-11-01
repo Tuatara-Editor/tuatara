@@ -528,9 +528,9 @@ once in the echo area and the debug log. True when there were any."
 
 (defvar *bare-state-folder* nil
   "The folder of the state of an editor started without its init file
-\(START-BARE) and the descriptor of the lock it holds on it, as (FOLDER . FD),
-deleted once the lists kept between sessions have been written as it stops;
-NIL for the usual state folder.")
+\(START-BARE) and the file descriptor (FD) of the lock it holds on it, as
+(FOLDER . FD), deleted once the lists kept between sessions have been written
+as it stops; NIL for the usual state folder.")
 
 (sb-ext:defglobal **state-writer** nil
   "The thread writing the lists kept between sessions, while it runs.")

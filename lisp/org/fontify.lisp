@@ -134,9 +134,10 @@ and LAST_REPEAT with the time; NIL nothing.")
 
 (defun org-strip-returns (string)
   "STRING with the carriage return before each newline left out, as a note
-whose lines end with CR LF is read, and each carriage return that ends a
-line alone read as a newline: two values, the text and the places in it of
-the newlines that lost one (a vector in order), or NIL when none did."
+whose lines end with carriage return and line feed (CR LF) is read, and each
+carriage return that ends a line alone read as a newline: two values, the text
+and the places in it of the newlines that lost one (a vector in order), or NIL
+when none did."
   (if (not (find #\Return string))
       (values string nil)
       (let ((out (make-string (length string)))
@@ -164,9 +165,10 @@ line, made a newline: as long as STRING, every character where it was."
 
 (defun org-text-as-read (raw crlf)
   "RAW, text of an Org buffer, as Org reads it, two values: the text and where
-it lost a carriage return before a newline (ORG-STRIP-RETURNS), for CRLF
-true, a buffer whose lines end with both; else a carriage return that ends a
-line alone read as a newline (LONE-RETURNS-AS-NEWLINES)."
+it lost a carriage return before a newline (ORG-STRIP-RETURNS), for carriage
+return and line feed (CRLF) true, a buffer whose lines end with both; else a
+carriage return that ends a line alone read as a newline
+(LONE-RETURNS-AS-NEWLINES)."
   (if crlf (org-strip-returns raw) (values (lone-returns-as-newlines raw) nil)))
 
 (defun org-buffer-text (buffer &key (start 0) (end (tuatara.buffer:buffer-size buffer)))
@@ -243,9 +245,9 @@ change; NIL for a buffer whose lines end with a newline alone."
 (defun org-char->byte (buffer position &optional (returns (org-returns-of buffer)) (base 0))
   "The octet of BUFFER where the character POSITION of the text Org reads of
 it is: the carriage returns it left out (RETURNS) counted back in, a position
-at a line's end standing before its CR LF. For a text read from a part of
-BUFFER, BASE is the character of BUFFER the part begins at, RETURNS those
-the part's text left out."
+at a line's end standing before its carriage return and line feed (CR LF). For
+a text read from a part of BUFFER, BASE is the character of BUFFER the part
+begins at, RETURNS those the part's text left out."
   (tuatara.text:char->byte (tuatara.buffer:buffer-text buffer)
                            (+ base (if returns (+ position (org-returns-before returns position)) position))))
 

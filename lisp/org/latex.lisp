@@ -606,7 +606,7 @@ arrow is drawn but not copied: text copied from the PDF has none."
       (format nil "\\texttt{~a}" (latex-escape string :special-strings nil))))
 
 (defun latex-url (url)
-  "URL written for \\href and \\url."
+  "Uniform resource locator (URL) written for \\href and \\url."
   (with-output-to-string (out)
     (loop for c across url
           do (if (find c "%#") (progn (write-char #\\ out) (write-char c out)) (write-char c out)))))

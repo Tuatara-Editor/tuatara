@@ -20,8 +20,8 @@ first, or a RECTANGLE-SOURCE for one over more text than *REWRITE-THRESHOLD*.")
   "A rectangle kept by where it is: in ROPE, the text as it was then (a text
 never changes), the lines from the one starting at TOP to the one starting at
 BOTTOM, between the columns LEFT and RIGHT on the screen, a tab TAB-WIDTH
-columns at most; CRLF when a carriage return before a newline ends its lines;
-ROWS how many lines it has."
+columns at most; carriage return and line feed (CRLF) when a carriage return
+before a newline ends its lines; ROWS how many lines it has."
   rope (top 0 :type fixnum) (bottom 0 :type fixnum) (left 0 :type fixnum) (right 0 :type fixnum)
   crlf (rows 0 :type fixnum) (tab-width 8 :type fixnum))
 
@@ -697,28 +697,29 @@ around, when it stands around every row in sight."
   "What a background job over a rectangle's rows changes: in ROPE, the lines
 from the one starting at TOP (line number TOP-LINE) to the one starting at
 BOTTOM, the job's text ending at HIGH and the whole text at TOTAL, between the
-columns LEFT and RIGHT, CRLF when a carriage return before a newline ends the
-lines. The columns are on the screen, a tab TAB-WIDTH columns at most, a tab
-across an edge made spaces outside it as its row changes; with TAB-WIDTH NIL,
-they count characters. KIND says what changes: :CUT and :DELETE empty each row; :CHANGE puts TEXT (octets)
-in its place, a row short of the block padded out to it with spaces unless PAD
-is false (with LEFT = RIGHT, TEXT goes in at that column, or at the end of a
-shorter line); :APPEND puts TEXT at the end of each line; :WRAP puts OPEN before
-and CLOSE after it, and :UNWRAP takes them off where they stand just outside
-it (WRAPPED-MATCH); :PASTE puts SOURCE's rows, each REPEAT times across, in
-place of its rows, or with LEFT = RIGHT in at that column, the rows past the
-text's end on new lines (NEWLINE) at its end; :CLEAR blanks each row, a line
-ending inside the block cut at its left column and one shorter than the block
-left alone; :NUMBER puts in place of each row what NUMBERING, a function of the row's
-index from 0, gives (octets), a short row padded out to the block, and
-:NUMBER-IN puts it in at the block's left column, replacing nothing; :TYPE writes what was typed at a
-cursor on each row (TYPED-ROW): TEXT in place of the columns, or at the line's
-end with AT-END, the BACK characters before them and the FORWARD after them
-deleted too. The rows starting at the offsets SKIP holds (a hash table) are
-left as they are; REFUSED counts, in its car, the rows :TYPE could not change.
-FOLDS are the folds of the text as the job began (FOLDS-NOW): a row whose
-change would take part of the text one hides, but not all of it, is left as
-it is, and counted in the car of HIDDEN."
+columns LEFT and RIGHT, carriage return and line feed (CRLF) when a carriage
+return before a newline ends the lines. The columns are on the screen, a tab
+TAB-WIDTH columns at most, a tab across an edge made spaces outside it as its
+row changes; with TAB-WIDTH NIL, they count characters. KIND says what
+changes: :CUT and :DELETE empty each row; :CHANGE puts TEXT (octets) in its
+place, a row short of the block padded out to it with spaces unless PAD is
+false (with LEFT = RIGHT, TEXT goes in at that column, or at the end of a
+shorter line); :APPEND puts TEXT at the end of each line; :WRAP puts OPEN
+before and CLOSE after it, and :UNWRAP takes them off where they stand just
+outside it (WRAPPED-MATCH); :PASTE puts SOURCE's rows, each REPEAT times
+across, in place of its rows, or with LEFT = RIGHT in at that column, the rows
+past the text's end on new lines (NEWLINE) at its end; :CLEAR blanks each row,
+a line ending inside the block cut at its left column and one shorter than the
+block left alone; :NUMBER puts in place of each row what NUMBERING, a function
+of the row's index from 0, gives (octets), a short row padded out to the
+block, and :NUMBER-IN puts it in at the block's left column, replacing
+nothing; :TYPE writes what was typed at a cursor on each row (TYPED-ROW): TEXT
+in place of the columns, or at the line's end with AT-END, the BACK characters
+before them and the FORWARD after them deleted too. The rows starting at the
+offsets SKIP holds (a hash table) are left as they are; REFUSED counts, in its
+car, the rows :TYPE could not change. FOLDS are the folds of the text as the
+job began (FOLDS-NOW): a row whose change would take part of the text one
+hides, but not all of it, is left as it is, and counted in the car of HIDDEN."
   rope (top 0 :type fixnum) (bottom 0 :type fixnum) (top-line 0 :type fixnum) (high 0 :type fixnum)
   (total 0 :type fixnum) (left 0 :type fixnum) (right 0 :type fixnum) crlf kind text open close source
   (repeat 1 :type fixnum) newline (pad t) skip at-end (back 0 :type fixnum) (forward 0 :type fixnum)

@@ -100,8 +100,8 @@ COMMAND was not run. Refused when search filters hide any of those lines
 (defun scan-lines (octets crlf)
   "The lines of OCTETS, which hold whole lines: three fixnum vectors of each
 line's start, the end of its text (before the octet that ends it, and in a
-CRLF buffer before a carriage return ahead of a newline) and the start of
-the line after."
+carriage return and line feed (CRLF) buffer before a carriage return ahead of
+a newline) and the start of the line after."
   (declare (type tuatara.text:octets octets))
   (let* ((size (length octets))
          (n (+ (tuatara.text:octets-line-ends octets 0 size)
@@ -123,7 +123,8 @@ the line after."
 
 (defun rope-line-before (rope at crlf)
   "The text of ROPE's line that ends just before AT, a line's start, as octets,
-without its line end (a carriage return too with CRLF)."
+without its line end (a carriage return too with carriage return and line feed
+(CRLF))."
   (let* ((end (tuatara.text:rope-line-text-end rope 0 (1- at) crlf))
          (start (tuatara.text:rope-line-start rope (max 0 end))))
     (tuatara.text:rope-octets rope :start start :end end)))
@@ -514,9 +515,9 @@ new text and the number of records."
 ;;; Writing files a piece at a time
 
 (defun file-rope (fd length)
-  "A rope over the first LENGTH octets of the open unnamed file FD, which it
-takes: mapped, its lines counted later with the rest of the result, all at once
-(START-SORT)."
+  "A rope over the first LENGTH octets of the unnamed file open as file
+descriptor (FD), which it takes: mapped, its lines counted later with the
+rest of the result, all at once (START-SORT)."
   (if (zerop length)
       (progn (sb-posix:close fd) (tuatara.text:make-rope))
       (tuatara.text:mapping-rope (tuatara.text:map-fd fd length "a sorted region"))))
@@ -542,11 +543,11 @@ result stands in the undo history there, before the changes made meanwhile
 (setf (documentation 'sort-job-p 'function) "True when OBJECT is a SORT-JOB.")
 
 (defstruct (run (:constructor make-run (fd length lines ends)) (:copier nil))
-  "A piece of a region sorted into an unnamed file FD of LENGTH octets: its
-LINES as records in their sorted order, each a header (the line's index in the
-piece, where its key starts and ends in its text, the text's length, and a
-number as two halves) and the line's text; and ENDS, the length of each line's
-line end in the lines' first order."
+  "A piece of a region sorted into an unnamed file open as file descriptor
+(FD) of LENGTH octets: its LINES as records in their sorted order, each a
+header (the line's index in the piece, where its key starts and ends in its
+text, the text's length, and a number as two halves) and the line's text;
+and ENDS, the length of each line's line end in the lines' first order."
   fd length lines ends mapping)
 
 (setf (documentation 'make-run 'function) "A run of LINES records in the file FD of LENGTH octets."
@@ -555,9 +556,10 @@ line end in the lines' first order."
 (defconstant +record-header+ 24 "Octets of a run record's header.")
 
 (defmacro with-scratch-file ((fd directory) &body body)
-  "Run BODY with FD a new unnamed file in DIRECTORY (OPEN-SCRATCH-FILE), closed,
-its octets freed, unless BODY returns a result: when it is stopped, fails (the
-disk full) or returns NIL. Otherwise what it returns holds the file open."
+  "Run BODY with file descriptor (FD) a new unnamed file in DIRECTORY
+(OPEN-SCRATCH-FILE), closed, its octets freed, unless BODY returns a
+result: when it is stopped, fails (the disk full) or returns NIL. Otherwise
+what it returns holds the file open."
   (let ((result (gensym "RESULT")))
     `(let ((,fd (tuatara.io:open-scratch-file ,directory)) (,result nil))
        (unwind-protect (setf ,result (multiple-value-list (progn ,@body)))
@@ -565,7 +567,8 @@ disk full) or returns NIL. Otherwise what it returns holds the file open."
        (values-list ,result))))
 
 (defun discard-run (run)
-  "Let go of RUN's file, a run or a piece's output (FD ...)."
+  "Let go of RUN's file, a run or a piece's output, closing its file
+descriptor (FD)."
   (let ((fd (if (consp run) (first run) (run-fd run))))
     (when fd (ignoring-errors-reported ("closing a file of sorted lines") (sb-posix:close fd)))))
 
@@ -701,8 +704,8 @@ lines after start at NEXTS (SCAN-LINES), as a vector of 2-bit codes."
 
 (defun write-kept-line-end (writer code crlf)
   "Write to WRITER the end a line had, by CODE (LINE-END-CODE): none for 0, a
-newline for 1, for 2 a carriage return and a newline when CRLF is true, else
-a newline, and a carriage return for 3."
+newline for 1, for 2 a carriage return and a newline when carriage return and
+line feed (CRLF) is true, else a newline, and a carriage return for 3."
   (let ((newline (if crlf
                      (load-time-value (coerce #(13 10) 'tuatara.text:octets) t)
                      (load-time-value (coerce #(10) 'tuatara.text:octets) t))))

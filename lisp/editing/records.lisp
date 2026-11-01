@@ -55,16 +55,16 @@ record's other lines, and the record after it, are known at once."
 
 (defun record-text-end (rope text-end crlf)
   "TEXT-END, where a record's last line of ROPE ends, before the carriage
-return there when its lines end in CRLF."
+return there when its lines end in carriage return and line feed (CRLF)."
   (tuatara.text:rope-line-text-end rope 0 text-end crlf))
 
 (defun record-verdict (memo rope start text-end crlf limit holder decide)
   "What DECIDE, a function of a string and how many of its first characters
 are the text, says of the record of ROPE from START, the text of its last
-line ending at TEXT-END (its line ends CRLF when CRLF is true): its text
-read up to LIMIT octets and decoded into the string in HOLDER's car
-\(DECODE-INTO), true or NIL. Decided once a record: MEMO, LINE-RECORD's for
-that record, keeps it for its other lines."
+line ending at TEXT-END (its line ends carriage return and line feed (CRLF)
+when CRLF is true): its text read up to LIMIT octets and decoded into the
+string in HOLDER's car \(DECODE-INTO), true or NIL. Decided once a record:
+MEMO, LINE-RECORD's for that record, keeps it for its other lines."
   (if (eq (svref memo 4) :unknown)
       (setf (svref memo 4)
             (let ((octets (tuatara.text:rope-octets rope :start start :end (min (record-text-end rope text-end crlf) (+ start limit)))))

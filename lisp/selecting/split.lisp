@@ -122,7 +122,8 @@ SPLIT's cursors."
   "A rectangle's rows as a split searches them, read as they come rather than
 gathered first: the lines starting from TOP below HIGH, between the columns
 LEFT and RIGHT on the screen (a tab TAB-WIDTH columns at most), or with WIDE
-their whole lines; CRLF when lines end with a carriage return and a newline."
+their whole lines; carriage return and line feed (CRLF) when lines end with a
+carriage return and a newline."
   (top 0) (high 0) (left 0) (right 0) wide crlf (tab-width 8))
 
 (defstruct (virtual (:constructor make-virtual) (:copier nil))

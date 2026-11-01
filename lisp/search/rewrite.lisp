@@ -304,9 +304,9 @@ WRITER (none for a count) and that the whole piece is done."
 (declaim (inline slice-next-line))
 (defun slice-next-line (rope total crlf line-end block block-start block-end)
   "Where the line after the one ending at LINE-END of ROPE starts: past its
-newline, and past the carriage return before it when CRLF; TOTAL, ROPE's
-length, after the last line. BLOCK holds ROPE's octets from BLOCK-START below
-BLOCK-END."
+newline, and past the carriage return before it when carriage return and line
+feed (CRLF); TOTAL, ROPE's length, after the last line. BLOCK holds ROPE's
+octets from BLOCK-START below BLOCK-END."
   (declare (type fixnum total line-end))
   (cond ((>= line-end total) total)
         ((and crlf (= 13 (block-octet rope block block-start block-end line-end)))
@@ -1040,9 +1040,10 @@ the editor answering keys meanwhile."
 
 (defun line-piece-run (job piece per-line crlf)
   "Rewrite PIECE of JOB, a job over lines (START-LINE-JOB), into an unnamed
-file: the text PER-LINE makes of each line (CRLF when a carriage return before
-a newline ends them), read a block at a time and written a megabyte at a time,
-so that no line looks anything up in the text."
+file: the text PER-LINE makes of each line (carriage return and line feed
+(CRLF) when a carriage return before a newline ends them), read a block at a
+time and written a megabyte at a time, so that no line looks anything up in
+the text."
   (let* ((rope (rewrite-rope job))
          (total (tuatara.text:rope-bytes rope))
          (start (rewrite-piece-start piece))
@@ -1091,10 +1092,11 @@ when it holds it, else the text read now."
 
 (defun map-piece-lines (function rope start end crlf &optional halt)
   "Call FUNCTION with (LINE LINE-END ROPE BLOCK BLOCK-START BLOCK-END) for each
-line of ROPE starting from START below END, read a block at a time (CRLF when
-a carriage return before a newline ends them), the block one of a megabyte
-kept for reading into (TUATARA.TEXT:WITH-OCTET-BLOCK), which FUNCTION must not
-keep; stop when HALT, checked now and then, answers true."
+line of ROPE starting from START below END, read a block at a time (carriage
+return and line feed (CRLF) when a carriage return before a newline ends
+them), the block one of a megabyte kept for reading into
+(TUATARA.TEXT:WITH-OCTET-BLOCK), which FUNCTION must not keep; stop when HALT,
+checked now and then, answers true."
   (let ((n 0))
     (declare (type fixnum n))
     (tuatara.text:with-octet-block (reused (* 1024 1024))
@@ -1111,18 +1113,19 @@ keep; stop when HALT, checked now and then, answers true."
 at TO, in the background on all but two cores, as PER-LINE says, a line at a
 time: a function of (FUNCTION LINE LINE-END NEXT ROPE BLOCK BLOCK-START
 BLOCK-END) called for each line, its start, its end (before the line's end:
-its newline, or with CRLF the carriage return), the next line's start, and the
-text with the octets read around the line (BLOCK-OCTET reads them), which
-calls FUNCTION with (START END NIL OCTETS) for each change it makes, in order,
-within the line and its line end. DOING names the work in a word, WHAT in
-full, for the list of jobs; VERB as a verb, for when it fails, and LEAVES what
-stopping it leaves (REWRITE); REPORT says how it ended; ANNOUNCE, the work in
-words, is said to go on in the background as it starts (SAY-IN-BACKGROUND);
-PREPARE, when given, runs first on the job's thread (REWRITE); GOAL, when
-given, a function of FROM as the job starts, gives the job's GOAL (REWRITE).
-One change for undo, edits made meanwhile kept, \\[stop-job] stops it. Returns
-the job, or :QUEUED when another job runs or waits in BUFFER, or its lines are
-still being counted: it then waits its turn, FROM and TO followed meanwhile."
+its newline, or with carriage return and line feed (CRLF) the carriage
+return), the next line's start, and the text with the octets read around the
+line (BLOCK-OCTET reads them), which calls FUNCTION with (START END NIL
+OCTETS) for each change it makes, in order, within the line and its line end.
+DOING names the work in a word, WHAT in full, for the list of jobs; VERB as a
+verb, for when it fails, and LEAVES what stopping it leaves (REWRITE); REPORT
+says how it ended; ANNOUNCE, the work in words, is said to go on in the
+background as it starts (SAY-IN-BACKGROUND); PREPARE, when given, runs first
+on the job's thread (REWRITE); GOAL, when given, a function of FROM as the job
+starts, gives the job's GOAL (REWRITE). One change for undo, edits made
+meanwhile kept, \\[stop-job] stops it. Returns the job, or :QUEUED when
+another job runs or waits in BUFFER, or its lines are still being counted: it
+then waits its turn, FROM and TO followed meanwhile."
   (when (queue-if-busy buffer what (list (cons from :before) (cons to :after))
                        (lambda (from to) (start-line-job buffer from to per-line :doing doing :what what
                                                                                     :verb verb :leaves leaves

@@ -73,10 +73,10 @@ expression, or for literal text one made the first time it is asked for."
 literal text, nothing in it special; case ignored when it has no capital
 letter, as a search ignores it. MATCHER, when given, is how it is found
 \(SEARCH-MATCHER, made for it already); else one is made, $ matching before
-a carriage return with CRLF. WHERE names the part of each entry it looks at;
-TEST and PART how and what of a record's line it tries; HIDE true to leave
-what it does not match. Returns NIL and why when the pattern does not
-compile."
+a carriage return with carriage return and line feed (CRLF). WHERE names the
+part of each entry it looks at; TEST and PART how and what of a record's line
+it tries; HIDE true to leave what it does not match. Returns NIL and why when
+the pattern does not compile."
   (let* ((line (make-search-line :pattern string))
          (fold (search-line-fold line regex)))
     (multiple-value-bind (matcher why)
@@ -499,8 +499,9 @@ the lines between them there instead."
 (defun line-holding (rope at from crlf)
   "Three values for the line of ROPE holding octet AT: where it starts, where
 its text ends (before its newline, and before a carriage return there with
-CRLF) and where the line after it starts. FROM is a line's start at or before
-AT, from which the text is read: a line holding many matches is read once."
+carriage return and line feed (CRLF)) and where the line after it starts. FROM
+is a line's start at or before AT, from which the text is read: a line holding
+many matches is read once."
   (declare (type fixnum at from))
   (let* ((total (tuatara.text:rope-bytes rope))
          (first (tuatara.text:rope-find-line-end rope :start from))
@@ -794,9 +795,9 @@ first HEADER records, ending as ENDS says (RECORDS-START), to its end."
 HEADER records (RECORDS-START, ENDS as it takes it) and the lines of RUNS
 \(LINES-MATCHING) are shown: from the
 line end of each line shown to the one ending the last line hidden after
-it, from the carriage return before a newline when CRLF; the lines hidden at
-the very start, before any line shown, from the start to the first line
-shown. O(runs)."
+it, from the carriage return before a newline when carriage return and line
+feed (CRLF); the lines hidden at the very start, before any line shown, from
+the start to the first line shown. O(runs)."
   (let* ((total (tuatara.text:rope-bytes rope))
          (out (make-array (+ 2 (length runs)) :element-type 'fixnum :fill-pointer 0))
          (shown-end (records-start rope header ends)))

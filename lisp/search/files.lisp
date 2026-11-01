@@ -86,7 +86,8 @@ so that a search of many files makes them once, not once a file.")
 (defun search-word-matcher (word &optional crlf)
   "A matcher for WORD as a regular expression (MAKE-PATTERN-MATCHER, as a
 search makes it), NIL when it is not one (SEARCH-INPUT-PROBLEM says why);
-with CRLF, for text whose lines end with a carriage return and a newline."
+with carriage return and line feed (CRLF), for text whose lines end with a
+carriage return and a newline."
   (make-pattern-matcher word :regex t :crlf crlf))
 
 (defun search-input-problem (input regex)
@@ -98,8 +99,8 @@ that is no regular expression, with REGEX; NIL when it can."
   "The matchers of INPUT, the longest first: with REGEX, one for each of its
 words (separated by spaces, SEARCH-WORD-MATCHER), none when a word is no
 regular expression; else one for the whole of it as literal text, spaces and
-all. With CRLF, for files whose lines end with a
-carriage return and a newline. Made once however many pieces and files the
+all. With carriage return and line feed (CRLF), for files whose lines end with
+a carriage return and a newline. Made once however many pieces and files the
 same input is searched in, from any thread."
   (let ((key (list input regex))
         (last *search-input-matchers*))
