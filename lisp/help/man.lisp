@@ -232,9 +232,10 @@ question. NIL, nothing started, when they were found less than
     (start-gathering "tuatara man pages"
                      (lambda (give cancel)
                        (handler-case
-                           (let ((candidates (man-page-candidates (man-run (list "--apropos" ".") :cancel cancel))))
-                             (setf *man-pages* (cons (get-universal-time) candidates))
-                             (funcall give candidates))
+                           (reporting-errors ("listing the manual pages")
+                             (let ((candidates (man-page-candidates (man-run (list "--apropos" ".") :cancel cancel))))
+                               (setf *man-pages* (cons (get-universal-time) candidates))
+                               (funcall give candidates)))
                          (error (problem)
                            (setf *man-pages* (cons (get-universal-time) '()))
                            (funcall give (format nil "The pages' names are not listed (~a); mandb makes the index (an administrator runs it). A page can still be asked for by name."
@@ -352,7 +353,7 @@ cannot be had."
            (before (tuatara.buffer:find-buffer name))
            (buffer (if (and before (live-buffer-p before)) before (buffer-in-mode name 'man-mode))))
       (unless (eq buffer before)
-        (setf (tuatara.buffer:buffer-local buffer :kind) :help
+        (setf (buffer-kind buffer) :help
               (tuatara.buffer:buffer-local buffer :man-asked) asked
               (tuatara.buffer:buffer-local buffer :man-file) file
               (tuatara.buffer:buffer-local buffer :man-arguments) arguments)

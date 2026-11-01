@@ -2242,7 +2242,7 @@ BUFFER."
         (open-file-text path :safe safe :decide *visit-safely-function*)
       (when reason
         (setf safe t
-              (tuatara.buffer:buffer-local buffer :safe-visit) reason))
+              (safe-visit-p buffer) reason))
       (let ((new-size (tuatara.text:rope-bytes rope)) (done nil))
         ;; the file's own text coming back: a read-only buffer takes it too
         (tuatara.buffer:with-read-only-lifted (buffer :after (if done (or safe read-only) (or stale read-only)))

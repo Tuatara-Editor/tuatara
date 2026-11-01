@@ -71,7 +71,7 @@ while it still holds what was found, \\[search-results-discard] throws the chang
 
 (defun results-header-line (buffer)
   "Make the header of BUFFER, lines a search found, say how to go on as it is now."
-  (setf (tuatara.buffer:buffer-local buffer :header-line)
+  (setf (tuatara.display:buffer-header-line buffer)
         (lambda (window) (declare (ignore window)) (results-header buffer))))
 
 (defun draw-results (buffer)
@@ -85,7 +85,7 @@ the lines no longer waiting to be written."
                                 collect (let ((text (or (result-line-text entry) "")))
                                           (concatenate 'string (result-line-prefix entry) text (string #\Newline))))
                    :entries entries :point :start :refill #'draw-results)
-    (setf (tuatara.buffer:buffer-local buffer :read-only) t)
+    (setf (buffer-read-only-p buffer) t)
     (results-header-line buffer)))
 
 (defun show-search-results (found words)
@@ -160,7 +160,7 @@ revert or leave are typed text meanwhile."
   (let ((buffer (current-buffer)))
     (unless (results-editing-p buffer)
       (set-major-mode buffer 'search-results-editing-mode)
-      (setf (tuatara.buffer:buffer-local buffer :read-only) nil
+      (setf (buffer-read-only-p buffer) nil
             (tuatara.buffer:buffer-local buffer 'results-editing) t)
       (results-header-line buffer)
       (message "~a" (string-left-trim " " (results-header buffer))))))
@@ -291,7 +291,7 @@ line the file has not is left out."
                                      ((= 10 (aref piece (1+ at))) (setf line-start (+ end 2) from (+ at 2)))
                                      (t (setf line-start (1+ end) from (1+ at))))))
                     (incf offset got)))
-      (ignore-errors (sb-posix:close fd)))
+      (ignoring-errors-reported ("closing ~a" path) (sb-posix:close fd)))
     (when pending (setf line-start offset))
     (when (and wanted (= line (car wanted)) (> offset line-start))
       (push (list* line line-start offset) found))
@@ -308,11 +308,14 @@ asked to stop between the files; at the end wait for the saves to end."
     (loop while (write-back-job-files job)
           do (tuatara.runtime:job-check-stop)
              (destructuring-bind (given . lines) (pop (write-back-job-files job))
-               (let* ((path (or (ignore-errors (tuatara.io:resolve-links given)) given))
+               (let* ((path (or (ignoring-errors-reported ("following the links of ~a" given)
+                                       (tuatara.io:resolve-links given))
+                                     given))
                       (why (path-write-refusal job path)))
                  (if why
                      (refuse given lines why)
-                     (let ((where (handler-case (locate-lines path (mapcar #'first lines))
+                     (let ((where (handler-case (reporting-errors ("finding the lines of ~a" path)
+                                                  (locate-lines path (mapcar #'first lines)))
                                     (error (condition) (refuse given lines (tuatara.runtime:condition-words condition))
                                       nil))))
                        (when where
@@ -351,7 +354,7 @@ one for each time."
   "Why lines found are not written into BUFFER, a phrase, or NIL: it is opened safely or read-only, or the
 file changed on disk since it was read (for a buffer EXISTING already)."
   (cond ((tuatara.io:safe-visit-p buffer) (format nil "it is opened safely, ~a" (tuatara.io:safe-visit-reason buffer)))
-        ((tuatara.buffer:buffer-local buffer :read-only) "its buffer is read-only")
+        ((buffer-read-only-p buffer) "its buffer is read-only")
         ((and existing (tuatara.io:file-disk-state buffer))
          "the file changed on disk since its buffer read it (\\[revert-buffer] reads it again)")))
 
@@ -360,7 +363,7 @@ file changed on disk since it was read (for a buffer EXISTING already)."
 before it; or why the line is not changed, a phrase, as a second value, when it no longer holds the text found.
 The line lies from the octet START to END when those are given, else it is found by its number."
   (handler-case
-      (progn
+      (reporting-errors ("finding the line of ~a" (tuatara.buffer:buffer-name buffer))
         (unless start
           (let ((number (1- (result-line-line entry))))
             (when (>= number (tuatara.buffer:buffer-line-count buffer))
@@ -400,7 +403,8 @@ lines count as written once the save has ended."
              (push (format nil "~a:~d not written: ~a" (abbreviated-path given) (first line) why)
                    (write-back-job-refused job)))))
     (multiple-value-bind (buffer existing)
-        (handler-case (let ((tuatara.buffer:*find-file-functions* '())) (tuatara.io:visit-file path))
+        (handler-case (reporting-errors ("visiting ~a to write lines back" path)
+                        (let ((tuatara.buffer:*find-file-functions* '())) (tuatara.io:visit-file path)))
           (error (condition) (return-from write-back-file (refuse (tuatara.runtime:condition-words condition)))))
       (flet ((give-up (why)
                (unless existing (tuatara.buffer:kill-buffer buffer))
@@ -426,7 +430,8 @@ lines count as written once the save has ended."
                         (refuse why (list (first place))))))))
           (when edits
             (setf edits (sort (coerce edits 'vector) #'< :key #'tuatara.text:edit-start))
-            (handler-case (tuatara.buffer:with-narrowing-lifted (buffer) (tuatara.buffer:buffer-edit buffer edits))
+            (handler-case (reporting-errors ("writing lines back to ~a" path)
+                            (tuatara.buffer:with-narrowing-lifted (buffer) (tuatara.buffer:buffer-edit buffer edits)))
               (error (condition)
                 (unless existing (tuatara.buffer:kill-buffer buffer))
                 (return-from write-back-file (refuse (tuatara.runtime:condition-words condition) lines))))
