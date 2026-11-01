@@ -469,7 +469,9 @@ saying why; with WOULD, what it asks before it runs so."
 does not exist: an export never makes folders, wherever #+EXPORT_FILE_NAME
 points."
   (unless (tuatara.io:path-stamp (tuatara.io:parent-path path))
-    (refuse "~a does not exist (#+export_file_name)" (tuatara.io:parent-path path))))
+    (if *secret-at-hand*
+        (refuse "The folder #+export_file_name names does not exist")
+        (refuse "~a does not exist (#+export_file_name)" (tuatara.io:parent-path path)))))
 
 (defun org-to-latex (job engine)
   "Write the Org text of JOB as LaTeX for the program ENGINE (ORG-LATEX-DOCUMENT),
@@ -696,10 +698,15 @@ font here has, in words with the place of each in the file written
               (and missing notes) notes))))
 
 (defun error-words (job problem)
-  "PROBLEM, one of LATEX-ERRORS, in a line: where it is (ERROR-PLACE), then its message."
+  "PROBLEM, one of LATEX-ERRORS, in a line: where it is (ERROR-PLACE), then its
+message; only where it is while a secret is at hand, the message quoting the
+text."
   (multiple-value-bind (file line) (error-place job problem)
-    (format nil "~@[~a~]~@[:~d~]~:[~;: ~]~a" (and file (tuatara.io:native-file-name file)) (and file line) file
-            (getf problem :message))))
+    (if *secret-at-hand*
+        (format nil "~:[a place not told~;~:*~a~]~@[:~d~]"
+                (and file (tuatara.io:native-file-name file)) (and file line))
+        (format nil "~@[~a~]~@[:~d~]~:[~;: ~]~a" (and file (tuatara.io:native-file-name file)) (and file line) file
+                (getf problem :message)))))
 
 (defun export-work (job)
   "What JOB's thread does: wait for the save of its buffer, write an Org

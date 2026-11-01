@@ -883,10 +883,15 @@ that are not UTF-8 as \\xNN, as the mode line writes them (ESCAPE-CONTROLS)."
 (defun frame-secret-p (editor)
   "True when a window of EDITOR shows a buffer whose text is secret
 \(TUATARA.RUNTIME:SECRET-BUFFER-P), or the buffer commands act on is one:
-drawing the frame counts then as having a secret at hand."
-  (or (tuatara.runtime:secret-buffer-p *current-buffer*)
-      (some (lambda (window) (tuatara.runtime:secret-buffer-p (tuatara.display:window-buffer window)))
-            (editor-windows editor))))
+drawing the frame counts then as having a secret at hand. Looks at each
+window once, making nothing."
+  (labels ((secret-in (area)
+             (if (typep area 'tuatara.display:window)
+                 (tuatara.runtime:secret-buffer-p (tuatara.display:window-buffer area))
+                 (some #'secret-in (tuatara.display:split-children area)))))
+    (let ((window (editor-window editor)))
+      (or (tuatara.runtime:secret-buffer-p *current-buffer*)
+          (and window (secret-in (tuatara.display:area-root window)))))))
 
 (defun redisplay (editor)
   "Lay out every window with its point visible and paint a frame: each

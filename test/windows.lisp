@@ -610,3 +610,16 @@ PLACE-BUFFERS call, made after the defaults."
       (is = 1 (tuatara.frontend.fake:fake-frames g))
       (true (loop for row below (tuatara.frontend.fake::fake-height g)
                   thereis (search "kea" (tuatara.frontend.fake:fake-screen-line g row)))))))
+
+(define-test (windows frame-secret-looked-at-making-nothing)
+  ;; whether a window shows a secret buffer is looked at once a frame, making no garbage
+  (multiple-value-bind (f editor) (run-keys "C-x 2 C-x 3" :text *twenty-lines* :width 80 :height 24)
+    (declare (ignore f))
+    (let ((tuatara.command::*current-buffer* nil))
+      (false (tuatara.command::frame-secret-p editor))
+      (tuatara.command::frame-secret-p editor)
+      ;; the least of a few tries: work going on in other threads meanwhile is counted too
+      (is = 0 (loop repeat 5
+                    minimize (let ((before (sb-ext:get-bytes-consed)))
+                               (dotimes (i 1000) (tuatara.command::frame-secret-p editor))
+                               (- (sb-ext:get-bytes-consed) before)))))))

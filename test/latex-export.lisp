@@ -2135,3 +2135,27 @@ Shut in.
       (true (search ">&quot;c&quot;<" swedish))
       (true (search "echo &quot;x&quot; 'y'" english))
       (true (search "echo &quot;x&quot; 'y'" swedish)))))
+
+(define-test (latex-export secret-words-left-out)
+  ;; while a secret is at hand, what an export refuses with says nothing the note says
+  (let ((tuatara.runtime:*secret-at-hand* t))
+    (flet ((words (thunk)
+             (let ((condition (nth-value 1 (ignore-errors (funcall thunk)))))
+               (true condition)
+               (princ-to-string condition))))
+      (let ((text (words (lambda () (tuatara.defaults::check-export-folder "/nowhere-kiwi/x.pdf")))))
+        (false (search "kiwi" text) "~a" text)
+        (true (search "#+export_file_name" text) "~a" text))
+      (let ((text (words (lambda () (tuatara.defaults::latex-template-for "./kiwi-template" "/tmp/")))))
+        (false (search "kiwi" text) "~a" text))
+      (let ((text (words (lambda () (tuatara.defaults::latex-template-for "kiwi-template" "/tmp/")))))
+        (false (search "kiwi" text) "~a" text))))
+  ;; the first LaTeX error is told by its place alone
+  (sb-int:encapsulate 'tuatara.defaults::error-place 'test-place
+                      (lambda (function job problem)
+                        (declare (ignore function job problem))
+                        (values "/tmp/note.org" 3)))
+  (unwind-protect
+       (let ((tuatara.runtime:*secret-at-hand* t))
+         (is string= "note.org:3" (tuatara.defaults::error-words nil '(:message "Undefined kiwi words"))))
+    (sb-int:unencapsulate 'tuatara.defaults::error-place 'test-place)))

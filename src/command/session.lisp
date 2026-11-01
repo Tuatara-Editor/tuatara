@@ -110,19 +110,22 @@ and what is typed on the last row, else the message there."
 out, the minibuffer shown as it reads (PAINT-TROUBLE), and report it, with the
 calls under way in debug mode: so that \\[execute-extended-command] and the questions of
 \\[save-buffers-kill-editor] still work whatever a window's drawing does. While a window shows a
-secret buffer (FRAME-SECRET-P), only the kind of failure is said."
-  (let ((trace nil)
-        (tuatara.runtime:*secret-at-hand* (or tuatara.runtime:*secret-at-hand* (frame-secret-p editor))))
+secret buffer (FRAME-SECRET-P, looked at once by REDISPLAY), only the kind of
+failure is said."
+  (let ((trace nil) (secret-then nil))
     (handler-case
         (handler-bind ((error (lambda (e)
                                 (declare (ignore e))
+                                ;; the secret REDISPLAY had at hand, still so once its calls are left
+                                (setf secret-then tuatara.runtime:*secret-at-hand*)
                                 (when tuatara.runtime:*debug-on*
                                   (setf trace (capture-backtrace :stop 'redisplay-or-say))))))
           (redisplay editor))
       (error (e)
-        (tuatara.runtime:debug-report :redisplay "the screen could not be drawn: ~a~{~%    ~a~}"
-                                      (tuatara.runtime:failure-words e) trace)
-        (paint-trouble editor e)))))
+        (let ((tuatara.runtime:*secret-at-hand* (or tuatara.runtime:*secret-at-hand* secret-then)))
+          (tuatara.runtime:debug-report :redisplay "the screen could not be drawn: ~a~{~%    ~a~}"
+                                        (tuatara.runtime:failure-words e) trace)
+          (paint-trouble editor e))))))
 
 (defvar *dropped* nil
   "While the command that opens files dropped on the window runs, the :drop
