@@ -250,7 +250,7 @@ left as it is (it has changes of its own, or the file is gone)."
                (not (member (tuatara.io:file-disk-state buffer) '(:changed :stale))))
            nil)
           ((tuatara.io:append-from-disk buffer) :appended)
-          ((or (tuatara.buffer:buffer-modified-p buffer) (null (ignore-errors (tuatara.io:path-stamp file)))) nil)
+          ((or (tuatara.buffer:buffer-modified-p buffer) (null (tuatara.io:path-stamp file :failure nil))) nil)
           (t (handler-case (progn (reload-buffer buffer) (setf (tuatara.buffer:buffer-local buffer :disk-state-said) nil)
                                   :reloaded)
                (tuatara.io:file-system-error () nil))))))

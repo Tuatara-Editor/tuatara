@@ -1043,7 +1043,7 @@ its own. One stat of PATH, none of the buffers (their STAMP is kept)."
   (let ((path (visited-path path)))
     (or (find-if (lambda (buffer) (and (not (eq buffer except)) (equal (tuatara.buffer:buffer-file buffer) path)))
                  tuatara.buffer:*buffers*)
-        (let ((stamp (ignore-errors (path-stamp path))))
+        (let ((stamp (path-stamp path :failure nil)))
           (when stamp
             (let ((same (remove-if-not
                          (lambda (buffer)
@@ -1350,7 +1350,7 @@ for is looked at every *POLL-INTERVAL* seconds."
                   (dolist (watch watches table) (setf (gethash (directory-watch-directory watch) table) watch))))
          (new (mapcar (lambda (directory)
                         (or (gethash directory known)
-                            (make-directory-watch directory (ignore-errors (path-stamp directory)))))
+                            (make-directory-watch directory (path-stamp directory :failure nil))))
                       wanted)))
     (sync-inotify-watches inotify directories wds
                           (unique-strings (append wanted (loop for item in items
@@ -1460,7 +1460,7 @@ told of by inotify, and a polled one when its stamp is not as last seen."
   (loop for watch in watches
         for due = (directory-watch-due watch)
         when (and due (>= now due))
-          nconc (let ((stamp (ignore-errors (path-stamp (directory-watch-directory watch))))
+          nconc (let ((stamp (path-stamp (directory-watch-directory watch) :failure nil))
                       (told (directory-watch-first watch)))
                   (setf (directory-watch-first watch) nil
                         (directory-watch-due watch) (and (directory-watch-polled watch) (+ now (seconds-units *poll-interval*))))
@@ -1628,7 +1628,7 @@ file that goes on growing)."
 yet, so that saving writes that file and the link stays a link."
   (let ((path (expand-path path)))
     (loop repeat 40
-          do (let ((stamp (ignore-errors (path-stamp path :follow nil))))
+          do (let ((stamp (path-stamp path :follow nil :failure nil)))
                (unless (and stamp (eq (stamp-kind stamp) :symlink))
                  (return))
                (let ((target (sb-posix:readlink (native path))))
@@ -1878,7 +1878,7 @@ the file itself is touched. Returns :DONE, or :STOPPED."
             (drop-backup)
             ;; the file made here for this write, empty, is not left behind: that very file alone
             (unless existing
-              (let ((there (ignore-errors (path-stamp target :follow nil))))
+              (let ((there (path-stamp target :follow nil :failure nil)))
                 (when (and made there (= (stamp-dev made) (stamp-dev there)) (= (stamp-ino made) (stamp-ino there)))
                   (ignore-errors (sb-posix:unlink (native target))))))
             (error e))
@@ -2099,7 +2099,8 @@ SAVE-BUFFER-FILE does. Returns the job; FINISH-SAVES takes it in."
   (let* ((path (expand-path path))
          (expected (save-expected buffer path force)))
     (unless (or (eq expected :any) (eq (tuatara.buffer:buffer-local buffer :file-class) :pseudo))
-      (let ((existing (ignore-errors (path-stamp (resolve-links path)))))
+      (let ((existing (tuatara.runtime:ignoring-errors-reported ("examining ~a" path)
+                        (path-stamp (resolve-links path)))))
         (unless (or (null existing) (and expected (same-content-p expected existing)))
           (error 'file-changed-on-disk :path path))))
     (let* ((version (tuatara.buffer:buffer-version buffer))

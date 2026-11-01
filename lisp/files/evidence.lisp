@@ -483,7 +483,7 @@ its own path or any folder above it, or by another path it is mounted at
 too. Each folder's answer is kept until RULES change or the folder is
 another (a drive mounted over it): one examination of it when kept."
   (let* ((since (evidence-rules-forgotten rules))
-         (stamp (ignore-errors (tuatara.io:path-stamp folder)))
+         (stamp (tuatara.io:path-stamp folder :failure nil))
          (key (and stamp (cons (tuatara.io:stamp-dev stamp) (tuatara.io:stamp-ino stamp))))
          (kept (and key (gethash folder (evidence-rules-folders rules)))))
     (if (and kept (equal (cdr kept) key) (not *aliases-followed*))

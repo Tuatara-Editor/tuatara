@@ -410,7 +410,7 @@ that leads to B: put in B's place, it would lose what it leads to."
                   (eql (tuatara.io:stamp-ino one) (tuatara.io:stamp-ino other)))))
       (and other
            (or (same-p (tuatara.io:path-stamp a :follow nil))
-               (same-p (ignore-errors (tuatara.io:path-stamp a))))))))
+               (same-p (tuatara.io:path-stamp a :failure nil)))))))
 
 (defun rimu-archive-work (operation pairs replace)
   "Pack the FROMs of PAIRS, all of one TO, into that archive for OPERATION

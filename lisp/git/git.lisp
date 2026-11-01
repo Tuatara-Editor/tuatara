@@ -512,7 +512,7 @@ the lists of their fields; a line of another count of fields left out."
 (defun git-stash-stamp (folder)
   "The stamp of the list of stashes in git's own FOLDER, NIL when there is none:
 no stash."
-  (ignore-errors (tuatara.io:path-stamp (concatenate 'string folder "logs/refs/stash") :follow nil)))
+  (tuatara.io:path-stamp (concatenate 'string folder "logs/refs/stash") :follow nil :failure nil))
 
 (defun git-uncommented-lines (text)
   "The lines of TEXT, those beginning with # left out, joined again by newlines."
@@ -926,7 +926,7 @@ stashes, run from the editor or from anywhere else.")
 
 (defun git-stamps (folder)
   "The stamps of *GIT-WATCHED-FILES* in git's own FOLDER, NIL for one not there."
-  (mapcar (lambda (file) (ignore-errors (tuatara.io:path-stamp (concatenate 'string folder file) :follow nil)))
+  (mapcar (lambda (file) (tuatara.io:path-stamp (concatenate 'string folder file) :follow nil :failure nil))
           *git-watched-files*))
 
 (defun git-folders-of (folder)

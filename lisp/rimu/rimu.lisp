@@ -1097,7 +1097,7 @@ git column or sizes. With ROOT, a directory at or above PATH, \\<rimu-mode>\\[ri
 there goes back to BACK, the buffer the list was opened from, instead of the
 directory above. Returns the list, or NIL (said) when PATH is no directory."
   (let* ((directory (directory-name path :clean t))
-         (stamp (ignore-errors (tuatara.io:path-stamp directory))))
+         (stamp (tuatara.io:path-stamp directory :failure nil)))
     (cond ((null stamp) (message "No directory ~a" (abbreviated-path directory)) nil)
           ((not (eq (tuatara.io:stamp-kind stamp) :directory))
            (message "~a is not a directory" (abbreviated-path (string-right-trim "/" directory))) nil)

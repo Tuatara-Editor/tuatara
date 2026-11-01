@@ -71,7 +71,7 @@ what sessions side by side put there meanwhile (STATE-LIST-PUT)."
   "Put the file BUFFER visits first in the list of recent files, when there is
 one on disk: after a visit, and after a save (a new file, or saving as)."
   (let ((file (tuatara.buffer:buffer-file buffer)))
-    (when (and file (ignore-errors (tuatara.io:path-stamp file)))
+    (when (and file (tuatara.io:path-stamp file :failure nil))
       (remember-file file :safe (tuatara.io:safe-visit-p buffer)))))
 
 (defun recent-file-fields (entry stamps now)
@@ -82,7 +82,7 @@ each is examined once."
   (let ((path (car entry)))
     (multiple-value-bind (stamp known) (gethash path stamps)
       (unless known
-        (setf stamp (ignore-errors (tuatara.io:path-stamp path))
+        (setf stamp (tuatara.io:path-stamp path :failure nil)
               (gethash path stamps) stamp))
       (if stamp
           (stamp-fields stamp now)

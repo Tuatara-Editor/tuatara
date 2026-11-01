@@ -58,7 +58,7 @@ RIMU-COLUMN-READY; the walk ends once no list of DIRECTORY shows the column."
               (lambda (name)
                 (unless (member name '("." "..") :test #'string=)
                   (let* ((path (concatenate 'string directory name))
-                         (stamp (ignore-errors (tuatara.io:path-stamp path :follow nil)))
+                         (stamp (tuatara.io:path-stamp path :follow nil :failure nil))
                          (size (case (and stamp (tuatara.io:stamp-kind stamp))
                                  (:directory (rimu-tree-size (concatenate 'string path "/") :seen seen :wanted #'wanted))
                                  (:regular (tuatara.io:stamp-size stamp)))))

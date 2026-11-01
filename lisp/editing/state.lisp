@@ -153,7 +153,7 @@ lines beginning with # are comments, never given to PARSE."
 (defun state-file-stamp (file)
   "What FILE is like now, to tell whether it has changed: (INODE SIZE TIME),
 or NIL when it is not there."
-  (let ((stamp (ignore-errors (tuatara.io:path-stamp file))))
+  (let ((stamp (tuatara.io:path-stamp file :failure nil)))
     (and stamp (list (tuatara.io:stamp-ino stamp) (tuatara.io:stamp-size stamp) (tuatara.io:stamp-mtime stamp)))))
 
 (defun state-list-limit (list)
@@ -413,7 +413,7 @@ could not be written."
          :wait 2)
         (if (eq how :written) (values :written entries) how)
         ;; the lock not had: another session holds it, or the directory is gone
-        (and (ignore-errors (tuatara.io:path-stamp (tuatara.io:parent-path file))) :busy))))
+        (and (tuatara.io:path-stamp (tuatara.io:parent-path file) :failure nil) :busy))))
 
 (defun compact-state-changes (list changes)
   "CHANGES to one file of LIST, each (FILE . CHANGE), the latest first, as

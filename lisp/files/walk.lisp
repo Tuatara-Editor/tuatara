@@ -272,7 +272,7 @@ BELOW-HOME, never the home directory (by any of its names), one above it or /."
                                (when (eq names :unread)
                                  (setf names (mapcar #'first (tuatara.io:directory-entries dir))))
                                (some (lambda (name) (glob-match marker name)) names))
-                             (ignore-errors (tuatara.io:path-stamp (concatenate 'string dir marker) :follow nil))))
+                             (tuatara.io:path-stamp (concatenate 'string dir marker) :follow nil :failure nil)))
                        markers))
             return dir)))
 
@@ -315,7 +315,7 @@ that cannot be read); an entry of only (NAME KIND) counts as no link. CANCEL,
 a cons, ends the walk when its car turns true, looked at as each folder is
 entered; LIMIT ends it once that many folders were entered. True when every
 folder wanted was gone through, NIL when CANCEL or LIMIT ended it."
-  (let ((device (and same-device (let ((stamp (ignore-errors (tuatara.io:path-stamp root))))
+  (let ((device (and same-device (let ((stamp (tuatara.io:path-stamp root :failure nil)))
                                    (and stamp (tuatara.io:stamp-dev stamp)))))
         (entered 0)
         (waiting '()) (last nil))

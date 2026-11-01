@@ -228,7 +228,7 @@ commondir) may hold to be read.")
   "The text of the file at PATH, of the repository at TOP: a regular file of
 at most *GIT-SMALL-FILE-MOST* octets, examined before it is opened, so that a
 named pipe or a device is never opened; WHAT names it when it cannot be."
-  (let ((stamp (ignore-errors (tuatara.io:path-stamp path :follow nil))))
+  (let ((stamp (tuatara.io:path-stamp path :follow nil :failure nil)))
     (unless (and stamp (eq (tuatara.io:stamp-kind stamp) :regular))
       (git-refuse-reading top "its ~a is ~:[not there~;not a file~]" what stamp))
     (when (> (tuatara.io:stamp-size stamp) *git-small-file-most*)
@@ -354,7 +354,7 @@ that ended without deleting its own (a crash) leaves them
   "What a shadow knows of the file or folder at PATH, a link not followed:
 its kind, device, inode, size, and the times of its change, in nanoseconds;
 NIL when it is not there."
-  (let ((stamp (ignore-errors (tuatara.io:path-stamp path :follow nil))))
+  (let ((stamp (tuatara.io:path-stamp path :follow nil :failure nil)))
     (and stamp (list (tuatara.io:stamp-kind stamp) (tuatara.io:stamp-dev stamp) (tuatara.io:stamp-ino stamp)
                      (tuatara.io:stamp-size stamp) (tuatara.io:stamp-mtime stamp) (tuatara.io:stamp-ctime stamp)))))
 
@@ -404,7 +404,7 @@ own files). It is examined first, so that a named pipe or a device is never
 opened; refused (GIT-REFUSE-READING) when it is not a file, holds holes (a
 file of more octets than the disk gives it), is larger than such a file
 may be (GIT-FILE-MOST), or would take the shadow past *GIT-SHADOW-MOST*."
-  (let ((stamp (ignore-errors (tuatara.io:path-stamp from :follow nil))))
+  (let ((stamp (tuatara.io:path-stamp from :follow nil :failure nil)))
     (cond ((null stamp))
           ((not (eq (tuatara.io:stamp-kind stamp) :regular))
            (git-refuse-reading top "its ~a ~a is not a file" what (abbreviated-path from)))

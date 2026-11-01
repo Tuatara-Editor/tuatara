@@ -127,7 +127,7 @@ file at PATH (native), it standing where exports take files from
 \(ORG-EXPORT-FOLDER-P). When it may not, the export says so (ORG-LATEX-NOTES)
 and NIL is returned; a file that does not exist may be named, there being
 nothing to take in."
-  (or (null (ignore-errors (tuatara.io:path-stamp path))) ; nothing there to take in
+  (or (null (tuatara.io:path-stamp path :failure nil)) ; nothing there to take in
       (org-export-folder-p path)
       (export-note "~a: outside the note's folder, so left out of the export (*export-trusted-folders* names the folders it may also come from)"
                    (abbreviated-path path))))

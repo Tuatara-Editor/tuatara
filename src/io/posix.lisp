@@ -473,10 +473,21 @@ context (SELinux) and no such list, NIL for neither."
       (cond ((or (has-p "system.posix_acl_access") (has-p "system.posix_acl_default")) #\+)
             ((has-p "security.selinux") #\.)))))
 
-(defun path-stamp (path &key (follow t))
+(defun path-stamp (path &key (follow t) (failure :signal))
   "The STAMP of the file at PATH, following a symlink unless FOLLOW is NIL (a
 slash at its end, which leads through a link, then disregarded); NIL when
-there is no such file. Other failures signal a FILE-SYSTEM-ERROR."
+there is no such file. Other failures, as no leave to look there or an error
+reading the disk, signal a FILE-SYSTEM-ERROR; with FAILURE NIL they give NIL
+as well, for a caller to whom a file it cannot examine is as good as none,
+and are noted in the debug log while debug mode (\\[debug-mode]) is on."
+  (if failure
+      (examined-stamp path follow)
+      (values (tuatara.runtime:ignoring-errors-reported ("examining ~a" path)
+                (examined-stamp path follow)))))
+
+(defun examined-stamp (path follow)
+  "The STAMP of the file at PATH, as PATH-STAMP gives it with FOLLOW: NIL when
+there is no such file, a FILE-SYSTEM-ERROR for any other failure."
   (multiple-value-bind (stamp errno) (statx-stamp -100 (let ((name (native path)))
                                                          (if (or follow (<= (length name) 1)) name (string-right-trim "/" name)))
                                                   (if follow 0 #x100))
@@ -488,7 +499,7 @@ there is no such file. Other failures signal a FILE-SYSTEM-ERROR."
   "What is at PATH, as STAMP-KIND names it (:REGULAR, :DIRECTORY and the
 rest), a symbolic link followed unless FOLLOW is NIL; NIL when nothing is
 there or it cannot be examined."
-  (let ((stamp (ignore-errors (path-stamp path :follow follow))))
+  (let ((stamp (path-stamp path :follow follow :failure nil)))
     (and stamp (stamp-kind stamp))))
 
 (defun fd-stamp (fd path)

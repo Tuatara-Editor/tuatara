@@ -242,7 +242,7 @@ is not there)."
           do (when (and stamp (eq own :regular) (not (uiop:string-suffix-p name ".path")))
           (let* ((file (or (ignore-errors (string-right-trim '(#\Newline) (tuatara.io:file-text (concatenate 'string copy ".path"))))
                            (ignore-errors (tuatara.io:percent-decoded name))))
-                 (file-stamp (and file (ignore-errors (tuatara.io:path-stamp file)))))
+                 (file-stamp (and file (tuatara.io:path-stamp file :failure nil))))
             (when (and file (plusp (length file)) (char= (char file 0) #\/))
               (push (list :copy copy :file file :time (mtime-universal-time (tuatara.io:stamp-mtime stamp))
                           :size (tuatara.io:stamp-size stamp)

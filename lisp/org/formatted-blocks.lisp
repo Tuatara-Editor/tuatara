@@ -352,7 +352,7 @@ order round, but for random."
                                                          (t (string< one two)))))))
                                  ((equal component "last-modified")
                                   (flet ((modified (file)
-                                           (let ((stamp (ignore-errors (tuatara.io:path-stamp (car file)))))
+                                           (let ((stamp (tuatara.io:path-stamp (car file) :failure nil)))
                                              (if stamp (tuatara.io:stamp-mtime stamp) 0))))
                                     (stable-sort (copy-list files) #'> :key #'modified)))
                                  (t (copy-list files)))))

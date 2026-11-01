@@ -260,7 +260,7 @@ file its links lead to, or its own path."
                           (place (ignore-errors (tuatara.io:real-path (tuatara.io:parent-path resolved)))))
                      (and place (tuatara.io:path-join place (tuatara.io:native-file-name resolved))))))
          (stamp (progn (setf (code-file-real file) (and real (string/= real path) real))
-                       (ignore-errors (tuatara.io:path-stamp (code-file-place file) :follow nil)))))
+                       (tuatara.io:path-stamp (code-file-place file) :follow nil :failure nil))))
     (setf (code-file-stamp file) stamp)
     (cond ((and stamp (not (eq (tuatara.io:stamp-kind stamp) :regular)))
            (setf (code-file-state file) :cannot
@@ -268,7 +268,7 @@ file its links lead to, or its own path."
           (stamp
            (let ((old (ignore-errors (tuatara.io:file-octets (code-file-place file)))))
              (setf (code-file-state file) (if (equalp old (tuatara.text:string-octets (code-file-text file))) :same :changed))))
-          ((or (ignore-errors (tuatara.io:path-stamp folder)) (code-file-make-directories file))
+          ((or (tuatara.io:path-stamp folder :failure nil) (code-file-make-directories file))
            (setf (code-file-state file) :new))
           (t (setf (code-file-state file) :cannot
                    (code-file-reason file) "its folder does not exist (:mkdirp yes makes it)")))
@@ -313,7 +313,7 @@ path, from the Org file's folder when it is in it."
                                 (cond ((null mode) "")
                                       ((eq mode :executable) ", executable")
                                       (t (format nil ", mode ~3,'0o" mode))))
-                              (and (eq (code-file-state file) :new) (not (ignore-errors (tuatara.io:path-stamp (tuatara.io:parent-path path)))))))
+                              (and (eq (code-file-state file) :new) (not (tuatara.io:path-stamp (tuatara.io:parent-path path) :failure nil)))))
                   (if inside (subseq path (length home)) (abbreviated-path path))
                   (and (code-file-real file) (abbreviated-path (code-file-real file)))
                   (or inside (null home)))
@@ -332,7 +332,7 @@ over."
           (let ((folders '()))
             (loop for folder = (string-right-trim "/" (tuatara.io:parent-path path))
                     then (string-right-trim "/" (tuatara.io:parent-path folder))
-                  while (and (plusp (length folder)) (not (ignore-errors (tuatara.io:path-stamp folder))))
+                  while (and (plusp (length folder)) (not (tuatara.io:path-stamp folder :failure nil)))
                   do (push folder folders))
             (dolist (folder folders) (tuatara.io:make-directory folder))))
         (let ((mode (code-file-mode file)))

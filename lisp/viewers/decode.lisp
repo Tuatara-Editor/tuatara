@@ -482,7 +482,7 @@ is run for anything but a picture (-list format)."
 in *MAGICK-CHECKED* under WHAT, the path and the arguments it is run with,
 while the program's file is unchanged; NIL when the program is not found."
   (let* ((path (tuatara.io:sandbox-find-program (first (decoder-words-before-keywords decoder))))
-         (stamp (and path (ignore-errors (tuatara.io:path-stamp path))))
+         (stamp (and path (tuatara.io:path-stamp path :failure nil)))
          (key (list* what path (rest (decoder-words-before-keywords decoder))))
          (known (and path (gethash key *magick-checked*))))
     (when path

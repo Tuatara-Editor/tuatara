@@ -514,6 +514,32 @@ second value."
   (is eq :external (nth-value 1 (find-symbol "SNAPSHOTS" :tuatara.io)))
   (false (find-symbol "SNAPSHOTS-RUNNING" :tuatara.io)))
 
+(define-test (visiting-and-saving stamp-failure-reported)
+  ;; a file in a folder that may not be looked into: an error, unless any failure is asked to
+  ;; give NIL, when debug mode keeps it in its log; a file not there is NIL either way
+  (with-test-directory (dir)
+    (let* ((folder (ensure-directories-exist (merge-pathnames "closed/" dir)))
+           (path (tuatara.io:native (put-file (merge-pathnames "inside.txt" folder) "text"))))
+      (drain-debug-reports)
+      (sb-posix:chmod (namestring folder) 0)
+      (unwind-protect
+           (progn
+             (fail (tuatara.io:path-stamp path) 'tuatara.io:file-system-error)
+             (false (tuatara.io:path-stamp path :failure nil))
+             (false (tuatara.io:path-kind path))
+             (true (sb-concurrency:queue-empty-p tuatara.runtime:*debug-reports*))
+             (tuatara.runtime:set-debug t)
+             (false (tuatara.io:path-stamp path :failure nil))
+             (let ((texts (loop for report = (sb-concurrency:dequeue tuatara.runtime:*debug-reports*)
+                                while report collect (princ-to-string (fourth report)))))
+               (true (find-if (lambda (text) (search (format nil "examining ~a failed" path) text)) texts)
+                     "~s" texts)))
+        (sb-posix:chmod (namestring folder) #o700)
+        (drain-debug-reports))
+      (false (tuatara.io:path-stamp (format nil "~amissing" (tuatara.io:native folder))))
+      (false (tuatara.io:path-stamp (format nil "~amissing" (tuatara.io:native folder)) :failure nil))
+      (true (tuatara.io:path-stamp path :failure nil)))))
+
 (define-test (visiting-and-saving saving-keeps-what-the-file-was)
   (with-test-directory (dir)
     (let ((path (put-file (merge-pathnames "data.txt" dir) "one")))

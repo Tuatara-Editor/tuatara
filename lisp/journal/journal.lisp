@@ -108,7 +108,7 @@ latest first."
   "The paths of the journal's entries for the day DAY, as *JOURNAL-INTERVAL* reckons them."
   (if *journal-file-name*
       (let ((path (journal-plain-path day)))
-        (and (ignore-errors (tuatara.io:path-stamp path)) (list path)))
+        (and (tuatara.io:path-stamp path :failure nil) (list path)))
       (loop for (path . entry-day) in (journal-entries)
             when (journal-same-interval-p day entry-day) collect path)))
 
@@ -126,7 +126,7 @@ with a formatted name and the header of its kind, or a plain name
 \(*JOURNAL-FILE-NAME*) and its title alone. A plain name taken already is
 visited as it is."
   (let ((plain (and *journal-file-name* (journal-plain-path day))))
-    (if (and plain (ignore-errors (tuatara.io:path-stamp plain)))
+    (if (and plain (tuatara.io:path-stamp plain :failure nil))
         (visit-path plain)
         (let* ((time (journal-time-of day))
                (title (journal-title time))
@@ -216,7 +216,7 @@ of its own, gives the days from FIRST to LAST with a journal entry, each
    (lambda ()
      (if *journal-file-name*
          (loop for day from first to last
-               when (ignore-errors (tuatara.io:path-stamp (journal-plain-path day)))
+               when (tuatara.io:path-stamp (journal-plain-path day) :failure nil)
                  collect (cons day :calendar-journal))
          (loop for (nil . day) in (journal-entries)
                when (<= first day last) collect (cons day :calendar-journal))))))

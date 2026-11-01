@@ -88,13 +88,13 @@ top the paths in it are counted from (NIL for your own), as a list of
                    (when top
                      (dolist (trash (list (format nil "~a.Trash/~d/" top uid) (format nil "~a.Trash-~d/" top uid)))
                        (when (and (not (string= trash (tuatara.io:home-trash)))
-                                  (ignore-errors (tuatara.io:path-stamp (tuatara.io:path-join trash "info/")))
+                                  (tuatara.io:path-stamp (tuatara.io:path-join trash "info/") :failure nil)
                                   (tuatara.io:drive-trash-sound-p trash top))
                          (pushnew (cons trash top) found :key #'car :test #'string=))))))))
     ;; one trash seen through two mounts (a bind mount) listed once
     (let ((seen '()))
       (remove-if (lambda (entry)
-                   (let* ((stamp (ignore-errors (tuatara.io:path-stamp (tuatara.io:path-join (car entry) "info/"))))
+                   (let* ((stamp (tuatara.io:path-stamp (tuatara.io:path-join (car entry) "info/") :failure nil))
                           (key (and stamp (cons (tuatara.io:stamp-dev stamp) (tuatara.io:stamp-ino stamp)))))
                      (cond ((null key) nil)
                            ((member key seen :test #'equal) t)

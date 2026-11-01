@@ -551,7 +551,7 @@ thread."
                                                (when (and (identifier-at-start-p (tuatara.io:native-file-name path))
                                                           (funcall keep relative))
                                                  (funcall give (funcall entry relative
-                                                                        (lambda () (ignore-errors (tuatara.io:path-stamp path)))
+                                                                        (lambda () (tuatara.io:path-stamp path :failure nil))
                                                                         now))))))))))))
 
 (defun call-with-formatted-files (function &key (root (directory-name *formatted-file-directory*))

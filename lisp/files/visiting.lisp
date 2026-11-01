@@ -203,7 +203,7 @@ made last while the directory has not changed since, else made afresh. The
 directory is read on the thread calling this, which in a question for a file
 is one of its own (READ-PATH)."
   (let* ((native (tuatara.io:native expanded))
-         (time (let ((stamp (ignore-errors (tuatara.io:path-stamp expanded)))) (and stamp (tuatara.io:stamp-mtime stamp))))
+         (time (let ((stamp (tuatara.io:path-stamp expanded :failure nil))) (and stamp (tuatara.io:stamp-mtime stamp))))
          (kept *file-candidates-kept*))
     (if (and kept time (equal (first kept) native) (eql (second kept) time) (eq (third kept) chosen))
         (fourth kept)

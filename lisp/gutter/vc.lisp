@@ -141,7 +141,7 @@ for BUFFER is stopped (START-SHOWN-TEXT-JOB). The text of a file mapped from
 disk and compared is read as a slice (BUFFER-SLICE), which keeps the mapping
 while the job reads it."
   (let* ((path (tuatara.buffer:buffer-file buffer))
-         (compare (and (ignore-errors (tuatara.io:path-stamp path))
+         (compare (and (tuatara.io:path-stamp path :failure nil)
                        (<= (tuatara.buffer:buffer-size buffer) *vc-gutter-max-bytes*))))
     (setf (tuatara.buffer:buffer-local buffer 'vc-edited) nil)
     (start-shown-text-job

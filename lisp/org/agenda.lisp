@@ -458,7 +458,7 @@ agenda is worked out elsewhere, as *ORG-AGENDA-SNAPSHOT* has it."
   "Where the agenda file at PATH is read from on disk, as two values: :DISK
 and what tells whether it changed (the file's time and size); NIL when it is
 no regular file there (a pipe or a device is never waited on)."
-  (let ((stamp (ignore-errors (tuatara.io:path-stamp path))))
+  (let ((stamp (tuatara.io:path-stamp path :failure nil)))
     (and stamp (eq (tuatara.io:stamp-kind stamp) :regular)
          (values :disk (list :file (tuatara.io:stamp-mtime stamp) (tuatara.io:stamp-size stamp))))))
 
@@ -513,7 +513,7 @@ one of them changed (*ORG-AGENDA-PATHS-KEPT*)."
                        for folder = (and path (cond ((find-if (lambda (c) (find c "*?")) name) parent)
                                                     ((eq :directory (tuatara.io:path-kind path)) path)
                                                     (t nil)))
-                       collect (and folder (let ((stamp (ignore-errors (tuatara.io:path-stamp folder))))
+                       collect (and folder (let ((stamp (tuatara.io:path-stamp folder :failure nil)))
                                              (and stamp (tuatara.io:stamp-mtime stamp))))))
          (kept *org-agenda-paths-kept*))
     (if (and kept (equal (first kept) files) (equal (second kept) stamps))

@@ -657,7 +657,7 @@ where they are made; TRASH as it is."
   "True when PATH is a directory itself, not a symbolic link to one, owned by
 OWNER (a user id) when given."
   ;; without its last slash: a path ending in one leads through a link to where it goes
-  (let ((stamp (ignore-errors (path-stamp (string-right-trim "/" path) :follow nil))))
+  (let ((stamp (path-stamp (string-right-trim "/" path) :follow nil :failure nil)))
     (and stamp (eq (stamp-kind stamp) :directory)
          (or (not owner-p) (= (stamp-uid stamp) owner)))))
 
@@ -674,7 +674,7 @@ could reach files outside it."
          (real-directory-p (path-join trash "info/") :owner uid)
          (let ((shared (format nil "~a.Trash/" top)))
            (or (not (uiop:string-prefix-p shared trash))
-               (let ((stamp (ignore-errors (path-stamp (string-right-trim "/" shared) :follow nil))))
+               (let ((stamp (path-stamp (string-right-trim "/" shared) :follow nil :failure nil)))
                  (and stamp (eq (stamp-kind stamp) :directory)
                       (logtest #o1000 (stamp-mode stamp)))))))))
 

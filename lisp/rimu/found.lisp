@@ -35,11 +35,11 @@ in /) for the one at RELATIVE, its path from there (a directory's ending in
 /): a TUATARA.IO:LISTED named by that path; NIL when it is no longer there."
   (let* ((name (string-right-trim "/" relative))
          (path (concatenate 'string directory name))
-         (stamp (ignore-errors (tuatara.io:path-stamp path :follow nil))))
+         (stamp (tuatara.io:path-stamp path :follow nil :failure nil)))
     (when stamp
       (tuatara.io:make-listed name (tuatara.text:string-octets name) stamp (tuatara.io:stamp-size stamp) nil nil
                               (and (eq (tuatara.io:stamp-kind stamp) :symlink)
-                                   (ignore-errors (tuatara.io:path-stamp path)))))))
+                                   (tuatara.io:path-stamp path :failure nil))))))
 
 (defun rimu-duplicates-words (entries groups)
   "The line under a list of duplicates saying what it holds: how many files in
@@ -146,7 +146,7 @@ is one JOB looks for by name or by text."
             (dolist (root (getf spec :roots))
               (let ((prefix (subseq root (length directory))))
                 (walk root (lambda (path relative)
-                             (let ((stamp (ignore-errors (tuatara.io:path-stamp path :follow nil))))
+                             (let ((stamp (tuatara.io:path-stamp path :follow nil :failure nil)))
                                (when (and stamp (eq (tuatara.io:stamp-kind stamp) :regular))
                                  (push (concatenate 'string prefix relative) (gethash (tuatara.io:stamp-size stamp) by-size))))))))
             (let ((alike (loop for size being the hash-keys of by-size using (hash-value names)

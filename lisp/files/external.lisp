@@ -207,7 +207,7 @@ have them open still, or are long done."
   (let ((day-ago (- (get-universal-time) 86400)))
     (dolist (entry (ignore-errors (tuatara.io:directory-entries directory)))
       (let* ((path (tuatara.io:path-join directory (first entry)))
-             (stamp (ignore-errors (tuatara.io:path-stamp path :follow nil))))
+             (stamp (tuatara.io:path-stamp path :follow nil :failure nil)))
         (when (and stamp (< (mtime-universal-time (tuatara.io:stamp-mtime stamp)) day-ago)
                    (not (gethash (tuatara.io:slash-ended path) *private-folders-held*)))
           (ignore-errors (tuatara.io:delete-tree path)))))))
@@ -258,7 +258,7 @@ Another machine's, sharing the folder, are its own to judge."
                 (when (and fd (equal host (machine-instance)) (tuatara.runtime:lock-fd fd))
                   (ignore-errors (tuatara.io:delete-tree folder)))
                 (when fd (sb-posix:close fd)))
-              (let ((stamp (ignore-errors (tuatara.io:path-stamp folder :follow nil))))
+              (let ((stamp (tuatara.io:path-stamp folder :follow nil :failure nil)))
                 (when (and stamp (< (mtime-universal-time (tuatara.io:stamp-mtime stamp)) hour-ago))
                   (ignore-errors (tuatara.io:delete-tree folder))))))))))
 
