@@ -359,10 +359,11 @@ starts without files and without a BUFFER argument; the defaults set it to
 choose a scratch buffer. When NIL, a buffer called *scratch* is used.")
 
 (defun survive-stack-exhaustion ()
-  "Have SBCL report running out of stack as a condition the editor can catch,
-rather than end the process as it does when started with --script (which
-implies --lose-on-corruption): code evaluated in the editor may recurse without
-end, and must not take the editor with it."
+  "Have Steel Bank Common Lisp (SBCL) report running out of stack as a
+condition the editor can catch, rather than end the process as it does when
+started with --script (which implies --lose-on-corruption): code evaluated
+in the editor may recurse without end, and must not take the editor with
+it."
   (tuatara.runtime:ignoring-errors-reported ("having running out of stack caught")
     (setf (sb-alien:extern-alien "lose_on_corruption_p" (sb-alien:unsigned 8)) 0)))
 

@@ -33,8 +33,8 @@
 keep its raw bytes' characters (U+DC80..U+DCFF, what a name that is not UTF-8
 is read as) as the octets they stand for, so that such a name reaches the
 system exactly as it was read; any other string is written as UTF-8, as
-before. Done once, as the program loads: SBCL's writer of UTF-8 for the
-system is wrapped, as its TRACE wraps a function."
+before. Done once, as the program loads: Steel Bank Common Lisp (SBCL)'s
+writer of UTF-8 for the system is wrapped, as its TRACE wraps a function."
   (let ((name 'sb-impl::output-to-c-string/utf-8/lf))
     (unless (sb-int:encapsulated-p name 'raw-bytes)
       (sb-int:encapsulate name 'raw-bytes
@@ -224,9 +224,9 @@ an octet that is not UTF-8 kept as a raw byte."
 (defmacro with-c-string ((sap string &key (start 0) end length) &body body)
   "Run BODY with SAP pointing at STRING from START below END as C is given
 text: UTF-8, a raw byte's character as the octet it stands for (as names are
-given to the system), a NUL after it; LENGTH, when given a name, is bound to
-the octets before the NUL. They are written on the stack, or for a long
-string into octets kept for reuse (TUATARA.TEXT:WITH-OCTET-BLOCK), so no
+given to the system), a null (NUL) after it; LENGTH, when given a name, is
+bound to the octets before the NUL. They are written on the stack, or for a
+long string into octets kept for reuse (TUATARA.TEXT:WITH-OCTET-BLOCK), so no
 garbage is made for them; BODY must not keep SAP."
   (let ((s (gensym "STRING")) (from (gensym "START")) (to (gensym "END")) (room (gensym "ROOM"))
         (block (gensym "BLOCK")) (used (gensym "LENGTH")) (call (gensym "CALL")))
@@ -305,8 +305,9 @@ for a null pointer."
 (defstruct (stamp (:constructor make-stamp (dev ino size mtime nlink mode uid gid &optional (ctime 0))) (:copier nil))
   "What the system reports about a file: DEV and INO name it; SIZE and MTIME (in
 nanoseconds) change when its content does; NLINK, the names it has; MODE,
-with its kind; UID and GID, its owners; CTIME (in nanoseconds), when it, its
-owners or its permissions last changed, which no program can set back."
+with its kind; user id (UID) and group id (GID), its owners; CTIME (in
+nanoseconds), when it, its owners or its permissions last changed, which no
+program can set back."
   (dev 0 :type integer :read-only t) (ino 0 :type integer :read-only t)
   (size 0 :type integer :read-only t) (mtime 0 :type integer :read-only t)
   (nlink 1 :type integer :read-only t) (mode 0 :type integer :read-only t)
@@ -394,7 +395,7 @@ Asking changes none of them."
               :born (and (logtest (octets-le buffer 0 4) #x800) (time-at 80)))))))
 
 (defun terminated-octets (octets)
-  "OCTETS with a NUL octet after them, for the system."
+  "OCTETS with a null (NUL) octet after them, for the system."
   (let ((name (make-array (1+ (length octets)) :element-type '(unsigned-byte 8) :initial-element 0)))
     (replace name octets)
     name))
@@ -422,8 +423,9 @@ when it cannot be opened."
 
 (defun map-directory-fd (function fd path)
   "Call FUNCTION with the name, as octets, of each entry of the directory open
-as FD, . and .. among them, in the order the system gives them, read from its
-start; FD stays open. A FILE-SYSTEM-ERROR, PATH named, when it cannot be read."
+as file descriptor (FD), . and .. among them, in the order the system gives
+them, read from its start; FD stays open. A FILE-SYSTEM-ERROR, PATH named,
+when it cannot be read."
   (let* ((copy (sb-posix:dup fd))
          (dir (sb-alien:alien-funcall (sb-alien:extern-alien "fdopendir" (function sb-sys:system-area-pointer sb-alien:int)) copy)))
     (when (null-pointer-p dir)
@@ -505,7 +507,7 @@ there or it cannot be examined."
     (and stamp (stamp-kind stamp))))
 
 (defun fd-stamp (fd path)
-  "The STAMP of the open file FD (PATH for messages)."
+  "The STAMP of the file open as file descriptor (FD) (PATH for messages)."
   (multiple-value-bind (stamp errno) (statx-stamp fd "" #x1000) ; AT_EMPTY_PATH
     (or stamp (fail "examine" path errno))))
 
@@ -541,7 +543,8 @@ XFS, bcachefs and ZFS. There a copy can take no time and no space, so scratch
 files go beside the file they serve, for a save to share their blocks.")
 
 (defun fd-file-system (fd)
-  "The magic number of the file system holding the open file FD, or NIL."
+  "The magic number of the file system holding the file open as file
+descriptor (FD), or NIL."
   (let ((buffer (make-array 128 :element-type '(unsigned-byte 8) :initial-element 0)))
     (with-octets-sap (sap buffer)
       (when (zerop (sb-alien:alien-funcall
@@ -566,9 +569,9 @@ opened (O_PATH): a named pipe or a device there is not woken."
         (t :local)))
 
 (defun read-only-mount-p (fd)
-  "True when the open file FD is on a file system mounted read-only (a CD, a
-squashfs image, a read-only mount), where its content cannot change through
-that mount."
+  "True when the file open as file descriptor (FD) is on a file system mounted
+read-only (a CD, a squashfs image, a read-only mount), where its content
+cannot change through that mount."
   (let ((buffer (make-array 128 :element-type '(unsigned-byte 8) :initial-element 0)))
     (with-octets-sap (sap buffer)
       (and (zerop (sb-alien:alien-funcall
@@ -580,7 +583,8 @@ that mount."
 (defconstant +f-getlease+ 1025 "fcntl's F_GETLEASE.")
 
 (defun fcntl-int (fd command argument)
-  "fcntl(2) on FD with COMMAND and an integer ARGUMENT; its result, -1 on failure."
+  "Fcntl(2) on file descriptor (FD) with COMMAND and an integer ARGUMENT; its
+result, -1 on failure."
   (sb-alien:alien-funcall
    (sb-alien:extern-alien "fcntl" (function sb-alien:int sb-alien:int sb-alien:int sb-alien:long))
    fd command argument))
@@ -591,11 +595,12 @@ on a lease, so that a thread can wait on it rather than ask again and again;
 made with the first lease taken.")
 
 (defun take-read-lease (fd)
-  "Ask for a read lease on the open file FD: then a program that opens the file
-for writing, or truncates it, waits until the lease is given up (or the
-system's lease-break time runs out), and *LEASE-BREAK-PIPE* is woken. True
-when granted; not granted for files another user owns, files open for writing
-now, and file systems without leases."
+  "Ask for a read lease on the file open as file descriptor (FD): then a
+program that opens the file for writing, or truncates it, waits until the
+lease is given up (or the system's lease-break time runs out), and
+*LEASE-BREAK-PIPE* is woken. True when granted; not granted for files
+another user owns, files open for writing now, and file systems without
+leases."
   (unless *lease-break-pipe*
     (setf *lease-break-pipe* (make-wake-pipe))
     ;; the signal the system sends a lease holder would end the process unhandled
@@ -605,11 +610,13 @@ now, and file systems without leases."
   (zerop (fcntl-int fd +f-setlease+ 0)))                ; F_RDLCK
 
 (defun lease-breaking-p (fd)
-  "True when a program waits to write the file FD holds a read lease on."
+  "True when a program waits to write the file open as file descriptor (FD)
+holds a read lease on."
   (= (fcntl-int fd +f-getlease+ 0) 2))                  ; F_UNLCK: the lease is to go
 
 (defun release-lease (fd)
-  "Give up the lease on the open file FD, letting a waiting writer go on."
+  "Give up the lease on the file open as file descriptor (FD), letting a
+waiting writer go on."
   (fcntl-int fd +f-setlease+ 2)
   nil)
 
@@ -688,8 +695,9 @@ offset being after what was copied). Other failures signal."
     done))
 
 (defun write-sap (fd sap length &key (path "a file"))
-  "Write LENGTH octets at SAP to the open file FD at its current offset, all of
-them, again where the system wrote fewer or was interrupted."
+  "Write LENGTH octets at SAP to the file open as file descriptor (FD) at its
+current offset, all of them, again where the system wrote fewer or was
+interrupted."
   (let ((done 0))
     (loop while (< done length)
           do (let ((written (sb-alien:alien-funcall
@@ -701,33 +709,35 @@ them, again where the system wrote fewer or was interrupted."
                      (t (fail "write" path)))))))
 
 (defun write-octets (fd octets &key (start 0) (end (length octets)) (path "a file"))
-  "Write OCTETS from START below END to the open file FD at its current
-offset, all of them, again where the system wrote fewer or was interrupted;
-signals FILE-SYSTEM-ERROR, naming PATH, when the system refuses, as when a
-program reading from a pipe has ended."
+  "Write OCTETS from START below END to the file open as file descriptor (FD)
+at its current offset, all of them, again where the system wrote fewer or
+was interrupted; signals FILE-SYSTEM-ERROR, naming PATH, when the system
+refuses, as when a program reading from a pipe has ended."
   (with-octets-sap (sap octets)
     (write-sap fd (sb-sys:sap+ sap start) (- end start) :path path)))
 
 ;;; Terminals' sizes
 
 (defun window-size-ioctl (fd request sap)
-  "Ask the terminal FD for its size, or tell it, by REQUEST (TIOCGWINSZ or
-TIOCSWINSZ) with the four 16-bit numbers at SAP: rows, columns, width and
-height in pixels. True when it worked."
+  "Ask the terminal open as file descriptor (FD) for its size, or tell it, by
+REQUEST (TIOCGWINSZ or TIOCSWINSZ) with the four 16-bit numbers at SAP:
+rows, columns, width and height in pixels. True when it worked."
   (zerop (sb-alien:alien-funcall
           (sb-alien:extern-alien "ioctl" (function sb-alien:int sb-alien:int sb-alien:unsigned-long sb-sys:system-area-pointer))
           fd request sap)))
 
 (defun terminal-window-size (fd)
-  "The size of the terminal FD, as four values: its rows and columns, and its
-width and height in pixels, 0 when it does not say; NIL when FD is not a terminal."
+  "The size of the terminal open as file descriptor (FD), as four values: its
+rows and columns, and its width and height in pixels, 0 when it does not
+say; NIL when FD is not a terminal."
   (with-foreign-memory (sap 8 :zero t)
     (when (window-size-ioctl fd #x5413 sap)
       (values (sb-sys:sap-ref-16 sap 0) (sb-sys:sap-ref-16 sap 2) (sb-sys:sap-ref-16 sap 4) (sb-sys:sap-ref-16 sap 6)))))
 
 (defun set-terminal-window-size (fd rows columns width height)
-  "Tell the terminal FD its size, which the program on it reads: ROWS and
-COLUMNS, and WIDTH and HEIGHT in pixels (0 when not known), each at most 65535."
+  "Tell the terminal open as file descriptor (FD) its size, which the program
+on it reads: ROWS and COLUMNS, and WIDTH and HEIGHT in pixels (0 when not
+known), each at most 65535."
   (with-foreign-memory (sap 8)
     (setf (sb-sys:sap-ref-16 sap 0) (min 65535 rows) (sb-sys:sap-ref-16 sap 2) (min 65535 columns)
           (sb-sys:sap-ref-16 sap 4) (min 65535 width) (sb-sys:sap-ref-16 sap 6) (min 65535 height))
@@ -736,8 +746,8 @@ COLUMNS, and WIDTH and HEIGHT in pixels (0 when not known), each at most 65535."
 ;;; Writing a file through a buffer
 
 (defstruct (writer (:constructor make-writer (fd)) (:copier nil))
-  "Octets written to the open file FD a megabyte at a time: FILL of them held
-in BUFFER, WRITTEN already in the file."
+  "Octets written to the file open as file descriptor (FD) a megabyte at a
+time: FILL of them held in BUFFER, WRITTEN already in the file."
   (fd -1 :type fixnum)
   (buffer (make-array 1048576 :element-type '(unsigned-byte 8)) :type tuatara.text:octets)
   (fill 0 :type fixnum)
@@ -803,9 +813,10 @@ when it is full: return where in the buffer they go and how many fit."
              (decf count n))))
 
 (defun read-fd-into (fd octets &key (start 0) (end (length octets)) (path "a file"))
-  "Read what the open file or pipe FD has, as much as fits, into OCTETS from
-START below END, read again when a signal broke in: how many octets came, 0
-at its end. A FILE-SYSTEM-ERROR, naming PATH, when it cannot be read."
+  "Read what the file or pipe open as file descriptor (FD) has, as much as
+fits, into OCTETS from START below END, read again when a signal broke in:
+how many octets came, 0 at its end. A FILE-SYSTEM-ERROR, naming PATH, when
+it cannot be read."
   (loop (let ((got (with-octets-sap (sap octets)
                      (sb-alien:alien-funcall
                       (sb-alien:extern-alien "read" (function sb-alien:long sb-alien:int sb-sys:system-area-pointer
@@ -815,13 +826,14 @@ at its end. A FILE-SYSTEM-ERROR, naming PATH, when it cannot be read."
                 ((/= (sb-alien:get-errno) sb-posix:eintr) (fail "read" path))))))
 
 (defun read-fd-octets (fd &key (path "a file") (size-hint 65536) most)
-  "Every octet the open file FD gives until its end, as an octet vector: for
-files whose size the system does not know or report truly (/proc, /sys), and
-for files read into memory. With MOST, reading stops once more than MOST
-octets have come, so that a file that never ends cannot fill memory: a
-vector longer than MOST then says it was larger. SIZE-HINT, the octets
-expected, sizes the vector read into, one more than it so that the end is
-seen without growing it; the vector returned is that one, cut to what came."
+  "Every octet the file open as file descriptor (FD) gives until its end, as
+an octet vector: for files whose size the system does not know or report
+truly (/proc, /sys), and for files read into memory. With MOST, reading
+stops once more than MOST octets have come, so that a file that never ends
+cannot fill memory: a vector longer than MOST then says it was larger.
+SIZE-HINT, the octets expected, sizes the vector read into, one more than
+it so that the end is seen without growing it; the vector returned is that
+one, cut to what came."
   (let ((buffer (make-array (max 4096 (1+ size-hint)) :element-type '(unsigned-byte 8))) (filled 0))
     (loop
       (when (and most (> filled most)) (return))
@@ -868,9 +880,9 @@ held is left only where it was joined."
   pieces)
 
 (defun read-fd-at (fd octets offset &key (end (length octets)) (path "a file"))
-  "Read into OCTETS below END the octets of the open file FD from OFFSET, with
-pread, which leaves the descriptor's own offset alone; return how many were
-read, fewer only where the file ends."
+  "Read into OCTETS below END the octets of the file open as file descriptor
+(FD) from OFFSET, with pread, which leaves the descriptor's own offset
+alone; return how many were read, fewer only where the file ends."
   (let ((filled 0))
     (with-octets-sap (sap octets)
       (loop while (< filled end)
@@ -885,8 +897,9 @@ read, fewer only where the file ends."
     filled))
 
 (defun read-fd-exactly (fd count offset)
-  "COUNT octets of the open file FD from OFFSET, read with pread (READ-FD-AT);
-NIL when the file ends before them or cannot be read."
+  "COUNT octets of the file open as file descriptor (FD) from OFFSET, read
+with pread (READ-FD-AT); NIL when the file ends before them or cannot be
+read."
   (let ((octets (make-array count :element-type '(unsigned-byte 8))))
     (and (= count (or (tuatara.runtime:ignoring-errors-reported ("reading ~d octets at ~d" count offset)
                         (read-fd-at fd octets offset))
@@ -894,9 +907,10 @@ NIL when the file ends before them or cannot be read."
          octets)))
 
 (defun advise-will-need (fd offset length)
-  "Tell the system that LENGTH octets of the open file FD from OFFSET will be
-read soon, so that it starts reading them from the disk while the octets before
-are worked on. Changes nothing; a system that takes no advice is fine."
+  "Tell the system that LENGTH octets of the file open as file descriptor (FD)
+from OFFSET will be read soon, so that it starts reading them from the disk
+while the octets before are worked on. Changes nothing; a system that takes
+no advice is fine."
   (sb-alien:alien-funcall (sb-alien:extern-alien "posix_fadvise" (function sb-alien:int sb-alien:int sb-alien:long
                                                                            sb-alien:long sb-alien:int))
                           fd offset length 3)             ; POSIX_FADV_WILLNEED
@@ -1013,8 +1027,8 @@ starts; NIL where the system gives none (too many in use)."
     (and (>= fd 0) fd)))
 
 (defun inotify-watch (fd directory)
-  "Have the inotify descriptor FD report +WATCH-EVENTS+ in DIRECTORY (a native
-name). Returns the watch descriptor, or NIL when none can be had (no
+  "Have the inotify file descriptor (FD) report +WATCH-EVENTS+ in DIRECTORY (a
+native name). Returns the watch descriptor, or NIL when none can be had (no
 permission, the system's limit on watches reached)."
   (let ((wd (sb-alien:alien-funcall
              (sb-alien:extern-alien "inotify_add_watch" (function sb-alien:int sb-alien:int sb-alien:c-string
@@ -1023,16 +1037,17 @@ permission, the system's limit on watches reached)."
     (and (>= wd 0) wd)))
 
 (defun inotify-unwatch (fd wd)
-  "End the watch WD of the inotify descriptor FD; nothing when it ended already."
+  "End the watch WD of the inotify file descriptor (FD); nothing when it ended
+already."
   (sb-alien:alien-funcall (sb-alien:extern-alien "inotify_rm_watch" (function sb-alien:int sb-alien:int sb-alien:int))
                           fd wd)
   nil)
 
 (defun inotify-events (fd octets)
-  "The events waiting on the inotify descriptor FD, read through OCTETS (64 KB
-holds hundreds), in order: lists of the watch descriptor (-1 for the queue's
-overflow), the event mask and the name of the file in the directory as octets
-(NIL for the directory itself). NIL when none wait."
+  "The events waiting on the inotify file descriptor (FD), read through OCTETS
+(64 KB holds hundreds), in order: lists of the watch descriptor (-1 for the
+queue's overflow), the event mask and the name of the file in the directory
+as octets (NIL for the directory itself). NIL when none wait."
   (let ((events '()))
     (loop
       (let ((got (with-octets-sap (sap octets)
@@ -1058,7 +1073,8 @@ overflow), the event mask and the name of the file in the directory as octets
 ;;; Extended attributes
 
 (defun fd-xattr-names (fd)
-  "The names of the extended attributes of the open file FD, or NIL."
+  "The names of the extended attributes of the file open as file descriptor
+(FD), or NIL."
   (let ((size (sb-alien:alien-funcall
                (sb-alien:extern-alien "flistxattr" (function sb-alien:long sb-alien:int sb-sys:system-area-pointer
                                                              sb-alien:unsigned-long))
@@ -1079,8 +1095,8 @@ overflow), the event mask and the name of the file in the directory as octets
                   do (setf start (1+ end)))))))))
 
 (defun fd-xattr-value (fd name)
-  "The value of the extended attribute NAME of the open file FD, as octets,
-or NIL when it has none or it cannot be read."
+  "The value of the extended attribute NAME of the file open as file
+descriptor (FD), as octets, or NIL when it has none or it cannot be read."
   (let ((key (path-octets name)))
     (flet ((get-value (value size)
              (with-octets-sap (key-sap key)
@@ -1211,10 +1227,10 @@ opened."
                       "create a file in")))
 
 (defun name-unnamed-file (fd directory tag)
-  "Give FD, from OPEN-UNNAMED-FILE, a hidden name with TAG in DIRECTORY (the
-same directory it was made in) and return the name; NIL when the system will
-not. Refused (WRITING-REFUSED) where nothing may be written, told by the
-folder opened."
+  "Give file descriptor (FD), from OPEN-UNNAMED-FILE, a hidden name with TAG
+in DIRECTORY (the same directory it was made in) and return the name; NIL
+when the system will not. Refused (WRITING-REFUSED) where nothing may be
+written, told by the folder opened."
   (let ((name (scratch-name directory tag)))
     (call-with-folder directory
                       (lambda (dirfd)
@@ -1232,8 +1248,8 @@ folder opened."
 does in one place for every thread.")
 
 (defvar *owner-names* (make-hash-table :test 'equal)
-  "The names of accounts and groups looked up so far, by (:USER . UID) and
-\(:GROUP . GID); NIL for a number with no name.")
+  "The names of accounts and groups looked up so far, by (:USER . user id
+(UID)) and \(:GROUP . group id (GID)); NIL for a number with no name.")
 
 (defun looked-up-name (kind number)
   "The name of the account (KIND :USER) or group (KIND :GROUP) whose number is
@@ -1250,13 +1266,13 @@ NUMBER, looked up once and kept (*OWNER-NAMES*); NIL when it has none."
                         (let ((entry (sb-posix:getgrgid number))) (and entry (sb-posix:group-name entry)))))))))))
 
 (defun owner-name (uid)
-  "The name of the account whose number is UID (a file's owner: STAMP-UID), or
-NIL when it has none."
+  "The name of the account whose number is user id (UID) (a file's owner:
+STAMP-UID), or NIL when it has none."
   (looked-up-name :user uid))
 
 (defun owner-group-name (gid)
-  "The name of the group whose number is GID (a file's group: STAMP-GID), or
-NIL when it has none."
+  "The name of the group whose number is group id (GID) (a file's group:
+STAMP-GID), or NIL when it has none."
   (looked-up-name :group gid))
 
 (defun process-groups ()
@@ -1301,8 +1317,8 @@ refused so.")
   "Why nothing may be written at PATH (a native name, or a pathname), in
 words, or NIL when it may: as *WRITING-REFUSAL-FUNCTION* says, by where PATH
 really leads, every link followed; with DIRFD, an open descriptor of the
-folder PATH is in, or FD, one of PATH itself, by where that really is now,
-whatever names lead there."
+folder PATH is in, or file descriptor (FD), one of PATH itself, by where that
+really is now, whatever names lead there."
   (let ((function *writing-refusal-function*))
     (and function path (funcall function (native path) :dirfd dirfd :fd fd))))
 
@@ -1314,7 +1330,8 @@ whatever names lead there."
 
 (defun check-writing (path operation &key dirfd fd)
   "Signal WRITING-REFUSED for OPERATION (a verb phrase, \"save\") on PATH when
-nothing may be written there (WRITING-REFUSAL, DIRFD and FD as it has them)."
+nothing may be written there (WRITING-REFUSAL, DIRFD and file descriptor (FD)
+as it has them)."
   (let ((why (writing-refusal path :dirfd dirfd :fd fd)))
     (when why
       (error 'writing-refused :operation operation :path (native path) :reason why))))
@@ -1330,9 +1347,9 @@ nothing; TELL-WRITING calls it, from any thread.")
     (when function (tuatara.runtime:ignoring-errors-reported ("telling of a file written") (funcall function words)))))
 
 (defun fd-real-path (fd)
-  "Where the file or folder open as FD really is, as a native name with every
-link followed (as the system names it in /proc/self/fd); NIL when it does not
-say, or the file has no name any more."
+  "Where the file or folder open as file descriptor (FD) really is, as a
+native name with every link followed (as the system names it in
+/proc/self/fd); NIL when it does not say, or the file has no name any more."
   (let ((octets (link-octets +at-fdcwd+ (tuatara.text:string-octets (format nil "/proc/self/fd/~d" fd)))))
     (when (and octets (plusp (length octets)) (= (aref octets 0) 47))
       (let ((name (tuatara.text:octets-string octets)))
@@ -1410,10 +1427,10 @@ memory. *CACHE-DIRECTORY* when set (CHOSEN-DIRECTORY)."
   (chosen-directory '*cache-directory* (uiop:xdg-cache-home "tuatara/")))
 
 (defun sync-range (fd offset length &key wait)
-  "Start writing the octets of the open file FD from OFFSET, LENGTH of them, out
-to the device; with WAIT, also wait until they are there. True when the system
-did so; NIL on a file system that cannot (the caller's flush at the end then
-does it all)."
+  "Start writing the octets of the file open as file descriptor (FD) from
+OFFSET, LENGTH of them, out to the device; with WAIT, also wait until they
+are there. True when the system did so; NIL on a file system that cannot
+(the caller's flush at the end then does it all)."
   (and (plusp length)
        (zerop (sb-alien:alien-funcall
                (sb-alien:extern-alien "sync_file_range" (function sb-alien:int sb-alien:int (sb-alien:signed 64)
@@ -1421,8 +1438,9 @@ does it all)."
                fd offset length (if wait 7 2)))))  ; WAIT_BEFORE | WRITE | WAIT_AFTER, or WRITE
 
 (defun drop-cached (fd offset length)
-  "Tell the system the octets of FD from OFFSET, LENGTH of them, written out
-already, are not needed in memory: they need not crowd out what is."
+  "Tell the system the octets of file descriptor (FD) from OFFSET, LENGTH of
+them, written out already, are not needed in memory: they need not crowd
+out what is."
   (when (plusp length)
     (sb-alien:alien-funcall
      (sb-alien:extern-alien "posix_fadvise" (function sb-alien:int sb-alien:int (sb-alien:signed 64)
@@ -1601,8 +1619,9 @@ opened."
 
 (defvar *saved-program* nil
   "The path of the saved Tuatara program this process runs as, or NIL when it
-runs from the sources inside SBCL: what RUN-PROGRAM-AGAIN runs, and what a
-copy of Tuatara started for a moment is started as.")
+runs from the sources inside Steel Bank Common Lisp (SBCL): what
+RUN-PROGRAM-AGAIN runs, and what a copy of Tuatara started for a moment is
+started as.")
 
 (defun argument-vector (strings)
   "STRINGS as the system takes a program's arguments: foreign memory holding

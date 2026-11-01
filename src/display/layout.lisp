@@ -306,9 +306,10 @@ and INVISIBLE. Stops at
 the first character's start at or after TO, at the first where the count has
 reached LIMIT (past the marks and joined emoji of the cluster there), or
 before the line's end (a newline or a carriage return that ends the line,
-or with CRLF a carriage return just before a newline). Returns three values: where it stopped, the column
-there, and true when that is the line's end. Complexity: O(octets walked),
-read a block at a time, an ASCII octet looked at once."
+or with carriage return and line feed (CRLF) a carriage return just before a
+newline). Returns three values: where it stopped, the column there, and true
+when that is the line's end. Complexity: O(octets walked), read a block at a
+time, an ASCII octet looked at once."
   (declare (type fixnum from to tab-width column limit) (optimize speed))
   (let* ((total (tuatara.text:rope-bytes rope))
          (to (min to total))
@@ -365,8 +366,9 @@ characters are still being counted. Complexity: O(log n)."
 (defun far-position (rope from count end crlf)
   "Where COUNT columns after FROM end past a line's *SCREEN-COLUMN-REACH*
 \(FAR-COLUMNS): a character's start, no further than END nor the line's end
-\(the octet that ends it; with CRLF, the carriage return before its newline). Complexity: O(log n)
-once ROPE's characters are counted, O(COUNT) before."
+\(the octet that ends it; with carriage return and line feed (CRLF), the
+carriage return before its newline). Complexity: O(log n) once ROPE's
+characters are counted, O(COUNT) before."
   (let* ((indexed (tuatara.text:rope-indexed-p rope))
          (line-end (if indexed
                        (min end (tuatara.text:rope-line-end rope from))
@@ -458,9 +460,9 @@ blank that fits, a blank that does not fit ends it unseen, and only a word too
 long for a row is cut; otherwise lines are truncated after skipping HSCROLL
 columns, the rest of a wide character or a tab that edge cuts shown blank.
 A tab reaches the next multiple of TAB-WIDTH columns. A newline, and a
-carriage return no newline follows, end a line and are not shown; with CRLF,
-a carriage return just before a newline is part of the line end and not
-shown. HIGHLIGHTS, if given, is passed to
+carriage return no newline follows, end a line and are not shown; with
+carriage return and line feed (CRLF), a carriage return just before a newline
+is part of the line end and not shown. HIGHLIGHTS, if given, is passed to
 APPLY-HIGHLIGHTS once the rows exist. HIDDEN, ranges of octets in order, are
 not shown: a row reaching one, (START . END) (BUFFER-FOLDS), shows
 *FOLD-ELLIPSIS* in :fold-ellipsis, or, (START END TEXT FACE), TEXT in FACE,
@@ -468,25 +470,24 @@ standing for its START, and goes on after it. PREFIX, when given, is a
 function of a line's start and whether the row continues it, returning text
 shown at the row's start and its face (an indentation that is no text):
 columns that stand for no character. SCALE, when given, is a function of a
-line's start giving how many rows' height its rows are drawn in (ROW-SCALE),
-a rational of 1 or more: such a row holds as many times fewer columns, and
-HEIGHT is then the rows' heights added up, not their number. Where lines
-wrap, a row of a long line also begins every *WRAP-STRETCH* octets
-\(NEXT-WRAP-ANCHOR). UNTIL, an octet,
-ends the layout before a row that would begin past it. TEXT-END, an octet,
-is where the text shown ends, ROPE's end unless given: of a narrowed
-buffer, the end of the part shown, nothing of the text after it drawn there
-\(no HIDDEN text or fold, PREFIX or SCALE of its). With INVISIBLE, a
-character that draws nothing (`*invisible-characters*') is shown as its code,
-<FEFF>, in :invisible-character, taking those columns, as a raw byte is shown
-as \\xNN in :raw-byte. A grapheme cluster takes the columns of its first
-character (CLUSTER-COLUMNS), and a mark at a line's start is shown on
-*MARK-BASE*. Every row takes at least one character: one too
-wide for a whole wrapped row is shown as *CUT-GLYPH* (a tab as the spaces
-that fit). The rows are made anew, or taken from SPARES, a vector with a
-fill pointer of rows no longer shown (MAKE-ROW). Returns a simple-vector of ROW.
-Complexity: O(WIDTH × HEIGHT), and for each row scrolled sideways
-O(*SCREEN-COLUMN-REACH* + log n) however long its line (SKIP-COLUMNS)."
+line's start giving how many rows' height its rows are drawn in (ROW-SCALE), a
+rational of 1 or more: such a row holds as many times fewer columns, and
+HEIGHT is then the rows' heights added up, not their number. Where lines wrap,
+a row of a long line also begins every *WRAP-STRETCH* octets
+\(NEXT-WRAP-ANCHOR). UNTIL, an octet, ends the layout before a row that would
+begin past it. TEXT-END, an octet, is where the text shown ends, ROPE's end
+unless given: of a narrowed buffer, the end of the part shown, nothing of the
+text after it drawn there \(no HIDDEN text or fold, PREFIX or SCALE of its).
+With INVISIBLE, a character that draws nothing (`*invisible-characters*') is
+shown as its code, <FEFF>, in :invisible-character, taking those columns, as a
+raw byte is shown as \\xNN in :raw-byte. A grapheme cluster takes the columns
+of its first character (CLUSTER-COLUMNS), and a mark at a line's start is
+shown on *MARK-BASE*. Every row takes at least one character: one too wide for
+a whole wrapped row is shown as *CUT-GLYPH* (a tab as the spaces that fit).
+The rows are made anew, or taken from SPARES, a vector with a fill pointer of
+rows no longer shown (MAKE-ROW). Returns a simple-vector of ROW. Complexity:
+O(WIDTH × HEIGHT), and for each row scrolled sideways O(*SCREEN-COLUMN-REACH*
++ log n) however long its line (SKIP-COLUMNS)."
   (declare (type fixnum start width height hscroll))
   (tuatara.text:with-octet-block (chunk +reader-chunk+)
     (let ((rows (make-array 0 :adjustable t :fill-pointer 0))

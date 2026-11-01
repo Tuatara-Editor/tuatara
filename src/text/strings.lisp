@@ -10,8 +10,8 @@ character of its code, as ASCII and ISO 8859-1 read it."
 
 (defun utf-16-text (octets &key (start 0) (end (length octets)) big-endian)
   "OCTETS from START below END as UTF-16 text, least significant octet first
-unless BIG-ENDIAN or a byte-order mark says otherwise; the mark, a NUL at its
-end and what follows left out."
+unless BIG-ENDIAN or a byte-order mark says otherwise; the mark, a null (NUL)
+at its end and what follows left out."
   (let* ((end (- end (mod (- end start) 2)))
          (big (cond ((and (< (1+ start) end) (= (aref octets start) #xFE) (= (aref octets (1+ start)) #xFF)) (incf start 2) t)
                     ((and (< (1+ start) end) (= (aref octets start) #xFF) (= (aref octets (1+ start)) #xFE)) (incf start 2) nil)

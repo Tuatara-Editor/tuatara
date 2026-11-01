@@ -17,7 +17,7 @@
 
 (defun path-octets (path)
   "The name of PATH, or any other name the system is given (a string taken as
-it is), as the system is given it: its octets, a NUL after them."
+it is), as the system is given it: its octets, a null (NUL) after them."
   (terminated-octets (tuatara.text:string-octets (native path))))
 
 (defmacro with-path-sap ((sap path) &body body)
@@ -61,9 +61,9 @@ is /etc/file."
   result)
 
 (defun rename-entry (from-dirfd old to-dirfd new flags)
-  "renameat2: the entry named at OLD (a pointer to a name ending in NUL) of
-the directory open as FROM-DIRFD named NEW in TO-DIRFD's, with FLAGS (1 never
-over one there already). 0 when done, else -1 and the errno."
+  "Renameat2: the entry named at OLD (a pointer to a name ending in null
+(NUL)) of the directory open as FROM-DIRFD named NEW in TO-DIRFD's, with
+FLAGS (1 never over one there already). 0 when done, else -1 and the errno."
   (if (zerop (sb-alien:alien-funcall
               (sb-alien:extern-alien "renameat2" (function sb-alien:int sb-alien:int sb-sys:system-area-pointer
                                                            sb-alien:int sb-sys:system-area-pointer sb-alien:unsigned-int))
@@ -306,8 +306,8 @@ by where the directory opened really is."
           (sb-posix:close dirfd))))))
 
 (defun fd-entry-names (fd path)
-  "The names (octets) of what is in the directory open as FD, but . and ..,
-sorted; FD stays open."
+  "The names (octets) of what is in the directory open as file descriptor
+(FD), but . and .., sorted; FD stays open."
   (let ((names '()))
     (map-directory-fd (lambda (octets)
                         (unless (or (equalp octets #(46)) (equalp octets #(46 46)))
@@ -349,8 +349,8 @@ PATH named, when it cannot be."
                   "delete" path))))
 
 (defun set-fd-modification-time (fd nanoseconds)
-  "Give the file open as FD the modification time NANOSECONDS (as a stamp has
-it), its access time left as it is."
+  "Give the file open as file descriptor (FD) the modification time
+NANOSECONDS (as a stamp has it), its access time left as it is."
   (let ((times (make-array 32 :element-type '(unsigned-byte 8) :initial-element 0)))
     (with-octets-sap (sap times)
       (setf (sb-sys:sap-ref-64 sap 0) 0
@@ -684,9 +684,10 @@ could reach files outside it."
   "The trash directory a file at PATH goes to, as two values: the directory,
 and the top it counts names from (NIL for your own trash, where names
 are whole). Your own trash when it is on the same file system; else, on
-that file system's top, .Trash/UID when an administrator made .Trash (sticky,
-not a link), else .Trash-UID; on another drive, only a trash that is sound
-\(DRIVE-TRASH-SOUND-P), a FILE-SYSTEM-ERROR when neither is."
+that file system's top, .Trash/UID, with your user id (UID), when an
+administrator made .Trash (sticky, not a link), else .Trash-UID; on another
+drive, only a trash that is sound \(DRIVE-TRASH-SOUND-P), a FILE-SYSTEM-ERROR
+when neither is."
   (let* ((device (stamp-dev (or (path-stamp (parent-path path)) (fail "examine" path))))
          (home (home-trash)))
     (ensure-private-directory home)

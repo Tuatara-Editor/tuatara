@@ -1277,8 +1277,8 @@ an octet that ends a line (LINE-END-OCTET-P). Complexity: O(log n)."
 
 (defun rope-line-text-ends-p (rope byte crlf)
   "True when the text of a line of ROPE ends at BYTE: at the end of the text,
-or before an octet that ends a line or, with CRLF, before a carriage return
-and a newline (LINE-TEXT-ENDS-P)."
+or before an octet that ends a line or, with carriage return and line feed
+(CRLF), before a carriage return and a newline (LINE-TEXT-ENDS-P)."
   (declare (type fixnum byte))
   (or (>= byte (rope-bytes rope))
       (with-rope-window (window base end) (rope byte (+ byte 2) 2)
@@ -1287,9 +1287,9 @@ and a newline (LINE-TEXT-ENDS-P)."
 (defun rope-line-text-end (rope start end crlf)
   "Where the text of a line of ROPE ends, the line ending at octet END (the
 octet that ends it, LINE-END-OCTET-P, or the end of the text) and starting at
-START or before: with CRLF, at the carriage return just before END when END
-is a newline and the carriage return is after START; else at END. As
-LINE-TEXT-END has it for octets."
+START or before: with carriage return and line feed (CRLF), at the carriage
+return just before END when END is a newline and the carriage return is after
+START; else at END. As LINE-TEXT-END has it for octets."
   (declare (type fixnum start end))
   (if (and crlf (> end start) (< end (rope-bytes rope))
            (= 10 (rope-octet rope end)) (= 13 (rope-octet rope (1- end))))
@@ -1581,25 +1581,26 @@ back to just after the last octet before it that is not one of them, or BOUND
 END), START being a line start: with the line's start, the byte offsets of its
 LEFT-th and RIGHT-th characters (its end, where it is shorter), the columns
 those stand at (the line's length in characters, where it is shorter), and the
-line's end: the octet that ends it (LINE-END-OCTET-P), with CRLF the carriage
-return before a newline, or the text's end. With OCTETS, three more: the
-block of octets read, where in the text it starts and where it ends; a line
-shorter than a block is in it whole, its line end too. Columns count characters, as TUATARA.BUFFER:BUFFER-COLUMN
-does: a raw byte is one. With WIDTH, they are columns on the screen
-instead: a printable ASCII character takes one, any other what WIDTH says, a
-function of its code, the column it stands at and what it gave as its second
-value for the character before (that character's code for a printable ASCII
-one, 0 at the line's start) returning the columns and that second value, so
-that a tab can reach its stop and a grapheme cluster take the columns of its
-first character; a tab across LEFT or
-RIGHT is in the slice (its start or end column then outside them), another
-character across one out of it, and a character of no width (a combining
-mark) goes with the one before it. The text is read once, a block at a time:
-as large as the lines asked for, from 4 KB to a megabyte, never more than
-the text left, into BLOCK when given octets as large, else into one kept
+line's end: the octet that ends it (LINE-END-OCTET-P), with carriage return
+and line feed (CRLF) the carriage return before a newline, or the text's end.
+With OCTETS, three more: the block of octets read, where in the text it starts
+and where it ends; a line shorter than a block is in it whole, its line end
+too. Columns count characters, as TUATARA.BUFFER:BUFFER-COLUMN does: a raw
+byte is one. With WIDTH, they are columns on the screen instead: a printable
+ASCII character takes one, any other what WIDTH says, a function of its code,
+the column it stands at and what it gave as its second value for the character
+before (that character's code for a printable ASCII one, 0 at the line's
+start) returning the columns and that second value, so that a tab can reach
+its stop and a grapheme cluster take the columns of its first character; a tab
+across LEFT or RIGHT is in the slice (its start or end column then outside
+them), another character across one out of it, and a character of no width (a
+combining mark) goes with the one before it. The text is read once, a block at
+a time: as large as the lines asked for, from 4 KB to a megabyte, never more
+than the text left, into BLOCK when given octets as large, else into one kept
 for reading into (WITH-OCTET-BLOCK), so that nothing is made for it: FUNCTION
-must not keep the block. An ASCII octet is a character by itself, so most lines cost a look at
-each octet. Complexity: O(END - START + the length of the last line)."
+must not keep the block. An ASCII octet is a character by itself, so most
+lines cost a look at each octet. Complexity: O(END - START + the length of the
+last line)."
   (declare (type function function) (type fixnum start end left right)
            (optimize speed))
   (let* ((total (rope-bytes rope))

@@ -90,9 +90,9 @@ text can no longer be trusted (the buffer is read-only until reverted)."
 (defstruct (snapshot (:include tuatara.runtime:job) (:constructor %make-snapshot) (:copier nil))
   "A copy of a mapped file being made in the background, a job
 \(TUATARA.RUNTIME:JOB) of no buffer: of SOURCE, a descriptor of its own for
-the file behind MAPPING, PATH, which was at STAMP; FD is the copy. SERVED is
-the buffer whose text it keeps, or NIL; CHANGED is true when the file changed
-while it was copied, the copy then of no use."
+the file behind MAPPING, PATH, which was at STAMP; file descriptor (FD) is the
+copy. SERVED is the buffer whose text it keeps, or NIL; CHANGED is true when
+the file changed while it was copied, the copy then of no use."
   mapping source path stamp served fd changed)
 
 (setf (documentation 'snapshot-p 'function) "True when OBJECT is a SNAPSHOT.")
@@ -125,9 +125,10 @@ reads the file where it is."
       (setf (tuatara.buffer:buffer-local buffer :file-isolation) (if taken :snapshot :direct)))))
 
 (defun start-snapshot (mapping fd path stamp directory)
-  "Start copying the file PATH, open as FD and mapped as MAPPING, into an unnamed
-file in DIRECTORY in the background, a job, where its file system has room.
-The copy reads through a descriptor of its own. Returns the snapshot, or NIL."
+  "Start copying the file PATH, open as file descriptor (FD) and mapped as
+MAPPING, into an unnamed file in DIRECTORY in the background, a job, where
+its file system has room. The copy reads through a descriptor of its own.
+Returns the snapshot, or NIL."
   (let ((free (free-bytes directory)))
     (when (and free (> free (+ (stamp-size stamp) *snapshot-free-margin*)))
       (let* ((source (sb-posix:dup fd))
@@ -170,14 +171,15 @@ The copy reads through a descriptor of its own. Returns the snapshot, or NIL."
 ;;; Leases: reading the file itself until someone is about to write it
 
 (defstruct (lease (:constructor %make-lease) (:copier nil))
-  "A read lease on a visited file: FD, open on the file at PATH as it was at
-STAMP, is what MAPPING reads while STATUS is :HELD. When a program is about to
-write the file, the keeper copies it into PLACE, a directory (COPIED-BY :CLONE
-or :SNAPSHOT), moves MAPPING onto the copy and lets the writer go: :MOVING,
-then :MOVED. :LOST when the copy could not be made, or not in time; :RELEASED
-when given up. BUFFER is the buffer it serves: NIL once that buffer is killed
-with its text kept elsewhere, MAPPING being then a weak pointer to the mapping
-(LEASE-TARGET), and the lease given up when nothing reads the mapping any more."
+  "A read lease on a visited file: file descriptor (FD), open on the file at
+PATH as it was at STAMP, is what MAPPING reads while STATUS is :HELD. When
+a program is about to write the file, the keeper copies it into PLACE, a
+directory (COPIED-BY :CLONE or :SNAPSHOT), moves MAPPING onto the copy and
+lets the writer go: :MOVING, then :MOVED. :LOST when the copy could not be
+made, or not in time; :RELEASED when given up. BUFFER is the buffer it
+serves: NIL once that buffer is killed with its text kept elsewhere,
+MAPPING being then a weak pointer to the mapping (LEASE-TARGET), and the
+lease given up when nothing reads the mapping any more."
   mapping fd path stamp buffer place (status :held) copied-by)
 
 (defun lease-target (lease)
@@ -275,8 +277,9 @@ kept from a killed buffer, which the collection may have freed."
 (pushnew 'wake-lease-keeper-after-gc sb-ext:*after-gc-hooks*)
 
 (defun hold-lease (mapping fd path stamp place)
-  "Keep the lease just taken on FD, which MAPPING reads, and see that it is
-watched; a copy, if one is needed, goes into the directory PLACE. Returns the lease."
+  "Keep the lease just taken on file descriptor (FD), which MAPPING reads, and
+see that it is watched; a copy, if one is needed, goes into the directory
+PLACE. Returns the lease."
   (let ((lease (%make-lease :mapping mapping :fd fd :path path :stamp stamp :place place)))
     (sb-thread:with-mutex (*lease-lock*)
       (push lease *leases*)
@@ -533,9 +536,10 @@ file kept mapped for it (BUFFER-LENT-P)."
       (tuatara.runtime:forget-job job))))
 
 (defun try-clone (fd path)
-  "A descriptor for an unnamed clone of the open file FD made in its own
-directory, sharing its blocks, or NIL where the file system cannot. One that
-shares no blocks (SHARES-BLOCKS-P) is not tried, and so not written to."
+  "A descriptor for an unnamed clone of the file open as file descriptor (FD)
+made in its own directory, sharing its blocks, or NIL where the file system
+cannot. One that shares no blocks (SHARES-BLOCKS-P) is not tried, and so
+not written to."
   (when *clone-large-files*
     (let ((directory (parent-path path)))
       (when (and (writable-p directory) (shares-blocks-p directory))
@@ -607,7 +611,7 @@ CLASS (FILE-SYSTEM-CLASS): see COPIES-DIRECTORY."
 
 (defun copy-to-cache (fd size path)
   "A descriptor for an unnamed copy, made now in the cache directory, of the
-first SIZE octets of the open file FD, which is PATH."
+first SIZE octets of the file open as file descriptor (FD), which is PATH."
   (let ((copy (open-scratch-file (cache-directory))))
     (handler-bind ((error (lambda (e)
                             (declare (ignore e))
@@ -672,14 +676,17 @@ own files)."
                  :accept accept :safe safe :operation operation :wanted wanted))
 
 (defun clear-noatime (fd)
-  "Let reading from the open file FD change its access time again."
+  "Let reading from the file open as file descriptor (FD) change its access
+time again."
   (let ((flags (sb-posix:fcntl fd sb-posix:f-getfl)))
     (when (logtest flags +o-noatime+)
       (sb-posix:fcntl fd sb-posix:f-setfl (logandc2 flags +o-noatime+)))))
 
 (defun decision-on-file (decide fd path stamp)
-  "What DECIDE, a function of where the open file FD really is and its STAMP, answers; a check that
-fails is answered by a phrase saying so, so that the file opens safely, and is told in the debug log."
+  "What DECIDE, a function of where the file open as file descriptor (FD)
+really is and its STAMP, answers; a check that fails is answered by a
+phrase saying so, so that the file opens safely, and is told in the debug
+log."
   (handler-case (funcall decide (or (fd-real-path fd) path) stamp)
     (error (condition)
       (tuatara.runtime:debug-report :file "whether ~a opens safely could not be told, so it does: ~a"
@@ -767,8 +774,8 @@ visited safely, that returns why it should be all the same, a phrase, or NIL.")
 
 (defun binary-head-p (octets &optional (end (length octets)))
   "True when OCTETS below END, the first octets of a file (FILE-HEAD), say it
-is binary: a NUL octet among the first 64 KB of them (+BINARY-SAMPLE+), as
-executables, archives and disk images have and text has not; NIL for no
+is binary: a null (NUL) octet among the first 64 KB of them (+BINARY-SAMPLE+),
+as executables, archives and disk images have and text has not; NIL for no
 octets. Opening a file, previewing it, searching files and keeping
 directories read tell binary files alike by it."
   (and octets (find 0 octets :end (min end +binary-sample+)) t))
@@ -779,10 +786,10 @@ files read so far, each (PATH LIMIT SIZE OCTETS), in the car, so that each is
 read once; NIL otherwise.")
 
 (defun read-fd-start (fd path size limit &key past-size)
-  "The first LIMIT octets, or all when there are fewer, of the open file FD
-(PATH for messages) of SIZE octets, as the system says; with PAST-SIZE, SIZE
-and one more, at least 8 KB, at most LIMIT, so that a file larger than the
-system says (one in /proc) is seen to be."
+  "The first LIMIT octets, or all when there are fewer, of the file open as
+file descriptor (FD) (PATH for messages) of SIZE octets, as the system
+says; with PAST-SIZE, SIZE and one more, at least 8 KB, at most LIMIT, so
+that a file larger than the system says (one in /proc) is seen to be."
   (let* ((octets (make-array (min limit (if past-size (max 8192 (1+ size)) size)) :element-type '(unsigned-byte 8)))
          (got (read-fd-at fd octets 0 :path path)))
     (if (= got (length octets)) octets (subseq octets 0 got))))
@@ -922,10 +929,11 @@ allows, and what is not a regular file refused unopened (a FILE-SYSTEM-ERROR)."
       (sb-posix:close fd))))
 
 (defun fd-octets (fd path size &optional limit too-large)
-  "The octets of the file open as FD, PATH's, of SIZE octets, read whole from
-its start. With LIMIT, a FILE-SYSTEM-ERROR when it has more than LIMIT
-octets, as SIZE says or as it turns out when read, no more than that read;
-with TOO-LARGE, a function of that size, what it returns instead."
+  "The octets of the file open as file descriptor (FD), PATH's, of SIZE
+octets, read whole from its start. With LIMIT, a FILE-SYSTEM-ERROR when it
+has more than LIMIT octets, as SIZE says or as it turns out when read, no
+more than that read; with TOO-LARGE, a function of that size, what it
+returns instead."
   (flet ((too-large (size)
            (return-from fd-octets
              (if too-large
@@ -1031,10 +1039,11 @@ work in the background."
       (unless done (tuatara.runtime:ignoring-errors-reported ("closing the copy of ~a" path) (sb-posix:close fd))))))
 
 (defun scratch-file-text (fd size path)
-  "The text of the file open as FD of SIZE octets (COPY-DESCRIPTOR-TO-SCRATCH),
-as two values: a rope, and the mapping it reads, or NIL. One of at most
-*MEMORY-READ-LIMIT* octets is read into memory and FD closed; a larger one is
-mapped, as a large file is, and the mapping owns FD from then on."
+  "The text of the file open as file descriptor (FD) of SIZE octets
+(COPY-DESCRIPTOR-TO-SCRATCH), as two values: a rope, and the mapping it
+reads, or NIL. One of at most *MEMORY-READ-LIMIT* octets is read into
+memory and FD closed; a larger one is mapped, as a large file is, and the
+mapping owns FD from then on."
   (if (<= size *memory-read-limit*)
       (unwind-protect
            (progn (sb-posix:lseek fd 0 sb-posix:seek-set)
@@ -1682,16 +1691,17 @@ and waits for the ones before: the most a save leaves in memory not yet on
 disk, and so how far its progress can be ahead of the device.")
 
 (defun write-rope (fd rope &key (path "a file") cancel progress)
-  "Write ROPE's octets to the open file FD, from offset 0 on: what comes from
-mapped files is copied by the kernel where it can, the rest written. Where a
-stretch from a file sits at the same place within a block as where it goes (after
-edits that kept the length, or none), it is copied up to the next block boundary
-first, so that file systems that share blocks share all the whole ones after it.
-The octets go out to the device as they are written, *WRITE-OUT-WINDOW* at a
-time, and leave memory once there, so that a slow device (a USB drive) holds a
-large save back as it goes rather than all at the end, and memory does not fill
-with what waits for it. PROGRESS is called with the octets on the device and
-the total. Returns true, or NIL when CANCEL's car turned true first."
+  "Write ROPE's octets to the file open as file descriptor (FD), from offset 0
+on: what comes from mapped files is copied by the kernel where it can, the
+rest written. Where a stretch from a file sits at the same place within a
+block as where it goes (after edits that kept the length, or none), it is
+copied up to the next block boundary first, so that file systems that share
+blocks share all the whole ones after it. The octets go out to the device
+as they are written, *WRITE-OUT-WINDOW* at a time, and leave memory once
+there, so that a slow device (a USB drive) holds a large save back as it
+goes rather than all at the end, and memory does not fill with what waits
+for it. PROGRESS is called with the octets on the device and the total.
+Returns true, or NIL when CANCEL's car turned true first."
   (let ((done 0) (total (tuatara.text:rope-bytes rope))
         (written-out 0)                 ; below this, on the device
         (going-out 0)                   ; below this, on its way there
@@ -1731,7 +1741,8 @@ the total. Returns true, or NIL when CANCEL's car turned true first."
         t))))
 
 (defun flush-fd (fd path)
-  "Ask the system to put the open file FD on disk; file systems that cannot are let be."
+  "Ask the system to put the file open as file descriptor (FD) on disk; file
+systems that cannot are let be."
   (handler-case (sb-posix:fsync fd)
     (sb-posix:syscall-error (e)
       (unless (member (sb-posix:syscall-errno e) (list sb-posix:einval sb-posix:erofs sb-posix:enosys))

@@ -1002,8 +1002,9 @@ prefix of three octets or more, or as long as the longest text, is preferred."
 (defun char-octet-sets (char case-fold)
   "The sets of octets (OCTET-SET) CHAR is written in, one for each of its
 octets, an ASCII letter's other case in its set when CASE-FOLD; NIL when CHAR
-cannot be told by its octets: a newline, which a CR LF text writes otherwise,
-a raw octet's character, or a letter beyond ASCII whose case is folded."
+cannot be told by its octets: a newline, which a carriage return and line feed
+(CR LF) text writes otherwise, a raw octet's character, or a letter beyond
+ASCII whose case is folded."
   (let ((code (char-code char)))
     (cond ((or (char= char #\Newline) (tuatara.text:raw-byte-code-p code)) nil)
           ((< code 128)
@@ -1217,12 +1218,12 @@ matches may cross lines; the same for one kept within a line.")
 (defun line-tree (tree)
   "TREE, a cl-ppcre parse tree, with its lines ending as every text's do
 \(TUATARA.TEXT:LINE-END-OCTET-P), as the Rust regex crate reads a pattern in
-its CRLF mode: ^ matches after a newline and after a carriage return no
-newline follows, $ before a newline no carriage return comes before and
-before a carriage return, neither between a carriage return and its
-newline; . matches neither a carriage return nor a newline, but in
-single-line mode ((?s)). Where (?-m) makes ^ and $ the text's ends, they are
-left as they are. Plain text stays plain: a tree that is a string alone is
+its carriage return and line feed (CRLF) mode: ^ matches after a newline and
+after a carriage return no newline follows, $ before a newline no carriage
+return comes before and before a carriage return, neither between a carriage
+return and its newline; . matches neither a carriage return nor a newline, but
+in single-line mode ((?s)). Where (?-m) makes ^ and $ the text's ends, they
+are left as they are. Plain text stays plain: a tree that is a string alone is
 given as a sequence."
   (labels ((mode-after (flags mode on off)
              (cond ((member on flags) t)
@@ -1325,14 +1326,14 @@ numbers must pass the Luhn check), POSIX classes in a set, \\Q...\\E, \\h, \\v, 
 character properties (\\p{L}) are read too (WITH-PATTERN-SYNTAX). Lines end
 as they do in every text: ^ and $ match at a newline, at a carriage return
 and a newline, and at a carriage return alone, and . matches neither a
-carriage return nor a newline (LINE-TREE); CRLF changes nothing. THOROUGH, by
-default *REGEX-THOROUGH*, has a scan find every match of up to
-*REGEX-LONGEST-MATCH* octets whole, looking as far as the pattern can reach
-(TREE-MAX-OCTETS). What the pattern allows a scan to skip (REGEX-TRAITS) is
-registered with the scanner. The same REGEX compiled the same way gives the
-same scanner while one is kept, or soon after. Signals PATTERN-REFUSED, or
-cl-ppcre's syntax error, for a pattern that cannot be used (REGEX-PROBLEM
-words why)."
+carriage return nor a newline (LINE-TREE); carriage return and line feed
+(CRLF) changes nothing. THOROUGH, by default *REGEX-THOROUGH*, has a scan find
+every match of up to *REGEX-LONGEST-MATCH* octets whole, looking as far as the
+pattern can reach (TREE-MAX-OCTETS). What the pattern allows a scan to skip
+(REGEX-TRAITS) is registered with the scanner. The same REGEX compiled the
+same way gives the same scanner while one is kept, or soon after. Signals
+PATTERN-REFUSED, or cl-ppcre's syntax error, for a pattern that cannot be used
+(REGEX-PROBLEM words why)."
   (declare (ignore crlf))
   (let ((key (list regex (and case-fold t) (and thorough t))))
     (or (gethash key **compiled-regexes**)

@@ -481,7 +481,8 @@ values, from whichever of its three headers it has; NIL when none is among O."
   (joined-words "WebP image" (multiple-value-call #'size-words (webp-size o))))
 
 (defun elf-words (o)
-  "An ELF file described: its width, what it is, the processor it is for."
+  "An executable and linkable format (ELF) file described: its width, what it
+is, the processor it is for."
   (let ((class (octet-at o 4)) (le (eql (octet-at o 5) 1)))
     (flet ((field (start count) (if le (octets-le o start count) (octets-be o start count))))
       (joined-words (format nil "ELF ~a-bit ~a" (case class (1 32) (2 64) (t "?"))

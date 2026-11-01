@@ -76,10 +76,10 @@ to show it."
   nil)
 
 (defun lock-fd (fd &key shared (wait 0))
-  "Take a lock on the open file FD, shared with others that take it SHARED,
-else held alone: true when it was had, waiting at most WAIT seconds for
-another holder to let it go. The lock goes when FD is closed or the process
-ends."
+  "Take a lock on the file open as file descriptor (FD), shared with others
+that take it SHARED, else held alone: true when it was had, waiting at most
+WAIT seconds for another holder to let it go. The lock goes when FD is
+closed or the process ends."
   (let ((deadline (deadline-in wait)))
     (loop
       ;; LOCK_SH 1 or LOCK_EX 2, with LOCK_NB 4: never blocked in the call itself

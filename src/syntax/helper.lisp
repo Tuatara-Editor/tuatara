@@ -148,17 +148,17 @@ for each parser it holds, and its own.")
 ;;; A helper
 
 (defstruct (helper (:constructor %make-helper (process fd directories kind)) (:copier nil))
-  "A program parsing for the editor: its PROCESS, FD its first connection
-(over which the others are handed to it, and parses are stopped), the
-grammar DIRECTORIES it was given, and its KIND: :OWN, parsing one buffer's
-text, :SHARED, parsing the files of projects you trust, or :RULES, loading
-the grammars and compiling their rules, never given any text. FAULTED holds
-the names of the grammars that crashed in it, or in the helpers before it
-for the same buffer. IDLE holds its connections no call uses now, CONNECTIONS
-all it has; WRITE-LOCK is held while the first connection is written to, and
-while IDLE and CONNECTIONS change. QUERIES holds the numbers of the queries
-it has been given. ALIVE is set until it ends, ENDED says what ended it,
-USED when it was last asked something."
+  "A program parsing for the editor: its PROCESS, file descriptor (FD) its
+first connection (over which the others are handed to it, and parses are
+stopped), the grammar DIRECTORIES it was given, and its KIND: :OWN, parsing
+one buffer's text, :SHARED, parsing the files of projects you trust, or
+:RULES, loading the grammars and compiling their rules, never given any
+text. FAULTED holds the names of the grammars that crashed in it, or in the
+helpers before it for the same buffer. IDLE holds its connections no call
+uses now, CONNECTIONS all it has; WRITE-LOCK is held while the first
+connection is written to, and while IDLE and CONNECTIONS change. QUERIES
+holds the numbers of the queries it has been given. ALIVE is set until it
+ends, ENDED says what ended it, USED when it was last asked something."
   (process nil :read-only t)
   (fd -1 :type fixnum :read-only t)
   (directories '() :read-only t)
@@ -217,12 +217,12 @@ load from, as ((KIND . DIRECTORIES) . HELPER).")
   "The most octets a parse is given at a time.")
 
 (defstruct (call (:constructor %make-call (helper fd)) (:copier nil))
-  "A connection to HELPER over the socket FD, used by one call at a time:
-OUT, foreign memory the request is written in (its header first), OUT-SIZE
-octets of it used of OUT-ROOM; IN, where the reply's body is put, IN-SIZE
-octets of IN-ROOM; HEADER, where a message's header is read; TEXT, where the
-text a parse reads is given from; STATUS what the reply's header said, :DEAD
-when the helper ended first."
+  "A connection to HELPER over the socket open as file descriptor (FD), used
+by one call at a time: OUT, foreign memory the request is written in (its
+header first), OUT-SIZE octets of it used of OUT-ROOM; IN, where the
+reply's body is put, IN-SIZE octets of IN-ROOM; HEADER, where a message's
+header is read; TEXT, where the text a parse reads is given from; STATUS
+what the reply's header said, :DEAD when the helper ended first."
   (helper nil :read-only t)
   (fd -1 :type fixnum :read-only t)
   (out (null-pointer) :type sb-sys:system-area-pointer)
@@ -266,8 +266,8 @@ held (SAP freed), and its room, as two values."
                           (sb-sys:sap-int sap)))
 
 (defun poll-fd (fd events milliseconds)
-  "Wait up to MILLISECONDS (a second at most) for FD to have any of EVENTS
-\(POLLIN 1, POLLOUT 4); the events it has, 0 when none came."
+  "Wait up to MILLISECONDS (a second at most) for file descriptor (FD) to have
+any of EVENTS \(POLLIN 1, POLLOUT 4); the events it has, 0 when none came."
   (declare (type fixnum milliseconds))
   (sb-alien:with-alien ((poll (array (sb-alien:unsigned 8) 8)))
     (let ((sap (sb-alien:alien-sap poll)))
@@ -286,10 +286,10 @@ held (SAP freed), and its room, as two values."
   (max 0 (ceiling (- deadline (get-internal-real-time)) (floor internal-time-units-per-second 1000))))
 
 (defun transfer (fd sap size direction deadline)
-  "Read (DIRECTION :READ) or write (:WRITE) SIZE octets at SAP over FD by
-DEADLINE, an internal real time (NIL for none): T when done, :ENDED when FD
-ended or failed first, :LATE when the deadline came first. FD may be one
-that does not wait (O_NONBLOCK)."
+  "Read (DIRECTION :READ) or write (:WRITE) SIZE octets at SAP over file
+descriptor (FD) by DEADLINE, an internal real time (NIL for none): T when
+done, :ENDED when FD ended or failed first, :LATE when the deadline came
+first. FD may be one that does not wait (O_NONBLOCK)."
   (let ((done 0))
     (loop while (< done size)
           do (let ((moved (if (eq direction :read)
@@ -314,8 +314,9 @@ that does not wait (O_NONBLOCK)."
     t))
 
 (defun send-descriptor (fd descriptor)
-  "Ask the helper over its first connection FD to take the socket DESCRIPTOR
-as a new connection (+OP-CONNECT+); NIL when it cannot be sent."
+  "Ask the helper over its first connection file descriptor (FD) to take the
+socket DESCRIPTOR as a new connection (+OP-CONNECT+); NIL when it cannot be
+sent."
   (sb-alien:with-alien ((header (array (sb-alien:unsigned 32) 3))
                         (part (array (sb-alien:unsigned 64) 2))
                         (control (array (sb-alien:unsigned 8) 24))
@@ -351,7 +352,8 @@ when HELPER has ended or no connection can be made."
                      (make-call helper mine))))))))
 
 (defun make-call (helper fd)
-  "A connection to HELPER over the socket FD, one of its connections."
+  "A connection to HELPER over the socket open as file descriptor (FD), one of
+its connections."
   (let ((call (%make-call helper fd)))
     (multiple-value-bind (out room) (foreign-grow (null-pointer) 0 4096)
       (setf (call-out call) out (call-out-room call) room))

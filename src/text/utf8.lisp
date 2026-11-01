@@ -138,7 +138,8 @@ Complexity: O(END - START)."
 (defun line-text-ends-p (octets i avail crlf)
   "True when the text of a line ends before the octet at index I of OCTETS,
 whose text ends at AVAIL: a newline or a carriage return that ends the line
-\(OCTETS-LINE-END-P), or with CRLF a carriage return before a newline."
+\(OCTETS-LINE-END-P), or with carriage return and line feed (CRLF) a carriage
+return before a newline."
   (declare (type octets octets) (type fixnum i avail))
   (let ((b (aref octets i)))
     (or (= b 10) (and (= b 13) (or crlf (octets-line-end-p octets i avail))))))
@@ -153,8 +154,9 @@ below AVAIL: a line end of two octets."
 (declaim (inline line-text-end))
 (defun line-text-end (octets start newline crlf)
   "Where the text of a line ends in OCTETS, whose newline is at index NEWLINE
-and which starts at index START or before: with CRLF, at the carriage return
-just before the newline, when there is one after START; else at the newline."
+and which starts at index START or before: with carriage return and line feed
+(CRLF), at the carriage return just before the newline, when there is one
+after START; else at the newline."
   (declare (type octets octets) (type fixnum start newline))
   (if (and crlf (> newline start) (= (aref octets (1- newline)) 13)) (1- newline) newline))
 

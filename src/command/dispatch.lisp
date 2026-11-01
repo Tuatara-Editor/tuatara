@@ -409,11 +409,11 @@ An edit it makes in the buffer it runs in, reaching outside the part of it
 shown when that buffer is narrowed, is refused.
 The windows are laid out first as they are with the key typed, so that a
 panel of key hints shown before it does not shorten them for the command.
-Running out of stack or heap in a command also becomes a message where SBCL can
-recover, so the editor keeps running; running out of heap in the middle of a
-collection cannot be recovered, which is why large work keeps within a budget.
-A command that does not finish (an error, \\`C-g', a refusal) stops recorded
-keys that are playing."
+Running out of stack or heap in a command also becomes a message where Steel
+Bank Common Lisp (SBCL) can recover, so the editor keeps running; running out
+of heap in the middle of a collection cannot be recovered, which is why large
+work keeps within a budget. A command that does not finish (an error, \\`C-g',
+a refusal) stops recorded keys that are playing."
   (setf (editor-this-command editor) command
         (editor-repeat-map editor) nil)
   (unless (member command *not-repeatable*)

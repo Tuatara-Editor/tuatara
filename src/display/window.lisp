@@ -875,10 +875,10 @@ long it is."
 
 (defun screen-slice-keys (crlf tab-width &optional invisible)
   "The keys TUATARA.TEXT:MAP-LINE-SLICES takes to cut lines at columns on the
-screen: CRLF when a carriage return before a newline ends them, a tab TAB-WIDTH
-columns at most, each other character as wide as it is shown, with INVISIBLE
-one that draws nothing as its code (CODE-COLUMNS), a grapheme cluster as its
-first character (CLUSTER-COLUMNS)."
+screen: carriage return and line feed (CRLF) when a carriage return before a
+newline ends them, a tab TAB-WIDTH columns at most, each other character as
+wide as it is shown, with INVISIBLE one that draws nothing as its code
+(CODE-COLUMNS), a grapheme cluster as its first character (CLUSTER-COLUMNS)."
   (list :crlf crlf
         :width (lambda (code column before) (advance-column code column before tab-width invisible))))
 

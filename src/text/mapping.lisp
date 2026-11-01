@@ -7,10 +7,11 @@
 
 (defstruct (mapping (:constructor %make-mapping (sap length path fd resources)) (:copier nil))
   "A memory-mapped file: SAP addresses LENGTH octets of PATH, read-only, outside
-the Lisp heap, mapped from the open descriptor FD, which the mapping keeps (so
-saving can copy straight from it). LIVE turns false when the mapping is closed.
-RESOURCES is a cons whose car lists every (ADDRESS LENGTH FD) the mapping has
-held; RETARGET-MAPPING adds one when the octets are moved to a snapshot."
+the Lisp heap, mapped from the open file descriptor (FD), which the mapping
+keeps (so saving can copy straight from it). LIVE turns false when the mapping
+is closed. RESOURCES is a cons whose car lists every (ADDRESS LENGTH FD) the
+mapping has held; RETARGET-MAPPING adds one when the octets are moved to a
+snapshot."
   (sap (sb-sys:int-sap 0) :type sb-sys:system-area-pointer)
   (length 0 :type fixnum :read-only t)
   (path nil :read-only t)
@@ -27,7 +28,8 @@ held; RETARGET-MAPPING adds one when the octets are moved to a snapshot."
       (documentation 'mapping-live 'function) "True until the mapping is closed with CLOSE-MAPPING.")
 
 (defun release-resources (resources)
-  "Unmap and close every (ADDRESS LENGTH FD) in the car of RESOURCES, once."
+  "Unmap and close every (ADDRESS LENGTH file descriptor (FD)) in the car of
+RESOURCES, once."
   (loop for (address length fd) in (shiftf (car resources) '())
         do (tuatara.runtime:ignoring-errors-reported ("unmapping ~d octets" length)
              (sb-posix:munmap (sb-sys:int-sap address) length))
@@ -35,9 +37,10 @@ held; RETARGET-MAPPING adds one when the octets are moved to a snapshot."
              (sb-posix:close fd))))
 
 (defun map-fd (fd size path)
-  "Map SIZE octets of the open file FD read-only and return a MAPPING that owns
-FD from now on, closing it with the mapping. PATH names the file in messages.
-The mapping is released when it is garbage collected or closed explicitly."
+  "Map SIZE octets of the file open as file descriptor (FD) read-only and
+return a MAPPING that owns FD from now on, closing it with the mapping.
+PATH names the file in messages. The mapping is released when it is garbage
+collected or closed explicitly."
   (declare (type fixnum fd size))
   (let* ((sap (sb-posix:mmap nil size sb-posix:prot-read sb-posix:map-private fd 0))
          (resources (list (list (list (sb-sys:sap-int sap) size fd))))
@@ -73,11 +76,12 @@ garbage collected or closed explicitly."
 editor's may do.")
 
 (defun retarget-mapping (mapping fd)
-  "Make MAPPING read its octets from FD, an open file holding the very same
-octets (a snapshot of the original), so that every rope using MAPPING is safe
-from changes made to the original file afterwards. The old region stays mapped
-until the mapping is released, for any reader in the middle of it. Any thread
-may do this. Returns MAPPING, or NIL (FD left open) when it was closed meanwhile."
+  "Make MAPPING read its octets from file descriptor (FD), an open file
+holding the very same octets (a snapshot of the original), so that every
+rope using MAPPING is safe from changes made to the original file
+afterwards. The old region stays mapped until the mapping is released, for
+any reader in the middle of it. Any thread may do this. Returns MAPPING, or
+NIL (FD left open) when it was closed meanwhile."
   (sb-thread:with-mutex (**mapping-lock**)
     (when (mapping-live mapping)
       (let ((sap (sb-posix:mmap nil (mapping-length mapping) sb-posix:prot-read sb-posix:map-private fd 0)))

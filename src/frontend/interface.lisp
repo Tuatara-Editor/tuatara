@@ -168,8 +168,8 @@ to the next key. Must not block. The default answers NIL.")
 
 (defgeneric frontend-colour-count (frontend)
   (:documentation "How many colours FRONTEND can show: 0 for none (a monochrome terminal),
-8, 16 or 256 for terminals, 16777216 for a GUI. The defaults choose the
-colourless theme below 8.")
+8, 16 or 256 for terminals, 16777216 for a graphical user interface (GUI). The
+defaults choose the colourless theme below 8.")
   (:method (frontend) (declare (ignore frontend)) 16777216))
 
 (defgeneric frontend-description (frontend)

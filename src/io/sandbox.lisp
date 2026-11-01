@@ -277,21 +277,22 @@ or once PROCESS has ended, its number no longer its own."
     numbers))
 
 (defun process-stat (pid)
-  "What /proc says of the process numbered PID after its name, as strings: its
-state, its parent's number, its group's, its session's and the rest; NIL when
-there is no such process."
+  "What /proc says of the process with process id (PID) after its name, as
+strings: its state, its parent's number, its group's, its session's and the
+rest; NIL when there is no such process."
   (let ((stat (proc-text (format nil "/proc/~d/stat" pid))))
     ;; pid (name) state ppid pgrp session ...: the fields after the name's closing parenthesis
     (and stat (uiop:split-string (subseq stat (+ 2 (or (position #\) stat :from-end t) -2))) :separator " "))))
 
 (defun process-parent (pid)
-  "The number of the parent of the process numbered PID; NIL when there is no such process."
+  "The number of the parent of the process with process id (PID); NIL when
+there is no such process."
   (tuatara.text:whole-number (second (process-stat pid))))
 
 (defun process-group-and-session (pid buffer)
-  "The process group and the session of the process numbered PID, as two
-values, read from /proc into BUFFER, octets enough for the line it reads
-\(1024); NIL when there is no such process."
+  "The process group and the session of the process with process id (PID), as
+two values, read from /proc into BUFFER, octets enough for the line it
+reads \(1024); NIL when there is no such process."
   (let ((fd (handler-case (sb-posix:open (format nil "/proc/~d/stat" pid) sb-posix:o-rdonly)
               (sb-posix:syscall-error () nil))))
     (when fd
@@ -324,11 +325,11 @@ the SESSIONS, from /proc; BUFFER is read into (PROCESS-GROUP-AND-SESSION)."
   (processes-in '() (list session)))
 
 (defun signal-process-if (pid test signal)
-  "Send SIGNAL to the process numbered PID when TEST, a function of no
-arguments looking at it in /proc, is true, the process held by a descriptor
-of its own (pidfd) meanwhile, so that the signal never reaches another given
-its number after it ended. Where the system has no such descriptors, sent by
-its number once TEST is true. True when it was sent."
+  "Send SIGNAL to the process with process id (PID) when TEST, a function of
+no arguments looking at it in /proc, is true, the process held by a
+descriptor of its own (pidfd) meanwhile, so that the signal never reaches
+another given its number after it ended. Where the system has no such
+descriptors, sent by its number once TEST is true. True when it was sent."
   (flet ((pidfd-signal (fd signal)
            (zerop (sb-alien:alien-funcall
                    (sb-alien:extern-alien "syscall" (function sb-alien:long sb-alien:long sb-alien:int sb-alien:int
@@ -737,16 +738,17 @@ write in that is, or holds, a place nothing may be written in is refused
                                                               (directory "/tmp") (file-limit *sandbox-file-limit*)
                                                               (processes *sandbox-process-limit*) (scratch t)
                                                               (descriptors nil))
-  "bwrap's arguments for running PROGRAM with ARGUMENTS shut in, limited to
+  "Bwrap's arguments for running PROGRAM with ARGUMENTS shut in, limited to
 SECONDS of processor time (NIL: no limit) and MEMORY octets (NIL: no limit)
 each process, its scratch /tmp to MEMORY octets too, to PROCESSES processes
-and threads, and to files of FILE-LIMIT octets (NIL: no limit); SECCOMP the descriptor of its
-seccomp filter, FILES the descriptors of files it is shown read only, each
-\(PATH . FD), ENVIRONMENT what it has in its environment besides, each (NAME
-VALUE), a later one for the same NAME in place of the earlier, DIRECTORIES,
-WRITABLE and OVERLAYS the directories it is shown as SANDBOX-RUN says, and
-DIRECTORY the one it starts in. Without SCRATCH it has no /tmp at all;
-DESCRIPTORS, when given, is the most files it may have open at once."
+and threads, and to files of FILE-LIMIT octets (NIL: no limit); SECCOMP the
+file descriptor (FD) of its seccomp filter, FILES the descriptors of files
+it is shown read only, each \(PATH . FD), ENVIRONMENT what it has in its
+environment besides, each (NAME VALUE), a later one for the same NAME in
+place of the earlier, DIRECTORIES, WRITABLE and OVERLAYS the directories it
+is shown as SANDBOX-RUN says, and DIRECTORY the one it starts in. Without
+SCRATCH it has no /tmp at all; DESCRIPTORS, when given, is the most files
+it may have open at once."
   (append (list "--unshare-all" "--unshare-user" "--disable-userns" "--die-with-parent" "--new-session"
                 "--cap-drop" "ALL" "--clearenv"
                 "--setenv" "PATH" *sandbox-path* "--setenv" "HOME" "/tmp" "--setenv" "LC_ALL" "C.UTF-8")
@@ -877,7 +879,7 @@ this run's sandboxes: each run of the image makes its own."
 (pushnew 'forget-sandboxes sb-ext:*save-hooks*)
 
 (defun process-marked-p (pid)
-  "True when the process numbered PID has *SANDBOX-MARK-NAME* in its
+  "True when the process with process id (PID) has *SANDBOX-MARK-NAME* in its
 environment: bwrap of a sandbox Tuatara started."
   (let ((environment (proc-text (format nil "/proc/~d/environ" pid)))
         (name (format nil "~a=" *sandbox-mark-name*)))
@@ -887,8 +889,8 @@ environment: bwrap of a sandbox Tuatara started."
          t)))
 
 (defun sandbox-left-p (pid)
-  "True when the process numbered PID is a sandbox's first process left
-behind: bwrap, marked (PROCESS-MARKED-P), the first of a namespace of
+  "True when the process with process id (PID) is a sandbox's first process
+left behind: bwrap, marked (PROCESS-MARKED-P), the first of a namespace of
 processes of its own, its parent no marked bwrap. That process waits for
 bwrap's go-ahead before it makes the sandbox; bwrap ended before it gives
 it, it waits for ever, and the kernel lets no signal but SIGKILL end it."
@@ -1081,10 +1083,11 @@ it from a thread doing work in the background."
     (values (first state) (second state) (third state))))
 
 (defun sealed-copy (fd)
-  "A copy in memory of the open file FD, as a new descriptor at its start,
-sealed so that nothing, not even a program given it, can change it: not
-written, not made shorter or longer. FD's own offset is left alone. A file
-larger than *SANDBOX-INPUT-LIMIT* is refused with a FILE-SYSTEM-ERROR."
+  "A copy in memory of the file open as file descriptor (FD), as a new
+descriptor at its start, sealed so that nothing, not even a program given
+it, can change it: not written, not made shorter or longer. FD's own offset
+is left alone. A file larger than *SANDBOX-INPUT-LIMIT* is refused with a
+FILE-SYSTEM-ERROR."
   (let ((size (stamp-size (fd-stamp fd "a file"))))
     (when (and *sandbox-input-limit* (> size *sandbox-input-limit*))
       (error 'file-system-error :operation "decode" :path "a file"
@@ -1092,13 +1095,15 @@ larger than *SANDBOX-INPUT-LIMIT* is refused with a FILE-SYSTEM-ERROR."
     (sealed-memory-file "tuatara-decode" (lambda (copy) (copy-fd-contents fd copy size)))))
 
 (defun sealed-p (fd)
-  "True when FD is a copy in memory sealed as SEALED-COPY seals it."
+  "True when file descriptor (FD) is a copy in memory sealed as SEALED-COPY
+seals it."
   (let ((seals (fcntl-int fd 1034 0)))                      ; F_GET_SEALS
     (and (>= seals 0) (= 15 (logand seals 15)))))
 
 (defun reopen-sealed (fd)
-  "A descriptor of its own on the sealed copy FD, at its start, read only:
-programs reading it at once each read from their own place."
+  "A descriptor of its own on the sealed copy open as file descriptor (FD), at
+its start, read only: programs reading it at once each read from their own
+place."
   (handler-case (sb-posix:open (format nil "/proc/self/fd/~d" fd) sb-posix:o-rdonly)
     (sb-posix:syscall-error (e) (fail "open again" "a copy in memory" (sb-posix:syscall-errno e)))))
 
