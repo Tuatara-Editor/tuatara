@@ -217,3 +217,22 @@ a moment.")
   (true (search "Debian and Ubuntu: gnupg; Arch: gnupg" (tuatara.defaults::outside-program-install-words :gpg nil)))
   (let ((words (tuatara.defaults::git-health-words)))
     (true (or (search "by /" words) (search "install git" words)) "~a" words)))
+
+(define-test (health grammar-asked-again)
+  ;; a grammar that could not be had at first, the program loading grammars having ended (as when the
+  ;; sandboxes were ended by something before), is asked for again, not said to be missing
+  (let ((refused 0))
+    (remhash "ada" tuatara.syntax::*grammars*)
+    (sb-int:encapsulate 'tuatara.syntax:find-grammar 'ended-once
+                        (lambda (function name)
+                          (if (and (equal name "ada") (< refused 1))
+                              (progn (incf refused) nil)
+                              (funcall function name))))
+    (unwind-protect
+         (let ((tuatara.defaults::*health-wait* 60))
+           (run-keys "M-x c h e c k - h e a l t h RET" :width 120 :height 50)
+           (is = 1 refused)
+           (let ((line (health-line (health-text) "ada ")))
+             (true line)
+             (false (search "✘" line) "~a" line)))
+      (sb-int:unencapsulate 'tuatara.syntax:find-grammar 'ended-once))))

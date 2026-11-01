@@ -94,6 +94,14 @@ away: what the editor uses stays as it is."
                                                     :good)
                                  (error (e) (cons :bad (substitute #\Space #\Newline (princ-to-string e))))))))))
 
+(defun health-grammar (name)
+  "The grammar NAME as the health check finds it (TUATARA.SYNTAX:FIND-GRAMMAR),
+asked for again, up to three times, while it is there but could not be had
+yet: the program loading grammars had ended and is started anew."
+  (loop repeat 3
+        for grammar = (tuatara.syntax:find-grammar name)
+        when (or grammar (not (tuatara.syntax:grammar-pending-p name))) return grammar))
+
 (defun start-health-check ()
   "Start checking every language's grammar and rules in the background, a
 job, the grammars found there too, which may wait for the program loading
@@ -106,7 +114,7 @@ them to start, and in a window, how it draws each way it can
      (make-health-check languages '())
      (lambda (check)
        (setf (health-check-grammars check)
-             (mapcar (lambda (l) (tuatara.syntax:find-grammar (language-grammar l))) languages)
+             (mapcar (lambda (l) (health-grammar (language-grammar l))) languages)
              (health-check-sandbox check)
              (multiple-value-list (tuatara.io:sandbox-status :again t))
              (health-check-decoders check)
