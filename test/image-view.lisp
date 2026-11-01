@@ -456,3 +456,42 @@ and a JP2 file with alpha at half."
                (car (first (nth-value 1 (tuatara:decode-picture (alexandria:read-file-into-byte-vector path) :jpeg 64 48))))))
         (true (search "-define jpeg:size=40x30 JPEG:-[0]" (told small)) "~a" (told small))
         (true (search "-define jpeg:size=64x48 JPEG:-[0]" (told large)) "~a" (told large))))))
+
+(define-test (image-view magick-policy-in-place-of-others)
+  ;; ImageMagick reads every policy file on its path: each one the program here lists besides
+  ;; Tuatara's is given Tuatara's policy in its place, shut in; one that cannot be is refused
+  (clrhash tuatara.defaults::*magick-checked*)
+  (let ((octets (concatenate '(vector (unsigned-byte 8)) (j2k-octets 64 48) (make-array 64 :element-type '(unsigned-byte 8))))
+        (pixel "printf 'P7\\nWIDTH 1\\nHEIGHT 1\\nDEPTH 3\\nMAXVAL 255\\nTUPLTYPE RGB\\nENDHDR\\n\\001\\002\\003'"))
+    ;; a stand-in listing the policy files it finds, with "pattern: PAM" for Tuatara's; drawing only
+    ;; when the other one, /etc/ld.so.cache here, holds Tuatara's policy
+    (let ((tuatara.defaults::*image-decoders*
+            (list (list :name "stand-in" :sandbox 'tuatara.defaults::magick-sandbox
+                        :program (list "sh" "-c"
+                                       (format nil "if [ \"$1\" = -list ]; then
+  for f in /etc/tuatara/ImageMagick/policy.xml /etc/ld.so.cache; do
+    [ -f \"$f\" ] || continue; echo \"Path: $f\"; grep -q 'pattern=\"PAM\"' \"$f\" && echo '  pattern: PAM'
+  done; exit 0
+else grep -q 'pattern=\"PAM\"' /etc/ld.so.cache && ~a; fi" pixel)
+                                       "sh" :input)))))
+      (multiple-value-bind (image notes) (tuatara:decode-picture octets :j2k 64 48)
+        (true image "~s" notes)
+        (when image (is equalp #(1 2 3) (tuatara:image-pixels image))))
+      (is equal '("/etc/ld.so.cache") (tuatara.defaults::magick-policy-overlays (first tuatara.defaults::*image-decoders*))))
+    ;; a policy file that still holds another policy, Tuatara's given in its place: not run
+    (let ((tuatara.defaults::*image-decoders*
+            (list (list :name "stand-in" :sandbox 'tuatara.defaults::magick-sandbox
+                        :program (list "sh" "-c"
+                                       (format nil "if [ \"$1\" = -list ]; then
+  printf 'Path: /etc/tuatara/ImageMagick/policy.xml\\n  pattern: PAM\\nPath: /etc/ld.so.cache\\n  pattern: *\\n'
+else ~a; fi" pixel)
+                                       "sh" :input)))))
+      (multiple-value-bind (image notes) (tuatara:decode-picture octets :j2k 64 48)
+        (false image)
+        (is equal ", not shown: sh: it reads a policy that cannot be replaced (/etc/ld.so.cache)" (car (first notes))))))
+  ;; the policy holds ImageMagick to the memory the sandbox gives it
+  (let ((policy (tuatara.defaults::magick-policy (* 1536 1024 1024))))
+    (true (search "name=\"memory\" value=\"1536MiB\"" policy))
+    (true (search "name=\"map\" value=\"1536MiB\"" policy))
+    (true (search "name=\"disk\" value=\"1536MiB\"" policy)))
+  (clrhash tuatara.defaults::*magick-checked*))

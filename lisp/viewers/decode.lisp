@@ -429,19 +429,22 @@ CANCEL, a cons, has its car turn true while it waits."
                         (sb-thread:signal-semaphore *large-picture-turn*)))))
       (funcall function)))
 
-(defun magick-sandbox ()
-  "What the sandbox gives ImageMagick: a policy of its own, through
-MAGICK_CONFIGURE_PATH, reading only the formats of *IMAGE-FORMATS*, writing
-only PAM pixels, no program started (delegates), no filters, no file named by
-@, no image wider or taller than *MAGICK-LARGEST-SIDE*, two threads at most
-\(each costs memory, which the sandbox holds it to)."
-  (list :files (list (cons "/etc/tuatara/ImageMagick/policy.xml"
-                           (format nil "<?xml version=\"1.0\" encoding=\"UTF-8\"?>
+(defparameter *magick-policy-path* "/etc/tuatara/ImageMagick/policy.xml"
+  "Where ImageMagick, shut in, finds the policy Tuatara gives it (MAGICK-SANDBOX).")
+
+(defun magick-policy (memory)
+  "The text of the policy Tuatara gives ImageMagick (MAGICK-SANDBOX), MEMORY
+the octets the program is given (NIL: no limit), its own limits for memory,
+mapped memory and disk set to that."
+  (format nil "<?xml version=\"1.0\" encoding=\"UTF-8\"?>
 <policymap>
   <policy domain=\"resource\" name=\"width\" value=\"~a\"/>
   <policy domain=\"resource\" name=\"height\" value=\"~:*~a\"/>
   <policy domain=\"resource\" name=\"list-length\" value=\"128\"/>
-  <policy domain=\"resource\" name=\"thread\" value=\"2\"/>
+  <policy domain=\"resource\" name=\"thread\" value=\"2\"/>~@[
+  <policy domain=\"resource\" name=\"memory\" value=\"~dMiB\"/>
+  <policy domain=\"resource\" name=\"map\" value=\"~:*~dMiB\"/>
+  <policy domain=\"resource\" name=\"disk\" value=\"~:*~dMiB\"/>~]
   <policy domain=\"delegate\" rights=\"none\" pattern=\"*\"/>
   <policy domain=\"filter\" rights=\"none\" pattern=\"*\"/>
   <policy domain=\"path\" rights=\"none\" pattern=\"@*\"/>
@@ -449,8 +452,102 @@ only PAM pixels, no program started (delegates), no filters, no file named by
   <policy domain=\"coder\" rights=\"read\" pattern=\"{~{~a~^,~}}\"/>
   <policy domain=\"coder\" rights=\"write\" pattern=\"PAM\"/>
 </policymap>
-" *magick-largest-side* (mapcar #'cdr *image-formats*))))
-        :environment '(("MAGICK_CONFIGURE_PATH" "/etc/tuatara/ImageMagick"))))
+" *magick-largest-side* (and memory (max 1 (floor memory (* 1024 1024)))) (mapcar #'cdr *image-formats*)))
+
+(defun magick-sandbox (&key memory overlays)
+  "What the sandbox gives ImageMagick: a policy of its own (MAGICK-POLICY,
+MEMORY the octets it is given) at *MAGICK-POLICY-PATH*, through
+MAGICK_CONFIGURE_PATH, and the same policy in place of each of OVERLAYS, the
+other policy files it reads (MAGICK-POLICY-OVERLAYS): reading only the
+formats of *IMAGE-FORMATS*, writing only PAM pixels, no program started
+\(delegates), no filters, no file named by @, no image wider or taller than
+*MAGICK-LARGEST-SIDE*, two threads at most, no more memory than it is given."
+  (let ((policy (magick-policy memory)))
+    (list :files (mapcar (lambda (path) (cons path policy)) (cons *magick-policy-path* overlays))
+          :environment '(("MAGICK_CONFIGURE_PATH" "/etc/tuatara/ImageMagick")))))
+
+(defvar *magick-checked* (make-hash-table :test 'equal :synchronized t)
+  "What was found of each decoding program by running it shut in, by what is
+asked and the program's path, with the stamp of its file then: the policy
+files it reads (MAGICK-POLICY-OVERLAYS), the formats it reads
+\(IMAGE-READERS-MISSING). Asked again once the program's file changes.")
+
+(defun decoder-words-before-keywords (decoder)
+  "The program of DECODER and the arguments before the first keyword, as it
+is run for anything but a picture (-list format)."
+  (loop for word in (getf decoder :program) until (keywordp word) collect word))
+
+(defun magick-checked (decoder what function)
+  "What FUNCTION, called with the full path of DECODER's program, gives, kept
+in *MAGICK-CHECKED* under WHAT, the path and the arguments it is run with,
+while the program's file is unchanged; NIL when the program is not found."
+  (let* ((path (tuatara.io:sandbox-find-program (first (decoder-words-before-keywords decoder))))
+         (stamp (and path (ignore-errors (tuatara.io:path-stamp path))))
+         (key (list* what path (rest (decoder-words-before-keywords decoder))))
+         (known (and path (gethash key *magick-checked*))))
+    (when path
+      (if (and known (equalp (car known) stamp))
+          (cdr known)
+          (let ((value (funcall function path)))
+            (setf (gethash key *magick-checked*) (cons stamp value))
+            value)))))
+
+(defun magick-policy-sections (text)
+  "The policy files ImageMagick's -list policy TEXT names, each (PATH . LINES)
+with the lines that follow it; [built-in] among them."
+  (let ((sections '()))
+    (dolist (line (uiop:split-string text :separator '(#\Newline)) (nreverse sections))
+      (let ((line (string-trim '(#\Space #\Tab #\Return) line)))
+        (if (uiop:string-prefix-p "Path: " line)
+            (push (list (subseq line 6)) sections)
+            (when sections (push line (cdr (first sections)))))))))
+
+(defun magick-policy-listed (decoder overlays)
+  "The policy files DECODER's program, shut in with Tuatara's policy and
+OVERLAYS given it (MAGICK-SANDBOX), lists (-list policy), as
+MAGICK-POLICY-SECTIONS gives them; NIL and why not, in words, when it
+cannot list them."
+  (let ((words (decoder-words-before-keywords decoder)))
+    (multiple-value-bind (output outcome said)
+        (apply #'tuatara.io:sandbox-run (first words) (append (rest words) (list "-list" "policy"))
+               :output-limit (* 1024 1024) (magick-sandbox :overlays overlays))
+      (if (eq outcome :done)
+          (magick-policy-sections (tuatara.text:lenient-string output))
+          (values nil (format nil "its policies could not be listed: ~a"
+                              (tuatara.io:sandbox-outcome-words outcome said :label (first words))))))))
+
+(defun magick-policy-check (decoder)
+  "The policy files besides Tuatara's own DECODER's program reads, as a list
+of the paths and NIL, or of NIL and why it is not to be run, in words: it
+cannot list them, or one of them, given Tuatara's policy in its place, still
+holds another."
+  (multiple-value-bind (sections why) (magick-policy-listed decoder '())
+    (if why
+        (list nil why)
+        (let ((overlays (remove-duplicates (loop for (where) in sections
+                                                 when (and (uiop:string-prefix-p "/" where)
+                                                           (string/= where *magick-policy-path*))
+                                                   collect where)
+                                           :test #'string=)))
+          (multiple-value-bind (again why) (if overlays (magick-policy-listed decoder overlays) sections)
+            (let ((other (find-if (lambda (section)
+                                    (and (uiop:string-prefix-p "/" (first section))
+                                         (not (member "pattern: PAM" (rest section) :test #'string=))))
+                                  again)))
+              (cond (why (list nil why))
+                    (other (list nil (format nil "it reads a policy that cannot be replaced (~a)" (first other))))
+                    (t (list overlays nil)))))))))
+
+(defun magick-policy-overlays (decoder)
+  "The policy files besides Tuatara's own that DECODER's program, shut in,
+reads (its -list policy), each given Tuatara's policy in its place
+\(MAGICK-SANDBOX) and checked to hold it then (MAGICK-POLICY-CHECK), as two
+values: the paths, and NIL or why the program is not to be run, in words.
+Found once for each program file (MAGICK-CHECKED)."
+  (let ((found (magick-checked decoder :policy (lambda (path)
+                                                 (declare (ignore path))
+                                                 (magick-policy-check decoder)))))
+    (values (first found) (second found))))
 
 (defparameter *image-formats*
   '((:png . "PNG") (:jpeg . "JPEG") (:gif . "GIF") (:webp . "WEBP") (:bmp . "BMP") (:tiff . "TIFF") (:raw . "DNG")
@@ -478,18 +575,26 @@ names them all).")
 
 (defun image-readers-missing (decoder)
   "The kinds of *IMAGE-FORMATS* the program of DECODER cannot read here, by
-what it lists of the formats it reads (-list format), run in the sandbox;
-NIL when it reads them all, or when the sandbox cannot run it."
-  (let ((words (loop for word in (getf decoder :program) until (keywordp word) collect word)))
-    (when (eq (tuatara.io:sandbox-status) :ready)
-      (multiple-value-bind (output outcome) (tuatara.io:sandbox-run (first words) (append (rest words) (list "-list" "format"))
-                                                                    :output-limit (* 1024 1024))
-        (when (eq outcome :done)
-          (let ((listed (loop for line in (uiop:split-string (tuatara.text:lenient-string output) :separator '(#\Newline))
-                              for word = (first (tuatara.text:split-words line))
-                              when word collect (string-right-trim "*" word))))
-            (loop for (kind . format) in *image-formats*
-                  unless (member format listed :test #'string-equal) collect kind)))))))
+what it lists of the formats it reads (-list format), run in the sandbox
+once for each program file (MAGICK-CHECKED); NIL when it reads them all, or
+when the sandbox cannot run it."
+  (when (eq (tuatara.io:sandbox-status) :ready)
+    (let ((listed (magick-checked
+                   decoder :formats
+                   (lambda (path)
+                     (declare (ignore path))
+                     (let ((words (decoder-words-before-keywords decoder)))
+                       (multiple-value-bind (output outcome)
+                           (tuatara.io:sandbox-run (first words) (append (rest words) (list "-list" "format"))
+                                                   :output-limit (* 1024 1024))
+                         (if (eq outcome :done)
+                             (loop for line in (uiop:split-string (tuatara.text:lenient-string output) :separator '(#\Newline))
+                                   for word = (first (tuatara.text:split-words line))
+                                   when word collect (string-right-trim "*" word))
+                             :unlisted)))))))
+      (unless (member listed '(nil :unlisted))
+        (loop for (kind . format) in *image-formats*
+              unless (member format listed :test #'string-equal) collect kind)))))
 
 (defun image-decoder-words ()
   "What turns images into pixels here, as M-x check-health says it, with the
@@ -582,7 +687,10 @@ for print."
              (memory (picture-memory kind pixels octets (cond ((getf header :components))
                                                               (header (+ 3 (getf header :extra-channels)))
                                                               (t 0))))
-             (large (and memory tuatara-user:*sandbox-memory* (> memory tuatara-user:*sandbox-memory*))))
+             (large (and memory tuatara-user:*sandbox-memory* (> memory tuatara-user:*sandbox-memory*)))
+             ;; the policy files it reads besides Tuatara's, each given Tuatara's
+             (policy (multiple-value-list (and (getf decoder :sandbox) (magick-policy-overlays decoder))))
+             (overlays (first policy)))
         (let ((refusal (coded-picture-refusal kind header)))
           (when refusal
             (note (format nil ", not shown: ~a" refusal) :comment)
@@ -591,6 +699,9 @@ for print."
           (note (format nil ", not shown: ~:[it~;~:*~,1f megapixels~] would take ~a to draw, more than *picture-memory* allows (~a)"
                         (and pixels (/ pixels 1d6)) (octets-words memory) (octets-words *picture-memory*))
                 :comment)
+          (done nil))
+        (when (second policy)
+          (note (format nil ", not shown: ~a: ~a" (first (getf decoder :program)) (second policy)) :comment)
           (done nil))
       (destructuring-bind (program &rest arguments) (getf decoder :program)
         (multiple-value-bind (output outcome said)
@@ -616,7 +727,7 @@ for print."
                       :input fd :cancel cancel :seconds seconds :output-limit (+ 4096 (* 4 (max 1 width) (max 1 height)))
                       ;; a TIFF read from a pipe is copied to a file of the sandbox's first
                       :file-limit (max tuatara.io:*sandbox-file-limit* (+ (* 1024 1024) (or octets 0)))
-                      (and (getf decoder :sandbox) (funcall (getf decoder :sandbox)))))))
+                      (and (getf decoder :sandbox) (funcall (getf decoder :sandbox) :memory memory :overlays overlays))))))
           (case outcome
             (:cancelled (return-from decode-image (values nil nil)))
             (:done
