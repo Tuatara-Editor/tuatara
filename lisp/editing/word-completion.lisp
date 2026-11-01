@@ -34,75 +34,117 @@ more than a few.")
   "The most characters of the text before point taken as the start of a word,
 and of a word found.")
 
-(defun word-part-p (char)
-  "True when CHAR can be part of a word being completed: a letter, a digit, _
-or a hyphen."
-  (or (name-char-p char) (char= char #\-)))
+(defgeneric mode-hyphen-in-words-p (mode)
+  (:documentation "True when a hyphen is part of a word in buffers of MODE, as in
+prose and in Lisp or CSS names; NIL where it is an operator or a dash.")
+  (:method (mode) (declare (ignore mode)) nil)
+  (:method ((mode fundamental-mode)) t)
+  (:method ((mode prog-mode)) nil)
+  (:method ((mode lisp-mode)) t)
+  (:method ((mode emacs-lisp-mode)) t)
+  (:method ((mode clojure-mode)) t)
+  (:method ((mode scheme-mode)) t)
+  (:method ((mode css-mode)) t)
+  (:method ((mode scss-mode)) t))
 
-(defun word-completion-private-p (buffer)
-  "True when BUFFER holds text that must not turn up in other documents: a file
-opened safely, or the decrypted text of an encrypted one."
-  (or (tuatara.io:safe-visit-p buffer) (encrypted-buffer-p buffer)))
+(defun word-part-p (char)
+  "True when CHAR can be part of a word being completed: a letter, a mark joined
+to one, a digit, _ or the joiner of an emoji sequence."
+  (or (word-character-p char) (digit-char-p char) (char= char #\_) (char= char (code-char #x200D))))
+
+(defun word-part-with-hyphen-p (char)
+  "True for what WORD-PART-P is true of, and a hyphen."
+  (or (char= char #\-) (word-part-p char)))
+
+(defun word-part-function (buffer)
+  "The function telling a character of a word in BUFFER: WORD-PART-P, with
+hyphens too where the major mode has them in words (MODE-HYPHEN-IN-WORDS-P)."
+  (if (mode-hyphen-in-words-p (buffer-major-mode buffer)) #'word-part-with-hyphen-p #'word-part-p))
+
+(defun word-completion-kind (buffer)
+  "What kind of text BUFFER holds as to who may see it: :ENCRYPTED for the
+decrypted text of an encrypted file, :EVIDENCE for a file in an evidence folder,
+:SAFE for another file opened safely, NIL for any other text."
+  (cond ((encrypted-buffer-p buffer) :encrypted)
+        ((buffer-evidence buffer) :evidence)
+        ((tuatara.io:safe-visit-p buffer) :safe)))
 
 (defun word-completion-found (word prefix)
   "WORD, a word that starts with PREFIX apart from its case, as it is put in
 after PREFIX: PREFIX itself followed by the rest of WORD, or all of WORD in
 capitals when PREFIX is in capitals, if *WORD-COMPLETION-KEEP-CASE*."
   (cond ((not *word-completion-keep-case*) word)
-        ((and (> (count-if #'alpha-char-p prefix) 1) (string= prefix (string-upcase prefix))) (string-upcase word))
+        ((and (> (count-if #'alpha-char-p prefix) 1) (string= prefix (string-upcase prefix)))
+         (sb-unicode:uppercase word))
         (t (concatenate 'string prefix (subseq word (length prefix))))))
 
-(defun words-in-text (text point prefix skip-point cut-start cut-end)
-  "The words in TEXT that start with PREFIX, nearest to index POINT first: those
-that end before it, the last first, then those after it. The word around POINT
-is left out when SKIP-POINT, and the words cut short by an edge of TEXT that
-CUT-START or CUT-END says is not an edge of the buffer. Each is as WORD-COMPLETION-FOUND gives it. Complexity:
-O(length of TEXT)."
-  (let ((before '()) (after '()) (end (length text)) (size (length prefix))
-        (test (if *word-completion-keep-case* #'char-equal #'char=)))
-    (loop with i = 0
-          while (< i end)
-          do (let ((start (position-if #'word-part-p text :start i)))
-               (if (null start)
-                   (setf i end)
-                   (let ((stop (or (position-if-not #'word-part-p text :start start) end)))
-                     (setf i stop)
-                     (when (and (>= (- stop start) size)
-                                (<= (- stop start) *word-completion-longest*)
-                                (not (and skip-point (<= start point stop)))
-                                (not (and (zerop start) cut-start))
-                                (not (and (= stop end) cut-end))
-                                (null (mismatch prefix text :test test :start2 start :end2 (+ start size))))
-                       (let ((word (subseq text start stop)))
-                         (if (<= stop point) (push word before) (push word after))))))))
-    (mapcar (lambda (word) (word-completion-found word prefix))
-            (nconc before (nreverse after)))))
+(defun map-words-near (function text point prefix part-p skip-point cut-start cut-end)
+  "Call FUNCTION with the start and end, as indices of TEXT, of each word in it
+that starts with PREFIX, nearest to index POINT first: the word around POINT
+unless SKIP-POINT, then those before it, the last first, then those after it,
+until FUNCTION returns true. PART-P tells the characters of a word. Words
+cut short by an edge of TEXT that CUT-START or CUT-END says is not an edge of
+the buffer, and those longer than *WORD-COMPLETION-LONGEST*, are left out.
+True when FUNCTION stopped it. Complexity: O(length of TEXT), no garbage."
+  (let* ((end (length text)) (size (length prefix))
+         (test (if *word-completion-keep-case* #'char-equal #'char=)))
+    (flet ((try (start stop)
+             (and (>= (- stop start) size)
+                  (<= (- stop start) *word-completion-longest*)
+                  (not (and (zerop start) cut-start))
+                  (not (and (= stop end) cut-end))
+                  (null (mismatch prefix text :test test :start2 start :end2 (+ start size)))
+                  (funcall function start stop))))
+      (let ((around-start (let ((p (position-if-not part-p text :end point :from-end t))) (if p (1+ p) 0)))
+            (around-end (or (position-if-not part-p text :start point) end)))
+        (or (and (not skip-point) (< around-start around-end) (try around-start around-end))
+            (loop with at = around-start
+                  for last = (position-if part-p text :end at :from-end t)
+                  while last
+                  do (let ((start (let ((p (position-if-not part-p text :end last :from-end t))) (if p (1+ p) 0))))
+                       (setf at start)
+                       (when (try start (1+ last)) (return t))))
+            (loop with at = around-end
+                  for start = (position-if part-p text :start at)
+                  while start
+                  do (let ((stop (or (position-if-not part-p text :start start) end)))
+                       (setf at stop)
+                       (when (try start stop) (return t)))))))))
 
-(defun buffer-words-around (buffer point prefix reach skip-point)
-  "The words of BUFFER that start with PREFIX, in the REACH octets either side of
-byte POINT, nearest first (WORDS-IN-TEXT)."
+(defun buffer-words-around (function buffer point prefix reach skip-point)
+  "Call FUNCTION with each word of BUFFER that starts with PREFIX, in the REACH
+octets either side of byte POINT, nearest first, until it returns true
+\(MAP-WORDS-NEAR)."
   (let* ((rope (tuatara.buffer:buffer-text buffer))
          (low (tuatara.buffer:buffer-start buffer))
          (high (tuatara.buffer:buffer-end buffer))
          (from (max low (tuatara.text:rope-char-start rope (max 0 (- point reach)))))
          (to (tuatara.text:rope-char-start rope (min high (+ point reach))))
-         (before (tuatara.buffer:buffer-string buffer :start from :end (min point to)))
-         (after (tuatara.buffer:buffer-string buffer :start (min point to) :end to)))
-    (words-in-text (concatenate 'string before after) (length before) prefix skip-point (> from low) (< to high))))
+         (text (tuatara.buffer:buffer-string buffer :start from :end to))
+         (index (loop with at = from
+                      for i from 0
+                      while (and (< at point) (< i (length text)))
+                      do (incf at (tuatara.text:char-octet-length (char text i)))
+                      finally (return i))))
+    (map-words-near (lambda (start stop) (funcall function text start stop))
+                    text index prefix (word-part-function buffer) skip-point (> from low) (< to high))))
 
 (defun word-completion-other-buffers (buffer)
   "The buffers whose words complete a word in BUFFER: those shown in a window
-first, then the others, those used lately first. Left out are the buffers whose
-names start with a space, the hex views, and, unless BUFFER holds such text
-itself, those of private text (WORD-COMPLETION-PRIVATE-P)."
-  (let* ((shown (mapcar #'tuatara.display:window-buffer (tuatara.command:editor-windows)))
-         (own (word-completion-private-p buffer)))
+first, then the others, those used lately first. Only buffers of the same kind
+of text (WORD-COMPLETION-KIND) that visit a file or can be typed in are used, so
+that nothing a command made out of a file's content, which may be evidence,
+gives words, nor do buffers whose names start with a space, nor hex views."
+  (let ((shown (mapcar #'tuatara.display:window-buffer (tuatara.command:editor-windows)))
+        (kind (word-completion-kind buffer)))
     (flet ((usable (other)
              (let ((name (tuatara.buffer:buffer-name other)))
                (and (not (eq other buffer))
                     (not (and (plusp (length name)) (char= #\Space (char name 0))))
                     (not (tuatara.display:hex-view-p other))
-                    (or own (not (word-completion-private-p other)))))))
+                    (eq kind (word-completion-kind other))
+                    (or (tuatara.buffer:buffer-file other)
+                        (not (tuatara.buffer:buffer-local other :read-only)))))))
       (remove-if-not #'usable
                      (remove-duplicates (append shown (tuatara.command:buffers-in-use-order))
                                         :from-end t)))))
@@ -114,35 +156,37 @@ itself, those of private text (WORD-COMPLETION-PRIVATE-P)."
 
 (defun word-completion-candidates (buffer position)
   "The words that complete the start of a word ending at byte POSITION of
-BUFFER, as three values: where that start is, a list of CANDIDATE, nearest first
-\(each with the name of the buffer it came from as its value, NIL for BUFFER
-itself), and the start as typed; NIL when no word ends at POSITION or none
-begins with it. At most *WORD-COMPLETION-MOST* are found, from
-about *WORD-COMPLETION-REACH* octets of BUFFER around POSITION and some of the
-others (*WORD-COMPLETION-OTHER-REACH*, *WORD-COMPLETION-OTHER-TOTAL*)."
+BUFFER, as three values: where that start is, a list of CANDIDATE, nearest
+first (each with the name of the buffer it came from as its value, NIL for
+BUFFER itself), and the start as typed; NIL when no word ends at POSITION or
+none begins with it. At most *WORD-COMPLETION-MOST* are found, from about
+*WORD-COMPLETION-REACH* octets of BUFFER around POSITION and some of the others
+\(*WORD-COMPLETION-OTHER-REACH*, *WORD-COMPLETION-OTHER-TOTAL*)."
   (let* ((rope (tuatara.buffer:buffer-text buffer))
-         (from (max (tuatara.buffer:buffer-start buffer)
-                    (tuatara.text:rope-char-start rope (max 0 (- position (* 4 *word-completion-longest*))))))
+         (low (tuatara.buffer:buffer-start buffer))
+         (from (max low (tuatara.text:rope-char-start rope (max 0 (- position (* 4 *word-completion-longest*))))))
          (typed (tuatara.buffer:buffer-string buffer :start from :end position))
-         (cut (position-if-not #'word-part-p typed :from-end t))
+         (part-p (word-part-function buffer))
+         (cut (position-if-not part-p typed :from-end t))
          (prefix (subseq typed (if cut (1+ cut) 0))))
-    (when (and (plusp (length prefix)) (<= (length prefix) *word-completion-longest*)
-               (or cut (= from (tuatara.buffer:buffer-start buffer))))
+    (when (and (plusp (length prefix)) (<= (length prefix) *word-completion-longest*) (or cut (= from low)))
       (let ((seen (make-hash-table :test 'equal)) (found '()) (count 0)
             (left *word-completion-other-total*))
         (setf (gethash prefix seen) t)
-        (flet ((take (words name)
-                 (dolist (word words)
-                   (when (and (< count *word-completion-most*) (not (gethash word seen)) (some #'name-char-p word))
-                     (setf (gethash word seen) t)
-                     (incf count)
-                     (push (tuatara.command:make-candidate word :value name) found)))))
-          (take (buffer-words-around buffer position prefix *word-completion-reach* t) nil)
+        (flet ((taker (name)
+                 (lambda (text start stop)
+                   (let ((word (word-completion-found (subseq text start stop) prefix)))
+                     (when (and (not (gethash word seen)) (some #'name-char-p word))
+                       (setf (gethash word seen) t)
+                       (incf count)
+                       (push (tuatara.command:make-candidate word :value name) found)))
+                   (>= count *word-completion-most*))))
+          (buffer-words-around (taker nil) buffer position prefix *word-completion-reach* t)
           (dolist (other (word-completion-other-buffers buffer))
             (when (or (<= left 0) (>= count *word-completion-most*)) (return))
             (decf left (* 2 *word-completion-other-reach*))
-            (take (buffer-words-around other (word-completion-point other) prefix *word-completion-other-reach* nil)
-                  (tuatara.buffer:buffer-name other))))
+            (buffer-words-around (taker (tuatara.buffer:buffer-name other)) other (word-completion-point other)
+                                 prefix *word-completion-other-reach* nil)))
         (when found
           (values (- position (tuatara.text:string-octet-length prefix)) (nreverse found) prefix))))))
 
@@ -158,13 +202,14 @@ comes from, no documentation, what can be part of a word and true for the
 order to be kept; NIL when there are none."
   (multiple-value-bind (start candidates) (word-completion-candidates buffer position)
     (when start
-      (values start position candidates #'word-completion-annotation nil #'word-part-p t))))
+      (values start position candidates #'word-completion-annotation nil (word-part-function buffer) t))))
 
 (defvar *word-expansion* nil
   "The words EXPAND-WORD is putting in one after another, while it is, as a list
-\(BUFFER VERSION START END WORDS INDEX PREFIX): the buffer and the version of
+\(BUFFER VERSION START END WORDS INDEX PREFIX UNDO): the buffer and the version of
 its text after the last word went in, where the text replaced starts and ends,
-the words, the one in now (-1 for the text as typed) and the text as typed.")
+the words, the one in now (-1 for the text as typed), the text as typed and the
+buffer's undo history before the first word went in.")
 
 (defun word-expansion-continues-p (buffer)
   "True when the last command was EXPAND-WORD and nothing has changed since it
@@ -178,46 +223,57 @@ put in a word at point of BUFFER."
 
 (defun word-expansion-put (buffer state index)
   "Replace the text STATE (see *WORD-EXPANSION*) says went in by word INDEX, or
-by the text as typed for -1, and remember it."
-  (destructuring-bind (b version start end words old prefix) state
+by the text as typed for -1, and remember it. All the words put in one after
+another are one step to undo."
+  (destructuring-bind (b version start end words old prefix undo) state
     (declare (ignore b version old))
     (let* ((text (if (minusp index) prefix (nth index words)))
            (after (tuatara.buffer:buffer-replace buffer start end text)))
-      (setf (tuatara.buffer:buffer-point buffer) after
-            *word-expansion* (list buffer (tuatara.buffer:buffer-version buffer) start after words index prefix)))))
+      (setf (tuatara.buffer:buffer-point buffer) after)
+      (tuatara.buffer:merge-undo-groups buffer undo)
+      (setf *word-expansion*
+            (list buffer (tuatara.buffer:buffer-version buffer) start after words index prefix undo)))))
 
 (define-command expand-word ()
   "Put in place of the start of the word before point the nearest word that
-starts with it, in this buffer and then in the others (those shown first). Typed
-again straight after, it puts in the next nearest in place of that one, and
-says so when the words are out, the text as typed back. The words come from
-about 64 KiB around point, and from files opened safely and encrypted ones only
-into a buffer of the same kind. \\[complete-word] lists them instead. With
-*WORD-COMPLETION-KEEP-CASE* the case typed is kept."
+starts with it, looked for in this buffer, then in the others (those shown
+first). Typed again straight after, it puts in the next nearest in its place;
+when the words are out the text as typed comes back, and one more press starts
+again. One undo takes all of them back. A word is letters, digits and _, and
+hyphens in prose and Lisp. About 64 KiB around point are read here, less in
+other buffers; files opened safely, evidence and decrypted files give words
+only to buffers of the same kind. \\[complete-word] lists the words instead.
+With *WORD-COMPLETION-KEEP-CASE* the case typed is kept."
   (let ((b (current-buffer)))
     (cond ((tuatara.display:hex-view-p b) (message "Nothing to expand in the hex view"))
-          ((tuatara.buffer:buffer-local b :read-only) (message "Buffer is read-only: ~a" (tuatara.buffer:buffer-name b)))
+          ((tuatara.buffer:buffer-local b :read-only)
+           (message "Buffer is read-only: ~a" (tuatara.buffer:buffer-name b)))
           ((word-expansion-continues-p b)
            (let* ((state *word-expansion*) (next (1+ (sixth state))))
              (cond ((< next (length (fifth state))) (word-expansion-put b state next))
                    (t (word-expansion-put b state -1)
                       (message "No more words start with ~a" (seventh state))))))
           (t
-           (multiple-value-bind (start candidates prefix) (word-completion-candidates b (point))
-             (if (null start)
-                 (message "No word to expand here")
-                 (let ((end (point)))
-                   (word-expansion-put b (list b nil start end (mapcar #'tuatara.command:candidate-string candidates) -1 prefix)
+           (let ((undo (tuatara.buffer:buffer-undo-stack b)))
+             (multiple-value-bind (start candidates prefix) (word-completion-candidates b (point))
+               (if (null start)
+                   (message "No word to expand here")
+                   (word-expansion-put b (list b nil start (point)
+                                               (mapcar #'tuatara.command:candidate-string candidates) -1 prefix undo)
                                        0))))))))
 
 (define-command complete-word ()
   "List the words in the buffers that start with the text before point beside
 the cursor, the nearest first, each with the buffer it is in when that is not
-this one; \\[expand-word] puts them in one after another. Typing narrows the list;
+this one; \\[expand-word] puts them in one after another. A plain terminal sends
+this key as C-M-_, which is redo there; \\[completion-at-point] (C-M-i) lists
+the words as well where the major mode has no completion of its own. Typing
+narrows the list;
 \\<popup>\\[popup-next] and \\[popup-previous] choose, \\[popup-insert] or
 \\`TAB' put the chosen one in, \\[popup-quit] closes it. When one word alone
 fits, it goes in at once."
   (let ((b (current-buffer)))
     (cond ((tuatara.display:hex-view-p b) (message "Nothing to complete in the hex view"))
-          ((tuatara.buffer:buffer-local b :read-only) (message "Buffer is read-only: ~a" (tuatara.buffer:buffer-name b)))
+          ((tuatara.buffer:buffer-local b :read-only)
+           (message "Buffer is read-only: ~a" (tuatara.buffer:buffer-name b)))
           (t (complete-at-point-in b :words :only)))))

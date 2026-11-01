@@ -8,21 +8,25 @@
 when typed again; C-M-/ lists them; words come from other buffers but not from private ones; the case typed
 is kept; only a stretch around point is read.")
 
-(defun word-keys (keys &key (text "") (width 80) other private own-private)
+(defun set-text-kind (buffer kind)
+  "Make BUFFER hold text of KIND, :SAFE or :ENCRYPTED, or leave it for NIL."
+  (case kind
+    (:safe (setf (tuatara.buffer:buffer-local buffer :safe-visit) t))
+    (:encrypted (setf (tuatara.buffer:buffer-local buffer :encrypted) (list :keys nil)))))
+
+(defun word-keys (keys &key (text "") (width 80) other other-kind own-kind)
   "Run KEYS in a scratch buffer holding TEXT, point at its end, after making a buffer named \"other-words\"
-holding OTHER, safely opened when PRIVATE, and the scratch buffer opened safely first when OWN-PRIVATE;
+holding OTHER of kind OTHER-KIND, and the scratch buffer made of kind OWN-KIND first;
 return the text after, and the frontend."
   (let ((made (tuatara.buffer:find-buffer "other-words")))
     (when made (tuatara.buffer:kill-buffer made)))
   (when other
     (let ((b (tuatara.buffer:make-buffer "other-words" :text other)))
-      (when private (setf (tuatara.buffer:buffer-local b :safe-visit) t))))
+      (set-text-kind b other-kind)))
   (multiple-value-bind (f editor)
-      (run-keys (list "M->"
-                      (lambda ()
-                        (when own-private
-                          (setf (tuatara.buffer:buffer-local (tuatara.command:current-buffer) :safe-visit) t)))
-                      keys)
+      (run-keys (append (list "M->"
+                              (lambda () (set-text-kind (tuatara.command:current-buffer) own-kind)))
+                        (if (listp keys) keys (list keys)))
                 :text text :width width)
     (values (session-text editor) f)))
 
@@ -45,9 +49,14 @@ return the text after, and the frontend."
   ;; this buffer's words come before another's
   (is string= "zero zero" (word-keys "M-/" :text "zero ze" :other "zebra"))
   (is string= "zero zebra" (word-keys "M-/ M-/" :text "zero ze" :other "zebra"))
-  ;; a file opened safely gives nothing to others, but to a buffer opened safely too
-  (is string= "ze" (word-keys "M-/" :text "ze" :other "zebra" :private t))
-  (is string= "zebra" (word-keys "M-/" :text "ze" :other "zebra" :private t :own-private t))
+  ;; text of a kind (safe, decrypted) gives words only to buffers of the same kind, never to another
+  (is string= "ze" (word-keys "M-/" :text "ze" :other "zebra" :other-kind :safe))
+  (is string= "ze" (word-keys "M-/" :text "ze" :other "zebra" :other-kind :encrypted))
+  (is string= "ze" (word-keys "M-/" :text "ze" :other "zebra" :own-kind :safe))
+  (is string= "ze" (word-keys "M-/" :text "ze" :other "zebra" :own-kind :encrypted))
+  (is string= "ze" (word-keys "M-/" :text "ze" :other "zebra" :own-kind :safe :other-kind :encrypted))
+  (is string= "ze" (word-keys "M-/" :text "ze" :other "zebra" :own-kind :encrypted :other-kind :safe))
+  (is string= "zebra" (word-keys "M-/" :text "ze" :other "zebra" :own-kind :safe :other-kind :safe))
   ;; the same typing in the insert state
   (is string= "zero zero" (word-keys "i M-/" :text "zero ze")))
 
@@ -78,3 +87,37 @@ return the text after, and the frontend."
          (near (format nil "needle~a" (make-string 100 :initial-element #\Space))))
     (is string= (format nil "~aneed" far) (word-keys "M-/" :text (format nil "~aneed" far)))
     (is string= (format nil "~aneedle" near) (word-keys "M-/" :text (format nil "~aneed" near)))))
+
+(define-test (word-completion text-made-from-files-and-evidence)
+  ;; a buffer open before its folder became evidence is of the evidence kind
+  (with-test-directory (dir)
+    (let ((b (tuatara.buffer:make-buffer "evidence-words" :text "zebra"
+                                                          :file (namestring (merge-pathnames "e.txt" dir)))))
+      (unwind-protect
+           (progn (is eq nil (tuatara.defaults::word-completion-kind b))
+                  (with-evidence-folders ((list (namestring dir)))
+                    (is eq :evidence (tuatara.defaults::word-completion-kind b)))
+                  (is eq nil (tuatara.defaults::word-completion-kind b)))
+        (tuatara.buffer:kill-buffer b))))
+  ;; text a command made, read-only and with no file, gives no words; a file's buffer does, read-only or not
+  (let ((made (tuatara.buffer:make-buffer "made-words" :text "zebra")))
+    (setf (tuatara.buffer:buffer-local made :read-only) t)
+    (is string= "ze" (word-keys "M-/" :text "ze"))
+    (tuatara.buffer:kill-buffer made)))
+
+(define-test (word-completion what-a-word-is)
+  ;; combining marks and the joiner are part of a word
+  (let ((accent (format nil "cafe~c" (code-char #x301))))
+    (is string= (format nil "~a ~a" accent accent) (word-keys "M-/" :text (format nil "~a caf" accent))))
+  ;; a hyphen is part of a word in prose and Lisp, not in C
+  (is string= "total-count total-count" (word-keys "M-/" :text "total-count total-cou"))
+  (is string= "count total-count" (word-keys (list (lambda () (tuatara.defaults::set-major-mode
+                                                                    (tuatara.command:current-buffer) 'tuatara.defaults::python-mode))
+                                                       "M-/")
+                                                 :text "count total-cou"))
+  ;; the full case mapping
+  (is string= (format nil "stra~ce STRASSE" (code-char #xDF)) (word-keys "M-/" :text (format nil "stra~ce STR" (code-char #xDF)))))
+
+(define-test (word-completion undo)
+  ;; all the words put in one after another are one step to undo
+  (is string= "apricot apple ap" (word-keys "M-/ M-/ M-x u n d o RET" :text "apricot apple ap")))
