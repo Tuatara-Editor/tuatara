@@ -8,77 +8,121 @@
 (defpackage #:tuatara.terminal
   (:use #:cl)
   (:documentation "Tuatara in the terminal: the entry point shared by tools/tui.lisp and the saved executable.")
-  (:export #:main #:image-toplevel #:*built-heap* #:*options*))
+  (:export #:main #:image-toplevel #:*built-heap* #:*options* #:*option-help* #:*usage-forms*))
 
 (in-package #:tuatara.terminal)
 
-(defparameter *usage*
-  "Usage: tuatara [--gui] [-Q] [-c INIT-FILE] [--safe] [--hex] [[+LINE[:COLUMN]] FILE...]
-       tuatara [--gui] [-Q] [-c INIT-FILE] --diff OLD NEW
-       tuatara [--gui] [-Q] [-c INIT-FILE] --merge LOCAL BASE REMOTE MERGED
-       tuatara [--gui] [-Q] [-c INIT-FILE] --tutor
-Edit the FILEs in this terminal, or start in the scratch buffers without any.
+(defparameter *usage-forms*
+  '("tuatara [--gui] [-Q] [-c INIT-FILE] [--safe] [--hex] [[+LINE[:COLUMN]] FILE...]"
+    "tuatara [--gui] [-Q] [-c INIT-FILE] --diff OLD NEW"
+    "tuatara [--gui] [-Q] [-c INIT-FILE] --merge LOCAL BASE REMOTE MERGED"
+    "tuatara [--gui] [-Q] [-c INIT-FILE] --tutor")
+  "The ways of starting Tuatara, as --help and the manual page show them.")
+
+(defparameter *usage-introduction*
+  "Edit the FILEs in this terminal, or start in the scratch buffers without any.
 Options may stand anywhere before --; --safe and --hex hold for every FILE of
 the call, a +LINE for the FILE after it.
 Written by Michael A Jones; free software under the GNU General Public
 License, version 3 or later.
-  --gui       open a window of its own instead (as when started with no terminal)
-  -c INIT-FILE, --config INIT-FILE (or --config=INIT-FILE)
-              read INIT-FILE as the init file instead of
-              ~/.config/tuatara/init.lisp
-  +LINE[:COLUMN]
-              before a file: open it with the cursor on that line (from 1;
-              the last line when the file has fewer) and column (from 1;
-              the C in the mode line counts from 0), as in
-              tuatara +120:8 main.lisp +3 notes.org
-  --diff OLD NEW
-              open the differences between the two files, or two folders, as
-              M-x diff-files shows them, and exit when you quit; for git, as
-              git config difftool.tuatara.cmd 'tuatara --diff \"$LOCAL\" \"$REMOTE\"'
-  --merge LOCAL BASE REMOTE MERGED
-              merge the three files into MERGED, the conflicts marked there to
-              resolve, then save it; exits 0 when MERGED is saved with no
-              conflict left, else 1; for git, as git config
-              mergetool.tuatara.cmd 'tuatara --merge \"$LOCAL\" \"$BASE\"
-              \"$REMOTE\" \"$MERGED\"' and mergetool.tuatara.trustExitCode true
-  --safe, -R  open the files safely, whatever folder they are in: read only,
-              no mode or hook acting on them, nothing written
-  --hex       open the files in the hex view, never first as text
-  -           as a file: read standard input into a buffer, *stdin*, opened
-              safely (tuatara - < data, or ... | tuatara -); the terminal stays
-              the keyboard
-  --tutor     start in the tutor
-  -Q, --no-init
-              start without the init file and so without packages, with what
-              Tuatara keeps between sessions (files visited lately, the
-              session, bookmarks) kept apart in a folder that goes with the
-              session, the real one neither read nor changed
-  --generate-config
-              write the init file Tuatara writes when there is none, every
-              setting in it commented out, as
-              ~/.config/tuatara/generated-init.lisp, and exit; a file there
-              already is left as it is
-  --help, -h  show this and exit
-  --version, -V
-              show the version and exit
-  --          the arguments after it are all files, even when one starts with a
-              dash or a plus
-  --install-desktop
-              (the AppImage) copy it to ~/.local/bin/tuatara and put Tuatara
-              in the desktop's applications, its icon too
-  --remove-desktop
-              (the AppImage) take them away again
-  --dark, --light
-              (the AppImage) show the window's title bar in the dark or the
-              light style; with --install-desktop, for the desktop's
-              applications
-  --dynamic-space-size SIZE
-              the most memory Tuatara's own data may take, such as 6GB; by
-              default half the machine's memory, from 2GB to 16GB, or
-              $TUATARA_HEAP_MB megabytes
-The init file is ~/.config/tuatara/init.lisp, written the first time
-Tuatara starts without one.
 "
+  "What --help says after the ways of starting, before the options.")
+
+(defparameter *option-help*
+  '((:flags (("--gui"))
+     :text ("open a window of its own instead (as when started with no terminal)"))
+    (:flags (("-c" "INIT-FILE") ("--config" "INIT-FILE"))
+     :text ("read INIT-FILE as the init file instead of"
+            "~/.config/tuatara/init.lisp; --config=INIT-FILE does as well"))
+    (:flags (("+LINE[:COLUMN]"))
+     :text ("before a file: open it with the cursor on that line (from 1;"
+            "the last line when the file has fewer) and column (from 1;"
+            "the C in the mode line counts from 0), as in"
+            "tuatara +120:8 main.lisp +3 notes.org"))
+    (:flags (("--diff" "OLD NEW"))
+     :text ("open the differences between the two files, or two folders, as"
+            "M-x diff-files shows them, and exit when you quit; for git, as"
+            "git config difftool.tuatara.cmd 'tuatara --diff \"$LOCAL\" \"$REMOTE\"'"))
+    (:flags (("--merge" "LOCAL BASE REMOTE MERGED"))
+     :text ("merge the three files into MERGED, the conflicts marked there to"
+            "resolve, then save it; exits 0 when MERGED is saved with no"
+            "conflict left, else 1; for git, as git config"
+            "mergetool.tuatara.cmd 'tuatara --merge \"$LOCAL\" \"$BASE\""
+            "\"$REMOTE\" \"$MERGED\"' and mergetool.tuatara.trustExitCode true"))
+    (:flags (("--safe") ("-R"))
+     :text ("open the files safely, whatever folder they are in: read only,"
+            "no mode or hook acting on them, nothing written"))
+    (:flags (("--hex"))
+     :text ("open the files in the hex view, never first as text"))
+    (:flags (("-"))
+     :text ("as a file: read standard input into a buffer, *stdin*, opened"
+            "safely (tuatara - < data, or ... | tuatara -); the terminal stays"
+            "the keyboard"))
+    (:flags (("--tutor"))
+     :text ("start in the tutor"))
+    (:flags (("-Q") ("--no-init"))
+     :text ("start without the init file and so without packages, with what"
+            "Tuatara keeps between sessions (files visited lately, the"
+            "session, bookmarks) kept apart in a folder that goes with the"
+            "session, the real one neither read nor changed"))
+    (:flags (("--generate-config"))
+     :text ("write the init file Tuatara writes when there is none, every"
+            "setting in it commented out, as"
+            "~/.config/tuatara/generated-init.lisp, and exit; a file there"
+            "already is left as it is"))
+    (:flags (("--help") ("-h"))
+     :text ("show this and exit"))
+    (:flags (("--version") ("-V"))
+     :text ("show the version and exit"))
+    (:flags (("--"))
+     :text ("the arguments after it are all files, even when one starts with a"
+            "dash or a plus"))
+    (:flags (("--install-desktop")) :only :appimage
+     :text ("(the AppImage) copy it to ~/.local/bin/tuatara and put Tuatara"
+            "in the desktop's applications, its icon too"))
+    (:flags (("--remove-desktop")) :only :appimage
+     :text ("(the AppImage) take them away again"))
+    (:flags (("--dark") ("--light")) :only :appimage
+     :text ("(the AppImage) show the window's title bar in the dark or the"
+            "light style; with --install-desktop, for the desktop's"
+            "applications"))
+    (:flags (("--dynamic-space-size" "SIZE")) :only :runtime
+     :text ("the most memory Tuatara's own data may take, such as 6GB; by"
+            "default half the machine's memory, from 2GB to 16GB, or"
+            "$TUATARA_HEAP_MB megabytes")))
+  "The options, in the order --help lists them, each a property list: :FLAGS,
+the ways of writing it, each (FLAG) or (FLAG ARGUMENT); :TEXT, what it does,
+as lines; :ONLY, :APPIMAGE for an option only the AppImage's launcher takes or
+:RUNTIME for one the program's runtime takes out of the command line before
+Tuatara sees it. The manual page is made from this table too.")
+
+(defun option-label (flags)
+  "The way FLAGS, those of an entry of *OPTION-HELP*, are written in --help:
+each flag with its argument, separated by commas."
+  (format nil "~{~a~^, ~}" (mapcar (lambda (flag) (format nil "~{~a~^ ~}" flag)) flags)))
+
+(defun usage-text ()
+  "What --help shows: the ways of starting Tuatara, *USAGE-INTRODUCTION* and
+each of *OPTION-HELP* with its label, its text beside it when the label is
+short, else below it, then where the init file is."
+  (with-output-to-string (out)
+    (loop for form in *usage-forms*
+          for head = "Usage: " then "       "
+          do (format out "~a~a~%" head form))
+    (write-string *usage-introduction* out)
+    (dolist (entry *option-help*)
+      (let ((label (option-label (getf entry :flags))))
+        (if (< (length label) 11)
+            (format out "  ~12a~a~%" label (first (getf entry :text)))
+            (format out "  ~a~%              ~a~%" label (first (getf entry :text))))
+        (dolist (line (rest (getf entry :text)))
+          (format out "              ~a~%" line))))
+    (format out "The init file is ~~/.config/tuatara/init.lisp, written the first time~%~
+                 Tuatara starts without one.~%~
+                 The manual pages tuatara(1) and tuatara-init(5) come with the packages;~%~
+                 in the editor, C-h C-a introduces it.~%")))
+
+(defparameter *usage* (usage-text)
   "What --help shows, as it is (it is no format control: ~/ starts one).")
 
 ;;; The heap, decided when the executable starts
@@ -202,8 +246,10 @@ keys. KEYBOARD-AVAILABLE-P says first whether there is such a terminal."
         (sb-posix:close fd)))))
 
 (defparameter *options*
-  '("--" "-" "--version" "-V" "--help" "-h" "--gui" "--diff" "--merge" "--safe" "-R" "--hex" "--tutor"
-    "-Q" "--no-init" "--generate-config" "-c" "--config")
+  (loop for entry in *option-help*
+        unless (getf entry :only)
+          append (loop for flag in (getf entry :flags)
+                       unless (char= (char (first flag) 0) #\+) collect (first flag)))
   "The options the program takes, as written (--config= takes its value after
 the equals sign), and +LINE before a file besides.")
 
