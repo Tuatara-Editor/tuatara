@@ -292,7 +292,7 @@ it is now."
                         (let ((block (dblock-at tree text (org-byte->char buffer offset))))
                           (and block (list block))))))
         (cond ((null blocks) (message "The dynamic block is no longer there"))
-              ((tuatara.buffer:buffer-local buffer :read-only) (message "~a is read-only" (tuatara.buffer:buffer-name buffer)))
+              ((buffer-read-only-p buffer) (message "~a is read-only" (tuatara.buffer:buffer-name buffer)))
               (t (dblock-start buffer tree text blocks :count (and count (length blocks)))))))))
 
 (defun dblock-piece-place (buffer piece)

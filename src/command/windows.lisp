@@ -289,11 +289,20 @@ package) or one made from it."
          (some (lambda (class) (string= (symbol-name (class-name class)) (symbol-name name)))
                (sb-mop:class-precedence-list (class-of mode))))))
 
+(defun buffer-kind (buffer)
+  "The kind of buffer BUFFER is, a keyword a rule of where buffers are shown
+may name (:MESSAGES, :HELP, :BACKTRACE), or NIL."
+  (tuatara.buffer:buffer-local buffer :kind))
+
+(defun (setf buffer-kind) (kind buffer)
+  "Make BUFFER a buffer of KIND, a keyword (BUFFER-KIND)."
+  (setf (tuatara.buffer:buffer-local buffer :kind) kind))
+
 (defun buffer-place-fits-p (rule buffer)
   "True when RULE is for BUFFER."
   (some (lambda (item)
           (cond ((stringp item) (string= item (tuatara.buffer:buffer-name buffer)))
-                ((keywordp item) (eq item (tuatara.buffer:buffer-local buffer :kind)))
+                ((keywordp item) (eq item (buffer-kind buffer)))
                 (t (buffer-mode-named-p buffer item))))
         (buffer-place-which rule)))
 

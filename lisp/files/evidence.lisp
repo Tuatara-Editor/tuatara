@@ -863,8 +863,8 @@ one value when it has not changed."
       (dolist (words (evidence-problems-words)) (message "~a" words))
       (dolist (buffer (copy-list tuatara.buffer:*buffers*))
         (let ((folder (buffer-evidence buffer)))
-          (when (and folder (not (tuatara.io:safe-visit-p buffer)) (not (tuatara.buffer:buffer-local buffer :read-only)))
-            (setf (tuatara.buffer:buffer-local buffer :read-only) t)
+          (when (and folder (not (tuatara.io:safe-visit-p buffer)) (not (buffer-read-only-p buffer)))
+            (setf (buffer-read-only-p buffer) t)
             (message "~a is in the evidence folder ~a now: read-only, and nothing is written there"
                      (tuatara.buffer:buffer-name buffer) (abbreviated-path folder)))))))
   nil)

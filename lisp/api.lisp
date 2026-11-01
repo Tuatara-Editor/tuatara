@@ -10,28 +10,9 @@
 ;;;; else Tuatara may change. Positions are octets from 0 into a buffer's text
 ;;;; as it is now, as the core counts them; the Emacs names that count
 ;;;; characters from 1 (point, goto-char) are an init file's, never here.
-;;;; Loaded last, when every name below is defined; the few states of a
-;;;; buffer a package may read and set are given their names here.
+;;;; Loaded last, when every name below is defined.
 
 (in-package #:tuatara.defaults)
-
-(defun buffer-read-only-p (buffer)
-  "True when BUFFER may not be changed by typing or by commands that edit."
-  (tuatara.buffer:buffer-local buffer :read-only))
-
-(defun (setf buffer-read-only-p) (value buffer)
-  "Make BUFFER read-only when VALUE is true, changeable again when it is NIL."
-  (setf (tuatara.buffer:buffer-local buffer :read-only) value))
-
-(defun list-preview-p (buffer)
-  "True when BUFFER, a list, shows the entry on its line in a window beside
-it (\\[list-toggle-preview] switches it)."
-  (tuatara.buffer:buffer-local buffer :list-preview))
-
-(defun (setf list-preview-p) (value buffer)
-  "Have BUFFER, a list, show the entry on its line beside it when VALUE is
-true; not when it is NIL."
-  (setf (tuatara.buffer:buffer-local buffer :list-preview) value))
 
 (defun (setf sentence-end-double-space-p) (value buffer)
   "Make BUFFER's sentences two spaces apart when VALUE is true, one space when

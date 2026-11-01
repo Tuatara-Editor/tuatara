@@ -557,7 +557,7 @@ typing there past the end of its text, or reading its file again.")
   "True when BUFFER is shown in the hex view and an edit would change its size
 by CHANGE octets (not zero): there octets are typed over, never inserted or
 deleted, unless *HEX-VIEW-RESIZING* is true."
-  (and (/= change 0) (buffer-local buffer :hex-view) (not *hex-view-resizing*)))
+  (and (/= change 0) (hex-view-p buffer) (not *hex-view-resizing*)))
 
 (defun check-hex-view-size (buffer change)
   "Signal an error when an edit changing BUFFER's size by CHANGE octets is
@@ -572,15 +572,15 @@ return the positions vector (where each insertion ends). With GROUP true, the
 batch joins the newest undo group instead of starting one, so that characters
 typed one after another undo together. *BEFORE-EDIT-FUNCTIONS* see EDITS
 first, and may refuse them; the change functions run after. An error when the
-buffer-local :READ-ONLY is set, in the hex view (the buffer-local
-:HEX-VIEW) for edits that would change the buffer's size
+buffer is read-only (BUFFER-READ-ONLY-P), in the hex view (HEX-VIEW-P) for
+edits that would change the buffer's size
 \(CHECK-HEX-VIEW-SIZE), and, while a command runs in BUFFER, for edits
 outside the part of it shown when it is narrowed. A text whose lines are still being counted is edited
 at once: the count is made again around the edits once it ends
 \(TUATARA.IO:FINISH-INDEXING)."
-  (when (buffer-local buffer :read-only)
+  (when (buffer-read-only-p buffer)
     (error "Buffer ~a is read-only." (buffer-name buffer)))
-  (when (buffer-local buffer :hex-view)
+  (when (hex-view-p buffer)
     (check-hex-view-size buffer (reduce #'+ edits :key (lambda (e) (- (tuatara.text:edit-insert-length e)
                                                                       (tuatara.text:edit-delete-length e))))))
   (when (and (buffer-narrowing buffer) (plusp (length edits)))
@@ -762,7 +762,7 @@ whole text changed first, and may refuse it. Returns the batch."
 (defun swap-whole-text (buffer rope forward backward)
   "Make ROPE the whole text of BUFFER, as BUFFER-SWAP-TEXT does, without
 putting the change on the undo stack; return its batch."
-  (when (buffer-local buffer :read-only)
+  (when (buffer-read-only-p buffer)
     (error "Buffer ~a is read-only." (buffer-name buffer)))
   (check-hex-view-size buffer (- (tuatara.text:rope-bytes rope) (buffer-size buffer)))
   (run-before-edit buffer :all)
@@ -830,7 +830,7 @@ job's change), stays where that moves it. Signals an error when the buffer is
 read-only.
 *BEFORE-EDIT-FUNCTIONS* see each change taken back first; when one refuses,
 the text is left as it was and the group stays to undo."
-  (when (buffer-local buffer :read-only)
+  (when (buffer-read-only-p buffer)
     (error "Buffer ~a is read-only." (buffer-name buffer)))
   (let ((part (and (buffer-narrowing buffer) (multiple-value-list (buffer-bounds buffer))))
         (before (buffer-version buffer))
@@ -1131,7 +1131,7 @@ moved as the text is. Returns the new group, or NIL when there is nothing to
 redo. Signals an error when the buffer is read-only.
 *BEFORE-EDIT-FUNCTIONS* see each change made again first; when one refuses,
 the text is left as it was and the group stays to redo."
-  (when (buffer-local buffer :read-only)
+  (when (buffer-read-only-p buffer)
     (error "Buffer ~a is read-only." (buffer-name buffer)))
   (let ((group (pop (buffer-redo-stack buffer))))
     (when group
@@ -1173,8 +1173,13 @@ though each pair were one line end, the octets staying as they are; or :CR
 for text whose lines end with a carriage return alone (old Macintosh files).
 What a new line is made with (BUFFER-NEWLINE); in any buffer a carriage
 return that no newline follows ends a line too (TUATARA.TEXT:LINE-END-OCTET-P).
-The :LINE-ENDING local; visiting a file sets it from the file."
+Visiting a file sets it from the file (DETECT-LINE-ENDING)."
   (buffer-local buffer :line-ending :lf))
+
+(defun (setf buffer-line-ending) (ending buffer)
+  "Have BUFFER's lines end as ENDING says, :LF, :CRLF or :CR
+\(BUFFER-LINE-ENDING); its text is left as it is."
+  (setf (buffer-local buffer :line-ending) ending))
 
 (defun buffer-crlf-p (buffer)
   "True when BUFFER's lines end with a carriage return and a newline."
@@ -1429,15 +1434,32 @@ before BYTE, so that no more than that is read."
 
 (defun buffer-local (buffer name &optional default)
   "The value of buffer-local variable NAME in BUFFER, or DEFAULT when unset.
-A package reads Tuatara's own only by keywords meant for it: :READ-ONLY (true
-when the buffer may not be edited) and :DIRECTORY (the folder it stands in);
-its own it keeps under symbols of its own package."
+Tuatara's own states of a buffer are read and set by functions of their own
+\(BUFFER-READ-ONLY-P, BUFFER-DIRECTORY); a package keeps its own under symbols
+of its own package."
   (multiple-value-bind (value found) (gethash name (buffer-locals buffer))
     (if found value default)))
 
 (defun (setf buffer-local) (value buffer name)
   "Set buffer-local variable NAME in BUFFER to VALUE."
   (setf (gethash name (buffer-locals buffer)) value))
+
+(defun buffer-read-only-p (buffer)
+  "True when BUFFER may not be changed by typing or by commands that edit."
+  (buffer-local buffer :read-only))
+
+(defun (setf buffer-read-only-p) (value buffer)
+  "Make BUFFER read-only when VALUE is true, changeable again when it is NIL."
+  (setf (buffer-local buffer :read-only) value))
+
+(defun hex-view-p (buffer)
+  "True when BUFFER is shown as a hex dump, where octets are typed over and
+never inserted or deleted (HEX-VIEW-REFUSES-P)."
+  (and (buffer-local buffer :hex-view) t))
+
+(defun (setf hex-view-p) (value buffer)
+  "Show BUFFER as a hex dump when VALUE is true, as text when it is NIL."
+  (setf (buffer-local buffer :hex-view) value))
 
 (defmacro with-read-only-lifted ((buffer &key (after nil after-given)) &body body)
   "Run BODY with BUFFER writable for the change it makes, then make BUFFER read
@@ -1446,11 +1468,11 @@ done or left) says. BUFFER is evaluated once. The change may reach outside
 the part of BUFFER shown when it is narrowed, as the editor's own writing
 does."
   (let ((place (gensym "BUFFER")) (before (gensym "BEFORE")))
-    `(let* ((,place ,buffer) (,before (buffer-local ,place :read-only)) (*narrowing-in-force* nil))
+    `(let* ((,place ,buffer) (,before (buffer-read-only-p ,place)) (*narrowing-in-force* nil))
        (declare (ignorable ,before))
-       (setf (buffer-local ,place :read-only) nil)
+       (setf (buffer-read-only-p ,place) nil)
        (unwind-protect (progn ,@body)
-         (setf (buffer-local ,place :read-only) ,(if after-given after before))))))
+         (setf (buffer-read-only-p ,place) ,(if after-given after before))))))
 
 ;;; Files
 

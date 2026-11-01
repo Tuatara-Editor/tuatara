@@ -54,7 +54,7 @@ special-mode, read as special-mode's buffers are in modal editing (moving,
 selecting, copying, nothing that edits), coloured as its mode colours it,
 \\`q' closing it (*MADE-TEXT-KEYMAP*). Returns BUFFER."
   (setf (tuatara.buffer:buffer-local buffer :modal-class) :support
-        (tuatara.buffer:buffer-local buffer :override-keymap) *made-text-keymap*)
+        (buffer-override-keymap buffer) *made-text-keymap*)
   buffer)
 
 (defun span-ends (spans)

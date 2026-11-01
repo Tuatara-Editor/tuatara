@@ -313,11 +313,11 @@ its first octets are read."
 
 (defun keep-from-disk (buffer)
   "Keep BUFFER's text, which was encrypted, from the disk and from other
-programs (its :PLAINTEXT local, which auto-save, the session, scratch files,
-the git gutter, the clipboard, exports and code files heed); no core dump of
-the editor while it is open. A save writes it encrypted, or asks first where
-it would write it as it is (ENCRYPTED-SAVE-TRANSFORM)."
-  (setf (tuatara.buffer:buffer-local buffer :plaintext) t)
+programs (TUATARA.IO:BUFFER-PLAINTEXT-P, which auto-save, the session, scratch
+files, the git gutter, the clipboard, exports and code files heed); no core
+dump of the editor while it is open. A save writes it encrypted, or asks
+first where it would write it as it is (ENCRYPTED-SAVE-TRANSFORM)."
+  (setf (tuatara.io:buffer-plaintext-p buffer) t)
   (pushnew buffer *encrypted-buffers*)
   (set-dumpable nil))
 
@@ -378,29 +378,30 @@ gone."
         (when text (fill text 0))
         (cond
           (text
-           (setf (tuatara.buffer:buffer-local buffer :read-only) nil)
+           (setf (buffer-read-only-p buffer) nil)
            (tuatara.buffer:widen-buffer buffer)
            (tuatara.buffer:buffer-replace buffer 0 (tuatara.buffer:buffer-size buffer) text)
            (fill text 0)
            (setf (tuatara.buffer:buffer-undo-stack buffer) '() (tuatara.buffer:buffer-redo-stack buffer) '()
                  (tuatara.buffer:buffer-point buffer) 0
-                 (tuatara.buffer:buffer-local buffer :file-stamp) stamp
+                 (tuatara.io:buffer-file-stamp buffer) stamp
                  (tuatara.buffer:buffer-local buffer :disk-state) nil
                  (tuatara.buffer:buffer-local buffer :disk-state-said) nil
-                 (tuatara.buffer:buffer-local buffer :line-ending) (tuatara.buffer:detect-line-ending (tuatara.buffer:buffer-text buffer))
+                 (tuatara.buffer:buffer-line-ending buffer)
+                 (tuatara.buffer:detect-line-ending (tuatara.buffer:buffer-text buffer))
                  (tuatara.buffer:buffer-local buffer :encrypted) (list :keys (getf info :keys) :symmetric (getf info :symmetric))
-                 (tuatara.buffer:buffer-local buffer :override-keymap) nil)
+                 (buffer-override-keymap buffer) nil)
            (tuatara.buffer:buffer-mark-saved buffer)
            (set-major-mode buffer (tuatara.modes:mode-for-file path))
            (unless (tuatara.io:writable-p path)
-             (setf (tuatara.buffer:buffer-local buffer :read-only) t))
+             (setf (buffer-read-only-p buffer) t))
            (message "~a decrypted; a save encrypts it ~{~a~^ and ~} (~a chooses again)"
                     name (remove nil (list (and (getf info :keys) (format nil "to ~{~a~^, ~}" (getf info :key-words)))
                                            (and (getf info :symmetric) "with a passphrase")))
                     (substitute-command-keys "\\[choose-encryption-keys]")))
           ((getf info :needs-passphrase)
            (encrypted-placeholder buffer (format nil "~a needs its passphrase: ~a asks for it.~%" name (substitute-command-keys "\\[decrypt-with-passphrase]")))
-           (setf (tuatara.buffer:buffer-local buffer :override-keymap) *encrypted-waiting-keymap*)
+           (setf (buffer-override-keymap buffer) *encrypted-waiting-keymap*)
            (message "~a needs its passphrase: RET asks for it" name))
           (t
            (encrypted-placeholder buffer (format nil "~a could not be decrypted: ~a~%"
@@ -462,7 +463,7 @@ encrypted with a passphrase asks for it first."
                       (lambda ()
                         (let ((buffer (tuatara.buffer:make-buffer (tuatara.buffer:unique-buffer-name (tuatara.io:native-file-name native)))))
                           (setf (tuatara.buffer:buffer-file buffer) native
-                                (tuatara.buffer:buffer-local buffer :file-stamp) (tuatara.io:path-stamp native)
+                                (tuatara.io:buffer-file-stamp buffer) (tuatara.io:path-stamp native)
                                 (tuatara.buffer:buffer-local buffer :reread) (lambda (b) (start-decrypting b (tuatara.io:native (tuatara.buffer:buffer-file b)))))
                           (note-encrypted buffer (list :keys '() :symmetric nil))
                           (start-decrypting buffer native
@@ -490,7 +491,7 @@ when nothing is chosen. A buffer holding text decrypted in place in a file
 that is not encrypted (\\[decrypt-region]) is saved as it is, the decrypted
 text in clear, only when the question asked first is answered yes; else the
 save is refused."
-  (when (and (tuatara.buffer:buffer-local buffer :plaintext)
+  (when (and (tuatara.io:buffer-plaintext-p buffer)
              (not (encrypted-buffer-p buffer))
              (not (uiop:string-suffix-p (string-downcase (tuatara.io:native path)) ".gpg"))
              (not (yes-or-no-p* (format nil "~a holds text decrypted in place; save it unencrypted?"

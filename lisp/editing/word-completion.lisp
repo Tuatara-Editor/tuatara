@@ -144,7 +144,7 @@ gives words, nor do buffers whose names start with a space, nor hex views."
                     (not (tuatara.display:hex-view-p other))
                     (eq kind (word-completion-kind other))
                     (or (tuatara.buffer:buffer-file other)
-                        (not (tuatara.buffer:buffer-local other :read-only)))))))
+                        (not (buffer-read-only-p other)))))))
       (remove-if-not #'usable
                      (remove-duplicates (append shown (tuatara.command:buffers-in-use-order))
                                         :from-end t)))))
@@ -246,7 +246,7 @@ only to buffers of the same kind. \\[complete-word] lists the words instead.
 With *WORD-COMPLETION-KEEP-CASE* the case typed is kept."
   (let ((b (current-buffer)))
     (cond ((tuatara.display:hex-view-p b) (message "Nothing to expand in the hex view"))
-          ((tuatara.buffer:buffer-local b :read-only)
+          ((buffer-read-only-p b)
            (message "Buffer is read-only: ~a" (tuatara.buffer:buffer-name b)))
           ((word-expansion-continues-p b)
            (let* ((state *word-expansion*) (next (1+ (sixth state))))
@@ -274,6 +274,6 @@ narrows the list;
 fits, it goes in at once."
   (let ((b (current-buffer)))
     (cond ((tuatara.display:hex-view-p b) (message "Nothing to complete in the hex view"))
-          ((tuatara.buffer:buffer-local b :read-only)
+          ((buffer-read-only-p b)
            (message "Buffer is read-only: ~a" (tuatara.buffer:buffer-name b)))
           (t (complete-at-point-in b :words :only)))))

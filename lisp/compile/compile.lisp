@@ -993,7 +993,7 @@ comes, the list of places in force then."
       (set-made-text buffer heading :refill 'compile-again)
       (setf (tuatara.buffer:buffer-local buffer 'compile-run) run
             (tuatara.buffer:buffer-local buffer :entry-at) 'compile-entry-at
-            (tuatara.buffer:buffer-local buffer :directory) directory
+            (buffer-given-directory buffer) directory
             (tuatara.buffer:buffer-point buffer) (tuatara.buffer:buffer-size buffer))
       (use-places run)
       (let ((window (display-buffer buffer)))

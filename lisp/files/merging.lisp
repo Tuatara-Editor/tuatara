@@ -86,7 +86,7 @@ disk, which is what git reads, has no conflict marker line left in it (<<<<<<<, 
 it is, and that is said."
   (let ((buffer (buffer-visiting merged)))
     (cond ((null buffer) (message "~a could not be opened: nothing merged" (abbreviated-path merged)))
-          ((tuatara.buffer:buffer-local buffer :read-only)
+          ((buffer-read-only-p buffer)
            (message "~a is read only: the merge is not put in it" (abbreviated-path merged)))
           (t
            (let ((base (if (tuatara.io:path-kind base) base "/dev/null")))

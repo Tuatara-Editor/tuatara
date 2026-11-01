@@ -947,7 +947,7 @@ the newline it ends at."
 
 (defun check-writable (buffer)
   "Signal an error when BUFFER is read-only."
-  (when (tuatara.buffer:buffer-local buffer :read-only)
+  (when (buffer-read-only-p buffer)
     (error "Buffer is read-only: ~a" (tuatara.buffer:buffer-name buffer))))
 
 (defun delete-spans (buffer spans &key replacements folds-checked before group)
@@ -1074,7 +1074,7 @@ another program copied from what is there already.")
 kept as a rope (too large for it) is not, nor one from an encrypted file's
 text, which \\[copy-to-clipboard] puts there on request."
   (when (and *use-system-clipboard* *editor* (stringp text) (<= (length text) *clipboard-max-size*)
-             (not (tuatara.buffer:buffer-local (current-buffer) :plaintext))
+             (not (tuatara.io:buffer-plaintext-p (current-buffer)))
              (tuatara.frontend:frontend-set-clipboard (editor-frontend *editor*) text))
     (setf *clipboard-sent* text)))
 
@@ -1543,14 +1543,14 @@ modes in a column as wide as the longest, and a + when it has changes not
 saved."
   (let* ((buffers (remove (current-buffer) tuatara.buffer:*buffers*))
          (mode-width (loop for b in buffers
-                           maximize (length (or (tuatara.buffer:buffer-local b :mode-name) "")) into widest
+                           maximize (length (or (buffer-mode-name b) "")) into widest
                            finally (return (max 12 widest)))))
     (mapcar (lambda (b)
               (let ((file (buffer-listed-file b)))
                 (make-candidate (tuatara.buffer:buffer-name b)
                                 :annotation (list (list (if (tuatara.buffer:buffer-modified-p b) "+" "") :completion-modified 1)
                                                   (list (octets-words (tuatara.buffer:buffer-size b)) :list-size -8)
-                                                  (list (or (tuatara.buffer:buffer-local b :mode-name) "") :completion-major-mode mode-width)
+                                                  (list (or (buffer-mode-name b) "") :completion-major-mode mode-width)
                                                   (list (if file (abbreviated-path file) "") :completion-annotation 2/5 :middle)))))
             buffers)))
 

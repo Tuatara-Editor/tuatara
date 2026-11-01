@@ -363,7 +363,7 @@ no longer gone to nor filled in."
   (let ((buffer (snippet-session-buffer session)))
     (when (eq (buffer-snippet buffer) session)
       (setf (tuatara.buffer:buffer-local buffer 'snippet-session) nil
-            (tuatara.buffer:buffer-local buffer :override-keymap) (snippet-session-kept session)))))
+            (buffer-override-keymap buffer) (snippet-session-kept session)))))
 
 (defun leave-snippet (session)
   "End SESSION's snippet with the cursor after $0's text, or after the
@@ -427,9 +427,9 @@ field."
           (let ((session (make-snippet-session buffer fields (order-fields fields)
                                                (tuatara.text:make-anchor version start :bias :before)
                                                (tuatara.text:make-anchor version after :bias :after))))
-            (setf (snippet-session-kept session) (tuatara.buffer:buffer-local buffer :override-keymap)
+            (setf (snippet-session-kept session) (buffer-override-keymap buffer)
                   (tuatara.buffer:buffer-local buffer 'snippet-session) session
-                  (tuatara.buffer:buffer-local buffer :override-keymap) *snippet-keymap*)
+                  (buffer-override-keymap buffer) *snippet-keymap*)
             (go-to-field session 0))))))
 
 (define-command snippet-next-field ()
@@ -530,7 +530,7 @@ its line's start, and where the key starts, as two values; NIL when there is non
   "Put in the snippet whose key stands before point, when one does
 \(*SNIPPET-TAB*); true when it did."
   (let ((buffer (current-buffer)))
-    (when (and *snippet-tab* (not (tuatara.buffer:buffer-local buffer :read-only)) (not (tuatara.buffer:buffer-mark-active-p buffer)))
+    (when (and *snippet-tab* (not (buffer-read-only-p buffer)) (not (tuatara.buffer:buffer-mark-active-p buffer)))
       (multiple-value-bind (snippet start) (snippet-key-before buffer)
         (when snippet
           (put-snippet buffer start (tuatara.buffer:buffer-point buffer) snippet)

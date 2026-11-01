@@ -70,7 +70,7 @@ server), in words, or NIL: a file opened safely, or in one of
   (let ((file (tuatara.buffer:buffer-file buffer)))
     (cond ((tuatara.io:safe-visit-p buffer) "it is opened safely")
           ((and file (safe-directory-of (tuatara.io:native file))) "it is in one of *safe-directories*")
-          ((tuatara.buffer:buffer-local buffer :plaintext) "its text is kept from other programs (an encrypted file)"))))
+          ((tuatara.io:buffer-plaintext-p buffer) "its text is kept from other programs (an encrypted file)"))))
 
 (defun formatter-output (program command input directory cancel)
   "What the formatter PROGRAM (its full name) of COMMAND (as chosen, the program
@@ -128,7 +128,7 @@ formatter of the whole file is not run then, and that is said."
          (refusal (and program (outside-program-refusal buffer)))
          (narrowed (tuatara.buffer:buffer-narrowed-p buffer)))
     (cond
-      ((or (tuatara.io:safe-visit-p buffer) (tuatara.buffer:buffer-local buffer :read-only))
+      ((or (tuatara.io:safe-visit-p buffer) (buffer-read-only-p buffer))
        (message "~a is ~:[read only~;opened safely~]: not formatted" (tuatara.buffer:buffer-name buffer) (tuatara.io:safe-visit-p buffer))
        (when then (funcall then buffer nil)))
       ;; narrowed: the part shown, by a language server that lays out a part

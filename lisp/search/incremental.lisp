@@ -881,7 +881,8 @@ quick enough here to show beside each match what takes its place
   "What STATE's replacement puts in place of each of its matches in BUFFER
 from START to END, shown beside the match as no text of the buffer: each
 (AT AT TEXT :REPLACE-COMING), AT the match's end, in order, as a
-:DISPLAY-REPLACEMENTS-FUNCTION gives them. A line break in it shows as ⏎."
+replacements function gives them (TUATARA.DISPLAY:BUFFER-REPLACEMENTS-FUNCTION).
+A line break in it shows as ⏎."
   (let* ((rope (tuatara.buffer:buffer-text buffer))
          (line (search-line-of state))
          (regex (search-state-regex state))
@@ -911,8 +912,8 @@ from START to END, shown beside the match as no text of the buffer: each
   "Have BUFFER's display show, while STATE's replacement is typed, what takes
 the place of each match beside it (REPLACE-PREVIEW-TEXTS), as well as what its
 mode shows otherwise; returns a function that puts the display back."
-  (let ((before (tuatara.buffer:buffer-local buffer :display-replacements-function)))
-    (setf (tuatara.buffer:buffer-local buffer :display-replacements-function)
+  (let ((before (tuatara.display:buffer-replacements-function buffer)))
+    (setf (tuatara.display:buffer-replacements-function buffer)
           (lambda (b start end)
             (let ((own (and (eq *search* state) (replace-preview-p state)
                             (replace-preview-texts state b start end)))
@@ -920,7 +921,7 @@ mode shows otherwise; returns a function that puts the display back."
               (if (and own theirs)
                   (merge 'list (copy-list theirs) own #'< :key #'car)
                   (or own theirs)))))
-    (lambda () (setf (tuatara.buffer:buffer-local buffer :display-replacements-function) before))))
+    (lambda () (setf (tuatara.display:buffer-replacements-function buffer) before))))
 
 (defun search-push-history (state)
   "Remember the state before a change, to go back to as what was typed is taken back."

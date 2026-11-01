@@ -345,7 +345,7 @@ the capture is for that day (ORG-CAPTURE-ON-DAY)."
         (setf (tuatara.buffer:buffer-local buffer 'org-capture)
               (list :description description :target target :started started :day day
                     :clock-in (capture-template-clock-in template) :clock-resume (capture-template-clock-resume template))
-              (tuatara.buffer:buffer-local buffer :header-line)
+              (tuatara.display:buffer-header-line buffer)
               (let ((line (substitute-command-keys
                            (format nil " \\<org-capture-mode>\\[org-capture-finalize] files it, \\[org-capture-refile] elsewhere, \\[org-capture-kill] throws it away: ~a, ~a"
                                    description (org-capture-target-text target)))))

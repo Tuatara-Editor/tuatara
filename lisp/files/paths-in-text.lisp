@@ -90,7 +90,7 @@ read-only or shown as a hex dump, or a list is shown already."
                (null (editor-popup editor))
                (not (editor-minibuffer-active editor))
                (eql (char-before-position buffer (tuatara.buffer:buffer-point buffer)) #\/)
-               (not (tuatara.buffer:buffer-local buffer :read-only))
+               (not (buffer-read-only-p buffer))
                (not (tuatara.display:hex-view-p buffer))
                (complete-paths-p buffer))
       (multiple-value-bind (start name-start name-end directory) (path-at-point buffer (tuatara.buffer:buffer-point buffer))

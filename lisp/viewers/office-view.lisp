@@ -192,7 +192,7 @@ any."
                     (lambda (buffer)
                       (setf (tuatara.buffer:buffer-local buffer 'office-reading) native
                             (tuatara.buffer:buffer-local buffer 'office-pages) pages)
-                      (when pages (setf (tuatara.buffer:buffer-local buffer :override-keymap) *office-reading-keymap*))
+                      (when pages (setf (buffer-override-keymap buffer) *office-reading-keymap*))
                       (tuatara.runtime:start-job-thread
                        (make-office-read-job buffer native office)
                        (lambda (job) (setf (office-read-job-text job) (funcall (getf (office-read-job-office job) :read) (office-read-job-path job))))

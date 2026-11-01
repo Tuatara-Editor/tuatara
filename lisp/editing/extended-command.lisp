@@ -278,7 +278,7 @@ fits, it goes in at once. Where the mode offers nothing, the words of the
 buffers that start with the text before point, as \\[complete-word] lists them."
   (let ((b (current-buffer)))
     (cond ((hex-view-here-p) (message "Nothing to complete in the hex view"))
-          ((tuatara.buffer:buffer-local b :read-only) (message "Buffer is read-only: ~a" (tuatara.buffer:buffer-name b)))
+          ((buffer-read-only-p b) (message "Buffer is read-only: ~a" (tuatara.buffer:buffer-name b)))
           (t (complete-at-point-in b :words t)))))
 
 (defun complete-at-point-in (b &key quiet words)

@@ -243,7 +243,7 @@ forgetting a search asked for while its history was being read
 \(TERMINAL-SEARCH): the mode line says which; with modal editing on, the history read in SUPPORT
 state and typed into in INSERT state, as a modal layer has them."
   (setf (tuatara.buffer:buffer-local buffer 'terminal-history-view) on
-        (tuatara.buffer:buffer-local buffer :mode-name) (if on "Terminal history" "Terminal"))
+        (buffer-mode-name buffer) (if on "Terminal history" "Terminal"))
   ;; typing again: a search asked for before the history was in is asked no more
   (unless on (setf (tuatara.buffer:buffer-local buffer 'terminal-search-wanted) nil))
   (setf (tuatara.buffer:buffer-local buffer :modal-class) (if on :support :editing))
@@ -478,8 +478,8 @@ in many) the mode line shows; NIL shows none.")
 that \\[find-file] and the rest start there and the mode line says it, and keep
 the title the program gave its terminal for the mode line."
   (let ((directory (emulator-directory emulator)))
-    (when (and directory (not (equal directory (tuatara.buffer:buffer-local buffer :directory))))
-      (setf (tuatara.buffer:buffer-local buffer :directory) directory)))
+    (when (and directory (not (equal directory (buffer-given-directory buffer))))
+      (setf (buffer-given-directory buffer) directory)))
   (let ((title (emulator-title emulator)))
     (unless (eq title :busy)
       (setf (tuatara.buffer:buffer-local buffer 'terminal-title) title))))
@@ -704,7 +704,7 @@ colours a program picks are the theme's (*TERMINAL-PALETTE-ROLES*)."
           (tuatara.buffer:buffer-local buffer :keys-as-typed) 'terminal-typing-p
           (tuatara.buffer:buffer-local buffer :key-handler) 'terminal-key-handler
           (tuatara.buffer:buffer-local buffer :paste-handler) 'terminal-paste-handler
-          (tuatara.buffer:buffer-local buffer :directory) directory)
+          (buffer-given-directory buffer) directory)
     (dolist (toggle '(line-numbers hl-line cursor-column soft-wrap spellcheck visual-line centred-text))
       (ignore-errors (choose-display buffer toggle nil)))
     ;; shown where *terminal-place* says, and its program started, or the buffer killed again

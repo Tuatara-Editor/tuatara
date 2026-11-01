@@ -512,10 +512,11 @@ the drawers and notes of its tasks folded (*ORG-FOLD-METADATA*)."
   "Let go of the view Org mode gave BUFFER (indentation, signs, folds, large
 headlines) and of its parse, so that the mode that follows shows the text as
 it is."
-  (dolist (local '(:line-scale-function :line-prefix-function :display-replacements-function :folds
+  (dolist (local '(:line-scale-function :line-prefix-function :folds
                    org-indent org-links-literal org-state org-fresh-returns org-hidden org-hidden-anchors
                    org-src-colours))
     (setf (tuatara.buffer:buffer-local buffer local) nil))
+  (setf (tuatara.display:buffer-replacements-function buffer) nil)
   (call-next-method))
 
 (defun install-org-folding (editor)

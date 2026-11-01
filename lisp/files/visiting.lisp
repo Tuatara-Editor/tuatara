@@ -52,7 +52,7 @@ safely: visiting it, or listing it with \\[rimu]."
     (some (lambda (buffer)
             (and (tuatara.io:safe-visit-p buffer)
                  (let ((file (tuatara.buffer:buffer-file buffer))
-                       (listed (tuatara.buffer:buffer-local buffer :directory)))
+                       (listed (buffer-given-directory buffer)))
                    (or (and file (equal (tuatara.io:native file) native))
                        (and listed (equal (tuatara.io:slash-ended (tuatara.io:native listed)) folder))))))
           tuatara.buffer:*buffers*)))
@@ -524,7 +524,7 @@ TEXT in it but blank until the picture is drawn. \\[hex-mode] in it opens
 the file's own octets (FILE-VIEW-HEX)."
   (let ((buffer (tuatara.buffer:make-buffer (tuatara.buffer:unique-buffer-name (tuatara.io:native-file-name native)) :text text)))
     (set-major-mode buffer mode)
-    (setf (tuatara.buffer:buffer-local buffer :read-only) t
+    (setf (buffer-read-only-p buffer) t
           (tuatara.buffer:buffer-local buffer :sandboxed) t
           ;; a picture in place of the text, no cursor, even before the first is drawn
           (tuatara.buffer:buffer-local buffer :picture-view) t
@@ -532,7 +532,7 @@ the file's own octets (FILE-VIEW-HEX)."
           (tuatara.buffer:buffer-local buffer :picture-pending) t
           (tuatara.buffer:buffer-local buffer :viewed-file) native
           (tuatara.buffer:buffer-local buffer :viewed-as) what
-          (tuatara.buffer:buffer-local buffer :directory) (tuatara.io:parent-path native))
+          (buffer-given-directory buffer) (tuatara.io:parent-path native))
     buffer))
 
 (defun reading-buffer (registry view-path native name text mode start &key private-folder)
@@ -549,8 +549,8 @@ once the buffer's jobs have ended (FORGET-PRIVATE-FOLDER)."
   (or (find-if (lambda (b) (and (live-buffer-p b) (equal native (funcall view-path b)))) (symbol-value registry))
       (let ((buffer (tuatara.buffer:make-buffer (tuatara.buffer:unique-buffer-name name) :text text)))
         (set-major-mode buffer mode)
-        (setf (tuatara.buffer:buffer-local buffer :read-only) t
-              (tuatara.buffer:buffer-local buffer :directory) (tuatara.io:parent-path native)
+        (setf (buffer-read-only-p buffer) t
+              (buffer-given-directory buffer) (tuatara.io:parent-path native)
               (symbol-value registry) (cons buffer (remove-if-not #'live-buffer-p (symbol-value registry))))
         (when private-folder
           (setf (tuatara.buffer:buffer-local buffer 'private-folder)
@@ -640,8 +640,8 @@ as a large file is read, so that its size is bounded by the disk: called
 acted on. Returns the buffer at once."
   (let ((buffer (tuatara.buffer:make-buffer (tuatara.buffer:unique-buffer-name "*stdin*")
                                             :text (format nil "Reading standard input...~%"))))
-    (setf (tuatara.buffer:buffer-local buffer :read-only) t
-          (tuatara.buffer:buffer-local buffer :safe-visit) "it came from standard input")
+    (setf (buffer-read-only-p buffer) t
+          (tuatara.io:safe-visit-p buffer) "it came from standard input")
     (tuatara.runtime:start-job-thread
      (make-standard-input-job buffer descriptor)
      (lambda (job)
@@ -656,7 +656,7 @@ acted on. Returns the buffer at once."
 
 (defun hex-view-on (buffer &optional (at 0))
   "Show BUFFER in the hex view (\\[hex-mode]), its cursor on the octet AT."
-  (setf (tuatara.buffer:buffer-local buffer :hex-view) t
+  (setf (tuatara.display:hex-view-p buffer) t
         (tuatara.display:hex-point buffer) at))
 
 (defun show-octets-in-hex (name octets &key (show #'pop-to-buffer))
@@ -667,7 +667,7 @@ buffer."
   (let ((old (tuatara.buffer:find-buffer name)))
     (when old (tuatara.buffer:kill-buffer old)))
   (let ((buffer (tuatara.buffer:make-buffer name :text (coerce octets 'tuatara.text:octets))))
-    (setf (tuatara.buffer:buffer-local buffer :read-only) t)
+    (setf (buffer-read-only-p buffer) t)
     (hex-view-on buffer)
     (funcall show buffer)
     buffer))
@@ -761,7 +761,7 @@ is read-only."
     (when (and folder (null (tuatara.io:path-stamp path)) (null (tuatara.io:path-stamp folder)))
       (let ((above (nearest-folder path)))
         (if (tuatara.io:writable-p above)
-            (progn (setf (tuatara.buffer:buffer-local buffer :read-only) nil)
+            (progn (setf (buffer-read-only-p buffer) nil)
                    (message "(New file; its folder ~a is not there yet: saving asks to make it)"
                             (escape-controls (abbreviated-path folder))))
             (message "(New file, read-only: its folder ~a is not there, and ~a may not be written)"
@@ -920,7 +920,7 @@ changes not saved and undo stay as they are. A file of evidence
       (t
        (visit-as-usual b)
        (message "~a is open as usual now~:[~;; read-only, since you may not write it~]"
-                (tuatara.buffer:buffer-name b) (tuatara.buffer:buffer-local b :read-only))))))
+                (tuatara.buffer:buffer-name b) (buffer-read-only-p b))))))
 
 (defun visit-as-usual (b)
   "Have B, visiting its file safely, visit it as usual from now on: editable
@@ -942,8 +942,8 @@ files visited lately)."
 (define-command read-only-mode ()
   "Make the current buffer read-only, or editable again if it is; with a
 count, read-only when it is positive, editable when it is zero or less."
-  (let* ((b (current-buffer)) (now (switched-by-count (tuatara.buffer:buffer-local b :read-only))))
-    (setf (tuatara.buffer:buffer-local b :read-only) now)
+  (let* ((b (current-buffer)) (now (switched-by-count (buffer-read-only-p b))))
+    (setf (buffer-read-only-p b) now)
     (message "Read-only mode ~:[off~;on~]" now)))
 
 (defvar *after-save-functions* '()

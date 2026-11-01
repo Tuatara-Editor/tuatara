@@ -8,6 +8,17 @@
 consulted just before that state's: the keys bound for the buffer's major mode
 in that state; NIL for none.")
 
+(defun buffer-override-keymap (buffer)
+  "The keymap BUFFER has for itself above its modes' keys while something
+there wants keys of its own (a snippet being filled in, a file waiting for its
+passphrase, a viewer's page keys), or NIL."
+  (tuatara.buffer:buffer-local buffer :override-keymap))
+
+(defun (setf buffer-override-keymap) (keymap buffer)
+  "Give BUFFER KEYMAP above its modes' keys (BUFFER-OVERRIDE-KEYMAP); NIL for
+none."
+  (setf (tuatara.buffer:buffer-local buffer :override-keymap) keymap))
+
 (defun mouse-key-window (editor key)
   "The window of EDITOR whose text KEY, a mouse key, happened over, or NIL for
 a key of the keyboard or one elsewhere (WINDOW-AT-CELL)."
@@ -19,7 +30,7 @@ a key of the keyboard or one elsewhere (WINDOW-AT-CELL)."
 of completions beside the cursor while one is shown (COMPLETE-IN-TEXT); then
 the question's own and the minibuffer's while it reads (READ-STRING); otherwise a transient map in force
 (SET-TRANSIENT-MAP), the current buffer's own keys for a passing use of it
-(its :OVERRIDE-KEYMAP local, as a quick edit's from a rimu list), the keys
+(BUFFER-OVERRIDE-KEYMAP, as a quick edit's from a rimu list), the keys
 bound for its major mode in the modal state (*STATE-KEYS-FUNCTION*), the modal
 state map, the current buffer's local keymap (its major mode's, in the :KEYMAP
 local, whose parents are the parent modes' keymaps), the fallback map, and the
@@ -32,7 +43,7 @@ as that buffer's keys say at once."
              (buffer (and window (tuatara.display:window-buffer window))))
         (remove nil (list* (popup-keys editor)
                            (editor-transient-map editor)
-                           (and buffer (tuatara.buffer:buffer-local buffer :override-keymap))
+                           (and buffer (buffer-override-keymap buffer))
                            (append (and buffer *state-keys-function* (editor-state-keymap editor)
                                         (funcall *state-keys-function* buffer (editor-state-keymap editor)))
                                    (list (editor-state-keymap editor)

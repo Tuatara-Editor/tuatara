@@ -407,7 +407,7 @@ there is when there is no text."
                                             (mapcar #'car (pdf-view-job-notes job)))))
     (setf (tuatara.buffer:buffer-point buffer) 0
           (pdf-view-page view) (max 1 (min (pdf-view-page view) (or (pdf-view-pages view) (pdf-view-page view))))
-          (tuatara.buffer:buffer-local buffer :header-line)
+          (tuatara.display:buffer-header-line buffer)
           (let* ((kind (format nil " ~a" (or (pdf-view-words view) "PDF document")))
                  (words (format nil "~a~{~a~}" kind (mapcar #'car (pdf-view-job-notes job))))
                  (spans (loop with at = (length kind)
@@ -606,7 +606,7 @@ made of it."
     (when place
       (destructuring-bind (page zoom factor) (rest place)
         (setf (pdf-view-page view) page (pdf-view-zoom view) zoom (pdf-view-factor view) factor)))
-    (setf (tuatara.buffer:buffer-local buffer :override-keymap) *pdf-view-override-keymap*
+    (setf (buffer-override-keymap buffer) *pdf-view-override-keymap*
           (tuatara.buffer:buffer-local buffer :refill) (lambda (buffer)
                                                          (pdf-view-reload buffer)
                                                          (message "Read ~a again" (tuatara.buffer:buffer-name buffer)))
@@ -1007,7 +1007,7 @@ reads them in the sandbox; there, \\<pdf-attachments-mode>\\[pdf-attachment-save
                                                           names)
                                              :entries names :point :start)
                               (setf (tuatara.buffer:buffer-local list :sandboxed) t
-                                    (tuatara.buffer:buffer-local list :directory)
+                                    (buffer-given-directory list)
                                     (tuatara.io:parent-path path)
                                     (tuatara.buffer:buffer-local list 'pdf-attachments-view) view)
                               (display-buffer list :other t)

@@ -562,6 +562,17 @@ NIL, for a buffer without a file."
   (let ((directory (and path (directory-pathname (parent-path path)))))
     (copies-directory directory (and directory (eq (directory-class directory) :local)) room)))
 
+(defun buffer-plaintext-p (buffer)
+  "True when BUFFER's text, decrypted, is kept from the disk and from other
+programs: auto-save, the session, scratch files, the git gutter, the
+clipboard, exports and code files leave it alone."
+  (tuatara.buffer:buffer-local buffer :plaintext))
+
+(defun (setf buffer-plaintext-p) (value buffer)
+  "Keep BUFFER's text from the disk and other programs when VALUE is true
+\(BUFFER-PLAINTEXT-P)."
+  (setf (tuatara.buffer:buffer-local buffer :plaintext) value))
+
 (defun buffer-scratch-directory (buffer)
   "Where the scratch files of work on BUFFER's text go (the runs of a sort,
 rewritten text): as SCRATCH-DIRECTORY has it for its file and a text of its
@@ -569,7 +580,7 @@ size, except for a file visited safely, whose file system stays as it was even
 once editing is allowed: its scratch files go to the cache directory; and NIL
 for an encrypted file's text, which never goes to a scratch file (its work
 done in memory, or refused)."
-  (cond ((tuatara.buffer:buffer-local buffer :plaintext) nil)
+  (cond ((buffer-plaintext-p buffer) nil)
         ((safe-visit-p buffer) (cache-directory))
         (t (scratch-directory (tuatara.buffer:buffer-file buffer) :room (tuatara.buffer:buffer-size buffer)))))
 
@@ -1006,6 +1017,16 @@ mapped, as a large file is, and the mapping owns FD from then on."
       (let ((mapping (tuatara.text:map-fd fd size path)))
         (values (rope-over mapping) mapping))))
 
+(defun buffer-file-stamp (buffer)
+  "The stamp (PATH-STAMP) BUFFER's file had when it was last read or saved, by
+which a change on disk and the same file under another name are known; NIL
+for a buffer whose file was not there."
+  (tuatara.buffer:buffer-local buffer :file-stamp))
+
+(defun (setf buffer-file-stamp) (stamp buffer)
+  "Note STAMP as that of BUFFER's file as just read or saved (BUFFER-FILE-STAMP)."
+  (setf (tuatara.buffer:buffer-local buffer :file-stamp) stamp))
+
 (defun same-stamped-file-p (stamp other)
   "True when the STAMP OTHER, a file's, names the same file as STAMP: the same device and inode."
   (and stamp other (= (stamp-dev stamp) (stamp-dev other)) (= (stamp-ino stamp) (stamp-ino other))))
@@ -1027,7 +1048,7 @@ its own. One stat of PATH, none of the buffers (their STAMP is kept)."
             (let ((same (remove-if-not
                          (lambda (buffer)
                            (and (not (eq buffer except)) (tuatara.buffer:buffer-file buffer)
-                                (same-stamped-file-p stamp (tuatara.buffer:buffer-local buffer :file-stamp))))
+                                (same-stamped-file-p stamp (buffer-file-stamp buffer))))
                          tuatara.buffer:*buffers*)))
               (or (find-if #'safe-visit-p same)
                   (and same
@@ -1071,21 +1092,21 @@ buffer visited the file already (it comes as it is)."
                       safe (or safe (and why t))
                       buffer (tuatara.buffer:make-buffer name :text rope :file path)
                       (tuatara.buffer:buffer-mapping buffer) mapping
-                      (tuatara.buffer:buffer-local buffer :file-stamp) stamp
+                      (buffer-file-stamp buffer) stamp
                       (tuatara.buffer:buffer-local buffer :file-isolation) isolation
                       (tuatara.buffer:buffer-local buffer :file-class) class
-                      (tuatara.buffer:buffer-local buffer :line-ending) (tuatara.buffer:detect-line-ending rope))
+                      (tuatara.buffer:buffer-line-ending buffer) (tuatara.buffer:detect-line-ending rope))
                 (note-file-tail buffer rope)
                 (attend guard buffer))
               (setf buffer (tuatara.buffer:make-buffer name :file path)))
           (if safe
-              (setf (tuatara.buffer:buffer-local buffer :read-only) t
-                    (tuatara.buffer:buffer-local buffer :safe-visit) (or why t))
+              (setf (tuatara.buffer:buffer-read-only-p buffer) t
+                    (safe-visit-p buffer) (or why t))
               (progn
                 (unless (if (path-stamp path)
                             (writable-p path)
                             (writable-p (parent-path path)))
-                  (setf (tuatara.buffer:buffer-local buffer :read-only) t))
+                  (setf (tuatara.buffer:buffer-read-only-p buffer) t))
                 (tuatara.runtime:run-hook tuatara.buffer:*find-file-functions* buffer)))
           (values buffer nil)))))
 
@@ -1103,6 +1124,12 @@ later as the same file grown by appending (APPEND-FROM-DISK).")
   "True when BUFFER visits its file safely (VISIT-FILE's SAFE)."
   (and (tuatara.buffer:buffer-local buffer :safe-visit) t))
 
+(defun (setf safe-visit-p) (value buffer)
+  "Have BUFFER visit its file safely (SAFE-VISIT-P) when VALUE is true: T, or a
+phrase saying why when that was not asked for (SAFE-VISIT-REASON); as usual
+when it is NIL."
+  (setf (tuatara.buffer:buffer-local buffer :safe-visit) value))
+
 (defun safe-visit-reason (buffer)
   "Why BUFFER visits its file safely although that was not asked for, a phrase
 (*VISIT-SAFELY-FUNCTION*), or NIL."
@@ -1115,8 +1142,8 @@ later as the same file grown by appending (APPEND-FROM-DISK).")
 file not there, make it in its directory. Its text stays as it was read, kept
 from other programs' changes as before. Returns BUFFER."
   (let ((path (tuatara.buffer:buffer-file buffer)))
-    (setf (tuatara.buffer:buffer-local buffer :safe-visit) nil
-          (tuatara.buffer:buffer-local buffer :read-only)
+    (setf (safe-visit-p buffer) nil
+          (tuatara.buffer:buffer-read-only-p buffer)
           (and path
                (not (if (path-stamp path)
                         (writable-p path)
@@ -1160,7 +1187,7 @@ saved (see DISK-STATUS); :UNKNOWN when the system will not say (a directory
 made unreadable); NIL for a buffer without a file."
   (let ((path (tuatara.buffer:buffer-file buffer)))
     (when path
-      (disk-status buffer (tuatara.buffer:buffer-local buffer :file-stamp)
+      (disk-status buffer (buffer-file-stamp buffer)
                    (handler-case (path-stamp path)
                      (error () (return-from file-status :unknown)))))))
 
@@ -1177,8 +1204,8 @@ Returns the state, and as a second value true when it changed."
       (setf (tuatara.buffer:buffer-local buffer :disk-state) new)
       (when (eq new :stale)
         (setf (tuatara.buffer:buffer-local buffer :read-only-before-stale)
-              (tuatara.buffer:buffer-local buffer :read-only)
-              (tuatara.buffer:buffer-local buffer :read-only) t)))
+              (tuatara.buffer:buffer-read-only-p buffer)
+              (tuatara.buffer:buffer-read-only-p buffer) t)))
     (values new (not (eq new old)))))
 
 (defun check-file (buffer)
@@ -1532,7 +1559,7 @@ not watched: they change as they are read."
   (flet ((watched-p (buffer)
            (and (tuatara.buffer:buffer-file buffer) (not (eq (tuatara.buffer:buffer-local buffer :file-class) :pseudo))))
          (item (buffer)
-           (list buffer (tuatara.buffer:buffer-file buffer) (tuatara.buffer:buffer-local buffer :file-stamp)
+           (list buffer (tuatara.buffer:buffer-file buffer) (buffer-file-stamp buffer)
                  (tuatara.buffer:buffer-local buffer :file-class))))
     (unless (let ((watched *watched*))
               (and (loop for buffer in buffers
@@ -1540,7 +1567,7 @@ not watched: they change as they are read."
                                     (and watched
                                          (destructuring-bind (was-buffer path stamp class) (pop watched)
                                            (and (eq was-buffer buffer) (equal path (tuatara.buffer:buffer-file buffer))
-                                                (eq stamp (tuatara.buffer:buffer-local buffer :file-stamp))
+                                                (eq stamp (buffer-file-stamp buffer))
                                                 (eq class (tuatara.buffer:buffer-local buffer :file-class)))))))
                    (null watched)))
       (setf *watched* (loop for buffer in buffers when (watched-p buffer) collect (item buffer)))
@@ -1578,7 +1605,7 @@ file that goes on growing)."
         (destructuring-bind (buffer path stamp now) result
           (when (and (tuatara.buffer:live-buffer-p buffer)
                      (equal path (tuatara.buffer:buffer-file buffer))
-                     (eq stamp (tuatara.buffer:buffer-local buffer :file-stamp))
+                     (eq stamp (buffer-file-stamp buffer))
                      (not (eq now :unknown))
                      (not (saving-p buffer)))
             (multiple-value-bind (state new) (note-disk-status buffer (disk-status buffer stamp now))
@@ -1938,7 +1965,7 @@ now at STAMP. A buffer that read its old file directly no longer does (the old
 file has no name now, or the buffer reads the backup), so it counts as a
 snapshot."
   (setf (tuatara.buffer:buffer-file buffer) path
-        (tuatara.buffer:buffer-local buffer :file-stamp) stamp
+        (buffer-file-stamp buffer) stamp
         (tuatara.buffer:buffer-local buffer :disk-state) nil)
   (note-file-tail buffer rope)
   (tuatara.buffer:buffer-mark-saved buffer content)
@@ -1961,7 +1988,7 @@ so its text is no longer what was read. Revert it to read the file again."
 buffer read or wrote, or :ANY when FORCE or when PATH is another file."
   (if (or force (not (equal path (tuatara.buffer:buffer-file buffer))))
       :any
-      (tuatara.buffer:buffer-local buffer :file-stamp)))
+      (buffer-file-stamp buffer)))
 
 (defvar *save-transform-function* nil
   "A function of a buffer and the path it is being saved as, called on the
@@ -2167,7 +2194,7 @@ BUFFER."
          (safe (safe-visit-p buffer))
          (read-only (if stale
                         (tuatara.buffer:buffer-local buffer :read-only-before-stale)
-                        (tuatara.buffer:buffer-local buffer :read-only)))
+                        (tuatara.buffer:buffer-read-only-p buffer)))
          (old-size (tuatara.buffer:buffer-size buffer)))
     (when (save-of buffer)
       (error "Buffer ~a is being saved; revert it once the save is done." (tuatara.buffer:buffer-name buffer)))
@@ -2192,10 +2219,10 @@ BUFFER."
         (when stale
           (setf (tuatara.buffer:buffer-undo-stack buffer) '() (tuatara.buffer:buffer-redo-stack buffer) '()))
         (setf (tuatara.buffer:buffer-mapping buffer) mapping
-              (tuatara.buffer:buffer-local buffer :file-stamp) stamp
+              (buffer-file-stamp buffer) stamp
               (tuatara.buffer:buffer-local buffer :file-isolation) isolation
               (tuatara.buffer:buffer-local buffer :file-class) class
-              (tuatara.buffer:buffer-local buffer :line-ending) (tuatara.buffer:detect-line-ending rope)
+              (tuatara.buffer:buffer-line-ending buffer) (tuatara.buffer:detect-line-ending rope)
               (tuatara.buffer:buffer-local buffer :disk-state) nil)
         (note-file-tail buffer rope)
         (tuatara.buffer:buffer-mark-saved buffer)
@@ -2214,7 +2241,9 @@ one after another with nothing done between undo together."
          (at-end (= (tuatara.buffer:buffer-point buffer) size))
          (unmodified (not (tuatara.buffer:buffer-modified-p buffer)))
          (stale (eq (file-disk-state buffer) :stale))
-         (read-only (tuatara.buffer:buffer-local buffer (if stale :read-only-before-stale :read-only)))
+         (read-only (if stale
+                        (tuatara.buffer:buffer-local buffer :read-only-before-stale)
+                        (tuatara.buffer:buffer-read-only-p buffer)))
          (group (eql (tuatara.buffer:buffer-content-number buffer) (tuatara.buffer:buffer-local buffer :appended))))
     (tuatara.buffer:with-read-only-lifted (buffer :after read-only)
       (tuatara.buffer:buffer-insert buffer size added :group group))
@@ -2222,7 +2251,7 @@ one after another with nothing done between undo together."
       (setf (tuatara.buffer:buffer-point buffer) (tuatara.buffer:buffer-size buffer)))
     (when unmodified (tuatara.buffer:buffer-mark-saved buffer))
     (setf (tuatara.buffer:buffer-local buffer :appended) (tuatara.buffer:buffer-content-number buffer)
-          (tuatara.buffer:buffer-local buffer :file-stamp) stamp
+          (buffer-file-stamp buffer) stamp
           (tuatara.buffer:buffer-local buffer :disk-state) nil
           (tuatara.buffer:buffer-local buffer :file-tail)
           (if (>= (length added) +tail-sample+)
@@ -2240,7 +2269,7 @@ buffer stays unmodified, and a buffer the growth made stale is itself again.
 Returns how many octets were added, or NIL, nothing done, when the file
 changed otherwise or grew by more than *MEMORY-READ-LIMIT* octets."
   (let ((path (tuatara.buffer:buffer-file buffer))
-        (recorded (tuatara.buffer:buffer-local buffer :file-stamp))
+        (recorded (buffer-file-stamp buffer))
         (tail (tuatara.buffer:buffer-local buffer :file-tail)))
     (when (and path recorded tail (not (saving-p buffer)) (not (tuatara.buffer:buffer-local buffer :reread)))
       (let ((fd (handler-case (open-for-reading path (safe-visit-p buffer) :accept '(:regular)) (file-system-error () nil))))

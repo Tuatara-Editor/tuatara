@@ -457,7 +457,7 @@ and hidden with none left, the time grid's lines going with their date."
   (find-or-make-buffer "*Org Agenda*" :mode 'org-agenda-mode
                                       :made (lambda (buffer)
                                               (choose-display buffer 'line-numbers nil)
-                                              (setf (tuatara.buffer:buffer-local buffer :read-only) t
+                                              (setf (buffer-read-only-p buffer) t
                                                     (tuatara.buffer:buffer-local buffer :tuatara-support-keymap)
                                                     *tuatara-list-keymap*)
                                               (set-search-filtering buffer :heading #'org-agenda-date-line-p :empty-headings nil

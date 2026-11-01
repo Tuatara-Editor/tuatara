@@ -390,8 +390,8 @@ giving it what more it has (its major mode); NIL for nothing more.")
 *MESSAGES-MADE-FUNCTION* gives it."
   (or (tuatara.buffer:find-buffer "*Messages*")
       (let ((b (tuatara.buffer:make-buffer "*Messages*")))
-        (setf (tuatara.buffer:buffer-local b :read-only) t
-              (tuatara.buffer:buffer-local b :kind) :messages)
+        (setf (tuatara.buffer:buffer-read-only-p b) t
+              (buffer-kind b) :messages)
         (when *messages-made-function* (funcall *messages-made-function* b))
         b)))
 

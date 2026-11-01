@@ -102,7 +102,7 @@ only one, and its buffer when that was made for it."
   "A buffer for the preview of NAME saying TEXT, made for the preview."
   (let ((buffer (tuatara.buffer:make-buffer (tuatara.buffer:unique-buffer-name (format nil "~a (preview)" (escape-controls name)))
                                             :text (format nil "~a~%" text))))
-    (setf (tuatara.buffer:buffer-local buffer :read-only) t)
+    (setf (buffer-read-only-p buffer) t)
     buffer))
 
 ;;; The preview of any list
@@ -133,6 +133,16 @@ below it.")
   "The preview beside the list in the selected window, a SIDE-PREVIEW whose
 SHOWN is the entry shown; NIL when there is none.")
 
+(defun list-preview-p (buffer)
+  "True when BUFFER, a list, shows the entry on its line in a window beside
+it (\\[list-toggle-preview] switches it)."
+  (tuatara.buffer:buffer-local buffer :list-preview))
+
+(defun (setf list-preview-p) (value buffer)
+  "Have BUFFER, a list, show the entry on its line beside it when VALUE is
+true; not when it is NIL."
+  (setf (tuatara.buffer:buffer-local buffer :list-preview) value))
+
 (defvar *previewing-modes* (make-hash-table :test 'eq)
   "For each class of major mode asked about, whether its lists have a method
 of PREVIEW-ENTRY of their own, :YES or :NO.")
@@ -140,7 +150,7 @@ of PREVIEW-ENTRY of their own, :YES or :NO.")
 (defun entry-preview-list-p (buffer)
   "True when BUFFER is a list whose entries are previewed by PREVIEW-ENTRY,
 with its preview on (\\[list-toggle-preview])."
-  (and (tuatara.buffer:buffer-local buffer :list-preview)
+  (and (list-preview-p buffer)
        (let ((mode (buffer-major-mode buffer)))
          (eq :yes (or (gethash (class-of mode) *previewing-modes*)
                       (setf (gethash (class-of mode) *previewing-modes*)
@@ -192,8 +202,8 @@ that has a preview says in a setting of its own whether new lists have it
 on (*RIMU-PREVIEW* for rimu's). With a count, on when it is positive, off when
 it is zero or less."
   (let* ((list (current-buffer))
-         (on (switched-by-count (tuatara.buffer:buffer-local list :list-preview))))
-    (setf (tuatara.buffer:buffer-local list :list-preview) on)
+         (on (switched-by-count (list-preview-p list))))
+    (setf (list-preview-p list) on)
     (message "Preview ~:[off~;on~]" on)))
 
 (defun entry-preview-keys (mode where)

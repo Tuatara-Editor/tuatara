@@ -194,7 +194,7 @@ as its latest commit left it, point on the entry it was on (\\[git-rewind])."
          (buffer (rimu-make-list directory :name (format nil "*git rewind: ~a*" (rimu-buffer-name directory)) :like list)))
     (setf (tuatara.buffer:buffer-local buffer 'rimu-rewound) (cons top nil)
           (tuatara.buffer:buffer-local buffer 'git-top) top
-          (tuatara.buffer:buffer-local buffer :override-keymap) *git-rewind-keymap*)
+          (buffer-override-keymap buffer) *git-rewind-keymap*)
     (show-buffer buffer)
     (rimu-show-layout buffer (rimu-reading-layout directory "Reading its history...") nil :fresh t)
     (start-git-job "Reading the folder's history"

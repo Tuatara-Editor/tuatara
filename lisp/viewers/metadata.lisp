@@ -966,8 +966,8 @@ alone; gpg, when it looks up keys, is given your keyring alone, not the file."
           ((not (eq (tuatara.io:stamp-kind stamp) :regular)) (message "~a is not a regular file: no metadata read" (abbreviated-path path)))
           (t (let ((look-up-keys (look-up-key-owners-p path))
                    (buffer (buffer-in-mode (format nil "*Metadata: ~a*" (tuatara.io:native-file-name path)) 'org-mode)))
-               (setf (tuatara.buffer:buffer-local buffer :read-only) t
-                     (tuatara.buffer:buffer-local buffer :directory) (tuatara.io:parent-path path))
+               (setf (buffer-read-only-p buffer) t
+                     (buffer-given-directory buffer) (tuatara.io:parent-path path))
                (view-made-text buffer)
                (set-made-text buffer (format nil "Reading the metadata of ~a...~%" (abbreviated-path path)))
                (show-buffer buffer)

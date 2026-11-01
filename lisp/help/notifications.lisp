@@ -37,8 +37,8 @@ nothing in them becomes a link or a picture."
 *Messages* is."
   (find-or-make-buffer "*Notifications*" :mode 'special-mode
                                          :made (lambda (b)
-                                                 (setf (tuatara.buffer:buffer-local b :read-only) t
-                                                       (tuatara.buffer:buffer-local b :kind) :messages))))
+                                                 (setf (buffer-read-only-p b) t
+                                                       (buffer-kind b) :messages))))
 
 (defun notification-line (source title words time)
   "The line *Notifications* keeps of a notification from SOURCE told at the

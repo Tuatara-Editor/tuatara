@@ -702,7 +702,7 @@ order, and opened safely when it is), or else what the settings say."
   (flet ((from (key setting)
            (if like (tuatara.buffer:buffer-local like key) setting)))
     (setf (tuatara.buffer:buffer-local buffer 'rimu-directory) directory
-          (tuatara.buffer:buffer-local buffer :directory) directory
+          (buffer-given-directory buffer) directory
           (tuatara.buffer:buffer-local buffer 'rimu-listing) nil
           (tuatara.buffer:buffer-local buffer 'rimu-generation) 0
           (tuatara.buffer:buffer-local buffer 'rimu-details) (from 'rimu-details *rimu-details*)
@@ -710,11 +710,11 @@ order, and opened safely when it is), or else what the settings say."
           (tuatara.buffer:buffer-local buffer 'rimu-git) (from 'rimu-git *rimu-git-info*)
           (tuatara.buffer:buffer-local buffer 'rimu-sizes) (from 'rimu-sizes *rimu-directory-sizes*)
           (tuatara.buffer:buffer-local buffer 'rimu-sort) (from 'rimu-sort *rimu-sort*)
-          (tuatara.buffer:buffer-local buffer :list-preview) *rimu-preview*
-          (tuatara.buffer:buffer-local buffer :read-only) t)
+          (list-preview-p buffer) *rimu-preview*
+          (buffer-read-only-p buffer) t)
     ;; a list made from one opened safely, a preview's, is opened safely too
     (when (and like (tuatara.io:safe-visit-p like))
-      (setf (tuatara.buffer:buffer-local buffer :safe-visit) t))
+      (setf (tuatara.io:safe-visit-p buffer) t))
     ;; and from one of a commit, a preview's, lists that commit too
     (when (and like (rimu-rewound-p like))
       (setf (tuatara.buffer:buffer-local buffer 'rimu-rewound) (rimu-rewound-p like)
@@ -1109,7 +1109,7 @@ directory above. Returns the list, or NIL (said) when PATH is no directory."
                                                (equal (tuatara.buffer:buffer-local b 'rimu-directory) directory)))
                                         tuatara.buffer:*buffers*)
                                 (rimu-make-list directory))))
-               (when safe (setf (tuatara.buffer:buffer-local buffer :safe-visit) t))
+               (when safe (setf (tuatara.io:safe-visit-p buffer) t))
                (when root
                  (setf (tuatara.buffer:buffer-local buffer 'rimu-root) (directory-name root :clean t)
                        (tuatara.buffer:buffer-local buffer 'rimu-back) back))
@@ -1198,7 +1198,7 @@ stays in its project."
       (drop-search-filters buffer)))
   (rimu-forget-found buffer)
   (setf (tuatara.buffer:buffer-local buffer 'rimu-directory) directory
-        (tuatara.buffer:buffer-local buffer :directory) directory
+        (buffer-given-directory buffer) directory
         (tuatara.buffer:buffer-local buffer 'rimu-listing) nil)
   (let ((name (if (rimu-rewound-p buffer)
                   (format nil "*git rewind: ~a*" (rimu-buffer-name directory))

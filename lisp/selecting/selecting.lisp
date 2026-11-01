@@ -551,7 +551,7 @@ language's mode indents them. The selection ends."
       (let ((done (indent-lines b start end)))
         (setf (tuatara.buffer:buffer-mark-active-p b) nil)
         (when (eq done :none)
-          (message "No indentation rules for ~a" (tuatara.buffer:buffer-local b :mode-name "this buffer")))))))
+          (message "No indentation rules for ~a" (or (buffer-mode-name b) "this buffer")))))))
 
 ;;; Repeating a change with its selection
 

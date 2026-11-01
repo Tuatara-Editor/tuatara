@@ -72,7 +72,7 @@ one whose text no program may see (decrypted: :PLAINTEXT)."
     (let ((b (tuatara.display:window-buffer window)))
       (when (and (tuatara.buffer:buffer-file b)
                  (not (tuatara.io:safe-visit-p b))
-                 (not (tuatara.buffer:buffer-local b :plaintext)))
+                 (not (tuatara.io:buffer-plaintext-p b)))
         (cond ((null (tuatara.buffer:buffer-local b key))
                (setf (tuatara.buffer:buffer-local b key) t)
                (when (<= (tuatara.buffer:buffer-size b) most)

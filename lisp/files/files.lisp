@@ -92,7 +92,7 @@ being the evidence's still, but may be changed now when you may write the
 new file; \\[end-safe-visit] opens it as usual. Said so."
   (when (shiftf (tuatara.buffer:buffer-local buffer :saved-from-evidence) nil)
     (when (and (tuatara.io:safe-visit-p buffer) (null (buffer-evidence buffer)))
-      (setf (tuatara.buffer:buffer-local buffer :read-only)
+      (setf (buffer-read-only-p buffer)
             (not (tuatara.io:writable-p (tuatara.buffer:buffer-file buffer))))
       (message "~a is a copy out of evidence: still opened safely, and may be changed; \\[end-safe-visit] opens it as usual"
                (tuatara.buffer:buffer-name buffer)))))
@@ -401,7 +401,7 @@ wrong on its text before is tried on it again, the text parsed afresh."
     (cond ((and refill (null file)) (funcall refill buffer) (parse-afresh buffer))
           ;; a list or report not made again from anything, or a buffer of your own
           ((null file) (parse-afresh buffer)
-                       (message (if (tuatara.buffer:buffer-local buffer :read-only)
+                       (message (if (buffer-read-only-p buffer)
                                     "~a shows what was said or made then: nothing to read again"
                                     "~a visits no file: nothing to read again")
                                 (tuatara.buffer:buffer-name buffer)))

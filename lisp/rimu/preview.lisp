@@ -78,7 +78,7 @@ preview on. In a list opened safely the preview shows each file as a file
 opened safely is shown: its text with no major mode, a picture or a PDF only
 as the sandbox draws it."
   (and (rimu-list-p buffer)
-       (tuatara.buffer:buffer-local buffer :list-preview)
+       (list-preview-p buffer)
        (not (tuatara.buffer:buffer-local buffer 'rimu-preview-buffer))))
 
 (defvar *rimu-quick-edit-keymap* (make-keymap :name "rimu quick edit")
@@ -104,7 +104,7 @@ saved."
           (rimu-preview-wanted state) nil)
     (when (live-buffer-p buffer)
       ;; its own keys before the quick edit's, as a PDF's view has them, given back
-      (setf (tuatara.buffer:buffer-local buffer :override-keymap) (tuatara.buffer:buffer-local buffer 'rimu-own-override)
+      (setf (buffer-override-keymap buffer) (tuatara.buffer:buffer-local buffer 'rimu-own-override)
             (tuatara.buffer:buffer-local buffer 'rimu-own-override) nil
             (tuatara.buffer:buffer-local buffer :tuatara-normal-keymap) nil)
       (let* ((modified (tuatara.buffer:buffer-modified-p buffer))
@@ -241,7 +241,7 @@ SIDE-PREVIEW-SHOW does; one made for it has ENTRY's folder as its directory,
 where finding a file starts."
   (let ((directory (cdr (rimu-preview-wanted state))))
     (when (and own directory (not (rimu-list-p buffer)))
-      (setf (tuatara.buffer:buffer-local buffer :directory) (tuatara.io:parent-path (rimu-path directory entry)))))
+      (setf (buffer-given-directory buffer) (tuatara.io:parent-path (rimu-path directory entry)))))
   (setf (rimu-preview-buffer-entry state) (and (side-preview-show state buffer own) entry)))
 
 (defun rimu-display-show (buffer)
@@ -383,7 +383,8 @@ name has when that is not one of the kind's."
                        (push (list (file-position out) (+ (file-position out) (length named)) :warning) spans)
                        (write-string named out)))))
         (setf spans (nreverse spans))
-        (setf (tuatara.buffer:buffer-local buffer :header-line) (lambda (window) (declare (ignore window)) (values text spans))
+        (setf (tuatara.display:buffer-header-line buffer)
+              (lambda (window) (declare (ignore window)) (values text spans))
               (tuatara.buffer:buffer-local buffer :header-line-over-hex) t)))))
 
 (defun rimu-preview-take-in (state job)
@@ -421,7 +422,7 @@ safely or the list is opened safely."
                  (let ((first-line (tuatara.text:octets-string octets :end (or (tuatara.text:octets-line-end-position octets 0 (min (length octets) 512))
                                                                                (min (length octets) 512)))))
                    (ignore-errors (set-major-mode buffer (mode-for-file path (string-right-trim '(#\Return) first-line)))))))
-              (setf (tuatara.buffer:buffer-local buffer :read-only) t
+              (setf (buffer-read-only-p buffer) t
                     ;; an Office document's text read by Tuatara itself, its page alone drawn in the sandbox
                     (tuatara.buffer:buffer-local buffer :sandboxed) (and (or (and text (not office) (not (rimu-preview-job-read-here job)))
                                                                              (rimu-preview-job-image job))
@@ -490,7 +491,7 @@ the picture again. True when BUFFER is one."
     (let ((octets (not (and (tuatara.buffer:buffer-local buffer :image-hidden) (tuatara.display:hex-view-p buffer)))))
       (setf (tuatara.buffer:buffer-local buffer :image-hidden) octets)
       (when octets
-        (setf (tuatara.buffer:buffer-local buffer :hex-view) t))
+        (setf (tuatara.display:hex-view-p buffer) t))
       (message "~:[The picture again~;Hex view on: the file's octets in place of the picture~]" octets))
     t))
 
@@ -516,9 +517,9 @@ room beside the list, the file is shown in the list's window."
           (setf (rimu-preview-editing state) buffer
                 (rimu-preview-edit-entry state) entry
                 (rimu-preview-edit-own state) (null before)
-                (tuatara.buffer:buffer-local buffer 'rimu-own-override) (tuatara.buffer:buffer-local buffer :override-keymap)
-                (tuatara.buffer:buffer-local buffer :override-keymap)
-                (let ((own (tuatara.buffer:buffer-local buffer :override-keymap)))
+                (tuatara.buffer:buffer-local buffer 'rimu-own-override) (buffer-override-keymap buffer)
+                (buffer-override-keymap buffer)
+                (let ((own (buffer-override-keymap buffer)))
                   (if own
                       ;; the quick edit's keys first, then the buffer's own (a PDF view's C-s)
                       (let ((keys (make-keymap :name "rimu quick edit" :parent own)))
@@ -533,7 +534,7 @@ room beside the list, the file is shown in the list's window."
                               (tuatara.io:binary-head-p (tuatara.text:rope-octets (tuatara.buffer:buffer-text buffer)
                                                                        :start 0 :end (min size 65536))))))
             (when binary
-              (setf (tuatara.buffer:buffer-local buffer :hex-view) t))
+              (setf (tuatara.display:hex-view-p buffer) t))
             (when (and place (null before))
               (setf (tuatara.display:window-point-anchor window)
                     (tuatara.text:make-anchor (tuatara.buffer:buffer-version buffer) (min size (first place)) :bias :after)
@@ -541,7 +542,7 @@ room beside the list, the file is shown in the list's window."
             (select-window window)
             (cond ((pdf-view-of buffer)
                    (message "~a, all of it: the cursor back in the list shows its preview again" (tuatara.buffer:buffer-name buffer)))
-                  ((and binary (tuatara.buffer:buffer-local buffer :read-only))
+                  ((and binary (buffer-read-only-p buffer))
                    (message "~a is binary: shown in the hex view, read-only; \\[read-only-mode] lets you overwrite its octets, \\<*rimu-quick-edit-normal-keymap*>\\[rimu-quick-edit-done] goes back to the preview"
                             (tuatara.buffer:buffer-name buffer)))
                   (binary

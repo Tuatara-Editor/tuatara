@@ -45,7 +45,7 @@ not kept (help, lists, terminals, buffers with no file, an encrypted file's text
                     (or (tuatara.buffer:buffer-file buffer)
                         (ignore-errors (shown-file buffer))
                         (tuatara.buffer:buffer-local buffer 'office-reading)))))
-    (cond ((tuatara.buffer:buffer-local buffer :plaintext) nil)
+    (cond ((tuatara.io:buffer-plaintext-p buffer) nil)
           (directory (list :directory 0 directory))
           (file (list (if (tuatara.io:safe-visit-p buffer) :safe :file) point (tuatara.io:native file)))
           ((member (tuatara.buffer:buffer-name buffer) '("*lisp-scratch*" "*org-scratch*" "*scratch*") :test #'string=)

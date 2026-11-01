@@ -363,7 +363,7 @@ contents again."
   (when (and (or (and *org-toc-on-save* (typep (buffer-major-mode buffer) 'org-mode))
                  (and *markdown-toc-on-save* (toc-markdown-p buffer)))
              (<= (tuatara.buffer:buffer-size buffer) *org-toc-largest*)
-             (not (tuatara.buffer:buffer-local buffer :read-only)))
+             (not (buffer-read-only-p buffer)))
     (let ((*current-buffer* buffer))
       (toc-update buffer :quiet t))))
 

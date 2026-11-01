@@ -784,7 +784,7 @@ LaTeX printed with it."
   "Show PDF in its view where the rule for :exported buffers puts it (beside,
 or alone on a narrow screen), the focus staying where it is."
   (pdf-view-visit pdf (lambda (buffer)
-                        (setf (tuatara.buffer:buffer-local buffer :kind) :exported)
+                        (setf (buffer-kind buffer) :exported)
                         (display-buffer buffer))))
 
 (defmethod tuatara.runtime:job-take-in ((job pdf-export))

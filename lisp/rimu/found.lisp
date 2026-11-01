@@ -251,7 +251,7 @@ looks at each file again, keeping the order. Returns the list."
          (spec (list :kind :given :directory directory :paths paths :words words))
          (buffer (rimu-make-list directory :name (or name (rimu-buffer-name directory)))))
     (setf (tuatara.buffer:buffer-local buffer 'rimu-found) spec)
-    (when safe (setf (tuatara.buffer:buffer-local buffer :safe-visit) t))
+    (when safe (setf (tuatara.io:safe-visit-p buffer) t))
     (when details-p (setf (tuatara.buffer:buffer-local buffer 'rimu-details) details))
     (show-buffer buffer)
     (rimu-start-search buffer)

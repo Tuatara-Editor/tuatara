@@ -178,7 +178,7 @@ result would change its size by CHANGE octets, where octets are only typed
 over (TUATARA.BUFFER:HEX-VIEW-REFUSES-P). Every job that puts its result in
 a buffer asks this before it does, so that the result is left out calmly,
 said in one way, rather than refused with an error."
-  (let ((why (cond ((tuatara.buffer:buffer-local buffer :read-only) "became read-only")
+  (let ((why (cond ((buffer-read-only-p buffer) "became read-only")
                    ((tuatara.buffer:hex-view-refuses-p buffer change)
                     "turned to the hex view, which only types over octets,"))))
     (when why

@@ -9,6 +9,7 @@ saving them so that no crash or power cut loses a file, noticing when they chang
 disk, and reverting; on every Linux file system, with faster paths where a file system
 offers them; copying, moving, deleting and wiping files and folders, the trash, and
 running programs, shut in a sandbox when they read files from elsewhere.")
+  (:export #:buffer-file-stamp #:buffer-plaintext-p)
   (:export #:octets-words
    ;; errors
    #:file-system-error #:file-system-error-operation #:file-system-error-path #:file-system-error-reason #:file-system-error-errno

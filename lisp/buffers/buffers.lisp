@@ -45,7 +45,7 @@ read-only; none for any other."
   (or (list-mark-face mark)
       (cond ((typep (buffer-major-mode buffer) 'help-mode) :list-dim)
             ((uiop:string-prefix-p "*" (tuatara.buffer:buffer-name buffer)) :list-special)
-            ((tuatara.buffer:buffer-local buffer :read-only) :list-read-only))))
+            ((buffer-read-only-p buffer) :list-read-only))))
 
 (defparameter *buffers-columns*
   '((" MR" :width 4) ("Name" :width 18) ("Size" :width 9 :right t :elide nil) ("Mode" :width 16) ("Filename/Process"))
@@ -61,7 +61,7 @@ marked or D, then * modified, % read-only), the name, the size, the major mode a
 or :NONE for a buffer of neither or one in no project. It is looked for once
 while the buffer stands in the same folder, and kept with the buffer; ROOTS,
 a table by folder, shares what is found among the buffers of one list."
-  (let ((directory (or (tuatara.buffer:buffer-local buffer :directory)
+  (let ((directory (or (buffer-given-directory buffer)
                        (let ((file (tuatara.buffer:buffer-file buffer)))
                          (and file (tuatara.io:parent-path file)))))
         (kept (tuatara.buffer:buffer-local buffer 'buffer-project)))
@@ -94,11 +94,11 @@ name; *NO-PROJECT* for :NONE."
 (defun buffer-cells (b mark)
   "The cells of the line of the buffer B, marked MARK, in the buffer list."
   (list (format nil "~a~:[ ~;*~]~:[ ~;%~]" (list-mark-sign mark)
-                (tuatara.buffer:buffer-modified-p b) (tuatara.buffer:buffer-local b :read-only))
+                (tuatara.buffer:buffer-modified-p b) (buffer-read-only-p b))
         (cons (tuatara.buffer:buffer-name b) (buffer-name-face b mark))
         (format nil "~:d" (tuatara.buffer:buffer-size b))
         (tuatara.modes:mode-lighter (type-of (buffer-major-mode b)))
-        (let ((where (or (buffer-listed-file b) (tuatara.buffer:buffer-local b :directory))))
+        (let ((where (or (buffer-listed-file b) (buffer-given-directory b))))
           (if where (abbreviated-path where) ""))))
 
 (defun buffers-render (list-buffer &optional (point :line))
@@ -131,9 +131,9 @@ with its name, whether it is modified and read-only, its size, its mode, its
 file and the folder it lists; another key means the list is out of date (KEEP-SHOWN-CURRENT)."
   (mapcar (lambda (b)
             (list b (tuatara.buffer:buffer-name b) (tuatara.buffer:buffer-modified-p b)
-                  (tuatara.buffer:buffer-local b :read-only) (tuatara.buffer:buffer-size b)
+                  (buffer-read-only-p b) (tuatara.buffer:buffer-size b)
                   (type-of (buffer-major-mode b)) (tuatara.buffer:buffer-file b)
-                  (tuatara.buffer:buffer-local b :directory)))
+                  (buffer-given-directory b)))
           (buffers-in-order list-buffer)))
 
 (keep-shown-current 'buffers-mode 'buffers-key)

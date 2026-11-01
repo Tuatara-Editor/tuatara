@@ -136,7 +136,7 @@ bullets' ways of showing it, and links shown as their labels or as written as
 *ORG-LINK-DESCRIPTIVE* or the last of descriptivelinks and literallinks says."
   (setf (tuatara.buffer:buffer-local buffer :line-prefix-function) 'org-line-prefix
         (tuatara.buffer:buffer-local buffer :line-scale-function) 'org-line-scale
-        (tuatara.buffer:buffer-local buffer :display-replacements-function) 'org-display-replacements)
+        (tuatara.display:buffer-replacements-function buffer) 'org-display-replacements)
   (let ((indent (org-startup-choice options '("indent" "noindent")))
         (links (org-startup-choice options '("literallinks" "descriptivelinks"))))
     (setf (tuatara.buffer:buffer-local buffer 'org-indent)

@@ -240,7 +240,7 @@ on. A note opened from an encrypted file is exported only when you say so:
 what the export writes is not encrypted. Never into an evidence folder
 \(*EVIDENCE-FOLDERS*): NIL then, and as a second value the words saying why
 \(EVIDENCE-REFUSAL)."
-  (unless (or (not (tuatara.buffer:buffer-local buffer :plaintext))
+  (unless (or (not (tuatara.io:buffer-plaintext-p buffer))
               (yes-or-no-p* (format nil "~a is encrypted, but its export and what is made for it are not; export it all the same?"
                                     (tuatara.buffer:buffer-name buffer))))
     (return-from export-target-allowed-p nil))

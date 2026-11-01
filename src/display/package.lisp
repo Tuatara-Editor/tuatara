@@ -4,6 +4,8 @@
 (defpackage #:tuatara.display
   (:use #:cl #:alexandria)
   (:import-from #:tuatara-user #:*window-min-height* #:*window-min-width* #:*scroll-margin* #:*scroll-recenter*)
+  (:import-from #:tuatara.buffer #:hex-view-p)
+  (:export #:buffer-header-line #:buffer-replacements-function)
   (:documentation "The layout engine producing glyph rows from snapshots and window state; faces, fonts, rich cells, windows and frames.")
   (:export #:*direction-controls* #:in-ranges-p #:fit-columns #:pad-columns #:shorten-string #:fill-words #:*screen-column-reach*)
   (:export #:char-columns #:cluster-columns #:mark-code-p #:*mark-base* #:string-columns #:string-column-starts #:chars-in-columns #:docstring-paragraphs #:next-tab-stop #:char-display #:control-char-display #:raw-byte-display #:*invisible-characters* #:invisible-code-p #:invisible-code-display #:*invisible-characters-function* #:invisible-characters-of

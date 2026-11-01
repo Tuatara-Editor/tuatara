@@ -272,7 +272,7 @@ safely).")
 (defun modified-indicator (buffer)
   "BUFFER's state as the mode line shows it: [%] when it is read-only, else
 [*] when it has changes not saved, else [-]."
-  (cond ((tuatara.buffer:buffer-local buffer :read-only) "[%]")
+  (cond ((tuatara.buffer:buffer-read-only-p buffer) "[%]")
         ((tuatara.buffer:buffer-modified-p buffer) "[*]")
         (t "[-]")))
 
@@ -287,11 +287,22 @@ it, whichever name of the home directory it is by
             ((and (> (length name) (length home)) (string= home name :end2 (length home)))
              (return (concatenate 'string "~/" (subseq name (length home)))))))))
 
+(defun buffer-given-directory (buffer)
+  "The directory BUFFER was given to stand in, whatever file it visits: the
+one a list of a directory lists (\\[rimu]), where a compile or a terminal's
+program runs; NIL for a buffer that stands in its file's (BUFFER-DIRECTORY)."
+  (tuatara.buffer:buffer-local buffer :directory))
+
+(defun (setf buffer-given-directory) (directory buffer)
+  "Have BUFFER stand in DIRECTORY, a native name (BUFFER-GIVEN-DIRECTORY); NIL
+for its file's."
+  (setf (tuatara.buffer:buffer-local buffer :directory) directory))
+
 (defun buffer-directory (buffer)
   "The native name, ending in /, of the directory BUFFER stands in: the one it
 lists, for a list of a directory (\\[rimu]); else that of its file; else the one
 *DEFAULT-DIRECTORY* names. Files asked for from BUFFER are looked for there."
-  (let ((listed (tuatara.buffer:buffer-local buffer :directory))
+  (let ((listed (buffer-given-directory buffer))
         (file (tuatara.buffer:buffer-file buffer)))
     (cond (listed)
           (file (tuatara.io:parent-path file))
@@ -320,7 +331,7 @@ file system."
 (defun buffer-directory-name (buffer)
   "The directory BUFFER stands in (BUFFER-DIRECTORY) as the mode line shows
 it: the home directory written ~, a / at the end."
-  (if (or (tuatara.buffer:buffer-local buffer :directory) (tuatara.buffer:buffer-file buffer))
+  (if (or (buffer-given-directory buffer) (tuatara.buffer:buffer-file buffer))
       (abbreviated-path (buffer-directory buffer))
       (shown-default-directory)))
 
@@ -340,13 +351,22 @@ columns."
         name
         (values (tuatara.display:fit-columns name '() limit :middle t :width #'panel-char-columns)))))
 
+(defun buffer-mode-name (buffer)
+  "The name of BUFFER's major mode as its mode line shows it (Org, Terminal),
+or NIL before it has one."
+  (tuatara.buffer:buffer-local buffer :mode-name))
+
+(defun (setf buffer-mode-name) (name buffer)
+  "Have BUFFER's mode line call its major mode NAME (BUFFER-MODE-NAME)."
+  (setf (tuatara.buffer:buffer-local buffer :mode-name) name))
+
 (defun default-mode-line (editor &optional (window (editor-window editor)))
   "The mode line of WINDOW, the selected window by default: [-], [*] or [%] as
 the buffer is saved, changed or read-only (MODIFIED-INDICATOR), the buffer's
 name (cut in its middle when long, MODE-LINE-NAME), the line and column of the
 window's point, digits grouped with commas (L100,000,001) so large numbers read
-at a glance, the major mode's name when the buffer has one (the :mode-name
-local), what *MODE-LINE-FUNCTIONS* add, and last the buffer's directory in the
+at a glance, the major mode's name when the buffer has one
+(BUFFER-MODE-NAME), what *MODE-LINE-FUNCTIONS* add, and last the buffer's directory in the
 :mode-line-directory face; what *MODE-LINE-LEAD-FUNCTIONS* give goes first,
 before [-], and what *MODE-LINE-NAME-FUNCTIONS* give just before the name. Returns the text and, as a second value, the spans of it in faces
 of their own, each (START END FACE)."
@@ -378,7 +398,7 @@ of their own, each (START END FACE)."
                           (and line (1+ line)))
                         ;; on a line too long to read back over while its lines are counted, C…
                         (tuatara.buffer:buffer-column buffer point :most tuatara.display:*screen-column-reach*)
-                        (tuatara.buffer:buffer-local buffer :mode-name)))
+                        (buffer-mode-name buffer)))
          (extras (loop for f in *mode-line-functions*
                        for extra = (tuatara.runtime:call-hook-function f editor buffer)
                        when (stringp extra) collect (list extra nil)
@@ -686,7 +706,8 @@ cells, a terminal's) are noted too, its text shown as it is."
         (when (plusp (tuatara.display:window-header-rows window))
           (let ((header-top (tuatara.display:area-top window)))
             (multiple-value-bind (text spans)
-                (ignore-errors (funcall (tuatara.buffer:buffer-local (tuatara.display:window-buffer window) :header-line) window))
+                (ignore-errors (funcall (tuatara.display:buffer-header-line (tuatara.display:window-buffer window))
+                                        window))
               (push (list left width (or text "") (remove nil spans :key #'third) :header-line) (aref screen header-top)))
             (when (tuatara.display:window-divider window)
               (push (list (+ left width) 1 *window-divider* '((0 1 :vertical-border)) nil) (aref screen header-top)))))

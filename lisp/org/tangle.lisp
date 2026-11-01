@@ -365,7 +365,7 @@ when you say so. Nothing in a block is ever run."
                  (to-write (remove-if-not (lambda (f) (member (code-file-state f) '(:new :changed))) files)))
             (cond
               ((null files) (message "No source block here has :tangle: nothing to write"))
-              ((and (tuatara.buffer:buffer-local buffer :plaintext)
+              ((and (tuatara.io:buffer-plaintext-p buffer)
                     (not (yes-or-no-p* (format nil "~a is encrypted, but the code files it writes are not; go on?"
                                                (tuatara.buffer:buffer-name buffer)))))
                (message "No code files written"))

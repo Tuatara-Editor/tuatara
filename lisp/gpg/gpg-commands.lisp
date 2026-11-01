@@ -445,7 +445,7 @@ inserts and \\[list-delete-marked] deletes those marked."
   (let ((from (current-buffer))
         (buffer (buffer-in-mode "*GnuPG keys*" 'gpg-keys-mode)))
     (unless (eq from buffer) (setf (tuatara.buffer:buffer-local buffer 'gpg-keys-from) from))
-    (setf (tuatara.buffer:buffer-local buffer :override-keymap) *gpg-keys-keymap*)
+    (setf (buffer-override-keymap buffer) *gpg-keys-keymap*)
     (gpg-keys-show buffer 2)
     (show-buffer buffer)))
 

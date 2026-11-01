@@ -2564,7 +2564,7 @@ the package on the line is shown beside the list, \\[list-toggle-preview] turnin
 off and on. \\[package-update] fetches them all again."
   (let ((list (buffer-in-mode "*Packages*" 'packages-mode)))
     (when (eq (tuatara.buffer:buffer-local list :list-preview :unset) :unset)
-      (setf (tuatara.buffer:buffer-local list :list-preview) t))
+      (setf (list-preview-p list) t))
     (packages-render list 2)
     (show-buffer list)))
 

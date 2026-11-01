@@ -911,8 +911,8 @@ While search filters narrow the list, only the names it shows are edited."
                   (coerce (loop for line below (length entries)
                                 collect (tuatara.text:make-anchor version (tuatara.buffer:buffer-goto-line buffer line)))
                           'vector))
-                (tuatara.buffer:buffer-local buffer :directory) (tuatara.buffer:buffer-local list 'rimu-directory)
-                (tuatara.buffer:buffer-local buffer :header-line)
+                (buffer-given-directory buffer) (tuatara.buffer:buffer-local list 'rimu-directory)
+                (tuatara.display:buffer-header-line buffer)
                 (let ((text (substitute-command-keys
                              (format nil " Rename: \\<rimu-names-mode>\\[rimu-names-apply] renames the lines changed, \\[rimu-names-abort] leaves them~[~:;; ~:*~d name~:p with a control or invisible character left out (\\<rimu-mode>\\[rimu-rename] renames one)~]"
                                      left-out))))
@@ -977,7 +977,7 @@ when a line does not do, none, and why is said."
          (list (tuatara.buffer:buffer-local buffer 'rimu-names-list))
          (entries (tuatara.buffer:buffer-local buffer 'rimu-names-entries))
          ;; the directory the names were taken from, wherever the list has gone since
-         (directory (tuatara.buffer:buffer-local buffer :directory))
+         (directory (buffer-given-directory buffer))
          (lines (rimu-names-lines buffer)))
     (block apply
       (flet ((refuse (control &rest arguments)

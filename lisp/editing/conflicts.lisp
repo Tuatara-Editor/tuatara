@@ -372,24 +372,24 @@ held any does not."
               (message "No conflicts in ~a" (escape-controls (tuatara.buffer:buffer-name buffer)))))))))
 
 (defun conflict-keymap-follows (buffer)
-  "True when the keys BUFFER has for itself (its :OVERRIDE-KEYMAP) are those CONFLICT-FOLLOW-KEYMAP put there."
-  (let ((own (tuatara.buffer:buffer-local buffer :override-keymap)))
+  "True when the keys BUFFER has for itself (BUFFER-OVERRIDE-KEYMAP) are those CONFLICT-FOLLOW-KEYMAP put there."
+  (let ((own (buffer-override-keymap buffer)))
     (and own (eq own (tuatara.buffer:buffer-local buffer 'conflict-keymap)))))
 
 (defun conflict-follow-keymap (buffer)
   "Give BUFFER the keys under \\`C-c ^' while it holds conflicts
 \(CONFLICT-MARKERS-ON-P), and take them away once it holds none. Where the
-buffer has keys of its own already (its :OVERRIDE-KEYMAP, as a quick edit
+buffer has keys of its own already (BUFFER-OVERRIDE-KEYMAP, as a quick edit
 or a snippet gives it), the conflicts' keys go in front of them, in a keymap
 whose parent they are, and taking them away puts those keys back as they
 were."
-  (let ((own (tuatara.buffer:buffer-local buffer :override-keymap)))
+  (let ((own (buffer-override-keymap buffer)))
     (cond ((and (conflict-markers-on-p buffer) (not (conflict-keymap-follows buffer)))
            (let ((keymap (if own (conflict-keys own) *conflict-keymap*)))
              (setf (tuatara.buffer:buffer-local buffer 'conflict-keymap) keymap
-                   (tuatara.buffer:buffer-local buffer :override-keymap) keymap)))
+                   (buffer-override-keymap buffer) keymap)))
           ((and (not (conflict-markers-on-p buffer)) (conflict-keymap-follows buffer))
-           (setf (tuatara.buffer:buffer-local buffer :override-keymap) (keymap-parent own)
+           (setf (buffer-override-keymap buffer) (keymap-parent own)
                  (tuatara.buffer:buffer-local buffer 'conflict-keymap) nil)))))
 
 (defun conflict-look-again-p (buffer)
@@ -613,7 +613,7 @@ background, the editor free meanwhile."
                           (tuatara.buffer:buffer-slice buffer 0 (tuatara.buffer:buffer-size buffer))
                           (tuatara.buffer:buffer-text buffer))))
             ;; files asked for from it are looked for beside the conflicted file
-            (setf (tuatara.buffer:buffer-local shown :directory) (buffer-directory buffer))
+            (setf (buffer-given-directory shown) (buffer-directory buffer))
             (tuatara.runtime:start-job-thread
              (make-conflict-sides-job shown rope (cons (next-line-start buffer start) (or base separator))
                                       (cons (next-line-start buffer separator) end)

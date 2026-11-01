@@ -96,14 +96,36 @@ point is its buffer's point; every other window keeps a point of its own."))
           (tuatara.text:make-anchor (tuatara.buffer:buffer-version buffer) 0 :bias :before))
     window))
 
+(defun buffer-header-line (buffer)
+  "The function giving BUFFER's header line, the line above its text: called
+with a window showing BUFFER, it returns the line's text and its spans of
+faces. NIL for a buffer with no header line."
+  (tuatara.buffer:buffer-local buffer :header-line))
+
+(defun (setf buffer-header-line) (function buffer)
+  "Give BUFFER the header line FUNCTION makes (BUFFER-HEADER-LINE); NIL for
+none."
+  (setf (tuatara.buffer:buffer-local buffer :header-line) function))
+
+(defun buffer-replacements-function (buffer)
+  "The function giving what BUFFER's windows show in place of parts of its
+text, or NIL: called with BUFFER, a START and an END octet, it returns a list
+of (START END TEXT FACE), sorted by START, each shown as TEXT in FACE instead
+of the octets from START to END (Org's links shown by their descriptions)."
+  (tuatara.buffer:buffer-local buffer :display-replacements-function))
+
+(defun (setf buffer-replacements-function) (function buffer)
+  "Have BUFFER's windows show what FUNCTION gives in place of parts of its text
+\(BUFFER-REPLACEMENTS-FUNCTION); NIL for its text as it is."
+  (setf (tuatara.buffer:buffer-local buffer :display-replacements-function) function))
+
 (defun window-header-rows (window)
   "The rows at the top of WINDOW its buffer's header line takes: one while the
-buffer has a header line (its :header-line, a function of the window giving
-the line's text and spans), is not shown as a hex dump unless the line is for
+buffer has a header line (BUFFER-HEADER-LINE), is not shown as a hex dump unless the line is for
 the dump too (its :header-line-over-hex local), and the window has room for
 it, a row of text and its mode line; else none."
   (let ((buffer (window-buffer window)))
-    (if (and (tuatara.buffer:buffer-local buffer :header-line)
+    (if (and (buffer-header-line buffer)
              (or (not (hex-view-p buffer)) (tuatara.buffer:buffer-local buffer :header-line-over-hex))
              (>= (area-height window) 3))
         1
@@ -382,15 +404,15 @@ stands between each two. O(log n + HEIGHT)."
 (defun window-hidden (buffer start width height &optional end)
   "What a window showing BUFFER from START, WIDTH by HEIGHT, does not show as
 it is, for LAYOUT's HIDDEN: BUFFER's folds, the lines search filters hide as
-far as the window could reach (HIDDEN-IN-REACH), and what its
-:display-replacements-function shows otherwise (each (START END TEXT FACE))
-from START on, as far as the window could reach or to END, asked for each
+far as the window could reach (HIDDEN-IN-REACH), and what it shows in place
+of its text (BUFFER-REPLACEMENTS-FUNCTION, each (START END TEXT FACE)) from
+START on, as far as the window could reach or to END, asked for each
 stretch shown between the folds alone, never the text they hide; one inside
 a fold left out."
   (let* ((bounds (hidden-bounds buffer))
          (folds (and (tuatara.buffer:buffer-local buffer :folds) (buffer-folds buffer)))
          (folds (if bounds (merge 'list (copy-list folds) (hidden-in-reach bounds start height) #'< :key #'car) folds))
-         (function (tuatara.buffer:buffer-local buffer :display-replacements-function)))
+         (function (buffer-replacements-function buffer)))
     (if (null function)
         folds
         (let* ((budget (* 8 (max 1 width) (max 1 height)))
@@ -532,7 +554,7 @@ links, which depend on where point is), no prefix before its lines and no
 lines drawn large, all of which can change while LAYOUT-STATE does not."
   (let ((buffer (window-buffer window)))
     (not (or (tuatara.buffer:buffer-local buffer :folds)
-             (tuatara.buffer:buffer-local buffer :display-replacements-function)
+             (buffer-replacements-function buffer)
              (tuatara.buffer:buffer-local buffer :line-prefix-function)
              (window-scaling-p window)))))
 

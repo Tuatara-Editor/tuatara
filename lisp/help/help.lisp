@@ -34,7 +34,7 @@ function of no arguments giving them, called again when \\[revert-buffer]
 makes the help again; given as they are, they are shown again as they are.
 With *HELP-WINDOW-SELECT* its window is selected."
   (let ((help (buffer-in-mode name 'help-mode)))
-    (setf (tuatara.buffer:buffer-local help :kind) :help)
+    (setf (buffer-kind help) :help)
     (render-pieces help (if (functionp pieces) pieces (constantly pieces)) :keys t :point :start)
     (let ((window (display-buffer help :at :start)))
       (when (and window *help-window-select*) (select-window window))

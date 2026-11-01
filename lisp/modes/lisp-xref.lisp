@@ -193,7 +193,7 @@ there finds them again; else as the definitions of NAME."
   (let ((list (buffer-in-mode "*xref*" 'xref-mode))
         (window (current-window))
         (source (current-buffer)))
-    (setf (tuatara.buffer:buffer-local list :kind) :xref
+    (setf (buffer-kind list) :xref
           (tuatara.buffer:buffer-local list 'xref-window) window
           (tuatara.buffer:buffer-local list 'xref-source) source
           (tuatara.buffer:buffer-local list 'xref-again) again)

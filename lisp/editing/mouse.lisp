@@ -136,7 +136,7 @@ selection, as *USE-SYSTEM-CLIPBOARD* says: when there is some, no more than
 *CLIPBOARD-MAX-SIZE* octets, and none of an encrypted file's text."
   (let ((b (current-buffer)))
     (when (and *use-system-clipboard* (tuatara.buffer:buffer-mark-active-p b)
-               (not (tuatara.buffer:buffer-local b :plaintext)))
+               (not (tuatara.io:buffer-plaintext-p b)))
       (let ((start (min (point) (tuatara.buffer:buffer-mark b)))
             (end (max (point) (tuatara.buffer:buffer-mark b))))
         (when (< 0 (- end start) *clipboard-max-size*)

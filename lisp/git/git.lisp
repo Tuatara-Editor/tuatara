@@ -1527,7 +1527,7 @@ at point's line."
 asked for from it are looked for from its top, and why it is looked at
 only, when it is, is kept for its mode line (GIT-LOOK-ONLY-OF)."
   (setf (tuatara.buffer:buffer-local buffer 'git-top) top
-        (tuatara.buffer:buffer-local buffer :directory) top
+        (buffer-given-directory buffer) top
         (tuatara.buffer:buffer-local buffer 'git-look-only) (git-look-only-reason top)))
 
 (defun git-edit-buffer (control top mode text line &rest locals)

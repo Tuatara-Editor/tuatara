@@ -25,8 +25,8 @@ what the editor's parts do is reported in *Debug*. Set it in the init file.")
 *Messages* is."
   (find-or-make-buffer "*Debug*" :mode 'special-mode
                                  :made (lambda (b)
-                                         (setf (tuatara.buffer:buffer-local b :read-only) t
-                                               (tuatara.buffer:buffer-local b :kind) :messages))))
+                                         (setf (buffer-read-only-p b) t
+                                               (buffer-kind b) :messages))))
 
 (defun show-debug-reports (editor)
   "Tick function: put the reports made since it was last called at the end of

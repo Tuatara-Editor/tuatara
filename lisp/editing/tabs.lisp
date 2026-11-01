@@ -185,7 +185,7 @@ which are text. Without a selection it says so and does nothing."
           (let ((changed (indent-lines b start end)))
             (setf (tuatara.buffer:buffer-mark-active-p b) nil)
             (case changed
-              (:none (message "No indentation rules for ~a" (tuatara.buffer:buffer-local b :mode-name "this buffer")))
+              (:none (message "No indentation rules for ~a" (or (buffer-mode-name b) "this buffer")))
               (:too-large)
               (t (message "Indented ~d line~:p" (or changed 0))))))
         (message "No selection: indent-region was not run"))))

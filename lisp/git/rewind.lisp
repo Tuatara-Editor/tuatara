@@ -61,7 +61,7 @@ before is killed) in MODE for a history in the repository at TOP, saying it
 is being read, read only, its keys *GIT-REWIND-KEYMAP*'s. Returns it."
   (let ((buffer (fresh-made-buffer name mode (format nil "Reading the history...~%"))))
     (git-set-top buffer top)
-    (setf (tuatara.buffer:buffer-local buffer :override-keymap) *git-rewind-keymap*)
+    (setf (buffer-override-keymap buffer) *git-rewind-keymap*)
     (show-buffer buffer)
     buffer))
 

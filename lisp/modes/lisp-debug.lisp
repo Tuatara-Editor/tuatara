@@ -27,7 +27,7 @@ closes the list."
 (innermost first, as CAPTURE-BACKTRACE gives them), in *Backtrace*, and select
 its window: the error as a heading, the calls' numbers dim."
   (let ((b (buffer-in-mode "*Backtrace*" 'backtrace-mode)))
-    (setf (tuatara.buffer:buffer-local b :kind) :backtrace)
+    (setf (buffer-kind b) :backtrace)
     ;; on the innermost call
     (render-pieces b (list* (cons (format nil "Debugger entered--Lisp error: ~a [~(~a~)]" (tuatara.runtime:condition-words condition) (type-of condition))
                                   :heading)

@@ -159,7 +159,7 @@ in hex, every octet of it being shown there: \\[widen] first."
       (return-from hex-mode nil))
     (if on
         (hex-view-on b (point))
-        (setf (tuatara.buffer:buffer-local b :hex-view) nil))
+        (setf (tuatara.display:hex-view-p b) nil))
     (message "Hex view ~:[off~;on~]" on)))
 
 (define-command hex-set-byte ()
@@ -200,7 +200,7 @@ after it that holds them, or with BACKWARD the last before it."
                   (tuatara.syntax:search-forward rope needle :start (min (1+ p) (tuatara.text:rope-bytes rope))
                                                              :case-fold nil :stop stop))
             (cond ((eq end :stopped) (message "Search stopped"))
-                  (hit (setf (tuatara.buffer:buffer-local b :hex-view) t
+                  (hit (setf (tuatara.display:hex-view-p b) t
                              (tuatara.display:hex-point b) hit)
                        (message "Found at 0x~(~x~) (~:d)" hit hit))
                   (t (message "Not found"))))))))

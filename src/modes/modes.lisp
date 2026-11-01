@@ -328,7 +328,7 @@ the root's first. Returns the new mode instance."
     (let ((mode (make-instance name)))
       (setf (tuatara.buffer:buffer-local buffer :major-mode) mode
             (tuatara.buffer:buffer-local buffer :keymap) (mode-info-keymap info)
-            (tuatara.buffer:buffer-local buffer :mode-name) (mode-info-lighter info))
+            (tuatara.command:buffer-mode-name buffer) (mode-info-lighter info))
       (mode-enter mode buffer)
       (dolist (ancestor (reverse (mode-precedence mode)))
         (dolist (hook (reverse (mode-info-hooks (find-mode ancestor))))

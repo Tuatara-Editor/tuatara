@@ -19,6 +19,7 @@
            #:buffer-splice #:buffer-splice-spans #:buffer-slice #:buffer-lent-p #:*large-edit-octets*
            #:buffer-scan-line #:*line-scan-limit* #:buffer-known-line-number #:*counted-line-function*
            #:buffer-goto-line #:buffer-column
+           #:buffer-read-only-p #:hex-view-p
            #:buffer-local #:with-read-only-lifted #:buffer-mapping #:buffer-saved-number #:buffer-content-number #:buffer-mark-saved
            #:unique-buffer-name
            #:buffer-line-ending #:buffer-crlf-p #:buffer-newline #:whole-line-ends #:unjoined-line-ends #:lf-newlines #:crlf-newlines #:cr-newlines #:text-for-buffer #:detect-line-ending

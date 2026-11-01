@@ -84,7 +84,7 @@ two others of the same names is left as it is."
                                     'diff-mode
                                     (format nil "Comparing ~a with ~a...~%" (abbreviated-path old) (abbreviated-path new)))))
     (setf (tuatara.buffer:buffer-local buffer 'compared) (list old new)
-          (tuatara.buffer:buffer-local buffer :directory) (tuatara.io:parent-path new))
+          (buffer-given-directory buffer) (tuatara.io:parent-path new))
     (tuatara.runtime:start-job-thread
      (make-differences-job buffer old new)
      (lambda (job)

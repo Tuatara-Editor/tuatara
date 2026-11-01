@@ -8,6 +8,7 @@
   (:import-from #:tuatara.buffer #:live-buffer-p)
   (:documentation "Events, keymaps and key-sequence reading in precedence order, interactive calls, hooks, the minibuffer core, the modal state slot.")
   (:export #:escape-controls)
+  (:export #:buffer-override-keymap #:buffer-given-directory #:buffer-mode-name #:buffer-kind)
   (:import-from #:tuatara.runtime #:quit)
   (:export #:keymap #:keymap-p #:make-keymap #:define-key #:define-keys #:label-keys #:lookup-key #:keymaps-lookup #:map-keymap-bindings #:keymap-parent #:keymap-entries #:keymap-name #:unbind-commands-if
            #:define-command #:find-command #:command-symbol #:command-names #:*commands* #:forget-command

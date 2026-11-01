@@ -561,7 +561,7 @@ changed, NIL when there was nothing to change; else words saying why not."
           ((safe-directory-of path) (format nil "~a is in one of *safe-directories*" (abbreviated-path path)))
           (t (multiple-value-bind (buffer doc) (uri-buffer uri :visit t)
                (cond ((null buffer) (format nil "~a is not there (no file is made)" (abbreviated-path path)))
-                     ((or (tuatara.buffer:buffer-local buffer :read-only) (tuatara.io:safe-visit-p buffer))
+                     ((or (buffer-read-only-p buffer) (tuatara.io:safe-visit-p buffer))
                       (format nil "~a is ~:[read only~;opened safely~]" (tuatara.buffer:buffer-name buffer) (tuatara.io:safe-visit-p buffer)))
                      (t (let ((made (if doc
                                         (doc-text-edits doc server edits)

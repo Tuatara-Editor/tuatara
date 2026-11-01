@@ -1773,7 +1773,7 @@ window shows its text, scrolled as far to the side and coloured as it is below
 (defun set-header-lock (buffer on)
   "Keep BUFFER's first line at the top of its windows when ON is true, else
 let it scroll away with the rest."
-  (setf (tuatara.buffer:buffer-local buffer :header-line) (and on 'list-header-line)))
+  (setf (tuatara.display:buffer-header-line buffer) (and on 'list-header-line)))
 
 (define-command toggle-list-header-lock ()
   "Keep the first line of a file of records, its header, at the top of the
@@ -1787,7 +1787,7 @@ files of records \\[toggle-list-header] makes it one first.
            (message "Not a file of records (a CSV, a log): toggle-list-header-lock was not run"))
           ((not (list-header-p buffer))
            (message "No header: C-x / t makes the first line one"))
-          (t (let ((on (switched-by-count (tuatara.buffer:buffer-local buffer :header-line))))
+          (t (let ((on (switched-by-count (tuatara.display:buffer-header-line buffer))))
                (set-header-lock buffer on)
                (message "Header ~:[scrolls with the rest~;kept at the top~]" on))))))
 
@@ -1815,7 +1815,7 @@ worked out again at once."
         (let ((on (switched-by-count (list-header-p buffer)))
               (filtering (list-filtering buffer)))
           (setf (tuatara.buffer:buffer-local buffer :list-header) on)
-          (set-header-lock buffer (and on (or *list-header-lock* (tuatara.buffer:buffer-local buffer :header-line))))
+          (set-header-lock buffer (and on (or *list-header-lock* (tuatara.display:buffer-header-line buffer))))
           (when (and filtering (list-filtering-lines filtering))
             (setf (list-filtering-lines filtering) (if on 1 0)
                   (list-filtering-source filtering) nil)

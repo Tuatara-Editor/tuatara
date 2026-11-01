@@ -63,8 +63,8 @@ not one of the system's made-up files."
   (and *auto-save*
        (tuatara.buffer:buffer-file buffer)
        (not (tuatara.io:safe-visit-p buffer))
-       (not (tuatara.buffer:buffer-local buffer :plaintext))
-       (not (tuatara.buffer:buffer-local buffer :read-only))
+       (not (tuatara.io:buffer-plaintext-p buffer))
+       (not (buffer-read-only-p buffer))
        (not (eq (tuatara.buffer:buffer-local buffer :file-class) :pseudo))
        (<= (tuatara.buffer:buffer-size buffer) *auto-save-largest*)))
 
@@ -205,7 +205,7 @@ For a buffer whose file has no auto-saved copy newer than it, says so."
   (let ((buffer (current-buffer)))
     (cond ((null (tuatara.buffer:buffer-file buffer)) (message "~a visits no file" (tuatara.buffer:buffer-name buffer)))
           ((tuatara.io:safe-visit-p buffer) (message "~a is opened safely: nothing is recovered into it" (tuatara.buffer:buffer-name buffer)))
-          ((tuatara.buffer:buffer-local buffer :read-only) (message "~a is read-only: ~a first" (tuatara.buffer:buffer-name buffer)
+          ((buffer-read-only-p buffer) (message "~a is read-only: ~a first" (tuatara.buffer:buffer-name buffer)
                                                                     (substitute-command-keys "\\[read-only-mode]")))
           (t (multiple-value-bind (copy time) (auto-save-newer-p buffer)
                (cond ((null copy) (message "~a has no auto-saved changes newer than its file" (tuatara.buffer:buffer-name buffer)))
