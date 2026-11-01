@@ -906,7 +906,7 @@ drawing is reported without its text."
   ;; what fails while a secret buffer is shown is reported without its text
   (let ((tuatara.runtime:*secret-at-hand* (or tuatara.runtime:*secret-at-hand* (frame-secret-p editor))))
     (update-candidates editor)
-    (when *keys-playing* (return-from redisplay nil))
+    (when (editor-keys-playing editor) (return-from redisplay nil))
     (preview-selection editor)
     (popup-follow editor)
     (multiple-value-bind (panel minibuffer-row) (panel-rows editor)

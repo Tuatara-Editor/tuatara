@@ -17,7 +17,10 @@ area; MESSAGE is transient text shown there; PENDING are the key specs of an
 unfinished key sequence typed in it; UNREAD holds events read while the
 editor waited on work of its own, to be handled next, in order; DEFERRED
 holds the window closed or files dropped while a command was asking for
-something, to be handled once it is done."
+something, to be handled once it is done. LAST-COMMAND, REPEATABLE and
+REPEAT-MAP are what the next command typed in it follows on from;
+KEYS-RECORDING and KEYS-PLAYING the keys being recorded in it and played
+into it. DELETED is true once the frame has left the editor."
   (frontend nil :read-only t)
   (window nil)
   (minibuffer-prompt nil)
@@ -43,19 +46,28 @@ something, to be handled once it is done."
   (transient-fresh nil)
   (menu nil)
   (title-shown nil)
-  (deferred '()))
+  (deferred '())
+  (last-command nil)
+  (repeatable nil)
+  (repeat-map nil)
+  (keys-recording nil)
+  (keys-playing nil)
+  (deleted nil))
 
 (setf (documentation 'make-frame 'function) "A FRAME painted through FRONTEND, with no window yet."
-      (documentation 'frame-p 'function) "True when OBJECT is a FRAME.")
+      (documentation 'frame-p 'function) "True when OBJECT is a FRAME."
+      (documentation 'frame-deleted 'function) "True once FRAME has left its editor (REMOVE-FRAME).")
 
 (defstruct (editor (:constructor %make-editor (frontend &aux (frame (make-frame frontend)) (frames (list frame))))
                    (:copier nil))
-  "The editor state. FRAMES are its screens, and FRAME the one being worked in:
-EDITOR-WINDOW, EDITOR-MESSAGE, EDITOR-MINIBUFFER-TEXT and the other names of a
-screen's state read and set that frame's; SELECTIONS counts the
-times a window was selected; KILL-RING holds killed text, newest first;
-STATE-KEYMAP is the modal state's map consulted before the others (the modal
-layer's); RUNNING is false once the editor should exit."
+  "The editor state. FRAMES are its screens, a list replaced and never changed
+in place, as other threads read it; FRAME is the one being worked in, between
+commands the one you last typed in: EDITOR-WINDOW, EDITOR-MESSAGE,
+EDITOR-LAST-COMMAND and the other names of a screen's state read and set that
+frame's; SELECTIONS counts the times a window was selected; KILL-RING holds
+killed text, newest first; STATE-KEYMAP is the modal state's map consulted
+before the others (the modal layer's); RUNNING is false once the editor
+should exit."
   (frames '() :type list)
   (frame nil :type frame)
   (selections 0 :type fixnum)
@@ -65,15 +77,12 @@ layer's); RUNNING is false once the editor should exit."
   (minibuffer-keymap (make-keymap :name "minibuffer"))
   (key-hints t)
   (kill-ring '())
-  (last-command nil)
   (this-command nil)
   (running t)
   (self-insert-command nil)
   (mode-line-function nil)
   (cursor-shape-function nil)
   (post-command-functions '())
-  (repeatable nil)
-  (repeat-map nil)
   (pre-command-functions '()))
 
 (defmacro define-frame-accessor (name slot documentation &key read-only)
@@ -155,6 +164,20 @@ those it was opened with, as (MENU ARGUMENTS OPENED), or NIL (OPEN-MENU).")
 (define-frame-accessor editor-deferred deferred
   "Events that ended a command's question in EDITOR's current frame, the window
 closed or files dropped, to be handled once it is done, oldest first.")
+(define-frame-accessor editor-last-command last-command
+  "The command run before the current one in EDITOR's current frame.")
+(define-frame-accessor editor-repeatable repeatable
+  "The last command run in EDITOR's current frame other than repeat, the prefix
+argument it had and the key that ran it, as (COMMAND ARGUMENT . KEY).")
+(define-frame-accessor editor-repeat-map repeat-map
+  "The keymap of keys that repeat the command just run in EDITOR's current
+frame by themselves (DEFINE-REPEAT-KEYS), while it is in force, or NIL.")
+(define-frame-accessor editor-keys-recording keys-recording
+  "The keys being recorded in EDITOR's current frame, a RECORDING, or NIL while none are.")
+(define-frame-accessor editor-keys-playing keys-playing
+  "While recorded keys are played into EDITOR's current frame, the PLAYING they
+are read from: READ-EVENT gives its keys before any typed, and nothing is
+drawn; NIL otherwise.")
 
 (setf (documentation 'editor-p 'function) "True when OBJECT is an EDITOR."
       (documentation 'editor-frames 'function) "The frames of EDITOR, its screens."
@@ -166,23 +189,20 @@ closed or files dropped, to be handled once it is done, oldest first.")
       (documentation 'editor-minibuffer-keymap 'function) "The keymap active while the minibuffer reads input."
       (documentation 'editor-key-hints 'function) "True to show the bindings under a pending prefix key in the panel."
       (documentation 'editor-kill-ring 'function) "Kills, newest first: strings, or ropes for kills too large for the system clipboard."
-      (documentation 'editor-last-command 'function) "The command run before the current one."
       (documentation 'editor-this-command 'function) "The command being run."
       (documentation 'editor-running 'function) "False once the editor should exit."
       (documentation 'editor-self-insert-command 'function) "Command run for an unbound plain character, or NIL to treat it as undefined."
       (documentation 'editor-mode-line-function 'function) "Function of (EDITOR WINDOW) returning the text of WINDOW's mode line and the spans of it in faces of their own, or NIL for the default."
       (documentation 'editor-cursor-shape-function 'function) "Function of (EDITOR) returning the cursor's shape and colour, as *CURSOR-SHAPE* and *CURSOR-COLOUR* take them, NIL for those; and as a third value, true while text is typed. NIL for *CURSOR-SHAPE* and *CURSOR-COLOUR* always."
       (documentation 'editor-post-command-functions 'function) "Functions called with (EDITOR) after every command."
-      (documentation 'editor-repeatable 'function) "The last command run other than repeat, the prefix argument it had and the key that ran it, as (COMMAND ARGUMENT . KEY)."
-      (documentation 'editor-repeat-map 'function) "The keymap of keys that repeat the command just run by themselves (DEFINE-REPEAT-KEYS), while it is in force, or NIL."
       (documentation 'editor-pre-command-functions 'function) "Functions called with (EDITOR COMMAND) before every command runs.")
 
 (defun wake-editor (editor)
-  "Wake EDITOR's frames, from any thread, to show what work in the background
-has for them; an error waking one is ignored."
-  (dolist (frame (editor-frames editor))
-    (tuatara.runtime:ignoring-errors-reported ("waking a frame")
-      (tuatara.frontend:frontend-wake (frame-frontend frame)))))
+  "Wake EDITOR, from any thread, to show what work in the background has for
+it: its frames share one source of events, which is woken once, through the
+frame being worked in; an error waking it is ignored."
+  (tuatara.runtime:ignoring-errors-reported ("waking the editor")
+    (tuatara.frontend:frontend-wake (frame-frontend (editor-frame editor)))))
 
 (defvar *editor* nil
   "The editor whose command is running.")
@@ -451,11 +471,13 @@ when none does. Work on other threads finds it here.")
 
 (defvar *messages-from-threads* '()
   "The messages said on other threads while an editor runs, the newest first,
-for the editor's thread to show and keep (TAKE-IN-THREAD-MESSAGES).")
+each with the frame it is for (THREAD-FRAME), as (FRAME . TEXT), for the
+editor's thread to show and keep (TAKE-IN-THREAD-MESSAGES).")
 
 (defvar *actions-from-threads* '()
   "The functions given to DEFER-ACTION on other threads while an editor runs,
-the newest first, for the editor's thread to run (TAKE-IN-THREAD-MESSAGES).")
+the newest first, each with the frame it is for (THREAD-FRAME), as (FRAME .
+FUNCTION), for the editor's thread to run (TAKE-IN-THREAD-MESSAGES).")
 
 (defvar *messages-from-threads-lock* (sb-thread:make-mutex :name "messages from threads")
   "Held while *MESSAGES-FROM-THREADS* or *ACTIONS-FROM-THREADS* is changed.")
@@ -465,29 +487,52 @@ the newest first, for the editor's thread to run (TAKE-IN-THREAD-MESSAGES).")
   (let ((running *running-editor*))
     (and running (not (eq (cdr running) sb-thread:*current-thread*)))))
 
+(defun thread-frame ()
+  "The frame what is said or handed on from this thread is for: on the thread
+of a job, the frame the job was begun in (TUATARA.RUNTIME:JOB-FRAME); NIL
+elsewhere, for the frame you are in."
+  (let ((job tuatara.runtime:*job*))
+    (and job (tuatara.runtime:job-frame job))))
+
 (defmacro hand-to-editor-thread (item place)
   "Push ITEM onto PLACE, *MESSAGES-FROM-THREADS* or *ACTIONS-FROM-THREADS*,
-under *MESSAGES-FROM-THREADS-LOCK*, and wake the running editor to take it in."
-  `(progn (sb-thread:with-mutex (*messages-from-threads-lock*)
-            (push ,item ,place))
-          (let ((running *running-editor*))
-            (when running
-              (wake-editor (car running))))))
+with the frame it is for (THREAD-FRAME), under *MESSAGES-FROM-THREADS-LOCK*,
+and wake the running editor to take it in."
+  `(let ((entry (cons (thread-frame) ,item)))
+     (sb-thread:with-mutex (*messages-from-threads-lock*)
+       (push entry ,place))
+     (let ((running *running-editor*))
+       (when running
+         (wake-editor (car running))))))
+
+(defun frame-or-current (editor frame)
+  "FRAME while it is one of EDITOR's frames, else the frame EDITOR works in:
+where what was meant for FRAME goes once FRAME has gone."
+  (if (and frame (not (frame-deleted frame))) frame (editor-frame editor)))
 
 (defun take-in-thread-messages (editor)
   "Show and keep in *Messages*, on EDITOR's thread, the messages said on other
 threads since last time, in the order they were said, and have the functions
-given to DEFER-ACTION there run as EDITOR's next commands, in that order too."
+given to DEFER-ACTION there run as EDITOR's next commands, in that order too.
+Each message shows in the frame it is for while that frame is open, else in
+the frame you are in; each function runs with its frame the one worked in
+\(CALL-IN-FRAME), likewise."
   (when (or *messages-from-threads* *actions-from-threads*)
     (let (texts actions)
       (sb-thread:with-mutex (*messages-from-threads-lock*)
         (setf texts (shiftf *messages-from-threads* '())
               actions (shiftf *actions-from-threads* '())))
-      (dolist (text (reverse texts))
-        (setf (editor-message editor) text)
-        (tuatara.runtime:ignoring-errors-reported ("keeping a message in *Messages*") (log-message text)))
+      (loop for (frame . text) in (reverse texts)
+            do (setf (frame-message (frame-or-current editor frame)) text)
+               (tuatara.runtime:ignoring-errors-reported ("keeping a message in *Messages*") (log-message text)))
       (when actions
-        (setf (editor-deferred editor) (append (editor-deferred editor) (reverse actions)))))))
+        (setf (editor-deferred editor)
+              (append (editor-deferred editor)
+                      (loop for (frame . action) in (reverse actions)
+                            collect (if frame
+                                        (let ((frame frame) (action action))
+                                          (lambda () (call-in-frame editor (frame-or-current editor frame) action)))
+                                        action))))))))
 
 (defvar *command-notes* nil
   "While a command run from a key runs (RUN-COMMAND), a list cell whose car is

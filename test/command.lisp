@@ -759,7 +759,7 @@ TEXTS with the mode line's sign of work, P, lit in :mode-line-sign."
                (tuatara.command:message "said on a thread of its own")
                (setf handed (copy-list tuatara.command::*messages-from-threads*)))))))
       (tuatara.command:run-editor f :setup #'tuatara.defaults:install-defaults)
-      (is equal '("said on a thread of its own") handed)
+      (is equal '((nil . "said on a thread of its own")) handed)
       (true (tuatara.frontend.fake:fake-frame-showing f "said on a thread of its own"))
       (true (search "said on a thread of its own"
                     (tuatara.buffer:buffer-string (tuatara.buffer:find-buffer "*Messages*"))))

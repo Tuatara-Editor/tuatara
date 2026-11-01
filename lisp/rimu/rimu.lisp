@@ -799,14 +799,14 @@ every list does (SHOW-LIST-TEXT), so that search filters
 kept whole and narrowed again each time it is laid out."
   (let* ((selected (and *editor* (editor-window *editor*)))
          (others (and *editor*
-                      (loop for window in (editor-windows)
-                            when (and (eq (tuatara.display:window-buffer window) buffer) (not (eq window selected)))
+                      (loop for window in (buffer-windows buffer)
+                            unless (eq window selected)
                               collect (cons window (and (not fresh)
                                                         (let ((entry (rimu-entry-at buffer (tuatara.display:window-point window))))
                                                           (and entry (tuatara.io:listed-octets entry))))))))
          (version (tuatara.buffer:buffer-version buffer))
          (remembered (and *editor* (not fresh)
-                          (loop for window in (editor-windows)
+                          (loop for window in (frames-windows)
                                 nconc (loop for entry in (tuatara.display:window-history window)
                                             when (eq (first entry) buffer)
                                               collect (list window

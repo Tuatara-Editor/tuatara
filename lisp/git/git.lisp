@@ -992,7 +992,7 @@ for a status never to follow it: then \\<git-status-mode>\\[revert-buffer] reads
   "The statuses shown in the editor's windows, each once."
   (and *editor*
        (remove-duplicates
-        (loop for window in (editor-windows *editor*)
+        (loop for window in (frames-windows *editor*)
               for buffer = (tuatara.display:window-buffer window)
               when (typep (buffer-major-mode buffer) 'git-status-mode)
                 collect buffer))))

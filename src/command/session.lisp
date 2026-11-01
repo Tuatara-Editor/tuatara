@@ -56,10 +56,11 @@ editor down."
   (call-with-guard (lambda () (funcall function editor)) function 'call-tick-function :quit nil))
 
 (defvar *after-tick-functions* '()
-  "Functions of the editor called after *TICK-FUNCTIONS*, each time: work
-taken in from the background may have shown another buffer meanwhile, and
-these bring what follows the buffer shown (the modal state's keys) in line
-before the next key is read, as after a command.")
+  "Functions of the editor called after *TICK-FUNCTIONS*, each time, and when
+another frame becomes the one worked in (SELECT-FRAME): work taken in from the
+background may have shown another buffer meanwhile, as another frame shows
+its own, and these bring what follows the buffer shown (the modal state's
+keys) in line before the next key is read, as after a command.")
 
 (defun run-tick-functions (editor)
   "Call *TICK-FUNCTIONS* with EDITOR (CALL-TICK-FUNCTION), then

@@ -34,7 +34,7 @@
            #:*gutter-providers* #:gutter-width #:window-margin-for #:gutter-cells #:*ruler-functions*
            #:editor-minibuffer-prompt #:editor-minibuffer-text #:editor-minibuffer-point
            ;; windows
-           #:editor-windows #:buffer-window #:buffer-windows #:editor-selections #:one-window-p #:fit-windows #:select-window #:split-window
+           #:editor-windows #:frames-windows #:tie-job-to-editor #:buffer-window #:buffer-windows #:editor-selections #:one-window-p #:fit-windows #:select-window #:split-window
            #:remove-window #:only-window #:swap-windows #:rotate-window-states #:window-towards
            #:window-cursor-cell #:window-at-cell #:window-text-cell #:window-cell-position #:most-recent-window
            #:place-buffers #:*buffer-places* #:*places* #:buffer-place #:buffer-place-p #:buffer-place-which

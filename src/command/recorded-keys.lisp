@@ -10,14 +10,14 @@
 (in-package #:tuatara.command)
 
 (defun start-keys-recording ()
-  "Begin recording the keys typed from now on, every one read as typed
-\(RECORD-EVENT), until END-KEY-RECORDING."
-  (setf *keys-recording* (make-recording)))
+  "Begin recording the keys typed from now on in the frame you are in, every
+one read as typed \(RECORD-EVENT), until END-KEY-RECORDING."
+  (setf (editor-keys-recording *editor*) (make-recording)))
 
 (defun drop-command-keys ()
   "Leave the keys of the command running now out of the recording: those of
 a command refused while keys are recorded."
-  (let ((recording *keys-recording*))
+  (let ((recording (editor-keys-recording *editor*)))
     (when recording
       (setf (fill-pointer (recording-events recording)) (recording-command-start recording)))))
 
@@ -25,8 +25,8 @@ a command refused while keys are recorded."
   "End the recording, and return the keys recorded, without those of the
 command running now (the one that ends it), as a vector of key events;
 NIL when none were recorded."
-  (let ((recording *keys-recording*))
-    (setf *keys-recording* nil)
+  (let ((recording (editor-keys-recording *editor*)))
+    (setf (editor-keys-recording *editor*) nil)
     (when recording
       (let ((events (recording-events recording)))
         (and (plusp (recording-command-start recording))
@@ -57,7 +57,7 @@ is among it, the other keys kept for later (KEEP-OR-QUIT-EVENT)."
 \\`C-g' is among it, which stops the play, the next key it gives then
 quitting what reads it; the other keys are kept for after the play. NIL
 when no keys play."
-  (let ((playing *keys-playing*))
+  (let ((playing (and *editor* (editor-keys-playing *editor*))))
     (when (and playing (waiting-quit-p *editor*))
       (setf (playing-failed playing) :quit)
       t)))
@@ -71,15 +71,19 @@ command that failed, or T, or :QUIT after \\`C-g', when one did
 \(NOTE-COMMAND-FAILED); else NIL."
   (let ((stacks (mapcar (lambda (buffer) (cons buffer (tuatara.buffer:buffer-undo-stack buffer)))
                         tuatara.buffer:*buffers*))
-        (playing (make-playing events)))
+        (playing (make-playing events))
+        (frame (editor-frame editor))
+        (outer (editor-keys-playing editor)))
     (setf (editor-repeat-map editor) nil
           (editor-pending editor) '()
           (editor-prefix-argument editor) nil)
     (unwind-protect
-         (let ((*keys-playing* playing))
+         (progn
+           (setf (frame-keys-playing frame) playing)
            (loop while (and (< (playing-next playing) (length events)) (not (playing-failed playing)))
                  do (lay-out-windows editor)
                     (handle-event editor (read-event editor :pastes t))))
+      (setf (frame-keys-playing frame) outer)
       ;; keys that leave a sequence or a count begun are left at that
       (setf (editor-pending editor) '()
             (editor-prefix-argument editor) nil

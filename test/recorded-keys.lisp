@@ -27,8 +27,7 @@ of the frontend, keys count as typed while it answers true. A part of KEYS
 \(:PASTE TEXT) is TEXT pasted. Returns the frontend and the editor."
   (setf tuatara.defaults::*last-recorded-keys* nil tuatara.defaults::*last-recorded-keys-name* nil
         tuatara.defaults::*keys-counter* 1 tuatara.defaults::*keys-counter-format* "%d"
-        tuatara.defaults::*keys-counter-set* nil tuatara.command::*keys-recording* nil
-        *plays-noted* '())
+        tuatara.defaults::*keys-counter-set* nil *plays-noted* '())
   (let ((f (tuatara.frontend.fake:make-fake-frontend :width width :height height)))
     (setf *play-note* (and note (lambda () (funcall note f))))
     (when pending (setf (tuatara.frontend.fake:fake-pending f) pending))
@@ -229,7 +228,8 @@ queued: keys typed meanwhile."
   ;; in a played search, only C-g stops it, and the play with it; other keys wait for after
   (let* ((f (tuatara.frontend.fake:make-fake-frontend))
          (tuatara.command:*editor* (tuatara.command:make-editor f))
-         (tuatara.command::*keys-playing* (tuatara.command::make-playing (vector)))
+         (playing (setf (tuatara.command::editor-keys-playing tuatara.command:*editor*)
+                        (tuatara.command::make-playing (vector))))
          (stop (tuatara.defaults::search-stopper nil nil)))
     (setf (tuatara.frontend.fake:fake-pending f) (lambda (f) (tuatara.frontend.fake::fake-events f)))
     (tuatara.frontend.fake:fake-queue-keys f "C-n")
@@ -237,21 +237,21 @@ queued: keys typed meanwhile."
     (is = 1 (length (tuatara.command:editor-unread tuatara.command:*editor*)))
     (tuatara.frontend.fake:fake-queue-keys f "C-g")
     (true (funcall stop))
-    (is eq :quit (tuatara.command::playing-failed tuatara.command::*keys-playing*))))
+    (is eq :quit (tuatara.command::playing-failed playing))))
 
 (define-test (recorded-keys held-keys-recorded-once)
   ;; keys a question held back and put back are recorded once, when they are read again
   (let* ((f (tuatara.frontend.fake:make-fake-frontend))
          (editor (tuatara.command:make-editor f))
-         (tuatara.command::*keys-recording* (tuatara.command::make-recording))
+         (recording (setf (tuatara.command::editor-keys-recording editor) (tuatara.command::make-recording)))
          (a (tuatara.frontend:make-event :key :key (tuatara.frontend:make-key #\a)))
          (b (tuatara.frontend:make-event :key :key (tuatara.frontend:make-key #\b))))
-    (tuatara.command::record-event a)
-    (tuatara.command::record-event b)
+    (tuatara.command::record-event recording a)
+    (tuatara.command::record-event recording b)
     (tuatara.command::put-back-events editor (list a b))
     (tuatara.command:read-event editor)
     (tuatara.command:read-event editor)
-    (is equal (list a b) (coerce (tuatara.command::recording-events tuatara.command::*keys-recording*) 'list))))
+    (is equal (list a b) (coerce (tuatara.command::recording-events recording) 'list))))
 
 (define-test (recorded-keys pastes-recorded)
   ;; text pasted while recording is pasted again by each play

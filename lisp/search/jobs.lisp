@@ -45,8 +45,8 @@ PLACE is where in BUFFER's undo history it was given
 was given (QUEUED-JOB-PLACE), else NIL.")
 
 (defun editor-job-waker ()
-  "A function waking the editor, for the thread of a job made now to call when
-it has something new to show; NIL without an editor (TUATARA.RUNTIME:*JOB-WAKER*)."
+  "A function waking the editor, for the thread of work begun now to call when
+it has something new to show; NIL without an editor."
   (let ((editor *editor*))
     (and editor (lambda () (wake-editor editor)))))
 
@@ -612,7 +612,7 @@ edit by a command that would spoil the work of a job running over the text it
 touches asked about first (GUARD-JOB-EDITS). The mode line's sign of the work
 \(PROCESSING-MODE-LINE) is shown with those of directories kept read
 \(MODE-LINE-SIGNS)."
-  (setf tuatara.runtime:*job-waker* 'editor-job-waker)
+  (setf tuatara.runtime:*job-start-function* 'tie-job-to-editor)
   (pushnew 'job-queue-tick *tick-functions*)
   (pushnew 'jobs-tick *tick-functions*)
   (pushnew 'queue-highlights *job-highlight-functions*)

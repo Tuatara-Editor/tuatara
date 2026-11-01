@@ -14,11 +14,14 @@
     (and window (tuatara.display:area-windows (tuatara.display:area-root window)))))
 
 (defun buffer-windows (buffer &optional (editor *editor*))
-  "The windows of EDITOR showing BUFFER, from the top left."
-  (remove buffer (editor-windows editor) :key #'tuatara.display:window-buffer :test-not #'eq))
+  "The windows showing BUFFER in every frame of EDITOR (FRAMES-WINDOWS), those
+of the frame worked in first, each frame's from the top left: the windows
+whose point and start keep their place as BUFFER changes."
+  (remove buffer (frames-windows editor) :key #'tuatara.display:window-buffer :test-not #'eq))
 
 (defun buffer-window (buffer &optional (editor *editor*))
-  "The first window of EDITOR, from the top left, showing BUFFER, or NIL."
+  "The first window of the frame EDITOR works in, from the top left, showing
+BUFFER, or NIL."
   (find buffer (editor-windows editor) :key #'tuatara.display:window-buffer))
 
 (defun one-window-p (&optional (editor *editor*))
@@ -41,22 +44,31 @@ cover."
           (tuatara.display:trim-area-bottom root (- base rows))
           rows))))
 
+(defun keep-window-point (window)
+  "Have WINDOW, which commands no longer act on, keep its point of its own,
+where its buffer's point is now."
+  (let ((buffer (tuatara.display:window-buffer window)))
+    (setf (tuatara.display:window-point-anchor window)
+          (tuatara.text:make-anchor (tuatara.buffer:buffer-version buffer)
+                                    (tuatara.buffer:buffer-point buffer) :bias :after))))
+
+(defun give-window-buffer-point (window)
+  "Have WINDOW, which commands act on now, move its buffer's point: to where
+WINDOW's own point was kept, which it gives up."
+  (let ((anchor (tuatara.display:window-point-anchor window))
+        (buffer (tuatara.display:window-buffer window)))
+    (when anchor
+      (setf (tuatara.buffer:buffer-point buffer)
+            (tuatara.text:anchor-position anchor (tuatara.buffer:buffer-version buffer))
+            (tuatara.display:window-point-anchor window) nil))))
+
 (defun select-window (window &optional (editor *editor*))
   "Make WINDOW the selected window, the one commands act on. The window left
 keeps its point; WINDOW's point becomes its buffer's point. Returns WINDOW."
   (let ((old (editor-window editor)))
     (unless (eq old window)
-      (when old
-        (let ((buffer (tuatara.display:window-buffer old)))
-          (setf (tuatara.display:window-point-anchor old)
-                (tuatara.text:make-anchor (tuatara.buffer:buffer-version buffer)
-                                          (tuatara.buffer:buffer-point buffer) :bias :after))))
-      (let ((anchor (tuatara.display:window-point-anchor window))
-            (buffer (tuatara.display:window-buffer window)))
-        (when anchor
-          (setf (tuatara.buffer:buffer-point buffer)
-                (tuatara.text:anchor-position anchor (tuatara.buffer:buffer-version buffer))
-                (tuatara.display:window-point-anchor window) nil)))
+      (when old (keep-window-point old))
+      (give-window-buffer-point window)
       (setf (editor-window editor) window))
     (setf (tuatara.display:window-use-time window) (incf (editor-selections editor)))
     window))
@@ -553,22 +565,26 @@ buffer it showed before."
 (defun replace-buffer-in-windows (buffer)
   "BUFFER is being killed: close the windows made or kept for it (all but the
 last), show another buffer in the other windows showing it, and forget it in
-every window's history. Runs from the kill-buffer functions."
+every window's history, in every frame. Runs from the kill-buffer functions."
   (setf *buffer-order* (delete buffer *buffer-order*))
   (let ((editor *editor*))
     (when (and editor (editor-window editor))
-      (dolist (window (editor-windows editor))
-        (tuatara.display:forget-window-buffer window buffer)
-        (when (eq (tuatara.display:window-quit-restore window) buffer)
-          (setf (tuatara.display:window-quit-restore window) nil)))
-      (dolist (window (editor-windows editor))
-        (when (eq (tuatara.display:window-buffer window) buffer)
-          (if (and (tuatara.display:area-parent window)
-                   (or (tuatara.display:window-kept window) (eq (tuatara.display:window-quit-restore window) :delete)))
-              (remove-window window)
-              (progn
-                (setf (tuatara.display:window-kept window) nil
-                      (tuatara.display:window-quit-restore window) nil)
-                (tuatara.display:set-window-buffer window (replacement-buffer window buffer) :remember nil))))))))
+      (dolist (frame (editor-frames editor))
+        (call-in-frame
+         editor frame
+         (lambda ()
+           (dolist (window (editor-windows editor))
+             (tuatara.display:forget-window-buffer window buffer)
+             (when (eq (tuatara.display:window-quit-restore window) buffer)
+               (setf (tuatara.display:window-quit-restore window) nil)))
+           (dolist (window (editor-windows editor))
+             (when (eq (tuatara.display:window-buffer window) buffer)
+               (if (and (tuatara.display:area-parent window)
+                        (or (tuatara.display:window-kept window) (eq (tuatara.display:window-quit-restore window) :delete)))
+                   (remove-window window)
+                   (progn
+                     (setf (tuatara.display:window-kept window) nil
+                           (tuatara.display:window-quit-restore window) nil)
+                     (tuatara.display:set-window-buffer window (replacement-buffer window buffer) :remember nil)))))))))))
 
 (pushnew 'replace-buffer-in-windows tuatara.buffer:*kill-buffer-functions*)

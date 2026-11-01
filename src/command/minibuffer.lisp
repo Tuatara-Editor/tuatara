@@ -343,13 +343,14 @@ command asks for is asked once and given at every place.")
   "Throw away the keys typed to EDITOR and not read yet, so that a question
 asked now is answered only by a key pressed once it is shown: those waiting
 in its frontend, wake-ups among them or not, and those a command left
-unread. What is not a key is kept to be dealt with: a wake-up (a tick), a
-window resized or closed, files dropped, text pasted."
+unread; those of another frame wait there for their turn. What is not a key
+is kept to be dealt with: a wake-up (a tick), a window resized or closed,
+files dropped, text pasted."
   (let ((frontend (editor-frontend editor)) (kept '()))
     (loop while (tuatara.frontend:frontend-input-pending-p frontend)
           do (let ((event (tuatara.frontend:frontend-read-event-timeout frontend 0)))
-               (case (and event (tuatara.frontend:event-kind event))
-                 ((nil) (return))
+               (case (and event (take-to-its-frame editor event nil) (tuatara.frontend:event-kind event))
+                 ((nil) (unless event (return)))
                  (:key)
                  (t (push event kept)))))
     (setf (editor-unread editor)
@@ -370,16 +371,23 @@ deliver."
         (pop (car replay))
         (let ((editor *editor*) (*key-question* t))
           (echo "~a" prompt)
-          (let ((*keys-playing* (if fresh nil *keys-playing*))
-                (*keys-recording* (if fresh nil *keys-recording*)))
-            (redisplay-or-say editor)
-            (when fresh (discard-typed-ahead editor))
-            (let* ((event (read-event editor))
-                   (key (case (tuatara.frontend:event-kind event)
-                          (:quit (if fresh (error 'quit) (keyboard-quit-signal)))
-                          (t (tuatara.frontend:event-key event)))))
-              (when (and replay (not fresh)) (push key (cdr replay)))
-              key))))))
+          (let* ((frame (editor-frame editor))
+                 (playing (frame-keys-playing frame))
+                 (recording (frame-keys-recording frame)))
+            (when fresh
+              (setf (frame-keys-playing frame) nil (frame-keys-recording frame) nil))
+            (unwind-protect
+                 (progn
+                   (redisplay-or-say editor)
+                   (when fresh (discard-typed-ahead editor))
+                   (let* ((event (read-event editor))
+                          (key (case (tuatara.frontend:event-kind event)
+                                 (:quit (if fresh (error 'quit) (keyboard-quit-signal)))
+                                 (t (tuatara.frontend:event-key event)))))
+                     (when (and replay (not fresh)) (push key (cdr replay)))
+                     key))
+              (when fresh
+                (setf (frame-keys-playing frame) playing (frame-keys-recording frame) recording))))))))
 
 (defun answer-keys-words (answers)
   "The keys ANSWERS, a list of characters, in words: y, n or v."

@@ -19,11 +19,12 @@ running on THREAD. STATUS is :RUNNING, then :DONE, :STOPPED or :FAILED, with
 ERROR saying why in words; the car of CANCEL turning true asks it to stop;
 STARTED is the internal real time it began; WAKE, a function of no arguments
 or NIL, wakes the editor for its thread, so that what it has to show shows at
-once; PROCESS, the program it runs, if any (JOB-PROGRAM-STARTED). Each kind of job is a structure including this one, and says how it
+once; FRAME, the editor's frame it was begun in, where what it says is shown,
+or NIL; PROCESS, the program it runs, if any (JOB-PROGRAM-STARTED). Each kind of job is a structure including this one, and says how it
 differs through generic functions: JOB-PERCENT, JOB-DOING, JOB-DESCRIPTION,
 JOB-VERB, JOB-LEFT-WORDS, JOB-CONSEQUENCE, JOB-STOP, JOB-HOLDS-QUEUE-P,
 JOB-SHOWS-PROCESSING-P, JOB-AT-EXIT, JOB-GUARDED-SPANS and JOB-TAKE-IN."
-  buffer (status :running) error (cancel (list nil)) thread (started (get-internal-real-time)) wake process)
+  buffer (status :running) error (cancel (list nil)) thread (started (get-internal-real-time)) wake frame process)
 
 (setf (documentation 'job-p 'function) "True when OBJECT is a JOB, of any kind."
       (documentation 'job-buffer 'function) "The buffer a job belongs to, or NIL."
@@ -33,6 +34,7 @@ JOB-SHOWS-PROCESSING-P, JOB-AT-EXIT, JOB-GUARDED-SPANS and JOB-TAKE-IN."
       (documentation 'job-thread 'function) "The thread a job runs on."
       (documentation 'job-started 'function) "The internal real time a job began."
       (documentation 'job-wake 'function) "The function a job's thread calls to wake the editor, or NIL."
+      (documentation 'job-frame 'function) "The editor's frame a job was begun in, where what it says is shown, or NIL."
       (documentation 'job-process 'function) "The program a job runs, ended when it is stopped, or NIL.")
 
 (defvar *jobs* '()
@@ -46,10 +48,11 @@ oldest first.")
   "On the editor's thread, while a job that has ended is taken in (TAKE-IN-JOBS),
 that job; NIL otherwise.")
 
-(defvar *job-waker* nil
-  "A function of no arguments, called on the editor's thread as a job starts,
-giving the function of no arguments its thread calls to wake the editor, or
-NIL; the editor sets it.")
+(defvar *job-start-function* nil
+  "A function of a job, called on the editor's thread as the job starts
+\(START-JOB-THREAD), that ties it to the editor running: gives it the function
+its thread calls to wake the editor (JOB-WAKE), unless it has one, and the
+frame it was begun in (JOB-FRAME). NIL for none; the editor sets it.")
 
 (defvar *job-buffer-name* (lambda (buffer) (if buffer (princ-to-string buffer) "no buffer"))
   "A function of a buffer, or NIL, giving its name, for what the jobs report;
@@ -343,8 +346,8 @@ the condition's words, JOB-STOPPED or anything once it was asked to stop ends
 it :STOPPED; and the editor is woken as it ends. WORK is the job's stoppable
 work (STOPPABLE-WORK): JOB-STOP ends it even inside a call that never looks.
 Returns JOB."
-  (unless (job-wake job)
-    (setf (job-wake job) (and *job-waker* (funcall *job-waker*))))
+  (when *job-start-function*
+    (funcall *job-start-function* job))
   (setf *jobs* (append *jobs* (list job)))
   (report-job job "started" details)
   (flet ((run ()

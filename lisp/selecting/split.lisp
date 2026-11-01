@@ -1707,7 +1707,7 @@ out), and around point."
   (let* ((size (tuatara.buffer:buffer-size buffer))
          (point (tuatara.buffer:buffer-point buffer))
          (ranges (list (cons (max 0 (- point *split-sight-octets*)) (min size (+ point *split-sight-octets*))))))
-    (dolist (window (editor-windows *editor*) ranges)
+    (dolist (window (frames-windows *editor*) ranges)
       (when (eq (tuatara.display:window-buffer window) buffer)
         (let ((start (min size (tuatara.display:window-start window)))
               (rows (tuatara.display:window-rows window)))

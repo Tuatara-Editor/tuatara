@@ -19,8 +19,9 @@
            :documentation "Rows of the fake screen.")
    (colours :initarg :colours :initform 256 :accessor fake-colours
             :documentation "How many colours the fake screen claims to show; 0 for a monochrome terminal.")
-   (events :initform '() :accessor fake-events
-           :documentation "Queued events, delivered in order; then :quit.")
+   (source :initarg :source :initform (list '()) :reader fake-source
+           :documentation "A list cell whose first element holds the queued events, delivered in order, then
+:quit; shared by the fake frontends of one editor's frames, as frames share one source of events.")
    (pending :initform nil :accessor fake-pending
             :documentation "What FRONTEND-INPUT-PENDING-P answers: NIL, as though every key
 arrived after the work before it finished; true, as though keys were typed
@@ -94,15 +95,26 @@ during it; or a function of the frontend asked each time.")
       (documentation 'fake-images 'function) "The pictures put in the fake frontend's last frame, each (IMAGE ROW COLUMN COLUMNS ROWS OFFSET)."
       (documentation 'fake-image-history 'function) "The pictures of every frame the fake frontend painted, newest first.")
 
-(defun make-fake-frontend (&key (width 40) (height 8) (colours 256) font-steps fonts font-faces desktop-style cell-pixels)
+(defun make-fake-frontend (&key (width 40) (height 8) (colours 256) font-steps fonts font-faces desktop-style cell-pixels
+                                joining)
   "Return a fake frontend with a WIDTH by HEIGHT screen showing COLOURS colours;
 FONT-STEPS, a number, makes it a window whose font can be scaled, FONTS the
 font families it offers, FONT-FACES what it lists of them with their variants,
 DESKTOP-STYLE the desktop's style it reports; CELL-PIXELS, a list of a cell's
-width and height in pixels, makes it show pictures."
+width and height in pixels, makes it show pictures. JOINING, another fake
+frontend, makes it paint another frame of that one's editor: the two read
+their events from one queue."
   (make-instance 'fake-frontend :width width :height height :colours colours :font-steps font-steps
                                 :fonts fonts :font-faces font-faces :desktop-style desktop-style
-                                :cell-pixels cell-pixels))
+                                :cell-pixels cell-pixels :source (if joining (fake-source joining) (list '()))))
+
+(defun fake-events (frontend)
+  "The events queued on FRONTEND and not yet delivered, in order."
+  (car (fake-source frontend)))
+
+(defun (setf fake-events) (events frontend)
+  "Make EVENTS the events queued on FRONTEND."
+  (setf (car (fake-source frontend)) events))
 
 (defmethod tuatara.frontend:frontend-images-p ((f fake-frontend))
   (and (fake-cell-pixels f) t))
@@ -179,10 +191,11 @@ width and height in pixels, makes it show pictures."
   "Append EVENT to FRONTEND's queue."
   (setf (fake-events frontend) (append (fake-events frontend) (list event))))
 
-(defun fake-queue-keys (frontend keys)
-  "Queue key events for KEYS, a key sequence as a string (\"C-x C-f a b\")."
+(defun fake-queue-keys (frontend keys &key frame)
+  "Queue key events for KEYS, a key sequence as a string (\"C-x C-f a b\"),
+typed in FRAME, one of the editor's frames, when given."
   (dolist (spec (tuatara.frontend:parse-key-sequence keys))
-    (fake-queue-event frontend (tuatara.frontend:make-event :key :key (tuatara.frontend:spec-key spec)))))
+    (fake-queue-event frontend (tuatara.frontend:make-event :key :key (tuatara.frontend:spec-key spec) :frame frame))))
 
 (defun fake-screen-line (frontend row)
   "Row ROW of the last frame, right-trimmed."
