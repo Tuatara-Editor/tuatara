@@ -831,8 +831,9 @@ window draws them with (set-face :org-level-1 :height 2)."
                          (lambda ()
                            (loop repeat 200 until (tuatara.defaults::org-parse-current-p b) do (sleep 0.05))
                            (let* ((e tuatara.command:*editor*) (w (tuatara.command:editor-window e)))
-                             (setf lit (length (tuatara.command::window-highlights-for
-                                                e w (tuatara.display:window-rows w)))))))
+                             (setf lit (reduce #'+ (tuatara.command::window-highlights-for
+                                                    e w (tuatara.display:window-rows w))
+                                               :key #'length)))))
                    :file path :width 60 :height 10)
       (kill-records b path))
     (true (< 0 lit 30) "~d ranges lit" lit)))

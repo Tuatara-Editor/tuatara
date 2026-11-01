@@ -128,7 +128,8 @@ included: the line point is on (hl-line-mode).")
 FACE) byte ranges for the text in ROWS, painted over the syntax colours,
 SYNTAX, the ranges those are painted in, in the same form: what tells
 apart the kinds of text, a comment from code, is taken from them (the words
-spelt wrong).")
+spelt wrong). SYNTAX is lent for the frame: a function keeping it for later
+keeps a copy.")
 
 (defvar *highlight-functions* '()
   "Functions of (EDITOR WINDOW ROWS) returning lists of (START END FACE) byte
@@ -199,59 +200,63 @@ POINT, when that is past the end of its line. The text is read once
   (rectangle-rows buffer (tuatara.buffer:buffer-point buffer) (tuatara.buffer:buffer-mark buffer)
                   :from from :to to :point-column (rectangle-point-column buffer)))
 
-(defun highlights-of (function &rest arguments)
-  "What the highlight FUNCTION gives for ARGUMENTS, a copy; NIL when it fails,
-which is said once (TUATARA.RUNTIME:CALL-HOOK-FUNCTION), so that one way of
-marking text that goes wrong leaves the rest of the screen drawn."
-  (copy-list (apply #'tuatara.runtime:call-hook-function function arguments)))
-
 (defun window-syntax (editor window rows)
   "The ranges the text in ROWS of WINDOW is coloured in by its syntax,
-(START END FACE): *SYNTAX-HIGHLIGHT-FUNCTIONS*, one that fails left out
-\(HIGHLIGHTS-OF)."
-  (loop for f in *syntax-highlight-functions*
-        nconc (highlights-of f editor window rows)))
+\(START END FACE): *SYNTAX-HIGHLIGHT-FUNCTIONS*, one that fails left out
+\(TUATARA.RUNTIME:CALL-HOOK-FUNCTION says so once). The list may be the one
+a function keeps for the next frame, so it is read, never changed."
+  (let ((lists (loop for f in *syntax-highlight-functions*
+                     for ranges = (tuatara.runtime:call-hook-function f editor window rows)
+                     when ranges collect ranges)))
+    (if (rest lists)
+        (apply #'append lists)
+        (first lists))))
 
 (defun window-highlights-for (editor window rows)
-  "The highlight ranges for the text in ROWS of WINDOW, lowest priority first:
+  "The highlight ranges for the text in ROWS of WINDOW, as the lists of them
+TUATARA.DISPLAY:APPLY-HIGHLIGHTS paints, lowest priority first:
 *LINE-HIGHLIGHT-FUNCTIONS*, syntax, *TEXT-HIGHLIGHT-FUNCTIONS*, then
-*JOB-HIGHLIGHT-FUNCTIONS*, then *HIGHLIGHT-FUNCTIONS*, then the active region,
-which only the selected window shows."
+*JOB-HIGHLIGHT-FUNCTIONS*, then *HIGHLIGHT-FUNCTIONS*, then the active
+region, which only the selected window shows. A way of marking text that
+fails is left out and said once (TUATARA.RUNTIME:CALL-HOOK-FUNCTION), so
+that the rest of the screen is drawn. The lists may be the ones the
+functions keep for the next frame, so they are read, never changed."
   (let* ((buffer (tuatara.display:window-buffer window))
-         (ranges (list nil))
-         (tail ranges))
-    (flet ((add (list)
-             (setf (cdr tail) list
-                   tail (last tail))))
+         (layers (list nil))
+         (tail layers))
+    (flet ((add (ranges)
+             (when ranges
+               (setf (cdr tail) (list ranges)
+                     tail (cdr tail)))))
       ;; a mode's colours, and the line point is on, are for text, not for the hex view's digits
       (unless (tuatara.display:hex-view-p buffer)
         (dolist (f *line-highlight-functions*)
-          (add (highlights-of f editor window rows)))
+          (add (tuatara.runtime:call-hook-function f editor window rows)))
         (let ((syntax (window-syntax editor window rows)))
-          (add (copy-list syntax))
+          (add syntax)
           (dolist (f *text-highlight-functions*)
-            (add (highlights-of f editor window rows syntax)))))
+            (add (tuatara.runtime:call-hook-function f editor window rows syntax)))))
       ;; the hex view's octet at its cursor, in its hex digits and its character both
       (when (tuatara.display:hex-view-p buffer)
         (let ((p (tuatara.display:hex-point buffer)))
           (when (< p (tuatara.buffer:buffer-size buffer))
             (add (list (list p (1+ p) :hex-mirror))))))
       (dolist (f *job-highlight-functions*)
-        (add (highlights-of f editor window rows)))
+        (add (tuatara.runtime:call-hook-function f editor window rows)))
       (dolist (f *highlight-functions*)
-        (add (highlights-of f editor window rows)))
+        (add (tuatara.runtime:call-hook-function f editor window rows)))
       (when (and (eq window (editor-window editor)) (tuatara.buffer:buffer-mark-active-p buffer))
         (if (and (tuatara.buffer:buffer-local buffer :rectangle) (plusp (length rows)))
             ;; a rectangle: its columns on each line shown, and only those
-            (loop for (from . to) in (tuatara.display:shown-ranges rows :buffer buffer)
-                  ;; the line a range ends at the start of is not in it
-                  do (loop for (start end) in (region-rectangle-rows buffer :from from :to (max from (1- to)))
-                           when (< start end)
-                             do (add (list (list start end :region)))))
+            (add (loop for (from . to) in (tuatara.display:shown-ranges rows :buffer buffer)
+                       ;; the line a range ends at the start of is not in it
+                       nconc (loop for (start end) in (region-rectangle-rows buffer :from from :to (max from (1- to)))
+                                   when (< start end)
+                                     collect (list start end :region))))
             (multiple-value-bind (start end) (tuatara.buffer:buffer-region buffer)
               (when (and start (< start end))
                 (add (list (list start end :region)))))))
-      (rest ranges))))
+      (rest layers))))
 
 (defvar *mode-line-functions* '()
   "Functions of (EDITOR BUFFER) returning what to add to the mode line: a string,
@@ -695,7 +700,8 @@ cells, a terminal's) are noted too, its text shown as it is."
       (let* ((rows (lay-out-window editor window))
              (cursor-ends (multiple-value-bind (ranges ends) (other-cursors-in editor window rows)
                             ;; other cursors last, over everything else
-                            (tuatara.display:apply-highlights rows (append (window-highlights-for editor window rows) ranges))
+                            (apply #'tuatara.display:apply-highlights rows
+                                   (nconc (window-highlights-for editor window rows) (list ranges)))
                             ends))
              (margin (tuatara.display:window-margin window))
              (cells (gutter-cells editor window rows))

@@ -772,8 +772,8 @@ with y hidden between them and after the last.")
                          (line-start-of 6) "m v j l" :tick
                          (lambda ()
                            (let* ((e tuatara.command:*editor*) (w (tuatara.command:editor-window e)))
-                             (setf lit (remove :region (tuatara.command::window-highlights-for
-                                                        e w (tuatara.display:window-rows w))
+                             (setf lit (remove :region (apply #'append (tuatara.command::window-highlights-for
+                                                                        e w (tuatara.display:window-rows w)))
                                                :key #'third :test-not #'eq)))))
                    :file path :width 60 :height 10)
       (kill-records b path))

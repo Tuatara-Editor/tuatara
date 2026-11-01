@@ -125,64 +125,64 @@ when there was none, otherwise a list with NEW first (it has higher priority)."
         ((listp old) (if (member new old) old (cons new old)))
         (t (list new old))))
 
-(defun face-painter (face)
-  "A function of the face a character had giving the one it has once FACE is
-painted over it (MERGE-FACE): the same merged face for a run of characters
-that had the same, rather than a new one for each."
-  (let ((last-old '#:none) (last-merged nil))
-    (lambda (old)
-      (if (eq old last-old)
-          last-merged
-          (setf last-old old last-merged (merge-face face old))))))
-
 (defun first-index-at-or-after (vector value)
   "The first index of VECTOR (never decreasing fixnums) whose element is at least VALUE; its length when none."
   (tuatara.runtime:bisect (mid 0 (length vector)) (< (aref vector mid) value)))
 
-(defun apply-highlights (rows ranges)
-  "Paint RANGES, a list of (START END FACE) byte ranges given lowest priority
-first, onto the characters of ROWS, so that a later range wins over an earlier
-one where they overlap (the region over syntax colours, for example). A face
-that extends, covering the newline that ends a row's line, is carried on past
-it (ROW-EXTEND); so is one reaching past the end of the text, on the last row,
+(defun apply-highlights (rows &rest layers)
+  "Paint each of LAYERS, lists of (START END FACE) byte ranges, onto the
+characters of ROWS, the ranges of a list and the lists themselves given lowest
+priority first, so that a later range wins over an earlier one where they
+overlap (the region over syntax colours, for example). A face that extends,
+covering the newline that ends a row's line, is carried on past it
+\(ROW-EXTEND); so is one reaching past the end of the text, on the last row,
 and one covering a row of a wrapped line to where the next row goes on.
 Characters shown where no text of the buffer is (ROW-SET-IN) keep their own
-face. Returns ROWS. Complexity: O(ranges × log rows + characters
-painted)."
+face. A run of characters that had the same face takes the same merged face
+\(MERGE-FACE), not a new one for each. Returns ROWS. Complexity: O(ranges ×
+log rows + characters painted)."
+  (declare (dynamic-extent layers))
   (let ((n (length rows)))
-    (dolist (range ranges rows)
-      (destructuring-bind (start end face) range
-        (when (and face (< start end) (plusp n))
-          ;; the first row that ends after START (rows are in byte order)
-          (let ((lo (tuatara.runtime:bisect (mid 0 n) (and (<= (row-end (aref rows mid)) start)
-                                                          (not (row-last-p (aref rows mid))))))
-                (paint (face-painter face)))
-            (loop for r from lo below n
-                  for row = (aref rows r)
-                  while (< (row-start row) end)
-                  do (let ((newline (1- (row-end row))))
-                       (when (and (cond ((row-last-p row)
-                                         (and (<= start (row-end row)) (< (row-end row) end)))
-                                        ((< (row-shown-end row) (row-end row))
-                                         (and (<= start newline) (< newline end)))
-                                        ;; a row a wrapped line goes on from, covered to its end
-                                        (t (and (< start (row-end row)) (<= (row-end row) end))))
-                                  (not (row-mixed row))
-                                  (symbolp face) (face-attribute face :extend))
-                         (setf (row-extend row) (funcall paint (row-extend row)))))
-                     (let* ((bytes (row-char-bytes row))
-                            (faces (row-faces row))
-                            (count (length bytes)))
-                       (if (row-mixed row)
-                           ;; offsets out of order (the hex view): every character is looked at
-                           (dotimes (i count)
-                             (when (<= start (aref bytes i) (1- end))
-                               (setf (aref faces i) (funcall paint (aref faces i)))))
-                           (let ((set-in (row-set-in row)))
-                             (loop for i from (first-index-at-or-after bytes start) below count
-                                   while (< (aref bytes i) end)
-                                   unless (and set-in (find-if (lambda (run) (and (<= (car run) i) (< i (cdr run)))) set-in))
-                                     do (setf (aref faces i) (funcall paint (aref faces i))))))))))))))
+    (dolist (ranges layers rows)
+      (dolist (range ranges)
+        (destructuring-bind (start end face) range
+          (when (and face (< start end) (plusp n))
+            ;; the first row that ends after START (rows are in byte order)
+            (let ((lo (tuatara.runtime:bisect (mid 0 n) (and (<= (row-end (aref rows mid)) start)
+                                                            (not (row-last-p (aref rows mid))))))
+                  (last-old '#:none) (last-merged nil))
+              (flet ((paint (old)
+                       (if (eq old last-old)
+                           last-merged
+                           (setf last-old old last-merged (merge-face face old)))))
+                (declare (inline paint))
+                (loop for r from lo below n
+                      for row = (aref rows r)
+                      while (< (row-start row) end)
+                      do (let ((newline (1- (row-end row))))
+                           (when (and (cond ((row-last-p row)
+                                             (and (<= start (row-end row)) (< (row-end row) end)))
+                                            ((< (row-shown-end row) (row-end row))
+                                             (and (<= start newline) (< newline end)))
+                                            ;; a row a wrapped line goes on from, covered to its end
+                                            (t (and (< start (row-end row)) (<= (row-end row) end))))
+                                      (not (row-mixed row))
+                                      (symbolp face) (face-attribute face :extend))
+                             (setf (row-extend row) (paint (row-extend row)))))
+                         (let* ((bytes (row-char-bytes row))
+                                (faces (row-faces row))
+                                (count (length bytes)))
+                           (if (row-mixed row)
+                               ;; offsets out of order (the hex view): every character is looked at
+                               (dotimes (i count)
+                                 (when (<= start (aref bytes i) (1- end))
+                                   (setf (aref faces i) (paint (aref faces i)))))
+                               (let ((set-in (row-set-in row)))
+                                 (loop for i from (first-index-at-or-after bytes start) below count
+                                       while (< (aref bytes i) end)
+                                       unless (and set-in (loop for (from . below) in set-in
+                                                                  thereis (and (<= from i) (< i below))))
+                                         do (setf (aref faces i) (paint (aref faces i))))))))))))))))
 
 (defun row-column-of (row byte)
   "The column of ROW where byte offset BYTE is shown; the column after the last
