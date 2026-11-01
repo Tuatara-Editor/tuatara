@@ -526,3 +526,18 @@ else ~a; fi" pixel)
       (multiple-value-list (tuatara.io:octets-kind (jxl-boxed (jxl-octets 5000 3000) :parts 2 :long t))))
   (false (eq :jxl (nth-value 1 (tuatara.io:octets-kind (kind-octets (list #xFF #x0A 0))))))
   (is eq :jxl (nth-value 1 (tuatara.io:octets-kind (jxl-octets 64 48)))))
+
+(define-test (image-view decoder-said-escaped)
+  ;; what a decoding program says is shown with its control and direction characters written out:
+  ;; a damaged file cannot have it clear the screen or turn text around
+  (let ((octets (concatenate '(vector (unsigned-byte 8)) (j2k-octets 64 48) (make-array 64 :element-type '(unsigned-byte 8)))))
+    (flet ((said (script)
+             (let ((tuatara.defaults::*image-decoders* (list (list :name "stand-in" :program (list "sh" "-c" script "sh" :input)))))
+               (format nil "~{~a~}" (mapcar #'car (nth-value 1 (tuatara:decode-picture octets :j2k 64 48)))))))
+      (let ((failed (said "printf 'bad \\033[2J\\342\\200\\256evil\\n' >&2; exit 1")))
+        (false (find (code-char 27) failed) "~s" failed)
+        (false (find (code-char #x202E) failed) "~s" failed)
+        (true (search "bad ^[[2J<202E>evil" failed) "~s" failed))
+      (let ((damaged (said "printf 'corrupt \\033[31mdata\\n' >&2; printf 'P7\\nWIDTH 1\\nHEIGHT 1\\nDEPTH 3\\nMAXVAL 255\\nTUPLTYPE RGB\\nENDHDR\\n\\001\\002\\003'")))
+        (false (find (code-char 27) damaged) "~s" damaged)
+        (true (search "damaged: corrupt ^[[31mdata" damaged) "~s" damaged)))))

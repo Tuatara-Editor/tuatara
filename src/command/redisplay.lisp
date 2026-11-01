@@ -826,6 +826,8 @@ match."
                         collect (list (aref moved (min start (length text))) (aref moved (min end (length text))) face))))
         (values text spans))))
 
+(setf tuatara.io:*said-shown-function* #'escape-controls)
+
 (defun shown-name (text)
   "TEXT, a name from elsewhere, as a list, a menu or the window's title shows
 it: its control and invisible characters written out (ESCAPE-CONTROLS), and

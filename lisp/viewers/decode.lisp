@@ -112,7 +112,8 @@ part of it, without the program's name and where in its source it said it
 (Premature end of JPEG file); NIL when it says nothing of the kind."
   (let ((line (find-if (lambda (line) (cl-ppcre:scan "(?i)premature end|corrupt|truncat|damaged|unexpected end|insufficient image data" line))
                        (uiop:split-string (or said "") :separator '(#\Newline)))))
-    (and line (string-trim " " (cl-ppcre:regex-replace "(?: [`'(].*| @ .*)$" (cl-ppcre:regex-replace "^[a-z]+: " line "") "")))))
+    (and line (escape-controls
+               (string-trim " " (cl-ppcre:regex-replace "(?: [`'(].*| @ .*)$" (cl-ppcre:regex-replace "^[a-z]+: " line "") ""))))))
 
 (defun info-field (info name)
   "The value of the line NAME: value in INFO, the text an :INFO program
