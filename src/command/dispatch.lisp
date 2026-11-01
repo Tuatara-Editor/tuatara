@@ -143,13 +143,34 @@ the words in the echo area saying why."
     (when (and playing (not (playing-failed playing)))
       (setf (playing-failed playing) (or (editor-message *editor*) t)))))
 
+(defun event-of-no-frame (event)
+  "EVENT as recorded keys keep it: without the frame it happened in, so that
+it holds on to no frame and plays in any."
+  (if (tuatara.frontend:event-frame event)
+      (tuatara.frontend:make-event (tuatara.frontend:event-kind event)
+                                   :key (tuatara.frontend:event-key event) :text (tuatara.frontend:event-text event)
+                                   :width (tuatara.frontend:event-width event)
+                                   :height (tuatara.frontend:event-height event)
+                                   :files (tuatara.frontend:event-files event)
+                                   :column (tuatara.frontend:event-column event)
+                                   :row (tuatara.frontend:event-row event))
+      event))
+
+(defun recorded-as-p (recorded event)
+  "True when RECORDED, among the keys being recorded, is EVENT as it was
+recorded (EVENT-OF-NO-FRAME)."
+  (or (eq recorded event)
+      (and (eq (tuatara.frontend:event-kind recorded) (tuatara.frontend:event-kind event))
+           (eq (tuatara.frontend:event-key recorded) (tuatara.frontend:event-key event))
+           (eq (tuatara.frontend:event-text recorded) (tuatara.frontend:event-text event)))))
+
 (defun record-event (recording event)
   "Add EVENT, a key or text pasted just read as typed, to RECORDING, the keys
-being recorded, the paste to be pasted again as it was; the mouse is not
-recorded."
+being recorded, the paste to be pasted again as it was, without the frame it
+happened in (EVENT-OF-NO-FRAME); the mouse is not recorded."
   (unless (and (eq (tuatara.frontend:event-kind event) :key)
                (tuatara.frontend:key-row (tuatara.frontend:event-key event)))
-    (vector-push-extend event (recording-events recording))))
+    (vector-push-extend (event-of-no-frame event) (recording-events recording))))
 
 (defun give-up-keys-recording ()
   "End the recording of keys going on in the frame you are in, with nothing
@@ -207,7 +228,7 @@ are the last given from them, else first among EDITOR's unread events."
               (when (and (>= start 0)
                          (loop for event in events
                                for i from start
-                               always (eq event (aref recorded i))))
+                               always (recorded-as-p (aref recorded i) event)))
                 (setf (fill-pointer recorded) start))))
           (setf (editor-unread editor) (append events (editor-unread editor)))))))
 

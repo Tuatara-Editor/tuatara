@@ -231,3 +231,11 @@ of no arguments; returns the job."
     (false (tuatara.command::frame-minibuffer-active second))
     ;; the key waiting in the second frame ran last, there
     (is eq second (tuatara.command::editor-frame editor))))
+
+(define-test (frames recorded-keys-hold-no-frame)
+  ;; keys recorded in a frame are kept without it, and play in another frame
+  (with-frames (editor (first second)) '((1 "C-x b k i w i C-j i C-x ( a b C-x )") (0 "i C-x e"))
+    (true (plusp (length tuatara.defaults::*last-recorded-keys*)))
+    (true (every (lambda (event) (null (tuatara.frontend:event-frame event))) tuatara.defaults::*last-recorded-keys*))
+    (is equal '("kiwi" "ab") (frame-buffer-text second))
+    (is equal '("*scratch*" "ab") (frame-buffer-text first))))
