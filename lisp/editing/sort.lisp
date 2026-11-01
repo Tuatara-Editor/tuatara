@@ -533,7 +533,7 @@ meanwhile; CHANGED turns true when one touches it, which abandons the result.
 BASE is the text the job began on (JOB-BEGINS-WHERE-GIVEN), the region
 BASE-START below BASE-END in it, and SINCE the buffer's undo stack there: the
 result stands in the undo history there, before the changes made meanwhile
-\(TUATARA.BUFFER:BUFFER-CHANGE-WHERE-BEGUN)."
+\(TUATARA.BUFFER:BUFFER-TAKE-IN-JOB-RESULT)."
   words what (progress (list 0)) (total 1) (counting nil) result message
   (region-start 0) (region-end 0) changed change-function
   base (base-start 0) (base-end 0) since)
@@ -996,11 +996,12 @@ unless the region changed meanwhile or the buffer may no longer take it
                         ;; standing where the job began, before the changes made meanwhile elsewhere
                         (multiple-value-bind (final final-forward final-backward)
                             (spliced (tuatara.buffer:buffer-text buffer) start end)
-                          (unless (multiple-value-call #'tuatara.buffer:buffer-change-where-begun
-                                    buffer (sort-job-since job) (sort-job-base job)
-                                    (spliced (sort-job-base job) (sort-job-base-start job) (sort-job-base-end job))
-                                    final final-forward final-backward)
-                            (tuatara.buffer:buffer-swap-text buffer final final-forward final-backward))))))))
+                          (multiple-value-bind (done forward backward)
+                              (spliced (sort-job-base job) (sort-job-base-start job) (sort-job-base-end job))
+                            (tuatara.buffer:buffer-take-in-job-result
+                             buffer final final-forward final-backward
+                             :since (sort-job-since job)
+                             :begun (tuatara.text:make-swap (sort-job-base job) done forward backward)))))))))
                (when (<= start point end)
                  (setf (tuatara.buffer:buffer-point buffer) start))
                (setf (tuatara.buffer:buffer-mark-active-p buffer) nil)

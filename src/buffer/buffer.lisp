@@ -875,7 +875,7 @@ them (MAKE-UNDO-PLACE) goes on top of the one group."
   "A place in BUFFER's undo history: where it stands now, for work given now
 that begins later to stand there (BUFFER-TEXT-AT). A list of one, whose car is
 the undo stack there, kept where it is as the history is laid out anew under
-it (BUFFER-CHANGE-WHERE-BEGUN, MERGE-UNDO-GROUPS). Let go of it with
+it (BUFFER-TAKE-IN-JOB-RESULT, MERGE-UNDO-GROUPS). Let go of it with
 FORGET-UNDO-PLACE."
   (let ((place (list (buffer-undo-stack buffer))))
     (push place (buffer-local buffer 'undo-places))
@@ -1029,26 +1029,20 @@ pieces after them, not the batches carried before."
 
 (defvar *made-content-number* 0
   "The last content number given to a text an undo step was made to lead to
-without the buffer ever holding it (BUFFER-CHANGE-WHERE-BEGUN): counted down
+without the buffer ever holding it (BUFFER-TAKE-IN-JOB-RESULT): counted down
 from 0, so that it is never a version's number nor a file's saved content.")
 
-(defun buffer-change-where-begun (buffer since begun rope forward backward final final-forward final-backward &key join)
-  "Make FINAL BUFFER's text, as one swap (FINAL-FORWARD and FINAL-BACKWARD map
-the text now to it and back), for work in the background begun when BUFFER's
-undo stack was SINCE on the text BEGUN, whose result is ROPE, BEGUN with the
-work done (FORWARD and BACKWARD map between them); FINAL is ROPE with the
-changes made to BUFFER meanwhile made on it too. The undo history then stands
-as if the work had been done the moment it began: the work one undo step,
-where it began, and each change made meanwhile its own step after it, its
-places carried over by FORWARD, so that undo takes back those changes first
-and the work after them. Only the history is laid out so; the text is
-swapped once, everything that follows it (point, marks, places) moved once,
-to where it now belongs. With JOIN, the work's step and the newest one under
-SINCE, a change the same work made first (in sight, at once), are one. NIL,
-and nothing done, when the undo history no longer passes through SINCE
-\(undone past it), a change made meanwhile swapped the whole text, or the
-changes carried over do not lead to FINAL; true otherwise."
-  (let* ((stack (buffer-undo-stack buffer))
+(defun lay-out-where-begun (buffer since begun final final-forward final-backward join)
+  "Make FINAL BUFFER's text as one swap (FINAL-FORWARD and FINAL-BACKWARD map
+the text now to it and back), the undo history laid out as if BEGUN, a swap of
+the text as it stood when BUFFER's undo stack was SINCE for the work's result
+there, had been made then (see BUFFER-TAKE-IN-JOB-RESULT). With JOIN, that
+step and the newest one under SINCE are one. NIL, and nothing done, when the
+history no longer passes through SINCE, a change made meanwhile swapped the
+whole text, or the changes carried over do not lead to FINAL; true otherwise."
+  (let* ((rope (tuatara.text:swap-after begun))
+         (forward (tuatara.text:swap-forward begun))
+         (stack (buffer-undo-stack buffer))
          (later (and (not (eq stack since)) (tailp since stack) (ldiff stack since))))
     (when (and (or (eq stack since) later)
                (notany (lambda (group) (some #'tuatara.text:batch-swap group)) later))
@@ -1077,7 +1071,8 @@ changes carried over do not lead to FINAL; true otherwise."
                  (swapped (swap-whole-text buffer final final-forward final-backward))
                  (now (buffer-content-number buffer))
                  (before (or began (car (gethash swapped table))))
-                 (work (tuatara.text:swap-batch begun rope forward backward)))
+                 (work (tuatara.text:swap-batch (tuatara.text:swap-before begun) rope forward
+                                                (tuatara.text:swap-backward begun))))
             (remhash swapped table)
             ;; the content numbers before and after each step, for undo to know the text saved
             (setf (gethash work table) (cons before (if groups (decf *made-content-number*) now)))
@@ -1103,6 +1098,30 @@ changes carried over do not lead to FINAL; true otherwise."
             (let-go-of-oldest-changes buffer)
             (keep-within-narrowing buffer)
             t))))))
+
+(defun buffer-take-in-job-result (buffer final forward backward &key (since nil since-p) begun join)
+  "Make FINAL, a background job's result with the changes made to BUFFER
+meanwhile in it, BUFFER's whole text as one undoable step, FORWARD mapping a
+byte position and a bias from the text now to FINAL and BACKWARD back, as
+BUFFER-SWAP-TEXT does: point, marks and places move once, to where they
+belong. SINCE is BUFFER's undo stack when the job began (NIL when it was
+empty; for a job that waited its turn, the place in the history kept by
+MAKE-UNDO-PLACE), BEGUN a swap (TUATARA.TEXT:MAKE-SWAP) of the text the job
+began on for its result there. Given both, the step stands in the undo
+history where the job began: undo takes back the changes made meanwhile
+first, each its own step, then the job's. It goes on top, as the newest step,
+when BEGUN is not given, when the history was undone past SINCE, or when a
+change made meanwhile swapped the whole text. With JOIN, the step and the
+newest one under SINCE (a change the same work made first, in sight) are one
+step, where it began or on top when nothing came between them. Signals an
+error when the buffer is read-only. Returns :WHERE-BEGUN or :ON-TOP, for
+where it went."
+  (if (and since-p begun (lay-out-where-begun buffer since begun final forward backward join))
+      :where-begun
+      (progn (buffer-swap-text buffer final forward backward)
+             (when (and join since (eq (cdr (buffer-undo-stack buffer)) since))
+               (merge-undo-groups buffer (cdr since)))
+             :on-top)))
 
 (defun buffer-redo (buffer)
   "Redo the most recently undone group of BUFFER, point after the last change it

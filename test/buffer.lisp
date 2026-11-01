@@ -305,7 +305,9 @@
                  (tuatara.buffer:buffer-insert b (tuatara.buffer:buffer-size b) "x"))
                (let ((final (tuatara.text:string->rope (concatenate 'string "ABCdef" (make-string keys :initial-element #\x))))
                      (start (get-internal-real-time)))
-                 (true (tuatara.buffer:buffer-change-where-begun b since begun rope same same final same same))
+                 (is eq :where-begun (tuatara.buffer:buffer-take-in-job-result
+                                      b final same same
+                                      :since since :begun (tuatara.text:make-swap begun rope same same)))
                  (prog1 (/ (- (get-internal-real-time) start) internal-time-units-per-second)
                    (is = (1+ keys) (length (tuatara.buffer:buffer-undo-stack b)))
                    (loop repeat keys do (tuatara.buffer:buffer-undo b))
@@ -338,7 +340,8 @@
                (final (tuatara.text:string->rope (concatenate 'string "ZABC" (subseq now 4)))))
           (true begun)
           (tuatara.buffer:forget-undo-place b place)
-          (true (tuatara.buffer:buffer-change-where-begun b since begun rope same same final same same))
+          (is eq :where-begun (tuatara.buffer:buffer-take-in-job-result
+                               b final same same :since since :begun (tuatara.text:make-swap begun rope same same)))
           (is = (recounted-undo-octets b) (tuatara.buffer:buffer-undo-octets b))
           (true (<= (tuatara.buffer:buffer-undo-octets b) 1700))
           (loop repeat 5 do (true (tuatara.buffer:buffer-undo b)))
@@ -349,6 +352,35 @@
           (false (tuatara.buffer:buffer-undo b))
           (loop repeat 8 do (true (tuatara.buffer:buffer-redo b)))
           (is string= (tuatara.text:rope-string final) (tuatara.buffer:buffer-string b)))))))
+
+(define-test (buffer take-in-job-result-on-top)
+  ;; a job's result goes on top, one step, when its history was undone past where it began
+  ;; or it says nothing of where it began; with JOIN it is one step with the change under it
+  (let ((same (lambda (p bias) (declare (ignore bias)) p)))
+    (with-test-buffer (b "*job on top*" :text "abcdef")
+      (tuatara.buffer:buffer-insert b 6 "x")
+      (let* ((since (tuatara.buffer:buffer-undo-stack b))
+             (begun (tuatara.buffer:buffer-text b))
+             (rope (tuatara.text:splice-rope begun 0 3 (tuatara.text:string->rope "ABC"))))
+        (true (tuatara.buffer:buffer-undo b))
+        (let ((final (tuatara.text:string->rope "ABCdef")))
+          (is eq :on-top (tuatara.buffer:buffer-take-in-job-result
+                          b final same same :since since :begun (tuatara.text:make-swap begun rope same same)))
+          (is string= "ABCdef" (tuatara.buffer:buffer-string b))
+          (true (tuatara.buffer:buffer-undo b))
+          (is string= "abcdef" (tuatara.buffer:buffer-string b)))))
+    (with-test-buffer (b "*job joined on top*" :text "abcdef")
+      (tuatara.buffer:buffer-insert b 0 "Z")
+      (let ((since (tuatara.buffer:buffer-undo-stack b)))
+        (is eq :on-top (tuatara.buffer:buffer-take-in-job-result
+                        b (tuatara.text:string->rope "Zabcdef!") same same :since since :join t))
+        (is = 1 (length (tuatara.buffer:buffer-undo-stack b)))
+        (true (tuatara.buffer:buffer-undo b))
+        (is string= "abcdef" (tuatara.buffer:buffer-string b))))
+    (with-test-buffer (b "*job without a place*" :text "abc")
+      (is eq :on-top (tuatara.buffer:buffer-take-in-job-result b (tuatara.text:string->rope "ABC") same same))
+      (true (tuatara.buffer:buffer-undo b))
+      (is string= "abc" (tuatara.buffer:buffer-string b)))))
 
 (define-test (buffer text-put-by-lines)
   ;; a buffer's text made another, only the lines between those both begin and end with compared,

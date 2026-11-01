@@ -11,7 +11,7 @@
            #:buffer-start #:buffer-end #:buffer-narrowed-p #:buffer-narrowing #:narrow-buffer #:widen-buffer
            #:buffer-bounds #:within-narrowing #:keep-within-narrowing #:with-narrowing-lifted #:refuse-outside-narrowing #:outside-narrowing-words #:*widen-key-function* #:lifted-narrowing-outside-p #:let-go-of-lifted-narrowing #:*narrowing-in-force*
            #:buffer-edit #:*hex-view-resizing* #:hex-view-refuses-p #:buffer-insert #:buffer-delete #:buffer-replace #:buffer-undo #:buffer-redo
-           #:buffer-undo-stack #:buffer-redo-stack #:buffer-change-functions #:buffer-swap-text #:buffer-change-where-begun
+           #:buffer-undo-stack #:buffer-redo-stack #:buffer-change-functions #:buffer-swap-text #:buffer-take-in-job-result
            #:merge-undo-groups #:undo-back-to #:*undo-limit* #:*undo-let-go-functions* #:buffer-undo-octets
            #:make-undo-place #:forget-undo-place #:buffer-text-at #:span-after-batch
            #:buffer-forward-char #:buffer-line-start #:buffer-line-end #:buffer-line-text #:buffer-line-number #:buffer-line-count

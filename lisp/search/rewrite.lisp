@@ -101,7 +101,7 @@ NIL, is the buffer's undo stack as a change made before the job left it (the
 typing at a split's places in sight): the job's change joins that one for undo.
 SINCE is the buffer's undo stack as the job began (JOINS when given): its
 change stands there in the undo history, before the changes made meanwhile
-\(TUATARA.BUFFER:BUFFER-CHANGE-WHERE-BEGUN); unless SESSION, for a job that
+\(TUATARA.BUFFER:BUFFER-TAKE-IN-JOB-RESULT); unless SESSION, for a job that
 writes out of sight what typing at places in sight still goes on writing (a
 split's, a block's rows): its change joins that typing on top, one change for
 undo with it. PREPARE, when not NIL, a function of the job,
@@ -655,7 +655,7 @@ began on to its result with those stretches left as they were."
 (defun result-as-begun (job regions)
   "JOB's result with the stretches of REGIONS (REWRITE-REGIONS), those edited
 while it ran, left as they were when it began, for the edits made meanwhile
-to be made again on (TUATARA.BUFFER:BUFFER-CHANGE-WHERE-BEGUN)."
+to be made again on (TUATARA.BUFFER:BUFFER-TAKE-IN-JOB-RESULT)."
   (let ((base (rewrite-rope job)))
     (if (zerop (length regions))
         (rewrite-result job)
@@ -733,18 +733,16 @@ edited meanwhile as they are now, unless the buffer may no longer take it
                   (buffer-windows buffer)
                   (lambda ()
                     ;; the change stands where the job began, before the edits made meanwhile, which
-                    ;; are made again on the result with the stretches they touched as they are now
-                    (multiple-value-bind (begun-forward begun-backward) (rewrite-maps job (regions-as-begun regions))
-                      (unless (and (not (rewrite-session job))
-                                   (tuatara.buffer:buffer-change-where-begun
-                                    buffer (rewrite-since job) (rewrite-rope job) (result-as-begun job regions)
-                                    begun-forward begun-backward final forward backward
-                                    :join (rewrite-joins job)))
-                        ;; on top: a session's typing joins it; a whole-text change made meanwhile cannot be carried over
-                        (tuatara.buffer:buffer-swap-text buffer final forward backward)
-                        (let ((joins (rewrite-joins job)))
-                          (when (and joins (eq (cdr (tuatara.buffer:buffer-undo-stack buffer)) joins))
-                            (tuatara.buffer:merge-undo-groups buffer (cdr joins))))))
+                    ;; are made again on the result with the stretches they touched as they are now;
+                    ;; a session's change goes on top, joining its typing
+                    (tuatara.buffer:buffer-take-in-job-result
+                     buffer final forward backward
+                     :since (rewrite-since job) :join (rewrite-joins job)
+                     :begun (unless (rewrite-session job)
+                              (multiple-value-bind (begun-forward begun-backward)
+                                  (rewrite-maps job (regions-as-begun regions))
+                                (tuatara.text:make-swap (rewrite-rope job) (result-as-begun job regions)
+                                                        begun-forward begun-backward))))
                     forward))
                  (when unmoved
                    (setf (tuatara.buffer:buffer-point buffer)
