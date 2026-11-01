@@ -19,7 +19,7 @@
                (:file "version")
                (:module "runtime"  :serial t :components ((:file "package") (:file "resources") (:file "stopping") (:file "pool") (:file "debug") (:file "threads") (:file "jobs") (:file "hooks")))
                (:module "dates"    :serial t :components ((:file "package") (:file "dates")))
-               (:module "text"     :serial t :components ((:file "package") (:file "utf8") (:file "mapping") (:file "rope") (:file "edits") (:file "strings") (:file "version") (:file "json") (:file "xml")))
+               (:module "text"     :serial t :components ((:file "package") (:file "utf8") (:file "mapping") (:file "rope") (:file "edits") (:file "strings") (:file "version") (:file "json") (:file "xml") (:file "escapes")))
                (:module "buffer"   :serial t :components ((:file "package") (:file "buffer")))
                (:module "io"       :serial t :components ((:file "package") (:file "posix") (:file "kinds") (:file "files") (:file "sandbox") (:file "operations") (:file "zip")))
                ;; time zones, read from the system's zoneinfo files as io reads files

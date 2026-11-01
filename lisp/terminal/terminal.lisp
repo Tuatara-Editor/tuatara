@@ -178,11 +178,9 @@ cursor's move, a shell's marks) left out."
       (loop while (< i n)
             do (let ((c (char text i)))
                  (cond
-                   ((and (char= c #\Escape) (< (1+ i) n) (char= (char text (1+ i)) #\[))
-                    ;; CSI: its parameters, then its final character
-                    (let* ((end (or (position-if (lambda (ch) (<= #x40 (char-code ch) #x7e)) text :start (+ i 2)) (1- n)))
-                           (final (char text end)))
-                      (when (char= final #\m)
+                   ((char= c #\Escape)
+                    (multiple-value-bind (stop final from end) (tuatara.text:escape-sequence-end text i)
+                      (when (eql final #\m)
                         (flush)
                         ;; each parameter a code, its parts after colons its own (4:3 a curly
                         ;; underline, 58:2::R:G:B an underline's colour); 38 and 48 take theirs
@@ -191,7 +189,7 @@ cursor's move, a shell's marks) left out."
                                                (let ((parts (mapcar (lambda (x) (or (ignore-errors (parse-integer x)) 0))
                                                                     (uiop:split-string p :separator ":"))))
                                                  (if (rest parts) parts (first parts))))
-                                             (uiop:split-string (subseq text (+ i 2) end) :separator ";"))))
+                                             (uiop:split-string (subseq text from end) :separator ";"))))
                           (loop while codes
                                 do (let ((code (pop codes)))
                                      (when (consp code)
@@ -215,16 +213,7 @@ cursor's move, a shell's marks) left out."
                                                 ((<= 40 code 47) (setf bg (palette-code (- code 40))))
                                                 ((<= 90 code 97) (setf fg (palette-code (+ 8 (- code 90)))))
                                                 ((<= 100 code 107) (setf bg (palette-code (+ 8 (- code 100))))))))))))
-                      (setf i (1+ end))))
-                   ((and (char= c #\Escape) (< (1+ i) n) (char= (char text (1+ i)) #\]))
-                    ;; OSC: up to its BEL or ST (ESC \)
-                    (let ((end (loop for j from (+ i 2) below n
-                                     for ch = (char text j)
-                                     when (char= ch (code-char 7)) return (1+ j)
-                                     when (and (char= ch #\Escape) (< (1+ j) n) (char= (char text (1+ j)) #\\))
-                                       return (+ j 2))))
-                      (setf i (or end n))))
-                   ((char= c #\Escape) (incf i 2))
+                      (setf i stop)))
                    ((char= c #\Return) (incf i))
                    ((and (< (char-code c) 32) (not (member c '(#\Newline #\Tab)))) (incf i))
                    (t (write-char c out) (incf i)))))

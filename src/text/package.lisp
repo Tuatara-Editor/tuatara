@@ -4,7 +4,7 @@
 (defpackage #:tuatara.text
   (:use #:cl #:alexandria)
   (:documentation "The text model: a rope of UTF-8 leaves with cached counts, mapped files, edit batches, versions and anchors.")
-  (:export #:xml-entity #:xml-tag-end #:xml-text-value
+  (:export #:escape-sequence-end #:c1-control-p #:xml-entity #:xml-tag-end #:xml-text-value
    #:xml-name #:xml-attribute #:xml-children #:xml-child #:xml-root #:xml-local-name #:xml-unprefixed #:xml-local-children #:xml-find-all #:xml-all-text
    #:xml-first-text #:xml-parse #:*xml-deepest* #:*xml-most-elements* #:xml-escape
    #:xml-elements #:xml-element #:xml-top-elements #:xml-element-inner #:xml-element-inside #:xml-replace-elements #:xml-value

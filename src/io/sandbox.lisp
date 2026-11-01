@@ -30,7 +30,7 @@
 ;;;;
 ;;;; bwrap is found on the PATH when first needed and tried once; the result is
 ;;;; kept, and M-x check-health tries it again. Only SANDBOX-STATUS and
-;;;; SANDBOX-RUN are used elsewhere (SANDBOX-RUN-ON-FILE by the tests alone),
+;;;; SANDBOX-RUN are used elsewhere (SANDBOX-RUN-ON-FILE by the manual page reader),
 ;;;; so that another way of shutting a program in can take bwrap's place.
 
 (in-package #:tuatara.io)
