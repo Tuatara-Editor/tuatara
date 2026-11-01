@@ -2451,6 +2451,8 @@ buffer of FILE killed first."
            (tuatara.defaults::*org-agenda-files* (list file))
            ;; worked out in the background, as large agenda files are
            (tuatara.defaults::*org-agenda-at-once* 0)
+           ;; the notifications read the agenda files too, about once a minute, and count as a try
+           (tuatara.defaults::*org-notify-tag* nil)
            (reader (fdefinition 'tuatara.defaults::org-agenda-file-entries))
            (tries 0) (tries-when-said nil))
       (fresh-agenda-file file (format nil "* TODO Call Ngaio~%SCHEDULED: <2026-10-01 Thu>~%"))
