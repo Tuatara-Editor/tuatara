@@ -187,7 +187,9 @@ installed and before its hooks run. Methods should call CALL-NEXT-METHOD.")
 
 (defgeneric mode-syntax-highlights (mode buffer rows)
   (:documentation "Syntax colours for the text laid out in ROWS of BUFFER, as a list of
-(START END FACE) byte ranges; NIL when MODE colours nothing.")
+(START END FACE) byte ranges; NIL when MODE colours nothing. The list may be one
+MODE keeps, lent until the text changes or is parsed again: read, never
+changed or kept.")
   (:method (mode buffer rows) (declare (ignore mode buffer rows)) nil))
 
 (defgeneric mode-marks-point-p (mode)

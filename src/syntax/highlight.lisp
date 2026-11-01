@@ -9,6 +9,28 @@
 
 (in-package #:tuatara.syntax)
 
+(defvar *spare-ranges* nil
+  "While SYNTAX-HIGHLIGHTS works out the colours of a text, those it worked
+out for an older tree of it, which are never asked for again: the new ranges
+take their room (RANGE-CELL), so that colouring a text after each edit makes
+next to no garbage.")
+
+(defvar *capture-table* nil
+  "While SYNTAX-HIGHLIGHTS works out colours, the table RICH-HIGHLIGHTS sorts
+out the captures in, emptied and used again; NIL elsewhere, a new one made.")
+
+(defun range-cell (start end face rest)
+  "A list of the colour range (START END FACE) followed by REST, in the room
+of one of *SPARE-RANGES* while there is one."
+  (let ((cell *spare-ranges*))
+    (if cell
+        (let ((range (car cell)))
+          (setf *spare-ranges* (cdr cell)
+                (first range) start (second range) end (third range) face
+                (cdr cell) rest)
+          cell)
+        (cons (list start end face) rest))))
+
 (defun rich-highlights (query tree rope start end faces)
   "The colours QUERY gives the text of ROPE (whose syntax tree is TREE) from
 octet START below END: a list of (START END FACE) ranges, outer ones first, so
@@ -17,24 +39,27 @@ node captured there. FACES holds the face of each capture of QUERY by number,
 NIL for a capture that colours nothing. Of captures of the very same text, the
 one from the pattern latest in the query wins; a capture whose face is :NONE
 may win and then takes the colour away."
-  (let ((best (make-hash-table)))
+  (let ((best (if *capture-table* (clrhash *capture-table*) (make-hash-table))))
     (map-query-matches
      (lambda (pattern captures count)
        (dotimes (i count)
-         (let ((face (aref faces (aref captures (* 4 i))))
-               (s (aref captures (+ 1 (* 4 i))))
-               (e (aref captures (+ 2 (* 4 i)))))
+         (let* ((capture (aref captures (* 4 i)))
+                (face (aref faces capture))
+                (s (aref captures (+ 1 (* 4 i))))
+                (e (aref captures (+ 2 (* 4 i)))))
            (when (and face (< s e))
+             ;; the pattern and the capture as one number, the pattern above
              (let* ((key (logior (ash s 31) e))
                     (old (gethash key best)))
-               (when (or (null old) (>= pattern (car old)))
-                 (setf (gethash key best) (cons pattern face))))))))
+               (when (or (null old) (>= pattern (ash old -32)))
+                 (setf (gethash key best) (logior (ash pattern 32) capture))))))))
      query tree rope start end)
     (let ((ranges '()))
       (maphash (lambda (key value)
-                 ;; a capture of none wins its text but colours nothing
-                 (unless (eq (cdr value) :none)
-                   (push (list (ash key -31) (logand key #x7fffffff) (cdr value)) ranges)))
+                 (let ((face (aref faces (logand value #xffffffff))))
+                   ;; a capture of none wins its text but colours nothing
+                   (unless (eq face :none)
+                     (setf ranges (range-cell (ash key -31) (logand key #x7fffffff) face ranges)))))
                best)
       (sort ranges (lambda (a b)
                      (or (< (first a) (first b))
@@ -331,9 +356,9 @@ yet other languages in them asked for in one more."
                                               (destructuring-bind (&key colours faces locals face-of local-from &allow-other-keys) layer
                                                 (multiple-value-bind (local-ranges references)
                                                     (and locals (local-highlights locals tree rope local-from start end face-of))
-                                                  (append (let ((*local-references* references))
-                                                            (rich-highlights colours tree rope start end faces))
-                                                          local-ranges))))))
+                                                  (nconc (let ((*local-references* references))
+                                                           (rich-highlights colours tree rope start end faces))
+                                                         local-ranges))))))
                          (from (injection-cut rope (max 0 (- start *injection-reach*))))
                          (to (tuatara.text:rope-char-start rope (min (tuatara.text:rope-bytes rope) (+ end *injection-reach*))))
                          (found (loop for layer in wanted
@@ -354,8 +379,8 @@ yet other languages in them asked for in one more."
                                                         rope start end (1+ depth))))
                          (results (loop for colours in own
                                         for list in (or inner-layers (make-list (length own)))
-                                        collect (append colours
-                                                        (loop repeat (length list) append (pop inner))))))
+                                        collect (nconc colours
+                                                       (loop repeat (length list) nconc (pop inner))))))
                     (loop for layer in layers
                           collect (and layer (pop results))))
                (dolist (tree made) (delete-tree tree)))))))))
@@ -380,7 +405,7 @@ language has rules for local names. See SYNTAX-HIGHLIGHTS for INJECTIONS."
                                                                              (+ end *injection-reach*))))))
       (and layers
            (loop for colours in (layers-highlights resolve layers rope start end depth)
-                 append colours)))))
+                 nconc colours)))))
 
 ;;; Local names
 
@@ -455,7 +480,7 @@ and as a second value the names that name a local definition, as
                 (when kind
                   (setf (gethash (logior (ash at 31) other) resolved) t))
                 (when (and face (not (eq face :none)))
-                  (push (list at other face) ranges))))))
+                  (setf ranges (range-cell at other face ranges)))))))
       (values (nreverse ranges) resolved))))
 
 ;;; Colours for display
@@ -480,14 +505,26 @@ the parts of it every window shows in a frame.")
 (defun kept-colours (syntax key make)
   "The colours kept for SYNTAX under KEY, a list compared with EQUAL; else
 those MAKE, a function of no arguments, works out, then kept with the
-*COLOURS-KEPT* - 1 used most lately."
+*COLOURS-KEPT* - 1 used most lately. Colours kept for an older tree of the
+text (a KEY beginning with its generation) are never asked for again: the
+latest of them give their room to the new ones (*SPARE-RANGES*), and the
+lists given out before are then no longer to be read."
   (let ((hit (assoc key (syntax-cache syntax) :test #'equal)))
     (if hit
         (cdr hit)
-        (let ((ranges (funcall make)))
+        (let* ((generation (syntax-generation syntax))
+               (old (find-if (lambda (entry)
+                               (let ((made-for (first (car entry))))
+                                 (and (integerp made-for) (/= made-for generation))))
+                             (syntax-cache syntax)))
+               (ranges (let ((*spare-ranges* (cdr old))
+                             (*capture-table* (or (syntax-capture-table syntax)
+                                                  (setf (syntax-capture-table syntax) (make-hash-table)))))
+                         (funcall make))))
           (setf (syntax-cache syntax)
                 (cons (cons key ranges)
-                      (loop for entry in (syntax-cache syntax) repeat (1- *colours-kept*) collect entry)))
+                      (loop for entry in (remove old (syntax-cache syntax))
+                            repeat (1- *colours-kept*) collect entry)))
           ranges))))
 
 (defun slice-highlights (syntax query faces start end injections)
@@ -549,7 +586,9 @@ coloured as its definition is. Waits a moment for a parse under way (see
 *SYNTAX-WAIT*); while there is no tree yet, or the text is too large to parse
 whole, the colours of a parse of these lines alone (SLICE-HIGHLIGHTS). The
 answers for the last few ranges asked for are kept (KEPT-COLOURS) and given
-again while nothing they depend on has changed."
+again while nothing they depend on has changed; the list is lent until the
+text changes or is parsed again, its room then taken by the next colours
+worked out."
   (let ((tree (syntax-ready-tree syntax)))
     (unless (or tree (syntax-broken syntax))
       (return-from syntax-highlights (slice-highlights syntax query faces start end injections)))
@@ -578,7 +617,7 @@ again while nothing they depend on has changed."
                  (multiple-value-bind (local-ranges local-references)
                      (and locals (local-highlights (first locals) tree rope local-from start end (second locals)))
                    ;; the local names known first, for the rules' #is-not? local
-                   (append (let ((*local-references* local-references))
-                             (rich-highlights query tree rope start end faces))
-                           local-ranges
-                           (and injections (injected-highlights injections tree rope start end)))))))))))))
+                   (nconc (let ((*local-references* local-references))
+                            (rich-highlights query tree rope start end faces))
+                          local-ranges
+                          (and injections (injected-highlights injections tree rope start end)))))))))))))

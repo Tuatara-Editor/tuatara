@@ -325,20 +325,22 @@ text, what is shown of it, its colours, the languages or the answers change."
   (declare (ignore editor))
   (let ((buffer (tuatara.display:window-buffer window)))
     (when (and (plusp (length rows)) (spellcheck-p buffer))
-      (let ((key (list (tuatara.buffer:buffer-version buffer) (car *spelling-generation*)
-                       (spellcheck-p buffer) (spellcheck-languages-of buffer)
-                       (tuatara.display:shown-ranges rows :join 2 :shown t :buffer buffer) syntax))
-            (kept (gethash window *spelling-shown*)))
-        (if (and kept (equal (car kept) key))
-            (cdr kept)
-            (multiple-value-bind (wrong unknown languages) (spelling-in-rows buffer rows syntax)
-              (spelling-note-languages languages)
-              (let ((marks (loop for (start end) in wrong collect (list start end :spellcheck))))
-                (if unknown
-                    (progn (remhash window *spelling-shown*)
-                           (spelling-ask languages (mapcar #'third unknown)))
-                    (setf (gethash window *spelling-shown*) (cons key marks)))
-                marks)))))))
+      (let* ((shown (tuatara.display:shown-ranges rows :join 2 :shown t :buffer buffer))
+             (kept (gethash window *spelling-shown*)))
+        (flet ((key (colours)
+                 (list (tuatara.buffer:buffer-version buffer) (car *spelling-generation*)
+                       (spellcheck-p buffer) (spellcheck-languages-of buffer) shown colours)))
+          (if (and kept (equal (car kept) (key syntax)))
+              (cdr kept)
+              (multiple-value-bind (wrong unknown languages) (spelling-in-rows buffer rows syntax)
+                (spelling-note-languages languages)
+                (let ((marks (loop for (start end) in wrong collect (list start end :spellcheck))))
+                  (if unknown
+                      (progn (remhash window *spelling-shown*)
+                             (spelling-ask languages (mapcar #'third unknown)))
+                      ;; the colours are lent for this frame: what they were is kept
+                      (setf (gethash window *spelling-shown*) (cons (key (copy-tree syntax)) marks)))
+                  marks))))))))
 
 ;;; Correcting
 

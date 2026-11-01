@@ -139,7 +139,9 @@ after an edit took, in internal time units. EDITED is when the text was last
 edited; PATCHED is set when the tree was brought up to date by parses after
 edits since it was last parsed afresh, FRESH-COST how long that took, and
 NO-REFRESH once a parse afresh of the text was given up (REFRESH-SYNTAX). LOCK
-and DONE guard the job's result, NEXT and ENDING."
+and DONE guard the job's result, NEXT and ENDING. CACHE keeps the colours
+worked out lately (KEPT-COLOURS), and CAPTURE-TABLE the table they are sorted
+out in."
   (buffer nil :read-only t)
   (grammar nil :read-only t)
   (helper nil)
@@ -158,6 +160,7 @@ and DONE guard the job's result, NEXT and ENDING."
   (fresh-cost nil)
   (no-refresh nil)
   (cache nil)
+  (capture-table nil)
   (injected nil)
   (worker nil)
   (next nil)
@@ -184,6 +187,7 @@ and DONE guard the job's result, NEXT and ENDING."
       (documentation 'syntax-fresh-cost 'function) "How long the last parse of the text afresh took, in internal time units, or NIL."
       (documentation 'syntax-no-refresh 'function) "True once a parse afresh of the text was given up: it is not tried again."
       (documentation 'syntax-cache 'function) "The colours worked out lately, each with what it was for, as KEPT-COLOURS keeps them."
+      (documentation 'syntax-capture-table 'function) "The table colours are sorted out in, used again (*CAPTURE-TABLE*)."
       (documentation 'syntax-injected 'function) "The trees of text in other languages kept for the colours, as (GENERATION . TABLE), or NIL."
       (documentation 'syntax-worker 'function) "The thread that parses the text, or NIL while none is needed."
       (documentation 'syntax-next 'function) "The parse handed to the parse thread and not yet taken up, or NIL."
