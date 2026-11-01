@@ -217,10 +217,6 @@ itself, never a program or an alias of a repository's or yours."
               (and git (uiop:split-string (string-trim '(#\Newline) (or (ignore-errors (uiop:run-program (list git "--list-cmds=builtins") :output :string)) ""))
                                           :separator '(#\Newline)))))))
 
-(defparameter *git-line-options-allowed* '("--no-pager" "-P" "--literal-pathspecs")
-  "The options before the command \\[git-run-command] takes while evidence
-folders are named: none that sets something or points git elsewhere.")
-
 (defparameter *git-config-reading-options*
   '("--get" "--get-all" "--get-regexp" "--get-urlmatch" "--get-color" "--get-colorbool" "--list" "-l")
   "The options of git config that only read its settings.")

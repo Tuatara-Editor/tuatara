@@ -132,6 +132,11 @@ option (one of several parts given none after its options); :LISTING, names
 given only with -l or --list (to list those matching); :CONFIG, only git
 config's forms that read (GIT-CONFIG-READING-P).")
 
+(defparameter *git-line-options-allowed* '("--no-pager" "-P" "--literal-pathspecs")
+  "The options before the command \\[git-run-command] takes while evidence
+folders are named, and git is given in a repository not trusted: none that
+sets something or points git elsewhere.")
+
 (defparameter *git-commands-of-several-parts* '("stash" "worktree" "notes" "reflog" "remote" "config")
   "The git commands whose first word after them says what they do (stash list).")
 
@@ -258,7 +263,7 @@ is none git could read: no HEAD file there, no objects folder."
                        folder)))
       (unless (eq (tuatara.io:path-kind (tuatara.io:path-join folder "HEAD") :follow nil) :regular)
         (git-refuse-reading top "~a holds no HEAD" (abbreviated-path folder)))
-      (unless (eq (tuatara.io:path-kind (tuatara.io:path-join common "objects") :follow nil) :directory)
+      (unless (eq (tuatara.io:path-kind (tuatara.io:path-join common "objects")) :directory)
         (git-refuse-reading top "~a holds no objects" (abbreviated-path common)))
       (values folder common))))
 
@@ -269,26 +274,46 @@ or NIL when it has none git could read."
 
 ;;; Its shadow
 
-(defstruct (git-shadow (:constructor make-git-shadow (folder stamps settings)) (:copier nil))
-  "A shadow of a repository not trusted, in FOLDER: STAMPS, the state of what
-it was copied from (GIT-REPOSITORY-STATE); SETTINGS, the extensions it was
-given, (NAME VALUE) each; INDEX-STAMPS, those of the index copied into it
-last; USERS, how many runs of git use it now; RETIRED, true once a newer
-shadow took its place, deleted when the last run using it is done."
-  folder stamps settings (index-stamps :none) (users 0) retired)
+(defstruct (git-shadow (:constructor make-git-shadow (folder)) (:copier nil))
+  "A shadow of a repository not trusted, in FOLDER: STATE, the state of what
+it was copied from (GIT-REPOSITORY-STATE); FOLDERS, the folders of its
+references, whose stamps tell when one was written; SETTINGS, the extensions
+it was given, (NAME VALUE) each; ELSEWHERE, the folders of objects outside
+the repository its alternates name; COPIED, the octets copied into it so
+far; INDEX-STAMPS and LOGS-STAMPS, the state of the index and of the logs
+copied into it last, :NONE before; USERS, how many runs of git use it now;
+RETIRED, true once a newer shadow took its place, deleted when the last run
+using it is done."
+  folder (state :none) (folders '()) settings (elsewhere '()) (copied 0)
+  (index-stamps :none) (logs-stamps :none) (users 0) retired)
 
 (setf (documentation 'git-shadow-p 'function) "True when OBJECT is a GIT-SHADOW.")
 
-(defvar *git-shadows* (make-hash-table :test 'equal)
-  "The shadow of each repository not trusted git was run in, by its own
-folder (GIT-REAL-FOLDERS).")
+(defstruct (git-shadow-place (:constructor make-git-shadow-place ()) (:copier nil))
+  "Where the shadow of one repository is kept: LOCK, held while it is looked
+at, made, taken up or let go of, so that one repository's shadow being made
+holds up no other; CURRENT, the shadow in use, or NIL."
+  (lock (sb-thread:make-mutex :name "tuatara git shadow")) current)
 
-(defvar *git-shadows-lock* (sb-thread:make-mutex :name "tuatara git shadows")
-  "Held while a shadow is looked at, made, taken up or let go of.")
+(setf (documentation 'git-shadow-place-p 'function) "True when OBJECT is a GIT-SHADOW-PLACE.")
+
+(defvar *git-shadows* (make-hash-table :test 'equal :synchronized t)
+  "The GIT-SHADOW-PLACE of each repository not trusted git was run in, by its
+own folder (GIT-REAL-FOLDERS).")
 
 (defparameter *git-shadow-most-entries* 200000
   "The most files and folders a repository's references and their logs may
 hold for a shadow to be made of them.")
+
+(defparameter *git-shadow-file-most*
+  '(("index" . #.(* 1024 1024 1024)) ("packed-refs" . #.(* 256 1024 1024)) ("logs" . #.(* 64 1024 1024))
+    ("references" . #.(* 64 1024)) (t . #.(* 1024 1024)))
+  "The most octets a file of each kind copied into a shadow may hold: the
+index (and a shared index), the packed references and the logs as a large
+repository has them, a loose reference (a hash or a name), anything else.")
+
+(defparameter *git-shadow-most* (* 2 1024 1024 1024)
+  "The most octets a shadow may hold copied, all its files together.")
 
 (defparameter *git-extensions-read*
   '(("objectformat" "sha1" "sha256") ("refstorage" "files" "reftable"))
@@ -300,34 +325,59 @@ the values it may have.")
 nothing fetched, nothing kept from being pruned, no settings of a
 worktree's own.")
 
+(defparameter *git-alternates-deepest* 5
+  "How many alternates deep git follows, one naming another: as deep their
+files are looked at before git is run.")
+
+(defvar *git-shadows-folder* nil
+  "This session's folder of shadows and the descriptor of its lock, held as
+long as the session runs: (FOLDER . FD), made the first time one is wanted.")
+
+(defvar *git-shadows-folder-lock* (sb-thread:make-mutex :name "tuatara git shadows folder")
+  "Held while this session's folder of shadows is made.")
+
 (defun git-shadows-directory ()
-  "Where this session's shadows are made: git-shadow/PID/ in the private cache."
-  (private-cache-directory (format nil "git-shadow/~d/" (sb-posix:getpid))))
+  "Where this session's shadows are made: a folder of its own in git-shadow/
+in the private cache, its file owner.lock held locked while the session
+runs, so that no other session, whatever process numbers it sees, takes it
+for one left behind."
+  (sb-thread:with-mutex (*git-shadows-folder-lock*)
+    (car (or *git-shadows-folder*
+             (let* ((folder (new-private-folder (private-cache-directory "git-shadow/")))
+                    (fd (sb-posix:open (tuatara.io:path-join folder "owner.lock")
+                                       (logior sb-posix:o-rdwr sb-posix:o-creat) #o600)))
+               (tuatara.runtime:lock-fd fd)
+               (setf *git-shadows-folder* (cons folder fd)))))))
 
 (defun forget-old-git-shadows ()
   "Delete the shadows of sessions no longer running, as one that ended
-without deleting its own (a crash) leaves them."
-  (let ((all (private-cache-directory "git-shadow/")))
+without deleting its own (a crash) leaves them: each folder whose
+owner.lock no session holds, or that has none."
+  (let ((all (private-cache-directory "git-shadow/"))
+        (own (car *git-shadows-folder*)))
     (dolist (entry (ignore-errors (tuatara.io:directory-entries all)))
-      (let ((pid (parse-integer (first entry) :junk-allowed t)))
-        (when (or (null pid)
-                  (and (/= pid (sb-posix:getpid)) (not (tuatara.io:path-kind (format nil "/proc/~d/" pid)))))
-          (ignore-errors (tuatara.io:delete-tree (tuatara.io:path-join all (first entry)))))))))
+      (let* ((folder (tuatara.io:slash-ended (tuatara.io:path-join all (first entry))))
+             (lock (tuatara.io:path-join folder "owner.lock")))
+        (unless (equal folder own)
+          (let ((fd (and (eq (tuatara.io:path-kind lock :follow nil) :regular)
+                         (ignore-errors (sb-posix:open lock sb-posix:o-rdwr)))))
+            (when (or (null fd) (tuatara.runtime:lock-fd fd))
+              (ignore-errors (tuatara.io:delete-tree folder)))
+            (when fd (sb-posix:close fd))))))))
 
 (defun git-file-row (path)
-  "What a shadow knows of the file at PATH, a link not followed: its kind,
-device, inode, size, and the times of its change, in nanoseconds; NIL when
-it is not there."
+  "What a shadow knows of the file or folder at PATH, a link not followed:
+its kind, device, inode, size, and the times of its change, in nanoseconds;
+NIL when it is not there."
   (let ((stamp (ignore-errors (tuatara.io:path-stamp path :follow nil))))
     (and stamp (list (tuatara.io:stamp-kind stamp) (tuatara.io:stamp-dev stamp) (tuatara.io:stamp-ino stamp)
                      (tuatara.io:stamp-size stamp) (tuatara.io:stamp-mtime stamp) (tuatara.io:stamp-ctime stamp)))))
 
 (defun git-tree-entries (top root)
   "Every file and folder within ROOT, a folder of the repository at TOP, as
-\(PATH KIND DEV INO SIZE MTIME CTIME), PATH from ROOT, in order: what a
-shadow copies of it, and is made again by when it changes. A link, or
-anything but a file or a folder, is left out, never opened. NIL when ROOT
-is not there."
+\(PATH KIND . ROW) (ROW as GIT-FILE-ROW gives it), PATH from ROOT, in
+order. A link, or anything but a file or a folder, is left out, never
+opened. NIL when ROOT is not there."
   (let ((rows '()) (count 0))
     (labels ((walk (folder relative depth)
                (when (> depth 64) (git-refuse-reading top "~a is nested too deep" (abbreviated-path root)))
@@ -338,9 +388,7 @@ is not there."
                      (when (> (incf count) *git-shadow-most-entries*)
                        (git-refuse-reading top "~a holds too many references" (abbreviated-path root)))
                      (let ((path (concatenate 'string relative name)))
-                       (push (list path own (tuatara.io:stamp-dev stamp) (tuatara.io:stamp-ino stamp)
-                                   (tuatara.io:stamp-size stamp) (tuatara.io:stamp-mtime stamp) (tuatara.io:stamp-ctime stamp))
-                             rows)
+                       (push (list* path own (git-file-row (tuatara.io:path-join folder name))) rows)
                        (when (eq own :directory)
                          (walk (tuatara.io:slash-ended (tuatara.io:path-join folder name))
                                (concatenate 'string path "/") (1+ depth)))))))))
@@ -348,40 +396,59 @@ is not there."
         (walk (tuatara.io:slash-ended root) "" 0)))
     (nreverse rows)))
 
-(defun git-repository-state (folder common)
+(defun git-repository-state (folder common folders)
   "What a shadow of the repository whose own folders are FOLDER and COMMON is
 made again by: the state of its HEAD, settings, packed references, shallow
-commits and patterns left out, of the log of HEAD, and of every file and
-folder of its references, their logs and its reference table."
+commits, patterns left out and reference table, and of FOLDERS, the folders
+of its references, which change whenever one is written (git writes a
+reference to a new name, then renames it over the old)."
   (list (git-file-row (tuatara.io:path-join folder "HEAD"))
         (mapcar (lambda (name) (git-file-row (tuatara.io:path-join common name)))
-                '("config" "packed-refs" "shallow" "info/exclude"))
-        (git-file-row (tuatara.io:path-join folder "logs/HEAD"))
-        (git-tree-entries common (tuatara.io:path-join common "refs"))
-        (git-tree-entries common (tuatara.io:path-join common "logs"))
-        (git-tree-entries common (tuatara.io:path-join common "reftable"))))
+                '("config" "packed-refs" "shallow" "info/exclude" "reftable/" "reftable/tables.list"
+                  "objects/info/" "objects/pack/" "objects/info/alternates"))
+        (mapcar #'git-file-row folders)))
 
-(defun git-copy-file (top from to what)
-  "Copy the file FROM, of the repository at TOP, to TO, in a shadow, when it
-is there: examined first, so that a named pipe or a device is never opened,
-and refused (GIT-REFUSE-READING, WHAT naming it) when it is not a file."
-  (let ((kind (tuatara.io:path-kind from :follow nil)))
-    (cond ((null kind))
-          ((eq kind :regular)
-           (ensure-directories-exist (sb-ext:parse-native-namestring (tuatara.io:parent-path to)))
-           (tuatara.io:copy-regular-file from to))
-          (t (git-refuse-reading top "its ~a is not a file" what)))))
+(defun git-file-most (what)
+  "The most octets a file copied into a shadow may hold as WHAT (*GIT-SHADOW-FILE-MOST*)."
+  (cdr (or (assoc what *git-shadow-file-most* :test #'equal) (assoc t *git-shadow-file-most*))))
 
-(defun git-copy-tree (top from to rows)
-  "Copy into the folder TO what ROWS (GIT-TREE-ENTRIES of FROM) list of the
-folder FROM, of the repository at TOP: its folders made, its files copied."
-  (dolist (row rows)
-    (destructuring-bind (path kind &rest stamp) row
-      (declare (ignore stamp))
-      (let ((target (tuatara.io:path-join to path)))
-        (if (eq kind :directory)
-            (ensure-directories-exist (sb-ext:parse-native-namestring (tuatara.io:slash-ended target)))
-            (git-copy-file top (tuatara.io:path-join from path) target "references"))))))
+(defun git-copy-file (top from to what shadow)
+  "Copy the file FROM, of the repository at TOP, to TO, in SHADOW, when it is
+there, as WHAT (index, packed-refs, logs, references, or another of git's
+own files). It is examined first, so that a named pipe or a device is never
+opened; refused (GIT-REFUSE-READING) when it is not a file, holds holes (a
+file of more octets than the disk gives it), is larger than such a file
+may be (GIT-FILE-MOST), or would take the shadow past *GIT-SHADOW-MOST*."
+  (let ((stamp (ignore-errors (tuatara.io:path-stamp from :follow nil))))
+    (cond ((null stamp))
+          ((not (eq (tuatara.io:stamp-kind stamp) :regular))
+           (git-refuse-reading top "its ~a ~a is not a file" what (abbreviated-path from)))
+          ((< (+ (tuatara.io:stamp-allocated stamp) 65536) (tuatara.io:stamp-size stamp))
+           (git-refuse-reading top "its ~a ~a has holes, more octets than the disk holds" what (abbreviated-path from)))
+          ((> (tuatara.io:stamp-size stamp) (git-file-most what))
+           (git-refuse-reading top "its ~a ~a is larger than any a repository holds (~a)" what (abbreviated-path from)
+                               (tuatara.io:octets-words (tuatara.io:stamp-size stamp))))
+          ((> (+ (git-shadow-copied shadow) (tuatara.io:stamp-size stamp)) *git-shadow-most*)
+           (git-refuse-reading top "its references, logs and index together are larger than ~a"
+                               (tuatara.io:octets-words *git-shadow-most*)))
+          (t (incf (git-shadow-copied shadow) (tuatara.io:stamp-size stamp))
+             (ensure-directories-exist (sb-ext:parse-native-namestring (tuatara.io:parent-path to)))
+             (tuatara.io:copy-regular-file from to)))))
+
+(defun git-copy-tree (top from to what shadow)
+  "Copy the folder FROM, of the repository at TOP, into TO, in SHADOW: its
+folders made, its files copied as WHAT (GIT-COPY-FILE), a link or anything
+else left out unopened; the folders, where they are in FROM, as a list."
+  (let ((folders (list (tuatara.io:slash-ended from))))
+    (ensure-directories-exist (sb-ext:parse-native-namestring (tuatara.io:slash-ended to)))
+    (dolist (row (git-tree-entries top from) (nreverse folders))
+      (destructuring-bind (path kind &rest stamp) row
+        (declare (ignore stamp))
+        (let ((target (tuatara.io:path-join to path)))
+          (if (eq kind :directory)
+              (progn (push (tuatara.io:slash-ended (tuatara.io:path-join from path)) folders)
+                     (ensure-directories-exist (sb-ext:parse-native-namestring (tuatara.io:slash-ended target))))
+              (git-copy-file top (tuatara.io:path-join from path) target what shadow)))))))
 
 (defun git-helper-output (top folder arguments)
   "What git prints with ARGUMENTS, run in FOLDER, a shadow's, with none of
@@ -395,67 +462,127 @@ TOP: as text when it ended well (exit 0); GIT-REFUSED else."
       (git-refuse-reading top "git could not read its settings"))
     (tuatara.text:lenient-string octets)))
 
-(defun git-repository-settings (top common folder)
+(defun git-repository-settings (top common shadow)
   "The extensions the repository at TOP, whose common folder is COMMON, needs
 to be read, (NAME VALUE) each: read by git config from a copy of its
-settings made in FOLDER, nothing they name taken in. GIT-REFUSED when it is
-of a format newer than git's 1, or needs an extension that is neither one
-of *GIT-EXTENSIONS-READ* nor one of *GIT-EXTENSIONS-LEFT-OUT*."
-  (let ((copy (tuatara.io:path-join folder "settings-read")))
-    (git-copy-file top (tuatara.io:path-join common "config") copy "settings")
+settings made in SHADOW, nothing they name taken in. None for a repository
+of git's format 0, which git reads with none; GIT-REFUSED for one of a
+format newer than 1, or one needing an extension that is neither one of
+*GIT-EXTENSIONS-READ* nor one of *GIT-EXTENSIONS-LEFT-OUT*."
+  (let ((copy (tuatara.io:path-join (git-shadow-folder shadow) "settings-read")))
+    (git-copy-file top (tuatara.io:path-join common "config") copy "settings" shadow)
     (if (not (tuatara.io:path-kind copy :follow nil))
         '()
-        (let* ((text (unwind-protect (git-helper-output top folder (list "config" "--file" copy "--no-includes" "-z" "--list"))
+        (let* ((text (unwind-protect (git-helper-output top (git-shadow-folder shadow)
+                                                        (list "config" "--file" copy "--no-includes" "-z" "--list"))
                        (ignore-errors (delete-file (sb-ext:parse-native-namestring copy)))))
                (entries (loop for entry in (uiop:split-string text :separator (list (code-char 0)))
                               for newline = (position #\Newline entry)
                               when (plusp (length entry))
                                 collect (list (string-downcase (subseq entry 0 (or newline (length entry))))
                                               (if newline (subseq entry (1+ newline)) "true"))))
+               ;; the last of a setting given twice is the one git takes
+               (entries (reverse entries))
                (version (parse-integer (or (second (assoc "core.repositoryformatversion" entries :test #'string=)) "0")
                                        :junk-allowed t)))
           (unless (member version '(0 1))
             (git-refuse-reading top "it is of git's format ~a, which is not read here" version))
-          (loop for (key value) in entries
-                when (uiop:string-prefix-p "extensions." key)
-                  append (let* ((name (subseq key 11))
-                                (read (assoc name *git-extensions-read* :test #'string=)))
-                           (cond ((and read (member (string-downcase value) (rest read) :test #'string=))
-                                  (list (list name (string-downcase value))))
-                                 ((member name *git-extensions-left-out* :test #'string=) '())
-                                 (t (git-refuse-reading top "it needs git's extension ~a = ~a, which is not read here"
-                                                        name value)))))))))
+          (and (eql version 1)
+               (loop for (key value) in entries
+                     when (uiop:string-prefix-p "extensions." key)
+                       append (let* ((name (subseq key 11))
+                                     (read (assoc name *git-extensions-read* :test #'string=)))
+                                (cond ((and read (member (string-downcase value) (rest read) :test #'string=))
+                                       (list (list name (string-downcase value))))
+                                      ((member name *git-extensions-left-out* :test #'string=) '())
+                                      (t (git-refuse-reading top "it needs git's extension ~a = ~a, which is not read here"
+                                                             name value))))))))))
 
 (defun git-shadow-settings-text (settings)
   "The settings a shadow's git reads, for SETTINGS, its extensions."
   (format nil "[core]~%	repositoryformatversion = ~d~%	bare = false~%	logallrefupdates = false~%~@[[extensions]~%~{	~{~a = ~a~}~%~}~]"
           (if settings 1 0) settings))
 
-(defun make-git-shadow-of (top folder common stamps)
-  "Make a shadow of the repository at TOP, its own folders FOLDER and COMMON,
-STAMPS its state now (GIT-REPOSITORY-STATE): a new private folder holding
-settings of its own, and copies of HEAD, the references and their logs, a
-reference table, packed references, the shallow commits and the patterns of
-files left out; an empty folder for objects of its own, and an empty one to
-run in."
-  (let ((place (new-private-folder (git-shadows-directory))))
+(defun git-object-folders (top common)
+  "The folders of objects git reads for the repository at TOP, whose common
+folder is COMMON: its own, then those its alternates name, and theirs in
+turn, *GIT-ALTERNATES-DEEPEST* deep, each where it really is, ending in /.
+Read without git, and every file git would open there looked at first: an
+alternates file, and what the folders of packs and of git's notes on its
+objects hold, must be files (a named pipe is never opened), and an alternate
+must be a folder. GIT-REFUSED otherwise."
+  (let ((found '()))
+    (labels ((visit (folder depth)
+               (let ((real (git-folder-from folder ".")))
+                 (unless real (git-refuse-reading top "its objects ~a are not a folder" (abbreviated-path folder)))
+                 (unless (member real found :test #'string=)
+                   (push real found)
+                   (dolist (inside '("pack/" "info/" "info/commit-graphs/"))
+                     (dolist (entry (ignore-errors (tuatara.io:directory-entries (tuatara.io:path-join real inside))))
+                       (unless (member (fourth entry) '(:regular :directory))
+                         (git-refuse-reading top "~a~a~a is not a file" (abbreviated-path real) inside (first entry)))))
+                   (let ((alternates (tuatara.io:path-join real "info/alternates")))
+                     (when (tuatara.io:path-kind alternates :follow nil)
+                       (when (>= depth *git-alternates-deepest*)
+                         (git-refuse-reading top "its alternates name others more than ~d deep" *git-alternates-deepest*))
+                       (dolist (line (uiop:split-string (git-small-file top alternates "alternates") :separator '(#\Newline)))
+                         (let ((line (string-trim '(#\Space #\Return #\Tab) line)))
+                           (cond ((or (zerop (length line)) (char= (char line 0) #\#)))
+                                 ((char= (char line 0) #\")
+                                   (git-refuse-reading top "its alternates name a folder git reads quoted"))
+                                 (t (visit (if (char= (char line 0) #\/) line (tuatara.io:path-join real line))
+                                           (1+ depth))))))))))))
+      (visit (tuatara.io:path-join common "objects/") 0))
+    (nreverse found)))
+
+(defun git-copy-logs (top folder common shadow which)
+  "Copy into SHADOW the logs of the references of the repository at TOP, its
+own folders FOLDER and COMMON, WHICH of them: :STASH the stash's alone,
+:ALL every one (HEAD's from FOLDER); again only when they changed since they
+were copied last."
+  (let* ((from (tuatara.io:path-join common (if (eq which :stash) "logs/refs/stash" "logs/")))
+         (rows (if (eq which :stash) (git-file-row from) (git-tree-entries top from)))
+         (key (cons which rows)))
+    (unless (equal key (git-shadow-logs-stamps shadow))
+      (let ((to (tuatara.io:path-join (git-shadow-folder shadow) (if (eq which :stash) "logs/refs/stash" "logs/"))))
+        (if (eq which :stash)
+            (progn (ignore-errors (delete-file (sb-ext:parse-native-namestring to)))
+                   (git-copy-file top from to "logs" shadow))
+            (progn (ignore-errors (tuatara.io:delete-tree to))
+                   (git-copy-tree top from to "logs" shadow)
+                   (unless (string= folder common)
+                     (ignore-errors (delete-file (sb-ext:parse-native-namestring (tuatara.io:path-join to "HEAD"))))
+                     (git-copy-file top (tuatara.io:path-join folder "logs/HEAD") (tuatara.io:path-join to "HEAD") "logs" shadow)))))
+      (setf (git-shadow-logs-stamps shadow) key))))
+
+(defun make-git-shadow-of (top folder common)
+  "Make a shadow of the repository at TOP, its own folders FOLDER and COMMON:
+a new private folder holding settings of its own, and copies of HEAD, the
+references, a reference table, packed references, the shallow commits and
+the patterns of files left out; an empty folder for objects of its own, and
+an empty one to run in. Its objects' folders are looked at first
+\(GIT-OBJECT-FOLDERS): those outside the repository are kept as ELSEWHERE."
+  (let* ((place (new-private-folder (git-shadows-directory)))
+         (shadow (make-git-shadow place)))
     (handler-bind ((error (lambda (e) (declare (ignore e)) (delete-private-folder place))))
-      (let ((settings (git-repository-settings top common place)))
+      (let ((settings (git-repository-settings top common shadow))
+            (own (string-right-trim "/" (tuatara.io:parent-path common))))
+        (setf (git-shadow-elsewhere shadow)
+              (remove-if (lambda (objects) (tuatara.io:path-within-p objects own)) (git-object-folders top common)))
         (tuatara.io:write-private-file (tuatara.io:path-join place "config") (git-shadow-settings-text settings))
-        (git-copy-file top (tuatara.io:path-join folder "HEAD") (tuatara.io:path-join place "HEAD") "HEAD")
-        (dolist (name '("packed-refs" "shallow" "info/exclude"))
-          (git-copy-file top (tuatara.io:path-join common name) (tuatara.io:path-join place name) name))
-        (destructuring-bind (head files head-log refs logs reftable) stamps
-          (declare (ignore head files head-log))
-          (git-copy-tree top (tuatara.io:path-join common "refs/") (tuatara.io:path-join place "refs/") refs)
-          (git-copy-tree top (tuatara.io:path-join common "logs/") (tuatara.io:path-join place "logs/") logs)
-          (git-copy-tree top (tuatara.io:path-join common "reftable/") (tuatara.io:path-join place "reftable/") reftable))
-        (git-copy-file top (tuatara.io:path-join folder "logs/HEAD") (tuatara.io:path-join place "logs/HEAD.copy") "log of HEAD")
-        (when (tuatara.io:path-kind (tuatara.io:path-join place "logs/HEAD.copy") :follow nil)
-          (tuatara.io:rename-path (tuatara.io:path-join place "logs/HEAD.copy") (tuatara.io:path-join place "logs/HEAD") :replace t))
-        (dolist (name '("refs/" "objects/" "empty/"))
+        (git-copy-file top (tuatara.io:path-join folder "HEAD") (tuatara.io:path-join place "HEAD") "HEAD" shadow)
+        (git-copy-file top (tuatara.io:path-join common "packed-refs") (tuatara.io:path-join place "packed-refs") "packed-refs" shadow)
+        (dolist (name '("shallow" "info/exclude"))
+          (git-copy-file top (tuatara.io:path-join common name) (tuatara.io:path-join place name) name shadow))
+        (setf (git-shadow-folders shadow)
+              (git-copy-tree top (tuatara.io:path-join common "refs/") (tuatara.io:path-join place "refs/") "references" shadow))
+        (when (tuatara.io:path-kind (tuatara.io:path-join common "reftable/") :follow nil)
+          (git-copy-tree top (tuatara.io:path-join common "reftable/") (tuatara.io:path-join place "reftable/") "packed-refs" shadow))
+        (dolist (name '("refs/" "objects/" "empty/" "logs/"))
           (ensure-directories-exist (sb-ext:parse-native-namestring (tuatara.io:path-join place name))))
-        (make-git-shadow place stamps settings)))))
+        (setf (git-shadow-settings shadow) settings
+              (git-shadow-state shadow) (git-repository-state folder common (git-shadow-folders shadow)))
+        shadow))))
 
 (defun git-index-rows (folder)
   "What a shadow's copy of the index in git's own FOLDER is made again by:
@@ -478,7 +605,7 @@ has no index. GIT-REFUSED when one is not a file."
               (to (tuatara.io:path-join place name))
               (fresh (tuatara.io:path-join place (format nil "~a.~a" name (tuatara.io:random-name)))))
           (if (tuatara.io:path-kind from :follow nil)
-              (progn (git-copy-file top from fresh (if (string= name "index") "index" "shared index"))
+              (progn (git-copy-file top from fresh "index" shadow)
                      (tuatara.io:rename-path fresh to :replace t))
               (ignore-errors (delete-file (sb-ext:parse-native-namestring to))))))
       (setf (git-shadow-index-stamps shadow) rows))))
@@ -489,6 +616,16 @@ has no index. GIT-REFUSED when one is not a file."
     "hash-object" "config")
   "The git commands that never read the index: no copy of it is made for them.")
 
+(defun git-logs-wanted (words)
+  "Which logs of references git's command WORDS reads: :STASH for stash, :ALL
+for reflog, or a command walking the logs (-g, --walk-reflogs) or naming a
+place in one (@{...}); NIL for one that reads none."
+  (let ((command (first words)))
+    (cond ((equal command "stash") :stash)
+          ((equal command "reflog") :all)
+          ((some (lambda (word) (or (member word '("-g" "--walk-reflogs") :test #'string=) (search "@{" word))) (rest words))
+           :all))))
+
 (defun retire-git-shadow (shadow)
   "Mark SHADOW as replaced: deleted at once when no run of git uses it, else
 when the last does."
@@ -496,30 +633,46 @@ when the last does."
   (when (zerop (git-shadow-users shadow))
     (delete-private-folder (git-shadow-folder shadow))))
 
-(defun take-git-shadow (top folder common index)
-  "The shadow of the repository at TOP, its own folders FOLDER and COMMON:
-made now when there is none, or when what it copies changed (the one before
-then retired), and taken up for one run of git; with INDEX, the index copied
-into it when it changed. LET-GO-OF-GIT-SHADOW lets go of it."
-  (sb-thread:with-mutex (*git-shadows-lock*)
-    (let* ((stamps (git-repository-state folder common))
-           (shadow (gethash folder *git-shadows*)))
-      (unless (and shadow (equal stamps (git-shadow-stamps shadow)))
-        (when shadow
-          (remhash folder *git-shadows*)
-          (retire-git-shadow shadow))
-        (setf shadow (make-git-shadow-of top folder common stamps)
-              (gethash folder *git-shadows*) shadow))
-      (when index (git-copy-index top folder shadow))
-      (incf (git-shadow-users shadow))
-      shadow)))
+(defun take-git-shadow (top folder common &key index logs)
+  "The shadow of the repository at TOP, its own folders FOLDER and COMMON,
+taken up for one run of git: made now when there is none, or when what it
+copies changed (the one before then retired); with INDEX, the index copied
+into it when it changed, with LOGS (as GIT-LOGS-WANTED says) those logs.
+Only the repository's own lock is held meanwhile, so that its shadow being
+made holds up no other's. LET-GO-OF-GIT-SHADOW lets go of it."
+  (let ((place (or (gethash folder *git-shadows*)
+                   (sb-ext:with-locked-hash-table (*git-shadows*)
+                     (or (gethash folder *git-shadows*)
+                         (setf (gethash folder *git-shadows*) (make-git-shadow-place)))))))
+    (sb-thread:with-mutex ((git-shadow-place-lock place))
+      (let ((shadow (git-shadow-place-current place)))
+        (unless (and shadow (equal (git-repository-state folder common (git-shadow-folders shadow))
+                                   (git-shadow-state shadow)))
+          (when shadow
+            (setf (git-shadow-place-current place) nil)
+            (retire-git-shadow shadow))
+          (setf shadow (make-git-shadow-of top folder common)
+                (git-shadow-place-current place) shadow))
+        (when index (git-copy-index top folder shadow))
+        (when logs (git-copy-logs top folder common shadow logs))
+        (incf (git-shadow-users shadow))
+        (values shadow place)))))
 
-(defun let-go-of-git-shadow (shadow)
-  "One run of git is done with SHADOW; deleted when it was retired and none uses it now."
-  (sb-thread:with-mutex (*git-shadows-lock*)
+(defun let-go-of-git-shadow (shadow place)
+  "One run of git is done with SHADOW, kept in PLACE; deleted when it was
+retired and none uses it now."
+  (sb-thread:with-mutex ((git-shadow-place-lock place))
     (decf (git-shadow-users shadow))
     (when (and (git-shadow-retired shadow) (zerop (git-shadow-users shadow)))
       (delete-private-folder (git-shadow-folder shadow)))))
+
+(defun git-shadow-elsewhere-of (top)
+  "The folders of objects outside the repository at TOP its shadow reads, as
+its alternates name them, when it has a shadow; NIL else."
+  (let* ((folder (git-real-folder top))
+         (place (and folder (gethash folder *git-shadows*)))
+         (shadow (and place (git-shadow-place-current place))))
+    (and shadow (git-shadow-elsewhere shadow))))
 
 ;;; Running git on it
 
@@ -596,53 +749,97 @@ of show."
              (list* command "show" (append (rest (assoc "show" *git-commands-taking-no-programs* :test #'string=)) (rest more))))
             (t words)))))
 
+(defparameter *git-blame-options-taking-values* '("-L")
+  "The options of git blame that take the next word as their value.")
+
 (defun git-blame-raw-words (words top here)
   "WORDS, git blame and its own, as blame is run from an empty folder, where
-no mapping of names is found: the path after -- (or the last plain word)
-made from TOP, HERE being the folder git was asked to run in; with no
-revision given, the file as it is now given as the contents (--contents)
-to blame against HEAD."
+no mapping of names is found: the path after -- (or the last plain word,
+values of options left aside) made from TOP, HERE being the folder git was
+asked to run in. With no revision given, the file as it is now is given as
+the contents (--contents) to blame against HEAD when it is a file; a link is
+blamed as HEAD has it, its own text; anything else is refused
+\(GIT-REFUSE-READING)."
   (let* ((relative (if (and here (tuatara.io:path-within-p (tuatara.io:native here) (string-right-trim "/" top)))
                        (subseq (tuatara.io:slash-ended (tuatara.io:native here)) (length (tuatara.io:slash-ended top)))
                        ""))
          (dashes (position "--" words :test #'string=))
-         (path (if dashes
-                   (nth (1+ dashes) words)
-                   (find-if-not (lambda (w) (uiop:string-prefix-p "-" w)) (rest words) :from-end t)))
-         (before (if dashes (subseq words 0 dashes) (remove path words :count 1 :from-end t :test #'equal)))
-         (revision (find-if-not (lambda (w) (uiop:string-prefix-p "-" w)) (rest before))))
+         (before (if dashes (subseq words 0 dashes) words))
+         (plain (let ((value nil))
+                  (loop for word in (rest before)
+                        if value do (setf value nil)
+                        else if (member word *git-blame-options-taking-values* :test #'string=) do (setf value t)
+                        else unless (uiop:string-prefix-p "-" word) collect word)))
+         (path (if dashes (nth (1+ dashes) words) (car (last plain))))
+         (before (if dashes before (remove path before :count 1 :from-end t :test #'equal)))
+         (revision (if dashes (first plain) (and (rest plain) (first plain)))))
     (if (null path)
         words
-        (let ((whole (concatenate 'string relative path)))
+        (let* ((whole (concatenate 'string relative path))
+               (file (tuatara.io:path-join top whole))
+               (kind (tuatara.io:path-kind file :follow nil)))
           (append before
-                  (and (not revision) (list "--contents" (tuatara.io:path-join top whole) "HEAD"))
+                  (cond (revision '())
+                        ((eq kind :regular) (list "--contents" file "HEAD"))
+                        ((eq kind :symlink) (list "HEAD"))
+                        (t (git-refuse-reading top "~a is not a file to blame" whole)))
                   (list "--" whole))))))
+
+(defparameter *git-reading-seconds* 120
+  "How long git may read a repository not trusted, a command given no time
+of its own, before it is ended: a file of its objects that never ends
+reading (a named pipe) holds nothing up for longer.")
+
+(defun git-reads-only-p (top)
+  "True when git only reads the repository at TOP, on its shadow: it is not
+trusted (PROJECT-TRUSTED-P); or it is, but git's own folder its .git leads
+to, or the common one, is of a repository looked at only (a folder answered
+so, or within one, or an evidence folder or one holding it)."
+  (or (not (project-trusted-p top))
+      (multiple-value-bind (folder common) (ignore-errors (git-real-folders top))
+        (and folder
+             (or (project-look-only-reason (tuatara.io:parent-path (string-right-trim "/" common)))
+                 (project-look-only-reason folder)
+                 (project-look-only-reason common))
+             t))))
+
+(defun git-folder-elsewhere (top)
+  "Git's own folder for the repository at TOP when it is not TOP's .git, as
+a .git file or link, or a worktree's common folder, leads elsewhere; NIL
+when it is there, or there is none."
+  (multiple-value-bind (folder common) (ignore-errors (git-real-folders top))
+    (let ((own (let ((real (real-folder top))) (and real (tuatara.io:path-join real ".git/")))))
+      (and folder (not (and own (string= folder own) (string= common own)))
+           (if (string= folder common) folder (format nil "~a (its common folder ~a)" folder common))))))
 
 (defun call-git-reading (top directory arguments function)
   "Call FUNCTION with the arguments, the environment and the folder to run in
 that git reads the repository at TOP with, not trusted, ARGUMENTS asked for
 in DIRECTORY: refused first when they do not only read (GIT-READING-REFUSAL,
 GIT-REFUSED signalled); then run on its shadow (TAKE-GIT-SHADOW), the index
-copied for a command that reads it, with the attributes of the empty tree
-and the options of GIT-READING-WORDS; blame and shortlog run from an empty
-folder, as their raw forms. The shadow is let go of once FUNCTION returns."
+copied for a command that reads it and the logs for one that reads them,
+with the attributes of the empty tree and the options of GIT-READING-WORDS;
+blame and shortlog run from an empty folder, as their raw forms. The shadow
+is let go of once FUNCTION returns."
   (let ((refusal (git-reading-refusal arguments)))
     (when refusal
       (error 'git-refused :operation (or (first (git-command-words arguments)) "") :path top
                           :reason (format nil "~a is looked at only (~a): ~a" (abbreviated-path top)
                                           (or (project-look-only-reason top) "it is not trusted") refusal))))
   (multiple-value-bind (folder common) (git-real-folders top)
-    (let* ((words (git-command-words arguments))
-           (raw (member (first words) '("blame" "shortlog") :test #'string=))
-           (shadow (take-git-shadow top folder common
-                                    (not (member (first words) *git-commands-without-index* :test #'string=)))))
-      (unwind-protect
-           (let ((empty (tuatara.io:path-join (git-shadow-folder shadow) "empty/"))
-                 (words (if (equal (first words) "blame") (git-blame-raw-words words top directory) words)))
-             (funcall function
-                      (append (ldiff arguments (git-command-words arguments))
-                              (list (format nil "--attr-source=~a" (git-empty-tree (git-shadow-settings shadow))))
-                              (git-reading-words words))
-                      (git-shadow-environment top common shadow (if raw empty top))
-                      (if raw empty directory)))
-        (let-go-of-git-shadow shadow)))))
+    (let ((words (git-command-words arguments)))
+      (multiple-value-bind (shadow place)
+          (take-git-shadow top folder common
+                           :index (not (member (first words) *git-commands-without-index* :test #'string=))
+                           :logs (git-logs-wanted words))
+        (unwind-protect
+             (let* ((raw (member (first words) '("blame" "shortlog") :test #'string=))
+                    (empty (tuatara.io:path-join (git-shadow-folder shadow) "empty/"))
+                    (words (if (equal (first words) "blame") (git-blame-raw-words words top directory) words)))
+               (funcall function
+                        (append (ldiff arguments (git-command-words arguments))
+                                (list (format nil "--attr-source=~a" (git-empty-tree (git-shadow-settings shadow))))
+                                (git-reading-words words))
+                        (git-shadow-environment top common shadow (if raw empty top))
+                        (if raw empty directory)))
+          (let-go-of-git-shadow shadow place))))))

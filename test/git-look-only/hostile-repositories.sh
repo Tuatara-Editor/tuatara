@@ -43,3 +43,23 @@ base unknown; cd "$R/unknown"; $G config core.repositoryformatversion 1; $G conf
 base nest; cd "$R/nest"; printf '* filter=evil\n' > .git/info/attributes; printf '[filter "evil"]\n\tclean = touch %s/nest-clean; cat\n' "$M" >> .git/config
   mkdir -p X/.git; printf 'x\n' > X/a.txt
 base holder; cd "$R/holder"; $G init -q --bare inner.git; printf '[core]\n\tfsmonitor = touch %s/bare-fsmon\n' "$M" >> inner.git/config
+O="$R/outside"; mkdir -p "$O"; echo "SECRET-OUTSIDE" > "$O/secret.txt"
+base huge; truncate -s 1G .git/logs/refs/heads/main.big; truncate -s 1G .git/refs/heads/sparse
+base hugelog; truncate -s 1G .git/logs/refs/heads/main
+base reflinks; ln -s "$O/secret.txt" .git/refs/heads/leak; ln -s "$O" .git/refs/tags/dir; mkfifo .git/refs/heads/fifo
+base alts; mkdir -p "$O/altobjs/info"; printf '%s\n' "$O/altobjs" > .git/objects/info/alternates; mkfifo "$O/altobjs/info/alternates"
+base altfifo; mkfifo .git/objects/info/alternates
+base packfifo; mkfifo .git/objects/pack/pack-0000000000000000000000000000000000000000.pack
+base objlink; mv .git/objects "$O/objlink-objects"; ln -s "$O/objlink-objects" .git/objects
+base other
+base gitlink; rm -rf .git; ln -s "$R/other/.git" .git
+base gitfile; rm -rf .git; printf 'gitdir: ../other/.git\n' > .git
+base common; printf '../../other/.git\n' > .git/commondir
+base blamez; ln -s /dev/zero z.txt; $G add z.txt; $G commit -qm z
+base blamef; echo hi > f.txt; $G add f.txt; $G commit -qm f; rm f.txt; mkfifo f.txt
+base blamel; echo hi > s.txt; $G add s.txt; $G commit -qm s; rm s.txt; ln -s "$O/secret.txt" s.txt
+base cfg; printf '[Extensions]\n\tworktreeConfig = true\n[extensions "x"]\n\ty = z\n' >> .git/config; $G config core.repositoryformatversion 1
+base cfgtwice; printf '[core]\n\trepositoryformatversion = 1\n[extensions]\n\tsomeday = yes\n' >> .git/config
+base cfg0; printf '[extensions]\n\tobjectformat = sha256\n' >> .git/config
+base lookedat; printf '* filter=evil\n' > .git/info/attributes; printf '[filter "evil"]\n\tclean = touch %s/lookedat-clean; cat\n' "$M" >> .git/config
+cd "$R/lookedat"; $G worktree add -q "$R/trustedwt" -b side 2>/dev/null; printf 'one\nten\n' > "$R/trustedwt/a.txt"

@@ -267,7 +267,7 @@ since their commit."
         (false (search "Forged" (run "mailmap" '("shortlog" "-se" "HEAD"))))
         (false (search "Forged" (run "mailmap" '("blame" "--porcelain" "--" "a.txt"))))
         (true (search "Test" (run "mailmap" '("blame" "--porcelain" "--" "a.txt"))))
-        (true (search "--contents" (format nil "~s" (tuatara.defaults::git-blame-raw-words '("blame" "--porcelain" "--" "a.txt") "/r/" "/r/"))))
+        (true (search "--contents" (format nil "~s" (tuatara.defaults::git-blame-raw-words '("blame" "--porcelain" "--" "a.txt") (repo "mailmap") (repo "mailmap")))))
         ;; refused in one sentence, never read through the repository's own folder
         (dolist (name '("idxfifo" "idxlink" "unknown"))
           (is eq :refused (nth-value 1 (run name '("status" "--porcelain"))) "~a" name))
@@ -342,3 +342,114 @@ since their commit."
     (ensure-directories-exist (merge-pathnames "x/index" left))
     (tuatara.defaults::forget-old-git-shadows)
     (false (tuatara.io:path-kind left))))
+
+(defun shadows-size ()
+  "The octets every shadow of git in the private cache holds on the disk."
+  (parse-integer (string-trim '(#\Newline #\Space)
+                              (uiop:run-program (list "sh" "-c" "du -sk \"$1\" | cut -f1" "size"
+                                                      (tuatara.defaults::private-cache-directory "git-shadow/"))
+                                                :output :string :ignore-error-status t))
+                 :junk-allowed t))
+
+(define-test (git hostile-repositories-second-round)
+  ;; holes, links and named pipes among the references, alternates and packs, .git leading elsewhere, a trusted
+  ;; worktree of a repository looked at only, blame of what is not a file: nothing runs, nothing changes, the cache
+  ;; does not fill, nothing waits on a pipe, and what is read from elsewhere is said
+  (with-test-directory (dir)
+    (let* ((repos (namestring (merge-pathnames "r/" dir)))
+           (marks (namestring (ensure-directories-exist (merge-pathnames "m/" dir))))
+           (tuatara-user:*lsp-trusted-projects* '()))
+      (uiop:run-program (list "sh" (namestring (asdf:system-relative-pathname :tuatara "test/git-look-only/hostile-repositories.sh"))
+                              repos marks)
+                        :output nil :error-output nil)
+      (flet ((repo (name) (concatenate 'string repos name "/"))
+             (run (name arguments)
+               (handler-case (multiple-value-bind (octets ok) (tuatara.defaults::run-git (concatenate 'string repos name "/") arguments)
+                               (values (and octets (tuatara.text:lenient-string octets)) ok))
+                 (tuatara.defaults::git-refused (e) (values (princ-to-string e) :refused)))))
+        (let ((before (shadows-size)))
+          (dolist (name '("huge" "hugelog" "reflinks" "alts" "altfifo" "packfifo" "objlink" "gitlink" "gitfile" "common"
+                          "blamez" "blamef" "blamel" "cfg" "cfg0"))
+            (let ((snapshot (repository-snapshot (repo name)))
+                  (start (get-internal-real-time)))
+              (dolist (arguments *hostile-commands*)
+                (run name arguments))
+              (true (< (- (get-internal-real-time) start) (* 30 internal-time-units-per-second)) "~a took too long" name)
+              (is string= snapshot (repository-snapshot (repo name)) "~a changed" name)))
+          ;; holes are never copied out: the cache took no gigabytes
+          (true (< (- (shadows-size) before) (* 64 1024)) "the shadows grew by ~d KiB" (- (shadows-size) before)))
+        (true (search "has holes" (run "huge" '("status" "--porcelain"))))
+        (true (search "has holes" (run "hugelog" '("reflog"))))
+        (is eq t (nth-value 1 (run "hugelog" '("status" "--porcelain"))) "a log is copied only for a command that reads it")
+        (dolist (name '("altfifo" "alts" "packfifo"))
+          (is eq :refused (nth-value 1 (run name '("rev-parse" "HEAD"))) "~a" name))
+        (false (search "SECRET" (or (run "reflinks" '("for-each-ref")) "")))
+        ;; read from elsewhere: said
+        (is eq t (nth-value 1 (run "objlink" '("log" "-1"))))
+        (true (search "objlink-objects" (format nil "~a" (tuatara.defaults::git-shadow-elsewhere-of (repo "objlink")))))
+        (dolist (name '("gitlink" "gitfile" "common"))
+          (true (tuatara.defaults::git-folder-elsewhere (repo name)) "~a" name))
+        ;; blame of a link is of its own text; of a pipe refused; nothing outside shown as the file
+        (is eq t (nth-value 1 (run "blamez" '("blame" "--porcelain" "--" "z.txt"))))
+        (is eq :refused (nth-value 1 (run "blamef" '("blame" "--porcelain" "--" "f.txt"))))
+        (false (search "SECRET" (or (run "blamel" '("blame" "--porcelain" "--" "s.txt")) "")))
+        ;; a version 0 repository's extensions are not read, as git reads none
+        (is eq t (nth-value 1 (run "cfg0" '("log" "-1"))))
+        (is eq :refused (nth-value 1 (run "cfg" '("log" "-1"))))
+        ;; a setting given twice: the last one counts, as git takes it
+        (is eq :refused (nth-value 1 (run "cfgtwice" '("log" "-1"))))
+        ;; a trusted folder whose .git leads into a repository looked at only reads it only
+        (with-looked-at-only ((repo "lookedat"))
+          (let ((snapshot (repository-snapshot (repo "lookedat")))
+                (tuatara-user:*lsp-trusted-projects* (list (repo "trustedwt"))))
+            (true (tuatara.defaults::git-reads-only-p (repo "trustedwt")))
+            (run "trustedwt" '("status" "--porcelain"))
+            (run "trustedwt" '("diff"))
+            (is string= snapshot (repository-snapshot (repo "lookedat")))))
+        (is equal '() (uiop:directory-files marks))))))
+
+(define-test (git shadow-not-walked-again)
+  ;; once a repository of 20,000 tags has its shadow, a command looks at a few folders, not at every reference
+  (with-test-directory (dir)
+    (scratch-repository dir :trusted nil)
+    (let ((hash (string-trim '(#\Newline) (git-output dir "rev-parse" "HEAD")))
+          (tags (ensure-directories-exist (merge-pathnames ".git/refs/tags/" dir)))
+          (tuatara-user:*lsp-trusted-projects* '())
+          (walks 0))
+      (dotimes (i 20000)
+        (with-open-file (out (merge-pathnames (format nil "t~d" i) tags) :direction :output)
+          (write-line hash out)))
+      (tuatara.defaults::run-git (namestring dir) '("rev-parse" "HEAD"))
+      (sb-int:encapsulate 'tuatara.defaults::git-tree-entries 'count-walks
+                          (lambda (function &rest arguments) (incf walks) (apply function arguments)))
+      (unwind-protect
+           (let ((start (get-internal-real-time)))
+             (dotimes (i 10) (true (nth-value 1 (tuatara.defaults::run-git (namestring dir) '("rev-parse" "HEAD")))))
+             (is = 0 walks)
+             (true (< (- (get-internal-real-time) start) (* 5 internal-time-units-per-second))))
+        (sb-int:unencapsulate 'tuatara.defaults::git-tree-entries 'count-walks)))))
+
+(define-test (git blame-values-read)
+  ;; blame -L 1,5 a.txt: 1,5 is the value of -L, not a revision; the file is blamed as it is now
+  (with-test-directory (dir)
+    (scratch-repository dir :trusted nil)
+    (let ((words (tuatara.defaults::git-blame-raw-words '("blame" "-L" "1,5" "a.txt") (namestring dir) (namestring dir))))
+      (true (member "--contents" words :test #'equal) "~s" words)
+      (is equal "a.txt" (car (last words))))))
+
+(define-test (git live-sessions-shadows-kept)
+  ;; a folder of shadows whose owner.lock a running session holds is never taken for one left behind
+  (let* ((folder (tuatara.defaults::new-private-folder (tuatara.defaults::private-cache-directory "git-shadow/") :hold nil))
+         (fd (sb-posix:open (tuatara.io:path-join folder "owner.lock") (logior sb-posix:o-rdwr sb-posix:o-creat) #o600)))
+    (unwind-protect
+         (progn
+           (true (tuatara.runtime:lock-fd fd))
+           ;; another descriptor's lock: as another session's
+           (let ((other (sb-posix:open (tuatara.io:path-join folder "owner.lock") sb-posix:o-rdwr)))
+             (false (tuatara.runtime:lock-fd other))
+             (sb-posix:close other))
+           (tuatara.defaults::forget-old-git-shadows)
+           (true (tuatara.io:path-kind folder)))
+      (sb-posix:close fd))
+    (tuatara.defaults::forget-old-git-shadows)
+    (false (tuatara.io:path-kind folder))))

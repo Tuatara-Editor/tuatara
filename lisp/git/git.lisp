@@ -529,7 +529,7 @@ that say so, in the order they are looked for.")
   "On JOB's thread: git's own folder for the repository or worktree at TOP,
 ending in /, as git says for one you trust; for one not trusted, read
 without git (GIT-REAL-FOLDER), for git there reads a shadow of it."
-  (if (project-trusted-p top)
+  (if (not (git-reads-only-p top))
       (tuatara.io:slash-ended (string-right-trim "/" (git-output-line job top (list "rev-parse" "--absolute-git-dir"))))
       (or (git-real-folder top) (throw 'git-failed (format nil "~a has no folder of git's own git could read" (abbreviated-path top))))))
 
@@ -900,6 +900,8 @@ it holds and folded as in any list in sections (SECTIONED-PIECES)."
         (entry-lines (lambda (line)
                        (let ((looking (git-look-only-of buffer)))
                          (when looking (funcall line (git-look-only-line looking) :git-look-only)))
+                       (dolist (note (tuatara.buffer:buffer-local buffer 'git-elsewhere))
+                         (funcall line note :git-look-only))
                        (if state
                            (progn (mapc line (git-status-head-lines state)) (funcall line ""))
                            (funcall line "Reading the repository..."))))
@@ -963,8 +965,8 @@ changes."
                             (state (git-read-state job top folder :previous previous))
                             (diffs (loop for (key . paths) in shown
                                          collect (cons key (git-read-diff job top (car key) paths)))))
-                       (values state diffs folder (git-stamps folder) (git-folders-of folder))))
-                   (lambda (state diffs folder stamps watched)
+                       (values state diffs folder (git-stamps folder) (git-folders-of folder) (git-elsewhere-notes top))))
+                   (lambda (state diffs folder stamps watched elsewhere)
                      (when (live-buffer-p buffer)
                        (let ((shown (tuatara.buffer:buffer-local buffer 'git-shown)))
                          (loop for (key . diff) in diffs
@@ -972,7 +974,8 @@ changes."
                        (setf (tuatara.buffer:buffer-local buffer 'git-state) state
                              (tuatara.buffer:buffer-local buffer 'git-folder) folder
                              (tuatara.buffer:buffer-local buffer 'git-stamps) stamps
-                             (tuatara.buffer:buffer-local buffer 'git-watched) watched)
+                             (tuatara.buffer:buffer-local buffer 'git-watched) watched
+                             (tuatara.buffer:buffer-local buffer 'git-elsewhere) elsewhere)
                        (git-status-render buffer)))
                    :after (lambda () (when (live-buffer-p buffer) (setf (tuatara.buffer:buffer-local buffer 'git-reading) nil)))
                    :quiet t :buffer buffer)))
@@ -1606,10 +1609,25 @@ with git- is refused there and dimmed in its menus and key hints
 
 (defun git-look-only-reason (top)
   "Why git only reads the repository at TOP, a phrase, or NIL when you trust
-it (PROJECT-TRUSTED-P): it is evidence or answered look only
-\(PROJECT-LOOK-ONLY-REASON), or not trusted at all."
-  (and (not (project-trusted-p top))
-       (or (project-look-only-reason top) "it is not trusted")))
+it and git reads its own folder (GIT-READS-ONLY-P): it is evidence or
+answered look only (PROJECT-LOOK-ONLY-REASON), its .git leads into a
+repository that is, or it is not trusted at all."
+  (and (git-reads-only-p top)
+       (or (project-look-only-reason top)
+           (and (project-trusted-p top)
+                (format nil "its git folder ~a is of a repository looked at only" (git-folder-elsewhere top)))
+           "it is not trusted")))
+
+(defun git-elsewhere-notes (top)
+  "The lines a status of the repository at TOP says first of what git reads
+from elsewhere than its folder: git's own folder, when its .git leads
+elsewhere (GIT-FOLDER-ELSEWHERE), and in one not trusted the folders of
+objects outside it its alternates name, its objects shown from there too."
+  (append (let ((elsewhere (git-folder-elsewhere top)))
+            (and elsewhere (list (format nil "Git's own folder: ~a, not this folder's .git" elsewhere))))
+          (and (git-reads-only-p top)
+               (mapcar (lambda (objects) (format nil "Objects also from: ~a, outside this repository" objects))
+                       (git-shadow-elsewhere-of top)))))
 
 (defun git-look-only-of (buffer)
   "Why the repository BUFFER, a git buffer, is for is looked at only, a

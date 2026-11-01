@@ -290,18 +290,21 @@ for a null pointer."
 
 ;;; statx: what a file is, exactly
 
-(defstruct (stamp (:constructor make-stamp (dev ino size mtime nlink mode uid gid &optional (ctime 0))) (:copier nil))
+(defstruct (stamp (:constructor make-stamp (dev ino size mtime nlink mode uid gid &optional (ctime 0) (allocated 0))) (:copier nil))
   "What the system reports about a file: DEV and INO name it; SIZE and MTIME (in
 nanoseconds) change when its content does; NLINK, the names it has; MODE,
 with its kind; UID and GID, its owners; CTIME (in nanoseconds), when it, its
-owners or its permissions last changed, which no program can set back."
+owners or its permissions last changed, which no program can set back;
+ALLOCATED, the octets it takes on the disk, fewer than its size for a file
+with holes."
   (dev 0 :type integer :read-only t) (ino 0 :type integer :read-only t)
   (size 0 :type integer :read-only t) (mtime 0 :type integer :read-only t)
   (nlink 1 :type integer :read-only t) (mode 0 :type integer :read-only t)
   (uid 0 :type integer :read-only t) (gid 0 :type integer :read-only t)
-  (ctime 0 :type integer :read-only t))
+  (ctime 0 :type integer :read-only t) (allocated 0 :type integer :read-only t))
 
-(setf (documentation 'stamp-ctime 'function) "When the file, its owners or its permissions last changed, in nanoseconds."
+(setf (documentation 'stamp-allocated 'function) "The octets the file takes on the disk."
+      (documentation 'stamp-ctime 'function) "When the file, its owners or its permissions last changed, in nanoseconds."
       (documentation 'make-stamp 'function) "Return a stamp with the given fields."
       (documentation 'stamp-p 'function) "True when OBJECT is a STAMP."
       (documentation 'stamp-dev 'function) "The device of the file system holding the file."
@@ -343,7 +346,8 @@ pipe named so is not woken.")
                  (octets-le buffer 120 4))
               (octets-le buffer 16 4) (octets-le buffer 28 2) (octets-le buffer 20 4) (octets-le buffer 24 4)
               (+ (* (octets-signed (octets-le buffer 96 8) 64) 1000000000)
-                 (octets-le buffer 104 4))))
+                 (octets-le buffer 104 4))
+              (* 512 (octets-le buffer 48 8))))
 
 (defun statx-fields (dirfd name flags &optional (mask #x7ff))
   "The 256 octets statx fills for NAME (a string, or octets) relative to the

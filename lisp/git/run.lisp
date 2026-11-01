@@ -254,14 +254,16 @@ and true as a third value. NIL, and no process at all, when
 DIRECTORY is in no repository (REPOSITORY-TOP), or when git is not found
 \(FIND-PROGRAM). In a repository you trust (PROJECT-TRUSTED-P) git looks
 for no repository above its top and takes no bare one it finds on the way.
-In any other (never asked, answered look only, or one that is, is in or
-holds an evidence folder) git only reads, on a shadow of the repository,
-and runs none of its programs (CALL-GIT-READING): ENVIRONMENT is not given
-it, and a command that would do more is refused, GIT-REFUSED signalled."
+In any other (never asked, answered look only, one that is, is in or holds
+an evidence folder, or one whose .git leads into such a one:
+GIT-READS-ONLY-P) git only reads, on a shadow of the repository, and runs
+none of its programs (CALL-GIT-READING): ENVIRONMENT is not given it, it is
+ended after *GIT-READING-SECONDS* when SECONDS gives no time, and a command
+that would do more is refused, GIT-REFUSED signalled."
   (let* ((git (tuatara.io:find-program "git"))
          (top (ignore-errors (repository-top directory))))
     (cond ((not (and git top)) (values nil nil))
-          ((project-trusted-p top)
+          ((not (git-reads-only-p top))
            (run-git-program git directory arguments :cancel cancel :line line :errors errors :input input
                                                     :seconds seconds :limit limit :options (list "-c" "safe.bareRepository=explicit")
                                                     :environment (cons (format nil "GIT_CEILING_DIRECTORIES=~a"
@@ -272,7 +274,7 @@ it, and a command that would do more is refused, GIT-REFUSED signalled."
                (call-git-reading top directory arguments
                                  (lambda (arguments looking-environment here)
                                    (run-git-program git here arguments :cancel cancel :line line :errors errors :input input
-                                                                       :seconds seconds :limit limit :reading t
+                                                                       :seconds (or seconds *git-reading-seconds*) :limit limit :reading t
                                                                        :environment looking-environment)))
              (git-refused (e) (error e))
              (error () (values nil nil)))))))
