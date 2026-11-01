@@ -65,7 +65,8 @@ while it still holds what was found, \\[search-results-discard] throws the chang
   "The words above BUFFER, lines a search found, on how to go on."
   (substitute-command-keys
    (if (results-editing-p buffer)
-       " Changing: \\<search-results-editing-mode>\\[search-results-apply] writes, \\[search-results-discard] throws away"
+       (concatenate 'string " Changing: \\<search-results-editing-mode>\\[search-results-apply] writes,"
+                    " \\[search-results-discard] throws away")
        " \\<search-results-mode>\\[search-results-edit] makes the lines changeable")))
 
 (defun results-header-line (buffer)
@@ -151,10 +152,11 @@ puts a line break in it."
   (tuatara.runtime:running-job buffer 'write-back-job))
 
 (define-command search-results-edit ()
-  "Make the text after path:line: of the lines found changeable, with the keys that change text: the
-path and line number stay as they are, and a line is not split or joined. Then
-\\<search-results-editing-mode>\\[search-results-apply] writes the lines changed into their files and \\[search-results-discard] throws
-the changes away; the keys that list, revert or leave are typed text meanwhile."
+  "Make the text after path:line: of the lines found changeable, with the keys
+that change text: the path and line number stay as they are, and a line is
+not split or joined. Then \\<search-results-editing-mode>\\[search-results-apply] writes the lines changed into
+their files and \\[search-results-discard] throws the changes away; the keys that list,
+revert or leave are typed text meanwhile."
   (let ((buffer (current-buffer)))
     (unless (results-editing-p buffer)
       (set-major-mode buffer 'search-results-editing-mode)
@@ -256,30 +258,41 @@ or you may not write it."
 
 (defun locate-lines (path numbers)
   "Where the lines of the file at PATH numbered NUMBERS, ascending from 1, are, read a piece at a time on
-the job's thread: each (NUMBER START . END), octets, the carriage return before a line's end left out;
-a line the file has not is left out."
+the job's thread: each (NUMBER START . END), octets, the line end left out. A line ends with a newline,
+a carriage return and a newline, or a carriage return alone, as a search of files counts them; a
+line the file has not is left out."
   (let ((fd (tuatara.io:open-for-reading path t :accept '(:regular)))
         (piece (make-array (* 4 1024 1024) :element-type '(unsigned-byte 8)))
-        (found '()) (wanted numbers) (line 1) (line-start 0) (offset 0) (previous 0))
-    (declare (type fixnum line line-start offset previous))
+        (found '()) (wanted numbers) (line 1) (line-start 0) (offset 0) (pending nil))
+    (declare (type fixnum line line-start offset) (type (simple-array (unsigned-byte 8) (*)) piece))
     (unwind-protect
          (loop while wanted
                do (tuatara.runtime:job-check-stop)
-                  (let ((got (tuatara.io:read-fd-at fd piece offset :path path)))
+                  (let ((got (tuatara.io:read-fd-at fd piece offset :path path))
+                        (from 0))
+                    (declare (type fixnum got from))
                     (when (zerop got) (return))
-                    (loop with from fixnum = 0
-                          for feed = (and wanted (position 10 piece :start from :end got))
-                          while feed
-                          do (let* ((end (+ offset feed))
-                                    (cr (if (plusp feed) (= 13 (aref piece (1- feed))) (= previous 13))))
+                    ;; the last piece ended with a carriage return: a newline now is part of its line end
+                    (when pending
+                      (setf pending nil)
+                      (if (= 10 (aref piece 0))
+                          (setf from 1 line-start (1+ offset))
+                          (setf line-start offset)))
+                    (loop for at = (position-if (lambda (octet) (or (= octet 10) (= octet 13))) piece
+                                                :start from :end got)
+                          while (and at wanted)
+                          do (let ((end (+ offset at)))
                                (when (= line (car wanted))
-                                 (push (list* line line-start (if (and cr (> end line-start)) (1- end) end)) found)
+                                 (push (list* line line-start end) found)
                                  (pop wanted))
                                (incf line)
-                               (setf line-start (1+ end) from (1+ feed))))
-                    (setf previous (aref piece (1- got)))
+                               (cond ((/= 13 (aref piece at)) (setf line-start (1+ end) from (1+ at)))
+                                     ((= (1+ at) got) (setf pending t from got))
+                                     ((= 10 (aref piece (1+ at))) (setf line-start (+ end 2) from (+ at 2)))
+                                     (t (setf line-start (1+ end) from (1+ at))))))
                     (incf offset got)))
       (ignore-errors (sb-posix:close fd)))
+    (when pending (setf line-start offset))
     (when (and wanted (= line (car wanted)) (> offset line-start))
       (push (list* line line-start offset) found))
     (nreverse found)))
@@ -426,13 +439,15 @@ lines count as written once the save has ended."
                      (incf (write-back-job-files-written job))
                      (push (format nil "~a ~a" (abbreviated-path given) note) (write-back-job-left job))))
               (cond ((not *search-results-save-files*) (keep-open "is changed in its buffer, not saved"))
-                    (kept-modified (keep-open "has changes of yours not saved: the lines are changed in its buffer, left unsaved"))
+                    (kept-modified (keep-open (concatenate 'string "has changes of yours not saved: the lines are changed"
+                                                           " in its buffer, left unsaved")))
                     (t (let ((record (list buffer (length lines) (not existing) nil)))
                          (push record (write-back-job-saving job))
-                         (unless (save-buffer-with-care buffer :quiet t
+                         (unless (let ((*save-wait* 0))
+                                   (save-buffer-with-care buffer :quiet t
                                                                :then (lambda (saved)
                                                                        (declare (ignore saved))
-                                                                       (save-finished job record)))
+                                                                       (save-finished job record))))
                            (setf (write-back-job-saving job) (remove record (write-back-job-saving job)))
                            (unless existing (run-hook tuatara.buffer:*find-file-functions* buffer))
                            (push (format nil "~a changed but not saved" (abbreviated-path given))
@@ -455,7 +470,8 @@ waiting to be written."
       (end-results-editing buffer))
     (message (concatenate 'string "~@[~a; ~]Wrote ~:d line~:p in ~:d file~:p"
                           "~@[; ~:d not written (*Messages* says why)~]"
-                          "~:[~;; the lines still changed here wait for \\<search-results-editing-mode>\\[search-results-apply]~]")
+                          "~:[~;; the lines still changed here wait for "
+                          "\\<search-results-editing-mode>\\[search-results-apply]~]")
              (and (not (eq (tuatara.runtime:job-status job) :done)) (tuatara.runtime:job-ending-words job))
              (write-back-job-written job) (write-back-job-files-written job)
              (and (or refused unsaved) (+ (length refused) (length unsaved)))
@@ -491,7 +507,8 @@ leave, and deal with the files a job writing lines back hands over."
                                                  ("C-c C-k" search-results-discard)))
   (commands-for-mode 'search-results-mode "the lines a search of files found (\\[search-files-list])"
                      'search-results-edit)
-  (commands-for-mode 'search-results-editing-mode "the lines a search of files found being changed (\\[search-results-edit])"
+  (commands-for-mode 'search-results-editing-mode
+                     "the lines a search of files found being changed (\\[search-results-edit])"
                      'search-results-apply 'search-results-discard)
   (pushnew 'guard-result-lines tuatara.buffer:*before-edit-functions*)
   (pushnew 'write-back-tick *tick-functions*))
