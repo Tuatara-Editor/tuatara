@@ -43,12 +43,20 @@ its text of version number VERSION; OCTETS, the merge."
   :left-words "nothing merged"
   :at-exit :quiet)
 
-(defun merge-resolved-p (buffer path)
-  "True when the merge into BUFFER, visiting PATH, is done: the buffer holds
-nothing unsaved and the file PATH has no conflict marked in it."
-  (and (not (and (live-buffer-p buffer) (tuatara.buffer:buffer-modified-p buffer)))
-       (let ((octets (ignore-errors (tuatara.io:file-octets path))))
-         (and octets (null (conflict-find-all (tuatara.text:octets->rope (coerce octets 'tuatara.text:octets))))))))
+(defun merge-resolved-p (path)
+  "True when the file PATH, as it is on disk, which is what git reads, has no
+marker line of a conflict left in it: no <<<<<<<, ||||||| or >>>>>>> line,
+alone or with a name after, in any number. A ======= line alone is no marker
+\(a heading underlined in a text is one) and counts only where another kind
+is in the file, which is then not resolved all the same. Changes not saved in
+its buffer do not count."
+  (let ((octets (ignore-errors (tuatara.io:file-octets path))))
+    (and octets
+         (conflict-map-markers (tuatara.text:octets->rope (coerce octets 'tuatara.text:octets))
+                               (lambda (kind at)
+                                 (declare (ignore at))
+                                 (unless (char= kind #\=) (return-from merge-resolved-p nil))))
+         t)))
 
 (defmethod tuatara.runtime:job-take-in ((job merge-job))
   "Put the merge in the buffer, its conflicts marked, and say how many there
@@ -68,13 +76,13 @@ are, going to the first; or say why it could not be made, or that the file was c
                (if (conflict-find-all rope)
                    ;; the conflicts are looked for, said, and gone to, at once
                    (conflict-look-through buffer :tell :found :go t)
-                   (message "Merged without conflicts: \\[save-buffer] to finish"))))))))
+                   (message "Merged without conflicts: \\[save-buffer] to finish (git reads the file as saved)"))))))))
 
 (defun merge-files-into (local base remote merged)
   "Merge the files LOCAL, BASE and REMOTE in the background into the buffer
 visiting MERGED, its conflicts marked and left to resolve; saving it writes
-MERGED. The editor ends with the code 0 when MERGED is saved with no conflict
-left in it, else 1. A buffer that is read only (a file of evidence) is left as
+MERGED. The editor ends with the code 0 when the file MERGED, as saved on
+disk, which is what git reads, has no conflict marker line left in it (<<<<<<<, ||||||| or >>>>>>>), else 1. A buffer that is read only (a file of evidence) is left as
 it is, and that is said."
   (let ((buffer (buffer-visiting merged)))
     (cond ((null buffer) (message "~a could not be opened: nothing merged" (abbreviated-path merged)))
@@ -93,4 +101,4 @@ it is, and that is said."
           (append tuatara.command:*exit-functions*
                   (list (lambda (editor)
                           (declare (ignore editor))
-                          (setf tuatara.command:*exit-code* (if (merge-resolved-p buffer merged) 0 1))))))))
+                          (setf tuatara.command:*exit-code* (if (merge-resolved-p merged) 0 1))))))))

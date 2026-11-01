@@ -420,6 +420,34 @@ frontend, the editor, and the options read."
           (is = 2 (tuatara.terminal:main (list a))))
         (true (search "there is none to read keys from" (get-output-stream-string said)))))))
 
+(define-test (command-line merge-with-a-stray-marker)
+  ;; a marker line in the text is not resolved; a ======= line alone (a heading underlined) is no marker;
+  ;; the text, common to the three files, comes through the merge into the file
+  (flet ((merged-and-saved (tail-of-merged)
+           (with-test-directory (dir)
+             (let ((tuatara.command:*exit-functions* tuatara.command:*exit-functions*))
+               (flet ((file (name text) (namestring (put-file (merge-pathnames name dir) text))))
+                 (let* ((base (file "base.txt" (format nil "one~%two~%three~%~a" tail-of-merged)))
+                        (local (file "local.txt" (format nil "one~%TWO~%three~%~a" tail-of-merged)))
+                        (remote (file "remote.txt" (format nil "one~%2~%three~%~a" tail-of-merged)))
+                        (merged (file "merged.txt" (format nil "one~%<<<<<<< HEAD~%TWO~%=======~%2~%>>>>>>> side~%three~%"))))
+                   (session-from-arguments (list "--merge" local base remote merged) :directory dir
+                                           :keys '("C-c ^ n C-c ^ l C-x C-s")
+                                           :until (lambda ()
+                                                    (let ((b (tuatara.defaults::buffer-visiting merged)))
+                                                      (and b (search "<<<<<<< local" (tuatara.buffer:buffer-string b))
+                                                           (plusp (length (tuatara.defaults::conflict-list b)))))))
+                   tuatara.command:*exit-code*))))))
+    ;; resolved and saved, nothing left: 0
+    (is = 0 (merged-and-saved ""))
+    ;; a heading underlined with =======, in the text git left too: still 0
+    (is = 0 (merged-and-saved (format nil "Heading~%=======~%")))
+    ;; a marker of the other kinds left by hand: 1
+    (is = 1 (merged-and-saved (format nil "<<<<<<< leftover~%")))
+    (is = 1 (merged-and-saved (format nil "||||||| leftover~%")))
+    (is = 1 (merged-and-saved (format nil ">>>>>>>~%")))
+    (is = 1 (merged-and-saved (format nil "=======~%>>>>>>> x~%")))))
+
 (define-test (command-line standard-input-large-and-once)
   ;; more than is read into memory: read to a file with no name and mapped, not held in the heap
   (with-test-directory (dir)
