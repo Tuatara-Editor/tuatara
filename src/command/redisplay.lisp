@@ -364,12 +364,13 @@ or NIL before it has one."
   "The mode line of WINDOW, the selected window by default: [-], [*] or [%] as
 the buffer is saved, changed or read-only (MODIFIED-INDICATOR), the buffer's
 name (cut in its middle when long, MODE-LINE-NAME), the line and column of the
-window's point, digits grouped with commas (L100,000,001) so large numbers read
-at a glance, the major mode's name when the buffer has one
-(BUFFER-MODE-NAME), what *MODE-LINE-FUNCTIONS* add, and last the buffer's directory in the
-:mode-line-directory face; what *MODE-LINE-LEAD-FUNCTIONS* give goes first,
-before [-], and what *MODE-LINE-NAME-FUNCTIONS* give just before the name. Returns the text and, as a second value, the spans of it in faces
-of their own, each (START END FACE)."
+window's point, digits grouped with commas (L100,000,001) so large numbers
+read at a glance, the major mode's name when the buffer has one
+\(BUFFER-MODE-NAME), what *MODE-LINE-FUNCTIONS* add, and last the buffer's
+directory in the :mode-line-directory face; what *MODE-LINE-LEAD-FUNCTIONS*
+give goes first, before [-], and what *MODE-LINE-NAME-FUNCTIONS* give just
+before the name. Returns the text and, as a second value, the spans of it in
+faces of their own, each (START END FACE)."
   (let* ((buffer (tuatara.display:window-buffer window))
          (point (tuatara.display:window-point window))
          (spans '())
@@ -708,7 +709,9 @@ cells, a terminal's) are noted too, its text shown as it is."
             (multiple-value-bind (text spans)
                 (tuatara.runtime:ignoring-errors-reported ("drawing a header line")
                   (funcall (tuatara.display:buffer-header-line (tuatara.display:window-buffer window)) window))
-              (push (list left width (or text "") (remove nil spans :key #'third) :header-line) (aref screen header-top)))
+              (push (list left width (if (stringp text) text "") (and (listp spans) (remove nil spans :key #'third))
+                          :header-line)
+                    (aref screen header-top)))
             (when (tuatara.display:window-divider window)
               (push (list (+ left width) 1 *window-divider* '((0 1 :vertical-border)) nil) (aref screen header-top)))))
         (let ((image (picture-in-place (editor-frontend editor) (tuatara.display:window-buffer window))))
