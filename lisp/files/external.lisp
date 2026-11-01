@@ -441,6 +441,8 @@ MISSING, what to do about it (install readpst)."
      :fedora ("poppler-utils") :debian ("poppler-utils") :arch ("poppler") :weight :recommends)
     (:git :name "git" :what "the git interface"
      :fedora ("git-core") :debian ("git") :arch ("git") :weight :recommends)
+    (:man :name "man-db and groff" :what "manual pages"
+     :fedora ("man-db" "groff-base") :debian ("man-db" "groff-base") :arch ("man-db" "groff") :weight :recommends)
     (:notify :name "libnotify" :what "notifications told on the desktop"
      :fedora ("libnotify") :debian ("libnotify-bin") :arch ("libnotify") :weight :recommends)
     (:gpg :name "GnuPG" :what "encrypted files"
