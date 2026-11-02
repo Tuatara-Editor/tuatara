@@ -34,7 +34,7 @@ License, version 3 or later.
     (:flags (("--frames" "N"))
      :text ("with --gui, open N frames, each a window of its own, from 1 to"
             "16: the files named are shown one in each frame in turn, those"
-            "left over open behind the first"))
+            "left over open behind the first; --frames=N does as well"))
     (:flags (("-c" "INIT-FILE") ("--config" "INIT-FILE"))
      :text ("read INIT-FILE as the init file instead of"
             "~/.config/tuatara/init.lisp; --config=INIT-FILE does as well"))
@@ -256,13 +256,31 @@ keys. KEYBOARD-AVAILABLE-P says first whether there is such a terminal."
         unless (getf entry :only)
           append (loop for flag in (getf entry :flags)
                        unless (char= (char (first flag) 0) #\+) collect (first flag)))
-  "The options the program takes, as written (--config= takes its value after
-the equals sign), and +LINE before a file besides.")
+  "The options the program takes, as written, and +LINE before a file besides;
+a long one taking a value takes it after an equals sign too (OPTION-WITH-VALUE).")
+
+(defparameter *options-with-a-value*
+  (loop for entry in *option-help*
+        unless (getf entry :only)
+          append (loop for (flag argument) in (getf entry :flags)
+                       when (and argument (uiop:string-prefix-p "--" flag) (not (find #\Space argument)))
+                         collect flag))
+  "The long options that take one value, which may be written --NAME=VALUE as
+well as --NAME VALUE: --config, --frames.")
+
+(defun option-with-value (argument)
+  "When ARGUMENT is written --NAME=VALUE, NAME one of *OPTIONS-WITH-A-VALUE*,
+the option and the value, as two values; NIL otherwise."
+  (let ((equals (position #\= argument)))
+    (when equals
+      (let ((option (subseq argument 0 equals)))
+        (when (member option *options-with-a-value* :test #'string=)
+          (values option (subseq argument (1+ equals))))))))
 
 (defun option-p (argument)
   "True when ARGUMENT is one of the program's options."
   (or (member argument *options* :test #'string=)
-      (uiop:string-prefix-p "--config=" argument)))
+      (and (option-with-value argument) t)))
 
 (defun option-like-p (argument)
   "True when ARGUMENT is written as an option: it starts with a dash and is
@@ -297,6 +315,11 @@ or -- before the files. After --, every argument is a file's name."
                       (tuatara.runtime:ignoring-errors-reported ("examining ~a" argument)
                         (tuatara.io:path-kind (tuatara.io:expand-path argument :directory directory) :follow nil)))
                  (fail "~a is a file here too: write ./~a, or -- before the files" argument argument))
+                ;; --NAME=VALUE read as --NAME VALUE
+                ((option-with-value argument)
+                 (multiple-value-bind (option value) (option-with-value argument)
+                   (push value arguments)
+                   (push option arguments)))
                 ((member argument '("--version" "-V") :test #'string=) (given :version))
                 ((member argument '("--help" "-h") :test #'string=) (given :help))
                 ((string= argument "--gui") (given :gui))
@@ -323,8 +346,6 @@ or -- before the files. After --, every argument is a file's name."
                    (if (and path (plusp (length path)))
                        (setf (getf options :config) path)
                        (fail "~a needs the init file after it" argument))))
-                ((uiop:string-prefix-p "--config=" argument)
-                 (setf (getf options :config) (subseq argument (length "--config="))))
                 ((option-like-p argument)
                  (fail "~a is not an option of tuatara (--help lists them): write ./~a, or -- before the files, for a file" argument argument))
                 (t (push argument named)))))

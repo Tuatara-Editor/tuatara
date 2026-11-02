@@ -417,6 +417,10 @@ frontend, the editor, and the options read."
     (flet ((read-them (&rest arguments) (tuatara.terminal::read-options arguments :directory (namestring dir))))
       (is = 3 (getf (read-them "--gui" "--frames" "3" "a.txt") :frames))
       (is equal '("a.txt") (getf (read-them "--frames" "2" "a.txt") :files))
+      ;; written with an equals sign as --config= is
+      (is = 4 (getf (read-them "--frames=4" "a.txt") :frames))
+      (is equal "kea.lisp" (getf (read-them "--config=kea.lisp") :config))
+      (true (search "--frames needs how many frames" (getf (read-them "--frames=") :error)))
       (dolist (wrong '(("--frames") ("--frames" "0") ("--frames" "17") ("--frames" "two")))
         (true (search "--frames needs how many frames" (getf (apply #'read-them wrong) :error)) "~s" wrong)))))
 
