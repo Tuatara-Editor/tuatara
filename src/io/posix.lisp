@@ -919,23 +919,23 @@ no advice is fine."
                           fd offset length 3)             ; POSIX_FADV_WILLNEED
   nil)
 
-(defun copy-fd-contents (source dest length &key (path "a file") cancel progress)
-  "Copy the first LENGTH octets of the open file SOURCE to the open file DEST
-at its current offset: by the kernel (COPY-FD-RANGE) where it can, else read
-and written here in pieces, read at explicit offsets so that a descriptor
-shared with others is not moved. CANCEL, a cons, stops it when its car turns
-true (returning NIL); PROGRESS, when given, is called with the octets done so
-far. True when done."
+(defun copy-fd-contents (source dest length &key (path "a file") cancel progress (from 0))
+  "Copy LENGTH octets of the open file SOURCE, its first or those from FROM
+on, to the open file DEST at its current offset: by the kernel
+\(COPY-FD-RANGE) where it can, else read and written here in pieces, read at
+explicit offsets so that a descriptor shared with others is not moved.
+CANCEL, a cons, stops it when its car turns true (returning NIL); PROGRESS,
+when given, is called with the octets done so far. True when done."
   (let ((piece (* 64 1024 1024)) (done 0) (buffer nil))
     (loop while (< done length)
           do (when (and cancel (car cancel)) (return-from copy-fd-contents nil))
              (let* ((n (min piece (- length done)))
-                    (at (+ done (copy-fd-range source done dest n))))
+                    (at (+ done (copy-fd-range source (+ from done) dest n))))
                (loop while (< at (+ done n))
                      do (unless buffer
                           (setf buffer (make-array (min n (* 4 1024 1024)) :element-type '(unsigned-byte 8))))
                         (let* ((want (min (length buffer) (- (+ done n) at)))
-                               (got (read-fd-at source buffer at :end want :path path)))
+                               (got (read-fd-at source buffer (+ from at) :end want :path path)))
                           (when (< got want)
                             (error 'file-system-error :operation "copy" :path path
                                                       :reason "it ended early; it changed while being copied"))
@@ -1216,7 +1216,7 @@ again and an unnamed file named: looked at the first time it is asked."
   *proc-fd-available*)
 
 (defun open-unnamed-file (directory mode)
-  "A descriptor, open for writing, for a new file with no name yet in DIRECTORY
+  "A descriptor, open for reading and writing, for a new file with no name yet in DIRECTORY
 with permissions MODE (less the umask), which NAME-UNNAMED-FILE can name once
 it is complete; NIL where the file system or the system cannot, for the caller
 to use a named file. A crash before it is named leaves nothing behind.
@@ -1226,7 +1226,7 @@ opened."
     (call-with-folder directory
                       (lambda (dirfd)
                         (values (openat-octets dirfd (tuatara.text:string-octets ".")
-                                               (logior +o-tmpfile+ sb-posix:o-wronly +o-cloexec+) mode)))
+                                               (logior +o-tmpfile+ sb-posix:o-rdwr +o-cloexec+) mode)))
                       "create a file in")))
 
 (defun name-unnamed-file (fd directory tag)

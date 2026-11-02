@@ -5,17 +5,22 @@
 
 ;;; Mapped files
 
-(defstruct (mapping (:constructor %make-mapping (sap length path fd resources)) (:copier nil))
+(defstruct (mapping (:constructor %make-mapping (sap length path fd resources
+                                                &aux (sources (list (list 0 length fd 0)))))
+                    (:copier nil))
   "A memory-mapped file: SAP addresses LENGTH octets of PATH, read-only, outside
 the Lisp heap, mapped from the open file descriptor (FD), which the mapping
-keeps (so saving can copy straight from it). LIVE turns false when the mapping
-is closed. RESOURCES is a cons whose car lists every (ADDRESS LENGTH FD) the
-mapping has held; RETARGET-MAPPING adds one when the octets are moved to a
-snapshot."
+keeps (so saving can copy straight from it). SOURCES lists, in order, the
+stretches (START END FD DELTA) its octets are read from: those from START
+below END come from FD at START + DELTA; RETARGET-MAPPING-RANGE moves one
+stretch to another file. LIVE turns false when the mapping is closed.
+RESOURCES is a cons whose car lists every (ADDRESS LENGTH FD) the mapping has
+held; RETARGET-MAPPING adds one when the octets are moved to a snapshot."
   (sap (sb-sys:int-sap 0) :type sb-sys:system-area-pointer)
   (length 0 :type fixnum :read-only t)
   (path nil :read-only t)
   (fd -1 :type fixnum)
+  (sources '() :type list)
   (resources (list '()) :read-only t)
   (live t :type boolean))
 
@@ -23,18 +28,22 @@ snapshot."
       (documentation 'mapping-sap 'function) "The foreign pointer to the mapped octets."
       (documentation 'mapping-length 'function) "Number of mapped octets."
       (documentation 'mapping-path 'function) "The mapped file's path."
-      (documentation 'mapping-fd 'function) "The open descriptor the mapped octets come from."
+      (documentation 'mapping-fd 'function) "The open descriptor the mapped octets came from when last moved whole."
+      (documentation 'mapping-sources 'function) "The stretches (START END FD DELTA) a mapping's octets are read from."
       (documentation 'mapping-resources 'function) "A cons whose car lists the (ADDRESS LENGTH FD) the mapping holds."
       (documentation 'mapping-live 'function) "True until the mapping is closed with CLOSE-MAPPING.")
 
 (defun release-resources (resources)
   "Unmap and close every (ADDRESS LENGTH file descriptor (FD)) in the car of
-RESOURCES, once."
-  (loop for (address length fd) in (shiftf (car resources) '())
-        do (tuatara.runtime:ignoring-errors-reported ("unmapping ~d octets" length)
-             (sb-posix:munmap (sb-sys:int-sap address) length))
-           (tuatara.runtime:ignoring-errors-reported ("closing the mapped file's descriptor ~d" fd)
-             (sb-posix:close fd))))
+RESOURCES, once: an FD listed with several stretches is closed once."
+  (let ((closed '()))
+    (loop for (address length fd) in (shiftf (car resources) '())
+          do (tuatara.runtime:ignoring-errors-reported ("unmapping ~d octets" length)
+               (sb-posix:munmap (sb-sys:int-sap address) length))
+             (unless (member fd closed)
+               (push fd closed)
+               (tuatara.runtime:ignoring-errors-reported ("closing the mapped file's descriptor ~d" fd)
+                 (sb-posix:close fd))))))
 
 (defun map-fd (fd size path)
   "Map SIZE octets of the file open as file descriptor (FD) read-only and
@@ -86,8 +95,41 @@ NIL (FD left open) when it was closed meanwhile."
     (when (mapping-live mapping)
       (let ((sap (sb-posix:mmap nil (mapping-length mapping) sb-posix:prot-read sb-posix:map-private fd 0)))
         (push (list (sb-sys:sap-int sap) (mapping-length mapping) fd) (car (mapping-resources mapping)))
-        (setf (mapping-sap mapping) sap (mapping-fd mapping) fd)
+        (setf (mapping-sap mapping) sap (mapping-fd mapping) fd
+              (mapping-sources mapping) (list (list 0 (mapping-length mapping) fd 0)))
         mapping))))
+
+(defun retarget-mapping-range (mapping fd start end delta)
+  "Make the octets of MAPPING from START below END read from file descriptor
+\(FD) at START + DELTA, an open file holding the very same octets there, so
+that they are safe from changes made to where they were read before. START
+and DELTA are multiples of the page size; END is one too, or MAPPING's
+length. The octets are swapped in place, so a reader in the middle of them
+reads the one or the other, alike. MAPPING keeps FD open from then on, and
+closes it with the rest. Any thread may do this. Returns MAPPING, or NIL (FD
+left open) when it was closed meanwhile."
+  (sb-thread:with-mutex (**mapping-lock**)
+    (when (mapping-live mapping)
+      (let ((address (sb-sys:sap+ (mapping-sap mapping) start)))
+        (sb-posix:mmap address (- end start) sb-posix:prot-read (logior sb-posix:map-private sb-posix:map-fixed)
+                       fd (+ start delta))
+        (push (list (sb-sys:sap-int address) (- end start) fd) (car (mapping-resources mapping)))
+        (let ((kept '()))
+          ;; each stretch keeps what lies outside the one moved
+          (loop for (s e f d) in (mapping-sources mapping)
+                do (when (< s start) (push (list s (min e start) f d) kept))
+                   (when (> e end) (push (list (max s end) e f d) kept)))
+          (setf (mapping-sources mapping) (sort (cons (list start end fd delta) kept) #'< :key #'first)))
+        mapping))))
+
+(defun mapping-source (mapping offset)
+  "Where the octet at OFFSET of MAPPING is read from, as three values: the
+open file descriptor (FD), the offset in that file, and the offset in MAPPING
+where that file's stretch ends."
+  (loop for (start end fd delta) in (mapping-sources mapping)
+        when (< offset end)
+          return (values fd (+ offset delta) end)
+        finally (error "Offset ~d is past the end of the mapping of ~a." offset (mapping-path mapping))))
 
 (defun close-mapping (mapping)
   "Unmap MAPPING now. Ropes still referring to it signal an error when read."

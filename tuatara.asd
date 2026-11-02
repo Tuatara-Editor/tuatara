@@ -21,7 +21,7 @@
                (:module "dates"    :serial t :components ((:file "package") (:file "dates")))
                (:module "text"     :serial t :components ((:file "package") (:file "utf8") (:file "mapping") (:file "rope") (:file "edits") (:file "strings") (:file "version") (:file "json") (:file "xml") (:file "escapes")))
                (:module "buffer"   :serial t :components ((:file "package") (:file "buffer")))
-               (:module "io"       :serial t :components ((:file "package") (:file "posix") (:file "kinds") (:file "files") (:file "sandbox") (:file "operations") (:file "zip")))
+               (:module "io"       :serial t :components ((:file "package") (:file "posix") (:file "kinds") (:file "in-place") (:file "files") (:file "sandbox") (:file "operations") (:file "zip")))
                ;; time zones, read from the system's zoneinfo files as io reads files
                (:module "zones"    :pathname "dates" :components ((:file "zones")))
                (:module "syntax"   :serial t :components ((:file "package") (:file "named-patterns") (:file "search") (:file "helper") (:file "tree-sitter") (:file "parsing") (:file "highlight") (:file "navigation")))

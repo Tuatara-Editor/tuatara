@@ -1479,6 +1479,214 @@ serves it alone."
           (is string= (nth-value 1 (tuatara.io:path-folder-and-name (string-right-trim "/" path))) given)))
       (fail (tuatara.io::call-with-parent (concatenate 'string top "/..") (lambda (fd name) (list fd name)))))))
 
+;;; Saving only what changed, in place, where blocks are not shared
+
+(defparameter *long-lines-text* (format nil "~{line ~6d~%~}" (loop for i below 250000 collect i))
+  "A text of 3,000,000 octets for the tests of saving in place.")
+
+(defmacro without-shared-blocks (&body body)
+  "Run BODY as on a file system that cannot share blocks between files (ext4),
+large files mapped from 1,024 octets on."
+  `(let ((tuatara.io::*block-sharing-file-systems* '())
+         (tuatara.io:*memory-read-limit* 1024))
+     ,@body))
+
+(defun journal-there-p (path)
+  "True when the journal of a save in place of PATH is beside it."
+  (and (tuatara.io:path-stamp (tuatara.io::journal-path path) :follow nil) t))
+
+(defun edit-far-apart (buffer)
+  "Change BUFFER's text in two places far apart: a line replaced, the same
+length, and a line inserted near the end. Returns the text it has then."
+  (let ((size (tuatara.buffer:buffer-size buffer)))
+    (tuatara.buffer:buffer-replace buffer 120000 120012 "CHANGED LINE")
+    (tuatara.buffer:buffer-insert buffer (- size 2000) (format nil "inserted line~%"))
+    (tuatara.buffer:buffer-string buffer)))
+
+(define-test (visiting-and-saving saved-in-place-where-blocks-are-not-shared)
+  (with-test-directory (dir)
+    (without-shared-blocks
+      (let* ((path (put-file (merge-pathnames "big.txt" dir) *long-lines-text*))
+             (inode (tuatara.io:stamp-ino (tuatara.io:path-stamp path))))
+        (with-visited (b path)
+          (is eq :leased (tuatara.io:file-isolation b))
+          (let ((new (edit-far-apart b)))
+            (tuatara.io:save-buffer-file b)
+            ;; the same file, only the changes written; the buffer still reads it, leased again
+            (is = inode (tuatara.io:stamp-ino (tuatara.io:path-stamp path)))
+            (is string= new (file-text path))
+            (is string= new (tuatara.buffer:buffer-string b))
+            (false (tuatara.buffer:buffer-modified-p b))
+            (is eq nil (tuatara.io:check-file b))
+            (tuatara.io:finish-leases)
+            (is eq :leased (tuatara.io:file-isolation b))
+            (is eq :held (tuatara.io::lease-status (tuatara.io::buffer-lease b)))
+            ;; the history reads what the file held before, kept in the journal's octets
+            (tuatara.buffer:buffer-undo b)
+            (tuatara.buffer:buffer-undo b)
+            (is string= *long-lines-text* (tuatara.buffer:buffer-string b))
+            (tuatara.buffer:buffer-redo b)
+            (tuatara.buffer:buffer-redo b)
+            (is string= new (tuatara.buffer:buffer-string b))
+            ;; another program about to write the file waits for a copy of what the text reads
+            (write-from-another-program path "theirs")
+            (is string= new (tuatara.buffer:buffer-string b))
+            (tuatara.buffer:buffer-undo b)
+            (tuatara.buffer:buffer-undo b)
+            (is string= *long-lines-text* (tuatara.buffer:buffer-string b))))
+        (tuatara.io:finish-leases)
+        ;; a change at the start costs a whole file either way: a new file, renamed over
+        (put-file path *long-lines-text*)
+        (let ((inode (tuatara.io:stamp-ino (tuatara.io:path-stamp path))))
+          (with-visited (b path)
+            (tuatara.buffer:buffer-insert b 0 "first ")
+            (tuatara.io:save-buffer-file b)
+            (isnt = inode (tuatara.io:stamp-ino (tuatara.io:path-stamp path)))
+            (is string= (concatenate 'string "first " *long-lines-text*) (file-text path))))
+        ;; where blocks are shared, a new file as before
+        (put-file path *long-lines-text*)
+        (let ((inode (tuatara.io:stamp-ino (tuatara.io:path-stamp path)))
+              (tuatara.io::*block-sharing-file-systems* (list (directory-magic dir))))
+          (with-visited (b path)
+            (let ((new (edit-far-apart b)))
+              (tuatara.io:save-buffer-file b)
+              (isnt = inode (tuatara.io:stamp-ino (tuatara.io:path-stamp path)))
+              (is string= new (file-text path)))))
+        (tuatara.io:finish-leases)
+        ;; in the background as well, where the save's own thread sees no shared blocks
+        (put-file path *long-lines-text*)
+        (let ((inode (tuatara.io:stamp-ino (tuatara.io:path-stamp path)))
+              (shared (sb-ext:symbol-global-value 'tuatara.io::*block-sharing-file-systems*)))
+          (setf (sb-ext:symbol-global-value 'tuatara.io::*block-sharing-file-systems*) '())
+          (unwind-protect
+               (with-visited (b path)
+                 (let* ((new (edit-far-apart b))
+                        (job (tuatara.io:start-save b)))
+                   (sb-thread:join-thread (tuatara.io:save-job-thread job) :default nil)
+                   (tuatara.io:finish-saves)
+                   (is eq :done (tuatara.io:save-job-status job))
+                   (is = inode (tuatara.io:stamp-ino (tuatara.io:path-stamp path)))
+                   (is string= new (file-text path))
+                   (false (tuatara.buffer:buffer-modified-p b))))
+            (setf (sb-ext:symbol-global-value 'tuatara.io::*block-sharing-file-systems*) shared)))
+        (tuatara.io:finish-leases)
+        (is equal '("big.txt") (directory-names dir))))))
+
+(defparameter *saving-steps*
+  '(:journal-written :journal-flushed :journal-named :directory-flushed :text-moved :writing
+    :file-written :file-flushed :journal-removed :directory-flushed)
+  "The steps of a save in place, in order, each :WRITING step but the first left out.")
+
+(defun steps-of-a-save (path &optional stop)
+  "Visit PATH, edit it far apart and save it in place, noting each step the
+save reaches, until STOP, a number, of them have been reached: the save is
+then cut short there, as by a crash. Returns the steps and the text saved."
+  (let ((steps '()) (new nil))
+    (with-visited (b path)
+      (setf new (edit-far-apart b))
+      (let ((tuatara.io::*saving-step* (lambda (step)
+                                         (push step steps)
+                                         (when (and stop (= stop (length steps)))
+                                           (throw 'crash nil)))))
+        (catch 'crash
+          (tuatara.io:save-buffer-file b))))
+    (tuatara.io:finish-leases)
+    (values (nreverse steps) new)))
+
+(define-test (visiting-and-saving in-place-saves-flush-in-order)
+  ;; nothing is written into the file before its journal and the journal's name are on disk,
+  ;; and the journal goes only once the file is
+  (with-test-directory (dir)
+    (without-shared-blocks
+      (let ((path (put-file (merge-pathnames "big.txt" dir) *long-lines-text*)))
+        (is equal *saving-steps* (loop for (step . rest) on (steps-of-a-save path)
+                                       unless (and (eq step :writing) (eq (first rest) :writing)) collect step))
+        (false (journal-there-p path))))))
+
+(define-test (visiting-and-saving in-place-save-cut-short-at-every-step)
+  ;; a crash at any step leaves a file that the next visit makes the old one or the new
+  ;; one, never a mix; from the journal's name to its removal, a journal is there
+  (with-test-directory (dir)
+    (without-shared-blocks
+      (let* ((path (put-file (merge-pathnames "big.txt" dir) *long-lines-text*))
+             (all (steps-of-a-save path))
+             (mixed 0))
+        (true (> (count :writing all) 1))
+        (loop for stop from 1 to (length all)
+              do (put-file path *long-lines-text*)
+                 (multiple-value-bind (steps new) (steps-of-a-save path stop)
+                   (is equal (subseq all 0 stop) steps)
+                   (let ((on-disk (file-text path)))
+                     (unless (or (string= on-disk *long-lines-text*) (string= on-disk new))
+                       (incf mixed)))
+                   (is eq (and (member :journal-named steps) (not (member :journal-removed steps)) t)
+                       (journal-there-p path))
+                   ;; the next visit puts the old file back where a journal says so
+                   (with-visited (b path)
+                     (true (or (string= *long-lines-text* (tuatara.buffer:buffer-string b))
+                               (string= new (tuatara.buffer:buffer-string b))))
+                     (is string= (tuatara.buffer:buffer-string b) (file-text path)))
+                   (tuatara.io:finish-leases)
+                   (false (journal-there-p path))
+                   (is equal '("big.txt") (directory-names dir))))
+        ;; cut short while the file was written, it was left mixed, for the journal to mend
+        (true (plusp mixed))))))
+
+(define-test (visiting-and-saving in-place-save-failing-or-stopped-puts-the-file-back)
+  (with-test-directory (dir)
+    (without-shared-blocks
+      (let ((path (put-file (merge-pathnames "big.txt" dir) *long-lines-text*)))
+        ;; a failure while the file is written: the old file back at once, and said
+        (with-visited (b path)
+          (let ((new (edit-far-apart b)))
+            (let ((tuatara.io::*saving-step* (lambda (step)
+                                               (when (eq step :file-written)
+                                                 (error "The disk is full.")))))
+              (fail (tuatara.io:save-buffer-file b)))
+            (is string= *long-lines-text* (file-text path))
+            (false (journal-there-p path))
+            (true (tuatara.buffer:buffer-modified-p b))
+            (is string= new (tuatara.buffer:buffer-string b))
+            ;; and a second try saves it
+            (tuatara.io:save-buffer-file b)
+            (is string= new (file-text path))))
+        (tuatara.io:finish-leases)
+        ;; stopped while the file is written: as it was
+        (put-file path *long-lines-text*)
+        (with-visited (b path)
+          (edit-far-apart b)
+          (let* ((cancel (list nil))
+                 (tuatara.io::*saving-step* (lambda (step) (when (eq step :text-moved) (setf (car cancel) t)))))
+            (is eq :stopped (tuatara.io:write-text-file (tuatara.text:version-rope (tuatara.buffer:buffer-version b)) path
+                                                        :mappings (tuatara.io::protected-mappings b) :cancel cancel)))
+          (is string= *long-lines-text* (file-text path))
+          (false (journal-there-p path)))
+        (tuatara.io:finish-leases)
+        (is equal '("big.txt") (directory-names dir))))))
+
+(define-test (visiting-and-saving save-cut-short-left-alone-on-a-safe-visit)
+  ;; a file opened safely is never written: a journal beside it is said, not used
+  (with-test-directory (dir)
+    (without-shared-blocks
+      (let ((path (put-file (merge-pathnames "big.txt" dir) *long-lines-text*)))
+        (with-visited (b path)
+          (edit-far-apart b)
+          (let ((tuatara.io::*saving-step* (lambda (step) (when (eq step :file-written) (throw 'crash nil)))))
+            (catch 'crash (tuatara.io:save-buffer-file b))))
+        (tuatara.io:finish-leases)
+        (let ((mixed (file-text path)))
+          (true (journal-there-p path))
+          (let ((b (tuatara.io:visit-file path :safe t)))
+            (unwind-protect (is string= mixed (tuatara.buffer:buffer-string b))
+              (tuatara.buffer:kill-buffer b)))
+          (is string= mixed (file-text path))
+          (true (journal-there-p path)))
+        ;; opened as usual, it is put back
+        (with-visited (b path)
+          (is string= *long-lines-text* (tuatara.buffer:buffer-string b)))
+        (tuatara.io:finish-leases)
+        (false (journal-there-p path))))))
+
 (define-test (visiting-and-saving scratch-copy-closed-when-it-cannot-be-mapped)
   ;; standard input's copy is closed, not left open, when it cannot be mapped
   (with-test-directory (dir)
