@@ -1613,6 +1613,32 @@ has, ended after."
                                           (tuatara.syntax:helper-alive helper)))
                     tuatara.syntax::**helpers**))))
 
+(define-test (syntax killing-never-waits-for-helper-starts)
+  ;; on the editor's own thread, a buffer with a helper is killed at once while another helper's
+  ;; start holds the room for helpers; its helper is ended all the same, its process with it
+  (let* ((buffer (tuatara.buffer:make-buffer "*killed-while-busy*" :text "fn main() {}"))
+         (helper (tuatara.syntax:buffer-helper buffer))
+         (process (tuatara.syntax::helper-process helper))
+         (holding (sb-thread:make-semaphore))
+         (letting-go (sb-thread:make-semaphore))
+         (holder (sb-thread:make-thread (lambda ()
+                                          (sb-thread:with-mutex (tuatara.syntax::**room-lock**)
+                                            (sb-thread:signal-semaphore holding)
+                                            (sb-thread:wait-on-semaphore letting-go :timeout 10))))))
+    (true (tuatara.syntax:helper-alive helper))
+    (sb-thread:wait-on-semaphore holding)
+    (unwind-protect
+         (let ((tuatara.syntax:*must-not-wait-function* (lambda () t))
+               (began (get-internal-real-time)))
+           (tuatara.buffer:kill-buffer buffer)
+           (true (< (tuatara.runtime:seconds-since began) 0.05)))
+      (sb-thread:signal-semaphore letting-go)
+      (sb-thread:join-thread holder :default nil))
+    (false (tuatara.syntax:helper-alive helper))
+    (true (loop repeat 500
+                thereis (not (sb-ext:process-alive-p process))
+                do (sleep 0.01)))))
+
 (define-test (syntax honest-helpers-not-blamed)
   ;; tests of a long captured text past what they may read do not pass, the
   ;; helper left alone; a whole text's matches taking long are slow, not a

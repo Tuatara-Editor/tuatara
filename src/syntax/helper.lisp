@@ -204,7 +204,8 @@ ends, ENDED says what ended it, USED when it was last asked something."
   "Every helper running.")
 
 (sb-ext:defglobal **helpers-lock** (sb-thread:make-mutex :name "syntax helpers")
-  "Held while **HELPERS** and the shared helpers are changed.")
+  "Held while **HELPERS** and the shared helpers are changed, and while a
+buffer's own helper is set or taken from it.")
 
 (sb-ext:defglobal **kept-helpers** '()
   "The helpers kept for all to use, the one parsing the files of projects you
@@ -1013,7 +1014,7 @@ before a saved image is made and when it ends."
       (tuatara.runtime:ignoring-errors-reported ("waiting for the thread starting helpers to end")
         (sb-thread:join-thread starter :default nil :timeout 2)))))
 
-(pushnew 'forget-buffer-helper tuatara.buffer:*kill-buffer-functions*)
+(pushnew 'forget-killed-buffer-helper tuatara.buffer:*kill-buffer-functions*)
 (pushnew 'stop-helpers sb-ext:*save-hooks*)
 (pushnew 'stop-helpers sb-ext:*exit-hooks*)
 
@@ -1103,7 +1104,8 @@ first wanted, never ended for room meanwhile, and ended after."
        (when (helper-p *helper*) (stop-helper *helper*)))))
 
 (sb-ext:defglobal **room-lock** (sb-thread:make-mutex :name "syntax helpers of their own")
-  "Held while a helper of its own is started, room made for it first.")
+  "Held while a helper of its own is started, room made for it first. A
+killed buffer's helper is ended without it (FORGET-BUFFER-HELPER).")
 
 (defun start-own-helper (&key kept buffer at-once)
   "Start a helper of its own (:OWN), room made for it first; KEPT when it is
@@ -1136,16 +1138,17 @@ takes more than a moment."
 **STARTING**; a helper started for a buffer killed meanwhile ended, ended
 in the background AT-ONCE."
   (let ((helper (start-helper (grammar-directories) :own :at-once at-once :held at-once)))
-    (cond ((member helper '(nil :busy)) helper)
-          ;; killed while it started: none left behind for it
-          ((and buffer (not (tuatara.buffer:live-buffer-p buffer)))
-           (stop-helper helper :wait (not at-once))
-           nil)
+    (cond ((not (helper-p helper)) helper)
           (t (setf (helper-kept helper) kept
                    (helper-buffer helper) buffer)
-             (when buffer
-               (setf (tuatara.buffer:buffer-local buffer :syntax-helper) helper))
-             helper))))
+             (if (and buffer (not (sb-thread:with-mutex (**helpers-lock**)
+                                    (and (tuatara.buffer:live-buffer-p buffer)
+                                         (not (tuatara.buffer:buffer-local buffer :syntax-helper-forgotten))
+                                         (setf (tuatara.buffer:buffer-local buffer :syntax-helper) helper)))))
+                 ;; killed while it started: none left behind for it
+                 (progn (stop-helper helper :wait (not at-once))
+                        nil)
+                 helper)))))
 
 (defun buffer-text-trusted-p (buffer)
   "True when BUFFER's text is that of a project you trust
@@ -1254,13 +1257,20 @@ processes' ends waited for unless WAIT is NIL."
                                     (1+ count) most))))
 
 (defun forget-buffer-helper (buffer)
-  "End BUFFER's own helper, if it has one: its text is parsed no more. Taken
-under the lock a helper of its own is started under, so that one starting
-for BUFFER meanwhile sees it killed."
-  (let ((own (sb-thread:with-mutex (**room-lock**)
+  "End BUFFER's own helper, if it has one: its text is parsed no more. A
+helper starting for BUFFER meanwhile is not waited for, nor, on a thread
+that must not wait (the editor's own), the end of the helper's process."
+  (let ((own (sb-thread:with-mutex (**helpers-lock**)
                (shiftf (tuatara.buffer:buffer-local buffer :syntax-helper) nil))))
     (when own
-      (stop-helper own))))
+      (stop-helper own :wait (waiting-allowed-p)))))
+
+(defun forget-killed-buffer-helper (buffer)
+  "End the own helper of BUFFER, being killed, and the one a start under way
+for it meanwhile makes, as soon as it is made."
+  (sb-thread:with-mutex (**helpers-lock**)
+    (setf (tuatara.buffer:buffer-local buffer :syntax-helper-forgotten) t))
+  (forget-buffer-helper buffer))
 
 (defun helper-memory (helper)
   "What HELPER says of its memory: the octets its trees and grammars hold,
