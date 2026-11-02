@@ -53,9 +53,15 @@ not kept (help, lists, terminals, buffers with no file, an encrypted file's text
           ((member (tuatara.buffer:buffer-name buffer) '("*lisp-scratch*" "*org-scratch*" "*scratch*") :test #'string=)
            (list :scratch point (tuatara.buffer:buffer-name buffer))))))
 
+(defvar *session-sections-kept* '()
+  "The sections of the session read whose frames were not opened again (in a
+terminal, or started with files), each a list of its lines as written: kept
+in the session as they were, to be opened where frames can open.")
+
 (defun session-lines (editor)
   "The lines of the session of EDITOR, as SESSION-PATH keeps them: the buffers
-no frame shows, then a section for each frame, the one worked in first."
+no frame shows, then a section for each frame, the one worked in first, then
+the sections read that no frame was opened for (*SESSION-SECTIONS-KEPT*)."
   (let ((lines (list "tuatara session 1")))
     (labels ((out (format &rest arguments) (push (apply #'format nil format arguments) lines))
              (entry-words (entry) (format nil "~(~a~) ~d ~a" (first entry) (second entry) (escape-path (third entry))))
@@ -82,6 +88,10 @@ no frame shows, then a section for each frame, the one worked in first."
         (let ((selected (frame-window frame)))
           (out "frame")
           (area (tuatara.display:area-root selected) selected)))
+      ;; the frames of the session read that could not be opened, as they were
+      (dolist (section *session-sections-kept*)
+        (out "frame")
+        (dolist (line section) (out "~a" line)))
       (out "end"))
     (nreverse lines)))
 
@@ -135,11 +145,12 @@ the seconds until the next look."
 ;;; Read again
 
 (defun read-session ()
-  "The session kept, as three values: the buffers not shown, each (KIND POINT
+  "The session kept, as four values: the buffers not shown, each (KIND POINT
 TARGET); the windows' layout of the frame worked in, a tree of (:SPLIT
 ARRANGEMENT SHARES . CHILDREN) and (:WINDOW SELECTED START ENTRY), ENTRY NIL
-for a window whose buffer is not kept; and the layouts of the other frames, a
-list of such trees. NIL when there is none or it is not one this editor
+for a window whose buffer is not kept; the layouts of the other frames, a
+list of such trees; and the lines of each of their sections as written, a
+list of lists of strings. NIL when there is none or it is not one this editor
 wrote. Read as text: nothing in it is evaluated."
   (let* ((text (ignoring-errors-reported ("reading the session")
                  (tuatara.io:file-text (session-path) :limit (* 4 1024 1024))))
@@ -176,11 +187,13 @@ wrote. Read as text: nothing in it is evaluated."
                       do (let ((entry (entry (rest (words (pop rest))))))
                            (when entry (push entry buffers))))
                 (when (string= (pop rest) "frame")
-                  (let ((worked-in (node 0)) (others '()))
+                  (let ((worked-in (node 0)) (others '()) (sections '()))
                     (loop while (equal (first rest) "frame")
                           do (pop rest)
-                             (push (node 0) others))
-                    (values (nreverse buffers) worked-in (nreverse others)))))
+                             (let ((from rest))
+                               (push (node 0) others)
+                               (push (ldiff from rest) sections)))
+                    (values (nreverse buffers) worked-in (nreverse others) (nreverse sections)))))
             (error () nil)))))))
 
 (defun session-number (text)
@@ -211,9 +224,9 @@ was; NIL when it cannot be (a file no longer there)."
 (defvar *session-layout* nil
   "The windows' layouts of the session being opened again, for
 SESSION-LAYOUT-TICK to make once the editor's first window is there, with the
-buffers opened for them: a list of (TREE . BUFFERS), the first for the frame
-worked in, then one for each frame more, BUFFERS each window's buffer by its
-entry.")
+buffers opened for them: a list of (TREE BUFFERS LINES), the first for the
+frame worked in, then one for each frame more, BUFFERS each window's buffer by
+its entry, LINES the section's lines as written (NIL for the first).")
 
 (defun session-tree-entries (tree)
   "The entries of the windows of TREE, a layout of the session, that have one."
@@ -226,13 +239,14 @@ entry.")
 *KEEP-SESSION* the session's, its files and frames' windows opened again;
 else STARTUP-BUFFER's."
   (or (and *keep-session*
-           (multiple-value-bind (buffers tree others) (read-session)
+           (multiple-value-bind (buffers tree others sections) (read-session)
              (when tree
                (let ((missing 0) (selected nil) (layouts '()))
                  (dolist (entry buffers)
                    (unless (session-open entry) (incf missing)))
-                 (dolist (layout (cons tree others))
-                   (let ((opened '()))
+                 (loop for layout in (cons tree others)
+                       for lines in (cons nil sections)
+                       do (let ((opened '()))
                      (labels ((walk (node)
                                 (if (eq (first node) :split)
                                     (mapc #'walk (cdddr node))
@@ -243,21 +257,24 @@ else STARTUP-BUFFER's."
                                         (push (cons node buffer) opened)
                                         (when (and chosen buffer (eq layout tree)) (setf selected buffer)))))))
                        (walk layout))
-                     (push (cons layout opened) layouts)))
+                     (push (list layout opened lines) layouts)))
                  (setf layouts (nreverse layouts)
                        *session-layout* layouts
                        *session-opened* t)
                  (message "Session opened again~[~:;: ~:*~d file~:p no longer there~]" missing)
-                 (or selected (cdr (find-if #'cdr (cdr (first layouts)))))))))
+                 (or selected (cdr (find-if #'cdr (second (first layouts)))))))))
       (startup-buffer)))
 
 (defun session-buffers-behind (editor)
   "Open again, behind the files the editor was started with, the files and
 directories of the session kept (*KEEP-SESSION*), every frame's, its windows
-left as they are; so that the session written as it stops still holds them."
+left as they are; so that the session written as it stops still holds them,
+the other frames' sections as they were (*SESSION-SECTIONS-KEPT*)."
   (declare (ignore editor))
   (setf *session-opened* t)
-  (multiple-value-bind (buffers tree others) (read-session)
+  (multiple-value-bind (buffers tree others sections) (read-session)
+    ;; no frame opened for the other frames: their sections kept as they were
+    (setf *session-sections-kept* sections)
     (let ((entries (append buffers (and tree (mapcan #'session-tree-entries (cons tree others)))))
           (opened 0))
       (dolist (entry entries)
@@ -305,27 +322,35 @@ that was selected is selected again."
   "Split the windows of the editor's frames as the session opened again had
 them, once, its first window there: the frame worked in first, then the
 frames opened at the start, then frames opened for those left, where frames
-can open (a window; in a terminal their files are open behind). Started with
-files, the session's files opened behind them instead (SESSION-BUFFERS-BEHIND)."
+can open (a window); in a terminal their files are open behind and their
+sections kept as they were (*SESSION-SECTIONS-KEPT*). Started with files, the
+session's files opened behind them instead (SESSION-BUFFERS-BEHIND)."
   (setf *tick-functions* (remove 'session-layout-tick *tick-functions*))
   (when (and *keep-session* (not *session-opened*))
     (ignoring-errors-reported ("opening the session's files") (session-buffers-behind editor)))
   (let ((layouts (shiftf *session-layout* nil))
         (worked-in (editor-frame editor)))
     (when layouts
-      (session-build-layout editor (car (first layouts)) (cdr (first layouts)))
+      (destructuring-bind (tree opened lines) (first layouts)
+        (declare (ignore lines))
+        (session-build-layout editor tree opened))
       (let ((others (remove worked-in (editor-frames editor))))
-        (dolist (layout (rest layouts))
-          (let ((frame (or (pop others)
-                           (handler-case (open-frame editor :select nil)
-                             (tuatara.runtime:refusal () (return))))))
-            (call-in-frame editor frame (lambda () (session-build-layout editor (car layout) (cdr layout)))))))))
+        (loop for (layout . left) on (rest layouts)
+              for frame = (or (pop others)
+                              (handler-case (open-frame editor :select nil)
+                                ;; frames cannot open here: the sections left are kept as they were
+                                (tuatara.runtime:refusal ()
+                                  (setf *session-sections-kept* (mapcar #'third (cons layout left)))
+                                  (return))))
+              do (destructuring-bind (tree opened lines) layout
+                   (declare (ignore lines))
+                   (call-in-frame editor frame (lambda () (session-build-layout editor tree opened))))))))
   nil)
 
 (defun install-session ()
   "Have the session kept (*KEEP-SESSION*): written as the editor stops and now
 and then, and opened again when it starts without files."
-  (setf *session-opened* nil *session-layout* nil *session-looked* nil)
+  (setf *session-opened* nil *session-layout* nil *session-looked* nil *session-sections-kept* '())
   (pushnew 'session-tick *tick-functions*)
   (pushnew 'session-layout-tick *tick-functions*)
   (pushnew 'session-at-exit *exit-functions*))

@@ -111,7 +111,7 @@ a session file not of its own kind is left alone, nothing in it evaluated; off, 
                       (tuatara.buffer:buffer-name (tuatara.display:window-buffer (tuatara.command:frame-window frame))))
                     (tuatara.command:editor-frames editor)))
         (is eq (first (tuatara.command:editor-frames editor)) (tuatara.command:editor-frame editor)))
-      ;; in a terminal: one frame, the other's file open behind it
+      ;; in a terminal: one frame, the other's file open behind it, its section written back as it was
       (forget-session-buffers)
       (multiple-value-bind (f editor) (session-start nil)
         (declare (ignore f))
@@ -119,6 +119,14 @@ a session file not of its own kind is left alone, nothing in it evaluated; off, 
         (is string= "two.txt" (tuatara.buffer:buffer-name (tuatara.display:window-buffer
                                                             (tuatara.command:editor-window editor))))
         (true (tuatara.buffer:find-buffer "one.txt")))
+      (let ((kept (alexandria:read-file-into-string (tuatara.defaults::session-path))))
+        (true (search (format nil "frame~%window 1 0 file 0 ~a~%frame~%window 1 0 file 0 ~a~%end" two one) kept)
+              "~a" kept))
+      ;; and so in a window again: both frames
+      (forget-session-buffers)
+      (let* ((f (tuatara.frontend.fake:make-fake-frontend :width 120 :height 30 :font-steps 0))
+             (editor (tuatara.command:run-editor f :setup #'tuatara.defaults:install-defaults)))
+        (is = 2 (length (tuatara.command:editor-frames editor))))
       (forget-session-buffers))))
 
 (define-test (session never-evaluated-and-off)
