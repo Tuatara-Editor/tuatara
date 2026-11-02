@@ -566,7 +566,8 @@ second value."
   ;; that is not there cannot be written, and that is no failure
   (drain-debug-reports)
   (unwind-protect
-       (let ((tuatara.io:*writing-told-function* (lambda (words) (error "cannot tell of ~a" words))))
+       (let ((tuatara.runtime:*host* (make-answering-host 'tuatara.io:host-writing-told
+                                                          (lambda (words) (error "cannot tell of ~a" words)))))
          (tuatara.runtime:set-debug t)
          (false (tuatara.io:tell-writing "a file"))
          (false (tuatara.io:writable-p "/nonexistent-tuatara-folder/file"))
@@ -726,10 +727,13 @@ second value."
       (setf (tuatara.frontend.fake:fake-pending f) (lambda (f) (tuatara.frontend.fake::fake-events f)))
       (queue-test-keys f (list "i x C-x C-s" (lambda () (setf answered (get-internal-real-time))) "y"))
       ;; the save's writing takes a second
-      (with-functions-replaced ((tuatara.io::save-transform
-                                 (lambda (buffer path)
-                                   (declare (ignore buffer path))
-                                   (lambda (rope) (setf started (get-internal-real-time)) (sleep 1) rope))))
+      (let ((tuatara.runtime:*host* (make-answering-host 'tuatara.io:host-save-transform
+                                                         (lambda (buffer path)
+                                                           (declare (ignore buffer path))
+                                                           (lambda (rope)
+                                                             (setf started (get-internal-real-time))
+                                                             (sleep 1)
+                                                             rope)))))
         (without-grammar-questions
           (tuatara.command:run-editor f :files (list path) :setup #'tuatara.defaults:install-defaults)))
       (true (and started answered))
@@ -760,10 +764,10 @@ second value."
                    (sb-thread:join-thread (tuatara.io:save-job-thread job) :default nil)
                    (tuatara.io:finish-saves)))))
         (queue-test-keys f (list (lambda () (save-and-wait t)) (lambda () (save-and-wait nil))))
-        (with-functions-replaced ((tuatara.io::save-transform
-                                   (lambda (buffer path)
-                                     (declare (ignore buffer path))
-                                     (lambda (rope) (sleep 0.5) rope))))
+        (let ((tuatara.runtime:*host* (make-answering-host 'tuatara.io:host-save-transform
+                                                           (lambda (buffer path)
+                                                             (declare (ignore buffer path))
+                                                             (lambda (rope) (sleep 0.5) rope)))))
           (call-without-grammar-questions
            (lambda () (tuatara.command:run-editor f :files (list path) :setup #'tuatara.defaults:install-defaults)))))
       (destructuring-bind ((typed typed-running typed-waited) (played played-running played-waited)) results
@@ -785,10 +789,10 @@ second value."
         (queue-test-keys f (list (format nil "C-x C-f C-a C-k ~a RET i x C-g" (rimu-typed one))
                                  (format nil "C-x C-f C-a C-k ~a RET i x C-g" (rimu-typed two))
                                  "C-x s y"))
-        (with-functions-replaced ((tuatara.io::save-transform
-                                   (lambda (buffer path)
-                                     (declare (ignore buffer path))
-                                     (lambda (rope) (sleep 0.3) rope))))
+        (let ((tuatara.runtime:*host* (make-answering-host 'tuatara.io:host-save-transform
+                                                           (lambda (buffer path)
+                                                             (declare (ignore buffer path))
+                                                             (lambda (rope) (sleep 0.3) rope)))))
           (call-without-grammar-questions
            (lambda () (tuatara.command:run-editor f :setup #'tuatara.defaults:install-defaults))))
         (is string= "xone" (file-text one))

@@ -103,10 +103,13 @@ stopped (*SYNTAX-MEMORY-LIMIT*).")
 to answer, over the time a parse may take: one that takes longer, a grammar's
 code looping in it, is ended, and another started when it is next needed.")
 
-(defvar *syntax-helper-shared-function* nil
-  "A function of a buffer, true when its text may be parsed by the helper
-parsing the files of projects you trust; NIL for none: each buffer then has
-a helper of its own.")
+(defgeneric host-trusted-text-p (host buffer)
+  (:documentation "True when BUFFER's text may be parsed by the helper parsing the files of
+projects you trust; on the core's own host, never: each buffer then has a
+helper of its own.")
+  (:method ((host tuatara.runtime:host) buffer)
+    (declare (ignore buffer))
+    nil))
 
 (defvar *syntax-helper-unconfined* nil
   "True to have the grammars run, where there is no sandbox, for the files of
@@ -114,10 +117,12 @@ projects you trust, in a program of their own that is not shut in. Files
 outside them are never parsed without the sandbox, whatever this says. NIL
 unless set: without the sandbox no text is parsed.")
 
-(defvar *helper-refused-function* nil
-  "A function of one argument called, once, when text is not parsed because
-there is no sandbox: T when the text is that of a project you trust (see
-*SYNTAX-HELPER-UNCONFINED*), NIL for other text; NIL for none.")
+(defgeneric host-helper-refused (host trusted)
+  (:documentation "Say, once, that text is not parsed because there is no sandbox: TRUSTED true
+when the text is that of a project you trust (see *SYNTAX-HELPER-UNCONFINED*).")
+  (:method ((host tuatara.runtime:host) trusted)
+    (declare (ignore trusted))
+    nil))
 
 (defvar *syntax-helpers-most* 16
   "The most programs parsing for the editor that buffers have of their own at
@@ -800,9 +805,8 @@ when it is that of a project you trust. NIL."
   (unless (shiftf **refused-said** t)
     (tuatara.runtime:debug-report :error "no syntax helper started: there is no sandbox~:[~; (*syntax-helper-unconfined* not set)~]"
                                   trusted)
-    (when *helper-refused-function*
-      (tuatara.runtime:ignoring-errors-reported ("saying no syntax helper is started")
-        (funcall *helper-refused-function* trusted))))
+    (tuatara.runtime:ignoring-errors-reported ("saying no syntax helper is started")
+      (host-helper-refused tuatara.runtime:*host* trusted)))
   nil)
 
 (defun helpers-refused-p (kind)
@@ -867,10 +871,12 @@ says the caller holds already."
                           nil)
                          ((null how) (refuse-unconfined (not (eq kind :own)))))))))))))
 
-(defvar *helper-ended-function* nil
-  "A function of a HELPER called, once, when a helper ends or is ended without
-being asked to, to say so; NIL for none. HELPER-PARSING says whether a parse
-was running in it, which says so itself.")
+(defgeneric host-helper-ended (host helper)
+  (:documentation "Say, once, that HELPER ended or was ended without being asked to.
+HELPER-PARSING says whether a parse was running in it, which says so itself.")
+  (:method ((host tuatara.runtime:host) helper)
+    (declare (ignore helper))
+    nil))
 
 (defmacro while-parsing ((helper) &body body)
   "Run BODY, a parse in HELPER, counted in HELPER-PARSING."
@@ -989,9 +995,8 @@ helper wanted in its place is started afresh."
         (note-faulted helper :all))
       (unless (eq why :stopped)
         (tuatara.runtime:debug-report :error "syntax helper (~(~a~)) ~(~a~)" (helper-kind helper) why)
-        (when *helper-ended-function*
-          (tuatara.runtime:ignoring-errors-reported ("saying the syntax helper ended")
-            (funcall *helper-ended-function* helper)))))))
+        (tuatara.runtime:ignoring-errors-reported ("saying the syntax helper ended")
+          (host-helper-ended tuatara.runtime:*host* helper))))))
 
 (defun reply-malformed (helper)
   "End HELPER, whose reply cannot be right: what it holds is not trusted, and
@@ -1021,15 +1026,16 @@ before a saved image is made and when it ends."
 (pushnew 'stop-helpers sb-ext:*save-hooks*)
 (pushnew 'stop-helpers sb-ext:*exit-hooks*)
 
-(defvar *must-not-wait-function* nil
-  "A function of no arguments, true on a thread that must never wait for a
-helper to start (the editor's own); NIL for none.")
+(defgeneric host-must-not-wait-p (host)
+  (:documentation "True on a thread that must never wait for a helper to start (the editor's
+own); on the core's own host, on none.")
+  (:method ((host tuatara.runtime:host))
+    nil))
 
 (defun waiting-allowed-p ()
-  "True when this thread may wait for a helper to start (*MUST-NOT-WAIT-FUNCTION*)."
-  (not (and *must-not-wait-function*
-            (tuatara.runtime:ignoring-errors-reported ("asking whether this thread may wait")
-              (funcall *must-not-wait-function*)))))
+  "True when this thread may wait for a helper to start (HOST-MUST-NOT-WAIT-P)."
+  (not (tuatara.runtime:ignoring-errors-reported ("asking whether this thread may wait")
+         (host-must-not-wait-p tuatara.runtime:*host*))))
 
 (sb-ext:defglobal **kept-locks** (list (cons :shared (sb-thread:make-mutex :name "shared syntax helper"))
                                        (cons :rules (sb-thread:make-mutex :name "rules syntax helper")))
@@ -1147,15 +1153,14 @@ in the background AT-ONCE."
 
 (defun buffer-text-trusted-p (buffer)
   "True when BUFFER's text is that of a project you trust
-\(*SYNTAX-HELPER-SHARED-FUNCTION*)."
-  (and *syntax-helper-shared-function*
-       (tuatara.runtime:ignoring-errors-reported ("asking whether ~a is trusted" (tuatara.buffer:buffer-name buffer))
-         (funcall *syntax-helper-shared-function* buffer))
+\(HOST-TRUSTED-TEXT-P)."
+  (and (tuatara.runtime:ignoring-errors-reported ("asking whether ~a is trusted" (tuatara.buffer:buffer-name buffer))
+         (host-trusted-text-p tuatara.runtime:*host* buffer))
        t))
 
 (defun buffer-helper (buffer)
   "The helper to parse BUFFER's text: the shared one when
-*SYNTAX-HELPER-SHARED-FUNCTION* says so (a file of a project you trust), its
+HOST-TRUSTED-TEXT-P says so (a file of a project you trust), its
 own helper ended then; else its own, the one it has running or one started
 now, one at a time for a buffer whatever thread asks. NIL when none can be
 had (no sandbox). Starting a helper takes a moment: see BUFFER-HELPER-SOON
@@ -1174,7 +1179,7 @@ on a thread that may wait (WAITING-ALLOWED-P), one started now; on one that
 may not, as the editor's own, one set going now when the sandbox is known
 and no other start holds it up, which waits for nothing, the program's
 readiness waited for by the first parse in the background. Else NIL, and
-it is started in the background, the editor woken (*SYNTAX-WAKE-FUNCTION*)
+it is started in the background, the editor woken (HOST-WAKE)
 once it is, the text shown uncoloured meanwhile."
   (let ((own (tuatara.buffer:buffer-local buffer :syntax-helper)))
     (cond ((and own (helper-alive own) (not (buffer-text-trusted-p buffer))) own)
@@ -1197,7 +1202,7 @@ once it is, the text shown uncoloured meanwhile."
              nil))))
 
 (defparameter *helper-setting-names*
-  '(*grammar-directories* *syntax-helper-memory* *syntax-helpers-most* *syntax-helper-shared-function*
+  '(*grammar-directories* *syntax-helper-memory* *syntax-helpers-most* tuatara.runtime:*host*
     *syntax-helper-unconfined* *syntax-helper-wait*)
   "The settings that say how a helper is started and chosen, given to the
 thread a parse runs in as they are where it was asked for.")
@@ -1208,31 +1213,32 @@ thread a parse runs in as they are where it was asked for.")
 
 (defun start-in-background (function)
   "Call FUNCTION, which starts a helper, in a thread of its own, then wake the
-editor (*SYNTAX-WAKE-FUNCTION*) to show what it now parses."
+editor (HOST-WAKE) to show what it now parses."
   (let ((settings (helper-settings)))
     (sb-thread:make-thread (lambda ()
                              (progv *helper-setting-names* settings
                                (tuatara.runtime:ignoring-errors-reported ("starting a syntax helper in the background")
                                  (funcall function)))
-                             (let ((wake (and (boundp '*syntax-wake-function*) (symbol-value '*syntax-wake-function*))))
-                               (when wake
-                                 (tuatara.runtime:ignoring-errors-reported ("waking the editor after a helper started")
-                                   (funcall wake)))))
+                             (tuatara.runtime:ignoring-errors-reported ("waking the editor after a helper started")
+                               (tuatara.runtime:host-wake tuatara.runtime:*host*)))
                            :name "syntax helper starting in the background")))
 
-(defvar *helper-in-use-function* nil
-  "A function of a buffer, true while its text is shown; NIL for none. A
-helper of a buffer shown, or parsing, is not ended for room.")
+(defgeneric host-buffer-shown-p (host buffer)
+  (:documentation "True while BUFFER's text is shown, asked from any thread: a helper of a buffer
+shown, or parsing, is not ended for room. On the core's own host, never.")
+  (:method ((host tuatara.runtime:host) buffer)
+    (declare (ignore buffer))
+    nil))
 
 (defun helper-in-use-p (helper)
   "True when HELPER is not to be ended for room: kept (an export's), parsing,
-or parsing for a buffer that is shown (*HELPER-IN-USE-FUNCTION*)."
+or parsing for a buffer that is shown (HOST-BUFFER-SHOWN-P)."
   (or (helper-kept helper)
       (plusp (car (helper-parsing helper)))
       (let ((buffer (helper-buffer helper)))
-        (and buffer *helper-in-use-function*
+        (and buffer
              (tuatara.runtime:ignoring-errors-reported ("asking whether a buffer is shown")
-               (funcall *helper-in-use-function* buffer))))))
+               (host-buffer-shown-p tuatara.runtime:*host* buffer))))))
 
 (defun make-room-for-helper (&key (wait t))
   "End the helpers buffers have of their own that were used longest ago, so

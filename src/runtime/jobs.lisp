@@ -48,17 +48,15 @@ oldest first.")
   "On the editor's thread, while a job that has ended is taken in (TAKE-IN-JOBS),
 that job; NIL otherwise.")
 
-(defvar *job-start-function* nil
-  "A function of a job, called on the editor's thread as the job starts
-\(START-JOB-THREAD), that ties it to the editor running: gives it the function
-its thread calls to wake the editor (JOB-WAKE), unless it has one, and the
-frame it was begun in (JOB-FRAME). NIL for none; the editor sets it.")
+(defgeneric host-job-started (host job)
+  (:documentation "Tie JOB, starting now on the editor's thread (START-JOB-THREAD), to the editor
+running: give it the function its thread calls to wake the editor (JOB-WAKE),
+unless it has one, and the frame it was begun in (JOB-FRAME)."))
 
-(defvar *job-take-in-function* nil
-  "A function of a job and a function of no arguments, calling the second, the
-job's taking in (TAKE-IN-JOBS), where the job belongs in the editor: with the
-frame it was begun in the one worked in, so that what it says shows there.
-NIL to call it as it is; the editor sets it.")
+(defgeneric host-take-in-job (host job function)
+  (:documentation "Call FUNCTION, of no arguments, JOB's taking in (TAKE-IN-JOBS), where JOB
+belongs in the editor: with the frame it was begun in the one worked in, so
+that what it says shows there."))
 
 (defvar *job-buffer-name* (lambda (buffer) (if buffer (princ-to-string buffer) "no buffer"))
   "A function of a buffer, or NIL, giving its name, for what the jobs report;
@@ -352,8 +350,7 @@ the condition's words, JOB-STOPPED or anything once it was asked to stop ends
 it :STOPPED; and the editor is woken as it ends. WORK is the job's stoppable
 work (STOPPABLE-WORK): JOB-STOP ends it even inside a call that never looks.
 Returns JOB."
-  (when *job-start-function*
-    (funcall *job-start-function* job))
+  (host-job-started *host* job)
   (setf *jobs* (append *jobs* (list job)))
   (report-job job "started" details)
   (flet ((run ()
@@ -395,7 +392,7 @@ Returns JOB."
   "Take in the jobs that have ended and pass TEST, a function of a job, on the
 editor's thread, the oldest first: each leaves *JOBS*, its end is reported in
 the debug log, and JOB-TAKE-IN takes it in, where the job belongs in the
-editor (*JOB-TAKE-IN-FUNCTION*). Returns the jobs taken in."
+editor (HOST-TAKE-IN-JOB). Returns the jobs taken in."
   (let ((taken '()))
     (dolist (job (copy-list *jobs*))
       (when (and (not (job-running-p job)) (member job *jobs*) (funcall test job))
@@ -404,9 +401,7 @@ editor (*JOB-TAKE-IN-FUNCTION*). Returns the jobs taken in."
         (push job taken)
         (let ((*job-taken-in* job)
               (*secret-at-hand* (or *secret-at-hand* (secret-buffer-p (job-buffer job)))))
-          (if *job-take-in-function*
-              (funcall *job-take-in-function* job (lambda () (job-take-in job)))
-              (job-take-in job)))))
+          (host-take-in-job *host* job (lambda () (job-take-in job))))))
     (nreverse taken)))
 
 (defun stop-and-settle (job)

@@ -48,7 +48,9 @@ whole number from 1 to 64, 4 when the setting is none."
 BUFFER, NIL when they put spaces in (see *INDENT-TABS-MODE*)."
   (and (buffer-setting buffer :indent-tabs-mode *mode-indent-tabs* *indent-tabs-mode*) t))
 
-(setf tuatara.display:*tab-width-function* 'buffer-tab-width)
+(defmethod tuatara.display:host-tab-width ((host defaults-host) buffer)
+  "The columns from one tab stop to the next in BUFFER (BUFFER-TAB-WIDTH)."
+  (buffer-tab-width buffer))
 
 (defvar *tab-columns* nil
   "The columns from one tab stop to the next in the text being measured, when

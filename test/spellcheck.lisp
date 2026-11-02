@@ -256,7 +256,6 @@ each of them and at the end, the editor woken to redraw."
   ;; a lot of words the speller fails on: taken as right, the next lot answered, spelling still on
   (let ((tuatara.defaults::*spelling-wanted* '())
         (tuatara.defaults::*spelling-draining* t)
-        (tuatara.defaults::*spelling-wake-function* nil)
         (table (make-hash-table :test 'equal)))
     (setf (gethash "boom" table) :asked (gethash "fine" table) :asked)
     (sb-int:encapsulate 'tuatara.defaults::spelling-of 'test-failing
@@ -287,8 +286,7 @@ each of them and at the end, the editor woken to redraw."
       (tuatara.buffer:kill-buffer b)))
   ;; a word added to one language's list is right where that language is asked, not in another's
   (let ((tuatara.defaults::*spelling-answers* (make-hash-table :test 'equal :synchronized t))
-        (tuatara.defaults::*speller* (cons sb-thread:*current-thread* (sb-concurrency:make-mailbox)))
-        (tuatara.defaults::*spelling-wake-function* nil))
+        (tuatara.defaults::*speller* (cons sb-thread:*current-thread* (sb-concurrency:make-mailbox))))
     (setf (gethash "kia" (tuatara.defaults::spelling-table '("en_NZ"))) :wrong
           (gethash "kia" (tuatara.defaults::spelling-table '("de_DE"))) :wrong)
     (tuatara.defaults::spelling-add '("en_NZ") "kia" "en_NZ")
@@ -381,7 +379,6 @@ each of them and at the end, the editor woken to redraw."
   ;; a lot of words of a secret text the speller fails on: the debug log says the kind of failure only
   (let ((tuatara.defaults::*spelling-wanted* '())
         (tuatara.defaults::*spelling-draining* t)
-        (tuatara.defaults::*spelling-wake-function* nil)
         (table (make-hash-table :test 'equal)))
     (setf (gethash "kiwi" table) :asked)
     (drain-debug-reports)

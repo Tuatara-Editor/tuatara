@@ -356,10 +356,12 @@ it stopped (\\[save-buffers-kill-editor], the window closed), before the fronten
 goes: what is kept between sessions is written then. An error in one is said
 in the debug log and the others still run.")
 
-(defvar *startup-buffer-function* nil
-  "A function of no arguments returning the buffer to show when the editor
-starts without files and without a BUFFER argument; the defaults set it to
-choose a scratch buffer. When NIL, a buffer called *scratch* is used.")
+(defgeneric host-startup-buffer (host)
+  (:documentation "The buffer to show when the editor starts without files and without a BUFFER
+argument: the defaults choose a scratch buffer. NIL, as on the core's own host,
+for one called *scratch*.")
+  (:method ((host tuatara.runtime:host))
+    nil))
 
 (defun survive-stack-exhaustion ()
   "Have Steel Bank Common Lisp (SBCL) report running out of stack as a
@@ -370,32 +372,32 @@ it."
   (tuatara.runtime:ignoring-errors-reported ("having running out of stack caught")
     (setf (sb-alien:extern-alien "lose_on_corruption_p" (sb-alien:unsigned 8)) 0)))
 
-(defvar *visit-file-function* nil
-  "A function of a file's path, and keys :SAFE (visit it safely) and :HEX (show
-it in the hex view, never first as text), that visits it as the editor's
-commands do (a PDF as its pages, a binary file safely in the hex view) and
-returns its buffer, for the files the editor is started with. The defaults set it.")
+(defgeneric host-visit-file (host path &key safe hex)
+  (:documentation "Visit the file at PATH, one the editor is started with, as the editor's
+commands do (a PDF as its pages, a binary file safely in the hex view), SAFE
+to visit it safely and HEX to show it in the hex view, never first as text,
+and return its buffer. The core's own host visits its text, saying why it
+opened safely when it did.")
+  (:method ((host tuatara.runtime:host) path &key safe hex)
+    (declare (ignore hex))
+    (let* ((buffer (tuatara.io:call-with-file-heads (lambda () (tuatara.io:visit-file path :safe safe))))
+           (why (tuatara.io:safe-visit-reason buffer)))
+      (when why
+        (message "~a opened safely: ~a; \\[end-safe-visit] opens it as usual" (tuatara.buffer:buffer-name buffer) why))
+      buffer)))
 
-(defvar *visit-standard-input-function* nil
-  "A function of an open descriptor that makes a buffer of what is read from
-it, in the background, and returns the buffer, for - among the files the
-editor is started with. The defaults set it.")
+(defgeneric host-visit-standard-input (host descriptor)
+  (:documentation "Make a buffer of what is read from DESCRIPTOR, open, in the background, and
+return the buffer, for - among the files the editor is started with."))
 
 (defun visit-startup-file (entry)
   "Visit ENTRY, a file the editor was started with: a path, or a list of it
-and :SAFE and :HEX as asked, or (:STANDARD-INPUT DESCRIPTOR); as
-*VISIT-FILE-FUNCTION* does, or else its text, saying why it opened safely
-when it did."
+and :SAFE and :HEX as asked, or (:STANDARD-INPUT DESCRIPTOR) (HOST-VISIT-FILE,
+HOST-VISIT-STANDARD-INPUT)."
   (if (and (consp entry) (eq (first entry) :standard-input))
-      (funcall *visit-standard-input-function* (second entry))
+      (host-visit-standard-input tuatara.runtime:*host* (second entry))
       (destructuring-bind (path &key safe hex) (alexandria:ensure-list entry)
-        (if *visit-file-function*
-            (funcall *visit-file-function* path :safe safe :hex hex)
-            (let* ((buffer (tuatara.io:call-with-file-heads (lambda () (tuatara.io:visit-file path :safe safe))))
-                   (why (tuatara.io:safe-visit-reason buffer)))
-              (when why
-                (message "~a opened safely: ~a; \\[end-safe-visit] opens it as usual" (tuatara.buffer:buffer-name buffer) why))
-              buffer)))))
+        (host-visit-file tuatara.runtime:*host* path :safe safe :hex hex))))
 
 (defvar *startup-buffers* '()
   "The buffers of the files the editor was started with, in order: those a
@@ -417,7 +419,7 @@ cannot be opened is said in the echo area and left out; the others open."
 (defun run-editor (frontend &key files (setup nil) buffer start)
   "Start FRONTEND, call SETUP with the editor if given (this is where the
 defaults install keymaps, modes, themes and the init file), then show the
-first of FILES that opens, or BUFFER, or what *STARTUP-BUFFER-FUNCTION* returns, call
+first of FILES that opens, or BUFFER, or what HOST-STARTUP-BUFFER gives, call
 START, if given, with the editor once that is shown, run the
 command loop, and stop the frontend when it ends. Setup runs before any
 buffer is shown, so what it installs (major modes, the startup buffers)
@@ -441,7 +443,7 @@ applies to them. Returns the editor."
                  *startup-buffers* (visit-startup-files files))
            (let ((first (or (first *startup-buffers*)
                             buffer
-                            (and *startup-buffer-function* (funcall *startup-buffer-function*))
+                            (host-startup-buffer tuatara.runtime:*host*)
                             (tuatara.buffer:find-buffer "*scratch*")
                             (tuatara.buffer:make-buffer "*scratch*"))))
              (select-window (tuatara.display:make-window first :width (max 1 width) :height (max 1 (- height 2))) editor)

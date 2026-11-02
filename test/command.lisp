@@ -176,6 +176,52 @@ function NAME, which is put back afterwards."
                    ,@body)
          ,@(loop for (name) in bindings for s in saved collect `(setf (fdefinition ',name) ,s))))))
 
+(defclass answering-host (tuatara.defaults::defaults-host)
+  ((answers :initarg :answers :reader answering-host-answers))
+  (:documentation "The defaults' host with some of its answers given by a test: a plist of a
+question's name, a HOST-... generic function, and the function answering it in
+its place, given the question's arguments after the host."))
+
+(defmacro define-test-answer (question &rest parameters)
+  "Have an ANSWERING-HOST answer QUESTION, of PARAMETERS after the host (a
+method's lambda list), with the function the test gave for it, else as the
+defaults do."
+  (let ((call (loop with keys = nil
+                    for parameter in parameters
+                    do (when (member parameter '(&optional &key)) (setf keys (eq parameter '&key)))
+                    unless (member parameter lambda-list-keywords)
+                      append (if keys (list (intern (symbol-name parameter) :keyword) parameter) (list parameter)))))
+    `(defmethod ,question ((host answering-host) ,@parameters)
+       (let ((answer (getf (answering-host-answers host) ',question)))
+         (if answer (funcall answer ,@call) (call-next-method))))))
+
+(define-test-answer tuatara.runtime:host-wake)
+(define-test-answer tuatara.runtime:host-say-hook-failure text)
+(define-test-answer tuatara.runtime:host-secret-buffer-p buffer)
+(define-test-answer tuatara.io:host-writing-refusal path &key dirfd fd)
+(define-test-answer tuatara.io:host-writing-told words)
+(define-test-answer tuatara.io:host-save-transform buffer path)
+(define-test-answer tuatara.display:host-tab-width buffer)
+(define-test-answer tuatara.syntax:host-trusted-text-p buffer)
+(define-test-answer tuatara.syntax:host-helper-refused trusted)
+(define-test-answer tuatara.syntax:host-helper-ended helper)
+(define-test-answer tuatara.syntax:host-must-not-wait-p)
+(define-test-answer tuatara.syntax:host-buffer-shown-p buffer)
+(define-test-answer tuatara.syntax:host-syntax-fault syntax)
+(define-test-answer tuatara.syntax:host-syntax-slow syntax)
+
+(defun make-answering-host (&rest answers)
+  "A host answering each question of ANSWERS, a HOST-... generic function's
+name followed by the function answering it in its place (DEFINE-TEST-ANSWER),
+and the others as the defaults do: bound to TUATARA.RUNTIME:*HOST* for a test."
+  (make-instance 'answering-host :answers answers))
+
+(defun this-thread-only ()
+  "A function of no arguments true on the thread that made it only, as the
+editor's thread is for a test that has no editor running."
+  (let ((thread sb-thread:*current-thread*))
+    (lambda () (eq sb-thread:*current-thread* thread))))
+
 (defun processing-shown (frontend &rest texts)
   "True when some frame FRONTEND painted had a row holding every string in
 TEXTS with the mode line's sign of work, P, lit in :mode-line-sign."

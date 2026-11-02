@@ -45,6 +45,10 @@ window's edge."
   (and (soft-wrap-p buffer)
        (if *soft-wrap-at-fill-column* (buffer-fill-column buffer) t)))
 
+(defmethod tuatara.display:host-soft-wrap ((host defaults-host) buffer)
+  "How BUFFER's long lines wrap (BUFFER-SOFT-WRAP)."
+  (buffer-soft-wrap buffer))
+
 (defun wrap-indicator-width (editor window)
   "Gutter columns for the wrap indicator alone: those of *SOFT-WRAP-INDICATOR*
 while WINDOW's buffer wraps its lines and shows no line numbers (with them, the
@@ -77,9 +81,8 @@ coloured apart. NIL otherwise, and in windows not selected."
                                  :soft-wrap-row))))))
 
 (defun install-soft-wrap ()
-  "Wrap the lines of the buffers that want it, mark the rows that go on in
-the gutter, and paint the row point is on."
-  (setf tuatara.display:*soft-wrap-function* 'buffer-soft-wrap)
+  "Mark the rows that go on in the gutter of the buffers whose lines wrap, and
+paint the row point is on."
   (add-gutter-provider :wrap-indicator #'wrap-indicator-width #'wrap-indicator-cell :first t)
   ;; after the line's highlight in the list, so painted over it
   (setf *line-highlight-functions*

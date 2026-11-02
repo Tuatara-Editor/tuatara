@@ -377,7 +377,7 @@ leader key in the mode's NORMAL and support keys."
         (link-mode-layers)
         map)))
 
-(defun mode-state-keys (buffer state-keymap)
+(defmethod host-state-keymaps ((host defaults-host) buffer state-keymap)
   "The keys bound for BUFFER's major mode, or the nearest it is made from, in
 the state whose keys are STATE-KEYMAP: a list of one keymap, or none."
   (when (plusp (hash-table-count *mode-layers*))
@@ -413,7 +413,6 @@ binds it to, when it binds one."
                                            ("n" calendar-journal-entry)))
   (copy-normal-keys '("%" "y") *tuatara-calendar-keymap*)
   (put-leader-on *leader-key*)
-  (setf tuatara.command:*state-keys-function* 'mode-state-keys)
   (define-keys *tuatara-leader-keymap* *tuatara-leader-bindings*)
   (label-keys *tuatara-leader-keymap* *tuatara-leader-labels*)
   (tuatara-normal-claim-wrap-keys))

@@ -78,7 +78,10 @@ With a count, on when it is positive, off when it is zero or less."
   (setf *debug-on-error* (switched-by-count *debug-on-error*))
   (message "Debug on Error ~:[disabled~;enabled~] globally" *debug-on-error*))
 
+(defmethod host-show-backtrace ((host defaults-host) condition calls)
+  "Show CONDITION and CALLS in *Backtrace* (SHOW-BACKTRACE)."
+  (show-backtrace condition calls))
+
 (defun install-backtrace ()
-  "Show *Backtrace* for errors while *DEBUG-ON-ERROR* is on, and bind its keys."
-  (setf *backtrace-function* 'show-backtrace)
+  "Bind the keys of *Backtrace*, shown for errors while *DEBUG-ON-ERROR* is on."
   (define-key *backtrace-keymap* "RET" 'xref-find-definitions))

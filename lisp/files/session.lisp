@@ -204,7 +204,7 @@ was; NIL when it cannot be (a file no longer there)."
 to make once the editor's first window is there, with the buffers opened for
 it: (TREE . BUFFERS), BUFFERS each window's buffer by its entry.")
 
-(defun session-startup-buffer ()
+(defmethod host-startup-buffer ((host defaults-host))
   "The buffer the editor starts with when it starts without files: with
 *KEEP-SESSION* the session's, its files and windows opened again; else
 STARTUP-BUFFER's."

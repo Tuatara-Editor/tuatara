@@ -8,7 +8,7 @@
 ;;;; names, is one of them; everything below it is too. Such a file opens
 ;;;; safely however it is opened, and the editor writes nothing there: the
 ;;;; core asks EVIDENCE-WRITING-REFUSAL before every file it writes, makes,
-;;;; renames or deletes (TUATARA.IO:*WRITING-REFUSAL-FUNCTION*), told where the
+;;;; renames or deletes (TUATARA.IO:HOST-WRITING-REFUSAL), told where the
 ;;;; folder it opened really is. Names are compared without regard to case, as
 ;;;; some drives store them. Each folder's answer is kept until the setting
 ;;;; changes or the folder is another one (a drive mounted over it); with no
@@ -596,7 +596,7 @@ process's folder, as the system takes it) and by where the thing open as
 file descriptor (FD), or the folder open as DIRFD with PATH's name in it,
 really is, else by where PATH leads; NIL when it is not. With PATH NIL, true
 when *EVIDENCE-FOLDERS* names any folder. The core asks this before it writes
-\(TUATARA.IO:*WRITING-REFUSAL-FUNCTION*)."
+\(TUATARA.IO:HOST-WRITING-REFUSAL)."
   (let ((rules (evidence-rules)))
     (cond ((null rules) nil)
           ((null path) t)
@@ -754,9 +754,15 @@ echo area and *Messages*, the first time only."
     (setf (gethash words *writing-told*) t)
     (message "~a" words)))
 
-;; asked before anything is written, from the moment the defaults are loaded
-(setf tuatara.io:*writing-refusal-function* 'evidence-writing-refusal
-      tuatara.io:*writing-told-function* 'say-writing-once)
+(defmethod tuatara.io:host-writing-refusal ((host defaults-host) path &key dirfd fd)
+  "Why nothing may be written at PATH: it is in an evidence folder
+\(EVIDENCE-WRITING-REFUSAL); asked before anything is written, from the moment
+the defaults are loaded."
+  (evidence-writing-refusal path :dirfd dirfd :fd fd))
+
+(defmethod tuatara.io:host-writing-told ((host defaults-host) words)
+  "Say WORDS of a file written, the first time only (SAY-WRITING-ONCE)."
+  (say-writing-once words))
 
 ;;; Buffers of evidence
 
@@ -1097,11 +1103,8 @@ or each entry with the folders it matches on disk, and those not read."
                       collect (format nil "  ~s: not read, left out: ~a" given why))))))
 
 (defun install-evidence ()
-  "Have the core ask before every write whether it is in an evidence folder
-\(*EVIDENCE-FOLDERS*), the mode line say Evidence for a file in one, and the
-buffers of files that become evidence once the setting changes made
-read-only."
-  (setf tuatara.io:*writing-refusal-function* 'evidence-writing-refusal
-        tuatara.io:*writing-told-function* 'say-writing-once)
+  "Have the mode line say Evidence for a file in an evidence folder
+\(*EVIDENCE-FOLDERS*), and the buffers of files that become evidence once the
+setting changes made read-only."
   (pushnew 'evidence-mode-line *mode-line-name-functions*)
   (pushnew 'evidence-tick *tick-functions*))

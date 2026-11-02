@@ -274,8 +274,8 @@ kept, and the file's the same), or named in *GRAMMARS-ON* and kept as it is
 now, the first time. Its file changed or gone, it is refused, said once,
 until it is turned on again. The verdict is kept for the session, so that
 nothing is read again for it (*USER-GRAMMAR-VERDICTS*). Asked when the
-grammar is loaded (TUATARA.SYNTAX:*USER-GRAMMAR-FUNCTION*), on the thread
-loading it."
+grammar is loaded (TUATARA.SYNTAX:HOST-USER-GRAMMAR-ALLOWED-P), on the
+thread loading it."
   (let ((how (gethash name (grammars-on-table))))
     (when (member how '(:user :named))
       (let ((verdict (gethash name *user-grammar-verdicts*)))
@@ -297,6 +297,10 @@ loading it."
               (message "The ~a grammar you added has ~:[changed~;gone, or its copy kept~] since you turned it on: it stays off until you turn it on again (~a)"
                        name (eq verdict :gone) (substitute-command-keys "\\[turn-on-grammar]")))))
         (eq verdict :trusted)))))
+
+(defmethod tuatara.syntax:host-user-grammar-allowed-p ((host defaults-host) name)
+  "True when NAME, a grammar you added, may be loaded now (USER-GRAMMAR-ALLOWED-P)."
+  (user-grammar-allowed-p name))
 
 (defun language-words (language)
   "LANGUAGE named for a person: the mode-line name of its first mode, else its own name."

@@ -4,7 +4,7 @@
 (in-package #:tuatara.tests)
 
 (define-test definitions
-  :description "No function, macro or command is defined twice in one package, where the later would quietly replace the earlier; no two tests have one name.")
+  :description "No function, macro or command is defined twice in one package, where the later would quietly replace the earlier; no two tests have one name; the core asks the host, never a variable holding one function.")
 
 (defun source-files (top)
   "Every Lisp source file under the folder TOP of the repository (\"lisp\", \"src\")."
@@ -57,6 +57,16 @@ the package's name and the reader's name in lower case."
                                      (string-downcase (symbol-name accessor)))
                                found :test #'equal))))))))))
     found))
+
+(define-test (definitions core-asks-the-host)
+  ;; what only the features know the core asks the host for, never a variable holding one function
+  (let ((slots '()))
+    (dolist (file (source-files "src"))
+      (cl-ppcre:do-register-groups (name) ("(?m)^\\(def(?:var|parameter) (\\*[^\\s()]+-function\\*)"
+                                           (uiop:read-file-string file))
+        (push (format nil "~(~a~) in ~a" name (file-namestring file)) slots)))
+    (is equal '() slots)
+    (true (typep tuatara.runtime:*host* 'tuatara.defaults::defaults-host))))
 
 (define-test (definitions accessors-kept)
   ;; a function defined with a structure's slot reader's name replaces the reader

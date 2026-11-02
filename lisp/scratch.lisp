@@ -80,16 +80,16 @@ and its value on the lines after it; when it was killed, a new one."
 killed, a new one."
   (show-scratch "*org-scratch*"))
 
-(defun remade-scratch-buffer (&optional dying)
+(defmethod host-new-buffer ((host defaults-host) dying)
   "The buffer shown when no other is left: the scratch buffer AUTO-SCRATCH-NAME
 names, made as at startup, in its mode with its first text, or the one there
 is when it is not DYING, the buffer being killed (DYING, when it has that
-name, gives it up to the new one); an empty *scratch* when
+name, gives it up to the new one); NIL, for an empty *scratch*, when
 *AUTO-SCRATCH-BUFFERS* has none."
   (let* ((name (auto-scratch-name))
          (existing (and name (tuatara.buffer:find-buffer name))))
     (cond
-      ((null name) (let ((*new-buffer-function* nil)) (new-buffer dying)))
+      ((null name) nil)
       ((and existing (not (eq existing dying))) existing)
       (t
        (when existing
@@ -104,4 +104,4 @@ the first scratch buffer made; else an empty *scratch*."
   (ensure-scratch-buffers)
   (or (tuatara.buffer:find-buffer tuatara-user:*startup-buffer*)
       (let ((name (auto-scratch-name))) (and name (tuatara.buffer:find-buffer name)))
-      (let ((*new-buffer-function* nil)) (new-buffer))))
+      (new-buffer)))

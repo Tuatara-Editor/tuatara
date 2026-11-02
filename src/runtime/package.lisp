@@ -4,21 +4,21 @@
 (defpackage #:tuatara.runtime
   (:use #:cl #:alexandria)
   (:documentation "Threads: the pool of workers that runs pieces of work in parallel, the number of processors, waiting on a condition with a time limit, jobs in the background and their one runner, the running of hooks, and the reports of debug mode.")
-  (:export #:jobs-of #:make-spares #:take-spare #:give-back-spare #:with-spare #:resource-directories #:foreign-library-p #:foreign-call  #:*source-tree* #:cpu-count #:run-tasks #:ensure-pool #:*pool* #:pool #:pool-size #:wait-on #:wait-on-until
-           #:*debug-on* #:*debug-start* #:*debug-reports* #:*debug-wake-function* #:debug-report #:with-thread-guard #:make-guarded-thread #:bisect #:carry-settings #:queue-debug-report #:*stop-wait* #:join-within #:left-running
+  (:export #:host #:*host* #:host-wake #:jobs-of #:make-spares #:take-spare #:give-back-spare #:with-spare #:resource-directories #:foreign-library-p #:foreign-call  #:*source-tree* #:cpu-count #:run-tasks #:ensure-pool #:*pool* #:pool #:pool-size #:wait-on #:wait-on-until
+           #:*debug-on* #:*debug-start* #:*debug-reports* #:debug-report #:with-thread-guard #:make-guarded-thread #:bisect #:carry-settings #:queue-debug-report #:*stop-wait* #:join-within #:left-running
            #:set-debug #:milliseconds-since #:seconds-since #:deadline-in #:deadline-passed-p #:seconds-left #:*debug-log-path* #:log-in-use-p #:debug-report-line #:backtrace-lines
            #:reporting-errors #:ignoring-errors-reported
            ;; hooks
            #:quit #:run-hook #:run-hook-until-success #:run-hook-until-done #:call-hook-function #:hook-function-name
-           #:*hook-failure-function* #:*hook-failures-said*
+           #:host-say-hook-failure #:*hook-failures-said*
            #:*secret-at-hand* #:refusal #:refuse
-           #:*secret-buffer-function* #:secret-buffer-p #:failure-words #:note-editor-busy
+           #:host-secret-buffer-p #:secret-buffer-p #:failure-words #:note-editor-busy
            #:start-hang-watch #:*hang-report-seconds* #:lock-fd #:open-rotated-log
            ;; work stopped at once
            #:stoppable #:stoppable-work #:stop-work #:check-stopped #:*slow-call-seconds*
            ;; jobs in the background
            #:job #:job-p #:job-buffer #:job-status #:job-error #:job-cancel #:job-thread #:job-started #:job-wake #:job-frame #:job-wake-editor #:job-process #:job-program-started
-           #:*jobs* #:*job* #:*job-start-function* #:*job-take-in-function* #:*job-buffer-name* #:job-buffer-name #:job-stopped #:job-running-p #:job-check-stop
+           #:*jobs* #:*job* #:host-job-started #:host-take-in-job #:*job-buffer-name* #:job-buffer-name #:job-stopped #:job-running-p #:job-check-stop
            #:job-percent #:job-doing #:define-job-words #:job-state-words #:job-description #:job-verb #:job-left-words
            #:job-consequence #:job-stop #:job-holds-queue-p #:job-shows-processing-p #:job-at-exit #:job-take-in
            #:job-guarded-spans #:*job-taken-in* #:span-touched-p #:job-guards #:guard-touched #:job-guard-question #:job-guard-refusal

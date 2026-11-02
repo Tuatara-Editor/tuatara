@@ -1306,30 +1306,29 @@ STAMP: the process runs as root, or as that owner and a member of that group."
   (:documentation "A file operation refused by the editor itself for where it
 would write, make, change or delete something (WRITING-REFUSAL)."))
 
-(defvar *writing-refusal-function* nil
-  "A function saying where the editor writes nothing, or NIL for nowhere:
-called with a path (a native name) where something is about to be written,
-made, renamed, changed or deleted, and the keywords :DIRFD, a descriptor of
-the folder it is in, and :FD, one of the thing itself, by which it is told
-where that really is; it returns in words why nothing may be written there,
-or NIL when it may. Called with NIL for a path, it returns true when it
-refuses any place at all. The evidence folders (*EVIDENCE-FOLDERS*) are
-refused so.")
+(defgeneric host-writing-refusal (host path &key dirfd fd)
+  (:documentation "Where the editor writes nothing: why nothing may be written at PATH (a native
+name) where something is about to be written, made, renamed, changed or
+deleted, in words, or NIL when it may; DIRFD, a descriptor of the folder it is
+in, and file descriptor (FD), one of the thing itself, tell where that really
+is. With NIL for PATH, true when any place at all is refused. The evidence
+folders (*EVIDENCE-FOLDERS*) are refused so.")
+  (:method ((host tuatara.runtime:host) path &key dirfd fd)
+    (declare (ignore path dirfd fd))
+    nil))
 
 (defun writing-refusal (path &key dirfd fd)
   "Why nothing may be written at PATH (a native name, or a pathname), in
-words, or NIL when it may: as *WRITING-REFUSAL-FUNCTION* says, by where PATH
+words, or NIL when it may: as HOST-WRITING-REFUSAL says, by where PATH
 really leads, every link followed; with DIRFD, an open descriptor of the
 folder PATH is in, or file descriptor (FD), one of PATH itself, by where that
 really is now, whatever names lead there."
-  (let ((function *writing-refusal-function*))
-    (and function path (funcall function (native path) :dirfd dirfd :fd fd))))
+  (and path (host-writing-refusal tuatara.runtime:*host* (native path) :dirfd dirfd :fd fd)))
 
 (defun writing-refused-anywhere-p ()
   "True when the editor refuses to write in some place
-\(*WRITING-REFUSAL-FUNCTION*), so that what may reach one is looked at."
-  (let ((function *writing-refusal-function*))
-    (and function (funcall function nil) t)))
+\(HOST-WRITING-REFUSAL), so that what may reach one is looked at."
+  (and (host-writing-refusal tuatara.runtime:*host* nil) t))
 
 (defun check-writing (path operation &key dirfd fd)
   "Signal WRITING-REFUSED for OPERATION (a verb phrase, \"save\") on PATH when
@@ -1339,15 +1338,17 @@ as it has them)."
     (when why
       (error 'writing-refused :operation operation :path (native path) :reason why))))
 
-(defvar *writing-told-function* nil
-  "A function of words saying something done in writing a file that you
-should know of (a file's other names left as they were), or NIL to say
-nothing; TELL-WRITING calls it, from any thread.")
+(defgeneric host-writing-told (host words)
+  (:documentation "Say WORDS, something done in writing a file that you should know of (a
+file's other names left as they were); called from any thread (TELL-WRITING).")
+  (:method ((host tuatara.runtime:host) words)
+    (declare (ignore words))
+    nil))
 
 (defun tell-writing (words)
-  "Say WORDS of a file written, through *WRITING-TOLD-FUNCTION*."
-  (let ((function *writing-told-function*))
-    (when function (tuatara.runtime:ignoring-errors-reported ("telling of a file written") (funcall function words)))))
+  "Say WORDS of a file written (HOST-WRITING-TOLD)."
+  (tuatara.runtime:ignoring-errors-reported ("telling of a file written")
+    (host-writing-told tuatara.runtime:*host* words)))
 
 (defun fd-real-path (fd)
   "Where the file or folder open as file descriptor (FD) really is, as a

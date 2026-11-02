@@ -152,7 +152,7 @@ lines wrap at a word's edge; else point."
   (let ((b (current-buffer)))
     (cond ((hex-view-here-p) (tuatara.display:hex-point b))
           ((not by-line) (point))
-          ((and (tuatara.display:soft-wrap-of b) (not (rectangle-live-p b)))
+          ((and (buffer-soft-wrap b) (not (rectangle-live-p b)))
            (tuatara.display:window-row-start (current-window) (point)))
           (t (tuatara.buffer:buffer-line-start b (point))))))
 
@@ -203,7 +203,7 @@ its row of octets."
 (defun soft-wrap-row (buffer)
   "The row of the selected window that point is on, where BUFFER's long lines
 wrap at a word's edge (\\[soft-wrap-mode]) and no rectangle is live; else NIL."
-  (when (and (tuatara.display:soft-wrap-of buffer) (not (rectangle-live-p buffer)))
+  (when (and (buffer-soft-wrap buffer) (not (rectangle-live-p buffer)))
     (let ((window (current-window)))
       (aref (tuatara.display:window-layout-rows window (tuatara.display:window-row-start window (point)) 1) 0))))
 
@@ -323,7 +323,7 @@ the lines search filters hide are passed over."
 consecutive vertical motions; in the hex view, LINES rows of octets. The corner
 of a rectangle keeps its column on a shorter line, standing past its end."
   (when (hex-motion :row lines) (return-from vertical-motion nil))
-  (when (and (tuatara.display:soft-wrap-of (current-buffer)) (not (rectangle-live-p (current-buffer))))
+  (when (and (buffer-soft-wrap (current-buffer)) (not (rectangle-live-p (current-buffer))))
     (return-from vertical-motion (row-motion (current-window) (current-buffer) lines)))
   (let* ((b (current-buffer)) (w (current-window))
          (vertical-p (member (editor-last-command *editor*) *vertical-motion-commands*))

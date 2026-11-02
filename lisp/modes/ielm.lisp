@@ -144,8 +144,8 @@ values go after it, then a new prompt; the input is remembered for
                (tuatara.buffer:buffer-insert buffer (tuatara.buffer:buffer-size buffer) (ielm-results result))
             ;; a new prompt whatever became of the results
             (ielm-insert-prompt buffer))
-          (when (and (getf result :backtrace) *backtrace-function*)
-            (funcall *backtrace-function* (second outcome) (getf result :backtrace)))))
+          (when (getf result :backtrace)
+            (show-backtrace (second outcome) (getf result :backtrace)))))
     ;; point in *ielm* itself: the Lisp typed, or *Backtrace*, may have selected another window
     (setf (tuatara.buffer:buffer-point buffer) (tuatara.buffer:buffer-size buffer))))
 

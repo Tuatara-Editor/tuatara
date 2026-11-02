@@ -22,13 +22,13 @@
   (:documentation "Signalled by keyboard-quit (\\`C-g') to abandon the current command or minibuffer.")
   (:report (lambda (c s) (declare (ignore c)) (format s "Quit"))))
 
-(defvar *hook-failure-function* nil
-  "A function of a text, saying that a hook function failed where it is seen
-\(the editor's echo area), or NIL to keep it to the debug log.")
+(defgeneric host-say-hook-failure (host text)
+  (:documentation "Say TEXT, that a hook function failed, where it is seen (the editor's echo
+area)."))
 
 (defvar *hook-failures-said* t
-  "True for a hook function's failure to be said through
-*HOOK-FAILURE-FUNCTION*; NIL while the caller says it in words of its own
+  "True for a hook function's failure to be said where it is seen
+\(HOST-SAY-HOOK-FAILURE); NIL while the caller says it in words of its own
 \(a question, a refusal), the debug log still told.")
 
 (defvar *hook-failures* (make-hash-table :test 'eq :weakness :key :synchronized t)
@@ -44,7 +44,7 @@ by, how a function made without a name is known where its source says so
 (defun hook-function-failed (function condition)
   "Note that FUNCTION, called from a hook, failed with CONDITION: in the debug
 log every time, while debug mode is on, the calls under way the first time;
-and the first time through *HOOK-FAILURE-FUNCTION*, while
+and the first time where it is seen (HOST-SAY-HOOK-FAILURE), while
 *HOOK-FAILURES-SAID*. A function named by a symbol and defined again counts
 as failing for the first time. Called before the calls under way are left."
   (let* ((key (if (and (symbolp function) (fboundp function)) (fdefinition function) function))
@@ -52,10 +52,9 @@ as failing for the first time. Called before the calls under way are left."
          (text (format nil "~a failed and was left out: ~a" (hook-function-name function) (failure-words condition))))
     (setf (gethash key *hook-failures*) t)
     (debug-report :error "~a~{~%    ~a~}" text (and first (not *secret-at-hand*) (backtrace-lines)))
-    (let ((say *hook-failure-function*))
-      (when (and first say *hook-failures-said*)
-        (funcall say (format nil "~a failed and was left out: ~a"
-                             (hook-function-name function) (failure-words condition :said t)))))))
+    (when (and first *hook-failures-said*)
+      (host-say-hook-failure *host* (format nil "~a failed and was left out: ~a"
+                                            (hook-function-name function) (failure-words condition :said t))))))
 
 (defmacro with-failure-said ((function condition) form &body failed)
   "The values of FORM, a call of FUNCTION from a hook; when it fails (signals

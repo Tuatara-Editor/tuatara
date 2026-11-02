@@ -242,6 +242,11 @@ it names written in (SUBSTITUTE-COMMAND-KEYS), or one that changes files
                (tuatara.buffer:buffer-name (current-buffer))))
       (t reason))))
 
+(defmethod host-command-refusal ((host defaults-host) command)
+  "Refuse a command made for one kind of buffer anywhere else, or one that
+changes files in a buffer opened safely (MODE-COMMAND-REFUSAL)."
+  (mode-command-refusal command))
+
 (defun command-candidates (&key everywhere)
   "Completion candidates for every command that can run here (not those made
 for another kind of buffer), or with EVERYWHERE for every command there is:
@@ -310,7 +315,7 @@ candidates show each command's keys and the first line of its documentation."
         (setf (editor-repeatable *editor*) (list* chosen (prefix-argument) (editor-this-key *editor*))))
       (tuatara.runtime:debug-report :command "~(~a~) (M-x)" chosen)
       ;; a command made for another place says so, as it does from its keys
-      (let ((refusal (and *command-refusal-function* (funcall *command-refusal-function* chosen))))
+      (let ((refusal (mode-command-refusal chosen)))
         (if refusal
             (message "~a" refusal)
             (funcall (find-command chosen)))))))

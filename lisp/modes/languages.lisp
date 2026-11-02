@@ -618,8 +618,8 @@ Returns the thread, or NIL."
                         (let ((*rules-quiet* t))
                           (language-compiled-query language :colouring) (language-compiled-query language :injection) (language-compiled-query language :locals))
                      (sb-ext:atomic-incf (car tuatara.syntax:*rules-generation*))
-                     (let ((wake tuatara.syntax:*syntax-wake-function*))
-                       (when wake (ignoring-errors-reported ("waking the editor for new rules") (funcall wake)))))))))
+                     (ignoring-errors-reported ("waking the editor for new rules")
+                       (tuatara.runtime:host-wake tuatara.runtime:*host*)))))))
 
 (defun thread-once (table key function)
   "The thread running FUNCTION for KEY, kept in TABLE (a synchronized table)
@@ -753,19 +753,9 @@ buffer; the style each starts in is set in the init file with set-colouring."
                (setf (language-style language) (next (language-colouring language mode)))
                (message "~@(~a~) colouring: ~(~a~)" (language-name language) (language-style language))))))))
 
-(defun install-colouring (editor)
-  "Have a parse that finishes in the background wake EDITOR, to show its
-colours, and a grammar that fails, or a parse given up as too slow, say so; and
-a text left alone be parsed afresh (SYNTAX-REFRESH-TICK)."
-  (setf tuatara.syntax:*syntax-wake-function* (lambda () (wake-editor editor))
-        tuatara.syntax:*syntax-fault-function* 'report-grammar-fault
-        tuatara.syntax:*syntax-slow-function* 'report-slow-parse
-        tuatara.syntax:*syntax-helper-shared-function* 'buffer-in-trusted-project-p
-        tuatara.syntax:*helper-ended-function* 'report-helper-ended
-        tuatara.syntax:*helper-refused-function* 'report-no-sandbox-for-grammars
-        tuatara.syntax:*helper-in-use-function* 'buffer-shown-p
-        tuatara.syntax:*must-not-wait-function* 'on-editor-thread-p
-        tuatara.syntax:*user-grammar-function* 'user-grammar-allowed-p)
+(defun install-colouring ()
+  "Start the programs running the grammars, in the background, and have a text
+left alone be parsed afresh (SYNTAX-REFRESH-TICK)."
   ;; the helpers all share started now, in the background: the first start
   ;; looks for the sandbox, which may take a moment
   (sb-thread:make-thread (lambda ()
@@ -816,7 +806,7 @@ or when rules not answered for may be asked for again (*RULES-UNANSWERED*)."
   "True once the editor has said that memory is low and that parses stopped
 half way keep what they took until it starts again.")
 
-(defun report-slow-parse (syntax)
+(defmethod tuatara.syntax:host-syntax-slow ((host defaults-host) syntax)
   "Say that parsing the text of SYNTAX's buffer took too long, or too much
 memory, or that memory ran short, and it was given up."
   (let ((bytes (tuatara.text:rope-bytes (tuatara.syntax:syntax-rope syntax)))
@@ -838,12 +828,16 @@ memory, or that memory ran short, and it was given up."
   "True on the thread of the editor running, which never waits for a program to start."
   (and (running-editor) (not (away-from-editor-p))))
 
-(defun buffer-shown-p (buffer)
+(defmethod tuatara.syntax:host-must-not-wait-p ((host defaults-host))
+  "True on the thread of the editor running (ON-EDITOR-THREAD-P)."
+  (on-editor-thread-p))
+
+(defmethod tuatara.syntax:host-buffer-shown-p ((host defaults-host) buffer)
   "True when BUFFER is shown in a window of the editor running, from any thread."
   (let ((editor (running-editor)))
     (and editor (buffer-windows buffer editor) t)))
 
-(defun report-helper-ended (helper)
+(defmethod tuatara.syntax:host-helper-ended ((host defaults-host) helper)
   "Say that HELPER, a program running the grammars, ended while no parse ran
 in it (a parse that was running says so itself); its text is parsed again
 in a new one when it is next shown or edited."
@@ -860,7 +854,11 @@ to run the grammars in: TRUSTED when it is that of a project you trust."
   (message "~:[Files outside the projects you trust are not~;No text is~] coloured or parsed: there is no sandbox (bwrap) to run the grammars in. Install bubblewrap~:[~;, or set *syntax-helper-unconfined* to run them for the projects you trust without it~]; M-x check-health says more."
            trusted trusted))
 
-(defun report-grammar-fault (syntax)
+(defmethod tuatara.syntax:host-helper-refused ((host defaults-host) trusted)
+  "Say that text is not parsed for want of a sandbox (REPORT-NO-SANDBOX-FOR-GRAMMARS)."
+  (report-no-sandbox-for-grammars trusted))
+
+(defmethod tuatara.syntax:host-syntax-fault ((host defaults-host) syntax)
   "Say that the grammar of SYNTAX failed while reading its buffer and is off
 until the editor starts again; and, when its code may have damaged the
 editor's memory (not when it ran in the program parsing for the editor), to

@@ -13,7 +13,8 @@ answer, or as no to going ahead; C-g still gives up.")
 list, newest first, of what is said of those that fail in it."
   `(let ((,said '()))
      (clrhash tuatara.runtime::*hook-failures*)
-     (let ((tuatara.runtime:*hook-failure-function* (lambda (text) (push text ,said))))
+     (let ((tuatara.runtime:*host* (make-answering-host 'tuatara.runtime:host-say-hook-failure
+                                                        (lambda (text) (push text ,said)))))
        ,@body)))
 
 (define-test (hooks failure-said-once-others-run)

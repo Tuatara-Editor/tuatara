@@ -86,18 +86,12 @@ file starts the editor with it on."
 shown, its end in sight."
   (display-buffer (debug-buffer) :at :end))
 
-(defun install-debug (editor)
+(defun install-debug ()
   "Bind \\[view-debug-buffer] to \\`C-h E', show the reports of debug mode as they
-come, say Debug in the mode line while it is on, count the reports' times from
-now, and have a report made in another thread wake EDITOR to show it. The
-debug log's place, in the cache folder, is set once the init file is read,
-which may choose that folder (*cache-directory*)."
+come, say Debug in the mode line while it is on, and count the reports' times
+from now. The debug log's place, in the cache folder, is set once the init
+file is read, which may choose that folder (*cache-directory*)."
   (define-key *global-keymap* "C-h E" 'view-debug-buffer)
   (pushnew 'show-debug-reports *tick-functions*)
   (pushnew 'debug-mode-line *mode-line-functions*)
-  (setf tuatara.runtime:*debug-start* (get-internal-real-time))
-  (let ((thread sb-thread:*current-thread*))
-    (setf tuatara.runtime:*debug-wake-function*
-          (lambda ()
-            (unless (eq sb-thread:*current-thread* thread)
-              (wake-editor editor))))))
+  (setf tuatara.runtime:*debug-start* (get-internal-real-time)))

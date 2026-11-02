@@ -444,10 +444,11 @@ cases/2026-0001/work/ (WORK), each bound to its native name ending in /."
   (with-test-directory (dir)
     (let* ((root (namestring dir))
            (kept (namestring (put-file (merge-pathnames "kept.txt" dir) "kept")))
-           (tuatara.io:*writing-refusal-function*
-             (lambda (path &key dirfd fd)
-               (cond ((null path) t)
-                     ((or dirfd fd) "refused by the folder held open")))))
+           (tuatara.runtime:*host*
+             (make-answering-host 'tuatara.io:host-writing-refusal
+                                  (lambda (path &key dirfd fd)
+                                    (cond ((null path) t)
+                                          ((or dirfd fd) "refused by the folder held open"))))))
       (true (handler-case (progn (tuatara.io:write-new-file (concatenate 'string root "n.txt") "x") nil) (tuatara.io:writing-refused () t)))
       (true (handler-case (progn (tuatara.io:replace-file kept "x") nil) (tuatara.io:writing-refused () t)))
       (true (handler-case (progn (tuatara.io:remove-file kept) nil) (tuatara.io:writing-refused () t)))

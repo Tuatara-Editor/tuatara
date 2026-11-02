@@ -286,9 +286,12 @@ does and its history."
           (window-quit-restore window) quit
           (window-history window) history)))
 
-(defvar *tab-width-function* nil
-  "A function of a buffer returning the columns a tab takes in it, from one
-tab stop to the next; NIL for 8 in every buffer.")
+(defgeneric host-tab-width (host buffer)
+  (:documentation "The columns a tab takes in BUFFER, from one tab stop to the next; NIL for 8,
+as on the core's own host in every buffer.")
+  (:method ((host tuatara.runtime:host) buffer)
+    (declare (ignore buffer))
+    nil))
 
 (defun sensible-tab-width (width default)
   "WIDTH when it is a tab width the screen can show, a whole number from 1 to
@@ -296,35 +299,36 @@ tab stop to the next; NIL for 8 in every buffer.")
   (if (and (integerp width) (<= 1 width 64)) width default))
 
 (defun tab-width-of (buffer)
-  "The columns a tab takes in BUFFER, as *TAB-WIDTH-FUNCTION* says: a whole
-number from 1 to 64, 8 when it says nothing sensible."
-  (sensible-tab-width (and *tab-width-function* (funcall *tab-width-function* buffer)) 8))
+  "The columns a tab takes in BUFFER, as HOST-TAB-WIDTH says: a whole number
+from 1 to 64, 8 when it says nothing sensible."
+  (sensible-tab-width (host-tab-width tuatara.runtime:*host* buffer) 8))
 
-(defvar *soft-wrap-function* nil
-  "A function of a buffer saying how its lines longer than the window wrap: NIL
-for not at all (cut off at the window's edge and scrolled sideways), or at a
-word's edge, T at the window's edge or a column at that column; NIL for no
-wrapping in any buffer.")
-
-(defun soft-wrap-of (buffer)
-  "How BUFFER's long lines wrap at a word's edge, as *SOFT-WRAP-FUNCTION*
-says: NIL, T for the window's edge, or a column."
-  (and *soft-wrap-function* (funcall *soft-wrap-function* buffer)))
+(defgeneric host-soft-wrap (host buffer)
+  (:documentation "How BUFFER's lines longer than the window wrap: NIL for not at all (cut off
+at the window's edge and scrolled sideways), or at a word's edge, T at the
+window's edge or a column at that column; on the core's own host, not in any
+buffer.")
+  (:method ((host tuatara.runtime:host) buffer)
+    (declare (ignore buffer))
+    nil))
 
 (defun window-wraps-p (window)
   "True when WINDOW wraps long lines: set for the window (WINDOW-WRAP), or at a
-word's edge as its buffer wants (SOFT-WRAP-OF)."
-  (or (window-wrap window) (and (soft-wrap-of (window-buffer window)) t)))
+word's edge as its buffer wants (HOST-SOFT-WRAP)."
+  (or (window-wrap window) (and (host-soft-wrap tuatara.runtime:*host* (window-buffer window)) t)))
 
-(defvar *invisible-characters-function* nil
-  "A function of a buffer, true when the characters that draw nothing are
-shown in its text as their codes (<FEFF>, `*invisible-characters*'); NIL for
-not in any buffer.")
+(defgeneric host-invisible-characters-p (host buffer)
+  (:documentation "True when the characters that draw nothing are shown in BUFFER's text as their
+codes (<FEFF>, `*invisible-characters*'); on the core's own host, in no
+buffer.")
+  (:method ((host tuatara.runtime:host) buffer)
+    (declare (ignore buffer))
+    nil))
 
 (defun invisible-characters-of (buffer)
   "True when BUFFER shows the characters that draw nothing as their codes, as
-*INVISIBLE-CHARACTERS-FUNCTION* says."
-  (and *invisible-characters-function* (funcall *invisible-characters-function* buffer) t))
+HOST-INVISIBLE-CHARACTERS-P says."
+  (and (host-invisible-characters-p tuatara.runtime:*host* buffer) t))
 
 (defvar *layout-probe* nil
   "True while a window's buffer is laid out only to find where a row starts,
@@ -343,7 +347,7 @@ further. With SPARES, the rows are filled from WINDOW's rows no longer shown
 \(WINDOW-SPARE-ROWS) while it has any. Of a narrowed buffer, only the part
 shown is laid out."
   (let* ((buffer (window-buffer window))
-         (visual (soft-wrap-of buffer))
+         (visual (host-soft-wrap tuatara.runtime:*host* buffer))
          (wrap (or (window-wrap window) (and visual t))))
     (layout (tuatara.buffer:buffer-text buffer) start
             (window-text-width window) height
@@ -481,7 +485,8 @@ for laying it out, the window's width, height, wrapping and sideways
 scroll."
   (let ((buffer (window-buffer window)))
     (list (tuatara.buffer:buffer-version buffer) (window-text-width window) (window-height window)
-          (window-hscroll window) (window-wrap window) (soft-wrap-of buffer) (tab-width-of buffer)
+          (window-hscroll window) (window-wrap window) (host-soft-wrap tuatara.runtime:*host* buffer)
+          (tab-width-of buffer)
           (tuatara.buffer:buffer-line-ending buffer) (invisible-characters-of buffer)
           (tuatara.buffer:buffer-local buffer :folds) (hidden-bounds buffer) (tuatara.buffer:buffer-local buffer :line-prefix-function)
           (and *row-scaling* (tuatara.buffer:buffer-local buffer :line-scale-function))

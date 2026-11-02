@@ -593,7 +593,7 @@ how JOB ended, point at its start."
             (t (set-made-text buffer shown)
                (setf (tuatara.buffer:buffer-point buffer) 0))))))
 
-(defun visit-start-file (path &key safe hex)
+(defmethod host-visit-file ((host defaults-host) path &key safe hex)
   "Visit PATH, a file the editor is started with, as \\[find-file] does and
 return its buffer, without showing it: with SAFE safely; with HEX as its
 octets in the hex view, never shown as text or as a view of its kind first."
@@ -633,7 +633,7 @@ file with no name; SCRATCH, that file's descriptor, and SIZE, the octets in it."
                                        (tuatara.buffer:buffer-point buffer) 0)))
                              "~a could not be read: ~a~%"))))
 
-(defun visit-standard-input (descriptor)
+(defmethod host-visit-standard-input ((host defaults-host) descriptor)
   "Make a buffer of what is read from the open DESCRIPTOR, standard input, in
 the background, into a file with no name in the cache folder and from there
 as a large file is read, so that its size is bounded by the disk: called

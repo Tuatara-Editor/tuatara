@@ -953,8 +953,13 @@ match."
                         collect (list (aref moved (min start (length text))) (aref moved (min end (length text))) face))))
         (values text spans))))
 
-(setf tuatara.io:*said-shown-function* #'escape-controls
-      tuatara.runtime:*hook-failure-function* (lambda (text) (message "~a" (escape-controls text))))
+(defmethod tuatara.io:host-said-shown ((host tuatara.runtime:host) line)
+  "LINE with its controls written out (ESCAPE-CONTROLS)."
+  (escape-controls line))
+
+(defmethod tuatara.runtime:host-say-hook-failure ((host tuatara.runtime:host) text)
+  "Say TEXT in the echo area and *Messages*, its controls written out."
+  (message "~a" (escape-controls text)))
 
 (defun shown-name (text)
   "TEXT, a name from elsewhere, as a list, a menu or the window's title shows

@@ -331,7 +331,7 @@ its first octets are read."
 programs (TUATARA.IO:BUFFER-PLAINTEXT-P, which auto-save, the session, scratch
 files, the git gutter, the clipboard, exports and code files heed); no core
 dump of the editor while it is open. A save writes it encrypted, or asks
-first where it would write it as it is (ENCRYPTED-SAVE-TRANSFORM)."
+first where it would write it as it is (TUATARA.IO:HOST-SAVE-TRANSFORM)."
   (setf (tuatara.io:buffer-plaintext-p buffer) t)
   (pushnew buffer *encrypted-buffers*)
   (set-dumpable nil))
@@ -505,10 +505,10 @@ encrypted with a passphrase asks for it first."
                (cons "--encrypt" (loop for key in (getf encryption :keys) append (list "--recipient" key))))
           (list "--output" "-")))
 
-(defun encrypted-save-transform (buffer path)
-  "The transform of BUFFER's text as its save as PATH has it (*SAVE-TRANSFORM-FUNCTION*):
-for an encrypted buffer, or one saved under a name ending in .gpg, its text
-encrypted by gpg to the keys and passphrase it has; with none yet, the
+(defmethod tuatara.io:host-save-transform ((host defaults-host) buffer path)
+  "The transform of BUFFER's text as its save as PATH has it: for an encrypted
+buffer, or one saved under a name ending in .gpg, its text encrypted by gpg
+to the keys and passphrase it has; with none yet, the
 question how to encrypt it asked first (READ-ENCRYPTION), the save refused
 when nothing is chosen. A buffer holding text decrypted in place in a file
 that is not encrypted (\\[decrypt-region]) is saved as it is, the decrypted
@@ -539,7 +539,7 @@ save is refused."
                   (fill plain 0))
               (unless (and ok output (plusp (length output)))
                 (refuse "gpg could not encrypt ~a: ~a" name (gpg-failure-words statuses said)))
-              (return-from encrypted-save-transform (lambda (rope) (declare (ignore rope)) output)))))
+              (return-from tuatara.io:host-save-transform (lambda (rope) (declare (ignore rope)) output)))))
         (lambda (rope)
           (let ((tuatara.runtime:*secret-at-hand* t)
                 (plain (tuatara.text:rope-octets rope)))
@@ -691,7 +691,6 @@ start, its text kept from the disk before its first save encrypts it."
 (defun install-encrypted ()
   "Have files ending in .gpg opened decrypted and saved encrypted, their text kept from the disk."
   (pushnew 'encrypted-visit *file-views*)
-  (setf tuatara.io:*save-transform-function* 'encrypted-save-transform)
   (pushnew 'encrypted-killed tuatara.buffer:*kill-buffer-functions*)
   (pushnew 'encrypted-new-file tuatara.buffer:*find-file-functions*)
   (define-key *encrypted-waiting-keymap* "RET" 'decrypt-with-passphrase))

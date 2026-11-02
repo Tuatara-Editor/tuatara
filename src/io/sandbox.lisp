@@ -1185,11 +1185,10 @@ a FILE-SYSTEM-ERROR."
     (unwind-protect (apply #'sandbox-run program arguments :input fd keys)
       (sb-posix:close fd))))
 
-(defvar *said-shown-function* #'tuatara.text:one-line
-  "A function of a line a program shut in said, giving it as a message shows
-it: its control characters, and those changing the direction text is drawn
-in, written out (the editor's ESCAPE-CONTROLS, once it is loaded), so that
-what a program decoding a file prints cannot draw over the screen.")
+(defgeneric host-said-shown (host line)
+  (:documentation "LINE, one a program shut in said, as a message shows it: its control
+characters, and those changing the direction text is drawn in, written out, so
+that what a program decoding a file prints cannot draw over the screen."))
 
 (defun sandbox-outcome-words (outcome said &key (label "the program") (seconds-setting '*sandbox-seconds*))
   "Why a program run shut in (SANDBOX-RUN) gave nothing, as a sentence
@@ -1205,5 +1204,6 @@ NIL when OUTCOME is :DONE."
     (:cancelled (format nil "~a was stopped" label))
     (:too-much (format nil "~a printed more than it may" label))
     (t (let ((line (string-trim " " (or (first (uiop:split-string (or said "") :separator '(#\Newline))) ""))))
-         (format nil "~a failed~@[: ~a~]" label (and (plusp (length line))
-                                                     (funcall *said-shown-function* (subseq line 0 (min 300 (length line))))))))))
+         (format nil "~a failed~@[: ~a~]" label
+                 (and (plusp (length line))
+                      (host-said-shown tuatara.runtime:*host* (subseq line 0 (min 300 (length line))))))))))

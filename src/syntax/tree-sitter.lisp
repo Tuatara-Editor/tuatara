@@ -188,7 +188,7 @@ has no grammar of that name; else NIL."
 (defun user-grammar-p (name)
   "True when NAME names a grammar you added: in the folder you add them to, or
 kept from it (USER-GRAMMAR-STORE), Tuatara having none of that name. Such a
-grammar is loaded only as *USER-GRAMMAR-FUNCTION* allows."
+grammar is loaded only as HOST-USER-GRAMMAR-ALLOWED-P allows."
   (and (grammar-name-p name)
        (not (own-grammar-p name))
        (flet ((there-p (directory)
@@ -200,24 +200,27 @@ grammar is loaded only as *USER-GRAMMAR-FUNCTION* allows."
                (and store (there-p store)))))
        t))
 
-(defvar *user-grammar-function* nil
-  "A function of the name of a grammar you added, true when it may be loaded
-now: it is on, and the copy kept of it (USER-GRAMMAR-STORE) is what was
-turned on; NIL, and none may.")
+(defgeneric host-user-grammar-allowed-p (host name)
+  (:documentation "True when the grammar you added called NAME may be loaded now: it is on, and
+the copy kept of it (USER-GRAMMAR-STORE) is what was turned on; on the core's
+own host, none may.")
+  (:method ((host tuatara.runtime:host) name)
+    (declare (ignore name))
+    nil))
 
 (defun find-grammar (name)
   "The grammar called NAME (a string such as \"rust\"), loaded the first time it
 is asked for; NIL when there is none, or NAME cannot name one (GRAMMAR-NAME-P).
 A grammar that could not be asked for, the program parsing having ended, is
 asked for again next time. A grammar you added (USER-GRAMMAR-P) is loaded
-only when *USER-GRAMMAR-FUNCTION* allows it, its kept copy then, and asked
+only when HOST-USER-GRAMMAR-ALLOWED-P allows it, its kept copy then, and asked
 about again next time when not."
   (when (grammar-name-p name)
     (let ((known (gethash name *grammars*)))
       (if known
           (and (grammar-p known) known)
           (let* ((refused (and (user-grammar-p name)
-                               (not (and *user-grammar-function* (funcall *user-grammar-function* name)))))
+                               (not (host-user-grammar-allowed-p tuatara.runtime:*host* name))))
                  (file (and (not refused) (find-grammar-file (format nil "~a.so" name))))
                  (grammar (cond (refused :unknown)
                                 (file (load-grammar name)))))

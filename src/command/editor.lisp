@@ -402,18 +402,21 @@ first; NIL keeps none.")
           (if count (values (subseq line 0 open) count) (values line 1)))
         (values line 1))))
 
-(defvar *messages-made-function* nil
-  "A function of the *Messages* buffer, called when it has just been made,
-giving it what more it has (its major mode); NIL for nothing more.")
+(defgeneric host-messages-made (host buffer)
+  (:documentation "Give BUFFER, the *Messages* buffer just made, what more it has (its major
+mode); on the core's own host, nothing.")
+  (:method ((host tuatara.runtime:host) buffer)
+    (declare (ignore buffer))
+    nil))
 
 (defun messages-buffer ()
   "The *Messages* buffer, made when there is none: read-only, and given what
-*MESSAGES-MADE-FUNCTION* gives it."
+HOST-MESSAGES-MADE gives it."
   (or (tuatara.buffer:find-buffer "*Messages*")
       (let ((b (tuatara.buffer:make-buffer "*Messages*")))
         (setf (tuatara.buffer:buffer-read-only-p b) t
               (buffer-kind b) :messages)
-        (when *messages-made-function* (funcall *messages-made-function* b))
+        (host-messages-made tuatara.runtime:*host* b)
         b)))
 
 (defun add-to-log (buffer max change)
@@ -486,6 +489,12 @@ FUNCTION), for the editor's thread to run (TAKE-IN-THREAD-MESSAGES).")
   "True on a thread other than the one the running editor's session runs on."
   (let ((running *running-editor*))
     (and running (not (eq (cdr running) sb-thread:*current-thread*)))))
+
+(defmethod tuatara.runtime:host-wake ((host tuatara.runtime:host))
+  "Wake the running editor (WAKE-EDITOR) from another thread."
+  (let ((running *running-editor*))
+    (when (and running (not (eq (cdr running) sb-thread:*current-thread*)))
+      (wake-editor (car running)))))
 
 (defun thread-frame ()
   "The frame what is said or handed on from this thread is for: on the thread

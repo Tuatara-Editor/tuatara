@@ -331,16 +331,18 @@ first: what OTHER-BUFFER goes by.")
   (unless (eq buffer (first *buffer-order*))
     (setf *buffer-order* (cons buffer (delete buffer *buffer-order*)))))
 
-(defvar *new-buffer-function* nil
-  "A function of one argument, a buffer being killed or NIL, making the buffer
-to show when there is no other: a scratch buffer as the editor starts with
-(the one being killed may have its name). NIL for an empty *scratch*.")
+(defgeneric host-new-buffer (host dying)
+  (:documentation "The buffer made to show when there is no other, DYING the one being killed or
+NIL: a scratch buffer as the editor starts with (the one being killed may have
+its name). NIL, as on the core's own host, for an empty *scratch*.")
+  (:method ((host tuatara.runtime:host) dying)
+    (declare (ignore dying))
+    nil))
 
 (defun new-buffer (&optional dying)
-  "The buffer made to show when there is no other (*NEW-BUFFER-FUNCTION*),
-DYING the one being killed, if any."
-  (if *new-buffer-function*
-      (funcall *new-buffer-function* dying)
+  "The buffer made to show when there is no other (HOST-NEW-BUFFER), DYING the
+one being killed, if any."
+  (or (host-new-buffer tuatara.runtime:*host* dying)
       (tuatara.buffer:make-buffer
        (loop for n from 1
              for name = (if (= n 1) "*scratch*" (format nil "*scratch*<~d>" n))

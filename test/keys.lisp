@@ -111,7 +111,7 @@ the editor TUATARA.COMMAND:*EDITOR* is bound to."
                   (loop for (what name) in (docstring-references doc)
                         do (unless (ecase what
                                      (:command (tuatara.command:command-symbol name))
-                                     (:keymap (tuatara.command:keymap-called name))
+                                     (:keymap (tuatara.command:host-keymap-named tuatara.runtime:*host* name))
                                      (:keys (tuatara.command:valid-key-text-p name)))
                              (push (format nil "~s names ~(~a~) ~s" symbol what name) bad)))))))))
       ;; and the faces' documentation
@@ -121,7 +121,7 @@ the editor TUATARA.COMMAND:*EDITOR* is bound to."
                      (loop for (what reference) in (docstring-references doc)
                            do (unless (ecase what
                                         (:command (tuatara.command:command-symbol reference))
-                                        (:keymap (tuatara.command:keymap-called reference))
+                                        (:keymap (tuatara.command:host-keymap-named tuatara.runtime:*host* reference))
                                         (:keys (tuatara.command:valid-key-text-p reference)))
                                 (push (format nil "face ~s names ~(~a~) ~s" name what reference) bad))))))
                tuatara.display:*faces*)

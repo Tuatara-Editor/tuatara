@@ -6,7 +6,7 @@
 ;;;; current the frame each event happened in (TAKE-TO-ITS-FRAME, dispatch.lisp).
 ;;;; Every frame shares the buffers; each has its own windows, and so its own
 ;;;; point in a buffer it shows. The list of frames is read from other threads
-;;;; (KEY-WAITING-P, BUFFER-SHOWN-P), so it is replaced, never changed in place.
+;;;; (KEY-WAITING-P, HOST-BUFFER-SHOWN-P), so it is replaced, never changed in place.
 
 (in-package #:tuatara.command)
 
@@ -109,24 +109,21 @@ it has something new to show; NIL without an editor."
   (let ((editor *editor*))
     (and editor (lambda () (wake-editor editor)))))
 
-(defun tie-job-to-editor (job)
-  "Tie JOB, starting now, to the editor running (TUATARA.RUNTIME:*JOB-START-FUNCTION*):
-its thread wakes the editor (EDITOR-JOB-WAKER), unless it has a way of its
-own, and what it says is shown in the frame it is begun in (THREAD-FRAME)."
+(defmethod tuatara.runtime:host-job-started ((host tuatara.runtime:host) job)
+  "Tie JOB, starting now, to the editor running: its thread wakes the editor
+\(EDITOR-JOB-WAKER), unless it has a way of its own, and what it says is shown
+in the frame it is begun in (THREAD-FRAME)."
   (let ((editor *editor*))
     (when editor
       (unless (tuatara.runtime:job-wake job)
         (setf (tuatara.runtime:job-wake job) (editor-job-waker)))
       (setf (tuatara.runtime:job-frame job) (editor-frame editor)))))
 
-(defun call-in-job-frame (job function)
-  "Call FUNCTION, JOB's taking in (TUATARA.RUNTIME:*JOB-TAKE-IN-FUNCTION*),
-with the frame JOB was begun in the one worked in while it is open, else the
-frame worked in, so that what the taking in says shows there."
+(defmethod tuatara.runtime:host-take-in-job ((host tuatara.runtime:host) job function)
+  "Call FUNCTION, JOB's taking in, with the frame JOB was begun in the one
+worked in while it is open, else the frame worked in, so that what the taking
+in says shows there."
   (let ((editor *editor*))
     (if editor
         (call-in-frame editor (frame-or-current editor (tuatara.runtime:job-frame job)) function)
         (funcall function))))
-
-(setf tuatara.runtime:*job-start-function* 'tie-job-to-editor
-      tuatara.runtime:*job-take-in-function* 'call-in-job-frame)

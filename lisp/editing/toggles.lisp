@@ -95,11 +95,8 @@ centred."
     (and words (format nil "~{~a~^  ~}" words))))
 
 (defun install-display-toggles ()
-  "Show the words of the display toggles on in a buffer in its mode line, and
-the characters that draw nothing as their codes in the buffers that want it
-\(\\[invisible-characters-mode])."
-  (pushnew 'display-toggles-mode-line *mode-line-functions*)
-  (setf tuatara.display:*invisible-characters-function* 'invisible-characters-p))
+  "Show the words of the display toggles on in a buffer in its mode line."
+  (pushnew 'display-toggles-mode-line *mode-line-functions*))
 
 (eval-when (:compile-toplevel :load-toplevel :execute)
   (defun filled-docstring (control &rest arguments)
@@ -216,3 +213,8 @@ the character as ever. The mode line says Invisible while it is on."
   :example "'((text-mode . t) (csv-mode . t))"
   :mode-line "Invisible"
   :where (invisible-characters-safe-p "in a file opened safely (*invisible-characters-when-safe*)"))
+
+(defmethod tuatara.display:host-invisible-characters-p ((host defaults-host) buffer)
+  "True when BUFFER shows the characters that draw nothing as their codes
+\(\\[invisible-characters-mode])."
+  (invisible-characters-p buffer))

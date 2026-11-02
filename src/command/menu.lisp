@@ -73,8 +73,12 @@ saying so, and \\`C-g' asks first when an argument was changed."
   "The menu DEFINE-MENU made under NAME, the command opening it, or NIL."
   (values (gethash name *menus*)))
 
-(defvar *menu-help-function* nil
-  "A function of a text showing it in *Help*: what \\`C-h' in a menu lists.")
+(defgeneric host-show-help (host text)
+  (:documentation "Show TEXT in *Help*: what \\`C-h' in a menu lists. The core's own host shows
+nothing.")
+  (:method ((host tuatara.runtime:host) text)
+    (declare (ignore text))
+    nil))
 
 (defun menu-shows-p (menu entry)
   "True when MENU has ENTRY now (its SHOW function, when it has one)."
@@ -151,10 +155,10 @@ key says why and keeps the menu open. A menu that holds
 
 (defun menu-refusals (menu)
   "The actions of MENU that cannot run here now, each (ENTRY . WHY), WHY what
-*COMMAND-REFUSAL-FUNCTION* says instead of running its command."
+HOST-COMMAND-REFUSAL says instead of running its command."
   (loop for entry in (menu-entries menu :all t)
         for command = (menu-entry-command entry)
-        for why = (and command (command-refusal command))
+        for why = (and command (host-command-refusal tuatara.runtime:*host* command))
         when why collect (cons entry why)))
 
 (define-command menu-entry-refused ()
@@ -280,8 +284,8 @@ one, those it leaves out now marked so, with the command or argument of each."
   "List in *Help* every entry of the open menu: its keys, what it says and
 the command or argument behind it, those not shown now too."
   (let ((open (editor-menu *editor*)))
-    (when (and open *menu-help-function*)
-      (funcall *menu-help-function* (menu-text (first open))))))
+    (when open
+      (host-show-help tuatara.runtime:*host* (menu-text (first open))))))
 
 (defun menu-entry-text (entry arguments)
   "ENTRY as the panel shows it, given the ARGUMENTS on: its label, and for a

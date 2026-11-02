@@ -368,7 +368,7 @@ prefix's keys under its name, indented."
                             (key-line out indent keys name)))))
       (walk prefix 1))))
 
-(defun describe-prefix-keys (editor prefix)
+(defmethod host-show-prefix-help ((host defaults-host) editor prefix)
   "Show in *Help* every key under PREFIX (key specs) where the cursor is:
 \\`C-h' after a prefix key (\\`C-x C-h', \\`SPC C-h')."
   (let* ((keymaps (active-keymaps editor))
@@ -381,6 +381,14 @@ prefix's keys under its name, indented."
 is in it already."
   (unless (typep (buffer-major-mode buffer) 'special-mode)
     (set-major-mode buffer 'special-mode)))
+
+(defmethod host-messages-made ((host defaults-host) buffer)
+  "Put BUFFER, *Messages* just made, in special mode (MESSAGES-IN-SPECIAL-MODE)."
+  (messages-in-special-mode buffer))
+
+(defmethod host-show-help ((host defaults-host) text)
+  "Show TEXT in *Help* (SHOW-HELP)."
+  (show-help text))
 
 (define-command tuatara-version ()
   "Say which Tuatara this is: its version, the commit it was built from and
@@ -404,11 +412,9 @@ and which \\<special-mode>\\[quit-window] closes."
   (display-buffer (messages-buffer) :at :end))
 
 (defun install-help ()
-  "Bind the help keys; \\`C-h' after a prefix key lists the keys under it;
-*Messages* in special mode, made so again when it has been killed."
+  "Bind the help keys, and put *Messages* in special mode, as it is again
+when it is made anew after it has been killed."
   (buttons-in-mode 'help-mode "*Help* and *Apropos*")
-  (setf *prefix-help-function* 'describe-prefix-keys
-        *menu-help-function* 'show-help)
   (define-key *global-keymap* "C-h k" 'describe-key)
   (define-key *global-keymap* "C-h f" 'describe-function)
   (define-key *global-keymap* "C-h x" 'describe-command)
@@ -416,5 +422,4 @@ and which \\<special-mode>\\[quit-window] closes."
   (define-key *global-keymap* "C-h a" 'apropos-command)
   (define-key *global-keymap* "C-h b" 'describe-bindings)
   (define-key *global-keymap* "C-h e" 'view-echo-area-messages)
-  (setf *messages-made-function* 'messages-in-special-mode)
   (messages-in-special-mode (messages-buffer)))

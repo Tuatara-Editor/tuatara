@@ -105,6 +105,10 @@ only when asked, *LSP-TRUSTED-PROJECTS* or *EVIDENCE-FOLDERS* change."
           (setf (tuatara.buffer:buffer-local buffer :trusted-project-seen) (cons key answer))
           answer))))
 
+(defmethod tuatara.syntax:host-trusted-text-p ((host defaults-host) buffer)
+  "True when BUFFER visits a file of a project you trust (BUFFER-IN-TRUSTED-PROJECT-P)."
+  (buffer-in-trusted-project-p buffer))
+
 (defun project-look-only-p (root)
   "True when the project at ROOT, where it really is, is or is within a
 folder answered look only: git reads it and runs nothing of it, and

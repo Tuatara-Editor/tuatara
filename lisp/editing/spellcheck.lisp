@@ -524,8 +524,7 @@ when one of them takes it. Empty: as *SPELLCHECK-LANGUAGES* says."
     (setf (tuatara.buffer:buffer-local buffer :spellcheck-languages) languages)
     (message "Spelling checked in ~{~a~^ ~}" (spellcheck-languages-of buffer))))
 
-(defun install-spellcheck (editor)
+(defun install-spellcheck ()
   "Mark the words spelt wrong in the windows whose buffers want it, redrawn
 as the speller answers, and say what cannot be checked."
-  (setf *spelling-wake-function* (lambda () (wake-editor editor)))
   (pushnew 'spellcheck-highlights tuatara.command:*text-highlight-functions*))

@@ -1939,10 +1939,10 @@ DIR is visited and its status read, the project trusted. Returns the frontend."
         (alexandria:write-string-into-file (format nil "~%# Please enter the commit message.~%") file)
         (setf (tuatara.frontend.fake:fake-pending f) t)
         (queue-test-keys f (list (format nil "C-x C-f C-a C-k ~a RET" (rimu-typed file)) "F i x C-c C-c"))
-        (with-functions-replaced ((tuatara.io::save-transform
-                                   (lambda (buffer path)
-                                     (declare (ignore buffer path))
-                                     (lambda (rope) (sleep 0.5) rope))))
+        (let ((tuatara.runtime:*host* (make-answering-host 'tuatara.io:host-save-transform
+                                                           (lambda (buffer path)
+                                                             (declare (ignore buffer path))
+                                                             (lambda (rope) (sleep 0.5) rope)))))
           (call-without-grammar-questions
            (lambda () (tuatara.command:run-editor f :setup #'tuatara.defaults:install-defaults))))
         (is string= (format nil "Fix~%# Please enter the commit message.~%") (file-text file))

@@ -3,10 +3,12 @@
 
 (in-package #:tuatara.command)
 
-(defvar *state-keys-function* nil
-  "A function of a buffer and the modal state's keymap giving the keymaps
-consulted just before that state's: the keys bound for the buffer's major mode
-in that state; NIL for none.")
+(defgeneric host-state-keymaps (host buffer state-keymap)
+  (:documentation "The keymaps consulted just before STATE-KEYMAP, the modal state's: the keys
+bound for BUFFER's major mode in that state; on the core's own host, none.")
+  (:method ((host tuatara.runtime:host) buffer state-keymap)
+    (declare (ignore buffer state-keymap))
+    nil))
 
 (defun buffer-override-keymap (buffer)
   "The keymap BUFFER has for itself above its modes' keys while something
@@ -31,7 +33,7 @@ of completions beside the cursor while one is shown (COMPLETE-IN-TEXT); then
 the question's own and the minibuffer's while it reads (READ-STRING); otherwise a transient map in force
 (SET-TRANSIENT-MAP), the current buffer's own keys for a passing use of it
 (BUFFER-OVERRIDE-KEYMAP, as a quick edit's from a rimu list), the keys
-bound for its major mode in the modal state (*STATE-KEYS-FUNCTION*), the modal
+bound for its major mode in the modal state (HOST-STATE-KEYMAPS), the modal
 state map, the current buffer's local keymap (its major mode's, in the :KEYMAP
 local, whose parents are the parent modes' keymaps), the fallback map, and the
 global map. For KEY, when given and a mouse key over a window's text, the
@@ -44,17 +46,21 @@ as that buffer's keys say at once."
         (remove nil (list* (popup-keys editor)
                            (editor-transient-map editor)
                            (and buffer (buffer-override-keymap buffer))
-                           (append (and buffer *state-keys-function* (editor-state-keymap editor)
-                                        (funcall *state-keys-function* buffer (editor-state-keymap editor)))
+                           (append (and buffer (editor-state-keymap editor)
+                                        (host-state-keymaps tuatara.runtime:*host* buffer (editor-state-keymap editor)))
                                    (list (editor-state-keymap editor)
                                          (and buffer (tuatara.buffer:buffer-local buffer :keymap))
                                          (editor-fallback-keymap editor)
                                          (editor-global-keymap editor))))))))
 
-(defvar *prefix-help-function* nil
-  "A function of the editor and a prefix key's specs, called when \\`C-h'
-\(*PREFIX-HELP-KEY*) follows the prefix and nothing is bound to it there: one
-listing every key under the prefix.")
+(defgeneric host-show-prefix-help (host editor prefix)
+  (:documentation "List every key under PREFIX, a prefix key's specs, when \\`C-h'
+\(*PREFIX-HELP-KEY*) follows it in EDITOR and nothing is bound to it there; on
+the core's own host, say the keys are undefined.")
+  (:method ((host tuatara.runtime:host) editor prefix)
+    (declare (ignore editor))
+    (message "~a ~a is undefined" (tuatara.frontend:key-sequence-description prefix) *prefix-help-key*)
+    (note-command-failed)))
 
 (defun resolve-keys (editor specs &optional key)
   "Look SPECS up in the active keymaps in precedence order, KEY the last of
@@ -372,10 +378,13 @@ taken down first."
   "True to show the calls under way when a command or an evaluation meets an
 error, in *Backtrace*; \\[toggle-debug-on-error] switches it.")
 
-(defvar *backtrace-function* nil
-  "A function of a condition and the calls under way when it was signalled (a
-list of strings, innermost first, see CAPTURE-BACKTRACE) that shows them; the
-defaults show *Backtrace*.")
+(defgeneric host-show-backtrace (host condition calls)
+  (:documentation "Show CALLS, those under way when CONDITION was signalled (a list of strings,
+innermost first, see CAPTURE-BACKTRACE): the defaults show *Backtrace*; the
+core's own host, nothing.")
+  (:method ((host tuatara.runtime:host) condition calls)
+    (declare (ignore condition calls))
+    nil))
 
 (defparameter *backtrace-frames* 200
   "The most calls a backtrace keeps, the innermost.")
@@ -397,15 +406,13 @@ when the command began, as (BUFFER . STACK): what one undo of the command goes
 back to. A command that makes several steps to undo of its own, as playing
 recorded keys does, one step a play, sets STACK to where its last step ends.")
 
-(defvar *command-refusal-function* nil
-  "A function of a command's name returning NIL when the command may run now,
-or what to say instead of running it: the defaults refuse a command made for
-one kind of buffer, such as a list's own keys, anywhere else.")
-
-(defun command-refusal (command)
-  "What to say instead of running COMMAND now (*COMMAND-REFUSAL-FUNCTION*),
-or NIL when it may run."
-  (and *command-refusal-function* (funcall *command-refusal-function* command)))
+(defgeneric host-command-refusal (host command)
+  (:documentation "What to say instead of running COMMAND, a command's name, now, or NIL when it
+may run: the defaults refuse a command made for one kind of buffer, such as a
+list's own keys, anywhere else; the core's own host, none.")
+  (:method ((host tuatara.runtime:host) command)
+    (declare (ignore command))
+    nil))
 
 (defun call-with-guard (thunk what stop &key (quit "Quit") said naming trace-wanted shown)
   "Call THUNK, a function of no arguments, for WHAT, a name for messages, so
@@ -482,12 +489,11 @@ a refusal) stops recorded keys that are playing."
                                         (*this-command-keys* (tuatara.frontend:key-sequence-description *this-command-keys*)))))
   (dolist (f (editor-pre-command-functions editor)) (call-guarded f f editor command))
   (let* ((function (find-command command))
-         (refusal (and *command-refusal-function*
-                       ;; a mouse key's command is one of the buffer under the mouse
-                       (let* ((key (editor-this-key editor))
-                              (window (and (tuatara.frontend:key-p key) (mouse-key-window editor key)))
-                              (*current-buffer* (if window (tuatara.display:window-buffer window) *current-buffer*)))
-                         (funcall *command-refusal-function* command))))
+         ;; a mouse key's command is one of the buffer under the mouse
+         (refusal (let* ((key (editor-this-key editor))
+                         (window (and (tuatara.frontend:key-p key) (mouse-key-window editor key)))
+                         (*current-buffer* (if window (tuatara.display:window-buffer window) *current-buffer*)))
+                    (host-command-refusal tuatara.runtime:*host* command)))
          ;; one command, one step to undo: what it changed in the buffer it began in, taken back at
          ;; once; a command making steps of its own (playing recorded keys) moves the cell's stack on
          (undo-buffer (current-buffer))
@@ -497,7 +503,7 @@ a refusal) stops recorded keys that are playing."
       ((null function) (message "No command ~a" command))
       (refusal (message "~a" refusal))
       (t
-        (flet ((backtrace-shown-p () (and *debug-on-error* *backtrace-function*)))
+        (flet ((backtrace-shown-p () *debug-on-error*))
           (call-with-guard (lambda ()
                              (let ((*current-buffer* nil) ; SET-BUFFER lasts until the command ends
                                    (tuatara.buffer:*narrowing-in-force* undo-buffer)
@@ -509,7 +515,8 @@ a refusal) stops recorded keys that are playing."
                            :naming (lambda () (or (editor-this-command editor) command))
                            :said #'identity :trace-wanted #'backtrace-shown-p
                            :shown (lambda (e trace)
-                                    (when (and trace (backtrace-shown-p)) (funcall *backtrace-function* e trace)))))))
+                                    (when (and trace (backtrace-shown-p))
+                                      (host-show-backtrace tuatara.runtime:*host* e trace)))))))
     (unless finished (note-command-failed))
     (when (live-buffer-p undo-buffer)
       (tuatara.buffer:merge-undo-groups undo-buffer (cdr undo-since))))
@@ -630,12 +637,12 @@ handler sees it before any keymap (KEY-HANDLER-TAKES)."
     (cond ((keymap-p binding)
            (setf (editor-pending editor) specs)
            (echo "~a-" (tuatara.frontend:key-sequence-description specs)))
-          ((and (null binding) (editor-pending editor) *prefix-help-function*
+          ((and (null binding) (editor-pending editor)
                 (equal (tuatara.frontend:key-description spec) *prefix-help-key*))
            (let ((prefix (editor-pending editor)))
              (setf (editor-pending editor) '()
                    (editor-message editor) nil)
-             (funcall *prefix-help-function* editor prefix)))
+             (host-show-prefix-help tuatara.runtime:*host* editor prefix)))
           ((and (null binding) (eq (tuatara.frontend:key-base key) :up-mouse-1))
            ;; a button let go of where nothing is bound to it says nothing, leaving what its press said
            (setf (editor-pending editor) '()))

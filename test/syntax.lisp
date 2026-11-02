@@ -372,7 +372,7 @@ what stopped the walk (NIL at a bracket)."
                    (dotimes (i 1500) (write-string sample s)))))
          (buffer (tuatara.buffer:make-buffer "*syntax-large*" :text text))
          (woken 0)
-         (tuatara.syntax:*syntax-wake-function* (lambda () (incf woken))))
+         (tuatara.runtime:*host* (make-answering-host 'tuatara.runtime:host-wake (lambda () (incf woken)))))
     (unwind-protect
          (let* ((start (thread-cpu-time))
                 (syntax (tuatara.syntax:attach-syntax buffer (tuatara.syntax:find-grammar "rust"))))
@@ -468,7 +468,7 @@ for each request, and writes what it likes; :NEVER for a helper that reads
 nothing. The helper is ended after."
   (multiple-value-bind (first first-theirs) (tuatara.syntax::socket-pair)
     (multiple-value-bind (mine theirs) (tuatara.syntax::socket-pair)
-      (let* ((tuatara.syntax:*helper-ended-function* nil)
+      (let* ((tuatara.runtime:*host* (make-answering-host 'tuatara.syntax:host-helper-ended (constantly nil)))
              (helper (tuatara.syntax::%make-helper nil first '() :own))
              (call (tuatara.syntax::make-call helper mine))
              (thread (sb-thread:make-thread
@@ -782,7 +782,8 @@ parsing thread records it, and its syntax, as two values."
         (said '()))
     (clrhash tuatara.syntax::**grammar-faults**)
     (unwind-protect
-         (let ((tuatara.syntax:*syntax-fault-function* (lambda (syntax) (push syntax said))))
+         (let ((tuatara.runtime:*host* (make-answering-host 'tuatara.syntax:host-syntax-fault
+                                                            (lambda (syntax) (push syntax said)))))
            (multiple-value-bind (buffer syntax) (fault-buffer "*fault-1*")
              (push buffer buffers)
              (is eq syntax (first said))
@@ -883,7 +884,8 @@ without bubblewrap, and the sandbox as it was after."
   (let ((said '()))
     (call-without-sandbox
      (lambda ()
-       (let ((tuatara.syntax:*helper-refused-function* (lambda (trusted) (push trusted said)))
+       (let ((tuatara.runtime:*host* (make-answering-host 'tuatara.syntax:host-helper-refused
+                                                        (lambda (trusted) (push trusted said))))
              (tuatara.syntax::*syntax-helper-unconfined* nil))
          (false (tuatara.syntax::start-helper (tuatara.syntax:grammar-directories) :own))
          (false (tuatara.syntax::start-helper (tuatara.syntax:grammar-directories) :shared))
@@ -917,7 +919,8 @@ without bubblewrap, and the sandbox as it was after."
   ;; a buffer whose file comes to be in a project you trust is parsed by the
   ;; shared helper from its next parse, and by one of its own again after
   (let* ((trusted nil)
-         (tuatara.syntax:*syntax-helper-shared-function* (lambda (buffer) (declare (ignore buffer)) trusted))
+         (tuatara.runtime:*host* (make-answering-host 'tuatara.syntax:host-trusted-text-p
+                                                      (lambda (buffer) (declare (ignore buffer)) trusted)))
          (buffer (tuatara.buffer:make-buffer "*trust-follows*" :text "fn main() {}")))
     (unwind-protect
          (let ((syntax (tuatara.syntax:attach-syntax buffer (tuatara.syntax:find-grammar "rust"))))
@@ -949,7 +952,8 @@ without bubblewrap, and the sandbox as it was after."
          (progn
            (tuatara.modes:set-major-mode buffer 'tuatara.defaults::rust-mode)
            (let ((syntax (tuatara.syntax:buffer-syntax buffer))
-                 (tuatara.syntax:*syntax-fault-function* (lambda (syntax) (setf said syntax))))
+                 (tuatara.runtime:*host* (make-answering-host 'tuatara.syntax:host-syntax-fault
+                                                              (lambda (syntax) (setf said syntax)))))
              (let ((tuatara.syntax:*syntax-wait* 10)) (tuatara.syntax:syntax-ready-tree syntax))
              (true (tuatara.syntax:syntax-tree syntax))
              ;; a parse whose grammar failed, as the parsing thread records it
@@ -1064,7 +1068,8 @@ and its SYNTAX; the buffer is to be killed by the caller."
      (declare (ignore directory))
      (let ((said nil))
        (unwind-protect
-            (let ((tuatara.syntax:*syntax-fault-function* (lambda (syntax) (setf said syntax))))
+            (let ((tuatara.runtime:*host* (make-answering-host 'tuatara.syntax:host-syntax-fault
+                                                               (lambda (syntax) (setf said syntax)))))
               (multiple-value-bind (buffer syntax) (parse-in-buffer grammar "abc !s def")
                 (unwind-protect
                      (progn
@@ -1100,7 +1105,8 @@ and its SYNTAX; the buffer is to be killed by the caller."
        (let ((said nil))
          (let ((tuatara.syntax:*syntax-memory-limit* (* 8 1024 1024))
                (tuatara.syntax:*syntax-memory-per-octet* 0)
-               (tuatara.syntax:*syntax-slow-function* (lambda (syntax) (setf said syntax))))
+               (tuatara.runtime:*host* (make-answering-host 'tuatara.syntax:host-syntax-slow
+                                                            (lambda (syntax) (setf said syntax)))))
            (multiple-value-bind (buffer syntax) (parse-in-buffer grammar text)
              (unwind-protect
                   (progn
@@ -1122,7 +1128,8 @@ and its SYNTAX; the buffer is to be killed by the caller."
          ;; found before the buffer's own helper, held to little memory, is started
          (grammar (tuatara.syntax:find-grammar "json"))
          (tuatara.syntax:*syntax-helper-memory* (* 256 1024 1024))
-         (tuatara.syntax:*syntax-slow-function* (lambda (syntax) (setf said syntax))))
+         (tuatara.runtime:*host* (make-answering-host 'tuatara.syntax:host-syntax-slow
+                                                      (lambda (syntax) (setf said syntax)))))
     (let* ((buffer (tuatara.buffer:make-buffer "*tight*" :text numbers))
            (syntax (progn
                      ;; a program of its own, as a file's text has, held to that little memory
@@ -1324,7 +1331,7 @@ has, ended after."
     (let ((directories (cons (namestring directory) (tuatara.syntax:grammar-directories))))
       (unwind-protect
            (let ((tuatara.syntax:*grammar-directories* directories))
-             (let ((tuatara.syntax:*must-not-wait-function* (lambda () t))
+             (let ((tuatara.runtime:*host* (make-answering-host 'tuatara.syntax:host-must-not-wait-p (this-thread-only)))
                    (asking sb-thread:*current-thread*)
                    (started-by '()))
                ;; where each start is made: never on the thread that asked
@@ -1430,7 +1437,8 @@ has, ended after."
   (let ((buffers (loop for i below 3 collect (tuatara.buffer:make-buffer (format nil "*in-use-~d*" i) :text "fn f() {}"))))
     (unwind-protect
          (let ((tuatara.syntax::*syntax-helpers-most* 1)
-               (tuatara.syntax:*helper-in-use-function* (lambda (buffer) (member buffer buffers))))
+               (tuatara.runtime:*host* (make-answering-host 'tuatara.syntax:host-buffer-shown-p
+                                                            (lambda (buffer) (member buffer buffers)))))
            (let ((helpers (mapcar #'tuatara.syntax:buffer-helper buffers)))
              (true (every #'tuatara.syntax:helper-alive helpers))))
       (mapc #'tuatara.buffer:kill-buffer buffers))))
@@ -1447,7 +1455,7 @@ has, ended after."
        (remhash "toml" tuatara.syntax::*grammars*)
        (let ((buffer (tuatara.buffer:make-buffer "*pending.toml*" :text "a = 1"))
              (tuatara.syntax::*syntax-helper-unconfined* nil)
-             (tuatara.syntax:*must-not-wait-function* (lambda () t)))
+             (tuatara.runtime:*host* (make-answering-host 'tuatara.syntax:host-must-not-wait-p (this-thread-only))))
          (unwind-protect
               (let ((threads (length (sb-thread:list-all-threads))))
                 (tuatara.modes:set-major-mode buffer 'tuatara.defaults::toml-mode)
@@ -1567,7 +1575,7 @@ has, ended after."
   (let ((buffer (tuatara.buffer:make-buffer "*soon*" :text "fn main() {}"))
         (holding (sb-thread:make-semaphore)))
     (unwind-protect
-         (let* ((tuatara.syntax:*must-not-wait-function* (lambda () t))
+         (let* ((tuatara.runtime:*host* (make-answering-host 'tuatara.syntax:host-must-not-wait-p (this-thread-only)))
                (letting-go (sb-thread:make-semaphore))
                (given-up nil)
                (holder (sb-thread:make-thread
@@ -1590,7 +1598,7 @@ has, ended after."
   ;; nothing holding it up: set going at once
   (let ((buffer (tuatara.buffer:make-buffer "*soon-now*" :text "fn main() {}")))
     (unwind-protect
-         (let ((tuatara.syntax:*must-not-wait-function* (lambda () t))
+         (let ((tuatara.runtime:*host* (make-answering-host 'tuatara.syntax:host-must-not-wait-p (this-thread-only)))
                (tuatara.syntax::*at-once-wait* 30))
            (true (tuatara.syntax:buffer-helper-soon buffer)))
       (tuatara.buffer:kill-buffer buffer))))
@@ -1628,7 +1636,7 @@ has, ended after."
     (true (tuatara.syntax:helper-alive helper))
     (sb-thread:wait-on-semaphore holding)
     (unwind-protect
-         (let ((tuatara.syntax:*must-not-wait-function* (lambda () t))
+         (let ((tuatara.runtime:*host* (make-answering-host 'tuatara.syntax:host-must-not-wait-p (this-thread-only)))
                (began (get-internal-real-time)))
            (tuatara.buffer:kill-buffer buffer)
            (true (< (tuatara.runtime:seconds-since began) 0.05)))
@@ -1661,8 +1669,9 @@ has, ended after."
     (unwind-protect
          (let ((own (tuatara.syntax:buffer-helper buffer)))
            (true (tuatara.syntax:helper-alive own))
-           (let ((tuatara.syntax:*syntax-helper-shared-function* (lambda (other) (eq other buffer)))
-                 (tuatara.syntax:*must-not-wait-function* (lambda () t)))
+           (let ((tuatara.runtime:*host* (make-answering-host 'tuatara.syntax:host-trusted-text-p
+                                                              (lambda (other) (eq other buffer))
+                                                              'tuatara.syntax:host-must-not-wait-p (this-thread-only))))
              (tuatara.syntax:buffer-helper-soon buffer))
            (false (tuatara.syntax:helper-alive own))
            (false (tuatara.buffer:buffer-local buffer :syntax-helper)))
@@ -1797,7 +1806,7 @@ has, ended after."
         (buffer (tuatara.buffer:make-buffer "*at-once*" :text "fn main() {}")))
     (unwind-protect
          (let ((tuatara.syntax::*syntax-helpers-most* 1)
-               (tuatara.syntax:*must-not-wait-function* (lambda () t))
+               (tuatara.runtime:*host* (make-answering-host 'tuatara.syntax:host-must-not-wait-p (this-thread-only)))
                (tuatara.syntax::*at-once-wait* 0.05)
                (holding (sb-thread:make-semaphore)))
            (let ((first (tuatara.syntax:buffer-helper other))
@@ -2029,7 +2038,8 @@ has, ended after."
            (false (tuatara.syntax:helper-alive (tuatara.syntax::parser-helper parser)))))
        (let ((said nil))
          (unwind-protect
-              (let ((tuatara.syntax:*syntax-fault-function* (lambda (syntax) (setf said syntax))))
+              (let ((tuatara.runtime:*host* (make-answering-host 'tuatara.syntax:host-syntax-fault
+                                                                 (lambda (syntax) (setf said syntax)))))
                 (multiple-value-bind (buffer syntax) (parse-in-buffer grammar text)
                   (unwind-protect
                        (progn
@@ -2068,7 +2078,8 @@ has, ended after."
            (said nil)
            (tuatara.syntax:*syntax-time-limit* 0.0001)
            (tuatara.syntax:*syntax-time-per-megabyte* 0)
-           (tuatara.syntax:*syntax-slow-function* (lambda (syntax) (setf said syntax))))
+           (tuatara.runtime:*host* (make-answering-host 'tuatara.syntax:host-syntax-slow
+                                                        (lambda (syntax) (setf said syntax)))))
       (unwind-protect
            (progn
              (tuatara.modes:set-major-mode buffer 'tuatara.defaults::rust-mode)
@@ -2109,7 +2120,8 @@ has, ended after."
            (said nil)
            (tuatara.syntax:*syntax-memory-limit* (* 1024 1024))
            (tuatara.syntax:*syntax-memory-per-octet* 0)
-           (tuatara.syntax:*syntax-slow-function* (lambda (syntax) (setf said syntax))))
+           (tuatara.runtime:*host* (make-answering-host 'tuatara.syntax:host-syntax-slow
+                                                        (lambda (syntax) (setf said syntax)))))
       (unwind-protect
            (progn
              (tuatara.modes:set-major-mode buffer 'tuatara.defaults::json-mode)

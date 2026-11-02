@@ -88,8 +88,8 @@ prefix argument put it in after the call."
                     ((eq outcome :stopped) (message "Expanding stopped"))
                     ((eq (first outcome) :error)
                      (message "Error: ~a" (tuatara.runtime:failure-words (second outcome) :said t))
-                     (when (and (getf result :backtrace) *backtrace-function*)
-                       (funcall *backtrace-function* (second outcome) (getf result :backtrace))))
+                     (when (getf result :backtrace)
+                       (show-backtrace (second outcome) (getf result :backtrace))))
                     (t (let ((expansion (expansion-text (first (second outcome)) (getf result :package)
                                                         (tuatara.display:window-width (current-window)))))
                          (if insert

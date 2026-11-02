@@ -104,7 +104,12 @@ in order: the global keymap, then the NORMAL state's keymap (its leader under
 first (\\=\\<buffers-mode>), as they work only in its buffers."
   (list *global-keymap* *tuatara-normal-keymap*))
 
-(defun keymap-for-keys (name)
+(defmethod host-key-keymaps ((host defaults-host))
+  "The keymaps a command's keys are named from (KEYMAPS-FOR-KEYS), once the
+defaults are installed in an editor; before, as the core has them."
+  (if *global-keymap* (keymaps-for-keys) (call-next-method)))
+
+(defmethod host-keymap-named ((host defaults-host) name)
   "The keymap called NAME in help and messages: one bind-key names (normal,
 leader, minibuffer, popup: KEYMAP-REGISTRY), a variable of the editor's
 holding one (*tuatara-normal-keymap*), else a major mode's (buffers-mode); NIL
@@ -181,11 +186,7 @@ so that \\`C-c' shows, and runs, what the buffer at hand can do in every mode
 (defun install-defaults (editor)
   "Install the standard bindings and the modal editing into EDITOR. Pass as :SETUP to RUN-EDITOR."
   (let ((global (editor-global-keymap editor)))
-    (setf *global-keymap* global
-          ;; help and messages name the keys bound now
-          *key-keymaps-function* 'keymaps-for-keys
-          *keymap-named-function* 'keymap-for-keys
-          tuatara.buffer:*widen-key-function* 'widen-key-text)
+    (setf *global-keymap* global)
     (define-keys global *global-bindings*)
     (label-keys global *global-prefix-labels*)
     (setf (editor-self-insert-command editor) 'self-insert-command)
@@ -222,7 +223,7 @@ so that \\`C-c' shows, and runs, what the buffer at hand can do in every mode
     (install-sorting)
     (install-hex)
     (install-modes)
-    (install-colouring editor)
+    (install-colouring)
     (install-lisp-mode editor)
     (install-show-paren)
     (install-xref)
@@ -230,15 +231,13 @@ so that \\`C-c' shows, and runs, what the buffer at hand can do in every mode
     (install-ielm)
     (install-macroexpand)
     (install-csv)
-    ;; commands made for one kind of buffer run there only
-    (setf *command-refusal-function* 'mode-command-refusal)
     (install-special-buffers)
     (install-entry-previews editor)
     (install-help)
     (install-faces-help)
     (install-about)
     (install-char-help)
-    (install-debug editor)
+    (install-debug)
     (install-notifications)
     (install-man)
     (install-outline)
@@ -258,7 +257,7 @@ so that \\`C-c' shows, and runs, what the buffer at hand can do in every mode
     (install-display-toggles)
     (install-hl-line)
     (install-cursor-column)
-    (install-spellcheck editor)
+    (install-spellcheck)
     (install-soft-wrap)
     (install-centred-text)
     (install-visual-line)
@@ -276,8 +275,6 @@ so that \\`C-c' shows, and runs, what the buffer at hand can do in every mode
     ;; every mode's keys of one character under C-c too, once all are bound
     (mirror-context-keys)
     (tuatara.display:apply-theme *startup-theme*)
-    (setf *startup-buffer-function* 'session-startup-buffer
-          *new-buffer-function* 'remade-scratch-buffer)
     (setf *theme-chosen* nil *style-followed* nil)
     (load-user-config)
     ;; the logs in the cache folder the init file chose

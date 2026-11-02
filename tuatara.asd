@@ -17,7 +17,7 @@
   :serial t
   :components ((:file "package")
                (:file "version")
-               (:module "runtime"  :serial t :components ((:file "package") (:file "resources") (:file "stopping") (:file "debug") (:file "pool") (:file "threads") (:file "jobs") (:file "hooks")))
+               (:module "runtime"  :serial t :components ((:file "package") (:file "host") (:file "resources") (:file "stopping") (:file "debug") (:file "pool") (:file "threads") (:file "jobs") (:file "hooks")))
                (:module "dates"    :serial t :components ((:file "package") (:file "dates")))
                (:module "text"     :serial t :components ((:file "package") (:file "utf8") (:file "mapping") (:file "rope") (:file "edits") (:file "strings") (:file "version") (:file "json") (:file "xml") (:file "escapes")))
                (:module "buffer"   :serial t :components ((:file "package") (:file "buffer")))
@@ -51,6 +51,7 @@
                (:file "compile/package")
                (:file "packages/package")
                (:file "export/package")
+               (:file "host")
                (:file "theme")
                (:file "garbage")
                (:module "modes"   :serial t :components ((:file "base") (:file "special") (:file "list-preview") (:file "csv") (:file "languages") (:file "more-languages-data") (:file "more-languages-markup") (:file "more-languages-programming") (:file "more-languages-build") (:file "json-lines") (:file "git-commit")))

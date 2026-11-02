@@ -384,15 +384,17 @@ what went in there. A jump BODY makes outside the part (to a subtree just
 refiled) leaves the buffer widened instead, point where the jump took it."
   `(call-with-narrowing-lifted ,buffer (lambda () ,@body)))
 
-(defvar *widen-key-function* nil
-  "A function of no arguments giving the key that widens a buffer as messages
-name it (C-x x w), for OUTSIDE-NARROWING-WORDS; NIL names the command, widen.")
+(defgeneric host-widen-key (host)
+  (:documentation "The key that widens a buffer as messages name it (C-x x w), for
+OUTSIDE-NARROWING-WORDS; on the core's own host, the command's name, widen.")
+  (:method ((host tuatara.runtime:host))
+    "widen"))
 
 (defun outside-narrowing-words (buffer)
   "The words saying a change would reach outside the part of BUFFER shown,
-and that widening (the key *WIDEN-KEY-FUNCTION* gives) shows the rest."
+and that widening (the key HOST-WIDEN-KEY gives) shows the rest."
   (format nil "That would change text outside the part of ~a shown: ~a shows all of it again"
-          (buffer-name buffer) (if *widen-key-function* (funcall *widen-key-function*) "widen")))
+          (buffer-name buffer) (host-widen-key tuatara.runtime:*host*)))
 
 (defun refuse-outside-narrowing (buffer)
   "Signal the error that says a change would reach outside the part of
@@ -1331,12 +1333,6 @@ return alone), or the text end."
 \(BUFFER-LINE-END), its line end left out."
   (buffer-string buffer :start start :end (buffer-line-end buffer start)))
 
-(defvar *index-wait-function* nil
-  "A function of a buffer, called when the line counts of its text are needed
-while they are still being made in the background: it returns once the text is
-indexed (the editor waits, showing how far the counting has got), or signals
-to give up what needed them. NIL counts them there and then.")
-
 (defun buffer-indexed-p (buffer)
   "True when the line and character counts of BUFFER's text are known: a large
 file's are made in the background after it opens."
@@ -1351,28 +1347,33 @@ they are and the buffer is no more modified than it was. Returns the batch."
     (tuatara.runtime:run-hook (buffer-change-functions buffer) buffer batch)
     batch))
 
+(defgeneric host-wait-for-index (host buffer)
+  (:documentation "Have the line counts of BUFFER's text, needed while they are still being made
+in the background, known: return once the text is indexed (the editor waits,
+showing how far the counting has got), or signal to give up what needed them.
+The core's own host counts them there and then.")
+  (:method ((host tuatara.runtime:host) buffer)
+    (buffer-adopt-text buffer (tuatara.text:index-rope (buffer-text buffer)))))
+
 (defun ensure-indexed (buffer)
   "Make sure the line and character counts of BUFFER's text are known: wait for
-the background counting (*INDEX-WAIT-FUNCTION*), or count them now."
+the background counting, or count them now (HOST-WAIT-FOR-INDEX)."
   (unless (buffer-indexed-p buffer)
-    (if *index-wait-function*
-        (funcall *index-wait-function* buffer)
-        (buffer-adopt-text buffer (tuatara.text:index-rope (buffer-text buffer))))
+    (host-wait-for-index tuatara.runtime:*host* buffer)
     (unless (buffer-indexed-p buffer)
       (refuse "The lines of ~a are not counted yet." (buffer-name buffer)))))
 
-(defvar *counted-line-function* nil
-  "A function of a buffer and a byte offset returning the line, from 0, there
-while the buffer's lines are still being counted, when the count has passed
-it, else NIL: the files layer's TUATARA.IO:COUNTED-LINE-NUMBER.")
+(defgeneric host-counted-line (host buffer byte)
+  (:documentation "The line, from 0, of BYTE in BUFFER while its lines are still being counted,
+when the count has passed it, else NIL."))
 
 (defun buffer-known-line-number (buffer byte)
   "The line number, from 0, of BYTE in BUFFER when it is known without waiting:
 always once the lines are counted; while they are, where the count has passed
-(*COUNTED-LINE-FUNCTION*); else NIL."
+\(HOST-COUNTED-LINE); else NIL."
   (if (buffer-indexed-p buffer)
       (buffer-line-number buffer byte)
-      (and *counted-line-function* (funcall *counted-line-function* buffer byte))))
+      (host-counted-line tuatara.runtime:*host* buffer byte)))
 
 (defvar *line-scan-limit* (* 64 1024 1024)
   "Octets from its start that a text whose lines are still being counted is

@@ -474,6 +474,10 @@ a command loop the lines are counted there and then (NIL with LINE)."
                                             (tuatara.buffer:buffer-name buffer) (tuatara.io:index-progress job)))))
               (keyboard-quit-signal)))))))
 
+(defmethod tuatara.buffer:host-wait-for-index ((host defaults-host) buffer)
+  "Wait for BUFFER's lines to be counted in the background (WAIT-FOR-COUNTING)."
+  (wait-for-counting buffer))
+
 (defvar *safe-directories* '()
   "Directories whose files always open safely, as \\[find-file-safely] opens a
 file: read-only, with no major mode, hooks or version control, and nothing
@@ -564,6 +568,10 @@ says so."
           ((and *open-binary-files-safely* (tuatara.io:binary-head-p (tuatara.io:file-head path)))
            "it looks binary (*open-binary-files-safely*)"))))
 
+(defmethod tuatara.io:host-visit-safely-reason ((host defaults-host) path &optional stamp)
+  "Why the file at PATH opens safely although not asked to (VISIT-SAFELY-REASON)."
+  (visit-safely-reason path stamp))
+
 (defun say-why-safe (buffer &optional also)
   "Say why BUFFER's file opened safely, when that was not asked for, and ALSO,
 what else there is to say of how it opened (why it is not shown as a picture)."
@@ -630,21 +638,11 @@ those found changed (see *DIRECTORY-FOLLOWERS*)."
 
 (defun install-files ()
   "Let saves, snapshots, countings of lines and the watcher of files on disk
-tick, the watcher wake the editor when it has news, what they find show in the
-mode line, a command that needs a large file's lines wait for them to be
-counted, the files the editor is started with be visited as C-x C-f visits
-them, a buffer's private folder be deleted when it is killed
-\(FORGET-PRIVATE-FOLDER) and kept fresh while it lives (KEEP-PRIVATE-FOLDERS-FRESH), \\[wipe-file] be refused in a buffer opened safely, and
-nothing be written in an evidence folder (INSTALL-EVIDENCE)."
+tick, what they find show in the mode line, a buffer's private folder be
+deleted when it is killed (FORGET-PRIVATE-FOLDER) and kept fresh while it
+lives (KEEP-PRIVATE-FOLDERS-FRESH), \\[wipe-file] be refused in a buffer opened
+safely, and the evidence folders be marked (INSTALL-EVIDENCE)."
   (pushnew 'wipe-file *file-changing-commands*)
-  (setf tuatara.command:*visit-file-function* 'visit-start-file
-        tuatara.command:*visit-standard-input-function* 'visit-standard-input
-        tuatara.buffer:*index-wait-function* 'wait-for-counting
-        tuatara.buffer:*counted-line-function* 'tuatara.io:counted-line-number
-        tuatara.io:*visit-safely-function* 'visit-safely-reason)
-  (when *editor*
-    (setf tuatara.io:*on-file-news* (let ((editor *editor*))
-                                      (lambda () (wake-editor editor)))))
   (pushnew 'files-tick *tick-functions*)
   (pushnew 'follow-directories *tick-functions*)
   (pushnew 'keep-private-folders-fresh *tick-functions*)

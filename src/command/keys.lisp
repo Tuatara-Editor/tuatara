@@ -45,22 +45,24 @@ for the text returned (TEXT-SPANS). TEXT itself when it has no marks."
 
 ;;; Finding a command's keys
 
-(defvar *key-keymaps-function* nil
-  "A function of no arguments giving the keymaps \\=\\[COMMAND] looks in, in
-order, when the text has not named one with \\=\\<KEYMAP> (or after that one):
-the global keymap, then the NORMAL state's keymap. NIL means the editor's global
-keymap alone.")
+(defgeneric host-key-keymaps (host)
+  (:documentation "The keymaps \\=\\[COMMAND] looks in, in order, when the text has not named
+one with \\=\\<KEYMAP> (or after that one): the global keymap, then the NORMAL
+state's keymap; on the core's own host, the editor's global keymap alone.")
+  (:method ((host tuatara.runtime:host))
+    (and *editor* (list (editor-global-keymap *editor*)))))
 
-(defvar *keymap-named-function* nil
-  "A function of a name, a string, giving the keymap \\=\\<NAME> and \\=\\{NAME}
-mean, or NIL when there is none.")
+(defgeneric host-keymap-named (host name)
+  (:documentation "The keymap \\=\\<NAME> and \\=\\{NAME} mean, NAME a string, or NIL when
+there is none, as on the core's own host always.")
+  (:method ((host tuatara.runtime:host) name)
+    (declare (ignore name))
+    nil))
 
 (defun key-keymaps (keymap)
   "Where \\=\\[COMMAND] looks for COMMAND's keys: KEYMAP first when the text
-named one, then the keymaps of *KEY-KEYMAPS-FUNCTION*."
-  (let ((standard (cond (*key-keymaps-function* (funcall *key-keymaps-function*))
-                        (*editor* (list (editor-global-keymap *editor*)))
-                        (t '()))))
+named one, then the keymaps of HOST-KEY-KEYMAPS."
+  (let ((standard (host-key-keymaps tuatara.runtime:*host*)))
     (if keymap (cons keymap (remove keymap standard)) standard)))
 
 (defun key-description< (a b)
@@ -78,10 +80,6 @@ description (C-x C-f), the first by KEY-DESCRIPTION<; NIL when none has."
     (let ((keys (where-is command (list map))))
       (when keys
         (return (first (sort (copy-list keys) #'key-description<)))))))
-
-(defun keymap-called (name)
-  "The keymap \\=\\<NAME> and \\=\\{NAME} mean, by *KEYMAP-NAMED-FUNCTION*, or NIL."
-  (and *keymap-named-function* (funcall *keymap-named-function* name)))
 
 (defun keymap-summary (keymap)
   "KEYMAP's keys, each on a line with the command it runs, keys marked."
@@ -176,7 +174,8 @@ being a control string for FORMAT."
                             (let ((close (closing (if (char= next #\<) #\> #\}) (+ i 2))))
                               (if (null close)
                                   (progn (write-char c out) (incf i))
-                                  (let ((named (keymap-called (subseq string (+ i 2) close))))
+                                  (let ((named (host-keymap-named tuatara.runtime:*host*
+                                                                  (subseq string (+ i 2) close))))
                                     (if (char= next #\<)
                                         (setf map named)
                                         (when named

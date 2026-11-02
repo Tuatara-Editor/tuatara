@@ -23,10 +23,6 @@ editor.")
 THREAD TOPIC TEXT), TIME in internal time units, THREAD the name of the thread
 that made it.")
 
-(defvar *debug-wake-function* nil
-  "A function called in the thread that made a report, once it is queued, to
-have it shown soon; NIL for none.")
-
 (defvar *debug-log-path* nil
   "The file the reports of debug mode are written to as they are made, the
 debug log (debug.log in the cache directory); NIL for none.")
@@ -71,8 +67,7 @@ to show it."
          (sb-thread:with-mutex (*debug-log-lock*)
            (write-line (debug-report-line report) stream)
            (finish-output stream))))))
-  (let ((wake *debug-wake-function*))
-    (when wake (ignore-errors (funcall wake))))
+  (host-wake *host*)
   nil)
 
 (defun lock-fd (fd &key shared (wait 0))
@@ -138,14 +133,14 @@ one just before, to debug.log.3. NIL when there is no debug log to open."
 encrypted or just decrypted): the calls written to the debug log then show
 their strings and octets by their length alone (BACKTRACE-LINES).")
 
-(defvar *secret-buffer-function* nil
-  "A function of a buffer, true when its text is kept secret (decrypted), so
-that work on it counts as a secret at hand (SECRET-BUFFER-P); NIL for none.")
+(defgeneric host-secret-buffer-p (host buffer)
+  (:documentation "True when BUFFER's text is kept secret (decrypted), so that work on it counts as
+a secret at hand (SECRET-BUFFER-P)."))
 
 (defun secret-buffer-p (buffer)
-  "True when BUFFER's text is kept secret (*SECRET-BUFFER-FUNCTION*), so that
-work on it is to keep it out of the debug log as *SECRET-AT-HAND* does."
-  (and buffer *secret-buffer-function* (funcall *secret-buffer-function* buffer) t))
+  "True when BUFFER, a buffer or NIL, holds text kept secret (decrypted), so
+that work on it is to keep it out of the debug log as *SECRET-AT-HAND* does."
+  (and buffer (host-secret-buffer-p *host* buffer) t))
 
 (define-condition refusal (simple-error) ()
   (:documentation "The editor saying no to what was asked, in words of its own (REFUSE): told in

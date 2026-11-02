@@ -463,8 +463,8 @@ value is said after what was evaluated, on one line: (setf x 1) => 1."
     (cond ((eq outcome :stopped) (message "Evaluation stopped~@[~a~]" note))
           ((eq (first outcome) :error)
            (message "Error: ~a~@[~a~]" (tuatara.runtime:failure-words (second outcome) :said t) note)
-           (when (and (getf result :backtrace) *backtrace-function*)
-             (funcall *backtrace-function* (second outcome) (getf result :backtrace))))
+           (when (getf result :backtrace)
+             (show-backtrace (second outcome) (getf result :backtrace))))
           (t (destructuring-bind (values count) (rest outcome)
                (let ((*package* (getf result :package)))
                  (cond (printing

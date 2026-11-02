@@ -741,7 +741,8 @@ out), a CLOCK: line, where a logged line goes, and clocking in from any key.")
         (on tuatara.runtime:*debug-on*)
         (buffer nil))
     (unwind-protect
-         (let ((tuatara.runtime:*secret-buffer-function* (lambda (b) (eq b buffer))))
+         (let ((tuatara.runtime:*host* (make-answering-host 'tuatara.runtime:host-secret-buffer-p
+                                                            (lambda (b) (eq b buffer)))))
            (setf tuatara.runtime:*debug-reports* (sb-concurrency:make-queue)
                  tuatara.runtime:*debug-on* t)
            (with-functions-replaced ((tuatara.defaults::org-parse (lambda (text &rest arguments)

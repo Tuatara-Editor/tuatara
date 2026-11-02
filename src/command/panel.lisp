@@ -210,7 +210,7 @@ is for it."
 
 (defun key-hints-unavailable (editor entries)
   "The keys of ENTRIES, key hints for the keys EDITOR has pending, whose
-commands cannot run here now (*COMMAND-REFUSAL-FUNCTION*), shown dimmed."
+commands cannot run here now (HOST-COMMAND-REFUSAL), shown dimmed."
   (let* ((keymaps (active-keymaps editor))
          (pending (editor-pending editor))
          (found '()))
@@ -222,7 +222,7 @@ commands cannot run here now (*COMMAND-REFUSAL-FUNCTION*), shown dimmed."
               (when (and (assoc key entries :test #'string=) (not (member key found :test #'string=)))
                 (let ((command (keymaps-lookup keymaps (append pending (list (car entry))))))
                   (when (and command (symbolp command) (not (keywordp command))
-                             (command-refusal command))
+                             (host-command-refusal tuatara.runtime:*host* command))
                     (push key found)))))))))
     found))
 

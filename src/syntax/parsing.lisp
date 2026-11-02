@@ -28,13 +28,12 @@ them to be moved to where their text went (MOVED-COLOURS).")
   "The most edits of one change that are passed to the tree one by one; after a
 change with more, the text is parsed afresh.")
 
-(defvar *syntax-wake-function* nil
-  "A function of no arguments that parsing threads call when a parse finishes,
-to have the editor redraw; NIL for none.")
-
-(defvar *syntax-fault-function* nil
-  "A function of (SYNTAX) called in the editor's thread when a grammar's own
-code failed while reading SYNTAX's text, to say so; NIL for none.")
+(defgeneric host-syntax-fault (host syntax)
+  (:documentation "Say, on the editor's thread, that a grammar's own code failed while reading
+SYNTAX's text.")
+  (:method ((host tuatara.runtime:host) syntax)
+    (declare (ignore syntax))
+    nil))
 
 (defvar *syntax-time-limit* 60
   "The seconds a parse of a text may take, and *SYNTAX-TIME-PER-MEGABYTE* more
@@ -46,10 +45,13 @@ for, such as binary data. NIL for no limit.")
   "The seconds a parse may take for each megabyte of text, on top of
 *SYNTAX-TIME-LIMIT*.")
 
-(defvar *syntax-slow-function* nil
-  "A function of (SYNTAX) called in the editor's thread when a parse of
-SYNTAX's text took longer than *SYNTAX-TIME-LIMIT*, or more memory than
-*SYNTAX-MEMORY-LIMIT*, and was given up, to say so; NIL for none.")
+(defgeneric host-syntax-slow (host syntax)
+  (:documentation "Say, on the editor's thread, that a parse of SYNTAX's text took longer than
+*SYNTAX-TIME-LIMIT*, or more memory than *SYNTAX-MEMORY-LIMIT*, and was given
+up.")
+  (:method ((host tuatara.runtime:host) syntax)
+    (declare (ignore syntax))
+    nil))
 
 (defun parse-time-limit (bytes)
   "The seconds a parse of a text of BYTES octets may take (*SYNTAX-TIME-LIMIT*),
@@ -82,12 +84,13 @@ stopped by that then tried again once memory is back."
           (machine (physical-memory)))
       (if (plusp machine) (min wanted (floor machine 4)) wanted))))
 
-(defstruct (parse-job (:constructor make-parse-job (rope old cancel wake)) (:copier nil))
+(defstruct (parse-job (:constructor make-parse-job (rope old cancel host)) (:copier nil))
   "One parse, run in its syntax's parse thread: of ROPE, from OLD (a copy of the tree before,
 edited to match ROPE, or NIL), until it finishes or CANCEL (a foreign flag) is
 set. RESULT is the new tree, or NIL; FINISHED is set when the parse is done;
-OBSOLETE when the text changed too much for its tree to be of use. WAKE is
-called when it finishes; STARTED and ENDED are when it began and ended, in
+OBSOLETE when the text changed too much for its tree to be of use. HOST, the
+host where the parse was asked for, is woken when it finishes (HOST-WAKE),
+unless NIL; STARTED and ENDED are when it began and ended, in
 internal time units. FAULT is the condition when the grammar's own code failed
 while reading; LIMIT is how many seconds the parse may take and BUDGET how
 many octets of memory (NIL: no limit), SLOW :SLOW when it took longer (or
@@ -100,7 +103,7 @@ where the parse was asked for (HELPER-SETTINGS), for the thread parsing."
   (settings (helper-settings) :read-only t)
   (old nil :read-only t)
   (cancel (null-pointer) :type sb-sys:system-area-pointer :read-only t)
-  (wake nil :read-only t)
+  (host nil :read-only t)
   (result nil)
   (finished nil)
   (obsolete nil)
@@ -112,12 +115,12 @@ where the parse was asked for (HELPER-SETTINGS), for the thread parsing."
   (slow nil)
   (refresh nil))
 
-(setf (documentation 'make-parse-job 'function) "A PARSE-JOB of ROPE from tree OLD, stopped by the flag CANCEL, calling WAKE when done."
+(setf (documentation 'make-parse-job 'function) "A PARSE-JOB of ROPE from tree OLD, stopped by the flag CANCEL, waking HOST when done."
       (documentation 'parse-job-p 'function) "True when OBJECT is a PARSE-JOB."
       (documentation 'parse-job-rope 'function) "The text the job parses."
       (documentation 'parse-job-old 'function) "The job's copy of the tree it starts from, or NIL."
       (documentation 'parse-job-cancel 'function) "The foreign flag that stops the job's parse."
-      (documentation 'parse-job-wake 'function) "The function the job calls when it finishes, or NIL."
+      (documentation 'parse-job-host 'function) "The host the job wakes when it finishes, or NIL."
       (documentation 'parse-job-result 'function) "The tree the job made, or NIL."
       (documentation 'parse-job-finished 'function) "True once the job's parse is done."
       (documentation 'parse-job-obsolete 'function) "True when the job's tree is no longer of use."
@@ -419,11 +422,11 @@ deal with; the editor carries on."
             (parse-job-ended job) (get-internal-real-time)
             (parse-job-finished job) t)
       (sb-thread:condition-broadcast (syntax-done syntax))))
-  (let ((wake (parse-job-wake job)))
-    (when wake
+  (let ((host (parse-job-host job)))
+    (when host
       (tuatara.runtime:ignoring-errors-reported ("waking the editor after parsing ~a"
                                                  (tuatara.buffer:buffer-name (syntax-buffer syntax)))
-        (funcall wake)))))
+        (tuatara.runtime:host-wake host)))))
 
 (defun parse-thread-loop (syntax)
   "What SYNTAX's parse thread does: run each parse handed to it (SYNTAX-NEXT),
@@ -481,7 +484,7 @@ this ends before the parse has it."
                     (setf old (copy-tree-pointer (syntax-tree syntax))))
                   (let* ((cancel (sb-alien:alien-sap (sb-alien:make-alien (sb-alien:signed 32))))
                          (job (progn (setf (sb-sys:signed-sap-ref-32 cancel 0) 0)
-                                     (make-parse-job rope old cancel *syntax-wake-function*))))
+                                     (make-parse-job rope old cancel tuatara.runtime:*host*))))
                     (setf (parse-job-refresh job) fresh)
                     ;; worked out here, where the editor's settings are seen
                     (setf (parse-job-limit job) (parse-time-limit (tuatara.text:rope-bytes rope)))
@@ -558,10 +561,9 @@ another parse if the tree is not current."
               ((parse-job-slow job)
                ;; not parsed again, which would take as long, or as much
                (setf (syntax-broken syntax) (parse-job-slow job))
-               (when *syntax-slow-function*
-                 (tuatara.runtime:ignoring-errors-reported ("saying parsing ~a is given up"
-                                                            (tuatara.buffer:buffer-name (syntax-buffer syntax)))
-                   (funcall *syntax-slow-function* syntax))))
+               (tuatara.runtime:ignoring-errors-reported ("saying parsing ~a is given up"
+                                                          (tuatara.buffer:buffer-name (syntax-buffer syntax)))
+                 (host-syntax-slow tuatara.runtime:*host* syntax)))
               ((not (parse-job-obsolete job))
                ;; not stopped on purpose: the text could not be read
                (setf (syntax-broken syntax) t)))))
@@ -602,16 +604,15 @@ helper was ended for room, when it is next shown."
 while reading it, FAULT saying how, and for all text once it has gone wrong
 on several (GRAMMAR-WENT-WRONG): SYNTAX stops parsing, keeping the tree it
 has; its parser is deleted when the grammar only gave it a value it cannot
-have (a GRAMMAR-FAILURE); and *SYNTAX-FAULT-FUNCTION* says so."
+have (a GRAMMAR-FAILURE); and HOST-SYNTAX-FAULT says so."
   (when (typep fault 'grammar-failure)
     (delete-parser (syntax-parser syntax)))
   (grammar-went-wrong (syntax-grammar syntax) (syntax-buffer syntax) fault)
   (setf (syntax-broken syntax) t
         (syntax-parser syntax) nil)
-  (when *syntax-fault-function*
-    (tuatara.runtime:ignoring-errors-reported ("saying the grammar failed on ~a"
-                                               (tuatara.buffer:buffer-name (syntax-buffer syntax)))
-      (funcall *syntax-fault-function* syntax))))
+  (tuatara.runtime:ignoring-errors-reported ("saying the grammar failed on ~a"
+                                             (tuatara.buffer:buffer-name (syntax-buffer syntax)))
+    (host-syntax-fault tuatara.runtime:*host* syntax)))
 
 (defun parse-under-way-p (syntax &optional (seconds 0))
   "True when a parse of SYNTAX's text is under way, after waiting at most

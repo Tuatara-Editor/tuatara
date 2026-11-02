@@ -16,10 +16,6 @@
   "The enchant library spelling is checked with; one that cannot be loaded
 leaves the editor without spelling, which says so.")
 
-(defvar *spelling-wake-function* nil
-  "A function of no arguments called when words asked about are answered, so
-that the editor redraws with their marks; NIL for none.")
-
 (defvar *spelling-answers* (make-hash-table :test 'equal :synchronized t)
   "For each list of languages, as their names joined by spaces, a table of
 the words asked about: :RIGHT, :WRONG, or :ASKED while the answer is on its way.")
@@ -159,8 +155,8 @@ of it may differ.")
 (defun spelling-answered ()
   "Have the editor redraw with the answers."
   (sb-ext:atomic-incf (car *spelling-generation*))
-  (let ((wake *spelling-wake-function*))
-    (when wake (ignoring-errors-reported ("waking the editor for the spelling") (funcall wake)))))
+  (ignoring-errors-reported ("waking the editor for the spelling")
+    (tuatara.runtime:host-wake tuatara.runtime:*host*)))
 
 (defun spelling-known (languages word)
   "What is known of WORD's spelling in LANGUAGES: :RIGHT, :WRONG, or NIL
@@ -209,7 +205,7 @@ asked again and again, and the words after it are still answered."
 
 (defun spelling-ask (languages words)
   "Have WORDS checked in LANGUAGES on the speller thread, those not yet asked
-about; when they are answered the editor redraws (*SPELLING-WAKE-FUNCTION*).
+about; when they are answered the editor redraws (SPELLING-ANSWERED).
 The newest asked are answered first (*SPELLING-BACKLOG*). Returns true when
 some were asked about."
   (let ((table (spelling-table languages)))
