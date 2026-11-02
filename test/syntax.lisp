@@ -3354,6 +3354,47 @@ bound to the fake frontend and the editor; the file and its buffer go afterwards
     (true painted)
     (is equal settled painted)))
 
+(define-test (syntax inner-text-not-parsed-coloured-later)
+  ;; Rust code in a doc comment's code block, its parse given up once (too
+  ;; slow): the doc comment's colours are not kept without it, so that the
+  ;; code is coloured at the next edit
+  (let ((path (records-file (format nil "/// Adds.~%///~%/// ```~%/// let total = add(1, 2);~%/// ```~%fn add(a: u8, b: u8) -> u8 { a + b }~%")
+                            :type "rs"))
+        (buffer nil) (failing t))
+    (sb-int:encapsulate 'tuatara.syntax::parse-texts 'slow
+                        (lambda (function rope parses then &rest more)
+                          ;; the parse of Rust inside the comment, given up the first time the
+                          ;; colours of the parsed text are worked out
+                          (if (and failing tuatara.syntax::*injected-colours* (some (lambda (parse)
+                                                   (string= "rust" (tuatara.syntax:grammar-name
+                                                                    (tuatara.syntax::text-parse-grammar parse))))
+                                                 parses))
+                              (progn (setf failing nil)
+                                     (funcall then (mapcar (lambda (parse) (declare (ignore parse)) (list nil :slow)) parses)))
+                              (apply function rope parses then more))))
+    (unwind-protect
+         (let* ((tuatara.syntax:*syntax-wait* 30) (tuatara.defaults::*rules-wait* 30)
+                (f (run-keys (list (lambda ()
+                                     (setf buffer (tuatara.command:current-buffer))
+                                     (loop repeat 600
+                                           for language = (tuatara.buffer:buffer-local buffer :syntax-pending)
+                                           until (or (null language) (tuatara.syntax:buffer-syntax buffer))
+                                           do (tuatara.defaults::start-parsing buffer language) (sleep 0.05))
+                                     (parse-done (tuatara.syntax:buffer-syntax buffer)))
+                                   :tick "M->" "i x DEL C-g" :tick)
+                             :file path :width 100 :height 10)))
+           ;; the code's own colours on its row of the last frame
+           (let* ((row (loop for r below 8
+                             when (search "let total" (tuatara.frontend.fake:fake-screen-line f r)) return r))
+                  (spans (and row (aref (car (first (tuatara.frontend.fake:fake-face-history f))) row))))
+             (true row)
+             (true (find-if (lambda (span) (let ((face (third span)))
+                                             (member :keyword (if (listp face) face (list face)))))
+                            spans)
+                   "~s" spans)))
+      (sb-int:unencapsulate 'tuatara.syntax::parse-texts 'slow)
+      (kill-records buffer path))))
+
 (define-test (syntax colours-kept-for-several-ranges)
   ;; two parts of a buffer shown at once keep their colours, each worked out once
   (let* ((text (with-output-to-string (s) (dotimes (i 40) (format s "fn f~d() {}~%" i))))

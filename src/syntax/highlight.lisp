@@ -418,17 +418,24 @@ them, in the order of LAYERS. Those of one depth are parsed and their rules'
 matches found in one request, and the children of the nodes holding text in
 yet other languages in them asked for in one more. The colours of a text
 worked out before for the same octets (KEPT-LAYER) are given again, the text
-not parsed."
+not parsed; those of a text are kept only when it, and every text in yet
+other languages in it, was parsed or is not to be (its grammar off). As a
+second value, true when that holds for all of LAYERS."
   (let* ((helper (current-helper))
+         (where (or *parsing-buffer* helper))
+         (settled t)
          (layers (loop for (name ranges) in layers
                        collect (multiple-value-bind (grammar colours faces inner locals face-of) (funcall resolve name)
-                                 (and helper grammar colours ranges (not (grammar-off-p grammar (or *parsing-buffer* helper)))
+                                 ;; no helper yet, or a parse that went wrong this time: tried again later
+                                 (unless helper (setf settled nil))
+                                 (and helper grammar colours ranges (not (grammar-off-p grammar where))
                                       (let ((kept (kept-layer name colours faces rope ranges start end))
                                             (key (and *injected-trees* (list name ranges))))
                                         (if kept
                                             (list :kept kept :base (car (first ranges)))
                                             (multiple-value-bind (tree known)
                                                 (if key (gethash key *injected-trees*) (values nil nil))
+                                              (when (and known (null tree)) (setf settled nil))
                                               (and (or tree (not known))
                                                    (list :name name :grammar grammar :ranges ranges
                                                          :colours colours :faces faces
@@ -446,7 +453,7 @@ not parsed."
                                              (kept-layer-ranges (getf layer :kept) (getf layer :base)))
                                             (t (pop results)))))))
     (if (null wanted)
-        (funcall all-colours '())
+        (values (funcall all-colours '()) settled)
         (parse-texts
          rope
          (loop for layer in wanted
@@ -465,6 +472,9 @@ not parsed."
                                       for (tree why) in trees
                                       do (destructuring-bind (&key grammar key ((:tree given)) &allow-other-keys) layer
                                            (note-parse-failure grammar why helper)
+                                           ;; not parsed, its grammar not turned off for it: tried again later
+                                           (unless (or tree given (grammar-off-p grammar where))
+                                             (setf settled nil))
                                            (unless given
                                              (if key (setf (gethash key *injected-trees*) tree) (when tree (push tree made)))))
                                       collect tree))
@@ -493,21 +503,27 @@ not parsed."
                                          collect (when texts
                                                    (prog1 (injection-texts-layers texts pairs starts first)
                                                      (incf first (injection-texts-asked texts))))))))))
+                         (inner-settled t)
                          (inner (and inner-layers
-                                     (layers-highlights resolve (loop for list in inner-layers append list)
-                                                        rope start end (1+ depth))))
+                                     (multiple-value-bind (colours all-settled)
+                                         (layers-highlights resolve (loop for list in inner-layers append list)
+                                                            rope start end (1+ depth))
+                                       (unless all-settled (setf inner-settled nil settled nil))
+                                       colours)))
                          (results (loop for colours in own
                                         for list in (or inner-layers (make-list (length own)))
                                         collect (nconc colours
                                                        (loop repeat (length list) nconc (pop inner))))))
-                    ;; those of a text parsed kept for the same text again
+                    ;; those of a text parsed kept for the same text again, unless a text in
+                    ;; yet other languages in it is to be parsed again
                     (loop for layer in wanted
                           for tree in trees
                           for colours in results
-                          when tree
+                          for list in (or inner-layers (make-list (length wanted)))
+                          when (and tree (or inner-settled (null list)))
                             do (destructuring-bind (&key name ranges ((:colours query)) faces &allow-other-keys) layer
                                  (keep-layer name query faces rope ranges start end colours)))
-                    (funcall all-colours results))
+                    (values (funcall all-colours results) settled))
                (dolist (tree made) (delete-tree tree)))))))))
 
 (defun language-highlights (resolve name ranges rope start end &optional (depth 1))
