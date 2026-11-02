@@ -202,7 +202,12 @@ list, waiting SECONDS at most; :LATE when it has not ended."
                          (is = 1 (length (tuatara.command:editor-frames editor)))
                          (true (tuatara.command:idle-frame-p editor (tuatara.command:editor-frame editor))
                                "the frame with no screen is back")
-                         (true (some #'tuatara.command:client-ended (tuatara.command:buffer-clients buffer)))))))))))
+                         (let ((ended (find-if #'tuatara.command:client-ended
+                                               (tuatara.command:buffer-clients buffer))))
+                           (true ended)
+                           ;; of an ended client only what names its folder is kept
+                           (false (tuatara.command:client-frontend ended))
+                           (false (tuatara.command:client-environment ended)))))))))))
 
 (define-test (daemon buffers-kept-by-client)
   ;; each client is offered its own buffers; one that ended leaves its folder in M-x buffers, to be taken up
@@ -337,20 +342,43 @@ list, waiting SECONDS at most; :LATE when it has not ended."
             (true (not (eq :late (sb-thread:join-thread thread :timeout 30 :default :late))) "the daemon ended")))))))
 
 (define-test (daemon stopped-with-no-terminal)
-  ;; tuatara --stop with no terminal asks nothing: the changes are kept as auto-saved copies
+  ;; tuatara --stop with no terminal asks nothing: with auto-saving off, changes would be lost, so it stops nothing
+  ;; and says which buffers hold them; with it on, the changes are kept as auto-saved copies and the daemon ends
   (with-test-directory (dir)
-    (let ((file (namestring (put-file (merge-pathnames "kept.txt" dir) "kept"))))
-      (with-test-daemon (name thread)
-        (multiple-value-bind (local runner) (attach-test-client name :directory dir :files (list file))
-          (true (shows local "kept"))
-          (type-keys local "i y")
-          (true (shows local "ykept"))
-          (is eql 0 (tuatara.terminal::run-client (list :stop name :files '()) :terminal nil))
-          (is eql 1 (first (client-ends runner)))
+    (let ((file (namestring (put-file (merge-pathnames "kept.txt" dir) "kept")))
+          (was tuatara-user:*auto-save*))
+      (unwind-protect
+           (with-test-daemon (name thread)
+             (multiple-value-bind (local runner) (attach-test-client name :directory dir :files (list file))
+               (true (shows local "kept"))
+               (type-keys local "i y")
+               (true (shows local "ykept"))
+               (setf tuatara-user:*auto-save* nil)
+               (let ((said (with-output-to-string (*error-output*)
+                             (is eql 1 (tuatara.terminal::run-client (list :stop name :files '()) :terminal nil)))))
+                 (true (search "kept.txt" said))
+                 (true (search "goes on" said)))
+               (true (sb-thread:thread-alive-p thread) "not stopped")
+               (setf tuatara-user:*auto-save* t)
+               (is eql 0 (tuatara.terminal::run-client (list :stop name :files '()) :terminal nil))
+               (is eql 1 (first (client-ends runner)))
+               (true (not (eq :late (sb-thread:join-thread thread :timeout 30 :default :late))))
+               (let ((copy (tuatara.defaults::auto-save-path file)))
+                 (unwind-protect (is string= "ykept" (file-text copy))
+                   (ignore-errors (delete-file copy))))))
+        (setf tuatara-user:*auto-save* was)))))
+
+(define-test (daemon stop-closes-standard-input)
+  ;; a client asking only to stop has its standard input closed, never read
+  (with-test-directory (dir)
+    (with-test-daemon (name thread)
+      (multiple-value-bind (in out) (sb-posix:pipe)
+        (multiple-value-bind (local runner) (attach-test-client name :directory dir :stop t :standard-input out)
+          (declare (ignore local))
+          (is eql 0 (first (client-ends runner)))
           (true (not (eq :late (sb-thread:join-thread thread :timeout 30 :default :late))))
-          (let ((copy (tuatara.defaults::auto-save-path file)))
-            (unwind-protect (is string= "ykept" (file-text copy))
-              (ignore-errors (delete-file copy)))))))))
+          ;; the client closed its own once passed: the daemon's is the only one there was
+          (true (pipe-ended-p in) "the daemon's copy of the descriptor is closed"))))))
 
 (define-test (daemon waits-for-a-client-to-ask)
   ;; with no client, what asks waits for one, its frame then; work that asks nothing runs meanwhile
@@ -362,7 +390,7 @@ list, waiting SECONDS at most; :LATE when it has not ended."
       (false ran)
       (multiple-value-bind (local runner) (attach-test-client name)
         (true (wait-until (lambda () ran) 10))
-        (true (tuatara.command:client-frontend ran) "done in the client's frame")
+        (true (tuatara.command:client-remote ran) "done in the client's frame")
         (type-keys local "C-x C-c")
         (client-ends runner)))))
 
@@ -401,7 +429,9 @@ list, waiting SECONDS at most; :LATE when it has not ended."
     (unwind-protect
          (with-test-daemon (name)
            (multiple-value-bind (local runner)
-               (attach-test-client name :environment '(("PATH" . "/client/bin") ("LANG" . "mi_NZ.UTF-8")))
+               (attach-test-client name :environment '(("PATH" . "/client/bin") ("LANG" . "mi_NZ.UTF-8")
+                                                       ("GIT_DIR" . "/elsewhere") ("GIT_SSH_COMMAND" . "evil")
+                                                       ("GIT_AUTHOR_NAME" . "Aroha") ("GPG_TTY" . "/dev/pts/0")))
              (true (shows local "scratch"))
              (let ((environment (in-daemon (lambda ()
                                              (let ((editor (daemon-editor)))
@@ -410,7 +440,9 @@ list, waiting SECONDS at most; :LATE when it has not ended."
                                                 #'tuatara.io:program-environment))))))
                (true (member "PATH=/client/bin" environment :test #'string=))
                (true (member "LANG=mi_NZ.UTF-8" environment :test #'string=))
-               (false (find-if (lambda (setting) (uiop:string-prefix-p "DISPLAY=" setting)) environment)))
+               (true (member "GIT_AUTHOR_NAME=Aroha" environment :test #'string=))
+               (dolist (name '("DISPLAY=" "GIT_DIR=/elsewhere" "GIT_SSH_COMMAND=" "GPG_TTY="))
+                 (false (find-if (lambda (setting) (uiop:string-prefix-p name setting)) environment) "~a passed" name)))
              (type-keys local "C-x C-c")
              (client-ends runner)))
       (if display (sb-posix:setenv "DISPLAY" display 1) (sb-posix:unsetenv "DISPLAY")))))
@@ -427,3 +459,51 @@ list, waiting SECONDS at most; :LATE when it has not ended."
                      ("--daemon=a/b") ("--daemon" "--client") ("--client" "--gui") ("--client" "-c" "init.lisp")))
       (true (getf (apply #'options wrong) :error) "~s taken" wrong))
     (true (search "-Q" (getf (options "--daemon" "-Q") :error)))))
+
+(define-test (daemon variables-kept-narrowly)
+  ;; only variables that say where a client is and who it is: none naming where git works, what it runs, or a terminal
+  (dolist (name '("PATH" "LANG" "LC_ALL" "TERM" "DISPLAY" "GIT_AUTHOR_NAME" "GIT_COMMITTER_EMAIL"))
+    (true (tuatara.command:client-variable-p name) "~a not kept" name))
+  (dolist (name '("GIT_DIR" "GIT_WORK_TREE" "GIT_INDEX_FILE" "GIT_CONFIG_PARAMETERS" "GIT_EXEC_PATH" "GIT_SSH_COMMAND"
+                  "GIT_EXTERNAL_DIFF" "GIT_ASKPASS" "GIT_AUTHOR_DATE" "GIT_TRACE" "GIT_EDITOR" "GPG_TTY" "LD_PRELOAD"))
+    (false (tuatara.command:client-variable-p name) "~a kept" name))
+  ;; a daemon started from a command line keeps none of what that line ran with
+  (let ((kept (tuatara.terminal::daemon-environment
+               '("HOME=/home/k" "PATH=/bin" "LC_TIME=mi_NZ" "XDG_RUNTIME_DIR=/run/user/1" "GIT_DIR=/x"
+                 "GIT_INDEX_FILE=/x/index" "PWD=/tmp" "TERM=xterm" "GPG_TTY=/dev/pts/1" "TMUX=/tmp/t"))))
+    (is equal '("HOME=/home/k" "PATH=/bin" "LC_TIME=mi_NZ" "XDG_RUNTIME_DIR=/run/user/1") kept)))
+
+(define-test (daemon terminal-checked)
+  ;; a terminal a client names is lent only when it is a terminal device of the user's, by a plain path
+  (false (tuatara.defaults::checked-terminal nil))
+  (false (tuatara.defaults::checked-terminal "/tmp/pts"))
+  (false (tuatara.defaults::checked-terminal "/dev/null") "not a terminal of the user's")
+  (false (tuatara.defaults::checked-terminal "/dev/pts/../null"))
+  (false (tuatara.defaults::checked-terminal "/dev/pts/ptmx") "the user's it is not")
+  (false (tuatara.defaults::checked-terminal "/dev/tty" :uid (1+ (sb-posix:geteuid)))))
+
+(define-test (daemon kills-from-decrypted-text-go-with-it)
+  ;; text killed in an encrypted file's buffer leaves the kill ring as the client that had it closes
+  (with-test-directory (dir)
+    (let ((file (namestring (put-file (merge-pathnames "secret.txt" dir) "the secret line"))))
+      (with-test-daemon (name)
+        (multiple-value-bind (local runner) (attach-test-client name :directory dir :files (list file))
+          (true (shows local "the secret line"))
+          (in-daemon (lambda ()
+                       (let ((buffer (tuatara.defaults::buffer-visiting file)))
+                         (setf (tuatara.buffer:buffer-local buffer :encrypted) (list :symmetric t)
+                               (tuatara.io:buffer-plaintext-p buffer) t)
+                         (let ((tuatara.command:*current-buffer* buffer))
+                           (tuatara.defaults::kill-text "the secret line" :append nil)
+                           (tuatara.defaults::kill-text " and more" :append t)))))
+          (true (in-daemon (lambda () (find "the secret line and more"
+                                            (tuatara.command:editor-kill-ring (daemon-editor)) :test #'equal))))
+          (multiple-value-bind (other other-runner) (attach-test-client name :directory dir)
+            (true (shows other "scratch"))
+            (type-keys local "C-x C-c")
+            (is eql 0 (first (client-ends runner)))
+            (false (in-daemon (lambda () (find-if (lambda (kill) (and (stringp kill) (search "secret" kill)))
+                                                  (tuatara.command:editor-kill-ring (daemon-editor)))))
+                   "the kill stayed on the ring")
+            (type-keys other "C-x C-c")
+            (client-ends other-runner)))))))

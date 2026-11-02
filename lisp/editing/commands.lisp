@@ -1139,15 +1139,37 @@ made a string."
       (and (plusp (tuatara.text:rope-bytes kill))
            (member (tuatara.text:rope-octet kill (1- (tuatara.text:rope-bytes kill))) '(10 13)))))
 
+(defvar *plaintext-kills* (make-hash-table :test 'eq :weakness :key)
+  "The kills taken from a decrypted file's text (TUATARA.IO:BUFFER-PLAINTEXT-P),
+each with the buffers it came from: they leave the kill ring with any of
+those buffers (FORGET-PLAINTEXT-KILLS).")
+
+(defun forget-plaintext-kills (buffer)
+  "Take off the kill ring every kill taken from BUFFER's decrypted text
+\(*PLAINTEXT-KILLS*): its text is kept no longer than the buffer. Runs as a
+buffer is killed, and as its client ends."
+  (let ((editor (or *editor* (running-editor))))
+    (when editor
+      (setf (editor-kill-ring editor)
+            (remove-if (lambda (kill) (member buffer (gethash kill *plaintext-kills*))) (editor-kill-ring editor))))))
+
+(pushnew 'forget-plaintext-kills tuatara.buffer:*kill-buffer-functions*)
+
 (defun kill-text (text &key (append (kill-command-p (editor-last-command *editor*))) (prepend nil))
   "Put TEXT on the kill ring, a string, or a rope for a kill too large for the
 system clipboard (REGION-TEXT); appending or prepending to the last kill when
 the previous command was a kill too, and on the system clipboard
-(SEND-TO-CLIPBOARD)."
-  (let ((ring (editor-kill-ring *editor*)))
+(SEND-TO-CLIPBOARD). A kill from a decrypted file's text is noted with its
+buffer, to leave the ring with it (*PLAINTEXT-KILLS*)."
+  (let* ((ring (editor-kill-ring *editor*))
+         (sources (and append ring (gethash (first ring) *plaintext-kills*))))
     (cond ((and append ring)
            (setf (first ring) (if prepend (kill-join text (first ring)) (kill-join (first ring) text))))
           (t (push-kill text)))
+    (when (tuatara.io:buffer-plaintext-p (current-buffer))
+      (pushnew (current-buffer) sources))
+    (when sources
+      (setf (gethash (first (editor-kill-ring *editor*)) *plaintext-kills*) sources))
     (send-to-clipboard (first (editor-kill-ring *editor*)))))
 
 (define-command kill-line ()
@@ -1727,7 +1749,7 @@ scratch buffers, are not asked about. In a client of an editor running in the
 background, close that client alone, asking nothing but about its encrypted
 buffers, which close with it (CLOSE-CLIENT); its other buffers stay in the
 editor, for another client to take up, and the editor goes on."
-  (when (client-frontend (current-client))
+  (when (client-remote (current-client))
     (return-from save-buffers-kill-editor (close-client)))
   (let ((answers (loop for query in *quit-query-functions*
                        for answer = (query-answer query "exit")

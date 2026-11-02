@@ -37,7 +37,7 @@
            #:editor-windows #:frames-windows #:editor-frames #:editor-frame #:frame-window #:open-frame #:*most-frames* #:remove-frame
            #:do-frames-windows #:*question-variables*
            ;; clients
-           #:client #:client-p #:make-client #:current-client #:editor-clients #:frame-client #:client-frontend
+           #:client #:client-p #:make-client #:current-client #:editor-clients #:frame-client #:client-frontend #:client-remote
            #:client-number #:client-directory #:client-environment #:client-began #:client-ended
            #:client-startup-buffers #:client-exit-code #:client-exit-words #:client-endings #:add-client #:end-client
            #:client-frames #:client-buffers #:client-sees-buffer-p #:buffer-clients #:join-client

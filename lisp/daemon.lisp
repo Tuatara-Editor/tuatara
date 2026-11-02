@@ -178,19 +178,35 @@ see the same files at the same paths."
 
 (defun live-client-count (editor)
   "How many clients show EDITOR now."
-  (count-if (lambda (client) (and (client-frontend client) (not (client-ended client)))) (editor-clients editor)))
+  (count-if (lambda (client) (and (client-remote client) (not (client-ended client)))) (editor-clients editor)))
+
+(defun peer-namespace (fd)
+  "The mount namespace of the process at the other end of the connection FD,
+as TUATARA.IO:MOUNT-NAMESPACE gives it, and its process id (PID), two
+values: read through /proc while a pidfd of that very process
+\(TUATARA.IO:PEER-PROCESS) says it still runs under that number, so that no
+other process given its number meanwhile answers for it. NIL when the system
+cannot say, or the process ended."
+  (multiple-value-bind (pidfd pid) (tuatara.io:peer-process fd)
+    (when pidfd
+      (unwind-protect
+           (let ((namespace (tuatara.io:mount-namespace pid)))
+             (and namespace (eql pid (tuatara.io:pidfd-process pidfd)) (values namespace pid)))
+        (sb-posix:close pidfd)))))
 
 (defun take-connection (daemon editor fd)
   "Take the new connection FD to DAEMON, whose editor is EDITOR: refused,
-saying why, when its peer may not be a client (PEER-REFUSAL), when as many
-are greeted as may be at once (*MOST-GREETING*), or as many clients show
-the editor (*MOST-CLIENTS*); else greeted on a thread of its own (GREET)."
-  (multiple-value-bind (pid uid) (tuatara.io:peer-credentials fd)
-    (let ((why (cond ((null pid) "The daemon could not tell who connected")
-                     ((peer-refusal uid (tuatara.io:mount-namespace pid) :own-namespace (daemon-namespace daemon)))
-                     ((>= (daemon-greeting daemon) *most-greeting*) "Too many clients are attaching at once: try again")
-                     ((>= (live-client-count editor) *most-clients*)
-                      (format nil "The daemon is shown by ~d clients already, the most it takes" *most-clients*)))))
+saying why, when its peer may not be a client (PEER-REFUSAL), its mount
+namespace read as PEER-NAMESPACE reads it, when as many are greeted as may
+be at once (*MOST-GREETING*), or as many clients show the editor
+\(*MOST-CLIENTS*); else greeted on a thread of its own (GREET)."
+  (multiple-value-bind (namespace pid) (peer-namespace fd)
+    (let* ((uid (nth-value 1 (tuatara.io:peer-credentials fd)))
+           (why (cond ((or (null pid) (null uid)) "The daemon could not tell who connected")
+                      ((peer-refusal uid namespace :own-namespace (daemon-namespace daemon)))
+                      ((>= (daemon-greeting daemon) *most-greeting*) "Too many clients are attaching at once: try again")
+                      ((>= (live-client-count editor) *most-clients*)
+                       (format nil "The daemon is shown by ~d clients already, the most it takes" *most-clients*)))))
       (if why
           (progn (tuatara.runtime:debug-report :daemon "a connection refused (process ~a, user ~a): ~a" pid uid why)
                  (tuatara.frontend:refuse-connection fd why))
@@ -209,6 +225,9 @@ says nothing it should has its connection closed."
              (tuatara.frontend:queue-push (daemon-queue daemon) (tuatara.frontend:make-event :tick)))
          (tuatara.frontend:remote-refused (condition)
            (tuatara.runtime:debug-report :daemon "a client refused: ~a" (tuatara.frontend:remote-refused-words condition))
+           (tuatara.frontend:shut-and-close fd))
+         (error (condition)
+           (tuatara.runtime:debug-report :daemon "greeting a client failed: ~a" (tuatara.runtime:failure-words condition))
            (tuatara.frontend:shut-and-close fd)))
     (sb-thread:with-mutex ((daemon-mutex daemon)) (decf (daemon-greeting daemon)))))
 
@@ -247,30 +266,68 @@ CLIENT's folder and is CLIENT's."
     (join-client buffer client)
     buffer))
 
+(defun checked-terminal (device &key (uid (sb-posix:geteuid)))
+  "DEVICE, the terminal a client names, when it is one the client may lend
+\(a program is given it as its terminal, GPG_TTY): a terminal device under
+/dev/pts/ or a /dev/tty, its path with no .. in it, of the user UID; else
+NIL."
+  (and device
+       (or (uiop:string-prefix-p "/dev/pts/" device) (uiop:string-prefix-p "/dev/tty" device))
+       (not (search "/.." device)) (not (search "../" device))
+       (let ((stamp (tuatara.io:path-stamp device :failure nil)))
+         (and stamp (eq (tuatara.io:stamp-kind stamp) :character-device) (eql (tuatara.io:stamp-uid stamp) uid)))
+       device))
+
+(defun close-standard-input (request)
+  "Close the standard input REQUEST passed, unless it was taken to be read (TAKE-STANDARD-INPUT)."
+  (let ((fd (shiftf (tuatara.frontend:request-standard-input request) nil)))
+    (when (integerp fd)
+      (ignoring-errors-reported ("closing a client's standard input") (sb-posix:close fd)))))
+
+(defun take-standard-input (request)
+  "The descriptor of the standard input REQUEST passed, or NIL, taken from
+it: whoever takes it closes it."
+  (let ((fd (shiftf (tuatara.frontend:request-standard-input request) nil)))
+    (and (integerp fd) fd)))
+
 (defun attach-client (editor remote)
   "Give EDITOR a client on REMOTE, a remote frontend greeted, with a frame
 showing a scratch buffer of its own (CLIENT-SCRATCH, ADD-CLIENT). What the
 client asked for (TUATARA.FRONTEND:REMOTE-REQUEST) is done in its frame as
-soon as the editor is free (START-CLIENT)."
+soon as the editor is free (START-CLIENT); a client that ends first has its
+standard input closed unread. The terminal it names is kept only when it
+may be lent (CHECKED-TERMINAL)."
   (let* ((request (tuatara.frontend:remote-request remote))
+         (named (tuatara.frontend:request-terminal request))
          (client nil))
+    (setf (tuatara.frontend:request-terminal request) (checked-terminal named))
+    (when (and named (not (tuatara.frontend:request-terminal request)))
+      (tuatara.runtime:debug-report :daemon "a client's terminal not taken: ~a" (tuatara.frontend:shown-words named)))
     (setf client (add-client editor remote
                              :directory (tuatara.io:slash-ended (tuatara.frontend:request-directory request))
                              :environment (kept-client-environment (tuatara.frontend:request-environment request))
                              :buffer #'client-scratch
-                             :start (lambda () (start-client editor client request))))
+                             :start (lambda () (unless (client-ended client) (start-client editor client request)))))
+    (push (lambda (client) (declare (ignore client)) (close-standard-input request)) (client-endings client))
     (tuatara.runtime:debug-report :daemon "client ~d attached in ~a~@[ (~a)~]" (client-number client)
-                                  (client-directory client) (tuatara.frontend:request-terminal request))
+                                  (tuatara.frontend:shown-words (client-directory client))
+                                  (tuatara.frontend:request-terminal request))
     client))
 
 (defun take-in-clients (editor)
   "Tick function of a daemon (*TICK-FUNCTIONS*): give each client greeted
-since a frame of EDITOR (ATTACH-CLIENT). Wants no call of its own: a client
-greeted wakes the editor."
+since a frame of EDITOR (ATTACH-CLIENT), each apart: one that cannot be
+attached is let go, its standard input closed, and the others are attached.
+Wants no call of its own: a client greeted wakes the editor."
   (let ((daemon *daemon*))
     (when (and daemon (daemon-arrived daemon))
       (dolist (remote (reverse (sb-thread:with-mutex ((daemon-mutex daemon)) (shiftf (daemon-arrived daemon) '()))))
-        (attach-client editor remote))))
+        (handler-case (attach-client editor remote)
+          (error (condition)
+            (tuatara.runtime:debug-report :daemon "a client could not be attached: ~a"
+                                          (tuatara.runtime:failure-words condition))
+            (close-standard-input (tuatara.frontend:remote-request remote))
+            (ignoring-errors-reported ("letting a client go") (tuatara.frontend:frontend-stop remote)))))))
   nil)
 
 (defun start-client (editor client request)
@@ -287,11 +344,13 @@ with it."
                                         (list path :safe (tuatara.frontend:request-safe request)
                                                    :hex (tuatara.frontend:request-hex request))
                                         path))))
-         (input (tuatara.frontend:request-standard-input request)))
+         (input nil))
+    (when (tuatara.frontend:request-stop request)
+      (close-standard-input request)
+      (return-from start-client (stop-from-client editor client request)))
+    (setf input (take-standard-input request))
     (when input
       (setf entries (append entries (list (list :standard-input input)))))
-    (when (tuatara.frontend:request-stop request)
-      (return-from start-client (stop-from-client editor client request)))
     (let ((buffers (visit-startup-files entries)))
       (setf (client-startup-buffers client) buffers)
       (dolist (buffer buffers) (join-client buffer client))
@@ -322,15 +381,27 @@ with it."
 (defun close-encrypted-with-client (client)
   "Client end function (*CLIENT-END-FUNCTIONS*): close CLIENT's encrypted
 buffers (CLIENT-ENCRYPTED-BUFFERS), their text not kept beyond those who
-opened them; one with changes not saved is kept, as its text would be lost,
-and that is said."
+opened them, what was killed from them taken off the kill ring
+\(FORGET-PLAINTEXT-KILLS); one with changes not saved is kept, as its text
+would be lost, and that is said."
   (dolist (buffer (client-encrypted-buffers client))
+    (forget-plaintext-kills buffer)
     (if (tuatara.buffer:buffer-modified-p buffer)
         (message "~a, encrypted, has changes not saved: kept, though its client ended"
                  (tuatara.buffer:buffer-name buffer))
         (tuatara.buffer:kill-buffer buffer))))
 
 (pushnew 'close-encrypted-with-client *client-end-functions*)
+
+(defun stop-reading-for-client (client)
+  "Client end function (*CLIENT-END-FUNCTIONS*): stop reading the standard
+input CLIENT passed, which may never end; what was read stays in *stdin*."
+  (dolist (buffer (client-startup-buffers client))
+    (dolist (job (tuatara.runtime:jobs-of buffer :running t))
+      (when (standard-input-job-p job)
+        (tuatara.runtime:job-stop job)))))
+
+(pushnew 'stop-reading-for-client *client-end-functions*)
 
 (defun close-client ()
   "Close the client working in the frame, as \\[save-buffers-kill-editor]
@@ -383,7 +454,7 @@ told the daemon ends, with WORDS, and exits 1; that one exits 0; then the
 editor ends, writing what it keeps as an editor does."
   (let ((here (current-client editor)))
     (dolist (client (editor-clients editor))
-      (unless (or (eq client here) (client-ended client) (null (client-frontend client)))
+      (unless (or (eq client here) (client-ended client) (not (client-remote client)))
         (setf (client-exit-code client) 1 (client-exit-words client) words)
         (end-client editor client)))
     (setf (editor-running editor) nil)))
@@ -409,12 +480,20 @@ writes what it keeps (the files visited lately, the places) and ends.
         (dolist (answer answers) (when (functionp answer) (call-hook-function answer)))
         (stop-daemon editor)))))
 
+(defun unsaved-not-kept ()
+  "The buffers with changes leaving the editor would lose (UNSAVED-P) that
+no auto-saved copy would keep (AUTO-SAVE-WANTED-P, as the settings stand):
+a new buffer with no file, an encrypted file's text, or every one when
+auto-saving is off."
+  (remove-if (lambda (buffer) (and (tuatara.buffer:buffer-modified-p buffer) (auto-save-wanted-p buffer)))
+             (remove-if-not #'unsaved-p tuatara.buffer:*buffers*)))
+
 (defun auto-save-unsaved ()
-  "Write the changes not saved of the editor's buffers as auto-saved copies, for
-\\[recover-file] and \\[list-auto-saves] to offer on the next visit: each
-that may be auto-saved (AUTO-SAVE-WANTED-P, auto-saving on or not; never an
-encrypted file's text). Said in *Messages*, and so in the log."
-  (let ((*auto-save* t) (written 0))
+  "Write the changes not saved of the editor's buffers as auto-saved copies,
+for \\[recover-file] and \\[list-auto-saves] to offer on the next visit:
+each that may be auto-saved (AUTO-SAVE-WANTED-P). Said in *Messages*, and so
+in the log."
+  (let ((written 0))
     (dolist (buffer tuatara.buffer:*buffers*)
       (when (and (tuatara.buffer:buffer-modified-p buffer) (auto-save-wanted-p buffer))
         (ignoring-errors-reported ("auto-saving ~a" (tuatara.buffer:buffer-name buffer))
@@ -424,21 +503,30 @@ encrypted file's text). Said in *Messages*, and so in the log."
 
 (defun stop-from-client (editor client request)
   "Stop EDITOR as CLIENT asked as it attached (tuatara --stop), REQUEST
-saying how: asked in its terminal as \\[daemon-quit] asks; with no terminal,
-where nothing can be asked, the changes not saved written as auto-saved copies
-first (AUTO-SAVE-UNSAVED). A question given up keeps the daemon running and
-closes CLIENT, exiting 1."
-  (if (null (tuatara.frontend:request-terminal request))
-      (progn (auto-save-unsaved)
-             (stop-daemon editor :words "The daemon was stopped (tuatara --stop)"))
-      (let ((stopped nil))
-        (unwind-protect
-             (progn (run-command editor 'daemon-quit)
-                    (setf stopped (not (editor-running editor))))
-          (unless stopped
-            (setf (client-exit-code client) 1
-                  (client-exit-words client) "The daemon goes on: nothing was stopped")
-            (end-client editor client))))))
+saying how: asked in its terminal as \\[daemon-quit] asks. With no
+terminal, where nothing can be asked, the changes not saved are written as
+auto-saved copies first (AUTO-SAVE-UNSAVED); when a change no copy would
+keep (UNSAVED-NOT-KEPT) is there, the daemon is not stopped, and CLIENT is
+told which buffers hold such changes. Either way not stopped, the daemon
+goes on and CLIENT closes, exiting 1."
+  (flet ((not-stopped (words)
+           (setf (client-exit-code client) 1 (client-exit-words client) words)
+           (end-client editor client)))
+    (if (null (tuatara.frontend:request-terminal request))
+        (let ((lost (unsaved-not-kept)))
+          (if lost
+              (not-stopped (format nil "The daemon goes on: ~{~a~^, ~} ~:[has~;have~] changes no auto-saved copy ~
+                                        would keep; stop it from a terminal (tuatara --stop in one, or ~
+                                        M-x daemon-quit in a client), where they are asked about"
+                                   (mapcar #'tuatara.buffer:buffer-name lost) (rest lost)))
+              (progn (auto-save-unsaved)
+                     (stop-daemon editor :words "The daemon was stopped (tuatara --stop)"))))
+        (let ((stopped nil))
+          (unwind-protect
+               (progn (run-command editor 'daemon-quit)
+                      (setf stopped (not (editor-running editor))))
+            (unless stopped
+              (not-stopped "The daemon goes on: nothing was stopped")))))))
 
 ;;; Running a daemon's editor
 

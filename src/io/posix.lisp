@@ -1076,7 +1076,13 @@ there. The socket file is made for you alone (0600)."
                                                                            sb-sys:system-area-pointer sb-alien:int))
                                    fd sap length))
                      (fail "listen at" path))))
-           (sb-posix:chmod (native path) #o600)
+           ;; the socket itself, never what a link put in its place points at
+           (with-c-string (name (native path))
+             (unless (zerop (sb-alien:alien-funcall
+                             (sb-alien:extern-alien "fchmodat" (function sb-alien:int sb-alien:int sb-sys:system-area-pointer
+                                                                         sb-alien:unsigned-int sb-alien:int))
+                             +at-fdcwd+ name #o600 #x100))                ; AT_SYMLINK_NOFOLLOW
+               (fail "make for you alone" path)))
            (unless (zerop (sb-alien:alien-funcall
                            (sb-alien:extern-alien "listen" (function sb-alien:int sb-alien:int sb-alien:int))
                            fd backlog))
@@ -1131,6 +1137,34 @@ and group id (GID); NIL when the system cannot say."
                 fd 1 17 (sb-alien:addr credentials) (sb-alien:addr length)))   ; SOL_SOCKET, SO_PEERCRED
         (values (sb-alien:deref credentials 0) (sb-alien:deref credentials 1) (sb-alien:deref credentials 2))
         nil)))
+
+(defun peer-process (fd)
+  "A pidfd of the process at the other end of the local socket FD as it
+connected (SO_PEERPIDFD), and its process id (PID) as the system gives it
+now, two values: the pidfd names that process however long it lives, never
+another given its number after it. NIL when the system cannot say; the
+pidfd is the caller's to close."
+  (sb-alien:with-alien ((pidfd sb-alien:int -1) (length sb-alien:unsigned-int 4))
+    (when (zerop (sb-alien:alien-funcall
+                  (sb-alien:extern-alien "getsockopt" (function sb-alien:int sb-alien:int sb-alien:int sb-alien:int
+                                                                (* sb-alien:int) (* sb-alien:unsigned-int)))
+                  fd 1 77 (sb-alien:addr pidfd) (sb-alien:addr length)))       ; SOL_SOCKET, SO_PEERPIDFD
+      (let ((pid (pidfd-process pidfd)))
+        (if pid
+            (values pidfd pid)
+            (progn (sb-posix:close pidfd) nil))))))
+
+(defun pidfd-process (pidfd)
+  "The process id the pidfd PIDFD names while that process runs, as
+/proc/self/fdinfo says it; NIL once it has ended or when it cannot be read."
+  (let ((text (handler-case
+                  (tuatara.text:lenient-string (file-octets (format nil "/proc/self/fdinfo/~d" pidfd) :limit 4096))
+                (file-system-error () nil))))
+    (when text
+      (let ((at (search (format nil "~%Pid:") text)))
+        (when at
+          (let ((pid (parse-integer text :start (+ at 5) :junk-allowed t)))
+            (and pid (plusp pid) pid)))))))
 
 (defun mount-namespace (pid)
   "The mount namespace the process PID runs in, as (DEVICE . INODE) of its

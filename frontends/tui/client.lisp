@@ -22,11 +22,37 @@ listens before taking it as failed.")
   (tuatara.command:abbreviated-path
    (tuatara.io:path-join (tuatara.io:native (tuatara.io:cache-directory)) (daemon-log-name name))))
 
+(defparameter *daemon-variables*
+  '("HOME" "USER" "LOGNAME" "SHELL" "PATH" "LANG" "LANGUAGE" "LC_*" "TZ" "TMPDIR" "XDG_*" "DISPLAY"
+    "WAYLAND_DISPLAY" "DBUS_SESSION_BUS_ADDRESS" "SSH_AUTH_SOCK" "GNUPGHOME" "NO_COLOR" "TUATARA_HEAP_MB"
+    "APPIMAGE" "APPDIR" "ARGV0" "TUATARA_APPIMAGE" "TUATARA_LD_LIBRARY_PATH" "LD_LIBRARY_PATH")
+  "The environment variables a daemon is started with, of those of the
+program starting it, a * at the end standing for any ending: who you are,
+where your files, folders and programs are, your language and time zone, the
+desktop and the agents it reaches, and what the AppImage it runs from needs.
+None of what one command line is run with (git's variables, a terminal's)
+outlives it in the daemon.")
+
+(defun daemon-environment (environment)
+  "Those of ENVIRONMENT, NAME=VALUE strings, a daemon is started with
+\(*DAEMON-VARIABLES*)."
+  (remove-if-not (lambda (setting)
+                   (let ((equals (position #\= setting)))
+                     (and equals
+                          (let ((name (subseq setting 0 equals)))
+                            (some (lambda (kept)
+                                    (if (char= #\* (char kept (1- (length kept))))
+                                        (uiop:string-prefix-p (subseq kept 0 (1- (length kept))) name)
+                                        (string= kept name)))
+                                  *daemon-variables*)))))
+                 environment))
+
 (defun start-daemon (name config &key quiet)
   "Start the daemon NAME, reading CONFIG as its init file when given, in a
 session of its own, and wait until it listens or says why it cannot: said on
 the standard output, unless QUIET, or why not on the error output. The exit
-code: 0 when it runs, 1 when not."
+code: 0 when it runs, 1 when not. It is given only the variables a daemon
+keeps (DAEMON-ENVIRONMENT)."
   (unless tuatara.io:*saved-program*
     (format *error-output* "tuatara: a daemon is started from the built program, not from the sources~%")
     (return-from start-daemon 1))
@@ -35,9 +61,7 @@ code: 0 when it runs, 1 when not."
     (let* ((process (sb-ext:run-program program arguments
                                         :wait nil :input nil :output :stream :error :output
                                         :environment (cons (format nil "TUATARA_DAEMON=~a" name)
-                                                           (remove-if (lambda (setting)
-                                                                        (uiop:string-prefix-p "TUATARA_DAEMON=" setting))
-                                                                      (sb-ext:posix-environ)))))
+                                                           (daemon-environment (sb-ext:posix-environ)))))
            (out (sb-ext:process-output process))
            (deadline (tuatara.runtime:deadline-in *daemon-ready-seconds*)))
       (unwind-protect

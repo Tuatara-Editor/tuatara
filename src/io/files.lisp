@@ -1080,14 +1080,17 @@ once it is let go, so that what was read is left only in the vector given."
 with no name in the cache directory (OPEN-SCRATCH-FILE), so that its size is
 bounded by the disk and not by memory. Returns the descriptor of that file
 and the octets it holds, as two values. Waits: call it from a thread doing
-work in the background."
+work in the background; in a job, asking it to stop ends the copy, however
+long INPUT waits to give more (a pipe that never ends)."
   (let ((fd (open-scratch-file (cache-directory)))
         (block (make-array (* 1024 1024) :element-type '(unsigned-byte 8)))
         (size 0)
         (done nil))
     (unwind-protect
          (progn
-           (loop (let ((got (read-fd-into input block :path path)))
+           (loop (loop until (plusp (poll-fd input 1 1000))     ; POLLIN
+                       do (tuatara.runtime:job-check-stop))
+                 (let ((got (read-fd-into input block :path path)))
                    (when (zerop got) (return))
                    (write-octets fd block :end got :path path)
                    (incf size got)))

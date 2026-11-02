@@ -202,7 +202,7 @@ frame of EDITOR taking turns on that screen; the editor's last frame stays.
 A client whose own screen it was has ended (END-CLIENT)."
   (let* ((frontend (frame-frontend frame))
          (client (frame-client frame)))
-    (if (and client (eq (client-frontend client) frontend))
+    (if (and client (client-remote client) (eq (client-frontend client) frontend))
         (end-client editor client)
         (dolist (gone (remove frontend (editor-frames editor) :key #'frame-frontend :test-not #'eq))
           (when (rest (editor-frames editor))

@@ -205,7 +205,7 @@ and select work as in any support buffer."
     ;; the other clients' folders shown folded, this client's open
     (when (client-folders-p)
       (setf (tuatara.buffer:buffer-local list 'list-folded)
-            (remove (current-client) (remove-if-not #'client-frontend (editor-clients *editor*)))))
+            (remove (current-client) (remove-if-not #'client-remote (editor-clients *editor*)))))
     (buffers-render list (1+ *buffers-title-lines*))))
 
 (defmethod list-entry-noun ((mode buffers-mode))

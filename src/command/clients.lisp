@@ -21,12 +21,15 @@
 says and what it does in the background, the same for all.")
 
 (defparameter *client-variables* '("TERM" "COLORTERM" "NO_COLOR" "LANG" "LC_*" "DISPLAY" "WAYLAND_DISPLAY"
-                                    "SSH_AUTH_SOCK" "GPG_TTY" "GIT_*" "PATH")
+                                    "SSH_AUTH_SOCK" "PATH" "GIT_AUTHOR_NAME" "GIT_AUTHOR_EMAIL"
+                                    "GIT_COMMITTER_NAME" "GIT_COMMITTER_EMAIL")
   "The environment variables of a client the editor keeps for it, a * at the
 end standing for any ending: they say where its terminal and desktop are,
-its language, how its keys reach other machines, and where its programs are.
-A program started from its frames has them in place of the editor's own, and
-none of these the client has not.")
+its language, how its keys reach other machines, where its programs are, and
+whose name its commits bear. A program started from its frames has them in
+place of the editor's own, and none of these the client has not. No variable
+that names where git works, runs a program or writes is kept; GPG_TTY is the
+client's terminal, as the editor checked it.")
 
 (defun client-variable-p (name)
   "True when the environment variable NAME is one the editor keeps for a
@@ -47,7 +50,7 @@ everyone's."
 one who started an editor of its own has every buffer already, as do the
 buffers every client is offered (*BUFFERS-FOR-EVERY-CLIENT*). Nothing is made
 for a buffer that is CLIENT's already."
-  (when (and client (client-frontend client) (not (member client (buffer-clients buffer)))
+  (when (and client (client-remote client) (not (client-ended client)) (not (member client (buffer-clients buffer)))
              (not (member (tuatara.buffer:buffer-name buffer) *buffers-for-every-client* :test #'string=)))
     (setf (tuatara.buffer:buffer-local buffer :clients) (cons client (buffer-clients buffer)))))
 
@@ -57,11 +60,11 @@ buffers to switch to, the one used before, the files to save): it is
 CLIENT's, or no one's, or CLIENT is the one who started an editor of its
 own, who is offered every buffer."
   (let ((clients (buffer-clients buffer)))
-    (and (or (null client) (null (client-frontend client)) (null clients) (member client clients)) t)))
+    (and (or (null client) (not (client-remote client)) (null clients) (member client clients)) t)))
 
 (defun client-buffers (&optional (buffers tuatara.buffer:*buffers*) (client (current-client)))
   "Those of BUFFERS offered to CLIENT (CLIENT-SEES-BUFFER-P), in their order."
-  (if (or (null client) (null (client-frontend client)))
+  (if (or (null client) (not (client-remote client)))
       buffers
       (remove-if-not (lambda (buffer) (client-sees-buffer-p client buffer)) buffers)))
 
@@ -79,7 +82,7 @@ function of none, is done in that frame as soon as the editor is free.
 Returns the client."
   (let* ((client (make-client :frontend frontend :directory directory :environment environment
                               :number (1+ (loop for other in (editor-clients editor)
-                                                when (client-frontend other) maximize (client-number other)))))
+                                                when (client-remote other) maximize (client-number other)))))
          (shown (progn (setf (editor-clients editor) (append (editor-clients editor) (list client)))
                        (funcall buffer client)))
          (frame (if shown (add-frame editor frontend shown) (add-frame editor frontend)))
@@ -113,7 +116,9 @@ frontend with no screen (KEEP-IDLE-FRAME)."
 oldest first), then *CLIENT-END-FUNCTIONS*; a client on a frontend of its own
 is told the code it ends with and what it says, and its frames are closed, the
 idle frame kept in their place when they were EDITOR's last (KEEP-IDLE-FRAME).
-Its buffers stay, still its, for another client to take up."
+Its buffers stay, still its, for another client to take up; of the client
+itself only what names its folder is kept, its frontend, environment and
+files let go."
   (unless (client-ended client)
     (setf (client-ended client) (get-universal-time))
     (dolist (ending (reverse (client-endings client)))
@@ -131,7 +136,10 @@ Its buffers stay, still its, for another client to take up."
             (if (rest (editor-frames editor))
                 (remove-frame editor frame)
                 (tuatara.runtime:ignoring-errors-reported ("closing a client's screen")
-                  (tuatara.frontend:frontend-stop frontend)))))))))
+                  (tuatara.frontend:frontend-stop frontend))))))
+      (when (client-remote client)
+        (setf (client-frontend client) nil (client-environment client) '()
+              (client-startup-buffers client) '() (client-endings client) '())))))
 
 (defun client-folder-words (client)
   "What the lists of buffers call CLIENT's: when it ended, or began, and
@@ -146,16 +154,19 @@ since 14:02, ~/notes\")."
 (defmethod tuatara.io:host-program-environment ((host editor-host))
   "The editor's variables, those it keeps for a client (*CLIENT-VARIABLES*)
 taken from the client the work is for (CLIENT-ENVIRONMENT) where it is one
-on a screen of its own: the client of the frame a job was begun in, on its
+on a screen of its own, and GPG_TTY naming its terminal: the client of the frame a job was begun in, on its
 thread, else of the frame worked in."
   (let* ((editor (or *editor* (running-editor)))
          (frame (or (thread-frame) (and editor (editor-frame editor))))
          (client (and frame (frame-client frame)))
          (environment (sb-ext:posix-environ)))
-    (if (not (and client (client-frontend client)))
+    (if (not (and client (client-remote client) (client-frontend client)))
         environment
-        (append (loop for (name . value) in (client-environment client) collect (format nil "~a=~a" name value))
-                (remove-if (lambda (setting)
-                             (let ((equals (position #\= setting)))
-                               (and equals (client-variable-p (subseq setting 0 equals)))))
-                           environment)))))
+        (let ((terminal (tuatara.frontend:frontend-terminal-device (client-frontend client))))
+          (append (and terminal (list (format nil "GPG_TTY=~a" terminal)))
+                  (loop for (name . value) in (client-environment client) collect (format nil "~a=~a" name value))
+                  (remove-if (lambda (setting)
+                               (let ((equals (position #\= setting)))
+                                 (and equals (let ((name (subseq setting 0 equals)))
+                                               (or (client-variable-p name) (string= name "GPG_TTY"))))))
+                             environment))))))

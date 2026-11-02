@@ -26,7 +26,7 @@ frame's close button does the same."
   (let ((editor *editor*))
     (unless (rest (client-frames editor (current-client editor)))
       (refuse "This is the only frame; ~a ~:[quits~;closes this client~]"
-              (substitute-command-keys "\\[save-buffers-kill-editor]") (client-frontend (current-client editor))))
+              (substitute-command-keys "\\[save-buffers-kill-editor]") (client-remote (current-client editor))))
     (remove-frame editor (editor-frame editor))))
 
 (define-command delete-other-frames ()
