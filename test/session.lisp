@@ -81,6 +81,46 @@ a session file not of its own kind is left alone, nothing in it evaluated; off, 
         (true (tuatara.frontend.fake:fake-frame-showing f "1 file no longer there")))
       (forget-session-buffers))))
 
+(define-test (session frames-kept-and-opened-again)
+  ;; each frame's windows kept in a section of its own, the frame worked in first; opened again in
+  ;; a window as frames, in a terminal as one frame with the other frames' files behind it
+  (with-test-directory (dir)
+    (let ((one (namestring (put-file (merge-pathnames "one.txt" dir) "one")))
+          (two (namestring (put-file (merge-pathnames "two.txt" dir) "two")))
+          (tuatara-user:*keep-session* t)
+          (tuatara.defaults::*modal-editing* nil))
+      (ignore-errors (delete-file (tuatara.defaults::session-path)))
+      (forget-session-buffers)
+      (let ((f (tuatara.frontend.fake:make-fake-frontend :width 120 :height 30 :font-steps 0)))
+        (queue-test-keys f (list (format nil "C-x C-f C-a C-k ~a RET C-x 5 f C-a C-k ~a RET"
+                                         (rimu-typed one) (rimu-typed two))))
+        (tuatara.command:run-editor f :setup #'tuatara.defaults:install-defaults))
+      (let ((kept (alexandria:read-file-into-string (tuatara.defaults::session-path))))
+        (true (search (format nil "frame~%window 1 0 file 0 ~a~%frame~%window 1 0 file 0 ~a~%end" two one) kept)
+              "~a" kept))
+      (multiple-value-bind (buffers tree others) (tuatara.defaults::read-session)
+        (declare (ignore buffers))
+        (is equal (list :window t 0 (list :file 0 two)) tree)
+        (is equal (list (list :window t 0 (list :file 0 one))) others))
+      ;; in a window: both frames, the one worked in first
+      (forget-session-buffers)
+      (let* ((f (tuatara.frontend.fake:make-fake-frontend :width 120 :height 30 :font-steps 0))
+             (editor (tuatara.command:run-editor f :setup #'tuatara.defaults:install-defaults)))
+        (is equal '("two.txt" "one.txt")
+            (mapcar (lambda (frame)
+                      (tuatara.buffer:buffer-name (tuatara.display:window-buffer (tuatara.command:frame-window frame))))
+                    (tuatara.command:editor-frames editor)))
+        (is eq (first (tuatara.command:editor-frames editor)) (tuatara.command:editor-frame editor)))
+      ;; in a terminal: one frame, the other's file open behind it
+      (forget-session-buffers)
+      (multiple-value-bind (f editor) (session-start nil)
+        (declare (ignore f))
+        (is = 1 (length (tuatara.command:editor-frames editor)))
+        (is string= "two.txt" (tuatara.buffer:buffer-name (tuatara.display:window-buffer
+                                                            (tuatara.command:editor-window editor))))
+        (true (tuatara.buffer:find-buffer "one.txt")))
+      (forget-session-buffers))))
+
 (define-test (session never-evaluated-and-off)
   (with-test-directory (dir)
     (let ((one (namestring (merge-pathnames "one.txt" dir))))
