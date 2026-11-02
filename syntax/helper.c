@@ -93,6 +93,8 @@ enum {
                          its matches, after their octets (as OP_MATCHES gives them) */
   OP_MATCHES_MANY,    /* n, n x (query, tree, start, end) -> for each, its matches after their octets */
   OP_CHILDREN_MANY,   /* n, n x (tree, start, end, symbol, named, from, to) -> for each, as OP_CHILDREN gives */
+  OP_EDITS,           /* tree, copy (0/1), n, n x nine numbers, as OP_EDIT's, in order -> with copy 1,
+                         a copy of the tree after them, else 0 */
   OP_READ = 64,       /* asked of the editor: parser, octet -> the octets */
 };
 
@@ -630,6 +632,17 @@ static bool answer(Connection *c, Answering *a, uint32_t id, uint32_t how, char 
   case OP_EDIT: {
     TSTree *tree = table_get(&trees, W(0));
     if (tree) tuatara_edit(tree, W(1), W(2), W(3), W(4), W(5), W(6), W(7), W(8), W(9));
+    break;
+  }
+  case OP_EDITS: {
+    TSTree *tree = table_get(&trees, W(0));
+    uint32_t n = W(2);
+    if (!tree || size < 12 || n > (size - 12) / 36) { status = REFUSED; break; }
+    for (uint32_t i = 0; i < n; i++) {
+      uint32_t at = 3 + 9 * i;
+      tuatara_edit(tree, W(at), W(at + 1), W(at + 2), W(at + 3), W(at + 4), W(at + 5), W(at + 6), W(at + 7), W(at + 8));
+    }
+    out_u32(&out, W(1) ? table_put(&trees, ts_tree_copy(tree)) : 0);
     break;
   }
   case OP_COPY: {

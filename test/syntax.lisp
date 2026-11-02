@@ -3214,6 +3214,43 @@ bound to the fake frontend and the editor; the file and its buffer go afterwards
         (true (< (/ (- high low) 40) 256) "~,1f octets a key at 20 rows, ~,1f at 60: ~,1f more for each row"
               low high (/ (- high low) 40))))))
 
+(define-test (syntax edits-told-in-one-request)
+  ;; the edits of one change reach the tree, and the copy a parse begins
+  ;; from is made, in one request to the helper however many places change
+  (let* ((text (with-output-to-string (s) (dotimes (i 40) (format s "fn f~d() {}~%" i))))
+         (buffer (tuatara.buffer:make-buffer "*syntax-edits*" :text text))
+         (requests 0))
+    (unwind-protect
+         (let ((syntax (tuatara.syntax:attach-syntax buffer (tuatara.syntax:find-grammar "rust"))))
+           (parse-done syntax)
+           (flet ((requests-for (places)
+                    (parse-done syntax)
+                    (setf requests 0)
+                    ;; this thread's, not those of the parse it starts
+                    (let ((here sb-thread:*current-thread*))
+                      (sb-int:encapsulate 'tuatara.syntax::call-send 'counting
+                                          (lambda (function &rest arguments)
+                                            (when (eq sb-thread:*current-thread* here) (incf requests))
+                                            (apply function arguments))))
+                    (unwind-protect
+                         (tuatara.buffer:buffer-edit
+                          buffer (coerce (loop for i below places
+                                               for at = (search (format nil "f~d(" i) (tuatara.buffer:buffer-string buffer))
+                                               collect (tuatara.text:make-edit at at (sb-ext:string-to-octets "x")))
+                                         'vector))
+                      (sb-int:unencapsulate 'tuatara.syntax::call-send 'counting))
+                    requests))
+             (let ((one (requests-for 1)) (twenty (requests-for 20)))
+               (is = 1 one "~d requests for an edit in one place" one)
+               (is = one twenty "~d requests for one place, ~d for twenty" one twenty)
+               ;; the tree followed the edits
+               (parse-done syntax)
+               (is equal (tuatara.buffer:buffer-string buffer)
+                   (tuatara.text:rope-string (tuatara.syntax:syntax-rope syntax)))
+               (false (tuatara.syntax:tree-has-error-p (tuatara.syntax:syntax-tree syntax))))))
+      (tuatara.syntax:detach-syntax buffer)
+      (tuatara.buffer:kill-buffer buffer))))
+
 (define-test (syntax colours-kept-for-several-ranges)
   ;; two parts of a buffer shown at once keep their colours, each worked out once
   (let* ((text (with-output-to-string (s) (dotimes (i 40) (format s "fn f~d() {}~%" i))))

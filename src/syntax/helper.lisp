@@ -137,12 +137,13 @@ for each parser it holds, and its own.")
 ;;; Operations, as syntax/helper.c numbers them
 
 (defconstant +op-grammar+ 1) (defconstant +op-parser+ 2) (defconstant +op-parser-delete+ 3)
-(defconstant +op-parse+ 4) (defconstant +op-cancel+ 5) (defconstant +op-edit+ 6) (defconstant +op-copy+ 7)
+(defconstant +op-parse+ 4) (defconstant +op-cancel+ 5) (defconstant +op-copy+ 7)
 (defconstant +op-tree-delete+ 8) (defconstant +op-query+ 9) (defconstant +op-query-delete+ 10)
 (defconstant +op-disable+ 11) (defconstant +op-matches+ 12) (defconstant +op-ancestry+ 13)
 (defconstant +op-select+ 14) (defconstant +op-children+ 15) (defconstant +op-has-error+ 16)
 (defconstant +op-reset+ 17) (defconstant +op-memory+ 18) (defconstant +op-connect+ 19)
 (defconstant +op-parse-ranges+ 20) (defconstant +op-matches-many+ 21) (defconstant +op-children-many+ 22)
+(defconstant +op-edits+ 23)
 (defconstant +op-read+ 64)
 
 ;;; A helper
@@ -535,7 +536,7 @@ none past its end, by DEADLINE; as TRANSFER says."
 
 (defun op-reply-most (op)
   "The most octets a reply to a request asking OP may hold."
-  (cond ((member op (list +op-has-error+ +op-copy+ +op-parser+)) 4)
+  (cond ((member op (list +op-has-error+ +op-copy+ +op-parser+ +op-edits+)) 4)
         ((= op +op-parse+) 8)
         ((= op +op-select+) 12)
         ;; a grammar's node types, names of a few hundred octets at most
@@ -543,7 +544,7 @@ none past its end, by DEADLINE; as TRANSFER says."
         ((= op +op-memory+) 24)
         ((= op +op-ancestry+) (* 20 4096))
         ((= op +op-children+) (+ 4 (* 8 4096)))
-        ((member op (list +op-parser-delete+ +op-tree-delete+ +op-edit+ +op-reset+ +op-disable+ +op-query-delete+)) 0)
+        ((member op (list +op-parser-delete+ +op-tree-delete+ +op-reset+ +op-disable+ +op-query-delete+)) 0)
         (t +reply-most+)))
 
 (defun call-send (call &key seconds cancel input most (late :hung))
