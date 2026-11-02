@@ -485,7 +485,7 @@ PATHS is in."
       (setf (gethash (tuatara.io:parent-path path) directories) t
             (gethash (concatenate 'string (string-right-trim "/" path) "/") directories) t))
     (dolist (buffer (copy-list tuatara.buffer:*buffers*))
-      (when (and (rimu-list-p buffer) (not (rimu-rewound-p buffer))
+      (when (and (rimu-list-p buffer) (not (rimu-source buffer))
                  (let ((directory (tuatara.buffer:buffer-local buffer 'rimu-directory)))
                    (if (rimu-found-p buffer)
                        (some (lambda (path) (tuatara.io:path-within-p path directory)) paths)

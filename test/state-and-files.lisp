@@ -267,7 +267,7 @@ file of text; their native names, as two values."
                           (false (tuatara.git:run-git native '("status")))
                           (false (tuatara.defaults::committed-text file))
                           (false (tuatara.defaults::git-tracked-p file))
-                          (false (tuatara.defaults::rimu-git-commits native '("data.txt"))))))))
+                          (false (tuatara.git::rimu-git-commits native '("data.txt"))))))))
       (uiop:delete-directory-tree dir :validate t :if-does-not-exist :ignore))))
 
 (define-test (state-and-files git-once-a-visit)

@@ -225,7 +225,7 @@ is taken away."
                           (tuatara.buffer:buffer-local preview 'rimu-preview-pdf)
                           (rimu-preview-buffer-entry state)
                           ;; a folder as a commit left it: the file as it is now is not opened in its place
-                          (not (rimu-rewound-p list))
+                          (not (rimu-source list))
                           ;; its pages can be drawn: else the preview stays as it is, never the file opened
                           (eq (tuatara.io:sandbox-status-now) :ready)
                           (find-pdf-decoder))
@@ -293,7 +293,7 @@ of its own, or shown in the buffer visiting it already; the rest at once."
   (destructuring-bind (entry . directory) (rimu-preview-wanted state)
     (let ((kind (rimu-leads-to entry))
           ;; a folder as a commit left it: its files as they were then
-          (rewound (rimu-rewound-p (tuatara.display:window-buffer (rimu-preview-list-window state)))))
+          (rewound (rimu-source (tuatara.display:window-buffer (rimu-preview-list-window state)))))
       (setf (rimu-preview-shown state) entry)
       (cond ((eq kind :directory)
              (rimu-preview-directory-list state entry directory))
@@ -320,7 +320,7 @@ of its own, or shown in the buffer visiting it already; the rest at once."
                                (unwind-protect
                                     (handler-case
                                         (reporting-errors ("previewing ~a" (tuatara.io:listed-name entry))
-                                          (rimu-call-with-entry
+                                          (rimu-source-call-with-entry
                                            rewound directory (tuatara.io:listed-octets entry)
                                            (lambda (fd path size)
                                              (let* ((octets (tuatara.io:read-fd-start fd path size limit))

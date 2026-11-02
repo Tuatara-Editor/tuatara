@@ -1436,7 +1436,7 @@ and the editor."
           (let ((row (position-if (lambda (r) (search "Docs added" r)) screen)))
             (true (find :list-note (aref spans row) :key #'third))))))
     ;; outside a repository: nothing, and no complaint
-    (is eq nil (tuatara.defaults::rimu-git-commits "/" '("tmp")))))
+    (is eq nil (tuatara.git::rimu-git-commits "/" '("tmp")))))
 
 (define-test (rimu git-column-in-odd-directories)
   ;; the git column of a directory whose name holds [ ] and *, characters, not patterns
@@ -1453,7 +1453,7 @@ and the editor."
       (true (funcall git "init" "-q"))
       (true (funcall git "add" "a.txt"))
       (true (funcall git "commit" "-q" "-m" "The first file"))
-      (let ((commits (tuatara.defaults::rimu-git-commits directory '("a.txt"))))
+      (let ((commits (tuatara.git::rimu-git-commits directory '("a.txt"))))
         (true commits)
         (true (and commits (search "The first file" (format nil "~a" (gethash "a.txt" commits)))))))))
 
@@ -1712,7 +1712,7 @@ and the editor."
   (with-test-directory (dir)
     (scratch-repository dir)
     ;; the columns as a session has them
-    (tuatara.defaults::install-rimu-git)
+    (tuatara.git::install-rimu-git)
     (tuatara.defaults::install-rimu-sizes)
     (let* ((directory (namestring dir))
            (columns (mapcar (lambda (name) (find name tuatara.defaults::*rimu-columns* :key #'tuatara.defaults::rimu-column-name))

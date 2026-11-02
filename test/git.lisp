@@ -1673,7 +1673,7 @@ DIR is visited and its status read, the project trusted. Returns the frontend."
            (put (name text)
              (ensure-directories-exist (merge-pathnames name dir))
              (alexandria:write-string-into-file text (merge-pathnames name dir) :if-exists :supersede))
-           (rewound () (find-if #'tuatara.defaults::rimu-rewound-p tuatara.buffer:*buffers*))
+           (rewound () (find-if #'tuatara.defaults::rimu-source tuatara.buffer:*buffers*))
            (text (b) (and b (tuatara.buffer:buffer-string b))))
       (put "a.txt" (format nil "one~%two~%"))
       (put "c.txt" (format nil "kept~%"))
@@ -1728,7 +1728,7 @@ DIR is visited and its status read, the project trusted. Returns the frontend."
     (alexandria:write-string-into-file (format nil "changed now~%") (merge-pathnames "a.txt" dir) :if-exists :supersede)
     (let* ((top (namestring dir))
            (hash (string-trim '(#\Newline) (git-output dir "rev-parse" "HEAD")))
-           (listing (tuatara.defaults::rimu-read-at-commit top hash top))
+           (listing (tuatara.git::rimu-read-at-commit top hash top))
            (names (map 'list #'tuatara.io:listed-name (tuatara.defaults::rimu-listing-entries listing)))
            (a (find "a.txt" (tuatara.defaults::rimu-listing-entries listing) :key #'tuatara.io:listed-name :test #'string=))
            (read nil))
@@ -1738,12 +1738,14 @@ DIR is visited and its status read, the project trusted. Returns the frontend."
                                                           :key #'tuatara.io:listed-name :test #'string=)))
       (is = 4 (tuatara.io:stamp-size (tuatara.io:listed-stamp a)))
       (is eq :regular (tuatara.io:stamp-kind (tuatara.io:listed-stamp a)))
-      (tuatara.defaults::rimu-call-with-entry (cons top hash) top (tuatara.text:string-octets "a.txt")
-                                              (lambda (fd path size)
-                                                (declare (ignore path))
-                                                (setf read (tuatara.text:octets-string (tuatara.io:read-fd-start fd "a.txt" size 100)))))
+      (tuatara.defaults::rimu-source-call-with-entry (tuatara.git::make-git-rewound top hash) top
+                                                     (tuatara.text:string-octets "a.txt")
+                                                     (lambda (fd path size)
+                                                       (declare (ignore path))
+                                                       (setf read (tuatara.text:octets-string
+                                                                   (tuatara.io:read-fd-start fd "a.txt" size 100)))))
       (is equal (format nil "one~%") read)
-      (true (tuatara.defaults::rimu-listing-reason (tuatara.defaults::rimu-read-at-commit top hash (concatenate 'string top "gone/")))))))
+      (true (tuatara.defaults::rimu-listing-reason (tuatara.git::rimu-read-at-commit top hash (concatenate 'string top "gone/")))))))
 
 (define-test (git rewind-log-read)
   ;; each commit of a file's log, with the name it had then; one naming none left out
@@ -1760,9 +1762,9 @@ DIR is visited and its status read, the project trusted. Returns the frontend."
       (is = 2 (length revisions))
       (let ((first (svref revisions 0)))
         (is equal (list h1 "s1" "2026-10-15" "Ann" "2 days ago" "Four" "b.txt")
-            (list (tuatara.git:git-commit-hash first) (tuatara.git::git-commit-short first)
+            (list (tuatara.git::git-commit-hash first) (tuatara.git::git-commit-short first)
                   (tuatara.git::git-commit-date first) (tuatara.git::git-commit-author first)
-                  (tuatara.git:git-commit-ago first) (tuatara.git:git-commit-subject first)
+                  (tuatara.git::git-commit-ago first) (tuatara.git::git-commit-subject first)
                   (tuatara.git::git-commit-path first))))
       (is equal "a.txt" (tuatara.git::git-commit-path (svref revisions 1))))
     ;; a subject holding git's separators makes no commit of its own, whose hash would go to git
@@ -1771,21 +1773,21 @@ DIR is visited and its status read, the project trusted. Returns the frontend."
                               (format nil "Hi~c--output=/tmp/x~cs~cd~ca~cb~cc~cd" (code-char #x1e) (code-char #x1f) (code-char #x1f)
                                       (code-char #x1f) (code-char #x1f) (code-char #x1f) (code-char #x1f))
                               "c.txt"))))
-      (true (every (lambda (revision) (tuatara.git:git-hash-p (tuatara.git:git-commit-hash revision))) revisions))
-      (false (find "--output=/tmp/x" revisions :key #'tuatara.git:git-commit-hash :test #'equal))))
+      (true (every (lambda (revision) (tuatara.git:git-hash-p (tuatara.git::git-commit-hash revision))) revisions))
+      (false (find "--output=/tmp/x" revisions :key #'tuatara.git::git-commit-hash :test #'equal))))
   ;; one format for every log: a graph's lines kept, each commit's graph before it
   (let* ((hash (make-string 40 :initial-element #\e))
          (fields (format nil "~a~c~a~c2026-10-11~cAnn~c3 days ago~cHEAD -> main~cA subject" hash (code-char #x1f) "eeeeeee"
                          (code-char #x1f) (code-char #x1f) (code-char #x1f) (code-char #x1f) (code-char #x1f)))
-         (commits (tuatara.git:parse-git-commits
+         (commits (tuatara.git::parse-git-commits
                    (format nil "* ~c~a~%|\\~%| * ~c~a~%" (code-char #x1e) fields (code-char #x1e) fields))))
     (is = 3 (length commits))
     (is equal "* " (tuatara.git::git-commit-graph (first commits)))
     (is equal "HEAD -> main" (tuatara.git::git-commit-names (first commits)))
-    (false (tuatara.git:git-commit-hash (second commits)))
+    (false (tuatara.git::git-commit-hash (second commits)))
     (is equal "|\\" (tuatara.git::git-commit-graph (second commits)))
     (is equal "| * " (tuatara.git::git-commit-graph (third commits)))
-    (is equal "A subject" (tuatara.git:git-commit-subject (third commits)))))
+    (is equal "A subject" (tuatara.git::git-commit-subject (third commits)))))
 
 (define-test (git rewind-binary-and-untracked)
   ;; a file that is not text, and one git does not keep, are said so, the

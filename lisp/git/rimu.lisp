@@ -1,4 +1,4 @@
-;;;; lisp/rimu/git.lisp --- Rimu and git: each entry's last commit, and a folder as a commit left it.
+;;;; lisp/git/rimu.lisp --- Rimu and git: each entry's last commit, and a folder as a commit left it.
 ;;;; Copyright (C) 2026 Michael A Jones.  GPL-3.0-or-later; see LICENSE.
 ;;;;
 ;;;; G in a rimu list shows, after each name, when the entry last changed in
@@ -11,7 +11,7 @@
 ;;;; the files as they were then; p and n go a commit older and newer, RET
 ;;;; on a file goes through its history, C-x G again back to now.
 
-(in-package #:tuatara.defaults)
+(in-package #:tuatara.git)
 
 (defun rimu-git-p (buffer)
   "True when the rimu list BUFFER shows the git column (\\<rimu-mode>\\[rimu-toggle-git]):
@@ -30,8 +30,8 @@ car turns true."
         (found (make-hash-table :test 'equal))
         (left 0))
     ;; only those git keeps: one never committed would have the whole history read
-    (multiple-value-bind (tree ok) (tuatara.git:run-git directory (list "ls-tree" "--name-only" "-z" "HEAD" ".")
-                                                        :cancel cancel :seconds tuatara.git:*git-look-seconds*)
+    (multiple-value-bind (tree ok) (run-git directory (list "ls-tree" "--name-only" "-z" "HEAD" ".") :cancel cancel
+                                                                                        :seconds *git-look-seconds*)
       (unless ok (return-from rimu-git-commits nil))
       (let ((tracked (make-hash-table :test 'equal)))
         (dolist (path (uiop:split-string (tuatara.text:lenient-string tree)
@@ -44,22 +44,20 @@ car turns true."
             (incf left)))))
     (when (plusp left)
       (let ((commit nil))
-        (and (nth-value 1 (tuatara.git:run-git
-                           directory (list "log" "--relative" "--name-only" tuatara.git:*git-commit-format* "--" ".")
-                           :cancel cancel :seconds tuatara.git:*git-look-seconds*
-                           :line (lambda (line)
-                                   (cond ((and (plusp (length line)) (char= (char line 0) (code-char #x1e)))
-                                          (let ((fields (tuatara.git:parse-git-commit-fields (subseq line 1))))
-                                            (setf commit (and fields (list (tuatara.git:git-commit-ago fields)
-                                                                           (tuatara.git:git-commit-subject fields))))))
-                                         ((and commit (plusp (length line)))
-                                          ;; the entry it is under: the path's first part
-                                          (let ((name (subseq line 0 (or (position #\/ line) (length line)))))
-                                            (when (and (gethash name wanted) (not (gethash name found)))
-                                              (setf (gethash name found) commit)
-                                              (decf left)))))
-                                   ;; every name has its commit: the rest of the history is not read
-                                   (zerop left))))
+        (and (nth-value 1 (run-git directory (list "log" "--relative" "--name-only" *git-commit-format* "--" ".")
+                                   :cancel cancel :seconds *git-look-seconds*
+                                   :line (lambda (line)
+                                           (cond ((and (plusp (length line)) (char= (char line 0) (code-char #x1e)))
+                                                  (let ((fields (parse-git-commit-fields (subseq line 1))))
+                                                    (setf commit (and fields (list (git-commit-ago fields) (git-commit-subject fields))))))
+                                                 ((and commit (plusp (length line)))
+                                                  ;; the entry it is under: the path's first part
+                                                  (let ((name (subseq line 0 (or (position #\/ line) (length line)))))
+                                                    (when (and (gethash name wanted) (not (gethash name found)))
+                                                      (setf (gethash name found) commit)
+                                                      (decf left)))))
+                                           ;; every name has its commit: the rest of the history is not read
+                                           (zerop left))))
              found)))))
 
 (defun rimu-git-cells (directory entries)
@@ -105,8 +103,8 @@ or one longer than *RIMU-LINK-LIMIT*, is not in it."
     ;; never waits on us to read while we wait on it to take them
     (loop for start from 0 below (length objects) by 500
           for some = (subseq objects start (min (length objects) (+ start 500)))
-          for octets = (tuatara.git:run-git top (list "cat-file" "--batch") :input (format nil "~{~a~%~}" some)
-                                            :limit (* (length some) (+ *rimu-link-limit* 128)))
+          for octets = (run-git top (list "cat-file" "--batch") :input (format nil "~{~a~%~}" some)
+                                :limit (* (length some) (+ *rimu-link-limit* 128)))
           ;; each: OBJECT TYPE SIZE on a line, then SIZE octets and a line end; OBJECT missing for one not there
           do (loop with at = 0
                    while (and octets (< at (length octets)))
@@ -121,6 +119,27 @@ or one longer than *RIMU-LINK-LIMIT*, is not in it."
                           (incf at (1+ size))))))
     targets))
 
+(defstruct (git-rewound (:constructor make-git-rewound (top &optional hash)) (:copier nil))
+  "A rimu list's folder as a commit left it: the TOP of its repository and
+the HASH of the commit shown, NIL until its history is read."
+  top (hash nil))
+
+(defmethod rimu-source-top ((source git-rewound))
+  "The top of the repository."
+  (git-rewound-top source))
+
+(defmethod rimu-source-buffer-name ((source git-rewound) directory)
+  "*git rewind: and the folder's name."
+  (format nil "*git rewind: ~a*" (rimu-buffer-name directory)))
+
+(defmethod rimu-source-taken ((source git-rewound) buffer)
+  "BUFFER is of the repository's top, for git's commands."
+  (setf (tuatara.buffer:buffer-local buffer :git-top) (git-rewound-top source)))
+
+(defmethod rimu-source-listing ((source git-rewound) directory)
+  "The folder as the commit left it (RIMU-READ-AT-COMMIT)."
+  (rimu-read-at-commit (git-rewound-top source) (git-rewound-hash source) directory))
+
 (defun rimu-read-at-commit (top hash directory)
   "DIRECTORY, a native name ending in / within the repository at TOP, as the
 commit HASH left it, a RIMU-LISTING: what it held as git keeps it, each with
@@ -129,9 +148,8 @@ changed when that commit was made and owned by you, with no inode; why not,
 when it held no such folder then. A name no file in a folder can have (., ..
 or one holding a /) is left out."
   (let* ((folder (subseq directory (length top)))
-         (made (* 1000000000 (or (parse-integer
-                                  (tuatara.git:git-job-try nil top (list "log" "-1" "--format=%ct" "--end-of-options" hash))
-                                  :junk-allowed t)
+         (made (* 1000000000 (or (parse-integer (git-job-try nil top (list "log" "-1" "--format=%ct" "--end-of-options" hash))
+                                                :junk-allowed t)
                                  0)))
          (uid (sb-posix:getuid))
          (gid (sb-posix:getgid))
@@ -142,8 +160,7 @@ or one holding a /) is left out."
                                      (tuatara.io:make-stamp 0 0 size made 1 mode uid gid)
                                      size nil target nil))
            (link-p (mode) (= (logand mode #o170000) #o120000)))
-      (multiple-value-bind (tree ok)
-          (tuatara.git:git-job-try nil top (list "ls-tree" "-z" "-l" (tuatara.git:git-object-name hash folder)))
+      (multiple-value-bind (tree ok) (git-job-try nil top (list "ls-tree" "-z" "-l" (git-object-name hash folder)))
         (when ok
           (dolist (line (uiop:split-string tree :separator (list (code-char 0))))
             (let ((tab (position #\Tab line)))
@@ -171,22 +188,18 @@ or one holding a /) is left out."
            nil
            (and (not ok) (format nil "it was not there as ~a left it" (subseq hash 0 (min 7 (length hash)))))))))))
 
-(defun rimu-call-with-entry (rewound directory octets function)
-  "Call FUNCTION as TUATARA.IO:CALL-WITH-ENTRY does, with a descriptor of the
-file named OCTETS in DIRECTORY, its name and its size; with REWOUND, (TOP .
-HASH), the file as that commit left it, read from git into a file in memory."
-  (if (null rewound)
-      (tuatara.io:call-with-entry directory octets function)
-      (destructuring-bind (top . hash) rewound
-        (let ((path (concatenate 'string directory (tuatara.text:octets-string octets))))
-          (multiple-value-bind (blob ok too-large)
-              (tuatara.git:git-blob-octets top hash (subseq path (length top)) :limit tuatara.git:*git-shown-limit*)
-            (cond (too-large (refuse "~a is larger than ~a" (tuatara.io:native-file-name path)
-                                     (tuatara.io:octets-words tuatara.git:*git-shown-limit*)))
-                  ((not ok) (refuse "~a could not be read from git" (tuatara.io:native-file-name path)))
-                  (t (let ((fd (tuatara.io:memory-file (tuatara.io:native-file-name path) blob :kept nil)))
-                       (unwind-protect (funcall function fd path (length blob))
-                         (sb-posix:close fd))))))))))
+(defmethod rimu-source-call-with-entry ((source git-rewound) directory octets function)
+  "The file as the commit left it, read from git into a file in memory."
+  (let* ((top (git-rewound-top source))
+         (path (concatenate 'string directory (tuatara.text:octets-string octets))))
+    (multiple-value-bind (blob ok too-large)
+        (git-blob-octets top (git-rewound-hash source) (subseq path (length top)) :limit *git-shown-limit*)
+      (cond (too-large (refuse "~a is larger than ~a" (tuatara.io:native-file-name path)
+                               (tuatara.io:octets-words *git-shown-limit*)))
+            ((not ok) (refuse "~a could not be read from git" (tuatara.io:native-file-name path)))
+            (t (let ((fd (tuatara.io:memory-file (tuatara.io:native-file-name path) blob :kept nil)))
+                 (unwind-protect (funcall function fd path (length blob))
+                   (sb-posix:close fd))))))))
 
 (defun rimu-rewind (list top)
   "Go through the history of the folder the rimu LIST lists, in the
@@ -197,27 +210,24 @@ as its latest commit left it, point on the entry it was on (\\[git-rewind])."
          (entry (rimu-entry-at list (tuatara.buffer:buffer-point list)))
          (point-on (and entry (tuatara.io:listed-octets entry)))
          (buffer (rimu-make-list directory :name (format nil "*git rewind: ~a*" (rimu-buffer-name directory)) :like list)))
-    (setf (tuatara.buffer:buffer-local buffer 'rimu-rewound) (cons top nil)
+    (setf (tuatara.buffer:buffer-local buffer 'rimu-rewound) (make-git-rewound top)
           (tuatara.buffer:buffer-local buffer :git-top) top
-          (buffer-override-keymap buffer) tuatara.git:*git-rewind-keymap*)
+          (buffer-override-keymap buffer) *git-rewind-keymap*)
     (show-buffer buffer)
     (rimu-show-layout buffer (rimu-reading-layout directory "Reading its history...") nil :fresh t)
-    (tuatara.git:start-git-job "Reading the folder's history"
-                               (lambda (job)
-                                 (let ((path (if (string= folder "") "." folder)))
-                                   (coerce (tuatara.git:parse-git-commits
-                                            (tuatara.git:git-job-output
-                                             job top (list "log" "--date=short" tuatara.git:*git-commit-format* "--" path))
-                                            :path path)
-                                           'simple-vector)))
-                               (lambda (revisions)
-                                 (if (zerop (length revisions))
-                                     (progn (rimu-rewind-leave buffer)
-                                            (message "~a has no history in git" (abbreviated-path directory)))
-                                     (progn
-                                       (setf (tuatara.buffer:buffer-local buffer :git-rewind-revisions) revisions)
-                                       (rimu-rewind-show buffer 0 point-on))))
-                               :quiet t :buffer buffer)))
+    (start-git-job "Reading the folder's history"
+                   (lambda (job)
+                     (let ((path (if (string= folder "") "." folder)))
+                       (coerce (parse-git-commits (git-job-output job top (list "log" "--date=short" *git-commit-format* "--" path)) :path path)
+                               'simple-vector)))
+                   (lambda (revisions)
+                     (if (zerop (length revisions))
+                         (progn (rimu-rewind-leave buffer)
+                                (message "~a has no history in git" (abbreviated-path directory)))
+                         (progn
+                           (setf (tuatara.buffer:buffer-local buffer :git-rewind-revisions) revisions)
+                           (rimu-rewind-show buffer 0 point-on))))
+                   :quiet t :buffer buffer)))
 
 (defun rimu-rewind-show (buffer index &optional point-on)
   "List in BUFFER, a rimu list of a folder as a commit left it, the folder as
@@ -225,27 +235,25 @@ the commit INDEX of its history (0 the latest) left it, point kept on its
 entry, or on the one named by the octets POINT-ON."
   (let ((revision (svref (tuatara.buffer:buffer-local buffer :git-rewind-revisions) index)))
     (setf (tuatara.buffer:buffer-local buffer :git-rewind-wanted) index
-          (cdr (tuatara.buffer:buffer-local buffer 'rimu-rewound)) (tuatara.git:git-commit-hash revision))
+          (git-rewound-hash (rimu-source buffer)) (git-commit-hash revision))
     (rimu-update buffer :reread t :point-on point-on :wait nil)))
 
-(defun rimu-rewound-taken-in (buffer)
-  "Once BUFFER, a rimu list of a folder as a commit left it, shows what was
-read for the commit last asked for: make that the one shown, and say which
-it is, when it was not already."
+(defmethod rimu-source-shown ((source git-rewound) buffer)
+  "Once BUFFER shows what was read for the commit last asked for: make that
+the one shown, and say which it is, when it was not already."
   (let ((wanted (tuatara.buffer:buffer-local buffer :git-rewind-wanted)))
     (when (and wanted (not (eql wanted (tuatara.buffer:buffer-local buffer :git-rewind-at))))
       (setf (tuatara.buffer:buffer-local buffer :git-rewind-at) wanted)
-      (message "~a" (tuatara.git:git-rewind-words buffer wanted)))))
+      (message "~a" (git-rewind-words buffer wanted)))))
 
-(defun rimu-rewind-open (buffer entry)
-  "Open ENTRY of BUFFER, a rimu list of a folder as a commit left it: a
-folder listed in its place as that commit left it, a file gone through from
-that commit back (GIT-REWIND-FILE), \\[quit-window] coming back to the list."
-  (destructuring-bind (top . hash) (rimu-rewound-p buffer)
+(defmethod rimu-source-open ((source git-rewound) buffer entry)
+  "A folder listed in its place as the commit left it, a file gone through
+from that commit back (GIT-REWIND-FILE), \\[quit-window] coming back to the list."
+  (let ((top (git-rewound-top source)))
     (let ((path (rimu-path (tuatara.buffer:buffer-local buffer 'rimu-directory) entry)))
       (if (rimu-directory-p entry)
           (rimu-enter buffer (directory-name path :clean t))
-          (tuatara.git:git-rewind-file top (subseq path (length top)) :at hash :list buffer)))))
+          (git-rewind-file top (subseq path (length top)) :at (git-rewound-hash source) :list buffer)))))
 
 (defun rimu-show-nearest (directory &key point-on)
   "List with rimu DIRECTORY, or where it is gone the nearest folder above it
@@ -272,7 +280,7 @@ was on (RIMU-SHOW-NEAREST)."
   '(rimu-quick-edit rimu-goto-file rimu-home rimu-last-directory rimu-toggle-git rimu-toggle-sizes rimu-toggle-picture
     rimu-diff list-archive rimu-verify-files file-metadata open-externally
     rimu-find rimu-find-text rimu-duplicates diff-files
-    tuatara.git:git-file-menu tuatara.git:git-blame tuatara.git:git-log-file tuatara.git:git-diff-file)
+    git-file-menu git-blame git-log-file git-diff-file)
   "The commands refused in a rimu list of a folder as a commit left it, as
 they work on the files as they are now, besides those that change files
 \(*FILE-CHANGING-COMMANDS*).")
@@ -281,7 +289,7 @@ they work on the files as they are now, besides those that change files
   "What to say instead of running COMMAND in BUFFER when it is a rimu list of
 a folder as a commit left it and COMMAND works on the files as they are now
 \(*RIMU-REWOUND-REFUSED*, *FILE-CHANGING-COMMANDS*); else NIL."
-  (when (and (rimu-rewound-p buffer)
+  (when (and (rimu-source buffer)
              (or (member command *rimu-rewound-refused*) (member command *file-changing-commands*)))
     (format nil "~(~a~) works on the files as they are now: ~a goes back to them" command
             (substitute-command-keys "\\[git-rewind]"))))

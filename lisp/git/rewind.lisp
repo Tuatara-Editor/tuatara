@@ -146,7 +146,7 @@ gives no mode takes the one its first line gives (#!/bin/sh)."
   "Show in BUFFER, a file's or a folder's history, what its commit INDEX (0
 the latest) left, read in the background, point kept on its line; when a
 later move asked for another before it came, that one is shown instead."
-  (if (rimu-rewound-p buffer)
+  (if (rimu-source buffer)
       (rimu-rewind-show buffer index)
       (let ((top (git-here buffer))
             (revision (svref (tuatara.buffer:buffer-local buffer :git-rewind-revisions) index)))
@@ -167,7 +167,7 @@ so at its ends."
   (let* ((buffer (current-buffer))
          (revisions (tuatara.buffer:buffer-local buffer :git-rewind-revisions))
          (index (+ (tuatara.buffer:buffer-local buffer :git-rewind-wanted) by))
-         (what (if (rimu-rewound-p buffer) "folder" "file")))
+         (what (if (rimu-source buffer) "folder" "file")))
     (cond ((< index 0) (message "This is the latest commit of the ~a" what))
           ((>= index (length revisions)) (message "This is the first commit of the ~a" what))
           (t (git-rewind-show buffer index)))))
@@ -220,7 +220,7 @@ history as it is shown."
 file as it is now on the same line, or the folder now in rimu
 \(RIMU-REWIND-LEAVE); a file gone now, the nearest folder above it that is
 there, said so."
-  (if (rimu-rewound-p buffer)
+  (if (rimu-source buffer)
       (rimu-rewind-leave buffer)
       (let* ((top (git-here buffer))
              (path (concatenate 'string top (tuatara.buffer:buffer-local buffer 'git-rewind-path)))
@@ -259,7 +259,7 @@ back to the file or folder as it is now, on the same line or entry. A file
 is followed back across renames; changes not committed are not in it, nor is
 a file that is not text shown."
   (let ((buffer (current-buffer)))
-    (cond ((or (rimu-rewound-p buffer) (tuatara.buffer:buffer-local buffer 'git-rewind-path))
+    (cond ((or (rimu-source buffer) (tuatara.buffer:buffer-local buffer 'git-rewind-path))
            (git-rewind-leave buffer))
           ((rimu-list-p buffer)
            (with-git-repository (top)

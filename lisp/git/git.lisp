@@ -359,9 +359,6 @@ it, with --graph. A line of the graph alone is a GIT-COMMIT with no HASH."
   hash short date author ago names subject path (graph ""))
 
 (setf (documentation 'git-commit-p 'function) "True when OBJECT is a GIT-COMMIT.")
-(setf (documentation 'git-commit-hash 'function) "The whole hash of the GIT-COMMIT, NIL for a line of the graph alone.")
-(setf (documentation 'git-commit-subject 'function) "The first line of the GIT-COMMIT's message, as git writes it.")
-(setf (documentation 'git-commit-ago 'function) "How long ago the GIT-COMMIT was made, as git says it: 2 days ago.")
 
 (defun parse-git-commit-fields (text)
   "TEXT, a commit's fields as *GIT-COMMIT-FORMAT* writes them after its
@@ -1719,7 +1716,8 @@ only says so in its buffers' mode lines, refuses what would change it, and
 is looked at again when \\[trust-project] answers anew; the shadows of
 repositories not trusted that sessions no longer running left are deleted.
 Then the keys of the rest: commits, stashes, branches, the log, remotes,
-history, references, files, rewinding, the repository's parts and patches."
+history, references, files, rewinding, the repository's parts, patches and
+rimu's git column."
   (define-key *global-keymap* "C-x g" 'git)
   (define-keys *git-status-keymap* '(("s" git-stage) ("u" git-unstage) ("x" git-reverse) ("TAB" git-toggle-diff)
                                      ("RET" git-visit) ("l" git-visit) ("h" quit-window)
@@ -1741,4 +1739,5 @@ history, references, files, rewinding, the repository's parts and patches."
   (install-git-files)
   (install-git-rewind)
   (install-git-repository)
-  (install-git-patches))
+  (install-git-patches)
+  (install-rimu-git))

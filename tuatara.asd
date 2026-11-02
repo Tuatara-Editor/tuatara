@@ -76,7 +76,9 @@
                (:module "help"    :serial t :components ((:file "help") (:file "faces") (:file "health") (:file "about") (:file "char") (:file "debug") (:file "notifications") (:file "man")))
                (:module "buffers" :serial t :components ((:file "buffers")))
                (:module "terminal" :serial t :components ((:file "emulator") (:file "terminal")))
-               (:module "rimu"    :serial t :components ((:file "rimu") (:file "preview") (:file "operations") (:file "trash") (:file "git") (:file "sizes") (:file "found")))
+               (:module "rimu"    :serial t :components ((:file "rimu") (:file "preview") (:file "operations") (:file "trash") (:file "sizes") (:file "found")))
+               ;; rimu's git column and its lists of a folder as a commit left it, in git's package
+               (:module "git-rimu" :pathname "git" :components ((:file "rimu")))
                (:module "gpg"     :serial t :components ((:file "encrypted") (:file "gpg-commands") (:file "rimu")))
                (:module "modal-states" :pathname "modal" :components ((:file "states")))
                (:module "selecting" :serial t
