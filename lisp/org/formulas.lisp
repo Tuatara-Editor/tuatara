@@ -788,8 +788,13 @@ takes the formula away."
                      (old (find-if (lambda (text) (let ((equals (position #\= text)))
                                                     (and equals (string= (string-trim " " (subseq text 0 equals)) lhs))))
                                    (org-table-formulas model)))
-                     (rhs (read-string (format nil "~:[Column~;Field~] formula ~a = " field-formula lhs)
-                                       :initial (if old (subseq old (1+ (position #\= old))) ""))))
+                     (rhs (multiple-value-bind (rhs after)
+                              (org-table-ask parse model
+                                             (lambda ()
+                                               (read-string (format nil "~:[Column~;Field~] formula ~a = " field-formula lhs)
+                                                            :initial (if old (subseq old (1+ (position #\= old))) ""))))
+                            (setf parse after)
+                            rhs)))
                 (org-table-store-and-apply model lhs rhs)))
       (message "Not in a table"))))
 

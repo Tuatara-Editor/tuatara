@@ -184,8 +184,8 @@ not empty are numbers."
 (defun org-table-write (parse model)
   "Put MODEL's table, aligned, in place of its rows of PARSE (an ORG-PARSE) in
 its buffer (its #+TBLFM: line too when its formulas changed), one step to
-undo, point where MODEL has it. Refused when the buffer changed since PARSE,
-as it may while a formula is asked for: the table is then left as it is."
+undo, point where MODEL has it. Refused when the buffer changed since PARSE
+\(ORG-TABLE-ASK carries a table across a question), the table left as it is."
   (unless (eql (org-parse-version parse) (tuatara.buffer:buffer-version (org-parse-buffer parse)))
     (refuse "The table changed while you answered: it is left as it is"))
   (multiple-value-bind (new point) (org-table-render model)
@@ -203,12 +203,32 @@ as it may while a formula is asked for: the table is then left as it is."
           (setf (tuatara.buffer:buffer-point (org-parse-buffer parse)) (org-parse-octet parse (+ begin point)))
           (org-replace-chars parse begin end new :point (+ begin point))))))
 
+(defun org-table-ask (parse model ask)
+  "Ask by calling ASK, a function of no arguments that waits for an answer,
+while MODEL's table, read from PARSE, may have text around it changed
+\(ORG-ASK-KEEPING-PLACES): two values, the answer and the parse to write MODEL
+into, MODEL's places moved to it. Refused when the table itself changed
+meanwhile, the table left as it is."
+  (multiple-value-bind (answer after places)
+      (org-ask-keeping-places
+       parse (list (cons (org-table-begin model) (or (org-table-formulas-end model) (org-table-end model)))) ask)
+    (let ((begin (first places)))
+      (unless begin
+        (refuse "The table changed while you answered: it is left as it is"))
+      (let ((shift (- begin (org-table-begin model))))
+        (incf (org-table-begin model) shift)
+        (incf (org-table-end model) shift)
+        (when (org-table-formulas-end model)
+          (incf (org-table-formulas-end model) shift)))
+      (values answer after))))
+
 (defmacro with-org-table ((parse model) &body body)
   "Run BODY with MODEL the Org table point is in as an ORG-TABLE-MODEL and PARSE
 the ORG-PARSE of the current buffer it was read from, then write the table
-back aligned; true when point was in a table. BODY returning :NOT-DONE leaves
-the table as it was. A line that does not begin with | is no table's, and the
-file is not parsed for it."
+back aligned into PARSE; true when point was in a table. BODY that asks
+something sets PARSE to the parse ORG-TABLE-ASK gives. BODY returning
+:NOT-DONE leaves the table as it was. A line that does not begin with | is no
+table's, and the file is not parsed for it."
   (let ((buffer (gensym)) (text (gensym)) (position (gensym)) (table (gensym)) (result (gensym)))
     `(let* ((,buffer (current-buffer))
             (,parse (and (uiop:string-prefix-p "|" (string-left-trim " 	" (org-line-head ,buffer (point))))

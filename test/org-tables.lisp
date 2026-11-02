@@ -295,3 +295,14 @@ echo commented
            (let ((f (run-keys (format nil "C-x C-f C-a C-k ~a RET C-c C-v t y RET" (rimu-typed (namestring org))) :width 200 :height 20)))
              (true (tuatara.frontend.fake:fake-frame-showing f "Wrote 1 of 2 (" "x.sh); not written:" "x.sh.bak: refused for the test")))
         (sb-int:unencapsulate 'tuatara.defaults::tangle-write-code-file 'refuse-bak)))))
+
+(define-test (org formula-kept-across-a-change-elsewhere)
+  ;; text changed outside the table while its formula is asked for: the formula still goes in
+  (let ((text (session-text (nth-value 1 (run-keys (list "M-x o r g - m o d e RET C-c ="
+                                                         (lambda ()
+                                                           (tuatara.buffer:buffer-insert (tuatara.buffer:find-buffer "*scratch*")
+                                                                                         0 (format nil "Top~%")))
+                                                         "$ 1 ^ 2 RET")
+                                                   :text (format nil "| 2 |  |~%after~%") :width 80 :height 12)))))
+    (true (uiop:string-prefix-p (format nil "Top~%| 4 |") text) "~a" text)
+    (true (search "#+TBLFM: $1=$1^2" text) "~a" text)))
