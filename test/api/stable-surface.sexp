@@ -221,6 +221,7 @@
 (:api "MAKE-RECORD-FIELDS" :function (0 nil ("EACH" "KEYS" "NAMES") nil nil))
 (:api "MAKE-ZONE-RULE" :function (2 ("DAYLIGHT-NAME" "DAYLIGHT-OFFSET" "TO-DAYLIGHT" "TO-STANDARD") nil nil nil))
 (:api "MAP-PDF-CONTENT" :function (2 nil ("LIMIT") nil nil))
+(:api "MAP-PDF-CROSS-REFERENCE-STREAM" :function (3 nil nil nil nil))
 (:api "MAP-PDF-CROSS-REFERENCE-TABLE" :function (3 nil nil nil nil))
 (:api "MAP-PDF-DICTIONARY" :function (3 nil nil nil nil))
 (:api "MAP-PDF-WRITTEN-OBJECTS" :function (2 nil nil nil nil))

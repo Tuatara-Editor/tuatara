@@ -131,6 +131,30 @@ and its TRAILER's entries (text)."
           " BI /W 2 /H 1 /BPC 8 /CS /G ID " 0 255 " EI [[[1 [2]] /N] 3] 4 5 6 sc")
   "A page's content using most of what content holds.")
 
+(defun xref-stream-pdf ()
+  "A PDF whose cross-reference is a stream, its information packed in an
+object stream and written again outside it."
+  (let* ((header "6 0 ") (packed "<< /Title (Packed) >>")
+         (out (make-string-output-stream)) (at 0) (offsets '()))
+    (flet ((put (number text)
+             (when number (push (cons number at) offsets))
+             (write-string text out) (incf at (length text))))
+      (put nil (format nil "%PDF-1.7~%"))
+      (put 1 (format nil "1 0 obj~%<< /Type /Catalog >>~%endobj~%"))
+      (put 2 (format nil "2 0 obj~%<< /Type /ObjStm /N 1 /First ~d /Length ~d >>~%stream~%~a~a~%endstream~%endobj~%"
+                     (length header) (+ (length header) (length packed)) header packed))
+      (put 6 (format nil "6 0 obj~%<< /Title (Outside) >>~%endobj~%"))
+      (let* ((xref at)
+             (rows (octets 0 0 0 255
+                           1 (ash (cdr (assoc 1 offsets)) -8) (logand (cdr (assoc 1 offsets)) 255) 0
+                           1 (ash (cdr (assoc 2 offsets)) -8) (logand (cdr (assoc 2 offsets)) 255) 0
+                           2 0 2 0)))
+        (octets (get-output-stream-string out)
+                (format nil "7 0 obj~%<< /Type /XRef /Size 8 /Index [0 3 6 1] /W [1 2 1] /Root 1 0 R /Info 6 0 R ~
+                             /Length ~d >>~%stream~%"
+                        (length rows))
+                rows (format nil "~%endstream~%endobj~%startxref~%~d~%%%EOF~%" xref))))))
+
 (defun seeds ()
   "The PDFs spoilt in the run, made here: a page with its content in each
 filter, two saves, an object stream, predictors and pictures."
@@ -153,6 +177,7 @@ filter, two saves, an object stream, predictors and pictures."
                                                                             :from-end t))))))
       (list first
             second
+            (xref-stream-pdf)
             (let* ((packed "<< /Type /Font /Subtype /Type1 /BaseFont /Courier >> [1 2 (three) /four]")
                    (header "10 0 11 55 "))
               (pdf-save (list "<< /Type /Catalog /Pages 2 0 R >>"
@@ -237,7 +262,11 @@ leaves more than *HEAP-CAP* octets in use."
   (let ((objects '()))
     (checked "map-pdf-written-objects"
              (lambda () (tuatara:map-pdf-written-objects (lambda (o) (push o objects) nil) octets)))
-    (checked "pdf-eof-lines" (lambda () (tuatara:pdf-eof-lines octets)))
+    (checked "pdf-eof-lines"
+             (lambda ()
+               (tuatara:pdf-eof-lines octets)
+               (tuatara:pdf-eof-lines octets (coerce (reverse objects) 'vector))))
+    (checked "the cross-reference" (lambda () (tuatara.defaults::pdf-cross-reference octets)))
     (checked "pdf-startxref" (lambda () (tuatara:pdf-startxref octets)))
     (checked "map-pdf-cross-reference-table"
              (lambda ()
@@ -268,6 +297,8 @@ leaves more than *HEAP-CAP* octets in use."
                                   :limit (* 8 1024 1024))))))
             (when data
               (checked "map-pdf-content" (lambda () (tuatara:map-pdf-content (constantly nil) data)))
+              (checked "map-pdf-cross-reference-stream"
+                       (lambda () (tuatara:map-pdf-cross-reference-stream (constantly nil) dictionary data)))
               (checked "pdf-object-stream-offsets and pdf-packed-object"
                        (lambda ()
                          (let ((offsets (tuatara:pdf-object-stream-offsets dictionary data)))

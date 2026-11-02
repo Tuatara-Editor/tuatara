@@ -526,6 +526,50 @@ where they ended."
       (let ((trailer (and (tuatara.io:octets-at-p octets "trailer" i) (pdf-object-at octets (+ i 7)))))
         (values ending (and (pdf-dictionary-p trailer) trailer) i)))))
 
+(defun map-pdf-cross-reference-stream (function dictionary data)
+  "Call FUNCTION with each entry of a cross-reference stream, whose
+DICTIONARY is given and whose decoded octets are DATA, in the order written:
+the object's number, the entry's type (0 free, 1 written in the file, 2 in
+an object stream; 1 when the stream gives no type) and its two fields (an
+offset or object stream's number, and a generation or index; 0 when not
+given). Stop when FUNCTION returns true. NIL when /W gives no field widths
+it can be read by; else how its entries ended: :END, as its /Index (or
+/Size) says; :STOPPED, by FUNCTION; :SHORT, its octets ending first."
+  (let* ((widths (pdf-get dictionary "/W"))
+         (size (pdf-get dictionary "/Size"))
+         (index (or (pdf-get dictionary "/Index") (and (integerp size) (list 0 size)))))
+    (when (and (listp widths) (= (length widths) 3) (every (lambda (w) (and (integerp w) (<= 0 w 8))) widths)
+               (plusp (reduce #'+ widths)))
+      (let ((row (reduce #'+ widths)) (at 0))
+        (flet ((field (k standard)
+                 (let ((w (nth k widths)))
+                   (if (zerop w)
+                       standard
+                       (prog1 (loop with v = 0 for j from at below (+ at w) do (setf v (+ (* v 256) (aref data j)))
+                                    finally (return v))
+                         (incf at w))))))
+          (loop for (start count) on (and (listp index) index) by #'cddr
+                while (and (integerp start) (integerp count))
+                do (dotimes (k count)
+                     (when (zerop (logand k 4095)) (tuatara.runtime:job-check-stop))
+                     (when (> (+ at row) (length data))
+                       (return-from map-pdf-cross-reference-stream :short))
+                     (let* ((type (field 0 1)) (second (field 1 0)) (third (field 2 0)))
+                       (when (funcall function (+ start k) type second third)
+                         (return-from map-pdf-cross-reference-stream :stopped)))))
+          :end)))))
+
+;;; Streams decoded
+
+(defparameter *pdf-largest-stream* (* 16 1024 1024)
+  "The most octets one stream of a PDF is decoded to (PDF-STREAM-OCTETS), as
+standard: a stream that would decode to more is read no further.")
+
+(defparameter *pdf-picture-filters*
+  '("/DCTDecode" "/DCT" "/JPXDecode" "/JBIG2Decode" "/CCITTFaxDecode" "/CCF")
+  "The filters of picture data, which PDF-STREAM-OCTETS never undoes: a
+stream's decoding ends at one.")
+
 (defun pdf-stream-filters (dictionary)
   "The filters a stream's DICTIONARY names, each (NAME . PARAMETERS), in the
 order they are undone."
@@ -729,9 +773,12 @@ or does not say where its objects are."
 knows of it, a hash table: under :WRITTEN, where each object is written, by
 \(NUMBER . GENERATION), the last first; under :OBJECT-STREAMS, its object
 streams; under :OBJECTS, every object it writes; under :PACKED, the object
-stream holding each object, by number; under :ASKED, how many objects were
-looked for; and each object found, by (NUMBER . GENERATION). NIL elsewhere:
-each object is then looked for through the whole file.")
+stream holding each object, by number; under :ENTRIES and :TRAILER, what its
+cross-reference says (PDF-CROSS-REFERENCE), under :DECODED, the object
+streams it names, decoded; under :SCANNED, true once an object was found
+by scanning the file instead; under :ASKED, how many objects were looked
+for; and each object found, by (NUMBER . GENERATION). NIL elsewhere: each
+object is then looked for through the whole file.")
 
 (defparameter *pdf-most-objects-found* 200
   "The most objects of one PDF looked for while it is read through
@@ -807,30 +854,147 @@ objects."
           (when (> (incf read (length data)) *pdf-object-streams-read*)
             (return table)))))))
 
+(defparameter *pdf-most-sections* 64
+  "The most cross-reference sections of one PDF followed by their /Prev
+\(PDF-CROSS-REFERENCE).")
+
+(defun pdf-cross-reference (octets)
+  "What the cross-reference sections of the PDF in OCTETS say, as two values:
+a hash table of each object's number to (:USED OFFSET GENERATION), (:PACKED
+STREAM INDEX) or (:FREE), the last section's word on it first; and the last
+trailer, the one giving /Info when the last does not. Read from the section
+the last startxref names back by /Prev, cross-reference tables, streams and
+the stream a table names by /XRefStm, at most *PDF-MOST-SECTIONS* of them;
+NIL when none of them can be read."
+  (let ((entries (make-hash-table)) (trailer nil) (seen '()) (read nil)
+        (at (pdf-startxref octets)))
+    (labels ((note (number entry)
+               (unless (gethash number entries) (setf (gethash number entries) entry))
+               nil)
+             (take-trailer (dictionary)
+               (when (and (pdf-dictionary-p dictionary) (or (null trailer) (and (null (pdf-get trailer "/Info"))
+                                                                                (pdf-get dictionary "/Info"))))
+                 (setf trailer dictionary)))
+             (stream-at (offset)
+               (let ((object (and (integerp offset) (< -1 offset (length octets))
+                                  (pdf-indirect-object-at octets offset))))
+                 (when (and object (pdf-indirect-stream-start object)
+                            (equal (pdf-get (pdf-indirect-value object) "/Type") "/XRef"))
+                   (let ((data (pdf-stream-octets (pdf-indirect-value object)
+                                                  (subseq octets (pdf-indirect-stream-start object)
+                                                          (pdf-indirect-stream-end object)))))
+                     (when data
+                       (map-pdf-cross-reference-stream
+                        (lambda (number type second third)
+                          (note number (case type
+                                         (1 (list :used second third))
+                                         (2 (list :packed second third))
+                                         (t '(:free)))))
+                        (pdf-indirect-value object) data)
+                       (pdf-indirect-value object)))))))
+      (loop repeat *pdf-most-sections*
+            while (and (integerp at) (< -1 at (length octets)) (not (member at seen)))
+            do (push at seen)
+               (tuatara.runtime:job-check-stop)
+               (multiple-value-bind (ending dictionary)
+                   (map-pdf-cross-reference-table
+                    (lambda (number offset generation kind)
+                      (note number (if (eq kind :used) (list :used offset generation) '(:free))))
+                    octets at)
+                 (let ((dictionary (if ending
+                                       (progn (setf read t)
+                                              (when (integerp (pdf-get dictionary "/XRefStm"))
+                                                (stream-at (pdf-get dictionary "/XRefStm")))
+                                              dictionary)
+                                       (stream-at at))))
+                   (unless dictionary (return))
+                   (setf read t)
+                   (take-trailer dictionary)
+                   (setf at (pdf-get dictionary "/Prev"))))))
+    (and read (values entries trailer))))
+
+(defun pdf-trailer (octets)
+  "The PDF in OCTETS' last trailer (PDF-CROSS-REFERENCE), read once while it
+is read through; NIL when its cross-reference cannot be read."
+  (gethash :trailer (pdf-cross-reference-known octets)))
+
+(defun pdf-cross-reference-known (octets &optional (found (or *pdf-objects-found* (make-hash-table :test 'equal))))
+  "FOUND, what is known of the PDF in OCTETS, with its cross-reference read
+\(PDF-CROSS-REFERENCE) once: under :ENTRIES and :TRAILER."
+  (unless (nth-value 1 (gethash :entries found))
+    (multiple-value-bind (entries trailer) (pdf-cross-reference octets)
+      (setf (gethash :entries found) entries (gethash :trailer found) trailer)))
+  found)
+
+(defun pdf-object-by-cross-reference (octets found number generation)
+  "The object NUMBER GENERATION where the PDF in OCTETS' cross-reference
+says it is, as a PDF-INDIRECT; :FREE when it says the object is free; NIL
+when it says nothing of it, or it is not where it says."
+  (let* ((entries (gethash :entries (pdf-cross-reference-known octets found)))
+         (entry (and entries (gethash number entries))))
+    (case (first entry)
+      (:free :free)
+      (:used (destructuring-bind (offset written) (rest entry)
+               (let ((object (and (eql written generation) (< -1 offset (length octets))
+                                  (pdf-indirect-object-at octets offset))))
+                 (and object (eql (pdf-indirect-number object) number) object))))
+      (:packed (destructuring-bind (stream-number index) (rest entry)
+                 (multiple-value-bind (data offsets) (and (zerop generation)
+                                                          (pdf-object-stream-named octets found stream-number))
+                   (and data (pdf-packed-object data offsets number :index index :in stream-number))))))))
+
+(defun pdf-object-stream-named (octets found number)
+  "The decoded octets of the object stream NUMBER of the PDF in OCTETS and
+where its objects begin (PDF-OBJECT-STREAM-CONTENTS), as two values, kept in
+FOUND, what is known of the file, so that each is decoded once; NIL when it
+is no object stream, cannot be decoded, or the object streams decoded so far
+pass *PDF-OBJECT-STREAMS-READ* octets."
+  (let ((decoded (or (gethash :decoded found) (setf (gethash :decoded found) (make-hash-table)))))
+    (values-list
+     (multiple-value-bind (kept known) (gethash number decoded)
+       (if known
+           kept
+           (setf (gethash number decoded)
+                 (let ((stream (pdf-find-object octets number 0)))
+                   (and stream (null (pdf-indirect-packed-in stream)) (pdf-indirect-stream-start stream)
+                        (<= (incf (gethash :decoded-octets found 0)
+                                  (- (pdf-indirect-stream-end stream) (pdf-indirect-stream-start stream)))
+                            *pdf-object-streams-read*)
+                        (multiple-value-list (pdf-object-stream-contents octets stream))))))))))
+
 (defun pdf-find-object (octets number generation)
-  "The object NUMBER GENERATION of the PDF in OCTETS, as a PDF-INDIRECT: the
-last one of them written in the file, else the one an object stream holds;
-NIL when it is in neither. The file's cross-reference sections are not
-read: each object is found where it is written (PDF-OBJECTS-WRITTEN). While
-the PDF is read through (WITH-PDF-OBJECTS-FOUND), where objects are is found
-once for all, and past *PDF-MOST-OBJECTS-FOUND* objects looked for, none is
-found."
+  "The object NUMBER GENERATION of the PDF in OCTETS, as a PDF-INDIRECT, or
+NIL: where its cross-reference sections say it is (PDF-CROSS-REFERENCE);
+when they say nothing of it, or cannot be read, the last one of them
+written in the file, else the one an object stream holds
+\(PDF-OBJECTS-WRITTEN), and then :SCANNED is noted as true in what is
+known of the file. While the PDF is read through (WITH-PDF-OBJECTS-FOUND),
+where objects are is found once for all, and past *PDF-MOST-OBJECTS-FOUND*
+objects looked for, none is found."
   (let ((found (or *pdf-objects-found* (make-hash-table :test 'equal))) (key (cons number generation)))
     (multiple-value-bind (object known) (gethash key found)
       (cond (known object)
             ((> (incf (gethash :asked found 0)) *pdf-most-objects-found*) nil)
-            (t (pdf-objects-scanned octets found)
-               (setf (gethash key found)
-                     (or (loop for start in (gethash key (gethash :written found))
-                               thereis (pdf-indirect-object-at octets start))
-                         (let* ((packed (or (gethash :packed found)
-                                            (setf (gethash :packed found)
-                                                  (pdf-objects-packed octets (gethash :object-streams found)))))
-                                (place (gethash number packed)))
-                           (and place
-                                (destructuring-bind (stream data offsets index) place
-                                  (pdf-packed-object data offsets number :index index
-                                                                         :in (pdf-indirect-number stream))))))))))))
+            (t (setf (gethash key found)
+                     (let ((listed (pdf-object-by-cross-reference octets found number generation)))
+                       (cond ((eq listed :free) nil)
+                             (listed)
+                             (t (setf (gethash :scanned found) t)
+                                (pdf-scanned-object octets found number generation))))))))))
+
+(defun pdf-scanned-object (octets found number generation)
+  "The object NUMBER GENERATION as the PDF in OCTETS writes it last, else as
+an object stream holds it, found by scanning the file (PDF-OBJECTS-SCANNED,
+FOUND what is known of it); NIL when it is in neither."
+  (pdf-objects-scanned octets found)
+  (or (loop for start in (gethash (cons number generation) (gethash :written found))
+            thereis (pdf-indirect-object-at octets start))
+      (let* ((packed (or (gethash :packed found)
+                         (setf (gethash :packed found) (pdf-objects-packed octets (gethash :object-streams found)))))
+             (place (gethash number packed)))
+        (and place
+             (destructuring-bind (stream data offsets index) place
+               (pdf-packed-object data offsets number :index index :in (pdf-indirect-number stream)))))))
 
 (defun pdf-resolve (octets value)
   "VALUE, an object of the PDF in OCTETS, with a reference followed once to

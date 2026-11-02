@@ -294,6 +294,68 @@ AFTER (text) after that."
         (put (format nil "trailer << /Size ~d ~a >>~%startxref~%~d~%%%EOF~%~a" size trailer xref after))))
     (octets-of (get-output-stream-string out))))
 
+(define-test (metadata pdf-planted-objects)
+  ;; what the cross-reference says is read: an object written again after the last save, or in a comment, is not
+  (flet ((note (octets) (first (tuatara.defaults::pdf-metadata octets))))
+    (let ((objects '((1 . "<< /Type /Catalog >>") (6 . "<< /Title (Real) >>"))))
+      (let ((after (note (pdf-with-table objects :after (format nil "6 0 obj~%<< /Title (Planted) >>~%endobj~%")))))
+        (true (search "- Title :: Real" after))
+        (false (search "Planted" after))
+        (false (search "not from the cross-reference" after)))
+      (let* ((octets (pdf-with-table objects :before (format nil "% 99 0 obj << >> stream~%")
+                                             :after (format nil "% 6 0 obj << /Title (Planted) >> endobj~%")))
+             (commented (note octets))
+             (numbers '()))
+        (true (search "- Title :: Real" commented))
+        (true (search "- Saved :: 1 time" commented))
+        (is = 1 (length (tuatara:pdf-eof-lines octets)))
+        (tuatara:map-pdf-written-objects (lambda (o) (push (tuatara:pdf-indirect-get o :number) numbers) nil) octets)
+        (is equal '(1 6) (reverse numbers))))
+    ;; with no cross-reference to go by, the objects are found by scanning, and the note says so
+    (let ((scanned (note (octets-of "%PDF-1.7" 10 "6 0 obj << /Title (Scanned) >> endobj" 10
+                                    "trailer << /Info 6 0 R >>" 10 "%%EOF" 10))))
+      (true (search "- Title :: Scanned" scanned))
+      (true (search "not from the cross-reference" scanned)))))
+
+(define-test (metadata pdf-packed-info)
+  ;; the information an object stream holds, as the cross-reference stream says, not one of its number
+  ;; written outside
+  (let* ((packed "<< /Title (Real) >>")
+         (header "6 0 ")
+         (out (make-string-output-stream)) (at 0) (offsets '()))
+    (flet ((put (text) (write-string text out) (incf at (length text)))
+           (object (number text) (push (cons number at) offsets) (format nil "~d 0 obj~%~a~%endobj~%" number text)))
+      (put (format nil "%PDF-1.7~%"))
+      (put (object 1 "<< /Type /Catalog >>"))
+      (put (object 2 (format nil "<< /Type /ObjStm /N 1 /First ~d /Length ~d >>~%stream~%~a~a~%endstream"
+                             (length header) (+ (length header) (length packed)) header packed)))
+      (put (object 6 "<< /Title (Planted) >>"))
+      (let* ((xref at)
+             (rows (octets-of 0 0 0 255
+                              1 (ash (cdr (assoc 1 offsets)) -8) (logand (cdr (assoc 1 offsets)) 255) 0
+                              1 (ash (cdr (assoc 2 offsets)) -8) (logand (cdr (assoc 2 offsets)) 255) 0
+                              2 0 2 0)))
+        (put (format nil "7 0 obj~%<< /Type /XRef /Size 8 /Index [0 3 6 1] /W [1 2 1] /Root 1 0 R /Info 6 0 R ~
+                          /Length ~d >>~%stream~%"
+                     (length rows)))
+        (let ((octets (octets-of (get-output-stream-string out) rows
+                                 (format nil "~%endstream~%endobj~%startxref~%~d~%%%EOF~%" xref))))
+          (let ((note (first (tuatara.defaults::pdf-metadata octets))))
+            (true (search "- Title :: Real" note))
+            (false (search "Planted" note))))))))
+
+(define-test (metadata pdf-cross-reference-stream-read)
+  ;; a cross-reference stream's entries: types, fields, defaults, and one cut short
+  (let ((rows '()))
+    (is eq :end (tuatara:map-pdf-cross-reference-stream (lambda (&rest row) (push row rows) nil)
+                                                        '(("/W" 1 2 0) ("/Index" 4 2))
+                                                        (octets-of 1 0 9 2 0 3)))
+    (is equal '((4 1 9 0) (5 2 3 0)) (reverse rows)))
+  (is eq :short (tuatara:map-pdf-cross-reference-stream (constantly nil) '(("/W" 1 2 1) ("/Size" . 3))
+                                                         (octets-of 1 0 9 0)))
+  (is eq :stopped (tuatara:map-pdf-cross-reference-stream (constantly t) '(("/W" 0 1 0) ("/Size" . 1)) (octets-of 7)))
+  (false (tuatara:map-pdf-cross-reference-stream (constantly nil) '(("/W" 1 9 1) ("/Size" . 1)) (octets-of 1 2 3))))
+
 (define-test (metadata pdf-unconfirmed-stream-keeps-saves)
   ;; a stream whose end is not confirmed hides no save: the %%EOF in its span ends one, and is named
   (let* ((first-save (pdf-with-table '((1 . "<< /Type /Catalog >>")

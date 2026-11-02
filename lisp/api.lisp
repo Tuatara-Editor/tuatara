@@ -175,8 +175,8 @@ its form says, as ORG-READ-RULE reads them; :HOUR, :MINUTE, :END-HOUR and
     tuatara.io:percent-decoded-octets file-kind tuatara.io:octets-kind tuatara.io:kind-name-disagrees-p
     tuatara.io:+binary-sample+ tuatara.io:*compound-file-signature*
     ;; octets, text and dates
-    tuatara.text:octets tuatara.io:octets-at-p tuatara.io:octets-search tuatara.io:octets-integer tuatara.io:octets-signed
-    tuatara.io:base64-octets tuatara.io:octets-words
+    tuatara.text:octets tuatara.io:octets-at-p tuatara.io:octets-search tuatara.io:octets-integer
+    tuatara.io:octets-signed tuatara.io:base64-octets tuatara.io:octets-words
     tuatara.text:octets-string tuatara.text:octets-latin-1 tuatara.text:charset-text tuatara.text:utf-16-text tuatara.text:string-octets
     tuatara.text:string-octet-length tuatara.text:string-line-start tuatara.text:parse-decimal tuatara.text:whole-number
     tuatara.text:lenient-string tuatara.text:merge-ranges tuatara.text:string-hash
@@ -206,8 +206,8 @@ its form says, as ORG-READ-RULE reads them; :HOUR, :MINUTE, :END-HOUR and
     pdf-object-at pdf-string-text pdf-date-words *pdf-most-items* tuatara.io:pdf-header-at pdf-white-p
     pdf-get pdf-dictionary-p pdf-ref-p pdf-array-items map-pdf-dictionary
     pdf-indirect-object-at pdf-indirect-get map-pdf-written-objects pdf-eof-lines pdf-startxref
-    map-pdf-cross-reference-table pdf-stream-filters pdf-stream-octets *pdf-picture-filters*
-    pdf-object-stream-offsets pdf-packed-object map-pdf-content
+    map-pdf-cross-reference-table map-pdf-cross-reference-stream pdf-stream-filters pdf-stream-octets
+    *pdf-picture-filters* pdf-object-stream-offsets pdf-packed-object map-pdf-content
     ;; octets shown as a hex dump, text shortened, and text from a file with its control characters shown
     show-octets-in-hex tuatara.text:octets-hex tuatara.display:shorten-string tuatara.command:escape-controls tuatara.text:xml-unprefixed tuatara.io:ensure-directories
     ;; programs from outside, shut in
