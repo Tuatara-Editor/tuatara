@@ -8,13 +8,19 @@
 ;;;; spoils copies ROUNDS times from SEED (octets changed, cut, put in,
 ;;;; lengths and counts made huge, messages repeated, mixed and made up) and
 ;;;; reads each as the other end would: the editor's reader acting on what a
-;;;; client sent, the client's reader and its painting on a fake frontend.
-;;;; One round in fifty goes over a real socket to a remote frontend or a
-;;;; client with their threads, now and then with a descriptor passed, and
-;;;; must end its connection within seconds. A failure is an error other than
-;;;; a malformed message, a read running past the deadline, a connection not
-;;;; ended, or the heap growing past the cap; the octets that made it are
-;;;; written to build/fuzz/ and the run ends with exit 1.
+;;;; client sent (a question awaiting its answer), the client's reader and its
+;;;; painting on a fake frontend. One round in fifty goes over a real socket
+;;;; to a remote frontend or a client with their threads, now and then with a
+;;;; descriptor passed, with the hello or after it, and must end its
+;;;; connection within seconds. Every 5,000 rounds one of these hostile but
+;;;; well-made rounds runs too: a paste past the most taken, more pictures in
+;;;; a frame than are kept, a flood of events the editor does not take, and
+;;;; a session of the editor given sizes, mouse places and closings at their
+;;;; bounds. A failure is an error other than a malformed message, a read
+;;;; running past the deadline, a connection not ended, a hostile round not
+;;;; answered as it should be, descriptors left open, or the heap growing
+;;;; past the cap; the octets that made it are written to build/fuzz/ and the
+;;;; run ends with exit 1.
 
 (defpackage #:tuatara.fuzz-remote
   (:use #:cl)
@@ -48,6 +54,9 @@
 
 (defparameter *random* (sb-ext:seed-random-state *seed*)
   "The run's random state.")
+
+;; no init file is read, and so no package fetched or asked about
+(setf tuatara.defaults::*config-file* #p"/nonexistent/init.lisp")
 
 (tuatara.defaults:install-defaults (tuatara.command::make-editor (tuatara.frontend.fake:make-fake-frontend)))
 
@@ -198,6 +207,11 @@ acting on each message as it does, a client painting on a fake frontend."
                            (push item (tuatara.frontend::remote-client-arrived client)))))
               (tuatara.frontend::paint-arrived client))
             (let ((remote (make-instance 'tuatara.frontend:remote-frontend :fd -1)))
+              ;; no one takes the events here, so none is waited for; a question awaits its answer
+              (setf (tuatara.frontend::remote-closing remote) t
+                    (tuatara.frontend::remote-asked remote) (random 4 *random*)
+                    (tuatara.frontend::remote-asked-question remote)
+                    (svref tuatara.frontend::*questions* (random 4 *random*)))
               (loop for kind = (tuatara.frontend::read-message inbox)
                     while kind
                     do (case kind
@@ -207,13 +221,16 @@ acting on each message as it does, a client painting on a fake frontend."
                          (t (unless (tuatara.frontend::take-from-client remote kind inbox) (return)))))))
       (tuatara.frontend:malformed-message () nil))))
 
-(defun over-a-socket (octets side descriptor)
+(defun over-a-socket (octets side descriptor with-hello)
   "Send OCTETS, spoilt, after a good hello, to a remote frontend (SIDE
 :EDITOR) or a client (:CLIENT) with its threads, DESCRIPTOR (an open pipe's
-end, or NIL) passed with them; true when its connection ended within five
-seconds."
+end, or NIL) passed with them, or WITH-HELLO with the hello; true when its
+connection ended, or the hello was refused, within five seconds."
   (multiple-value-bind (mine theirs) (tuatara.io:socket-pair)
     (let ((box (tuatara.frontend::make-outbox)) (vector (coerce octets 'tuatara.text:octets)))
+      (when (and descriptor with-hello)
+        (push (cons 0 (sb-posix:dup descriptor)) (tuatara.frontend::outbox-descriptors box))
+        (setf descriptor nil))
       (flet ((send ()
                (tuatara.io:with-octets-sap (sap vector)
                  (tuatara.io:send-with-descriptors theirs sap (length vector) (and descriptor (list descriptor))))
@@ -224,12 +241,15 @@ seconds."
                    (tuatara.frontend::put-hello box)
                    (tuatara.frontend::put-facts-message box (tuatara.frontend.fake:make-fake-frontend) :attach)
                    (tuatara.frontend::send-outbox theirs box 5)
-                   (let ((remote (tuatara.frontend:make-remote-frontend mine)))
-                     (send)
-                     (prog1 (loop for event = (tuatara.frontend:queue-pop (tuatara.frontend::remote-queue remote) 5)
-                                  while event
-                                  thereis (eq (tuatara.frontend:event-kind event) :quit))
-                       (tuatara.frontend:frontend-stop remote))))
+                   (let ((remote (handler-case (tuatara.frontend:make-remote-frontend mine)
+                                   (tuatara.frontend:remote-refused () (sb-posix:close mine) nil))))
+                     (or (null remote)
+                         (progn
+                           (send)
+                           (prog1 (loop for event = (tuatara.frontend:queue-pop (tuatara.frontend::remote-queue remote) 5)
+                                        while event
+                                        thereis (eq (tuatara.frontend:event-kind event) :detached))
+                             (tuatara.frontend:frontend-stop remote))))))
                  (let* ((local (tuatara.frontend.fake:make-fake-frontend))
                         (maker (sb-thread:make-thread (lambda () (tuatara.frontend:make-remote-client mine local)))))
                    (tuatara.frontend:frontend-start local)
@@ -243,6 +263,134 @@ seconds."
                          (tuatara.frontend::paint-arrived client)
                          (tuatara.frontend::close-remote-client client))))))
           (ignore-errors (sb-posix:close theirs)))))))
+
+;;; Hostile rounds, well made
+
+(defun open-descriptors ()
+  "How many descriptors this process has open."
+  (length (directory "/proc/self/fd/*" :resolve-symlinks nil)))
+
+(defun peer-editor-frontend (&key (width 80) (height 24))
+  "A remote frontend and the client's end of its socket, the client's hello
+and screen said by hand: two values."
+  (multiple-value-bind (mine theirs) (tuatara.io:socket-pair)
+    (let ((box (tuatara.frontend::make-outbox)))
+      (tuatara.frontend::put-hello box)
+      (tuatara.frontend::put-facts-message
+       box (tuatara.frontend.fake:make-fake-frontend :width width :height height :cell-pixels '(8 16)) :attach)
+      (tuatara.frontend::send-outbox theirs box 5)
+      (values (tuatara.frontend:make-remote-frontend mine) theirs))))
+
+(defun send-events (fd events)
+  "Send EVENTS over FD as a client does, a paste in pieces; true when all were sent."
+  (let ((box (tuatara.frontend::make-outbox)))
+    (dolist (event events)
+      (if (eq (tuatara.frontend:event-kind event) :paste)
+          (loop for (piece . more) on (tuatara.frontend::text-pieces (tuatara.frontend:event-text event))
+                do (tuatara.frontend::put-event box event :text piece :more more))
+          (tuatara.frontend::put-event box event)))
+    (tuatara.frontend::send-outbox fd box 30)))
+
+(defun paste-past-the-most ()
+  "A paste a few octets past +MOST-TEXT+: NIL when it is left out and said, else what went wrong."
+  (multiple-value-bind (remote theirs) (peer-editor-frontend)
+    (unwind-protect
+         (let* ((text (make-string (+ tuatara.frontend::+most-text+ 1 (random 100 *random*)) :initial-element #\p))
+                (sender (sb-thread:make-thread
+                         (lambda () (send-events theirs (list (tuatara.frontend:make-event :paste :text text))))))
+                (event (tuatara.frontend:queue-pop (tuatara.frontend::remote-queue remote) 30)))
+           (sb-thread:join-thread sender :timeout 30 :default nil)
+           (unless (and event (eq (tuatara.frontend:event-kind event) :said))
+             (format nil "a paste past the most came as ~s" (and event (tuatara.frontend:event-kind event)))))
+      (tuatara.frontend:frontend-stop remote)
+      (sb-posix:close theirs))))
+
+(defun more-pictures-than-kept ()
+  "Frames of 17 to 24 pictures each to a real client: NIL when it stays
+connected and keeps at most +MOST-PICTURES+, else what went wrong."
+  (let ((local (tuatara.frontend.fake:make-fake-frontend :cell-pixels '(8 16))))
+    (tuatara.frontend:frontend-start local)
+    (multiple-value-bind (mine theirs) (tuatara.io:socket-pair)
+      (let* ((maker (sb-thread:make-thread (lambda () (tuatara.frontend:make-remote-client theirs local))))
+             (remote (tuatara.frontend:make-remote-frontend mine))
+             (client (sb-thread:join-thread maker))
+             (images (loop repeat 40 collect (tuatara.frontend:make-image 2 2 3 (tuatara.text:make-octets 12)))))
+        (unwind-protect
+             (progn
+               (dotimes (frame 3)
+                 (tuatara.frontend:frontend-begin-frame remote)
+                 (loop repeat (+ 17 (random 8 *random*)) for row from 0
+                       do (tuatara.frontend:frontend-put-image remote (nth (random 40 *random*) images) row 0 1 1))
+                 (tuatara.frontend:frontend-end-frame remote))
+               (sleep 0.3)
+               (cond ((tuatara.frontend::remote-client-ended client) "the client's connection ended")
+                     ((> (length (tuatara.frontend::remote-client-pictures client)) tuatara.frontend::+most-pictures+)
+                      "the client keeps more pictures than it may")))
+          (tuatara.frontend:frontend-stop remote)
+          (tuatara.frontend::close-remote-client client))))))
+
+(defun flood ()
+  "Events by the ten thousand the editor does not take: NIL when no more than
++MOST-WAITING-EVENTS+ are read ahead and the frontend stops at once, else what went wrong."
+  (multiple-value-bind (remote theirs) (peer-editor-frontend)
+    (let* ((key (tuatara.frontend:make-event :key :key (tuatara.frontend:make-key #\f)))
+           (sender (sb-thread:make-thread (lambda () (send-events theirs (make-list 50000 :initial-element key))))))
+      (sleep 0.5)
+      (let ((read (tuatara.frontend::remote-received remote)) (began (get-internal-real-time)))
+        (tuatara.frontend:frontend-stop remote)
+        (sb-thread:join-thread sender :timeout 30 :default nil)
+        (sb-posix:close theirs)
+        (cond ((> read (1+ tuatara.frontend::+most-waiting-events+)) (format nil "~d events read ahead" read))
+              ((> (tuatara.runtime:seconds-since began) 5) "the frontend took more than 5 s to stop"))))))
+
+(defun editor-at-the-bounds ()
+  "An editor session whose one screen is a client's, given sizes, mouse
+places and closings at their bounds, then left: NIL when it ends so, else
+what went wrong."
+  (multiple-value-bind (remote theirs) (peer-editor-frontend)
+    (let ((draining (sb-thread:make-thread
+                     (lambda ()
+                       (let ((octets (tuatara.text:make-octets 65536)))
+                         (tuatara.io:with-octets-sap (sap octets)
+                           (loop (let ((got (sb-unix:unix-read theirs sap 65536)))
+                                   (unless (and got (plusp got)) (return))))))))))
+      (flet ((key (base &rest keys) (tuatara.frontend:make-event :key :key (apply #'tuatara.frontend:make-key base keys))))
+        (send-events theirs
+                     (append (list (tuatara.frontend:make-event :resize :width 1 :height 1)
+                                   (key #\a)
+                                   (key :down-mouse-1 :column 65535 :row 65535)
+                                   (tuatara.frontend:make-event :resize :width tuatara.frontend::+most-columns+
+                                                                        :height tuatara.frontend::+most-rows+)
+                                   (key :wheel-down :column 4095 :row 2047)
+                                   (key :drag-mouse-1 :column 0 :row 65535)
+                                   ;; pasted into *scratch*, before the file dropped is visited: nothing to save
+                                   (tuatara.frontend:make-event :paste :text "kiwi")
+                                   (tuatara.frontend:make-event :drop :files '("/nonexistent/fuzz") :column 65535 :row 0)
+                                   (tuatara.frontend:make-event :focus)
+                                   (tuatara.frontend:make-event :close)
+                                   (tuatara.frontend:make-event :resize :width 80 :height 24))
+                             (mapcar (lambda (spec) (tuatara.frontend:make-event :key :key (tuatara.frontend:spec-key spec)))
+                                     (tuatara.frontend:parse-key-sequence "C-g C-x C-c"))))
+        (let ((scratch (tuatara.buffer:find-buffer "*scratch*")))
+          (when scratch (tuatara.buffer:kill-buffer scratch)))
+        (tuatara.buffer:make-buffer "*scratch*" :text "")
+        (prog1 (handler-case
+                   (sb-ext:with-timeout 120
+                     ;; no grammar is offered to be fetched, which would ask
+                     (let ((tuatara.defaults::*grammars-not-now*
+                             (mapcar (lambda (language)
+                                       (string-downcase (symbol-name (tuatara.defaults::language-name language))))
+                                     tuatara.defaults::*languages*)))
+                       (tuatara.command:run-editor remote :setup #'tuatara.defaults:install-defaults
+                                                          :buffer (tuatara.buffer:find-buffer "*scratch*")))
+                     nil)
+                 (sb-ext:timeout () "the session did not end in 120 s")
+                 (error (condition) (format nil "the session failed: ~a" condition)))
+          (sb-thread:join-thread draining :timeout 10 :default nil)
+          (sb-posix:close theirs))))))
+
+(defparameter *hostile-rounds* (list #'paste-past-the-most #'more-pictures-than-kept #'flood #'editor-at-the-bounds)
+  "The hostile but well-made rounds, run in turn.")
 
 ;;; The run
 
@@ -261,14 +409,19 @@ seconds."
 
 (defun run ()
   "Read *ROUNDS* spoilt streams, each as the side its seed is read by."
-  (let ((sockets 0))
+  (let ((sockets 0) (hostile 0) (descriptors nil))
     (dotimes (round *rounds*)
+      (when (zerop (mod (1+ round) 5000))
+        (let* ((check (nth (mod hostile (length *hostile-rounds*)) *hostile-rounds*))
+               (failure (handler-case (funcall check) (error (condition) (princ-to-string condition)))))
+          (incf hostile)
+          (when failure (fail round (tuatara.text:make-octets 0) :hostile "~a: ~a" check failure))))
       (destructuring-bind (side . seed) (nth (random 2 *random*) *seeds*)
         (let ((octets (spoil seed)))
           (if (zerop (mod round 50))
               (multiple-value-bind (in out) (if (zerop (random 3 *random*)) (sb-posix:pipe) (values nil nil))
                 (incf sockets)
-                (unless (over-a-socket octets side out)
+                (unless (over-a-socket octets side out (and out (zerop (random 2 *random*))))
                   (fail round octets side "its connection did not end"))
                 (when in (sb-posix:close in) (sb-posix:close out)))
               (let ((began (get-internal-real-time)))
@@ -281,8 +434,15 @@ seconds."
           (sb-ext:gc :full t)
           (when (> (sb-kernel:dynamic-usage) *heap-cap*)
             (fail round (tuatara.text:make-octets 0) side "~d octets of heap in use" (sb-kernel:dynamic-usage)))
+          ;; descriptors passed are all closed: as many open as after the first ten thousand rounds
+          (let ((open (open-descriptors)))
+            (if descriptors
+                (when (> open (+ descriptors 16))
+                  (fail round (tuatara.text:make-octets 0) side "~d descriptors open, ~d before" open descriptors))
+                (setf descriptors open)))
           (format t "~&~:d rounds~%" (1+ round))
           (finish-output))))
-    (format t "~&~:d spoilt streams read, ~:d of them over a socket, seed ~d~%" *rounds* sockets *seed*)))
+    (format t "~&~:d spoilt streams read, ~:d of them over a socket, ~:d hostile rounds, seed ~d~%"
+            *rounds* sockets hostile *seed*)))
 
 (run)
