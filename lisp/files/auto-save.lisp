@@ -122,6 +122,14 @@ auto-saved copy in the background, a job."
   "False: an auto-save is not shown as work under way in the mode line."
   nil)
 
+(defun write-auto-save (rope file copy)
+  "Write ROPE, the text of a buffer visiting the native FILE, to COPY, its
+auto-saved copy (AUTO-SAVE-PATH), for you alone, and FILE's name beside it
+when COPY's name cannot hold it."
+  (tuatara.io:write-text-file rope copy :expected :any :follow-links nil :mode (constantly #o600))
+  (when (nth-value 1 (tuatara.io:path-file-name file))
+    (tuatara.io:write-private-file (concatenate 'string copy ".path") file)))
+
 (defun start-auto-save (buffer)
   "Write BUFFER's text as it is now to its auto-saved copy, a job in the
 background."
@@ -136,10 +144,17 @@ background."
      job
      (lambda (job)
        (declare (ignore job))
-       (tuatara.io:write-text-file rope copy :expected :any :follow-links nil :mode (constantly #o600))
-       (when (nth-value 1 (tuatara.io:path-file-name file))
-         (tuatara.io:write-private-file (concatenate 'string copy ".path") file)))
+       (write-auto-save rope file copy))
      :name "tuatara auto-save")))
+
+(defun auto-save-now (buffer)
+  "Write BUFFER's text as it is now to its auto-saved copy at once, on this
+thread: as the editor stops with no one to ask whether to save it."
+  (let ((file (tuatara.io:native (tuatara.buffer:buffer-file buffer))))
+    (tuatara.io:ensure-private-directory (auto-save-directory))
+    (write-auto-save (tuatara.text:version-rope (tuatara.buffer:buffer-version buffer)) file (auto-save-path file))
+    (setf (tuatara.buffer:buffer-local buffer 'auto-save-written) (tuatara.buffer:buffer-content-number buffer)
+          (tuatara.buffer:buffer-local buffer 'auto-save-file) file)))
 
 (defmethod tuatara.runtime:job-take-in ((job auto-save-job))
   "Note the copy written, or say why it was not; a buffer saved meanwhile has

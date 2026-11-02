@@ -1522,11 +1522,12 @@ picture, PDF or document it shows; NIL for none."
   (or (tuatara.buffer:buffer-file buffer) (tuatara.buffer:buffer-local buffer :viewed-file)))
 
 (defun buffer-candidates ()
-  "Completion candidates for the live buffers other than the current one, each
-with its size, its major mode and its file (BUFFER-LISTED-FILE) beside it, the
+  "Completion candidates for the live buffers other than the current one, of
+those offered to the client working in the frame (CLIENT-BUFFERS), each with
+its size, its major mode and its file (BUFFER-LISTED-FILE) beside it, the
 modes in a column as wide as the longest, and a + when it has changes not
 saved."
-  (let* ((buffers (remove (current-buffer) tuatara.buffer:*buffers*))
+  (let* ((buffers (remove (current-buffer) (client-buffers)))
          (mode-width (loop for b in buffers
                            maximize (length (or (buffer-mode-name b) "")) into widest
                            finally (return (max 12 widest)))))
@@ -1543,8 +1544,9 @@ saved."
   "The names of the buffers used before the current one, the latest first:
 the history that puts them first among the candidates, so that
 \\<minibuffer>\\[minibuffer-done] alone goes back to the buffer used last."
-  (loop for b in *buffer-order*
-        unless (or (eq b (current-buffer)) (not (live-buffer-p b)))
+  (loop with client = (current-client)
+        for b in *buffer-order*
+        unless (or (eq b (current-buffer)) (not (live-buffer-p b)) (not (client-sees-buffer-p client b)))
           collect (tuatara.buffer:buffer-name b)))
 
 (defun split-choices (text)
@@ -1707,9 +1709,10 @@ SAVE-BUFFERS-SAYING does; how many are saved or being saved."
 
 (define-command save-some-buffers ()
   "Save every buffer visiting a file with changes not saved, after asking once,
-the files named: the files a rename across a project changed, say."
+the files named: the files a rename across a project changed, say. In a
+client of an editor running in the background, the client's own buffers."
   (let ((changed (remove-if-not (lambda (b) (and (tuatara.buffer:buffer-file b) (tuatara.buffer:buffer-modified-p b)))
-                                tuatara.buffer:*buffers*)))
+                                (client-buffers))))
     (cond ((null changed) (message "(No files need saving)"))
           ((let ((*buffers-asked-about* changed))
              (y-or-n-p* (format nil "Save ~d changed file~:p: ~{~a~^, ~}?"
@@ -1720,7 +1723,12 @@ the files named: the files a rename across a project changed, say."
 (define-command save-buffers-kill-editor ()
   "Exit the editor, asking first if a buffer visiting a file, or one made by
 \\[new-empty-buffer], has unsaved changes. Other buffers without a file, such as the
-scratch buffers, are not asked about."
+scratch buffers, are not asked about. In a client of an editor running in the
+background, close that client alone, asking nothing but about its encrypted
+buffers, which close with it (CLOSE-CLIENT); its other buffers stay in the
+editor, for another client to take up, and the editor goes on."
+  (when (client-frontend (current-client))
+    (return-from save-buffers-kill-editor (close-client)))
   (let ((answers (loop for query in *quit-query-functions*
                        for answer = (query-answer query "exit")
                        unless answer return :stay

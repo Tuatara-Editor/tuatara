@@ -81,8 +81,10 @@ are, going to the first; or say why it could not be made, or that the file was c
 (defun merge-files-into (local base remote merged)
   "Merge the files LOCAL, BASE and REMOTE in the background into the buffer
 visiting MERGED, its conflicts marked and left to resolve; saving it writes
-MERGED. The editor ends with the code 0 when the file MERGED, as saved on
-disk, which is what git reads, has no conflict marker line left in it (<<<<<<<, ||||||| or >>>>>>>), else 1. A buffer that is read only (a file of evidence) is left as
+MERGED. The editor, or the client of one running in the background, ends
+with the code 0 when the file MERGED, as saved on disk, which is what git
+reads, has no conflict marker line left in it (<<<<<<<, ||||||| or >>>>>>>),
+else 1. A buffer that is read only (a file of evidence) is left as
 it is, and that is said."
   (let ((buffer (buffer-visiting merged)))
     (cond ((null buffer) (message "~a could not be opened: nothing merged" (abbreviated-path merged)))
@@ -97,8 +99,5 @@ it is, and that is said."
                       (three-way-merge (merge-job-local job) (merge-job-base job) (merge-job-remote job)
                                        :cancel (tuatara.runtime:job-cancel job))))
               :name "tuatara merge"))))
-    (setf tuatara.command:*exit-functions*
-          (append tuatara.command:*exit-functions*
-                  (list (lambda (editor)
-                          (declare (ignore editor))
-                          (setf tuatara.command:*exit-code* (if (merge-resolved-p merged) 0 1))))))))
+    (push (lambda (client) (setf (client-exit-code client) (if (merge-resolved-p merged) 0 1)))
+          (client-endings (current-client)))))

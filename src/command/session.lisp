@@ -4,8 +4,12 @@
 (in-package #:tuatara.command)
 
 (defun make-editor (frontend)
-  "Return an editor painting through FRONTEND with the minibuffer keys installed."
-  (let ((editor (%make-editor frontend)))
+  "Return an editor painting through FRONTEND with the minibuffer keys
+installed, its one who started it its first client, on its own screen."
+  (let ((editor (%make-editor frontend))
+        (client (make-client)))
+    (setf (frame-client (editor-frame editor)) client
+          (editor-clients editor) (list client))
     (install-minibuffer-keys (editor-minibuffer-keymap editor))
     editor))
 
@@ -13,9 +17,11 @@
   "Show BUFFER in the selected window of the editor, where that window last showed it if it
 did. A window kept for other buffers (PLACE-BUFFERS with :keep) is left as it
 is: BUFFER is shown in another window, which is selected. A buffer that has
-been killed is not shown: that is an error."
+been killed is not shown: that is an error. BUFFER becomes the buffer of the
+client who works in the frame too (JOIN-CLIENT)."
   (unless (live-buffer-p buffer)
     (refuse "~a has been killed" (tuatara.buffer:buffer-name buffer)))
+  (join-client buffer (current-client))
   (let* ((editor *editor*)
          (window (editor-window editor)))
     (if (and (tuatara.display:window-kept window)
@@ -205,7 +211,10 @@ show may have changed (PAINT-OTHER-FRAMES). Each event is handled guarded
                        (tuatara.runtime:debug-report :redisplay "a frame drawn in ~,1f ms" spent)))))
                (let ((later (paint-other-frames editor)))
                  (when later (setf wait (if wait (min wait later) later))))
-               (let ((event (or (pop (editor-deferred editor))
+               ;; what waits to be done in the frame kept with no screen waits for a client to do it in
+               (let ((event (or (if (idle-frame-p editor (editor-frame editor))
+                                    (take-deferred-without-screen editor)
+                                    (pop (editor-deferred editor)))
                                 (other-frames-deferred editor)
                                 (read-event editor :timeout wait :ticks t :between-commands t))))
                  ;; work handed on from the background, about to run: what any frame shows may change
@@ -276,11 +285,30 @@ editor has not read yet."
     (and editor (some (lambda (frame) (tuatara.frontend:frontend-input-pending-p (frame-frontend frame)))
                       (editor-frames editor)))))
 
-(defun defer-action (function)
+(defvar *actions-without-screen* (make-hash-table :test 'eq :weakness :key :synchronized t)
+  "The functions given to DEFER-ACTION that run though no client shows the
+editor (an editor running in the background with none attached): they ask
+nothing. The others wait for a client, to ask in its frame.")
+
+(defun take-deferred-without-screen (editor)
+  "Take out of what waits to be done in EDITOR's frame the first function
+that runs though no client shows the editor (*ACTIONS-WITHOUT-SCREEN*), and
+return it; NIL when there is none."
+  (let ((action (find-if (lambda (item) (and (functionp item) (gethash item *actions-without-screen*)))
+                         (editor-deferred editor))))
+    (when action
+      (setf (editor-deferred editor) (remove action (editor-deferred editor) :count 1))
+      action)))
+
+(defun defer-action (function &key without-screen)
   "Have FUNCTION run as the editor's next command, before the next key: work
 taken in from the background (on a tick) that asks a question, which it may
 then, as a command does. Given on another thread, FUNCTION is handed to the
-editor's thread, which is woken for it (TAKE-IN-THREAD-MESSAGES)."
+editor's thread, which is woken for it (TAKE-IN-THREAD-MESSAGES). In an
+editor running in the background, it waits for a client to be shown in,
+unless WITHOUT-SCREEN says it asks nothing (*ACTIONS-WITHOUT-SCREEN*)."
+  (when without-screen
+    (setf (gethash function *actions-without-screen*) t))
   (if (away-from-editor-p)
       (hand-to-editor-thread function *actions-from-threads*)
       (let ((editor (or *editor* (car *running-editor*))))
@@ -361,7 +389,8 @@ editor is never left waiting for work that gave up."
       (defer-action (lambda ()
                       (when (eq :asked (sb-ext:compare-and-swap (editor-hold-state hold) :asked :held))
                         (sb-thread:signal-semaphore (editor-hold-waiting hold))
-                        (wait-while-held hold))))
+                        (wait-while-held hold)))
+                    :without-screen t)
       (unwind-protect
            (loop
              (when (sb-thread:wait-on-semaphore (editor-hold-waiting hold) :timeout 1/10)
@@ -455,13 +484,10 @@ HOST-VISIT-STANDARD-INPUT)."
       (destructuring-bind (path &key safe hex) (alexandria:ensure-list entry)
         (host-visit-file tuatara.runtime:*host* path :safe safe :hex hex))))
 
-(defvar *startup-buffers* '()
-  "The buffers of the files the editor was started with, in order: those a
-program that runs it as its editor (git) waits on.")
-
 (defvar *exit-code* 0
-  "The code the editor ends with: 0, or what a command leaving it sets, 1 for
-a program that runs it as its editor to give up (git's commit not made).")
+  "The code the editor ended with: that of the one who started it (its first
+client, CLIENT-EXIT-CODE), 0, or 1 for a program that runs it as its editor to
+give up (git's commit not made).")
 
 (defun visit-startup-files (entries)
   "Visit each of ENTRIES, the files the editor was started with, as
@@ -497,8 +523,8 @@ buffers) applies to them. Returns the editor."
            ;; the init file has run: the settings the frontend reads may be new
            (tuatara.frontend:frontend-settings-changed frontend)
            (setf *exit-code* 0
-                 *startup-buffers* (visit-startup-files files))
-           (let ((first (or (first *startup-buffers*)
+                 (client-startup-buffers (current-client editor)) (visit-startup-files files))
+           (let ((first (or (first (client-startup-buffers (current-client editor)))
                             buffer
                             (host-startup-buffer tuatara.runtime:*host*)
                             (tuatara.buffer:find-buffer "*scratch*")
@@ -511,7 +537,12 @@ buffers) applies to them. Returns the editor."
              (when start (call-guarded start start editor))
              (tuatara.runtime:start-hang-watch sb-thread:*current-thread* :while (lambda () (editor-running editor)))
              (command-loop editor)
-             ;; stopped, however: what is kept between sessions is written now
+             ;; stopped, however: each client ends, the one who started it last, then what is kept
+             ;; between sessions is written
+             (let ((clients (editor-clients editor)))
+               (dolist (client (append (rest clients) (list (first clients))))
+                 (end-client editor client))
+               (setf *exit-code* (client-exit-code (first clients))))
              (dolist (f *exit-functions*) (call-guarded f f editor))))
       (when (and *running-editor* (eq (car *running-editor*) editor))
         (setf *running-editor* nil))

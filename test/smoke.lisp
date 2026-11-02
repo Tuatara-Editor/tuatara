@@ -49,7 +49,8 @@
           while at
           do (let* ((end (or (position-if (lambda (c) (member c '(#\Space #\, #\Newline))) out :start (+ at 2)) (length out)))
                     (option (subseq out (+ at 2) end)))
-               (true (or (tuatara.terminal::option-p option) (member option launcher :test #'string=))
+               (true (or (tuatara.terminal::option-p (tuatara.terminal::bare-flag option))
+                         (member option launcher :test #'string=))
                      "~a is listed but not taken" option)
                (setf start end)))))
 

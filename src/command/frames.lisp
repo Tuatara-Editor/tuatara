@@ -128,9 +128,11 @@ window worked in, at its point, named by FREE-FRAME-NAME. A FRONTEND new to
 EDITOR is started, and delivers its events through the source EDITOR's frames
 share, each naming the frame returned (TUATARA.FRONTEND:FRONTEND-FRAME); one
 that paints a frame of EDITOR already is shared: the frames take turns on it
-\(FRAME-TAKING-TURNS-P). The frame worked in stays so."
+\(FRAME-TAKING-TURNS-P). The frame is the client's who works in the frame
+worked in. The frame worked in stays so."
   (let ((frame (make-frame frontend)))
-    (setf (frame-name frame) (free-frame-name editor))
+    (setf (frame-name frame) (free-frame-name editor)
+          (frame-client frame) (frame-client (editor-frame editor)))
     (unless (find frontend (editor-frames editor) :key #'frame-frontend)
       (setf (tuatara.frontend:frontend-frame frontend) frame)
       (tuatara.frontend:frontend-start frontend))
@@ -196,11 +198,15 @@ frontend then names in its events in its place."
 
 (defun close-screen-gone (editor frame)
   "Close FRAME, whose screen went away (its client left), and every other
-frame of EDITOR taking turns on that screen; the editor's last frame stays."
-  (let ((frontend (frame-frontend frame)))
-    (dolist (gone (remove frontend (editor-frames editor) :key #'frame-frontend :test-not #'eq))
-      (when (rest (editor-frames editor))
-        (remove-frame editor gone)))))
+frame of EDITOR taking turns on that screen; the editor's last frame stays.
+A client whose own screen it was has ended (END-CLIENT)."
+  (let* ((frontend (frame-frontend frame))
+         (client (frame-client frame)))
+    (if (and client (eq (client-frontend client) frontend))
+        (end-client editor client)
+        (dolist (gone (remove frontend (editor-frames editor) :key #'frame-frontend :test-not #'eq))
+          (when (rest (editor-frames editor))
+            (remove-frame editor gone))))))
 
 (defun note-frame-painted (frame)
   "Keep in FRAME what it shows as it is painted now (FRAME-PAINTED): the

@@ -316,7 +316,9 @@ may name (:MESSAGES, :HELP, :BACKTRACE), or NIL."
 first: what OTHER-BUFFER goes by.")
 
 (defun note-selected-buffer (buffer)
-  "Put BUFFER first in *BUFFER-ORDER*, the buffer in use now."
+  "Put BUFFER first in *BUFFER-ORDER*, the buffer in use now, and make it the
+buffer of the client who works in the frame worked in too (JOIN-CLIENT)."
+  (join-client buffer (current-client))
   (unless (eq buffer (first *buffer-order*))
     (setf *buffer-order* (cons buffer (delete buffer *buffer-order*)))))
 
@@ -351,11 +353,12 @@ Complexity: O(buffers)."
                   unless (gethash b seen) collect b))))
 
 (defun other-buffer (&optional (buffer (current-buffer)) visible-ok)
-  "The buffer used most recently other than BUFFER: one no window shows before
-one that some window shows, unless VISIBLE-OK; then any other buffer; never
-one whose name begins with a space; a new one (NEW-BUFFER) when there is none."
+  "The buffer used most recently other than BUFFER, of those offered to the
+client working in the frame (CLIENT-BUFFERS): one no window shows before one
+that some window shows, unless VISIBLE-OK; then any other buffer; never one
+whose name begins with a space; a new one (NEW-BUFFER) when there is none."
   (let ((shown (mapcar #'tuatara.display:window-buffer (editor-windows)))
-        (order (buffers-in-use-order)))
+        (order (client-buffers (buffers-in-use-order))))
     (flet ((usable (b) (let ((name (tuatara.buffer:buffer-name b)))
                          (and (not (eq b buffer))
                               (not (and (plusp (length name)) (char= #\Space (char name 0))))))))

@@ -29,7 +29,7 @@
                (:module "display"  :serial t :components ((:file "package") (:file "faces") (:file "width") (:file "bidi") (:file "layout") (:file "folds") (:file "hex") (:file "window") (:file "splits")))
                ;; the painter interface as messages to a frontend in another process, which paints with faces
                (:module "remote"   :pathname "frontend" :serial t :components ((:file "messages") (:file "remote")))
-               (:module "command"  :serial t :components ((:file "package") (:file "host") (:file "keymap") (:file "command") (:file "completion") (:file "editor") (:file "panel") (:file "dispatch") (:file "menu") (:file "redisplay") (:file "minibuffer") (:file "session") (:file "recorded-keys") (:file "keys") (:file "popup") (:file "windows") (:file "frames")))
+               (:module "command"  :serial t :components ((:file "package") (:file "host") (:file "keymap") (:file "command") (:file "completion") (:file "editor") (:file "panel") (:file "dispatch") (:file "menu") (:file "redisplay") (:file "minibuffer") (:file "session") (:file "recorded-keys") (:file "keys") (:file "popup") (:file "windows") (:file "frames") (:file "clients")))
                (:module "modes"    :serial t :components ((:file "package") (:file "modes")))))
 
 (defsystem "tuatara/frontend-fake"
@@ -94,6 +94,7 @@
                (:file "config")
                (:module "packages" :components ((:file "packages")))
                (:file "scratch")
+               (:file "daemon")
                (:file "setup")
                (:file "api")))
 
@@ -117,7 +118,7 @@
   :license "GPL-3.0-or-later"
   :depends-on ("tuatara/frontend-tui" "tuatara/frontend-gtk" "tuatara/defaults")
   :pathname "frontends/tui/"
-  :components ((:file "main") (:file "man-pages")))
+  :components ((:file "main") (:file "man-pages") (:file "client")))
 
 (defsystem "tuatara/tests"
   :description "Test suite (Parachute) and the benchmark harness that enforces their budgets."
@@ -234,6 +235,7 @@
                (:file "gtk")
                (:file "tui")
                (:file "remote")
+               (:file "daemon")
                (:file "tools")
                (:file "config")
                (:file "modes")

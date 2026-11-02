@@ -14,7 +14,7 @@
   (:export #:keymap #:keymap-p #:make-keymap #:define-key #:define-keys #:label-keys #:lookup-key #:keymaps-lookup #:map-keymap-bindings #:keymap-parent #:keymap-entries #:keymap-name #:unbind-commands-if
            #:define-command #:find-command #:command-symbol #:command-names #:*commands* #:forget-command
            #:quit #:keyboard-quit-signal #:editor #:editor-p #:make-editor #:*editor* #:current-buffer #:*current-buffer* #:host-command-refusal #:sandbox-outcome-words #:editor-host #:current-window
-           #:message #:say-with-command-messages #:*messages-kept* #:*exit-functions* #:*startup-buffers* #:*exit-code* #:cursor-look #:*cursor-colour-functions* #:echo #:*message-log-max* #:log-message #:add-to-log #:messages-buffer #:host-messages-made #:read-string #:finish-minibuffer #:minibuffer-previous-history #:minibuffer-next-history #:echo-question-p #:yes-or-no-p* #:y-or-n-p* #:read-password #:wipe-string #:*minibuffer-hidden* #:show-buffer #:run-editor #:host-visit-file #:host-visit-standard-input #:command-loop #:redisplay #:redisplay-or-say
+           #:message #:say-with-command-messages #:*messages-kept* #:*exit-functions* #:*exit-code* #:cursor-look #:*cursor-colour-functions* #:echo #:*message-log-max* #:log-message #:add-to-log #:messages-buffer #:host-messages-made #:read-string #:finish-minibuffer #:minibuffer-previous-history #:minibuffer-next-history #:echo-question-p #:yes-or-no-p* #:y-or-n-p* #:read-password #:wipe-string #:*minibuffer-hidden* #:show-buffer #:run-editor #:visit-startup-files #:host-visit-file #:host-visit-standard-input #:command-loop #:redisplay #:redisplay-or-say
            #:quit-key-p #:*keys-as-typed* #:wait-interruptibly #:wait-until-interruptibly #:wait-while-interruptibly #:editor-unread #:editor-deferred #:running-editor #:defer-action #:call-with-editor-held #:away-from-editor-p #:wake-editor
            #:editor-frontend #:editor-window #:editor-global-keymap #:editor-state-keymap #:editor-minibuffer-keymap
            #:editor-message #:editor-kill-ring #:editor-running #:editor-last-command #:editor-this-command
@@ -35,7 +35,14 @@
            #:editor-minibuffer-prompt #:editor-minibuffer-text #:editor-minibuffer-point
            ;; windows
            #:editor-windows #:frames-windows #:editor-frames #:editor-frame #:frame-window #:open-frame #:*most-frames* #:remove-frame
-           #:do-frames-windows #:*question-variables* #:*buffers-asked-about* #:buffer-held-by-question-p
+           #:do-frames-windows #:*question-variables*
+           ;; clients
+           #:client #:client-p #:make-client #:current-client #:editor-clients #:frame-client #:client-frontend
+           #:client-number #:client-directory #:client-environment #:client-began #:client-ended
+           #:client-startup-buffers #:client-exit-code #:client-exit-words #:client-endings #:add-client #:end-client
+           #:client-frames #:client-buffers #:client-sees-buffer-p #:buffer-clients #:join-client
+           #:*buffers-for-every-client* #:*client-end-functions* #:editor-idle-frontend #:idle-frame-p
+           #:keep-idle-frame #:client-folder-words #:*client-variables* #:client-variable-p #:*buffers-asked-about* #:buffer-held-by-question-p
            #:select-frame #:call-in-frame #:*display-generation* #:editor-job-waker #:buffer-window #:buffer-windows #:editor-selections #:one-window-p #:fit-windows #:select-window #:split-window
            #:remove-window #:only-window #:swap-windows #:rotate-window-states #:window-towards
            #:window-cursor-cell #:window-at-cell #:window-text-cell #:window-cell-position #:most-recent-window

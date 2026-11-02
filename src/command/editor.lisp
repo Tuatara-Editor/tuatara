@@ -9,6 +9,45 @@
 
 (in-package #:tuatara.command)
 
+(defstruct (client (:constructor make-client (&key frontend directory environment (number 1))) (:copier nil))
+  "Someone working with the editor on screens of their own (clients.lisp):
+in an editor of its own, the one who started it, on its own screen
+\(FRONTEND NIL); in an editor running in the background, each program that
+attached to show it, painting what the remote frontend FRONTEND sends.
+NUMBER tells it apart from the others; DIRECTORY is the folder it was
+started in, and ENVIRONMENT its variables laid over the editor's for the
+programs started from its frames, each (NAME . VALUE); BEGAN, when it
+began, and ENDED, when it ended or NIL, in universal time. STARTUP-BUFFERS
+are the buffers of the files it was started with, in order: those a program
+running it as its editor waits on. EXIT-CODE and EXIT-WORDS are the code it
+ends with and what it says then; ENDINGS, functions of it called as it ends,
+before those are given."
+  (frontend nil :read-only t)
+  (number 1 :type fixnum :read-only t)
+  (directory nil)
+  (environment '())
+  (began (get-universal-time))
+  (ended nil)
+  (startup-buffers '())
+  (exit-code 0)
+  (exit-words nil)
+  (endings '()))
+
+(setf (documentation 'make-client 'function) "A CLIENT on FRONTEND (NIL: the editor's own screen), started in DIRECTORY."
+      (documentation 'client-p 'function) "True when OBJECT is a CLIENT."
+      (documentation 'client-frontend 'function) "The remote frontend CLIENT paints, or NIL for the editor's own screen."
+      (documentation 'client-number 'function) "The number telling CLIENT apart from the editor's other clients."
+      (documentation 'client-directory 'function) "The folder CLIENT was started in, or NIL."
+      (documentation 'client-environment 'function)
+      "CLIENT's variables laid over the editor's for the programs started from its frames, each (NAME . VALUE)."
+      (documentation 'client-began 'function) "When CLIENT began, in universal time."
+      (documentation 'client-ended 'function) "When CLIENT ended, in universal time, or NIL while it works."
+      (documentation 'client-startup-buffers 'function)
+      "The buffers of the files CLIENT was started with: those a program running it as its editor waits on."
+      (documentation 'client-exit-code 'function) "The code CLIENT ends with: 0, or 1 for a program running it as its editor to give up."
+      (documentation 'client-exit-words 'function) "What CLIENT says as it ends, or NIL."
+      (documentation 'client-endings 'function) "Functions of CLIENT called as it ends, newest first.")
+
 (defstruct (frame (:constructor make-frame (frontend)) (:copier nil))
   "One screen of the editor. FRONTEND paints it and reads its events; WINDOW
 is its selected window, the one commands act on, in a layout of one or more;
@@ -27,7 +66,8 @@ inside it (RUN-INSIDE-QUESTION), the variables of that question, their
 values there and the buffer it is about, as (VARIABLES VALUES BUFFER); NIL
 otherwise. DELETED is true once the frame has left the editor. NAME is what
 it is called, F1 for the first: the mode line shows it while frames take
-turns on one display, as in a terminal."
+turns on one display, as in a terminal. CLIENT is the one who works in it
+\(CLIENT), whose buffers it shows first."
   (frontend nil :read-only t)
   (name "F1" :type string)
   (window nil)
@@ -62,7 +102,8 @@ turns on one display, as in a terminal."
   (keys-playing nil)
   (painted nil)
   (held nil)
-  (deleted nil))
+  (deleted nil)
+  (client nil))
 
 (setf (documentation 'make-frame 'function) "A FRAME painted through FRONTEND, with no window yet."
       (documentation 'frame-p 'function) "True when OBJECT is a FRAME."
@@ -71,7 +112,8 @@ turns on one display, as in a terminal."
       (documentation 'frame-painted 'function)
       "What FRAME showed when it was last painted while another frame was worked in, or NIL (PAINT-OTHER-FRAMES)."
       (documentation 'frame-held 'function)
-      "While FRAME's question waits for another frame, its variables, their values and its buffer, as (VARIABLES VALUES BUFFER).")
+      "While FRAME's question waits for another frame, its variables, their values and its buffer, as (VARIABLES VALUES BUFFER)."
+      (documentation 'frame-client 'function) "The client who works in FRAME (CLIENT).")
 
 (defstruct (editor (:constructor %make-editor (frontend &aux (frame (make-frame frontend)) (frames (list frame))))
                    (:copier nil))
@@ -84,10 +126,15 @@ killed text, newest first; STATE-KEYMAP is the modal state's map consulted
 before the others (the modal layer's); OTHERS-PAINTED is when the frames
 not worked in were last painted (PAINT-OTHER-FRAMES), and SETTINGS-LOOKED
 when the settings were last looked at for them (LOOK-AT-SETTINGS), in
-internal time;
+internal time; CLIENTS, those who work with it (CLIENT), the one who
+started it first, a list replaced and never changed in place; IDLE-FRONTEND,
+in an editor running in the background, the frontend with no screen its
+frame shows on while no client shows it, else NIL;
 RUNNING is false once the editor should exit."
   (frames '() :type list)
   (frame nil :type frame)
+  (clients '() :type list)
+  (idle-frontend nil)
   (selections 0 :type fixnum)
   (others-painted 0)
   (settings-looked 0)
@@ -202,6 +249,9 @@ drawn; NIL otherwise.")
 (setf (documentation 'editor-p 'function) "True when OBJECT is an EDITOR."
       (documentation 'editor-frames 'function) "The frames of EDITOR, its screens."
       (documentation 'editor-frame 'function) "The current frame of EDITOR, the screen being worked in."
+      (documentation 'editor-clients 'function) "Those who work with EDITOR (CLIENT), the one who started it first."
+      (documentation 'editor-idle-frontend 'function)
+      "The frontend with no screen EDITOR's frame shows on while no client shows it, or NIL."
       (documentation 'editor-others-painted 'function) "When the frames of EDITOR not worked in were last painted, in internal time."
       (documentation 'editor-settings-looked 'function) "When the settings were last looked at for the frames of EDITOR not worked in, in internal time."
       (documentation 'editor-selections 'function) "How many times a window of EDITOR has been selected: the clock of WINDOW-USE-TIME."

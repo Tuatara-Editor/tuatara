@@ -16,7 +16,12 @@
   '("tuatara [--gui] [--frames N] [-Q] [-c INIT-FILE] [--safe] [--hex] [[+LINE[:COLUMN]] FILE...]"
     "tuatara [--gui] [-Q] [-c INIT-FILE] --diff OLD NEW"
     "tuatara [--gui] [-Q] [-c INIT-FILE] --merge LOCAL BASE REMOTE MERGED"
-    "tuatara [--gui] [-Q] [-c INIT-FILE] --tutor")
+    "tuatara [--gui] [-Q] [-c INIT-FILE] --tutor"
+    "tuatara --daemon[=NAME] [-c INIT-FILE]"
+    "tuatara --client[=NAME] [--start] [--frames N] [--safe] [--hex] [[+LINE[:COLUMN]] FILE...]"
+    "tuatara --client[=NAME] [--start] --diff OLD NEW"
+    "tuatara --client[=NAME] [--start] --merge LOCAL BASE REMOTE MERGED"
+    "tuatara --stop[=NAME]")
   "The ways of starting Tuatara, as --help and the manual page show them.")
 
 (defparameter *usage-introduction*
@@ -66,6 +71,29 @@ License, version 3 or later.
             "the keyboard"))
     (:flags (("--tutor"))
      :text ("start in the tutor"))
+    (:flags (("--daemon[=NAME]"))
+     :text ("run one editor in the background, with no screen, for"
+            "tuatara --client to show in terminals, and return once it is"
+            "ready; it reads the init file and loads the packages as Tuatara"
+            "does, and runs until M-x daemon-quit or tuatara --stop; NAME,"
+            "default when none is given, tells several apart; its log is"
+            "~/.cache/tuatara/daemon-NAME.log"))
+    (:flags (("--client[=NAME]"))
+     :text ("show the daemon NAME in this terminal, a frame of its own, the"
+            "files named opened in it, with +LINE, --safe, --hex, - and"
+            "--frames as for Tuatara itself; --diff and --merge as well, with"
+            "their exit codes; C-x C-c closes this client alone, its buffers"
+            "kept in the daemon, and the daemon goes on; as git's editor"
+            "(GIT_EDITOR='tuatara --client') the commit is made when the"
+            "message is finished; exits 1 when no daemon of that name runs, or"
+            "when it ends"))
+    (:flags (("--start"))
+     :text ("with --client: start the daemon first when none runs"))
+    (:flags (("--stop[=NAME]"))
+     :text ("stop the daemon NAME, asking in this terminal about the changes"
+            "not saved in it, as M-x daemon-quit does; with no terminal,"
+            "nothing is asked, and the changes are kept as auto-saved copies"
+            "that M-x recover-file offers"))
     (:flags (("-Q") ("--no-init"))
      :text ("start without the init file and so without packages, with what"
             "Tuatara keeps between sessions (files visited lately, the"
@@ -253,13 +281,35 @@ keys. KEYBOARD-AVAILABLE-P says first whether there is such a terminal."
         (sb-posix:dup2 fd 0)
         (sb-posix:close fd)))))
 
+(defun bare-flag (flag)
+  "FLAG, an option as *OPTION-HELP* writes it, without the [=NAME] of a value
+it may be given: --daemon of --daemon[=NAME]."
+  (subseq flag 0 (search "[=" flag)))
+
 (defparameter *options*
   (loop for entry in *option-help*
         unless (getf entry :only)
           append (loop for flag in (getf entry :flags)
-                       unless (char= (char (first flag) 0) #\+) collect (first flag)))
+                       unless (char= (char (first flag) 0) #\+) collect (bare-flag (first flag))))
   "The options the program takes, as written, and +LINE before a file besides;
-a long one taking a value takes it after an equals sign too (OPTION-WITH-VALUE).")
+a long one taking a value takes it after an equals sign too (OPTION-WITH-VALUE),
+and one that may be given a name, --daemon[=NAME], may take it so (NAMED-OPTION).")
+
+(defparameter *named-options*
+  (loop for entry in *option-help*
+        append (loop for (flag) in (getf entry :flags)
+                     when (search "[=" flag) collect (bare-flag flag)))
+  "The options that may be given a name after an equals sign: --daemon,
+--client and --stop.")
+
+(defun named-option (argument)
+  "When ARGUMENT is one of *NAMED-OPTIONS* given a name, --daemon=NAME, the
+option and the name, as two values; NIL otherwise."
+  (let ((equals (position #\= argument)))
+    (when equals
+      (let ((option (subseq argument 0 equals)))
+        (when (member option *named-options* :test #'string=)
+          (values option (subseq argument (1+ equals))))))))
 
 (defparameter *options-with-a-value*
   (loop for entry in *option-help*
@@ -282,7 +332,8 @@ the option and the value, as two values; NIL otherwise."
 (defun option-p (argument)
   "True when ARGUMENT is one of the program's options."
   (or (member argument *options* :test #'string=)
-      (and (option-with-value argument) t)))
+      (and (option-with-value argument) t)
+      (and (named-option argument) t)))
 
 (defun option-like-p (argument)
   "True when ARGUMENT is written as an option: it starts with a dash and is
@@ -294,8 +345,9 @@ more than a dash."
 :FRAMES (how many --frames opens), :CONFIG (the init file -c names),
 :GENERATE-CONFIG, :VERSION, :HELP,
 :DIFF (the two names after --diff), :MERGE (the four after --merge), :SAFE,
-:HEX, :TUTOR, :BARE (-Q) and :FILES, the files named; or :ERROR, what is
-wrong with them. Options may stand anywhere before --, among the files; --safe
+:HEX, :TUTOR, :BARE (-Q), :DAEMON, :CLIENT and :STOP (each the daemon's
+name, *DAEMON-DEFAULT-NAME* when none is given), :START and :FILES, the
+files named; or :ERROR, what is wrong with them. Options may stand anywhere before --, among the files; --safe
 and --hex hold for every file of the call, a +LINE[:COLUMN] for the file after
 it, which is then (NAME LINE COLUMN) in :FILES, the column NIL when none was
 given; a - (standard input) is (:STANDARD-INPUT). What starts with a dash and
@@ -322,6 +374,13 @@ or -- before the files. After --, every argument is a file's name."
                  (multiple-value-bind (option value) (option-with-value argument)
                    (push value arguments)
                    (push option arguments)))
+                ((or (member argument *named-options* :test #'string=) (named-option argument))
+                 (multiple-value-bind (option name) (named-option argument)
+                   (let ((name (or name tuatara.defaults::*daemon-default-name*)))
+                     (unless (tuatara.defaults::daemon-name-p name)
+                       (fail "~a cannot name a daemon: letters, digits, - and _, at most 40" name))
+                     (setf (getf options (intern (string-upcase (subseq (or option argument) 2)) :keyword)) name))))
+                ((string= argument "--start") (given :start))
                 ((member argument '("--version" "-V") :test #'string=) (given :version))
                 ((member argument '("--help" "-h") :test #'string=) (given :help))
                 ((string= argument "--gui") (given :gui))
@@ -360,7 +419,23 @@ or -- before the files. After --, every argument is a file's name."
             ((and (getf options :diff) (getf options :merge))
              (fail "--diff and --merge are not given together"))
             ((and (getf options :tutor) named)
-             (fail "--tutor takes no files, not ~a" (let ((n (first named))) (if (consp n) (second n) n)))))
+             (fail "--tutor takes no files, not ~a" (let ((n (first named))) (if (consp n) (second n) n))))
+            ((> (count-if (lambda (key) (getf options key)) '(:daemon :client :stop)) 1)
+             (fail "--daemon, --client and --stop are given one at a time"))
+            ((and (getf options :bare) (or (getf options :daemon) (getf options :client) (getf options :stop)))
+             (fail "-Q is never a daemon's: it starts a fresh, bare editor of its own, which ends with it"))
+            ((and (getf options :gui) (or (getf options :daemon) (getf options :client) (getf options :stop)))
+             (fail "a client in a window of its own is not made yet: tuatara --client runs in a terminal"))
+            ((and (getf options :start) (not (getf options :client)))
+             (fail "--start goes with --client"))
+            ((and (or (getf options :stop) (getf options :daemon))
+                  (or named (getf options :diff) (getf options :merge) (getf options :tutor) (getf options :frames)
+                      (getf options :safe) (getf options :hex)))
+             (fail "~:[--stop~;--daemon~] takes no files: give them to tuatara --client" (getf options :daemon)))
+            ((and (or (getf options :client) (getf options :stop)) (getf options :config))
+             (fail "-c names the init file of the daemon: give it to tuatara --daemon"))
+            ((and (getf options :client) (getf options :tutor))
+             (fail "--tutor is not given to a client: M-x tuatara-tutor in it starts the tutor")))
       (let ((files (read-places named directory)))
         (if (stringp files)
             (list :error files)
@@ -504,8 +579,10 @@ in the scratch buffers when there are none, as its options say
 instead; --diff OLD NEW shows what differs between two files; -c names the
 init file; +LINE[:COLUMN] before a file opens it there; -- before the files
 lets a file's name start with a dash or a plus. With --gui, or when started with no terminal on a
-desktop, Tuatara opens a window of its own. Returns the exit code: 0, or
-what the session left (*EXIT-CODE*); 2 for options it cannot take."
+desktop, Tuatara opens a window of its own. --daemon starts an editor in the
+background (START-DAEMON), --client shows one in this terminal and --stop
+stops one (RUN-CLIENT). Returns the exit code: 0, or what the session left
+\(*EXIT-CODE*); 2 for options it cannot take."
   (let* ((options (read-options arguments))
          (config (getf options :config))
          ;; named from where Tuatara was started, as the files are
@@ -521,6 +598,8 @@ what the session left (*EXIT-CODE*); 2 for options it cannot take."
            0)
           ((getf options :generate-config)
            (generate-config))
+          ((getf options :daemon)
+           (start-daemon (getf options :daemon) config-path))
           ((missing-file (getf options :diff))
            (format *error-output* "tuatara: ~a is not there: nothing to compare~%" (shown (missing-file (getf options :diff))))
            2)
@@ -536,6 +615,8 @@ what the session left (*EXIT-CODE*); 2 for options it cannot take."
                                 :regular)))
            (format *error-output* "tuatara: no init file at ~a (tuatara --generate-config writes one to start from)~%" (shown config))
            2)
+          ((or (getf options :client) (getf options :stop))
+           (run-client options))
           ((and (not (or (getf options :gui) (window-wanted-p))) (not (keyboard-available-p)))
            (format *error-output* "tuatara: its input is not a terminal and there is none to read keys from (/dev/tty): run it in a terminal, or with --gui~%")
            2)
@@ -592,13 +673,16 @@ programs it starts are given the environment as it was before
 \(LEAVE-APPIMAGE-ENVIRONMENT). Run again by the editor itself with
 TUATARA_COMPILE_PACKAGE in its environment, it compiles a package apart from
 it instead, its arguments never looked at
-\(TUATARA.PACKAGES:COMPILE-PACKAGE-CHILD)."
+\(TUATARA.PACKAGES:COMPILE-PACKAGE-CHILD); run again by tuatara --daemon
+with TUATARA_DAEMON, it is that daemon (RUN-DAEMON). A client keeps the heap
+it was saved with."
   (sb-ext:disable-debugger)
   (setf sb-ext:*posix-argv* (command-line-arguments))
   (fresh-random-state)
   (setf tuatara.io:*saved-program* (tuatara.runtime:ignoring-errors-reported ("finding this program")
                                      (namestring (truename "/proc/self/exe"))))
-  (let ((mb (heap-to-restart-with)))
+  ;; a client paints and reads keys, and wants no heap of its own size
+  (let ((mb (and (not (client-arguments-p (rest sb-ext:*posix-argv*))) (heap-to-restart-with))))
     (when mb (restart-with-heap mb)))
   (sb-posix:unsetenv "TUATARA_HEAP_DECIDED")
   ;; from now on the AppImage, which brings its libraries along, is what starts Tuatara again
@@ -613,6 +697,12 @@ it instead, its arguments never looked at
     (let ((code (tuatara.packages:compile-package-child)))
       (finish-output)
       (sb-ext:exit :code code :abort t)))
+  ;; run again by tuatara --daemon to be the daemon, told so likewise
+  (let ((daemon (uiop:getenv "TUATARA_DAEMON")))
+    (when daemon
+      (let ((code (run-daemon daemon (rest sb-ext:*posix-argv*))))
+        (finish-output)
+        (sb-ext:exit :code code :abort t))))
   (let ((code (main (rest sb-ext:*posix-argv*))))
     (finish-output)
     (sb-ext:exit :code code :abort t)))

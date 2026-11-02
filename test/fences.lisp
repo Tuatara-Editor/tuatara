@@ -28,6 +28,12 @@
 ;; Nor read or write the developer's configuration folder (their Word and LaTeX
 ;; templates): one of the run's own.
 (sb-posix:setenv "XDG_CONFIG_HOME" (namestring (merge-pathnames "config/" *test-state-directory*)) 1)
+;; Nor reach the developer's running daemons, or start one where they look: the
+;; run's own folder of sockets, for the run alone as the system's is.
+(let ((runtime (merge-pathnames "runtime/" *test-state-directory*)))
+  (ensure-directories-exist runtime)
+  (sb-posix:chmod (namestring runtime) #o700)
+  (setf tuatara.defaults::*runtime-directory* (namestring runtime)))
 ;; Nor touch the developer's trashes, the home one or a drive's (a USB stick's): the
 ;; tests' data home is their own, on the drive their files are made on, and they see
 ;; no drive mounted.
