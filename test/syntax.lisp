@@ -3251,6 +3251,45 @@ bound to the fake frontend and the editor; the file and its buffer go afterwards
       (tuatara.syntax:detach-syntax buffer)
       (tuatara.buffer:kill-buffer buffer))))
 
+(define-test (syntax colours-worked-out-once-for-a-slow-parse)
+  ;; a key whose parse is not done in time to be shown shows the colours of
+  ;; before moved with the text; they are worked out once, as the parse is done
+  (let ((path (records-file (with-output-to-string (s)
+                              (dotimes (i 200) (format s "(defun f~d (x) (list x \"s\" 'a))~%" i)))
+                            :type "lisp"))
+        (buffer nil) (counting nil) (worked-out 0) (keys 0))
+    (flet ((parsed ()
+             ;; the parse of the key done, and the window drawn after it
+             (let ((syntax (tuatara.syntax:buffer-syntax buffer)))
+               (loop repeat 500
+                     for job = (tuatara.syntax:syntax-job syntax)
+                     while (and job (not (tuatara.syntax::job-finished-p syntax job)))
+                     do (sleep 0.01)))))
+      (sb-int:encapsulate 'tuatara.syntax::run-parse-job 'slow
+                          (lambda (function syntax job) (sleep 0.1) (funcall function syntax job)))
+      (sb-int:encapsulate 'tuatara.syntax:rich-highlights 'counting
+                          (lambda (function &rest arguments)
+                            (when counting (incf worked-out))
+                            (apply function arguments)))
+      (unwind-protect
+           (let ((tuatara.syntax:*syntax-wait* 0.01) (tuatara.defaults::*rules-wait* 30))
+             (run-keys (list* (lambda ()
+                                (setf buffer (tuatara.command:current-buffer))
+                                (loop repeat 600
+                                      for language = (tuatara.buffer:buffer-local buffer :syntax-pending)
+                                      until (or (null language) (tuatara.syntax:buffer-syntax buffer))
+                                      do (tuatara.defaults::start-parsing buffer language) (sleep 0.05))
+                                (parsed))
+                              :tick "C-v i" (lambda () (parsed) (setf counting t))
+                              (loop for key in '("a" "b" "c" "DEL" "DEL" "DEL")
+                                    append (list key (lambda () (incf keys) (parsed)) :tick)))
+                       :file path :width 100 :height 20))
+        (sb-int:unencapsulate 'tuatara.syntax::run-parse-job 'slow)
+        (sb-int:unencapsulate 'tuatara.syntax:rich-highlights 'counting)
+        (kill-records buffer path)))
+    (is = 6 keys)
+    (true (<= keys worked-out (1+ keys)) "colours worked out ~d times for ~d keys" worked-out keys)))
+
 (define-test (syntax colours-kept-for-several-ranges)
   ;; two parts of a buffer shown at once keep their colours, each worked out once
   (let* ((text (with-output-to-string (s) (dotimes (i 40) (format s "fn f~d() {}~%" i))))

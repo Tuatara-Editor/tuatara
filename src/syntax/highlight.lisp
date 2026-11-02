@@ -754,6 +754,36 @@ lists given out before are then no longer to be read."
                             repeat (1- *colours-kept*) collect entry)))
           ranges))))
 
+(defun moved-colours (syntax key)
+  "The colours kept for SYNTAX's text before its latest edits, moved to where
+their text went (TUATARA.TEXT:MAP-POSITION), when they were for the part the
+edits made the one KEY asks for (as SYNTAX-HIGHLIGHTS makes it), and the
+edits since are known (SYNTAX-EDIT-LOG); kept under KEY. NIL when there are
+none such. Only the colours kept latest for those rules are looked at; they
+are moved where they are, as they are never asked for again."
+  (destructuring-bind (generation start end &rest rules) key
+    (let ((entry (find-if (lambda (entry)
+                            (let ((made-for (first (car entry))))
+                              (and (integerp made-for) (< made-for generation)
+                                   (equal (cdddr (car entry)) rules))))
+                          (syntax-cache syntax))))
+      (when entry
+        (let* ((made-for (first (car entry)))
+               ;; the edits made since, the oldest first: one for each generation
+               (batches (let ((newest-first (loop for (made . batch) in (syntax-edit-log syntax)
+                                                  while (> made made-for)
+                                                  collect batch)))
+                          (and (= (length newest-first) (- generation made-for)) (nreverse newest-first)))))
+          (flet ((moved (position)
+                   (dolist (batch batches position)
+                     (setf position (tuatara.text:map-position position batch :after)))))
+            (when (and batches (= (moved (second (car entry))) start) (= (moved (third (car entry))) end))
+              ;; each range moved, those left empty taken out
+              (dolist (range (cdr entry))
+                (setf (first range) (moved (first range)) (second range) (moved (second range))))
+              (setf (car entry) key
+                    (cdr entry) (delete-if (lambda (range) (>= (first range) (second range))) (cdr entry))))))))))
+
 (defun slice-highlights (syntax query faces start end injections)
   "The colours of SYNTAX's buffer text from octet START below END under QUERY,
 from a parse of that text alone and *SYNTAX-SLICE-REACH* octets on either side
@@ -823,6 +853,12 @@ worked out."
       (let ((key (list (syntax-generation syntax) start end query faces
                        (and injections (first injections)) (and locals (first locals))
                        (and injections (car *rules-generation*)))))
+        ;; the text edited and not parsed yet: those of before moved with it,
+        ;; worked out once the parse is done
+        (let ((job (syntax-job syntax)))
+          (when (and job (not (parse-job-refresh job)))
+            (let ((moved (moved-colours syntax key)))
+              (when moved (return-from syntax-highlights moved)))))
         (kept-colours
          syntax key
          (lambda ()

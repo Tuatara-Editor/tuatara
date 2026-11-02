@@ -20,6 +20,10 @@ the text with the colours of the tree as it was. It does not wait at all while
 parses after edits take longer than this, as they do in very large files: the
 edit shows at once, and its colours a moment later.")
 
+(defparameter *edits-logged* 16
+  "How many of a text's latest edits are kept, for colours worked out before
+them to be moved to where their text went (MOVED-COLOURS).")
+
 (defvar *syntax-edit-limit* 1000
   "The most edits of one change that are passed to the tree one by one; after a
 change with more, the text is parsed afresh.")
@@ -142,7 +146,8 @@ NO-REFRESH once a parse afresh of the text was given up (REFRESH-SYNTAX). LOCK
 and DONE guard the job's result, NEXT and ENDING. CACHE keeps the colours
 worked out lately (KEPT-COLOURS), CAPTURE-TABLE the table they are sorted out
 in, INJECTED-COLOURS those of its texts in other languages (KEPT-LAYER) and
-LOCAL-ROOM the room its local names are sorted out in."
+LOCAL-ROOM the room its local names are sorted out in; EDIT-LOG the latest
+edits, each with the generation it made (MOVED-COLOURS)."
   (buffer nil :read-only t)
   (grammar nil :read-only t)
   (helper nil)
@@ -164,6 +169,7 @@ LOCAL-ROOM the room its local names are sorted out in."
   (capture-table nil)
   (injected-colours nil)
   (local-room nil)
+  (edit-log '())
   (injected nil)
   (worker nil)
   (next nil)
@@ -191,6 +197,7 @@ LOCAL-ROOM the room its local names are sorted out in."
       (documentation 'syntax-no-refresh 'function) "True once a parse afresh of the text was given up: it is not tried again."
       (documentation 'syntax-cache 'function) "The colours worked out lately, each with what it was for, as KEPT-COLOURS keeps them."
       (documentation 'syntax-capture-table 'function) "The table colours are sorted out in, used again (*CAPTURE-TABLE*)."
+      (documentation 'syntax-edit-log 'function) "The latest edits, newest first, each (GENERATION . BATCH): the generation it made."
       (documentation 'syntax-local-room 'function) "The room local names are sorted out in, used again (*LOCAL-ROOM*), or NIL."
       (documentation 'syntax-injected-colours 'function) "The colours of texts in other languages kept by their text (*INJECTED-COLOURS*), or NIL."
       (documentation 'syntax-injected 'function) "The trees of text in other languages kept for the colours, as (GENERATION . TABLE), or NIL."
@@ -305,7 +312,10 @@ is back."
               (when (syntax-job syntax)
                 (setf (syntax-edits syntax) (revappend records (syntax-edits syntax))))
               (setf (syntax-current syntax) nil)
-              (incf (syntax-generation syntax))))
+              (incf (syntax-generation syntax))
+              (setf (syntax-edit-log syntax)
+                    (cons (cons (syntax-generation syntax) batch)
+                          (loop for entry in (syntax-edit-log syntax) repeat (1- *edits-logged*) collect entry)))))
         (setf (syntax-rope syntax) (tuatara.buffer:buffer-text buffer))
         (when (and (eq (syntax-broken syntax) :short) (nth-value 1 (helper-memory (syntax-helper syntax))))
           (setf (syntax-broken syntax) nil))
