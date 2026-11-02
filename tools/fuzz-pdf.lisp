@@ -6,7 +6,8 @@
 ;;;; predictor), spoils copies of them ROUNDS times from SEED, and reads each
 ;;;; with every reader of lisp/viewers/pdf-reader.lisp and M-x file-metadata's
 ;;;; PDF part: objects, their fields, streams decoded, object streams, content,
-;;;; saves, cross-reference tables and dictionaries. A failure is an error
+;;;; saves, cross-reference tables and dictionaries, the bound on
+;;;; cross-reference entries set low so that a seed passes it. A failure is an error
 ;;;; escaping a reader, a call running past the deadline, or the heap growing
 ;;;; past the cap; the file that made it is written to build/fuzz/ and the run
 ;;;; ends with exit 1.
@@ -40,6 +41,8 @@
 
 (defparameter *heap-cap* (* (environment-integer "FUZZ_HEAP_MB" 1024) 1024 1024)
   "The most octets of heap in use after a reader returns, once collected.")
+
+(setf tuatara.defaults::*pdf-most-entries* 2000)
 
 (defparameter *random* (sb-ext:seed-random-state *seed*)
   "The run's random state.")
@@ -155,6 +158,24 @@ object stream and written again outside it."
                         (length rows))
                 rows (format nil "~%endstream~%endobj~%startxref~%~d~%%%EOF~%" xref))))))
 
+(defun chained-entries-pdf ()
+  "A PDF of eight cross-reference streams chained by /Prev, each listing 600
+entries of one octet (/W [1 0 0]): more than the bound on entries the run
+sets, as a hostile file lists millions."
+  (let ((out (make-string-output-stream)) (at 0) (prev nil))
+    (flet ((put (text) (write-string text out) (incf at (length text))))
+      (put (format nil "%PDF-1.7~%1 0 obj~%<< /Type /Catalog >>~%endobj~%"))
+      (dotimes (k 8)
+        (let ((here at))
+          (put (format nil "~d 0 obj~%<< /Type /XRef /W [1 0 0] /Index [0 600] /Size 600 /Root 1 0 R~@[ /Prev ~d~] ~
+                            /Length 600 >>~%stream~%"
+                       (+ 10 k) prev))
+          (put (make-string 600 :initial-element (code-char 1)))
+          (put (format nil "~%endstream~%endobj~%"))
+          (setf prev here)))
+      (put (format nil "startxref~%~d~%%%EOF~%" prev))
+      (octets (get-output-stream-string out)))))
+
 (defun seeds ()
   "The PDFs spoilt in the run, made here: a page with its content in each
 filter, two saves, an object stream, predictors and pictures."
@@ -178,6 +199,8 @@ filter, two saves, an object stream, predictors and pictures."
       (list first
             second
             (xref-stream-pdf)
+            (chained-entries-pdf)
+            (octets (make-string 50 :initial-element #\J) first)
             (let* ((packed "<< /Type /Font /Subtype /Type1 /BaseFont /Courier >> [1 2 (three) /four]")
                    (header "10 0 11 55 "))
               (pdf-save (list "<< /Type /Catalog /Pages 2 0 R >>"
@@ -267,7 +290,7 @@ leaves more than *HEAP-CAP* octets in use."
                (tuatara:pdf-eof-lines octets)
                (tuatara:pdf-eof-lines octets (coerce (reverse objects) 'vector))))
     (checked "the cross-reference" (lambda () (tuatara.defaults::pdf-cross-reference octets)))
-    (checked "pdf-startxref" (lambda () (tuatara:pdf-startxref octets)))
+    (checked "pdf-startxref" (lambda () (tuatara:pdf-startxref octets) (tuatara:pdf-offset-base octets)))
     (checked "map-pdf-cross-reference-table"
              (lambda ()
                (loop with mark = (tuatara.text:string-octets "xref")
