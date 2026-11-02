@@ -3187,6 +3187,21 @@ bound to the fake frontend and the editor; the file and its buffer go afterwards
         (true (< (/ (- high low) 40) 64) "~,1f octets a key at 20 rows, ~,1f at 60: ~,1f more for each row"
               low high (/ (- high low) 40))))))
 
+(define-test (syntax comments-coloured-again-only-when-changed)
+  ;; typing on one line of a Lisp text with a comment on every line: the
+  ;; comments, read as text in another language, are not parsed and coloured
+  ;; again while their text is the same, so a taller window colours no more
+  ;; for each key, and makes far less garbage for each row
+  (let ((text (with-output-to-string (s)
+                (dotimes (i 300)
+                  (format s "(defun f~d (x) (list x 'a)) ; note ~d: TODO look again~%" i i)))))
+    (multiple-value-bind (low low-worked) (typing-garbage-per-key text "lisp" 20 *colouring-functions*)
+      (multiple-value-bind (high high-worked) (typing-garbage-per-key text "lisp" 60 *colouring-functions*)
+        (true (>= low-worked 16) "~d colourings" low-worked)
+        (is = low-worked high-worked "~d colourings at 20 rows, ~d at 60" low-worked high-worked)
+        (true (< (/ (- high low) 40) 1024) "~,1f octets a key at 20 rows, ~,1f at 60: ~,1f more for each row"
+              low high (/ (- high low) 40))))))
+
 (define-test (syntax colours-kept-for-several-ranges)
   ;; two parts of a buffer shown at once keep their colours, each worked out once
   (let* ((text (with-output-to-string (s) (dotimes (i 40) (format s "fn f~d() {}~%" i))))

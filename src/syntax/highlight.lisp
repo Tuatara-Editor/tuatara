@@ -307,27 +307,138 @@ the text, not again each time the window scrolls."
     (cdr (or (syntax-injected syntax)
              (setf (syntax-injected syntax) (cons (syntax-generation syntax) (make-hash-table :test 'equal)))))))
 
+(defvar *injected-colours* nil
+  "While SYNTAX-HIGHLIGHTS colours a buffer's text, the colours of the texts
+in other languages in it worked out lately, by their text (KEPT-LAYER); NIL
+elsewhere, none kept.")
+
+(defparameter *injected-colours-kept* 512
+  "The most colours of texts in other languages kept for one buffer: past
+them, all are let go and worked out again as they are needed.")
+
+(defparameter *injected-text-most* 4096
+  "The most octets of a text in another language whose colours are kept.")
+
+(defstruct (kept-layer (:constructor make-kept-layer (name query faces offsets octets colours)) (:copier nil))
+  "The colours worked out for a text in another language: NAME the language
+as the rules name it, QUERY and FACES its colouring rules and faces, OFFSETS
+its ranges, each (START . END), and COLOURS its ranges of colour, (START END
+FACE), both from the start of its first range; OCTETS the text of each of its
+ranges."
+  (name nil :read-only t)
+  (query nil :read-only t)
+  (faces nil :read-only t)
+  (offsets nil :read-only t)
+  (octets nil :read-only t)
+  (colours nil :read-only t))
+
+(setf (documentation 'kept-layer-p 'function) "True when OBJECT is a KEPT-LAYER."
+      (documentation 'make-kept-layer 'function) "A KEPT-LAYER of NAME, QUERY, FACES, OFFSETS, OCTETS and COLOURS."
+      (documentation 'kept-layer-name 'function) "The language of the text, as the rules name it."
+      (documentation 'kept-layer-query 'function) "The colouring rules the colours were worked out with."
+      (documentation 'kept-layer-faces 'function) "The faces the colours were worked out in."
+      (documentation 'kept-layer-offsets 'function) "The text's ranges, from the start of its first."
+      (documentation 'kept-layer-octets 'function) "The octets of each of the text's ranges."
+      (documentation 'kept-layer-colours 'function) "The colours, from the start of the text's first range.")
+
+(defun layer-text-hash (rope ranges)
+  "A number made of the octets of ROPE in RANGES, each (START . END), the same
+for the same octets wherever they stand."
+  (let ((hash 2166136261)
+        (window (make-array 256 :element-type '(unsigned-byte 8))))
+    (declare (dynamic-extent window) (type (unsigned-byte 32) hash))
+    (loop for (start . end) in ranges
+          do (loop for from of-type fixnum from start below end by 256
+                   for to of-type fixnum = (min end (+ from 256))
+                   do (tuatara.text:rope-copy-into rope from to window)
+                      (loop for i of-type fixnum from 0 below (- to from)
+                            do (setf hash (logand #xffffffff (* (logxor hash (aref window i)) 16777619))))))
+    hash))
+
+(defun layer-keepable-p (ranges start end)
+  "True when the colours of a text in another language in RANGES may be kept
+for the text from octet START below END: it lies wholly within that, so
+that none of its colours depend on where that begins or ends, and is short."
+  (and *injected-colours* ranges
+       (<= start (car (first ranges))) (<= (cdr (car (last ranges))) end)
+       (<= (loop for (s . e) in ranges sum (- e s)) *injected-text-most*)))
+
+(defun kept-layer (name query faces rope ranges start end)
+  "The KEPT-LAYER of the text of ROPE in RANGES read as the language NAME with
+QUERY and FACES, kept for the text from octet START below END: one worked out
+for the same octets in ranges the same distance apart, wherever they stood;
+NIL when there is none."
+  (when (layer-keepable-p ranges start end)
+    (let ((base (car (first ranges))))
+      (find-if (lambda (kept)
+                 (and (equal name (kept-layer-name kept))
+                      (eq query (kept-layer-query kept)) (eq faces (kept-layer-faces kept))
+                      (= (length ranges) (length (kept-layer-offsets kept)))
+                      (loop for (s . e) in ranges
+                            for (ks . ke) in (kept-layer-offsets kept)
+                            for octets in (kept-layer-octets kept)
+                            always (and (= (- s base) ks) (= (- e base) ke)
+                                        (rope-octets-equal-p rope s e octets)))))
+               (gethash (layer-text-hash rope ranges) *injected-colours*)))))
+
+(defun keep-layer (name query faces rope ranges start end colours)
+  "Keep COLOURS, worked out for the text of ROPE in RANGES read as the language
+NAME with QUERY and FACES, for the text from octet START below END, as
+KEPT-LAYER finds them."
+  (when (layer-keepable-p ranges start end)
+    (when (>= (hash-table-count *injected-colours*) *injected-colours-kept*)
+      (clrhash *injected-colours*))
+    (let ((base (car (first ranges))))
+      (push (make-kept-layer name query faces
+                             (loop for (s . e) in ranges collect (cons (- s base) (- e base)))
+                             (loop for (s . e) in ranges collect (tuatara.text:rope-octets rope :start s :end e))
+                             (loop for (s e face) in colours collect (list (- s base) (- e base) face)))
+            (gethash (layer-text-hash rope ranges) *injected-colours*)))))
+
+(defun kept-layer-ranges (kept base)
+  "The colours KEPT, a KEPT-LAYER, for its text when it starts at octet BASE,
+in the room of *SPARE-RANGES* where there is some (RANGE-CELL)."
+  (let* ((head (list nil)) (tail head))
+    (loop for (s e face) in (kept-layer-colours kept)
+          do (setf tail (setf (cdr tail) (range-cell (+ s base) (+ e base) face nil))))
+    (cdr head)))
+
 (defun layers-highlights (resolve layers rope start end depth)
   "The colours of each of LAYERS, (NAME RANGES), the text of ROPE in RANGES
 read as the language NAME, as LANGUAGE-HIGHLIGHTS gives them: a list of
 them, in the order of LAYERS. Those of one depth are parsed and their rules'
 matches found in one request, and the children of the nodes holding text in
-yet other languages in them asked for in one more."
+yet other languages in them asked for in one more. The colours of a text
+worked out before for the same octets (KEPT-LAYER) are given again, the text
+not parsed."
   (let* ((helper (current-helper))
          (layers (loop for (name ranges) in layers
                        collect (multiple-value-bind (grammar colours faces inner locals face-of) (funcall resolve name)
                                  (and helper grammar colours ranges (not (grammar-off-p grammar (or *parsing-buffer* helper)))
-                                      (let ((key (and *injected-trees* (list name ranges))))
-                                        (multiple-value-bind (tree known)
-                                            (if key (gethash key *injected-trees*) (values nil nil))
-                                          (and (or tree (not known))
-                                               (list :grammar grammar :ranges ranges :colours colours :faces faces
-                                                     :inner (and inner (< depth *injection-depth*) inner)
-                                                     :locals (and face-of locals) :face-of face-of :key key :tree tree
-                                                     :local-from (max (car (first ranges)) (- start *locals-reach*))))))))))
-         (wanted (remove nil layers)))
+                                      (let ((kept (kept-layer name colours faces rope ranges start end))
+                                            (key (and *injected-trees* (list name ranges))))
+                                        (if kept
+                                            (list :kept kept :base (car (first ranges)))
+                                            (multiple-value-bind (tree known)
+                                                (if key (gethash key *injected-trees*) (values nil nil))
+                                              (and (or tree (not known))
+                                                   (list :name name :grammar grammar :ranges ranges
+                                                         :colours colours :faces faces
+                                                         :inner (and inner (< depth *injection-depth*) inner)
+                                                         :locals (and face-of locals) :face-of face-of
+                                                         :key key :tree tree
+                                                         :local-from (max (car (first ranges))
+                                                                          (- start *locals-reach*)))))))))))
+         (wanted (remove-if (lambda (layer) (or (null layer) (getf layer :kept))) layers))
+         ;; the colours of each of LAYERS, kept or worked out now, of a list of those worked out
+         (all-colours (lambda (results)
+                        (loop for layer in layers
+                              collect (cond ((null layer) nil)
+                                            ((getf layer :kept)
+                                             (kept-layer-ranges (getf layer :kept) (getf layer :base)))
+                                            (t (pop results)))))))
     (if (null wanted)
-        (make-list (length layers))
+        (funcall all-colours '())
         (parse-texts
          rope
          (loop for layer in wanted
@@ -381,8 +492,14 @@ yet other languages in them asked for in one more."
                                         for list in (or inner-layers (make-list (length own)))
                                         collect (nconc colours
                                                        (loop repeat (length list) nconc (pop inner))))))
-                    (loop for layer in layers
-                          collect (and layer (pop results))))
+                    ;; those of a text parsed kept for the same text again
+                    (loop for layer in wanted
+                          for tree in trees
+                          for colours in results
+                          when tree
+                            do (destructuring-bind (&key name ranges ((:colours query)) faces &allow-other-keys) layer
+                                 (keep-layer name query faces rope ranges start end colours)))
+                    (funcall all-colours results))
                (dolist (tree made) (delete-tree tree)))))))))
 
 (defun language-highlights (resolve name ranges rope start end &optional (depth 1))
@@ -603,6 +720,9 @@ worked out."
                    (*helper* (or (syntax-helper syntax) :none))
                    (*parsing-buffer* (syntax-buffer syntax))
                    (*injected-trees* (and injections (keep-injected-trees syntax)))
+                   (*injected-colours* (and injections (or (syntax-injected-colours syntax)
+                                                           (setf (syntax-injected-colours syntax)
+                                                                 (make-hash-table)))))
                    ;; definitions may begin as early as the top-level form holding START
                    (local-from (and locals
                                     (let* ((chain (node-ancestry syntax start start))
