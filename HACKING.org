@@ -72,6 +72,10 @@ builds each grammar with a scanner (or those named) with AddressSanitizer and
 UndefinedBehaviorSanitizer, its patches applied, and parses texts made to be
 hard on a scanner (=tools/grammar-hostile.c=); it needs the compilers'
 sanitizer libraries (=libasan=, =libubsan=). Its logs are in =build/fuzz/=.
+=tools/fuzz-helper.sh [-n ROUNDS] [--seed SEED]= builds the syntax helper
+with the same sanitizers and sends it requests of every kind, well made and
+spoilt (=tools/fuzz-helper.py=); it fails on the first sanitizer report or
+the helper ending, the last requests sent in =build/fuzz/helper.log.last=.
 
 * Building and running
 
