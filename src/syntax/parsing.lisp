@@ -486,16 +486,17 @@ this ends before the parse has it."
                     ;; worked out here, where the editor's settings are seen
                     (setf (parse-job-limit job) (parse-time-limit (tuatara.text:rope-bytes rope)))
                     (setf (parse-job-budget job) (parse-memory-limit (tuatara.text:rope-bytes rope)))
-                    ;; the job's from here, or let go, with nothing between to stop it
-                    (sb-sys:without-interrupts
-                      (setf old nil)
-                      (if (hand-to-parse-thread syntax job)
-                          (setf (syntax-job syntax) job
-                                (syntax-edits syntax) '())
-                          ;; no thread to parse in: give up on this text
-                          (progn (when (parse-job-old job) (delete-tree (parse-job-old job)))
-                                 (sb-alien:free-alien (sb-alien:sap-alien cancel (* (sb-alien:signed 32))))
-                                 (setf (syntax-broken syntax) t)))))))
+                    ;; the job's from here, with nothing between to stop it
+                    (unless (sb-sys:without-interrupts
+                              (setf old nil)
+                              (when (hand-to-parse-thread syntax job)
+                                (setf (syntax-job syntax) job
+                                      (syntax-edits syntax) '())
+                                t))
+                      ;; no thread to parse in: give up on this text
+                      (when (parse-job-old job) (delete-tree (parse-job-old job)))
+                      (sb-alien:free-alien (sb-alien:sap-alien cancel (* (sb-alien:signed 32))))
+                      (setf (syntax-broken syntax) t)))))
         ;; not taken by a parse: let go, however this ends
         (let-go)))))
 
