@@ -99,7 +99,8 @@
 
 (define-test (tui terminal-given-back-alike)
   ;; stopping and lending the terminal give it back the same way, and a lent terminal is taken
-  ;; again as the editor had it: the kitty keyboard, the mouse, pastes, the screen painted whole
+  ;; again as the editor had it: the kitty keyboard, the mouse, pastes, rows shown in the order sent, the
+  ;; screen painted whole
   (let ((calls '()))
     (with-functions-replaced ((tuatara.frontend.tui::%endwin (lambda () (push :endwin calls)))
                               (tuatara.frontend.tui::%clearok (lambda (window on) (declare (ignore window on)) (push :clearok calls)))
@@ -120,7 +121,7 @@
                          tuatara.frontend.tui::*shown-cursor-shape*))))
         (let* ((esc (string #\Escape))
                (given-back (concatenate 'string esc "[0 q" esc "]112" (string (code-char 7)) esc "[<u"
-                                        esc "[?1002l" esc "[?1006l" esc "[?2004l")))
+                                        esc "[?1002l" esc "[?1006l" esc "[?2004l" esc "[8l")))
           (multiple-value-bind (out calls kitty shape) (sent #'tuatara.frontend:frontend-stop)
             (is string= given-back out)
             (is equal '((:forget t) :endwin) calls)
@@ -128,7 +129,7 @@
             (false shape))
           (multiple-value-bind (out calls kitty shape)
               (sent (lambda (f) (tuatara.frontend:frontend-lend-terminal f (lambda () (write-string "program")))))
-            (is string= (concatenate 'string given-back "program" esc "[>5u" esc "[?1002h" esc "[?1006h" esc "[?2004h") out)
+            (is string= (concatenate 'string given-back "program" esc "[>5u" esc "[?1002h" esc "[?1006h" esc "[?2004h" esc "[8h") out)
             (is equal '((:forget t) :endwin :clearok :refresh) calls)
             (true kitty)
             (false shape)))))))

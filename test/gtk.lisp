@@ -1294,3 +1294,33 @@ windows side by side."
     (let* ((before (tuatara.bench::bytes-consed))
            (consed (progn (dotimes (i 1000) (pointer)) (- (tuatara.bench::bytes-consed) before))))
       (true (< consed 1000) "~d octets for 1000 pointers" consed))))
+
+(define-test (gtk right-to-left-text-painted-in-row-order)
+  ;; a row holds right-to-left text in the order it is read: each letter goes to Pango on its own, and a
+  ;; run in a face's own font goes whole with an override that keeps that order
+  (tuatara.display:register-face :test-sample "A test face with a font of its own." (list :font "Adwaita Mono Bold"))
+  (let ((theme tuatara.display::*current-theme*)
+        (row (format nil "x ~{~c~} y" (mapcar #'code-char '(#x5D2 #x5D1 #x5D0)))))
+    (unwind-protect
+         (progn
+           (tuatara.display:apply-theme 'ao-dark)
+           (flet ((texts (spans)
+                    (let ((frame (tuatara.frontend.gtk:make-frame (vector (list row nil spans) nil)))
+                          (texts '()))
+                      (setf (tuatara.frontend.gtk::frame-cursor-row frame) 1)
+                      (sb-int:encapsulate 'tuatara.gtk:pango-layout-set-text 'seen
+                                          (lambda (function layout text)
+                                            (push text texts)
+                                            (funcall function layout text)))
+                      (unwind-protect
+                           (tuatara.frontend.gtk:call-with-painted-frame
+                            (lambda (&rest arguments) (declare (ignore arguments)))
+                            frame :columns 10 :rows 2 :font "Adwaita Mono 11")
+                        (sb-int:unencapsulate 'tuatara.gtk:pango-layout-set-text 'seen))
+                      texts)))
+             (flet ((hebrew-count (text) (count-if (lambda (c) (<= #x5D0 (char-code c) #x5EA)) text)))
+               (false (find-if (lambda (text) (> (hebrew-count text) 1)) (texts nil)))
+               (let ((whole (find-if (lambda (text) (= 3 (hebrew-count text))) (texts '((0 7 :test-sample))))))
+                 (true whole)
+                 (is eql (code-char #x202D) (and whole (char whole 0)))))))
+      (tuatara.display:apply-theme theme))))

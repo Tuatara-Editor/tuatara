@@ -300,8 +300,14 @@ stand otherwise than the same letters split among colours."
                     (= (tuatara.text:string-cluster-end string i end) (1+ i)))))
         (cond
           ((and font (not each))
-           ;; a face's own font: the run in one piece, as that font spaces it
-           (draw-text f cr layouts (subseq string start end) column y flags font))
+           ;; a face's own font: the run in one piece, as that font spaces it, in the order the row has it
+           ;; (right-to-left text is in the order it is read already: Pango is told to leave it so)
+           (let ((text (subseq string start end)))
+             (draw-text f cr layouts
+                        (if (find-if (lambda (c) (tuatara.display:right-to-left-code-p (char-code c))) text)
+                            (format nil "~c~a~c" (code-char #x202D) text (code-char #x202C))
+                            text)
+                        column y flags font)))
           (t
            (let ((at column) (i start))
              (loop while (< i end)

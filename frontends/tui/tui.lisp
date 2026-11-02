@@ -414,6 +414,15 @@ moves while a button is held, the wheel, in SGR's form), or to stop."
 takes it in as text and never as keys (READ-PASTE), or to stop."
   (set-terminal-modes '(2004) on))
 
+(defun tell-terminal-order (on)
+  "Ask the terminal to show the characters of each row in the order they are
+sent (ON true), as Tuatara sends right-to-left text already in the order it
+is read, so that a terminal that turns such text round itself does not turn
+it back; or to go back to its own way. The terminals that do it (those made
+with GNOME's VTE) take this request; the others turn nothing round, and
+leave it."
+  (terminal-control (if on "[8h" "[8l")))
+
 (defmethod tuatara.frontend:frontend-start ((f tui-frontend))
   (load-ncurses)
   (%setlocale 6 "")                     ; LC_ALL: let ncurses handle UTF-8
@@ -424,6 +433,7 @@ takes it in as text and never as keys (READ-PASTE), or to stop."
         *terminal-answers* :unasked)
   (when *tui-mouse* (tell-terminal-mouse t))
   (tell-terminal-pastes t)
+  (tell-terminal-order t)
   (setf (tui-wake f) (tuatara.io:make-wake-pipe)))
 
 (defun start-screen (f)
@@ -475,23 +485,26 @@ told apart (1) and a key with Shift is reported with what it types (4)."
 
 (defun give-terminal-back (f)
   "Leave F's terminal as it was before the editor: its pictures gone, and its
-cursor, keys, mouse and pastes its own again; ncurses ended."
+cursor, keys, mouse, pastes and order of characters its own again; ncurses
+ended."
   (forget-images f t)
   (terminal-control "[0 q")
   (terminal-control "]112~c" (code-char 7))
   (when *kitty-keyboard-on* (kitty-keyboard nil))
   (when (tui-mouse f) (tell-terminal-mouse nil))
   (tell-terminal-pastes nil)
+  (tell-terminal-order nil)
   (setf *shown-cursor-shape* nil *shown-cursor-colour* nil)
   (%endwin))
 
 (defun take-terminal-again (f kitty mouse)
   "Take F's terminal back after GIVE-TERMINAL-BACK: the kitty keyboard
 protocol on again when KITTY, the mouse reported when MOUSE, pastes marked,
-and the screen painted whole, as what was drawn on it meanwhile is gone."
+characters shown in the order sent, and the screen painted whole, as what was drawn on it meanwhile is gone."
   (when kitty (kitty-keyboard t))
   (when mouse (tell-terminal-mouse t))
   (tell-terminal-pastes t)
+  (tell-terminal-order t)
   (%clearok (tui-window f) t)
   (%wrefresh (tui-window f)))
 
