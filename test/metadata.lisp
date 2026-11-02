@@ -264,6 +264,18 @@ integers (SHORT, LONG) or of fractions (N . D) (RATIONAL), or octets."
     (true (search "- Title :: Real" note))
     (false (search "Planted" note))))
 
+(define-test (metadata pdf-eof-in-stream)
+  ;; a %%EOF among a stream's octets ends no save: the PDF was saved once
+  (let* ((data (format nil "%%EOF~%1 0 obj~%"))
+         (octets (octets-of "%PDF-1.7" 10
+                            (format nil "4 0 obj << /Length ~d >> stream~%~aendstream endobj~%" (length data) data)
+                            "trailer << >>" 10 "%%EOF" 10))
+         (note (first (tuatara.defaults::pdf-metadata octets))))
+    (is = 1 (length (tuatara:pdf-eof-lines octets)))
+    (is = 2 (length (tuatara:pdf-eof-lines octets #())))
+    (true (search "- Saved :: 1 time" note))
+    (false (search "2 times" note))))
+
 (define-test (metadata pdf-object-stream-unplaced)
   ;; an object stream that does not say where its objects are holds none: the information is read as far as it goes
   (let* ((octets (octets-of "%PDF-1.7" 10 "3 0 obj << /Type /ObjStm /N 2 /Length 5 >> stream" 10 "10 0 " 10

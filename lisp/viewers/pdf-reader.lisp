@@ -380,15 +380,30 @@ asked to stop."
                 (setf next (max next (pdf-indirect-end object))))))
           (setf i next))))))
 
-(defun pdf-eof-lines (octets)
-  "The %%EOF lines of the PDF in OCTETS, each of which ends a save of it, as
-a list of (EOF . END), in order: where its %%EOF is, and where its line
-ends."
+(defun pdf-eof-lines (octets &optional (objects (pdf-stream-objects octets)))
+  "The %%EOF lines that end the saves of the PDF in OCTETS, as a list of
+\(EOF . END), in order: where its %%EOF is, and where its line ends. A
+%%EOF within the octets of a stream ends nothing: OBJECTS, the objects the
+file writes in the order written (as MAP-PDF-WRITTEN-OBJECTS gives them, a
+vector), say where its streams are; when they are not given, the file is
+read for them."
   (let ((mark (load-time-value (tuatara.text:string-octets "%%EOF"))))
     (loop for at = (tuatara.io:octets-search mark octets)
             then (tuatara.io:octets-search mark octets :start (+ at 5))
           while at
-          collect (cons at (pdf-line-end-after octets (+ at 5))))))
+          unless (pdf-within-stream-p objects at)
+            collect (cons at (pdf-line-end-after octets (+ at 5))))))
+
+(defun pdf-within-stream-p (objects at)
+  "True when AT falls within the octets of the stream of one of OBJECTS, a
+vector of PDF-INDIRECT in the order written."
+  (let ((low 0) (high (length objects)))
+    (loop while (< low high)
+          do (let ((middle (floor (+ low high) 2)))
+               (if (<= (pdf-indirect-at (aref objects middle)) at) (setf low (1+ middle)) (setf high middle))))
+    (let ((object (and (plusp low) (aref objects (1- low)))))
+      (and object (pdf-indirect-stream-start object)
+           (<= (pdf-indirect-stream-start object) at) (< at (pdf-indirect-stream-end object))))))
 
 (defun pdf-startxref (octets &key (start 0) (end (length octets)))
   "The offset the last startxref from START below END in the PDF in OCTETS
@@ -649,10 +664,10 @@ or does not say where its objects are."
   "While one PDF is read through (WITH-PDF-OBJECTS-FOUND), what PDF-FIND-OBJECT
 knows of it, a hash table: under :WRITTEN, where each object is written, by
 \(NUMBER . GENERATION), the last first; under :OBJECT-STREAMS, its object
-streams; under :PACKED, the object stream holding each object, by number;
-under :ASKED, how many objects were looked for; and each object found, by
-\(NUMBER . GENERATION). NIL elsewhere: each object is then looked for
-through the whole file.")
+streams; under :STREAMS, its objects with a stream; under :PACKED, the
+object stream holding each object, by number; under :ASKED, how many
+objects were looked for; and each object found, by (NUMBER . GENERATION).
+NIL elsewhere: each object is then looked for through the whole file.")
 
 (defparameter *pdf-most-objects-found* 200
   "The most objects of one PDF looked for while it is read through
@@ -671,23 +686,43 @@ streams hold them found once, at the first object looked for, and at most
      ,@body))
 
 (defun pdf-objects-written (octets)
-  "Where each object of the PDF in OCTETS is written, as two values: a hash
-table of (NUMBER . GENERATION) to the offsets of their headers, the last
-first; and its object streams, the first 500, in the order written. The
-file is read once, from its start, by MAP-PDF-WRITTEN-OBJECTS: what a
-stream's octets hold is never taken for an object."
-  (let ((table (make-hash-table :test 'equal)) (streams '()) (count 0))
+  "Where each object of the PDF in OCTETS is written, as three values: a
+hash table of (NUMBER . GENERATION) to the offsets of their headers, the
+last first; its object streams, the first 500, in the order written; and
+every object with a stream, a vector in the order written. The file is read
+once, from its start, by MAP-PDF-WRITTEN-OBJECTS: what a stream's octets
+hold is never taken for an object."
+  (let ((table (make-hash-table :test 'equal)) (object-streams '()) (count 0)
+        (streams (make-array 0 :adjustable t :fill-pointer 0)))
     (map-pdf-written-objects
      (lambda (object)
        (push (pdf-indirect-at object)
              (gethash (cons (pdf-indirect-number object) (pdf-indirect-generation object)) table))
-       (when (and (< count 500) (pdf-indirect-stream-start object)
-                  (equal (pdf-get (pdf-indirect-value object) "/Type") "/ObjStm"))
-         (incf count)
-         (push object streams))
+       (when (pdf-indirect-stream-start object)
+         (vector-push-extend object streams)
+         (when (and (< count 500) (equal (pdf-get (pdf-indirect-value object) "/Type") "/ObjStm"))
+           (incf count)
+           (push object object-streams)))
        nil)
      octets)
-    (values table (nreverse streams))))
+    (values table (nreverse object-streams) streams)))
+
+(defun pdf-objects-scanned (octets &optional (found (or *pdf-objects-found* (make-hash-table :test 'equal))))
+  "FOUND, what is known of the PDF in OCTETS (*PDF-OBJECTS-FOUND* while it is
+read through, else a table made now), with where its objects are written
+found once (PDF-OBJECTS-WRITTEN): under :WRITTEN, :OBJECT-STREAMS and
+:STREAMS."
+  (unless (gethash :written found)
+    (multiple-value-bind (written object-streams streams) (pdf-objects-written octets)
+      (setf (gethash :written found) written
+            (gethash :object-streams found) object-streams
+            (gethash :streams found) streams)))
+  found)
+
+(defun pdf-stream-objects (octets)
+  "Every object with a stream the PDF in OCTETS writes, a vector in the
+order written, found once while it is read through (PDF-OBJECTS-SCANNED)."
+  (gethash :streams (pdf-objects-scanned octets)))
 
 (defun pdf-objects-packed (octets streams)
   "The object streams of the PDF in OCTETS holding each object, as a hash
@@ -720,10 +755,7 @@ found."
     (multiple-value-bind (object known) (gethash key found)
       (cond (known object)
             ((> (incf (gethash :asked found 0)) *pdf-most-objects-found*) nil)
-            (t (unless (gethash :written found)
-                 (multiple-value-bind (written streams) (pdf-objects-written octets)
-                   (setf (gethash :written found) written
-                         (gethash :object-streams found) streams)))
+            (t (pdf-objects-scanned octets found)
                (setf (gethash key found)
                      (or (loop for start in (gethash key (gethash :written found))
                                thereis (pdf-indirect-object-at octets start))
