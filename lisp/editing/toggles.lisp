@@ -52,11 +52,13 @@ NAME, which counts before what its major mode and every buffer are set to."
 buffer, or with EVERYWHERE for every buffer (its global setting, which buffers
 that chose for themselves and the modes its list names keep out of), and say
 so in one form for every toggle: Soft wrap on, Line numbers relative, Soft
-wrap off in every buffer."
+wrap off in every buffer. Every frame shows the change."
   (let ((toggle (find-display-toggle name)))
     (if everywhere
         (setf (symbol-value (display-toggle-global toggle)) value)
         (choose-display (current-buffer) name value))
+    ;; the frames not worked in show it too
+    (incf *display-generation*)
     (message "~a ~a~:[~; in every buffer~]" (display-toggle-label toggle)
              (display-toggle-words toggle value (and (not everywhere) (current-buffer)))
              everywhere)))

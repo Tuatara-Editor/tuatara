@@ -985,8 +985,8 @@ TOP, and have it painted again; tell the input method where it is."
       (gtk-im-context-set-cursor-location (gtk-im f) (round (+ left x)) (round (+ top y)) (round w) (round h)))))
 
 (define-callback on-draw-cursor :void ((area :pointer) (cr :pointer) (width :int) (height :int) (data :pointer))
-  (declare (ignore area width height data))
-  (let* ((f *frontend*)
+  (declare (ignore area width height))
+  (let* ((f (data-window data))
          (frame (and f (sb-thread:with-mutex ((gtk-lock f)) (gtk-shown f)))))
     (when frame
       (let ((layouts (frame-layouts f)) (at (gtk-cursor-at f)))
@@ -1060,7 +1060,7 @@ other way are let go of (LET-GO-OF-PICTURES)."
     (setf (gtk-on-card f) on)
     (let-go-of-pictures f on)
     (gtk-drawing-area-set-draw-func (gtk-area f) (if on (null-pointer) (callback on-draw))
-                                    (null-pointer) (null-pointer))
+                                    (window-data f) (null-pointer))
     (gtk-widget-set-visible (gtk-grid f) on)
     (gtk-widget-set-visible (gtk-pictures-layer f) on)
     (gtk-widget-set-visible (gtk-above f) on)))
@@ -1115,8 +1115,7 @@ pictures, what the input method is composing, the cursor."
                 (paint-cursor f cr layouts frame focused))))))))
 
 (define-callback on-draw :void ((area :pointer) (cr :pointer) (width :int) (height :int) (data :pointer))
-  (declare (ignore data))
-  (let ((f *frontend*))
+  (let ((f (data-window data)))
     (when f
       (follow-display-scale f area)
       (let ((frame (sb-thread:with-mutex ((gtk-lock f)) (gtk-shown f))))

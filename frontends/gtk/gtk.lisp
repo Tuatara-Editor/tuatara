@@ -1,12 +1,14 @@
 ;;;; frontends/gtk/gtk.lisp --- Tuatara in a window of its own: GTK4, painted with Pango and Cairo.
 ;;;; Copyright (C) 2026 Michael A Jones.  GPL-3.0-or-later; see LICENSE.
 ;;;;
-;;;; GTK runs on the main thread and the editor on a thread of its own. GTK's
-;;;; callbacks put keys, resizes and the close button in the editor's queue of
-;;;; events (TUATARA.FRONTEND:EVENT-QUEUE); each frame the editor finishes is
-;;;; handed to the main thread, which paints it on one drawing area: the rows as
-;;;; the editor laid them out, in the faces' colours, on a grid of the font's
-;;;; cells.
+;;;; GTK runs on the main thread and the editor on a thread of its own. Each of
+;;;; the editor's frames is a window of its own, painted through a frontend of
+;;;; its own; their callbacks put keys, resizes, the focus and the close button
+;;;; in the editor's one queue of events (TUATARA.FRONTEND:EVENT-QUEUE), each
+;;;; naming its frame. A callback finds its window's frontend by the number GTK
+;;;; hands it (WINDOW-DATA). Each frame the editor finishes is handed to the
+;;;; main thread, which paints it on the window's drawing area: the rows as the
+;;;; editor laid them out, in the faces' colours, on a grid of the font's cells.
 ;;;;
 ;;;; This file holds the frontend and what passes between the threads;
 ;;;; input.lisp the keys and the mouse, paint.lisp the painting, window.lisp
@@ -109,7 +111,11 @@ OFFSET), as TUATARA.FRONTEND:FRONTEND-PUT-IMAGE takes them."
    (lock :initform (sb-thread:make-mutex :name "window") :reader gtk-lock :documentation "Guards what both threads read.")
    (changed :initform (sb-thread:make-waitqueue :name "window") :reader gtk-changed :documentation "Where the editor waits for the window's size or the clipboard.")
    (sized :initform nil :accessor gtk-sized :documentation "True once the window knows its size.")
-   (queue :initform (make-event-queue) :reader gtk-queue :documentation "Events for the editor.")
+   (queue :initarg :queue :initform (make-event-queue) :reader gtk-queue
+          :documentation "Events for the editor, the queue every window of one editor shares.")
+   (owner :initform nil :accessor gtk-owner :documentation "The editor's frame the window shows, named in the events it hands on.")
+   (handle :initform nil :accessor gtk-handle :documentation "The number GTK's callbacks find the window by (WINDOW-DATA), or NIL.")
+   (signals :initform '() :accessor gtk-signals :documentation "The handlers the window connected to what outlives it, the clipboard and GTK's settings, each (INSTANCE . NUMBER).")
    (frame :initform nil :accessor gtk-frame :documentation "The frame the editor is painting.")
    (shown :initform nil :accessor gtk-shown :documentation "The frame the window shows.")
    (draw-pending :initform nil :accessor gtk-draw-pending :documentation "True while a redraw is asked for and not yet made.")
@@ -158,12 +164,44 @@ OFFSET), as TUATARA.FRONTEND:FRONTEND-PUT-IMAGE takes them."
    (surfaces :initform (make-hash-table :test 'eq) :reader gtk-surfaces :documentation "The cairo surfaces of the pictures the window shows, by their IMAGE; used and let go of on the window's own thread."))
   (:documentation "Tuatara's window: a GTK4 window with one drawing area."))
 
-(defun make-gtk-frontend ()
-  "A frontend for a window of Tuatara's own."
-  (make-instance 'gtk-frontend))
+(defun make-gtk-frontend (&key queue)
+  "A frontend for a window of Tuatara's own, its events going into QUEUE, the
+queue of the editor's other windows, or a queue of its own."
+  (if queue (make-instance 'gtk-frontend :queue queue) (make-instance 'gtk-frontend)))
 
-(defvar *frontend* nil
-  "The frontend of the window open, for GTK's callbacks.")
+(defvar *windows* (make-hash-table :synchronized t)
+  "The frontends GTK's callbacks reach, by the number each is given (WINDOW-DATA).")
+
+(defvar *window-count* (list 0)
+  "A list holding the last number given to a frontend for GTK's callbacks.")
+
+(defun window-data (f)
+  "The data GTK hands F's callbacks: a number standing for F, given the first
+time it is asked for, by which they find F again (DATA-WINDOW)."
+  (sb-sys:int-sap (or (gtk-handle f)
+                      (let ((handle (1+ (sb-ext:atomic-incf (car *window-count*)))))
+                        (setf (gethash handle *windows*) f
+                              (gtk-handle f) handle)))))
+
+(defun data-window (data)
+  "The frontend whose number GTK handed a callback as DATA (WINDOW-DATA), or
+NIL once its window has gone."
+  (values (gethash (sb-sys:sap-int data) *windows*)))
+
+(defun forget-window (f)
+  "Have GTK's callbacks no longer find F (WINDOW-DATA)."
+  (let ((handle (gtk-handle f)))
+    (when handle (remhash handle *windows*))))
+
+(defun open-windows ()
+  "The frontends whose windows are open, the oldest first."
+  (sort (loop for f being the hash-values of *windows* when (gtk-window f) collect f) #'< :key #'gtk-handle))
+
+(defun push-event (f kind &rest arguments)
+  "Hand the editor an event of KIND, with ARGUMENTS as MAKE-EVENT takes them,
+from F's window: naming the frame F shows."
+  (declare (dynamic-extent arguments))
+  (queue-push (gtk-queue f) (apply #'tuatara.frontend:make-event kind :frame (gtk-owner f) arguments)))
 
 (defun callback-failed (name condition)
   "Report on the error output that the window's callback NAME failed with CONDITION."
@@ -208,19 +246,39 @@ taking the editor down with GTK's thread, never unwinding through GTK."
 (defun request-draw (f)
   "Have the window painted again soon, from GTK's thread; any thread may ask."
   (unless (sb-thread:with-mutex ((gtk-lock f)) (shiftf (gtk-draw-pending f) t))
-    (g-idle-add (callback on-draw-request) (null-pointer))))
+    (g-idle-add (callback on-draw-request) (window-data f))))
 
 (defmethod tuatara.frontend:frontend-start ((f gtk-frontend))
   ;; the window was opened on GTK's thread; wait for it to know its size
   (sb-thread:with-mutex ((gtk-lock f))
     (tuatara.runtime:wait-on-until (gtk-changed f) (gtk-lock f) (lambda () (gtk-sized f)) nil))
+  (unless (gtk-window f)
+    (error "The window could not be opened"))
   ;; rows drawn large where a face asks for it (:height)
   (setf tuatara.display:*row-scaling* t))
 
 (defmethod tuatara.frontend:frontend-stop ((f gtk-frontend))
-  (setf tuatara.display:*row-scaling* nil
-        (gtk-done f) t)
-  (g-idle-add (callback on-close-window) (null-pointer)))
+  (setf (gtk-done f) t)
+  (unless (find-if-not #'gtk-done (open-windows))
+    (setf tuatara.display:*row-scaling* nil))
+  (g-idle-add (callback on-close-window) (window-data f)))
+
+(defmethod tuatara.frontend:frontend-another ((f gtk-frontend))
+  ;; a window beside F's, sharing its queue; the way of drawing was decided as F's opened
+  (let ((another (make-gtk-frontend :queue (gtk-queue f))))
+    (setf (gtk-renderer-checked another) t
+          (gtk-renderer-said another) (gtk-renderer-said f))
+    (g-idle-add (callback on-open-window) (window-data another))
+    another))
+
+(defmethod tuatara.frontend:frontend-frame ((f gtk-frontend))
+  (gtk-owner f))
+
+(defmethod (setf tuatara.frontend:frontend-frame) (frame (f gtk-frontend))
+  (setf (gtk-owner f) frame))
+
+(defmethod tuatara.frontend:frontend-raise ((f gtk-frontend))
+  (g-idle-add (callback on-raise) (window-data f)))
 
 (defmethod tuatara.frontend:frontend-size ((f gtk-frontend))
   (sb-thread:with-mutex ((gtk-lock f)) (values (gtk-columns f) (gtk-rows f))))
@@ -250,12 +308,12 @@ taking the editor down with GTK's thread, never unwinding through GTK."
 
 (defmethod tuatara.frontend:frontend-set-clipboard ((f gtk-frontend) text)
   (sb-thread:with-mutex ((gtk-lock f)) (setf (gtk-clipboard-out f) text))
-  (g-idle-add (callback on-set-clipboard) (null-pointer))
+  (g-idle-add (callback on-set-clipboard) (window-data f))
   t)
 
 (defmethod tuatara.frontend:frontend-set-primary-selection ((f gtk-frontend) text)
   (sb-thread:with-mutex ((gtk-lock f)) (setf (gtk-primary-out f) text))
-  (g-idle-add (callback on-set-clipboard) (null-pointer))
+  (g-idle-add (callback on-set-clipboard) (window-data f))
   t)
 
 (defmethod tuatara.frontend:frontend-font-steps ((f gtk-frontend))
@@ -264,7 +322,7 @@ taking the editor down with GTK's thread, never unwinding through GTK."
 (defmethod (setf tuatara.frontend:frontend-font-steps) (steps (f gtk-frontend))
   (let ((steps (sb-thread:with-mutex ((gtk-lock f))
                  (setf (gtk-font-steps f) (font-steps-fitting f steps)))))
-    (g-idle-add (callback on-rescale-font) (null-pointer))
+    (g-idle-add (callback on-rescale-font) (window-data f))
     steps))
 
 (defun call-with-font-families (function)
@@ -347,13 +405,12 @@ with FONT the full name that chooses each at SIZE (Pango units), sorted by name.
                (pango-font-description-set-size description (font-size-in-use)))
              (let ((full (pango-font-description-to-string description)))
                (setf *gui-font* full)
-               (g-idle-add (callback on-rescale-font) (null-pointer))
+               (g-idle-add (callback on-rescale-font) (window-data f))
                full))
         (pango-font-description-free description)))))
 
 (define-callback on-toggle-state :boolean ((data :pointer))
-  (declare (ignore data))
-  (let* ((f *frontend*)
+  (let* ((f (data-window data))
          (states (and f (sb-thread:with-mutex ((gtk-lock f)) (shiftf (gtk-toggles f) '()))))
          (window (and f (gtk-window f))))
     (when window
@@ -370,7 +427,7 @@ with FONT the full name that chooses each at SIZE (Pango units), sorted by name.
 (defmethod tuatara.frontend:frontend-toggle-state ((f gtk-frontend) state)
   (sb-thread:with-mutex ((gtk-lock f))
     (setf (gtk-toggles f) (append (gtk-toggles f) (list state))))
-  (g-idle-add (callback on-toggle-state) (null-pointer))
+  (g-idle-add (callback on-toggle-state) (window-data f))
   t)
 
 (defun settings-desktop-style ()
@@ -395,8 +452,8 @@ those the desktop's theme names for windows, else GTK's own. On GTK's thread."
     (setf *desktop-colours* (and fg bg (list fg bg)))))
 
 (define-callback on-style-changed :void ((settings :pointer) (spec :pointer) (data :pointer))
-  (declare (ignore settings spec data))
-  (let ((f *frontend*))
+  (declare (ignore settings spec))
+  (let ((f (data-window data)))
     (when f
       (let ((style (settings-desktop-style)))
         (sb-thread:with-mutex ((gtk-lock f)) (setf (gtk-desktop-style f) style))
@@ -414,7 +471,7 @@ those the desktop's theme names for windows, else GTK's own. On GTK's thread."
             (and (not (gtk-settings-pending f))
                  (not (and (equal font (gtk-font-in-use f)) (equal padding (gtk-padding f))))
                  (setf (gtk-settings-pending f) t)))
-      (g-idle-add (callback on-rescale-font) (null-pointer)))))
+      (g-idle-add (callback on-rescale-font) (window-data f)))))
 
 (defmethod tuatara.frontend:frontend-desktop-style ((f gtk-frontend))
   (sb-thread:with-mutex ((gtk-lock f)) (gtk-desktop-style f)))
@@ -422,7 +479,7 @@ those the desktop's theme names for windows, else GTK's own. On GTK's thread."
 (defmethod tuatara.frontend:frontend-set-title ((f gtk-frontend) title)
   (sb-thread:with-mutex ((gtk-lock f))
     (setf (gtk-title f) title))
-  (g-idle-add (callback on-set-title) (null-pointer)))
+  (g-idle-add (callback on-set-title) (window-data f)))
 
 (defmethod tuatara.frontend:frontend-clipboard ((f gtk-frontend))
   (read-clipboard-now f nil))
@@ -442,7 +499,7 @@ most; NIL when there is none."
       ;; or, the change still not in, the text kept before it
       (return-from read-clipboard-now (gtk-clipboard-kept f)))
     (setf (gtk-clipboard-in f) :waiting)
-    (g-idle-add (if primary (callback on-read-primary) (callback on-read-clipboard)) (null-pointer))
+    (g-idle-add (if primary (callback on-read-primary) (callback on-read-clipboard)) (window-data f))
     ;; a clipboard that does not answer within a second counts as none
     (tuatara.runtime:wait-on-until (gtk-changed f) (gtk-lock f) (lambda () (not (eq (gtk-clipboard-in f) :waiting))) 1)
     (let ((text (gtk-clipboard-in f)))

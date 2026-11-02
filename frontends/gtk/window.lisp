@@ -35,11 +35,11 @@ columns changed."
             (setf (gtk-columns f) columns (gtk-rows f) rows (gtk-sized f) t)
             (sb-thread:condition-broadcast (gtk-changed f))
             (unless first
-              (queue-push (gtk-queue f) (tuatara.frontend:make-event :resize :width columns :height rows)))))))))
+              (push-event f :resize :width columns :height rows))))))))
 
 (define-callback on-resize :void ((area :pointer) (width :int) (height :int) (data :pointer))
-  (declare (ignore area data))
-  (let ((f *frontend*))
+  (declare (ignore area))
+  (let ((f (data-window data)))
     (when f (fit-grid f width height))))
 
 (defun measure-font (f)
@@ -59,8 +59,7 @@ the last, and set its cell size from them."
   (measure-font f))
 
 (define-callback on-rescale-font :boolean ((data :pointer))
-  (declare (ignore data))
-  (let ((f *frontend*))
+  (let ((f (data-window data)))
     (when (and f (gtk-area f))
       (let ((steps (sb-thread:with-mutex ((gtk-lock f))
                      (setf (gtk-settings-pending f) nil)
@@ -80,19 +79,49 @@ the last, and set its cell size from them."
 ;;; Main-loop work other threads ask for
 
 (define-callback on-draw-request :boolean ((data :pointer))
-  (declare (ignore data))
-  (let ((f *frontend*))
+  (let ((f (data-window data)))
     (when (and f (gtk-area f))
       (sb-thread:with-mutex ((gtk-lock f)) (setf (gtk-draw-pending f) nil))
       (redraw f)))
   nil)
 
 (define-callback on-close-window :boolean ((data :pointer))
-  (declare (ignore data))
-  (let ((f *frontend*))
+  (let ((f (data-window data)))
+    (when f
+      ;; what GTK says of the window as it goes finds it no more
+      (forget-window f)
+      (loop for (instance . number) in (shiftf (gtk-signals f) '())
+            do (g-signal-handler-disconnect instance number))
+      (when (gtk-window f)
+        (gtk-window-destroy (shiftf (gtk-window f) nil))
+        (setf (gtk-area f) nil))))
+  nil)
+
+(define-callback on-open-window :boolean ((data :pointer))
+  (let ((f (data-window data)))
+    (when f
+      (unwind-protect
+           (progn
+             (open-window f)
+             (gtk-widget-realize (gtk-window f))
+             (setf (gtk-drawn-by f) (window-renderer-name (gtk-window f))))
+        ;; not opened: the editor waiting for its size goes on, to say so (FRONTEND-START)
+        (unless (gtk-window f)
+          (forget-window f)
+          (sb-thread:with-mutex ((gtk-lock f))
+            (setf (gtk-sized f) t)
+            (sb-thread:condition-broadcast (gtk-changed f)))))))
+  nil)
+
+(define-callback on-raise :boolean ((data :pointer))
+  (let ((f (data-window data)))
     (when (and f (gtk-window f))
-      (gtk-window-destroy (shiftf (gtk-window f) nil))
-      (setf (gtk-area f) nil)))
+      (gtk-window-present (gtk-window f))))
+  nil)
+
+(define-callback on-editor-ended :boolean ((data :pointer))
+  ;; nothing to do: GTK's loop looks again whether it has anything left
+  (declare (ignore data))
   nil)
 
 (defun clipboard ()
@@ -100,8 +129,7 @@ the last, and set its cell size from them."
   (gdk-display-get-clipboard (gdk-display-get-default)))
 
 (define-callback on-set-clipboard :boolean ((data :pointer))
-  (declare (ignore data))
-  (let ((f *frontend*))
+  (let ((f (data-window data)))
     (when f
       (multiple-value-bind (text primary)
           (sb-thread:with-mutex ((gtk-lock f))
@@ -120,16 +148,14 @@ look alike."
   (tuatara.display:displayable (tuatara.command:escape-controls title nil :raw-bytes) :controls nil))
 
 (define-callback on-set-title :boolean ((data :pointer))
-  (declare (ignore data))
-  (let* ((f *frontend*)
+  (let* ((f (data-window data))
          (title (and f (sb-thread:with-mutex ((gtk-lock f)) (gtk-title f)))))
     (when (and title (gtk-window f))
       (gtk-window-set-title (gtk-window f) (shown-title title))))
   nil)
 
 (define-callback on-clipboard-read :void ((source :pointer) (result :pointer) (data :pointer))
-  (declare (ignore data))
-  (let* ((f *frontend*)
+  (let* ((f (data-window data))
          (pointer (gdk-clipboard-read-text-finish source result (null-pointer)))
          (text (unless (null-pointer-p pointer)
                  (prog1 (sap-string pointer) (g-free pointer)))))
@@ -139,8 +165,7 @@ look alike."
         (sb-thread:condition-broadcast (gtk-changed f))))))
 
 (define-callback on-clipboard-kept :void ((source :pointer) (result :pointer) (data :pointer))
-  (declare (ignore data))
-  (let* ((f *frontend*)
+  (let* ((f (data-window data))
          (pointer (gdk-clipboard-read-text-finish source result (null-pointer)))
          (text (unless (null-pointer-p pointer)
                  (prog1 (sap-string pointer) (g-free pointer)))))
@@ -155,22 +180,20 @@ look alike."
 background, on GTK's thread, a paste meanwhile waiting for it."
   (sb-thread:with-mutex ((gtk-lock f))
     (setf (gtk-clipboard-reads f) (1+ (or (gtk-clipboard-reads f) 0))))
-  (gdk-clipboard-read-text-async (clipboard) (null-pointer) (callback on-clipboard-kept) (null-pointer)))
+  (gdk-clipboard-read-text-async (clipboard) (null-pointer) (callback on-clipboard-kept) (window-data f)))
 
 (define-callback on-clipboard-changed :void ((clipboard :pointer) (data :pointer))
-  (declare (ignore clipboard data))
-  (let ((f *frontend*))
+  (declare (ignore clipboard))
+  (let ((f (data-window data)))
     (when f (read-changed-clipboard f))))
 
 (define-callback on-read-clipboard :boolean ((data :pointer))
-  (declare (ignore data))
-  (gdk-clipboard-read-text-async (clipboard) (null-pointer) (callback on-clipboard-read) (null-pointer))
+  (gdk-clipboard-read-text-async (clipboard) (null-pointer) (callback on-clipboard-read) data)
   nil)
 
 (define-callback on-read-primary :boolean ((data :pointer))
-  (declare (ignore data))
   (gdk-clipboard-read-text-async (gdk-display-get-primary-clipboard (gdk-display-get-default))
-                                 (null-pointer) (callback on-clipboard-read) (null-pointer))
+                                 (null-pointer) (callback on-clipboard-read) data)
   nil)
 
 ;;; The window
@@ -182,7 +205,8 @@ dropped on it and the focus."
   (setf (gtk-fonts f) (make-fonts (font-name))
         (gtk-font-in-use f) (font-name))
   (measure-font f)
-  (let ((window (gtk-window-new))
+  (let ((data (window-data f))
+        (window (gtk-window-new))
         (area (gtk-drawing-area-new))
         (keys (gtk-event-controller-key-new))
         (command-keys (gtk-event-controller-key-new))
@@ -201,11 +225,10 @@ dropped on it and the focus."
                                    (+ (* 40 (cell-height f)) top bottom)))
     ;; the desktop's light or dark style, and word when it changes
     (setf (gtk-desktop-style f) (settings-desktop-style))
-    (g-signal-connect (gtk-settings-get-default) "notify::gtk-interface-color-scheme"
-                      (callback on-style-changed))
-    (g-signal-connect (gtk-settings-get-default) "notify::gtk-theme-name" (callback on-style-changed))
-    (g-signal-connect (gtk-settings-get-default) "notify::gtk-application-prefer-dark-theme"
-                      (callback on-style-changed))
+    (let ((settings (gtk-settings-get-default)))
+      (dolist (signal '("notify::gtk-interface-color-scheme" "notify::gtk-theme-name"
+                        "notify::gtk-application-prefer-dark-theme"))
+        (push (cons settings (g-signal-connect settings signal (callback on-style-changed) data)) (gtk-signals f))))
     ;; over the drawing area, which takes the keys and the pointer: the rows' pictures, and the cursor over them
     (let ((overlay (gtk-overlay-new)) (grid (gtk-fixed-new)) (pictures (gtk-fixed-new)) (above (gtk-fixed-new))
           (cursor (gtk-drawing-area-new)) (ground (gtk-picture-new)))
@@ -217,44 +240,45 @@ dropped on it and the focus."
       (gtk-picture-set-content-fit ground 0)
       (gtk-fixed-put grid ground 0d0 0d0)
       (gtk-fixed-put above cursor 0d0 0d0)
-      (gtk-drawing-area-set-draw-func cursor (callback on-draw-cursor) (null-pointer) (null-pointer))
+      (gtk-drawing-area-set-draw-func cursor (callback on-draw-cursor) data (null-pointer))
       (gtk-widget-set-visible grid nil)
       (gtk-widget-set-visible pictures nil)
       (gtk-widget-set-visible above nil)
       (setf (gtk-grid f) grid (gtk-pictures-layer f) pictures (gtk-above f) above (gtk-cursor-area f) cursor
             (gtk-ground f) ground)
       (gtk-window-set-child window overlay))
-    (gtk-drawing-area-set-draw-func area (callback on-draw) (null-pointer) (null-pointer))
-    (g-signal-connect area "resize" (callback on-resize))
+    (gtk-drawing-area-set-draw-func area (callback on-draw) data (null-pointer))
+    (g-signal-connect area "resize" (callback on-resize) data)
     (gtk-widget-set-focusable area t)
     (gtk-widget-set-cursor-from-name area "text")
     (gtk-im-context-set-client-widget im area)
     (gtk-event-controller-key-set-im-context keys im)
-    (g-signal-connect im "commit" (callback on-commit))
-    (g-signal-connect im "preedit-changed" (callback on-preedit-changed))
-    (g-signal-connect keys "key-pressed" (callback on-key-pressed))
+    (g-signal-connect im "commit" (callback on-commit) data)
+    (g-signal-connect im "preedit-changed" (callback on-preedit-changed) data)
+    (g-signal-connect keys "key-pressed" (callback on-key-pressed) data)
     (gtk-event-controller-set-propagation-phase command-keys 1)
-    (g-signal-connect command-keys "key-pressed" (callback on-command-key-pressed))
-    (g-signal-connect focus "enter" (callback on-focus-enter))
-    (g-signal-connect focus "leave" (callback on-focus-leave))
-    (g-signal-connect scroll "scroll" (callback on-scroll))
-    (g-signal-connect motion "motion" (callback on-motion))
-    (g-signal-connect motion "leave" (callback on-pointer-leave))
+    (g-signal-connect command-keys "key-pressed" (callback on-command-key-pressed) data)
+    (g-signal-connect focus "enter" (callback on-focus-enter) data)
+    (g-signal-connect focus "leave" (callback on-focus-leave) data)
+    (g-signal-connect scroll "scroll" (callback on-scroll) data)
+    (g-signal-connect motion "motion" (callback on-motion) data)
+    (g-signal-connect motion "leave" (callback on-pointer-leave) data)
     (gtk-gesture-single-set-button click 1)
     (gtk-gesture-single-set-button drag 1)
-    (g-signal-connect click "pressed" (callback on-pressed))
-    (g-signal-connect click "released" (callback on-released))
+    (g-signal-connect click "pressed" (callback on-pressed) data)
+    (g-signal-connect click "released" (callback on-released) data)
     (gtk-gesture-single-set-button middle 2)
-    (g-signal-connect middle "pressed" (callback on-middle-pressed))
-    (g-signal-connect drag "drag-begin" (callback on-drag-begin))
-    (g-signal-connect drag "drag-update" (callback on-drag-update))
-    (g-signal-connect drag "drag-end" (callback on-drag-end))
-    (g-signal-connect drop "drop" (callback on-drop))
+    (g-signal-connect middle "pressed" (callback on-middle-pressed) data)
+    (g-signal-connect drag "drag-begin" (callback on-drag-begin) data)
+    (g-signal-connect drag "drag-update" (callback on-drag-update) data)
+    (g-signal-connect drag "drag-end" (callback on-drag-end) data)
+    (g-signal-connect drop "drop" (callback on-drop) data)
     (dolist (controller (list command-keys keys focus scroll motion click middle drag drop))
       (gtk-widget-add-controller area controller))
-    (g-signal-connect window "close-request" (callback on-close-request))
+    (g-signal-connect window "close-request" (callback on-close-request) data)
     ;; the clipboard read each time it changes, and now, so that a paste takes it at once
-    (g-signal-connect (clipboard) "changed" (callback on-clipboard-changed))
+    (push (cons (clipboard) (g-signal-connect (clipboard) "changed" (callback on-clipboard-changed) data))
+          (gtk-signals f))
     (read-changed-clipboard f)
     (gtk-window-present window)
     (gtk-widget-grab-focus area)))
@@ -368,15 +392,14 @@ milliseconds from a key to the painting of the frame that shows it."
             :slowest (and (plusp count) (nth (min (1- count) (floor (* 19 count) 20)) latencies))))))
 
 (define-callback on-frame-painted :void ((clock :pointer) (data :pointer))
-  (declare (ignore clock data))
-  (let ((f *frontend*))
+  (declare (ignore clock))
+  (let ((f (data-window data)))
     (when f
       (let ((measured (sb-thread:with-mutex ((gtk-lock f)) (gtk-measured f))))
         (when measured (vector-push-extend (measure-clock) (aref measured 2)))))))
 
 (define-callback on-measure-frames :boolean ((data :pointer))
-  (declare (ignore data))
-  (let ((f *frontend*))
+  (let ((f (data-window data)))
     (when (and f (gtk-window f))
       (g-signal-connect (gtk-widget-get-frame-clock (gtk-window f)) "after-paint" (callback on-frame-painted))))
   nil)
@@ -401,7 +424,7 @@ when the measuring failed, said in the debug log."
 figures to the file OUT."
   (loop until (sb-thread:with-mutex ((gtk-lock f)) (gtk-shown f)) do (sleep 0.05))
   ;; each frame the window paints, as its frame clock says, on GTK's thread
-  (g-idle-add (callback on-measure-frames) (null-pointer))
+  (g-idle-add (callback on-measure-frames) (window-data f))
   ;; the file opened and the garbage of starting collected
   (sleep 2.5)
   (let ((measured (vector (make-array 0 :adjustable t :fill-pointer 0)
@@ -413,7 +436,7 @@ figures to the file OUT."
         (loop for wait = (/ (- (+ start (floor (* i 1000000) 60)) (measure-clock)) 1000000)
               while (plusp wait) do (sleep (min wait 0.002)))
         (sb-thread:with-mutex ((gtk-lock f)) (vector-push-extend (measure-clock) (aref measured 0)))
-        (queue-push (gtk-queue f) (tuatara.frontend:make-event :key :key (tuatara.frontend:make-key :down)))))
+        (push-key f (tuatara.frontend:make-key :down))))
     (sleep 1)
     (let ((figures (sb-thread:with-mutex ((gtk-lock f))
                      (setf (gtk-measured f) nil)
@@ -488,10 +511,11 @@ never one someone else made taken over."
 
 (defun run-in-window (files setup &key start)
   "Run the editor in a window of its own on FILES, calling SETUP with it, and
-START once the files are shown, as RUN-EDITOR does: GTK on this thread, which must be the main one, the editor on
-a thread of its own. Returns when the editor ends and the window has closed.
-Standard error goes to the cache directory's stderr.log when no terminal
-shows it (LOG-STDERR-UNLESS-TERMINAL)."
+START once the files are shown, as RUN-EDITOR does: GTK on this thread, which
+must be the main one, the editor on a thread of its own, every frame it
+opens a window of its own. Returns when the editor ends and every window has
+closed. Standard error goes to the cache directory's stderr.log when no
+terminal shows it (LOG-STDERR-UNLESS-TERMINAL)."
   (log-stderr-unless-terminal)
   (load-gtk-libraries)
   (with-gtk-float-traps
@@ -501,8 +525,8 @@ shows it (LOG-STDERR-UNLESS-TERMINAL)."
     (choose-renderer)
     (gtk-init)
     (use-program-icon)
-    (let ((f (make-gtk-frontend)))
-      (setf *frontend* f)
+    (let ((f (make-gtk-frontend))
+          (ended nil))
       (open-window f)
       (gtk-widget-realize (gtk-window f))
       (setf (gtk-drawn-by f) (window-renderer-name (gtk-window f)))
@@ -510,12 +534,14 @@ shows it (LOG-STDERR-UNLESS-TERMINAL)."
       (let ((editor (sb-thread:make-thread
                      (lambda ()
                        (unwind-protect (tuatara.command:run-editor f :files files :setup setup :start start)
-                         (unless (gtk-done f) (tuatara.frontend:frontend-stop f))))
+                         (setf ended t)
+                         (dolist (window (open-windows))
+                           (unless (gtk-done window) (tuatara.frontend:frontend-stop window)))
+                         (g-idle-add (callback on-editor-ended) (null-pointer))))
                      :name "editor")))
         (let ((out (uiop:getenv "TUATARA_MEASURE_DRAWING")))
           (when out (measure-drawing f out)))
-        (loop until (and (gtk-done f) (null (gtk-window f)))
+        (loop until (and ended (null (open-windows)))
               do (g-main-context-iteration (null-pointer) t))
         (sb-thread:join-thread editor :default nil)
-        (setf *frontend* nil)
         0))))

@@ -166,7 +166,8 @@ this often shows where they have got to.")
   "Run EDITOR until it stops: take in background work (*TICK-FUNCTIONS*),
 redisplay, read an event, dispatch it. While more keys wait, the frame is
 drawn only every *FRAME-AT-LEAST-EVERY* milliseconds, so that typing
-is never held up by drawing. A command held up longer than
+is never held up by drawing; the other frames are painted when what they
+show may have changed (PAINT-OTHER-FRAMES). A command held up longer than
 TUATARA.RUNTIME:*SLOW-CALL-SECONDS* by one stoppable call (a regular
 expression stuck on a line), where nothing goes on with it in the
 background, is stopped and says so."
@@ -184,9 +185,14 @@ background, is stopped and says so."
                    (let ((spent (tuatara.runtime:milliseconds-since began)))
                      (when (>= spent *slow-frame*)
                        (tuatara.runtime:debug-report :redisplay "a frame drawn in ~,1f ms" spent)))))
+               (let ((later (paint-other-frames editor)))
+                 (when later (setf wait (if wait (min wait later) later))))
                (let ((event (or (pop (editor-deferred editor))
                                 (other-frames-deferred editor)
                                 (read-event editor :timeout wait :ticks t :between-commands t))))
+                 ;; work taken in, or about to be: what any frame shows may change
+                 (when (or (functionp event) (tuatara.frontend:tick-p event))
+                   (incf *display-generation*))
                  (when (and event (not (functionp event)))
                    (setf *last-input-time* (get-internal-real-time)))
                  ;; whatever escapes the command's own guards: said, never the end of the editor
@@ -202,14 +208,17 @@ background, is stopped and says so."
 (defun handle-event (editor event)
   "Do what EVENT, read by the command loop, asks of EDITOR: run the command its
 key is bound to, or the work handed on as a function (DEFER-ACTION), and the
-like."
+like. A window's close button closes its frame (delete-frame), the last one
+quitting as \\[save-buffers-kill-editor] does."
   (if (functionp event)
       ;; work handed on to run as a command of its own (DEFER-ACTION): it may ask
       (funcall event)
       (case (tuatara.frontend:event-kind event)
         (:quit (setf (editor-running editor) nil))
-        ;; the window's close button: as C-x C-c, asking about what is unsaved
-        (:close (let ((command (command-symbol "save-buffers-kill-editor")))
+        ;; a window's close button: closing its frame, or for the last, as C-x C-c, asking about what is unsaved
+        (:close (let ((command (command-symbol (if (rest (editor-frames editor))
+                                                   "delete-frame"
+                                                   "save-buffers-kill-editor"))))
                   (if command
                       (run-command editor command)
                       (setf (editor-running editor) nil))))
@@ -433,14 +442,15 @@ cannot be opened is said in the echo area and left out; the others open."
 defaults install keymaps, modes, themes and the init file), then show the
 first of FILES that opens, or BUFFER, or what HOST-STARTUP-BUFFER gives, call
 START, if given, with the editor once that is shown, run the
-command loop, and stop the frontend when it ends. Setup runs before any
-buffer is shown, so what it installs (major modes, the startup buffers)
-applies to them. Returns the editor."
+command loop, and stop the frontends of its frames when it ends. Setup runs
+before any buffer is shown, so what it installs (major modes, the startup
+buffers) applies to them. Returns the editor."
   (let* ((editor (make-editor frontend))
          ;; the editor is current for the whole session, including SETUP and the
          ;; init file it loads, so MESSAGE and friends work there
          (*editor* editor))
     (survive-stack-exhaustion)
+    (setf (tuatara.frontend:frontend-frame frontend) (editor-frame editor))
     (tuatara.frontend:frontend-start frontend)
     ;; what other threads say from now on is handed to this one
     (sb-thread:with-mutex (*messages-from-threads-lock*) (setf *messages-from-threads* '() *actions-from-threads* '()))
@@ -471,5 +481,6 @@ applies to them. Returns the editor."
       (when (and *running-editor* (eq (car *running-editor*) editor))
         (setf *running-editor* nil))
       (take-in-thread-messages editor)
-      (tuatara.frontend:frontend-stop frontend))
+      (dolist (frame (editor-frames editor))
+        (tuatara.frontend:frontend-stop (frame-frontend frame))))
     editor))

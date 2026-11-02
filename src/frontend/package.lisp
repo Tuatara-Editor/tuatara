@@ -8,9 +8,9 @@
            #:parse-key #:parse-key-sequence #:key-description #:spec-key
            #:event #:event-p #:input-event-p #:make-event #:event-kind #:event-key #:event-width #:event-height
            #:event-files #:event-column #:event-row #:event-text #:event-frame
-           #:event-queue #:make-event-queue #:queue-push #:queue-pop #:queue-empty-p #:queue-input-p
+           #:event-queue #:make-event-queue #:queue-push #:queue-pop #:queue-empty-p #:queue-input-p #:tick-p
            #:frontend-start #:frontend-stop #:frontend-size #:frontend-read-event #:frontend-read-event-timeout
-           #:frontend-input-pending-p #:frontend-wake
+           #:frontend-input-pending-p #:frontend-wake #:frontend-another #:frontend-frame #:frontend-raise
            #:frontend-colour-count #:frontend-description #:frontend-health #:frontend-set-clipboard #:frontend-terminal-device #:frontend-lend-terminal #:frontend-clipboard #:frontend-set-title #:frontend-font-steps #:frontend-fonts #:frontend-font-faces #:frontend-set-font #:frontend-toggle-state #:frontend-desktop-style #:frontend-settings-changed #:frontend-renderers #:frontend-measure-drawing #:padding-sides
            #:frontend-begin-frame #:frontend-put-row #:frontend-set-cursor #:frontend-end-frame
            #:image #:image-p #:make-image #:image-width #:image-height #:image-fit-scale #:image-channels #:image-pixels #:image-id

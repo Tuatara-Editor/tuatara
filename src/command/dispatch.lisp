@@ -251,14 +251,16 @@ in, which has none, taken from that frame's; NIL when there is none."
 true when it is to be handled now, in the frame worked in. One of no frame, or
 of the frame worked in, is; one of a frame that has gone is dropped. Between
 commands (BETWEEN-COMMANDS, the command loop's own read), what you do in
-another frame makes it the one worked in, and that frame's window resized is
-drawn again there; while a command asks or works, the event waits among that
-frame's unread events for its turn."
+another frame, and its window given the keyboard, makes it the one worked
+in, and that frame's window resized is drawn again there; while a command
+asks or works, the event waits among that frame's unread events for its turn."
   (let ((frame (tuatara.frontend:event-frame event)))
     (cond ((or (null frame) (eq frame (editor-frame editor))) t)
           ((frame-deleted frame) nil)
           ((not between-commands) (setf (frame-unread frame) (append (frame-unread frame) (list event))) nil)
-          ((tuatara.frontend:input-event-p event) (select-frame editor frame) t)
+          ((or (tuatara.frontend:input-event-p event) (eq (tuatara.frontend:event-kind event) :focus))
+           (select-frame editor frame)
+           t)
           ((eq (tuatara.frontend:event-kind event) :resize)
            (call-in-frame editor frame (lambda ()
                                          (resize editor (tuatara.frontend:event-width event)
@@ -289,7 +291,8 @@ there (TAKE-TO-ITS-FRAME): \\`C-g' there stops nothing here."
   "Read the next event from the frontend, handling a resize here: the screen is
 painted again at the new size at once. With TICKS (the command loop), an event
 of kind :TICK comes back when another thread wakes the editor, after a resize,
-and when no key arrives within TIMEOUT seconds; without, only keys and :QUIT
+and when no key arrives within TIMEOUT seconds, and :FOCUS when a frame's
+window is given the keyboard; without, only keys and :QUIT
 come back, for the loops reading keys inside a command (the minibuffer, search):
 the window closed, files dropped or text pasted there end the command's
 question as \\`C-g' does, and are handled once the command is done
@@ -320,7 +323,7 @@ frame worked in has none left."
                      (if ticks
                          (return (tuatara.frontend:make-event :tick))
                          (redisplay-or-say editor)))
-            (:tick (when ticks (return event)))
+            ((:tick :focus) (when ticks (return event)))
             ((:close :drop :paste)
              (if (or ticks (and pastes (eq (tuatara.frontend:event-kind event) :paste)))
                  (progn (when (and recording (not playing) (eq (tuatara.frontend:event-kind event) :paste))
@@ -537,8 +540,9 @@ a refusal) stops recorded keys that are playing."
         (echo "Repeat with ~{~a~^, ~}" (mapcar #'mark-key (cdr entry))))))
   (note-selected-buffer (tuatara.display:window-buffer (editor-window editor)))
   (dolist (f (editor-post-command-functions editor)) (call-guarded f f editor))
-  ;; a command may have set what the frontend reads (M-: (setf *gui-padding* 12))
-  (tuatara.frontend:frontend-settings-changed (editor-frontend editor)))
+  ;; a command may have set what the frontends read (M-: (setf *gui-padding* 12))
+  (dolist (frame (editor-frames editor))
+    (tuatara.frontend:frontend-settings-changed (frame-frontend frame))))
 
 (defun collect-prefix-key (editor key)
   "While \\[universal-argument] is collecting a numeric argument, absorb KEY if

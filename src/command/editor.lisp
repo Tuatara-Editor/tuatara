@@ -20,7 +20,9 @@ holds the window closed or files dropped while a command was asking for
 something, to be handled once it is done. LAST-COMMAND, REPEATABLE and
 REPEAT-MAP are what the next command typed in it follows on from;
 KEYS-RECORDING and KEYS-PLAYING the keys being recorded in it and played
-into it. DELETED is true once the frame has left the editor."
+into it. PAINTED is what it showed when it was last painted while another
+frame was worked in, for PAINT-OTHER-FRAMES, or NIL to be painted again.
+DELETED is true once the frame has left the editor."
   (frontend nil :read-only t)
   (window nil)
   (minibuffer-prompt nil)
@@ -52,11 +54,14 @@ into it. DELETED is true once the frame has left the editor."
   (repeat-map nil)
   (keys-recording nil)
   (keys-playing nil)
+  (painted nil)
   (deleted nil))
 
 (setf (documentation 'make-frame 'function) "A FRAME painted through FRONTEND, with no window yet."
       (documentation 'frame-p 'function) "True when OBJECT is a FRAME."
-      (documentation 'frame-deleted 'function) "True once FRAME has left its editor (REMOVE-FRAME).")
+      (documentation 'frame-deleted 'function) "True once FRAME has left its editor (REMOVE-FRAME)."
+      (documentation 'frame-painted 'function)
+      "What FRAME showed when it was last painted while another frame was worked in, or NIL (PAINT-OTHER-FRAMES).")
 
 (defstruct (editor (:constructor %make-editor (frontend &aux (frame (make-frame frontend)) (frames (list frame))))
                    (:copier nil))
@@ -66,11 +71,13 @@ commands the one you last typed in: EDITOR-WINDOW, EDITOR-MESSAGE,
 EDITOR-LAST-COMMAND and the other names of a screen's state read and set that
 frame's; SELECTIONS counts the times a window was selected; KILL-RING holds
 killed text, newest first; STATE-KEYMAP is the modal state's map consulted
-before the others (the modal layer's); RUNNING is false once the editor
-should exit."
+before the others (the modal layer's); OTHERS-PAINTED is when the frames
+not worked in were last painted (PAINT-OTHER-FRAMES), in internal time;
+RUNNING is false once the editor should exit."
   (frames '() :type list)
   (frame nil :type frame)
   (selections 0 :type fixnum)
+  (others-painted 0)
   (global-keymap (make-keymap :name "global"))
   (state-keymap nil :type (or null keymap))
   (fallback-keymap nil :type (or null keymap))
@@ -182,6 +189,7 @@ drawn; NIL otherwise.")
 (setf (documentation 'editor-p 'function) "True when OBJECT is an EDITOR."
       (documentation 'editor-frames 'function) "The frames of EDITOR, its screens."
       (documentation 'editor-frame 'function) "The current frame of EDITOR, the screen being worked in."
+      (documentation 'editor-others-painted 'function) "When the frames of EDITOR not worked in were last painted, in internal time."
       (documentation 'editor-selections 'function) "How many times a window of EDITOR has been selected: the clock of WINDOW-USE-TIME."
       (documentation 'editor-global-keymap 'function) "EDITOR's global keymap, the last one consulted."
       (documentation 'editor-state-keymap 'function) "The modal state keymap consulted first, or NIL."
@@ -206,6 +214,12 @@ frame being worked in; an error waking it is ignored."
 
 (defvar *editor* nil
   "The editor whose command is running.")
+
+(defvar *display-generation* 0
+  "A count moved on whenever what every frame may show changes beside the text
+of its buffers: work taken in from the background, a way of showing text
+switched. A frame not worked in is painted again when it moved since it was
+\(PAINT-OTHER-FRAMES).")
 
 (defvar *background-work* nil
   "True when a tick function said at the last tick that work of its own runs
@@ -532,7 +546,9 @@ the frame you are in; each function runs with its frame the one worked in
         (setf texts (shiftf *messages-from-threads* '())
               actions (shiftf *actions-from-threads* '())))
       (loop for (frame . text) in (reverse texts)
-            do (setf (frame-message (frame-or-current editor frame)) text)
+            do (let ((shown (frame-or-current editor frame)))
+                 (setf (frame-message shown) text
+                       (frame-painted shown) nil))
                (tuatara.runtime:ignoring-errors-reported ("keeping a message in *Messages*") (log-message text)))
       (when actions
         (setf (editor-deferred editor)

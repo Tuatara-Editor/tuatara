@@ -14,7 +14,7 @@
   (:export #:load-gtk-libraries #:+pango-scale+ #:with-gtk-float-traps #:callback
            #:pango-cairo-layout-path
            ;; glib and gobject
-           #:g-signal-connect #:g-idle-add #:g-timeout-add #:g-main-context-iteration #:g-object-unref #:g-free
+           #:g-signal-connect #:g-signal-handler-disconnect #:g-idle-add #:g-timeout-add #:g-main-context-iteration #:g-object-unref #:g-free
            #:g-settings-string #:g-object-class-find-property
            ;; gtk and gdk
            #:gtk-init #:gtk-widget-get-frame-clock #:g-bytes-new #:g-bytes-unref #:gdk-memory-texture-new #:gdk-texture-download #:gtk-picture-new #:gtk-picture-set-paintable #:gtk-picture-set-content-fit #:gtk-widget-set-size-request #:gtk-widget-set-can-target #:gtk-widget-set-visible #:gtk-fixed-new #:gtk-fixed-put #:gtk-fixed-set-child-transform #:gsk-transform-unref #:gsk-transform-move #:gtk-fixed-remove #:gtk-overlay-new #:gtk-overlay-set-child #:gtk-overlay-add-overlay #:gtk-widget-realize #:gtk-native-get-renderer #:g-type-name-from-instance #:g-set-prgname #:g-set-application-name #:gtk-window-new #:gtk-window-set-title #:gtk-window-set-default-size #:gtk-window-set-child
@@ -110,9 +110,13 @@ found the first time this place asks, kept after, nothing made for it."
   "Connect HANDLER to SIGNAL of INSTANCE, with DATA, DESTROY and FLAGS as GLib takes them; the handler's number."
   (instance :pointer) (signal :string) (handler :pointer) (data :pointer) (destroy :pointer) (flags :int))
 
-(defun g-signal-connect (instance signal handler)
-  "Call the C callback HANDLER when INSTANCE emits SIGNAL."
-  (%g-signal-connect-data instance signal handler (null-pointer) (null-pointer) 0))
+(defun g-signal-connect (instance signal handler &optional (data (null-pointer)))
+  "Call the C callback HANDLER with DATA when INSTANCE emits SIGNAL; the handler's number."
+  (%g-signal-connect-data instance signal handler data (null-pointer) 0))
+
+(define-c-function ("g_signal_handler_disconnect" g-signal-handler-disconnect) :void
+  "No longer call the handler numbered ID when INSTANCE emits its signal."
+  (instance :pointer) (id :ulong))
 
 (define-c-function ("g_idle_add" g-idle-add) :uint
   "Call FUNCTION with DATA from the main loop when it is idle; any thread may ask."

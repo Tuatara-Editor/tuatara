@@ -50,22 +50,26 @@ pixel, and the texture nodes it was drawn with, by count."
           (c "gdk_texture_download" :void :pointer texture :pointer data :size (* 4 width)))
         (values pixels textures)))))
 
+(defun window ()
+  "The frontend of the window open, or NIL before it is."
+  (first (tuatara.frontend.gtk::open-windows)))
+
 (defvar *on-card* nil
   "The picture of the window drawn as pictures the graphics card is given, and its textures by count.")
 
 (tuatara.frontend.gtk::define-callback show-on-card :boolean ((data :pointer))
-  (tuatara.frontend.gtk::redraw tuatara.frontend.gtk::*frontend*)
+  (tuatara.frontend.gtk::redraw (window))
   nil)
 
 (tuatara.frontend.gtk::define-callback picture-on-card :boolean ((data :pointer))
-  (let ((f tuatara.frontend.gtk::*frontend*))
+  (let ((f (window)))
     (setf *on-card* (multiple-value-list (window-picture (tuatara.frontend.gtk::gtk-window f))))
     ;; then the same window painted whole
     (tuatara.frontend.gtk::drawn-on-card f nil))
   nil)
 
 (tuatara.frontend.gtk::define-callback picture-painted-whole :boolean ((data :pointer))
-  (let ((whole (window-picture (tuatara.frontend.gtk::gtk-window tuatara.frontend.gtk::*frontend*))))
+  (let ((whole (window-picture (tuatara.frontend.gtk::gtk-window (window)))))
     (destructuring-bind (on-card textures) *on-card*
       (with-open-file (o (second (uiop:command-line-arguments)) :direction :output :if-exists :supersede)
         (with-standard-io-syntax
@@ -82,18 +86,18 @@ pixel, and the texture nodes it was drawn with, by count."
 
 (sb-thread:make-thread
  (lambda ()
-   (loop until (and tuatara.frontend.gtk::*frontend* (tuatara.frontend.gtk::gtk-shown tuatara.frontend.gtk::*frontend*))
+   (loop until (and (window) (tuatara.frontend.gtk::gtk-shown (window)))
          do (sleep 0.1))
    ;; a picture: once it shows, in as many windows as asked for
    (flet ((pictures-shown ()
-            (let ((frame (sb-thread:with-mutex ((tuatara.frontend.gtk::gtk-lock tuatara.frontend.gtk::*frontend*))
-                           (tuatara.frontend.gtk::gtk-shown tuatara.frontend.gtk::*frontend*))))
+            (let ((frame (sb-thread:with-mutex ((tuatara.frontend.gtk::gtk-lock (window)))
+                           (tuatara.frontend.gtk::gtk-shown (window)))))
               (if frame (length (tuatara.frontend.gtk::frame-images frame)) 0))))
      (when (member (third (uiop:command-line-arguments)) '("picture" "pictures-beside") :test #'equal)
        (loop repeat 600 until (plusp (pictures-shown)) do (sleep 0.1)))
      (when (equal (third (uiop:command-line-arguments)) "pictures-beside")
        (dolist (key (list (tuatara.frontend:make-key #\x :ctrl t) (tuatara.frontend:make-key #\3)))
-         (tuatara.frontend.gtk::push-key tuatara.frontend.gtk::*frontend* key))
+         (tuatara.frontend.gtk::push-key (window) key))
        (loop repeat 600 until (= 2 (pictures-shown)) do (sleep 0.1))))
    ;; the file's text laid out and coloured, then each step once GTK has laid out the one before
    (sleep 2)

@@ -104,8 +104,9 @@ KEY-DESCRIPTION writes it, with a space between (C-x C-f)."
 and HEIGHT in cells), :drop when files were dropped on the window (FILES,
 their paths, on the cell COLUMN, ROW), :paste when text was pasted into the
 terminal Tuatara runs in (TEXT, its lines ending in newlines), to go in as
-text and never as keys, :close when the window was asked to close, or :quit
-when the frontend can deliver nothing more. FRAME is the editor's frame the
+text and never as keys, :close when the window was asked to close, :focus when
+it was given the keyboard, or :quit when the frontend can deliver nothing
+more. FRAME is the editor's frame the
 event happened in, where frames share one source of events; NIL for the
 frame being worked in."
   (kind :key :type keyword :read-only t)
@@ -120,7 +121,7 @@ frame being worked in."
 
 (setf (documentation 'make-event 'function) "Return an EVENT of KIND with the given KEY, WIDTH, HEIGHT, FILES, COLUMN, ROW and TEXT."
       (documentation 'event-p 'function) "True when OBJECT is an EVENT."
-      (documentation 'event-kind 'function) "The kind of EVENT: :key, :resize, :drop, :paste, :close, :quit, or :tick when a timed read found no key."
+      (documentation 'event-kind 'function) "The kind of EVENT: :key, :resize, :drop, :paste, :close, :focus, :quit, or :tick when a timed read found no key."
       (documentation 'event-key 'function) "The KEY of a :key EVENT."
       (documentation 'event-width 'function) "Width in cells of a :resize EVENT."
       (documentation 'event-height 'function) "Height in cells of a :resize EVENT."
@@ -216,6 +217,29 @@ takes and never ticks.")
 waiting on another thread return an event of kind :TICK soon, so that the
 editor takes in news from other threads (a file changed on disk) without
 looking for it at intervals. Any thread may call it. The default does nothing.")
+  (:method (frontend) (declare (ignore frontend)) nil))
+
+(defgeneric frontend-another (frontend)
+  (:documentation "A new frontend for another frame of the editor FRONTEND paints
+for, showing it beside FRONTEND's (a window of its own), not yet started: it
+delivers its events into the source FRONTEND's come from, each naming the
+frame it is given (FRONTEND-FRAME). NIL, the default, when FRONTEND cannot
+show another frame.")
+  (:method (frontend) (declare (ignore frontend)) nil))
+
+(defgeneric frontend-frame (frontend)
+  (:documentation "The editor's frame FRONTEND paints, which it names in the events
+it delivers (EVENT-FRAME) once the editor has several; NIL while it paints the
+only one. The default keeps none.")
+  (:method (frontend) (declare (ignore frontend)) nil))
+
+(defgeneric (setf frontend-frame) (frame frontend)
+  (:documentation "Have FRONTEND name FRAME in the events it delivers (FRONTEND-FRAME).")
+  (:method (frame frontend) (declare (ignore frontend)) frame))
+
+(defgeneric frontend-raise (frontend)
+  (:documentation "Bring FRONTEND's window before the others on the desktop, to be
+typed in. The default does nothing: a terminal is where it is.")
   (:method (frontend) (declare (ignore frontend)) nil))
 
 (defgeneric frontend-input-pending-p (frontend)

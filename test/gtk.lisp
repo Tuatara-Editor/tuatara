@@ -391,13 +391,11 @@ Adwaita Mono 11 on ao-dark."
         (true (plusp seen))
         (is = 0 wrong "~d of ~d octets not as painted whole" wrong seen)))))
 
-(defun window-drawn (dir file &optional pictures)
-  "Open FILE in a real window from these sources on a broadway display of its
-own (test/gtk/window-drawn.lisp, with its state in DIR), and what it found:
-the textures drawn and the octets the window drawn by the graphics card and
-painted whole differ in; NIL when it wrote nothing. PICTURES is \"picture\"
-to wait for the file's picture, \"pictures-beside\" for it shown in two
-windows side by side."
+(defun run-on-broadway (dir script &rest arguments)
+  "Run SCRIPT, a file of test/gtk/, with sbcl --script and ARGUMENTS, strings
+and :OUT for the file it writes what it found to, on a broadway display of its
+own, its state in DIR, and what it wrote there, read as data; NIL when it
+wrote nothing."
   (let* ((display (+ 40 (random 40)))
          (out (merge-pathnames "drawn" dir))
          (server (sb-ext:run-program (tuatara.io:find-program "gtk4-broadwayd")
@@ -407,10 +405,11 @@ windows side by side."
     (unwind-protect
          (progn
            (sleep 0.5)
+           (ignore-errors (delete-file out))
            (sb-ext:run-program sb-ext:*runtime-pathname*
                                (list* "--dynamic-space-size" "4GB" "--noinform" "--disable-ldb" "--end-runtime-options" "--script"
-                                      (namestring (asdf:system-relative-pathname :tuatara "test/gtk/window-drawn.lisp"))
-                                      (namestring file) (namestring out) (and pictures (list pictures)))
+                                      (namestring (asdf:system-relative-pathname :tuatara (format nil "test/gtk/~a" script)))
+                                      (substitute (namestring out) :out arguments))
                                :wait t :output nil :error nil
                                :environment (append (list "GDK_BACKEND=broadway" (format nil "BROADWAY_DISPLAY=:~d" display)
                                                           (format nil "XDG_CONFIG_HOME=~a" (namestring (merge-pathnames "config/" dir)))
@@ -424,6 +423,15 @@ windows side by side."
            (ignore-errors (with-open-file (in out) (with-standard-io-syntax (let ((*read-eval* nil)) (read in))))))
       (ignore-errors (sb-ext:process-kill server 15))
       (ignore-errors (sb-ext:process-close server)))))
+
+(defun window-drawn (dir file &optional pictures)
+  "Open FILE in a real window from these sources on a broadway display of its
+own (test/gtk/window-drawn.lisp, with its state in DIR), and what it found:
+the textures drawn and the octets the window drawn by the graphics card and
+painted whole differ in; NIL when it wrote nothing. PICTURES is \"picture\"
+to wait for the file's picture, \"pictures-beside\" for it shown in two
+windows side by side."
+  (apply #'run-on-broadway dir "window-drawn.lisp" (namestring file) :out (and pictures (list pictures))))
 
 (define-test (gtk window-drawn-as-painted)
   ;; a real window, on a display of its own: drawn as pictures the graphics
@@ -591,7 +599,7 @@ windows side by side."
 
 (define-test (gtk mouse-cells)
   (let* ((f (tuatara.frontend.gtk:make-gtk-frontend))
-         (tuatara.frontend.gtk::*frontend* f))
+         (data (tuatara.frontend.gtk::window-data f)))
     (setf (tuatara.frontend.gtk::cell-width f) 9 (tuatara.frontend.gtk::cell-height f) 20
           (tuatara.frontend.gtk::gtk-rows f) 30)
     ;; pixels to cells, above and left of the window too
@@ -609,7 +617,7 @@ windows side by side."
     (flet ((call (callback x y)
              (sb-alien:alien-funcall (sb-alien:sap-alien callback (function sb-alien:void sb-sys:system-area-pointer sb-alien:double
                                                                             sb-alien:double sb-sys:system-area-pointer))
-                                     (tuatara.io:null-pointer) x y (tuatara.io:null-pointer))))
+                                     (tuatara.io:null-pointer) x y data)))
       (call (tuatara.gtk:callback tuatara.frontend.gtk::on-drag-begin) 20d0 45d0)
       (call (tuatara.gtk:callback tuatara.frontend.gtk::on-drag-update) 1d0 1d0)
       (call (tuatara.gtk:callback tuatara.frontend.gtk::on-drag-update) 30d0 0d0)
@@ -622,7 +630,8 @@ windows side by side."
               collect (let ((key (tuatara.frontend:event-key event)))
                         (list (tuatara.frontend:key-base key) (tuatara.frontend:key-column key)
                               (tuatara.frontend:key-row key)))))
-    (false (tuatara.frontend.gtk::gtk-drag f))))
+    (false (tuatara.frontend.gtk::gtk-drag f))
+    (tuatara.frontend.gtk::forget-window f)))
 
 (define-test (gtk window-title)
   ;; the name of the buffer the selected window shows, given each time it changes
@@ -786,13 +795,14 @@ windows side by side."
              (is equal paths (tuatara.frontend.gtk::dropped-paths value))
              ;; the drop reaches the editor as an event with the cell it was on
              (let* ((f (tuatara.frontend.gtk:make-gtk-frontend))
-                    (tuatara.frontend.gtk::*frontend* f))
+                    (data (tuatara.frontend.gtk::window-data f)))
                (setf (tuatara.frontend.gtk::cell-width f) 9 (tuatara.frontend.gtk::cell-height f) 20)
                (true (sb-alien:alien-funcall
                       (sb-alien:sap-alien (tuatara.gtk:callback tuatara.frontend.gtk::on-drop)
                                           (function (sb-alien:boolean 32) sb-sys:system-area-pointer sb-sys:system-area-pointer
                                                     sb-alien:double sb-alien:double sb-sys:system-area-pointer))
-                      (tuatara.io:null-pointer) value 20d0 45d0 (tuatara.io:null-pointer)))
+                      (tuatara.io:null-pointer) value 20d0 45d0 data))
+               (tuatara.frontend.gtk::forget-window f)
                (let ((event (tuatara.frontend:queue-pop (tuatara.frontend.gtk::gtk-queue f) 0)))
                  (is eq :drop (tuatara.frontend:event-kind event))
                  (is equal paths (tuatara.frontend:event-files event))
@@ -839,7 +849,7 @@ windows side by side."
       (true (search "the terminal's to change" echo))))
   ;; the window turns states on GTK's thread, as asked, in order
   (let* ((f (tuatara.frontend.gtk:make-gtk-frontend))
-         (tuatara.frontend.gtk::*frontend* f))
+         (data (tuatara.frontend.gtk::window-data f)))
     (tuatara.gtk:load-gtk-libraries)
     (setf (tuatara.frontend.gtk::gtk-toggles f) '())
     (true (tuatara.frontend:frontend-toggle-state f :fullscreen))
@@ -849,8 +859,9 @@ windows side by side."
     (false (sb-alien:alien-funcall
             (sb-alien:sap-alien (tuatara.gtk:callback tuatara.frontend.gtk::on-toggle-state)
                                 (function (sb-alien:boolean 32) sb-sys:system-area-pointer))
-            (tuatara.io:null-pointer)))
-    (false (tuatara.frontend.gtk::gtk-toggles f))))
+            data))
+    (false (tuatara.frontend.gtk::gtk-toggles f))
+    (tuatara.frontend.gtk::forget-window f)))
 
 (define-test (gtk short-waits)
   ;; reading the event queue with a time limit, again and again, as the editor does between keys

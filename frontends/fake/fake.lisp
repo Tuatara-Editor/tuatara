@@ -8,7 +8,7 @@
            #:fake-cursor #:fake-cursor-shape #:fake-cursor-colour #:fake-frames #:fake-history #:fake-frame-showing #:fake-frame-showing-across-rows #:fake-spans
            #:fake-row-faces #:fake-row-scales #:fake-face-history #:fake-frame-with #:fake-pending #:fake-clipboard #:fake-primary #:fake-titles
            #:fake-font-steps #:fake-fonts #:fake-font #:fake-toggles #:fake-font-faces #:fake-desktop-style
-           #:fake-queue-action #:fake-images #:fake-image-history))
+           #:fake-queue-action #:fake-images #:fake-image-history #:fake-raised))
 
 (in-package #:tuatara.frontend.fake)
 
@@ -68,6 +68,8 @@ during it; or a function of the frontend asked each time.")
            :documentation "The pictures put in the last frame, each (IMAGE ROW COLUMN COLUMNS ROWS OFFSET), in the order put.")
    (image-history :initform '() :accessor fake-image-history
                   :documentation "The pictures of every frame painted, newest first, as FAKE-IMAGES has them.")
+   (raised :initform 0 :accessor fake-raised
+           :documentation "How many times the editor brought the fake window before the others.")
    (toggles :initform '() :accessor fake-toggles
             :documentation "The window states the editor turned the fake window to or from, newest first; only for a fake window (FONT-STEPS set)."))
   (:documentation "A fake frontend for driving the editor from tests."))
@@ -89,6 +91,7 @@ during it; or a function of the frontend asked each time.")
       (documentation 'fake-font-steps 'function) "The steps the fake frontend's font is scaled by, or NIL when it has no font of its own."
       (documentation 'fake-fonts 'function) "The font families the fake frontend offers."
       (documentation 'fake-font 'function) "The font the editor last chose for the fake frontend, or NIL."
+      (documentation 'fake-raised 'function) "How many times the fake frontend's window was brought before the others."
       (documentation 'fake-toggles 'function) "The window states the fake frontend was turned to or from, newest first."
       (documentation 'fake-font-faces 'function) "The font families and variants the fake frontend offers, as FRONTEND-FONT-FACES gives them."
       (documentation 'fake-desktop-style 'function) "The desktop's style the fake frontend reports: :dark, :light or NIL."
@@ -107,6 +110,13 @@ their events from one queue."
   (make-instance 'fake-frontend :width width :height height :colours colours :font-steps font-steps
                                 :fonts fonts :font-faces font-faces :desktop-style desktop-style
                                 :cell-pixels cell-pixels :source (if joining (fake-source joining) (list '()))))
+
+(defmethod tuatara.frontend:frontend-another ((f fake-frontend))
+  ;; a fake window opens another beside it, alike, reading the same events; a fake terminal none
+  (when (fake-font-steps f)
+    (make-fake-frontend :width (fake-width f) :height (fake-height f) :colours (fake-colours f) :font-steps 0
+                        :fonts (fake-fonts f) :font-faces (fake-font-faces f) :desktop-style (fake-desktop-style f)
+                        :cell-pixels (fake-cell-pixels f) :joining f)))
 
 (defun fake-events (frontend)
   "The events queued on FRONTEND and not yet delivered, in order."
@@ -164,6 +174,9 @@ their events from one queue."
                          (string-equal family (format nil "~{~a~^ ~}" (subseq family-words 0 family-words-n))))))
                 (fake-fonts f))
       (setf (fake-font f) (if sized name (format nil "~a 11" name))))))
+
+(defmethod tuatara.frontend:frontend-raise ((f fake-frontend))
+  (incf (fake-raised f)))
 
 (defmethod tuatara.frontend:frontend-toggle-state ((f fake-frontend) state)
   (when (fake-font-steps f)

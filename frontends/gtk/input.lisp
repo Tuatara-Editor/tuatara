@@ -44,12 +44,12 @@ character KEYVAL types, as GDK says."
             (t nil)))))
 
 (defun push-key (f key)
-  "Hand KEY to the editor."
-  (queue-push (gtk-queue f) (tuatara.frontend:make-event :key :key key)))
+  "Hand KEY, typed in F's window, to the editor."
+  (queue-push (gtk-queue f) (tuatara.frontend:make-event :key :key key :frame (gtk-owner f))))
 
 (define-callback on-key-pressed :boolean ((controller :pointer) (keyval :uint) (keycode :uint) (state :uint) (data :pointer))
-  (declare (ignore controller keycode data))
-  (let ((f *frontend*) (key (gdk-key keyval state)))
+  (declare (ignore controller keycode))
+  (let ((f (data-window data)) (key (gdk-key keyval state)))
     (when (and f key)
       (push-key f key)
       t)))
@@ -65,8 +65,8 @@ input method: but Control+Shift+U, which starts typing a character by its code."
 (define-callback on-command-key-pressed :boolean ((controller :pointer) (keyval :uint) (keycode :uint) (state :uint) (data :pointer))
   ;; before the input method: a command key gives up what it is composing (an accent
   ;; typed first, a dead key's) and runs as it always does
-  (declare (ignore controller keycode data))
-  (let ((f *frontend*) (key (and (command-key-p keyval state) (gdk-key keyval state))))
+  (declare (ignore controller keycode))
+  (let ((f (data-window data)) (key (and (command-key-p keyval state) (gdk-key keyval state))))
     (when (and f key)
       (when (gtk-preedit f)
         (gtk-im-context-reset (gtk-im f))
@@ -76,8 +76,8 @@ input method: but Control+Shift+U, which starts typing a character by its code."
       t)))
 
 (define-callback on-commit :void ((context :pointer) (text :string) (data :pointer))
-  (declare (ignore context data))
-  (let ((f *frontend*))
+  (declare (ignore context))
+  (let ((f (data-window data)))
     (when f
       (loop for c across (typable-text text)
             do (push-key f (tuatara.frontend:make-key c))))))
@@ -108,8 +108,7 @@ drawn there (TUATARA.DISPLAY:LARGE-COLUMN)."
     (tuatara.frontend:make-key base :ctrl ctrl :meta meta :shift shift :column column :row row)))
 
 (define-callback on-preedit-changed :void ((context :pointer) (data :pointer))
-  (declare (ignore data))
-  (let ((f *frontend*))
+  (let ((f (data-window data)))
     (when f
       (sb-alien:with-alien ((text sb-sys:system-area-pointer (null-pointer))
                             (attributes sb-sys:system-area-pointer (null-pointer))
@@ -137,8 +136,8 @@ wheel a screenful of times at most, the rest of it dropped."
     turns))
 
 (define-callback on-scroll :boolean ((controller :pointer) (dx :double) (dy :double) (data :pointer))
-  (declare (ignore dx data))
-  (let ((f *frontend*))
+  (declare (ignore dx))
+  (let ((f (data-window data)))
     (when f
       (let* ((turns (wheel-turns f dy))
              (pointer (gtk-pointer f))
@@ -165,8 +164,8 @@ between windows side by side, the text beam elsewhere."
             (t "text")))))
 
 (define-callback on-motion :void ((controller :pointer) (x :double) (y :double) (data :pointer))
-  (declare (ignore controller data))
-  (let ((f *frontend*))
+  (declare (ignore controller))
+  (let ((f (data-window data)))
     (when (and f (gtk-area f))
       (setf (gtk-pointer f) (cons x y))
       ;; the pointer's shape follows what it is over, but not while a drag goes on
@@ -178,13 +177,12 @@ between windows side by side, the text beam elsewhere."
               (gtk-widget-set-cursor-from-name (gtk-area f) shape))))))))
 
 (define-callback on-pointer-leave :void ((controller :pointer) (data :pointer))
-  (declare (ignore controller data))
-  (let ((f *frontend*))
+  (declare (ignore controller))
+  (let ((f (data-window data)))
     (when f (setf (gtk-pointer f) nil))))
 
 (define-callback on-pressed :void ((gesture :pointer) (presses :int) (x :double) (y :double) (data :pointer))
-  (declare (ignore data))
-  (let ((f *frontend*))
+  (let ((f (data-window data)))
     (when f
       (gtk-widget-grab-focus (gtk-area f))
       (gtk-im-context-reset (gtk-im f))
@@ -194,15 +192,15 @@ between windows side by side, the text beam elsewhere."
                                   column row))))))
 
 (define-callback on-middle-pressed :void ((gesture :pointer) (presses :int) (x :double) (y :double) (data :pointer))
-  (declare (ignore presses data))
-  (let ((f *frontend*))
+  (declare (ignore presses))
+  (let ((f (data-window data)))
     (when f
       (multiple-value-bind (column row) (cell-at f x y)
         (push-key f (modifier-key :mouse-2 (gtk-event-controller-get-current-event-state gesture) column row))))))
 
 (define-callback on-released :void ((gesture :pointer) (presses :int) (x :double) (y :double) (data :pointer))
-  (declare (ignore presses data))
-  (let ((f *frontend*))
+  (declare (ignore presses))
+  (let ((f (data-window data)))
     (when f
       (multiple-value-bind (column row) (cell-at f x y)
         (push-key f (modifier-key :up-mouse-1 (gtk-event-controller-get-current-event-state gesture) column row))))))
@@ -213,8 +211,7 @@ bottom mode line and the echo row, where holding it still keeps scrolling."
   (or (< row 0) (>= row (- (gtk-rows f) 2))))
 
 (define-callback on-drag-repeat :boolean ((data :pointer))
-  (declare (ignore data))
-  (let* ((f *frontend*) (cell (and f (gtk-drag f) (gtk-drag-cell f))))
+  (let* ((f (data-window data)) (cell (and f (gtk-drag f) (gtk-drag-cell f))))
     (cond ((and cell (drag-past-text-p f (cdr cell)))
            (when (queue-empty-p (gtk-queue f))
              (push-key f (tuatara.frontend:make-key :drag-mouse-1 :column (car cell) :row (cdr cell))))
@@ -223,15 +220,15 @@ bottom mode line and the echo row, where holding it still keeps scrolling."
              nil))))
 
 (define-callback on-drag-begin :void ((gesture :pointer) (x :double) (y :double) (data :pointer))
-  (declare (ignore gesture data))
-  (let ((f *frontend*))
+  (declare (ignore gesture))
+  (let ((f (data-window data)))
     (when f
       (setf (gtk-drag f) (cons x y)
             (gtk-drag-cell f) (multiple-value-call #'cons (cell-at f x y))))))
 
 (define-callback on-drag-update :void ((gesture :pointer) (dx :double) (dy :double) (data :pointer))
-  (declare (ignore gesture data))
-  (let* ((f *frontend*) (start (and f (gtk-drag f))))
+  (declare (ignore gesture))
+  (let* ((f (data-window data)) (start (and f (gtk-drag f))))
     (when start
       (multiple-value-bind (column row) (cell-at f (+ (car start) dx) (+ (cdr start) dy))
         (let ((cell (gtk-drag-cell f)))
@@ -240,11 +237,11 @@ bottom mode line and the echo row, where holding it still keeps scrolling."
             (push-key f (tuatara.frontend:make-key :drag-mouse-1 :column column :row row))))
         (when (and (drag-past-text-p f row) (not (gtk-drag-repeating f)))
           (setf (gtk-drag-repeating f) t)
-          (g-timeout-add 50 (callback on-drag-repeat) (null-pointer)))))))
+          (g-timeout-add 50 (callback on-drag-repeat) (window-data f)))))))
 
 (define-callback on-drag-end :void ((gesture :pointer) (dx :double) (dy :double) (data :pointer))
-  (declare (ignore gesture dx dy data))
-  (let ((f *frontend*))
+  (declare (ignore gesture dx dy))
+  (let ((f (data-window data)))
     (when f (setf (gtk-drag f) nil))))
 
 (defun dropped-paths (value)
@@ -265,32 +262,34 @@ the editor names files: a name's octets that are not UTF-8 kept as they are."
     (nreverse paths)))
 
 (define-callback on-drop :boolean ((target :pointer) (value :pointer) (x :double) (y :double) (data :pointer))
-  (declare (ignore target data))
-  (let ((f *frontend*) (paths (dropped-paths value)))
+  (declare (ignore target))
+  (let ((f (data-window data)) (paths (dropped-paths value)))
     (when (and f paths)
       (multiple-value-bind (column row) (cell-at f x y)
-        (queue-push (gtk-queue f) (tuatara.frontend:make-event :drop :files paths :column column :row row)))
+        (push-event f :drop :files paths :column column :row row))
       t)))
 
 (define-callback on-focus-enter :void ((controller :pointer) (data :pointer))
-  (declare (ignore controller data))
-  (let ((f *frontend*))
+  (declare (ignore controller))
+  (let ((f (data-window data)))
     (when f
       (setf (gtk-focused f) t)
       (gtk-im-context-focus-in (gtk-im f))
-      (redraw f))))
+      (redraw f)
+      ;; the frame given the keyboard is the one worked in
+      (push-event f :focus))))
 
 (define-callback on-focus-leave :void ((controller :pointer) (data :pointer))
-  (declare (ignore controller data))
-  (let ((f *frontend*))
+  (declare (ignore controller))
+  (let ((f (data-window data)))
     (when f
       (setf (gtk-focused f) nil)
       (gtk-im-context-focus-out (gtk-im f))
       (redraw f))))
 
 (define-callback (on-close-request :failed t) :boolean ((window :pointer) (data :pointer))
-  (declare (ignore window data))
-  (let ((f *frontend*))
+  (declare (ignore window))
+  (let ((f (data-window data)))
     (if (and f (not (gtk-done f)))
-        (progn (queue-push (gtk-queue f) (tuatara.frontend:make-event :close)) t)
+        (progn (push-event f :close) t)
         nil)))
