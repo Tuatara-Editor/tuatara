@@ -40,25 +40,26 @@ is of another build, or said nothing it should."))
 (defun send-outbox (fd box stall-seconds)
   "Send the messages of BOX over the socket FD, waiting while it is full, and
 empty BOX; its descriptors are closed once passed or given up on. True when
-all were sent; NIL when the socket failed or took nothing for STALL-SECONDS."
+all were sent; NIL when the socket failed or had not taken them all within
+STALL-SECONDS, however little at a time it took."
   (let ((octets (outbox-octets box)) (fill (outbox-fill box))
         (passes (and (outbox-descriptors box) (sort (copy-list (outbox-descriptors box)) #'< :key #'car)))
-        (at 0) (moved (get-internal-real-time)))
+        (at 0) (began (get-internal-real-time)))
     (declare (type fixnum fill at))
     (unwind-protect
          (tuatara.io:with-octets-sap (sap octets)
            (loop while (< at fill)
-                 do (let* ((end (loop for (pass) in passes when (> pass at) return pass finally (return fill)))
-                           (with (and passes (= (car (first passes)) at) (list (cdr (first passes)))))
-                           (sent (tuatara.io:send-with-descriptors fd (sb-sys:sap+ sap at) (- end at) with))
-                           (errno (sb-alien:get-errno)))
+                 do (multiple-value-bind (sent errno)
+                        (let ((end (loop for (pass) in passes when (> pass at) return pass finally (return fill))))
+                          (tuatara.io:send-with-descriptors fd (sb-sys:sap+ sap at) (- end at)
+                                                            (and passes (= (car (first passes)) at)
+                                                                 (list (cdr (first passes))))))
                       (cond ((plusp sent)
-                             (when with (pop passes))
-                             (incf at sent)
-                             (setf moved (get-internal-real-time)))
+                             (when (and passes (= (car (first passes)) at)) (pop passes))
+                             (incf at sent))
                             ((= errno sb-posix:eintr))
                             ((and (= errno sb-posix:eagain)
-                                  (< (tuatara.runtime:seconds-since moved) stall-seconds))
+                                  (< (tuatara.runtime:seconds-since began) stall-seconds))
                              (tuatara.io:poll-fd fd 4 1000))
                             (t (return-from send-outbox nil)))))
            t)
@@ -78,7 +79,8 @@ of another build."
           (error 'remote-refused :words (format nil "The other end's hello: ~a" (malformed-message-reason condition)))))
     (unless line
       (error 'remote-refused :words (format nil "The other end runs ~a; this is ~a, with messages of format ~d."
-                                            other (tuatara:version-line) +protocol+)))
+                                            (remove-if (lambda (c) (tuatara.text:control-code-p (char-code c))) other)
+                                            (tuatara:version-line) +protocol+)))
     line))
 
 (defun text-pieces (text)
@@ -93,6 +95,22 @@ characters, in order; one piece, empty, for no text."
         (incf octets n)))
     (push (subseq text start) pieces)
     (nreverse pieces)))
+
+(defun gather-text (gathered piece more)
+  "Add PIECE, the next piece of a text sent in pieces (TEXT-PIECES), to
+GATHERED, (OCTETS . PIECES) of those come so far, newest first, or NIL; at
+most +MOST-TEXT+ octets are kept in all. Two values: while MORE, the new
+GATHERED and NIL; once all came, NIL and the whole text, or NIL and how many
+octets it had when that was more than +MOST-TEXT+, nothing of it kept."
+  (let* ((octets (+ (if gathered (car gathered) 0) (tuatara.text:string-octet-length piece)))
+         (pieces (and (<= octets +most-text+) (cons piece (cdr gathered)))))
+    (cond (more (values (cons octets pieces) nil))
+          ((<= octets +most-text+) (values nil (apply #'concatenate 'string (reverse pieces))))
+          (t (values nil octets)))))
+
+(defconstant +most-waiting-events+ 1024
+  "The most events of one client waiting for the editor to take them: past
+it, what the client sends is not read until the editor has taken some.")
 
 ;;; The editor's side: a frontend whose screen is a client's
 
@@ -136,16 +154,24 @@ characters, in order; one piece, empty, for no text."
             :documentation "Where a face is written to be compared with how it was sent.")
    (pictures :initform '() :accessor remote-pictures
              :documentation "The numbers of the pictures the client keeps, newest first.")
+   (frame-pictures :initform '() :accessor remote-frame-pictures
+                   :documentation "The numbers of the pictures put in the frame being painted.")
+   (unsent-pixels :initform 0 :accessor remote-unsent-pixels
+                  :documentation "The octets of the pictures among the messages not yet taken to be sent.")
    (requests :initform 0 :accessor remote-requests
              :documentation "How many questions have been put to the client.")
    (asked :initform nil :accessor remote-asked
           :documentation "The number of the question awaiting its answer, or NIL.")
+   (asked-question :initform nil :accessor remote-asked-question
+                   :documentation "What the question awaiting its answer asks (*QUESTIONS*).")
    (answer :initform :none :accessor remote-answer
            :documentation "The answer that came, or :NONE.")
    (pieces :initform '() :accessor remote-pieces
-           :documentation "The pieces of a text answer come so far, newest first.")
+           :documentation "The pieces of a text answer come so far, as GATHER-TEXT keeps them.")
    (pasted :initform '() :accessor remote-pasted
-           :documentation "The pieces of a paste come so far, newest first, by the reading thread alone.")
+           :documentation "The pieces of a paste come so far, as GATHER-TEXT keeps them, by the reading thread alone.")
+   (stopping :accessor remote-stopping
+             :documentation "A function of no arguments, true once the frontend is being stopped.")
    (received :initform 0 :accessor remote-received
              :documentation "How many events the client has sent.")
    (ended :initform nil :accessor remote-ended
@@ -165,12 +191,18 @@ characters, in order; one piece, empty, for no text."
   (:documentation "A frontend painting on the screen of a client at the other end of a local socket, and
 reading the client's events from it (MAKE-REMOTE-FRONTEND)."))
 
+(defmethod initialize-instance :after ((f remote-frontend) &key)
+  (setf (remote-stopping f) (lambda () (or (remote-closing f) (remote-closed f)))))
+
 (defun make-remote-frontend (fd &key queue)
   "A frontend whose screen is the client's at the other end of the local
 socket FD, once both have said hello and the client what its screen is;
 its events go into QUEUE, the queue of the editor's other frames, or a queue
 of its own. Signals REMOTE-REFUSED when the client is of another build or
-says nothing it should; FD is then the caller's to close."
+says nothing it should; FD is then the caller's to close. A client may take
+up to *HELLO-SECONDS* to say hello, so this is called on the thread taking
+connections, never the editor's, and that thread bounds how many are being
+greeted at once."
   (let ((remote (make-instance 'remote-frontend :fd fd :queue (or queue (make-event-queue))))
         (inbox (make-inbox fd :editor :deadline (tuatara.runtime:deadline-in *hello-seconds*)))
         (box (make-outbox)))
@@ -195,8 +227,8 @@ says nothing it should; FD is then the caller's to close."
 
 (defun end-connection (remote reason)
   "End REMOTE's connection, for REASON (words, or NIL when the client went or
-was let go): nothing more is sent or read, and the editor is told that no
-more events come."
+was let go): nothing more is sent or read, and the editor is told that the
+frame's screen went away (:DETACHED), which closes that frame alone."
   (let ((ended (sb-thread:with-mutex ((remote-lock remote))
                  (shiftf (remote-ended remote) t))))
     (unless ended
@@ -205,7 +237,8 @@ more events come."
       (sb-thread:with-mutex ((remote-lock remote))
         (unless (remote-closed remote) (tuatara.io:shut-socket (remote-fd remote)))
         (sb-thread:condition-broadcast (remote-moved remote)))
-      (queue-push (remote-queue remote) (make-event :quit :frame (remote-frame remote))))))
+      (unless (remote-closing remote)
+        (queue-push (remote-queue remote) (make-event :detached :frame (remote-frame remote)))))))
 
 (defun send-to-client (remote)
   "Send REMOTE's messages as they come, until it is stopped and has sent them
@@ -220,7 +253,8 @@ all, or its connection ends; a client that takes nothing for
                               do (sb-thread:condition-wait (remote-moved remote) (remote-lock remote)))
                         (when (and (plusp (outbox-fill (remote-unsent remote))) (not (remote-ended remote)))
                           (rotatef (remote-unsent remote) (remote-sending remote))
-                          (setf (remote-frame-start remote) -1 (remote-frame-end remote) -1)
+                          (setf (remote-frame-start remote) -1 (remote-frame-end remote) -1
+                                (remote-unsent-pixels remote) 0)
                           (remote-sending remote)))))
              (unless box
                (setf reason nil)
@@ -252,19 +286,23 @@ the screen is now to REMOTE-FACTS. NIL when the client is going."
     (:event
      (multiple-value-bind (event more) (take-event inbox (remote-frame remote))
        (when (stringp event)
-         ;; a paste comes in pieces, an event once whole; past +MOST-TEXT+ the rest is left out
-         (when (<= (reduce #'+ (remote-pasted remote) :key #'length) +most-text+)
-           (push event (remote-pasted remote)))
-         (setf event (unless more
-                       (let ((pieces (reverse (shiftf (remote-pasted remote) '()))))
-                         (make-event :paste :text (apply #'concatenate 'string pieces) :frame (remote-frame remote))))))
+         ;; a paste comes in pieces, an event once whole; one past +MOST-TEXT+ is left out, and said
+         (multiple-value-bind (gathered whole) (gather-text (remote-pasted remote) event more)
+           (setf (remote-pasted remote) gathered
+                 event (cond (more nil)
+                             ((stringp whole) (make-event :paste :text whole :frame (remote-frame remote)))
+                             (t (make-event :said :frame (remote-frame remote)
+                                                  :text (format nil "Paste of ~,1f MB left out: more than ~d MB"
+                                                                (/ whole 1048576) (floor +most-text+ 1048576))))))))
        (when event
-         (when (eq (event-kind event) :resize)
-           (let ((facts (copy-facts (remote-facts remote))))
-             (setf (facts-width facts) (event-width event) (facts-height facts) (event-height event)
-                   (remote-facts remote) facts)))
+         (case (event-kind event)
+           (:resize (let ((facts (copy-facts (remote-facts remote))))
+                      (setf (facts-width facts) (event-width event) (facts-height facts) (event-height event)
+                            (remote-facts remote) facts)))
+           ;; the client's window closed: that client's frame goes, never the editor
+           (:close (setf event (make-event :detached :frame (remote-frame remote)))))
          (incf (remote-received remote))
-         (queue-push (remote-queue remote) event))
+         (push-event remote event))
        t))
     (:facts
      (let ((facts (take-facts inbox)) (before (remote-facts remote)))
@@ -273,23 +311,33 @@ the screen is now to REMOTE-FACTS. NIL when the client is going."
              (facts-font-faces facts) (facts-font-faces before)
              (remote-facts remote) facts)
        ;; the desktop's style, a cell's size: the editor looks again
-       (queue-push (remote-queue remote) (make-event :tick :frame (remote-frame remote)))
+       (push-event remote (make-event :tick :frame (remote-frame remote)))
        t))
     (:answer
      (multiple-value-bind (request answer more) (take-answer inbox)
        (sb-thread:with-mutex ((remote-lock remote))
          (when (eql request (remote-asked remote))
-           (if (or more (remote-pieces remote))
-               (progn (when (<= (reduce #'+ (remote-pieces remote) :key #'length) +most-text+)
-                        (push answer (remote-pieces remote)))
-                      (unless more
-                        (setf (remote-answer remote)
-                              (apply #'concatenate 'string (reverse (shiftf (remote-pieces remote) '()))))))
+           ;; the answer of the kind the question asks for, or none; a text's pieces all text
+           (unless (or (and (null answer) (not more) (null (remote-pieces remote)))
+                       (if (eq (remote-asked-question remote) :font-steps)
+                           (integerp answer)
+                           (stringp answer)))
+             (malformed "an answer of the wrong kind to a question of ~(~a~)" (remote-asked-question remote)))
+           (if (stringp answer)
+               (multiple-value-bind (gathered whole) (gather-text (remote-pieces remote) answer more)
+                 (setf (remote-pieces remote) gathered)
+                 (unless more (setf (remote-answer remote) (and (stringp whole) whole))))
                (setf (remote-answer remote) answer))
            (sb-thread:condition-broadcast (remote-moved remote)))))
      t)
     (:detach (message-read inbox) nil)
     ((:hello :attach) (malformed "a ~(~a~) message after the first" kind))))
+
+(defun push-event (remote event)
+  "Hand EVENT from REMOTE's client to the editor, first waiting while
++MOST-WAITING-EVENTS+ of the client's wait to be taken, as long as the
+frontend is not being stopped."
+  (queue-push (remote-queue remote) event :most +most-waiting-events+ :stop (remote-stopping remote)))
 
 (defun queue-message (remote kind write &key (needed t))
   "Put a message of KIND for REMOTE's client among those to send, its fields
@@ -313,12 +361,13 @@ gives none."
   (sb-thread:with-mutex ((remote-lock remote))
     (unless (or (remote-ended remote) (remote-closing remote))
       (let ((box (remote-unsent remote)) (request (incf (remote-requests remote))))
-        (setf (remote-asked remote) request (remote-answer remote) :none (remote-pieces remote) '())
+        (setf (remote-asked remote) request (remote-asked-question remote) question
+              (remote-answer remote) :none (remote-pieces remote) '())
         (let ((at (begin-message box :ask)))
           (put-number box request 4)
           (put-number box (position question *questions*) 1)
           (case question
-            (:font (put-text box argument))
+            (:font (put-text box argument 1024))
             (:font-steps (put-number box (max -64 (min 64 argument)) 2)))
           (end-message box at))
         (sb-thread:condition-broadcast (remote-moved remote))
@@ -333,18 +382,20 @@ gives none."
 
 (defun send-faces (remote)
   "Put among REMOTE's messages the faces changed since they were last sent,
-after the names they use."
+after the names they use; a face whose name has no number (past the
++MOST-NAMES+ first) is not sent, as no row can name it."
   (let ((names (remote-names remote)) (scratch (remote-scratch remote)) (changed '()))
     (setf (remote-faces-generation remote) tuatara.display:*face-generation*)
     (maphash (lambda (name face)
-               (setf (outbox-fill scratch) 0)
-               (put-face scratch names face)
-               (let ((sent (gethash name (remote-faces-sent remote))))
-                 (unless (and sent (= (length sent) (outbox-fill scratch))
-                              (not (mismatch sent (outbox-octets scratch) :end2 (outbox-fill scratch))))
-                   (setf (gethash name (remote-faces-sent remote))
-                         (subseq (outbox-octets scratch) 0 (outbox-fill scratch)))
-                   (push name changed))))
+               (when (plusp (face-name-number names name))
+                 (setf (outbox-fill scratch) 0)
+                 (put-face scratch names face)
+                 (let ((sent (gethash name (remote-faces-sent remote))))
+                   (unless (and sent (= (length sent) (outbox-fill scratch))
+                                (not (mismatch sent (outbox-octets scratch) :end2 (outbox-fill scratch))))
+                     (setf (gethash name (remote-faces-sent remote))
+                           (subseq (outbox-octets scratch) 0 (outbox-fill scratch)))
+                     (push name changed)))))
              tuatara.display:*faces*)
     (when changed
       (sb-thread:with-mutex ((remote-lock remote))
@@ -438,7 +489,8 @@ after the names they use."
   (facts-font-faces (remote-facts f)))
 
 (defmethod frontend-set-font ((f remote-frontend) name)
-  (and (facts-window (remote-facts f)) (stringp name) (<= (length name) 1024) (ask-client f :font name)))
+  (and (facts-window (remote-facts f)) (stringp name) (<= (tuatara.text:string-octet-length name) 1024)
+       (ask-client f :font name)))
 
 (defmethod frontend-clipboard ((f remote-frontend))
   (ask-client f :clipboard))
@@ -448,8 +500,9 @@ after the names they use."
 
 (defun send-selection (remote which text)
   "Have REMOTE's client make TEXT its clipboard (WHICH 0) or its primary
-selection (1); NIL when TEXT is longer than +MOST-TEXT+ or left out."
-  (and (<= (tuatara.text:string-octet-length text) +most-text+)
+selection (1); NIL when TEXT, with what goes with it, is longer than the
+client takes (+MOST-TEXT+), or left out."
+  (and (<= (tuatara.text:string-octet-length text) (- +most-text+ 16))
        (queue-message remote :selection (lambda (box) (put-number box which 1) (put-text box text)) :needed nil)))
 
 (defmethod frontend-set-clipboard ((f remote-frontend) text)
@@ -473,12 +526,20 @@ selection (1); NIL when TEXT is longer than +MOST-TEXT+ or left out."
   (unless (= (remote-faces-generation f) tuatara.display:*face-generation*)
     (send-faces f))
   (setf (outbox-fill (remote-painting f)) 0
-        (fill-pointer (remote-kept-calls f)) 0))
+        (fill-pointer (remote-kept-calls f)) 0
+        (remote-frame-pictures f) '()))
+
+(defconstant +most-frame+ (- 16777216 65536)
+  "The most octets of a frame's painting; a row past it is sent blank.")
 
 (defmethod frontend-put-row ((f remote-frontend) row string &key face spans scales over parts)
   (when (< -1 row +most-rows+)
     (let* ((box (remote-painting f)) (start (outbox-fill box)))
       (put-row-call box (remote-names f) row string face spans scales over parts)
+      ;; a frame larger than a client takes: what does not fit is left blank
+      (when (> (outbox-fill box) +most-frame+)
+        (setf (outbox-fill box) start)
+        (put-row-call box (remote-names f) row "" nil nil nil nil nil))
       (let* ((end (outbox-fill box)) (length (- end start))
              (kept (svref (remote-kept f) row)) (kept-length (aref (remote-kept-lengths f) row)))
         (if (and kept (= length kept-length)
@@ -495,18 +556,36 @@ selection (1); NIL when TEXT is longer than +MOST-TEXT+ or left out."
 (defmethod frontend-set-cursor ((f remote-frontend) row column shape &optional colour)
   (put-cursor-call (remote-painting f) row column shape colour))
 
+(defun send-picture (remote image)
+  "Put IMAGE among the messages for REMOTE's client, which then keeps it,
+letting go of the oldest picture it keeps that the frame being painted does
+not show when it keeps +MOST-PICTURES+; true when it was put. It is left out
+when the frame shows +MOST-PICTURES+ already, or while the client has more
+than +MOST-UNSENT+ octets not yet sent, the pictures' pixels counted."
+  (sb-thread:with-mutex ((remote-lock remote))
+    (let* ((pictures (remote-pictures remote))
+           (let-go (and (>= (length pictures) +most-pictures+)
+                        (find-if-not (lambda (id) (member id (remote-frame-pictures remote))) pictures :from-end t)))
+           (unsent (remote-unsent remote)))
+      (unless (or (remote-ended remote) (remote-closing remote)
+                  (and (>= (length pictures) +most-pictures+) (not let-go))
+                  (> (+ (outbox-fill unsent) (remote-unsent-pixels remote)) +most-unsent+)
+                  (>= (length (outbox-descriptors unsent)) +most-pictures+))
+        (tuatara.runtime:ignoring-errors-reported ("sending a picture to a client")
+          (put-picture unsent image let-go)
+          (incf (remote-unsent-pixels remote) (length (image-pixels image)))
+          (setf (remote-pictures remote) (cons (image-id image) (remove let-go pictures)))
+          (sb-thread:condition-broadcast (remote-moved remote))
+          t)))))
+
 (defmethod frontend-put-image ((f remote-frontend) image row column columns rows &optional offset)
   (when (and (facts-images (remote-facts f))
+             (<= 1 (image-width image) 65535) (<= 1 (image-height image) 65535) (<= 3 (image-channels image) 4)
              (<= (* (image-width image) (image-height image) (image-channels image)) +most-picture-octets+)
+             (= (length (image-pixels image)) (* (image-width image) (image-height image) (image-channels image)))
              (or (member (image-id image) (remote-pictures f))
-                 (sb-thread:with-mutex ((remote-lock f))
-                   (unless (remote-ended f)
-                     (tuatara.runtime:ignoring-errors-reported ("sending a picture to a client")
-                       (put-picture (remote-unsent f) image)
-                       (push (image-id image) (remote-pictures f))
-                       (when (> (length (remote-pictures f)) +most-pictures+)
-                         (setf (remote-pictures f) (subseq (remote-pictures f) 0 +most-pictures+)))
-                       t)))))
+                 (send-picture f image)))
+    (push (image-id image) (remote-frame-pictures f))
     (put-picture-call (remote-painting f) image row column columns rows offset)))
 
 (defun put-frame (remote box whole)
@@ -598,12 +677,17 @@ of the local socket FD sends, once both have said hello and the client what
 its screen is. Signals REMOTE-REFUSED when the editor is of another build or
 says nothing it should; FD is then the caller's to close."
   (let* ((inbox (make-inbox fd :client :deadline (tuatara.runtime:deadline-in *hello-seconds*)))
-         (client (%make-remote-client fd frontend inbox)))
-    (unless (send-to-editor client (lambda (box)
-                                     (put-hello box)
-                                     (put-facts-message box frontend :attach)))
-      (error 'remote-refused :words "The editor took no hello."))
-    (read-hello inbox)
+         (client (%make-remote-client fd frontend inbox))
+         (greeted nil))
+    ;; descriptors passed with a hello refused are closed, not kept
+    (unwind-protect
+         (progn (unless (send-to-editor client (lambda (box)
+                                                 (put-hello box)
+                                                 (put-facts-message box frontend :attach)))
+                  (error 'remote-refused :words "The editor took no hello."))
+                (read-hello inbox)
+                (setf greeted t))
+      (unless greeted (close-descriptors (shiftf (inbox-descriptors inbox) '()))))
     (setf (inbox-deadline inbox) nil)
     (put-facts (remote-client-facts client) frontend)
     (setf (remote-client-reader client)
@@ -647,10 +731,16 @@ it was all."
       (:faces (prog1 (cons :faces (loop repeat (take-count inbox 2 +most-names+ 19) collect (take-face inbox names)))
                 (message-read inbox)))
       (:frame (cons :frame (take-frame inbox names (remote-client-kept client) (remote-client-pictures client))))
-      (:picture (let ((image (take-picture inbox)))
-                  (push image (remote-client-pictures client))
-                  (when (> (length (remote-client-pictures client)) +most-pictures+)
-                    (setf (remote-client-pictures client) (subseq (remote-client-pictures client) 0 +most-pictures+)))
+      ;; the picture kept, and the one the editor let go of to keep it let go of here too
+      (:picture (multiple-value-bind (image let-go) (take-picture inbox)
+                  (let ((pictures (remote-client-pictures client)))
+                    (when let-go
+                      (unless (find let-go pictures :key #'image-id)
+                        (malformed "picture ~d let go of, never kept" let-go))
+                      (setf pictures (remove let-go pictures :key #'image-id)))
+                    (when (>= (length pictures) +most-pictures+)
+                      (malformed "a picture past the ~d kept" +most-pictures+))
+                    (setf (remote-client-pictures client) (cons image pictures)))
                   nil))
       (:title (prog1 (list :title (take-text inbox 60000)) (message-read inbox)))
       (:selection (prog1 (list :selection (take-bounded inbox 1 0 1 "a selection") (take-text inbox +most-text+))

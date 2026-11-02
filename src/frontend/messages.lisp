@@ -33,7 +33,8 @@ sent that way.")
 (defconstant +most-columns+ 4096 "The most columns a remote screen may have.")
 (defconstant +most-rows+ 2048 "The most rows a remote screen may have.")
 (defconstant +most-names+ 4096 "The most face names one connection numbers.")
-(defconstant +most-characters+ 1048576 "The most characters of a row's text, which its spans reach into.")
+(defconstant +most-characters+ 1048576
+  "The most octets of a row's text, and so the most characters its spans reach into.")
 (defconstant +most-place+ 65535 "The most a cell of a picture, or the cursor, is from the screen's or picture's first.")
 (defconstant +most-text+ 16777216 "The most octets of text pasted, or of a clipboard, carried at once.")
 (defconstant +text-piece+ 60000 "The most octets of text one message from a client carries; more goes in pieces.")
@@ -111,11 +112,18 @@ more: a place on the screen or in a row, which the reading end holds to MOST."
     (dotimes (k 4)
       (setf (aref octets (+ at k)) (ldb (byte 8 (* 8 k)) length)))))
 
-(defun put-text (box string)
-  "Put STRING in BOX as UTF-8 after its length in octets, in 4 octets."
+(defun put-text (box string &optional most)
+  "Put STRING in BOX as UTF-8 after its length in octets, in 4 octets; with
+MOST, only as much of it as takes at most MOST octets, cut at a character, as
+the reading end takes no more."
   (let ((at (outbox-room box 4)))
     (multiple-value-bind (octets end) (tuatara.text:put-string-octets string (outbox-octets box) (+ at 4))
-      (setf (outbox-octets box) octets (outbox-fill box) end)
+      (setf (outbox-octets box) octets
+            (outbox-fill box) (if (and most (> (- end at 4) most))
+                                  (loop for cut downfrom (+ at 4 most) above (+ at 4)
+                                        unless (tuatara.text:continuation-byte-p (aref octets cut)) return cut
+                                        finally (return (+ at 4)))
+                                  end))
       (patch-length box at))))
 
 (defun begin-message (box kind)
@@ -132,13 +140,15 @@ begins, for END-MESSAGE."
 
 (defun outbox-cut (box start end)
   "Take the octets of BOX from START below END out of it, those after moved
-down, and the descriptors passed with them."
+down, and the descriptors to be passed with them, closed."
   (let ((octets (outbox-octets box)) (gone (- end start)))
     (replace octets octets :start1 start :start2 end :end2 (outbox-fill box))
     (decf (outbox-fill box) gone)
-    (setf (outbox-descriptors box)
-          (loop for (at . fd) in (outbox-descriptors box)
-                unless (<= start at (1- end)) collect (cons (if (>= at end) (- at gone) at) fd)))))
+    (when (outbox-descriptors box)
+      (close-descriptors (loop for (at . fd) in (outbox-descriptors box) when (<= start at (1- end)) collect fd))
+      (setf (outbox-descriptors box)
+            (loop for (at . fd) in (outbox-descriptors box)
+                  unless (<= start at (1- end)) collect (cons (if (>= at end) (- at gone) at) fd))))))
 
 ;;; Reading
 
@@ -192,28 +202,29 @@ descriptors passed than its side takes are malformed."
                (let ((larger (tuatara.text:make-octets wanted)))
                  (replace larger octets :end2 (inbox-end inbox))
                  (setf (inbox-octets inbox) (setf octets larger))))
-             (multiple-value-bind (got descriptors cut)
+             (multiple-value-bind (got descriptors cut errno)
                  (tuatara.io:with-octets-sap (sap octets)
                    (tuatara.io:receive-with-descriptors fd (sb-sys:sap+ sap (inbox-end inbox))
                                                         (- (length octets) (inbox-end inbox))))
-               (let ((errno (sb-alien:get-errno)))
-                 (when descriptors
-                   (setf (inbox-descriptors inbox) (append (inbox-descriptors inbox) descriptors)))
-                 ;; the editor takes no descriptor from a client; a client one for each picture, a few at a time
-                 (when (or cut (> (length (inbox-descriptors inbox))
-                                  (if (eq (inbox-side inbox) :editor) 0 +most-pictures+)))
-                   (malformed "descriptors passed, more than are taken"))
-                 (cond ((plusp got) (incf (inbox-end inbox) got))
-                       ((zerop got) (return-from fill-inbox nil))
-                       ((= errno sb-posix:eintr))
-                       ((= errno sb-posix:eagain)
-                        (let ((deadline (inbox-deadline inbox)))
-                          (when (and deadline (tuatara.runtime:deadline-passed-p deadline))
-                            (malformed "nothing said in time"))
-                          (tuatara.io:poll-fd fd 1 (if deadline
-                                                       (max 1 (ceiling (* 1000 (tuatara.runtime:seconds-left deadline))))
-                                                       1000))))
-                       (t (return-from fill-inbox nil)))))))
+               (when descriptors
+                 (setf (inbox-descriptors inbox) (append (inbox-descriptors inbox) descriptors)))
+               ;; the editor takes no descriptor from a client; a client one for each picture, a few at a
+               ;; time: past that, every one passed is closed at once
+               (when (or cut (> (length (inbox-descriptors inbox))
+                                (if (eq (inbox-side inbox) :editor) 0 +most-pictures+)))
+                 (close-descriptors (shiftf (inbox-descriptors inbox) '()))
+                 (malformed "descriptors passed, more than are taken"))
+               (cond ((plusp got) (incf (inbox-end inbox) got))
+                     ((zerop got) (return-from fill-inbox nil))
+                     ((= errno sb-posix:eintr))
+                     ((= errno sb-posix:eagain)
+                      (let ((deadline (inbox-deadline inbox)))
+                        (when (and deadline (tuatara.runtime:deadline-passed-p deadline))
+                          (malformed "nothing said in time"))
+                        (tuatara.io:poll-fd fd 1 (if deadline
+                                                     (max 1 (ceiling (* 1000 (tuatara.runtime:seconds-left deadline))))
+                                                     1000))))
+                     (t (return-from fill-inbox nil))))))
   t)
 
 (defun read-message (inbox)
@@ -287,7 +298,7 @@ taking at least EACH octets of what is left of the message."
   "Put a hello in BOX: the format's number and this build's version line."
   (let ((at (begin-message box :hello)))
     (put-number box +protocol+ 4)
-    (put-text box (tuatara:version-line))
+    (put-text box (tuatara:version-line) 512)
     (end-message box at)))
 
 (defun take-hello (inbox)
@@ -352,23 +363,23 @@ its health and its fonts too."
         (put-number box (logior (if (frontend-images-p frontend) 1 0) (if (frontend-reorders-text-p frontend) 2 0)) 1)
         (put-number box (or (position (frontend-desktop-style frontend) *styles*) 0) 1)
         (put-number box (if steps (max -64 (min 64 steps)) 0) 2)
-        (put-text box (or (frontend-description frontend) ""))
+        (put-text box (or (frontend-description frontend) "") 1024)
         (when whole
           (let ((health (frontend-health frontend)))
             (put-number box (min 64 (length health)) 2)
             (loop for (label . text) in health repeat 64
-                  do (put-text box (princ-to-string label)) (put-text box (princ-to-string text))))
+                  do (put-text box (princ-to-string label) 1024) (put-text box (princ-to-string text) 4096)))
           (let ((fonts (frontend-fonts frontend)))
             (put-number box (min 8192 (length fonts)) 4)
-            (loop for font in fonts repeat 8192 do (put-text box font)))
+            (loop for font in fonts repeat 8192 do (put-text box font 256)))
           (let ((families (frontend-font-faces frontend)))
             (put-number box (min 8192 (length families)) 4)
             (loop for (family fixed variants) in families repeat 8192
-                  do (put-text box family)
+                  do (put-text box family 256)
                      (put-number box (if fixed 1 0) 1)
                      (put-number box (min 256 (length variants)) 2)
                      (loop for (name font) in variants repeat 256
-                           do (put-text box name) (put-text box font)))))))))
+                           do (put-text box name 256) (put-text box font 512)))))))))
 
 (defun take-facts (inbox &key whole)
   "Read FACTS from INBOX, as PUT-FACTS put them, WHOLE as given there."
@@ -440,12 +451,12 @@ follows in the next."
       (:resize (put-number box (min +most-columns+ (max 1 (event-width event))) 2)
                (put-number box (min +most-rows+ (max 1 (event-height event))) 2))
       (:paste (put-number box (if more 1 0) 1)
-              (put-text box (or text (event-text event))))
+              (put-text box (or text (event-text event)) +text-piece+))
       (:drop (put-number box (max 0 (min 65535 (or (event-column event) 0))) 2)
              (put-number box (max 0 (min 65535 (or (event-row event) 0))) 2)
              (let ((files (event-files event)))
                (put-number box (min 1024 (length files)) 2)
-               (loop for file in files repeat 1024 do (put-text box (if (pathnamep file) (namestring file) file)))))
+               (loop for file in files repeat 1024 do (put-text box (if (pathnamep file) (namestring file) file) 4096))))
       ((:close :focus)))
     (end-message box at)))
 
@@ -491,7 +502,7 @@ piece of it, MORE true when more follows) or an integer."
     (put-number box request 4)
     (etypecase answer
       (null (put-number box 0 1))
-      (string (put-number box 1 1) (put-number box (if more 1 0) 1) (put-text box answer))
+      (string (put-number box 1 1) (put-number box (if more 1 0) 1) (put-text box answer +text-piece+))
       (integer (put-number box 2 1) (put-number box (max -64 (min 64 answer)) 2)))
     (end-message box at)))
 
@@ -527,7 +538,7 @@ first."
 (defun face-name-number (names name)
   "The number NAME, a face name, has in NAMES, given one when it has none; 0
 for NIL, and for any name past the +MOST-NAMES+ first."
-  (cond ((not (and name (symbolp name))) 0)
+  (cond ((not (and name (symbolp name) (<= (tuatara.text:string-octet-length (symbol-name name)) 128))) 0)
         ((gethash name (face-names-table names)))
         ((< (face-names-count names) +most-names+)
          (push name (face-names-fresh names))
@@ -542,7 +553,7 @@ did, if any."
       (put-number box (length fresh) 2)
       (dolist (name fresh)
         (put-number box (gethash name (face-names-table names)) 2)
-        (put-text box (symbol-name name)))
+        (put-text box (symbol-name name) 128))
       (end-message box at)
       (setf (face-names-fresh names) '()))))
 
@@ -616,8 +627,8 @@ scale, or a shift in rows), in BOX; anything else as 0."
 
 (defun put-spans (box names spans)
   "Put SPANS, each (START END FACE), in BOX."
-  (put-number box (length spans) 4)
-  (loop for (start end face) in spans
+  (put-number box (min +most-characters+ (length spans)) 4)
+  (loop for (start end face) in spans repeat +most-characters+
         do (put-bounded box start +most-characters+) (put-bounded box end +most-characters+)
            (put-face-spec box names face)))
 
@@ -647,7 +658,7 @@ numbers."
   (put-number box (or (position (tuatara.display:face-underline face) *underlines*) 1) 1)
   (put-colour box (tuatara.display:face-underline-colour face))
   (let ((font (tuatara.display:face-font face)))
-    (put-text box (if (and (stringp font) (<= (length font) 256)) font "")))
+    (put-text box (if (and (stringp font) (<= (tuatara.text:string-octet-length font) 256)) font "")))
   (put-proportion box (or (tuatara.display:face-height face) 0) 3)
   (put-number box (face-name-number names (tuatara.display:face-inherit face)) 2))
 
@@ -676,18 +687,18 @@ attributes as SET-FACE-ATTRIBUTES takes them."
 SCALES, OVER and PARTS)."
   (put-number box 1 1)
   (put-number box row 2)
-  (put-text box string)
+  (put-text box string +most-characters+)
   (put-face-spec box names face)
   (put-spans box names spans)
-  (put-number box (length scales) 2)
-  (loop for (start end scale shift height) in scales
+  (put-number box (min 4096 (length scales)) 2)
+  (loop for (start end scale shift height) in scales repeat 4096
         do (put-bounded box start +most-columns+) (put-bounded box end +most-columns+)
            (put-proportion box scale 3) (put-proportion box shift +most-rows+) (put-proportion box height 3))
-  (put-number box (length over) 2)
-  (loop for (left text over-spans) in over
-        do (put-bounded box left +most-columns+) (put-text box text) (put-spans box names over-spans))
-  (put-number box (length parts) 2)
-  (dolist (part parts) (put-bounded box part +most-columns+)))
+  (put-number box (min 4096 (length over)) 2)
+  (loop for (left text over-spans) in over repeat 4096
+        do (put-bounded box left +most-columns+) (put-text box text +most-characters+) (put-spans box names over-spans))
+  (put-number box (min 4096 (length parts)) 2)
+  (loop for part in parts repeat 4096 do (put-bounded box part +most-columns+)))
 
 (defun put-kept-row-call (box row)
   "Put in BOX the painting of ROW as the frame before painted it."
@@ -721,7 +732,7 @@ their own (PUT-PICTURE)."
   "A row's painting read from INBOX, as PUT-ROW-CALL put it: (ROW STRING
 FACE SPANS SCALES OVER PARTS)."
   (list (take-bounded inbox 2 0 (1- +most-rows+) "a row")
-        (take-text inbox 1048576)
+        (take-text inbox +most-characters+)
         (take-face-spec inbox names)
         (take-spans inbox names)
         (loop repeat (take-count inbox 2 4096 26)
@@ -730,7 +741,7 @@ FACE SPANS SCALES OVER PARTS)."
                             (take-proportion inbox 3) (take-proportion inbox +most-rows+) (take-proportion inbox 3)))
         (loop repeat (take-count inbox 2 4096 12)
               collect (list (take-bounded inbox 4 0 +most-columns+ "a column")
-                            (take-text inbox 1048576) (take-spans inbox names)))
+                            (take-text inbox +most-characters+) (take-spans inbox names)))
         (loop repeat (take-count inbox 2 4096 4) collect (take-bounded inbox 4 0 +most-columns+ "a column"))))
 
 (defun take-place-signed (inbox)
@@ -769,9 +780,10 @@ PICTURES, a list of the pictures sent, gives each picture by its number."
 
 ;;; Pictures
 
-(defun put-picture (box image)
+(defun put-picture (box image let-go)
   "Put a message in BOX sending IMAGE: its number, size and channels, its
-pixels passed as a sealed file in memory with it."
+pixels passed as a sealed file in memory with it, and the number of the
+picture the client lets go of to keep it, LET-GO, or NIL for none."
   (let* ((pixels (image-pixels image))
          (octets (if (typep pixels 'tuatara.text:octets) pixels (coerce pixels 'tuatara.text:octets)))
          (fd (tuatara.io:memory-file "tuatara picture" octets :kept nil))
@@ -781,16 +793,21 @@ pixels passed as a sealed file in memory with it."
     (put-number box (image-width image) 4)
     (put-number box (image-height image) 4)
     (put-number box (image-channels image) 1)
+    (put-number box (if let-go 1 0) 1)
+    (put-number box (or let-go 0) 4)
     (end-message box at)))
 
 (defun take-picture (inbox)
   "A picture read from INBOX, as PUT-PICTURE put it, its pixels from the
-first descriptor passed; malformed unless that file is sealed and holds the
-pixels its size says, no more and no less."
+first descriptor passed, and as a second value the number of the picture to
+let go of, or NIL; malformed unless that file is sealed and holds the pixels
+its size says, no more and no less."
   (let* ((id (take-number inbox 4))
          (width (take-bounded inbox 4 1 65535 "a picture's width"))
          (height (take-bounded inbox 4 1 65535 "a picture's height"))
          (channels (take-bounded inbox 1 3 4 "a picture's channels"))
+         (letting-go (= 1 (take-bounded inbox 1 0 1 "a flag")))
+         (let-go (let ((number (take-number inbox 4))) (and letting-go number)))
          (count (* width height channels)))
     (message-read inbox)
     (unless (<= count +most-picture-octets+) (malformed "a picture of ~d octets" count))
@@ -800,5 +817,5 @@ pixels its size says, no more and no less."
              (unless (eql size count) (malformed "a picture's pixels, ~a octets for ~d" size count))
              (let ((pixels (tuatara.text:make-octets count)))
                (unless (= count (tuatara.io:read-fd-at fd pixels 0)) (malformed "a picture's pixels cut short"))
-               (%make-image width height channels pixels id)))
+               (values (%make-image width height channels pixels id) let-go)))
         (close-descriptors (list fd))))))

@@ -28,15 +28,16 @@ the screen of a client in the tests."))
   (dolist (event events)
     (tuatara.frontend:queue-push (queued-typed local) event)))
 
-(defun connect-remote (local &key (run t))
+(defun connect-remote (local &key (run t) queue)
   "A remote frontend and a client painting it on LOCAL, a fake frontend
 started here, over a new local socket, once both have said hello; three
-values: the remote frontend, the client, and with RUN the thread running the
-client (RUN-REMOTE-CLIENT), which returns the client's exit code."
+values: the remote frontend, its events going into QUEUE when given, the
+client, and with RUN the thread running the client (RUN-REMOTE-CLIENT),
+which returns the client's exit code."
   (tuatara.frontend:frontend-start local)
   (multiple-value-bind (mine theirs) (tuatara.io:socket-pair)
     (let* ((maker (sb-thread:make-thread (lambda () (tuatara.frontend:make-remote-client theirs local))))
-           (remote (tuatara.frontend:make-remote-frontend mine))
+           (remote (tuatara.frontend:make-remote-frontend mine :queue queue))
            (client (sb-thread:join-thread maker)))
       (values remote client
               (and run (sb-thread:make-thread (lambda () (tuatara.frontend:run-remote-client client))))))))
@@ -299,15 +300,19 @@ its number, size, channels, pixels and place: lists EQUAL compares."
                       (tuatara.frontend:make-event :paste :text long)
                       (tuatara.frontend:make-event :drop :column 4 :row 1
                                                          :files (list "/tmp/a b.txt"
-                                                                      (format nil "/tmp/~c" (code-char #xDCE9))))
-                      (tuatara.frontend:make-event :close))))
+                                                                      (format nil "/tmp/~c" (code-char #xDCE9)))))))
     (multiple-value-bind (remote client runner) (connect-remote local)
       (declare (ignore client))
       (setf (tuatara.frontend:frontend-frame remote) :a-frame)
-      (apply #'type-at local (append typed (list (tuatara.frontend:make-event :quit))))
+      ;; the window's close button, then the client gone: each closes the client's frame, never the editor
+      (apply #'type-at local (append typed (list (tuatara.frontend:make-event :close)
+                                                 (tuatara.frontend:make-event :quit))))
       (let ((got (loop for event = (tuatara.frontend::queue-pop (tuatara.frontend::remote-queue remote) 5)
-                       while (and event (not (eq (tuatara.frontend:event-kind event) :quit)))
-                       collect event)))
+                       while (and event (not (eq (tuatara.frontend:event-kind event) :detached)))
+                       collect event))
+            (gone (tuatara.frontend::queue-pop (tuatara.frontend::remote-queue remote) 5)))
+        (is eq :detached (and gone (tuatara.frontend:event-kind gone)))
+        (is eq :a-frame (and gone (tuatara.frontend:event-frame gone)))
         (flet ((seen (event)
                  (list (tuatara.frontend:event-kind event)
                        (let ((key (tuatara.frontend:event-key event)))
@@ -319,7 +324,7 @@ its number, size, channels, pixels and place: lists EQUAL compares."
           (is equal (mapcar #'seen typed) (mapcar #'seen got))
           (true (every (lambda (event) (eq :a-frame (tuatara.frontend:event-frame event))) got))))
       (is equal '(50 10) (multiple-value-list (tuatara.frontend:frontend-size remote)))
-      (is = (length typed) (tuatara.frontend::remote-received remote))
+      (is = (1+ (length typed)) (tuatara.frontend::remote-received remote))
       ;; the client left: so said, and the frontend ends with nothing more to say
       (is eql nil (client-done runner))
       (true (tuatara.frontend::remote-ended remote))
@@ -420,7 +425,7 @@ escaped."
       (funcall sent theirs)
       (prog1 (loop for event = (tuatara.frontend::queue-pop (tuatara.frontend::remote-queue remote) 5)
                    while event
-                   thereis (eq (tuatara.frontend:event-kind event) :quit))
+                   thereis (eq (tuatara.frontend:event-kind event) :detached))
         (tuatara.frontend:frontend-stop remote)
         (sb-posix:close theirs)))))
 
@@ -440,11 +445,210 @@ escaped."
   (multiple-value-bind (in out) (sb-posix:pipe)
     (true (ended-after (lambda (fd) (send-raw fd '(2 0 0 0 4 5) (list out)))))
     (sb-posix:close out)
-    ;; with every copy of its writing end closed, the pipe ends
-    (true (plusp (tuatara.io:poll-fd in 1 1000)))
-    (let ((octet (tuatara.text:make-octets 1)))
-      (is = 0 (tuatara.io:with-octets-sap (sap octet) (sb-posix:read in sap 1))))
+    (true (pipe-ended-p in))))
+
+(defun pipe-ended-p (in)
+  "True when the pipe whose reading end is IN has no writing end open
+anywhere: every copy of it passed was closed. IN is closed after."
+  (unwind-protect
+       (and (plusp (tuatara.io:poll-fd in 1 1000))
+            (let ((octet (tuatara.text:make-octets 1)))
+              (zerop (tuatara.io:with-octets-sap (sap octet) (sb-posix:read in sap 1)))))
     (sb-posix:close in)))
+
+(defun message-octets (kind write)
+  "The octets of a message of KIND whose fields WRITE, a function of the box, writes."
+  (let* ((box (tuatara.frontend::make-outbox)) (at (tuatara.frontend::begin-message box kind)))
+    (funcall write box)
+    (tuatara.frontend::end-message box at)
+    (coerce (subseq (tuatara.frontend::outbox-octets box) 0 (tuatara.frontend::outbox-fill box)) 'list)))
+
+(define-test (remote descriptors-passed-in-a-hello-closed)
+  ;; a descriptor passed with a hello, to the editor or to a client, is closed whether the hello is taken or not
+  (dotimes (i 3)
+    (multiple-value-bind (in out) (sb-posix:pipe)
+      (multiple-value-bind (mine theirs) (tuatara.io:socket-pair)
+        (let ((box (tuatara.frontend::make-outbox)))
+          (tuatara.frontend::put-hello box)
+          (tuatara.frontend::put-facts-message box (tuatara.frontend.fake:make-fake-frontend) :attach)
+          (push (cons 0 out) (tuatara.frontend::outbox-descriptors box))
+          (tuatara.frontend::send-outbox theirs box 5))
+        (true (handler-case (progn (tuatara.frontend:frontend-stop (tuatara.frontend:make-remote-frontend mine)) nil)
+                (tuatara.frontend:remote-refused () t)))
+        (true (pipe-ended-p in))
+        (sb-posix:close mine) (sb-posix:close theirs))))
+  (multiple-value-bind (in out) (sb-posix:pipe)
+    (multiple-value-bind (mine theirs) (tuatara.io:socket-pair)
+      (let ((local (tuatara.frontend.fake:make-fake-frontend))
+            (box (tuatara.frontend::make-outbox)))
+        (tuatara.frontend:frontend-start local)
+        (let ((at (tuatara.frontend::begin-message box :hello)))
+          (tuatara.frontend::put-number box tuatara.frontend::+protocol+ 4)
+          (tuatara.frontend::put-text box (format nil "Tuatara 0.0.1~c[2J" #\Esc))
+          (tuatara.frontend::end-message box at))
+        (push (cons 0 out) (tuatara.frontend::outbox-descriptors box))
+        (tuatara.frontend::send-outbox theirs box 5)
+        (let ((refused (handler-case (progn (tuatara.frontend:make-remote-client mine local) nil)
+                         (tuatara.frontend:remote-refused (condition) (tuatara.frontend:remote-refused-words condition)))))
+          (true (search "Tuatara 0.0.1[2J" refused))
+          (false (find #\Esc refused)))
+        (true (pipe-ended-p in))
+        (sb-posix:close mine) (sb-posix:close theirs)))))
+
+(define-test (remote answers-of-the-kind-asked)
+  ;; an answer that is not of the kind its question asks for ends the connection; none is taken from it
+  (dolist (answer (list (lambda (box) (tuatara.frontend::put-answer box 1 5))
+                        (lambda (box)
+                          (tuatara.frontend::put-answer box 1 "abc" :more t)
+                          (tuatara.frontend::put-answer box 1 7))))
+    (multiple-value-bind (mine theirs) (tuatara.io:socket-pair)
+      (raw-peer theirs)
+      (let* ((remote (tuatara.frontend:make-remote-frontend mine))
+             (asker (sb-thread:make-thread
+                     (lambda () (let ((tuatara.frontend::*answer-seconds* 2))
+                                  (tuatara.frontend::ask-client remote :clipboard))))))
+        (loop repeat 200 until (tuatara.frontend::remote-asked remote) do (sleep 0.01))
+        (let ((box (tuatara.frontend::make-outbox)))
+          (funcall answer box)
+          (tuatara.frontend::send-outbox theirs box 5))
+        (is eq nil (sb-thread:join-thread asker))
+        (true (ended-already-p remote))
+        (tuatara.frontend:frontend-stop remote)
+        (sb-posix:close theirs)))))
+
+(defun ended-already-p (remote)
+  "True when REMOTE's connection ends within five seconds, its frame said to be gone."
+  (loop for event = (tuatara.frontend:queue-pop (tuatara.frontend::remote-queue remote) 5)
+        while event
+        thereis (eq (tuatara.frontend:event-kind event) :detached)))
+
+(define-test (remote pastes-held-to-sixteen-megabytes)
+  ;; a paste of exactly the most octets is taken; one octet more is left out whole, and said
+  (dolist (extra '(0 1))
+    (multiple-value-bind (mine theirs) (tuatara.io:socket-pair)
+      (raw-peer theirs)
+      (let* ((remote (tuatara.frontend:make-remote-frontend mine))
+             (text (make-string (+ tuatara.frontend::+most-text+ extra) :initial-element #\k))
+             (sender (sb-thread:make-thread
+                      (lambda ()
+                        (let ((box (tuatara.frontend::make-outbox)) (paste (tuatara.frontend:make-event :paste :text "")))
+                          (loop for (piece . more) on (tuatara.frontend::text-pieces text)
+                                do (tuatara.frontend::put-event box paste :text piece :more more))
+                          (tuatara.frontend::send-outbox theirs box 30)))))
+             (event (tuatara.frontend:queue-pop (tuatara.frontend::remote-queue remote) 30)))
+        (sb-thread:join-thread sender)
+        (if (zerop extra)
+            (progn (is eq :paste (tuatara.frontend:event-kind event))
+                   (is = tuatara.frontend::+most-text+ (length (tuatara.frontend:event-text event))))
+            (progn (is eq :said (tuatara.frontend:event-kind event))
+                   (true (search "left out" (tuatara.frontend:event-text event)))))
+        (tuatara.frontend:frontend-stop remote)
+        (sb-posix:close theirs)))))
+
+(define-test (remote floods-wait-for-the-editor)
+  ;; a client sending far more events than the editor takes is read only as fast as they are taken
+  (multiple-value-bind (mine theirs) (tuatara.io:socket-pair)
+    (raw-peer theirs)
+    (let* ((remote (tuatara.frontend:make-remote-frontend mine))
+           (sender (sb-thread:make-thread
+                    (lambda ()
+                      (let ((box (tuatara.frontend::make-outbox))
+                            (key (tuatara.frontend:make-event :key :key (tuatara.frontend:make-key #\a))))
+                        (dotimes (i 200000) (tuatara.frontend::put-event box key))
+                        (tuatara.frontend::send-outbox theirs box 10))))))
+      (sleep 1)
+      (true (<= (tuatara.frontend::remote-received remote) (1+ tuatara.frontend::+most-waiting-events+)))
+      ;; as the editor takes them, more are read
+      (dotimes (i 100) (tuatara.frontend:queue-pop (tuatara.frontend::remote-queue remote) 1))
+      (sleep 0.2)
+      (true (> (tuatara.frontend::remote-received remote) tuatara.frontend::+most-waiting-events+))
+      (let ((began (get-internal-real-time)))
+        (tuatara.frontend:frontend-stop remote)
+        (true (< (tuatara.runtime:seconds-since began) 5)))
+      (sb-thread:join-thread sender :timeout 15 :default nil)
+      (sb-posix:close theirs))))
+
+(defun raw-editor (local &rest messages)
+  "A client painting on LOCAL, a fake frontend, made over a new socket whose
+other end, here, says hello as an editor and then sends MESSAGES (lists of
+octets); two values: the client and the editor's end of the socket."
+  (tuatara.frontend:frontend-start local)
+  (multiple-value-bind (mine theirs) (tuatara.io:socket-pair)
+    (let ((maker (sb-thread:make-thread (lambda () (tuatara.frontend:make-remote-client theirs local))))
+          (box (tuatara.frontend::make-outbox)))
+      (tuatara.frontend::put-hello box)
+      (tuatara.frontend::send-outbox mine box 5)
+      (let ((client (sb-thread:join-thread maker)))
+        (dolist (octets messages) (send-raw mine octets))
+        (values client mine)))))
+
+(define-test (remote pictures-not-sealed-refused)
+  ;; a client given a pipe, or a file in memory not sealed, as a picture's pixels ends the connection
+  (dolist (make (list (lambda () (multiple-value-bind (in out) (sb-posix:pipe) (sb-posix:close out) in))
+                      (lambda ()
+                        (let ((fd (sb-alien:alien-funcall
+                                   (sb-alien:extern-alien "memfd_create" (function sb-alien:int sb-alien:c-string
+                                                                                   sb-alien:unsigned-int))
+                                   "unsealed" 3)))
+                          (sb-posix:ftruncate fd 12)
+                          fd))))
+    (let ((fd (funcall make)))
+      (multiple-value-bind (client mine) (raw-editor (tuatara.frontend.fake:make-fake-frontend))
+        (let ((box (tuatara.frontend::make-outbox)) (at nil))
+          (setf at (tuatara.frontend::begin-message box :picture))
+          (push (cons at fd) (tuatara.frontend::outbox-descriptors box))
+          (dolist (n '((1 4) (2 4) (2 4) (3 1) (0 1) (0 4))) (apply #'tuatara.frontend::put-number box n))
+          (tuatara.frontend::end-message box at)
+          (tuatara.frontend::send-outbox mine box 5))
+        (true (not (eq :late (sb-thread:join-thread (tuatara.frontend::remote-client-reader client)
+                                                    :timeout 3 :default :late))))
+        (true (tuatara.frontend::remote-client-ended client))
+        (tuatara.frontend::close-remote-client client)
+        (sb-posix:close mine)))))
+
+(define-test (remote more-pictures-than-kept)
+  ;; seventeen pictures in a frame: sixteen shown, the connection kept; the next frame shows the seventeenth,
+  ;; the client letting go of the one the editor did, picture 0 too
+  (let ((local (make-instance 'queued-fake-frontend :cell-pixels '(8 16)))
+        ;; numbered from 0, as the session's first picture is
+        (images (loop for id below 17 collect (tuatara.frontend::%make-image 2 2 3 (tuatara.text:make-octets 12) id))))
+    (multiple-value-bind (remote client runner) (connect-remote local)
+      (flet ((paint (pictures)
+               (tuatara.frontend:frontend-begin-frame remote)
+               (loop for image in pictures for row from 0
+                     do (tuatara.frontend:frontend-put-image remote image row 0 1 1))
+               (tuatara.frontend:frontend-end-frame remote)
+               ;; taken to be sent before the next, so that the client paints both
+               (loop repeat 1000
+                     until (zerop (tuatara.frontend::outbox-fill (tuatara.frontend::remote-unsent remote)))
+                     do (sleep 0.001))))
+        (paint images)
+        (paint (rest images)))
+      (tuatara.frontend:frontend-stop remote)
+      (is eql 0 (client-done runner))
+      (destructuring-bind (newer older) (subseq (tuatara.frontend.fake:fake-image-history local) 0 2)
+        (is = 16 (length older))
+        (is equal (mapcar #'tuatara.frontend:image-id (rest images))
+            (mapcar (lambda (shown) (tuatara.frontend:image-id (first shown))) newer)))
+      (is = 16 (length (tuatara.frontend::remote-client-pictures client))))))
+
+(define-test (remote client-descriptors-held-to-pictures)
+  ;; more descriptors passed to a client than pictures it may be sent end the connection, every one closed
+  (multiple-value-bind (client mine) (raw-editor (tuatara.frontend.fake:make-fake-frontend))
+    (let ((ins '()))
+      (dotimes (i 20)
+        (multiple-value-bind (in out) (sb-posix:pipe)
+          (push in ins)
+          (let ((octet (tuatara.text:make-octets 1)))
+            (tuatara.io:with-octets-sap (sap octet)
+              (tuatara.io:send-with-descriptors mine sap 1 (list out))))
+          (sb-posix:close out)))
+      (true (not (eq :late (sb-thread:join-thread (tuatara.frontend::remote-client-reader client)
+                                                  :timeout 3 :default :late))))
+      ;; those taken closed by the client, those still on their way with its end of the socket
+      (tuatara.frontend::close-remote-client client)
+      (true (every #'pipe-ended-p ins))
+      (sb-posix:close mine))))
 
 (define-test (remote spoilt-messages-end-cleanly)
   ;; a session's messages both ways, cut short and spoilt: each read ends cleanly or as malformed
@@ -536,7 +740,11 @@ cleanly or as malformed, else the error, in words."
                              (push item (tuatara.frontend::remote-client-arrived client)))))
                 (tuatara.frontend::paint-arrived client))
               (let ((remote (make-instance 'tuatara.frontend:remote-frontend :fd -1)))
-                (setf (tuatara.frontend::remote-inbox remote) inbox)
+                ;; no one takes the events here: none is waited for, and a question awaits its answer
+                (setf (tuatara.frontend::remote-inbox remote) inbox
+                      (tuatara.frontend::remote-closing remote) t
+                      (tuatara.frontend::remote-asked remote) 1
+                      (tuatara.frontend::remote-asked-question remote) :clipboard)
                 (loop for kind = (tuatara.frontend::read-message inbox)
                       while kind
                       do (case kind
@@ -642,3 +850,57 @@ read and let go of."
          (more (min (remote-painting-garbage 700) (remote-painting-garbage 700)))
          (per-key (/ (- more few) 600.0)))
     (true (< per-key 256) "~,1f octets a key" per-key)))
+
+(define-test (remote client-gone-closes-its-frame)
+  ;; an editor whose two frames are two clients': one client's window closed closes its frame alone, and
+  ;; that client is told to end; the editor goes on in the other
+  (let ((one (make-instance 'queued-fake-frontend :width 40 :height 8))
+        (two (make-instance 'queued-fake-frontend :width 40 :height 8)))
+    (multiple-value-bind (first-remote client-one runner-one) (connect-remote one)
+      (declare (ignore client-one))
+      (multiple-value-bind (second-remote client-two runner-two)
+          (connect-remote two :queue (tuatara.frontend::remote-queue first-remote))
+        (declare (ignore client-two))
+        (let ((scratch (tuatara.buffer:find-buffer "*scratch*")))
+          (when scratch (tuatara.buffer:kill-buffer scratch)))
+        (tuatara.buffer:make-buffer "*scratch*" :text "")
+        (let ((editor
+                (without-grammar-questions
+                  (tuatara.command:run-editor
+                   first-remote :setup #'tuatara.defaults:install-defaults
+                                :buffer (tuatara.buffer:find-buffer "*scratch*")
+                                :start (lambda (editor)
+                                         (tuatara.command::add-frame editor second-remote)
+                                         (type-at two (tuatara.frontend:make-event :close))
+                                         ;; once that frame is gone, the editor is left from the first
+                                         (sb-thread:make-thread
+                                          (lambda ()
+                                            (loop repeat 500
+                                                  while (rest (tuatara.command::editor-frames editor))
+                                                  do (sleep 0.01))
+                                            (apply #'type-at one
+                                                   (mapcar (lambda (spec)
+                                                             (tuatara.frontend:make-event
+                                                              :key :key (tuatara.frontend:spec-key spec)))
+                                                           (tuatara.frontend:parse-key-sequence "C-x C-c"))))))))))
+          (is = 1 (length (tuatara.command::editor-frames editor)))
+          (is eql 0 (client-done runner-two))
+          (is eql 0 (client-done runner-one)))))))
+
+(define-test (remote more-faces-than-names)
+  ;; an editor with more faces than a connection numbers names sends those it can, and the client stays
+  (let ((made (loop for i below (+ 100 tuatara.frontend::+most-names+)
+                    collect (intern (format nil "REMOTE-TEST-FACE-~d" i) :keyword))))
+    (unwind-protect
+         (let ((local (make-instance 'queued-fake-frontend)))
+           (dolist (name made) (tuatara.display:set-face-attributes name :fg :red))
+           (multiple-value-bind (remote client runner) (connect-remote local)
+             (declare (ignore client))
+             (tuatara.frontend:frontend-begin-frame remote)
+             (tuatara.frontend:frontend-put-row remote 0 "kiwi" :face :mode-line)
+             (tuatara.frontend:frontend-end-frame remote)
+             (tuatara.frontend:frontend-stop remote)
+             (is eql 0 (client-done runner))
+             (is equal "kiwi" (tuatara.frontend.fake:fake-screen-line local 0))))
+      (dolist (name made) (remhash name tuatara.display:*faces*))
+      (incf tuatara.display:*face-generation*))))

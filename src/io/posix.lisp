@@ -1068,8 +1068,8 @@ descriptor stays open until closed."
 descriptor (FD), without waiting, DESCRIPTORS (a list of at most
 +MOST-DESCRIPTORS+ open descriptors) passed with them to the other end, where
 RECEIVE-WITH-DESCRIPTORS takes them; how many octets were sent, or -1 when
-none could be, the reason in errno (EAGAIN: the socket is full for now). A
-socket whose other end has gone gives -1, never a signal."
+none could be, with the reason, errno, as a second value (EAGAIN: the socket
+is full for now). A socket whose other end has gone gives -1, never a signal."
   (let ((count (length descriptors)))
     (assert (<= count +most-descriptors+))
     (sb-alien:with-alien ((part (array (sb-alien:unsigned 64) 2))
@@ -1086,18 +1086,21 @@ socket whose other end has gone gives -1, never a signal."
         (dotimes (i 56) (setf (sb-sys:sap-ref-8 m i) 0))
         (setf (sb-sys:sap-ref-64 m 16) (sb-sys:sap-int p) (sb-sys:sap-ref-64 m 24) 1
               (sb-sys:sap-ref-64 m 32) (if descriptors (sb-sys:sap-int c) 0) (sb-sys:sap-ref-64 m 40) control-length)
-        (sb-alien:alien-funcall
-         (sb-alien:extern-alien "sendmsg" (function sb-alien:long sb-alien:int sb-sys:system-area-pointer sb-alien:int))
-         fd m (logior #x4000 #x40))))))                     ; MSG_NOSIGNAL, MSG_DONTWAIT
+        (let ((sent (sb-alien:alien-funcall
+                     (sb-alien:extern-alien "sendmsg" (function sb-alien:long sb-alien:int sb-sys:system-area-pointer
+                                                                sb-alien:int))
+                     fd m (logior #x4000 #x40))))      ; MSG_NOSIGNAL, MSG_DONTWAIT
+          ;; the reason read at once, before anything else can change it
+          (values sent (if (minusp sent) (sb-alien:get-errno) 0)))))))
 
 (defun receive-with-descriptors (fd sap length)
   "Receive up to LENGTH octets into SAP from the local socket open as file
 descriptor (FD), without waiting, and the descriptors passed with them
-\(SEND-WITH-DESCRIPTORS), each closed in programs started. Three values: how
+\(SEND-WITH-DESCRIPTORS), each closed in programs started. Four values: how
 many octets came, 0 when the other end has gone, -1 when none are there now
-or the socket failed (the reason in errno, EAGAIN for none now); the
-descriptors, a list, which the caller closes; and true when more were passed
-than +MOST-DESCRIPTORS+, those beyond it closed unseen."
+or the socket failed; the descriptors, a list, which the caller closes; true
+when more were passed than +MOST-DESCRIPTORS+, those beyond it closed
+unseen; and for -1 the reason, errno (EAGAIN for none now)."
   (sb-alien:with-alien ((part (array (sb-alien:unsigned 64) 2))
                         (control (array (sb-alien:unsigned 8) 32))
                         (message (array (sb-alien:unsigned 8) 56)))
@@ -1111,6 +1114,7 @@ than +MOST-DESCRIPTORS+, those beyond it closed unseen."
                   (sb-alien:extern-alien "recvmsg" (function sb-alien:long sb-alien:int sb-sys:system-area-pointer
                                                              sb-alien:int))
                   fd m (logior #x40000000 #x40)))       ; MSG_CMSG_CLOEXEC, MSG_DONTWAIT
+            (errno (sb-alien:get-errno))
             (descriptors '()))
         (when (>= got 0)
           ;; each struct cmsghdr in turn, 8-aligned: its length, level and type, then its data
@@ -1121,7 +1125,8 @@ than +MOST-DESCRIPTORS+, those beyond it closed unseen."
                 when (and (= 1 (sb-sys:sap-ref-32 c (+ at 8))) (= 1 (sb-sys:sap-ref-32 c (+ at 12))))
                   do (loop for k from (+ at 16) below (+ at size) by 4
                            do (push (sb-sys:signed-sap-ref-32 c k) descriptors))))
-        (values got (nreverse descriptors) (logtest 8 (sb-sys:sap-ref-32 m 48)))))))   ; MSG_CTRUNC
+        (values got (nreverse descriptors) (logtest 8 (sb-sys:sap-ref-32 m 48))  ; MSG_CTRUNC
+                (if (minusp got) errno 0))))))
 
 (defconstant +watch-events+ (logior #x2 #x4 #x8 #x40 #x80 #x100 #x200 #x400 #x800 #x1000000)
   "The inotify events a watched directory reports: a file in it written
