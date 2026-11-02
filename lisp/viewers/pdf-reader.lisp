@@ -795,7 +795,7 @@ stop."
                               (or (>= (+ j 2) n) (pdf-white-p (aref octets (+ j 2)))))
                      (incf j 3) (return))
                    (multiple-value-bind (key end) (value j 0)
-                     (when (<= end j) (return))
+                     (when (or (<= end j) (>= (pdf-skip-space octets end) n)) (return))
                      (multiple-value-bind (v after) (value (pdf-skip-space octets end) 0)
                        (when (<= after end) (return))
                        (when (stringp key) (push (cons key v) pairs))

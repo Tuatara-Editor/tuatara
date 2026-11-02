@@ -435,7 +435,9 @@ OPERANDS FROM END), and how many it counted, as two values."
                                                        (make-string 5000 :initial-element #\]) " x"))))
   (is = 0 (nth-value 1 (content-operators "1 2 (never closed Tj")))
   (is = 0 (nth-value 1 (content-operators "1 2 <never closed Tj")))
-  (is = 1 (nth-value 1 (content-operators "BI /W 2 ID no end"))))
+  (is = 1 (nth-value 1 (content-operators "BI /W 2 ID no end")))
+  (is = 1 (nth-value 1 (content-operators "BI /W")))
+  (is = 1 (nth-value 1 (content-operators "BI /W  "))))
 
 ;;; Sound and video
 
