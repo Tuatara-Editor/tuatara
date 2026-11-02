@@ -254,10 +254,13 @@ direction text is drawn in are shown as a ? set apart in the
 \\[invisible-characters-mode] is on. A file opened safely shows its text in
 the order stored unless *TEXT-DIRECTION-WHEN-SAFE* says otherwise, and so does
 a terminal that turns such text round itself (Konsole, mlterm), where the
-terminal then shows it in the order read. Arabic letters are joined. A stretch of
-a line too long to work out whole, beyond an embedding or override, or far
-into the line, is shown in the order stored, its right-to-left letters in
-the :stored-order face."
+terminal then shows it in the order read. Arabic letters are joined: in a
+terminal by sending it the forms that join them, so that the terminal's own
+selection with the mouse copies what is drawn (those forms, in the order
+shown), while Tuatara's own copying and killing give the text as stored. A
+stretch of a line too long to work out whole, beyond an embedding or
+override, or far into the line, is shown in the order stored, its
+right-to-left letters in the :stored-order face."
   :command text-direction-mode :lookup text-direction-p
   :global *global-text-direction-mode* :default :auto
   :global-doc "How lines holding right-to-left text are shown in buffers that have
