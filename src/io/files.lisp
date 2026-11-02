@@ -2009,7 +2009,8 @@ the file itself is touched. Returns :DONE, or :STOPPED."
   "Save ROPE as the file at PATH (this file's header). EXPECTED is the STAMP the
 buffer last read or wrote, NIL for a file that was not there, or :ANY to skip
 the check; a file changed since signals FILE-CHANGED-ON-DISK (one deleted since
-is simply written again). MAPPINGS are those still reading PATH's octets, moved
+is simply written again), after a save in place of it cut short is put right
+\(RECOVER-BEFORE-SAVING). MAPPINGS are those still reading PATH's octets, moved
 to a copy before any write in place. With FOLLOW-LINKS NIL, PATH itself is
 written: a symbolic link there, found first or put there while the file is
 written, is refused, never followed. MODE, a function of the permissions the
@@ -2024,8 +2025,10 @@ other names is never written in place, for one of them may be in such a
 place: it is saved as a file of its own, its other names keeping what they
 held, and that is told (TELL-WRITING)."
   (let* ((target (if follow-links (resolve-links path) (expand-path path)))
-         (existing (progn (check-writing target "save")
-                          (path-stamp target :follow follow-links)))
+         (existing (let ((stamp (progn (check-writing target "save")
+                                       (path-stamp target :follow follow-links))))
+                     ;; a save in place cut short is put right first, so that the file is the one last read
+                     (or (recover-before-saving target stamp) stamp)))
          (directory (parent-path target))
          (class (directory-class directory))
          (in-place nil))

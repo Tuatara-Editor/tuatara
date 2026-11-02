@@ -452,3 +452,14 @@ back."
           (tell-writing (format nil "~a may be part saved: a save of it was cut short, and it could not be put back from ~a: ~a"
                                 target journal-path (file-system-error-reason e)))
           nil)))))
+
+(defun recover-before-saving (target existing)
+  "Put TARGET, which EXISTING describes, back as it was before a save in
+place of it that was cut short, when its journal is beside it, before it is
+saved again (RECOVER-FROM-JOURNAL): its stamp then, or NIL when nothing was
+put back."
+  (when (and existing (eq (stamp-kind existing) :regular)
+             (path-stamp (journal-path target) :follow nil :failure nil))
+    (let ((fd (open-for-reading target t :accept '(:regular) :operation "save")))
+      (unwind-protect (and (recover-from-journal fd target) (fd-stamp fd target))
+        (sb-posix:close fd)))))

@@ -1708,6 +1708,56 @@ then cut short there, as by a crash. Returns the steps and the text saved."
         (tuatara.io:finish-leases)
         (false (journal-there-p path))))))
 
+(defun cut-short-save (buffer)
+  "Save BUFFER in place, cut short once the file is written but before it is
+flushed, as by a crash: the file is then part old and part new, its journal
+beside it."
+  (let ((tuatara.io::*saving-step* (lambda (step) (when (eq step :file-written) (throw 'crash nil)))))
+    (catch 'crash (tuatara.io:save-buffer-file buffer))))
+
+(define-test (visiting-and-saving save-cut-short-put-back-with-saving-in-place-off)
+  ;; a journal left while saving in place was on is used when it is off again: by a visit, a revert and a save
+  (with-test-directory (dir)
+    (without-shared-blocks
+      (let ((path (put-file (merge-pathnames "big.txt" dir) *long-lines-text*)))
+        ;; visited
+        (with-visited (b path)
+          (edit-far-apart b)
+          (cut-short-save b))
+        (tuatara.io:finish-leases)
+        (true (journal-there-p path))
+        (let ((tuatara-user:*save-in-place* nil))
+          (with-visited (b path)
+            (is string= *long-lines-text* (tuatara.buffer:buffer-string b))))
+        (tuatara.io:finish-leases)
+        (false (journal-there-p path))
+        (is string= *long-lines-text* (file-text path))
+        ;; reverted
+        (with-visited (b path)
+          (edit-far-apart b)
+          (cut-short-save b)
+          (true (journal-there-p path))
+          (let ((tuatara-user:*save-in-place* nil))
+            (tuatara.io:revert-buffer-file b))
+          (is string= *long-lines-text* (tuatara.buffer:buffer-string b))
+          (false (journal-there-p path))
+          (is string= *long-lines-text* (file-text path)))
+        (tuatara.io:finish-leases)
+        ;; saved: the old file put back, then the new one written whole beside it and put in its place
+        (with-visited (b path)
+          (let ((new (edit-far-apart b)))
+            (cut-short-save b)
+            (true (journal-there-p path))
+            (let ((tuatara-user:*save-in-place* nil)
+                  (inode (tuatara.io:stamp-ino (tuatara.io:path-stamp path))))
+              (tuatara.io:save-buffer-file b)
+              (isnt = inode (tuatara.io:stamp-ino (tuatara.io:path-stamp path))))
+            (false (journal-there-p path))
+            (is string= new (file-text path))
+            (false (tuatara.buffer:buffer-modified-p b))))
+        (tuatara.io:finish-leases)
+        (is equal '("big.txt") (directory-names dir))))))
+
 (define-test (visiting-and-saving scratch-copy-closed-when-it-cannot-be-mapped)
   ;; standard input's copy is closed, not left open, when it cannot be mapped
   (with-test-directory (dir)
