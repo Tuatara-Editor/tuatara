@@ -15,8 +15,12 @@
 ;;;; connection within seconds. Every 5,000 rounds one of these hostile but
 ;;;; well-made rounds runs too: a paste past the most taken, more pictures in
 ;;;; a frame than are kept, a flood of events the editor does not take, an
-;;;; editor busy for seconds with a client typing, and a session of the editor given sizes, mouse places and closings at their
-;;;; bounds. A failure is an error other than a malformed message, a read
+;;;; editor busy for seconds with a client typing, a session of the editor
+;;;; given sizes, mouse places and closings at their bounds, and attaches
+;;;; asking for what may not be asked (variables past their count or
+;;;; misnamed, paths not absolute or holding a NUL, a terminal that is no
+;;;; device, descriptors passed with no standard input asked for, or too
+;;;; many). A failure is an error other than a malformed message, a read
 ;;;; running past the deadline, a connection not ended, a hostile round not
 ;;;; answered as it should be, descriptors left open, or the heap growing
 ;;;; past the cap; the octets that made it are written to build/fuzz/ and the
@@ -107,7 +111,11 @@ every kind, a paste in pieces and answers."
      box (tuatara.frontend.fake:make-fake-frontend
           :font-steps 1 :fonts '("Mono A" "Mono B") :cell-pixels '(8 16)
           :font-faces '(("Mono A" t (("Regular" "Mono A 11") ("Bold" "Mono A Bold 11")))))
-     :attach)
+     :attach
+     (tuatara.frontend:make-request :directory "/home/kiwi/cases/" :terminal "/dev/pts/3"
+                                    :environment '(("PATH" . "/usr/bin:/bin") ("LANG" . "mi_NZ.UTF-8") ("GIT_DIR" . "/x"))
+                                    :files '(("/tmp/a b" 12 3) ("/tmp/tūī" nil nil)) :safe t :hex t :frames 3
+                                    :diff '("/tmp/old" "/tmp/new") :merge '("/l" "/b" "/r" "/m") :wait t :stop t))
     (tuatara.frontend::put-facts-message box (tuatara.frontend.fake:make-fake-frontend :desktop-style :dark) :facts)
     (dolist (event (list (tuatara.frontend:make-event :key :key (tuatara.frontend:make-key #\a :ctrl t :meta t))
                          (tuatara.frontend:make-event :key :key (tuatara.frontend:make-key (code-char #x1F95D)))
@@ -217,6 +225,7 @@ acting on each message as it does, a client painting on a fake frontend."
                     do (case kind
                          (:hello (tuatara.frontend::take-hello inbox))
                          (:attach (tuatara.frontend::take-facts inbox :whole t)
+                          (tuatara.frontend::take-request inbox)
                           (tuatara.frontend::message-read inbox))
                          (t (unless (tuatara.frontend::take-from-client remote kind inbox) (return)))))))
       (tuatara.frontend:malformed-message () nil))))
@@ -407,8 +416,105 @@ what went wrong."
           (sb-thread:join-thread draining :timeout 10 :default nil)
           (sb-posix:close theirs))))))
 
+(defun put-raw-request (box &key (flags 1) (frames 1) (directory "/tmp") (terminal "") environment (files '())
+                                  (diff '()) (merge '()) environment-count files-count)
+  "Put in BOX the fields of a client's request as given, none held to its
+bounds: ENVIRONMENT, (NAME . VALUE) pairs, and FILES, paths, after the counts
+ENVIRONMENT-COUNT and FILES-COUNT say (their lengths unless given)."
+  (tuatara.frontend::put-number box flags 2)
+  (tuatara.frontend::put-number box frames 1)
+  (tuatara.frontend::put-text box directory)
+  (tuatara.frontend::put-text box terminal)
+  (tuatara.frontend::put-number box (or environment-count (length environment)) 2)
+  (loop for (name . value) in environment
+        do (tuatara.frontend::put-text box name) (tuatara.frontend::put-text box value))
+  (tuatara.frontend::put-number box (or files-count (length files)) 2)
+  (dolist (path files)
+    (tuatara.frontend::put-text box path) (tuatara.frontend::put-number box 0 4) (tuatara.frontend::put-number box 0 4))
+  (dolist (paths (list diff merge))
+    (tuatara.frontend::put-number box (length paths) 1)
+    (dolist (path paths) (tuatara.frontend::put-text box path))))
+
+(defparameter *hostile-attaches*
+  `((:taken)
+    (:taken :environment ,(loop for n below 128 collect (cons (format nil "GIT_V~d" n) "x")))
+    (:refused :environment ,(loop for n below 129 collect (cons (format nil "GIT_V~d" n) "x")))
+    (:refused :environment-count 65535 :environment (("PATH" . "/bin")))
+    (:refused :environment (("path" . "/bin")))
+    (:refused :environment (("9PATH" . "/bin")))
+    (:refused :environment (("PATH" . ,(format nil "/bin~c/x" (code-char 0)))))
+    (:refused :files ("relative.txt"))
+    (:refused :files (""))
+    (:refused :files (,(format nil "/tmp/a~cb" (code-char 0))))
+    (:refused :files (,(concatenate 'string "/" (make-string 4096 :initial-element #\a))))
+    (:refused :files-count 65535 :files ("/tmp/a"))
+    (:refused :directory "relative")
+    (:refused :directory "")
+    (:refused :terminal "/tmp/pts")
+    (:refused :terminal ,(format nil "/dev/pts/1~c" (code-char 0)))
+    (:refused :frames 0)
+    (:refused :frames 17)
+    (:refused :flags 64)
+    (:refused :diff ("/a"))
+    (:refused :merge ("/a" "/b" "/c"))
+    (:refused :descriptors 1)
+    (:refused :flags 17)
+    (:refused :flags 17 :descriptors 2)
+    (:taken :flags 17 :descriptors 1))
+  "Requests a client may send as it attaches, each (OUTCOME . KEYS): KEYS as
+PUT-RAW-REQUEST takes them, and :DESCRIPTORS, how many pipe ends are passed
+with the attach; OUTCOME, whether the editor takes the client or refuses it.")
+
+(defun pipe-closed-everywhere-p (in)
+  "True when the pipe read at IN has no writing end open anywhere (IN is closed after)."
+  (unwind-protect
+       (and (plusp (tuatara.io:poll-fd in 1 1000))
+            (let ((octet (tuatara.text:make-octets 1)))
+              (zerop (tuatara.io:with-octets-sap (sap octet) (sb-posix:read in sap 1)))))
+    (sb-posix:close in)))
+
+(defun hostile-attach (outcome keys)
+  "Attach a client whose request is KEYS (*HOSTILE-ATTACHES*) to a remote
+frontend: NIL when it is taken or refused as OUTCOME says, and every
+descriptor passed is closed once the frontend is gone; else what went wrong."
+  (let ((count (or (getf keys :descriptors) 0))
+        (request-keys (loop for (key value) on keys by #'cddr unless (eq key :descriptors) append (list key value))))
+    (multiple-value-bind (mine theirs) (tuatara.io:socket-pair)
+      (let ((pipes (loop repeat count collect (multiple-value-list (sb-posix:pipe))))
+            (box (tuatara.frontend::make-outbox)))
+        (tuatara.frontend::put-hello box)
+        (let ((at (tuatara.frontend::begin-message box :attach)))
+          (tuatara.frontend::put-facts box (tuatara.frontend.fake:make-fake-frontend) :whole t)
+          (apply #'put-raw-request box request-keys)
+          (tuatara.frontend::end-message box at)
+          ;; one at each octet from the attach's first: one passing carries one descriptor
+          (loop for pipe in pipes for k from 0
+                do (push (cons (+ at k) (sb-posix:dup (second pipe))) (tuatara.frontend::outbox-descriptors box))))
+        (unwind-protect
+             (let* ((sender (sb-thread:make-thread (lambda () (tuatara.frontend::send-outbox theirs box 5))))
+                    (remote (handler-case (tuatara.frontend:make-remote-frontend mine)
+                              ;; refused, the socket is the caller's to close
+                              (tuatara.frontend:remote-refused () (sb-posix:close mine) nil)))
+                    (got (if remote :taken :refused)))
+               (sb-thread:join-thread sender :timeout 10 :default nil)
+               (when remote
+                 (let ((input (tuatara.frontend:request-standard-input (tuatara.frontend:remote-request remote))))
+                   (when (integerp input) (sb-posix:close input)))
+                 (tuatara.frontend:frontend-stop remote))
+               (dolist (pipe pipes) (sb-posix:close (second pipe)))
+               (cond ((not (eq got outcome)) (format nil "~(~a~), not ~(~a~), for ~s" got outcome keys))
+                     ((notevery (lambda (pipe) (pipe-closed-everywhere-p (first pipe))) pipes)
+                      (format nil "a descriptor passed left open for ~s" keys))))
+          (sb-posix:close theirs))))))
+
+(defun hostile-attaches ()
+  "Every request of *HOSTILE-ATTACHES*, in turn: NIL when each is taken or
+refused as it should be and leaves no descriptor open, else what went wrong."
+  (loop for (outcome . keys) in *hostile-attaches*
+        thereis (hostile-attach outcome keys)))
+
 (defparameter *hostile-rounds* (list #'paste-past-the-most #'more-pictures-than-kept #'flood #'editor-busy
-                                     #'editor-at-the-bounds)
+                                     #'editor-at-the-bounds #'hostile-attaches)
   "The hostile but well-made rounds, run in turn.")
 
 ;;; The run
