@@ -88,7 +88,8 @@ daemon (DAEMON-NAME-P) or one too long for a socket."
 descriptor), the LISTENER socket it takes connections on (a descriptor); its
 QUEUE, the events of its frames; the THREAD taking connections; GREETING,
 how many are being greeted; ARRIVED, the remote frontends greeted and not
-yet given a frame, newest first, under MUTEX; NAMESPACE, the mount namespace
+yet given a frame, newest first, each a new client's or (:WINDOW REMOTE
+WHAT) for a window asked of a client, under MUTEX; NAMESPACE, the mount namespace
 it runs in."
   name lock listener
   (queue (tuatara.frontend:make-event-queue))
@@ -105,7 +106,9 @@ it runs in."
       (documentation 'daemon-queue 'function) "Where the events of DAEMON's frames go."
       (documentation 'daemon-thread 'function) "The thread taking DAEMON's connections."
       (documentation 'daemon-greeting 'function) "How many connections DAEMON is greeting."
-      (documentation 'daemon-arrived 'function) "The remote frontends greeted and not yet given a frame, newest first."
+      (documentation 'daemon-arrived 'function)
+      "The remote frontends greeted and not yet given a frame, newest first; a window asked for as
+\(:WINDOW REMOTE WHAT)."
       (documentation 'daemon-mutex 'function) "Held while DAEMON's GREETING or ARRIVED change."
       (documentation 'daemon-namespace 'function)
       "The mount namespace DAEMON runs in, as TUATARA.IO:MOUNT-NAMESPACE gives it.")
@@ -153,8 +156,9 @@ not safe (DAEMON-FOLDER). Returns the DAEMON."
   (let ((lock (shiftf (daemon-lock daemon) nil)))
     (when lock (sb-posix:close lock)))
   ;; what was greeted and never given a frame is let go
-  (dolist (remote (sb-thread:with-mutex ((daemon-mutex daemon)) (shiftf (daemon-arrived daemon) '())))
-    (ignoring-errors-reported ("letting a client go") (tuatara.frontend:frontend-stop remote))))
+  (dolist (item (sb-thread:with-mutex ((daemon-mutex daemon)) (shiftf (daemon-arrived daemon) '())))
+    (ignoring-errors-reported ("letting a client go")
+      (tuatara.frontend:frontend-stop (if (consp item) (second item) item)))))
 
 ;;; Taking connections
 
@@ -200,47 +204,60 @@ this kernel cannot give the pidfd."
   "Take the new connection FD to DAEMON, whose editor is EDITOR: refused,
 saying why, when its peer may not be a client (PEER-REFUSAL), its mount
 namespace read as PEER-NAMESPACE reads it, when as many are greeted as may
-be at once (*MOST-GREETING*), or as many clients show the editor
-\(*MOST-CLIENTS*); else greeted on a thread of its own (GREET)."
+be at once (*MOST-GREETING*); else greeted on a thread of its own (GREET)."
   (multiple-value-bind (namespace pid) (peer-namespace fd)
     (let* ((uid (nth-value 1 (tuatara.io:peer-credentials fd)))
            (why (cond ((eq pid :unsupported)
                        "This kernel cannot tell the daemon who connected (Linux 6.5 or newer is needed)")
                       ((or (null pid) (null uid)) "The daemon could not tell who connected")
                       ((peer-refusal uid namespace :own-namespace (daemon-namespace daemon)))
-                      ((>= (daemon-greeting daemon) *most-greeting*) "Too many clients are attaching at once: try again")
-                      ((>= (live-client-count editor) *most-clients*)
-                       (format nil "The daemon is shown by ~d clients already, the most it takes" *most-clients*)))))
+                      ((>= (daemon-greeting daemon) *most-greeting*)
+                       "Too many clients are attaching at once: try again"))))
       (if why
           (progn (tuatara.runtime:debug-report :daemon "a connection refused (process ~a, user ~a): ~a" pid uid why)
                  (tuatara.frontend:refuse-connection fd why))
           (progn (sb-thread:with-mutex ((daemon-mutex daemon)) (incf (daemon-greeting daemon)))
-                 (tuatara.runtime:make-guarded-thread (lambda () (greet daemon fd)) :name "tuatara daemon greeting"))))))
+                 (tuatara.runtime:make-guarded-thread (lambda () (greet daemon editor fd pid))
+                                                      :name "tuatara daemon greeting"))))))
 
-(defun greet (daemon fd)
-  "Greet the new connection FD to DAEMON (TUATARA.FRONTEND:MAKE-REMOTE-FRONTEND)
-and hand its frontend to the editor, woken for it; a client refused or that
-says nothing it should has its connection closed. A connection that says it
-is another window of a client, asked for by the editor, is handed to the
-frame waiting for it (TUATARA.FRONTEND:TAKE-WINDOW-ASKED-FOR), and let go
-when none waits for it; it brings nothing to open, and the terminal it names
-is kept only when it may be lent (CHECKED-TERMINAL)."
+(defun greet (daemon editor fd pid)
+  "Greet the new connection FD to DAEMON, whose editor is EDITOR, from the
+process PID (TUATARA.FRONTEND:MAKE-REMOTE-FRONTEND), and hand its frontend to
+the editor, woken for it; a client refused or that says nothing it should
+has its connection closed. A connection that says it is another window of a
+client, asked for by the editor from that client's process, is handed on as
+that window (TUATARA.FRONTEND:TAKE-WINDOW-ASKED-FOR); it brings nothing to
+open, the terminal it names is kept only when it may be lent
+\(CHECKED-TERMINAL), and it is let go when no such window is waited for.
+A new client is let go when as many show the editor as may (*MOST-CLIENTS*)."
   (unwind-protect
        (handler-case
            (let* ((remote (tuatara.frontend:make-remote-frontend fd :queue (daemon-queue daemon)))
-                  (request (tuatara.frontend:remote-request remote)))
-             (if (tuatara.frontend:request-joins request)
-                 (progn (close-standard-input request)
-                        (setf (tuatara.frontend:request-terminal request)
-                              (checked-terminal (tuatara.frontend:request-terminal request)))
-                        (unless (tuatara.frontend:take-window-asked-for remote)
-                          (tuatara.runtime:debug-report :daemon "a window no one asked for let go")
-                          (setf (tuatara.frontend:remote-exit-code remote) 1
-                                (tuatara.frontend:remote-exit-words remote) "The daemon asked for no such window")
-                          (tuatara.frontend:frontend-stop remote)))
-                 (progn (sb-thread:with-mutex ((daemon-mutex daemon))
-                          (push remote (daemon-arrived daemon)))
-                        (tuatara.frontend:queue-push (daemon-queue daemon) (tuatara.frontend:make-event :tick)))))
+                  (request (tuatara.frontend:remote-request remote))
+                  (word (tuatara.frontend:request-joins request)))
+             (flet ((let-go (words)
+                      (setf (tuatara.frontend:remote-exit-code remote) 1
+                            (tuatara.frontend:remote-exit-words remote) words)
+                      (tuatara.frontend:frontend-stop remote))
+                    (hand-on (item)
+                      (sb-thread:with-mutex ((daemon-mutex daemon))
+                        (push item (daemon-arrived daemon)))
+                      (tuatara.frontend:queue-push (daemon-queue daemon) (tuatara.frontend:make-event :tick))))
+               (setf (tuatara.frontend:remote-pid remote) pid)
+               (if word
+                   (multiple-value-bind (asker what) (tuatara.frontend:take-window-asked-for word pid)
+                     (close-standard-input request)
+                     (setf (tuatara.frontend:request-terminal request)
+                           (checked-terminal (tuatara.frontend:request-terminal request)))
+                     (if asker
+                         (hand-on (list :window remote what))
+                         (progn (tuatara.runtime:debug-report :daemon "a window no one asked for let go")
+                                (let-go "The daemon asked for no such window"))))
+                   (if (>= (live-client-count editor) *most-clients*)
+                       (progn (close-standard-input request)
+                              (let-go (format nil "The daemon is shown by ~d clients already, the most it takes"
+                                              *most-clients*)))
+                       (hand-on remote)))))
          (tuatara.frontend:remote-refused (condition)
            (tuatara.runtime:debug-report :daemon "a client refused: ~a" (tuatara.frontend:remote-refused-words condition))
            (tuatara.frontend:shut-and-close fd))
@@ -334,19 +351,35 @@ may be lent (CHECKED-TERMINAL)."
 
 (defun take-in-clients (editor)
   "Tick function of a daemon (*TICK-FUNCTIONS*): give each client greeted
-since a frame of EDITOR (ATTACH-CLIENT), each apart: one that cannot be
-attached is let go, its standard input closed, and the others are attached.
-Wants no call of its own: a client greeted wakes the editor."
+since a frame of EDITOR (ATTACH-CLIENT), and each window a client opened as
+asked its frame (OPEN-FRAME-ASKED-FOR), each apart: one that cannot be
+attached is let go, its standard input closed. A window asked for that has
+not come in time is no longer waited for, and that is said in a frame of the
+client that asked. Wants a call of
+its own only while a window is waited for: what is greeted wakes the editor."
   (let ((daemon *daemon*))
     (when (and daemon (daemon-arrived daemon))
-      (dolist (remote (reverse (sb-thread:with-mutex ((daemon-mutex daemon)) (shiftf (daemon-arrived daemon) '()))))
-        (handler-case (attach-client editor remote)
-          (error (condition)
-            (tuatara.runtime:debug-report :daemon "a client could not be attached: ~a"
-                                          (tuatara.runtime:failure-words condition))
-            (close-standard-input (tuatara.frontend:remote-request remote))
-            (ignoring-errors-reported ("letting a client go") (tuatara.frontend:frontend-stop remote)))))))
-  nil)
+      (dolist (item (reverse (sb-thread:with-mutex ((daemon-mutex daemon)) (shiftf (daemon-arrived daemon) '()))))
+        (let ((remote (if (consp item) (second item) item)))
+          (handler-case (if (consp item)
+                            (open-frame-asked-for editor remote (third item))
+                            (attach-client editor remote))
+            (error (condition)
+              (tuatara.runtime:debug-report :daemon "a client could not be attached: ~a"
+                                            (tuatara.runtime:failure-words condition))
+              (close-standard-input (tuatara.frontend:remote-request remote))
+              (ignoring-errors-reported ("letting a client go") (tuatara.frontend:frontend-stop remote)))))))
+    (multiple-value-bind (late next) (tuatara.frontend:windows-not-come)
+      ;; said in a frame of the client that asked, when it is still there
+      (dolist (what late)
+        (let ((frame (first (client-frames editor (first what)))))
+          (when (and frame daemon)
+            (tuatara.frontend:queue-push
+             (daemon-queue daemon)
+             (tuatara.frontend:make-event :said :frame frame
+                                                :text (format nil "The window asked for did not open within ~d seconds"
+                                                              tuatara.frontend:*window-seconds*))))))
+      next)))
 
 (defun start-client (editor client request)
   "Do what CLIENT of EDITOR asked for as it attached, REQUEST, in its frame:

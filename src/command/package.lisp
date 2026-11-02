@@ -34,7 +34,7 @@
            #:*gutter-providers* #:gutter-width #:window-margin-for #:gutter-cells #:*ruler-functions*
            #:editor-minibuffer-prompt #:editor-minibuffer-text #:editor-minibuffer-point
            ;; windows
-           #:editor-windows #:frames-windows #:editor-frames #:editor-frame #:frame-window #:open-frame #:*most-frames* #:remove-frame
+           #:editor-windows #:frames-windows #:editor-frames #:editor-frame #:frame-window #:open-frame #:open-frame-asked-for #:*most-frames* #:remove-frame
            #:do-frames-windows #:*question-variables*
            ;; clients
            #:client #:client-p #:make-client #:current-client #:editor-clients #:frame-client #:client-frontend #:client-remote

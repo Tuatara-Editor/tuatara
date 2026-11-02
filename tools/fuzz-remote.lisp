@@ -4,8 +4,8 @@
 ;;;; Loaded by tools/fuzz-remote.sh, which sets the limits. Records what an
 ;;;; editor sends a client over a few frames (names, every face, rows, kept
 ;;;; rows, a cursor, a title, a question, its settings, another window asked
-;;;; for) and what a client sends an editor
-;;;; (a hello, its screen, every kind of event, pieces of a paste, answers),
+;;;; for) and what a client sends an editor (a hello, its screen, every kind
+;;;; of event, pieces of a paste, answers, a window it does not open),
 ;;;; spoils copies ROUNDS times from SEED (octets changed, cut, put in,
 ;;;; lengths and counts made huge, messages repeated, mixed and made up) and
 ;;;; reads each as the other end would: the editor's reader acting on what a
@@ -136,6 +136,7 @@ every kind, a paste in pieces and answers."
     (tuatara.frontend::put-answer box 1 " and more")
     (tuatara.frontend::put-answer box 2 3)
     (tuatara.frontend::put-answer box 3 nil)
+    (tuatara.frontend::put-no-window box "W4XK2Q9" "the client shows 32 windows, the most it opens")
     (let ((at (tuatara.frontend::begin-message box :detach)))
       (tuatara.frontend::end-message box at))
     (outbox-octets box)))

@@ -21,9 +21,9 @@ in the editor, for what the client's screen is.")
   "The seconds the editor waits for a client to answer a question (the text
 of its clipboard) before taking it as having none.")
 
-(defparameter *window-seconds* 5
-  "The seconds the editor waits for a client it asked for another window to
-open it and attach it, before giving up on it.")
+(defparameter *window-seconds* 10
+  "The seconds a client asked for another window has to open it and attach it,
+before it is no longer waited for.")
 
 (defparameter *stall-seconds* 600
   "The seconds a client may take to take in what it was sent before it is let
@@ -223,6 +223,8 @@ it, what the client sends is not read until the editor has taken some.")
                :documentation "Words the client says as it exits when this frontend stops, or NIL.")
    (request :initform (make-request) :accessor remote-request
             :documentation "What the client asked for as it attached (REQUEST).")
+   (pid :initform nil :accessor remote-pid
+        :documentation "The process the client connected from, as the system said, or NIL.")
    (settings-sent :initform nil :accessor remote-settings-sent
                   :documentation "The values of *DISPLAY-SETTINGS* as last told the client, in their order.")
    (inbox :initform nil :accessor remote-inbox
@@ -236,7 +238,8 @@ reading the client's events from it (MAKE-REMOTE-FRONTEND)."))
 
 (setf (documentation 'remote-exit-code 'function) "The code the client of the remote frontend F exits with when F stops."
       (documentation 'remote-exit-words 'function) "What the client of the remote frontend F says as it exits, or NIL."
-      (documentation 'remote-request 'function) "What the client of the remote frontend F asked for as it attached (REQUEST).")
+      (documentation 'remote-request 'function) "What the client of the remote frontend F asked for as it attached (REQUEST)."
+      (documentation 'remote-pid 'function) "The process the client of the remote frontend F connected from, or NIL.")
 
 (defmethod initialize-instance :after ((f remote-frontend) &key)
   (setf (remote-stopping f) (lambda () (or (remote-closing f) (remote-closed f)))))
@@ -410,6 +413,10 @@ the screen is now to REMOTE-FACTS. NIL when the client is going."
                  (unless more (setf (remote-answer remote) (and (stringp whole) whole))))
                (setf (remote-answer remote) answer))
            (sb-thread:condition-broadcast (remote-moved remote)))))
+     t)
+    (:no-window (let ((word (take-text inbox 64)) (words (take-text inbox 1024)))
+                  (message-read inbox)
+                  (window-declined remote word words))
      t)
     (:detach (message-read inbox) nil)
     ((:hello :attach) (malformed "a ~(~a~) message after the first" kind))))
@@ -626,44 +633,61 @@ client takes (+MOST-TEXT+), or left out."
 ;;; Another window for a client, which it attaches as a connection of its own
 
 (defvar *windows-asked-for* '()
-  "The windows asked of clients and not yet attached, each (WORD . REMOTE):
-the word the client was given for it, and the remote frontend of its
-connection once it attached, else NIL.")
+  "The windows asked of clients and not yet attached, each (WORD ASKER WHAT
+DEADLINE): the word the client was given for it, the remote frontend asked,
+what the asking kept with it (FRONTEND-ASK-ANOTHER), and the internal real
+time past which it is no longer waited for.")
 
 (defvar *windows-asked-lock* (sb-thread:make-mutex :name "windows asked for")
   "Held while *WINDOWS-ASKED-FOR* changes.")
 
-(defvar *windows-asked-moved* (sb-thread:make-waitqueue :name "windows asked for")
-  "Signalled when a window asked for has attached.")
-
-(defmethod frontend-another ((f remote-frontend))
-  ;; a client in a window opens another, a connection of its own attached with the word it was given
-  (when (facts-window (remote-facts f))
-    (let ((entry (list (tuatara.io:random-name))))
-      (sb-thread:with-mutex (*windows-asked-lock*) (push entry *windows-asked-for*))
-      (queue-message f :another (lambda (box) (put-text box (car entry) 64)))
+(defmethod frontend-ask-another ((f remote-frontend) what)
+  ;; a client in a window opens another, a connection of its own attached with the word it is given
+  (when (and (facts-window (remote-facts f)) (not (remote-ended f)) (not (remote-closing f)))
+    (let ((word (tuatara.io:random-name)))
       (sb-thread:with-mutex (*windows-asked-lock*)
-        (loop with deadline = (tuatara.runtime:deadline-in *window-seconds*)
-              until (or (cdr entry) (remote-ended f) (tuatara.runtime:deadline-passed-p deadline))
-              do (tuatara.runtime:wait-on *windows-asked-moved* *windows-asked-lock*
-                                          (max 0.001 (tuatara.runtime:seconds-left deadline))))
-        (setf *windows-asked-for* (remove entry *windows-asked-for*))
-        (unless (cdr entry)
-          (tuatara.runtime:debug-report :remote "a client asked for another window opened none within ~d seconds"
-                                        *window-seconds*))
-        (cdr entry)))))
+        (push (list word f what (tuatara.runtime:deadline-in *window-seconds*)) *windows-asked-for*))
+      (queue-message f :another (lambda (box) (put-text box word 64))))))
 
-(defun take-window-asked-for (remote)
-  "Hand REMOTE, a new connection that says it is a window the editor asked a
-client for (REQUEST-JOINS), to the frame waiting for it (FRONTEND-ANOTHER);
-NIL when no window was asked for by its word, or it came too late."
-  (let ((word (request-joins (remote-request remote))))
-    (sb-thread:with-mutex (*windows-asked-lock*)
-      (let ((entry (and word (assoc word *windows-asked-for* :test #'equal))))
-        (when (and entry (null (cdr entry)))
-          (setf (cdr entry) remote)
-          (sb-thread:condition-broadcast *windows-asked-moved*)
-          t)))))
+(defun take-window-asked-for (word pid)
+  "The remote frontend asked for the window WORD names (FRONTEND-ASK-ANOTHER)
+and what was kept with it, two values, the request taken away, when the
+connection of the process PID brings it: the process the asking connection
+is of (REMOTE-PID), within *WINDOW-SECONDS*. NIL for any other word, process
+or time."
+  (sb-thread:with-mutex (*windows-asked-lock*)
+    (let ((entry (find word *windows-asked-for* :key #'first :test #'equal)))
+      (when (and entry (eql pid (remote-pid (second entry)))
+                 (not (tuatara.runtime:deadline-passed-p (fourth entry))))
+        (setf *windows-asked-for* (remove entry *windows-asked-for*))
+        (values (second entry) (third entry))))))
+
+(defun windows-not-come ()
+  "Take away the windows asked for that did not come within *WINDOW-SECONDS*,
+and return what was kept with each, as a list; as a second value, the seconds
+until the next of those waited for is due, or NIL when none is."
+  (sb-thread:with-mutex (*windows-asked-lock*)
+    (let ((late (remove-if-not (lambda (entry) (tuatara.runtime:deadline-passed-p (fourth entry)))
+                               *windows-asked-for*)))
+      (setf *windows-asked-for* (set-difference *windows-asked-for* late))
+      (values (mapcar #'third late)
+              (and *windows-asked-for*
+                   (reduce #'min *windows-asked-for*
+                           :key (lambda (entry) (max 0.01 (tuatara.runtime:seconds-left (fourth entry))))))))))
+
+(defun window-declined (remote word words)
+  "Take away the window asked of REMOTE's client by WORD, which the client
+said it does not open, why being WORDS; said in its frame. Nothing for a
+word it was not asked."
+  (when (sb-thread:with-mutex (*windows-asked-lock*)
+          (let ((entry (find-if (lambda (entry) (and (equal word (first entry)) (eq remote (second entry))))
+                                *windows-asked-for*)))
+            (when entry
+              (setf *windows-asked-for* (remove entry *windows-asked-for*))
+              t)))
+    (queue-push (remote-queue remote)
+                (make-event :said :frame (remote-frame remote)
+                                  :text (format nil "No other window was opened: ~a" (shown-words words))))))
 
 (defmethod frontend-terminal-device ((f remote-frontend))
   (and (not (facts-window (remote-facts f))) (request-terminal (remote-request f))))
@@ -803,8 +827,10 @@ newest first; ENDED, true once the editor is gone, and EXIT-CODE, the code
 it gave, EXIT-WORDS, what it said with it; FACTS, the facts last sent as
 octets; READER, the thread reading; MOVED, signalled when something has
 arrived or the editor is gone; SETTINGS, the settings the editor last said
-\(TAKE-SETTINGS); ANOTHER, a function of a word, which opens another window
-attached with that word when the editor asks for one, or NIL."
+\(TAKE-SETTINGS); ANOTHER, a function of the client and a word, which opens
+another window attached with that word when the editor asks for one, or
+says it does not (DECLINE-WINDOW), or NIL; PAINTED, true once the editor
+has painted a frame on it."
   (fd -1 :type fixnum :read-only t)
   (frontend nil :read-only t)
   (inbox nil :read-only t)
@@ -821,7 +847,8 @@ attached with that word when the editor asks for one, or NIL."
   (facts (make-outbox) :read-only t)
   (reader nil)
   (settings '())
-  (another nil))
+  (another nil)
+  (painted nil))
 
 (setf (documentation '%make-remote-client 'function) "A REMOTE-CLIENT of the editor at FD painting on FRONTEND."
       (documentation 'remote-client-p 'function) "True when OBJECT is a REMOTE-CLIENT."
@@ -842,7 +869,9 @@ attached with that word when the editor asks for one, or NIL."
       (documentation 'remote-client-exit-words 'function) "What the editor said as it told CLIENT to exit, or NIL."
       (documentation 'remote-client-settings 'function) "The settings CLIENT's editor last said, each (NAME . VALUE)."
       (documentation 'remote-client-another 'function)
-      "The function of a word that opens another window for CLIENT's editor, or NIL.")
+      "The function of CLIENT and a word that opens another window for CLIENT's editor, or NIL."
+      (documentation 'remote-client-painted 'function)
+      "True once CLIENT's editor has painted a frame on it: a window asked for and let go before is not.")
 
 (defun send-to-editor (client write)
   "Send CLIENT's editor the messages WRITE, a function of the box, writes;
@@ -905,8 +934,8 @@ its screen is and what it asks for, REQUEST; STANDARD-INPUT, a descriptor
 passed with it to be read into a buffer (REQUEST-STANDARD-INPUT then true),
 is closed here once passed. GREETED is what GREET-EDITOR read of FD, when it
 was called before FRONTEND was made, else it is called here. ANOTHER, a
-function of a word, opens another window when the editor asks for one
-\(REMOTE-CLIENT-ANOTHER). Signals REMOTE-REFUSED when the editor is of
+function of the client and a word, opens another window when the editor
+asks for one (REMOTE-CLIENT-ANOTHER). Signals REMOTE-REFUSED when the editor is of
 another build, refuses the client or says nothing it should; FD is then the
 caller's to close."
   (destructuring-bind (inbox settings)
@@ -1079,7 +1108,8 @@ done, and answer its questions, in the order they came."
     (loop for (item . later) on items
           do (ecase (first item)
                (:faces (take-faces (rest item)))
-               (:frame (frontend-begin-frame frontend)
+               (:frame (setf (remote-client-painted client) t)
+                (frontend-begin-frame frontend)
                 (dolist (call (rest item))
                   (ecase (first call)
                     (:row (destructuring-bind (row string face spans scales over parts) (rest call)
@@ -1099,12 +1129,24 @@ done, and answer its questions, in the order they came."
                             (frontend-settings-changed frontend))
                 (setf (remote-client-settings client) (second item)))
                (:another (let ((open (remote-client-another client)))
-                           (when open (funcall open (second item)))))
+                           (if open
+                               (funcall open client (second item))
+                               (send-to-editor client (lambda (box)
+                                                        (put-no-window box (second item) "this client opens none"))))))
+               (:decline (send-to-editor client (lambda (box) (put-no-window box (second item) (third item)))))
                ;; taken again where it was lent (LEND-TERMINAL), else nothing to take
                (:take-back)
                (:ask (if (eq (third item) :lend)
                          (lend-terminal client (second item) (fourth item) later)
                          (apply #'answer-editor client (rest item))))))))
+
+(defun decline-window (client word words)
+  "Have CLIENT tell its editor the window it asked for by WORD is not opened,
+why being WORDS: from any thread, said on the thread painting CLIENT."
+  (sb-thread:with-mutex ((remote-client-lock client))
+    (push (list :decline word words) (remote-client-arrived client))
+    (sb-thread:condition-broadcast (remote-client-moved client)))
+  (frontend-wake (remote-client-frontend client)))
 
 (defun send-event (client event)
   "Send CLIENT's editor EVENT, read from CLIENT's frontend, when it is of a

@@ -58,12 +58,12 @@ wait for it; true when it ended."
          (stop-test-daemon ,thread)))))
 
 (defun attach-test-client (name &key (directory "/tmp/") files safe merge diff stop terminal environment standard-input
-                                     (width 70) (height 14) window joins another)
+                                     (width 70) (height 14) window joins another (frames 1))
   "A client of the daemon NAME on a fake screen of WIDTH by HEIGHT, a window
 when WINDOW, asking for what a client started so asks for (FILES, each a
 path or (PATH LINE COLUMN), SAFE, MERGE, DIFF, STOP, TERMINAL, ENVIRONMENT,
 STANDARD-INPUT, a descriptor passed, JOINS, the word of a window the daemon
-asked for), ANOTHER opening a window the daemon asks for; three values: the
+asked for, FRAMES), ANOTHER opening a window the daemon asks for; three values: the
 fake screen, the thread running the client, which returns its exit code and
 words as a list, and the client."
   (let ((local (make-instance 'queued-fake-frontend :width width :height height :font-steps (and window 0)))
@@ -75,7 +75,7 @@ words as a list, and the client."
                              :directory (namestring directory) :terminal terminal :environment environment
                              :files (mapcar (lambda (file) (if (consp file) file (list (namestring file) nil nil))) files)
                              :safe safe :merge merge :diff diff :stop stop :wait t
-                             :standard-input (and standard-input t) :joins joins)
+                             :standard-input (and standard-input t) :joins joins :frames frames)
                    :standard-input standard-input :another another)))
       (values local
               (sb-thread:make-thread (lambda () (multiple-value-list (tuatara.frontend:run-remote-client client)))
@@ -102,16 +102,21 @@ most SECONDS; true when it does."
 list, waiting SECONDS at most; :LATE when it has not ended."
   (sb-thread:join-thread runner :timeout seconds :default :late))
 
-(defun window-opener (name)
-  "Two values: a function of a word that opens another window of a test
-client of the daemon NAME, attached with that word, as a client in a window
-does when the daemon asks it for one; and a cell whose car is the list of
-the windows it opened, newest first, each (FAKE-SCREEN RUNNER) as
-ATTACH-TEST-CLIENT gives them."
+(defun window-opener (name &key (after 0))
+  "Two values: a function of a client and a word that opens another window of
+a test client of the daemon NAME, attached with that word AFTER seconds, as
+a client in a window does when the daemon asks it for one; and a cell whose
+car is the list of the windows it opened, newest first, each (FAKE-SCREEN
+RUNNER CLIENT) as ATTACH-TEST-CLIENT gives them."
   (let ((opened (list '())))
-    (values (lambda (word)
-              (multiple-value-bind (local runner) (attach-test-client name :window t :joins word)
-                (push (list local runner) (car opened))))
+    (values (lambda (client word)
+              (declare (ignore client))
+              (flet ((open-it ()
+                       (multiple-value-bind (local runner window) (attach-test-client name :window t :joins word)
+                         (push (list local runner window) (car opened)))))
+                (if (plusp after)
+                    (sb-thread:make-thread (lambda () (sleep after) (open-it)) :name "test window opener")
+                    (open-it))))
             opened)))
 
 (defun live-client-frames ()
@@ -608,7 +613,8 @@ ended have: the frames shown, the one with no screen left out."
             (true (shows local "kaka text"))
             (type-keys local "C-x 5 2")
             (true (wait-until (lambda () (car opened)) 10) "no other window was opened")
-            (destructuring-bind (&optional second second-runner) (first (car opened))
+            (destructuring-bind (&optional second second-runner &rest window) (first (car opened))
+              (declare (ignore window))
               (when second
                 (true (shows second "kaka text"))
                 (is = 2 (live-client-frames))
@@ -637,7 +643,8 @@ ended have: the frames shown, the one with no screen left out."
             (true (shows local "Please enter"))
             (type-keys local "C-x 5 2")
             (true (wait-until (lambda () (car opened)) 10) "no other window was opened")
-            (destructuring-bind (&optional second second-runner) (first (car opened))
+            (destructuring-bind (&optional second second-runner &rest window) (first (car opened))
+              (declare (ignore window))
               (when second
                 (true (shows second "Please enter"))
                 (type-at local (tuatara.frontend:make-event :close))
@@ -651,9 +658,11 @@ ended have: the frames shown, the one with no screen left out."
 (define-test (daemon window-asked-for-by-no-one)
   ;; a connection saying it is a window the daemon asked for, by a word it never gave, is let go with 1
   (with-test-daemon (name)
-    (multiple-value-bind (local runner) (attach-test-client name :window t :joins "NOSUCHWORD")
+    (multiple-value-bind (local runner client) (attach-test-client name :window t :joins "NOSUCHWORD")
       (declare (ignore local))
       (is equal '(1 "The daemon asked for no such window") (client-ends runner))
+      ;; never painted: a client in windows takes no exit code from it
+      (false (tuatara.frontend:remote-client-painted client))
       (is = 0 (live-client-frames)))))
 
 (define-test (daemon terminal-client-asked-for-no-window)
@@ -741,3 +750,81 @@ ended have: the frames shown, the one with no screen left out."
                                (true (search "from the desktop" (tuatara.buffer:buffer-string buffer)))
                                (true (search "zz" (tuatara.buffer:buffer-string buffer)))))
                            (true (tuatara.defaults::buffer-visiting dropped) "the file dropped opened")))))))))
+
+(defmacro with-window-seconds ((seconds) &body body)
+  "Run BODY with a window asked of a client waited for SECONDS at most."
+  (let ((was (gensym "WAS")))
+    `(let ((,was tuatara.frontend:*window-seconds*))
+       (setf tuatara.frontend:*window-seconds* ,seconds)
+       (unwind-protect (progn ,@body)
+         (setf tuatara.frontend:*window-seconds* ,was)))))
+
+(defun seconds-until (test &optional (seconds 20))
+  "The seconds until TEST, a function of none, is true, waiting SECONDS at most; NIL when it never was."
+  (let ((began (get-internal-real-time)))
+    (and (wait-until test seconds) (tuatara.runtime:seconds-since began))))
+
+(define-test (daemon window-declined-at-once)
+  ;; a client in a window that opens no other window (as many open as it opens) says so at once: C-x 5 2
+  ;; returns at once, the frame is not made, and the reason is said
+  (with-test-daemon (name)
+    (multiple-value-bind (local runner)
+        (attach-test-client name :window t
+                                 :another (lambda (client word)
+                                            (tuatara.frontend:decline-window
+                                             client word "the client shows 32 windows, the most it opens")))
+      (true (shows local "scratch"))
+      (type-keys local "C-x 5 2")
+      (let ((said (seconds-until (lambda () (showing-now local "No other window was opened")) 10)))
+        (true said "the refusal was not said")
+        (true (and said (< said 2)) "said after ~a seconds" said))
+      (true (showing-now local "32 windows"))
+      (is = 1 (live-client-frames))
+      (type-keys local "C-x C-c")
+      (is equal '(0 nil) (client-ends runner)))))
+
+(define-test (daemon window-never-coming-holds-no-one)
+  ;; a client asked for a window that never comes holds up neither itself nor another client: each types on
+  ;; at once; past the wait it is said, and the window coming later still is let go, never painted
+  (with-window-seconds (2)
+    (with-test-daemon (name)
+      (multiple-value-bind (open opened) (window-opener name :after 4)
+        (multiple-value-bind (asking asking-runner) (attach-test-client name :window t :another open)
+          (multiple-value-bind (other other-runner) (attach-test-client name)
+            (true (shows asking "scratch"))
+            (true (shows other "scratch"))
+            (type-keys asking "C-x 5 2")
+            (type-keys other "i k i w i <escape>")
+            (let ((typed (seconds-until (lambda () (showing-now other "kiwi")) 10)))
+              (true (and typed (< typed 1)) "typed in another client after ~a seconds" typed))
+            (type-keys asking "i r u r u <escape>")
+            (let ((typed (seconds-until (lambda () (showing-now asking "ruru")) 10)))
+              (true (and typed (< typed 1)) "typed in the asking client after ~a seconds" typed))
+            (true (shows asking "did not open within 2 seconds" 10))
+            ;; the window coming late: let go, its client never painted
+            (true (wait-until (lambda () (car opened)) 10))
+            (destructuring-bind (&optional late late-runner late-client) (first (car opened))
+              (declare (ignore late))
+              (when late-runner
+                (is equal '(1 "The daemon asked for no such window") (client-ends late-runner))
+                (false (tuatara.frontend:remote-client-painted late-client))))
+            (is = 2 (live-client-frames))
+            (type-keys other "C-x C-c")
+            (client-ends other-runner)
+            (type-keys asking "C-x C-c")
+            (is equal '(0 nil) (client-ends asking-runner))))))))
+
+(define-test (daemon frames-from-a-window-client-at-once)
+  ;; --frames 3 from a client in a window: the windows asked for, and what is typed taken at once, not
+  ;; after waiting for each window
+  (with-window-seconds (2)
+    (with-test-daemon (name)
+      (multiple-value-bind (local runner)
+          (attach-test-client name :window t :frames 3 :another (lambda (client word) (declare (ignore client word))))
+        (true (shows local "scratch"))
+        (type-keys local "i k i w i <escape>")
+        (let ((typed (seconds-until (lambda () (showing-now local "kiwi")) 20)))
+          (true (and typed (< typed 1)) "typed after ~a seconds" typed))
+        (is = 1 (live-client-frames))
+        (type-keys local "C-x C-c")
+        (is equal '(0 nil) (client-ends runner))))))

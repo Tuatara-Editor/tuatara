@@ -21,6 +21,7 @@ editor of different numbers, or of different builds, do not talk.")
   '((:hello 1 1024 1024)
     ;; from a client to the editor
     (:attach 2 1048576 nil) (:facts 3 65536 nil) (:event 4 65536 nil) (:answer 5 65536 nil) (:detach 6 64 nil)
+    (:no-window 7 2048 nil)
     ;; from the editor to a client
     (:frame 16 nil 16777216) (:names 17 nil 1048576) (:faces 18 nil 1048576) (:picture 19 nil 64)
     (:title 20 nil 65536) (:selection 21 nil 16777216) (:toggle 22 nil 64) (:raise 23 nil 64)
@@ -539,6 +540,14 @@ past their bounds are the client's to refuse before it is sent."
     (dolist (path paths) (put-text box path +most-path+)))
   (when (request-joins request)
     (put-text box (request-joins request) 64)))
+
+(defun put-no-window (box word words)
+  "Put a message in BOX telling the editor the window asked for by WORD is not
+opened, why being WORDS."
+  (let ((at (begin-message box :no-window)))
+    (put-text box word 64)
+    (put-text box words 1024)
+    (end-message box at)))
 
 (defun window-word-p (word)
   "True when WORD may be the word a window asked for is known by: one to 64

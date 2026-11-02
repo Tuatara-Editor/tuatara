@@ -14,7 +14,10 @@ place of the one before, the frames taking turns on the terminal, the mode
 line naming the one shown (F1, F2). Each frame has its own windows, echo area
 and questions; the buffers are the same in every frame, a buffer shown in two
 of them one buffer with a place of its own in each. \\[delete-frame] closes
-it, \\[other-frame] goes from one to the next."
+it, \\[other-frame] goes from one to the next. In a window of an editor
+running in the background (tuatara --client --gui), the new window opens a
+moment later, once the client has opened it, and the echo area says
+\"Opening a window\" meanwhile; nothing waits for it."
   (open-frame *editor*))
 
 (define-command delete-frame ()

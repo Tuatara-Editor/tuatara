@@ -157,13 +157,47 @@ for, and those of the session kept.")
 else the buffer of the window worked in, and with SELECT make it the one
 worked in, brought before the others; returns it. Where the display shows
 one frame at a time, as a terminal does, the new frame takes turns on it with
-the others (FRAME-TAKING-TURNS-P): with SELECT it is shown in their place."
-  (let ((frontend (or (tuatara.frontend:frontend-another (editor-frontend editor)) (editor-frontend editor))))
-    (let ((frame (if buffer (add-frame editor frontend buffer) (add-frame editor frontend))))
-      (when select
-        (select-frame editor frame)
-        (tuatara.frontend:frontend-raise frontend))
-      frame)))
+the others (FRAME-TAKING-TURNS-P): with SELECT it is shown in their place.
+A client of an editor running in the background in a window of its own is
+asked for another window, and NIL returned at once: the frame opens when the
+window comes (OPEN-FRAME-ASKED-FOR), and the echo area says so meanwhile."
+  (let* ((here (editor-frontend editor))
+         (another (tuatara.frontend:frontend-another here))
+         (window (editor-window editor))
+         (shown (or buffer (tuatara.display:window-buffer window))))
+    (cond ((and (not another)
+                (tuatara.frontend:frontend-ask-another
+                 here (list (current-client editor) shown
+                            (and (eq shown (tuatara.display:window-buffer window))
+                                 (tuatara.display:window-point window))
+                            select)))
+           (message "Opening a window")
+           nil)
+          (t (let* ((frontend (or another here))
+                    (frame (add-frame editor frontend shown)))
+               (when select
+                 (select-frame editor frame)
+                 (tuatara.frontend:frontend-raise frontend))
+               frame)))))
+
+(defun open-frame-asked-for (editor frontend what)
+  "Open the frame of EDITOR on FRONTEND, the window a client opened as asked
+\(OPEN-FRAME): WHAT, as it was asked, (CLIENT BUFFER POINT SELECT), says the
+client it is for, the buffer it shows and where, and whether it is the one
+worked in then. A client that has ended meanwhile, or a buffer killed, has
+the window let go of instead."
+  (destructuring-bind (client buffer point select) what
+    (if (or (and client (client-ended client)) (not (live-buffer-p buffer)))
+        (tuatara.runtime:ignoring-errors-reported ("letting a window go")
+          (tuatara.frontend:frontend-stop frontend))
+        (let ((frame (add-frame editor frontend buffer)))
+          (setf (frame-client frame) client)
+          (when point
+            (setf (tuatara.display:window-point (frame-window frame)) (min point (tuatara.buffer:buffer-size buffer))))
+          (when select
+            (select-frame editor frame)
+            (tuatara.frontend:frontend-raise frontend))
+          frame))))
 
 (defmethod tuatara.frontend:events-held ((frame frame))
   (+ (length (frame-unread frame)) (count-if #'tuatara.frontend:event-p (frame-deferred frame))))

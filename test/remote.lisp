@@ -1208,3 +1208,26 @@ what it sets is undone after."
       (garbage 100)
       (let ((per-look (/ (- (min (garbage 20000) (garbage 20000)) (min (garbage 2000) (garbage 2000))) 18000.0)))
         (true (< per-look 1) "~,2f octets a look" per-look)))))
+
+(define-test (remote window-asked-for-by-its-process-alone)
+  ;; a window asked of a client is taken by its word, from the process of the connection asked, once; one
+  ;; not come in time is no longer waited for
+  (let ((remote (make-instance 'tuatara.frontend:remote-frontend :fd -1)))
+    (setf (tuatara.frontend::facts-window (tuatara.frontend::remote-facts remote)) t
+          (tuatara.frontend:remote-pid remote) 4242)
+    (true (tuatara.frontend:frontend-ask-another remote :shown))
+    (let ((word (first (find remote tuatara.frontend::*windows-asked-for* :key #'second))))
+      (false (tuatara.frontend:take-window-asked-for word 4243) "another process")
+      (false (tuatara.frontend:take-window-asked-for "NOSUCHWORD" 4242) "another word")
+      (multiple-value-bind (asker what) (tuatara.frontend:take-window-asked-for word 4242)
+        (is eq remote asker)
+        (is eq :shown what))
+      (false (tuatara.frontend:take-window-asked-for word 4242) "taken once"))
+    (let ((tuatara.frontend:*window-seconds* 0))
+      (true (tuatara.frontend:frontend-ask-another remote :late)))
+    (let ((word (first (find remote tuatara.frontend::*windows-asked-for* :key #'second))))
+      (is equal '(:late) (tuatara.frontend:windows-not-come))
+      (false (tuatara.frontend:take-window-asked-for word 4242) "too late"))
+    ;; a terminal is asked for none
+    (setf (tuatara.frontend::facts-window (tuatara.frontend::remote-facts remote)) nil)
+    (false (tuatara.frontend:frontend-ask-another remote :shown))))

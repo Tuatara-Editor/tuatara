@@ -566,9 +566,11 @@ editor and what it paints shown. Each further window the editor asks for
 \(another frame) is a connection of its own, which CONNECT, a function of no
 arguments, makes: a socket, or NIL when none can be made. GTK runs on this
 thread, which must be the main one; each window is painted and read on a
-thread of its own. Returns once every window has closed: the exit code the
-editor gave the window that closed last, or NIL when the editor went without
-giving one, and what it said with it."
+thread of its own; a window it will not open, it says so to the editor at
+once. Returns once every window has closed: the exit code the editor gave
+the window it painted that closed last, or NIL when the editor went without
+giving one, and what it said with it; a window let go of before it was
+painted (one that came too late) gives none."
   (log-stderr-unless-terminal)
   (load-gtk-libraries)
   (with-gtk-float-traps
@@ -587,7 +589,8 @@ giving one, and what it said with it."
                               ;; its events stand for the editor's frame, as an editor's window's do
                               (setf (tuatara.frontend:frontend-frame f) client)
                               (multiple-value-bind (exit said) (tuatara.frontend:run-remote-client client)
-                                (sb-thread:with-mutex (lock) (setf code exit words said)))))
+                                (when (tuatara.frontend:remote-client-painted client)
+                                  (sb-thread:with-mutex (lock) (setf code exit words said))))))
                         (tuatara.frontend:remote-refused (condition)
                           (tuatara.runtime:debug-report :remote "a window refused: ~a"
                                                         (tuatara.frontend:remote-refused-words condition))
@@ -595,25 +598,35 @@ giving one, and what it said with it."
                    (tuatara.frontend:frontend-stop f)
                    (sb-thread:with-mutex (lock) (decf showing))
                    (g-idle-add (callback on-editor-ended) (null-pointer))))
-               (another (word)
-                 ;; asked for by the editor: a connection of its own, attached with WORD
-                 (let ((fd (and (< (sb-thread:with-mutex (lock) showing) +most-client-windows+) (funcall connect))))
-                   (when fd
-                     (sb-thread:with-mutex (lock) (incf showing))
-                     (tuatara.runtime:make-guarded-thread
-                      (lambda ()
-                        ;; the settings this client took as its first window opened stay as they are
-                        (let ((greeted (handler-case (tuatara.frontend:greet-editor fd :take nil)
-                                         (tuatara.frontend:remote-refused () nil))))
-                          (if greeted
-                              (show (let ((f (make-gtk-frontend))) (setf (gtk-renderer-checked f) t) f) fd greeted
-                                    (tuatara.frontend:make-request
-                                     :directory (tuatara.frontend:request-directory request) :joins word)
-                                    nil)
-                              (progn (tuatara.frontend:shut-and-close fd)
-                                     (sb-thread:with-mutex (lock) (decf showing))
-                                     (g-idle-add (callback on-editor-ended) (null-pointer))))))
-                      :name "tuatara window client greeting" :niceness 0)))))
+               (another (asking word)
+                 ;; asked for by the editor: a connection of its own, attached with WORD, or word that it is not
+                 (let* ((room (< (sb-thread:with-mutex (lock) showing) +most-client-windows+))
+                        (fd (and room (funcall connect))))
+                   (if (null fd)
+                       (tuatara.frontend:decline-window
+                        asking word (if room
+                                        "the client could not connect again"
+                                        (format nil "the client shows ~d windows, the most it opens"
+                                                +most-client-windows+)))
+                       (progn
+                         (sb-thread:with-mutex (lock) (incf showing))
+                         (tuatara.runtime:make-guarded-thread
+                          (lambda ()
+                            ;; the settings this client took as its first window opened stay as they are
+                            (let ((greeted (handler-case (tuatara.frontend:greet-editor fd :take nil)
+                                             (tuatara.frontend:remote-refused (condition)
+                                               (tuatara.frontend:decline-window
+                                                asking word (tuatara.frontend:remote-refused-words condition))
+                                               nil))))
+                              (if greeted
+                                  (show (let ((f (make-gtk-frontend))) (setf (gtk-renderer-checked f) t) f) fd greeted
+                                        (tuatara.frontend:make-request
+                                         :directory (tuatara.frontend:request-directory request) :joins word)
+                                        nil)
+                                  (progn (tuatara.frontend:shut-and-close fd)
+                                         (sb-thread:with-mutex (lock) (decf showing))
+                                         (g-idle-add (callback on-editor-ended) (null-pointer))))))
+                          :name "tuatara window client greeting" :niceness 0))))))
         (let ((f (open-first-window)))
           (setf (gtk-renderer-checked f) t)
           (tuatara.runtime:make-guarded-thread (lambda () (show f fd greeted request standard-input))
