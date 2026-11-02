@@ -31,7 +31,12 @@ its tags, those it inherits first; :LOCAL-TAGS, its own, on its headline;
 :SCHEDULED, :DEADLINE and :CLOSED, the texts of those timestamps, or NIL;
 :PROPERTIES, an alist of names and values; :STAMPS, the texts of the active
 timestamps in its text, its planning line's left out; :RANGES, its ranges of
-days, each (FROM TO), the two timestamps' texts."
+days, each (FROM TO), the two timestamps' texts; :KIND, :HEADLINE, or
+:CHECKBOX for a list item with a checkbox kept as a task; :PRIORITY, Org's
+number for it, 2000 for [#A], 1000 for [#B] and none, 0 for [#C];
+:CATEGORY, its category; :LOGS, its CLOSED: and CLOCK: lines, each (KIND
+TIMESTAMP DURATION END OPEN), KIND :CLOSED or :CLOCK, END the time a clock
+stopped, OPEN true for a clock still running."
   (ecase field
     (:file (agenda-entry-file entry))
     (:text (agenda-entry-text entry))
@@ -49,7 +54,11 @@ days, each (FROM TO), the two timestamps' texts."
     (:closed (agenda-entry-closed entry))
     (:properties (agenda-entry-properties entry))
     (:stamps (agenda-entry-stamps entry))
-    (:ranges (agenda-entry-ranges entry))))
+    (:ranges (agenda-entry-ranges entry))
+    (:kind (agenda-entry-kind entry))
+    (:priority (agenda-entry-priority entry))
+    (:category (agenda-entry-category entry))
+    (:logs (agenda-entry-logs entry))))
 
 (defun org-ts-get (ts field)
   "What the timestamp TS (as ORG-READ-TS reads one) holds for FIELD: :ACTIVE,
@@ -59,7 +68,9 @@ end counted on into the next; :HOUR and :MINUTE, its time, NIL without one;
 :END-HOUR and :END-MINUTE, the end of its time range, NIL without one;
 :REPEATER, how it repeats, :CUMULATE (+), :CATCH-UP (++) or :RESTART (.+), NIL
 when it does not; :REPEAT-VALUE and :REPEAT-UNIT, how often, the unit #\\h,
-#\\d, #\\w, #\\m or #\\y."
+#\\d, #\\w, #\\m or #\\y; :WARNING, how its warning counts, :ALL (-) or :FIRST
+\(--), NIL without one; :WARNING-VALUE and :WARNING-UNIT, how long before,
+in the same units."
   (ecase field
     (:active (org-ts-active ts))
     (:year (org-ts-year ts))
@@ -72,7 +83,10 @@ when it does not; :REPEAT-VALUE and :REPEAT-UNIT, how often, the unit #\\h,
     (:end-minute (org-ts-end-minute ts))
     (:repeater (org-ts-repeater ts))
     (:repeat-value (org-ts-repeat-value ts))
-    (:repeat-unit (org-ts-repeat-unit ts))))
+    (:repeat-unit (org-ts-repeat-unit ts))
+    (:warning (org-ts-warning ts))
+    (:warning-value (org-ts-warning-value ts))
+    (:warning-unit (org-ts-warning-unit ts))))
 
 (defun org-rule-get (rule field)
   "What the date by rule RULE (as ORG-READ-RULE reads one) holds for FIELD:
