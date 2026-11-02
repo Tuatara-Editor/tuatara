@@ -32,9 +32,11 @@
 ;;;; its owner alone, who owns the file and runs Tuatara), no save or putting
 ;;;; back holds it (each holds a lock on it throughout), and it fits the file:
 ;;;; the same file, born when it was, its length between the old and the new,
-;;;; last changed by the save. Anything else, such as another program having
-;;;; written the file since, is said and nothing written, and the file is not
-;;;; saved while the journal is there.
+;;;; last changed by the save: while a save writes, it marks its journal with
+;;;; the time every few seconds, so that a change to the file after the save
+;;;; was cut short is told from one the save made. Anything else, such as
+;;;; another program having written the file since, is said and nothing
+;;;; written, and the file is not saved while the journal is there.
 ;;;; FALLOC_FL_INSERT_RANGE and COLLAPSE_RANGE, which open or close a gap of
 ;;;; whole blocks, are not used: an edit of text is almost never a whole
 ;;;; number of blocks long and at a block boundary.
@@ -62,9 +64,13 @@ during such a save, another program that reads the file before Tuatara
 opens it again may find it half saved. Tuatara itself always gets the old
 file or the new one: the next time it opens, saves or reverts the file, it
 puts the old file back exactly from the journal, whatever this setting is
-then. With NIL, every program finds the old file or the new one. A file
-opened safely, or in an evidence folder, is never written, so never put
-back either.")
+then. It does so only when the journal is surely that save's: one the file
+has been changed after is left, said, and the file not saved until you
+remove it. On a file system that keeps no birth time for files (ext4 made
+with 128-octet inodes), a new file made under the old name that the system
+gave the old one's number is told apart from it only by its times. With
+NIL, every program finds the old file or the new one. A file opened safely,
+or in an evidence folder, is never written, so never put back either.")
 
 (defvar *in-place-most* 2/3
   "The most a save in place writes, journal and changes together, as a share
@@ -86,6 +92,10 @@ written), :FILE-WRITTEN, :FILE-FLUSHED, :JOURNAL-REMOVED and
 (defconstant +journal-header-most+ (* 1024 1024)
   "The most octets a journal's header takes; a save that would need more is
 not made in place.")
+
+(defconstant +journal-heartbeat+ 2
+  "Seconds between the marks a save in place makes on its journal, with the
+time, while it writes.")
 
 (defvar *journal-owner* nil
   "The user a journal must belong to, with the file it is of, to be used:
@@ -190,13 +200,14 @@ in order and apart."
 
 ;;; The journal
 
-(defun journal-header (existing born new-size ranges data)
+(defun journal-header (existing born made new-size ranges data)
   "The header of the journal of a save in place of the file EXISTING
-describes, born at BORN (NIL where the file system keeps no birth time), to
-be NEW-SIZE long, keeping RANGES of it from offset DATA on, as octets."
+describes, born at BORN (NIL where the file system keeps no birth time), made
+at MADE (in nanoseconds), to be NEW-SIZE long, keeping RANGES of it from
+offset DATA on, as octets."
   (tuatara.text:string-octets
-   (format nil "~a ~d~%data ~d~%file ~d ~d~%born ~d~%size ~d~%new ~d~%time ~d~%~:{range ~d ~d~%~}end~%"
-           *journal-heading* +journal-version+ data (stamp-dev existing) (stamp-ino existing) (or born 0)
+   (format nil "~a ~d~%data ~d~%file ~d ~d~%born ~d~%made ~d~%size ~d~%new ~d~%time ~d~%~:{range ~d ~d~%~}end~%"
+           *journal-heading* +journal-version+ data (stamp-dev existing) (stamp-ino existing) (or born 0) made
            (stamp-size existing) new-size (stamp-mtime existing)
            (mapcar (lambda (range) (list (car range) (cdr range))) ranges))))
 
@@ -217,8 +228,9 @@ second line says how long the header is (\"data N\"), up to
 
 (defun read-journal-header (fd path)
   "What the journal open as file descriptor (FD) says, as a property list:
-:DEV, :INO, :BORN (0 for none), :SIZE and :MTIME of the file it is of, :NEW,
-the length the save gave it, :DATA, where its octets begin, and :RANGES, the
+:DEV, :INO, :BORN (0 for none), :SIZE and :MTIME of the file it is of, :MADE,
+when the journal was made, :NEW, the length the save gave it, :DATA, where
+its octets begin, and :RANGES, the
 stretches (START . END) of the file they are; NIL when it is not a journal
 this release reads. PATH names it in messages."
   (let* ((lines (journal-header-lines fd path))
@@ -232,11 +244,11 @@ this release reads. PATH names it in messages."
         (return-from read-journal-header nil))
       (dolist (line (rest lines) nil)
         (let* ((word (subseq line 0 (or (position #\Space line) (length line))))
-               (key (cdr (assoc word '(("born" . :born) ("size" . :size) ("new" . :new) ("data" . :data)
+               (key (cdr (assoc word '(("born" . :born) ("made" . :made) ("size" . :size) ("new" . :new) ("data" . :data)
                                        ("time" . :mtime))
                                 :test #'string=))))
           (cond ((string= word "end")
-                 (return (and (every (lambda (key) (getf fields key)) '(:dev :born :size :new :mtime :data))
+                 (return (and (every (lambda (key) (getf fields key)) '(:dev :born :made :size :new :mtime :data))
                               (list* :ranges (nreverse ranges) fields))))
                 ((string= word "file")
                  (let ((n (numbers line 2)))
@@ -265,24 +277,43 @@ is the user Tuatara runs as (*JOURNAL-OWNER*)."
           ((/= (stamp-uid target-stamp) owner) "the file belongs to another user")
           ((logtest (stamp-mode stamp) #o022) "others may write it"))))
 
-(defun save-time-bound (header)
-  "The longest, in nanoseconds, a save in place whose journal has HEADER
-could have gone on writing after the journal was made: a minute, and a
-second more for each 10 MB it keeps."
-  (* 1000000000 (+ 60 (ceiling (ranges-octets (getf header :ranges)) (* 10 1024 1024)))))
-
 (defun journal-fits-p (header journal-stamp stamp born)
-  "True when the journal whose header is HEADER, made at JOURNAL-STAMP's time,
-is of the file STAMP describes, born at BORN, as a save cut short left it:
-the same file, its length between the old and the new, not changed since
-the save or changed while it could have gone on."
+  "True when the journal whose header is HEADER, last marked by its save at
+JOURNAL-STAMP's time, is of the file STAMP describes, born at BORN, as a save
+cut short left it: the same file, its length between the old and the new,
+not changed since the save began, or changed while the save went on, no
+later than a few seconds after its last mark."
   (let ((old (getf header :size)) (new (getf header :new)) (changed (stamp-mtime stamp))
-        (made (stamp-mtime journal-stamp)))
+        (second 1000000000))
     (and (= (getf header :dev) (stamp-dev stamp)) (= (getf header :ino) (stamp-ino stamp))
          (= (getf header :born) (or born 0))
          (<= (min old new) (stamp-size stamp) (max old new))
          (or (= changed (getf header :mtime))
-             (<= (- made 2000000000) changed (+ made (save-time-bound header)))))))
+             (<= (- (getf header :made) (* 2 second)) changed
+                 (+ (stamp-mtime journal-stamp) (* (+ +journal-heartbeat+ 3) second)))))))
+
+(defun now-nanoseconds ()
+  "The time now, in nanoseconds since 1970, as a stamp has it."
+  (multiple-value-bind (seconds microseconds) (sb-ext:get-time-of-day)
+    (+ (* seconds 1000000000) (* microseconds 1000))))
+
+(defun start-heartbeat (journal target)
+  "Mark JOURNAL, the journal of a save in place of TARGET, with the time now,
+and again every +JOURNAL-HEARTBEAT+ seconds until the function returned is
+called."
+  (flet ((mark ()
+           (tuatara.runtime:ignoring-errors-reported ("marking the journal of ~a" target)
+             (set-fd-modification-time journal :now))))
+    (mark)
+    (let* ((stop (sb-thread:make-semaphore))
+           (thread (tuatara.runtime:make-guarded-thread
+                    (lambda ()
+                      (loop until (sb-thread:wait-on-semaphore stop :timeout +journal-heartbeat+)
+                            do (mark)))
+                    :name "tuatara journal marks" :niceness 0)))
+      (lambda ()
+        (sb-thread:signal-semaphore stop)
+        (when thread (sb-thread:join-thread thread :default nil))))))
 
 (defun write-journal (journal file existing new-size ranges target cancel progress)
   "Copy RANGES of the file open as FILE, which EXISTING describes and a save
@@ -290,10 +321,11 @@ leaves NEW-SIZE long, into JOURNAL, a new file with no name, after its
 header, and flush it. Returns where its octets begin; NIL when CANCEL's car
 turned true first. PROGRESS is called with the octets copied so far."
   (let* ((born (fd-birth-time file))
-         (header (journal-header existing born new-size ranges 0))
+         (made (now-nanoseconds))
+         (header (journal-header existing born made new-size ranges 0))
          (data (* (memory-page-size) (ceiling (+ (length header) 64) (memory-page-size))))
          (done 0))
-    (write-octets journal (journal-header existing born new-size ranges data) :path target)
+    (write-octets journal (journal-header existing born made new-size ranges data) :path target)
     (loop for (start . end) in ranges
           for length = (- (min end (stamp-size existing)) start)
           do (sb-posix:lseek journal (+ data start) sb-posix:seek-set)
@@ -393,7 +425,7 @@ octets."
            (size (tuatara.text:rope-bytes rope))
            (ranges (journal-ranges changes (stamp-size existing) size)))
       (when (and (< (+ (ranges-octets changes) (ranges-octets ranges)) (* *in-place-most* (max 1 size)))
-                 (< (+ 4096 (length (journal-header existing 0 size ranges 0))) +journal-header-most+))
+                 (< (+ 4096 (length (journal-header existing 0 0 size ranges 0))) +journal-header-most+))
         (list :changes changes :ranges ranges)))))
 
 (defun write-changes-in-place (rope target existing plan &key mappings cancel progress)
@@ -412,7 +444,7 @@ A failure puts the file back as it was before it is signalled."
          (journalled (ranges-octets ranges))
          (changed (ranges-octets changes))
          (file (open-for-reading target t :accept '(:regular) :operation "save"))
-         (journal nil) (data 0) (named nil) (writing nil) (out nil) (leases '()))
+         (journal nil) (data 0) (named nil) (writing nil) (out nil) (leases '()) (heartbeat nil))
     (labels ((report (octets)
                ;; counted in the text's octets, as every save's progress is
                (when progress (funcall progress (floor (* size octets) (max 1 (+ journalled changed))) size)))
@@ -450,7 +482,8 @@ A failure puts the file back as it was before it is signalled."
              ;; a journal there already is another save's: this one writes a new file instead
              (unless (name-journal journal directory target)
                (return-from write-changes-in-place nil))
-             (setf named t)
+             (setf named t
+                   heartbeat (start-heartbeat journal target))
              (unless (handler-case (progn (move-text-onto-journal mappings existing journal data ranges) t)
                        (sb-posix:syscall-error () nil))
                (give-back)
@@ -480,6 +513,7 @@ A failure puts the file back as it was before it is signalled."
              (setf named nil)
              (report (+ journalled changed))
              :done)
+        (when heartbeat (funcall heartbeat))
         (when out (tuatara.runtime:ignoring-errors-reported ("closing ~a" target) (sb-posix:close out)))
         (take-back-leases leases)
         (when journal

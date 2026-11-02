@@ -350,13 +350,16 @@ PATH named, when it cannot be."
 
 (defun set-fd-modification-time (fd nanoseconds)
   "Give the file open as file descriptor (FD) the modification time
-NANOSECONDS (as a stamp has it), its access time left as it is."
-  (let ((times (make-array 32 :element-type '(unsigned-byte 8) :initial-element 0)))
+NANOSECONDS (as a stamp has it), or the time now for :NOW, its access time
+left as it is."
+  (let ((times (make-array 32 :element-type '(unsigned-byte 8) :initial-element 0))
+        (now (eq nanoseconds :now)))
     (with-octets-sap (sap times)
+      ;; UTIME_OMIT ((1 << 30) - 2) for the access time, UTIME_NOW ((1 << 30) - 1) for now
       (setf (sb-sys:sap-ref-64 sap 0) 0
             (sb-sys:sap-ref-64 sap 8) (- (ash 1 30) 2)
-            (sb-sys:signed-sap-ref-64 sap 16) (floor nanoseconds 1000000000)
-            (sb-sys:sap-ref-64 sap 24) (mod nanoseconds 1000000000))
+            (sb-sys:signed-sap-ref-64 sap 16) (if now 0 (floor nanoseconds 1000000000))
+            (sb-sys:sap-ref-64 sap 24) (if now (- (ash 1 30) 1) (mod nanoseconds 1000000000)))
       (sb-alien:alien-funcall
        (sb-alien:extern-alien "futimens" (function sb-alien:int sb-alien:int sb-sys:system-area-pointer))
        fd sap))))

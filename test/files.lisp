@@ -1894,6 +1894,15 @@ file is left part old and part new, its journal beside it."
           (is string= "mine, theirs" (file-text path)))
         (tuatara.io:finish-leases)))))
 
+(defmacro with-global ((symbol value) &body body)
+  "Run BODY with the global value of SYMBOL, as every thread sees it, VALUE,
+the old one put back after."
+  (let ((old (gensym "OLD")))
+    `(let ((,old (sb-ext:symbol-global-value ',symbol)))
+       (setf (sb-ext:symbol-global-value ',symbol) ,value)
+       (unwind-protect (progn ,@body)
+         (setf (sb-ext:symbol-global-value ',symbol) ,old)))))
+
 (define-test (visiting-and-saving journal-in-use-left-alone)
   ;; a journal another program holds (a save going on, or a putting back) is not used until it lets go
   (with-test-directory (dir)
@@ -1916,6 +1925,47 @@ file is left part old and part new, its journal beside it."
           (sb-ext:process-wait holder))
         (is string= *long-lines-text* (visited-text path))
         (false (journal-there-p path))))))
+
+(define-test (visiting-and-saving journal-left-alone-after-its-last-mark)
+  ;; a change to the file seconds after the save last marked its journal is another program's
+  (with-test-directory (dir)
+    (without-shared-blocks
+      (let* ((path (merge-pathnames "big.txt" dir))
+             (journal (tuatara.io::journal-path (namestring path)))
+             (same (make-string (length (cut-short-file path)) :initial-element #\x))
+             (told '()))
+        (with-open-file (out path :direction :output :if-exists :overwrite)
+          (write-string same out))
+        (let ((later (+ 10 (floor (tuatara.io:stamp-mtime (tuatara.io:path-stamp journal)) 1000000000))))
+          (sb-posix:utimes (namestring path) later later))
+        (with-global (tuatara.runtime:*host* (make-answering-host 'tuatara.io:host-say-writing
+                                                                  (lambda (words) (push words told))))
+          (is string= same (visited-text path)))
+        (true (find-if (lambda (words) (search "changed or replaced since" words)) told) "~s" told)
+        (is string= same (file-text path))
+        (true (journal-there-p path))))))
+
+(define-test (visiting-and-saving journal-marked-while-the-save-writes)
+  (with-test-directory (dir)
+    (without-shared-blocks
+      (let* ((path (put-file (merge-pathnames "big.txt" dir) *long-lines-text*))
+             (journal (tuatara.io::journal-path (namestring path)))
+             (marked nil) (slept nil))
+        (with-visited (b path)
+          (edit-far-apart b)
+          (let ((tuatara.io::*saving-step*
+                  (lambda (step)
+                    (case step
+                      (:writing (unless slept (setf slept t) (sleep 2.5)))
+                      (:file-written
+                       (let ((fd (sb-posix:open journal sb-posix:o-rdonly)))
+                         (unwind-protect
+                              (setf marked (- (tuatara.io:stamp-mtime (tuatara.io:fd-stamp fd journal))
+                                              (getf (tuatara.io::read-journal-header fd journal) :made)))
+                           (sb-posix:close fd))))))))
+            (tuatara.io:save-buffer-file b)))
+        (tuatara.io:finish-leases)
+        (true (and marked (> marked 1500000000)) "~a" marked)))))
 
 (define-test (visiting-and-saving saved-whole-where-no-unnamed-file-is-made)
   (with-test-directory (dir)
