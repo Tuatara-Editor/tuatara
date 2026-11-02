@@ -796,7 +796,7 @@ lists given out before are then no longer to be read."
   "The colours kept for SYNTAX's text before its latest edits, moved to where
 their text went (TUATARA.TEXT:MAP-POSITION), when they were for the part the
 edits made the one KEY asks for (as SYNTAX-HIGHLIGHTS makes it), and the
-edits since are known (SYNTAX-EDIT-LOG); kept under KEY. NIL when there are
+edits since are known (EDITS-SINCE); kept under KEY. NIL when there are
 none such. Only the colours kept latest for those rules are looked at; they
 are moved where they are, as they are never asked for again."
   (destructuring-bind (generation start end &rest rules) key
@@ -807,11 +807,7 @@ are moved where they are, as they are never asked for again."
                           (syntax-cache syntax))))
       (when entry
         (let* ((made-for (first (car entry)))
-               ;; the edits made since, the oldest first: one for each generation
-               (batches (let ((newest-first (loop for (made . batch) in (syntax-edit-log syntax)
-                                                  while (> made made-for)
-                                                  collect batch)))
-                          (and (= (length newest-first) (- generation made-for)) (nreverse newest-first)))))
+               (batches (edits-since syntax made-for)))
           (flet ((moved (position)
                    (dolist (batch batches position)
                      (setf position (tuatara.text:map-position position batch :after)))))

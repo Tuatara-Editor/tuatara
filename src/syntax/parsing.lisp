@@ -147,7 +147,8 @@ and DONE guard the job's result, NEXT and ENDING. CACHE keeps the colours
 worked out lately (KEPT-COLOURS), CAPTURE-TABLE the table they are sorted out
 in, INJECTED-COLOURS those of its texts in other languages (KEPT-LAYER) and
 LOCAL-ROOM the room its local names are sorted out in; EDIT-LOG the latest
-edits, each with the generation it made (MOVED-COLOURS)."
+edits, each with the generation it made, and EDITS-LOGGED how many there
+were (LOG-EDIT)."
   (buffer nil :read-only t)
   (grammar nil :read-only t)
   (helper nil)
@@ -169,7 +170,8 @@ edits, each with the generation it made (MOVED-COLOURS)."
   (capture-table nil)
   (injected-colours nil)
   (local-room nil)
-  (edit-log '())
+  (edit-log (make-array (* 2 *edits-logged*) :initial-element nil) :read-only t)
+  (edits-logged 0 :type fixnum)
   (injected nil)
   (worker nil)
   (next nil)
@@ -197,7 +199,8 @@ edits, each with the generation it made (MOVED-COLOURS)."
       (documentation 'syntax-no-refresh 'function) "True once a parse afresh of the text was given up: it is not tried again."
       (documentation 'syntax-cache 'function) "The colours worked out lately, each with what it was for, as KEPT-COLOURS keeps them."
       (documentation 'syntax-capture-table 'function) "The table colours are sorted out in, used again (*CAPTURE-TABLE*)."
-      (documentation 'syntax-edit-log 'function) "The latest edits, newest first, each (GENERATION . BATCH): the generation it made."
+      (documentation 'syntax-edit-log 'function) "The latest edits, the generation each made and its batch (LOG-EDIT)."
+      (documentation 'syntax-edits-logged 'function) "How many edits were logged (LOG-EDIT)."
       (documentation 'syntax-local-room 'function) "The room local names are sorted out in, used again (*LOCAL-ROOM*), or NIL."
       (documentation 'syntax-injected-colours 'function) "The colours of texts in other languages kept by their text (*INJECTED-COLOURS*), or NIL."
       (documentation 'syntax-injected 'function) "The trees of text in other languages kept for the colours, as (GENERATION . TABLE), or NIL."
@@ -284,6 +287,28 @@ is parsed afresh."
         (syntax-current syntax) nil)
   (incf (syntax-generation syntax)))
 
+(defun log-edit (syntax batch)
+  "Keep BATCH, an edit just made, with the generation it made SYNTAX's tree,
+in place of the oldest of the *EDITS-LOGGED* kept."
+  (let ((at (* 2 (mod (syntax-edits-logged syntax) *edits-logged*))))
+    (setf (svref (syntax-edit-log syntax) at) (syntax-generation syntax)
+          (svref (syntax-edit-log syntax) (1+ at)) batch)
+    (incf (syntax-edits-logged syntax))))
+
+(defun edits-since (syntax generation)
+  "The edits made to SYNTAX's text since its tree was of GENERATION, the
+oldest first, when every generation since was made by one of them and they
+are still kept (LOG-EDIT); else NIL."
+  (let ((wanted (- (syntax-generation syntax) generation))
+        (logged (syntax-edits-logged syntax))
+        (log (syntax-edit-log syntax)))
+    (when (and (plusp wanted) (<= wanted (min logged *edits-logged*)))
+      (loop for k from (- logged wanted) below logged
+            for at = (* 2 (mod k *edits-logged*))
+            for made from (1+ generation)
+            unless (eql (svref log at) made) return nil
+            collect (svref log (1+ at))))))
+
 (defun syntax-change (buffer batch)
   "Tell BUFFER's syntax tree about BATCH, an edit just made: pass each edit to
 the tree, keep them for the parse running, and ask for a new parse. A change
@@ -302,28 +327,31 @@ is back."
       (let ((old (syntax-rope syntax))
             (edits (tuatara.text:batch-edits batch))
             (copy nil))
-        (if (or (tuatara.text:batch-swap batch) (null old) (> (length edits) *syntax-edit-limit*)
-                (not (tuatara.text:rope-indexed-p old)))
-            (drop-tree syntax)
-            (let ((records (edit-records old edits)))
-              ;; the copy a parse starting now begins from, made with the edits;
-              ;; a tree not told of them is of no more use: the text parsed afresh
-              (when (syntax-tree syntax)
-                (multiple-value-bind (made told)
-                    (edit-tree (syntax-tree syntax) records :copy (null (syntax-job syntax)))
-                  (setf copy made)
-                  (unless told (drop-tree syntax))))
-              (when (syntax-job syntax)
-                (setf (syntax-edits syntax) (revappend records (syntax-edits syntax))))
-              (setf (syntax-current syntax) nil)
-              (incf (syntax-generation syntax))
-              (setf (syntax-edit-log syntax)
-                    (cons (cons (syntax-generation syntax) batch)
-                          (loop for entry in (syntax-edit-log syntax) repeat (1- *edits-logged*) collect entry)))))
-        (setf (syntax-rope syntax) (tuatara.buffer:buffer-text buffer))
-        (when (and (eq (syntax-broken syntax) :short) (nth-value 1 (helper-memory (syntax-helper syntax))))
-          (setf (syntax-broken syntax) nil))
-        (request-parse syntax :old copy)))))
+        ;; the copy is the parse's once asking for it is done, else let go however this ends
+        (unwind-protect
+             (progn
+               (if (or (tuatara.text:batch-swap batch) (null old) (> (length edits) *syntax-edit-limit*)
+                       (not (tuatara.text:rope-indexed-p old)))
+                   (drop-tree syntax)
+                   (let ((records (edit-records old edits)))
+                     ;; the copy a parse starting now begins from, made with the edits;
+                     ;; a tree not told of them is of no more use: the text parsed afresh
+                     (when (syntax-tree syntax)
+                       (multiple-value-bind (made told)
+                           (edit-tree (syntax-tree syntax) records :copy (null (syntax-job syntax)))
+                         (setf copy made)
+                         (unless told (drop-tree syntax))))
+                     (when (syntax-job syntax)
+                       (setf (syntax-edits syntax) (revappend records (syntax-edits syntax))))
+                     (setf (syntax-current syntax) nil)
+                     (incf (syntax-generation syntax))
+                     (log-edit syntax batch)))
+               (setf (syntax-rope syntax) (tuatara.buffer:buffer-text buffer))
+               (when (and (eq (syntax-broken syntax) :short) (nth-value 1 (helper-memory (syntax-helper syntax))))
+                 (setf (syntax-broken syntax) nil))
+               (request-parse syntax :old copy)
+               (setf copy nil))
+          (when copy (delete-tree copy)))))))
 
 ;;; Parsing
 

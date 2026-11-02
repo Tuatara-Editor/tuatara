@@ -3433,6 +3433,54 @@ bound to the fake frontend and the editor; the file and its buffer go afterwards
     (false (tuatara.syntax::kept-layer "python" :query :faces 1 rope indented 0 22))
     (false (tuatara.syntax::kept-layer "python" :query :faces 2 rope third-line 0 22))))
 
+(define-test (syntax edits-logged-in-their-room)
+  ;; the latest edits are kept, for colours to move with the text, in room of
+  ;; their own: logging one makes no garbage, and only the latest are given
+  (let* ((buffer (tuatara.buffer:make-buffer "*syntax-log*" :text "fn f() {}"))
+         (syntax (tuatara.syntax::%make-syntax buffer (tuatara.syntax:find-grammar "rust") nil))
+         (batch :batch))
+    (dotimes (i 20)
+      (incf (tuatara.syntax:syntax-generation syntax))
+      (tuatara.syntax::log-edit syntax batch))
+    (is = 0 (nth-value 2 (tuatara.bench::measuring
+                           (dotimes (i 100)
+                             (incf (tuatara.syntax:syntax-generation syntax))
+                             (tuatara.syntax::log-edit syntax batch)))))
+    (let ((now (tuatara.syntax:syntax-generation syntax)))
+      (is = 3 (length (tuatara.syntax::edits-since syntax (- now 3))))
+      (false (tuatara.syntax::edits-since syntax (- now (1+ tuatara.syntax::*edits-logged*)))))
+    (tuatara.buffer:kill-buffer buffer)))
+
+(define-test (syntax tree-copy-let-go-when-the-parse-is-not-asked)
+  ;; the copy of a tree made for a parse along with an edit is let go when
+  ;; asking for the parse fails
+  (let* ((text (with-output-to-string (s) (dotimes (i 20) (format s "fn f~d() {}~%" i))))
+         (buffer (tuatara.buffer:make-buffer "*syntax-copy*" :text text))
+         (made nil) (let-go '()))
+    (unwind-protect
+         (let ((syntax (tuatara.syntax:attach-syntax buffer (tuatara.syntax:find-grammar "rust"))))
+           (parse-done syntax)
+           (sb-int:encapsulate 'tuatara.syntax:edit-tree 'watching
+                               (lambda (function &rest arguments)
+                                 (multiple-value-bind (copy told) (apply function arguments)
+                                   (setf made copy)
+                                   (values copy told))))
+           (sb-int:encapsulate 'tuatara.syntax:delete-tree 'watching
+                               (lambda (function tree) (push tree let-go) (funcall function tree)))
+           (sb-int:encapsulate 'tuatara.syntax::request-parse 'failing
+                               (lambda (function &rest arguments)
+                                 (declare (ignore function arguments))
+                                 (error "Asking for the parse failed.")))
+           (unwind-protect
+                (handler-case (tuatara.buffer:buffer-insert buffer 0 " ") (simple-error () nil))
+             (sb-int:unencapsulate 'tuatara.syntax::request-parse 'failing)
+             (sb-int:unencapsulate 'tuatara.syntax:delete-tree 'watching)
+             (sb-int:unencapsulate 'tuatara.syntax:edit-tree 'watching))
+           (true made)
+           (true (member made let-go)))
+      (tuatara.syntax:detach-syntax buffer)
+      (tuatara.buffer:kill-buffer buffer))))
+
 (define-test (syntax colours-kept-for-several-ranges)
   ;; two parts of a buffer shown at once keep their colours, each worked out once
   (let* ((text (with-output-to-string (s) (dotimes (i 40) (format s "fn f~d() {}~%" i))))
