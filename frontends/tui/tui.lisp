@@ -423,6 +423,17 @@ mode, CSI 8 h). The terminals that do it (those made with GNOME's VTE) take
 this request; the others turn nothing round, and leave it."
   (terminal-control (if on "[8l" "[8h")))
 
+(defparameter *reordering-terminals* '("KONSOLE_VERSION" "MLTERM")
+  "The environment variables that name a terminal turning right-to-left text
+round itself, unasked and whatever it is asked (Konsole, mlterm): Tuatara
+sends such a terminal its text in the order it is stored.")
+
+(defmethod tuatara.frontend:frontend-reorders-text-p ((f tui-frontend))
+  "True when the terminal is one of *REORDERING-TERMINALS*."
+  (and (find-if (lambda (name) (let ((value (uiop:getenv name))) (and value (plusp (length value)))))
+                *reordering-terminals*)
+       t))
+
 (defmethod tuatara.frontend:frontend-start ((f tui-frontend))
   (load-ncurses)
   (%setlocale 6 "")                     ; LC_ALL: let ncurses handle UTF-8

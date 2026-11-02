@@ -236,3 +236,21 @@ order, worked out then wanted."
     (is = 6 (tuatara.display:row-position-at row 8))
     (is = 4 (tuatara.display:row-position-at row 9))
     (is = 0 (tuatara.display:row-position-at row 11))))
+
+(define-test (bidi stored-order-where-it-must-be)
+  ;; a file opened safely shows the order stored unless *text-direction-when-safe*, and so does a terminal
+  ;; that turns such text round itself
+  (with-test-buffer (b "*safe-rtl*" :text "x")
+    (false (tuatara.defaults::text-direction-as-stored-p b))
+    (setf (tuatara.io:safe-visit-p b) t)
+    (true (tuatara.defaults::text-direction-as-stored-p b))
+    (is eq nil (tuatara.defaults::text-direction-p b))
+    (let ((tuatara-user:*text-direction-when-safe* t))
+      (is eq :auto (tuatara.defaults::text-direction-p b))))
+  (let ((before (uiop:getenv "KONSOLE_VERSION")))
+    (unwind-protect
+         (progn
+           (sb-posix:setenv "KONSOLE_VERSION" "240800" 1)
+           (true (tuatara.frontend:frontend-reorders-text-p (tuatara.frontend.tui:make-tui-frontend))))
+      (if before (sb-posix:setenv "KONSOLE_VERSION" before 1) (sb-posix:unsetenv "KONSOLE_VERSION"))))
+  (false (tuatara.frontend:frontend-reorders-text-p (tuatara.frontend.fake:make-fake-frontend))))

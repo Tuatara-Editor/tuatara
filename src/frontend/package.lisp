@@ -14,4 +14,4 @@
            #:frontend-colour-count #:frontend-description #:frontend-health #:frontend-set-clipboard #:frontend-terminal-device #:frontend-lend-terminal #:frontend-clipboard #:frontend-set-title #:frontend-font-steps #:frontend-fonts #:frontend-font-faces #:frontend-set-font #:frontend-toggle-state #:frontend-desktop-style #:frontend-settings-changed #:frontend-renderers #:frontend-measure-drawing #:padding-sides
            #:frontend-begin-frame #:frontend-put-row #:frontend-set-cursor #:frontend-end-frame
            #:image #:image-p #:make-image #:image-width #:image-height #:image-fit-scale #:image-channels #:image-pixels #:image-id
-           #:frontend-primary-selection #:frontend-set-primary-selection #:frontend-images-p #:frontend-cell-pixels #:frontend-put-image #:*kitty-marks* #:+kitty-placeholder+))
+           #:frontend-primary-selection #:frontend-set-primary-selection #:frontend-images-p #:frontend-reorders-text-p #:frontend-cell-pixels #:frontend-put-image #:*kitty-marks* #:+kitty-placeholder+))

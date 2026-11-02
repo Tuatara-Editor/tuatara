@@ -123,9 +123,10 @@ with COMMAND; else what *NAME-MODES*, a list of (MODE . VALUE), says of its
 major mode or the nearest mode that mode is made from (MODE-SETTING); else
 GLOBAL, the setting for every buffer, DEFAULT unless the init file sets it
 \(its docstring GLOBAL-DOC, or one made from WHAT). Never where UNLESS, a list
-\(FUNCTION WHERE), says so of the buffer, WHERE saying where in words; on, at
-its first value, where WHERE, a list of the same kind, says so of a buffer
-that made no choice of its own, whatever its major mode and GLOBAL say. COMMAND,
+\(FUNCTION WHERE), says so of the buffer, WHERE saying where in words; at
+VALUE (its first value unless given), where WHERE, a list (FUNCTION WHERE
+VALUE), says so of a buffer that made no choice of its own, whatever its
+major mode and GLOBAL say. COMMAND,
 documented by DOC, switches it for the current buffer, and global-COMMAND for
 every buffer (SWITCH-DISPLAY); each says LABEL and what it did. WHAT says in
 a few words what it does, as \"wrap long lines at a word's edge\", and
@@ -164,13 +165,13 @@ package's name."
                   what (and valued (mapcar #'first values)) example global command))
        (defun ,lookup (&optional (buffer (current-buffer)))
          ,(filled-docstring "True when BUFFER (the current buffer unless given) is set to ~a, as it chose for ~
-                             itself with \\[~(~a~)], ~@[else always ~a, ~]else as ~a says of its major mode, else as ~a says~
+                             itself with \\[~(~a~)], ~@[else ~a, ~]else as ~a says of its major mode, else as ~a says~
                              ~@[; the value is then ~{~(~s~)~^ or ~}~].~@[ Never ~a.~]"
                   what command (second where) modes global (and valued (mapcar #'first values)) (second unless))
          (and ,@(when unless `((not (,(first unless) buffer))))
               ,(if where
                    `(if (and (eq (tuatara.buffer:buffer-local buffer ,key '%unset) '%unset) (,(first where) buffer))
-                        ',(first (first values))
+                        ',(if (cddr where) (third where) (first (first values)))
                         (buffer-setting buffer ,key (setting-list ',modes ,modes :pairs t) ,global))
                    `(buffer-setting buffer ,key (setting-list ',modes ,modes :pairs t) ,global))))
        (define-command ,command ()
@@ -214,7 +215,7 @@ the character as ever. The mode line says Invisible while it is on."
   :what "show the characters that draw nothing as their codes, <FEFF> for the byte-order mark"
   :example "'((text-mode . t) (csv-mode . t))"
   :mode-line "Invisible"
-  :where (invisible-characters-safe-p "in a file opened safely (*invisible-characters-when-safe*)"))
+  :where (invisible-characters-safe-p "always in a file opened safely (*invisible-characters-when-safe*)"))
 
 (defmethod tuatara.display:host-invisible-characters-p ((host defaults-host) buffer)
   "True when BUFFER shows the characters that draw nothing as their codes
@@ -222,6 +223,21 @@ the character as ever. The mode line says Invisible while it is on."
   (invisible-characters-p buffer))
 
 ;;; Right-to-left text, shown in the order it is read
+
+(defvar *text-direction-when-safe* nil
+  "True to show right-to-left text in the order it is read in a file opened
+safely (\\[find-file-safely]) too; NIL to show it there in the order it is
+stored, unless the buffer chose otherwise with \\[text-direction-mode]. NIL
+unless set.")
+
+(defun text-direction-as-stored-p (buffer)
+  "True when BUFFER shows its text in the order stored unless it chose
+otherwise: it was opened safely and *TEXT-DIRECTION-WHEN-SAFE* is NIL, or the
+editor is shown in a terminal that turns right-to-left text round itself
+\(Konsole, mlterm), which then shows the stored order as it is read."
+  (or (and (not *text-direction-when-safe*) (tuatara.io:safe-visit-p buffer))
+      (let ((editor tuatara.command:*editor*))
+        (and editor (tuatara.frontend:frontend-reorders-text-p (tuatara.command:editor-frontend editor))))))
 
 (define-display-toggle text-direction "Text direction"
   "Show the lines of the current buffer that hold right-to-left text
@@ -235,7 +251,13 @@ the order it is stored, so that the cursor may step from one end of a run to
 the other, and a region may show in two pieces. The characters that set the
 direction text is drawn in are shown as a ? set apart in the
 :invisible-character face, or as their codes (<202E>) while
-\\[invisible-characters-mode] is on."
+\\[invisible-characters-mode] is on. A file opened safely shows its text in
+the order stored unless *TEXT-DIRECTION-WHEN-SAFE* says otherwise, and so does
+a terminal that turns such text round itself (Konsole, mlterm), where the
+terminal then shows it in the order read. Arabic letters are joined. A stretch of
+a line too long to work out whole, beyond an embedding or override, or far
+into the line, is shown in the order stored, its right-to-left letters in
+the :stored-order face."
   :command text-direction-mode :lookup text-direction-p
   :global *global-text-direction-mode* :default :auto
   :global-doc "How lines holding right-to-left text are shown in buffers that have
@@ -248,7 +270,10 @@ file; \\[text-direction-mode] still chooses for one buffer, and
 \\[global-text-direction-mode] switches it while the editor runs."
   :what "show right-to-left text in the order it is read"
   :example "'((org-mode . :right-to-left) (csv-mode . nil))"
-  :values ((:auto "in the order read") (:right-to-left "right to left") (:left-to-right "left to right")))
+  :values ((:auto "in the order read") (:right-to-left "right to left") (:left-to-right "left to right"))
+  :where (text-direction-as-stored-p
+          "in the order stored in a file opened safely (*text-direction-when-safe*) or in a terminal that turns text round itself"
+          nil))
 
 (defmethod tuatara.display:host-text-direction ((host defaults-host) buffer)
   "How BUFFER's lines holding right-to-left text are shown

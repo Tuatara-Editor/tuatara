@@ -592,6 +592,10 @@
   ;; The same by major mode, before the global setting.
   ;; (setf *text-direction-modes* '((org-mode . :right-to-left) (csv-mode . nil)))
 
+  ;; Files opened safely show right-to-left text in the order it is read too.
+  ;; Not set: nil: in the order it is stored.
+  ;; (setf *text-direction-when-safe* t)
+
   ;; Words spelt wrong marked in every buffer of text and code. Not set: nil.
   ;; (setf *global-spellcheck-mode* t)
 

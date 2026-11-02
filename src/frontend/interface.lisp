@@ -463,6 +463,12 @@ PIXELS, row after row from the top left, with an ID of its own."
 default answers NIL: a window showing a picture then shows its buffer's text.")
   (:method (frontend) (declare (ignore frontend)) nil))
 
+(defgeneric frontend-reorders-text-p (frontend)
+  (:documentation "True when FRONTEND turns right-to-left text round itself, whatever it
+is asked (a terminal that does and cannot be told not to): the text is then
+best sent in the order it is stored. The default answers NIL.")
+  (:method (frontend) (declare (ignore frontend)) nil))
+
 (defgeneric frontend-cell-pixels (frontend)
   (:documentation "The width and height of one of FRONTEND's cells in pixels, as
 two values, for sizing pictures; NIL when it does not know. The default answers NIL.")
