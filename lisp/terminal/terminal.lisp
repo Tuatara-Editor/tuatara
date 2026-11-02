@@ -12,7 +12,7 @@
 ;;;; screen stands still as text to move through, select and copy, the
 ;;;; program going on meanwhile; i or a types into it again.
 
-(in-package #:tuatara.defaults)
+(in-package #:tuatara.terminal-emulator)
 
 (defvar tuatara-user:*terminal-editor-keys* '("C-x" "M-x" "C-g" "C-\\" "C-q" "C-s")
   "Keys that stay the editor's while you type into a terminal (\\[terminal]).

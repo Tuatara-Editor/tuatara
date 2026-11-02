@@ -18,10 +18,10 @@
 (defun first-row (emulator text &optional (seconds 20))
   "The first row of EMULATOR's screen and its looks, once a row of it holds
 TEXT or SECONDS have passed."
-  (let ((rows (make-array (tuatara.defaults::emulator-rows emulator) :initial-element ""))
-        (looks (make-array (tuatara.defaults::emulator-rows emulator) :initial-element '()))
+  (let ((rows (make-array (tuatara.terminal-emulator::emulator-rows emulator) :initial-element ""))
+        (looks (make-array (tuatara.terminal-emulator::emulator-rows emulator) :initial-element '()))
         (deadline (tuatara.runtime:deadline-in seconds)))
-    (loop (tuatara.defaults::emulator-frame emulator (lambda (row string spans)
+    (loop (tuatara.terminal-emulator::emulator-frame emulator (lambda (row string spans)
                                                        (when (< row (length rows))
                                                          (setf (aref rows row) string (aref looks row) spans)))
                                             :all t)
@@ -33,7 +33,7 @@ TEXT or SECONDS have passed."
   "True when the run of LOOKS (a row's) over COLUMN is bold."
   (some (lambda (span)
           (and (<= (first span) column) (< column (+ (first span) (second span)))
-               (member :bold (cddr (tuatara.defaults::look-list (third span))))))
+               (member :bold (cddr (tuatara.terminal-emulator::look-list (third span))))))
         looks))
 
 (defun write-case-file (file &rest parts)
@@ -46,7 +46,7 @@ or a list of a count and such a string, written that many times."
 
 (defun resize-when-free (emulator columns rows)
   "Resize EMULATOR to COLUMNS by ROWS, again while its library is busy."
-  (loop repeat 100 until (eq t (tuatara.defaults::emulator-resize emulator columns rows)) do (sleep 1/20)))
+  (loop repeat 100 until (eq t (tuatara.terminal-emulator::emulator-resize emulator columns rows)) do (sleep 1/20)))
 
 (defvar *started* '()
   "The terminals RUN-CASE started, stopped before the process ends.")
@@ -55,7 +55,7 @@ or a list of a count and such a string, written that many times."
   "Show the output CASE names in a terminal; what it shows after, as OUT takes it."
   (let ((esc (string #\Escape)) (file (namestring (merge-pathnames "case.txt" directory))))
     (flet ((run (program &rest keys)
-             (car (push (apply #'tuatara.defaults::start-emulator "sh" (list "-c" program) keys) *started*))))
+             (car (push (apply #'tuatara.terminal-emulator::start-emulator "sh" (list "-c" program) keys) *started*))))
       (cond
         ((string= case "clear")
          ;; screens cleared into the scrollback (CSI 22 J) while the cursor is bold and in a
@@ -67,7 +67,7 @@ or a list of a count and such a string, written that many times."
                         (list (format nil "~c~cshown" #\Return #\Newline))))
          (let ((e (run (format nil "cat '~a'; sleep 30" file) :columns 10 :rows 3 :scrollback-lines 0)))
            (multiple-value-bind (text looks) (first-row e "shown")
-             (list :text text :bold (bold-at-p looks 0) :link (tuatara.defaults::emulator-link e 0 0)))))
+             (list :text text :bold (bold-at-p looks 0) :link (tuatara.terminal-emulator::emulator-link e 0 0)))))
         ((string= case "line-limit")
          ;; one row and no scrollback: a bold link reflowed wider, then line feeds letting go
          ;; of the page the cursor is on
@@ -76,27 +76,27 @@ or a list of a count and such a string, written that many times."
            (first-row e "a")
            (sleep 0.5)
            (resize-when-free e 80 1)
-           (tuatara.defaults::emulator-input e (format nil "go~c" #\Return))
+           (tuatara.terminal-emulator::emulator-input e (format nil "go~c" #\Return))
            (multiple-value-bind (text looks) (first-row e "b")
              (let ((column (or (search "b" text) 0)))
-               (list :text text :bold (bold-at-p looks column) :link (tuatara.defaults::emulator-link e column 0))))))
+               (list :text text :bold (bold-at-p looks column) :link (tuatara.terminal-emulator::emulator-link e column 0))))))
         ((string= case "narrowed")
          ;; a screen 65,535 columns wide made 2 wide and 1 high, its text read rather than
          ;; its frames, which would each draw all 65,535 cells
          (let ((e (run "printf hello; sleep 30" :columns 65535 :rows 1)))
            (flet ((text-shows (text)
                     (let ((deadline (tuatara.runtime:deadline-in 20)))
-                      (loop for shown = (tuatara.defaults::emulator-text e)
+                      (loop for shown = (tuatara.terminal-emulator::emulator-text e)
                             until (or (search text (remove #\Newline shown)) (<= (tuatara.runtime:seconds-left deadline) 0))
                             do (sleep 1/50)
                             finally (return shown)))))
              (text-shows "hello")
              (resize-when-free e 2 1)
-             (list :history (text-shows "hello") :columns (tuatara.defaults::emulator-columns e)))))))))
+             (list :history (text-shows "hello") :columns (tuatara.terminal-emulator::emulator-columns e)))))))))
 
 (destructuring-bind (case out directory) (rest sb-ext:*posix-argv*)
   (let ((result (run-case case (uiop:ensure-directory-pathname directory))))
-    (mapc #'tuatara.defaults::stop-emulator *started*)
+    (mapc #'tuatara.terminal-emulator::stop-emulator *started*)
     (with-open-file (o out :direction :output :if-exists :supersede)
       (with-standard-io-syntax (prin1 result o))))
   (sb-ext:exit :code 0 :abort t))

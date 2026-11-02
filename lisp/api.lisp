@@ -139,7 +139,7 @@ its form says, as ORG-READ-RULE reads them; :HOUR, :MINUTE, :END-HOUR and
     ;; telling what has just happened, on the desktop and in *Notifications*
     notify
     ;; lists and text made by a command
-    set-made-text render-pieces render-table-list pieces-text collecting-pieces table-cell table-heading-pieces table-row-pieces list-entry-at ansi-pieces
+    set-made-text render-pieces render-table-list pieces-text collecting-pieces table-cell table-heading-pieces table-row-pieces list-entry-at tuatara.terminal-emulator:ansi-pieces
     set-search-filtering search-filters search-filter-p search-filter-string search-filter-where search-filter-match-p
     light-search-filters search-filter-regex list-search-filters remove-search-filters
     marked-list-mode sectioned-list-mode sectioned-pieces entry-member entry-mark keep-list-marks list-acted-on

@@ -186,7 +186,7 @@ faces, its references links; reading what man prints; asking for pages.")
       (is = 6 (end (format nil "~cdata~cx" (code-char #x90) (code-char #x9c)) :c1 t)))
     ;; the terminal's text reads them as before: colours and bold kept, the rest left out
     (is equal (list (format nil "ab~%c"))
-        (tuatara.defaults::ansi-pieces (format nil "a~a]0;t~cb~a[2K~%~a7c" e (code-char 7) e e)))))
+        (tuatara.terminal-emulator:ansi-pieces (format nil "a~a]0;t~cb~a[2K~%~a7c" e (code-char 7) e e)))))
 
 (define-test (man controls-never-reach-the-buffer)
   (let* ((e (string #\Escape))

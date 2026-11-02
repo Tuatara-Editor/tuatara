@@ -136,7 +136,7 @@ on, so that a setting written wrong never stops the editor starting."
 (defparameter *context-keys-left-free* '("x" "s" "t")
   "The keys after \\`C-c' never given a mode's command, left for your own (C-c x).")
 
-(defparameter *context-keys-kept-from* '(terminal-mode)
+(defparameter *context-keys-kept-from* '(tuatara.terminal-emulator:terminal-mode)
   "The modes whose keys are not put under \\`C-c': the terminal, where C-c goes to the program.")
 
 (defun leave-context-key-to-program (name)
@@ -247,7 +247,7 @@ so that \\`C-c' shows, and runs, what the buffer at hand can do in every mode
     (install-buffers)
     (install-rimu editor)
     (install-pdf-view)
-    (install-terminal)
+    (tuatara.terminal-emulator:install-terminal)
     (install-office-view)
     (install-metadata)
     (install-open-externally)

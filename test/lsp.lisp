@@ -420,7 +420,7 @@ what marks a project; check-health saying which are installed.")
     ;; x stays rimu's alone: C-c x is left for your own keys
     (false (tuatara.command:lookup-key rimu (tuatara.frontend:parse-key-sequence "C-c x")))
     (true (tuatara.command:lookup-key rimu (tuatara.frontend:parse-key-sequence "C-c m"))))
-  (true (member (tuatara.command:lookup-key (tuatara.defaults::mode-keymap 'tuatara.defaults::terminal-mode)
+  (true (member (tuatara.command:lookup-key (tuatara.defaults::mode-keymap 'tuatara.terminal-emulator:terminal-mode)
                                             (tuatara.frontend:parse-key-sequence "C-c q"))
                 '(nil :undefined))))
 

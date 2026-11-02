@@ -7,7 +7,8 @@
   :description "Each feature with a Lisp package of its own keeps its insides from the rest of the editor, finds its settings under the names an init file sets, and has its commands found by their names.")
 
 (defparameter *feature-packages*
-  '(("TUATARA.GIT" "GIT-STATUS-RENDER" "*GIT-LOG-LENGTH*" "git-stage"))
+  '(("TUATARA.GIT" "GIT-STATUS-RENDER" "*GIT-LOG-LENGTH*" "git-stage")
+    ("TUATARA.TERMINAL-EMULATOR" "TERMINAL-SHOWN-TEXT" "*TERMINAL-SCROLLBACK*" "terminal"))
   "Each feature with a Lisp package of its own, as (PACKAGE INSIDE SETTING
 COMMAND): a name of its insides, one of its settings and one of its commands.")
 

@@ -14,7 +14,7 @@
 ;;;; (tools/terminal-library.sh builds it); layout.sexp beside it says what its
 ;;;; C headers say of the values and structures read here.
 
-(in-package #:tuatara.defaults)
+(in-package #:tuatara.terminal-emulator)
 
 ;;; The library
 

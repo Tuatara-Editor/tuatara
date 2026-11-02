@@ -210,9 +210,9 @@ every boundary, characters, conversions and the string both ways."
               (tuatara.io:copy-xattrs in-fd out-fd)
               (is equalp #(1 2) (tuatara.io:fd-xattr-value out-fd name))))))))
   ;; typed into a terminal, a raw byte's character reaches the program as its octet
-  (let ((emulator (tuatara.defaults::%make-emulator)))
-    (tuatara.defaults::emulator-input emulator (format nil "a~cb" (code-char #xDCFF)))
-    (is equalp #(97 255 98) (sb-concurrency:receive-message (tuatara.defaults::emulator-outbox emulator) :timeout 1))))
+  (let ((emulator (tuatara.terminal-emulator::%make-emulator)))
+    (tuatara.terminal-emulator::emulator-input emulator (format nil "a~cb" (code-char #xDCFF)))
+    (is equalp #(97 255 98) (sb-concurrency:receive-message (tuatara.terminal-emulator::emulator-outbox emulator) :timeout 1))))
 
 (define-test (raw-bytes written-to-json-as-replacements)
   ;; a raw byte in text sent as JSON (to a language server) is U+FFFD: what is sent is UTF-8
