@@ -47,7 +47,7 @@
 /* syntax/syntax.c, compiled with this program */
 typedef const char *(*tuatara_reader)(void *payload, uint32_t byte, uint32_t *length);
 TSTree *tuatara_parse(TSParser *parser, const TSTree *old, tuatara_reader read, void *payload,
-                      volatile int32_t *cancel, uint32_t limit, uint64_t budget);
+                      _Atomic int32_t *cancel, uint32_t limit, uint64_t budget);
 void tuatara_edit(TSTree *tree, uint32_t start, uint32_t old_end, uint32_t new_end,
                   uint32_t start_row, uint32_t start_column, uint32_t old_end_row, uint32_t old_end_column,
                   uint32_t new_end_row, uint32_t new_end_column);
@@ -252,14 +252,20 @@ typedef struct {
   void (*destroy)(void *item);
 } Shared;
 
-/* Under the table's lock: let go of HELD's item, and of HELD, when it is
-   taken out of TABLE and held by none. */
-static void held_ended(Shared *table, Held *held) {
-  if (held->taken && held->holds == 0) {
-    table->destroy(held->item);
-    pthread_rwlock_destroy(&held->lock);
-    free(held);
-  }
+/* Under the table's lock: when HELD is taken out of its table and held by
+   none, let go of HELD and give its item, for the caller to let go of once
+   the lock is let go (FINISH); else NULL. */
+static void *held_ended(Held *held) {
+  if (!held->taken || held->holds != 0) return NULL;
+  void *item = held->item;
+  pthread_rwlock_destroy(&held->lock);
+  free(held);
+  return item;
+}
+
+/* Let go of ITEM of TABLE, if any, given by HELD_ENDED. */
+static void finish(Shared *table, void *item) {
+  if (item) table->destroy(item);
 }
 
 static Held *held_new(void *item) {
@@ -270,9 +276,12 @@ static Held *held_new(void *item) {
   return held;
 }
 
-/* Put ITEM in TABLE; its number, from 1. */
-static uint32_t shared_put(Shared *table, void *item) {
+/* Put ITEM in TABLE, its number from 1 in *NUMBER, held by the caller (HOLD,
+   with others) before another connection can let it go. */
+static Held *shared_put_held(Shared *table, void *item, uint32_t *number) {
   Held *held = held_new(item);
+  held->holds = 1;
+  pthread_rwlock_rdlock(&held->lock);
   pthread_mutex_lock(&table_lock);
   uint32_t i;
   for (i = 0; i < table->count && table->items[i]; i++) {}
@@ -285,20 +294,53 @@ static uint32_t shared_put(Shared *table, void *item) {
   }
   table->items[i] = held;
   pthread_mutex_unlock(&table_lock);
-  return i + 1;
+  *number = i + 1;
+  return held;
+}
+
+/* Take HELD out of TABLE, when it still stands there: let go of now, or by the
+   last that holds it. */
+static void shared_take_held(Shared *table, Held *held) {
+  void *ended = NULL;
+  pthread_mutex_lock(&table_lock);
+  for (uint32_t i = 0; i < table->count; i++)
+    if (table->items[i] == held) {
+      table->items[i] = NULL;
+      held->taken = true;
+      ended = held_ended(held);
+      break;
+    }
+  pthread_mutex_unlock(&table_lock);
+  finish(table, ended);
+}
+
+/* Put ITEM in TABLE; its number, from 1. */
+static uint32_t shared_put(Shared *table, void *item) {
+  uint32_t number;
+  Held *held = shared_put_held(table, item, &number);
+  pthread_rwlock_unlock(&held->lock);
+  void *ended;
+  pthread_mutex_lock(&table_lock);
+  held->holds--;
+  ended = held_ended(held);
+  pthread_mutex_unlock(&table_lock);
+  finish(table, ended);
+  return number;
 }
 
 /* Take the item numbered NUMBER out of TABLE: let go of now, or by the last
    that holds it. */
 static void shared_take(Shared *table, uint32_t number) {
+  void *ended = NULL;
   pthread_mutex_lock(&table_lock);
   if (number >= 1 && number <= table->count && table->items[number - 1]) {
     Held *held = table->items[number - 1];
     table->items[number - 1] = NULL;
     held->taken = true;
-    held_ended(table, held);
+    ended = held_ended(held);
   }
   pthread_mutex_unlock(&table_lock);
+  finish(table, ended);
 }
 
 /* Put ITEM in TABLE as number NUMBER (from 1, at most 2^24), the item there
@@ -316,11 +358,13 @@ static void shared_set(Shared *table, uint32_t number, void *item) {
   }
   Held *before = table->items[number - 1];
   table->items[number - 1] = held;
+  void *ended = NULL;
   if (before) {
     before->taken = true;
-    held_ended(table, before);
+    ended = held_ended(before);
   }
   pthread_mutex_unlock(&table_lock);
+  finish(table, ended);
 }
 
 /* The item numbered NUMBER of TABLE, held until LET_GO: with others to read
@@ -334,8 +378,9 @@ static Held *hold(Shared *table, uint32_t number, bool alone) {
   if (alone ? pthread_rwlock_trywrlock(&held->lock) != 0 : pthread_rwlock_rdlock(&held->lock) != 0) {
     pthread_mutex_lock(&table_lock);
     held->holds--;
-    held_ended(table, held);
+    void *ended = held_ended(held);
     pthread_mutex_unlock(&table_lock);
+    finish(table, ended);
     return NULL;
   }
   return held;
@@ -347,8 +392,9 @@ static void let_go(Shared *table, Held *held) {
   pthread_rwlock_unlock(&held->lock);
   pthread_mutex_lock(&table_lock);
   held->holds--;
-  held_ended(table, held);
+  void *ended = held_ended(held);
   pthread_mutex_unlock(&table_lock);
+  finish(table, ended);
 }
 
 /* A query, kept with the language it was made for: run only on trees of that language. */
@@ -425,7 +471,7 @@ typedef struct {
   /* BUSY while a parse runs; ENDING when the parser is to be deleted once
      it is done */
   bool busy, ending;
-  volatile int32_t cancel;
+  _Atomic int32_t cancel;
   /* the connection the parse was asked on, which its text is read over;
      or the text it was given with the request, GIVEN octets of it from
      octet GIVEN_FROM, at GIVEN_TEXT */
@@ -647,7 +693,8 @@ static bool answer(Connection *c, Answering *a, uint32_t id, uint32_t how, char 
   case OP_PARSE_RANGES: {
     /* first where each text's part of the request starts, and where the text given starts */
     uint32_t n = W(0), at = 4;
-    uint32_t starts[256], made[256], made_count = 0;
+    uint32_t starts[256], asks[256], made_count = 0;
+    Held *made[256];
     if (n > 256) { status = REFUSED; break; }
     bool good = true;
     for (uint32_t i = 0; i < n && good; i++) {
@@ -663,6 +710,7 @@ static bool answer(Connection *c, Answering *a, uint32_t id, uint32_t how, char 
       } else {
         at += 4;
       }
+      asks[i] = at;
       uint32_t asked = at + 4 <= size ? word(body, size, at / 4) : 0;
       if (asked > 64) { good = false; break; }
       at += 4 + asked * 12;
@@ -676,6 +724,11 @@ static bool answer(Connection *c, Answering *a, uint32_t id, uint32_t how, char 
       TSTree *tree = NULL;
       Held *given_tree = NULL;
       uint32_t why = 0;
+      /* the queries asked to run on it, held first (queries before trees, always) */
+      uint32_t asked = word(body, size, asks[i] / 4);
+      Held *asked_queries[64];
+      for (uint32_t j = 0; j < asked; j++)
+        asked_queries[j] = hold(&queries, word(body, size, asks[i] / 4 + 1 + 3 * j), false);
       if (word(body, size, item / 4) != 0) {
         given_tree = hold(&trees, word(body, size, item / 4), false);
         tree = given_tree ? given_tree->item : NULL;
@@ -730,27 +783,24 @@ static bool answer(Connection *c, Answering *a, uint32_t id, uint32_t how, char 
             ts_parser_reset(p->parser);
           }
         }
-        uint32_t number = tree ? shared_put(&trees, tree) : 0;
-        if (number) made[made_count++] = number;
-        /* held while its matches are found: another connection may let it go at once */
-        given_tree = number ? hold(&trees, number, false) : NULL;
-        tree = given_tree ? given_tree->item : NULL;
+        /* held to the end of the request: another connection may let it go at once */
+        uint32_t number = 0;
+        if (tree) made[made_count++] = shared_put_held(&trees, tree, &number);
         out_u32(&out, number);
       }
       out_u32(&out, why);
-      /* the queries asked to run on it */
-      uint32_t asked = word(body, size, item / 4);
       for (uint32_t j = 0; j < asked; j++) {
-        Held *q = tree ? hold(&queries, word(body, size, item / 4 + 1 + 3 * j), false) : NULL;
-        put_matches(&out, a, q ? q->item : NULL, tree,
+        put_matches(&out, a, tree && asked_queries[j] ? asked_queries[j]->item : NULL, tree,
                     word(body, size, item / 4 + 2 + 3 * j), word(body, size, item / 4 + 3 + 3 * j), true);
-        let_go(&queries, q);
+        let_go(&queries, asked_queries[j]);
       }
       let_go(&trees, given_tree);
     }
     /* a reply refused as too large: the trees it would have named let go */
-    if (out.too_large)
-      for (uint32_t i = 0; i < made_count; i++) shared_take(&trees, made[i]);
+    for (uint32_t i = 0; i < made_count; i++) {
+      if (out.too_large) shared_take_held(&trees, made[i]);
+      let_go(&trees, made[i]);
+    }
     break;
   }
   case OP_EDITS: {
@@ -802,11 +852,6 @@ static bool answer(Connection *c, Answering *a, uint32_t id, uint32_t how, char 
     TSQueryError kind = TSQueryErrorNone;
     TSQuery *query = start <= size ? ts_query_new(language, body + start, size - start, &offset, &kind) : NULL;
     if (!query) { out_u32(&out, 1); out_u32(&out, offset); out_u32(&out, kind); break; }
-    Query *q = malloc(sizeof *q);
-    if (!q) _exit(3);
-    q->query = query;
-    q->language = language;
-    shared_set(&queries, number, q);
     uint32_t captures = ts_query_capture_count(query), patterns = ts_query_pattern_count(query);
     out_u32(&out, 0);
     out_u32(&out, captures);
@@ -837,6 +882,16 @@ static bool answer(Connection *c, Answering *a, uint32_t id, uint32_t how, char 
         }
       }
     }
+    /* the reply made whole first: kept from now on, another connection may let it go */
+    if (out.too_large) {
+      ts_query_delete(query);
+      break;
+    }
+    Query *q = malloc(sizeof *q);
+    if (!q) _exit(3);
+    q->query = query;
+    q->language = language;
+    shared_set(&queries, number, q);
     break;
   }
   case OP_QUERY_DELETE: {

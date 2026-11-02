@@ -144,8 +144,10 @@ static void *tuatara_calloc(size_t count, size_t size) {
 
 /* A realloc that fails leaves OLD as it was, to be tried again: no use
    after it is freed, which the compiler cannot tell. */
+#if defined(__GNUC__) && !defined(__clang__)
 #pragma GCC diagnostic push
 #pragma GCC diagnostic ignored "-Wuse-after-free"
+#endif
 static void *tuatara_realloc(void *old, size_t size) {
   int64_t before = old ? (int64_t)malloc_usable_size(old) : 0;
   bool had = old != NULL;
@@ -157,7 +159,9 @@ static void *tuatara_realloc(void *old, size_t size) {
     atomic_fetch_sub_explicit(&tuatara_held_octets, before, memory_order_relaxed);
   return pointer;
 }
+#if defined(__GNUC__) && !defined(__clang__)
 #pragma GCC diagnostic pop
+#endif
 
 __attribute__((constructor)) static void tuatara_count_allocations(void) {
   tuatara_reserve = malloc(TUATARA_RESERVE);
@@ -237,7 +241,7 @@ static const char *tuatara_read(void *payload, uint32_t byte, TSPoint point, uin
    BUDGET is 0, which sets *CANCEL to 3; or when memory runs short, which sets
    it to 6. */
 struct tuatara_progress {
-  volatile int32_t *cancel;
+  _Atomic int32_t *cancel;
   bool limited;
   struct timespec deadline;
   int64_t held;
@@ -278,7 +282,7 @@ static bool tuatara_cancelled(TSParseState *state) {
    allocation of tree-sitter's (7), PARSER is left half way and is not to be
    used again; else it must be reset after a NULL. */
 TSTree *tuatara_parse(TSParser *parser, const TSTree *old, tuatara_reader read, void *payload,
-                      volatile int32_t *cancel, uint32_t limit, uint64_t budget) {
+                      _Atomic int32_t *cancel, uint32_t limit, uint64_t budget) {
   struct tuatara_input source = {read, payload};
   TSInput input = {&source, tuatara_read, TSInputEncodingUTF8, NULL};
   struct tuatara_progress progress = {cancel, limit > 0, {0, 0}, tuatara_held(),
