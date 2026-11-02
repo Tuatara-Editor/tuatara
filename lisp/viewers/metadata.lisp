@@ -501,7 +501,10 @@ great many it does not have is read in a bounded time."
                          (cons "Encrypted" (and encrypted "yes: what it says of itself may be scrambled")))
                    fields
                    (list (cons "Information found" (and fields (gethash :scanned *pdf-objects-found*)
-                                                        "by scanning the file, not from the cross-reference")))
+                                                        "by scanning the file, not from the cross-reference"))
+                         (cons "Cross-reference" (and (gethash :too-many *pdf-objects-found*)
+                                                      (format nil "lists more than ~:d objects: the rest were not read"
+                                                              *pdf-most-entries*))))
                    (list (cons "Holds" (and acts (format nil "~{~a~^, ~} (none run here)" (remove-duplicates acts :test #'string= :from-end t))))))))))
 
 ;;; Sound: MP3's ID3 tags, FLAC's comments

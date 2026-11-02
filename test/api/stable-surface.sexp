@@ -293,6 +293,7 @@
 (:api "PDF-INDIRECT-OBJECT-AT" :function (2 nil nil nil nil))
 (:api "PDF-OBJECT-AT" :function (2 ("DEPTH") nil nil nil))
 (:api "PDF-OBJECT-STREAM-OFFSETS" :function (2 nil nil nil nil))
+(:api "PDF-OFFSET-BASE" :function (1 nil nil nil nil))
 (:api "PDF-PACKED-OBJECT" :function (3 nil ("IN" "INDEX") nil nil))
 (:api "PDF-REF-P" :function (1 nil nil nil nil))
 (:api "PDF-STARTXREF" :function (1 nil ("END" "START") nil nil))

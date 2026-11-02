@@ -374,6 +374,66 @@ endobj"))))
                                                         octets)
                        numbers)))))
 
+(defun pdf-sample (name)
+  "The octets of the sample PDF NAME of test/pdf-reader/."
+  (alexandria:read-file-into-byte-vector
+   (asdf:system-relative-pathname :tuatara (format nil "test/pdf-reader/~a" name))))
+
+(define-test (metadata pdf-saves-by-chain)
+  ;; a save the chain of trailers names is a save, though a /Length runs over it: and that length is named a lie
+  (dolist (name '("length-over-save.pdf" "indirect-length-over-save.pdf"))
+    (let ((octets (pdf-sample name)))
+      (multiple-value-bind (lines doubtful lying) (tuatara:pdf-eof-lines octets)
+        (declare (ignore doubtful))
+        (is = 2 (length lines) "~a" name)
+        (is equal '(4) (mapcar #'cdr lying) "~a" name))
+      (true (search "- Saved :: 2 times" (first (tuatara.defaults::pdf-metadata octets))) "~a" name)))
+  ;; an attached PDF, its own saves within a stream no chain names, ends nothing
+  (dolist (name '("attached-pdf.pdf" "attached-pdf-mutool.pdf"))
+    (let ((octets (pdf-sample name)))
+      (multiple-value-bind (lines doubtful lying) (tuatara:pdf-eof-lines octets)
+        (is = 1 (length lines) "~a" name)
+        (false doubtful)
+        (false lying))
+      (true (search "- Saved :: 1 time" (first (tuatara.defaults::pdf-metadata octets))) "~a" name))))
+
+(define-test (metadata pdf-entries-capped)
+  ;; a small file listing millions of entries is read to a bound, quickly, and the note says so
+  (let* ((start (get-internal-real-time))
+         (note (first (tuatara.defaults::pdf-metadata (pdf-sample "many-entries.pdf"))))
+         (seconds (/ (- (get-internal-real-time) start) internal-time-units-per-second)))
+    (true (search "lists more than 1,000,000 objects" note))
+    (true (< seconds 30) "read in ~,1f seconds" seconds))
+  ;; sections chained by /Prev, each listing a share: all of them count toward the bound
+  (let ((tuatara.defaults::*pdf-most-entries* 1000) (out (make-string-output-stream)) (at 0) (prev nil))
+    (flet ((put (text) (write-string text out) (incf at (length text))))
+      (put (format nil "%PDF-1.7~%"))
+      (dotimes (k 8)
+        (let ((here at))
+          (put (format nil "~d 0 obj~%<< /Type /XRef /W [1 0 0] /Index [0 200] /Size 200~@[ /Prev ~d~] ~
+                            /Length 200 >>~%stream~%"
+                       (+ 10 k) prev))
+          (put (make-string 200 :initial-element (code-char 1)))
+          (put (format nil "~%endstream~%endobj~%"))
+          (setf prev here)))
+      (put (format nil "startxref~%~d~%%%EOF~%" prev))
+      (let ((octets (octets-of (get-output-stream-string out))))
+        (multiple-value-bind (sections too-many) (tuatara.defaults::pdf-sections octets (constantly nil))
+          (true too-many)
+          (is = 6 (length sections)))))))
+
+(define-test (metadata pdf-junk-before-header)
+  ;; octets before %PDF-: the offsets the file gives count from its header, as readers take them
+  (dolist (junk (list 50 3000))
+    (let* ((plain (pdf-with-table '((1 . "<< /Type /Catalog >>") (6 . "<< /Title (Real) >>"))))
+           (octets (octets-of (make-string junk :initial-element #\J) plain))
+           (note (first (tuatara.defaults::pdf-metadata octets))))
+      (is = junk (tuatara:pdf-offset-base octets))
+      (is = (+ junk (tuatara:pdf-startxref plain)) (tuatara:pdf-startxref octets))
+      (true (search "- Title :: Real" note))
+      (false (search "not from the cross-reference" note))))
+  (is = 0 (tuatara:pdf-offset-base (pdf-with-table '((1 . "<< /Type /Catalog >>"))))))
+
 (define-test (metadata pdf-object-stream-unplaced)
   ;; an object stream that does not say where its objects are holds none: the information is read as far as it goes
   (let* ((octets (octets-of "%PDF-1.7" 10 "3 0 obj << /Type /ObjStm /N 2 /Length 5 >> stream" 10 "10 0 " 10

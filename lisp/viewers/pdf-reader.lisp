@@ -435,25 +435,37 @@ has the rest passed over.")
 %%EOF is, and where its line ends. OBJECTS, the objects the file writes in
 the order written (as MAP-PDF-WRITTEN-OBJECTS gives them, a vector), say
 where its streams are; when they are not given, the file is read for them.
-A %%EOF within a stream whose end is confirmed ends nothing, unless a
-startxref and a number stand before it. A second value lists those kept
-though they lie within a stream whose end is not confirmed, each (EOF .
-NUMBER), NUMBER the stream's object: a stream that may hide a save, or a
-save cut into a stream."
-  (let ((mark (load-time-value (tuatara.text:string-octets "%%EOF")))
-        (unconfirmed (remove-if-not (lambda (o) (and (pdf-indirect-stream-start o) (not (pdf-indirect-confirmed o))))
-                                    objects))
-        (lines '()) (doubtful '()) (count 0))
-    (loop for at = (tuatara.io:octets-search mark octets)
-            then (tuatara.io:octets-search mark octets :start (+ at 5))
-          while (and at (< count *pdf-most-eof-lines*))
-          do (when (zerop (logand (incf count) 4095)) (tuatara.runtime:job-check-stop))
-             (let ((after-startxref (pdf-startxref-before-p octets at)))
-               (unless (and (not after-startxref) (pdf-stream-holding objects at t))
-                 (push (cons at (pdf-line-end-after octets (+ at 5))) lines)
-                 (let ((stream (pdf-stream-holding unconfirmed at nil)))
-                   (when stream (push (cons at (pdf-indirect-number stream)) doubtful))))))
-    (values (nreverse lines) (nreverse doubtful))))
+A %%EOF within a stream whose end is confirmed ends nothing (an attached
+PDF's own), unless it is the first after a cross-reference section the
+file's chain of sections names (PDF-SECTIONS): that one ends a save. Two
+more values: those kept though they lie within a stream whose end is not
+confirmed, each (EOF . NUMBER), NUMBER the stream's object, a stream that
+may hide a save or a save cut into a stream; and the streams whose
+confirmed end the chain of sections gives the lie to, a section it names
+or the save that section ends lying within them, each (OFFSET . NUMBER)."
+  (let* ((mark (load-time-value (tuatara.text:string-octets "%%EOF")))
+         (sections (mapcar #'car (pdf-sections octets)))
+         (named (remove nil (mapcar (lambda (at) (tuatara.io:octets-search mark octets :start at)) sections)))
+         (unconfirmed (remove-if-not (lambda (o) (and (pdf-indirect-stream-start o) (not (pdf-indirect-confirmed o))))
+                                     objects))
+         (lines '()) (doubtful '()) (lying '()) (count 0))
+    (flet ((lie (at stream)
+             (unless (find (pdf-indirect-number stream) lying :key #'cdr)
+               (push (cons at (pdf-indirect-number stream)) lying))))
+      (dolist (at sections)
+        (let ((stream (pdf-stream-holding objects at t)))
+          (when stream (lie at stream))))
+      (loop for at = (tuatara.io:octets-search mark octets)
+              then (tuatara.io:octets-search mark octets :start (+ at 5))
+            while (and at (< count *pdf-most-eof-lines*))
+            do (when (zerop (logand (incf count) 4095)) (tuatara.runtime:job-check-stop))
+               (let ((confirmed (pdf-stream-holding objects at t)))
+                 (when (or (null confirmed) (member at named))
+                   (push (cons at (pdf-line-end-after octets (+ at 5))) lines)
+                   (when confirmed (lie at confirmed))
+                   (let ((stream (pdf-stream-holding unconfirmed at nil)))
+                     (when stream (push (cons at (pdf-indirect-number stream)) doubtful)))))))
+    (values (nreverse lines) (nreverse doubtful) (nreverse lying))))
 
 (defun pdf-stream-holding (objects at confirmed)
   "The object of OBJECTS (a vector of PDF-INDIRECT in the order written)
@@ -469,39 +481,64 @@ CONFIRMED or, with CONFIRMED NIL, when it is not; else NIL."
            (<= (pdf-indirect-stream-start object) at) (< at (pdf-indirect-stream-end object))
            object))))
 
-(defun pdf-startxref-before-p (octets at)
-  "True when startxref and a number stand just before AT in OCTETS, as
-before the %%EOF that ends a save."
-  (let ((i (1- at)))
-    (flet ((back-white ()
-             (let ((from i)) (loop while (and (>= i 0) (pdf-white-p (aref octets i))) do (decf i)) (< i from))))
-      (and (progn (back-white) t)
-           (let ((to i)) (loop while (and (>= i 0) (<= 48 (aref octets i) 57) (< (- to i) 20)) do (decf i)) (< i to))
-           (back-white)
-           (>= i 8) (tuatara.io:octets-at-p octets "startxref" (- i 8))))))
-
-(defun pdf-startxref (octets &key (start 0) (end (length octets)))
-  "The offset the last startxref from START below END in the PDF in OCTETS
-names (where a save's cross-reference section is said to be), and where
-that startxref is, as two values: the offset NIL when it names none that can
-be read, both NIL when there is no startxref."
+(defun pdf-startxref-written (octets &key (start 0) (end (length octets)))
+  "The number the last startxref from START below END in OCTETS is followed
+by, as written, and where that startxref is, as two values (PDF-STARTXREF)."
   (let ((at (tuatara.io:octets-search (load-time-value (tuatara.text:string-octets "startxref")) octets
                                      :start start :end end :from-end t)))
     (values (and at (values (pdf-integer-at octets (+ at 9) end))) at)))
 
+(defun pdf-section-at-p (octets at)
+  "True when a cross-reference section of the PDF in OCTETS begins at AT: a
+table (xref) or a cross-reference stream."
+  (and (integerp at) (< -1 at (length octets))
+       (or (tuatara.io:octets-at-p octets "xref" (pdf-skip-space octets at))
+           (let ((object (pdf-indirect-object-at octets at)))
+             (and object (equal (pdf-get (pdf-indirect-value object) "/Type") "/XRef"))))))
+
+(defvar *pdf-offset-base-kept* (cons (sb-ext:make-weak-pointer nil) 0)
+  "The PDF PDF-OFFSET-BASE last worked out for, held weakly, and its base.")
+
+(defun pdf-offset-base (octets)
+  "Where the offsets the PDF in OCTETS gives (its startxref, /Prev, its
+cross-reference entries) are counted from: its %PDF- header, when octets
+come before it and its last startxref names a cross-reference section only
+counted from there, as readers take such a file; else 0, its first octet."
+  (let ((kept *pdf-offset-base-kept*))
+    (if (eq (sb-ext:weak-pointer-value (car kept)) octets)
+        (cdr kept)
+        (let* ((header (tuatara.io:octets-search (load-time-value (tuatara.text:string-octets "%PDF-")) octets))
+               (named (and header (plusp header) (pdf-startxref-written octets)))
+               (base (if (and named (not (pdf-section-at-p octets named)) (pdf-section-at-p octets (+ header named)))
+                         header
+                         0)))
+          (setf *pdf-offset-base-kept* (cons (sb-ext:make-weak-pointer octets) base))
+          base))))
+
+(defun pdf-startxref (octets &key (start 0) (end (length octets)))
+  "The offset the last startxref from START below END in the PDF in OCTETS
+names (where a save's cross-reference section is said to be), counted from
+the file's first octet (PDF-OFFSET-BASE), and where that startxref is, as
+two values: the offset NIL when it names none that can be read, both NIL
+when there is no startxref."
+  (multiple-value-bind (named at) (pdf-startxref-written octets :start start :end end)
+    (values (and named (+ named (pdf-offset-base octets))) at)))
+
 (defun map-pdf-cross-reference-table (function octets at)
   "Call FUNCTION with each entry of the cross-reference table written in
 OCTETS at AT (its xref keyword, white space and comments before it passed
-over), in the order written: the object's number, its offset (for a free
-object, the number of the next free one), its generation, and :USED or
+over), in the order written: the object's number, its offset counted from
+the file's first octet (PDF-OFFSET-BASE; for a free object, the number of
+the next free one), its generation, and :USED or
 :FREE. Stop when FUNCTION returns true. NIL when no table is at AT; else,
 as three values, how its entries ended: :END, at its trailer or the file's
 end; :STOPPED, by FUNCTION; :CUT-SHORT, where the first number and count of
 a part of it could not be read; :UNREADABLE, where an entry could not be
 read. Then the trailer dictionary written where they ended, or NIL; and
 where they ended."
-  (let* ((n (length octets)) (i (pdf-skip-space octets at)) (ending :end))
+  (let* ((n (length octets)) (i (pdf-skip-space octets at)) (ending :end) (base 0))
     (when (tuatara.io:octets-at-p octets "xref" i)
+      (setf base (pdf-offset-base octets))
       (setf i (+ i 4))
       (block sections
         (loop
@@ -519,7 +556,9 @@ where they ended."
                       (unless (and kind (< kind n) (member (aref octets kind) '(102 110)))
                         (setf ending :unreadable)
                         (return-from sections))
-                      (when (funcall function (+ start k) offset generation (if (= (aref octets kind) 110) :used :free))
+                      (when (if (= (aref octets kind) 110)
+                                (funcall function (+ start k) (+ offset base) generation :used)
+                                (funcall function (+ start k) offset generation :free))
                         (setf ending :stopped)
                         (return-from sections))
                       (setf i (1+ kind))))))))))
@@ -532,7 +571,9 @@ DICTIONARY is given and whose decoded octets are DATA, in the order written:
 the object's number, the entry's type (0 free, 1 written in the file, 2 in
 an object stream; 1 when the stream gives no type) and its two fields (an
 offset or object stream's number, and a generation or index; 0 when not
-given). Stop when FUNCTION returns true. NIL when /W gives no field widths
+given), as written: an offset counts from the PDF's header, so that
+PDF-OFFSET-BASE is added to have it in the file. Stop when FUNCTION returns
+true. NIL when /W gives no field widths
 it can be read by; else how its entries ended: :END, as its /Index (or
 /Size) says; :STOPPED, by FUNCTION; :SHORT, its octets ending first."
   (let* ((widths (pdf-get dictionary "/W"))
@@ -856,62 +897,81 @@ objects."
 
 (defparameter *pdf-most-sections* 64
   "The most cross-reference sections of one PDF followed by their /Prev
-\(PDF-CROSS-REFERENCE).")
+\(PDF-SECTIONS).")
 
-(defun pdf-cross-reference (octets)
-  "What the cross-reference sections of the PDF in OCTETS say, as two values:
-a hash table of each object's number to (:USED OFFSET GENERATION), (:PACKED
-STREAM INDEX) or (:FREE), the last section's word on it first; and the last
-trailer, the one giving /Info when the last does not. Read from the section
-the last startxref names back by /Prev, cross-reference tables, streams and
-the stream a table names by /XRefStm, at most *PDF-MOST-SECTIONS* of them;
-NIL when none of them can be read."
-  (let ((entries (make-hash-table)) (trailer nil) (seen '()) (read nil)
-        (at (pdf-startxref octets)))
-    (labels ((note (number entry)
-               (unless (gethash number entries) (setf (gethash number entries) entry))
-               nil)
-             (take-trailer (dictionary)
-               (when (and (pdf-dictionary-p dictionary) (or (null trailer) (and (null (pdf-get trailer "/Info"))
-                                                                                (pdf-get dictionary "/Info"))))
-                 (setf trailer dictionary)))
+(defparameter *pdf-most-entries* 1000000
+  "The most cross-reference entries read from one PDF, all its sections
+together (PDF-SECTIONS): a file listing more has the rest not read, and
+that is said.")
+
+(defun pdf-sections (octets &optional row)
+  "The cross-reference sections of the PDF in OCTETS, from the one its last
+startxref names back by each trailer's /Prev, at most *PDF-MOST-SECTIONS*,
+each read once: a list of (OFFSET . TRAILER), the last first, OFFSET counted
+from the file's first octet. With ROW, a function, the entries they list
+are read too, cross-reference streams decoded and those a table names by
+/XRefStm: ROW is called with each, the last section's first, as NUMBER and
+:USED OFFSET GENERATION, :PACKED STREAM INDEX, or :FREE and two NILs. At
+most *PDF-MOST-ENTRIES* entries are read; a second value is true when the
+sections list more."
+  (let ((base (pdf-offset-base octets)) (n (length octets)) (at (pdf-startxref octets))
+        (sections '()) (count 0) (too-many nil))
+    (labels ((entry (number kind first second)
+               (cond ((> (incf count) *pdf-most-entries*) (setf too-many t) t)
+                     (row (funcall row number kind first second) nil)))
              (stream-at (offset)
-               (let ((object (and (integerp offset) (< -1 offset (length octets))
-                                  (pdf-indirect-object-at octets offset))))
+               (let ((object (and (integerp offset) (< -1 offset n) (pdf-indirect-object-at octets offset))))
                  (when (and object (pdf-indirect-stream-start object)
                             (equal (pdf-get (pdf-indirect-value object) "/Type") "/XRef"))
-                   (let ((data (pdf-stream-octets (pdf-indirect-value object)
-                                                  (subseq octets (pdf-indirect-stream-start object)
-                                                          (pdf-indirect-stream-end object)))))
+                   (let ((data (and row (pdf-stream-octets (pdf-indirect-value object)
+                                                           (subseq octets (pdf-indirect-stream-start object)
+                                                                   (pdf-indirect-stream-end object))))))
                      (when data
                        (map-pdf-cross-reference-stream
                         (lambda (number type second third)
-                          (note number (case type
-                                         (1 (list :used second third))
-                                         (2 (list :packed second third))
-                                         (t '(:free)))))
-                        (pdf-indirect-value object) data)
-                       (pdf-indirect-value object)))))))
+                          (case type
+                            (1 (entry number :used (+ base second) third))
+                            (2 (entry number :packed second third))
+                            (t (entry number :free nil nil))))
+                        (pdf-indirect-value object) data)))
+                   (pdf-indirect-value object)))))
       (loop repeat *pdf-most-sections*
-            while (and (integerp at) (< -1 at (length octets)) (not (member at seen)))
-            do (push at seen)
-               (tuatara.runtime:job-check-stop)
+            while (and (not too-many) (integerp at) (< -1 at n) (not (assoc at sections)))
+            do (tuatara.runtime:job-check-stop)
                (multiple-value-bind (ending dictionary)
-                   (map-pdf-cross-reference-table
-                    (lambda (number offset generation kind)
-                      (note number (if (eq kind :used) (list :used offset generation) '(:free))))
-                    octets at)
+                   (map-pdf-cross-reference-table (lambda (number offset generation kind)
+                                                    (if (eq kind :used)
+                                                        (entry number :used offset generation)
+                                                        (entry number :free nil nil)))
+                                                  octets at)
                  (let ((dictionary (if ending
-                                       (progn (setf read t)
-                                              (when (integerp (pdf-get dictionary "/XRefStm"))
-                                                (stream-at (pdf-get dictionary "/XRefStm")))
-                                              dictionary)
+                                       (let ((hidden (pdf-get dictionary "/XRefStm")))
+                                         (when (integerp hidden) (stream-at (+ base hidden)))
+                                         dictionary)
                                        (stream-at at))))
-                   (unless dictionary (return))
-                   (setf read t)
-                   (take-trailer dictionary)
-                   (setf at (pdf-get dictionary "/Prev"))))))
-    (and read (values entries trailer))))
+                   (unless (or ending dictionary) (return))
+                   (push (cons at dictionary) sections)
+                   (setf at (let ((prev (pdf-get dictionary "/Prev"))) (and (integerp prev) (+ base prev))))))))
+    (values (nreverse sections) too-many)))
+
+(defun pdf-cross-reference (octets)
+  "What the cross-reference sections of the PDF in OCTETS say (PDF-SECTIONS),
+as three values: a hash table of each object's number to (:USED OFFSET
+GENERATION), (:PACKED STREAM INDEX) or (:FREE), the last section's word on
+it first; the last trailer, or the latest one giving /Info when that does
+not; and true when they list more entries than are read. NIL when none of
+them can be read."
+  (let ((entries (make-hash-table)))
+    (multiple-value-bind (sections too-many)
+        (pdf-sections octets (lambda (number kind first second)
+                               (unless (gethash number entries)
+                                 (setf (gethash number entries)
+                                       (if (eq kind :free) '(:free) (list kind first second))))))
+      (let ((trailers (remove-if-not #'pdf-dictionary-p (mapcar #'cdr sections))))
+        (and sections
+             (values entries
+                     (or (find-if (lambda (trailer) (pdf-get trailer "/Info")) trailers) (first trailers))
+                     too-many))))))
 
 (defun pdf-trailer (octets)
   "The PDF in OCTETS' last trailer (PDF-CROSS-REFERENCE), read once while it
@@ -920,10 +980,10 @@ is read through; NIL when its cross-reference cannot be read."
 
 (defun pdf-cross-reference-known (octets &optional (found (or *pdf-objects-found* (make-hash-table :test 'equal))))
   "FOUND, what is known of the PDF in OCTETS, with its cross-reference read
-\(PDF-CROSS-REFERENCE) once: under :ENTRIES and :TRAILER."
+\(PDF-CROSS-REFERENCE) once: under :ENTRIES, :TRAILER and :TOO-MANY."
   (unless (nth-value 1 (gethash :entries found))
-    (multiple-value-bind (entries trailer) (pdf-cross-reference octets)
-      (setf (gethash :entries found) entries (gethash :trailer found) trailer)))
+    (multiple-value-bind (entries trailer too-many) (pdf-cross-reference octets)
+      (setf (gethash :entries found) entries (gethash :trailer found) trailer (gethash :too-many found) too-many)))
   found)
 
 (defun pdf-object-by-cross-reference (octets found number generation)

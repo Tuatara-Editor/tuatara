@@ -205,7 +205,7 @@ its form says, as ORG-READ-RULE reads them; :HOUR, :MINUTE, :END-HOUR and
     ;; PDF objects, read from octets alone
     pdf-object-at pdf-string-text pdf-date-words *pdf-most-items* tuatara.io:pdf-header-at pdf-white-p
     pdf-get pdf-dictionary-p pdf-ref-p pdf-array-items map-pdf-dictionary
-    pdf-indirect-object-at pdf-indirect-get map-pdf-written-objects pdf-eof-lines pdf-startxref
+    pdf-indirect-object-at pdf-indirect-get map-pdf-written-objects pdf-eof-lines pdf-startxref pdf-offset-base
     map-pdf-cross-reference-table map-pdf-cross-reference-stream pdf-stream-filters pdf-stream-octets
     *pdf-picture-filters* pdf-object-stream-offsets pdf-packed-object map-pdf-content
     ;; octets shown as a hex dump, text shortened, and text from a file with its control characters shown
