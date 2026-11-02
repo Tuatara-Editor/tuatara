@@ -13,7 +13,7 @@
 (in-package #:tuatara.terminal)
 
 (defparameter *usage-forms*
-  '("tuatara [--gui [--frames N]] [-Q] [-c INIT-FILE] [--safe] [--hex] [[+LINE[:COLUMN]] FILE...]"
+  '("tuatara [--gui] [--frames N] [-Q] [-c INIT-FILE] [--safe] [--hex] [[+LINE[:COLUMN]] FILE...]"
     "tuatara [--gui] [-Q] [-c INIT-FILE] --diff OLD NEW"
     "tuatara [--gui] [-Q] [-c INIT-FILE] --merge LOCAL BASE REMOTE MERGED"
     "tuatara [--gui] [-Q] [-c INIT-FILE] --tutor")
@@ -32,9 +32,11 @@ License, version 3 or later.
   '((:flags (("--gui"))
      :text ("open a window of its own instead (as when started with no terminal)"))
     (:flags (("--frames" "N"))
-     :text ("with --gui, open N frames, each a window of its own, from 1 to"
-            "16: the files named are shown one in each frame in turn, those"
-            "left over open behind the first; --frames=N does as well"))
+     :text ("open N frames, from 1 to 16: with --gui each a window of its"
+            "own, in the terminal screens shown one at a time (C-x 5 o goes"
+            "to the next); the files named are shown one in each frame in"
+            "turn, those left over open behind the first; --frames=N does as"
+            "well"))
     (:flags (("-c" "INIT-FILE") ("--config" "INIT-FILE"))
      :text ("read INIT-FILE as the init file instead of"
             "~/.config/tuatara/init.lisp; --config=INIT-FILE does as well"))
@@ -533,9 +535,6 @@ what the session left (*EXIT-CODE*); 2 for options it cannot take."
                                   (tuatara.io:path-kind config-path))
                                 :regular)))
            (format *error-output* "tuatara: no init file at ~a (tuatara --generate-config writes one to start from)~%" (shown config))
-           2)
-          ((and (getf options :frames) (not (or (getf options :gui) (window-wanted-p))))
-           (format *error-output* "tuatara: --frames opens windows of their own: give --gui with it~%")
            2)
           ((and (not (or (getf options :gui) (window-wanted-p))) (not (keyboard-available-p)))
            (format *error-output* "tuatara: its input is not a terminal and there is none to read keys from (/dev/tty): run it in a terminal, or with --gui~%")

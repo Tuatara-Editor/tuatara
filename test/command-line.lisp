@@ -424,6 +424,18 @@ frontend, the editor, and the options read."
       (dolist (wrong '(("--frames") ("--frames" "0") ("--frames" "17") ("--frames" "two")))
         (true (search "--frames needs how many frames" (getf (apply #'read-them wrong) :error)) "~s" wrong)))))
 
+(define-test (command-line frames-in-a-terminal)
+  ;; --frames N is taken in a terminal as with --gui: where there is no terminal to read keys
+  ;; from, that is what is said, never that frames need a window
+  (unless (or (tuatara.terminal::terminal-p 0) (tuatara.terminal::keyboard-available-p))
+    (with-test-directory (dir)
+      (let ((a (namestring (put-file (merge-pathnames "a.txt" dir) "x"))) (said (make-string-output-stream)))
+        (let ((*error-output* said))
+          (is = 2 (tuatara.terminal:main (list "--frames" "2" a))))
+        (let ((words (get-output-stream-string said)))
+          (true (search "there is none to read keys from" words) "~a" words)
+          (false (search "--frames" words) "~a" words))))))
+
 (define-test (command-line keys-need-a-terminal)
   (true (tuatara.terminal::keyboard-available-p :input-terminal t :tty "/nonexistent/tty"))
   (false (tuatara.terminal::keyboard-available-p :input-terminal nil :tty "/nonexistent/tty"))
