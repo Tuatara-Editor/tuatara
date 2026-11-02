@@ -142,16 +142,22 @@ static void *tuatara_calloc(size_t count, size_t size) {
   return pointer;
 }
 
+/* A realloc that fails leaves OLD as it was, to be tried again: no use
+   after it is freed, which the compiler cannot tell. */
+#pragma GCC diagnostic push
+#pragma GCC diagnostic ignored "-Wuse-after-free"
 static void *tuatara_realloc(void *old, size_t size) {
   int64_t before = old ? (int64_t)malloc_usable_size(old) : 0;
+  bool had = old != NULL;
   void *pointer = realloc(old, size);
   while (!pointer && size && tuatara_again(size)) pointer = realloc(old, size);
   if (pointer)
     atomic_fetch_add_explicit(&tuatara_held_octets, (int64_t)malloc_usable_size(pointer) - before, memory_order_relaxed);
-  else if (size == 0 && old)
+  else if (size == 0 && had)
     atomic_fetch_sub_explicit(&tuatara_held_octets, before, memory_order_relaxed);
   return pointer;
 }
+#pragma GCC diagnostic pop
 
 __attribute__((constructor)) static void tuatara_count_allocations(void) {
   tuatara_reserve = malloc(TUATARA_RESERVE);
