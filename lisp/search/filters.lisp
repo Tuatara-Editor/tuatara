@@ -432,9 +432,8 @@ in the background.")
 spends at each key on the lines from the top of the window, so that what
 it matches there is shown at once; the rest is matched in the background
 on all but two cores, the mode line saying how far it has got, and the next
-key starts again. More seconds fill a window where matches are few and far
-between; fewer keep typing quicker on a slow machine. The default is 1/100, a
-hundredth of a second.")
+key starts again: a hundredth of a second, within the time a frame is drawn
+in, so that typing never waits on it.")
 
 (defun filter-quickly-p (filtering &optional previous)
   "True when what FILTERING narrows is small enough to filter at once, on the

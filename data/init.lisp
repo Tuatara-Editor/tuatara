@@ -491,19 +491,15 @@
   ;; set: nil.
   ;; (setf *split-limit-ask* t)
 
-  ;; C-x / s in a large list or CSV matches from the top of the window for up
-  ;; to 2/100 s at each key, then the rest in the background. Not set: 1/100.
-  ;; (setf *search-filter-screen-seconds* 2/100)
   ;; C-x / s narrows a file of these modes, a record a line, as a CSV, by
   ;; hiding the lines left out; here also a mode of your own. Not set: logs,
   ;; JSON Lines, todo.txt, hosts, passwd, requirements, .gitignore and .env.
   ;; (setf *line-record-modes* (cons 'ini-mode *line-record-modes*))
-  ;; While a pattern is typed (C-s, C-x / s), a text larger than 64 MB has its
-  ;; matches counted and filtered once typing pauses for 1/2 s, the lines in
-  ;; the window shown at once; a smaller one at each key. Changes are sent to
-  ;; language servers once typing pauses too. Not set: 1/2 and 64 MB.
+  ;; While a pattern is typed (C-s, C-x / s), a text too large to go through
+  ;; at each key has its matches counted and filtered once typing pauses for
+  ;; 3/10 s, the lines in the window shown at once; a smaller one at each key.
+  ;; Changes are sent to language servers once typing pauses too. Not set: 1/2.
   ;; (setf *typing-pause* 3/10)
-  ;; (setf *typing-pause-octets* (* 16 1024 1024))
 
   ;; Named patterns of your own for every search, [[:nzphone:]] here, as
   ;; [[:ipv4:]] and Tuatara's others are: a name, what it finds, and the

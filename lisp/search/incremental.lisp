@@ -102,26 +102,62 @@ keys are played a search runs on the editor's thread until it ends or
 \\`C-g' is typed.")
 
 (defvar *typing-pause* 1/2
-  "Seconds without a key typed before work over a text larger than
-*TYPING-PAUSE-OCTETS* starts while a pattern is typed: the count of a
-search's matches (\\[regex-search-forward]) and a filter being typed
-\(\\[search-filter-regex]), its lines in the window shown at once. Typing so
-stays quick on a text of gigabytes, the count and the rest coming a moment
-after the last key; on a smaller text they come as each key is typed. A
-buffer's changes are sent to its language servers that long after typing in
-it stops, and what they find brought up to date then.")
+  "Seconds without a key typed before work over a text too large to go through
+at each key starts while a pattern is typed: the count of a search's matches
+\(\\[regex-search-forward]) and a filter being typed (\\[search-filter-regex]),
+its lines in the window shown at once. Typing so stays quick on a text of
+gigabytes, the count and the rest coming a moment after the last key; on a
+smaller text they come as each key is typed. How large is too large the
+editor finds out from the counts it made (COUNT-TIMED). A buffer's changes
+are sent to its language servers that long after typing in it stops, and
+what they find brought up to date then.")
 
-(defvar *typing-pause-octets* (* 64 1024 1024)
-  "The largest text, in octets, whose matches are counted and filtered as each
-key of a pattern is typed; on a larger one that waits for typing to pause
-\(*TYPING-PAUSE*).")
+(defvar *count-at-once-seconds* 1/100
+  "The longest a count of a pattern's matches may be expected to take and still
+be made as each key of the pattern is typed; a count expected to take longer
+waits for typing to pause (*TYPING-PAUSE*).")
+
+(defvar *count-at-once-least* (* 1024 1024)
+  "The octets of text always counted as each key of a pattern is typed, however
+the counts before went; their counts are not timed (COUNT-TIMED), the cost of
+starting one, and of the machine's other work, weighing too much in them.")
+
+(sb-ext:defglobal **count-rate** (* 64 1024 1024 100)
+  "The octets a second counts of a pattern's matches are expected to go through,
+as the counts made so far went (COUNT-TIMED); before any, the rate that has a
+text of 64 MB counted at each key.")
+
+(defun count-timed (octets cancel function)
+  "Call FUNCTION, a count of a pattern's matches over OCTETS of text, and
+return what it returns, noting how fast it went for the counts after it: a
+count slower than *COUNT-AT-ONCE-SECONDS* gives the rate, a quicker one only
+raises it, and one stopped (CANCEL, a cell, turned true) after that long
+lowers it to the rate that would have finished by then. A count of no more
+than *COUNT-AT-ONCE-LEAST* octets is not timed, nor one that did not go
+through its text: FUNCTION returning NIL or (:ERROR ...), or leaving
+otherwise, not stopped."
+  (let ((start (get-internal-real-time)) (result nil) (whole nil))
+    (unwind-protect (progn (setf result (funcall function)
+                                 whole (not (or (null result) (and (consp result) (eq (car result) :error)))))
+                           result)
+      (let ((seconds (/ (- (get-internal-real-time) start) internal-time-units-per-second)))
+        (when (and (> octets *count-at-once-least*) (plusp seconds))
+          (let ((rate (floor octets seconds)) (slow (> seconds *count-at-once-seconds*)))
+            (cond ((car cancel) (when slow (setf **count-rate** (min rate **count-rate**))))
+                  ((not whole))
+                  (slow (setf **count-rate** rate))
+                  (t (setf **count-rate** (max rate **count-rate**))))))))))
 
 (defun typing-pause-left (octets)
   "Seconds still to wait, since the text of a pattern's question last changed,
 before work over OCTETS of text starts (*TYPING-PAUSE*); NIL once that is
-over, or at once for no more than *TYPING-PAUSE-OCTETS*."
+over, or at once for a text counted within *COUNT-AT-ONCE-SECONDS* at the
+rate counts went so far (COUNT-TIMED), or of no more than
+*COUNT-AT-ONCE-LEAST* octets."
   (let ((left (- (* *typing-pause* internal-time-units-per-second) (- (get-internal-real-time) *last-typed*))))
-    (and (> octets *typing-pause-octets*) (plusp left) (/ left internal-time-units-per-second))))
+    (and (> octets (max *count-at-once-least* (* **count-rate** *count-at-once-seconds*)))
+         (plusp left)
+         (/ left internal-time-units-per-second))))
 
 (defstruct (pattern-count (:constructor make-pattern-count ()) (:copier nil))
   "How many matches a pattern being typed has, counted in the background:
@@ -175,7 +211,8 @@ the new count comes, \"\" before any or with nothing to count."
                (setf (pattern-count-job counter)
                      (list key
                            (tuatara.runtime:start-background-result
-                            (lambda () (list (funcall count (lambda () (car cancel)))))
+                            (lambda ()
+                              (list (count-timed octets cancel (lambda () (funcall count (lambda () (car cancel)))))))
                             "tuatara pattern count" (editor-job-waker) cancel)
                            cancel)))
              (values t (shown))))))
@@ -567,17 +604,21 @@ or the seconds still to wait."
                              (list (list key start)
                                    (tuatara.runtime:start-background-result
                                     (lambda ()
-                                      (block counting
-                                        (flet ((count-to (to)
-                                                 ;; the matches of one scan from LOW to HIGH that start before TO
-                                                 (multiple-value-bind (count status)
-                                                     (count-line-matches rope matcher low to :bound high
-                                                                                             :stop (lambda () (car cancel)))
-                                                   (if status (return-from counting (list :error status)) count))))
-                                          (if (null start)
-                                              (list (count-to high) nil nil)
-                                              ;; the total stands while only the match moved
-                                              (list (and (not known) (count-to high)) start (count-to start))))))
+                                      (count-timed
+                                       (+ (if known 0 (- high low)) (if start (- start low) 0))
+                                       cancel
+                                       (lambda ()
+                                         (block counting
+                                           (flet ((count-to (to)
+                                                    ;; the matches of one scan from LOW to HIGH that start before TO
+                                                    (multiple-value-bind (count status)
+                                                        (count-line-matches rope matcher low to
+                                                                            :bound high :stop (lambda () (car cancel)))
+                                                      (if status (return-from counting (list :error status)) count))))
+                                             (if (null start)
+                                                 (list (count-to high) nil nil)
+                                                 ;; the total stands while only the match moved
+                                                 (list (and (not known) (count-to high)) start (count-to start))))))))
                                     "tuatara search count" (editor-job-waker) cancel)
                                    cancel))))
                    t))))))

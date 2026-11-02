@@ -679,10 +679,11 @@ with y hidden between them and after the last.")
       (wait-for-filter-jobs))))
 
 (define-test (search-filters csv-after-typing-pauses)
-  ;; a file past *typing-pause-octets*: the window's lines at each key, the job only once typing
+  ;; a file too large to filter at each key: the window's lines at each key, the job only once typing
   ;; pauses, or at once on RET
   (let ((tuatara.defaults::*search-filter-quick-characters* 100)
-        (tuatara.defaults::*typing-pause-octets* 0)
+        (tuatara.defaults::*count-at-once-seconds* 0)
+        (tuatara.defaults::*count-at-once-least* 0)
         (tuatara.defaults::*typing-pause* 1000)
         (job :unset) (due nil) (partial nil))
     (with-records (f buffer path)
