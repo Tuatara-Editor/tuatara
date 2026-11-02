@@ -11,7 +11,8 @@
     ("TUATARA.TERMINAL-EMULATOR" "TERMINAL-SHOWN-TEXT" "*TERMINAL-SCROLLBACK*" "terminal")
     ("TUATARA.LSP" "LSP-TAKE-IN" "*LSP-WAIT*" "lsp-restart")
     ("TUATARA.COMPILE" "COMPILE-PLACE-PATH" "*COMPILE-COMMAND*" "compile")
-    ("TUATARA.PACKAGES" "PACKAGE-ENTRY" "*PACKAGE-ASK-BEFORE-LOADING*" "package-update"))
+    ("TUATARA.PACKAGES" "PACKAGE-ENTRY" "*PACKAGE-ASK-BEFORE-LOADING*" "package-update")
+    ("TUATARA.EXPORT" "REDACTION-WHOLE" "*LATEX-ENGINES*" "org-export-latex-pdf"))
   "Each feature with a Lisp package of its own, as (PACKAGE INSIDE SETTING
 COMMAND): a name of its insides, one of its settings and one of its commands.")
 

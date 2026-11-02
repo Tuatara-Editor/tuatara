@@ -50,6 +50,7 @@
                (:file "lsp/package")
                (:file "compile/package")
                (:file "packages/package")
+               (:file "export/package")
                (:file "theme")
                (:file "garbage")
                (:module "modes"   :serial t :components ((:file "base") (:file "special") (:file "list-preview") (:file "csv") (:file "languages") (:file "more-languages-data") (:file "more-languages-markup") (:file "more-languages-programming") (:file "more-languages-build") (:file "json-lines") (:file "git-commit")))

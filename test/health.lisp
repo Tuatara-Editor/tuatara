@@ -123,15 +123,15 @@ a moment.")
 
 (define-test (health latex-shut-in-said)
   ;; health says whether LaTeX runs shut in by the sandbox, where an engine is found
-  (when (tuatara.defaults::latex-engines-found)
+  (when (tuatara.export::latex-engines-found)
     (if (eq :ready (tuatara.io:sandbox-status))
-        (true (search "shut in by the sandbox" (tuatara.defaults::latex-export-words)))
-        (true (search "unconfined" (tuatara.defaults::latex-export-words))))
+        (true (search "shut in by the sandbox" (tuatara.export:latex-export-words)))
+        (true (search "unconfined" (tuatara.export:latex-export-words))))
     ;; no sandbox program: unconfined, and said so
     (unwind-protect
          (let ((tuatara-user:*sandbox-program* nil))
            (tuatara.io:sandbox-status :again t)
-           (true (search "unconfined" (tuatara.defaults::latex-export-words))))
+           (true (search "unconfined" (tuatara.export:latex-export-words))))
       (tuatara.io:sandbox-status :again t))))
 
 (define-test (health drawing-recommended)

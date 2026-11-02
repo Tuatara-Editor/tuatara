@@ -572,7 +572,7 @@ seconds; the editor draws after it as it does when woken."
 (define-test (org wrapping-in-a-macro)
   ;; C-c m: the selection or the word at point wrapped in a macro chosen from a list: R, P, those the note declares
   (flet ((after (keys text)
-           (let ((tuatara.defaults::*org-last-macro* "R"))
+           (let ((tuatara.export::*org-last-macro* "R"))
              (multiple-value-bind (f editor) (run-keys (format nil "M-x o r g - m o d e RET ~a" keys) :text text :width 100 :height 8)
                (declare (ignore f))
                (session-text editor)))))

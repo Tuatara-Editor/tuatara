@@ -8,7 +8,7 @@
 ;;;; enhanced export and latex-compile-pdf look first, and ask before making a
 ;;;; PDF that would give a hidden text away.
 
-(in-package #:tuatara.defaults)
+(in-package #:tuatara.export)
 
 (defvar *latex-redaction-commands* '("R" "D" "redact")
   "The LaTeX commands that hide their argument in your LaTeX files, \\\\R{John

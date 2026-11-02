@@ -263,8 +263,7 @@ so that \\`C-c' shows, and runs, what the buffer at hand can do in every mode
     (install-centred-text)
     (install-visual-line)
     (install-windows)
-    (install-latex-export)
-    (install-redactions)
+    (tuatara.export:install-latex-export)
     ;; after the windows' standard rules, which it adds to
     (install-calendar)
     (tuatara.lsp:install-diagnostics-place)

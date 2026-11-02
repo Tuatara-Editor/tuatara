@@ -25,7 +25,7 @@
 ;;;; reaches no network. Without a sandbox it runs all the same, and the
 ;;;; export says so.
 
-(in-package #:tuatara.defaults)
+(in-package #:tuatara.export)
 
 (defvar *latex-engines* '("xelatex" "lualatex")
   "The programs that make a PDF of LaTeX, tried in this order: when one fails,
@@ -1207,10 +1207,12 @@ window, selected, or with OTHER the list kept selected."
   "Bind the keys of *LaTeX errors*; offer the commands making PDFs of
 Org files in Org buffers, those of LaTeX files in LaTeX buffers; and make
 the standard rule of where exported PDFs are shown: down the right side of
-the screen when it is wide enough, else alone on it."
+the screen when it is wide enough, else alone on it; and offer the checking
+and marking of redactions (INSTALL-REDACTIONS)."
   (entry-list-keys 'latex-errors-mode "*LaTeX errors*")
   (commands-for-mode 'org-mode "Org files" 'org-export-latex 'org-export-latex-enhanced 'org-export-latex-pdf 'org-export-latex-pdf-buffer 'org-export-latex-pdf-xdg
                      'org-export-latex-pdf-enhanced 'org-export-latex-pdf-enhanced-buffer 'org-export-latex-pdf-enhanced-xdg)
   (commands-for-mode 'latex-mode "LaTeX files" 'latex-compile-pdf 'latex-compile-pdf-buffer 'latex-compile-pdf-xdg)
   (commands-for-mode 'org-mode "Org files" 'org-insert-export-drawer 'org-export-docx 'org-export-docx-xdg)
-  (place-buffers :exported :right-or-alone))
+  (place-buffers :exported :right-or-alone)
+  (install-redactions))

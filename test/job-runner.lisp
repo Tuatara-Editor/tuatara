@@ -186,8 +186,8 @@ questions asked, the first first."
   ;; asks first, and no keeps the buffer and the export going
   (let ((b (tuatara.buffer:make-buffer "job-runner export" :text "* Note")))
     (unwind-protect
-         (let ((tuatara.runtime:*jobs* (list (tuatara.defaults::make-pdf-export b "/nonexistent/note.org" :org :file nil nil t)
-                                             (tuatara.defaults::make-docx-export b "" "/nonexistent/note.org" :file)))
+         (let ((tuatara.runtime:*jobs* (list (tuatara.export::make-pdf-export b "/nonexistent/note.org" :org :file nil nil t)
+                                             (tuatara.export::make-docx-export b "" "/nonexistent/note.org" :file)))
                (tuatara.defaults::*job-queue* '()))
            (with-questions (prompts)
              (false (tuatara.defaults::jobs-kill-query b))

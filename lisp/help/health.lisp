@@ -123,7 +123,7 @@ them to start, and in a window, how it draws each way it can
              (append (list (pdf-decoder-words) (office-page-words) (image-decoder-words) (external-program-words) (notify-health-words) (encrypted-health-words) (git-health-words) (man-health-words))
                      (remove nil (mapcar #'call-hook-function *health-decoder-functions*)))
              (health-check-exporters check)
-             (remove nil (list (latex-export-words) (latex-language-words)))
+             (remove nil (list (tuatara.export:latex-export-words) (tuatara.export:latex-language-words)))
              (health-check-tools check)
              (mapcar (lambda (language) (multiple-value-list (tuatara.lsp:language-tools-words language))) languages)
              (health-check-results check)

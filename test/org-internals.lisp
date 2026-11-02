@@ -331,14 +331,14 @@ out), a CLOCK: line, where a logged line goes, and clocking in from any key.")
   (true (search "Say two." (tuatara.defaults::org-latex-document (format nil "#+MACRO: m one~%#+MACRO: m two~%Say {{{m}}}.~%"))))
   (let ((b (tuatara.buffer:make-buffer "*macros*" :text (format nil "#+macro: who first~%#+macro: who second~%"))))
     (unwind-protect
-         (let ((who (find "who" (tuatara.defaults::org-macro-choices b) :key #'tuatara.command:candidate-string :test #'string=)))
+         (let ((who (find "who" (tuatara.export::org-macro-choices b) :key #'tuatara.command:candidate-string :test #'string=)))
            (is string= "declared: second" (tuatara.command:candidate-annotation who)))
       (tuatara.buffer:kill-buffer b)))
   (with-test-directory (dir)
     (alexandria:write-string-into-file (format nil "#+MACRO: R [$1]~%") (merge-pathnames "setup.org" dir) :if-exists :supersede)
     (let ((folder (tuatara.io:parent-path (namestring (merge-pathnames "note.org" dir)))))
-      (is eq nil (tuatara.defaults::only-enhanced-macro (format nil "#+SETUPFILE: setup.org~%See {{{R(x)}}}.~%") folder))
-      (is string= "R" (tuatara.defaults::only-enhanced-macro (format nil "See {{{R(x)}}}.~%") folder)))))
+      (is eq nil (tuatara.export::only-enhanced-macro (format nil "#+SETUPFILE: setup.org~%See {{{R(x)}}}.~%") folder))
+      (is string= "R" (tuatara.export::only-enhanced-macro (format nil "See {{{R(x)}}}.~%") folder)))))
 
 (define-test (org-internals property-additions)
   ;; NAME replaces, NAME+ adds, from the file's #+PROPERTY: lines down through the headlines
