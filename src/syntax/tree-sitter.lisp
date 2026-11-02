@@ -253,11 +253,13 @@ may be had."
       (documentation 'parser-grammar 'function) "The grammar the parser parses with.")
 
 (defstruct (tree (:constructor %make-tree (helper number)) (:copier nil))
-  "A syntax tree, held by HELPER as its tree NUMBER."
+  "A syntax tree, held by HELPER as its tree NUMBER; RELEASED once let go."
   (helper nil :read-only t)
-  (number 0 :type fixnum :read-only t))
+  (number 0 :type fixnum :read-only t)
+  (released nil))
 
 (setf (documentation 'tree-p 'function) "True when OBJECT is a TREE."
+      (documentation 'tree-released 'function) "True once the tree was let go (DELETE-TREE)."
       (documentation 'tree-helper 'function) "The helper holding the tree."
       (documentation 'tree-number 'function) "The tree's number in its helper.")
 
@@ -292,10 +294,12 @@ nodes. NIL when its helper has ended."
         (and (/= number 0) (%make-tree (tree-helper tree) number))))))
 
 (defun delete-tree (tree)
-  "Release TREE."
-  (with-call (call (tree-helper tree) +op-tree-delete+)
-    (call-u32 call (tree-number tree))
-    (call-send call)))
+  "Release TREE, once: released again, nothing is done, so that its number,
+given to another tree, is never let go for it."
+  (unless (sb-ext:compare-and-swap (tree-released tree) nil t)
+    (with-call (call (tree-helper tree) +op-tree-delete+)
+      (call-u32 call (tree-number tree))
+      (call-send call))))
 
 (defconstant +most-children+ 4096
   "The most children of one node looked at.")

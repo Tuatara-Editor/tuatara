@@ -327,7 +327,7 @@ is back."
       (let ((old (syntax-rope syntax))
             (edits (tuatara.text:batch-edits batch))
             (copy nil))
-        ;; the copy is the parse's once asking for it is done, else let go however this ends
+        ;; the copy is REQUEST-PARSE's once handed to it, else let go however this ends
         (unwind-protect
              (progn
                (if (or (tuatara.text:batch-swap batch) (null old) (> (length edits) *syntax-edit-limit*)
@@ -349,8 +349,7 @@ is back."
                (setf (syntax-rope syntax) (tuatara.buffer:buffer-text buffer))
                (when (and (eq (syntax-broken syntax) :short) (nth-value 1 (helper-memory (syntax-helper syntax))))
                  (setf (syntax-broken syntax) nil))
-               (request-parse syntax :old copy)
-               (setf copy nil))
+               (request-parse syntax :old (shiftf copy nil)))
           (when copy (delete-tree copy)))))))
 
 ;;; Parsing
@@ -460,39 +459,45 @@ waiting. True when handed over; NIL when no thread could be started."
 (when it is done, CATCH-UP asks again), the tree is current, or the text cannot
 or should not be parsed. With FRESH, parse it afresh, from no tree, though the
 tree is current (REFRESH-SYNTAX). OLD is a copy of its tree made already for
-the parse to begin from (EDIT-TREE), released when it is not used."
+the parse to begin from (EDIT-TREE), released when it is not used, also when
+this ends before the parse has it."
   (let ((rope (syntax-rope syntax)))
     (flet ((let-go ()
              (when old (delete-tree old) (setf old nil))))
-      (cond ((or (syntax-job syntax) (and (syntax-current syntax) (not fresh)) (syntax-broken syntax) (null rope)
-                 (grammar-faulted (syntax-grammar syntax)))
-             (let-go))
-            ((> (tuatara.text:rope-bytes rope) *syntax-size-limit*)
-             (let-go)
-             (unless (syntax-too-big syntax)
-               (drop-tree syntax)
-               (setf (syntax-too-big syntax) t)))
-            (t
-             (setf (syntax-too-big syntax) nil)
-             (ensure-helper syntax)
-             ;; a tree of a helper let go of is of no more use
-             (when (or fresh (null (syntax-tree syntax))) (let-go))
-             (let* ((cancel (sb-alien:alien-sap (sb-alien:make-alien (sb-alien:signed 32))))
-                    (job (progn (setf (sb-sys:signed-sap-ref-32 cancel 0) 0)
-                                (make-parse-job rope (and (not fresh) (syntax-tree syntax)
-                                                          (or old (copy-tree-pointer (syntax-tree syntax))))
-                                                cancel *syntax-wake-function*))))
-               (setf (parse-job-refresh job) fresh)
-               ;; worked out here, where the editor's settings are seen
-               (setf (parse-job-limit job) (parse-time-limit (tuatara.text:rope-bytes rope)))
-               (setf (parse-job-budget job) (parse-memory-limit (tuatara.text:rope-bytes rope)))
-               (if (hand-to-parse-thread syntax job)
-                   (setf (syntax-job syntax) job
-                         (syntax-edits syntax) '())
-                   ;; no thread to parse in: give up on this text
-                   (progn (when (parse-job-old job) (delete-tree (parse-job-old job)))
-                          (sb-alien:free-alien (sb-alien:sap-alien cancel (* (sb-alien:signed 32))))
-                          (setf (syntax-broken syntax) t)))))))))
+      (unwind-protect
+           (cond ((or (syntax-job syntax) (and (syntax-current syntax) (not fresh)) (syntax-broken syntax) (null rope)
+                      (grammar-faulted (syntax-grammar syntax))))
+                 ((> (tuatara.text:rope-bytes rope) *syntax-size-limit*)
+                  (unless (syntax-too-big syntax)
+                    (drop-tree syntax)
+                    (setf (syntax-too-big syntax) t)))
+                 (t
+                  (setf (syntax-too-big syntax) nil)
+                  (ensure-helper syntax)
+                  ;; a tree of a helper let go of is of no more use
+                  (when (or fresh (null (syntax-tree syntax))) (let-go))
+                  ;; OLD the tree the parse begins from, whichever it is
+                  (unless (or fresh old (null (syntax-tree syntax)))
+                    (setf old (copy-tree-pointer (syntax-tree syntax))))
+                  (let* ((cancel (sb-alien:alien-sap (sb-alien:make-alien (sb-alien:signed 32))))
+                         (job (progn (setf (sb-sys:signed-sap-ref-32 cancel 0) 0)
+                                     (make-parse-job rope old cancel *syntax-wake-function*))))
+                    (setf (parse-job-refresh job) fresh)
+                    ;; worked out here, where the editor's settings are seen
+                    (setf (parse-job-limit job) (parse-time-limit (tuatara.text:rope-bytes rope)))
+                    (setf (parse-job-budget job) (parse-memory-limit (tuatara.text:rope-bytes rope)))
+                    ;; the job's from here, or let go, with nothing between to stop it
+                    (sb-sys:without-interrupts
+                      (setf old nil)
+                      (if (hand-to-parse-thread syntax job)
+                          (setf (syntax-job syntax) job
+                                (syntax-edits syntax) '())
+                          ;; no thread to parse in: give up on this text
+                          (progn (when (parse-job-old job) (delete-tree (parse-job-old job)))
+                                 (sb-alien:free-alien (sb-alien:sap-alien cancel (* (sb-alien:signed 32))))
+                                 (setf (syntax-broken syntax) t)))))))
+        ;; not taken by a parse: let go, however this ends
+        (let-go)))))
 
 (defun finish-job (job)
   "Release what the parse JOB holds once it is done; return its tree unless

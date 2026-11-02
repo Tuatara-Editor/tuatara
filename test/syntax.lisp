@@ -3453,7 +3453,7 @@ bound to the fake frontend and the editor; the file and its buffer go afterwards
 
 (define-test (syntax tree-copy-let-go-when-the-parse-is-not-asked)
   ;; the copy of a tree made for a parse along with an edit is let go when
-  ;; asking for the parse fails
+  ;; asking for the parse fails before the parse has it
   (let* ((text (with-output-to-string (s) (dotimes (i 20) (format s "fn f~d() {}~%" i))))
          (buffer (tuatara.buffer:make-buffer "*syntax-copy*" :text text))
          (made nil) (let-go '()))
@@ -3467,17 +3467,57 @@ bound to the fake frontend and the editor; the file and its buffer go afterwards
                                    (values copy told))))
            (sb-int:encapsulate 'tuatara.syntax:delete-tree 'watching
                                (lambda (function tree) (push tree let-go) (funcall function tree)))
-           (sb-int:encapsulate 'tuatara.syntax::request-parse 'failing
+           (sb-int:encapsulate 'tuatara.syntax::parse-time-limit 'failing
                                (lambda (function &rest arguments)
                                  (declare (ignore function arguments))
                                  (error "Asking for the parse failed.")))
            (unwind-protect
                 (handler-case (tuatara.buffer:buffer-insert buffer 0 " ") (simple-error () nil))
-             (sb-int:unencapsulate 'tuatara.syntax::request-parse 'failing)
+             (sb-int:unencapsulate 'tuatara.syntax::parse-time-limit 'failing)
              (sb-int:unencapsulate 'tuatara.syntax:delete-tree 'watching)
              (sb-int:unencapsulate 'tuatara.syntax:edit-tree 'watching))
            (true made)
            (true (member made let-go)))
+      (tuatara.syntax:detach-syntax buffer)
+      (tuatara.buffer:kill-buffer buffer))))
+
+(define-test (syntax tree-copy-let-go-once)
+  ;; the copy of a tree made with an edit, let go and then stopped there (an
+  ;; error, or C-g), is let go once: its number, perhaps given to another tree
+  ;; since, is not let go again
+  (let* ((text (with-output-to-string (s) (dotimes (i 20) (format s "fn f~d() {}~%" i))))
+         (buffer (tuatara.buffer:make-buffer "*syntax-once*" :text text))
+         (made nil) (stopping t) (requests '()))
+    (unwind-protect
+         (let ((syntax (tuatara.syntax:attach-syntax buffer (tuatara.syntax:find-grammar "rust"))))
+           (parse-done syntax)
+           (sb-int:encapsulate 'tuatara.syntax:edit-tree 'watching
+                               (lambda (function &rest arguments)
+                                 (multiple-value-bind (copy told) (apply function arguments)
+                                   (setf made copy)
+                                   (values copy told))))
+           ;; stopped just after the copy is let go
+           (sb-int:encapsulate 'tuatara.syntax:delete-tree 'stopping
+                               (lambda (function tree)
+                                 (funcall function tree)
+                                 (when (and stopping (eq tree made))
+                                   (setf stopping nil)
+                                   (error "Stopped."))))
+           (sb-int:encapsulate 'tuatara.syntax::call-send 'counting
+                               (lambda (function call &rest arguments)
+                                 (when (= (sb-sys:sap-ref-32 (tuatara.syntax::call-out call) 8)
+                                          tuatara.syntax::+op-tree-delete+)
+                                   (push (sb-sys:sap-ref-32 (tuatara.syntax::call-out call) 12) requests))
+                                 (apply function call arguments)))
+           (unwind-protect
+                ;; too large to parse now: the copy is let go at once
+                (let ((tuatara.syntax:*syntax-size-limit* 10))
+                  (handler-case (tuatara.buffer:buffer-insert buffer 0 " ") (simple-error () nil)))
+             (sb-int:unencapsulate 'tuatara.syntax::call-send 'counting)
+             (sb-int:unencapsulate 'tuatara.syntax:delete-tree 'stopping)
+             (sb-int:unencapsulate 'tuatara.syntax:edit-tree 'watching))
+           (true made)
+           (is = 1 (count (tuatara.syntax::tree-number made) requests) "requests to let go of ~s" requests))
       (tuatara.syntax:detach-syntax buffer)
       (tuatara.buffer:kill-buffer buffer))))
 
