@@ -121,7 +121,7 @@
                          tuatara.frontend.tui::*shown-cursor-shape*))))
         (let* ((esc (string #\Escape))
                (given-back (concatenate 'string esc "[0 q" esc "]112" (string (code-char 7)) esc "[<u"
-                                        esc "[?1002l" esc "[?1006l" esc "[?2004l" esc "[8l")))
+                                        esc "[?1002l" esc "[?1006l" esc "[?2004l" esc "[8h")))
           (multiple-value-bind (out calls kitty shape) (sent #'tuatara.frontend:frontend-stop)
             (is string= given-back out)
             (is equal '((:forget t) :endwin) calls)
@@ -129,7 +129,7 @@
             (false shape))
           (multiple-value-bind (out calls kitty shape)
               (sent (lambda (f) (tuatara.frontend:frontend-lend-terminal f (lambda () (write-string "program")))))
-            (is string= (concatenate 'string given-back "program" esc "[>5u" esc "[?1002h" esc "[?1006h" esc "[?2004h" esc "[8h") out)
+            (is string= (concatenate 'string given-back "program" esc "[>5u" esc "[?1002h" esc "[?1006h" esc "[?2004h" esc "[8l") out)
             (is equal '((:forget t) :endwin :clearok :refresh) calls)
             (true kitty)
             (false shape)))))))

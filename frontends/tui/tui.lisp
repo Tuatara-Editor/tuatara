@@ -416,12 +416,12 @@ takes it in as text and never as keys (READ-PASTE), or to stop."
 
 (defun tell-terminal-order (on)
   "Ask the terminal to show the characters of each row in the order they are
-sent (ON true), as Tuatara sends right-to-left text already in the order it
-is read, so that a terminal that turns such text round itself does not turn
-it back; or to go back to its own way. The terminals that do it (those made
-with GNOME's VTE) take this request; the others turn nothing round, and
-leave it."
-  (terminal-control (if on "[8h" "[8l")))
+sent (ON true: explicit mode, CSI 8 l), as Tuatara sends right-to-left text
+already in the order it is read, so that a terminal that turns such text
+round itself does not turn it back; or to go back to its own way (implicit
+mode, CSI 8 h). The terminals that do it (those made with GNOME's VTE) take
+this request; the others turn nothing round, and leave it."
+  (terminal-control (if on "[8l" "[8h")))
 
 (defmethod tuatara.frontend:frontend-start ((f tui-frontend))
   (load-ncurses)
