@@ -358,12 +358,11 @@ letters, which join: each (START . END), from the SPANS whose face holds
   "Paint the characters of STRING from START below END, a run of right-to-left
 text holding Arabic letters, from COLUMN on the row whose top is at Y: the
 run handed to Pango in the order it is written, so that its letters are
-joined as they are written, set against the right of its cells; each
-stretch of one face of FACES (FACE where none) in its own colours, kept to
-its cells. Returns the column after them."
+joined as they are written, drawn as wide as its cells, its ends on theirs;
+each stretch of one face of FACES (FACE where none) in its own colours, kept
+to its cells. Returns the column after them."
   (let* ((cw (cell-width f)) (ch (cell-height f))
          (columns (tuatara.display:string-columns string :start start :end end))
-         (right (* (+ column columns) cw))
          ;; in an embedding of its own, so that Pango lays it out from right to left whatever the run's first letter
          (text (concatenate 'string (string (code-char #x202B)) (logical-text string start end)
                             (string (code-char #x202C))))
@@ -383,11 +382,16 @@ its cells. Returns the column after them."
                  (cairo-rectangle cr (float (* at cw) 1d0) (float y 1d0) (float (* wide cw) 1d0) (float ch 1d0))
                  (cairo-clip cr)
                  (set-colour cr fg)
-                 (let ((layout (kept-layout f cr layouts text font (font-index flags))))
-                   (cairo-move-to cr (float (- right (pango-layout-get-pixel-size layout)) 1d0)
-                                  (float (+ y (- (cell-baseline f)
-                                                 (round (pango-layout-get-baseline layout) +pango-scale+)))
-                                         1d0))
+                 (let* ((layout (kept-layout f cr layouts text font (font-index flags)))
+                        (natural (max 1 (pango-layout-get-pixel-size layout))))
+                   ;; the joined letters drawn as wide as the run's cells, so that both ends meet the grid's and
+                   ;; none is cut off
+                   (cairo-translate cr (float (* column cw) 1d0)
+                                    (float (+ y (- (cell-baseline f)
+                                                   (round (pango-layout-get-baseline layout) +pango-scale+)))
+                                           1d0))
+                   (cairo-scale cr (/ (float (* columns cw) 1d0) natural) 1d0)
+                   (cairo-move-to cr 0d0 0d0)
                    (pango-cairo-show-layout cr layout))
                  (cairo-restore cr))
                (setf i j at (+ at wide))))

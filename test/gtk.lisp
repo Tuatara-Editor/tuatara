@@ -1327,3 +1327,40 @@ windows side by side."
                  (true (member (format nil "~{~c~}" (mapcar #'code-char '(#x202B #x643 #x62A #x628 #x202C)))
                                (texts arabic spans) :test #'string=))))))
       (tuatara.display:apply-theme theme))))
+
+(define-test (gtk joined-arabic-kept-to-its-cells)
+  ;; a joined Arabic run in a font of another width than the cells' (narrower, wider) is drawn as wide as its
+  ;; cells, from end to end: none of its letters cut off by them, nothing of it drawn outside them
+  (let ((theme tuatara.display::*current-theme*))
+    (unwind-protect
+         (progn
+           (tuatara.display:apply-theme 'ao-dark)
+           (dolist (font '("Adwaita Sans 5" "Adwaita Sans 22"))
+             (tuatara.display:register-face :test-run-sample "A test face with a font of its own." (list :font font))
+             (let ((frame (tuatara.frontend.gtk:make-frame
+                           (vector (list (format nil "  ~{~c~}  " (mapcar #'code-char '(#x628 #x62A #x643))) nil
+                                         '((2 5 (:test-run-sample :right-to-left))))
+                                   nil)))
+                   (scales '()))
+               (setf (tuatara.frontend.gtk::frame-cursor-row frame) 1)
+               (sb-int:encapsulate 'tuatara.gtk:cairo-scale 'seen
+                                   (lambda (function cr x y) (push x scales) (funcall function cr x y)))
+               (unwind-protect
+                    (tuatara.frontend.gtk:call-with-painted-frame
+                     (lambda (surface width height cell-width cell-height)
+                       (declare (ignore width height))
+                       ;; the font's width is not the cells': the letters drawn narrower or wider to fit
+                       (true (find-if (lambda (x) (/= x 1d0)) scales) "drawn as Pango sets them, in ~a" font)
+                       (flet ((inked-p (x)
+                                (loop for y below cell-height
+                                      thereis (string/= "#080d15" (tuatara.frontend.gtk:pixel-colour surface x y)))))
+                         (let ((left (loop for x from 0 below (* 7 cell-width) when (inked-p x) return x))
+                               (right (loop for x downfrom (1- (* 7 cell-width)) to 0 when (inked-p x) return x)))
+                           ;; the letters reach from the run's first cell to its last, and no further
+                           (true (and left (<= (* 2 cell-width) left (+ (* 2 cell-width) (floor cell-width 2))))
+                                 "the letters begin at ~a, the run at ~a, in ~a" left (* 2 cell-width) font)
+                           (true (and right (<= (- (* 5 cell-width) (floor cell-width 2)) right (1- (* 5 cell-width))))
+                                 "the letters end at ~a, the run at ~a, in ~a" right (* 5 cell-width) font))))
+                     frame :columns 7 :rows 2 :font "Adwaita Mono 11")
+                 (sb-int:unencapsulate 'tuatara.gtk:cairo-scale 'seen)))))
+      (tuatara.display:apply-theme theme))))
