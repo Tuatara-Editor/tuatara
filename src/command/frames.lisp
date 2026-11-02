@@ -194,6 +194,14 @@ frontend then names in its events in its place."
              (setf (tuatara.frontend:frontend-frame frontend) sharing))))
     frame))
 
+(defun close-screen-gone (editor frame)
+  "Close FRAME, whose screen went away (its client left), and every other
+frame of EDITOR taking turns on that screen; the editor's last frame stays."
+  (let ((frontend (frame-frontend frame)))
+    (dolist (gone (remove frontend (editor-frames editor) :key #'frame-frontend :test-not #'eq))
+      (when (rest (editor-frames editor))
+        (remove-frame editor gone)))))
+
 (defun note-frame-painted (frame)
   "Keep in FRAME what it shows as it is painted now (FRAME-PAINTED): the
 display generation, the faces' generation and each window with its buffer and

@@ -852,8 +852,8 @@ read and let go of."
     (true (< per-key 256) "~,1f octets a key" per-key)))
 
 (define-test (remote client-gone-closes-its-frame)
-  ;; an editor whose two frames are two clients': one client's window closed closes its frame alone, and
-  ;; that client is told to end; the editor goes on in the other
+  ;; an editor whose frames are two clients': one client's window closed closes the frames on its screen
+  ;; alone, and that client is told to end; the editor goes on in the other
   (let ((one (make-instance 'queued-fake-frontend :width 40 :height 8))
         (two (make-instance 'queued-fake-frontend :width 40 :height 8)))
     (multiple-value-bind (first-remote client-one runner-one) (connect-remote one)
@@ -870,6 +870,8 @@ read and let go of."
                    first-remote :setup #'tuatara.defaults:install-defaults
                                 :buffer (tuatara.buffer:find-buffer "*scratch*")
                                 :start (lambda (editor)
+                                         ;; two frames taking turns on the second client's screen
+                                         (tuatara.command::add-frame editor second-remote)
                                          (tuatara.command::add-frame editor second-remote)
                                          (type-at two (tuatara.frontend:make-event :close))
                                          ;; once that frame is gone, the editor is left from the first
@@ -975,8 +977,8 @@ read and let go of."
       (tuatara.frontend:frontend-stop remote))))
 
 (define-test (remote flood-while-another-frame-asks)
-  ;; while one client's frame asks a question, another's keys wait in the editor, at most a bound of them
-  ;; read; once the question is done they are all handled
+  ;; while one client's frame asks inside another's question, the other's keys wait in the editor for their
+  ;; turn, at most a bound of them read; once the inner question is done they are all handled
   (let ((one (make-instance 'queued-fake-frontend :width 40 :height 8))
         (two (make-instance 'queued-fake-frontend :width 40 :height 8))
         (count 5000) (most 0))
@@ -998,10 +1000,14 @@ read and let go of."
                      :setup #'tuatara.defaults:install-defaults :buffer (tuatara.buffer:find-buffer "*scratch*")
                      :start (lambda (editor)
                               (tuatara.command::add-frame editor second-remote)
-                              ;; the first asks (M-x); the second floods; then the first gives up asking and leaves
-                              (apply #'type-at one (keys "M-x"))
+                              ;; the second asks (M-x), then the first, inside it; the second floods, its keys
+                              ;; waiting for its turn while the first asks; then both give up asking and the
+                              ;; first leaves
                               (sb-thread:make-thread
                                (lambda ()
+                                 (apply #'type-at two (keys "M-x"))
+                                 (sleep 0.5)
+                                 (apply #'type-at one (keys "M-x"))
                                  (sleep 0.5)
                                  (apply #'type-at two (make-list count :initial-element (first (keys "i"))))
                                  (loop repeat 30
@@ -1009,14 +1015,16 @@ read and let go of."
                                           (setf most (max most (tuatara.frontend::remote-received second-remote))))
                                  (apply #'type-at one (keys "C-g"))
                                  (loop repeat 600
-                                       until (= count (tuatara.frontend::remote-received second-remote))
+                                       until (= (1+ count) (tuatara.frontend::remote-received second-remote))
                                        do (sleep 0.05))
+                                 (sleep 0.5)
+                                 (apply #'type-at two (keys "C-g"))
                                  (sleep 0.5)
                                  (apply #'type-at one (keys "C-x C-c")))))))))
             (declare (ignorable editor))
             ;; while the first asked, no more than the bound were read of the second's
-            (true (<= most (+ 2 tuatara.frontend::+most-waiting-events+)) "~d read while held" most)
-            (is = count (tuatara.frontend::remote-received second-remote))
+            (true (<= most (+ 3 tuatara.frontend::+most-waiting-events+)) "~d read while held" most)
+            (is = (+ 2 count) (tuatara.frontend::remote-received second-remote))
             (client-done runner-two)
             (client-done runner-one)))))))
 

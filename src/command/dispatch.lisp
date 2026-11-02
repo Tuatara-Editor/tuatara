@@ -329,7 +329,7 @@ that frame's turn."
                (select-frame editor frame))
              t)
             ;; a client gone: its frame closed now, its question given up once reached; its words for later
-            ((eq (tuatara.frontend:event-kind event) :detached) (remove-frame editor frame) nil)
+            ((eq (tuatara.frontend:event-kind event) :detached) (close-screen-gone editor frame) nil)
             ((eq (tuatara.frontend:event-kind event) :said)
              (setf (frame-deferred frame) (append (frame-deferred frame) (list event)))
              nil)

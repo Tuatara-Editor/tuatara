@@ -261,7 +261,7 @@ quitting as \\[save-buffers-kill-editor] does. A frame whose screen went away
         ;; a client gone: its frame closed, and nothing else
         (:detached (let ((frame (or (tuatara.frontend:event-frame event) (editor-frame editor))))
                      (if (and (rest (editor-frames editor)) (member frame (editor-frames editor)))
-                         (remove-frame editor frame)
+                         (close-screen-gone editor frame)
                          (tuatara.runtime:debug-report :remote "the last frame's screen went away; the frame stays"))))
         (:key (handle-key editor (tuatara.frontend:event-key event))))))
 

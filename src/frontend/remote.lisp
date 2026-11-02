@@ -422,6 +422,12 @@ after the names they use; a face whose name has no number (past the
 (defmethod frontend-start ((f remote-frontend)) nil)
 
 (defmethod frontend-stop ((f remote-frontend))
+  (unless (remote-closed f)
+    (frontend-stop-once f)))
+
+(defun frontend-stop-once (f)
+  "Stop the remote frontend F, not stopped before: what is unsent is sent
+while its client takes it, the client told to exit, and its socket closed."
   (sb-thread:with-mutex ((remote-lock f))
     (unless (remote-ended f)
       (let* ((box (remote-unsent f)) (at (begin-message box :exit)))
