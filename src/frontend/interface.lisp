@@ -326,13 +326,14 @@ thread of its own.")
 a frontend that is no terminal.")
   (:method (frontend) (declare (ignore frontend)) nil))
 
-(defgeneric frontend-lend-terminal (frontend function)
+(defgeneric frontend-lend-terminal (frontend function &key words)
   (:documentation "Call FUNCTION with the terminal FRONTEND shows the editor
-in given back to it as the terminal was before the editor took it, so that a
-program FUNCTION runs (gpg-agent's pinentry asking for a passphrase) can use
-it; then take it again and paint it whole. Returns what FUNCTION returns. A
-frontend that is no terminal just calls FUNCTION.")
-  (:method (frontend function) (declare (ignore frontend)) (funcall function)))
+in given back to it as the terminal was before the editor took it, WORDS
+shown on it first, so that a program FUNCTION runs (gpg-agent's pinentry
+asking for a passphrase) can use it; then take it again and paint it whole.
+Returns what FUNCTION returns. A frontend that is no terminal just calls
+FUNCTION.")
+  (:method (frontend function &key words) (declare (ignore frontend words)) (funcall function)))
 
 (defgeneric frontend-set-clipboard (frontend text)
   (:documentation "Put TEXT on the system clipboard, where other programs paste it

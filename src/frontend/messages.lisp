@@ -13,7 +13,7 @@
 
 ;;; Kinds and bounds
 
-(defconstant +protocol+ 1
+(defconstant +protocol+ 2
   "The number of the messages' format, said first both ways: a client and an
 editor of different numbers, or of different builds, do not talk.")
 
@@ -24,7 +24,7 @@ editor of different numbers, or of different builds, do not talk.")
     ;; from the editor to a client
     (:frame 16 nil 16777216) (:names 17 nil 1048576) (:faces 18 nil 1048576) (:picture 19 nil 64)
     (:title 20 nil 65536) (:selection 21 nil 16777216) (:toggle 22 nil 64) (:raise 23 nil 64)
-    (:ask 24 nil 65536) (:exit 25 nil 64))
+    (:ask 24 nil 65536) (:exit 25 nil 2048) (:refused 26 nil 4096) (:take-back 27 nil 64))
   "Each kind of message as (NAME CODE FROM-CLIENT FROM-EDITOR): its name, its
 number on the wire, and the most octets it may take as the editor reads it
 from a client and as a client reads it from the editor, NIL where it is never
@@ -159,14 +159,16 @@ down, and the descriptors to be passed with them, closed."
 OCTETS hold all there is) by SIDE, :EDITOR for the editor reading a client
 and :CLIENT for a client reading the editor: OCTETS from START below END not
 yet read as messages; the message being read has its next field at AT and
-ends at STOP. DESCRIPTORS are those passed and not yet taken; DEADLINE, an
-internal real time past which waiting for more is given up (NIL: none)."
+ends at STOP. DESCRIPTORS are those passed and not yet taken, at most
+MOST-DESCRIPTORS of them (NIL: as SIDE takes them); DEADLINE, an internal
+real time past which waiting for more is given up (NIL: none)."
   (fd nil)
   (side :editor :type (member :editor :client))
   (octets (tuatara.text:make-octets 65536) :type tuatara.text:octets)
   (start 0 :type fixnum) (end 0 :type fixnum)
   (at 0 :type fixnum) (stop 0 :type fixnum)
   (descriptors '() :type list)
+  (most-descriptors nil)
   (deadline nil))
 
 (setf (documentation 'make-inbox 'function)
@@ -180,6 +182,8 @@ internal real time past which waiting for more is given up (NIL: none)."
       (documentation 'inbox-at 'function) "Where the next field of the message being read is in INBOX's octets."
       (documentation 'inbox-stop 'function) "Where the message being read ends in INBOX's octets."
       (documentation 'inbox-descriptors 'function) "The descriptors passed to INBOX and not yet taken, oldest first."
+      (documentation 'inbox-most-descriptors 'function)
+      "The most descriptors INBOX takes passed and not yet taken, or NIL for as many as its side takes."
       (documentation 'inbox-deadline 'function) "When INBOX gives up waiting for more, an internal real time, or NIL.")
 
 (defun close-descriptors (descriptors)
@@ -208,10 +212,11 @@ descriptors passed than its side takes are malformed."
                                                         (- (length octets) (inbox-end inbox))))
                (when descriptors
                  (setf (inbox-descriptors inbox) (append (inbox-descriptors inbox) descriptors)))
-               ;; the editor takes no descriptor from a client; a client one for each picture, a few at a
-               ;; time: past that, every one passed is closed at once
+               ;; the editor takes none from a client but with its attach (standard input); a client one
+               ;; for each picture, a few at a time: past that, every one passed is closed at once
                (when (or cut (> (length (inbox-descriptors inbox))
-                                (if (eq (inbox-side inbox) :editor) 0 +most-pictures+)))
+                                (or (inbox-most-descriptors inbox)
+                                    (if (eq (inbox-side inbox) :editor) 0 +most-pictures+))))
                  (close-descriptors (shiftf (inbox-descriptors inbox) '()))
                  (malformed "descriptors passed, more than are taken"))
                (cond ((plusp got) (incf (inbox-end inbox) got))
@@ -412,6 +417,107 @@ its health and its fonts too."
                                       collect (list (take-text inbox 256) (take-text inbox 512)))))))
     facts))
 
+;;; What a client asks for as it attaches
+
+(defstruct (request (:constructor make-request (&key directory terminal environment files safe hex standard-input
+                                                      diff merge (frames 1) wait stop))
+                    (:copier nil))
+  "What a client asks of the editor as it attaches, beside what its screen
+is: DIRECTORY, the folder it was started in, an absolute path; TERMINAL, the
+device of its terminal (/dev/pts/3), or NIL; ENVIRONMENT, its variables the
+editor keeps for it, each (NAME . VALUE); FILES, each (PATH LINE COLUMN), an
+absolute path and the line and column to go to, or NIL; SAFE and HEX, true to
+open them so; STANDARD-INPUT, true when its standard input is passed with the
+attach to be read into a buffer (on the editor's side, the descriptor); DIFF,
+the two paths to compare, MERGE the four to merge, or NIL; FRAMES, how many
+frames to open; WAIT, true when the program that started it waits for the
+files to be done with; STOP, true when it asks the editor to stop."
+  (directory nil) (terminal nil) (environment '()) (files '()) (safe nil) (hex nil) (standard-input nil)
+  (diff nil) (merge nil) (frames 1 :type fixnum) (wait nil) (stop nil))
+
+(setf (documentation 'make-request 'function) "A REQUEST of a client, as its keywords give it."
+      (documentation 'request-p 'function) "True when OBJECT is a REQUEST."
+      (documentation 'request-directory 'function) "The folder the client of REQUEST was started in."
+      (documentation 'request-terminal 'function) "The device of the client's terminal, or NIL."
+      (documentation 'request-environment 'function) "The client's variables kept for it, each (NAME . VALUE)."
+      (documentation 'request-files 'function) "The files the client opens, each (PATH LINE COLUMN)."
+      (documentation 'request-safe 'function) "True when the client's files open safely."
+      (documentation 'request-hex 'function) "True when the client's files open in the hex view."
+      (documentation 'request-standard-input 'function)
+      "True when the client's standard input is read into a buffer; on the editor's side, its descriptor."
+      (documentation 'request-diff 'function) "The two paths the client compares, or NIL."
+      (documentation 'request-merge 'function) "The four paths the client merges, or NIL."
+      (documentation 'request-frames 'function) "How many frames the client opens."
+      (documentation 'request-wait 'function) "True when the client waits for its files to be done with."
+      (documentation 'request-stop 'function) "True when the client asks the editor to stop.")
+
+(defconstant +most-path+ 4096 "The most octets of a path a client names.")
+
+(defun put-request (box request)
+  "Put REQUEST in BOX, as fields of a message: its files, paths and variables
+past their bounds are the client's to refuse before it is sent."
+  (put-number box (logior (if (request-wait request) 1 0) (if (request-stop request) 2 0)
+                          (if (request-safe request) 4 0) (if (request-hex request) 8 0)
+                          (if (request-standard-input request) 16 0))
+              2)
+  (put-number box (max 1 (min 16 (request-frames request))) 1)
+  (put-text box (or (request-directory request) "/") +most-path+)
+  (put-text box (or (request-terminal request) "") 256)
+  (put-number box (length (request-environment request)) 2)
+  (loop for (name . value) in (request-environment request)
+        do (put-text box name 128) (put-text box value +most-path+))
+  (put-number box (length (request-files request)) 2)
+  (loop for (path line column) in (request-files request)
+        do (put-text box path +most-path+)
+           (put-number box (or line 0) 4)
+           (put-number box (if column (1+ column) 0) 4))
+  (dolist (paths (list (request-diff request) (request-merge request)))
+    (put-number box (length paths) 1)
+    (dolist (path paths) (put-text box path +most-path+))))
+
+(defun take-path (inbox what)
+  "An absolute path read from INBOX, of at most +MOST-PATH+ octets with no
+NUL in it; malformed otherwise, WHAT naming it in the reason."
+  (let ((path (take-text inbox +most-path+)))
+    (unless (and (plusp (length path)) (char= (char path 0) #\/) (not (find (code-char 0) path)))
+      (malformed "~a that is no absolute path" what))
+    path))
+
+(defun environment-name-p (name)
+  "True when NAME is written as an environment variable's name: capitals,
+digits and underscores, not first a digit."
+  (and (plusp (length name))
+       (every (lambda (c) (or (char<= #\A c #\Z) (char<= #\0 c #\9) (char= c #\_))) name)
+       (not (digit-char-p (char name 0)))))
+
+(defun take-request (inbox)
+  "Read a REQUEST from INBOX, as PUT-REQUEST put it."
+  (let* ((flags (take-bounded inbox 2 0 31 "a request's flags"))
+         (frames (take-bounded inbox 1 1 16 "a count of frames"))
+         (directory (take-path inbox "a folder"))
+         (terminal (let ((device (take-text inbox 256)))
+                     (cond ((zerop (length device)) nil)
+                           ((and (uiop:string-prefix-p "/dev/" device) (not (find (code-char 0) device))) device)
+                           (t (malformed "a terminal that is no device")))))
+         (environment (loop repeat (take-count inbox 2 128 8)
+                            collect (let ((name (take-text inbox 128)) (value (take-text inbox +most-path+)))
+                                      (unless (environment-name-p name) (malformed "a variable named ~s" name))
+                                      (when (find (code-char 0) value) (malformed "a variable holding a NUL"))
+                                      (cons name value))))
+         (files (loop repeat (take-count inbox 2 4096 13)
+                      collect (let ((path (take-path inbox "a file")) (line (take-number inbox 4))
+                                    (column (take-number inbox 4)))
+                                (list path (and (plusp line) line) (and (plusp column) (1- column))))))
+         (diff (loop repeat (take-bounded inbox 1 0 2 "a count of files to compare")
+                     collect (take-path inbox "a file to compare")))
+         (merge (loop repeat (take-bounded inbox 1 0 4 "a count of files to merge")
+                      collect (take-path inbox "a file to merge"))))
+    (unless (member (length diff) '(0 2)) (malformed "~d files to compare" (length diff)))
+    (unless (member (length merge) '(0 4)) (malformed "~d files to merge" (length merge)))
+    (make-request :directory directory :terminal terminal :environment environment :files files
+                  :safe (logtest 4 flags) :hex (logtest 8 flags) :standard-input (logtest 16 flags)
+                  :diff diff :merge merge :frames frames :wait (logtest 1 flags) :stop (logtest 2 flags))))
+
 ;;; Events, from a client
 
 (defparameter *special-keys*
@@ -496,10 +602,11 @@ then made by the caller once it has all."
 
 ;;; Answers, from a client
 
-(defparameter *questions* #(:clipboard :primary :font :font-steps)
+(defparameter *questions* #(:clipboard :primary :font :font-steps :lend)
   "What the editor asks a client, by their numbers in a message: the text of
 its clipboard or primary selection, the font it chose given a name, the font
-steps it took given a number.")
+steps it took given a number, and whether it gave its terminal back to be
+lent to a program, words to show there given (1 when it did).")
 
 (defun put-answer (box request answer &key more)
   "Put the answer to request number REQUEST in BOX: ANSWER, NIL, a text (a

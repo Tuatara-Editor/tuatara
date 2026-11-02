@@ -534,11 +534,14 @@ characters shown in the order sent, and the screen painted whole, as what was dr
 (defmethod tuatara.frontend:frontend-terminal-device ((f tui-frontend))
   (and (tui-window f) (tuatara.runtime:ignoring-errors-reported ("naming the terminal") (%ttyname 0))))
 
-(defmethod tuatara.frontend:frontend-lend-terminal ((f tui-frontend) function)
+(defmethod tuatara.frontend:frontend-lend-terminal ((f tui-frontend) function &key words)
   (if (null (tui-window f))
       (funcall function)
       (let ((kitty *kitty-keyboard-on*) (mouse (tui-mouse f)))
         (give-terminal-back f)
+        (when words
+          (format t "~%~a~%" words)
+          (finish-output))
         (unwind-protect (funcall function)
           (take-terminal-again f kitty mouse)))))
 

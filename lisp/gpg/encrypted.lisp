@@ -53,7 +53,7 @@ keyboard grab, a look-alike). NIL: the question alone, once you know them.")
   (case *gpg-passphrase-from*
     ((:agent :minibuffer) *gpg-passphrase-from*)
     (:terminal (if (gpg-terminal) :terminal :minibuffer))
-    (t (cond ((or (uiop:getenv "DISPLAY") (uiop:getenv "WAYLAND_DISPLAY")) :agent)
+    (t (cond ((or (tuatara.io:program-variable "DISPLAY") (tuatara.io:program-variable "WAYLAND_DISPLAY")) :agent)
              ((gpg-terminal) :terminal)
              (t :minibuffer)))))
 
@@ -104,11 +104,8 @@ when it asks there (GPG-ASKER :TERMINAL), WORDS shown on the terminal
 meanwhile; else just call it."
   (if (eq (gpg-asker) :terminal)
       (tuatara.frontend:frontend-lend-terminal
-       (editor-frontend *editor*)
-       (lambda ()
-         (format t "~%Tuatara: ~a; gpg-agent asks here for a passphrase it needs.~%" words)
-         (finish-output)
-         (funcall function)))
+       (editor-frontend *editor*) function
+       :words (format nil "Tuatara: ~a; gpg-agent asks here for a passphrase it needs." words))
       (funcall function)))
 
 ;;; Running gpg
@@ -245,8 +242,8 @@ to the debug log (*SECRET-AT-HAND*)."
             :environment (let ((device (and (eq asker :terminal) (gpg-terminal))))
                            (if device
                                (cons (format nil "GPG_TTY=~a" device)
-                                     (remove-if (lambda (e) (uiop:string-prefix-p "GPG_TTY=" e)) (sb-ext:posix-environ)))
-                               (sb-ext:posix-environ)))))
+                                     (remove-if (lambda (e) (uiop:string-prefix-p "GPG_TTY=" e)) (tuatara.io:program-environment)))
+                               (tuatara.io:program-environment)))))
       (dolist (fd (append pipe second))
         (when fd (ignoring-errors-reported ("closing a pipe to gpg") (sb-posix:close fd))))
       (dolist (fd status) (when fd (ignoring-errors-reported ("closing a pipe from gpg") (sb-posix:close fd)))))

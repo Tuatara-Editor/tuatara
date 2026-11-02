@@ -17,4 +17,9 @@
            #:frontend-primary-selection #:frontend-set-primary-selection #:frontend-images-p #:frontend-reorders-text-p #:frontend-cell-pixels #:frontend-put-image #:*kitty-marks* #:+kitty-placeholder+
            ;; frontends in another process (src/frontend/remote.lisp)
            #:remote-frontend #:make-remote-frontend #:remote-client #:make-remote-client #:run-remote-client
-           #:remote-refused #:remote-refused-words #:malformed-message #:malformed-message-reason))
+           #:remote-refused #:remote-refused-words #:remote-refused-other #:malformed-message #:malformed-message-reason
+           #:remote-request #:remote-exit-code #:remote-exit-words #:refuse-connection #:shut-and-close
+           #:request #:make-request #:request-p #:request-directory #:request-terminal #:request-environment
+           #:request-files #:request-safe #:request-hex #:request-standard-input #:request-diff #:request-merge
+           #:request-frames #:request-wait #:request-stop
+           #:null-frontend #:make-null-frontend))

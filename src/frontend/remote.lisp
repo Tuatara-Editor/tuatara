@@ -33,12 +33,16 @@ past it, a title or clipboard text for a client that does not read is left out."
 
 (define-condition remote-refused (error)
   ((words :initarg :words :reader remote-refused-words
-          :documentation "Why the connection was refused, in words."))
+          :documentation "Why the connection was refused, in words.")
+   (other :initarg :other :initform nil :reader remote-refused-other
+          :documentation "The version line of the other end when it is of another build, else NIL."))
   (:report (lambda (condition stream) (write-string (remote-refused-words condition) stream)))
   (:documentation "Signalled when a new connection between the editor and a client is refused: the other end
-is of another build, or said nothing it should."))
+is of another build, said nothing it should, or refused it, saying why."))
 
-(setf (documentation 'remote-refused-words 'function) "Why the connection of CONDITION was refused, in words.")
+(setf (documentation 'remote-refused-words 'function) "Why the connection of CONDITION was refused, in words."
+      (documentation 'remote-refused-other 'function)
+      "The version line of the other end of CONDITION's connection when it is of another build, else NIL.")
 
 (defun send-outbox (fd box stall-seconds)
   "Send the messages of BOX over the socket FD, waiting while it is full, and
@@ -68,22 +72,47 @@ STALL-SECONDS, however little at a time it took; NIL when the socket failed."
       (close-descriptors (mapcar #'cdr (outbox-descriptors box)))
       (setf (outbox-fill box) 0 (outbox-descriptors box) '()))))
 
+(defun shown-words (text)
+  "TEXT, from the other end of a connection, without its control characters,
+to be shown or put in a log."
+  (remove-if (lambda (c) (tuatara.text:control-code-p (char-code c))) text))
+
 (defun read-hello (inbox)
   "Read the other end's hello from INBOX, which is the first thing it says;
-signals REMOTE-REFUSED when it says something else, nothing in time, or is
-of another build."
+signals REMOTE-REFUSED when it says something else, nothing in time, is of
+another build, or refuses the connection, saying why."
   (multiple-value-bind (line other)
       (handler-case
-          (if (eq (read-message inbox) :hello)
-              (take-hello inbox)
-              (error 'remote-refused :words "The other end said no hello."))
+          (case (read-message inbox)
+            (:hello (take-hello inbox))
+            (:refused (let ((words (take-text inbox 4000)))
+                        (message-read inbox)
+                        (error 'remote-refused :words (shown-words words))))
+            (t (error 'remote-refused :words "The other end said no hello.")))
         (malformed-message (condition)
           (error 'remote-refused :words (format nil "The other end's hello: ~a" (malformed-message-reason condition)))))
     (unless line
       (error 'remote-refused :words (format nil "The other end runs ~a; this is ~a, with messages of format ~d."
-                                            (remove-if (lambda (c) (tuatara.text:control-code-p (char-code c))) other)
-                                            (tuatara:version-line) +protocol+)))
+                                            (shown-words other) (tuatara:version-line) +protocol+)
+                             :other (shown-words other)))
     line))
+
+(defun refuse-connection (fd words)
+  "Tell the client at the other end of the new connection FD, which has said
+nothing yet, that it is refused, and why, WORDS; then close FD."
+  (let ((box (make-outbox)))
+    (let ((at (begin-message box :refused)))
+      (put-text box words 4000)
+      (end-message box at))
+    (tuatara.runtime:ignoring-errors-reported ("refusing a client")
+      (send-outbox fd box 1))
+    (shut-and-close fd)))
+
+(defun shut-and-close (fd)
+  "Shut the socket FD both ways and close it."
+  (tuatara.runtime:ignoring-errors-reported ("closing a client's socket")
+    (tuatara.io:shut-socket fd)
+    (sb-posix:close fd)))
 
 (defun text-pieces (text)
   "TEXT cut into pieces of at most +TEXT-PIECE+ octets as UTF-8, at
@@ -186,6 +215,10 @@ it, what the client sends is not read until the editor has taken some.")
            :documentation "True once the socket is closed.")
    (exit-code :initform 0 :accessor remote-exit-code
               :documentation "The code the client exits with when this frontend stops.")
+   (exit-words :initform nil :accessor remote-exit-words
+               :documentation "Words the client says as it exits when this frontend stops, or NIL.")
+   (request :initform (make-request) :accessor remote-request
+            :documentation "What the client asked for as it attached (REQUEST).")
    (inbox :initform nil :accessor remote-inbox
           :documentation "What the client sends, as it is read.")
    (reader :initform nil :accessor remote-reader
@@ -195,32 +228,54 @@ it, what the client sends is not read until the editor has taken some.")
   (:documentation "A frontend painting on the screen of a client at the other end of a local socket, and
 reading the client's events from it (MAKE-REMOTE-FRONTEND)."))
 
+(setf (documentation 'remote-exit-code 'function) "The code the client of the remote frontend F exits with when F stops."
+      (documentation 'remote-exit-words 'function) "What the client of the remote frontend F says as it exits, or NIL."
+      (documentation 'remote-request 'function) "What the client of the remote frontend F asked for as it attached (REQUEST).")
+
 (defmethod initialize-instance :after ((f remote-frontend) &key)
   (setf (remote-stopping f) (lambda () (or (remote-closing f) (remote-closed f)))))
 
 (defun make-remote-frontend (fd &key queue)
   "A frontend whose screen is the client's at the other end of the local
-socket FD, once both have said hello and the client what its screen is;
-its events go into QUEUE, the queue of the editor's other frames, or a queue
-of its own. Signals REMOTE-REFUSED when the client is of another build or
-says nothing it should; FD is then the caller's to close. A client may take
-up to *HELLO-SECONDS* to say hello, so this is called on the thread taking
-connections, never the editor's, and that thread bounds how many are being
-greeted at once."
+socket FD, once both have said hello and the client what its screen is and
+what it asks for (REMOTE-REQUEST); its events go into QUEUE, the queue of
+the editor's other frames, or a queue of its own. Signals REMOTE-REFUSED
+when the client is of another build or says nothing it should; FD is then
+the caller's to close. A client may take up to *HELLO-SECONDS* to say hello,
+so this is called on the thread taking connections, never the editor's, and
+that thread bounds how many are being greeted at once. The one descriptor a
+client may pass, its standard input with its attach, is the frontend's
+request's to close once taken."
   (let ((remote (make-instance 'remote-frontend :fd fd :queue (or queue (make-event-queue))))
         (inbox (make-inbox fd :editor :deadline (tuatara.runtime:deadline-in *hello-seconds*)))
-        (box (make-outbox)))
-    (put-hello box)
-    (unless (eq t (send-outbox fd box *hello-seconds*))
-      (error 'remote-refused :words "The client took no hello."))
-    (read-hello inbox)
-    (handler-case
-        (progn (unless (eq (read-message inbox) :attach)
-                 (error 'remote-refused :words "The client did not say what its screen is."))
-               (setf (remote-facts remote) (take-facts inbox :whole t))
-               (message-read inbox))
-      (malformed-message (condition)
-        (error 'remote-refused :words (format nil "The client's screen: ~a" (malformed-message-reason condition)))))
+        (box (make-outbox))
+        (greeted nil))
+    (setf (inbox-most-descriptors inbox) 1)
+    (unwind-protect
+         (progn
+           (put-hello box)
+           (unless (eq t (send-outbox fd box *hello-seconds*))
+             (error 'remote-refused :words "The client took no hello."))
+           (read-hello inbox)
+           (handler-case
+               (progn (unless (eq (read-message inbox) :attach)
+                        (error 'remote-refused :words "The client did not say what its screen is."))
+                      (setf (remote-facts remote) (take-facts inbox :whole t))
+                      (let ((request (take-request inbox)))
+                        (message-read inbox)
+                        ;; its standard input passed with it when it asks for it to be read, and else nothing
+                        (unless (= (length (inbox-descriptors inbox)) (if (request-standard-input request) 1 0))
+                          (malformed "~d descriptors passed with an attach" (length (inbox-descriptors inbox))))
+                        (setf (request-standard-input request) (pop (inbox-descriptors inbox))
+                              (remote-request remote) request)))
+             (malformed-message (condition)
+               (error 'remote-refused :words (format nil "The client's attach: ~a" (malformed-message-reason condition)))))
+           (setf greeted t))
+      (setf (inbox-most-descriptors inbox) nil)
+      (close-descriptors (shiftf (inbox-descriptors inbox) '()))
+      (unless greeted
+        (let ((input (request-standard-input (remote-request remote))))
+          (when (integerp input) (close-descriptors (list input))))))
     (setf (inbox-deadline inbox) nil
           (remote-inbox remote) inbox
           (remote-reader remote) (tuatara.runtime:make-guarded-thread (lambda () (read-from-client remote))
@@ -329,7 +384,7 @@ the screen is now to REMOTE-FACTS. NIL when the client is going."
          (when (eql request (remote-asked remote))
            ;; the answer of the kind the question asks for, or none; a text's pieces all text
            (unless (or (and (null answer) (not more) (null (remote-pieces remote)))
-                       (if (eq (remote-asked-question remote) :font-steps)
+                       (if (member (remote-asked-question remote) '(:font-steps :lend))
                            (integerp answer)
                            (stringp answer)))
              (malformed "an answer of the wrong kind to a question of ~(~a~)" (remote-asked-question remote)))
@@ -364,10 +419,10 @@ was put."
         (sb-thread:condition-broadcast (remote-moved remote))
         t))))
 
-(defun ask-client (remote question &optional argument)
-  "Ask REMOTE's client QUESTION (*QUESTIONS*), with ARGUMENT, a font's name
-or font steps, and wait at most *ANSWER-SECONDS* for its answer; NIL when it
-gives none. An answer read only after the client's events waiting to be
+(defun ask-client (remote question &optional argument (seconds *answer-seconds*))
+  "Ask REMOTE's client QUESTION (*QUESTIONS*), with ARGUMENT, a font's name,
+font steps or words to show, and wait at most SECONDS (*ANSWER-SECONDS*) for
+its answer; NIL when it gives none. An answer read only after the client's events waiting to be
 handled (the most, +MOST-WAITING-EVENTS+, while the editor is busy) comes
 too late, and is NIL too."
   (sb-thread:with-mutex ((remote-lock remote))
@@ -379,11 +434,11 @@ too late, and is NIL too."
           (put-number box request 4)
           (put-number box (position question *questions*) 1)
           (case question
-            (:font (put-text box argument 1024))
+            ((:font :lend) (put-text box argument 1024))
             (:font-steps (put-number box (max -64 (min 64 argument)) 2)))
           (end-message box at))
         (sb-thread:condition-broadcast (remote-moved remote))
-        (loop with deadline = (tuatara.runtime:deadline-in *answer-seconds*)
+        (loop with deadline = (tuatara.runtime:deadline-in seconds)
               until (or (not (eq (remote-answer remote) :none)) (remote-ended remote)
                         (tuatara.runtime:deadline-passed-p deadline))
               do (tuatara.runtime:wait-on (remote-moved remote) (remote-lock remote)
@@ -432,6 +487,7 @@ while its client takes it, the client told to exit, and its socket closed."
     (unless (remote-ended f)
       (let* ((box (remote-unsent f)) (at (begin-message box :exit)))
         (put-number box (max 0 (min 255 (remote-exit-code f))) 1)
+        (put-text box (or (remote-exit-words f) "") 1024)
         (end-message box at)))
     (setf (remote-closing f) t)
     (sb-thread:condition-broadcast (remote-moved f)))
@@ -539,6 +595,22 @@ client takes (+MOST-TEXT+), or left out."
 
 (defmethod frontend-raise ((f remote-frontend))
   (queue-message f :raise (lambda (box) (declare (ignore box))) :needed nil))
+
+(defmethod frontend-terminal-device ((f remote-frontend))
+  (and (not (facts-window (remote-facts f))) (request-terminal (remote-request f))))
+
+(defparameter *lend-seconds* 2
+  "The seconds the editor waits for a client to give its terminal back to be
+lent to a program before the program runs without it.")
+
+(defmethod frontend-lend-terminal ((f remote-frontend) function &key words)
+  ;; the client gives its terminal back and shows WORDS there; told to take it again whatever it answered
+  (if (frontend-terminal-device f)
+      (let ((lent (eql 1 (ask-client f :lend (or words "") *lend-seconds*))))
+        (unwind-protect (funcall function)
+          (when lent (tuatara.runtime:debug-report :remote "a client's terminal lent and taken again"))
+          (queue-message f :take-back (lambda (box) (declare (ignore box))))))
+      (funcall function)))
 
 (defmethod frontend-begin-frame ((f remote-frontend))
   (unless (= (remote-faces-generation f) tuatara.display:*face-generation*)
@@ -659,12 +731,16 @@ editor sends; OUT, the messages being sent; ARRIVED, what was read and is
 not yet painted, newest first, under LOCK; NAMES, the face names by their
 numbers; KEPT, each row as last painted; PICTURES, the pictures kept,
 newest first; ENDED, true once the editor is gone, and EXIT-CODE, the code
-it gave; FACTS, the facts last sent as octets; READER, the thread reading."
+it gave, EXIT-WORDS, what it said with it; FACTS, the facts last sent as
+octets; READER, the thread reading; MOVED, signalled when something has
+arrived or the editor is gone."
   (fd -1 :type fixnum :read-only t)
   (frontend nil :read-only t)
   (inbox nil :read-only t)
   (out (make-outbox) :read-only t)
   (lock (sb-thread:make-mutex :name "remote client") :read-only t)
+  (moved (sb-thread:make-waitqueue :name "remote client") :read-only t)
+  (exit-words nil)
   (arrived '())
   (names (make-array (1+ +most-names+) :initial-element nil) :read-only t)
   (kept (make-array +most-rows+ :initial-element nil) :read-only t)
@@ -688,7 +764,9 @@ it gave; FACTS, the facts last sent as octets; READER, the thread reading."
       (documentation 'remote-client-ended 'function) "True once the editor CLIENT paints for is gone."
       (documentation 'remote-client-exit-code 'function) "The code the editor told CLIENT to exit with, or NIL."
       (documentation 'remote-client-facts 'function) "The facts CLIENT last sent of its screen, as octets."
-      (documentation 'remote-client-reader 'function) "The thread reading what the editor sends CLIENT.")
+      (documentation 'remote-client-reader 'function) "The thread reading what the editor sends CLIENT."
+      (documentation 'remote-client-moved 'function) "Signalled when something has arrived for CLIENT or its editor is gone."
+      (documentation 'remote-client-exit-words 'function) "What the editor said as it told CLIENT to exit, or NIL.")
 
 (defun send-to-editor (client write)
   "Send CLIENT's editor the messages WRITE, a function of the box, writes;
@@ -698,29 +776,38 @@ NIL when they could not be sent."
     (funcall write box)
     (eq t (send-outbox (remote-client-fd client) box *stall-seconds*))))
 
-(defun put-facts-message (box frontend kind)
-  "Put a message of KIND (:ATTACH, whole, or :FACTS) in BOX saying what
-FRONTEND is."
+(defun put-facts-message (box frontend kind &optional (request (make-request)))
+  "Put a message of KIND (:ATTACH, whole, with REQUEST, or :FACTS) in BOX
+saying what FRONTEND is."
   (let ((at (begin-message box kind)))
     (put-facts box frontend :whole (eq kind :attach))
+    (when (eq kind :attach)
+      (put-request box request))
     (end-message box at)))
 
-(defun make-remote-client (fd frontend)
+(defun make-remote-client (fd frontend &key (request (make-request)) standard-input)
   "A client painting on FRONTEND, started, what the editor at the other end
 of the local socket FD sends, once both have said hello and the client what
-its screen is. Signals REMOTE-REFUSED when the editor is of another build or
-says nothing it should; FD is then the caller's to close."
+its screen is and what it asks for, REQUEST; STANDARD-INPUT, a descriptor
+passed with it to be read into a buffer (REQUEST-STANDARD-INPUT then true),
+is closed here once passed. Signals REMOTE-REFUSED when the editor is of
+another build, refuses the client or says nothing it should; FD is then the
+caller's to close."
   (let* ((inbox (make-inbox fd :client :deadline (tuatara.runtime:deadline-in *hello-seconds*)))
          (client (%make-remote-client fd frontend inbox))
          (greeted nil))
     ;; descriptors passed with a hello refused are closed, not kept
     (unwind-protect
-         (progn (unless (send-to-editor client (lambda (box)
-                                                 (put-hello box)
-                                                 (put-facts-message box frontend :attach)))
-                  (error 'remote-refused :words "The editor took no hello."))
-                (read-hello inbox)
-                (setf greeted t))
+         (let ((sent (send-to-editor client (lambda (box)
+                                              (put-hello box)
+                                              (let ((at (outbox-fill box)))
+                                                (put-facts-message box frontend :attach request)
+                                                (when standard-input
+                                                  (push (cons at standard-input) (outbox-descriptors box))))))))
+           ;; an editor that refused the client at once and went still says why
+           (read-hello inbox)
+           (unless sent (error 'remote-refused :words "The editor took no hello."))
+           (setf greeted t))
       (unless greeted (close-descriptors (shiftf (inbox-descriptors inbox) '()))))
     (setf (inbox-deadline inbox) nil)
     (put-facts (remote-client-facts client) frontend)
@@ -743,7 +830,8 @@ what it should not."
                           (malformed "a descriptor passed, where none is taken"))
                         (when item
                           (sb-thread:with-mutex ((remote-client-lock client))
-                            (push item (remote-client-arrived client)))
+                            (push item (remote-client-arrived client))
+                            (sb-thread:condition-broadcast (remote-client-moved client)))
                           (frontend-wake frontend))
                         (when (eq kind :exit) (return))))
            (malformed-message (condition)
@@ -751,14 +839,15 @@ what it should not."
                                            (malformed-message-reason condition))))
       (close-descriptors (shiftf (inbox-descriptors inbox) '()))
       (sb-thread:with-mutex ((remote-client-lock client))
-        (setf (remote-client-ended client) t))
+        (setf (remote-client-ended client) t)
+        (sb-thread:condition-broadcast (remote-client-moved client)))
       (frontend-wake frontend))))
 
 (defun take-from-editor (client kind inbox)
   "Read the message of KIND CLIENT's editor sent from INBOX; what is to be
 done with it on the frontend's thread, as a list whose first is what it is
-\(:FACES :FRAME :TITLE :SELECTION :TOGGLE :RAISE :ASK), or NIL when reading
-it was all."
+\(:FACES :FRAME :TITLE :SELECTION :TOGGLE :RAISE :ASK :TAKE-BACK), or NIL
+when reading it was all."
   (let ((names (remote-client-names client)))
     (ecase kind
       (:names (take-names inbox names) nil)
@@ -785,14 +874,17 @@ it was all."
       (:ask (let* ((request (take-number inbox 4))
                    (question (svref *questions* (take-bounded inbox 1 0 (1- (length *questions*)) "a question")))
                    (argument (case question
-                               (:font (take-text inbox 1024))
+                               ((:font :lend) (take-text inbox 1024))
                                (:font-steps (take-signed inbox 2)))))
               (message-read inbox)
               (list :ask request question argument)))
+      (:take-back (message-read inbox) (list :take-back))
       (:exit (setf (remote-client-exit-code client) (take-number inbox 1))
+       (let ((words (shown-words (take-text inbox 1024))))
+         (setf (remote-client-exit-words client) (and (plusp (length words)) words)))
        (message-read inbox)
        nil)
-      (:hello (malformed "a hello after the first")))))
+      ((:hello :refused) (malformed "a ~(~a~) after the first hello" kind)))))
 
 (defun face-now (face)
   "The attributes of FACE as a message carries them (TAKE-FACE), as SET-FACE-ATTRIBUTES takes them."
@@ -821,6 +913,24 @@ so left as they are."
         unless (and face (equal attributes (face-now face)))
           do (apply #'tuatara.display:set-face-attributes name attributes)))
 
+(defun lend-terminal (client request words later)
+  "Give CLIENT's terminal back, as its editor asked in the question numbered
+REQUEST, to be lent to a program, WORDS shown there, and answer that it was;
+take it again once the editor says so (:TAKE-BACK) or is gone. When LATER,
+what arrived after the question, holds that already, the editor has given
+up waiting, and nothing is lent."
+  (if (find :take-back later :key #'first)
+      (send-to-editor client (lambda (box) (put-answer box request nil)))
+      (frontend-lend-terminal
+       (remote-client-frontend client)
+       (lambda ()
+         (send-to-editor client (lambda (box) (put-answer box request 1)))
+         (sb-thread:with-mutex ((remote-client-lock client))
+           (loop until (or (remote-client-ended client)
+                           (find :take-back (remote-client-arrived client) :key #'first))
+                 do (sb-thread:condition-wait (remote-client-moved client) (remote-client-lock client)))))
+       :words words)))
+
 (defun answer-editor (client request question argument)
   "Answer CLIENT's editor's question QUESTION, with ARGUMENT, numbered
 REQUEST, from CLIENT's frontend."
@@ -829,7 +939,8 @@ REQUEST, from CLIENT's frontend."
                    (:clipboard (frontend-clipboard frontend))
                    (:primary (frontend-primary-selection frontend))
                    (:font (frontend-set-font frontend argument))
-                   (:font-steps (setf (frontend-font-steps frontend) argument)))))
+                   (:font-steps (setf (frontend-font-steps frontend) argument))
+                   (:lend nil))))
     (send-to-editor client
                     (lambda (box)
                       (if (and (stringp answer) (<= (tuatara.text:string-octet-length answer) +most-text+))
@@ -843,26 +954,30 @@ done, and answer its questions, in the order they came."
   (let ((frontend (remote-client-frontend client))
         (items (sb-thread:with-mutex ((remote-client-lock client))
                  (reverse (shiftf (remote-client-arrived client) '())))))
-    (dolist (item items)
-      (ecase (first item)
-        (:faces (take-faces (rest item)))
-        (:frame (frontend-begin-frame frontend)
-         (dolist (call (rest item))
-           (ecase (first call)
-             (:row (destructuring-bind (row string face spans scales over parts) (rest call)
-                     (frontend-put-row frontend row string :face face :spans spans :scales scales :over over
-                                                           :parts parts)))
-             (:cursor (apply #'frontend-set-cursor frontend (rest call)))
-             (:picture (when (frontend-images-p frontend)
-                         (apply #'frontend-put-image frontend (rest call))))))
-         (frontend-end-frame frontend))
-        (:title (frontend-set-title frontend (second item)))
-        (:selection (if (zerop (second item))
-                        (frontend-set-clipboard frontend (third item))
-                        (frontend-set-primary-selection frontend (third item))))
-        (:toggle (frontend-toggle-state frontend (second item)))
-        (:raise (frontend-raise frontend))
-        (:ask (apply #'answer-editor client (rest item)))))))
+    (loop for (item . later) on items
+          do (ecase (first item)
+               (:faces (take-faces (rest item)))
+               (:frame (frontend-begin-frame frontend)
+                (dolist (call (rest item))
+                  (ecase (first call)
+                    (:row (destructuring-bind (row string face spans scales over parts) (rest call)
+                            (frontend-put-row frontend row string :face face :spans spans :scales scales
+                                              :over over :parts parts)))
+                    (:cursor (apply #'frontend-set-cursor frontend (rest call)))
+                    (:picture (when (frontend-images-p frontend)
+                                (apply #'frontend-put-image frontend (rest call))))))
+                (frontend-end-frame frontend))
+               (:title (frontend-set-title frontend (second item)))
+               (:selection (if (zerop (second item))
+                               (frontend-set-clipboard frontend (third item))
+                               (frontend-set-primary-selection frontend (third item))))
+               (:toggle (frontend-toggle-state frontend (second item)))
+               (:raise (frontend-raise frontend))
+               ;; taken again where it was lent (LEND-TERMINAL), else nothing to take
+               (:take-back)
+               (:ask (if (eq (third item) :lend)
+                         (lend-terminal client (second item) (fourth item) later)
+                         (apply #'answer-editor client (rest item))))))))
 
 (defun send-event (client event)
   "Send CLIENT's editor EVENT, read from CLIENT's frontend, when it is of a
@@ -898,8 +1013,9 @@ was last sent (a cell's size, the desktop's style); NIL when it could not be sen
   "Paint on CLIENT's frontend what its editor sends and send the editor the
 events read from the frontend, until the editor says the client is done or
 goes, or the frontend delivers nothing more; then close the connection.
-Returns the code the editor said to exit with, or NIL when it said none.
-Runs on the thread that reads the frontend's events, which paints it too."
+Returns the code the editor said to exit with, or NIL when it said none, and
+the words it said with it, or NIL. Runs on the thread that reads the
+frontend's events, which paints it too."
   (let ((frontend (remote-client-frontend client)))
     (unwind-protect
          (handler-case
@@ -920,4 +1036,51 @@ Runs on the thread that reads the frontend's events, which paints it too."
              (tuatara.runtime:debug-report :remote "painting what the editor sent: ~a"
                                            (tuatara.runtime:failure-words condition))))
       (close-remote-client client))
-    (remote-client-exit-code client)))
+    (values (remote-client-exit-code client) (remote-client-exit-words client))))
+
+;;; A frontend with no screen
+
+(defclass null-frontend ()
+  ((queue :initarg :queue :initform (make-event-queue) :reader null-queue
+          :documentation "Where the events of the frames sharing this frontend's source come."))
+  (:documentation "A frontend with no screen: it paints nothing, is 80 by 24 cells of 256 colours, asks
+nothing, and reads the events of the queue it shares with other frames (MAKE-NULL-FRONTEND). The frame of
+an editor that runs in the background shows on it while no screen shows the editor, and a client asked
+only to stop the editor, with no terminal, has one."))
+
+(defun make-null-frontend (&optional (queue (make-event-queue)))
+  "A frontend with no screen whose events come from QUEUE (NULL-FRONTEND)."
+  (make-instance 'null-frontend :queue queue))
+
+(defmethod frontend-start ((f null-frontend)) nil)
+(defmethod frontend-stop ((f null-frontend)) nil)
+
+(defmethod frontend-size ((f null-frontend))
+  (values 80 24))
+
+(defmethod frontend-colour-count ((f null-frontend))
+  256)
+
+(defmethod frontend-read-event ((f null-frontend))
+  (queue-pop (null-queue f) nil))
+
+(defmethod frontend-read-event-timeout ((f null-frontend) seconds)
+  (or (queue-pop (null-queue f) seconds) (make-event :tick)))
+
+(defmethod frontend-wake ((f null-frontend))
+  (queue-push (null-queue f) (make-event :tick)))
+
+(defmethod frontend-input-pending-p ((f null-frontend))
+  (queue-input-p (null-queue f)))
+
+(defmethod frontend-begin-frame ((f null-frontend)) nil)
+
+(defmethod frontend-put-row ((f null-frontend) row string &key face spans scales over parts)
+  (declare (ignore row string face spans scales over parts))
+  nil)
+
+(defmethod frontend-set-cursor ((f null-frontend) row column shape &optional colour)
+  (declare (ignore row column shape colour))
+  nil)
+
+(defmethod frontend-end-frame ((f null-frontend)) nil)
