@@ -103,10 +103,13 @@ part of a picture (ROW-PLACEHOLDERS), and PLACEHOLDER-ENDS the table a frame
 joins their runs with (PLACEHOLDER-AREAS).
 INPUT-LOCK guards the encoders and their events, which hold what the program
 last asked of keys and the mouse (SYNC-INPUT-STATE), so that typing never
-waits for the library; BRACKETED and SCROLLS-BY-KEYS say, as of the
-program's last output, whether it asks for pastes marked and whether the
-wheel is to send it the up and down keys. REPLIES counts the octets of the
-library's answers to the program waiting in OUTBOX (*TERMINAL-REPLY-LIMIT*)."
+waits for the library; BRACKETED-PASTE-P and SCROLLS-BY-KEYS-P say, as of
+the program's last output, whether it asks for pastes marked as pasted, so
+that a shell runs none of a paste's lines until RET, and whether the wheel is
+to send it the up and down keys, as a full-screen program on the alternate
+screen that leaves alternate scrolling on (mode 1007) wants, such as less.
+REPLIES counts the octets of the library's answers to the program waiting in
+OUTBOX (*TERMINAL-REPLY-LIMIT*)."
   (id 0 :type fixnum) terminal render-state iterator cells encoder event mouse-encoder mouse-event process (fd -1 :type fixnum)
   (last-output 0 :type integer) to-compress
   (cell-width 0 :type fixnum) (cell-height 0 :type fixnum) placements placeholders
@@ -116,7 +119,7 @@ library's answers to the program waiting in OUTBOX (*TERMINAL-REPLY-LIMIT*)."
   (lock (sb-thread:make-mutex :name "terminal"))
   (input-lock (sb-thread:make-mutex :name "terminal input"))
   (turn (sb-thread:make-waitqueue :name "terminal turn"))
-  wanted changed closed reader writer bracketed scrolls-by-keys
+  wanted changed closed reader writer bracketed-paste-p scrolls-by-keys-p
   (outbox (sb-concurrency:make-mailbox :name "terminal input"))
   (replies 0 :type sb-ext:word)
   wake (columns 80 :type fixnum) (rows 24 :type fixnum))
@@ -400,9 +403,10 @@ given to it, so that typing never waits for the library."
                     (sb-sys:system-area-pointer (emulator-encoder emulator)) (sb-sys:system-area-pointer terminal))
       (foreign-call "ghostty_mouse_encoder_setopt_from_terminal" sb-alien:void
                     (sb-sys:system-area-pointer (emulator-mouse-encoder emulator)) (sb-sys:system-area-pointer terminal)))
-    (setf (emulator-bracketed emulator) (emulator-mode-p emulator (vt :mode-bracketed-paste))
-          (emulator-scrolls-by-keys emulator) (and (eql (library-size terminal (vt :data-active-screen)) (vt :screen-alternate))
-                                                   (emulator-mode-p emulator (vt :mode-alternate-scroll))))))
+    (setf (emulator-bracketed-paste-p emulator) (emulator-mode-p emulator (vt :mode-bracketed-paste))
+          (emulator-scrolls-by-keys-p emulator) (and (eql (library-size terminal (vt :data-active-screen))
+                                                          (vt :screen-alternate))
+                                                     (emulator-mode-p emulator (vt :mode-alternate-scroll))))))
 
 (defun library-mods (ctrl meta shift)
   "The terminal library's bits for the keys held with a key or the mouse:
@@ -463,12 +467,6 @@ means something to a terminal."
                                           (sb-sys:system-area-pointer (emulator-encoder emulator)) (sb-sys:system-area-pointer event)
                                           (sb-sys:system-area-pointer out) ((sb-alien:unsigned 64) 128)
                                           (sb-sys:system-area-pointer length))))))))))
-
-(defun emulator-bracketed-paste-p (emulator)
-  "True when EMULATOR's program asks for pastes marked as pasted (bracketed
-paste), as of its last output, so that a shell runs none of a paste's lines
-until you press RET; never waits for the library."
-  (emulator-bracketed emulator))
 
 (defun emulator-paste (emulator text)
   "Paste TEXT into EMULATOR's program as terminals paste: marked as pasted when
@@ -534,13 +532,6 @@ HISTORY at ROW of its whole history, scrollback first; NIL when it has none."
               (let ((octets (make-array length :element-type '(unsigned-byte 8))))
                 (when (eql (vt :success) (tuatara.io:with-octets-sap (sap octets) (link sap (length octets))))
                   (tuatara.text:octets-string (subseq octets 0 (min length (length octets)))))))))))))
-
-(defun emulator-scrolls-by-keys-p (emulator)
-  "True when the wheel over EMULATOR's screen is to send its program the
-up and down keys: a full-screen program (on the alternate screen) that does
-not track the mouse, while it leaves alternate scrolling on (mode 1007),
-such as the pager less; as of its last output, never waiting for the library."
-  (emulator-scrolls-by-keys emulator))
 
 (defun emulator-resize (emulator columns rows &optional (cell-width 0) (cell-height 0))
   "Make EMULATOR's screen COLUMNS by ROWS (cells of CELL-WIDTH by CELL-HEIGHT
