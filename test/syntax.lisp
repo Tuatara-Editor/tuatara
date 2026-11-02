@@ -1639,6 +1639,21 @@ has, ended after."
                 thereis (not (sb-ext:process-alive-p process))
                 do (sleep 0.01)))))
 
+(define-test (syntax start-finishing-for-killed-buffer-ends-its-helper)
+  ;; a buffer killed while a start for it holds the room for helpers, before it stops being live:
+  ;; the helper that start then makes is ended, not kept for it
+  (let ((buffer (tuatara.buffer:make-buffer "*killed-before-start-ends*" :text "fn main() {}")))
+    (unwind-protect
+         (sb-thread:with-mutex (tuatara.syntax::**room-lock**)
+           (tuatara.syntax::forget-killed-buffer-helper buffer)
+           (true (tuatara.buffer:live-buffer-p buffer))
+           (false (tuatara.syntax::start-own-helper-now nil buffer nil))
+           (false (tuatara.buffer:buffer-local buffer :syntax-helper)))
+      (tuatara.buffer:kill-buffer buffer))
+    (false (find-if (lambda (helper) (and (eq buffer (tuatara.syntax::helper-buffer helper))
+                                          (tuatara.syntax:helper-alive helper)))
+                    tuatara.syntax::**helpers**))))
+
 (define-test (syntax honest-helpers-not-blamed)
   ;; tests of a long captured text past what they may read do not pass, the
   ;; helper left alone; a whole text's matches taking long are slow, not a
