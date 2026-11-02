@@ -151,6 +151,7 @@ text added, on a ground of its own."
 (define-face :escape "Escape sequences inside strings." :fg :cyan :bold t)
 (define-face :raw-byte "Octets that are not UTF-8, each shown as \\xNN." :fg :red :bold t)
 (define-face :invisible-character "A character that draws nothing, shown as its code, <FEFF> for the byte-order mark, while its buffer shows such characters (\\[invisible-characters-mode]), and a character that sets the direction text is drawn in, shown as ? otherwise: as escape sequences are, unless set apart." :inherit :escape)
+(define-face :right-to-left "Text written from right to left, shown in the order it is read: nothing of its own unless set apart; the frontends find the runs whose letters they join by it.")
 (define-face :hex-offset "The offsets at the start of the hex view's rows." :dim t)
 (define-face :hex-mirror "The octet at the hex view's cursor, marked in both its hex digits and its character, the cursor on the one typing goes to." :inherit :paren-match)
 (define-face :hex-unprintable "The dots the hex view's text column shows for octets that are not printable." :dim t)
@@ -228,6 +229,7 @@ text added, on a ground of its own."
 (define-face :conflict-second "The second side of a conflict a merge left in a file, the lines after its ======= line: as the lines a difference adds unless set." :inherit :diff.plus :extend t)
 (define-face :error "Errors marked in text, such as the error lines of a log." :fg :red :bold t)
 (define-face :warning "Warnings marked in text, such as the warning lines of a log." :fg :yellow :bold t)
+(define-face :stored-order "Right-to-left letters shown in the order they are stored, in a stretch of a line too long, or too far past an embedding or override, for the order they are read in to be worked out." :inherit :warning)
 (define-face :mode-line-rewind "Rewind and the commit shown, in the mode line of a file or folder shown as a commit left it (\\[git-rewind]): lit up in the theme's warning colour, so that it is seen at once that this is not the file as it is now." :inherit :warning :reverse t)
 (define-face :mode-line-narrowed "Narrow, in the mode line of a buffer narrowed to a part of it
 \(\\[narrow-to-region], \\[narrow-to-section]): lit up in the theme's warning

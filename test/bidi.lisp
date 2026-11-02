@@ -71,7 +71,7 @@ order, worked out then wanted."
          (row (aref (bidi-rows hebrew 20) 0)))
     ;; a run written from right to left turned round within a line written from left to right
     (is string= (letters "abc " #x5D2 #x5D1 #x5D0 " def") (tuatara.display:row-string row))
-    (is eq :visual (first (tuatara.display:row-mixed row)))
+    (is eq :visual (tuatara.display:row-mixed row))
     ;; the first letter of the run, at offset 4, shown where the run ends
     (is equal '(0 6) (multiple-value-list (tuatara.display:point-row-column (bidi-rows hebrew 20) 4)))
     (is equal '(0 4) (multiple-value-list (tuatara.display:point-row-column (bidi-rows hebrew 20) 8)))
@@ -122,7 +122,7 @@ order, worked out then wanted."
     (is string= "a?cb?d" (tuatara.display:displayable (tuatara.display:row-string row)))
     (is eq :invisible-character (aref (tuatara.display:row-faces row) 1))
     (is eq :invisible-character (aref (tuatara.display:row-faces row) 4))
-    (is eq nil (aref (tuatara.display:row-faces row) 2)))
+    (is eq :right-to-left (aref (tuatara.display:row-faces row) 2)))
   ;; and in stored order too
   (let ((row (aref (bidi-rows (format nil "a~cb" (code-char #x2067)) 10 :direction nil) 0)))
     (is eq :invisible-character (aref (tuatara.display:row-faces row) 1))))
@@ -168,3 +168,71 @@ order, worked out then wanted."
     ;; text-direction-mode: the characters in the order stored, and back
     (let ((f (run-keys "M-x t e x t - d i r e c t i o n - m o d e RET" :text text :width 30 :height 6)))
       (true (search text (tuatara.frontend.fake:fake-screen-line f 0))))))
+
+(define-test (bidi lines-cost-no-more-garbage-for-their-length)
+  ;; a right-to-left line edited and laid out again: worked out again in the room kept, no garbage for each
+  ;; character more of it (once the room is large enough)
+  (flet ((garbage (length)
+           (let* ((cache (tuatara.display:make-bidi-cache))
+                  (line (with-output-to-string (out)
+                          (dotimes (i length) (write-char (code-char (+ #x5D0 (mod i 20))) out)
+                            (when (zerop (mod i 7)) (write-char #\Space out)))))
+                  (ropes (loop for i below 6
+                               collect (tuatara.text:string->rope (format nil "~a~c~%" line (code-char (+ #x5D0 i)))))))
+             ;; what each text works out for itself the first time it is laid out, whatever its direction, first
+             (dolist (rope ropes) (tuatara.display:layout rope 0 60 10))
+             (flet ((lay (rope) (tuatara.display:layout rope 0 60 10 :direction :auto :bidi cache)))
+               (lay (first ropes))
+               (nth-value 2 (measuring (dolist (rope (rest ropes)) (lay rope))))))))
+    (garbage 2000) (garbage 4000)
+    (let ((each (/ (- (garbage 4000) (garbage 2000)) 2000 5)))
+      (true (< each 1) "~,2f octets for each character more of a line laid out" each))))
+
+(define-test (bidi direction-from-a-letter-past-the-rows-shown)
+  ;; a line whose first letter is past the end of the row shown, cut off: written from right to left
+  (let ((row (aref (bidi-rows (letters "1 2 3 4 5 6 7 8 9 " #x5D0 #x5D1) 6) 0)))
+    (true (tuatara.display:row-truncated-p row))
+    (is eq :visual (tuatara.display:row-mixed row))
+    (is string= "3 2 1" (string-trim " " (tuatara.display:row-string row))))
+  ;; and from left to right when its first letter is: as stored
+  (let ((row (aref (bidi-rows (letters "1 2 3 4 5 6 7 8 9 a " #x5D0) 6) 0)))
+    (is eq nil (tuatara.display:row-mixed row))))
+
+(define-test (bidi tabs-keep-their-columns)
+  ;; lines written from right to left set against the right edge: what follows a tab begins at the same column
+  (let* ((rows (bidi-rows (letters #x5D0 #\Tab #x5D1 #\Newline #x5D0 #x5D1 #x5D2 #\Tab #x5D3) 20)))
+    (is = (position (code-char #x5D1) (tuatara.display:row-string (aref rows 0)))
+        (position (code-char #x5D3) (tuatara.display:row-string (aref rows 1))))))
+
+(define-test (bidi far-stretches-shown-as-stored)
+  ;; a stretch far into a long line, after an override on it: in the order stored, its letters marked
+  (let* ((line (concatenate 'string (string (code-char #x202E)) (make-string 300000 :initial-element #\x)
+                            (letters #x5D0 #x5D1 #x5D2)))
+         (rope (tuatara.text:string->rope line))
+         (at (- (length (sb-ext:string-to-octets line :external-format :utf-8)) 6))
+         (rows (tuatara.display:layout rope (tuatara.text:rope-char-start rope (- at 4)) 20 1 :wrap t :direction :auto))
+         (row (aref rows 0)))
+    (true (search (letters #x5D0 #x5D1 #x5D2) (tuatara.display:row-string row)))
+    (is eq nil (tuatara.display:row-mixed row))
+    (true (find-if (lambda (face) (or (eq face :stored-order) (and (listp face) (member :stored-order face))))
+                   (tuatara.display:row-faces row)))))
+
+(define-test (bidi arabic-letters-joined)
+  ;; كتب كتب in a line: each word's letters in the forms that join them, as a terminal is sent them
+  (let* ((rows (bidi-rows (letters #x643 #x62A #x628 " " #x643 #x62A #x628) 20))
+         (row (aref rows 0))
+         (shown (tuatara.display:joined-arabic (tuatara.display:row-string row) (tuatara.display:row-spans row))))
+    (is string= (letters #xFE90 #xFE98 #xFEDB " " #xFE90 #xFE98 #xFEDB) (string-left-trim " " shown))
+    ;; the text itself as stored
+    (is string= (letters #x628 #x62A #x643 " " #x628 #x62A #x643) (string-left-trim " " (tuatara.display:row-string row))))
+  ;; a lone letter, and stored order: left as it is
+  (is string= (letters "a " #x628) (tuatara.display:joined-arabic (letters "a " #x628) '())))
+
+(define-test (bidi clicks-and-moves-left-of-a-line)
+  ;; left of a line written from right to left set against the right edge: its end, as a click or a move takes it
+  (let* ((text (letters #x5D0 #x5D1 #x5D2))
+         (row (aref (bidi-rows text 12) 0)))
+    (is = 6 (tuatara.display:row-position-at row 0))
+    (is = 6 (tuatara.display:row-position-at row 8))
+    (is = 4 (tuatara.display:row-position-at row 9))
+    (is = 0 (tuatara.display:row-position-at row 11))))

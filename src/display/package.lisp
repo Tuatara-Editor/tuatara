@@ -36,4 +36,5 @@
            ;; the hex view
            #:hex-view-p #:hex-point #:hex-layout #:hex-row-start #:+hex-row+ #:row-mixed
            ;; right-to-left text
-           #:row-end-column #:host-text-direction #:right-to-left-code-p))
+           #:row-end-column #:row-position-at #:host-text-direction #:right-to-left-code-p #:joined-arabic #:right-to-left-face-p #:arabic-joining #:mirrored-char
+           #:make-bidi-cache))

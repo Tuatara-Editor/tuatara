@@ -53,6 +53,8 @@ holding windows one above another or side by side."))
                :documentation "Rows the window showed before and shows no more, for its next layout to fill again.")
    (row-start-seen :initform nil :accessor window-row-start-seen
                    :documentation "What the window's start was last found a row's start for (ROW-START-STATE), or NIL.")
+   (bidi :initform nil :accessor window-bidi
+         :documentation "What the window keeps of right-to-left text from one layout to the next (a BIDI-CACHE), or NIL before any.")
    (laid-out :initform nil :accessor window-laid-out
              :documentation "The window's last layout, kept to be used again (KEPT-LAYOUT): (STATE START ROWS BASES), or NIL.")
    (divider :initform nil :accessor window-divider
@@ -374,6 +376,7 @@ shown is laid out."
             :text-end (and (tuatara.buffer:buffer-narrowing buffer) (tuatara.buffer:buffer-end buffer))
             :invisible (invisible-characters-of buffer)
             :direction (text-direction-of buffer)
+            :bidi (or (window-bidi window) (setf (window-bidi window) (make-bidi-cache)))
             :spares (and spares (window-spare-rows window))
             :hidden (let ((*layout-probe* (and end t))) (window-hidden buffer start (window-width window) height end))
             :prefix (let ((function (tuatara.buffer:buffer-local buffer :line-prefix-function)))

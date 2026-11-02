@@ -222,7 +222,7 @@ lines wrap at a word's edge (\\[soft-wrap-mode]), of the screen row it is
 on; in the hex view, of the row of octets."
   (let ((row (soft-wrap-row (current-buffer))))
     (if row
-        (goto (row-position row most-positive-fixnum))
+        (goto (tuatara.display:row-position-at row most-positive-fixnum))
         (move-to-line-end))))
 
 (defun push-mark-before-jump ()
@@ -336,19 +336,6 @@ of a rectangle keeps its column on a shorter line, standing past its end."
     (goto (tuatara.display:buffer-move-to-screen-column b line goal))
     (keep-rectangle-column b goal)))
 
-(defun row-position (row column)
-  "The position COLUMN columns into ROW, or where ROW's text ends when it is
-shorter: its line's end, or on a row that goes on in the next, its last
-character. A column of what is shown before the row's text (Org's indented
-view), standing for no character, is the text's first."
-  (let ((n (tuatara.display:row-columns row)) (bytes (tuatara.display:row-bytes row)))
-    (cond ((and (< column n) (minusp (aref bytes column)))
-           (or (find-if-not #'minusp bytes :start column) (tuatara.display:row-shown-end row)))
-          ((< column n) (aref bytes column))
-          ((and (plusp n) (not (tuatara.display:row-last-p row))
-                (= (tuatara.display:row-shown-end row) (tuatara.display:row-end row)))
-           (aref bytes (1- n)))
-          (t (tuatara.display:row-shown-end row)))))
 
 (defun row-motion (window buffer lines)
   "Move point LINES rows of WINDOW down (up when negative), where BUFFER's long
@@ -368,7 +355,7 @@ motions one after another."
                             window (tuatara.display:rows-back window point (- lines)) 1)
                            0))))
     (setf (tuatara.display:window-goal-column window) goal)
-    (goto (row-position target goal))))
+    (goto (tuatara.display:row-position-at target goal))))
 
 (define-command next-line ()
   "Move point down one line (or the prefix argument's worth), keeping the column when possible;
