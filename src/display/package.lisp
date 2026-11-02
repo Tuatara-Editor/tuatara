@@ -34,4 +34,6 @@
            #:layout-area #:trim-area-bottom #:split-area #:replace-area #:delete-area #:window-in-direction
            #:turn-layout #:balance-area #:resize-area
            ;; the hex view
-           #:hex-view-p #:hex-point #:hex-layout #:hex-row-start #:+hex-row+ #:row-mixed))
+           #:hex-view-p #:hex-point #:hex-layout #:hex-row-start #:+hex-row+ #:row-mixed
+           ;; right-to-left text
+           #:row-end-column #:host-text-direction #:right-to-left-code-p))

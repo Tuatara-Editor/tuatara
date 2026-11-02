@@ -107,7 +107,7 @@ available unqualified, and the public API of TUATARA is used.")
            ;; the kill ring and the system clipboard
            #:*kill-ring-max* #:*undo-limit* #:*use-system-clipboard* #:*clipboard-max-size*
            #:*show-completion-count* #:*prompt-above-candidates* #:*key-hint-rows* #:*fill-column* #:*leader-key* #:*sentence-end-double-space* #:*extra-sentence-abbreviations* #:*removed-sentence-abbreviations* #:*git-commit-fill-column* #:*fill-paragraph-limit* #:*fill-ask-column* #:*global-hl-line-mode* #:*global-soft-wrap-mode* #:*soft-wrap-modes* #:*centred-text-width* #:*centred-text-modes* #:*soft-wrap-at-fill-column* #:*soft-wrap-indicator* #:*global-visual-line-mode* #:*visual-line-modes*
-           #:*hl-line-modes* #:*global-cursor-column-mode* #:*cursor-column-modes* #:*global-spellcheck-mode* #:*spellcheck-modes* #:*spellcheck-languages* #:*spellcheck-excluded-faces* #:*spellcheck-comment-faces* #:*spellcheck-string-faces* #:*global-centred-text-mode* #:*line-numbers-modes* #:*global-invisible-characters-mode* #:*invisible-characters-modes* #:*invisible-characters-when-safe*
+           #:*hl-line-modes* #:*global-cursor-column-mode* #:*cursor-column-modes* #:*global-spellcheck-mode* #:*spellcheck-modes* #:*spellcheck-languages* #:*spellcheck-excluded-faces* #:*spellcheck-comment-faces* #:*spellcheck-string-faces* #:*global-centred-text-mode* #:*line-numbers-modes* #:*global-invisible-characters-mode* #:*invisible-characters-modes* #:*invisible-characters-when-safe* #:*global-text-direction-mode* #:*text-direction-modes*
            ;; files visited lately
            #:*remember-recent-files* #:*recent-files-max* #:*recent-files-auto-cleanup* #:*relative-age-limit*
            ;; pairs of delimiters

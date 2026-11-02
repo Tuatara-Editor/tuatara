@@ -708,7 +708,7 @@ colours a program picks are the theme's (*TERMINAL-PALETTE-ROLES*)."
           (tuatara.buffer:buffer-local buffer :key-handler) 'terminal-key-handler
           (tuatara.buffer:buffer-local buffer :paste-handler) 'terminal-paste-handler
           (buffer-given-directory buffer) directory)
-    (dolist (toggle '(line-numbers hl-line cursor-column soft-wrap spellcheck visual-line centred-text))
+    (dolist (toggle '(line-numbers hl-line cursor-column soft-wrap spellcheck visual-line centred-text text-direction))
       (ignoring-errors-reported ("turning ~(~a~) off" toggle) (choose-display buffer toggle nil)))
     ;; shown where *terminal-place* says, and its program started, or the buffer killed again
     (let ((started nil))

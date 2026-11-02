@@ -150,7 +150,7 @@ text added, on a ground of its own."
 (define-face :string "String and character literals." :fg :green)
 (define-face :escape "Escape sequences inside strings." :fg :cyan :bold t)
 (define-face :raw-byte "Octets that are not UTF-8, each shown as \\xNN." :fg :red :bold t)
-(define-face :invisible-character "A character that draws nothing, shown as its code, <FEFF> for the byte-order mark, while its buffer shows such characters (\\[invisible-characters-mode]): as escape sequences are, unless set apart." :inherit :escape)
+(define-face :invisible-character "A character that draws nothing, shown as its code, <FEFF> for the byte-order mark, while its buffer shows such characters (\\[invisible-characters-mode]), and a character that sets the direction text is drawn in, shown as ? otherwise: as escape sequences are, unless set apart." :inherit :escape)
 (define-face :hex-offset "The offsets at the start of the hex view's rows." :dim t)
 (define-face :hex-mirror "The octet at the hex view's cursor, marked in both its hex digits and its character, the cursor on the one typing goes to." :inherit :paren-match)
 (define-face :hex-unprintable "The dots the hex view's text column shows for octets that are not printable." :dim t)

@@ -330,6 +330,21 @@ buffer.")
 HOST-INVISIBLE-CHARACTERS-P says."
   (and (host-invisible-characters-p tuatara.runtime:*host* buffer) t))
 
+(defgeneric host-text-direction (host buffer)
+  (:documentation "How the lines of BUFFER holding right-to-left text (Hebrew, Arabic and the
+others) are shown: NIL for each line's characters in the order they are
+stored, else in the order they are read, each line a paragraph written from
+left to right (:LEFT-TO-RIGHT), right to left (:RIGHT-TO-LEFT), or as its
+first letter says (:AUTO); on the core's own host, :AUTO in every buffer.")
+  (:method ((host tuatara.runtime:host) buffer)
+    (declare (ignore buffer))
+    :auto))
+
+(defun text-direction-of (buffer)
+  "How BUFFER's lines holding right-to-left text are shown, as
+HOST-TEXT-DIRECTION says: NIL, :LEFT-TO-RIGHT, :RIGHT-TO-LEFT or :AUTO."
+  (host-text-direction tuatara.runtime:*host* buffer))
+
 (defvar *layout-probe* nil
   "True while a window's buffer is laid out only to find where a row starts,
 one line at a time (WINDOW-LAYOUT-ROWS with END): what the buffer shows
@@ -358,6 +373,7 @@ shown is laid out."
             :until end
             :text-end (and (tuatara.buffer:buffer-narrowing buffer) (tuatara.buffer:buffer-end buffer))
             :invisible (invisible-characters-of buffer)
+            :direction (text-direction-of buffer)
             :spares (and spares (window-spare-rows window))
             :hidden (let ((*layout-probe* (and end t))) (window-hidden buffer start (window-width window) height end))
             :prefix (let ((function (tuatara.buffer:buffer-local buffer :line-prefix-function)))
@@ -482,12 +498,12 @@ O(log n + *WRAP-STRETCH*)."
   "What decides how WINDOW lays out its buffer, but for where from: the
 buffer's text, the part of it shown when it is narrowed, and its settings
 for laying it out, the window's width, height, wrapping and sideways
-scroll."
+scroll, and how it shows right-to-left text."
   (let ((buffer (window-buffer window)))
     (list (tuatara.buffer:buffer-version buffer) (window-text-width window) (window-height window)
           (window-hscroll window) (window-wrap window) (host-soft-wrap tuatara.runtime:*host* buffer)
           (tab-width-of buffer)
-          (tuatara.buffer:buffer-line-ending buffer) (invisible-characters-of buffer)
+          (tuatara.buffer:buffer-line-ending buffer) (invisible-characters-of buffer) (text-direction-of buffer)
           (tuatara.buffer:buffer-local buffer :folds) (hidden-bounds buffer) (tuatara.buffer:buffer-local buffer :line-prefix-function)
           (and *row-scaling* (tuatara.buffer:buffer-local buffer :line-scale-function))
           (tuatara.buffer:buffer-narrowing buffer))))

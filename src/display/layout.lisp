@@ -29,7 +29,10 @@ many rows' height the row is drawn in, its letters as many times as wide
 the characters of STRING shown where no text of the buffer is (an inlay
 hint, a replacement shown before it is made), each run as (FROM . TO),
 indices into STRING; highlights of the text around them leave them as they
-are."
+are. MIXED is T for a row whose characters stand for offsets in no order (the
+hex view), and for one whose characters are in the order they are read,
+right-to-left text among them, rather than stored, a list (:VISUAL
+END-COLUMN PADDING): ROW-END-COLUMN and ROW-PADDING."
   (string (make-array 0 :element-type 'character :adjustable t :fill-pointer 0) :type string)
   (faces (make-array 0 :adjustable t :fill-pointer 0))
   (char-bytes (make-array 0 :element-type 'fixnum :adjustable t :fill-pointer 0))
@@ -41,7 +44,7 @@ are."
   (continuation-p nil :type boolean)
   (truncated-p nil :type boolean)
   (last-p nil :type boolean)
-  (mixed nil :type boolean)
+  (mixed nil)
   (extend nil)
   (scale 1 :type rational)
   (set-in '() :type list))
@@ -58,10 +61,22 @@ are."
       (documentation 'row-columns 'function) "Number of columns ROW uses."
       (documentation 'row-continuation-p 'function) "True when ROW continues a wrapped line."
       (documentation 'row-last-p 'function) "True when ROW holds the end of the text."
-      (documentation 'row-mixed 'function) "True when ROW's characters stand for offsets not in order (the hex view)."
+      (documentation 'row-mixed 'function) "True when ROW's characters stand for offsets not in order: T in the hex view, (:VISUAL END-COLUMN PADDING) where they are in the order right-to-left text is read."
       (documentation 'row-extend 'function) "The face, or faces with the highest priority first, painted from the end of ROW's line to the window's edge: those of highlights covering its newline that extend; NIL for none."
       (documentation 'row-set-in 'function) "The runs of ROW's characters shown where no text of the buffer is, each (FROM . TO) of indices into its string; highlights leave them alone."
       (documentation 'row-scale 'function) "How many rows' height ROW is drawn in, its letters as many times as wide: 1, or more for a line drawn large (5/4, 3/2, 2).")
+
+(defun row-end-column (row)
+  "The column where the end of ROW's line is shown when not after its text:
+left of the text of a line written from right to left set against the right
+edge; NIL otherwise."
+  (let ((mixed (row-mixed row))) (and (consp mixed) (second mixed))))
+
+(defun row-padding (row)
+  "The blanks before ROW's text that set a line written from right to left
+against the right edge, (FROM . TO) of indices into its string; NIL for
+none."
+  (let ((mixed (row-mixed row))) (and (consp mixed) (third mixed))))
 
 (defun make-row (start &optional (room 0) spares)
   "Return an empty row starting at byte START, with room for ROOM characters
@@ -166,9 +181,15 @@ log rows + characters painted)."
                                              (and (<= start newline) (< newline end)))
                                             ;; a row a wrapped line goes on from, covered to its end
                                             (t (and (< start (row-end row)) (<= (row-end row) end))))
-                                      (not (row-mixed row))
+                                      (not (eq (row-mixed row) t))
                                       (symbolp face) (face-attribute face :extend))
-                             (setf (row-extend row) (paint (row-extend row)))))
+                             (setf (row-extend row) (paint (row-extend row)))
+                             ;; and before the text of a line set against the right edge
+                             (let ((padding (row-padding row)))
+                               (when padding
+                                 (loop with faces = (row-faces row)
+                                       for i from (car padding) below (cdr padding)
+                                       do (setf (aref faces i) (paint (aref faces i))))))))
                          (let* ((bytes (row-char-bytes row))
                                 (faces (row-faces row))
                                 (count (length bytes)))
@@ -185,16 +206,24 @@ log rows + characters painted)."
                                          do (setf (aref faces i) (paint (aref faces i))))))))))))))))
 
 (defun row-column-of (row byte)
-  "The column of ROW where byte offset BYTE is shown; the column after the last
-glyph when BYTE is the newline or text end that finishes the row; NIL when BYTE
-is not shown in ROW (outside it, wrapped to the next row, truncated, or scrolled
-off horizontally). A character of no width of its own (a combining mark, a
+  "The column of ROW where byte offset BYTE is shown; where the end of its
+line is shown (after the last glyph, or ROW-END-COLUMN) when BYTE is the
+newline or text end that finishes the row; NIL when BYTE is not shown in ROW
+\(outside it, wrapped to the next row, truncated, or scrolled off
+horizontally). A character of no width of its own (a combining mark, a
 joiner) is shown at the column of the glyph it joins, the one before it, or
 where the next glyph stands when there is none before it in the row."
   (declare (type fixnum byte))
   (cond ((< byte (row-start row)) nil)
         ((< byte (row-shown-end row))
          (or (position byte (row-bytes row))
+             (and (consp (row-mixed row))
+                  ;; a character with no column of its own, in a row in the order it is read: its glyph's
+                  (let* ((chars (row-char-bytes row))
+                         (i (position byte chars)))
+                    (and i (loop for k downfrom i to 0
+                                 for column = (and (>= (aref chars k) 0) (position (aref chars k) (row-bytes row)))
+                                 when column return column))))
              (and (not (row-mixed row))
                   (let* ((chars (row-char-bytes row))
                          (i (first-index-at-or-after chars byte)))
@@ -208,7 +237,7 @@ where the next glyph stands when there is none before it in the row."
         ((and (= byte (row-shown-end row))
               (not (row-truncated-p row))
               (or (row-last-p row) (< (row-shown-end row) (row-end row))))
-         (row-columns row))
+         (or (row-end-column row) (row-columns row)))
         (t nil)))
 
 (defstruct (reader (:constructor %make-reader (rope position end chunk)) (:copier nil))
@@ -445,6 +474,158 @@ Complexity: O(log n)."
              (let ((anchor (tuatara.text:rope-char-start rope grid)))
                (when (> anchor position) (return anchor))))))
 
+;;; Right-to-left text in a row
+
+(defun right-to-left-between-p (rope from to)
+  "True when a character of ROPE from FROM below TO, both character starts,
+can change the order a line is shown in (RIGHT-TO-LEFT-CODE-P). Only the
+octets that begin a character at U+0590 or above are decoded. Complexity:
+O(TO - FROM)."
+  (declare (type fixnum from to))
+  (let ((total (tuatara.text:rope-bytes rope)))
+    (tuatara.text:with-octet-block (block (+ +scan-block+ 4))
+      (loop for pos of-type fixnum from from below to by +scan-block+
+            do (let* ((stop (min to (+ pos +scan-block+)))
+                      (have (min total (+ stop 3))))
+                 (tuatara.text:rope-copy-into rope pos have block)
+                 (loop for i of-type fixnum from 0 below (- stop pos)
+                       do (when (and (>= (aref block i) #xD6)
+                                     (right-to-left-code-p (tuatara.text:octets-decode block i (- have pos))))
+                            (return-from right-to-left-between-p t)))))
+      nil)))
+
+(defstruct (bidi-paragraph (:constructor make-bidi-paragraph (start end bytes classes levels level)) (:copier nil))
+  "A stretch of a line worked out for showing right-to-left text: the octets
+from START below END, the offset where each character begins (BYTES), their
+bidirectional CLASSES and resolved LEVELS (BIDI-LEVELS), and the LEVEL of the
+paragraph, 1 for a line written from right to left."
+  (start 0 :type fixnum :read-only t)
+  (end 0 :type fixnum :read-only t)
+  (bytes #() :type (simple-array fixnum (*)) :read-only t)
+  (classes #() :type simple-vector :read-only t)
+  (levels #() :type (simple-array (unsigned-byte 8) (*)) :read-only t)
+  (level 0 :type fixnum :read-only t))
+
+(setf (documentation 'bidi-paragraph-p 'function) "True when OBJECT is a BIDI-PARAGRAPH."
+      (documentation 'bidi-paragraph-start 'function) "Where the text of the PARAGRAPH worked out begins."
+      (documentation 'bidi-paragraph-end 'function) "Where the text of the PARAGRAPH worked out ends."
+      (documentation 'bidi-paragraph-bytes 'function) "The offset each character of the PARAGRAPH begins at, in order."
+      (documentation 'bidi-paragraph-classes 'function) "The bidirectional class of each character of the PARAGRAPH."
+      (documentation 'bidi-paragraph-levels 'function) "The level each character of the PARAGRAPH is shown at."
+      (documentation 'bidi-paragraph-level 'function) "The level of the PARAGRAPH: 0 from left to right, 1 from right to left.")
+
+(defun read-paragraph (rope from to direction)
+  "The BIDI-PARAGRAPH of ROPE's text from FROM below TO, both character starts on
+one line, its levels resolved as DIRECTION says: :LEFT-TO-RIGHT,
+:RIGHT-TO-LEFT, or :AUTO for the direction of its first letter. Complexity:
+O(TO - FROM)."
+  (let ((reader (make-reader rope from to))
+        (bytes (make-array 64 :element-type 'fixnum :adjustable t :fill-pointer 0))
+        (codes (make-array 64 :element-type 'fixnum :adjustable t :fill-pointer 0)))
+    (loop for at = (reader-position reader)
+          for char = (reader-next reader)
+          while char
+          do (vector-push-extend at bytes)
+             (vector-push-extend (char-code char) codes))
+    (let ((classes (map 'simple-vector #'code-bidi-class codes)))
+      (multiple-value-bind (levels level)
+          (bidi-levels classes :codes codes :paragraph-level (case direction (:left-to-right 0) (:right-to-left 1)))
+        (make-bidi-paragraph from to (coerce bytes '(simple-array fixnum (*))) classes levels level)))))
+
+(defun row-paragraph (rope row line-start total direction known)
+  "The BIDI-PARAGRAPH ROW's characters are shown by, of the line beginning at
+LINE-START, as READ-PARAGRAPH works it out with DIRECTION: KNOWN, the one
+the row before used, when it holds them; else the whole line, or of a line
+longer than twice *WRAP-STRETCH*, the stretch of it from where the rows
+holding ROW are worked out from (WRAP-ANCHOR), no further than TOTAL."
+  (let* ((shown (loop for byte across (row-char-bytes row) when (>= byte 0) minimize byte into low
+                      finally (return (if (< low most-positive-fixnum) low (row-start row)))))
+         (until (row-shown-end row)))
+    (if (and known (<= (bidi-paragraph-start known) shown) (<= until (bidi-paragraph-end known)))
+        known
+        (let* ((line-end (min total (tuatara.text:rope-line-end rope shown)))
+               (from (wrap-anchor rope line-start shown))
+               (to (if (<= (- line-end from) (* 2 *wrap-stretch*))
+                       line-end
+                       (let ((end (min line-end (max until (+ from (* 2 *wrap-stretch*))))))
+                         (if (< end line-end) (tuatara.text:rope-char-start rope end) end)))))
+          (read-paragraph rope from (max to until) direction)))))
+
+(defun reorder-row (row paragraph limit align)
+  "Put ROW's characters in the order they are read, by the levels of
+PARAGRAPH, the one holding them: runs written from right to left turned
+round (rules L1 and L2), a mark kept after the letter it is on, a bracket
+among them mirrored (rule L4). With ALIGN, a row of a paragraph written from
+right to left is set against the right of LIMIT columns, the end of its line
+shown left of its text (ROW-END-COLUMN). What is shown before the row's text
+\(a prefix) stays first. ROW is left as it is when nothing moves."
+  (let* ((string (row-string row)) (chars (row-char-bytes row)) (bytes (row-bytes row))
+         (count (length string)) (columns (row-columns row))
+         (prefix (or (position-if-not #'minusp chars) count))
+         (prefix-columns (or (position-if-not #'minusp bytes) columns))
+         (units (make-array 16 :adjustable t :fill-pointer 0))
+         (level (bidi-paragraph-level paragraph))
+         (pad (if (and align (oddp level)) (max 0 (- limit columns)) 0)))
+    ;; each character shown, with the marks on it: (FROM BELOW COLUMN-FROM COLUMN-BELOW BYTE)
+    (loop with i = prefix and c = prefix-columns
+          while (< i count)
+          do (let* ((byte (aref chars i))
+                    (j (or (position-if (lambda (other) (/= other byte)) chars :start i) count))
+                    (k (or (position-if (lambda (other) (/= other byte)) bytes :start c) columns)))
+               (if (and (= k c) (plusp (length units)))
+                   (setf (second (aref units (1- (length units)))) j)
+                   (vector-push-extend (list i j c k byte) units))
+               (setf i j c k)))
+    (let* ((n (length units))
+           (classes (make-array n))
+           (levels (make-array n :element-type '(unsigned-byte 8))))
+      (dotimes (u n)
+        (let* ((byte (fifth (aref units u)))
+               (starts (bidi-paragraph-bytes paragraph))
+               (at (first-index-at-or-after starts byte))
+               (found (and (< at (length starts)) (= byte (aref starts at)))))
+          (setf (svref classes u) (if found (svref (bidi-paragraph-classes paragraph) at) :on)
+                (aref levels u) (if found (aref (bidi-paragraph-levels paragraph) at) level))))
+      (let* ((shown (line-levels classes levels level))
+             (order (visual-order shown)))
+        (unless (and (zerop pad) (loop for u below n always (= u (aref order u))))
+          (let ((old-string (copy-seq string)) (old-faces (copy-seq (row-faces row)))
+                (old-chars (copy-seq chars)) (old-bytes (copy-seq bytes))
+                (moved '()))
+            (setf (fill-pointer string) prefix (fill-pointer (row-faces row)) prefix
+                  (fill-pointer chars) prefix (fill-pointer bytes) prefix-columns)
+            (dotimes (i pad)
+              (vector-push-extend #\Space string) (vector-push-extend nil (row-faces row))
+              (vector-push-extend -1 chars) (vector-push-extend -1 bytes))
+            (loop for u across order
+                  do (destructuring-bind (from below column-from column-below byte) (aref units u)
+                       (declare (ignore byte))
+                       (push (list from below (length string)) moved)
+                       (loop for i from from below below
+                             do (vector-push-extend (if (and (oddp (aref shown u)) (= below (1+ from)))
+                                                        (mirrored-char (char old-string i))
+                                                        (char old-string i))
+                                                    string)
+                                (vector-push-extend (aref old-faces i) (row-faces row))
+                                (vector-push-extend (aref old-chars i) chars))
+                       (loop for c from column-from below column-below
+                             do (vector-push-extend (aref old-bytes c) bytes))))
+            (setf (row-columns row) (+ columns pad)
+                  (row-mixed row) (list :visual
+                                        (and (plusp pad) (not (row-truncated-p row))
+                                             (or (row-last-p row) (< (row-shown-end row) (row-end row)))
+                                             (+ prefix-columns pad -1))
+                                        (and (plusp pad) (cons prefix (+ prefix pad))))
+                  (row-set-in row) (loop for (from . below) in (row-set-in row)
+                                         collect (let ((unit (find-if (lambda (m) (and (<= (first m) from)
+                                                                                       (< from (second m))))
+                                                                      moved)))
+                                                   (if unit
+                                                       (let ((shift (- (third unit) (first unit))))
+                                                         (cons (+ from shift) (+ below shift)))
+                                                       (cons from below))))))))))
+  row)
+
 (declaim (inline shown-text-end))
 (defun shown-text-end (rope text-end)
   "Where the text LAYOUT shows of ROPE ends: TEXT-END when given, no further
@@ -452,7 +633,7 @@ than ROPE's end; else ROPE's end."
   (if text-end (min text-end (tuatara.text:rope-bytes rope)) (tuatara.text:rope-bytes rope)))
 
 (defun layout (rope start width height &key (wrap nil) wrap-column word-wrap (tab-width 8) (hscroll 0) highlights crlf hidden
-                                             prefix scale until invisible spares text-end)
+                                             prefix scale until invisible spares text-end direction)
   "Lay out ROPE from byte START into at most HEIGHT rows of WIDTH columns.
 WRAP true wraps long lines at the column, WRAP-COLUMN when given (no further
 than WIDTH), and with WORD-WRAP at a word's edge: a row ends after the last
@@ -484,6 +665,12 @@ raw byte is shown as \\xNN in :raw-byte. A grapheme cluster takes the columns
 of its first character (CLUSTER-COLUMNS), and a mark at a line's start is
 shown on *MARK-BASE*. Every row takes at least one character: one too wide for
 a whole wrapped row is shown as *CUT-GLYPH* (a tab as the spaces that fit).
+DIRECTION, unless NIL, shows the rows of a line holding right-to-left text
+\(RIGHT-TO-LEFT-CODE-P) in the order they are read (REORDER-ROW), each line a
+paragraph written from left to right (:LEFT-TO-RIGHT), right to left
+\(:RIGHT-TO-LEFT, every line so), or as its first letter says (:AUTO); a line
+written from right to left is set against the right edge unless scrolled
+sideways. A line with none of that text is laid out as with NIL.
 The rows are made anew, or taken from SPARES, a vector with a fill pointer of
 rows no longer shown (MAKE-ROW). Returns a simple-vector of ROW. Complexity:
 O(WIDTH × HEIGHT), and for each row scrolled sideways O(*SCREEN-COLUMN-REACH*
@@ -503,11 +690,17 @@ O(WIDTH × HEIGHT), and for each row scrolled sideways O(*SCREEN-COLUMN-REACH*
           (anchor nil)
           (line-scale 1)
           (used 0)
-          (full-limit (if (and wrap wrap-column) (max 1 (min width wrap-column)) width)))
-      (declare (type fixnum position total full-limit before) (type rational line-scale used))
+          (full-limit (if (and wrap wrap-column) (max 1 (min width wrap-column)) width))
+          ;; with DIRECTION: whether the line holds right-to-left text so far, the first of its rows
+          ;; not yet put in the order it is read, and the paragraph the last row was put in order by
+          (right-to-left nil)
+          (waiting 0)
+          (paragraph nil))
+      (declare (type fixnum position total full-limit before waiting) (type rational line-scale used))
       ;; a window beginning inside a line, where lines wrap, begins with a row that continues it
       (when (/= start line-start)
-        (setf continuation (and wrap t) before -1))
+        (setf continuation (and wrap t) before -1
+              right-to-left (and direction (right-to-left-between-p rope (wrap-anchor rope line-start start) start))))
       (loop while (and (< used height) (<= position total) (or (null until) (<= position until)))
             do (unless (and continuation (plusp (length rows)))
                  (setf line-scale (if (and scale (not (and cut (>= position total)))) (max 1 (or (funcall scale (tuatara.text:rope-line-start rope position)) 1)) 1)))
@@ -524,7 +717,8 @@ O(WIDTH × HEIGHT), and for each row scrolled sideways O(*SCREEN-COLUMN-REACH*
                      (break-byte -1) (break-chars 0) (break-columns 0))
                  (declare (type fixnum skipped break-byte break-chars break-columns))
                  (setf (row-continuation-p row) continuation)
-                 (unless (or continuation (zerop (length rows))) (setf line-start position before 0))
+                 (unless (or continuation (zerop (length rows)))
+                   (setf line-start position before 0 right-to-left nil waiting (length rows)))
                  (setf anchor (and wrap (next-wrap-anchor rope line-start position)))
                  (when (and prefix (not (and cut (>= line-start total))))
                    (multiple-value-bind (text face) (funcall prefix line-start continuation)
@@ -544,6 +738,8 @@ O(WIDTH × HEIGHT), and for each row scrolled sideways O(*SCREEN-COLUMN-REACH*
                            (skip-columns rope line-start at skipped hscroll
                                          (if hidden (min total (max at (car (first hidden)))) total)
                                          :tab-width tab-width :crlf crlf :invisible invisible)
+                         (when (and direction (not right-to-left) (right-to-left-between-p rope at to))
+                           (setf right-to-left t))
                          (setf (reader-position reader) to skipped column before -1))))
                    ;; what of a wide character or a tab the left edge cuts off is left blank
                    (when (> skipped hscroll)
@@ -590,6 +786,8 @@ O(WIDTH × HEIGHT), and for each row scrolled sideways O(*SCREEN-COLUMN-REACH*
                             (setf (row-end row) (reader-position reader) (row-shown-end row) byte)
                             (return))
                            (t
+                            (when (and direction (not right-to-left) (right-to-left-code-p (char-code char)))
+                              (setf right-to-left t))
                             (multiple-value-bind (string own shown)
                                 (char-display char (+ skipped (row-columns row)) tab-width invisible)
                               (multiple-value-bind (columns next)
@@ -673,6 +871,13 @@ O(WIDTH × HEIGHT), and for each row scrolled sideways O(*SCREEN-COLUMN-REACH*
                                                break-columns (row-columns row)))))))))))
                  (setf (row-scale row) line-scale)
                  (vector-push-extend row rows)
+                 ;; the line's rows, those before its first right-to-left character too, in the order they are read
+                 (when (and direction (or right-to-left (eq direction :right-to-left)))
+                   (loop for k from waiting below (length rows)
+                         do (let ((shown (aref rows k)))
+                              (setf paragraph (row-paragraph rope shown line-start total direction paragraph))
+                              (reorder-row shown paragraph limit (zerop hscroll))))
+                   (setf waiting (length rows)))
                  (incf used line-scale)
                  (setf position (row-end row)
                        continuation wrapped)

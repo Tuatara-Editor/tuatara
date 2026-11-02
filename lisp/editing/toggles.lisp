@@ -220,3 +220,37 @@ the character as ever. The mode line says Invisible while it is on."
   "True when BUFFER shows the characters that draw nothing as their codes
 \(\\[invisible-characters-mode])."
   (invisible-characters-p buffer))
+
+;;; Right-to-left text, shown in the order it is read
+
+(define-display-toggle text-direction "Text direction"
+  "Show the lines of the current buffer that hold right-to-left text
+\(Hebrew, Arabic and the others) in the order they are read, or each line's
+characters in the order they are stored. In the order read, the runs
+written from right to left are turned round, numbers among them still read
+from left to right and brackets mirrored, and a line whose first letter is
+written from right to left begins at the window's right edge. The text
+itself is not changed: \\[forward-char] and \\[backward-char] go through it in
+the order it is stored, so that the cursor may step from one end of a run to
+the other, and a region may show in two pieces. The characters that set the
+direction text is drawn in are shown as a ? set apart in the
+:invisible-character face, or as their codes (<202E>) while
+\\[invisible-characters-mode] is on."
+  :command text-direction-mode :lookup text-direction-p
+  :global *global-text-direction-mode* :default :auto
+  :global-doc "How lines holding right-to-left text are shown in buffers that have
+not chosen, and whose major mode *TEXT-DIRECTION-MODES* says nothing of:
+:AUTO (the default) in the order they are read, each line from left to right
+or from right to left as its first letter is written; :RIGHT-TO-LEFT or
+:LEFT-TO-RIGHT, every line read in that direction, whatever its first
+letter; NIL, the characters in the order they are stored. Set it in the init
+file; \\[text-direction-mode] still chooses for one buffer, and
+\\[global-text-direction-mode] switches it while the editor runs."
+  :what "show right-to-left text in the order it is read"
+  :example "'((org-mode . :right-to-left) (csv-mode . nil))"
+  :values ((:auto "in the order read") (:right-to-left "right to left") (:left-to-right "left to right")))
+
+(defmethod tuatara.display:host-text-direction ((host defaults-host) buffer)
+  "How BUFFER's lines holding right-to-left text are shown
+\(\\[text-direction-mode]): NIL, :AUTO, :RIGHT-TO-LEFT or :LEFT-TO-RIGHT."
+  (text-direction-p buffer))

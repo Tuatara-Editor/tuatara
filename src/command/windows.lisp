@@ -199,6 +199,9 @@ line goes on from, the end of what the window shows when the cell is below it."
                          while (if (plusp step) (< i to) (> i to))
                          when (>= (aref bytes i) 0) return (aref bytes i))))
             (cond ((>= r (length rows)) (tuatara.display:row-shown-end shown))
+                  ;; left of a line written from right to left: its end
+                  ((and (tuatara.display:row-end-column shown) (<= c (tuatara.display:row-end-column shown)))
+                   (tuatara.display:row-shown-end shown))
                   ((< c columns) (or (mapped c -1 -1) (mapped c columns 1) (tuatara.display:row-start shown)))
                   ((and (plusp columns)
                         (or (tuatara.display:row-truncated-p shown)

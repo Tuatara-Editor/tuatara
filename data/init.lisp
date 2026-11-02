@@ -583,6 +583,15 @@
   ;; Files opened safely show them as any buffer does. Not set: t: as their codes.
   ;; (setf *invisible-characters-when-safe* nil)
 
+  ;; Right-to-left text (Hebrew, Arabic) shown in the order it is read: :auto,
+  ;; each line in the direction of its first letter; :right-to-left or
+  ;; :left-to-right, every line so; nil, the characters in the order stored, as
+  ;; M-x text-direction-mode does in one buffer. Not set: :auto.
+  ;; (setf *global-text-direction-mode* :right-to-left)
+
+  ;; The same by major mode, before the global setting.
+  ;; (setf *text-direction-modes* '((org-mode . :right-to-left) (csv-mode . nil)))
+
   ;; Words spelt wrong marked in every buffer of text and code. Not set: nil.
   ;; (setf *global-spellcheck-mode* t)
 

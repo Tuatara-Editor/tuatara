@@ -433,7 +433,10 @@ cannot be shown as itself, else NIL; text it gives is shared and must not be
 changed. A tab is shown as spaces
 up to the next of every TAB-WIDTH columns, a control character as ^X or \\xNN
 \(CONTROL-CHAR-DISPLAY), a raw byte as \\xNN, and with INVISIBLE a character
-that draws nothing as its code (INVISIBLE-CODE-DISPLAY)."
+that draws nothing as its code (INVISIBLE-CODE-DISPLAY); without it, one of
+the characters that set the direction text is drawn in is shown as itself,
+taking one column, its stand-in drawn as DISPLAYABLE makes it, and
+:INVISIBLE-CHARACTER as the third value, so that it is set apart."
   (let ((code (char-code char)))
     (cond ((char= char #\Tab)
            (let ((n (- (next-tab-stop column tab-width) column)))
@@ -445,6 +448,9 @@ that draws nothing as its code (INVISIBLE-CODE-DISPLAY)."
            (values (raw-byte-display code) 4 :raw-byte))
           ((and invisible (invisible-code-p code))
            (let ((text (invisible-code-display code))) (values text (length text) :invisible-character)))
+          ;; a character that sets the direction text is drawn in: its stand-in, set apart
+          ((and (<= #x61C code #x2069) (in-ranges-p code *direction-controls*))
+           (values char 1 :invisible-character))
           (t (values char (char-columns char) nil)))))
 
 (defun displayable (string &key (controls t))

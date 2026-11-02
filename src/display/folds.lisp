@@ -231,7 +231,10 @@ in the rows and between them is left out (SHOWN-PARTS, UNFOLDED-PARTS)."
           for bytes = (row-bytes row)
           ;; the first character shown, past what a line scrolled sideways hides and
           ;; what stands for no character before it (Org's indented view)
-          for start = (or (find-if-not #'minusp bytes) (row-start row))
+          for start = (if (row-mixed row)
+                          (loop for byte across bytes when (>= byte 0) minimize byte into low
+                                finally (return (if (< low most-positive-fixnum) low (row-start row))))
+                          (or (find-if-not #'minusp bytes) (row-start row)))
           for end = (max start (row-shown-end row) (if (or shown (row-truncated-p row))
                                                                       0
                                                                       (row-end row)))
