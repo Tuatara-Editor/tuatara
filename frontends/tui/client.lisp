@@ -89,8 +89,9 @@ keeps (DAEMON-ENVIRONMENT)."
   "Be the daemon NAME, as tuatara --daemon started this program, ARGUMENTS
 its command line (-c naming its init file): listen, say ready on the
 standard output, from then on a log of its own, and run the editor until it
-stops. The exit code: 0 once it has stopped, 1 when it could not start, why
-said on the standard output."
+stops, SIGTERM ending it with no one asked (END-DAEMON-ON-TERMINATE). The
+exit code: 0 once it has stopped, 1 when it could not start, why said on the
+standard output."
   (sb-posix:unsetenv "TUATARA_DAEMON")
   ;; its terminal, if it had one, may close: it goes on
   (sb-sys:enable-interrupt sb-unix:sighup :ignore)
@@ -114,6 +115,8 @@ said on the standard output."
     (tuatara.defaults::set-collection-policy)
     (when config
       (setf tuatara.defaults::*config-file* (pathname (tuatara.io:expand-path config))))
+    ;; logout, or kill: its changes kept as auto-saved copies, then it ends
+    (tuatara.defaults::end-daemon-on-terminate daemon)
     (tuatara.defaults::run-daemon-editor daemon)
     0))
 

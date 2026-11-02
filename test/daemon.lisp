@@ -14,12 +14,11 @@ once, and M-x daemon-quit or tuatara --stop stops it.")
 (defvar *test-daemons* 0
   "How many daemons the tests have started: each is named for its number.")
 
-(defun start-test-daemon ()
-  "Start a daemon in this process, named for the tests, its editor on a
-thread of its own, once it takes clients; three values: the daemon, the
-thread, and its name."
-  (let* ((name (format nil "test~d" (incf *test-daemons*)))
-         (daemon (tuatara.defaults::open-daemon name))
+(defun start-test-daemon (&optional (name (format nil "test~d" (incf *test-daemons*))))
+  "Start a daemon in this process, NAME, by default one named for the tests,
+its editor on a thread of its own, once it takes clients; three values: the
+daemon, the thread, and its name."
+  (let* ((daemon (tuatara.defaults::open-daemon name))
          (ready (sb-thread:make-semaphore :name "test daemon ready"))
          (thread (sb-thread:make-thread
                   (lambda ()
@@ -48,14 +47,15 @@ wait for it; true when it ended."
       (in-daemon (lambda () (setf (tuatara.command:editor-running editor) nil)))))
   (not (eq :late (sb-thread:join-thread thread :timeout 30 :default :late))))
 
-(defmacro with-test-daemon ((name &optional (thread (gensym "THREAD"))) &body body)
+(defmacro with-test-daemon ((name &optional (thread (gensym "THREAD")) (daemon (gensym "DAEMON")) named)
+                            &body body)
   "Run BODY with NAME bound to the name of a daemon started in this process
-\(START-TEST-DAEMON) and THREAD to the thread its editor runs on, stopped after."
-  (let ((daemon (gensym "DAEMON")))
-    `(multiple-value-bind (,daemon ,thread ,name) (start-test-daemon)
-       (declare (ignore ,daemon))
-       (unwind-protect (progn ,@body)
-         (stop-test-daemon ,thread)))))
+\(START-TEST-DAEMON), NAMED when given, THREAD to the thread its editor runs
+on and DAEMON to the daemon, stopped after."
+  `(multiple-value-bind (,daemon ,thread ,name) ,(if named `(start-test-daemon ,named) '(start-test-daemon))
+     (declare (ignorable ,daemon))
+     (unwind-protect (progn ,@body)
+       (stop-test-daemon ,thread))))
 
 (defun attach-test-client (name &key (directory "/tmp/") files safe merge diff stop terminal environment standard-input
                                      (width 70) (height 14) window joins another (frames 1))
@@ -900,3 +900,63 @@ ended have: the frames shown, the one with no screen left out."
         (is equal '(0 nil) (client-ends b-runner))
         (type-keys a "C-g C-x C-c")
         (is equal '(0 nil) (client-ends a-runner))))))
+
+(defun daemon-terminated (daemon thread)
+  "Send this process SIGTERM, as the desktop does at logout, with it ending
+DAEMON (TUATARA.DEFAULTS::END-DAEMON-ON-TERMINATE), its editor running on
+THREAD, and wait for that to end; true when it did. SIGTERM ends Lisp again
+after, as it does by itself."
+  (tuatara.defaults::end-daemon-on-terminate daemon)
+  (unwind-protect
+       (progn (sb-posix:kill (sb-posix:getpid) sb-unix:sigterm)
+              (not (eq :late (sb-thread:join-thread thread :timeout 30 :default :late))))
+    (sb-sys:enable-interrupt sb-unix:sigterm #'sb-unix::sigterm-handler)))
+
+(define-test (daemon terminated-keeps-auto-saved-copies)
+  ;; SIGTERM, as at logout: nothing asked, a question open given up, every client told and exiting 1, the
+  ;; changes kept as auto-saved copies, never an encrypted file's text
+  (with-test-directory (dir)
+    (let ((plain (namestring (put-file (merge-pathnames "plain.txt" dir) "plain")))
+          (secret (namestring (put-file (merge-pathnames "secret.txt" dir) "secret")))
+          (was tuatara-user:*auto-save*))
+      (setf tuatara-user:*auto-save* t)
+      (unwind-protect
+           (with-test-daemon (name thread daemon)
+             (multiple-value-bind (local runner) (attach-test-client name :directory dir :files (list plain secret))
+               (true (shows local "plain"))
+               (in-daemon (lambda ()
+                            (let ((buffer (tuatara.defaults::buffer-visiting secret)))
+                              (setf (tuatara.buffer:buffer-local buffer :encrypted) (list :symmetric t)
+                                    (tuatara.io:buffer-plaintext-p buffer) t)
+                              (tuatara.buffer:buffer-insert buffer 0 "very "))))
+               (type-keys local "i y")
+               (true (shows local "yplain"))
+               (type-keys local "ESC C-x b")
+               (true (shows local "Switch to buffer"))
+               (true (daemon-terminated daemon thread) "the daemon ended")
+               (let ((ended (client-ends runner)))
+                 (is eql 1 (first ended))
+                 (true (search "SIGTERM" (second ended)) "~a" (second ended)))
+               (let ((copy (tuatara.defaults::auto-save-path plain)))
+                 (unwind-protect (is string= "yplain" (file-text copy))
+                   (ignore-errors (delete-file copy))))
+               (false (probe-file (tuatara.defaults::auto-save-path secret))
+                      "an encrypted file's text is written nowhere")
+               (is string= "plain" (file-text plain) "nothing saved")
+               (is string= "secret" (file-text secret))))
+        (setf tuatara-user:*auto-save* was)))))
+
+(define-test (daemon terminated-with-auto-saving-off)
+  ;; SIGTERM cannot be refused as tuatara --stop is: with auto-saving off, nothing is written and the daemon
+  ;; ends, every client exiting 1
+  (with-test-directory (dir)
+    (let ((file (namestring (put-file (merge-pathnames "off.txt" dir) "off"))))
+      (with-test-daemon (name thread daemon)
+        (multiple-value-bind (local runner) (attach-test-client name :directory dir :files (list file))
+          (true (shows local "off"))
+          (type-keys local "i z")
+          (true (shows local "zoff"))
+          (true (daemon-terminated daemon thread))
+          (is eql 1 (first (client-ends runner)))
+          (false (probe-file (tuatara.defaults::auto-save-path file)))
+          (is string= "off" (file-text file)))))))
