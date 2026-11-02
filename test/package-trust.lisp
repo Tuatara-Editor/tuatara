@@ -55,11 +55,11 @@ file:// address, everything remembered of it forgotten afterwards."
      (let ((,where (format nil "file://~a" (string-right-trim "/" (namestring ,dir))))
            (tuatara.defaults::*package-sources* '())
            (*until-bound* *package-until-bound*)
-           (tuatara.defaults::*package-signers* '())
-           (tuatara.defaults::*package-plain-allowed* '())
-           (tuatara.defaults::*loaded-package-folders* '()))
+           (tuatara.packages::*package-signers* '())
+           (tuatara.packages::*package-plain-allowed* '())
+           (tuatara.packages::*loaded-package-folders* '()))
        (unwind-protect (progn ,@body)
-         (tuatara.defaults::state-list-drop tuatara.defaults::*package-trust* (list ,where))
+         (tuatara.defaults::state-list-drop tuatara.packages::*package-trust* (list ,where))
          (forget-test-packages ,dir)
          (makunbound 'tuatara-user::*package-trust-version*)))))
 
@@ -84,24 +84,24 @@ session, since its last step but one began."
 (defun packages-settled-p ()
   "True when no package is being fetched, checked or loaded, nor waits to be
 decided on."
-  (and (null tuatara.defaults::*packages-in-hand*)
-       (notany #'tuatara.defaults::package-fetch-p tuatara.runtime:*jobs*)))
+  (and (null tuatara.packages::*packages-in-hand*)
+       (notany #'tuatara.packages::package-fetch-p tuatara.runtime:*jobs*)))
 
 (defun kept-versions (where)
   "The commits of pkgv from WHERE kept on disk."
   (remove-if-not (lambda (folder) (tuatara.git:git-hash-p (car (last (pathname-directory folder))) :short t))
-                 (ignore-errors (uiop:subdirectories (tuatara.defaults::package-kept-folder where "pkgv")))))
+                 (ignore-errors (uiop:subdirectories (tuatara.packages::package-kept-folder where "pkgv")))))
 
 (define-test (package-trust needs-read-from-the-header)
-  (is equal "0.91.0" (tuatara.defaults::needed-version-in (format nil ";;;; a.lisp --- A.~%;;;; Needs: Tuatara 0.91.0~%(defpackage x)")))
-  (is equal "1.2" (tuatara.defaults::needed-version-in (format nil ";;; Needs: tuatara 1.2 or later.~%")))
+  (is equal "0.91.0" (tuatara.packages::needed-version-in (format nil ";;;; a.lisp --- A.~%;;;; Needs: Tuatara 0.91.0~%(defpackage x)")))
+  (is equal "1.2" (tuatara.packages::needed-version-in (format nil ";;; Needs: tuatara 1.2 or later.~%")))
   ;; only the comments at the top: a line of code ends them
-  (false (tuatara.defaults::needed-version-in (format nil "(defpackage x)~%;;;; Needs: Tuatara 9.0~%")))
-  (false (tuatara.defaults::needed-version-in (format nil ";;;; a.lisp --- A.~%")))
-  (true (tuatara.defaults::tuatara-fits-p "0.1"))
-  (true (tuatara.defaults::tuatara-fits-p (tuatara:version)))
-  (false (tuatara.defaults::tuatara-fits-p "9.0"))
-  (false (tuatara.defaults::tuatara-fits-p (format nil "~a.1" (tuatara:version)))))
+  (false (tuatara.packages::needed-version-in (format nil "(defpackage x)~%;;;; Needs: Tuatara 9.0~%")))
+  (false (tuatara.packages::needed-version-in (format nil ";;;; a.lisp --- A.~%")))
+  (true (tuatara.packages::tuatara-fits-p "0.1"))
+  (true (tuatara.packages::tuatara-fits-p (tuatara:version)))
+  (false (tuatara.packages::tuatara-fits-p "9.0"))
+  (false (tuatara.packages::tuatara-fits-p (format nil "~a.1" (tuatara:version)))))
 
 (define-test (package-trust newer-tuatara-passed-over)
   ;; the newest commits need a newer Tuatara: the newest that fits is taken; saying nothing fits
@@ -117,7 +117,7 @@ decided on."
                   :width 240)))
           (is equal "two" (trust-version-loaded))
           (true (tuatara.frontend.fake:fake-frame-showing f "needs Tuatara 9.0 or later"))
-          (is equal two (second (tuatara.defaults::package-state "pkgv" where "latest")))
+          (is equal two (second (tuatara.packages::package-state "pkgv" where "latest")))
           (is = 1 (length (kept-versions where)))))))
   ;; the newest tag needs a newer one: the tag before it is taken
   (with-trust-repository (dir where)
@@ -129,7 +129,7 @@ decided on."
        (list (list :until (lambda () (tuatara-user:load-package "pkgv" :source where) t))
              (list :until (lambda () (trust-version-loaded)))))
       (is equal "old" (trust-version-loaded))
-      (is equal "v1" (third (tuatara.defaults::package-state "pkgv" where nil))))))
+      (is equal "v1" (third (tuatara.packages::package-state "pkgv" where nil))))))
 
 (define-test (package-trust nothing-fits-keeps-what-is-loaded)
   (with-trust-repository (dir where)
@@ -150,10 +150,10 @@ decided on."
          (list (list :until (lambda () (tuatara-user:load-package "pkgv" :source where :version "latest") t))
                (list :until (lambda () (trust-version-loaded)))
                (list :until (lambda () (trust-version dir "two" :needs "9.0") t))
-               (list :until (lambda () (tuatara.defaults::update-packages (list "pkgv")) t))
+               (list :until (lambda () (tuatara.packages::update-packages (list "pkgv")) t))
                (list :until (lambda () (echo-says "up to date")))))
         (is equal "one" (trust-version-loaded))
-        (is equal one (second (tuatara.defaults::package-state "pkgv" where "latest")))))))
+        (is equal one (second (tuatara.packages::package-state "pkgv" where "latest")))))))
 
 (define-test (package-trust failed-version-falls-back)
   ;; a new version that cannot be compiled, or uses a name Tuatara lacks: the one before is loaded again
@@ -168,14 +168,14 @@ decided on."
                                 t))
                  (list :until (lambda () (trust-version-loaded)))
                  (list :until (lambda () (trust-version dir "next" :body body) t))
-                 (list :until (lambda () (tuatara.defaults::update-packages (list "pkgv")) t))
+                 (list :until (lambda () (tuatara.packages::update-packages (list "pkgv")) t))
                  (list :until (lambda () (and (echo-says "is loaded in its place")
                                               (push (echo-says "the version before it") screens))))
                  ;; the version before checked and loaded again
                  (list :until (lambda () (and (packages-settled-p) (or (echo-says "up to date") (echo-says "pkgv is loaded"))))))
            :width 240)
           (is equal "one" (trust-version-loaded))
-          (is equal one (second (tuatara.defaults::package-state "pkgv" where "latest")))
+          (is equal one (second (tuatara.packages::package-state "pkgv" where "latest")))
           ;; what failed is not kept
           (is = 1 (length (kept-versions where))))
         (true (every #'identity screens))))))
@@ -192,17 +192,17 @@ decided on."
                      for name = (format nil "v~d" n)
                      append (let ((name name))
                               (list (list :until (lambda () (push (trust-version dir name) commits) t))
-                                    (list :until (lambda () (tuatara.defaults::update-packages (list "pkgv")) t))
+                                    (list :until (lambda () (tuatara.packages::update-packages (list "pkgv")) t))
                                     (list :until (lambda () (equal name (trust-version-loaded)))))))))
       (flet ((kept () (sort (mapcar (lambda (f) (car (last (pathname-directory f)))) (kept-versions where)) #'string<)))
         (is equal (sort (list (first commits) (second commits)) #'string<) (kept))
         (let ((compiled (directory (merge-pathnames "**/*.fasl" (directory-namestring
-                                                                (tuatara.defaults::package-fasl
-                                                                 (merge-pathnames "x" (tuatara.defaults::package-kept-folder where "pkgv"))))))))
+                                                                (tuatara.packages::package-fasl
+                                                                 (merge-pathnames "x" (tuatara.packages::package-kept-folder where "pkgv"))))))))
           (is = 2 (length compiled)))
         (auto-save-session
          (list (list :until (lambda () (trust-version dir "v4" :body (format nil "(defun broken (~%")) t))
-               (list :until (lambda () (tuatara.defaults::update-packages (list "pkgv")) t))
+               (list :until (lambda () (tuatara.packages::update-packages (list "pkgv")) t))
                (list :until (lambda () (echo-says "is loaded in its place")))
                (list :until (lambda () (and (packages-settled-p) (or (echo-says "up to date") (echo-says "pkgv is loaded")))))))
         (is equal "v3" (trust-version-loaded))
@@ -223,18 +223,18 @@ decided on."
                           (list :until (lambda () (trust-version-loaded))))
                     :width 240)))
             (true (tuatara.frontend.fake:fake-frame-showing-across-rows f (format nil "signed by the key ~a" alice-print)))
-            (is equal alice-print (second (tuatara.defaults::state-list-find tuatara.defaults::*package-trust* where)))))
+            (is equal alice-print (second (tuatara.defaults::state-list-find tuatara.packages::*package-trust* where)))))
         (let ((tuatara-user:*package-ask-before-loading* nil))
           ;; the same key: taken
           (auto-save-session
            (list (list :until (lambda () (trust-version dir "two" :signer alice) t))
-                 (list :until (lambda () (tuatara.defaults::update-packages (list "pkgv")) t))
+                 (list :until (lambda () (tuatara.packages::update-packages (list "pkgv")) t))
                  (list :until (lambda () (equal "two" (trust-version-loaded))))))
           (is equal "two" (trust-version-loaded))
           ;; another key: refused, saying how to take it
           (let ((f (auto-save-session
                     (list (list :until (lambda () (trust-version dir "three" :signer bob) t))
-                          (list :until (lambda () (tuatara.defaults::update-packages (list "pkgv")) t))
+                          (list :until (lambda () (tuatara.packages::update-packages (list "pkgv")) t))
                           (list :until (lambda () (echo-says "is refused"))))
                     :width 400)))
             (true (tuatara.frontend.fake:fake-frame-showing f "the versions taken before were signed by"))
@@ -247,7 +247,7 @@ decided on."
            (list "M-x p a c k a g e - t r u s t - a g a i n RET" "p k g v RET"
                  (list :until (lambda () (equal "three" (trust-version-loaded))))))
           (is equal "three" (trust-version-loaded))
-          (is equal bob-print (second (tuatara.defaults::state-list-find tuatara.defaults::*package-trust* where))))))))
+          (is equal bob-print (second (tuatara.defaults::state-list-find tuatara.packages::*package-trust* where))))))))
 
 (define-test (package-trust unsigned-stays-usable)
   ;; an unsigned source: its updates taken, the list saying unsigned; a signed one later is
@@ -260,21 +260,21 @@ decided on."
          (list (list :until (lambda () (tuatara-user:load-package "pkgv" :source where :version "latest") t))
                (list :until (lambda () (trust-version-loaded)))
                (list :until (lambda () (trust-version dir "two") t))
-               (list :until (lambda () (tuatara.defaults::update-packages (list "pkgv")) t))
+               (list :until (lambda () (tuatara.packages::update-packages (list "pkgv")) t))
                (list :until (lambda () (equal "two" (trust-version-loaded))))
                "M-x p a c k a g e - m a n a g e r RET" (list :wait 0.2)
                (list :until (lambda () (setf screen (format nil "~{~a~%~}"
                                                             (loop with f = (tuatara.command:editor-frontend tuatara.command:*editor*)
                                                                   for row below 20 collect (tuatara.frontend.fake:fake-screen-line f row))))))
                (list :until (lambda () (trust-version dir "three" :signer alice) t))
-               (list :until (lambda () (tuatara.defaults::update-packages (list "pkgv")) t))
+               (list :until (lambda () (tuatara.packages::update-packages (list "pkgv")) t))
                (list :until (lambda () (equal "three" (trust-version-loaded))))
                (list :until (lambda () (trust-version dir "four") t))
-               (list :until (lambda () (tuatara.defaults::update-packages (list "pkgv")) t))
+               (list :until (lambda () (tuatara.packages::update-packages (list "pkgv")) t))
                (list :until (lambda () (echo-says "is refused"))))
          :width 240)
         (true (search "unsigned" screen) "~a" screen)
-        (is equal alice-print (second (tuatara.defaults::state-list-find tuatara.defaults::*package-trust* where)))
+        (is equal alice-print (second (tuatara.defaults::state-list-find tuatara.packages::*package-trust* where)))
         (is equal "three" (trust-version-loaded))))))
 
 (define-test (package-trust signers-named-strict)
@@ -307,16 +307,16 @@ decided on."
            (list (list :until (lambda () (tuatara-user:load-package "pkgv" :source where) t))
                  (list :until (lambda () (trust-version-loaded)))))
           (is equal "one" (trust-version-loaded))
-          (let ((trusted (tuatara.defaults::state-list-find tuatara.defaults::*package-trust* where)))
+          (let ((trusted (tuatara.defaults::state-list-find tuatara.packages::*package-trust* where)))
             (true (search "Kea Taranaki" (or (third trusted) "")))
             (true (cl-ppcre:scan "^[0-9A-F]{40}$" (second trusted))))))))
 
 (define-test (package-trust plain-transport-allowed-by-name)
   ;; http:// and git:// refused, saying how to allow it; :plain t on its load-package allows it
   (let ((tuatara-user:*package-ask-before-loading* nil)
-        (tuatara.defaults::*package-plain-allowed* '())
-        (tuatara.defaults::*declared-packages* '())
-        (tuatara.defaults::*package-failures* '()))
+        (tuatara.packages::*package-plain-allowed* '())
+        (tuatara.packages::*declared-packages* '())
+        (tuatara.packages::*package-failures* '()))
     (dolist (where '("http://127.0.0.1:9/pkgv.git" "git://127.0.0.1:9/pkgv.git"))
       (let ((f (auto-save-session
                 (list (list :until (lambda () (tuatara-user:load-package "pkgv" :source where) t))
@@ -330,8 +330,8 @@ decided on."
       ;; allowed: fetched, and failing only for there being no server
       (false (tuatara.frontend.fake:fake-frame-showing f "adding :plain t")))
     ;; and the package list says it is unencrypted
-    (is equal "unencrypted" (tuatara.defaults::package-signed-words "http://127.0.0.1:9/pkgv.git"))
-    (setf tuatara.defaults::*declared-packages* '())))
+    (is equal "unencrypted" (tuatara.packages::package-signed-words "http://127.0.0.1:9/pkgv.git"))
+    (setf tuatara.packages::*declared-packages* '())))
 
 (defun other-gnupg-key (dir)
   "Make in DIR a GnuPG folder of its own with a key, Tasman Kaikoura's, that
@@ -363,15 +363,15 @@ the tests' own keyring lacks: the folder and the key's fingerprint."
            (list (list :until (lambda () (tuatara-user:load-package "pkgv" :source where :version "latest") t))
                  (list :until (lambda () (trust-version-loaded))))))
         (trust-version dir "two" :signer alice)
-        (tuatara.defaults::state-list-drop tuatara.defaults::*package-trust* (list where))
+        (tuatara.defaults::state-list-drop tuatara.packages::*package-trust* (list where))
         (let ((tuatara-user:*package-ask-before-loading* t))
           (auto-save-session
-           (list (list :until (lambda () (tuatara.defaults::update-packages (list "pkgv")) t))
+           (list (list :until (lambda () (tuatara.packages::update-packages (list "pkgv")) t))
                  (list :until #'package-question-shown)
                  "v" (list :until (lambda () (echo-says "is shown")))))
-          (false (fourth (tuatara.defaults::package-state "pkgv" where "latest")))
+          (false (fourth (tuatara.packages::package-state "pkgv" where "latest")))
           ;; the next start
-          (setf tuatara.defaults::*loaded-packages* '())
+          (setf tuatara.packages::*loaded-packages* '())
           (makunbound 'tuatara-user::*package-trust-version*)
           (let ((f (auto-save-session
                     (list (list :until (lambda () (tuatara-user:load-package "pkgv" :source where :version "latest") t))
@@ -380,8 +380,8 @@ the tests' own keyring lacks: the folder and the key's fingerprint."
                     :width 240)))
             (true (tuatara.frontend.fake:fake-frame-showing-across-rows f (format nil "signed by the key ~a" alice-print))))
           (is equal "two" (trust-version-loaded))
-          (is equal alice-print (second (tuatara.defaults::state-list-find tuatara.defaults::*package-trust* where)))
-          (let ((entry (tuatara.defaults::package-state "pkgv" where "latest")))
+          (is equal alice-print (second (tuatara.defaults::state-list-find tuatara.packages::*package-trust* where)))
+          (let ((entry (tuatara.packages::package-state "pkgv" where "latest")))
             (true (fourth entry))
             (is equal one (fifth entry))))))))
 
@@ -397,11 +397,11 @@ the tests' own keyring lacks: the folder and the key's fingerprint."
                     (list (list :until (lambda () (tuatara-user:load-package "pkgv" :source where :version "latest") t))
                           (list :until (lambda () (equal "two" (trust-version-loaded))))
                           (list :until (lambda () (trust-version dir "three" :needs "99") t))
-                          (list :until (lambda () (tuatara.defaults::update-packages (list "pkgv")) t))
+                          (list :until (lambda () (tuatara.packages::update-packages (list "pkgv")) t))
                           (list :until (lambda () (echo-says "no older version is looked for"))))
                     :width 300)))
             (true (tuatara.frontend.fake:fake-frame-showing f "not signed as the versions taken before were")))
-          (is equal two (second (tuatara.defaults::package-state "pkgv" where "latest")))))))
+          (is equal two (second (tuatara.packages::package-state "pkgv" where "latest")))))))
   ;; history rewritten under the version taken: an older version is never taken in its place
   (with-trust-repository (dir where)
     (let ((tuatara-user:*package-ask-before-loading* nil))
@@ -411,10 +411,10 @@ the tests' own keyring lacks: the folder and the key's fingerprint."
            (list (list :until (lambda () (tuatara-user:load-package "pkgv" :source where :version "latest") t))
                  (list :until (lambda () (equal "two" (trust-version-loaded))))
                  (list :until (lambda () (trust-git dir "reset" "-q" "--hard" one) (trust-version dir "three" :needs "99") t))
-                 (list :until (lambda () (tuatara.defaults::update-packages (list "pkgv")) t))
+                 (list :until (lambda () (tuatara.packages::update-packages (list "pkgv")) t))
                  (list :until (lambda () (echo-says "no older version tried fits")))))
           (is equal "two" (trust-version-loaded))
-          (is equal two (second (tuatara.defaults::package-state "pkgv" where "latest"))))))))
+          (is equal two (second (tuatara.packages::package-state "pkgv" where "latest"))))))))
 
 (define-test (package-trust unchecked-key-kept-until-imported)
   ;; a first version signed by a GPG key the keyring lacks is refused, its key's fingerprint remembered,
@@ -434,11 +434,11 @@ the tests' own keyring lacks: the folder and the key's fingerprint."
                    (true (tuatara.frontend.fake:fake-frame-showing f "which your keyring lacks")))
                  (false (trust-version-loaded))
                  (is equal (format nil "key:~a" print)
-                     (second (tuatara.defaults::state-list-find tuatara.defaults::*package-trust* where)))
+                     (second (tuatara.defaults::state-list-find tuatara.packages::*package-trust* where)))
                  ;; an unsigned version is not taken in its place
                  (trust-version dir "unsigned")
                  (auto-save-session
-                  (list (list :until (lambda () (tuatara.defaults::update-packages (list "pkgv")) t))
+                  (list (list :until (lambda () (tuatara.packages::update-packages (list "pkgv")) t))
                         (list :until (lambda () (echo-says "is refused")))))
                  (false (trust-version-loaded))
                  ;; the key imported: its version is taken, and its whole fingerprint remembered
@@ -447,10 +447,10 @@ the tests' own keyring lacks: the folder and the key's fingerprint."
                  (uiop:run-program (format nil "gpg --homedir ~a --export ~a | gpg --batch --import" home print) :ignore-error-status t
                                                                                                                 :error-output nil)
                  (auto-save-session
-                  (list (list :until (lambda () (tuatara.defaults::update-packages (list "pkgv")) t))
+                  (list (list :until (lambda () (tuatara.packages::update-packages (list "pkgv")) t))
                         (list :until (lambda () (trust-version-loaded)))))
                  (is equal "two" (trust-version-loaded))
-                 (is equal print (second (tuatara.defaults::state-list-find tuatara.defaults::*package-trust* where))))
+                 (is equal print (second (tuatara.defaults::state-list-find tuatara.packages::*package-trust* where))))
             (stop-gnupg home))))))
 
 (define-test (package-trust start-checks-current-rules)
@@ -464,7 +464,7 @@ the tests' own keyring lacks: the folder and the key's fingerprint."
         (auto-save-session
          (list (list :until (lambda () (tuatara-user:load-package "pkgv" :source where :version "latest") t))
                (list :until (lambda () (trust-version-loaded)))))
-        (setf tuatara.defaults::*loaded-packages* '())
+        (setf tuatara.packages::*loaded-packages* '())
         (makunbound 'tuatara-user::*package-trust-version*)
         (tuatara-user:package-source "strict" where :signers (list bob-print))
         (let ((f (auto-save-session
@@ -474,8 +474,8 @@ the tests' own keyring lacks: the folder and the key's fingerprint."
           (true (tuatara.frontend.fake:fake-frame-showing f "by none of the signers its :signers name")))
         (false (trust-version-loaded))
         ;; trusted anew, no :signers: asked again, its signer shown
-        (setf tuatara.defaults::*package-signers* '())
-        (tuatara.defaults::state-list-drop tuatara.defaults::*package-trust* (list where))
+        (setf tuatara.packages::*package-signers* '())
+        (tuatara.defaults::state-list-drop tuatara.packages::*package-trust* (list where))
         (let ((tuatara-user:*package-ask-before-loading* t))
           (let ((f (auto-save-session
                     (list (list :until (lambda () (tuatara-user:load-package "pkgv" :source where :version "latest") t))
@@ -484,22 +484,22 @@ the tests' own keyring lacks: the folder and the key's fingerprint."
                     :width 240)))
             (true (tuatara.frontend.fake:fake-frame-showing-across-rows f "from"))
             (true (tuatara.frontend.fake:fake-frame-showing-across-rows f ", unsigned?"))))
-        (is equal "unsigned" (second (tuatara.defaults::state-list-find tuatara.defaults::*package-trust* where)))))))
+        (is equal "unsigned" (second (tuatara.defaults::state-list-find tuatara.packages::*package-trust* where)))))))
 
 (define-test (package-trust plain-and-ftp-kept-out)
   ;; git is told never to follow a server to http:// or git:// unless :plain t allows it; ftp never
   (flet ((setting (name)
-           (let* ((environment (tuatara.defaults::package-git-environment))
+           (let* ((environment (tuatara.packages::package-git-environment))
                   (key (find-if (lambda (e) (search (format nil "=~a" name) e)) environment)))
              (and key (let ((n (subseq key (length "GIT_CONFIG_KEY_") (position #\= key))))
                         (let ((value (find-if (lambda (e) (uiop:string-prefix-p (format nil "GIT_CONFIG_VALUE_~a=" n) e)) environment)))
                           (subseq value (1+ (position #\= value)))))))))
-    (let ((tuatara.defaults::*package-plain-transport* nil))
+    (let ((tuatara.packages::*package-plain-transport* nil))
       (is equal "never" (setting "protocol.http.allow"))
       (is equal "never" (setting "protocol.git.allow"))
       (is equal "never" (setting "protocol.ftp.allow"))
       (is equal "/dev/null" (setting "core.hooksPath")))
-    (let ((tuatara.defaults::*package-plain-transport* t))
+    (let ((tuatara.packages::*package-plain-transport* t))
       (false (setting "protocol.http.allow"))
       (is equal "never" (setting "protocol.ftp.allow"))))
   (fail (tuatara-user:package-source "ftp" "ftp://example.org/pkgv.git"))
@@ -548,13 +548,13 @@ the tests' own keyring lacks: the folder and the key's fingerprint."
         (let* ((kept (first (kept-versions where)))
                (fetch-head (merge-pathnames ".git/FETCH_HEAD" kept))
                (before (alexandria:read-file-into-string fetch-head)))
-        (is equal "unsigned" (second (tuatara.defaults::state-list-find tuatara.defaults::*package-trust* where)))
+        (is equal "unsigned" (second (tuatara.defaults::state-list-find tuatara.packages::*package-trust* where)))
         (sleep 1.1)
         (trust-git dir "-c" "gpg.format=ssh" "-c" (format nil "user.signingkey=~a" bob) "tag" "-s" "v2" "-m" "v2")
         (auto-save-session
-         (list (list :until (lambda () (tuatara.defaults::update-packages (list "pkgv")) t))
+         (list (list :until (lambda () (tuatara.packages::update-packages (list "pkgv")) t))
                (list :until (lambda () (echo-says "up to date")))))
-        (is equal bob-print (second (tuatara.defaults::state-list-find tuatara.defaults::*package-trust* where)))
+        (is equal bob-print (second (tuatara.defaults::state-list-find tuatara.packages::*package-trust* where)))
         ;; the tag was fetched apart: nothing written into the folder kept
         (is equal before (alexandria:read-file-into-string fetch-head)))))))
 
@@ -562,29 +562,29 @@ the tests' own keyring lacks: the folder and the key's fingerprint."
   ;; a tag's signature is its last block, not one written in its message
   (let ((object (format nil "object 0123~%type commit~%tag v1~%~%v1~%-----BEGIN SSH SIGNATURE-----~%AAAA~%-----END SSH SIGNATURE-----~%~
                              -----BEGIN PGP SIGNATURE-----~%BBBB~%-----END PGP SIGNATURE-----~%")))
-    (false (tuatara.defaults::ssh-signature-p object :tag))
-    (is = (search "-----BEGIN PGP" object) (tuatara.defaults::signature-block object :tag)))
+    (false (tuatara.packages::ssh-signature-p object :tag))
+    (is = (search "-----BEGIN PGP" object) (tuatara.packages::signature-block object :tag)))
   ;; a commit's is in its header only
-  (false (tuatara.defaults::signature-block (format nil "tree 0~%author A~%~%-----BEGIN PGP SIGNATURE-----~%x~%-----END PGP SIGNATURE-----~%") :commit))
+  (false (tuatara.packages::signature-block (format nil "tree 0~%author A~%~%-----BEGIN PGP SIGNATURE-----~%x~%-----END PGP SIGNATURE-----~%") :commit))
   ;; gpg's status lines read only at the start of a line
-  (false (tuatara.defaults::gnupg-status (format nil "Name [GNUPG:] GOODSIG 1 x~%") "GOODSIG"))
-  (true (tuatara.defaults::gnupg-status (format nil "[GNUPG:] NEWSIG~%[GNUPG:] GOODSIG 1 x~%") "GOODSIG"))
+  (false (tuatara.packages::gnupg-status (format nil "Name [GNUPG:] GOODSIG 1 x~%") "GOODSIG"))
+  (true (tuatara.packages::gnupg-status (format nil "[GNUPG:] NEWSIG~%[GNUPG:] GOODSIG 1 x~%") "GOODSIG"))
   ;; an expired signature counts as good, as for a commit
-  (is eq :good (getf (tuatara.defaults::tag-signature
+  (is eq :good (getf (tuatara.packages::tag-signature
                       (format nil "[GNUPG:] EXPSIG 42C0A0291C34DD19 Ana~%[GNUPG:] VALIDSIG D647C771761F736B31ED8A2E42C0A0291C34DD19 x~%")
                       (format nil "tag v1~%~%-----BEGIN PGP SIGNATURE-----~%x~%-----END PGP SIGNATURE-----~%"))
                      :status))
   ;; a signed commit git could not check is no unsigned one
-  (is eq :error (getf (tuatara.defaults::commit-signature (list "N" "" "" "" "")
+  (is eq :error (getf (tuatara.packages::commit-signature (list "N" "" "" "" "")
                                                           (format nil "tree 0~%gpgsig -----BEGIN PGP SIGNATURE-----~% x~% -----END PGP SIGNATURE-----~%~%m~%"))
                       :status))
-  (is eq :none (getf (tuatara.defaults::commit-signature (list "N" "" "" "" "") (format nil "tree 0~%~%m~%")) :status))
+  (is eq :none (getf (tuatara.packages::commit-signature (list "N" "" "" "" "") (format nil "tree 0~%~%m~%")) :status))
   ;; key IDs refused in :signers, saying to name the whole fingerprint
   (true (search "whole fingerprint"
-                (handler-case (progn (tuatara.defaults::note-package-source-terms "https://example.org/x" (list "42C0A0291C34DD19")) "")
+                (handler-case (progn (tuatara.packages::note-package-source-terms "https://example.org/x" (list "42C0A0291C34DD19")) "")
                   (error (e) (princ-to-string e)))))
   ;; names shown as they are, no right-to-left override
-  (is equal "Ana evil" (tuatara.defaults::plain-name (format nil "Ana ~cevil" (code-char #x202E)))))
+  (is equal "Ana evil" (tuatara.packages::plain-name (format nil "Ana ~cevil" (code-char #x202E)))))
 
 (define-test (package-trust gpg-subkey-kept-until-imported)
   ;; the usual GPG key, a primary key and a subkey that signs: the subkey's whole fingerprint is
@@ -613,30 +613,30 @@ the tests' own keyring lacks: the folder and the key's fingerprint."
                             ;; fetched, checked and refused
                             (list :until (lambda () (echo-says "is refused")))))
                      (is equal (format nil "key:~a" subkey)
-                         (second (tuatara.defaults::state-list-find tuatara.defaults::*package-trust* where)))
+                         (second (tuatara.defaults::state-list-find tuatara.packages::*package-trust* where)))
                      (uiop:run-program (format nil "gpg --homedir ~a --export ~a | gpg --batch --import" home primary)
                                        :ignore-error-status t :error-output nil)
                      (let ((*trust-gnupg-home* home))
                        (trust-version dir "two" :gpg primary))
                      (auto-save-session
-                      (list (list :until (lambda () (tuatara.defaults::update-packages (list "pkgv")) t))
+                      (list (list :until (lambda () (tuatara.packages::update-packages (list "pkgv")) t))
                             ;; fetched, checked, compiled apart and loaded
                             (list :until (lambda () (trust-version-loaded)))))
                      (is equal "two" (trust-version-loaded))
-                     (is equal primary (second (tuatara.defaults::state-list-find tuatara.defaults::*package-trust* where))))))
+                     (is equal primary (second (tuatara.defaults::state-list-find tuatara.packages::*package-trust* where))))))
             (stop-gnupg home))))))
 
 (define-test (package-trust signature-headers-read-strictly)
   ;; a merged tag's signature in a commit's header is not the commit's own
-  (false (tuatara.defaults::signature-block
+  (false (tuatara.packages::signature-block
           (format nil "tree 0~%parent 1~%mergetag object 2~% type commit~% tag v1~% -----BEGIN PGP SIGNATURE-----~% x~% -----END PGP SIGNATURE-----~%author A~%~%m~%")
           :commit))
-  (true (tuatara.defaults::signature-block
+  (true (tuatara.packages::signature-block
          (format nil "tree 0~%author A~%gpgsig -----BEGIN SSH SIGNATURE-----~% x~% -----END SSH SIGNATURE-----~%~%m~%")
          :commit))
   ;; a tag's name read from its header, not from its message
-  (false (tuatara.defaults::tag-object-names-p (format nil "object 0~%type commit~%tag v1~%~%tag v2~%") "v2"))
-  (true (tuatara.defaults::tag-object-names-p (format nil "object 0~%type commit~%tag v2~%~%notes~%") "v2")))
+  (false (tuatara.packages::tag-object-names-p (format nil "object 0~%type commit~%tag v1~%~%tag v2~%") "v2"))
+  (true (tuatara.packages::tag-object-names-p (format nil "object 0~%type commit~%tag v2~%~%notes~%") "v2")))
 
 (define-test (package-trust key-check-files-apart)
   ;; each check of an SSH key writes a file of its own, so that two at once never share one
@@ -653,7 +653,7 @@ the tests' own keyring lacks: the folder and the key's fingerprint."
               (list (list :until (lambda () (tuatara-user:load-package "pkgv" :source where :version "latest") t))
                     (list :until (lambda () (trust-version-loaded)))
                     (list :until (lambda () (trust-version dir "two" :signer alice) t))
-                    (list :until (lambda () (tuatara.defaults::update-packages (list "pkgv")) t))
+                    (list :until (lambda () (tuatara.packages::update-packages (list "pkgv")) t))
                     (list :until (lambda () (equal "two" (trust-version-loaded))))))
           (sb-int:unencapsulate 'tuatara.io:write-private-file 'key-check-files-apart))
         (true (>= (length names) 2))
@@ -672,17 +672,17 @@ the tests' own keyring lacks: the folder and the key's fingerprint."
            (list (list :until (lambda () (tuatara-user:load-package "pkgv" :source "signed" :version "latest") t))
                  (list :until (lambda () (equal "one" (trust-version-loaded))))
                  (list :until (lambda () (trust-version dir "two" :signer alice) t))
-                 (list :until (lambda () (tuatara.defaults::update-packages (list "pkgv")) t))
+                 (list :until (lambda () (tuatara.packages::update-packages (list "pkgv")) t))
                  (list :until (lambda () (equal "two" (trust-version-loaded))))))
           (tuatara-user:package-source "signed" where :signers (list bob-print))
           (let ((f (auto-save-session
                     (list (list :until (lambda () (trust-version dir "three" :signer bob :body (format nil "(defun broken (~%")) t))
-                          (list :until (lambda () (tuatara.defaults::update-packages (list "pkgv")) t))
+                          (list :until (lambda () (tuatara.packages::update-packages (list "pkgv")) t))
                           (list :until (lambda () (echo-says "is refused"))))
                     :width 400)))
             (true (tuatara.frontend.fake:fake-frame-showing f "the version before it"))
             (true (tuatara.frontend.fake:fake-frame-showing f "by none of the signers its :signers name")))
-          (false (fourth (tuatara.defaults::package-state "pkgv" where "latest")))))))
+          (false (fourth (tuatara.packages::package-state "pkgv" where "latest")))))))
   ;; one fetch at a time for a package, however often it is asked for
   (with-trust-repository (dir where)
     (let ((tuatara-user:*package-ask-before-loading* nil) (jobs nil))
@@ -692,10 +692,10 @@ the tests' own keyring lacks: the folder and the key's fingerprint."
              (list :until (lambda () (trust-version-loaded)))
              (list :until (lambda () (trust-version dir "two") t))
              (list :until (lambda ()
-                            (tuatara.defaults::update-packages (list "pkgv"))
-                            (tuatara.defaults::update-packages (list "pkgv"))
-                            (setf jobs (count-if (lambda (job) (and (tuatara.defaults::package-fetch-p job)
-                                                                    (equal "pkgv" (tuatara.defaults::package-fetch-name job))))
+                            (tuatara.packages::update-packages (list "pkgv"))
+                            (tuatara.packages::update-packages (list "pkgv"))
+                            (setf jobs (count-if (lambda (job) (and (tuatara.packages::package-fetch-p job)
+                                                                    (equal "pkgv" (tuatara.packages::package-fetch-name job))))
                                                  tuatara.runtime:*jobs*))
                             t))
              (list :until (lambda () (equal "two" (trust-version-loaded))))))
@@ -708,19 +708,19 @@ the tests' own keyring lacks: the folder and the key's fingerprint."
     (sb-int:encapsulate 'tuatara.runtime:start-job-thread 'guard-let-go-and-said
                         (lambda (function &rest arguments) (declare (ignore function arguments)) (error "no thread")))
     (unwind-protect
-         (handler-case (tuatara.defaults::start-package-fetch "pkgv" where "latest" nil (format nil "pkgv ~a latest" where))
+         (handler-case (tuatara.packages::start-package-fetch "pkgv" where "latest" nil (format nil "pkgv ~a latest" where))
            (error () nil))
       (sb-int:unencapsulate 'tuatara.runtime:start-job-thread 'guard-let-go-and-said))
-    (false (member "pkgv" tuatara.defaults::*fetching-packages* :test #'string=))
-    (false (assoc "pkgv" (ignore-errors (symbol-value 'tuatara.defaults::*packages-in-hand*)) :test #'string=))
+    (false (member "pkgv" tuatara.packages::*fetching-packages* :test #'string=))
+    (false (assoc "pkgv" (ignore-errors (symbol-value 'tuatara.packages::*packages-in-hand*)) :test #'string=))
     ;; asked for again while its question waits: said, and no second fetch started
     (let ((tuatara-user:*package-ask-before-loading* t) (jobs nil) (said nil))
       (let ((f (auto-save-session
                 (list (list :until (lambda () (tuatara-user:load-package "pkgv" :source where :version "latest") t))
                       (list :until #'package-question-shown)
                       (list :until (lambda ()
-                                     (tuatara.defaults::update-packages (list "pkgv"))
-                                     (setf jobs (count-if #'tuatara.defaults::package-fetch-p tuatara.runtime:*jobs*))
+                                     (tuatara.packages::update-packages (list "pkgv"))
+                                     (setf jobs (count-if #'tuatara.packages::package-fetch-p tuatara.runtime:*jobs*))
                                      t))
                       (list :until (lambda () (setf said (echo-says "pkgv: a fetch or check of it is already running"))))
                       "n" (list :until (lambda () (echo-says "is not loaded"))))
@@ -729,7 +729,7 @@ the tests' own keyring lacks: the folder and the key's fingerprint."
         (true (tuatara.frontend.fake:fake-frame-showing f "is not loaded"))
         (is = 0 jobs)
         ;; answered: free again
-        (false (assoc "pkgv" tuatara.defaults::*packages-in-hand* :test #'string=))))))
+        (false (assoc "pkgv" tuatara.packages::*packages-in-hand* :test #'string=))))))
 
 (define-test (package-trust key-check-file-gone-on-error)
   ;; the file a key is checked against goes even when the check ends in an error
@@ -737,19 +737,19 @@ the tests' own keyring lacks: the folder and the key's fingerprint."
     (let ((tuatara-user:*package-ask-before-loading* nil) (calls 0))
       (multiple-value-bind (alice) (trust-ssh-key dir "alice")
         (trust-version dir "one" :signer alice)
-        (sb-int:encapsulate 'tuatara.defaults::commit-signature 'key-check-file-gone-on-error
+        (sb-int:encapsulate 'tuatara.packages::commit-signature 'key-check-file-gone-on-error
                             (lambda (function &rest arguments)
                               (if (= 2 (incf calls)) (error "checking failed") (apply function arguments))))
         (unwind-protect
              (auto-save-session
               (list (list :until (lambda () (tuatara-user:load-package "pkgv" :source where :version "latest") t))
                     (list :until (lambda () (echo-says "was not fetched")))))
-          (sb-int:unencapsulate 'tuatara.defaults::commit-signature 'key-check-file-gone-on-error))
+          (sb-int:unencapsulate 'tuatara.packages::commit-signature 'key-check-file-gone-on-error))
         (is = 2 calls)
         (false (directory (merge-pathnames "*.allowed-signers-check-*"
-                                           (directory-namestring (tuatara.defaults::package-signers-file where)))))
+                                           (directory-namestring (tuatara.packages::package-signers-file where)))))
         (false (directory (merge-pathnames ".allowed-signers-check-*"
-                                           (directory-namestring (tuatara.defaults::package-signers-file where)))))))))
+                                           (directory-namestring (tuatara.packages::package-signers-file where)))))))))
 
 (define-test (package-trust start-judges-the-kept-version)
   ;; the version kept is judged by who signed it, not by the source's signer: an unsigned one put
@@ -761,13 +761,13 @@ the tests' own keyring lacks: the folder and the key's fingerprint."
         (auto-save-session
          (list (list :until (lambda () (tuatara-user:load-package "pkgv" :source where :version "latest") t))
                (list :until (lambda () (trust-version-loaded)))
-               (list :until (lambda () (setf first-entry (tuatara.defaults::fetched-package key))))
+               (list :until (lambda () (setf first-entry (tuatara.packages::fetched-package key))))
                (list :until (lambda () (trust-version dir "two" :signer alice) t))
-               (list :until (lambda () (tuatara.defaults::update-packages (list "pkgv")) t))
+               (list :until (lambda () (tuatara.packages::update-packages (list "pkgv")) t))
                (list :until (lambda () (equal "two" (trust-version-loaded))))))
         (is equal "unsigned" (seventh first-entry))
-        (tuatara.defaults::state-list-put tuatara.defaults::*fetched-packages* (list first-entry))
-        (setf tuatara.defaults::*loaded-packages* '())
+        (tuatara.defaults::state-list-put tuatara.packages::*fetched-packages* (list first-entry))
+        (setf tuatara.packages::*loaded-packages* '())
         (makunbound 'tuatara-user::*package-trust-version*)
         (let ((f (auto-save-session
                   (list (list :until (lambda () (tuatara-user:load-package "pkgv" :source where :version "latest") t))
@@ -787,15 +787,15 @@ the tests' own keyring lacks: the folder and the key's fingerprint."
            (list (list :until (lambda () (tuatara-user:load-package "pkgv" :source "signed" :version "latest") t))
                  (list :until (lambda () (trust-version-loaded)))))
           ;; the source remembered as unsigned (its :signers decide), the version kept broken, who signed it not known
-          (tuatara.defaults::state-list-put tuatara.defaults::*package-trust* (list (list where "unsigned" nil nil)))
-          (tuatara.defaults::state-list-put tuatara.defaults::*fetched-packages* (list (list key one nil t)))
+          (tuatara.defaults::state-list-put tuatara.packages::*package-trust* (list (list where "unsigned" nil nil)))
+          (tuatara.defaults::state-list-put tuatara.packages::*fetched-packages* (list (list key one nil t)))
           (alexandria:write-string-into-file (format nil "(defun broken (~%")
-                                             (merge-pathnames "pkgv/pkgv.lisp" (tuatara.defaults::package-folder-for where "pkgv" one))
+                                             (merge-pathnames "pkgv/pkgv.lisp" (tuatara.packages::package-folder-for where "pkgv" one))
                                              :if-exists :supersede)
-          (setf tuatara.defaults::*loaded-packages* '())
+          (setf tuatara.packages::*loaded-packages* '())
           (makunbound 'tuatara-user::*package-trust-version*)
           (auto-save-session
            (list (list :until (lambda () (tuatara-user:load-package "pkgv" :source "signed" :version "latest") t))
                  (list :until (lambda () (echo-says "failed")))))
           (false (trust-version-loaded))
-          (is equal "unsigned" (second (tuatara.defaults::state-list-find tuatara.defaults::*package-trust* where))))))))
+          (is equal "unsigned" (second (tuatara.defaults::state-list-find tuatara.packages::*package-trust* where))))))))

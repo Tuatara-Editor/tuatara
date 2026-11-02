@@ -10,7 +10,8 @@
   '(("TUATARA.GIT" "GIT-STATUS-RENDER" "*GIT-LOG-LENGTH*" "git-stage")
     ("TUATARA.TERMINAL-EMULATOR" "TERMINAL-SHOWN-TEXT" "*TERMINAL-SCROLLBACK*" "terminal")
     ("TUATARA.LSP" "LSP-TAKE-IN" "*LSP-WAIT*" "lsp-restart")
-    ("TUATARA.COMPILE" "COMPILE-PLACE-PATH" "*COMPILE-COMMAND*" "compile"))
+    ("TUATARA.COMPILE" "COMPILE-PLACE-PATH" "*COMPILE-COMMAND*" "compile")
+    ("TUATARA.PACKAGES" "PACKAGE-ENTRY" "*PACKAGE-ASK-BEFORE-LOADING*" "package-update"))
   "Each feature with a Lisp package of its own, as (PACKAGE INSIDE SETTING
 COMMAND): a name of its insides, one of its settings and one of its commands.")
 

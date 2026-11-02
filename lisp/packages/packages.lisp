@@ -1,4 +1,4 @@
-;;;; lisp/packages.lisp --- Packages from anywhere: a folder of a git repository, or of your disk.
+;;;; lisp/packages/packages.lisp --- Packages from anywhere: a folder of a git repository, or of your disk.
 ;;;; Copyright (C) 2026 Michael A Jones.  GPL-3.0-or-later; see LICENSE.
 ;;;;
 ;;;; A package is a folder of Lisp files, NAME/NAME.lisp its entry (load.lisp
@@ -28,7 +28,7 @@
 ;;;; trust the source again. The version taken and the one before it are
 ;;;; kept, the one before loaded again when the new one fails to load.
 
-(in-package #:tuatara.defaults)
+(in-package #:tuatara.packages)
 
 (defvar *package-ask-before-loading* t
   "True to be asked before a package is first compiled and loaded: one fetched
@@ -1208,7 +1208,7 @@ package checked out as small files of their target's name, never leading
 outside it; git-lfs's filters, which would ask other servers, left out; ftp
 never, and http:// and git:// not unless *PACKAGE-PLAIN-TRANSPORT*, however
 a server redirects."
-  (append (apply #'tuatara.git:git-network-environment
+  (append (apply #'git-network-environment
                  '("core.symlinks" "false") '("filter.lfs.smudge" "") '("filter.lfs.process" "")
                  '("filter.lfs.required" "false") '("core.hooksPath" "/dev/null") '("submodule.recurse" "false")
                  '("core.attributesFile" "/dev/null") '("protocol.ftp.allow" "never") '("protocol.ftps.allow" "never")
@@ -1229,12 +1229,12 @@ more than *PACKAGE-GIT-SECONDS*. A package's own scratch repository may fetch
 the files a sparse checkout needs from its address as it goes. A repository
 made by init is given *PACKAGE-ATTRIBUTES* as its own."
   (multiple-value-bind (octets ok too-large said)
-      (let ((tuatara.git:*git-safety* (remove "--no-lazy-fetch" tuatara.git:*git-safety* :test #'string=)))
-        (tuatara.git:run-git-program (git-for-packages) directory arguments
-                                     :environment (package-git-environment) :errors t :seconds *package-git-seconds*))
+      (let ((*git-safety* (remove "--no-lazy-fetch" *git-safety* :test #'string=)))
+        (run-git-program (git-for-packages) directory arguments :environment (package-git-environment) :errors t
+                                                                 :seconds *package-git-seconds*))
     (declare (ignore too-large))
     (unless ok
-      (refuse "~a" (tuatara.git:git-failure-words (first arguments) (or said ""))))
+      (refuse "~a" (git-failure-words (first arguments) (or said ""))))
     (when (equal (first arguments) "init")
       (let ((info (format nil "~a.git/info/" (tuatara.io:native directory))))
         (tuatara.io:ensure-private-directory info)
@@ -1245,7 +1245,7 @@ made by init is given *PACKAGE-ATTRIBUTES* as its own."
   "TEXT, a commit's name git printed for the repository at WHERE, checked to be
 one (GIT-HASH-P, 7 to 64 hexadecimal digits); an error otherwise."
   (let ((name (string-trim '(#\Newline #\Space #\Tab) text)))
-    (unless (tuatara.git:git-hash-p name :short t)
+    (unless (git-hash-p name :short t)
       (refuse "~a gave no commit's name: ~s" where (subseq name 0 (min 80 (length name)))))
     name))
 
@@ -1285,8 +1285,8 @@ one (PACKAGE-COMMIT-NAME)."
                   (peeled (find-if (lambda (line) (search "^{}" line)) lines)))
              (cond (lines (values (package-commit-name (first-word (or peeled (first lines))) where)
                                   (and (search "refs/tags/" (or peeled (first lines))) version)))
-                   ((tuatara.git:git-hash-p version) (values version nil))
-                   ((tuatara.git:git-hash-p version :short t)
+                   ((git-hash-p version) (values version nil))
+                   ((git-hash-p version :short t)
                     (refuse "~a has no tag or branch called ~a, and a commit is fetched by its whole name, ~
                             40 hexadecimal digits (git log shows it)" where version))
                    (t (refuse "~a has no tag, branch or commit called ~a" where version))))))))
@@ -1373,12 +1373,11 @@ commits; for a tag, branch or commit named, none."
                                                  "--format=%(if)%(*objectname)%(then)%(*objectname)%(else)%(objectname)%(end) %(refname:strip=2)"
                                                  "refs/tags"))
                  for space = (position #\Space line)
-                 when (and space (tuatara.git:git-hash-p (subseq line 0 space) :short t)
-                           (string/= (subseq line (1+ space)) tag))
+                 when (and space (git-hash-p (subseq line 0 space) :short t) (string/= (subseq line (1+ space)) tag))
                    collect (cons (subseq line 0 space) (subseq line (1+ space)))))
           (t
            (package-git probe "fetch" "--quiet" (format nil "--depth=~d" *package-history-depth*) "--filter=blob:none" where "HEAD")
-           (let ((commits (remove-if-not #'tuatara.git:git-hash-p
+           (let ((commits (remove-if-not #'git-hash-p
                                          (lines (package-git probe "rev-list" "--first-parent"
                                                              (format nil "--max-count=~d" *package-history-depth*) "FETCH_HEAD"))))
                  (found '()))
@@ -1693,10 +1692,9 @@ key's), :SUBKEY, :NAME and for an SSH key :KEY of a good one, the key seen to
 have made the signature."
   (labels ((git (allowed &rest arguments)
              (multiple-value-bind (octets ok too-large said)
-                 (tuatara.git:run-git-program (git-for-packages) folder arguments
-                                              :environment (tuatara.git:git-network-environment
-                                                            (list "gpg.ssh.allowedSignersFile" allowed))
-                                              :errors t :seconds *package-check-seconds*)
+                 (run-git-program (git-for-packages) folder arguments
+                                  :environment (git-network-environment (list "gpg.ssh.allowedSignersFile" allowed))
+                                  :errors t :seconds *package-check-seconds*)
                (declare (ignore ok too-large))
                (values (if octets (tuatara.text:octets-string octets) "") (or said ""))))
            (trimmed (text) (string-trim '(#\Newline #\Space) text))
@@ -1816,7 +1814,7 @@ loaded, and fetches that version again when it next needs it."
                       (uiop:subdirectories (package-kept-folder where name))))
       (let ((native (tuatara.io:native folder))
             (commit (car (last (pathname-directory folder)))))
-        (unless (or (not (tuatara.git:git-hash-p commit :short t))
+        (unless (or (not (git-hash-p commit :short t))
                     (member commit keep :test #'string=)
                     (and loaded (tuatara.io:path-within-p loaded native)))
           (let ((compiled (directory-namestring (package-fasl (concatenate 'string native "x")))))
@@ -2089,7 +2087,7 @@ place whole. Its path, or NIL when it could not be made, why in *Messages*."
                        "--load" (uiop:native-namestring (asdf:system-relative-pathname :tuatara "tools/quicklisp.lisp"))
                        "--eval" (format nil "(progn (push ~s asdf:*central-registry*) (funcall (find-symbol \"QUICKLOAD\" \"QL\") :tuatara/defaults :silent t))"
                                         (uiop:native-namestring (asdf:system-source-directory :tuatara)))
-                       "--eval" (format nil "(sb-ext:save-lisp-and-die ~s :toplevel (find-symbol \"COMPILER-CORE-TOPLEVEL\" \"TUATARA.DEFAULTS\"))"
+                       "--eval" (format nil "(sb-ext:save-lisp-and-die ~s :toplevel (find-symbol \"COMPILER-CORE-TOPLEVEL\" \"TUATARA.PACKAGES\"))"
                                         temporary))
                  :seconds 600 :environment (package-child-environment nil nil))
               (cond ((and ok (probe-file temporary))
@@ -2241,8 +2239,7 @@ waits for it (WAIT-FOR-SWEEP)."
   (when (wait-for-sweep (package-kept-folder where name) (lambda () (start-package-fetch name where version file key :quiet quiet)))
     (return-from start-package-fetch nil))
   (let ((plain (and (plain-transport-p where) t))
-        (floor (let ((had (fetched-package key)))
-                 (and had (fourth had) (tuatara.git:git-hash-p (second had) :short t) (second had)))))
+        (floor (let ((had (fetched-package key))) (and had (fourth had) (git-hash-p (second had) :short t) (second had)))))
     (when (start-package-job
            (make-package-fetch name where version file key)
            (lambda (job)

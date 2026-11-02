@@ -556,7 +556,7 @@ loaded as at the start, each before the forms after it are evaluated
     (unless (too-large-here-p 0 (tuatara.buffer:buffer-size b) "Evaluating")
       (flet ((evaluate () (evaluate-and-report b (tuatara.buffer:buffer-string b))))
         (if (init-file-buffer-p b)
-            (call-with-start-packages #'evaluate)
+            (tuatara.packages:call-with-start-packages #'evaluate)
             (evaluate))))))
 
 (define-command eval-expression ()

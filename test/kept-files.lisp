@@ -59,10 +59,10 @@ state, data or cache; PATH within it, a folder's ending in /; CLASS :KEPT,
      "/projects/one/" "/projects/two three/")
     (tuatara.defaults::*look-only*
      "/cases/2026-0001/seized repo/" "/cases/2026-0002/")
-    (tuatara.defaults::*package-trust*
+    (tuatara.packages::*package-trust*
      ("https://example.org/signed.git" "SHA256:abcDEF0123456789+/=" "Mere Rotorua" "mere@example.org AAAAC3NzaC1lZDI1NTE5AAAAIExample+/=")
      ("https://example.org/tools.git" "unsigned" nil nil))
-    (tuatara.defaults::*fetched-packages*
+    (tuatara.packages::*fetched-packages*
      ("example https://example.org/tools.git release" "0123456789abcdef0123456789abcdef01234567" "v1.2.0" t
       "89abcdef0123456789abcdef0123456789abcdef" "v1.1.0" "SHA256:abcDEF0123456789+/=")
      ("mine ~/packages/ latest" "-" nil t nil nil nil)
@@ -298,7 +298,7 @@ those left out written empty, then a field of its own."
   ;; a line this release cannot read goes with the entry of its name or path: trust taken back
   ;; leaves no line of a later kind trusting the same source
   (with-fresh-state
-    (let* ((list tuatara.defaults::*package-trust*)
+    (let* ((list tuatara.packages::*package-trust*)
            (where "https://example.org/signed.git"))
       (put-state-file list (format nil "~a~cunsigned~c~c~%~a~cnewkind:ABC~c~c~%https://example.org/other.git~cunsigned~c~c~%"
                                    where #\Tab #\Tab #\Tab where #\Tab #\Tab #\Tab #\Tab #\Tab #\Tab))
@@ -326,7 +326,7 @@ those left out written empty, then a field of its own."
   ;; fields a line of today may leave out, written empty by a later release before its own
   (let ((key "example https://example.org/tools.git release") (commit "0123456789abcdef0123456789abcdef01234567"))
     (flet ((parse (&rest fields)
-             (tuatara.defaults::parse-package-line (format nil "~{~a~^~a~}" (rest (loop for field in fields collect #\Tab collect field))))))
+             (tuatara.packages::parse-package-line (format nil "~{~a~^~a~}" (rest (loop for field in fields collect #\Tab collect field))))))
       (is equal (list key commit nil t "abcdef0" nil nil) (parse key commit "" "yes" "abcdef0"))
       (is equal (list key commit nil t nil nil nil) (parse key commit "" "yes" "" "" "" "later"))
       (is equal (list key commit "v1" t "abcdef0" "v0" nil) (parse key commit "v1" "yes" "abcdef0" "v0" "" "later"))))
@@ -556,5 +556,5 @@ those left out written empty, then a field of its own."
 
 (define-test (kept-files at-sources-refused)
   ;; a package's source never begins as a line of a new kind does
-  (fail (tuatara.defaults::check-package-where "@later/source"))
-  (finish (tuatara.defaults::check-package-where "https://example.org/tools.git")))
+  (fail (tuatara.packages::check-package-where "@later/source"))
+  (finish (tuatara.packages::check-package-where "https://example.org/tools.git")))

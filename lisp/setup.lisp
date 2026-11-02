@@ -210,7 +210,7 @@ so that \\`C-c' shows, and runs, what the buffer at hand can do in every mode
     (install-places)
     (install-bookmarks)
     (install-registers)
-    (install-packages)
+    (tuatara.packages:install-packages)
     (install-file-local-variables)
     (install-snippets editor)
     (install-paths-in-text editor)
@@ -290,7 +290,7 @@ so that \\`C-c' shows, and runs, what the buffer at hand can do in every mode
                        (when *state-directory*
                          (ignoring-errors-reported ("making the state directory") (tuatara.io:state-directory)))
                        (when *packages-directory*
-                         (ignoring-errors-reported ("making the packages directory") (packages-directory)))
+                         (ignoring-errors-reported ("making the packages directory") (tuatara.packages:packages-directory)))
                        (let ((words (tuatara.io:directories-in-memory-words)))
                          (when words (message "~{~a~^; ~}" words)))
                        (tuatara.io:move-session-log)

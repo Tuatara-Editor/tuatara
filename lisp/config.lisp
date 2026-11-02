@@ -236,7 +236,7 @@ is written there first (WRITE-STARTER-CONFIG) and said."
         (let ((*package* (find-package :tuatara-user)))
           (setf *init-file-outcome* :read
                 *init-file-stop* nil)
-          (call-with-start-packages (lambda () (read-init-file file)))
+          (tuatara.packages:call-with-start-packages (lambda () (read-init-file file)))
           (eq *init-file-outcome* :read))
         (progn (setf *init-file-outcome* :none) nil))))
 

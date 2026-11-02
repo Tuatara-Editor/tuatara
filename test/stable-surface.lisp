@@ -85,7 +85,7 @@ and the libraries' it lets packages use, the init file's settings, functions
 and macros, the keywords load-package takes, the command line's options,
 Tuatara's commands."
   (let ((rows (list* (list :keywords "LOAD-PACKAGE"
-                           (sort (mapcar #'symbol-name tuatara.defaults::*load-package-keywords*) #'string<))
+                           (sort (mapcar #'symbol-name tuatara.packages::*load-package-keywords*) #'string<))
                      (list :flag "+LINE")
                      (mapcar (lambda (option) (list :flag option)) tuatara.terminal:*options*))))
     (do-external-symbols (symbol :tuatara) (push (api-row symbol) rows))
@@ -174,7 +174,7 @@ keyword no longer taken."
       (true (row :init "SET-FACE"))
       (true (row :init "LOAD-THEME"))
       (true (row :setting "*BOOKMARKS-KEPT*"))
-      (is equal (sort (mapcar #'symbol-name tuatara.defaults::*load-package-keywords*) #'string<)
+      (is equal (sort (mapcar #'symbol-name tuatara.packages::*load-package-keywords*) #'string<)
           (third (row :keywords "LOAD-PACKAGE")))))
   (let ((pinned '((:init "BIND-KEY" :function (2 ("MAP") () nil nil)) (:init "GONE-FUNCTION" :function (0 () () nil nil))
                   (:init "TURNED" :function (1 () () nil nil)) (:init "WIDENED" :macro (1 () () t nil))

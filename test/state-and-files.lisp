@@ -395,7 +395,7 @@ file of text; their native names, as two values."
                (true (search "(*state-directory*) is not there: kept in memory"
                              (first (tuatara.io:directories-in-memory-words)))))
              (let ((tuatara-user:*packages-directory* chosen))
-               (is string= chosen (tuatara.defaults::packages-directory)))
+               (is string= chosen (tuatara.packages:packages-directory)))
              ;; unset, the standard places
              (true (search "tuatara/" (namestring (tuatara.io:state-directory)))))
         (if old-memory (sb-posix:setenv "XDG_RUNTIME_DIR" old-memory 1) (sb-posix:unsetenv "XDG_RUNTIME_DIR"))))))

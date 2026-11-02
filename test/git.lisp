@@ -1496,8 +1496,8 @@ DIR is visited and its status read, the project trusted. Returns the frontend."
   (true (tuatara.git:git-hash-p "abc1234" :short t))
   (false (tuatara.git:git-hash-p "abc12" :short t))
   (false (tuatara.git:git-hash-p "abc123g" :short t))
-  (is string= "abc1234" (tuatara.defaults::package-commit-name (format nil "abc1234~%") "here"))
-  (fail (tuatara.defaults::package-commit-name "not-a-hash" "here"))
+  (is string= "abc1234" (tuatara.packages::package-commit-name (format nil "abc1234~%") "here"))
+  (fail (tuatara.packages::package-commit-name "not-a-hash" "here"))
   ;; a path as an address writes it, one way for a file: address and the trash
   (is string= "file:///a%20b/c~-._%25" (tuatara.defaults::path-uri "/a b/c~-._%"))
   (is string= "/a%20b/c~-._%25" (tuatara.io:url-path "/a b/c~-._%")))

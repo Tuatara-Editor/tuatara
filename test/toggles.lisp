@@ -270,7 +270,7 @@ others, to every character from START below END."
              (multiple-value-bind (symbol status) (find-symbol name :tuatara-user)
                (is eq :external status name)
                (true (boundp symbol))
-               (is equal "TOGGLETEST" (get symbol 'tuatara.defaults::package-setting))
+               (is equal "TOGGLETEST" (get symbol 'tuatara.packages::package-setting))
                (is eq symbol (find-symbol name package))))
            (multiple-value-bind (f editor value) (toggle-session (find-symbol "TOGGLETEST-RULER" package) (typed "toggletest-ruler-mode"))
              (declare (ignore editor))

@@ -16,7 +16,8 @@ is filled again only when the jobs have changed.")
 
 (defun list-key-binding (mode keys)
   "What KEYS run in the buffers of major mode MODE, by its keymap and those of the modes it is made from."
-  (tuatara.command:lookup-key (tuatara.modes:mode-keymap (find-symbol (symbol-name mode) :tuatara.defaults))
+  (tuatara.command:lookup-key (tuatara.modes:mode-keymap (find (symbol-name mode) (tuatara.modes:mode-names)
+                                                                :key #'symbol-name :test #'string=))
                               (tuatara.frontend:parse-key-sequence keys)))
 
 (defun list-line (editor name)
@@ -38,8 +39,7 @@ is filled again only when the jobs have changed.")
   (dolist (gone '("BUFFERS-QUIT" "JOBS-QUIT" "HELP-QUIT" "ORG-AGENDA-QUIT" "CALENDAR-EXIT" "RIMU-QUIT"
                   "BUFFERS-REFRESH" "JOBS-REFRESH" "FONT-LIST-REFRESH" "RIMU-REFRESH" "RIMU-TRASH-REFRESH"
                   "ORG-AGENDA-REFRESH"))
-    (let ((symbol (find-symbol gone :tuatara.defaults)))
-      (false (and symbol (gethash symbol tuatara.command:*commands*)) "~(~a~) is no command" gone))))
+    (false (tuatara.command:command-symbol gone) "~(~a~) is no command" gone)))
 
 (define-test (list-buffers spans-found-by-halves)
   ;; the faces shown between two places are those a look at every span finds, overlapping ones too

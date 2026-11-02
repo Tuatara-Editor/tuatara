@@ -1044,7 +1044,7 @@ tiny pieces, a few lines each, so that a small text exercises it."
       (dolist (b made) (when (tuatara.buffer:live-buffer-p b) (tuatara.buffer:kill-buffer b)))
       (forget-list))))
   ;; the package manager: by its State column
-  (let ((tuatara.defaults::*declared-packages* '(("kea" "https://example.nz/kea" nil) ("tui" "https://example.nz/tui" nil))))
+  (let ((tuatara.packages::*declared-packages* '(("kea" "https://example.nz/kea" nil) ("tui" "https://example.nz/tui" nil))))
     (multiple-value-bind (f editor) (run-keys "M-x p a c k a g e - m a n a g e r RET C-x / h N a m e RET k e a RET" :width 160 :height 20)
       (declare (ignore f editor))
       (let ((list (find-if (lambda (b) (search "ackage" (tuatara.buffer:buffer-name b))) tuatara.buffer:*buffers*)))

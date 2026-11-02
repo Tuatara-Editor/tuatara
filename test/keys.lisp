@@ -168,7 +168,7 @@ the editor TUATARA.COMMAND:*EDITOR* is bound to."
            (keys (mapcar (lambda (span) (tuatara.text:octets-string octets :start (car span) :end (cdr span))) spans))
            (names (cl-ppcre:all-matches-as-strings "\\\\\\[[a-z-]+\\]" tuatara.defaults::*tuatara-tutor-text*)))
       (dolist (name (remove-duplicates names :test #'string=))
-        (let* ((command (find-symbol (string-upcase (subseq name 2 (1- (length name)))) :tuatara.defaults))
+        (let* ((command (tuatara.command:command-symbol (subseq name 2 (1- (length name)))))
                (key (tuatara.command:command-key command (list tuatara.defaults:*tuatara-normal-keymap*))))
           (when key
             (true (member key keys :test #'string=) "~a" name)))))))

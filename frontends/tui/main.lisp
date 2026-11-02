@@ -556,7 +556,7 @@ programs it starts are given the environment as it was before
 \(LEAVE-APPIMAGE-ENVIRONMENT). Run again by the editor itself with
 TUATARA_COMPILE_PACKAGE in its environment, it compiles a package apart from
 it instead, its arguments never looked at
-\(TUATARA.DEFAULTS::COMPILE-PACKAGE-CHILD)."
+\(TUATARA.PACKAGES:COMPILE-PACKAGE-CHILD)."
   (sb-ext:disable-debugger)
   (setf sb-ext:*posix-argv* (command-line-arguments))
   (fresh-random-state)
@@ -574,7 +574,7 @@ it instead, its arguments never looked at
   ;; run again by the editor to compile a package apart from it: told so by the
   ;; environment the editor gave it, never by the command line
   (when (uiop:getenv "TUATARA_COMPILE_PACKAGE")
-    (let ((code (tuatara.defaults::compile-package-child)))
+    (let ((code (tuatara.packages:compile-package-child)))
       (finish-output)
       (sb-ext:exit :code code :abort t)))
   (let ((code (main (rest sb-ext:*posix-argv*))))

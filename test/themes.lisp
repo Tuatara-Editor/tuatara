@@ -418,7 +418,7 @@ its own colours, flags, inheritance, font and height, and what it resolves to."
            (is eq :list-marked (tuatara.defaults::buffer-name-face read-only :marked)))
       (tuatara.buffer:kill-buffer special)
       (tuatara.buffer:kill-buffer read-only)))
-  (is eq :list-dim (tuatara.defaults::package-name-face nil "kept"))
+  (is eq :list-dim (tuatara.packages::package-name-face nil "kept"))
   (is eq :list-directory (tuatara.defaults::bookmark-name-face nil "folder"))
   (is eq :list-dim (tuatara.defaults::bookmark-name-face nil "gone"))
   (is equal '("✓" :list-good) (multiple-value-list (tuatara.defaults::status-cell :good)))
