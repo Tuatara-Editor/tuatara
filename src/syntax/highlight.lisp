@@ -832,10 +832,11 @@ are the same."
                            (delete-tree tree)))))
           ranges))))))
 
-(defun syntax-highlights (syntax query faces start end &optional injections locals)
-  "The syntax colours of SYNTAX's buffer text from octet START below END under
-QUERY, as a list of (START END FACE) ranges to paint in order; NIL while there
-is no tree. FACES holds the face of each capture of QUERY by number (see
+(defun syntax-highlights (syntax query faces parts &optional injections locals)
+  "The syntax colours of SYNTAX's buffer text in PARTS, each (START . END) in
+octets, in order, under QUERY, as one list of (START END FACE) ranges to
+paint in order; NIL while there is no tree. The tree is made ready once
+for all the parts, so that their colours are of the same tree. FACES holds the face of each capture of QUERY by number (see
 RICH-HIGHLIGHTS). INJECTIONS, when given, is (RULES RESOLVE): the language's
 injection rules, and a function of a language's name as they name it that
 returns, for a language this editor colours, its grammar, colouring query,
@@ -848,48 +849,54 @@ LOCAL-HIGHLIGHTS); a name defined earlier in a scope around it is then
 coloured as its definition is. Waits a moment for a parse under way (see
 *SYNTAX-WAIT*); while there is no tree yet, or the text is too large to parse
 whole, the colours of a parse of these lines alone (SLICE-HIGHLIGHTS). The
-answers for the last few ranges asked for are kept (KEPT-COLOURS) and given
+answers for the last few parts asked for are kept (KEPT-COLOURS) and given
 again while nothing they depend on has changed; the list is lent until the
 text changes or is parsed again, its room then taken by the next colours
 worked out."
-  (let ((tree (syntax-ready-tree syntax)))
-    (unless (or tree (syntax-broken syntax))
-      (return-from syntax-highlights (slice-highlights syntax query faces start end injections)))
-    (when tree
-      (let ((key (list (syntax-generation syntax) start end query faces
-                       (and injections (first injections)) (and locals (first locals))
-                       (and injections (car *rules-generation*)))))
-        ;; the text edited and not parsed yet: those of before moved with it,
-        ;; worked out once the parse is done
-        (let ((job (syntax-job syntax)))
-          (when (and job (not (parse-job-refresh job)))
-            (let ((moved (moved-colours syntax key)))
-              (when moved (return-from syntax-highlights moved)))))
-        (kept-colours
-         syntax key
-         (lambda ()
-            (let* ((rope (syntax-rope syntax))
-                   (*helper* (or (syntax-helper syntax) :none))
-                   (*parsing-buffer* (syntax-buffer syntax))
-                   (*injected-trees* (and injections (keep-injected-trees syntax)))
-                   (*injected-colours* (and injections (or (syntax-injected-colours syntax)
-                                                           (setf (syntax-injected-colours syntax)
-                                                                 (make-hash-table)))))
-                   ;; definitions may begin as early as the top-level form holding START
-                   (local-from (and locals
-                                    (let* ((chain (node-ancestry syntax start start))
-                                           (from (if (rest chain) (tree-node-start (car (last chain 2))) start)))
-                                      (max (min from start) (- start *locals-reach*))))))
-              ;; the matches of all three rules asked for at once
-              (call-with-prefetched-matches
-               (tree-helper tree) (remove nil (list (and locals (list (first locals) tree local-from end))
-                                          (list query tree start end)
-                                          (and injections (list (first injections) tree start end))))
-               (lambda ()
-                 (multiple-value-bind (local-ranges local-references)
-                     (and locals (local-highlights (first locals) tree rope local-from start end (second locals)))
-                   ;; the local names known first, for the rules' #is-not? local
-                   (nconc (let ((*local-references* local-references))
-                            (rich-highlights query tree rope start end faces))
-                          local-ranges
-                          (and injections (injected-highlights injections tree rope start end)))))))))))))
+  (let* ((tree (syntax-ready-tree syntax))
+         (lists (loop for (start . end) in parts
+                      collect (cond (tree (part-highlights syntax tree query faces start end injections locals))
+                                    ((not (syntax-broken syntax))
+                                     (slice-highlights syntax query faces start end injections))))))
+    (if (rest lists) (apply #'append lists) (first lists))))
+
+(defun part-highlights (syntax tree query faces start end injections locals)
+  "The colours of SYNTAX's text from octet START below END, TREE its tree made
+ready, as SYNTAX-HIGHLIGHTS gives those of a part."
+  (let ((key (list (syntax-generation syntax) start end query faces
+                   (and injections (first injections)) (and locals (first locals))
+                   (and injections (car *rules-generation*)))))
+    ;; the text edited and not parsed yet: those of before moved with it,
+    ;; worked out once the parse is done
+    (let ((job (syntax-job syntax)))
+      (when (and job (not (parse-job-refresh job)))
+        (let ((moved (moved-colours syntax key)))
+          (when moved (return-from part-highlights moved)))))
+    (kept-colours
+     syntax key
+     (lambda ()
+        (let* ((rope (syntax-rope syntax))
+               (*helper* (or (syntax-helper syntax) :none))
+               (*parsing-buffer* (syntax-buffer syntax))
+               (*injected-trees* (and injections (keep-injected-trees syntax)))
+               (*injected-colours* (and injections (or (syntax-injected-colours syntax)
+                                                       (setf (syntax-injected-colours syntax)
+                                                             (make-hash-table)))))
+               ;; definitions may begin as early as the top-level form holding START
+               (local-from (and locals
+                                (let* ((chain (node-ancestry syntax start start))
+                                       (from (if (rest chain) (tree-node-start (car (last chain 2))) start)))
+                                  (max (min from start) (- start *locals-reach*))))))
+          ;; the matches of all three rules asked for at once
+          (call-with-prefetched-matches
+           (tree-helper tree) (remove nil (list (and locals (list (first locals) tree local-from end))
+                                      (list query tree start end)
+                                      (and injections (list (first injections) tree start end))))
+           (lambda ()
+             (multiple-value-bind (local-ranges local-references)
+                 (and locals (local-highlights (first locals) tree rope local-from start end (second locals)))
+               ;; the local names known first, for the rules' #is-not? local
+               (nconc (let ((*local-references* local-references))
+                        (rich-highlights query tree rope start end faces))
+                      local-ranges
+                      (and injections (injected-highlights injections tree rope start end)))))))))))

@@ -754,12 +754,9 @@ level chosen for it."
                     (injections (and injections (list injections (injection-resolver style level))))
                     ;; a local name coloured as its definition
                     (locals (and locals (list locals (lambda (kind) (kind-face kind style level))))))
-                ;; only what the rows show: the rest of a very long line is not looked at;
-                ;; the colours kept for one part given as they are
-                (let ((parts (loop for (start . end) in (tuatara.display:shown-ranges rows :buffer buffer)
-                                   collect (tuatara.syntax:syntax-highlights syntax query faces start end
-                                                                             injections locals))))
-                  (if (rest parts) (apply #'append parts) (first parts))))))
+                ;; only what the rows show: the rest of a very long line is not looked at
+                (tuatara.syntax:syntax-highlights syntax query faces (tuatara.display:shown-ranges rows :buffer buffer)
+                                                  injections locals))))
           (call-next-method)))))
 
 (define-command rotate-colouring ()

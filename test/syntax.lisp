@@ -313,7 +313,7 @@ what stopped the walk (NIL at a bracket)."
   (let ((tuatara.syntax:*syntax-wait* 30)
         (buffer (tuatara.syntax::syntax-buffer syntax)))
     (tuatara.syntax:syntax-highlights syntax query (tuatara.defaults::query-faces query :rich 0)
-                                      0 (tuatara.buffer:buffer-size buffer))))
+                                      (list (cons 0 (tuatara.buffer:buffer-size buffer))))))
 
 (defun fresh-rich-ranges (grammar text query)
   "The rich colours of TEXT parsed from scratch with GRAMMAR."
@@ -2231,7 +2231,7 @@ has, ended after."
                 (end (search "fn f203(" text)))
            (true (tuatara.syntax:syntax-too-big syntax))
            (false (tuatara.syntax:syntax-ready-tree syntax))
-           (let ((shown (tuatara.syntax:syntax-highlights syntax query faces start end)))
+           (let ((shown (tuatara.syntax:syntax-highlights syntax query faces (list (cons start end)))))
              (true shown)
              (is equal (multiple-value-bind (tree rope parser) (parse-string "rust" text)
                          (unwind-protect (tuatara.syntax:rich-highlights query tree rope start end faces)
@@ -3100,7 +3100,7 @@ bound to the fake frontend and the editor; the file and its buffer go afterwards
              (buffer (tuatara.buffer:make-buffer "*syntax-far*" :text rope)))
         (unwind-protect
              (let* ((syntax (tuatara.syntax:attach-syntax buffer grammar))
-                    (shown (tuatara.syntax:syntax-highlights syntax query faces at (+ at (length code))))
+                    (shown (tuatara.syntax:syntax-highlights syntax query faces (list (cons at (+ at (length code))))))
                     (string (+ at (search "\"line\"" code))))
                (true (tuatara.syntax:syntax-too-big syntax))
                (true (find-if (lambda (range) (and (= string (first range)) (= (+ string 6) (second range)))) shown)
@@ -3290,6 +3290,70 @@ bound to the fake frontend and the editor; the file and its buffer go afterwards
     (is = 6 keys)
     (true (<= keys worked-out (1+ keys)) "colours worked out ~d times for ~d keys" worked-out keys)))
 
+(define-test (syntax parts-coloured-from-one-tree)
+  ;; a window showing two parts of a text (a fold between them): a parse
+  ;; that comes in while the first part's colours are worked out does not
+  ;; take their room for the second's, so both are painted as they are
+  (let ((path (records-file (with-output-to-string (s)
+                              (dotimes (i 120) (format s "(defun f~d (x) (list x \"s~d\" 'a))~%" i i)))
+                            :type "lisp"))
+        (buffer nil) (gate nil) (ready nil) (painted nil) (settled nil) (before 0))
+    (flet ((wait-for (test) (loop repeat 1000 until (funcall test) do (sleep 0.01)))
+           ;; the faces of the text rows of the frame N frames ago, not the mode line's
+           (frame (n) (let ((history (tuatara.frontend.fake:fake-face-history
+                                      (tuatara.command:editor-frontend tuatara.command:*editor*))))
+                        (subseq (coerce (car (nth n history)) 'list) 0 16))))
+      (sb-int:encapsulate 'tuatara.syntax::run-parse-job 'gated
+                          (lambda (function syntax job)
+                            (when gate (loop repeat 1000 until ready do (sleep 0.01)))
+                            (funcall function syntax job)))
+      (sb-int:encapsulate 'tuatara.syntax:rich-highlights 'gated
+                          (lambda (function &rest arguments)
+                            (multiple-value-prog1 (apply function arguments)
+                              ;; the parse comes in after the first part's colours
+                              (when (and gate (not ready))
+                                (setf ready t)
+                                (let ((syntax (tuatara.syntax:buffer-syntax buffer)))
+                                  (wait-for (lambda ()
+                                              (let ((job (tuatara.syntax:syntax-job syntax)))
+                                                (or (null job) (tuatara.syntax::job-finished-p syntax job))))))))))
+      (unwind-protect
+           (let ((tuatara.syntax:*syntax-wait* 0) (tuatara.defaults::*rules-wait* 30))
+             (run-keys
+                       (list (lambda ()
+                               (setf buffer (tuatara.command:current-buffer))
+                               (loop repeat 600
+                                     for language = (tuatara.buffer:buffer-local buffer :syntax-pending)
+                                     until (or (null language) (tuatara.syntax:buffer-syntax buffer))
+                                     do (tuatara.defaults::start-parsing buffer language) (sleep 0.05))
+                               (parse-done (tuatara.syntax:buffer-syntax buffer))
+                               (let ((text (tuatara.buffer:buffer-string buffer)))
+                                 (tuatara.display:fold-region buffer (search "(defun f4 " text) (search "(defun f9 " text))))
+                             :tick
+                             (lambda ()
+                               ;; an edit past what is shown, its parse held back
+                               (setf gate t
+                                     before (length (tuatara.frontend.fake:fake-face-history
+                                                     (tuatara.command:editor-frontend tuatara.command:*editor*))))
+                               (tuatara.buffer:buffer-insert buffer (tuatara.buffer:buffer-size buffer) " ")
+                               ;; none kept to move: as when many windows have taken their room
+                               (setf (tuatara.syntax::syntax-cache (tuatara.syntax:buffer-syntax buffer)) nil))
+                             :tick
+                             ;; the first frame drawn after the edit
+                             (lambda ()
+                               (setf painted (frame (- (length (tuatara.frontend.fake:fake-face-history
+                                                                (tuatara.command:editor-frontend tuatara.command:*editor*)))
+                                                       before 1))))
+                             (lambda () (setf gate nil ready t))
+                             :tick
+                             (lambda () (setf settled (frame 0))))
+                       :file path :width 100 :height 20))
+        (sb-int:unencapsulate 'tuatara.syntax::run-parse-job 'gated)
+        (sb-int:unencapsulate 'tuatara.syntax:rich-highlights 'gated)
+        (kill-records buffer path)))
+    (true painted)
+    (is equal settled painted)))
+
 (define-test (syntax colours-kept-for-several-ranges)
   ;; two parts of a buffer shown at once keep their colours, each worked out once
   (let* ((text (with-output-to-string (s) (dotimes (i 40) (format s "fn f~d() {}~%" i))))
@@ -3300,12 +3364,12 @@ bound to the fake frontend and the editor; the file and its buffer go afterwards
     (unwind-protect
          (let* ((syntax (tuatara.syntax:attach-syntax buffer grammar))
                 (tuatara.syntax:*syntax-wait* 30)
-                (top (tuatara.syntax:syntax-highlights syntax query faces 0 100))
-                (bottom (tuatara.syntax:syntax-highlights syntax query faces 300 400)))
+                (top (tuatara.syntax:syntax-highlights syntax query faces (list (cons 0 100))))
+                (bottom (tuatara.syntax:syntax-highlights syntax query faces (list (cons 300 400)))))
            (true top)
            (true bottom)
-           (is eq top (tuatara.syntax:syntax-highlights syntax query faces 0 100))
-           (is eq bottom (tuatara.syntax:syntax-highlights syntax query faces 300 400)))
+           (is eq top (tuatara.syntax:syntax-highlights syntax query faces (list (cons 0 100))))
+           (is eq bottom (tuatara.syntax:syntax-highlights syntax query faces (list (cons 300 400)))))
       (tuatara.syntax:detach-syntax buffer)
       (tuatara.buffer:kill-buffer buffer))))
 
@@ -3324,9 +3388,9 @@ bound to the fake frontend and the editor; the file and its buffer go afterwards
                 (tuatara.syntax::*injection-time-limit* 1d-9)
                 (syntax (tuatara.syntax:attach-syntax buffer grammar)))
            (true (tuatara.syntax:syntax-too-big syntax))
-           (false (tuatara.syntax:syntax-highlights syntax query faces 0 100))
+           (false (tuatara.syntax:syntax-highlights syntax query faces (list (cons 0 100))))
            (is eq :slow (tuatara.syntax:syntax-broken syntax))
-           (false (tuatara.syntax:syntax-highlights syntax query faces 3000 3100))
+           (false (tuatara.syntax:syntax-highlights syntax query faces (list (cons 3000 3100))))
            (is = 1 parses))
       (sb-int:unencapsulate 'tuatara.syntax::parse-ranges 'counting)
       (tuatara.syntax:detach-syntax buffer)
