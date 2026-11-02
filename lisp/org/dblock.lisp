@@ -1098,7 +1098,8 @@ timestamp as written; NIL for none."
                    (multiple-value-bind (tree text) (clocktable-own-tree buffer)
                      (let ((root (and (member scope '("subtree" "tree") :test #'equal)
                                       (let ((here (org-current-headline
-                                                   tree (or *dblock-position* (org-parse-point (org-parse-now buffer))))))
+                                                   tree (or *dblock-position*
+                                                            (org-parse-point (org-parse-now buffer))))))
                                         (if (string= scope "tree")
                                             (loop for h = here then (org-node-parent h)
                                                   while (and h (eq (org-node-type (org-node-parent h)) 'headline))

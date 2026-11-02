@@ -590,15 +590,18 @@ so that other programs exporting the note as Org leave the drawers out too."
                  (at (if (eq kind :heading)
                          ;; under the heading, after its planning and properties
                          (let* ((section (find 'section (org-node-children node) :key #'org-node-type))
-                                (leading (and section (remove-if-not (lambda (n) (member (org-node-type n) '(planning property-drawer)))
-                                                                     (org-node-children section)))))
+                                (leading (and section
+                                              (remove-if-not (lambda (n) (member (org-node-type n) '(planning property-drawer)))
+                                                             (org-node-children section)))))
                            (if leading
                                (org-node-end (car (last leading)))
-                               (min (length text) (1+ (or (position #\Newline text :start (org-node-begin node)) (1- (length text)))))))
+                               (min (length text)
+                                    (1+ (or (position #\Newline text :start (org-node-begin node)) (1- (length text)))))))
                          (org-node-begin node))))
             (org-replace-chars parse at at drawer :point (+ at (length ":EXPORT:") 1))
             (let ((said (org-latex-hide-drawers-option buffer)))
-              (message "An :EXPORT: drawer for this ~(~a~): change auto to what you want (M-x describe-export-settings)~@[; ~a~]"
+              (message "An :EXPORT: drawer for this ~(~a~): change auto to what you want ~
+                        (M-x describe-export-settings)~@[; ~a~]"
                        kind said)))))))
 
 (defun org-latex-hide-drawers-option (buffer)
@@ -615,5 +618,6 @@ already; a sentence saying what was done, or NIL."
                      "#+options: gained d:(not \"EXPORT\" \"LOGBOOK\") for other programs' exports")
                    ;; after the keyword lines at the top, else at the very top
                    (let ((after (or (nth-value 1 (cl-ppcre:scan "^(?:[ \\t]*#\\+[^\\n]*\\n)+" text)) 0)))
-                     (org-replace-chars parse after after (format nil "#+options: ~a~%" *org-latex-hidden-drawers-option*))
+                     (org-replace-chars parse after after
+                                        (format nil "#+options: ~a~%" *org-latex-hidden-drawers-option*))
                      "a #+options: line keeps them out of other programs' exports")))))))

@@ -173,12 +173,12 @@ point going with it, each kept folded when it was."
                        (new-begin (if (eq direction :down) first-at second-at)))
                   (org-replace-chars parse from to moved :point (+ new-begin offset))
                   (when (or first-folded second-folded)
-                    (let ((moved (org-parse-now buffer)))
+                    (let ((after (org-parse-now buffer)))
                       (flet ((refold (begin)
-                               (let ((h (find begin (org-headlines (org-parse-tree moved)) :key #'org-node-begin)))
+                               (let ((h (find begin (org-headlines (org-parse-tree after)) :key #'org-node-begin)))
                                  (when h
-                                   (let ((r (org-fold-range h (org-parse-text moved))))
-                                     (when r (org-fold-chars moved (car r) (cdr r))))))))
+                                   (let ((r (org-fold-range h (org-parse-text after))))
+                                     (when r (org-fold-chars after (car r) (cdr r))))))))
                         (when first-folded (refold first-at))
                         (when second-folded (refold second-at))))))))))))
 

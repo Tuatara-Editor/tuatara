@@ -884,7 +884,8 @@ NIL when there is no such part (no headline at point)."
            (headline (and (eq scope :subtree) (org-current-headline tree point)))
            (range (ecase scope
                     (:selection (multiple-value-bind (start end) (selection-range)
-                                  (and start (cons (org-parse-char parse start) (org-parse-char parse (max start (1- end)))))))
+                                  (and start (cons (org-parse-char parse start)
+                                                   (org-parse-char parse (max start (1- end)))))))
                     (:subtree (and headline (cons (org-node-begin headline)
                                                   (max (org-node-begin headline)
                                                        (1- (- (org-node-end headline) (org-node-post-blank headline))))))))))
