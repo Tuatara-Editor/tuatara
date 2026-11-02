@@ -117,7 +117,7 @@ projects you trust, in a program of their own that is not shut in. Files
 outside them are never parsed without the sandbox, whatever this says. NIL
 unless set: without the sandbox no text is parsed.")
 
-(defgeneric host-helper-refused (host trusted)
+(defgeneric host-say-helper-refused (host trusted)
   (:documentation "Say, once, that text is not parsed because there is no sandbox: TRUSTED true
 when the text is that of a project you trust (see *SYNTAX-HELPER-UNCONFINED*).")
   (:method ((host tuatara.runtime:host) trusted)
@@ -806,7 +806,7 @@ when it is that of a project you trust. NIL."
     (tuatara.runtime:debug-report :error "no syntax helper started: there is no sandbox~:[~; (*syntax-helper-unconfined* not set)~]"
                                   trusted)
     (tuatara.runtime:ignoring-errors-reported ("saying no syntax helper is started")
-      (host-helper-refused tuatara.runtime:*host* trusted)))
+      (host-say-helper-refused tuatara.runtime:*host* trusted)))
   nil)
 
 (defun helpers-refused-p (kind)
@@ -871,7 +871,7 @@ says the caller holds already."
                           nil)
                          ((null how) (refuse-unconfined (not (eq kind :own)))))))))))))
 
-(defgeneric host-helper-ended (host helper)
+(defgeneric host-say-helper-ended (host helper)
   (:documentation "Say, once, that HELPER ended or was ended without being asked to.
 HELPER-PARSING says whether a parse was running in it, which says so itself.")
   (:method ((host tuatara.runtime:host) helper)
@@ -996,7 +996,7 @@ helper wanted in its place is started afresh."
       (unless (eq why :stopped)
         (tuatara.runtime:debug-report :error "syntax helper (~(~a~)) ~(~a~)" (helper-kind helper) why)
         (tuatara.runtime:ignoring-errors-reported ("saying the syntax helper ended")
-          (host-helper-ended tuatara.runtime:*host* helper))))))
+          (host-say-helper-ended tuatara.runtime:*host* helper))))))
 
 (defun reply-malformed (helper)
   "End HELPER, whose reply cannot be right: what it holds is not trusted, and

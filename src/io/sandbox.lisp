@@ -1184,26 +1184,3 @@ a FILE-SYSTEM-ERROR."
   (let ((fd (open-for-reading path t :accept '(:regular) :operation "decode")))
     (unwind-protect (apply #'sandbox-run program arguments :input fd keys)
       (sb-posix:close fd))))
-
-(defgeneric host-said-shown (host line)
-  (:documentation "LINE, one a program shut in said, as a message shows it: its control
-characters, and those changing the direction text is drawn in, written out, so
-that what a program decoding a file prints cannot draw over the screen."))
-
-(defun sandbox-outcome-words (outcome said &key (label "the program") (seconds-setting '*sandbox-seconds*))
-  "Why a program run shut in (SANDBOX-RUN) gave nothing, as a sentence
-beginning with LABEL, from how it went, OUTCOME, and what it SAID, as
-SANDBOX-RUN gives them: there is no sandbox here, and why; it was stopped
-after the seconds SECONDS-SETTING (a setting's symbol) holds, or by you; it
-printed more than it may; or it failed, with the first line of what it said.
-NIL when OUTCOME is :DONE."
-  (case outcome
-    (:done nil)
-    (:unavailable (format nil "~a runs only shut in the sandbox, and there is none here: ~a" label said))
-    (:timeout (format nil "~a was stopped after ~d seconds (~(~a~))" label (symbol-value seconds-setting) seconds-setting))
-    (:cancelled (format nil "~a was stopped" label))
-    (:too-much (format nil "~a printed more than it may" label))
-    (t (let ((line (string-trim " " (or (first (uiop:split-string (or said "") :separator '(#\Newline))) ""))))
-         (format nil "~a failed~@[: ~a~]" label
-                 (and (plusp (length line))
-                      (host-said-shown tuatara.runtime:*host* (subseq line 0 (min 300 (length line))))))))))

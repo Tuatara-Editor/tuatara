@@ -1065,7 +1065,7 @@ by search filters, the file on the line among those they leave."
                                                (format nil "Saved ~a (~:d octets), not opened" target (length output)))
                                            (error (e) (format nil "~a could not be saved: ~a" shown e)))
                                          (format nil "~a could not be taken out: ~a" shown
-                                                 (tuatara.io:sandbox-outcome-words outcome said :label "pdfdetach")))))
+                                                 (sandbox-outcome-words outcome said :label "pdfdetach")))))
                                  (lambda (said) (message "~a" (or said (format nil "~a could not be taken out" shown)))))
                   (message "Taking ~a out..." shown)))))))))
 

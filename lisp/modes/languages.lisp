@@ -806,7 +806,7 @@ or when rules not answered for may be asked for again (*RULES-UNANSWERED*)."
   "True once the editor has said that memory is low and that parses stopped
 half way keep what they took until it starts again.")
 
-(defmethod tuatara.syntax:host-syntax-slow ((host defaults-host) syntax)
+(defmethod tuatara.syntax:host-say-syntax-slow ((host defaults-host) syntax)
   "Say that parsing the text of SYNTAX's buffer took too long, or too much
 memory, or that memory ran short, and it was given up."
   (let ((bytes (tuatara.text:rope-bytes (tuatara.syntax:syntax-rope syntax)))
@@ -837,7 +837,7 @@ memory, or that memory ran short, and it was given up."
   (let ((editor (running-editor)))
     (and editor (buffer-windows buffer editor) t)))
 
-(defmethod tuatara.syntax:host-helper-ended ((host defaults-host) helper)
+(defmethod tuatara.syntax:host-say-helper-ended ((host defaults-host) helper)
   "Say that HELPER, a program running the grammars, ended while no parse ran
 in it (a parse that was running says so itself); its text is parsed again
 in a new one when it is next shown or edited."
@@ -854,11 +854,11 @@ to run the grammars in: TRUSTED when it is that of a project you trust."
   (message "~:[Files outside the projects you trust are not~;No text is~] coloured or parsed: there is no sandbox (bwrap) to run the grammars in. Install bubblewrap~:[~;, or set *syntax-helper-unconfined* to run them for the projects you trust without it~]; M-x check-health says more."
            trusted trusted))
 
-(defmethod tuatara.syntax:host-helper-refused ((host defaults-host) trusted)
+(defmethod tuatara.syntax:host-say-helper-refused ((host defaults-host) trusted)
   "Say that text is not parsed for want of a sandbox (REPORT-NO-SANDBOX-FOR-GRAMMARS)."
   (report-no-sandbox-for-grammars trusted))
 
-(defmethod tuatara.syntax:host-syntax-fault ((host defaults-host) syntax)
+(defmethod tuatara.syntax:host-say-syntax-fault ((host defaults-host) syntax)
   "Say that the grammar of SYNTAX failed while reading its buffer and is off
 until the editor starts again; and, when its code may have damaged the
 editor's memory (not when it ran in the program parsing for the editor), to

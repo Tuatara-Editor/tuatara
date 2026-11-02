@@ -368,20 +368,20 @@ process with MARK is killed after, whatever FUNCTION did."
 
 (define-test (sandbox outcome-said)
   ;; how a run ended badly, said one way wherever a program is run shut in
-  (is eq nil (tuatara.io:sandbox-outcome-words :done ""))
+  (is eq nil (tuatara.command:sandbox-outcome-words :done ""))
   (let ((tuatara-user:*sandbox-seconds* 7))
     (is string= "magick was stopped after 7 seconds (*sandbox-seconds*)"
-        (tuatara.io:sandbox-outcome-words :timeout "" :label "magick")))
+        (tuatara.command:sandbox-outcome-words :timeout "" :label "magick")))
   (is string= "pdftotext failed: Syntax Error: no xref"
-      (tuatara.io:sandbox-outcome-words :failed (format nil "Syntax Error: no xref~%more~%") :label "pdftotext"))
-  (is string= "the program failed" (tuatara.io:sandbox-outcome-words :failed ""))
+      (tuatara.command:sandbox-outcome-words :failed (format nil "Syntax Error: no xref~%more~%") :label "pdftotext"))
+  (is string= "the program failed" (tuatara.command:sandbox-outcome-words :failed ""))
   (is string= "It runs only shut in the sandbox, and there is none here: bwrap is not installed"
-      (tuatara.io:sandbox-outcome-words :unavailable "bwrap is not installed" :label "It"))
-  (is string= "It was stopped" (tuatara.io:sandbox-outcome-words :cancelled "" :label "It"))
-  (is string= "It printed more than it may" (tuatara.io:sandbox-outcome-words :too-much "" :label "It"))
+      (tuatara.command:sandbox-outcome-words :unavailable "bwrap is not installed" :label "It"))
+  (is string= "It was stopped" (tuatara.command:sandbox-outcome-words :cancelled "" :label "It"))
+  (is string= "It printed more than it may" (tuatara.command:sandbox-outcome-words :too-much "" :label "It"))
   ;; what it said cut short on one line
   (is = (+ (length "It failed: ") 300)
-      (length (tuatara.io:sandbox-outcome-words :failed (make-string 1000 :initial-element #\x) :label "It"))))
+      (length (tuatara.command:sandbox-outcome-words :failed (make-string 1000 :initial-element #\x) :label "It"))))
 
 (define-test (sandbox system-calls-refused)
   ;; the seccomp filter: one more than the sandbox had without it

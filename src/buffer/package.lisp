@@ -18,7 +18,7 @@
            #:buffer-forward-char #:buffer-line-start #:buffer-line-end #:buffer-line-text #:buffer-line-number #:buffer-line-count
            #:buffer-indexed-p #:buffer-adopt-text #:ensure-indexed #:host-wait-for-index
            #:buffer-splice #:buffer-splice-spans #:buffer-slice #:buffer-lent-p #:*large-edit-octets*
-           #:buffer-scan-line #:*line-scan-limit* #:buffer-known-line-number #:host-counted-line
+           #:buffer-scan-line #:*line-scan-limit* 
            #:buffer-goto-line #:buffer-column
            #:buffer-read-only-p #:hex-view-p
            #:buffer-local #:with-read-only-lifted #:buffer-mapping #:buffer-saved-number #:buffer-content-number #:buffer-mark-saved

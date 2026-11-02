@@ -216,7 +216,7 @@ its form says, as ORG-READ-RULE reads them; :HOUR, :MINUTE, :END-HOUR and
     ;; a program of your own run on what a job gives it through a pipe, its arguments split as a shell would
     tuatara.io:call-with-program tuatara.io:filter-through-program tuatara.io:command-words tuatara.io:read-stream-octets
     tuatara.io:sandbox-find-program run-on-copies copies-original-names
-    run-on-copies-for-report tuatara.io:sandbox-outcome-words sandbox-pdf program-health-words likelihood-face
+    run-on-copies-for-report sandbox-outcome-words sandbox-pdf program-health-words likelihood-face
     read-decimal-number read-fraction fraction-p tuatara.io:random-name tuatara.io:copy-to-free-name tuatara.io:percent-decoded tuatara.dates:*short-month-names*
     user-program-path start-detached open-externally-file new-private-folder private-cache-directory private-state-directory tuatara.io:replace-file
     tuatara.io:memory-file sandbox-font-directories pdf-view-make

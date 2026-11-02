@@ -13,7 +13,7 @@
   (:import-from #:tuatara.runtime #:quit)
   (:export #:keymap #:keymap-p #:make-keymap #:define-key #:define-keys #:label-keys #:lookup-key #:keymaps-lookup #:map-keymap-bindings #:keymap-parent #:keymap-entries #:keymap-name #:unbind-commands-if
            #:define-command #:find-command #:command-symbol #:command-names #:*commands* #:forget-command
-           #:quit #:keyboard-quit-signal #:editor #:editor-p #:make-editor #:*editor* #:current-buffer #:*current-buffer* #:host-command-refusal #:current-window
+           #:quit #:keyboard-quit-signal #:editor #:editor-p #:make-editor #:*editor* #:current-buffer #:*current-buffer* #:host-command-refusal #:sandbox-outcome-words #:editor-host #:current-window
            #:message #:say-with-command-messages #:*messages-kept* #:*exit-functions* #:*startup-buffers* #:*exit-code* #:cursor-look #:*cursor-colour-functions* #:echo #:*message-log-max* #:log-message #:add-to-log #:messages-buffer #:host-messages-made #:read-string #:finish-minibuffer #:minibuffer-previous-history #:minibuffer-next-history #:echo-question-p #:yes-or-no-p* #:y-or-n-p* #:read-password #:wipe-string #:*minibuffer-hidden* #:show-buffer #:run-editor #:host-visit-file #:host-visit-standard-input #:command-loop #:redisplay #:redisplay-or-say
            #:quit-key-p #:*keys-as-typed* #:wait-interruptibly #:wait-until-interruptibly #:wait-while-interruptibly #:editor-unread #:editor-deferred #:running-editor #:defer-action #:call-with-editor-held #:away-from-editor-p #:wake-editor
            #:editor-frontend #:editor-window #:editor-global-keymap #:editor-state-keymap #:editor-minibuffer-keymap

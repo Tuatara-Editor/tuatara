@@ -432,9 +432,13 @@ included; else NIL."
   (let ((carried (counted-so-far buffer)))
     (and carried (tuatara.text:carried-line-number carried (tuatara.buffer:buffer-version buffer) byte))))
 
-(defmethod tuatara.buffer:host-counted-line ((host tuatara.runtime:host) buffer byte)
-  "The line of BYTE as the count so far has it (COUNTED-LINE-NUMBER)."
-  (counted-line-number buffer byte))
+(defun buffer-known-line-number (buffer byte)
+  "The line number, from 0, of BYTE in BUFFER when it is known without waiting:
+always once the lines are counted; while they are, where the count has passed
+\(COUNTED-LINE-NUMBER); else NIL."
+  (if (tuatara.buffer:buffer-indexed-p buffer)
+      (tuatara.buffer:buffer-line-number buffer byte)
+      (counted-line-number buffer byte)))
 
 (defun counted-line-start (buffer line)
   "While BUFFER's lines are being counted: where line LINE, from 0, starts,
@@ -590,10 +594,6 @@ clipboard, exports and code files leave it alone."
 \(BUFFER-PLAINTEXT-P)."
   (setf (tuatara.buffer:buffer-local buffer :plaintext) value))
 
-(defmethod tuatara.runtime:host-secret-buffer-p ((host tuatara.runtime:host) buffer)
-  "True when BUFFER's text, decrypted, is kept from the disk (BUFFER-PLAINTEXT-P)."
-  (buffer-plaintext-p buffer))
-
 (defun buffer-scratch-directory (buffer)
   "Where the scratch files of work on BUFFER's text go (the runs of a sort,
 rewritten text): as SCRATCH-DIRECTORY has it for its file and a text of its
@@ -703,7 +703,7 @@ in the debug log."
                                     (native path) (tuatara.runtime:condition-words condition))
       (format nil "the check whether it opens safely failed (~a)" (tuatara.runtime:condition-words condition)))))
 
-(defun open-file-text (path &key safe decide)
+(defun open-file-text (path &key safe)
   "The text of the file at PATH, as six values: a rope, the mapping it reads
 (or NIL), the file's STAMP, how the text is kept from other programs' changes
 (see FILE-ISOLATION), what keeps it so (the lease for :LEASED, the snapshot
@@ -713,18 +713,18 @@ it, so that a named pipe or a device is never waited on or woken. See this
 file's header for which file gets which.
 SAFE keeps the file system the file is on exactly as it was: no clone and
 no copy is made beside the file (copies go to the cache directory), and its
-access time is left alone where the system allows. With DECIDE, unless SAFE,
-whether the file is to open safely all the same is asked
-\(HOST-VISIT-SAFELY-REASON) with where it really is (links followed, as the
-descriptor says) and its stamp, and a phrase answered makes the file opened
-SAFE, its access time never changed: a seventh value, that phrase or NIL.
+access time is left alone where the system allows. Unless SAFE, whether the
+file is to open safely all the same is asked (HOST-VISIT-SAFELY-REASON) with
+where it really is (links followed, as the descriptor says) and its stamp,
+and a phrase answered makes the file opened SAFE, its access time never
+changed: a seventh value, that phrase or NIL.
 What is opened is what is decided on, however a link is changed meanwhile."
   (let ((fd (open-for-reading path t :accept '(:regular) :wanted "a file of text"))
         (keep-fd nil) (why nil))
     (unwind-protect
          (multiple-value-call (lambda (&rest values) (values-list (append values (list why))))
           (let* ((stamp (fd-stamp fd path))
-                 (why (setf why (and decide (not safe) (decision-on-file fd path stamp))))
+                 (why (setf why (and (not safe) (decision-on-file fd path stamp))))
                  (safe (or safe (and why t))))
             ;; a file with another name may be evidence under it: its access time is never given back
             (unless (or safe (> (stamp-nlink stamp) 1)) (clear-noatime fd))
@@ -1131,7 +1131,7 @@ buffer visited the file already (it comes as it is)."
             (error 'file-system-error :operation "open" :path path :reason "there is no such file"))
           (if (path-stamp path)
               (multiple-value-bind (rope mapping stamp isolation guard class reason)
-                  (open-file-text path :safe safe :decide t)
+                  (open-file-text path :safe safe)
                 (setf why reason
                       safe (or safe (and why t))
                       buffer (tuatara.buffer:make-buffer name :text rope :file path)
@@ -2258,7 +2258,7 @@ BUFFER."
     (tuatara.buffer:run-before-edit buffer :all)
     (stop-snapshots-of buffer)
     (multiple-value-bind (rope mapping stamp isolation guard class reason)
-        (open-file-text path :safe safe :decide t)
+        (open-file-text path :safe safe)
       (when reason
         (setf safe t
               (safe-visit-p buffer) reason))

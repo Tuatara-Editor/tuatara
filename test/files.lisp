@@ -566,7 +566,7 @@ second value."
   ;; that is not there cannot be written, and that is no failure
   (drain-debug-reports)
   (unwind-protect
-       (let ((tuatara.runtime:*host* (make-answering-host 'tuatara.io:host-writing-told
+       (let ((tuatara.runtime:*host* (make-answering-host 'tuatara.io:host-say-writing
                                                           (lambda (words) (error "cannot tell of ~a" words)))))
          (tuatara.runtime:set-debug t)
          (false (tuatara.io:tell-writing "a file"))

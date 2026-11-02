@@ -27,7 +27,7 @@
                (:module "syntax"   :serial t :components ((:file "package") (:file "named-patterns") (:file "search") (:file "helper") (:file "tree-sitter") (:file "parsing") (:file "highlight") (:file "navigation")))
                (:module "frontend" :serial t :components ((:file "package") (:file "interface")))
                (:module "display"  :serial t :components ((:file "package") (:file "faces") (:file "width") (:file "layout") (:file "folds") (:file "hex") (:file "window") (:file "splits")))
-               (:module "command"  :serial t :components ((:file "package") (:file "keymap") (:file "command") (:file "completion") (:file "editor") (:file "panel") (:file "dispatch") (:file "menu") (:file "redisplay") (:file "minibuffer") (:file "session") (:file "recorded-keys") (:file "keys") (:file "popup") (:file "windows") (:file "frames")))
+               (:module "command"  :serial t :components ((:file "package") (:file "host") (:file "keymap") (:file "command") (:file "completion") (:file "editor") (:file "panel") (:file "dispatch") (:file "menu") (:file "redisplay") (:file "minibuffer") (:file "session") (:file "recorded-keys") (:file "keys") (:file "popup") (:file "windows") (:file "frames")))
                (:module "modes"    :serial t :components ((:file "package") (:file "modes")))))
 
 (defsystem "tuatara/frontend-fake"

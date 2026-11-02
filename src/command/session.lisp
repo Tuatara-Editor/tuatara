@@ -387,8 +387,20 @@ opened safely when it did.")
       buffer)))
 
 (defgeneric host-visit-standard-input (host descriptor)
-  (:documentation "Make a buffer of what is read from DESCRIPTOR, open, in the background, and
-return the buffer, for - among the files the editor is started with."))
+  (:documentation "Make a buffer of what is read from DESCRIPTOR, open, and return the buffer,
+for - among the files the editor is started with: called *stdin*, read only
+and opened safely. The defaults read it in the background; the core's own
+host reads it all first, into a file with no name in the cache folder.")
+  (:method ((host tuatara.runtime:host) descriptor)
+    (multiple-value-bind (scratch size)
+        (unwind-protect (tuatara.io:copy-descriptor-to-scratch descriptor)
+          (sb-posix:close descriptor))
+      (multiple-value-bind (rope mapping) (tuatara.io:scratch-file-text scratch size "standard input")
+        (let ((buffer (tuatara.buffer:make-buffer (tuatara.buffer:unique-buffer-name "*stdin*") :text rope)))
+          (setf (tuatara.buffer:buffer-mapping buffer) mapping
+                (tuatara.buffer:buffer-read-only-p buffer) t
+                (tuatara.io:safe-visit-p buffer) "it came from standard input")
+          buffer)))))
 
 (defun visit-startup-file (entry)
   "Visit ENTRY, a file the editor was started with: a path, or a list of it

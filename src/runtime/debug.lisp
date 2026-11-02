@@ -67,7 +67,9 @@ to show it."
          (sb-thread:with-mutex (*debug-log-lock*)
            (write-line (debug-report-line report) stream)
            (finish-output stream))))))
-  (host-wake *host*)
+  ;; reports are made inside error handlers: a wake that fails is let go, as
+  ;; saying it would make another report
+  (ignore-errors (host-wake *host*))
   nil)
 
 (defun lock-fd (fd &key shared (wait 0))
@@ -135,7 +137,11 @@ their strings and octets by their length alone (BACKTRACE-LINES).")
 
 (defgeneric host-secret-buffer-p (host buffer)
   (:documentation "True when BUFFER's text is kept secret (decrypted), so that work on it counts as
-a secret at hand (SECRET-BUFFER-P)."))
+a secret at hand (SECRET-BUFFER-P). Without the files' code, which keeps that
+of a buffer, none is.")
+  (:method ((host host) buffer)
+    (declare (ignore buffer))
+    nil))
 
 (defun secret-buffer-p (buffer)
   "True when BUFFER, a buffer or NIL, holds text kept secret (decrypted), so

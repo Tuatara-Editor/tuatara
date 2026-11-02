@@ -420,7 +420,7 @@ LATEX-SANDBOX-PLACES shows it, read only but for DIRECTORY and TeX's own
 cache, has no network, and is held to *LATEX-SANDBOX-SECONDS*,
 *LATEX-SANDBOX-MEMORY* and *LATEX-SANDBOX-FILE-LIMIT*; what it prints is let
 go. Returns two values: true when it ended well, and else how it ended, as
-a sentence naming it (TUATARA.IO:SANDBOX-OUTCOME-WORDS). JOB stopping ends it."
+a sentence naming it (SANDBOX-OUTCOME-WORDS). JOB stopping ends it."
   (tuatara.runtime:job-check-stop)
   (multiple-value-bind (output outcome said)
       (apply #'tuatara.io:sandbox-run path arguments
@@ -431,7 +431,7 @@ a sentence naming it (TUATARA.IO:SANDBOX-OUTCOME-WORDS). JOB stopping ends it."
     (declare (ignore output))
     (tuatara.runtime:job-check-stop)
     (values (eq outcome :done)
-            (tuatara.io:sandbox-outcome-words outcome said :label (tuatara.io:native-file-name path)
+            (sandbox-outcome-words outcome said :label (tuatara.io:native-file-name path)
                                                            :seconds-setting '*latex-sandbox-seconds*))))
 
 (defun run-unconfined (job path arguments directory environment)

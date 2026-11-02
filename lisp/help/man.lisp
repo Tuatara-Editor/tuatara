@@ -76,7 +76,7 @@ not got)."
                :directories (if own (cons own *man-directories*) *man-directories*)
                :output-limit *man-output-limit* nil)
       (unless (eq outcome :done)
-        (refuse "~a" (tuatara.io:sandbox-outcome-words outcome said :label "man" :seconds-setting '*man-seconds*)))
+        (refuse "~a" (sandbox-outcome-words outcome said :label "man" :seconds-setting '*man-seconds*)))
       output)))
 
 ;;; Reading what man printed

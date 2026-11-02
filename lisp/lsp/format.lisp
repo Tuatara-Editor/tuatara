@@ -92,9 +92,9 @@ the sandbox when *FORMAT-IN-SANDBOX*."
                (case outcome
                  (:done (values output nil))
                  (:unavailable (values nil (format nil "~a; *format-in-sandbox* nil runs formatters without it"
-                                                   (tuatara.io:sandbox-outcome-words outcome said :label "it"))))
+                                                   (sandbox-outcome-words outcome said :label "it"))))
                  (:failed (values nil (if (plusp (length said)) said "it failed")))
-                 (t (values nil (tuatara.io:sandbox-outcome-words outcome said :label "it" :seconds-setting '*format-seconds*)))))
+                 (t (values nil (sandbox-outcome-words outcome said :label "it" :seconds-setting '*format-seconds*)))))
           (sb-posix:close fd)))
       (multiple-value-bind (output ok)
           (tuatara.io:program-output (cons program (rest command))

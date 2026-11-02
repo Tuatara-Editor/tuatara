@@ -51,12 +51,19 @@ that job; NIL otherwise.")
 (defgeneric host-job-started (host job)
   (:documentation "Tie JOB, starting now on the editor's thread (START-JOB-THREAD), to the editor
 running: give it the function its thread calls to wake the editor (JOB-WAKE),
-unless it has one, and the frame it was begun in (JOB-FRAME)."))
+unless it has one, and the frame it was begun in (JOB-FRAME). Without a
+command loop, there is no editor to tie it to.")
+  (:method ((host host) job)
+    (declare (ignore job))
+    nil))
 
 (defgeneric host-take-in-job (host job function)
   (:documentation "Call FUNCTION, of no arguments, JOB's taking in (TAKE-IN-JOBS), where JOB
 belongs in the editor: with the frame it was begun in the one worked in, so
-that what it says shows there."))
+that what it says shows there; without a command loop, where it is.")
+  (:method ((host host) job function)
+    (declare (ignore job))
+    (funcall function)))
 
 (defvar *job-buffer-name* (lambda (buffer) (if buffer (princ-to-string buffer) "no buffer"))
   "A function of a buffer, or NIL, giving its name, for what the jobs report;

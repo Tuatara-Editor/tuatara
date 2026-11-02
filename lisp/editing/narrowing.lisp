@@ -41,8 +41,8 @@ the one after it when POSITION is between two, as \\[beginning-of-defun] and
 (defun narrowed-words (buffer)
   "Words for the part of BUFFER shown while it is narrowed: its lines, by
 number from 1."
-  (let ((first (tuatara.buffer:buffer-known-line-number buffer (tuatara.buffer:buffer-start buffer)))
-        (last (tuatara.buffer:buffer-known-line-number buffer (max (tuatara.buffer:buffer-start buffer)
+  (let ((first (tuatara.io:buffer-known-line-number buffer (tuatara.buffer:buffer-start buffer)))
+        (last (tuatara.io:buffer-known-line-number buffer (max (tuatara.buffer:buffer-start buffer)
                                                                    (1- (tuatara.buffer:buffer-end buffer))))))
     (if (and first last)
         (if (= first last) (format nil "line ~:d" (1+ first)) (format nil "lines ~:d to ~:d" (1+ first) (1+ last)))

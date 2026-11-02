@@ -89,7 +89,7 @@ in the background."
                                                 :cancel cancel :files files
                                                 :directories (append directories (sandbox-font-directories)))
     (unless (and (eq outcome :done) (tuatara.io:octets-at-p octets "%PDF"))
-      (refuse "~a" (or (tuatara.io:sandbox-outcome-words outcome said :label label :seconds-setting '*page-drawing-seconds*)
+      (refuse "~a" (or (sandbox-outcome-words outcome said :label label :seconds-setting '*page-drawing-seconds*)
                       (format nil "~a drew no pages" label))))
     (tuatara.io:memory-file "tuatara-pages" octets :kept nil)))
 
@@ -221,7 +221,7 @@ out."
                         (when (or (eq outcome :too-much) (and pages (> pages *pdf-text-pages*)))
                           (note ", the text of its start" :comment))
                         (setf text (pdf-pages-text all))))))
-              (t (note (format nil ", not decoded: ~a" (tuatara.io:sandbox-outcome-words outcome said :label program)) :comment))))))
+              (t (note (format nil ", not decoded: ~a" (sandbox-outcome-words outcome said :label program)) :comment))))))
       ;; the first page drawn
       (values text (reverse notes)
               (and pixels (decode-pdf-page fd 1 (first pixels) (second pixels) :info info :cancel cancel
@@ -519,7 +519,7 @@ cannot list them."
       (if (eq outcome :done)
           (magick-policy-sections (tuatara.text:lenient-string output))
           (values nil (format nil "its policies could not be listed: ~a"
-                              (tuatara.io:sandbox-outcome-words outcome said :label (first words))))))))
+                              (sandbox-outcome-words outcome said :label (first words))))))))
 
 (defun magick-policy-check (decoder)
   "The policy files besides Tuatara's own DECODER's program reads, as a list
@@ -747,7 +747,7 @@ its car turns true; NIL, NIL then. DENSITY, dots an inch, draws a drawing
              (note (if header
                        (format nil ", not shown: ~a was stopped after ~d second~:p, all a picture of ~,1f megapixels is given (*sandbox-seconds* and more for each megapixel)"
                                program seconds (/ pixels 1d6))
-                       (format nil ", not shown: ~a" (tuatara.io:sandbox-outcome-words outcome said :label program)))
+                       (format nil ", not shown: ~a" (sandbox-outcome-words outcome said :label program)))
                    :comment)
              (done nil))
             (t
@@ -761,7 +761,7 @@ its car turns true; NIL, NIL then. DENSITY, dots an inch, draws a drawing
              (note (if (and (eq outcome :failed) (cl-ppcre:scan "(?i)no decode delegate" (or said "")))
                        (format nil ", not shown: ~a here cannot read ~a pictures~@[: it was built or installed without ~a~]"
                                program format (second (assoc kind *image-format-libraries*)))
-                       (format nil ", not shown: ~a" (tuatara.io:sandbox-outcome-words outcome said :label program)))
+                       (format nil ", not shown: ~a" (sandbox-outcome-words outcome said :label program)))
                    :comment)
              (done nil)))))))))
 

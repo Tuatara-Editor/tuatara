@@ -490,7 +490,7 @@ FUNCTION), for the editor's thread to run (TAKE-IN-THREAD-MESSAGES).")
   (let ((running *running-editor*))
     (and running (not (eq (cdr running) sb-thread:*current-thread*)))))
 
-(defmethod tuatara.runtime:host-wake ((host tuatara.runtime:host))
+(defmethod tuatara.runtime:host-wake ((host editor-host))
   "Wake the running editor (WAKE-EDITOR) from another thread."
   (let ((running *running-editor*))
     (when (and running (not (eq (cdr running) sb-thread:*current-thread*)))

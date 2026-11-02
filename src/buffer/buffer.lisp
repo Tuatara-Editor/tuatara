@@ -1363,18 +1363,6 @@ the background counting, or count them now (HOST-WAIT-FOR-INDEX)."
     (unless (buffer-indexed-p buffer)
       (refuse "The lines of ~a are not counted yet." (buffer-name buffer)))))
 
-(defgeneric host-counted-line (host buffer byte)
-  (:documentation "The line, from 0, of BYTE in BUFFER while its lines are still being counted,
-when the count has passed it, else NIL."))
-
-(defun buffer-known-line-number (buffer byte)
-  "The line number, from 0, of BYTE in BUFFER when it is known without waiting:
-always once the lines are counted; while they are, where the count has passed
-\(HOST-COUNTED-LINE); else NIL."
-  (if (buffer-indexed-p buffer)
-      (buffer-line-number buffer byte)
-      (host-counted-line tuatara.runtime:*host* buffer byte)))
-
 (defvar *line-scan-limit* (* 64 1024 1024)
   "Octets from its start that a text whose lines are still being counted is
 read through for a line (BUFFER-SCAN-LINE), rather than waiting for the count.")

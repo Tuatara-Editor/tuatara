@@ -43,7 +43,7 @@ compared, or the differences are longer than *DIFFERENCES-LIMIT*."
                                 :directories (remove-duplicates (mapcar #'seen (remove "/dev/null" (list old new) :test #'equal))
                                                                 :test #'string=))
       (unless (eq outcome :done)
-        (refuse "~a" (tuatara.io:sandbox-outcome-words outcome said :label "diff")))
+        (refuse "~a" (sandbox-outcome-words outcome said :label "diff")))
       (tuatara.text:octets->rope (coerce output 'tuatara.text:octets)))))
 
 (defstruct (differences-job (:include tuatara.runtime:job) (:constructor make-differences-job (buffer old new))

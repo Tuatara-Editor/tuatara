@@ -16,14 +16,14 @@ modal mode line makes nothing while it stays the same.")
     (let* ((window (tuatara.command:editor-window editor))
            (frame (tuatara.defaults::line-numbers-prepare editor window nil))
            (calls 0))
-      (sb-int:encapsulate 'tuatara.buffer:buffer-known-line-number 'counted
+      (sb-int:encapsulate 'tuatara.io:buffer-known-line-number 'counted
                           (lambda (function &rest arguments) (incf calls) (apply function arguments)))
       (unwind-protect
            (progn
              (is equal '("2" "3" "3") (loop for line in '(0 2 5)
                                             collect (tuatara.defaults::line-numbers-cell editor window nil line frame)))
              (dotimes (line 100) (tuatara.defaults::line-numbers-cell editor window nil line frame)))
-        (sb-int:unencapsulate 'tuatara.buffer:buffer-known-line-number 'counted))
+        (sb-int:unencapsulate 'tuatara.io:buffer-known-line-number 'counted))
       (is = 0 calls))))
 
 (define-test (drawn-once line-numbers-counted-on)
@@ -39,14 +39,14 @@ modal mode line makes nothing while it stays the same.")
                                      (tuatara.buffer:buffer-line-end b (tuatara.buffer:buffer-goto-line b 6)))
         (setf (tuatara.display:window-start window) 0)
         (tuatara.display:window-layout window)
-        (sb-int:encapsulate 'tuatara.buffer:buffer-known-line-number 'counted
+        (sb-int:encapsulate 'tuatara.io:buffer-known-line-number 'counted
                             (lambda (function &rest arguments) (incf calls) (apply function arguments)))
         (unwind-protect
              (let ((cells (tuatara.command::gutter-cells editor window (tuatara.display:window-rows window))))
                (is equal '("1" "2" "3" "8" "9" "10")
                    (loop for row in cells repeat 6
                          collect (string-trim " " (car (first row))))))
-          (sb-int:unencapsulate 'tuatara.buffer:buffer-known-line-number 'counted))
+          (sb-int:unencapsulate 'tuatara.io:buffer-known-line-number 'counted))
         ;; the first row's, and the line point is on
         (true (<= calls 2) "~d line numbers looked up for a frame" calls)))))
 

@@ -28,7 +28,7 @@ them to be moved to where their text went (MOVED-COLOURS).")
   "The most edits of one change that are passed to the tree one by one; after a
 change with more, the text is parsed afresh.")
 
-(defgeneric host-syntax-fault (host syntax)
+(defgeneric host-say-syntax-fault (host syntax)
   (:documentation "Say, on the editor's thread, that a grammar's own code failed while reading
 SYNTAX's text.")
   (:method ((host tuatara.runtime:host) syntax)
@@ -45,7 +45,7 @@ for, such as binary data. NIL for no limit.")
   "The seconds a parse may take for each megabyte of text, on top of
 *SYNTAX-TIME-LIMIT*.")
 
-(defgeneric host-syntax-slow (host syntax)
+(defgeneric host-say-syntax-slow (host syntax)
   (:documentation "Say, on the editor's thread, that a parse of SYNTAX's text took longer than
 *SYNTAX-TIME-LIMIT*, or more memory than *SYNTAX-MEMORY-LIMIT*, and was given
 up.")
@@ -563,7 +563,7 @@ another parse if the tree is not current."
                (setf (syntax-broken syntax) (parse-job-slow job))
                (tuatara.runtime:ignoring-errors-reported ("saying parsing ~a is given up"
                                                           (tuatara.buffer:buffer-name (syntax-buffer syntax)))
-                 (host-syntax-slow tuatara.runtime:*host* syntax)))
+                 (host-say-syntax-slow tuatara.runtime:*host* syntax)))
               ((not (parse-job-obsolete job))
                ;; not stopped on purpose: the text could not be read
                (setf (syntax-broken syntax) t)))))
@@ -604,7 +604,7 @@ helper was ended for room, when it is next shown."
 while reading it, FAULT saying how, and for all text once it has gone wrong
 on several (GRAMMAR-WENT-WRONG): SYNTAX stops parsing, keeping the tree it
 has; its parser is deleted when the grammar only gave it a value it cannot
-have (a GRAMMAR-FAILURE); and HOST-SYNTAX-FAULT says so."
+have (a GRAMMAR-FAILURE); and HOST-SAY-SYNTAX-FAULT says so."
   (when (typep fault 'grammar-failure)
     (delete-parser (syntax-parser syntax)))
   (grammar-went-wrong (syntax-grammar syntax) (syntax-buffer syntax) fault)
@@ -612,7 +612,7 @@ have (a GRAMMAR-FAILURE); and HOST-SYNTAX-FAULT says so."
         (syntax-parser syntax) nil)
   (tuatara.runtime:ignoring-errors-reported ("saying the grammar failed on ~a"
                                              (tuatara.buffer:buffer-name (syntax-buffer syntax)))
-    (host-syntax-fault tuatara.runtime:*host* syntax)))
+    (host-say-syntax-fault tuatara.runtime:*host* syntax)))
 
 (defun parse-under-way-p (syntax &optional (seconds 0))
   "True when a parse of SYNTAX's text is under way, after waiting at most

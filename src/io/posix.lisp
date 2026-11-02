@@ -1338,7 +1338,7 @@ as it has them)."
     (when why
       (error 'writing-refused :operation operation :path (native path) :reason why))))
 
-(defgeneric host-writing-told (host words)
+(defgeneric host-say-writing (host words)
   (:documentation "Say WORDS, something done in writing a file that you should know of (a
 file's other names left as they were); called from any thread (TELL-WRITING).")
   (:method ((host tuatara.runtime:host) words)
@@ -1346,9 +1346,9 @@ file's other names left as they were); called from any thread (TELL-WRITING).")
     nil))
 
 (defun tell-writing (words)
-  "Say WORDS of a file written (HOST-WRITING-TOLD)."
+  "Say WORDS of a file written (HOST-SAY-WRITING)."
   (tuatara.runtime:ignoring-errors-reported ("telling of a file written")
-    (host-writing-told tuatara.runtime:*host* words)))
+    (host-say-writing tuatara.runtime:*host* words)))
 
 (defun fd-real-path (fd)
   "Where the file or folder open as file descriptor (FD) really is, as a

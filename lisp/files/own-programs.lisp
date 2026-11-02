@@ -159,7 +159,7 @@ says it, but for a program that failed or gave no report, all it said
 the run went, SECONDS-SETTING the setting's symbol holding its seconds."
   (case outcome
     ((:unavailable :timeout :cancelled :too-much)
-     (tuatara.io:sandbox-outcome-words outcome said :label label :seconds-setting seconds-setting))
+     (sandbox-outcome-words outcome said :label label :seconds-setting seconds-setting))
     (t (copies-original-names (string-trim '(#\Space #\Newline)
                                            (if (plusp (length said)) said (format nil "~a ended without a report" label)))
                               names))))

@@ -109,7 +109,7 @@ it has something new to show; NIL without an editor."
   (let ((editor *editor*))
     (and editor (lambda () (wake-editor editor)))))
 
-(defmethod tuatara.runtime:host-job-started ((host tuatara.runtime:host) job)
+(defmethod tuatara.runtime:host-job-started ((host editor-host) job)
   "Tie JOB, starting now, to the editor running: its thread wakes the editor
 \(EDITOR-JOB-WAKER), unless it has a way of its own, and what it says is shown
 in the frame it is begun in (THREAD-FRAME)."
@@ -119,7 +119,7 @@ in the frame it is begun in (THREAD-FRAME)."
         (setf (tuatara.runtime:job-wake job) (editor-job-waker)))
       (setf (tuatara.runtime:job-frame job) (editor-frame editor)))))
 
-(defmethod tuatara.runtime:host-take-in-job ((host tuatara.runtime:host) job function)
+(defmethod tuatara.runtime:host-take-in-job ((host editor-host) job function)
   "Call FUNCTION, JOB's taking in, with the frame JOB was begun in the one
 worked in while it is open, else the frame worked in, so that what the taking
 in says shows there."

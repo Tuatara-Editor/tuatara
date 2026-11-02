@@ -80,7 +80,7 @@ does not end well (TAR-FAILURE-WORDS)."
                                               :cancel cancel :directories directories :writable writable :files files
                                               :environment (tar-environment))
     (unless (eq outcome :done)
-      (refuse "~a" (tuatara.io:sandbox-outcome-words outcome (tar-failure-words said) :label "tar"
+      (refuse "~a" (sandbox-outcome-words outcome (tar-failure-words said) :label "tar"
                                                     :seconds-setting '*archive-seconds*)))
     (and output-limit (tuatara.text:octets-string output))))
 

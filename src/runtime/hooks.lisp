@@ -24,7 +24,10 @@
 
 (defgeneric host-say-hook-failure (host text)
   (:documentation "Say TEXT, that a hook function failed, where it is seen (the editor's echo
-area)."))
+area); without a command loop, it is in the debug log alone.")
+  (:method ((host host) text)
+    (declare (ignore text))
+    nil))
 
 (defvar *hook-failures-said* t
   "True for a hook function's failure to be said where it is seen

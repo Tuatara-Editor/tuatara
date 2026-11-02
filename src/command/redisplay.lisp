@@ -72,7 +72,7 @@ fold hiding more is looked past.")
                                        (tuatara.runtime:call-hook-function (getf p :prepare) editor window rows))))
            ;; not waited for while the lines are counted: known where the count has passed
            (line (and (plusp (length rows))
-                      (tuatara.buffer:buffer-known-line-number buffer (tuatara.display:row-start (aref rows 0))))))
+                      (tuatara.io:buffer-known-line-number buffer (tuatara.display:row-start (aref rows 0))))))
       (loop for row across rows
             for index from 0
             collect (let ((row-line (if (tuatara.display:row-continuation-p row) nil line)))
@@ -104,7 +104,7 @@ fold hiding more is looked past.")
                             (setf line (if (and (tuatara.buffer:buffer-indexed-p buffer)
                                                 (<= 0 (- to from) *gutter-count-reach*))
                                            (+ line (tuatara.text:rope-count-newlines (tuatara.buffer:buffer-text buffer) from to))
-                                           (or (tuatara.buffer:buffer-known-line-number buffer to)
+                                           (or (tuatara.io:buffer-known-line-number buffer to)
                                                (1+ line))))))))))))
 
 (defvar *syntax-highlight-functions* '()
@@ -400,7 +400,7 @@ faces of their own, each (START END FACE)."
          (after (format nil "  L~:[…~;~:*~:d~] C~:[…~;~:*~:d~]~@[  ~a~]"
                         ;; not waited for: while a large file's lines are counted, the line
                         ;; where the count has passed it, else L…
-                        (let ((line (tuatara.buffer:buffer-known-line-number buffer point)))
+                        (let ((line (tuatara.io:buffer-known-line-number buffer point)))
                           (and line (1+ line)))
                         ;; on a line too long to read back over while its lines are counted, C…
                         (tuatara.buffer:buffer-column buffer point :most tuatara.display:*screen-column-reach*)
@@ -953,11 +953,27 @@ match."
                         collect (list (aref moved (min start (length text))) (aref moved (min end (length text))) face))))
         (values text spans))))
 
-(defmethod tuatara.io:host-said-shown ((host tuatara.runtime:host) line)
-  "LINE with its controls written out (ESCAPE-CONTROLS)."
-  (escape-controls line))
+(defun sandbox-outcome-words (outcome said &key (label "the program")
+                                                   (seconds-setting 'tuatara-user:*sandbox-seconds*))
+  "Why a program run shut in (SANDBOX-RUN) gave nothing, as a sentence
+beginning with LABEL, from how it went, OUTCOME, and what it SAID, as
+SANDBOX-RUN gives them: there is no sandbox here, and why; it was stopped
+after the seconds SECONDS-SETTING (a setting's symbol) holds, or by you; it
+printed more than it may; or it failed, with the first line of what it said.
+NIL when OUTCOME is :DONE."
+  (case outcome
+    (:done nil)
+    (:unavailable (format nil "~a runs only shut in the sandbox, and there is none here: ~a" label said))
+    (:timeout (format nil "~a was stopped after ~d seconds (~(~a~))"
+                      label (symbol-value seconds-setting) seconds-setting))
+    (:cancelled (format nil "~a was stopped" label))
+    (:too-much (format nil "~a printed more than it may" label))
+    (t (let ((line (string-trim " " (or (first (uiop:split-string (or said "") :separator '(#\Newline))) ""))))
+         (format nil "~a failed~@[: ~a~]" label
+                 (and (plusp (length line))
+                      (escape-controls (subseq line 0 (min 300 (length line))))))))))
 
-(defmethod tuatara.runtime:host-say-hook-failure ((host tuatara.runtime:host) text)
+(defmethod tuatara.runtime:host-say-hook-failure ((host editor-host) text)
   "Say TEXT in the echo area and *Messages*, its controls written out."
   (message "~a" (escape-controls text)))
 

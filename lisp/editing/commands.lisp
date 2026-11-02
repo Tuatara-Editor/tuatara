@@ -64,7 +64,7 @@ BUFFER's narrowing is lifted for a change, the jump has it stay widened."
             (tuatara.buffer:lifted-narrowing-outside-p buffer byte))
     (tuatara.buffer:widen-buffer buffer)
     (tuatara.buffer:let-go-of-lifted-narrowing buffer)
-    (let ((line (tuatara.buffer:buffer-known-line-number buffer byte)))
+    (let ((line (tuatara.io:buffer-known-line-number buffer byte)))
       ;; seen whatever the command says after it
       (say-with-command-messages "Widened ~a to show line ~:[…~;~:*~:d~]" (tuatara.buffer:buffer-name buffer) (and line (1+ line))))))
 

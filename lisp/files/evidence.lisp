@@ -760,7 +760,7 @@ echo area and *Messages*, the first time only."
 the defaults are loaded."
   (evidence-writing-refusal path :dirfd dirfd :fd fd))
 
-(defmethod tuatara.io:host-writing-told ((host defaults-host) words)
+(defmethod tuatara.io:host-say-writing ((host defaults-host) words)
   "Say WORDS of a file written, the first time only (SAY-WRITING-ONCE)."
   (say-writing-once words))
 
