@@ -276,6 +276,42 @@ integers (SHORT, LONG) or of fractions (N . D) (RATIONAL), or octets."
     (true (search "- Saved :: 1 time" note))
     (false (search "2 times" note))))
 
+(defun pdf-with-table (objects &key (trailer "/Root 1 0 R /Info 6 0 R") (before "") (after ""))
+  "A PDF of OBJECTS, each (NUMBER . BODY), with BEFORE (text) after its
+header, a cross-reference table, TRAILER's entries, startxref and %%EOF, and
+AFTER (text) after that."
+  (let ((out (make-string-output-stream)) (at 0) (offsets '()))
+    (flet ((put (text) (write-string text out) (incf at (length text))))
+      (put (format nil "%PDF-1.7~%~a" before))
+      (loop for (number . body) in objects
+            do (push (cons number at) offsets)
+               (put (format nil "~d 0 obj~%~a~%endobj~%" number body)))
+      (let ((xref at) (size (1+ (reduce #'max objects :key #'car))))
+        (put (format nil "xref~%0 ~d~%0000000000 65535 f ~%" size))
+        (loop for k from 1 below size
+              do (put (let ((offset (cdr (assoc k offsets))))
+                        (if offset (format nil "~10,'0d 00000 n ~%" offset) (format nil "0000000000 65535 f ~%")))))
+        (put (format nil "trailer << /Size ~d ~a >>~%startxref~%~d~%%%EOF~%~a" size trailer xref after))))
+    (octets-of (get-output-stream-string out))))
+
+(define-test (metadata pdf-unconfirmed-stream-keeps-saves)
+  ;; a stream whose end is not confirmed hides no save: the %%EOF in its span ends one, and is named
+  (let* ((first-save (pdf-with-table '((1 . "<< /Type /Catalog >>")
+                                       (4 . "<< /Length 5 >>
+stream
+hello
+         
+endobj"))))
+         (octets (octets-of first-save "4 0 obj << /Length 3 >> stream" 10 "new" 10 "endstream endobj" 10 "%%EOF" 10)))
+    (multiple-value-bind (lines doubtful) (tuatara:pdf-eof-lines octets)
+      (is = 2 (length lines))
+      (is = 1 (length doubtful))
+      (is = 4 (cdr (first doubtful))))
+    (is = 2 (count 4 (let ((numbers '()))
+                       (tuatara:map-pdf-written-objects (lambda (o) (push (tuatara:pdf-indirect-get o :number) numbers) nil)
+                                                        octets)
+                       numbers)))))
+
 (define-test (metadata pdf-object-stream-unplaced)
   ;; an object stream that does not say where its objects are holds none: the information is read as far as it goes
   (let* ((octets (octets-of "%PDF-1.7" 10 "3 0 obj << /Type /ObjStm /N 2 /Length 5 >> stream" 10 "10 0 " 10
