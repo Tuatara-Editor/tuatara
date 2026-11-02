@@ -155,6 +155,15 @@ Full compiler warnings fail the suite. Build once with an empty cache too
 that defines it is loaded warns only then. A test that changes a file works on files
 it made itself, in a directory of its own.
 
+=tools/bidi-conformance.sh= runs the order right-to-left text is shown in
+(=src/display/bidi.lisp=) against Unicode's own conformance files for the
+version of the character data SBCL carries: =BidiTest.txt=,
+=BidiCharacterTest.txt= and =BidiBrackets.txt=, downloaded into
+=build/bidi-conformance/= and checked against their SHA-256 (they are under the
+Unicode License and not kept here). It prints how many cases of each pass;
+every one should. Run it when that file changes, or when SBCL's Unicode
+version does (then with the new version's files and hashes).
+
 ** The stable surface
 
 =test/api/stable-surface.sexp= pins what packages and init files are written
