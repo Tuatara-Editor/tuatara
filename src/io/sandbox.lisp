@@ -190,10 +190,22 @@ them. The core's own host gives the editor's.")
   (:method ((host tuatara.runtime:host))
     (sb-ext:posix-environ)))
 
+(defvar *own-variables* '()
+  "The names of the environment variables Tuatara set for itself alone, as
+the window's GSK_RENDERER, kept for as long as it runs: no program it starts
+is given them.")
+
 (defun program-environment ()
   "The variables a program started now is given, as NAME=VALUE strings,
-when it is given none of its own (HOST-PROGRAM-ENVIRONMENT)."
-  (host-program-environment tuatara.runtime:*host*))
+when it is given none of its own (HOST-PROGRAM-ENVIRONMENT), but those
+Tuatara set for itself (*OWN-VARIABLES*)."
+  (let ((environment (host-program-environment tuatara.runtime:*host*)))
+    (if *own-variables*
+        (remove-if (lambda (setting)
+                     (let ((equals (position #\= setting)))
+                       (and equals (member (subseq setting 0 equals) *own-variables* :test #'string=))))
+                   environment)
+        environment)))
 
 (defun program-variable (name)
   "The value of the environment variable NAME as a program started now has

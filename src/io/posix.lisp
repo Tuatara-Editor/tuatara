@@ -1922,16 +1922,23 @@ UTF-8. Freed with FREE-ARGUMENT-VECTOR."
         do (sb-alien:free-alien string))
   (sb-alien:free-alien argv))
 
-(defun run-program-again (arguments)
+(defun run-program-again (arguments &key (environment nil environment-p))
   "Run this program again in place of this process: *SAVED-PROGRAM* with
-ARGUMENTS, strings, after its name, in the environment as it is now; names
-that are not UTF-8 among them are handed on as the octets they were read
-from. Returns only when that fails, or at once when Tuatara runs from the
-sources."
+ARGUMENTS, strings, after its name, in ENVIRONMENT, NAME=VALUE strings, or
+the environment as it is now; names that are not UTF-8 among them are handed
+on as the octets they were read from. Returns only when that fails, or at
+once when Tuatara runs from the sources."
   (unless *saved-program* (return-from run-program-again nil))
-  (let ((argv (argument-vector (cons (first sb-ext:*posix-argv*) arguments))))
+  (let ((argv (argument-vector (cons (first sb-ext:*posix-argv*) arguments)))
+        (envp (and environment-p (argument-vector environment))))
     (unwind-protect
-         (sb-alien:alien-funcall
-          (sb-alien:extern-alien "execv" (function sb-alien:int sb-alien:c-string (* (* sb-alien:char))))
-          *saved-program* argv)
+         (if envp
+             (sb-alien:alien-funcall
+              (sb-alien:extern-alien "execve" (function sb-alien:int sb-alien:c-string (* (* sb-alien:char))
+                                                        (* (* sb-alien:char))))
+              *saved-program* argv envp)
+             (sb-alien:alien-funcall
+              (sb-alien:extern-alien "execv" (function sb-alien:int sb-alien:c-string (* (* sb-alien:char))))
+              *saved-program* argv))
+      (when envp (free-argument-vector envp))
       (free-argument-vector argv))))

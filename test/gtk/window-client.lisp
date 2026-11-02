@@ -5,7 +5,8 @@
 ;;;; NAME RUNTIME FILE DROPPED PICTURE OUT. Starts tuatara --client=NAME --gui
 ;;;; FILE from these sources, the daemon's sockets in the folder RUNTIME, then
 ;;;; types in the window, pastes what another program put on the clipboard,
-;;;; makes the font a step larger, opens another window with C-x 5 2, types
+;;;; makes the font a step larger, opens another window with C-x 5 2 (both
+;;;; drawn by the renderer the daemon's settings choose), types
 ;;;; there and closes it with its close button's signal, drops the file
 ;;;; DROPPED and then the picture PICTURE on the first, and ends the client
 ;;;; with C-x C-c; it writes to OUT what it saw at each step, and the exit code
@@ -104,6 +105,11 @@
         (when second
           (see :another-shows (and (wait-until (lambda () (search "hello" (shown-text second)))) t))
           (see :another-font-steps (font-steps second))
+          ;; both windows drawn as the daemon's init file asks, GSK_RENDERER kept from the programs started
+          (see :renderers (list (tuatara.frontend.gtk::gtk-drawn-by first) (tuatara.frontend.gtk::gtk-drawn-by second)))
+          (see :renderer-kept (uiop:getenv "GSK_RENDERER"))
+          (see :renderer-given (some (lambda (setting) (uiop:string-prefix-p "GSK_RENDERER=" setting))
+                                     (tuatara.io:program-environment)))
           (type-keys second "i z z <escape>")
           (see :typed-in-another (and (wait-until (lambda () (search "zz" (shown-text first)))) t))
           (setf *to-close* second)

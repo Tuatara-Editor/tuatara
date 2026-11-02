@@ -312,24 +312,22 @@ tuatara, as the desktop's launcher does (tools/install-desktop.sh)."
   (gtk-window-set-default-icon-name "tuatara"))
 
 (defun choose-renderer ()
-  "Before the window opens: have GTK draw it as *GUI-RENDERER* asks, or as
-the start before this one decided (FOLLOW-RENDERER-SETTING), unless
-GSK_RENDERER was set before Tuatara started."
+  "Before GTK starts, once: have it draw every window of this program as
+*GUI-RENDERER* asks, or as the start before this one decided
+\(FOLLOW-RENDERER-SETTING), unless GSK_RENDERER was set before Tuatara
+started. The GSK_RENDERER set here stays for as long as Tuatara runs, GTK
+reading it as each window opens; the programs Tuatara starts are not given
+it (TUATARA.IO:*OWN-VARIABLES*)."
   (cond ((uiop:getenv "TUATARA_RENDERER_CHOSEN")
+         (sb-posix:unsetenv "TUATARA_RENDERER_CHOSEN")
          (setf *window-renderer* (uiop:getenv "GSK_RENDERER")))
         ((uiop:getenv "GSK_RENDERER")
          (setf *window-renderer* :environment))
         (t
          (setf *window-renderer* (renderer-name *gui-renderer*))
-         (when *window-renderer* (sb-posix:setenv "GSK_RENDERER" *window-renderer* 1)))))
-
-(defun renderer-chosen ()
-  "Once the window has its renderer: GSK_RENDERER taken away again, unless it
-was set before Tuatara started, so that the programs Tuatara starts draw as
-they would."
-  (sb-posix:unsetenv "TUATARA_RENDERER_CHOSEN")
+         (when *window-renderer* (sb-posix:setenv "GSK_RENDERER" *window-renderer* 1))))
   (unless (eq *window-renderer* :environment)
-    (sb-posix:unsetenv "GSK_RENDERER")))
+    (pushnew "GSK_RENDERER" tuatara.io:*own-variables* :test #'string=)))
 
 (defun follow-renderer-setting (f)
   "When *GUI-RENDERER* asks for another way of drawing than F's window opened
@@ -346,18 +344,18 @@ the sources, which cannot be started again, it is taken from the next start."
                                       (case *gui-renderer* (:gl "with GL") (:vulkan "with Vulkan")
                                         (:cairo "by the processor") (t "as GTK chooses"))))
             (t
-             (sb-posix:setenv "TUATARA_RENDERER_CHOSEN" "1" 1)
-             (if wanted
-                 (sb-posix:setenv "GSK_RENDERER" wanted 1)
-                 (sb-posix:unsetenv "GSK_RENDERER"))
+             ;; started again in an environment of its own: this one, which GTK's thread reads, left as it is;
              ;; the heap this start has, decided again by no one
-             (sb-posix:setenv "TUATARA_HEAP_DECIDED" "1" 1)
              (tuatara.io:run-program-again
               (list* "--dynamic-space-size" (format nil "~dMB" (floor (sb-ext:dynamic-space-size) (* 1024 1024)))
-                     (rest sb-ext:*posix-argv*)))
-             ;; it could not be started again: from the next start
-             (sb-posix:unsetenv "TUATARA_RENDERER_CHOSEN")
-             (sb-posix:unsetenv "GSK_RENDERER")))))
+                     (rest sb-ext:*posix-argv*))
+              :environment (append (list "TUATARA_RENDERER_CHOSEN=1" "TUATARA_HEAP_DECIDED=1")
+                                   (and wanted (list (format nil "GSK_RENDERER=~a" wanted)))
+                                   (remove-if (lambda (setting)
+                                                (some (lambda (name) (uiop:string-prefix-p name setting))
+                                                      '("GSK_RENDERER=" "TUATARA_RENDERER_CHOSEN="
+                                                        "TUATARA_HEAP_DECIDED=")))
+                                              (sb-ext:posix-environ))))))))
   (setf (gtk-renderer-checked f) t))
 
 (defun measure-clock ()
@@ -524,7 +522,6 @@ loaded."
     (open-window f)
     (gtk-widget-realize (gtk-window f))
     (setf (gtk-drawn-by f) (window-renderer-name (gtk-window f)))
-    (renderer-chosen)
     f))
 
 (defun run-in-window (files setup &key start)

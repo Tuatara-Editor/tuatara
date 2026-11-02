@@ -696,7 +696,8 @@ ended have: the frames shown, the one with no screen left out."
 
 (define-test (daemon window-client-in-windows)
   ;; tuatara --client --gui in real windows on a display of their own, the daemon in this process: typing,
-  ;; a paste from the desktop's clipboard, the font a step larger in one window alone, C-x 5 2 and a close
+  ;; a paste from the desktop's clipboard, the font a step larger in one window alone, C-x 5 2 (both
+  ;; windows drawn by the renderer the daemon's settings choose) and a close
   ;; button, a file and a picture dropped, and C-x C-c ending the client with 0, its buffers left in the daemon
   (if (null (tuatara.io:find-program "gtk4-broadwayd"))
       (skip "gtk4-broadwayd is not installed here" (true nil))
@@ -713,8 +714,13 @@ ended have: the frames shown, the one with no screen left out."
             (tuatara.frontend.gtk::cairo-destroy cr)
             (tuatara.frontend.gtk::cairo-surface-destroy surface))
           (with-test-daemon (name)
-            (let ((seen (run-on-broadway dir "window-client.lisp" name tuatara.defaults::*runtime-directory*
-                                         file dropped picture :out)))
+            (let ((seen (let ((renderer tuatara-user:*gui-renderer*))
+                          ;; the window client's renderer as the daemon's init file chose it
+                          (setf tuatara-user:*gui-renderer* :cairo)
+                          (unwind-protect (run-on-broadway dir "window-client.lisp" name
+                                                           tuatara.defaults::*runtime-directory* file dropped picture
+                                                           :out)
+                            (setf tuatara-user:*gui-renderer* renderer)))))
               (true seen "the client wrote nothing")
               (false (getf seen :error) "~a" (getf seen :error))
               (false (getf seen :timed-out))
@@ -722,6 +728,9 @@ ended have: the frames shown, the one with no screen left out."
                               :typed-in-another :closed-another :dropped :picture))
                 (true (getf seen step) "~(~a~) in ~s" step seen))
               (is eql 0 (getf seen :another-font-steps) "the other window's font as it started")
+              (is equal '("GskCairoRenderer" "GskCairoRenderer") (getf seen :renderers))
+              (is equal "cairo" (getf seen :renderer-kept))
+              (false (getf seen :renderer-given) "GSK_RENDERER given to a program started")
               (is eql 0 (getf seen :exit-code))
               (is eql 0 (getf seen :windows-left))
               (is = 0 (live-client-frames))
