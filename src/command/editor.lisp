@@ -218,7 +218,7 @@ frame being worked in; an error waking it is ignored."
 (defvar *display-generation* 0
   "A count moved on whenever what every frame may show changes beside the text
 of its buffers: work taken in from the background, a way of showing text
-switched. A frame not worked in is painted again when it moved since it was
+switched, a setting changed (SETTINGS-MOVED-P). A frame not worked in is painted again when it moved since it was
 \(PAINT-OTHER-FRAMES).")
 
 (defvar *background-work* nil

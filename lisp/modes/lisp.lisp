@@ -571,10 +571,7 @@ from a list over the prompt."
          (text (read-string "Eval: " :complete (lambda () (lisp-complete-in-minibuffer package)))))
     (if (zerop (length (string-trim '(#\Space #\Tab) text)))
         (message "Nothing to evaluate")
-        (progn
-          (evaluate-and-report b text :insert-at insert-at :space nil :typed t)
-          ;; a setting changed may change what every frame shows
-          (incf *display-generation*)))))
+        (evaluate-and-report b text :insert-at insert-at :space nil :typed t))))
 
 (defparameter *buffer-evaluating-commands*
   '(eval-print-last-expression eval-last-expression eval-top-level-form eval-region eval-buffer

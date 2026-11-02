@@ -142,14 +142,34 @@ Nothing is made to find out."
               thereis (or (not (eq (tuatara.display:window-buffer window) buffer))
                           (not (eq (tuatara.buffer:buffer-version buffer) version)))))))
 
+(defvar *settings-seen* (make-hash-table :test 'eq)
+  "The value each setting had when SETTINGS-MOVED-P last looked, by its name.")
+
+(defun settings-moved-p ()
+  "True when a setting (a variable TUATARA-USER exports, a package's too) has
+another value than when this was last asked, however it was set: the init
+file, \\[eval-expression], a command. Nothing is made while none moved."
+  (let ((seen *settings-seen*) (moved nil))
+    (do-external-symbols (symbol :tuatara-user)
+      (when (and (boundp symbol) (not (constantp symbol)))
+        (let ((value (symbol-value symbol)))
+          (multiple-value-bind (was there) (gethash symbol seen)
+            (unless (and there (eql was value))
+              (setf (gethash symbol seen) value
+                    moved t))))))
+    moved))
+
 (defun paint-other-frames (editor)
   "Paint each frame of EDITOR other than the one worked in whose text may have
-changed since it was painted (FRAME-SHOWN-CHANGED-P), at most every
+changed since it was painted (FRAME-SHOWN-CHANGED-P), a setting changed
+moving the display generation on (SETTINGS-MOVED-P), at most every
 *FRAME-AT-LEAST-EVERY* milliseconds and never while keys wait: returns NIL,
 or the seconds after which it wants to be asked again, a frame having waited
 for its turn. With one frame, nothing is done."
   (let ((frames (editor-frames editor)))
     (when (rest frames)
+      (when (settings-moved-p)
+        (incf *display-generation*))
       (let ((current (editor-frame editor)))
         (when (and (some (lambda (frame) (and (not (eq frame current)) (frame-shown-changed-p frame))) frames)
                    (not (tuatara.frontend:frontend-input-pending-p (frame-frontend current))))

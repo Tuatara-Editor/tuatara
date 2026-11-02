@@ -473,6 +473,32 @@ first frontend."
         (true (> (tuatara.frontend.fake:fake-frames (tuatara.command::frame-frontend second)) (first counts)))
         (true (tuatara.frontend.fake:fake-frame-showing (tuatara.command::frame-frontend second) "tieke"))))))
 
+(define-test (frames others-painted-when-a-setting-changes)
+  ;; a setting changed by a command, however it sets it, paints a frame not worked in again,
+  ;; though no buffer it shows changed
+  (let ((tuatara.command::*frame-at-least-every* 0) (counts '()) (was tuatara-user:*debug-on-error*))
+    (flet ((note-paints (editor)
+             (push (tuatara.frontend.fake:fake-frames
+                    (tuatara.command::frame-frontend (second (tuatara.command:editor-frames editor))))
+                   counts)))
+      (unwind-protect
+           (with-frames (editor (first second))
+               (list '(1 "C-x b k i w i C-j")
+                     '(0 "i")
+                     (list 0 (lambda ()
+                               (push #'note-paints
+                                     (tuatara.command:editor-post-command-functions tuatara.command:*editor*))))
+                     '(0 "a b")
+                     '(0 "M-x t o g g l e - d e b u g - o n - e r r o r RET")
+                     '(0 "c"))
+             (is eq (not was) (not (not tuatara-user:*debug-on-error*)))
+             ;; noted after a, b, the toggle and c: no paint of the second frame until the toggle;
+             ;; after c, it had been painted for the setting
+             (destructuring-bind (after-c . before) counts
+               (is = 1 (length (remove-duplicates before)) "~s" counts)
+               (true (> after-c (first before)) "~s" counts)))
+        (setf tuatara-user:*debug-on-error* was)))))
+
 (define-test (frames find-file-in-another)
   ;; C-x 5 f, C-x 5 b and C-x 5 d open a file, a buffer and a folder in a new frame, worked in;
   ;; the frame they were asked in shows what it showed
