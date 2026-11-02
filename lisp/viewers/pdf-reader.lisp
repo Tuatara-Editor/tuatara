@@ -443,9 +443,12 @@ or whose entries name the file's own objects where the file writes them
 \(PDF-SECTIONS-WITHIN). Two more values: those kept though they lie within
 a stream whose end is not confirmed, each (EOF . NUMBER), NUMBER the
 stream's object, a stream that may hide a save or a save cut into a
-stream; and the streams whose confirmed end such a section gives the lie
-to, the section or the save it ends lying within them, each (OFFSET .
-NUMBER)."
+stream; the streams whose confirmed end such a section gives the lie to,
+the section or the save it ends lying within them, each (OFFSET . NUMBER);
+and the other confirmed streams, no file kept within the PDF, whose data
+holds a %%EOF or object headers (PDF-HOLDS-SAVE-SIGNS-P), each (NUMBER .
+EOF), EOF the first %%EOF in its data or NIL: a save may be hidden in
+them, though nothing of the file names it."
   (let* ((mark (load-time-value (tuatara.text:string-octets "%%EOF")))
          (eofs (loop for at = (tuatara.io:octets-search mark octets)
                        then (tuatara.io:octets-search mark octets :start (+ at 5))
@@ -473,46 +476,85 @@ NUMBER)."
             (when confirmed (lie at confirmed))
             (let ((stream (pdf-stream-holding unconfirmed at nil)))
               (when stream (push (cons at (pdf-indirect-number stream)) doubtful)))))))
-    (values (nreverse lines) (nreverse doubtful) (nreverse lying))))
+    (values (nreverse lines) (nreverse doubtful) (nreverse lying)
+            (loop for object across objects
+                  for signs = (and (pdf-indirect-confirmed object)
+                                   (not (find (pdf-indirect-number object) lying :key #'cdr))
+                                   (pdf-holds-save-signs-p octets object))
+                  when signs collect (cons (pdf-indirect-number object) (and (integerp signs) signs))))))
+
+(defun pdf-attachment-p (octets stream)
+  "True when STREAM, a PDF-INDIRECT of the PDF in OCTETS, is a file kept
+within it: an /EmbeddedFile, or data beginning with %PDF-."
+  (or (equal (pdf-get (pdf-indirect-value stream) "/Type") "/EmbeddedFile")
+      (tuatara.io:octets-at-p octets "%PDF-" (pdf-indirect-stream-start stream))))
+
+(defun pdf-table-names-objects-p (octets at shift)
+  "True when the cross-reference table at AT in OCTETS lists two used
+entries at least and its entries, at most 50 read, all name objects written
+at their offsets moved by SHIFT."
+  (let ((matched 0) (strange nil))
+    (map-pdf-cross-reference-table
+     (lambda (number offset generation kind)
+       (declare (ignore generation))
+       (when (eq kind :used)
+         (let* ((place (+ offset shift))
+                (object (and (< -1 place (length octets)) (pdf-indirect-object-at octets place))))
+           (if (and object (eql (pdf-indirect-number object) number))
+               (incf matched)
+               (setf strange t))))
+       (or strange (>= matched 50)))
+     octets at)
+    (and (>= matched 2) (not strange))))
 
 (defun pdf-sections-within (octets stream)
   "The cross-reference sections of the PDF in OCTETS itself written within
 STREAM's octets (a PDF-INDIRECT): one a startxref there names at its place
 in the file (PDF-OFFSET-BASE added), or a table whose entries, at most 50
 read and two at least, all name the file's own objects where the file
-writes them. An attached PDF's sections count from its own start, so they
-are none of these. A list of their offsets."
-  (let ((start (pdf-indirect-stream-start stream)) (end (pdf-indirect-stream-end stream))
-        (base (pdf-offset-base octets)) (found '()))
+writes them. Within a file kept in the PDF (PDF-ATTACHMENT-P), whose own
+offsets count from where its data begins, a section that stands where they
+put it is that file's own, and none of these. A list of their offsets."
+  (let* ((start (pdf-indirect-stream-start stream)) (end (pdf-indirect-stream-end stream))
+         (base (pdf-offset-base octets)) (attachment (pdf-attachment-p octets stream)) (found '()))
     (flet ((within-p (at) (and (integerp at) (<= start at) (< at end))))
       (loop for at = (tuatara.io:octets-search (load-time-value (tuatara.text:string-octets "startxref")) octets
                                                :start start :end end)
               then (tuatara.io:octets-search (load-time-value (tuatara.text:string-octets "startxref")) octets
                                              :start (+ at 9) :end end)
             while at
-            do (let ((named (let ((n (pdf-integer-at octets (+ at 9) end))) (and n (+ n base)))))
-                 (when (and (within-p named) (pdf-section-at-p octets named))
-                   (pushnew named found))))
+            do (let ((n (pdf-integer-at octets (+ at 9) end)))
+                 (when (and n (within-p (+ n base)) (pdf-section-at-p octets (+ n base))
+                            (not (and attachment (pdf-section-at-p octets (+ n start)))))
+                   (pushnew (+ n base) found))))
       (loop for at = (tuatara.io:octets-search (load-time-value (tuatara.text:string-octets "xref")) octets
                                                :start start :end end)
               then (tuatara.io:octets-search (load-time-value (tuatara.text:string-octets "xref")) octets
                                              :start (+ at 4) :end end)
             while at
             do (unless (or (and (>= at 5) (tuatara.io:octets-at-p octets "start" (- at 5))) (member at found))
-                 (let ((matched 0) (strange nil))
-                   (map-pdf-cross-reference-table
-                    (lambda (number offset generation kind)
-                      (declare (ignore generation))
-                      (when (eq kind :used)
-                        (let ((object (and (< -1 offset (length octets)) (pdf-indirect-object-at octets offset))))
-                          (if (and object (eql (pdf-indirect-number object) number))
-                              (incf matched)
-                              (setf strange t))))
-                      (or strange (>= matched 50)))
-                    octets at)
-                   (when (and (>= matched 2) (not strange))
-                     (push at found))))))
+                 (when (and (pdf-table-names-objects-p octets at 0)
+                            (not (and attachment (pdf-table-names-objects-p octets at (- start base)))))
+                   (push at found)))))
     found))
+
+(defun pdf-holds-save-signs-p (octets stream)
+  "Where the data of STREAM, a PDF-INDIRECT of the PDF in OCTETS that is no
+file kept within it (PDF-ATTACHMENT-P), holds a %%EOF, or T when it holds
+an object header (N G obj) but no %%EOF; NIL when it holds neither, or is
+such a file."
+  (let ((start (pdf-indirect-stream-start stream)) (end (pdf-indirect-stream-end stream)))
+    (unless (pdf-attachment-p octets stream)
+      (or (tuatara.io:octets-search (load-time-value (tuatara.text:string-octets "%%EOF")) octets :start start :end end)
+          (loop for p = (tuatara.io:octets-search (load-time-value (tuatara.text:string-octets "obj")) octets
+                                                  :start start :end end)
+                  then (tuatara.io:octets-search (load-time-value (tuatara.text:string-octets "obj")) octets
+                                                 :start (+ p 3) :end end)
+                while p
+                thereis (let ((at (pdf-object-header-before octets p)))
+                          (and at (>= at start)
+                               (or (>= (+ p 3) end) (pdf-delimiter-p (aref octets (+ p 3))))
+                               t)))))))
 
 (defun pdf-stream-holding (objects at confirmed)
   "The object of OBJECTS (a vector of PDF-INDIRECT in the order written)

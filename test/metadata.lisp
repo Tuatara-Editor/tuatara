@@ -399,6 +399,24 @@ endobj"))))
         (false lying))
       (true (search "- Saved :: 1 time" (first (tuatara.defaults::pdf-metadata octets))) "~a" name))))
 
+(define-test (metadata pdf-attachments-and-save-signs)
+  ;; a PDF attached to itself, or its original to its later save, uncompressed: the attachment's own sections
+  ;; count from its own start, and end no save of the file
+  (loop for (name saves) in '(("self-attached.pdf" 2) ("original-attached-to-later.pdf" 3))
+        do (multiple-value-bind (lines doubtful lying signs) (tuatara:pdf-eof-lines (pdf-sample name))
+             (declare (ignore doubtful))
+             (is = saves (length lines) "~a" name)
+             (false lying "~a" name)
+             (false signs "~a" name)))
+  ;; a save written within another stream's data, nothing of the file naming it: a sign, not a save
+  (dolist (name '("save-in-stream-xref-stream.pdf" "save-in-stream-offsets.pdf" "save-in-stream-bare.pdf"))
+    (multiple-value-bind (lines doubtful lying signs) (tuatara:pdf-eof-lines (pdf-sample name))
+      (declare (ignore doubtful))
+      (is = 1 (length lines) "~a" name)
+      (false lying "~a" name)
+      (is = 4 (car (first signs)) "~a" name)
+      (true (integerp (cdr (first signs))) "~a" name))))
+
 (define-test (metadata pdf-entries-capped)
   ;; a small file listing millions of entries is read to a bound, quickly, and the note says so
   (let* ((start (get-internal-real-time))
