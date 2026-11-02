@@ -1184,7 +1184,10 @@ once it is, the text shown uncoloured meanwhile."
   (let ((own (tuatara.buffer:buffer-local buffer :syntax-helper)))
     (cond ((and own (helper-alive own) (not (buffer-text-trusted-p buffer))) own)
           ((waiting-allowed-p) (buffer-helper buffer))
-          ((buffer-text-trusted-p buffer) (shared-helper))
+          ((buffer-text-trusted-p buffer)
+           ;; one of its own started before its project was trusted: ended
+           (when own (forget-buffer-helper buffer))
+           (shared-helper))
           ((helpers-refused-p :own) (refuse-unconfined nil))
           ;; the sandbox known and no other start under way: set going now,
           ;; which takes no waiting for the program to be ready

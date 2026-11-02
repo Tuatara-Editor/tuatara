@@ -1654,6 +1654,20 @@ has, ended after."
                                           (tuatara.syntax:helper-alive helper)))
                     tuatara.syntax::**helpers**))))
 
+(define-test (syntax trusted-text-ends-its-own-helper)
+  ;; a file's project trusted after its own helper started: on the editor's own thread its text is
+  ;; given to the shared helper, and its own one ended
+  (let ((buffer (tuatara.buffer:make-buffer "*trusted-later*" :text "fn main() {}")))
+    (unwind-protect
+         (let ((own (tuatara.syntax:buffer-helper buffer)))
+           (true (tuatara.syntax:helper-alive own))
+           (let ((tuatara.syntax:*syntax-helper-shared-function* (lambda (other) (eq other buffer)))
+                 (tuatara.syntax:*must-not-wait-function* (lambda () t)))
+             (tuatara.syntax:buffer-helper-soon buffer))
+           (false (tuatara.syntax:helper-alive own))
+           (false (tuatara.buffer:buffer-local buffer :syntax-helper)))
+      (tuatara.buffer:kill-buffer buffer))))
+
 (define-test (syntax honest-helpers-not-blamed)
   ;; tests of a long captured text past what they may read do not pass, the
   ;; helper left alone; a whole text's matches taking long are slow, not a
