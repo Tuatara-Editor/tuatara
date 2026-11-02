@@ -237,7 +237,8 @@ with it in the background, is stopped and says so."
   "Do what EVENT, read by the command loop, asks of EDITOR: run the command its
 key is bound to, or the work handed on as a function (DEFER-ACTION), and the
 like. A window's close button closes its frame (delete-frame), the last one
-quitting as \\[save-buffers-kill-editor] does."
+quitting as \\[save-buffers-kill-editor] does. A frame whose screen went away
+\(its client left) is closed, never the editor: the last frame stays."
   (if (functionp event)
       ;; work handed on to run as a command of its own (DEFER-ACTION): it may ask
       (funcall event)
@@ -256,6 +257,12 @@ quitting as \\[save-buffers-kill-editor] does."
                    (let ((*dropped* event)) (run-command editor command)))))
         ;; text pasted into the terminal: put in as text, never as keys
         (:paste (let ((*pasted* event)) (run-command editor 'insert-pasted-text)))
+        (:said (message "~a" (escape-controls (tuatara.frontend:event-text event))))
+        ;; a client gone: its frame closed, and nothing else
+        (:detached (let ((frame (or (tuatara.frontend:event-frame event) (editor-frame editor))))
+                     (if (and (rest (editor-frames editor)) (member frame (editor-frames editor)))
+                         (remove-frame editor frame)
+                         (tuatara.runtime:debug-report :remote "the last frame's screen went away; the frame stays"))))
         (:key (handle-key editor (tuatara.frontend:event-key event))))))
 
 (defun running-editor ()

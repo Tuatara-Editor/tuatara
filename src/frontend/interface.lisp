@@ -105,8 +105,10 @@ and HEIGHT in cells), :drop when files were dropped on the window (FILES,
 their paths, on the cell COLUMN, ROW), :paste when text was pasted into the
 terminal Tuatara runs in (TEXT, its lines ending in newlines), to go in as
 text and never as keys, :close when the window was asked to close, :focus when
-it was given the keyboard, or :quit when the frontend can deliver nothing
-more. FRAME is the editor's frame the
+it was given the keyboard, :detached when the frame's screen went away (its
+client left), :said with TEXT, words for the echo area from the frontend
+itself, or :quit when the frontend can deliver nothing more. FRAME is the
+editor's frame the
 event happened in, where frames share one source of events; NIL for the
 frame being worked in."
   (kind :key :type keyword :read-only t)
@@ -121,7 +123,9 @@ frame being worked in."
 
 (setf (documentation 'make-event 'function) "Return an EVENT of KIND with the given KEY, WIDTH, HEIGHT, FILES, COLUMN, ROW and TEXT."
       (documentation 'event-p 'function) "True when OBJECT is an EVENT."
-      (documentation 'event-kind 'function) "The kind of EVENT: :key, :resize, :drop, :paste, :close, :focus, :quit, or :tick when a timed read found no key."
+      (documentation 'event-kind 'function)
+      "The kind of EVENT: :key, :resize, :drop, :paste, :close, :focus, :detached, :said, :quit, or :tick when a
+timed read found no key."
       (documentation 'event-key 'function) "The KEY of a :key EVENT."
       (documentation 'event-width 'function) "Width in cells of a :resize EVENT."
       (documentation 'event-height 'function) "Height in cells of a :resize EVENT."
@@ -142,34 +146,46 @@ window asked to close; not a wake, nor a change of the window's size."
 
 (defstruct (event-queue (:constructor make-event-queue ()) (:copier nil))
   "Events on their way to the editor from the threads that read them, oldest
-first."
+first, with how many wait of each frame."
   (items '()) (tail '())
+  (counts (make-hash-table :test 'eq))
   (lock (sb-thread:make-mutex :name "events"))
-  (waiting (sb-thread:make-waitqueue :name "events")))
+  (waiting (sb-thread:make-waitqueue :name "events"))
+  (taken (sb-thread:make-waitqueue :name "events taken")))
 
 (setf (documentation 'make-event-queue 'function) "An empty EVENT-QUEUE."
       (documentation 'event-queue-p 'function) "True when OBJECT is an EVENT-QUEUE."
       (documentation 'event-queue-items 'function) "The events in QUEUE, oldest first."
       (documentation 'event-queue-tail 'function) "The last cons of QUEUE's items."
       (documentation 'event-queue-lock 'function) "The mutex guarding QUEUE."
-      (documentation 'event-queue-waiting 'function) "Where the editor waits for QUEUE's next event.")
+      (documentation 'event-queue-waiting 'function) "Where the editor waits for QUEUE's next event."
+      (documentation 'event-queue-counts 'function) "How many events wait in QUEUE, by the frame they name."
+      (documentation 'event-queue-taken 'function) "Where a thread waits for the editor to take events from QUEUE.")
 
 (defun tick-p (event)
   "True when EVENT is a :TICK, a wake with nothing done by you."
   (and (event-p event) (eq (event-kind event) :tick)))
 
-(defun queue-push (queue event)
+(defun queue-push (queue event &key most stop)
   "Add EVENT to QUEUE from any thread, waking the editor if it waits; a :TICK
-after another waiting is one wake, not two."
+after another waiting is one wake, not two. With MOST, first wait while
+MOST events or more of EVENT's frame wait to be taken, until STOP, a
+function of no arguments asked every half second, is true: a thread reading
+events from elsewhere so reads no faster than the editor takes them."
   (sb-thread:with-mutex ((event-queue-lock queue))
-    (unless (and (tick-p event)
-                 (event-queue-items queue)
-                 (tick-p (first (event-queue-tail queue))))
-      (let ((cell (list event)))
-        (if (event-queue-items queue)
-            (setf (cdr (event-queue-tail queue)) cell)
-            (setf (event-queue-items queue) cell))
-        (setf (event-queue-tail queue) cell)))
+    (let ((counts (event-queue-counts queue)) (frame (and (event-p event) (event-frame event))))
+      (when most
+        (loop while (and (>= (gethash frame counts 0) most) (not (funcall stop)))
+              do (sb-thread:condition-wait (event-queue-taken queue) (event-queue-lock queue) :timeout 0.5)))
+      (unless (and (tick-p event)
+                   (event-queue-items queue)
+                   (tick-p (first (event-queue-tail queue))))
+        (let ((cell (list event)))
+          (if (event-queue-items queue)
+              (setf (cdr (event-queue-tail queue)) cell)
+              (setf (event-queue-items queue) cell))
+          (setf (event-queue-tail queue) cell)
+          (incf (gethash frame counts 0)))))
     (sb-thread:condition-notify (event-queue-waiting queue))))
 
 (defun queue-empty-p (queue)
@@ -189,7 +205,13 @@ takes); NIL when none came."
   (sb-thread:with-mutex ((event-queue-lock queue))
     (tuatara.runtime:wait-on-until (event-queue-waiting queue) (event-queue-lock queue)
                                    (lambda () (event-queue-items queue)) seconds)
-    (pop (event-queue-items queue))))
+    (let ((event (pop (event-queue-items queue))))
+      (when event
+        (let* ((counts (event-queue-counts queue)) (frame (and (event-p event) (event-frame event)))
+               (left (1- (gethash frame counts 1))))
+          (if (plusp left) (setf (gethash frame counts) left) (remhash frame counts)))
+        (sb-thread:condition-broadcast (event-queue-taken queue)))
+      event)))
 
 ;;; The painter interface
 

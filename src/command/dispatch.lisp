@@ -306,7 +306,9 @@ that frame has a question of its own waiting or as many questions are open
 as may be (FRAME-ANSWERS-NOW-P): then it waits among the frame's unread
 events, the frame saying so (TELL-FRAME-WAITS), but for its window closed,
 which closes it at once, its question given up once it is reached again. A
-window given the keyboard meanwhile is let go."
+window given the keyboard meanwhile is let go; a frame whose screen went away
+\(:DETACHED) is closed at once, and words its frontend has (:SAID) wait for
+that frame's turn."
   (let ((frame (tuatara.frontend:event-frame event)))
     (flet ((wait-there ()
              (setf (frame-unread frame) (append (frame-unread frame) (list event)))
@@ -326,6 +328,11 @@ window given the keyboard meanwhile is let go."
              (when (or (tuatara.frontend:input-event-p event) (eq (tuatara.frontend:event-kind event) :focus))
                (select-frame editor frame))
              t)
+            ;; a client gone: its frame closed now, its question given up once reached; its words for later
+            ((eq (tuatara.frontend:event-kind event) :detached) (remove-frame editor frame) nil)
+            ((eq (tuatara.frontend:event-kind event) :said)
+             (setf (frame-deferred frame) (append (frame-deferred frame) (list event)))
+             nil)
             ((not (tuatara.frontend:input-event-p event)) nil)
             ((and (frame-held frame) (eq (tuatara.frontend:event-kind event) :close))
              (remove-frame editor frame)
@@ -343,9 +350,9 @@ window given the keyboard meanwhile is let go."
   "Deal with EVENT, read from the frontend while EDITOR is busy with work of
 its own: true when it is \\`C-g' (QUIT-KEY-P), which is to stop that work.
 Any other key is kept to be handled after it, as typed (EDITOR-UNREAD); a
-window resized is drawn again; a window closed, files dropped or text pasted
-are dealt with after it. What happened in another frame waits for its turn
-there (TAKE-TO-ITS-FRAME): \\`C-g' there stops nothing here."
+window resized is drawn again; a window closed or gone, files dropped, text
+pasted or words to say are dealt with after it. What happened in another
+frame waits for its turn there (TAKE-TO-ITS-FRAME): \\`C-g' there stops nothing here."
   (case (and (take-to-its-frame editor event nil) (tuatara.frontend:event-kind event))
     (:key (or (quit-key-p (tuatara.frontend:event-key event))
               (progn (setf (editor-unread editor) (append (editor-unread editor) (list event)))
@@ -353,7 +360,8 @@ there (TAKE-TO-ITS-FRAME): \\`C-g' there stops nothing here."
     (:resize (resize editor (tuatara.frontend:event-width event) (tuatara.frontend:event-height event))
              (tuatara.runtime:ignoring-errors-reported ("drawing the resized window") (redisplay editor))
              nil)
-    ((:close :drop :paste) (setf (editor-deferred editor) (append (editor-deferred editor) (list event)))
+    ((:close :drop :paste :detached :said)
+     (setf (editor-deferred editor) (append (editor-deferred editor) (list event)))
      nil)
     (t nil)))
 
@@ -412,7 +420,11 @@ takes in what work in the background has for the others."
                             (rest (editor-frames editor)))
                    (run-inside-question editor nil nil))
                  (when ticks (return event)))
-                ((:close :drop :paste)
+                ;; words from the frontend: said once the question is done, which goes on
+                (:said (if ticks
+                           (return event)
+                           (setf (editor-deferred editor) (append (editor-deferred editor) (list event)))))
+                ((:close :drop :paste :detached)
                  (if (or ticks (and pastes (eq (tuatara.frontend:event-kind event) :paste)))
                      (progn (when (and recording (not playing) (eq (tuatara.frontend:event-kind event) :paste))
                               (record-event recording event))
