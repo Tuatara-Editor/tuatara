@@ -434,7 +434,9 @@ gives the parse of the text as it is now."
       (let ((parts (org-buffer-parts buffer)))
         (if (<= (tuatara.buffer:buffer-size buffer) *org-parse-at-once*)
             (let ((snapshot (org-parts-snapshot buffer parts)))
-              (multiple-value-bind (parse failed) (org-worker-parse (list version snapshot (buffer-crlf-p buffer) nil))
+              (multiple-value-bind (parse failed)
+                  (org-worker-parse (list version snapshot (buffer-crlf-p buffer) nil
+                                          (tuatara.runtime:secret-buffer-p buffer)))
                 (destructuring-bind (&optional tree text returns places) parse
                   (setf (org-state-tree state) tree
                         (org-state-text state) text

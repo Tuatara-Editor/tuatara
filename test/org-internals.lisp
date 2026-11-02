@@ -729,3 +729,32 @@ out), a CLOCK: line, where a logged line goes, and clocking in from any key.")
       (true (search "kiwi" (tuatara:failure-words condition)))
       (let ((tuatara:*secret-at-hand* t))
         (is string= "a simple-error" (tuatara:failure-words condition))))))
+
+(define-test (org-internals secret-parse-fault-said-by-kind)
+  ;; a note kept secret that the parser cannot read, parsed at once or in the background: what went
+  ;; wrong is kept and logged by its kind alone, never in words that could hold its text
+  (let ((kept tuatara.runtime:*debug-reports*)
+        (on tuatara.runtime:*debug-on*)
+        (buffer nil))
+    (unwind-protect
+         (let ((tuatara.runtime:*secret-buffer-function* (lambda (b) (eq b buffer))))
+           (setf tuatara.runtime:*debug-reports* (sb-concurrency:make-queue)
+                 tuatara.runtime:*debug-on* t)
+           (with-functions-replaced ((tuatara.defaults::org-parse (lambda (text &rest arguments)
+                                                                     (declare (ignore arguments))
+                                                                     (error "the words ~a" text))))
+             (dolist (at-once (list most-positive-fixnum 0))
+               (setf buffer (org-internals-buffer (format nil "* Kauri secret~%")))
+               (let ((tuatara.defaults::*org-parse-at-once* at-once)
+                     (tuatara.defaults::*org-parse-wait* 5))
+                 (unwind-protect
+                      (progn
+                        (tuatara.defaults::org-buffer-parse buffer)
+                        (is string= "a simple-error"
+                            (tuatara.defaults::org-state-failed (tuatara.defaults::org-buffer-state buffer))
+                            "~a characters at once" at-once))
+                   (tuatara.buffer:kill-buffer buffer)))))
+           (false (find-if (lambda (report) (search "Kauri" (format nil "~a" report)))
+                           (sb-concurrency:list-queue-contents tuatara.runtime:*debug-reports*))))
+      (setf tuatara.runtime:*debug-reports* kept
+            tuatara.runtime:*debug-on* on))))
