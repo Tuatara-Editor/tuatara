@@ -309,7 +309,14 @@ integers (SHORT, LONG) or of fractions (N . D) (RATIONAL), or octets."
           (push (list needle octets start end from-end) disagreeing))))
     (is equal '() disagreeing))
   (is = 2 (tuatara.io:octets-search #(1 2) (make-array 4 :initial-contents '(0 0 1 2) :adjustable t)))
-  (false (tuatara.io:octets-search (octets-of "obj") (octets-of "ob"))))
+  (false (tuatara.io:octets-search (octets-of "obj") (octets-of "ob")))
+  ;; crossed or outside bounds answer NIL in any vector, never an error
+  (let ((adjustable (make-array 4 :initial-contents '(0 0 1 2) :adjustable t)))
+    (dolist (octets (list (octets-of 0 0 1 2) adjustable))
+      (false (tuatara.io:octets-search #(1) octets :start 3 :end 1))
+      (false (tuatara.io:octets-search #(1) octets :start 9))
+      (is = 2 (tuatara.io:octets-search #(1) octets :start -5 :end 99))
+      (false (tuatara.io:octets-search #() octets :start 3 :end 1)))))
 
 (defun zlib-stored-octets (octets)
   "OCTETS as zlib data of one stored deflate block, as /FlateDecode takes them."

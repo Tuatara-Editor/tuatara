@@ -103,14 +103,19 @@ character standing for each; NIL when START is past their end."
 
 (defun octets-search (needle octets &key (start 0) (end (length octets)) from-end)
   "Where NEEDLE, a vector of octets, first stands in OCTETS from START below
-END (with FROM-END, the last place it stands), or NIL, as SEARCH answers:
-quick on simple vectors of octets, as files are read, so that a file of
-hundreds of megabytes is searched in well under a second."
-  (let ((end (min end (length octets))))
-    (if (and (typep needle 'tuatara.text:octets) (typep octets 'tuatara.text:octets) (plusp (length needle)))
-        (and (<= 0 start) (<= (+ start (length needle)) end)
-             (octets-search-simple needle octets start end from-end))
-        (search needle octets :start2 start :end2 end :from-end from-end))))
+END (with FROM-END, the last place it stands), or NIL. START below 0 counts
+as 0 and END past the octets as their end; when END is then before START,
+or too near it for NEEDLE, the answer is NIL, never an error. An empty
+NEEDLE stands at START (at END, with FROM-END). Quick on simple vectors of
+octets, as files are read, so that a file of hundreds of megabytes is
+searched in well under a second."
+  (let* ((end (min end (length octets))) (start (max 0 start)))
+    (cond ((< end start) nil)
+          ((zerop (length needle)) (if from-end end start))
+          ((> (+ start (length needle)) end) nil)
+          ((and (typep needle 'tuatara.text:octets) (typep octets 'tuatara.text:octets))
+           (octets-search-simple needle octets start end from-end))
+          (t (search needle octets :start2 start :end2 end :from-end from-end)))))
 
 (defun octets-search-simple (needle octets start end from-end)
   "OCTETS-SEARCH's work on simple vectors of octets, NEEDLE not empty and
