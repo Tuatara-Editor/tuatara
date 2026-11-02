@@ -127,6 +127,27 @@ the editor is busy, so that C-g can stop work and keys typed meanwhile are kept.
            (tuatara.buffer:kill-buffer (tuatara.display:window-buffer (tuatara.command:editor-window editor))))
       (ignore-errors (delete-file path)))))
 
+(define-test (scratch quitting-asks-for-a-typed-answer)
+  ;; the question before leaving with changes not saved says its answer is typed and ended with RET:
+  ;; y alone waits for RET (C-g then leaves the question), y RET and yes RET leave, n RET and C-g stay, nothing saved
+  (with-test-directory (dir)
+    (let ((path (namestring (merge-pathnames "quit.txt" dir))))
+      (alexandria:write-string-into-file "a" path)
+      (flet ((quit-with (answer)
+               ;; the frontend, whether the editor still runs, and the text, once ANSWER is typed
+               (multiple-value-bind (f editor) (run-keys (format nil "i x C-g C-x C-c ~a" answer) :file path :width 80)
+                 (multiple-value-prog1 (values f (tuatara.command:editor-running editor) (session-text editor))
+                   (forget-file-buffers)))))
+        (true (tuatara.frontend.fake:fake-frame-showing (quit-with "y") "exit anyway? (y or n, then RET)"))
+        (let ((text (nth-value 2 (quit-with "y C-g i z"))))
+          (true (search "z" text))
+          (false (search "y" text)))
+        (false (nth-value 1 (quit-with "y RET")))
+        (false (nth-value 1 (quit-with "y e s RET")))
+        (true (search "z" (nth-value 2 (quit-with "n RET i z"))))
+        (true (search "z" (nth-value 2 (quit-with "C-g i z"))))
+        (is string= "a" (file-text path))))))
+
 (defun evaluating (code &key (then "") pending)
   "Start in *lisp-scratch*, type CODE on a new line, evaluate it with C-x C-e,
 then type THEN; return the frontend and the editor."

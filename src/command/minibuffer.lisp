@@ -664,9 +664,12 @@ letter or a digit, then over the letters and digits before it."
 (defun yes-or-no-p* (prompt)
   "Ask PROMPT in the minibuffer, an answer typed and ended with \`RET': for a
 question whose yes destroys or writes over what cannot be had back (a file
-deleted or written over, changes thrown away). True for the answer y or
-yes, in any case and with spaces around; false for any other answer, n, no,
-none at all (\`RET') or anything else, never asked again. A question whose
-answer is easily undone is answered by one key instead (Y-OR-N-P*)."
-  (let ((answer (string-trim '(#\Space #\Tab) (read-string (concatenate 'string prompt " (y or n) ")))))
+deleted or written over, changes thrown away). The prompt ends with (y or n,
+then RET). True for the answer y or yes, in any case and with spaces around;
+false for any other answer, n, no, none at all (\`RET') or anything else,
+never asked again. A question whose answer is easily undone is answered by
+one key instead (Y-OR-N-P*)."
+  (let ((answer (string-trim '(#\Space #\Tab)
+                             (read-string (format nil "~a (y or n, then ~a) " prompt
+                                                  (substitute-command-keys "\\<minibuffer>\\[minibuffer-done]"))))))
     (and (member answer '("y" "yes") :test #'string-equal) t)))

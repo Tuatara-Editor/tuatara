@@ -36,7 +36,7 @@ the names it is given to the file RECORD, as xdg-open would open them."
       ;; asked, and yes: a copy of it opened, yours alone and read only, the file itself never given
       (let ((f (rimu-session dir "g f p h o t o . p n g RET O y RET" :width 200)))
         (true (tuatara.frontend.fake:fake-frame-showing f "Open photo.png (PNG image, 2 × 2"))
-        (true (tuatara.frontend.fake:fake-frame-showing f "outside the sandbox? (y or n)"))
+        (true (tuatara.frontend.fake:fake-frame-showing f "outside the sandbox? (y or n, then RET)"))
         (true (tuatara.frontend.fake:fake-frame-showing f "Opening photo.png in the desktop's program..."))
         (let ((opened (first (opened-names record))))
           (true (uiop:string-prefix-p (tuatara.defaults::opened-copies-directory) opened))
