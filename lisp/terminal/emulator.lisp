@@ -237,7 +237,7 @@ or the editor's own, with *TERMINAL-ENVIRONMENT* in place of those it names."
   (let ((names (mapcar (lambda (v) (subseq v 0 (1+ (position #\= v)))) *terminal-environment*)))
     (append *terminal-environment*
             (remove-if (lambda (v) (some (lambda (name) (uiop:string-prefix-p name v)) names))
-                       (or environment (sb-ext:posix-environ))))))
+                       (or environment (tuatara.io:program-environment))))))
 
 (defun start-emulator (program arguments &key (columns 80) (rows 24) directory environment wake
                                             (scrollback-lines 100000) (scrollback-bytes (* 256 1024 1024))

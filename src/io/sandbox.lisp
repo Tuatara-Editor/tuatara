@@ -183,6 +183,25 @@ which kills what is left if it is itself ended first."
              (tuatara.runtime:ignoring-errors-reported ("closing ~a" process) (sb-ext:process-close process))))))
      :name "program ending")))
 
+(defgeneric host-program-environment (host)
+  (:documentation "The variables a program started now is given when it is given none of its
+own, as NAME=VALUE strings: the editor's, with those of whom the work is for laid over
+them. The core's own host gives the editor's.")
+  (:method ((host tuatara.runtime:host))
+    (sb-ext:posix-environ)))
+
+(defun program-environment ()
+  "The variables a program started now is given, as NAME=VALUE strings,
+when it is given none of its own (HOST-PROGRAM-ENVIRONMENT)."
+  (host-program-environment tuatara.runtime:*host*))
+
+(defun program-variable (name)
+  "The value of the environment variable NAME as a program started now has
+it (PROGRAM-ENVIRONMENT), or NIL when it has none."
+  (let ((prefix (concatenate 'string name "=")))
+    (loop for setting in (program-environment)
+          when (uiop:string-prefix-p prefix setting) return (subseq setting (length prefix)))))
+
 (defun call-with-program (command function &key job input output error directory (environment nil environment-p)
                                                preserve-fds (external-format '(:utf-8 :replacement #\?)))
   "Start COMMAND, a program's full name and its arguments (never through a
@@ -190,7 +209,7 @@ shell), and call FUNCTION with its process, returning what FUNCTION returns:
 INPUT, OUTPUT and ERROR say what the program reads and writes, as
 SB-EXT:RUN-PROGRAM takes them (:STREAM for a pipe FUNCTION uses, NIL for
 none, :OUTPUT for its errors with what it writes); DIRECTORY is where it
-runs, ENVIRONMENT, when given, all it sees of one; PRESERVE-FDS, descriptors
+runs, ENVIRONMENT, when given, all it sees of one (else PROGRAM-ENVIRONMENT); PRESERVE-FDS, descriptors
 it is given besides (pipes of its own, named in its arguments). With JOB, it
 is the program the job runs (TUATARA.RUNTIME:JOB-PROGRAM-STARTED): stopping
 the job ends it. However FUNCTION ends, the program is ended when it still
@@ -198,8 +217,8 @@ runs, with what it started (END-UNWANTED-PROGRAM), without waiting for it,
 so that none is left behind; one ended already is waited for and closed."
   (let ((process (apply #'sb-ext:run-program (first command) (rest command)
                         :wait nil :input input :output output :error error :external-format external-format
+                        :environment (if environment-p environment (program-environment))
                         (append (and directory (list :directory directory))
-                                (and environment-p (list :environment environment))
                                 (and preserve-fds (list :preserve-fds preserve-fds))))))
     (when job (tuatara.runtime:job-program-started job process))
     (unwind-protect (funcall function process)
@@ -373,6 +392,8 @@ program sees of one; DIRECTORY, where it runs. Two values: its output (with
 CAPTURE) and true when it ended well. A program that stays behind (wl-copy,
 serving the clipboard) is not waited for: only the one started."
   (let* ((started (list nil))
+         ;; whom the program is for is known here, not on the thread running it
+         (environment (if environment-p environment (program-environment)))
          (worker (tuatara.runtime:make-guarded-thread
                   (lambda ()
                     (tuatara.runtime:ignoring-errors-reported ("running ~a" (first command))
@@ -394,7 +415,7 @@ serving the clipboard) is not waited for: only the one started."
                                  (and (not too-much) (eql 0 (sb-ext:process-exit-code process))))))
                        :input (and input :stream) :output (and capture :stream)
                        :directory directory
-                       :environment (if environment-p environment (sb-ext:posix-environ)))))
+                       :environment environment)))
                   :name "program")))
     (if wait
         (funcall wait worker seconds)

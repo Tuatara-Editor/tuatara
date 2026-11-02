@@ -1036,6 +1036,109 @@ any of EVENTS \(POLLIN 1, POLLOUT 4); the events it has, 0 when none came."
           (sb-sys:sap-ref-16 sap 6)
           0))))
 
+;;; Local sockets at a path: listening and connecting
+
+(defconstant +most-socket-path+ 107
+  "The most octets of the path of a local socket, its terminating NUL aside.")
+
+(defun call-with-socket-address (path function)
+  "Call FUNCTION with a local socket's address naming PATH (a struct
+sockaddr_un in foreign memory) and its length; an error when PATH is longer
+than +MOST-SOCKET-PATH+ octets or holds a NUL."
+  (let ((octets (tuatara.text:string-octets (native path))))
+    (when (or (> (length octets) +most-socket-path+) (find 0 octets))
+      (fail "name a local socket" path sb-posix:enametoolong))
+    (with-foreign-memory (sap 110 :zero t)
+      (setf (sb-sys:sap-ref-16 sap 0) 1)                     ; AF_UNIX
+      (dotimes (i (length octets))
+        (setf (sb-sys:sap-ref-8 sap (+ 2 i)) (aref octets i)))
+      (funcall function sap (+ 2 (length octets) 1)))))
+
+(defun new-local-socket ()
+  "A new local stream socket, closed in programs started; its descriptor."
+  (let ((fd (sb-alien:alien-funcall
+             (sb-alien:extern-alien "socket" (function sb-alien:int sb-alien:int sb-alien:int sb-alien:int))
+             1 (logior 1 #x80000) 0)))                       ; AF_UNIX, SOCK_STREAM | SOCK_CLOEXEC
+    (when (minusp fd) (fail "make" "a local socket"))
+    fd))
+
+(defun listen-at (path &key (backlog 16))
+  "A local socket bound at PATH, listening, as a descriptor that ACCEPT-ON
+takes connections from, BACKLOG of them waiting at most; PATH must not be
+there. The socket file is made for you alone (0600)."
+  (let ((fd (new-local-socket)) (done nil))
+    (unwind-protect
+         (progn
+           (call-with-socket-address
+            path (lambda (sap length)
+                   (unless (zerop (sb-alien:alien-funcall
+                                   (sb-alien:extern-alien "bind" (function sb-alien:int sb-alien:int
+                                                                           sb-sys:system-area-pointer sb-alien:int))
+                                   fd sap length))
+                     (fail "listen at" path))))
+           (sb-posix:chmod (native path) #o600)
+           (unless (zerop (sb-alien:alien-funcall
+                           (sb-alien:extern-alien "listen" (function sb-alien:int sb-alien:int sb-alien:int))
+                           fd backlog))
+             (fail "listen at" path))
+           (setf done t)
+           fd)
+      (unless done (sb-posix:close fd)))))
+
+(defun accept-on (fd)
+  "Wait for a connection to the listening socket FD (LISTEN-AT) and return
+its descriptor, closed in programs started; NIL when FD is shut (SHUT-SOCKET)
+or fails, with errno as a second value. A connection given up on by its
+other end before it is taken is waited past."
+  (loop
+    (let ((new (sb-alien:alien-funcall
+                (sb-alien:extern-alien "accept4" (function sb-alien:int sb-alien:int sb-sys:system-area-pointer
+                                                           sb-sys:system-area-pointer sb-alien:int))
+                fd (null-pointer) (null-pointer) #x80000)))       ; SOCK_CLOEXEC
+      (if (>= new 0)
+          (return new)
+          (let ((errno (sb-alien:get-errno)))
+            ;; interrupted, or a connection gone before it was taken: wait for the next
+            (unless (member errno (list sb-posix:eintr sb-posix:econnaborted sb-posix:eagain))
+              (return (values nil errno))))))))
+
+(defun connect-to (path)
+  "A connection to the local socket listening at PATH, as a descriptor closed
+in programs started; NIL when there is none to connect to, with errno as a
+second value (ENOENT: no socket there; ECONNREFUSED: no one listens)."
+  (let ((fd (new-local-socket)))
+    (call-with-socket-address
+     path (lambda (sap length)
+            (if (zerop (sb-alien:alien-funcall
+                        (sb-alien:extern-alien "connect" (function sb-alien:int sb-alien:int
+                                                                   sb-sys:system-area-pointer sb-alien:int))
+                        fd sap length))
+                fd
+                (let ((errno (sb-alien:get-errno)))
+                  (sb-posix:close fd)
+                  (values nil errno)))))))
+
+(defun peer-credentials (fd)
+  "Who is at the other end of the local socket FD, as the system vouches
+for it (SO_PEERCRED): three values, its process id (PID), user id (UID)
+and group id (GID); NIL when the system cannot say."
+  (sb-alien:with-alien ((credentials (array (sb-alien:unsigned 32) 3))
+                        (length sb-alien:unsigned-int 12))
+    (if (zerop (sb-alien:alien-funcall
+                (sb-alien:extern-alien "getsockopt" (function sb-alien:int sb-alien:int sb-alien:int sb-alien:int
+                                                              (* (array (sb-alien:unsigned 32) 3))
+                                                              (* sb-alien:unsigned-int)))
+                fd 1 17 (sb-alien:addr credentials) (sb-alien:addr length)))   ; SOL_SOCKET, SO_PEERCRED
+        (values (sb-alien:deref credentials 0) (sb-alien:deref credentials 1) (sb-alien:deref credentials 2))
+        nil)))
+
+(defun mount-namespace (pid)
+  "The mount namespace the process PID runs in, as (DEVICE . INODE) of its
+/proc/PID/ns/mnt: two processes see the same files at the same paths when
+these are EQUAL. NIL when it cannot be read."
+  (let ((stamp (path-stamp (format nil "/proc/~d/ns/mnt" pid) :failure nil)))
+    (and stamp (cons (stamp-dev stamp) (stamp-ino stamp)))))
+
 ;;; Local sockets, and descriptors passed over them
 
 (defun socket-pair ()
@@ -1581,19 +1684,21 @@ out what is."
   "What the session writing to stderr.log is (the window, the terminal), as
 SESSION-LOG was told; NIL before it is opened.")
 
-(defun session-log (what)
-  "A descriptor open for writing on stderr.log in the cache directory, for a
-session's standard error, kept as the debug log is (TUATARA.RUNTIME:OPEN-ROTATED-LOG):
-for you alone, a new one begun unless another session writes to it, the logs
-of the sessions before kept as stderr.log.1, the one just before, to
-stderr.log.3, so that what a session that ended badly wrote is still there
-once the next has begun. A line first says WHAT the session is (the window,
-the terminal), its process and when it began. NIL when the log cannot be made."
+(defun session-log (what &key (name "stderr.log"))
+  "A descriptor open for writing on NAME, stderr.log, in the cache directory,
+for a session's standard error, kept as the debug log is
+\(TUATARA.RUNTIME:OPEN-ROTATED-LOG): for you alone, a new one begun unless
+another session writes to it, the logs of the sessions before kept as
+stderr.log.1, the one just before, to stderr.log.3, so that what a session
+that ended badly wrote is still there once the next has begun. A line first
+says WHAT the session is (the window, the terminal), its process and when it
+began. NIL when the log cannot be made. A daemon's log is named for it
+\(daemon-NAME.log)."
   (setf *session-log-words* what)
   (let ((directory (tuatara.runtime:ignoring-errors-reported ("finding the cache folder") (cache-directory))))
     (when directory
       (let ((fd (tuatara.runtime:ignoring-errors-reported ("opening the session log in ~a" directory)
-                  (tuatara.runtime:open-rotated-log (native (merge-pathnames "stderr.log" directory)) :rotate t))))
+                  (tuatara.runtime:open-rotated-log (native (merge-pathnames name directory)) :rotate t))))
         (when fd
           (let ((octets (sb-ext:string-to-octets
                          (format nil "Tuatara ~a on SBCL ~a, ~a, process ~d, began ~a~%"

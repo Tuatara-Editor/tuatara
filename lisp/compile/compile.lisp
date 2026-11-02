@@ -957,7 +957,7 @@ another window; the compile's places are the list of places in force then."
 (defun compile-environment ()
   "What a compile's command sees of the environment: the editor's, with TERM
 dumb, for programs that colour their output only for a terminal."
-  (cons "TERM=dumb" (remove-if (lambda (entry) (uiop:string-prefix-p "TERM=" entry)) (sb-ext:posix-environ))))
+  (cons "TERM=dumb" (remove-if (lambda (entry) (uiop:string-prefix-p "TERM=" entry)) (tuatara.io:program-environment))))
 
 (defun start-compile (command directory)
   "Run COMMAND with the shell in DIRECTORY, its output shown in *compile* as

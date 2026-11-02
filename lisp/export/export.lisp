@@ -406,7 +406,7 @@ has it."
                 (list "HOME" (latex-home))
                 (list "TEXINPUTS" (format nil "~a:" (tuatara.io:parent-path tex)))
                 (list "openout_any" "p"))
-          (loop for setting in (sb-ext:posix-environ)
+          (loop for setting in (tuatara.io:program-environment)
                 for at = (position #\= setting)
                 for name = (and at (subseq setting 0 at))
                 when (and name (string/= name "TEXINPUTS")
@@ -446,7 +446,7 @@ and else how it ended, as a sentence naming it."
                                                                 (some (lambda (setting)
                                                                         (uiop:string-prefix-p (subseq setting 0 (1+ (position #\= setting))) v))
                                                                       environment))
-                                                              (sb-ext:posix-environ))))))
+                                                              (tuatara.io:program-environment))))))
     (values (eql code 0) (format nil "~a ended with exit code ~a" (tuatara.io:native-file-name path) code))))
 
 (defun latex-unconfined-allowed-p ()

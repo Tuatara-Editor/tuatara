@@ -391,6 +391,6 @@ command, so that they are the ones in force."
            :environment (append environment (list "GIT_TERMINAL_PROMPT=0")
                                 (if reading
                                     (remove-if (lambda (setting) (uiop:string-prefix-p "GIT_" setting))
-                                               (sb-ext:posix-environ))
-                                    (sb-ext:posix-environ)))))
+                                               (tuatara.io:program-environment))
+                                    (tuatara.io:program-environment)))))
       (error () (values nil nil)))))
