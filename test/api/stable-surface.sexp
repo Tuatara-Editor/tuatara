@@ -1847,6 +1847,7 @@
 (:flag "--")
 (:flag "--config")
 (:flag "--diff")
+(:flag "--frames")
 (:flag "--generate-config")
 (:flag "--gui")
 (:flag "--help")
