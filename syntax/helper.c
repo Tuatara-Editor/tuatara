@@ -221,31 +221,6 @@ static uint32_t table_put(Table *table, void *item) {
   return i + 1;
 }
 
-static void *table_get(Table *table, uint32_t number) {
-  pthread_mutex_lock(&table_lock);
-  void *item = number >= 1 && number <= table->count ? table->items[number - 1] : NULL;
-  pthread_mutex_unlock(&table_lock);
-  return item;
-}
-
-/* Put ITEM in TABLE as number NUMBER, from 1, giving what was there. */
-static void *table_set(Table *table, uint32_t number, void *item) {
-  if (number < 1 || number > (1u << 24)) return item;
-  pthread_mutex_lock(&table_lock);
-  if (number > table->count) {
-    uint32_t count = number * 2 + 16;
-    void **items = realloc(table->items, sizeof(void *) * count);
-    if (!items) _exit(3);
-    memset(items + table->count, 0, sizeof(void *) * (count - table->count));
-    table->items = items;
-    table->count = count;
-  }
-  void *before = table->items[number - 1];
-  table->items[number - 1] = item;
-  pthread_mutex_unlock(&table_lock);
-  return before;
-}
-
 static void *table_take(Table *table, uint32_t number) {
   pthread_mutex_lock(&table_lock);
   void *item = NULL;
@@ -257,13 +232,140 @@ static void *table_take(Table *table, uint32_t number) {
   return item;
 }
 
-static Table trees, parsers, queries;
+static Table parsers;
+
+/* The trees and queries, which any connection may use while another lets
+   go of them or changes them: each kept in a HELD, used while held (HOLD),
+   changed only by the one holding it alone, and let go only once taken out
+   of its table and held by none (LET_GO). Its number may be given to
+   another as soon as it is taken out. */
+typedef struct {
+  void *item;
+  uint32_t holds;
+  bool taken;
+  pthread_rwlock_t lock;
+} Held;
+
+typedef struct {
+  Held **items;
+  uint32_t count;
+  void (*destroy)(void *item);
+} Shared;
+
+/* Under the table's lock: let go of HELD's item, and of HELD, when it is
+   taken out of TABLE and held by none. */
+static void held_ended(Shared *table, Held *held) {
+  if (held->taken && held->holds == 0) {
+    table->destroy(held->item);
+    pthread_rwlock_destroy(&held->lock);
+    free(held);
+  }
+}
+
+static Held *held_new(void *item) {
+  Held *held = calloc(1, sizeof *held);
+  if (!held) _exit(3);
+  held->item = item;
+  pthread_rwlock_init(&held->lock, NULL);
+  return held;
+}
+
+/* Put ITEM in TABLE; its number, from 1. */
+static uint32_t shared_put(Shared *table, void *item) {
+  Held *held = held_new(item);
+  pthread_mutex_lock(&table_lock);
+  uint32_t i;
+  for (i = 0; i < table->count && table->items[i]; i++) {}
+  if (i == table->count) {
+    Held **items = realloc(table->items, sizeof(Held *) * (table->count * 2 + 16));
+    if (!items) _exit(3);
+    memset(items + table->count, 0, sizeof(Held *) * (table->count + 16));
+    table->items = items;
+    table->count = table->count * 2 + 16;
+  }
+  table->items[i] = held;
+  pthread_mutex_unlock(&table_lock);
+  return i + 1;
+}
+
+/* Take the item numbered NUMBER out of TABLE: let go of now, or by the last
+   that holds it. */
+static void shared_take(Shared *table, uint32_t number) {
+  pthread_mutex_lock(&table_lock);
+  if (number >= 1 && number <= table->count && table->items[number - 1]) {
+    Held *held = table->items[number - 1];
+    table->items[number - 1] = NULL;
+    held->taken = true;
+    held_ended(table, held);
+  }
+  pthread_mutex_unlock(&table_lock);
+}
+
+/* Put ITEM in TABLE as number NUMBER (from 1, at most 2^24), the item there
+   before taken out. */
+static void shared_set(Shared *table, uint32_t number, void *item) {
+  Held *held = held_new(item);
+  pthread_mutex_lock(&table_lock);
+  if (number > table->count) {
+    uint32_t count = number * 2 + 16;
+    Held **items = realloc(table->items, sizeof(Held *) * count);
+    if (!items) _exit(3);
+    memset(items + table->count, 0, sizeof(Held *) * (count - table->count));
+    table->items = items;
+    table->count = count;
+  }
+  Held *before = table->items[number - 1];
+  table->items[number - 1] = held;
+  if (before) {
+    before->taken = true;
+    held_ended(table, before);
+  }
+  pthread_mutex_unlock(&table_lock);
+}
+
+/* The item numbered NUMBER of TABLE, held until LET_GO: with others to read
+   it, or ALONE to change it, NULL when another holds it so or there is none. */
+static Held *hold(Shared *table, uint32_t number, bool alone) {
+  pthread_mutex_lock(&table_lock);
+  Held *held = number >= 1 && number <= table->count ? table->items[number - 1] : NULL;
+  if (held) held->holds++;
+  pthread_mutex_unlock(&table_lock);
+  if (!held) return NULL;
+  if (alone ? pthread_rwlock_trywrlock(&held->lock) != 0 : pthread_rwlock_rdlock(&held->lock) != 0) {
+    pthread_mutex_lock(&table_lock);
+    held->holds--;
+    held_ended(table, held);
+    pthread_mutex_unlock(&table_lock);
+    return NULL;
+  }
+  return held;
+}
+
+/* Stop holding HELD, of TABLE (HOLD); NULL is nothing. */
+static void let_go(Shared *table, Held *held) {
+  if (!held) return;
+  pthread_rwlock_unlock(&held->lock);
+  pthread_mutex_lock(&table_lock);
+  held->holds--;
+  held_ended(table, held);
+  pthread_mutex_unlock(&table_lock);
+}
 
 /* A query, kept with the language it was made for: run only on trees of that language. */
 typedef struct {
   TSQuery *query;
   const TSLanguage *language;
 } Query;
+
+static void tree_destroy(void *tree) { ts_tree_delete(tree); }
+
+static void query_destroy(void *item) {
+  Query *q = item;
+  ts_query_delete(q->query);
+  free(q);
+}
+
+static Shared trees = {.destroy = tree_destroy}, queries = {.destroy = query_destroy};
 
 /* ---- grammars ---- */
 
@@ -507,9 +609,11 @@ static bool answer(Connection *c, Answering *a, uint32_t id, uint32_t how, char 
     if (size < 20) { status = REFUSED; break; }
     Parser *p = parser_claim(W(0));
     if (!p) { status = REFUSED; break; }
-    TSTree *old = W(1) ? table_get(&trees, W(1)) : NULL;
+    Held *old_held = W(1) ? hold(&trees, W(1), false) : NULL;
+    TSTree *old = old_held ? old_held->item : NULL;
     /* a tree of another language is no tree to begin from */
     if (old && ts_tree_language(old) != ts_parser_language(p->parser)) {
+      let_go(&trees, old_held);
       parser_release(p);
       status = REFUSED;
       break;
@@ -531,8 +635,9 @@ static bool answer(Connection *c, Answering *a, uint32_t id, uint32_t how, char 
       tight = true;
     }
     TSTree *tree = tuatara_parse(p->parser, old, read_text, p, &p->cancel, limit, budget);
+    let_go(&trees, old_held);
     if (!tree && tight && p->cancel == 3) p->cancel = 6;
-    out_u32(&out, tree ? table_put(&trees, tree) : 0);
+    out_u32(&out, tree ? shared_put(&trees, tree) : 0);
     out_u32(&out, (uint32_t)p->cancel);
     /* a parser left half way when memory ran out is not used again */
     if (!tree && p->cancel != 7) ts_parser_reset(p->parser);
@@ -569,9 +674,11 @@ static bool answer(Connection *c, Answering *a, uint32_t id, uint32_t how, char 
     for (uint32_t i = 0; i < n && !out.too_large; i++) {
       uint32_t item = starts[i];
       TSTree *tree = NULL;
+      Held *given_tree = NULL;
       uint32_t why = 0;
       if (word(body, size, item / 4) != 0) {
-        tree = table_get(&trees, word(body, size, item / 4));
+        given_tree = hold(&trees, word(body, size, item / 4), false);
+        tree = given_tree ? given_tree->item : NULL;
         out_u32(&out, tree ? word(body, size, item / 4) : 0);
         item += 4;
       } else {
@@ -623,29 +730,32 @@ static bool answer(Connection *c, Answering *a, uint32_t id, uint32_t how, char 
             ts_parser_reset(p->parser);
           }
         }
-        uint32_t number = tree ? table_put(&trees, tree) : 0;
+        uint32_t number = tree ? shared_put(&trees, tree) : 0;
         if (number) made[made_count++] = number;
+        /* held while its matches are found: another connection may let it go at once */
+        given_tree = number ? hold(&trees, number, false) : NULL;
+        tree = given_tree ? given_tree->item : NULL;
         out_u32(&out, number);
       }
       out_u32(&out, why);
       /* the queries asked to run on it */
       uint32_t asked = word(body, size, item / 4);
-      for (uint32_t j = 0; j < asked; j++)
-        put_matches(&out, a, tree ? table_get(&queries, word(body, size, item / 4 + 1 + 3 * j)) : NULL, tree,
+      for (uint32_t j = 0; j < asked; j++) {
+        Held *q = tree ? hold(&queries, word(body, size, item / 4 + 1 + 3 * j), false) : NULL;
+        put_matches(&out, a, q ? q->item : NULL, tree,
                     word(body, size, item / 4 + 2 + 3 * j), word(body, size, item / 4 + 3 + 3 * j), true);
+        let_go(&queries, q);
+      }
+      let_go(&trees, given_tree);
     }
     /* a reply refused as too large: the trees it would have named let go */
     if (out.too_large)
-      for (uint32_t i = 0; i < made_count; i++) {
-        TSTree *made_tree = table_take(&trees, made[i]);
-        if (made_tree) ts_tree_delete(made_tree);
-      }
+      for (uint32_t i = 0; i < made_count; i++) shared_take(&trees, made[i]);
     break;
   }
   case OP_EDITS: {
-    TSTree *tree = table_get(&trees, W(0));
     uint32_t n = W(2);
-    if (!tree || size < 12 || n > (size - 12) / 36) { status = REFUSED; break; }
+    if (size < 12 || n > (size - 12) / 36) { status = REFUSED; break; }
     /* each edit ends where it starts or after, in octets and in rows and columns, and no
        row or column is past the octet it is of: else none is made */
     bool good = true;
@@ -658,23 +768,27 @@ static bool answer(Connection *c, Answering *a, uint32_t id, uint32_t how, char 
       for (uint32_t k = 0; k < 3 && good; k++)
         good = W(at + 3 + 2 * k) <= W(at + k) && W(at + 4 + 2 * k) <= W(at + k);
     }
-    if (!good) { status = REFUSED; break; }
+    /* changed alone: refused while another uses it */
+    Held *held = good ? hold(&trees, W(0), true) : NULL;
+    if (!held) { status = REFUSED; break; }
     for (uint32_t i = 0; i < n; i++) {
       uint32_t at = 3 + 9 * i;
-      tuatara_edit(tree, W(at), W(at + 1), W(at + 2), W(at + 3), W(at + 4), W(at + 5), W(at + 6), W(at + 7), W(at + 8));
+      tuatara_edit(held->item, W(at), W(at + 1), W(at + 2), W(at + 3), W(at + 4), W(at + 5), W(at + 6), W(at + 7),
+                   W(at + 8));
     }
-    out_u32(&out, W(1) ? table_put(&trees, ts_tree_copy(tree)) : 0);
+    out_u32(&out, W(1) ? shared_put(&trees, ts_tree_copy(held->item)) : 0);
+    let_go(&trees, held);
     break;
   }
   case OP_COPY: {
-    TSTree *tree = table_get(&trees, W(0));
-    if (!tree) { status = REFUSED; break; }
-    out_u32(&out, table_put(&trees, ts_tree_copy(tree)));
+    Held *held = hold(&trees, W(0), false);
+    if (!held) { status = REFUSED; break; }
+    out_u32(&out, shared_put(&trees, ts_tree_copy(held->item)));
+    let_go(&trees, held);
     break;
   }
   case OP_TREE_DELETE: {
-    TSTree *tree = table_take(&trees, W(0));
-    if (tree) ts_tree_delete(tree);
+    shared_take(&trees, W(0));
     break;
   }
   case OP_QUERY: {
@@ -692,11 +806,7 @@ static bool answer(Connection *c, Answering *a, uint32_t id, uint32_t how, char 
     if (!q) _exit(3);
     q->query = query;
     q->language = language;
-    Query *before = table_set(&queries, number, q);
-    if (before) {
-      ts_query_delete(before->query);
-      free(before);
-    }
+    shared_set(&queries, number, q);
     uint32_t captures = ts_query_capture_count(query), patterns = ts_query_pattern_count(query);
     out_u32(&out, 0);
     out_u32(&out, captures);
@@ -730,52 +840,61 @@ static bool answer(Connection *c, Answering *a, uint32_t id, uint32_t how, char 
     break;
   }
   case OP_QUERY_DELETE: {
-    Query *q = table_take(&queries, W(0));
-    if (q) {
-      ts_query_delete(q->query);
-      free(q);
-    }
+    shared_take(&queries, W(0));
     break;
   }
   case OP_DISABLE: {
-    Query *q = table_get(&queries, W(0));
-    if (q && W(1) < ts_query_pattern_count(q->query)) ts_query_disable_pattern(q->query, W(1));
+    /* changed alone: refused while another uses it */
+    Held *held = hold(&queries, W(0), true);
+    if (!held) { status = REFUSED; break; }
+    Query *q = held->item;
+    if (W(1) < ts_query_pattern_count(q->query)) ts_query_disable_pattern(q->query, W(1));
+    let_go(&queries, held);
     break;
   }
   case OP_MATCHES: {
-    Query *q = table_get(&queries, W(0));
-    TSTree *tree = table_get(&trees, W(1));
-    if (!q || !tree) { status = REFUSED; break; }
-    put_matches(&out, a, q, tree, W(2), W(3), false);
+    Held *q = hold(&queries, W(0), false);
+    Held *tree = hold(&trees, W(1), false);
+    if (q && tree) put_matches(&out, a, q->item, tree->item, W(2), W(3), false);
+    else status = REFUSED;
+    let_go(&trees, tree);
+    let_go(&queries, q);
     break;
   }
   case OP_MATCHES_MANY: {
     uint32_t n = W(0);
     if (n > 64 || size < 4 + n * 16) { status = REFUSED; break; }
-    for (uint32_t i = 0; i < n; i++)
-      put_matches(&out, a, table_get(&queries, W(1 + 4 * i)), table_get(&trees, W(2 + 4 * i)),
-                  W(3 + 4 * i), W(4 + 4 * i), true);
+    for (uint32_t i = 0; i < n; i++) {
+      Held *q = hold(&queries, W(1 + 4 * i), false);
+      Held *tree = hold(&trees, W(2 + 4 * i), false);
+      put_matches(&out, a, q ? q->item : NULL, tree ? tree->item : NULL, W(3 + 4 * i), W(4 + 4 * i), true);
+      let_go(&trees, tree);
+      let_go(&queries, q);
+    }
     break;
   }
   case OP_ANCESTRY: {
-    TSTree *tree = table_get(&trees, W(0));
+    Held *tree = hold(&trees, W(0), false);
     if (!tree) { status = REFUSED; break; }
-    int32_t n = tuatara_ancestry(tree, W(1), W(2), numbers, 1024);
+    int32_t n = tuatara_ancestry(tree->item, W(1), W(2), numbers, 1024);
+    let_go(&trees, tree);
     out_put(&out, numbers, (uint32_t)n * 20);
     break;
   }
   case OP_SELECT: {
-    TSTree *tree = table_get(&trees, W(0));
+    Held *tree = hold(&trees, W(0), false);
     if (!tree) { status = REFUSED; break; }
-    uint32_t found = (uint32_t)tuatara_select_node(tree, W(1), W(2), (int32_t)W(3), numbers);
+    uint32_t found = (uint32_t)tuatara_select_node(tree->item, W(1), W(2), (int32_t)W(3), numbers);
+    let_go(&trees, tree);
     out_u32(&out, found);
     out_put(&out, numbers, 8);
     break;
   }
   case OP_CHILDREN: {
-    TSTree *tree = table_get(&trees, W(0));
+    Held *tree = hold(&trees, W(0), false);
     if (!tree) { status = REFUSED; break; }
-    int32_t n = tuatara_node_child_ranges(tree, W(1), W(2), W(3), W(4) != 0, W(5), W(6), numbers, 4096);
+    int32_t n = tuatara_node_child_ranges(tree->item, W(1), W(2), W(3), W(4) != 0, W(5), W(6), numbers, 4096);
+    let_go(&trees, tree);
     out_u32(&out, (uint32_t)n);
     if (n > 0) out_put(&out, numbers, (uint32_t)n * 8);
     break;
@@ -785,19 +904,21 @@ static bool answer(Connection *c, Answering *a, uint32_t id, uint32_t how, char 
     if (n > 4096 || size < 4 + n * 28) { status = REFUSED; break; }
     for (uint32_t i = 0; i < n && !out.too_large; i++) {
       uint32_t k = 1 + 7 * i;
-      TSTree *tree = table_get(&trees, W(k));
-      int32_t got = tree ? tuatara_node_child_ranges(tree, W(k + 1), W(k + 2), W(k + 3), W(k + 4) != 0, W(k + 5),
-                                                     W(k + 6), numbers, 4096)
+      Held *tree = hold(&trees, W(k), false);
+      int32_t got = tree ? tuatara_node_child_ranges(tree->item, W(k + 1), W(k + 2), W(k + 3), W(k + 4) != 0,
+                                                     W(k + 5), W(k + 6), numbers, 4096)
                          : -1;
+      let_go(&trees, tree);
       out_u32(&out, (uint32_t)got);
       if (got > 0) out_put(&out, numbers, (uint32_t)got * 8);
     }
     break;
   }
   case OP_HAS_ERROR: {
-    TSTree *tree = table_get(&trees, W(0));
+    Held *tree = hold(&trees, W(0), false);
     if (!tree) { status = REFUSED; break; }
-    out_u32(&out, tuatara_tree_has_error(tree));
+    out_u32(&out, tuatara_tree_has_error(tree->item));
+    let_go(&trees, tree);
     break;
   }
   case OP_RESET: {
