@@ -473,6 +473,27 @@ first frontend."
         (true (> (tuatara.frontend.fake:fake-frames (tuatara.command::frame-frontend second)) (first counts)))
         (true (tuatara.frontend.fake:fake-frame-showing (tuatara.command::frame-frontend second) "tieke"))))))
 
+(define-test (frames others-left-alone-by-idle-wakes)
+  ;; the editor woken with nothing taken in paints no other frame again
+  (let ((tuatara.command::*frame-at-least-every* 0) (counts '()))
+    (flet ((note-paints (editor)
+             (push (tuatara.frontend.fake:fake-frames
+                    (tuatara.command::frame-frontend (second (tuatara.command:editor-frames editor))))
+                   counts)))
+      (with-frames (editor (first second))
+          (list '(1 "C-x b k i w i C-j")
+                '(0 "i")
+                (list 0 (lambda ()
+                          (push #'note-paints (tuatara.command:editor-post-command-functions tuatara.command:*editor*))))
+                '(0 "a")
+                ;; each of these wakes the editor, as work in the background does, with nothing to take in
+                (list 0 (lambda ()))
+                (list 0 (lambda ()))
+                (list 0 (lambda ()))
+                '(0 "b"))
+        (is = 2 (length counts))
+        (is = (first counts) (second counts) "~s" counts)))))
+
 (define-test (frames others-painted-when-a-setting-changes)
   ;; a setting changed by a command, however it sets it, paints a frame not worked in again,
   ;; though no buffer it shows changed

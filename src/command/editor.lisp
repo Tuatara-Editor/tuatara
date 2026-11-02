@@ -72,12 +72,15 @@ EDITOR-LAST-COMMAND and the other names of a screen's state read and set that
 frame's; SELECTIONS counts the times a window was selected; KILL-RING holds
 killed text, newest first; STATE-KEYMAP is the modal state's map consulted
 before the others (the modal layer's); OTHERS-PAINTED is when the frames
-not worked in were last painted (PAINT-OTHER-FRAMES), in internal time;
+not worked in were last painted (PAINT-OTHER-FRAMES), and SETTINGS-LOOKED
+when the settings were last looked at for them (LOOK-AT-SETTINGS), in
+internal time;
 RUNNING is false once the editor should exit."
   (frames '() :type list)
   (frame nil :type frame)
   (selections 0 :type fixnum)
   (others-painted 0)
+  (settings-looked 0)
   (global-keymap (make-keymap :name "global"))
   (state-keymap nil :type (or null keymap))
   (fallback-keymap nil :type (or null keymap))
@@ -190,6 +193,7 @@ drawn; NIL otherwise.")
       (documentation 'editor-frames 'function) "The frames of EDITOR, its screens."
       (documentation 'editor-frame 'function) "The current frame of EDITOR, the screen being worked in."
       (documentation 'editor-others-painted 'function) "When the frames of EDITOR not worked in were last painted, in internal time."
+      (documentation 'editor-settings-looked 'function) "When the settings were last looked at for the frames of EDITOR not worked in, in internal time."
       (documentation 'editor-selections 'function) "How many times a window of EDITOR has been selected: the clock of WINDOW-USE-TIME."
       (documentation 'editor-global-keymap 'function) "EDITOR's global keymap, the last one consulted."
       (documentation 'editor-state-keymap 'function) "The modal state keymap consulted first, or NIL."
@@ -218,7 +222,8 @@ frame being worked in; an error waking it is ignored."
 (defvar *display-generation* 0
   "A count moved on whenever what every frame may show changes beside the text
 of its buffers: work taken in from the background, a way of showing text
-switched, a setting changed (SETTINGS-MOVED-P). A frame not worked in is painted again when it moved since it was
+switched, a setting changed (SETTINGS-MOVED-P), a job's work or a message
+taken in. A frame not worked in is painted again when it moved since it was
 \(PAINT-OTHER-FRAMES).")
 
 (defvar *background-work* nil
@@ -539,7 +544,7 @@ threads since last time, in the order they were said, and have the functions
 given to DEFER-ACTION there run as EDITOR's next commands, in that order too.
 Each message shows in the frame it is for while that frame is open, else in
 the frame you are in; each function runs with its frame the one worked in
-\(CALL-IN-FRAME), likewise."
+\(CALL-IN-FRAME), likewise. True when there was anything to take in."
   (when (or *messages-from-threads* *actions-from-threads*)
     (let (texts actions)
       (sb-thread:with-mutex (*messages-from-threads-lock*)
@@ -557,7 +562,8 @@ the frame you are in; each function runs with its frame the one worked in
                             collect (if frame
                                         (let ((frame frame) (action action))
                                           (lambda () (call-in-frame editor (frame-or-current editor frame) action)))
-                                        action))))))))
+                                        action)))))
+      t)))
 
 (defvar *command-notes* nil
   "While a command run from a key runs (RUN-COMMAND), a list cell whose car is

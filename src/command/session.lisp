@@ -174,8 +174,13 @@ background, is stopped and says so."
   (let ((*editor* editor)
         (drawn (get-internal-real-time)))
     (loop while (editor-running editor)
-          do (take-in-thread-messages editor)
-             (let ((wait (run-tick-functions editor))
+          do (when (take-in-thread-messages editor)
+               (incf *display-generation*))
+             (let ((wait (let ((working *background-work*))
+                           (prog1 (run-tick-functions editor)
+                             ;; work going on in the background, or just ended: what it brought may show anywhere
+                             (when (or working *background-work*)
+                               (incf *display-generation*)))))
                    (began (get-internal-real-time)))
                (unless (and (tuatara.frontend:frontend-input-pending-p (frame-frontend (editor-frame editor)))
                             (< (tuatara.runtime:milliseconds-since drawn) *frame-at-least-every*))
@@ -190,8 +195,8 @@ background, is stopped and says so."
                (let ((event (or (pop (editor-deferred editor))
                                 (other-frames-deferred editor)
                                 (read-event editor :timeout wait :ticks t :between-commands t))))
-                 ;; work taken in, or about to be: what any frame shows may change
-                 (when (or (functionp event) (tuatara.frontend:tick-p event))
+                 ;; work handed on from the background, about to run: what any frame shows may change
+                 (when (functionp event)
                    (incf *display-generation*))
                  (when (and event (not (functionp event)))
                    (setf *last-input-time* (get-internal-real-time)))

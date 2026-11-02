@@ -152,7 +152,9 @@ Nothing is made to find out."
 (defun settings-moved-p ()
   "True when a setting (a variable TUATARA-USER exports, a package's too) has
 another value than when this was last asked, however it was set: the init
-file, \\[eval-expression], a command. Nothing is made while none moved."
+file, \\[eval-expression], a command. Nothing is made while none moved. A
+value changed in place, as a list edited where it is, is not seen: only a
+setting given another value."
   (let ((seen *settings-seen*) (moved nil))
     (do-external-symbols (symbol :tuatara-user)
       (when (and (boundp symbol) (not (constantp symbol)))
@@ -163,30 +165,45 @@ file, \\[eval-expression], a command. Nothing is made while none moved."
                     moved t))))))
     moved))
 
+(defun look-at-settings (editor)
+  "Move the display generation on when a setting moved (SETTINGS-MOVED-P),
+looking only when something was done in EDITOR since the last look, and at most
+every *FRAME-AT-LEAST-EVERY* milliseconds: NIL, or the seconds after which the
+look that is due may be taken."
+  (when (>= *last-input-time* (editor-settings-looked editor))
+    (let ((since (tuatara.runtime:milliseconds-since (editor-settings-looked editor))))
+      (if (< since *frame-at-least-every*)
+          (/ (- *frame-at-least-every* since) 1000)
+          (progn
+            (setf (editor-settings-looked editor) (get-internal-real-time))
+            (when (settings-moved-p)
+              (incf *display-generation*))
+            nil)))))
+
 (defun paint-other-frames (editor)
   "Paint each frame of EDITOR other than the one worked in whose text may have
-changed since it was painted (FRAME-SHOWN-CHANGED-P), a setting changed
-moving the display generation on (SETTINGS-MOVED-P), at most every
+changed since it was painted (FRAME-SHOWN-CHANGED-P), a setting changed moving
+the display generation on (LOOK-AT-SETTINGS), at most every
 *FRAME-AT-LEAST-EVERY* milliseconds and never while keys wait: returns NIL,
-or the seconds after which it wants to be asked again, a frame having waited
-for its turn. With one frame, nothing is done."
+or the seconds after which it wants to be asked again, a frame or a look
+having waited for its turn. With one frame, nothing is done."
   (let ((frames (editor-frames editor)))
     (when (rest frames)
-      (when (settings-moved-p)
-        (incf *display-generation*))
       (let ((current (editor-frame editor)))
-        (when (and (some (lambda (frame) (and (not (eq frame current)) (frame-shown-changed-p frame))) frames)
-                   (not (tuatara.frontend:frontend-input-pending-p (frame-frontend current))))
-          (let ((since (tuatara.runtime:milliseconds-since (editor-others-painted editor))))
-            (if (< since *frame-at-least-every*)
-                (/ (- *frame-at-least-every* since) 1000)
-                (progn
-                  (dolist (frame frames)
-                    (unless (or (eq frame current) (frame-deleted frame) (not (frame-shown-changed-p frame)))
-                      (call-in-frame editor frame (lambda () (redisplay-or-say editor)))
-                      (note-frame-painted frame)))
-                  (setf (editor-others-painted editor) (get-internal-real-time))
-                  nil))))))))
+        (unless (tuatara.frontend:frontend-input-pending-p (frame-frontend current))
+          (let ((look (look-at-settings editor)))
+            (if (some (lambda (frame) (and (not (eq frame current)) (frame-shown-changed-p frame))) frames)
+                (let ((since (tuatara.runtime:milliseconds-since (editor-others-painted editor))))
+                  (if (< since *frame-at-least-every*)
+                      (/ (- *frame-at-least-every* since) 1000)
+                      (progn
+                        (dolist (frame frames)
+                          (unless (or (eq frame current) (frame-deleted frame) (not (frame-shown-changed-p frame)))
+                            (call-in-frame editor frame (lambda () (redisplay-or-say editor)))
+                            (note-frame-painted frame)))
+                        (setf (editor-others-painted editor) (get-internal-real-time))
+                        look)))
+                look)))))))
 
 (defun editor-job-waker ()
   "A function waking the editor, for the thread of work begun now to call when
@@ -210,5 +227,8 @@ worked in while it is open, else the frame worked in, so that what the taking
 in says shows there."
   (let ((editor *editor*))
     (if editor
-        (call-in-frame editor (frame-or-current editor (tuatara.runtime:job-frame job)) function)
+        (progn
+          ;; what the job brings in may show in any frame
+          (incf *display-generation*)
+          (call-in-frame editor (frame-or-current editor (tuatara.runtime:job-frame job)) function))
         (funcall function))))
