@@ -631,41 +631,26 @@ it holds none."
       (multiple-value-bind (value end) (pdf-object-at data (cdr pair))
         (make-pdf-indirect :number number :generation 0 :value value :at (cdr pair) :end end :packed-in in)))))
 
-(defun pdf-object-stream-at (octets found)
-  "The object stream whose /ObjStm OCTETS hold at FOUND, as three values: its
-PDF-INDIRECT, its decoded octets and their offsets (PDF-OBJECT-STREAM-OFFSETS);
-NIL when it is none or cannot be decoded."
-  (let* ((obj (search (load-time-value (tuatara.text:string-octets "obj")) octets :from-end t :end2 found))
-         (start (and obj (pdf-object-header-before octets obj)))
-         (stream (and start (pdf-indirect-object-at octets start)))
-         (dictionary (and stream (pdf-indirect-value stream))))
-    (when (and stream (pdf-indirect-stream-start stream) (equal (pdf-get dictionary "/Type") "/ObjStm"))
-      (multiple-value-bind (data why)
-          (pdf-stream-octets dictionary (subseq octets (pdf-indirect-stream-start stream) (pdf-indirect-stream-end stream)))
-        (when (and data (null why))
-          (values stream data (pdf-object-stream-offsets dictionary data)))))))
-
-(defun map-pdf-object-streams (function octets)
-  "Call FUNCTION with each object stream of the PDF in OCTETS, the first 500
-in the file, as PDF-OBJECT-STREAM-AT gives them (three values); stop when it
-returns true, and return that."
-  (let ((mark (load-time-value (tuatara.text:string-octets "/ObjStm"))) (at 0) (count 0))
-    (loop for found = (search mark octets :start2 at)
-          while (and found (< (incf count) 500))
-          do (setf at (1+ found))
-             (tuatara.runtime:job-check-stop)
-             (multiple-value-bind (stream data offsets) (pdf-object-stream-at octets found)
-               (when stream
-                 (let ((result (funcall function stream data offsets)))
-                   (when result (return result))))))))
+(defun pdf-object-stream-contents (octets stream)
+  "The decoded octets of STREAM, an object stream of the PDF in OCTETS (a
+PDF-INDIRECT), and where each object it holds begins in them
+\(PDF-OBJECT-STREAM-OFFSETS), as two values; NIL when it cannot be decoded
+or does not say where its objects are."
+  (let ((dictionary (pdf-indirect-value stream)))
+    (multiple-value-bind (data why)
+        (pdf-stream-octets dictionary
+                           (subseq octets (pdf-indirect-stream-start stream) (pdf-indirect-stream-end stream)))
+      (let ((offsets (and data (null why) (pdf-object-stream-offsets dictionary data))))
+        (and offsets (values data offsets))))))
 
 (defvar *pdf-objects-found* nil
   "While one PDF is read through (WITH-PDF-OBJECTS-FOUND), what PDF-FIND-OBJECT
 knows of it, a hash table: under :WRITTEN, where each object is written, by
-\(NUMBER . GENERATION), the last first; under :PACKED, the object stream
-holding each object, by number; under :ASKED, how many objects were looked
-for; and each object found, by (NUMBER . GENERATION). NIL elsewhere: each
-object is then looked for through the whole file.")
+\(NUMBER . GENERATION), the last first; under :OBJECT-STREAMS, its object
+streams; under :PACKED, the object stream holding each object, by number;
+under :ASKED, how many objects were looked for; and each object found, by
+\(NUMBER . GENERATION). NIL elsewhere: each object is then looked for
+through the whole file.")
 
 (defparameter *pdf-most-objects-found* 200
   "The most objects of one PDF looked for while it is read through
@@ -684,72 +669,70 @@ streams hold them found once, at the first object looked for, and at most
      ,@body))
 
 (defun pdf-objects-written (octets)
-  "Where each object of the PDF in OCTETS is written, as a hash table of
-\(NUMBER . GENERATION) to the offsets of their headers, the last first: the
-file read once, from its start."
-  (let ((table (make-hash-table :test 'equal))
-        (mark (load-time-value (tuatara.text:string-octets "obj"))))
-    (loop for found = (search mark octets) then (search mark octets :start2 (+ found 3))
-          for count from 0
-          while found
-          do (when (zerop (mod count 4096)) (tuatara.runtime:job-check-stop))
-             (multiple-value-bind (start number generation) (pdf-object-header-before octets found)
-               (when (and start number generation)
-                 (push start (gethash (cons number generation) table)))))
-    table))
-
-(defun pdf-objects-packed (octets)
-  "The object streams of the PDF in OCTETS holding each object, as a hash table
-of an object's number to (STREAM DATA OFFSETS INDEX), the first stream that
-holds it: those of MAP-PDF-OBJECT-STREAMS, until *PDF-OBJECT-STREAMS-READ*
-octets of them are decoded, and at most a million objects."
-  (let ((table (make-hash-table)) (read 0))
-    (map-pdf-object-streams
-     (lambda (stream data offsets)
-       (loop for (number) across offsets
-             for index from 0
-             while (< (hash-table-count table) 1000000)
-             do (unless (gethash number table)
-                  (setf (gethash number table) (list stream data offsets index))))
-       (> (incf read (length data)) *pdf-object-streams-read*))
+  "Where each object of the PDF in OCTETS is written, as two values: a hash
+table of (NUMBER . GENERATION) to the offsets of their headers, the last
+first; and its object streams, the first 500, in the order written. The
+file is read once, from its start, by MAP-PDF-WRITTEN-OBJECTS: what a
+stream's octets hold is never taken for an object."
+  (let ((table (make-hash-table :test 'equal)) (streams '()) (count 0))
+    (map-pdf-written-objects
+     (lambda (object)
+       (push (pdf-indirect-at object)
+             (gethash (cons (pdf-indirect-number object) (pdf-indirect-generation object)) table))
+       (when (and (< count 500) (pdf-indirect-stream-start object)
+                  (equal (pdf-get (pdf-indirect-value object) "/Type") "/ObjStm"))
+         (incf count)
+         (push object streams))
+       nil)
      octets)
-    table))
+    (values table (nreverse streams))))
+
+(defun pdf-objects-packed (octets streams)
+  "The object streams of the PDF in OCTETS holding each object, as a hash
+table of an object's number to (STREAM DATA OFFSETS INDEX), the first
+stream that holds it: those of STREAMS (PDF-OBJECTS-WRITTEN), until
+*PDF-OBJECT-STREAMS-READ* octets of them are decoded, and at most a million
+objects."
+  (let ((table (make-hash-table)) (read 0))
+    (dolist (stream streams table)
+      (tuatara.runtime:job-check-stop)
+      (multiple-value-bind (data offsets) (pdf-object-stream-contents octets stream)
+        (when data
+          (loop for (number) across offsets
+                for index from 0
+                while (< (hash-table-count table) 1000000)
+                do (unless (gethash number table)
+                     (setf (gethash number table) (list stream data offsets index))))
+          (when (> (incf read (length data)) *pdf-object-streams-read*)
+            (return table)))))))
 
 (defun pdf-find-object (octets number generation)
   "The object NUMBER GENERATION of the PDF in OCTETS, as a PDF-INDIRECT: the
 last one of them written in the file, else the one an object stream holds;
 NIL when it is in neither. The file's cross-reference sections are not
-read: each object is found where it is written. While the PDF is read
-through (WITH-PDF-OBJECTS-FOUND), where objects are is found once for all,
-and past *PDF-MOST-OBJECTS-FOUND* objects looked for, none is found."
-  (let ((found *pdf-objects-found*) (key (cons number generation)))
-    (if (null found)
-        (or (pdf-written-object octets number generation)
-            (map-pdf-object-streams (lambda (stream data offsets)
-                                      (pdf-packed-object data offsets number :in (pdf-indirect-number stream)))
-                                    octets))
-        (multiple-value-bind (object known) (gethash key found)
-          (cond (known object)
-                ((> (incf (gethash :asked found 0)) *pdf-most-objects-found*) nil)
-                (t (setf (gethash key found)
-                         (or (loop for start in (gethash key (or (gethash :written found)
-                                                                 (setf (gethash :written found) (pdf-objects-written octets))))
-                                   thereis (pdf-indirect-object-at octets start))
-                             (let ((place (gethash number (or (gethash :packed found)
-                                                              (setf (gethash :packed found) (pdf-objects-packed octets))))))
-                               (and place
-                                    (destructuring-bind (stream data offsets index) place
-                                      (pdf-packed-object data offsets number :index index :in (pdf-indirect-number stream)))))))))))))
-
-(defun pdf-written-object (octets number generation)
-  "The object NUMBER GENERATION as the PDF in OCTETS writes it last, as a
-PDF-INDIRECT, looked for from the file's end; NIL when it writes none."
-  (let ((mark (tuatara.text:string-octets (format nil "~d ~d obj" number generation))))
-    (loop for at = (search mark octets :from-end t) then (and (plusp at) (search mark octets :from-end t :end2 (+ at (length mark) -1)))
-          while at
-          do (when (or (zerop at) (pdf-white-p (aref octets (1- at))))
-               (let ((object (pdf-indirect-object-at octets at)))
-                 (when object (return object)))))))
+read: each object is found where it is written (PDF-OBJECTS-WRITTEN). While
+the PDF is read through (WITH-PDF-OBJECTS-FOUND), where objects are is found
+once for all, and past *PDF-MOST-OBJECTS-FOUND* objects looked for, none is
+found."
+  (let ((found (or *pdf-objects-found* (make-hash-table :test 'equal))) (key (cons number generation)))
+    (multiple-value-bind (object known) (gethash key found)
+      (cond (known object)
+            ((> (incf (gethash :asked found 0)) *pdf-most-objects-found*) nil)
+            (t (unless (gethash :written found)
+                 (multiple-value-bind (written streams) (pdf-objects-written octets)
+                   (setf (gethash :written found) written
+                         (gethash :object-streams found) streams)))
+               (setf (gethash key found)
+                     (or (loop for start in (gethash key (gethash :written found))
+                               thereis (pdf-indirect-object-at octets start))
+                         (let* ((packed (or (gethash :packed found)
+                                            (setf (gethash :packed found)
+                                                  (pdf-objects-packed octets (gethash :object-streams found)))))
+                                (place (gethash number packed)))
+                           (and place
+                                (destructuring-bind (stream data offsets index) place
+                                  (pdf-packed-object data offsets number :index index
+                                                                         :in (pdf-indirect-number stream))))))))))))
 
 (defun pdf-resolve (octets value)
   "VALUE, an object of the PDF in OCTETS, with a reference followed once to

@@ -253,6 +253,24 @@ integers (SHORT, LONG) or of fractions (N . D) (RATIONAL), or octets."
     (true (search "- Title :: Kept" (first sections)))
     (true (< seconds 10) "read in ~,1f seconds" seconds)))
 
+(define-test (metadata pdf-objects-in-streams)
+  ;; an object written only as octets inside a stream is no object: the one the file really writes is read
+  (let* ((planted "3 0 obj << /Title (Planted) >> endobj")
+         (octets (octets-of "%PDF-1.7" 10 "3 0 obj << /Title (Real) >> endobj" 10
+                            (format nil "4 0 obj << /Length ~d >> stream~%~a~%endstream endobj~%"
+                                    (length planted) planted)
+                            "trailer << /Info 3 0 R >>" 10 "%%EOF" 10))
+         (note (first (tuatara.defaults::pdf-metadata octets))))
+    (true (search "- Title :: Real" note))
+    (false (search "Planted" note))))
+
+(define-test (metadata pdf-object-stream-unplaced)
+  ;; an object stream that does not say where its objects are holds none: the information is read as far as it goes
+  (let* ((octets (octets-of "%PDF-1.7" 10 "3 0 obj << /Type /ObjStm /N 2 /Length 5 >> stream" 10 "10 0 " 10
+                            "endstream endobj" 10 "trailer << /Info 10 0 R >>" 10 "%%EOF" 10))
+         (note (first (tuatara.defaults::pdf-metadata octets))))
+    (true (search "PDF version" note))))
+
 (defun zlib-stored-octets (octets)
   "OCTETS as zlib data of one stored deflate block, as /FlateDecode takes them."
   (let ((n (length octets)))
