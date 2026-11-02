@@ -259,6 +259,12 @@ static void *table_take(Table *table, uint32_t number) {
 
 static Table trees, parsers, queries;
 
+/* A query, kept with the language it was made for: run only on trees of that language. */
+typedef struct {
+  TSQuery *query;
+  const TSLanguage *language;
+} Query;
+
 /* ---- grammars ---- */
 
 typedef struct Grammar {
@@ -411,16 +417,18 @@ static pthread_mutex_t grammar_lock = PTHREAD_MUTEX_INITIALIZER;
 /* Put in OUT the matches of QUERY in TREE from START below END, as OP_MATCHES
    gives them, after their octets when SIZED (all ones when the query or the
    tree is not known). */
-static void put_matches(Out *out, Answering *a, TSQuery *query, TSTree *tree, uint32_t start, uint32_t end, bool sized) {
+static void put_matches(Out *out, Answering *a, Query *q, TSTree *tree, uint32_t start, uint32_t end, bool sized) {
   /* nothing more once the reply is too large: it is refused whole */
   if (out->too_large) return;
   uint32_t at = out->size;
   if (sized) out_u32(out, 0);
   if (out->too_large) return;
-  if (!query || !tree) {
+  /* rules of another language, or a part of the text ending before it starts: no matches */
+  if (!q || !tree || ts_tree_language(tree) != q->language || start > end) {
     if (sized) memcpy(out->data + at, &(uint32_t){0xffffffffu}, 4);
     return;
   }
+  TSQuery *query = q->query;
   tuatara_query(a->cursor, query, tree, start, end);
   uint32_t pattern;
   int32_t count;
@@ -500,6 +508,12 @@ static bool answer(Connection *c, Answering *a, uint32_t id, uint32_t how, char 
     Parser *p = parser_claim(W(0));
     if (!p) { status = REFUSED; break; }
     TSTree *old = W(1) ? table_get(&trees, W(1)) : NULL;
+    /* a tree of another language is no tree to begin from */
+    if (old && ts_tree_language(old) != ts_parser_language(p->parser)) {
+      parser_release(p);
+      status = REFUSED;
+      break;
+    }
     uint32_t limit = W(2);
     uint64_t budget;
     memcpy(&budget, body + 12, 8);
@@ -632,6 +646,19 @@ static bool answer(Connection *c, Answering *a, uint32_t id, uint32_t how, char 
     TSTree *tree = table_get(&trees, W(0));
     uint32_t n = W(2);
     if (!tree || size < 12 || n > (size - 12) / 36) { status = REFUSED; break; }
+    /* each edit ends where it starts or after, in octets and in rows and columns, and no
+       row or column is past the octet it is of: else none is made */
+    bool good = true;
+    for (uint32_t i = 0; i < n && good; i++) {
+      uint32_t at = 3 + 9 * i;
+      uint32_t start_row = W(at + 3), start_column = W(at + 4);
+      good = W(at) <= W(at + 1) && W(at) <= W(at + 2)
+             && (start_row < W(at + 5) || (start_row == W(at + 5) && start_column <= W(at + 6)))
+             && (start_row < W(at + 7) || (start_row == W(at + 7) && start_column <= W(at + 8)));
+      for (uint32_t k = 0; k < 3 && good; k++)
+        good = W(at + 3 + 2 * k) <= W(at + k) && W(at + 4 + 2 * k) <= W(at + k);
+    }
+    if (!good) { status = REFUSED; break; }
     for (uint32_t i = 0; i < n; i++) {
       uint32_t at = 3 + 9 * i;
       tuatara_edit(tree, W(at), W(at + 1), W(at + 2), W(at + 3), W(at + 4), W(at + 5), W(at + 6), W(at + 7), W(at + 8));
@@ -652,7 +679,7 @@ static bool answer(Connection *c, Answering *a, uint32_t id, uint32_t how, char 
   }
   case OP_QUERY: {
     uint32_t number = W(0), name_length = W(1);
-    if (8 + name_length > size) { status = REFUSED; break; }
+    if (number < 1 || number > (1u << 24) || 8 + name_length > size) { status = REFUSED; break; }
     pthread_mutex_lock(&grammar_lock);
     const TSLanguage *language = find_language(body + 8, name_length);
     pthread_mutex_unlock(&grammar_lock);
@@ -661,8 +688,15 @@ static bool answer(Connection *c, Answering *a, uint32_t id, uint32_t how, char 
     TSQueryError kind = TSQueryErrorNone;
     TSQuery *query = start <= size ? ts_query_new(language, body + start, size - start, &offset, &kind) : NULL;
     if (!query) { out_u32(&out, 1); out_u32(&out, offset); out_u32(&out, kind); break; }
-    TSQuery *before = table_set(&queries, number, query);
-    if (before) ts_query_delete(before);
+    Query *q = malloc(sizeof *q);
+    if (!q) _exit(3);
+    q->query = query;
+    q->language = language;
+    Query *before = table_set(&queries, number, q);
+    if (before) {
+      ts_query_delete(before->query);
+      free(before);
+    }
     uint32_t captures = ts_query_capture_count(query), patterns = ts_query_pattern_count(query);
     out_u32(&out, 0);
     out_u32(&out, captures);
@@ -696,20 +730,23 @@ static bool answer(Connection *c, Answering *a, uint32_t id, uint32_t how, char 
     break;
   }
   case OP_QUERY_DELETE: {
-    TSQuery *query = table_take(&queries, W(0));
-    if (query) ts_query_delete(query);
+    Query *q = table_take(&queries, W(0));
+    if (q) {
+      ts_query_delete(q->query);
+      free(q);
+    }
     break;
   }
   case OP_DISABLE: {
-    TSQuery *query = table_get(&queries, W(0));
-    if (query && W(1) < ts_query_pattern_count(query)) ts_query_disable_pattern(query, W(1));
+    Query *q = table_get(&queries, W(0));
+    if (q && W(1) < ts_query_pattern_count(q->query)) ts_query_disable_pattern(q->query, W(1));
     break;
   }
   case OP_MATCHES: {
-    TSQuery *query = table_get(&queries, W(0));
+    Query *q = table_get(&queries, W(0));
     TSTree *tree = table_get(&trees, W(1));
-    if (!query || !tree) { status = REFUSED; break; }
-    put_matches(&out, a, query, tree, W(2), W(3), false);
+    if (!q || !tree) { status = REFUSED; break; }
+    put_matches(&out, a, q, tree, W(2), W(3), false);
     break;
   }
   case OP_MATCHES_MANY: {

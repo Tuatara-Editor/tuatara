@@ -363,6 +363,8 @@ int32_t tuatara_ancestry(const TSTree *tree, uint32_t start, uint32_t end, uint3
   TSNode path[deepest];
   TSNode root = ts_tree_root_node(tree);
   TSNode leaf = ts_node_descendant_for_byte_range(root, start, end);
+  /* octets outside the text have no node */
+  if (ts_node_is_null(leaf)) return 0;
   uint32_t depth = 0;
   TSNode node = root;
   while (!ts_node_is_null(node) && depth < deepest) {
@@ -435,6 +437,12 @@ int32_t tuatara_set_included_ranges(TSParser *parser, const uint32_t *ranges, ui
     r[i].end_byte = ranges[6 * i + 1];
     r[i].start_point = (TSPoint){ranges[6 * i + 2], ranges[6 * i + 3]};
     r[i].end_point = (TSPoint){ranges[6 * i + 4], ranges[6 * i + 5]};
+    /* a row or column past the octet it is of cannot be */
+    if (r[i].start_point.row > r[i].start_byte || r[i].start_point.column > r[i].start_byte
+        || r[i].end_point.row > r[i].end_byte || r[i].end_point.column > r[i].end_byte) {
+      free(r);
+      return 0;
+    }
   }
   bool ok = ts_parser_set_included_ranges(parser, r, count);
   free(r);
