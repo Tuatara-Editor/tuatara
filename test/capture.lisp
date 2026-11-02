@@ -407,3 +407,19 @@ templates those in DIRECTORY's capture-templates/ (none unless a test makes them
       (true (tuatara.frontend.fake:fake-frame-showing f "Refiled to agenda.org/Inbox"))
       (let ((text (file-text agenda)))
         (true (< (search "** TODO Old" text) (search "* Commitments and Jobs" text)) "~a" text)))))
+
+(define-test (capture refile-of-a-heading-gone-while-asking)
+  ;; the heading being refiled taken away while its target is asked for: refused, the next heading left
+  (with-capture (dir agenda)
+    (alexandria:write-string-into-file *refile-agenda* agenda :if-exists :supersede)
+    (multiple-value-bind (f editor)
+        (run-keys (list "j C-c C-w"
+                        (lambda ()
+                          (let* ((buffer (tuatara.buffer:find-buffer "agenda.org"))
+                                 (gone (format nil "** Call back~%About the case.~%*** Detail~%~%"))
+                                 (at (search gone (tuatara.buffer:buffer-string buffer))))
+                            (tuatara.buffer:buffer-delete buffer at (+ at (length gone)))))
+                        "I n b o x RET")
+                  :file agenda :width 100 :height 16)
+      (true (tuatara.frontend.fake:fake-frame-showing f "The headline is no longer there"))
+      (is string= (format nil "* Inbox~%* Commitments and Jobs~%** TODO Old~%Text.~%") (session-text editor)))))

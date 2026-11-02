@@ -236,7 +236,7 @@ agenda saves its files. With \\[universal-argument], go to the heading chosen in
           (unless headline (refuse "Not under a headline: nothing to refile"))
           (multiple-value-bind (answer parse places)
               (org-ask-keeping-places
-               parse (list (org-node-begin headline))
+               parse (list (org-line-span (org-parse-text parse) (org-node-begin headline)))
                (lambda ()
                  (multiple-value-list
                   (org-read-refile-target
@@ -244,7 +244,8 @@ agenda saves its files. With \\[universal-argument], go to the heading chosen in
                    :exclude (list parse (org-parse-octet parse (org-node-begin headline))
                                   (org-parse-octet parse (org-node-end headline)))))))
             (destructuring-bind (target at) answer
-              (let ((headline (org-headline-on-line (org-parse-tree parse) (org-parse-text parse) (first places))))
+              (let ((headline (and (first places)
+                                   (org-headline-on-line (org-parse-tree parse) (org-parse-text parse) (first places)))))
                 (unless headline (refuse "The headline is no longer there: nothing refiled"))
                 (org-refile-subtree buffer headline target at)
                 (message "Refiled to ~a" (org-olp-text target)))))))))

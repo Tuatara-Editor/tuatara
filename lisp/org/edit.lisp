@@ -30,6 +30,11 @@ tree, never through every headline."
       (walk tree))
     found))
 
+(defun org-line-span (text begin)
+  "The line of TEXT beginning at the character BEGIN, as (BEGIN . END), END
+where it ends, before its newline."
+  (cons begin (string-line-end text begin)))
+
 (defmethod mode-section-bounds ((mode org-mode) buffer position)
   "The subtree of the headline POSITION of BUFFER is under, its headline
 with it; NIL before the first headline."
@@ -825,10 +830,11 @@ ended, not moved on."
           (if (null headline)
               (message "Not in a subtree")
               (multiple-value-bind (choice parse places)
-                  (org-ask-keeping-places parse (list position (org-node-begin headline))
+                  (org-ask-keeping-places parse (list (org-line-span text (org-node-begin headline)))
                                           (lambda () (org-occurrence-choice "Cancel")))
-                (destructuring-bind (position begin) places
-                  (let ((headline (org-headline-on-line (org-parse-tree parse) (org-parse-text parse) begin))
+                (let ((begin (first places))
+                      (position (org-parse-point parse)))
+                  (let ((headline (and begin (org-headline-on-line (org-parse-tree parse) (org-parse-text parse) begin)))
                         (keyword (org-cancel-keyword (org-parse-text parse))))
                     (cond ((eq choice :none))
                           ((null headline) (refuse "The headline is no longer there: nothing cancelled"))
@@ -896,11 +902,12 @@ tags of every headline of the buffer put there instead (\\[org-align-all-tags]).
       (if (null headline)
           (message "Not under a headline")
           (multiple-value-bind (tags parse places)
-              (org-ask-keeping-places parse (list position (org-node-begin headline))
+              (org-ask-keeping-places parse (list (org-line-span text (org-node-begin headline)))
                                       (lambda () (read-org-tags buffer (org-property headline :tags))))
-            (destructuring-bind (position begin) places
+            (let ((begin (first places))
+                  (position (org-parse-point parse)))
               (let ((text (org-parse-text parse)))
-                (unless (org-headline-on-line (org-parse-tree parse) text begin)
+                (unless (and begin (org-headline-on-line (org-parse-tree parse) text begin))
                   (refuse "The headline is no longer there: tags not set"))
                 (let* ((line-end (string-line-end text begin))
                        (line (subseq text begin line-end))
@@ -981,22 +988,26 @@ under it. An empty note is not kept."
            (let ((item (org-checkbox-item-at (org-parse-tree parse) (org-parse-text parse) position)))
              (values (or item (org-current-headline (org-parse-tree parse) position)) item))))
     (with-org-structure (parse buffer tree text position)
-      (if (null (owner parse position))
-          (message "Not under a headline")
-          (multiple-value-bind (note parse places)
-              (org-ask-keeping-places parse (list position) (lambda () (string-trim " 	" (read-string "Note: "))))
-            (let ((position (first places)))
-              (multiple-value-bind (owner item) (owner parse position)
-                (cond ((zerop (length note)) (message "No note taken: it was empty"))
-                      ((null owner) (refuse "The entry is no longer there: no note taken"))
-                      (t (org-apply-edits parse
-                                          (list (org-log-edit owner (org-parse-text parse)
-                                                              (list (format nil "- Note taken on ~a \\\\"
-                                                                            (org-timestamp-text (org-now)))
-                                                                    (format nil "  ~a" note))
-                                                              :drawer (or item *org-log-into-drawer*)))
-                                          :point position)
-                         (message "Note taken"))))))))))
+      (let ((owner (owner parse position)))
+        (if (null owner)
+            (message "Not under a headline")
+            (multiple-value-bind (note parse places)
+                (org-ask-keeping-places parse (list (org-line-span text (org-node-begin owner)))
+                                        (lambda () (string-trim " 	" (read-string "Note: "))))
+              (let ((begin (first places))
+                    (position (org-parse-point parse)))
+                (multiple-value-bind (owner item) (if begin (owner parse begin) (values nil nil))
+                  (cond ((zerop (length note)) (message "No note taken: it was empty"))
+                        ((not (and owner (= (org-node-begin owner) begin)))
+                         (refuse "The entry is no longer there: no note taken"))
+                        (t (org-apply-edits parse
+                                            (list (org-log-edit owner (org-parse-text parse)
+                                                                (list (format nil "- Note taken on ~a \\\\"
+                                                                              (org-timestamp-text (org-now)))
+                                                                      (format nil "  ~a" note))
+                                                                :drawer (or item *org-log-into-drawer*)))
+                                            :point position)
+                           (message "Note taken")))))))))))
 
 ;;; New headlines and items
 

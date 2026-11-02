@@ -663,3 +663,23 @@ seconds; the editor draws after it as it does when woken."
             "~a" tuatara.defaults::*org-stored-links*)
       (let ((b (tuatara.buffer:find-buffer "end.org")))
         (when b (tuatara.buffer:buffer-mark-saved b) (tuatara.buffer:kill-buffer b))))))
+
+(define-test (org asked-for-gone-while-asking)
+  ;; what a command asked about taken away while it asks: refused, nothing else touched in its place
+  (flet ((after (text keys gone answer)
+           (multiple-value-bind (f editor)
+               (run-keys (list (format nil "M-x o r g - m o d e RET ~a" keys)
+                               (lambda ()
+                                 (let ((at (search gone text)))
+                                   (tuatara.buffer:buffer-delete (tuatara.buffer:find-buffer "*scratch*") at (+ at (length gone)))))
+                               answer)
+                         :text text :width 80 :height 12)
+             (values (session-text editor) f))))
+    ;; the headline whose tags are asked for
+    (multiple-value-bind (text f) (after (format nil "* A~%a~%* B~%b~%") "C-c C-q" (format nil "* A~%a~%") "w o r k RET")
+      (is string= (format nil "* B~%b~%") text)
+      (true (tuatara.frontend.fake:fake-frame-showing f "The headline is no longer there")))
+    ;; the link being edited, another right after it
+    (multiple-value-bind (text f) (after (format nil "[[x][y]][[z][w]]~%") "C-c C-l" "[[x][y]]" "RET RET")
+      (is string= (format nil "[[z][w]]~%") text)
+      (true (tuatara.frontend.fake:fake-frame-showing f "The link is no longer there")))))

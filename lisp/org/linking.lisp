@@ -154,7 +154,7 @@ its link and label offered. With \\[universal-argument], a link to a file."
         (destructuring-bind (link parse) on-link
           (multiple-value-bind (answer parse places)
               (org-ask-keeping-places
-               parse (list (org-node-begin link))
+               parse (list (cons (org-node-begin link) (- (org-node-end link) (org-node-post-blank link))))
                (lambda ()
                  (let ((target (read-string "Link: " :initial (org-property link :raw-link)))
                        (old-label (if (org-node-contents-begin link)
@@ -164,7 +164,7 @@ its link and label offered. With \\[universal-argument], a link to a file."
                    (list target (read-string "Label: " :initial old-label :select-initial t)))))
             (destructuring-bind (target label) answer
               (let* ((begin (first places))
-                     (link (org-link-at (org-parse-tree parse) begin))
+                     (link (and begin (org-link-at (org-parse-tree parse) begin)))
                      (problem (link-label-problem label)))
                 (cond (problem (message "Link not changed: ~a" problem))
                       ((not (and link (= (org-node-begin link) begin) (eq (org-property link :format) 'bracket)))

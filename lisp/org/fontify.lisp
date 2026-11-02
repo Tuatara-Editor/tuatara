@@ -556,24 +556,34 @@ carriage return before a newline taken as that newline."
 (defun org-ask-keeping-places (parse places ask)
   "Ask by calling ASK, a function of no arguments that waits for an answer (a
 prompt, a key), PARSE's buffer free to change meanwhile, as a job's result
-taken in or another window's typing changes it. Three values: the answer;
-PARSE itself while the buffer is as it was, else the buffer's parse as it is
-after (ORG-PARSE-NOW); and PLACES, a list of characters of PARSE, as
-characters of that parse, each moved with the text around it. Whatever a
-command found in PARSE before asking it finds again at these places, never
-editing by PARSE's positions once the buffer has changed."
+taken in or another window's typing changes it. PLACES are what the command
+found before asking, each the characters (FROM . TO) of PARSE that hold it: a
+headline's line, a link, a table. Three values: the answer; PARSE itself while
+the buffer is as it was, else the buffer's parse as it is after (ORG-PARSE-NOW);
+and for each place, where it begins in that parse, or NIL when its text is not
+there as it was (taken away or changed meanwhile). A command finds what it
+asked about again at these places, and refuses where one is NIL."
   (let* ((buffer (org-parse-buffer parse))
+         (text (org-parse-text parse))
          (version (tuatara.buffer:buffer-version buffer))
-         (anchors (mapcar (lambda (place) (tuatara.text:make-anchor version (org-parse-octet parse place) :bias :after))
+         (anchors (mapcar (lambda (place)
+                            (cons (tuatara.text:make-anchor version (org-parse-octet parse (car place)) :bias :after)
+                                  (tuatara.text:make-anchor version (org-parse-octet parse (cdr place)) :bias :before)))
                           places))
          (answer (funcall ask))
          (now (tuatara.buffer:buffer-version buffer)))
     (if (and (eql now version) (eql now (org-parse-version parse)))
-        (values answer parse places)
-        (let ((after (org-parse-now buffer)))
+        (values answer parse (mapcar #'car places))
+        (let* ((after (org-parse-now buffer))
+               (after-text (org-parse-text after)))
           (values answer after
-                  (mapcar (lambda (anchor) (org-parse-char after (tuatara.text:anchor-position anchor now)))
-                          anchors))))))
+                  (loop for (from-anchor . to-anchor) in anchors
+                        for (old-from . old-to) in places
+                        collect (let ((from (org-parse-char after (tuatara.text:anchor-position from-anchor now)))
+                                      (to (org-parse-char after (tuatara.text:anchor-position to-anchor now))))
+                                  (and (= (- to from) (- old-to old-from))
+                                       (string= after-text text :start1 from :end1 to :start2 old-from :end2 old-to)
+                                       from))))))))
 
 ;;; Colouring
 
