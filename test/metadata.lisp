@@ -409,13 +409,24 @@ endobj"))))
              (false lying "~a" name)
              (false signs "~a" name)))
   ;; a save written within another stream's data, nothing of the file naming it: a sign, not a save
-  (dolist (name '("save-in-stream-xref-stream.pdf" "save-in-stream-offsets.pdf" "save-in-stream-bare.pdf"))
+  ;; a stream merely beginning with %PDF- or calling itself an /EmbeddedFile, no file specification keeping it,
+  ;; is no attached file
+  (dolist (name '("save-in-stream-xref-stream.pdf" "save-in-stream-offsets.pdf" "save-in-stream-bare.pdf"
+                  "save-in-stream-said-pdf.pdf" "save-in-stream-said-embedded.pdf"))
     (multiple-value-bind (lines doubtful lying signs) (tuatara:pdf-eof-lines (pdf-sample name))
       (declare (ignore doubtful))
       (is = 1 (length lines) "~a" name)
       (false lying "~a" name)
       (is = 4 (car (first signs)) "~a" name)
       (true (integerp (cdr (first signs))) "~a" name))))
+
+(define-test (metadata pdf-eof-lines-bounded)
+  ;; a stream quoting more %%EOF lines than are read hides neither the save nor what the file says of itself
+  (let* ((quoted (with-output-to-string (out) (loop repeat 100001 do (format out "%%EOF~%"))))
+         (octets (pdf-with-table `((1 . "<< /Type /Catalog >>") (6 . "<< /Title (Real) >>")
+                                   (9 . ,(format nil "<< /Length ~d >>~%stream~%~aendstream" (length quoted) quoted))))))
+    (is = 1 (length (tuatara:pdf-eof-lines octets)))
+    (true (search "- Saved :: 1 time" (first (tuatara.defaults::pdf-metadata octets))))))
 
 (define-test (metadata pdf-entries-capped)
   ;; a small file listing millions of entries is read to a bound, quickly, and the note says so
