@@ -355,10 +355,12 @@ since a frame of EDITOR (ATTACH-CLIENT), and each window a client opened as
 asked its frame (OPEN-FRAME-ASKED-FOR), each apart: one that cannot be
 attached is let go, its standard input closed. A window asked for that has
 not come in time is no longer waited for, and that is said in a frame of the
-client that asked. Wants a call of
-its own only while a window is waited for: what is greeted wakes the editor."
+client that asked. What is attached is painted as soon as the editor paints,
+inside a question too. Wants a call of its own only while a window is waited
+for: what is greeted wakes the editor."
   (let ((daemon *daemon*))
     (when (and daemon (daemon-arrived daemon))
+      (incf *display-generation*)
       (dolist (item (reverse (sb-thread:with-mutex ((daemon-mutex daemon)) (shiftf (daemon-arrived daemon) '()))))
         (let ((remote (if (consp item) (second item) item)))
           (handler-case (if (consp item)

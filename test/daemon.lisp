@@ -882,3 +882,21 @@ ended have: the frames shown, the one with no screen left out."
                 (type-keys local "C-x C-c")
                 (is equal '(0 nil) (client-ends runner))
                 (client-ends second-runner)))))))))
+
+;;; Its lifetime
+
+(define-test (daemon second-client-while-one-asks)
+  ;; a client left at a question holds no other back: the next is given its frame meanwhile, the question
+  ;; still open
+  (with-test-daemon (name)
+    (multiple-value-bind (a a-runner) (attach-test-client name)
+      (true (shows a "scratch"))
+      (type-keys a "C-x b")
+      (true (shows a "Switch to buffer"))
+      (multiple-value-bind (b b-runner) (attach-test-client name)
+        (true (shows b "scratch" 10) "shown while the first client asks")
+        (true (showing-now a "Switch to buffer") "the question goes on")
+        (type-keys b "C-x C-c")
+        (is equal '(0 nil) (client-ends b-runner))
+        (type-keys a "C-g C-x C-c")
+        (is equal '(0 nil) (client-ends a-runner))))))

@@ -384,8 +384,9 @@ BETWEEN-COMMANDS, for the command loop's read alone, it may make that frame
 the one worked in, and what was left unread in another frame comes once the
 frame worked in has none left; without, what is done in another frame runs
 there inside the question (RUN-INSIDE-QUESTION), what was left unread there
-first (RUN-OTHER-FRAMES-UNREAD), and with several frames, the editor woken
-takes in what work in the background has for the others."
+first (RUN-OTHER-FRAMES-UNREAD), and with several frames, or in an editor
+running in the background, the editor woken takes in what work in the
+background has for the others."
   (let ((asking (editor-frame editor))
         (reading (if between-commands :between-commands :question)))
     (flet ((from-frontend (frame)
@@ -415,9 +416,10 @@ takes in what work in the background has for the others."
                              (return (tuatara.frontend:make-event :tick))
                              (redisplay-or-say editor)))
                 ((:tick :focus)
-                 ;; a wake while a question is open: what other frames' work brought is taken in now
+                 ;; a wake while a question is open: what other frames' work brought is taken in now, and
+                 ;; in an editor in the background, the clients that come and its ending
                  (when (and (not between-commands) (not playing) (eq (tuatara.frontend:event-kind event) :tick)
-                            (rest (editor-frames editor)))
+                            (or (rest (editor-frames editor)) (editor-idle-frontend editor)))
                    (run-inside-question editor nil nil))
                  (when ticks (return event)))
                 ;; words from the frontend: said once the question is done, which goes on
