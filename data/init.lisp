@@ -528,10 +528,6 @@
   ;; Line numbers by major mode, before *line-numbers-default*.
   ;; (setf *line-numbers-modes* '((prog-mode . :relative) (org-mode . nil)))
 
-  ;; The change marks beside the lines of a file in git compare up to 50 MB
-  ;; of it; past that the file has none. Not set: 200 MB.
-  ;; (setf *vc-gutter-max-bytes* (* 50 1024 1024))
-
   ;; The line point is on lit only where C-x T h says. Not set: t.
   ;; (setf *global-hl-line-mode* nil)
 
@@ -1343,11 +1339,6 @@
   ;; staged, ignored) lists its first 3000 files, and TAB on the line after
   ;; them 3000 more. Not set: 1000.
   ;; (setf *git-section-lines* 3000)
-
-  ;; A file up to 64 MB is looked through for the conflicts a merge left in
-  ;; it when it is shown; a larger one only with M-x conflict-markers-mode.
-  ;; Not set: 256 MB.
-  ;; (setf *conflict-markers-max-bytes* (* 64 1024 1024))
 
   ;; A status on the screen is read again at most every 5 seconds when git
   ;; changes the repository (from a terminal too), nil never: r reads it
