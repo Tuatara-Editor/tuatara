@@ -649,3 +649,17 @@ seconds; the editor draws after it as it does when woken."
       ;; tags: on Two's line
       (let ((tagged (after "C-c C-q" "w o r k RET")))
         (true (search (format nil "* Zero~%taken in~%* One~%one~%* Two :work:~%two~%") tagged) "~a" tagged)))))
+
+(define-test (org last-heading-at-the-very-end)
+  ;; point at the very end of a note is under its last heading: a link stored there leads to it
+  (with-test-directory (dir)
+    (let ((org (merge-pathnames "end.org" dir))
+          (tuatara.defaults::*org-stored-links* '()))
+      (alexandria:write-string-into-file (format nil "* First~%Text~%* Last~%body") org)
+      (run-keys (format nil "C-x C-f C-a C-k ~a RET M-> M-x o r g - s t o r e - l i n k RET"
+                        (rimu-typed (namestring org)))
+                :width 120 :height 20)
+      (true (search "::*Last" (first (first tuatara.defaults::*org-stored-links*)))
+            "~a" tuatara.defaults::*org-stored-links*)
+      (let ((b (tuatara.buffer:find-buffer "end.org")))
+        (when b (tuatara.buffer:buffer-mark-saved b) (tuatara.buffer:kill-buffer b))))))

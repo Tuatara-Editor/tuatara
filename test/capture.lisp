@@ -396,3 +396,14 @@ templates those in DIRECTORY's capture-templates/ (none unless a test makes them
         (true (search (format nil "* Other~%** Leave me :home:~%** Dentist~%:PROPERTIES:~%:LOCATION:~%:END:") (file-text agenda))
               "~a" (file-text agenda))
         (true (tuatara.frontend.fake:fake-frame-showing f "Event filed under agenda.org/Other"))))))
+
+(define-test (capture refile-the-last-subtree-from-the-end)
+  ;; point at the very end of the file is under its last heading, which C-c C-w refiles
+  (with-capture (dir agenda)
+    (alexandria:write-string-into-file *refile-agenda* agenda :if-exists :supersede)
+    (multiple-value-bind (f editor)
+        (run-keys "M-> C-c C-w I n b o x RET" :file agenda :width 100 :height 16)
+      (declare (ignore editor))
+      (true (tuatara.frontend.fake:fake-frame-showing f "Refiled to agenda.org/Inbox"))
+      (let ((text (file-text agenda)))
+        (true (< (search "** TODO Old" text) (search "* Commitments and Jobs" text)) "~a" text)))))
