@@ -3,7 +3,8 @@
 ;;;;
 ;;;; Loaded by tools/fuzz-remote.sh, which sets the limits. Records what an
 ;;;; editor sends a client over a few frames (names, every face, rows, kept
-;;;; rows, a cursor, a title, a question) and what a client sends an editor
+;;;; rows, a cursor, a title, a question, its settings, another window asked
+;;;; for) and what a client sends an editor
 ;;;; (a hello, its screen, every kind of event, pieces of a paste, answers),
 ;;;; spoils copies ROUNDS times from SEED (octets changed, cut, put in,
 ;;;; lengths and counts made huge, messages repeated, mixed and made up) and
@@ -99,6 +100,8 @@ first message after its hello."
         (message :ask (lambda (box)
                         (tuatara.frontend::put-number box 7 4) (tuatara.frontend::put-number box 2 1)
                         (tuatara.frontend::put-text box "Mono 12")))
+        (message :settings #'tuatara.frontend::put-settings)
+        (message :another (lambda (box) (tuatara.frontend::put-text box "W4XK2Q9")))
         (message :exit (lambda (box) (tuatara.frontend::put-number box 1 1))))
       (outbox-octets box))))
 
@@ -198,37 +201,44 @@ every kind, a paste in pieces and answers."
 
 ;;; Reading
 
+(defun read-as-side (inbox side)
+  "The work of READ-AS: read INBOX as SIDE reads it."
+  (handler-case
+      (if (eq side :client)
+          (let* ((local (tuatara.frontend.fake:make-fake-frontend :cell-pixels '(8 16) :font-steps 0 :fonts '("Mono")))
+                 (client (tuatara.frontend::%make-remote-client -1 local inbox)))
+            (tuatara.frontend:frontend-start local)
+            (loop for kind = (tuatara.frontend::read-message inbox)
+                  while kind
+                  do (let ((item (tuatara.frontend::take-from-editor client kind inbox)))
+                       ;; the questions are answered over the socket, of which there is none
+                       (when (and item (not (eq (first item) :ask)))
+                         (push item (tuatara.frontend::remote-client-arrived client)))))
+            (tuatara.frontend::paint-arrived client))
+          (let ((remote (make-instance 'tuatara.frontend:remote-frontend :fd -1)))
+            ;; no one takes the events here, so none is waited for; a question awaits its answer
+            (setf (tuatara.frontend::remote-closing remote) t
+                  (tuatara.frontend::remote-asked remote) (random 4 *random*)
+                  (tuatara.frontend::remote-asked-question remote)
+                  (svref tuatara.frontend::*questions* (random 4 *random*)))
+            (loop for kind = (tuatara.frontend::read-message inbox)
+                  while kind
+                  do (case kind
+                       (:hello (tuatara.frontend::take-hello inbox))
+                       (:attach (tuatara.frontend::take-facts inbox :whole t)
+                        (tuatara.frontend::take-request inbox)
+                        (tuatara.frontend::message-read inbox))
+                       (t (unless (tuatara.frontend::take-from-client remote kind inbox) (return)))))))
+    (tuatara.frontend:malformed-message () nil)))
+
 (defun read-as (octets side)
   "Read OCTETS as SIDE (:CLIENT or :EDITOR) reads what the other end sends,
-acting on each message as it does, a client painting on a fake frontend."
-  (let ((inbox (tuatara.frontend::make-inbox nil side :octets (copy-seq octets) :end (length octets))))
-    (handler-case
-        (if (eq side :client)
-            (let* ((local (tuatara.frontend.fake:make-fake-frontend :cell-pixels '(8 16) :font-steps 0 :fonts '("Mono")))
-                   (client (tuatara.frontend::%make-remote-client -1 local inbox)))
-              (tuatara.frontend:frontend-start local)
-              (loop for kind = (tuatara.frontend::read-message inbox)
-                    while kind
-                    do (let ((item (tuatara.frontend::take-from-editor client kind inbox)))
-                         ;; the questions are answered over the socket, of which there is none
-                         (when (and item (not (eq (first item) :ask)))
-                           (push item (tuatara.frontend::remote-client-arrived client)))))
-              (tuatara.frontend::paint-arrived client))
-            (let ((remote (make-instance 'tuatara.frontend:remote-frontend :fd -1)))
-              ;; no one takes the events here, so none is waited for; a question awaits its answer
-              (setf (tuatara.frontend::remote-closing remote) t
-                    (tuatara.frontend::remote-asked remote) (random 4 *random*)
-                    (tuatara.frontend::remote-asked-question remote)
-                    (svref tuatara.frontend::*questions* (random 4 *random*)))
-              (loop for kind = (tuatara.frontend::read-message inbox)
-                    while kind
-                    do (case kind
-                         (:hello (tuatara.frontend::take-hello inbox))
-                         (:attach (tuatara.frontend::take-facts inbox :whole t)
-                          (tuatara.frontend::take-request inbox)
-                          (tuatara.frontend::message-read inbox))
-                         (t (unless (tuatara.frontend::take-from-client remote kind inbox) (return)))))))
-      (tuatara.frontend:malformed-message () nil))))
+acting on each message as it does, a client painting on a fake frontend; the
+settings a client takes from them are this run's only while it reads."
+  (let ((inbox (tuatara.frontend::make-inbox nil side :octets (copy-seq octets) :end (length octets)))
+        (settings (mapcar #'first tuatara.frontend::*display-settings*)))
+    (progv settings (mapcar (lambda (name) (and (boundp name) (symbol-value name))) settings)
+      (read-as-side inbox side))))
 
 (defun over-a-socket (octets side descriptor with-hello)
   "Send OCTETS, spoilt, after a good hello, to a remote frontend (SIDE
@@ -260,11 +270,19 @@ connection ended, or the hello was refused, within five seconds."
                                         thereis (eq (tuatara.frontend:event-kind event) :detached))
                              (tuatara.frontend:frontend-stop remote))))))
                  (let* ((local (tuatara.frontend.fake:make-fake-frontend))
-                        (maker (sb-thread:make-thread (lambda () (tuatara.frontend:make-remote-client mine local)))))
+                        (maker (sb-thread:make-thread (lambda ()
+                                                        (handler-case (tuatara.frontend:make-remote-client mine local)
+                                                          (tuatara.frontend:remote-refused () nil))))))
                    (tuatara.frontend:frontend-start local)
                    (tuatara.frontend::put-hello box)
+                   (let ((at (tuatara.frontend::begin-message box :settings)))
+                     (tuatara.frontend::put-settings box)
+                     (tuatara.frontend::end-message box at))
                    (tuatara.frontend::send-outbox theirs box 5)
                    (let ((client (sb-thread:join-thread maker)))
+                     (unless client
+                       (sb-posix:close mine)
+                       (return-from over-a-socket t))
                      (send)
                      ;; the fake frontend reads no keys: the client's reading thread ends by itself
                      (let ((reader (tuatara.frontend::remote-client-reader client)))
@@ -417,10 +435,11 @@ what went wrong."
           (sb-posix:close theirs))))))
 
 (defun put-raw-request (box &key (flags 1) (frames 1) (directory "/tmp") (terminal "") environment (files '())
-                                  (diff '()) (merge '()) environment-count files-count)
+                                  (diff '()) (merge '()) environment-count files-count joins)
   "Put in BOX the fields of a client's request as given, none held to its
 bounds: ENVIRONMENT, (NAME . VALUE) pairs, and FILES, paths, after the counts
-ENVIRONMENT-COUNT and FILES-COUNT say (their lengths unless given)."
+ENVIRONMENT-COUNT and FILES-COUNT say (their lengths unless given); JOINS, the
+word of a window asked for, last when given."
   (tuatara.frontend::put-number box flags 2)
   (tuatara.frontend::put-number box frames 1)
   (tuatara.frontend::put-text box directory)
@@ -433,7 +452,9 @@ ENVIRONMENT-COUNT and FILES-COUNT say (their lengths unless given)."
     (tuatara.frontend::put-text box path) (tuatara.frontend::put-number box 0 4) (tuatara.frontend::put-number box 0 4))
   (dolist (paths (list diff merge))
     (tuatara.frontend::put-number box (length paths) 1)
-    (dolist (path paths) (tuatara.frontend::put-text box path))))
+    (dolist (path paths) (tuatara.frontend::put-text box path)))
+  (when joins
+    (tuatara.frontend::put-text box joins)))
 
 (defparameter *hostile-attaches*
   `((:taken)
@@ -460,7 +481,13 @@ ENVIRONMENT-COUNT and FILES-COUNT say (their lengths unless given)."
     (:refused :descriptors 1)
     (:refused :flags 17)
     (:refused :flags 17 :descriptors 2)
-    (:taken :flags 17 :descriptors 1))
+    (:taken :flags 17 :descriptors 1)
+    (:taken :flags 33 :joins "W4XK2Q9")
+    (:refused :flags 33)
+    (:refused :flags 33 :joins "")
+    (:refused :flags 33 :joins "a word")
+    (:refused :flags 33 :joins ,(format nil "W4X~cK" (code-char 0)))
+    (:refused :flags 33 :joins ,(make-string 65 :initial-element #\W)))
   "Requests a client may send as it attaches, each (OUTCOME . KEYS): KEYS as
 PUT-RAW-REQUEST takes them, and :DESCRIPTORS, how many pipe ends are passed
 with the attach; OUTCOME, whether the editor takes the client or refuses it.")

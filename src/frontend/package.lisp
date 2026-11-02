@@ -11,6 +11,7 @@
            #:event-queue #:make-event-queue #:queue-push #:queue-pop #:queue-empty-p #:queue-input-p #:tick-p
            #:frontend-start #:frontend-stop #:frontend-size #:frontend-read-event #:frontend-read-event-timeout
            #:frontend-input-pending-p #:frontend-wake #:frontend-another #:frontend-frame #:frontend-raise
+           #:frontend-scales-rows-p
            #:frontend-colour-count #:frontend-description #:frontend-health #:frontend-set-clipboard #:frontend-terminal-device #:frontend-lend-terminal #:frontend-clipboard #:frontend-set-title #:frontend-font-steps #:frontend-fonts #:frontend-font-faces #:frontend-set-font #:frontend-toggle-state #:frontend-desktop-style #:frontend-settings-changed #:frontend-renderers #:frontend-measure-drawing #:padding-sides
            #:frontend-begin-frame #:frontend-put-row #:frontend-set-cursor #:frontend-end-frame
            #:image #:image-p #:make-image #:image-width #:image-height #:image-fit-scale #:image-channels #:image-pixels #:image-id
@@ -21,5 +22,5 @@
            #:remote-request #:remote-exit-code #:remote-exit-words #:refuse-connection #:shut-and-close #:shown-words
            #:request #:make-request #:request-p #:request-directory #:request-terminal #:request-environment
            #:request-files #:request-safe #:request-hex #:request-standard-input #:request-diff #:request-merge
-           #:request-frames #:request-wait #:request-stop
+           #:request-frames #:request-wait #:request-stop #:request-joins #:greet-editor #:take-window-asked-for
            #:null-frontend #:make-null-frontend))

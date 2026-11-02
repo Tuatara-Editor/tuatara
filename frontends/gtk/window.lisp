@@ -509,6 +509,24 @@ never one someone else made taken over."
                 (and (listp figures) (getf figures :median) figures)))
           (tuatara.io:delete-tree (uiop:native-namestring directory)))))))
 
+(defun open-first-window ()
+  "Start GTK on this thread, the main one, and open the program's first
+window, drawn as *GUI-RENDERER* asks (CHOOSE-RENDERER): a frontend for it,
+not yet given its frame. Called within WITH-GTK-FLOAT-TRAPS, GTK's libraries
+loaded."
+  ;; the desktop matches the window to tuatara.desktop by this name
+  (g-set-prgname "tuatara")
+  (g-set-application-name "Tuatara")
+  (choose-renderer)
+  (gtk-init)
+  (use-program-icon)
+  (let ((f (make-gtk-frontend)))
+    (open-window f)
+    (gtk-widget-realize (gtk-window f))
+    (setf (gtk-drawn-by f) (window-renderer-name (gtk-window f)))
+    (renderer-chosen)
+    f))
+
 (defun run-in-window (files setup &key start)
   "Run the editor in a window of its own on FILES, calling SETUP with it, and
 START once the files are shown, as RUN-EDITOR does: GTK on this thread, which
@@ -519,18 +537,8 @@ terminal shows it (LOG-STDERR-UNLESS-TERMINAL)."
   (log-stderr-unless-terminal)
   (load-gtk-libraries)
   (with-gtk-float-traps
-    ;; the desktop matches the window to tuatara.desktop by this name
-    (g-set-prgname "tuatara")
-    (g-set-application-name "Tuatara")
-    (choose-renderer)
-    (gtk-init)
-    (use-program-icon)
-    (let ((f (make-gtk-frontend))
+    (let ((f (open-first-window))
           (ended nil))
-      (open-window f)
-      (gtk-widget-realize (gtk-window f))
-      (setf (gtk-drawn-by f) (window-renderer-name (gtk-window f)))
-      (renderer-chosen)
       (let ((editor (sb-thread:make-thread
                      (lambda ()
                        (unwind-protect (tuatara.command:run-editor f :files files :setup setup :start start)
@@ -545,3 +553,74 @@ terminal shows it (LOG-STDERR-UNLESS-TERMINAL)."
               do (g-main-context-iteration (null-pointer) t))
         (sb-thread:join-thread editor :default nil)
         0))))
+
+;;; A client of an editor running elsewhere, in windows of its own
+
+(defconstant +most-client-windows+ 32
+  "The most windows one client of an editor running elsewhere shows at once:
+past it, another the editor asks for is not opened.")
+
+(defun run-window-client (fd greeted request &key standard-input connect)
+  "Show the editor at the other end of the local socket FD, which has said
+hello (GREETED, as TUATARA.FRONTEND:GREET-EDITOR read it, its settings taken
+here), in a window of its own, asking it for REQUEST, a TUATARA.FRONTEND:REQUEST,
+with STANDARD-INPUT, a descriptor, passed to be read: its events sent to the
+editor and what it paints shown. Each further window the editor asks for
+\(another frame) is a connection of its own, which CONNECT, a function of no
+arguments, makes: a socket, or NIL when none can be made. GTK runs on this
+thread, which must be the main one; each window is painted and read on a
+thread of its own. Returns once every window has closed: the exit code the
+editor gave the window that closed last, or NIL when the editor went without
+giving one, and what it said with it."
+  (log-stderr-unless-terminal)
+  (load-gtk-libraries)
+  (with-gtk-float-traps
+    (let ((lock (sb-thread:make-mutex :name "window client"))
+          (showing 1) (code nil) (words nil))
+      (labels ((show (f fd greeted request input)
+                 ;; one window's connection, until the editor lets it go or goes
+                 (unwind-protect
+                      (handler-case
+                          (progn
+                            ;; the window, started here or already open, takes its size before the editor is told it
+                            (tuatara.frontend:frontend-start f)
+                            (let ((client (tuatara.frontend:make-remote-client
+                                           fd f :request request :standard-input input :greeted greeted
+                                                :another #'another)))
+                              ;; its events stand for the editor's frame, as an editor's window's do
+                              (setf (tuatara.frontend:frontend-frame f) client)
+                              (multiple-value-bind (exit said) (tuatara.frontend:run-remote-client client)
+                                (sb-thread:with-mutex (lock) (setf code exit words said)))))
+                        (tuatara.frontend:remote-refused (condition)
+                          (tuatara.runtime:debug-report :remote "a window refused: ~a"
+                                                        (tuatara.frontend:remote-refused-words condition))
+                          (tuatara.frontend:shut-and-close fd)))
+                   (tuatara.frontend:frontend-stop f)
+                   (sb-thread:with-mutex (lock) (decf showing))
+                   (g-idle-add (callback on-editor-ended) (null-pointer))))
+               (another (word)
+                 ;; asked for by the editor: a connection of its own, attached with WORD
+                 (let ((fd (and (< (sb-thread:with-mutex (lock) showing) +most-client-windows+) (funcall connect))))
+                   (when fd
+                     (sb-thread:with-mutex (lock) (incf showing))
+                     (tuatara.runtime:make-guarded-thread
+                      (lambda ()
+                        ;; the settings this client took as its first window opened stay as they are
+                        (let ((greeted (handler-case (tuatara.frontend:greet-editor fd :take nil)
+                                         (tuatara.frontend:remote-refused () nil))))
+                          (if greeted
+                              (show (let ((f (make-gtk-frontend))) (setf (gtk-renderer-checked f) t) f) fd greeted
+                                    (tuatara.frontend:make-request
+                                     :directory (tuatara.frontend:request-directory request) :joins word)
+                                    nil)
+                              (progn (tuatara.frontend:shut-and-close fd)
+                                     (sb-thread:with-mutex (lock) (decf showing))
+                                     (g-idle-add (callback on-editor-ended) (null-pointer))))))
+                      :name "tuatara window client greeting" :niceness 0)))))
+        (let ((f (open-first-window)))
+          (setf (gtk-renderer-checked f) t)
+          (tuatara.runtime:make-guarded-thread (lambda () (show f fd greeted request standard-input))
+                                               :name "tuatara window client" :niceness 0))
+        (loop until (and (zerop (sb-thread:with-mutex (lock) showing)) (null (open-windows)))
+              do (g-main-context-iteration (null-pointer) t))
+        (values code words)))))

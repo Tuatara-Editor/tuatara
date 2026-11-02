@@ -568,6 +568,14 @@ anywhere: every copy of it passed was closed. IN is closed after."
       (sb-thread:join-thread sender :timeout 15 :default nil)
       (sb-posix:close theirs))))
 
+(defun put-editor-hello (box)
+  "Put in BOX what an editor says first: its hello, and the settings its
+clients are shown by."
+  (tuatara.frontend::put-hello box)
+  (let ((at (tuatara.frontend::begin-message box :settings)))
+    (tuatara.frontend::put-settings box)
+    (tuatara.frontend::end-message box at)))
+
 (defun raw-editor (local &rest messages)
   "A client painting on LOCAL, a fake frontend, made over a new socket whose
 other end, here, says hello as an editor and then sends MESSAGES (lists of
@@ -576,7 +584,7 @@ octets); two values: the client and the editor's end of the socket."
   (multiple-value-bind (mine theirs) (tuatara.io:socket-pair)
     (let ((maker (sb-thread:make-thread (lambda () (tuatara.frontend:make-remote-client theirs local))))
           (box (tuatara.frontend::make-outbox)))
-      (tuatara.frontend::put-hello box)
+      (put-editor-hello box)
       (tuatara.frontend::send-outbox mine box 5)
       (let ((client (sb-thread:join-thread maker)))
         (dolist (octets messages) (send-raw mine octets))
@@ -1078,3 +1086,125 @@ read and let go of."
       (false (tuatara.frontend::remote-ended remote))
       (tuatara.frontend:frontend-stop remote)
       (sb-posix:close theirs))))
+
+;;; Settings, told by the editor to its clients
+
+(defun display-settings-bound (function)
+  "Call FUNCTION with each of *DISPLAY-SETTINGS* bound to its value, so that
+what it sets is undone after."
+  (let ((names (mapcar #'first tuatara.frontend::*display-settings*)))
+    (progv names (mapcar (lambda (name) (and (boundp name) (symbol-value name))) names)
+      (funcall function))))
+
+(defun settings-read-back ()
+  "The settings as a client reads them from a message of the values here
+\(TUATARA.FRONTEND::TAKE-SETTINGS)."
+  (let* ((box (tuatara.frontend::make-outbox)) (at (tuatara.frontend::begin-message box :settings)))
+    (tuatara.frontend::put-settings box)
+    (tuatara.frontend::end-message box at)
+    (let* ((octets (subseq (tuatara.frontend::outbox-octets box) 0 (tuatara.frontend::outbox-fill box)))
+           (inbox (tuatara.frontend::make-inbox nil :client :octets octets :end (length octets))))
+      (is eq :settings (tuatara.frontend::read-message inbox))
+      (tuatara.frontend::take-settings inbox))))
+
+(define-test (remote settings-carried-to-a-client)
+  ;; the window's font and padding, the terminal's colours and the rest, as the editor's init file set them
+  (display-settings-bound
+   (lambda ()
+     (setf tuatara-user:*gui-font* "Kiwi Mono 13" tuatara-user:*gui-padding* '(4 12)
+           tuatara-user:*window-colours-from-desktop* t tuatara-user:*gui-renderer* :cairo
+           tuatara-user:*tui-padding* 1 tuatara-user:*tui-mouse* nil tuatara-user:*tui-colours* 16
+           tuatara-user:*tui-pictures* nil tuatara-user:*kitty-keyboard* t)
+     (let ((read (settings-read-back)))
+       (is equal "Kiwi Mono 13" (cdr (assoc 'tuatara-user:*gui-font* read)))
+       (is equal '(4 12 4 12) (cdr (assoc 'tuatara-user:*gui-padding* read)))
+       (is equal '(1 1 1 1) (cdr (assoc 'tuatara-user:*tui-padding* read)))
+       (is eq t (cdr (assoc 'tuatara-user:*window-colours-from-desktop* read)))
+       (is eq :cairo (cdr (assoc 'tuatara-user:*gui-renderer* read)))
+       (is eql 16 (cdr (assoc 'tuatara-user:*tui-colours* read)))
+       (is eq t (cdr (assoc 'tuatara-user:*kitty-keyboard* read)))
+       (true (assoc 'tuatara-user:*tui-mouse* read))
+       (false (cdr (assoc 'tuatara-user:*tui-mouse* read))))
+     ;; a value a setting may not take, or a font named with a control character, is not told: the client's stays
+     (setf tuatara-user:*tui-colours* 24 tuatara-user:*gui-font* (format nil "Mono~c[2J" #\Esc))
+     (let ((read (settings-read-back)))
+       (false (assoc 'tuatara-user:*tui-colours* read))
+       (false (assoc 'tuatara-user:*gui-font* read)))
+     ;; a client takes them, but those it was told before unchanged, and those taken as its screen opens
+     (setf tuatara-user:*gui-font* "Kiwi Mono 13" tuatara-user:*gui-renderer* :gl)
+     (let ((told (list (cons 'tuatara-user:*gui-font* "Weka Mono 9") (cons 'tuatara-user:*gui-renderer* :vulkan)
+                       (cons 'tuatara-user:*tui-mouse* t))))
+       (true (tuatara.frontend::use-settings told :before (list (cons 'tuatara-user:*tui-mouse* t))))
+       (is equal "Weka Mono 9" tuatara-user:*gui-font*)
+       (is eq :gl tuatara-user:*gui-renderer*)
+       (false tuatara-user:*tui-mouse* "told as before: left as the client has it")
+       (true (tuatara.frontend::use-settings told :at-start t))
+       (is eq :vulkan tuatara-user:*gui-renderer*)))))
+
+(define-test (remote settings-told-again-when-changed)
+  ;; after a command the settings are looked at: told again only when one has another value
+  (display-settings-bound
+   (lambda ()
+     (let ((remote (make-instance 'tuatara.frontend:remote-frontend :fd -1)))
+       (flet ((settings-sent ()
+                (let* ((box (tuatara.frontend::remote-unsent remote))
+                       (octets (subseq (tuatara.frontend::outbox-octets box) 0 (tuatara.frontend::outbox-fill box)))
+                       (inbox (tuatara.frontend::make-inbox nil :client :octets octets :end (length octets))))
+                  (setf (tuatara.frontend::outbox-fill box) 0)
+                  (loop for kind = (tuatara.frontend::read-message inbox)
+                        while kind
+                        count (eq kind :settings)
+                        do (setf (tuatara.frontend::inbox-at inbox) (tuatara.frontend::inbox-stop inbox))))))
+         (setf (tuatara.frontend::remote-settings-sent remote) (tuatara.frontend::settings-now))
+         (tuatara.frontend:frontend-settings-changed remote)
+         (is = 0 (settings-sent))
+         (setf tuatara-user:*gui-padding* 17)
+         (tuatara.frontend:frontend-settings-changed remote)
+         (tuatara.frontend:frontend-settings-changed remote)
+         (is = 1 (settings-sent))
+         (setf tuatara-user:*gui-padding* 17)
+         (tuatara.frontend:frontend-settings-changed remote)
+         (is = 0 (settings-sent)))))))
+
+(define-test (remote settings-told-with-the-hello)
+  ;; a client knows the settings before its screen opens: an editor that says none is refused
+  (multiple-value-bind (mine theirs) (tuatara.io:socket-pair)
+    (let ((box (tuatara.frontend::make-outbox)))
+      (tuatara.frontend::put-hello box)
+      (tuatara.frontend::send-outbox mine box 5)
+      (let ((tuatara.frontend::*hello-seconds* 1))
+        (let ((refused (handler-case (progn (tuatara.frontend:greet-editor theirs) nil)
+                         (tuatara.frontend:remote-refused (condition)
+                           (tuatara.frontend:remote-refused-words condition)))))
+          (true (search "settings" refused) "~a" refused))))
+    (sb-posix:close mine) (sb-posix:close theirs))
+  ;; the editor's settings, here, read by a client, on a thread of its own, before it says anything
+  (display-settings-bound
+   (lambda ()
+     (setf tuatara-user:*gui-font* "Tui Mono 11")
+     (multiple-value-bind (mine theirs) (tuatara.io:socket-pair)
+       (let ((client (sb-thread:make-thread
+                      (lambda ()
+                        (display-settings-bound
+                         (lambda ()
+                           (prog1 (list (second (tuatara.frontend:greet-editor theirs)) tuatara-user:*gui-font*)
+                             (sb-posix:close theirs))))))))
+         (false (handler-case (tuatara.frontend:make-remote-frontend mine)
+                  (tuatara.frontend:remote-refused () nil)))
+         (destructuring-bind (told taken) (sb-thread:join-thread client :timeout 10 :default '(nil nil))
+           (is equal "Tui Mono 11" (cdr (assoc 'tuatara-user:*gui-font* told)))
+           (is equal "Tui Mono 11" taken "taken by the client"))
+         (sb-posix:close mine))))))
+
+(define-test (remote settings-looked-at-without-garbage)
+  ;; the settings looked at after every command, none changed: nothing made for each look
+  (let ((remote (make-instance 'tuatara.frontend:remote-frontend :fd -1)))
+    (setf (tuatara.frontend::remote-settings-sent remote) (tuatara.frontend::settings-now))
+    (flet ((garbage (count)
+             (sb-ext:gc :full t)
+             (let ((before (sb-ext:get-bytes-consed)))
+               (dotimes (i count) (tuatara.frontend:frontend-settings-changed remote))
+               (- (sb-ext:get-bytes-consed) before))))
+      (garbage 100)
+      (let ((per-look (/ (- (min (garbage 20000) (garbage 20000)) (min (garbage 2000) (garbage 2000))) 18000.0)))
+        (true (< per-look 1) "~,2f octets a look" per-look)))))

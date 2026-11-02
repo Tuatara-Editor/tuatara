@@ -18,9 +18,9 @@
     "tuatara [--gui] [-Q] [-c INIT-FILE] --merge LOCAL BASE REMOTE MERGED"
     "tuatara [--gui] [-Q] [-c INIT-FILE] --tutor"
     "tuatara --daemon[=NAME] [-c INIT-FILE]"
-    "tuatara --client[=NAME] [--start] [--frames N] [--safe] [--hex] [[+LINE[:COLUMN]] FILE...]"
-    "tuatara --client[=NAME] [--start] --diff OLD NEW"
-    "tuatara --client[=NAME] [--start] --merge LOCAL BASE REMOTE MERGED"
+    "tuatara --client[=NAME] [--gui] [--start] [--frames N] [--safe] [--hex] [[+LINE[:COLUMN]] FILE...]"
+    "tuatara --client[=NAME] [--gui] [--start] --diff OLD NEW"
+    "tuatara --client[=NAME] [--gui] [--start] --merge LOCAL BASE REMOTE MERGED"
     "tuatara --stop[=NAME]")
   "The ways of starting Tuatara, as --help and the manual page show them.")
 
@@ -79,11 +79,12 @@ License, version 3 or later.
             "default when none is given, tells several apart; its log is"
             "~/.cache/tuatara/daemon-NAME.log"))
     (:flags (("--client[=NAME]"))
-     :text ("show the daemon NAME in this terminal, a frame of its own, the"
-            "files named opened in it, with +LINE, --safe, --hex, - and"
-            "--frames as for Tuatara itself; --diff and --merge as well, with"
-            "their exit codes; C-x C-c closes this client alone, its buffers"
-            "kept in the daemon, and the daemon goes on; as git's editor"
+     :text ("show the daemon NAME in this terminal, or with --gui in a window"
+            "of its own (C-x 5 2 opens another), a frame of its own, the files"
+            "named opened in it, with +LINE, --safe, --hex, - and --frames as"
+            "for Tuatara itself; --diff and --merge as well, with their exit"
+            "codes; C-x C-c closes this client alone, its buffers kept in the"
+            "daemon, and the daemon goes on; as git's editor"
             "(GIT_EDITOR='tuatara --client') the commit is made when the"
             "message is finished; exits 1 when no daemon of that name runs, or"
             "when it ends"))
@@ -424,8 +425,9 @@ or -- before the files. After --, every argument is a file's name."
              (fail "--daemon, --client and --stop are given one at a time"))
             ((and (getf options :bare) (or (getf options :daemon) (getf options :client) (getf options :stop)))
              (fail "-Q is never a daemon's: it starts a fresh, bare editor of its own, which ends with it"))
-            ((and (getf options :gui) (or (getf options :daemon) (getf options :client) (getf options :stop)))
-             (fail "a client in a window of its own is not made yet: tuatara --client runs in a terminal"))
+            ((and (getf options :gui) (or (getf options :daemon) (getf options :stop)))
+             (fail "~:[--stop~;--daemon~] opens no window: tuatara --client --gui shows a daemon in one"
+                   (getf options :daemon)))
             ((and (getf options :start) (not (getf options :client)))
              (fail "--start goes with --client"))
             ((and (or (getf options :stop) (getf options :daemon))
@@ -580,9 +582,9 @@ instead; --diff OLD NEW shows what differs between two files; -c names the
 init file; +LINE[:COLUMN] before a file opens it there; -- before the files
 lets a file's name start with a dash or a plus. With --gui, or when started with no terminal on a
 desktop, Tuatara opens a window of its own. --daemon starts an editor in the
-background (START-DAEMON), --client shows one in this terminal and --stop
-stops one (RUN-CLIENT). Returns the exit code: 0, or what the session left
-\(*EXIT-CODE*); 2 for options it cannot take."
+background (START-DAEMON), --client shows one in this terminal, or a window
+with --gui, and --stop stops one (RUN-CLIENT). Returns the exit code: 0, or
+what the session left (*EXIT-CODE*); 2 for options it cannot take."
   (let* ((options (read-options arguments))
          (config (getf options :config))
          ;; named from where Tuatara was started, as the files are

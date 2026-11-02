@@ -58,13 +58,15 @@ wait for it; true when it ended."
          (stop-test-daemon ,thread)))))
 
 (defun attach-test-client (name &key (directory "/tmp/") files safe merge diff stop terminal environment standard-input
-                                     (width 70) (height 14))
-  "A client of the daemon NAME on a fake screen of WIDTH by HEIGHT, asking for
-what a client started so asks for (FILES, each a path or (PATH LINE COLUMN),
-SAFE, MERGE, DIFF, STOP, TERMINAL, ENVIRONMENT, STANDARD-INPUT, a descriptor
-passed); three values: the fake screen, the thread running the client,
-which returns its exit code and words as a list, and the client."
-  (let ((local (make-instance 'queued-fake-frontend :width width :height height))
+                                     (width 70) (height 14) window joins another)
+  "A client of the daemon NAME on a fake screen of WIDTH by HEIGHT, a window
+when WINDOW, asking for what a client started so asks for (FILES, each a
+path or (PATH LINE COLUMN), SAFE, MERGE, DIFF, STOP, TERMINAL, ENVIRONMENT,
+STANDARD-INPUT, a descriptor passed, JOINS, the word of a window the daemon
+asked for), ANOTHER opening a window the daemon asks for; three values: the
+fake screen, the thread running the client, which returns its exit code and
+words as a list, and the client."
+  (let ((local (make-instance 'queued-fake-frontend :width width :height height :font-steps (and window 0)))
         (fd (tuatara.io:connect-to (tuatara.defaults::daemon-path name "socket"))))
     (tuatara.frontend:frontend-start local)
     (let ((client (tuatara.frontend:make-remote-client
@@ -73,8 +75,8 @@ which returns its exit code and words as a list, and the client."
                              :directory (namestring directory) :terminal terminal :environment environment
                              :files (mapcar (lambda (file) (if (consp file) file (list (namestring file) nil nil))) files)
                              :safe safe :merge merge :diff diff :stop stop :wait t
-                             :standard-input (and standard-input t))
-                   :standard-input standard-input)))
+                             :standard-input (and standard-input t) :joins joins)
+                   :standard-input standard-input :another another)))
       (values local
               (sb-thread:make-thread (lambda () (multiple-value-list (tuatara.frontend:run-remote-client client)))
                                      :name "test client")
@@ -99,6 +101,30 @@ most SECONDS; true when it does."
   "What the client thread RUNNER returned, its exit code and words as a
 list, waiting SECONDS at most; :LATE when it has not ended."
   (sb-thread:join-thread runner :timeout seconds :default :late))
+
+(defun window-opener (name)
+  "Two values: a function of a word that opens another window of a test
+client of the daemon NAME, attached with that word, as a client in a window
+does when the daemon asks it for one; and a cell whose car is the list of
+the windows it opened, newest first, each (FAKE-SCREEN RUNNER) as
+ATTACH-TEST-CLIENT gives them."
+  (let ((opened (list '())))
+    (values (lambda (word)
+              (multiple-value-bind (local runner) (attach-test-client name :window t :joins word)
+                (push (list local runner) (car opened))))
+            opened)))
+
+(defun live-client-frames ()
+  "How many frames of the test daemon's editor its clients that have not
+ended have: the frames shown, the one with no screen left out."
+  (in-daemon (lambda ()
+               (let ((editor (daemon-editor)))
+                 (count-if (lambda (frame)
+                             (let ((client (tuatara.command:frame-client frame)))
+                               (and client (tuatara.command:client-remote client)
+                                    (not (tuatara.command:client-ended client))
+                                    (not (tuatara.command:idle-frame-p editor frame)))))
+                           (tuatara.command:editor-frames editor))))))
 
 ;;; The folder, the lock and who may connect
 
@@ -456,8 +482,13 @@ list, waiting SECONDS at most; :LATE when it has not ended."
     (true (getf (options "--client" "--start") :start))
     (is string= "default" (getf (options "--stop") :stop))
     (dolist (wrong '(("--daemon" "-Q") ("--client" "-Q") ("--daemon" "a.txt") ("--stop" "a.txt") ("--start")
-                     ("--daemon=a/b") ("--daemon" "--client") ("--client" "--gui") ("--client" "-c" "init.lisp")))
+                     ("--daemon=a/b") ("--daemon" "--client") ("--daemon" "--gui") ("--stop" "--gui")
+                     ("--client" "-c" "init.lisp")))
       (true (getf (apply #'options wrong) :error) "~s taken" wrong))
+    ;; a client in a window of its own
+    (let ((options (options "--client" "--gui" "a.txt")))
+      (false (getf options :error))
+      (true (getf options :gui)))
     (true (search "-Q" (getf (options "--daemon" "-Q") :error)))))
 
 (define-test (daemon variables-kept-narrowly)
@@ -562,3 +593,142 @@ list, waiting SECONDS at most; :LATE when it has not ended."
              (true (search "1 buffer has changes no auto-saved copy would keep, 1 of them encrypted;" words) "~a" words)))
       (tuatara.buffer:kill-buffer plain)
       (tuatara.buffer:kill-buffer secret))))
+
+;;; Clients in windows of their own
+
+(define-test (daemon window-client-opens-another-window)
+  ;; C-x 5 2 in a client in a window: another window of that client, a connection of its own, showing the
+  ;; same buffer; its close button closes it alone, and C-x C-c closes the client, every window with it
+  (with-test-directory (dir)
+    (let ((file (namestring (put-file (merge-pathnames "kaka.txt" dir) "kaka text"))))
+      (with-test-daemon (name)
+        (multiple-value-bind (open opened) (window-opener name)
+          (multiple-value-bind (local runner) (attach-test-client name :directory dir :files (list file) :window t
+                                                                       :another open)
+            (true (shows local "kaka text"))
+            (type-keys local "C-x 5 2")
+            (true (wait-until (lambda () (car opened)) 10) "no other window was opened")
+            (destructuring-bind (&optional second second-runner) (first (car opened))
+              (when second
+                (true (shows second "kaka text"))
+                (is = 2 (live-client-frames))
+                ;; one buffer, typed into in the second window, shown in the first
+                (type-keys second "i w e k a <escape>")
+                (true (shows local "wekakaka text"))
+                ;; the second window's close button: its frame alone
+                (type-at second (tuatara.frontend:make-event :close))
+                (is equal '(0 nil) (client-ends second-runner))
+                (is = 1 (live-client-frames))
+                (true (shows local "wekakaka text"))))
+            (type-keys local "C-x C-c")
+            (is equal '(0 nil) (client-ends runner))
+            (is = 0 (live-client-frames))))))))
+
+(define-test (daemon first-window-closed-client-goes-on)
+  ;; the window a client in windows opened first may close first: the client goes on in the other, which
+  ;; then gives the exit code; every window of a client ending is given its code
+  (with-test-directory (dir)
+    (let ((file (namestring (merge-pathnames "COMMIT_EDITMSG" dir))))
+      (alexandria:write-string-into-file (format nil "~%# Please enter the commit message.~%") file)
+      (with-test-daemon (name)
+        (multiple-value-bind (open opened) (window-opener name)
+          (multiple-value-bind (local runner) (attach-test-client name :directory dir :files (list file) :window t
+                                                                       :another open)
+            (true (shows local "Please enter"))
+            (type-keys local "C-x 5 2")
+            (true (wait-until (lambda () (car opened)) 10) "no other window was opened")
+            (destructuring-bind (&optional second second-runner) (first (car opened))
+              (when second
+                (true (shows second "Please enter"))
+                (type-at local (tuatara.frontend:make-event :close))
+                (is equal '(0 nil) (client-ends runner))
+                (is = 1 (live-client-frames) "the client goes on in its other window")
+                ;; given up there: the client ends with 1, as git's editor
+                (type-keys second "N o p e C-c C-k")
+                (is eql 1 (first (client-ends second-runner)))))
+            (is = 0 (live-client-frames))))))))
+
+(define-test (daemon window-asked-for-by-no-one)
+  ;; a connection saying it is a window the daemon asked for, by a word it never gave, is let go with 1
+  (with-test-daemon (name)
+    (multiple-value-bind (local runner) (attach-test-client name :window t :joins "NOSUCHWORD")
+      (declare (ignore local))
+      (is equal '(1 "The daemon asked for no such window") (client-ends runner))
+      (is = 0 (live-client-frames)))))
+
+(define-test (daemon terminal-client-asked-for-no-window)
+  ;; C-x 5 2 in a client in a terminal: a frame taking turns there, no connection asked for
+  (with-test-daemon (name)
+    (multiple-value-bind (open opened) (window-opener name)
+      (multiple-value-bind (local runner) (attach-test-client name :another open)
+        (true (shows local "scratch"))
+        (type-keys local "C-x 5 2")
+        (true (wait-until (lambda () (= 2 (live-client-frames))) 10))
+        (false (car opened))
+        (type-keys local "C-x C-c")
+        (is equal '(0 nil) (client-ends runner))))))
+
+(define-test (daemon rows-drawn-large-in-a-window-client)
+  ;; a headline whose face is drawn two rows tall: laid out so for a client in a window, as one row in a terminal
+  (with-test-directory (dir)
+    (let ((file (namestring (put-file (merge-pathnames "tall.org" dir) (format nil "* Tall~%Under it.~%"))))
+          (face (tuatara.display:find-face :org-level-1)))
+      (with-test-daemon (name)
+        (let ((old (in-daemon (lambda ()
+                                (prog1 (tuatara.display::face-height face)
+                                  (tuatara.display:set-face-attributes :org-level-1 :height 2))))))
+          (unwind-protect
+               (multiple-value-bind (window window-runner) (attach-test-client name :directory dir :files (list file)
+                                                                                  :window t)
+                 (true (shows window "Tall"))
+                 (multiple-value-bind (terminal terminal-runner) (attach-test-client name :directory dir
+                                                                                         :files (list file))
+                   (true (shows terminal "Tall"))
+                   (type-keys window "j")
+                   (true (wait-until (lambda () (aref (tuatara.frontend.fake:fake-row-scales window) 0)) 10)
+                         "the window's headline drawn as one row")
+                   (false (aref (tuatara.frontend.fake:fake-row-scales terminal) 0))
+                   (type-keys terminal "C-x C-c")
+                   (client-ends terminal-runner))
+                 (type-keys window "C-x C-c")
+                 (client-ends window-runner))
+            (in-daemon (lambda () (setf (tuatara.display::face-height face) old)))))))))
+
+(define-test (daemon window-client-in-windows)
+  ;; tuatara --client --gui in real windows on a display of their own, the daemon in this process: typing,
+  ;; a paste from the desktop's clipboard, the font a step larger in one window alone, C-x 5 2 and a close
+  ;; button, a file and a picture dropped, and C-x C-c ending the client with 0, its buffers left in the daemon
+  (if (null (tuatara.io:find-program "gtk4-broadwayd"))
+      (skip "gtk4-broadwayd is not installed here" (true nil))
+      (with-test-directory (dir)
+        (let ((file (namestring (put-file (merge-pathnames "kiwi.txt" dir) (format nil "kiwi window~%"))))
+              (dropped (namestring (put-file (merge-pathnames "kea.txt" dir) (format nil "dropped kea~%"))))
+              (picture (namestring (merge-pathnames "dot.png" dir))))
+          (tuatara.frontend.gtk::load-gtk-libraries)
+          (let* ((surface (tuatara.frontend.gtk::cairo-image-surface-create 0 64 48))
+                 (cr (tuatara.frontend.gtk::cairo-create surface)))
+            (tuatara.frontend.gtk::cairo-set-source-rgb cr 0.2d0 0.6d0 0.3d0)
+            (tuatara.frontend.gtk::cairo-paint cr)
+            (tuatara.frontend.gtk::cairo-surface-write-to-png surface picture)
+            (tuatara.frontend.gtk::cairo-destroy cr)
+            (tuatara.frontend.gtk::cairo-surface-destroy surface))
+          (with-test-daemon (name)
+            (let ((seen (run-on-broadway dir "window-client.lisp" name tuatara.defaults::*runtime-directory*
+                                         file dropped picture :out)))
+              (true seen "the client wrote nothing")
+              (false (getf seen :error) "~a" (getf seen :error))
+              (false (getf seen :timed-out))
+              (dolist (step '(:window :shows-file :typed :pasted :font-larger :another-window :another-shows
+                              :typed-in-another :closed-another :dropped :picture))
+                (true (getf seen step) "~(~a~) in ~s" step seen))
+              (is eql 0 (getf seen :another-font-steps) "the other window's font as it started")
+              (is eql 0 (getf seen :exit-code))
+              (is eql 0 (getf seen :windows-left))
+              (is = 0 (live-client-frames))
+              (in-daemon (lambda ()
+                           (let ((buffer (tuatara.defaults::buffer-visiting file)))
+                             (true buffer "its buffer stays in the daemon")
+                             (when buffer
+                               (true (search "from the desktop" (tuatara.buffer:buffer-string buffer)))
+                               (true (search "zz" (tuatara.buffer:buffer-string buffer)))))
+                           (true (tuatara.defaults::buffer-visiting dropped) "the file dropped opened")))))))))

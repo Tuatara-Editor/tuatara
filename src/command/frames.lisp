@@ -66,8 +66,9 @@ to its own, as selecting a window does (SELECT-WINDOW); what follows the
 buffer shown is brought in line with FRAME's (*AFTER-TICK-FUNCTIONS*). On a
 display the two take turns on (FRAME-TAKING-TURNS-P), FRAME is shown in place
 of the other, at the display's size now, and painted whole, and the display
-names it in the events it delivers (TUATARA.FRONTEND:FRONTEND-FRAME). Returns
-FRAME."
+names it in the events it delivers (TUATARA.FRONTEND:FRONTEND-FRAME). Rows are
+laid out as FRAME's display draws them, of more than one row's height or not
+\(TUATARA.FRONTEND:FRONTEND-SCALES-ROWS-P). Returns FRAME."
   (let ((old (editor-frame editor)))
     (unless (eq old frame)
       (let ((leaving (frame-window old)))
@@ -77,6 +78,8 @@ FRAME."
       (let ((entering (frame-window frame)))
         (when entering (give-window-buffer-point entering)))
       (setf (editor-frame editor) frame)
+      (unless (eq (frame-frontend frame) (frame-frontend old))
+        (setf tuatara.display:*row-scaling* (tuatara.frontend:frontend-scales-rows-p (frame-frontend frame))))
       (when (eq (frame-frontend frame) (frame-frontend old))
         ;; what is typed now is typed in FRAME; the display may have been resized while
         ;; FRAME waited; its title is the other's
@@ -197,16 +200,23 @@ frontend then names in its events in its place."
     frame))
 
 (defun close-screen-gone (editor frame)
-  "Close FRAME, whose screen went away (its client left), and every other
-frame of EDITOR taking turns on that screen; the editor's last frame stays.
-A client whose own screen it was has ended (END-CLIENT)."
+  "Close FRAME, whose screen went away (its client left, or closed that
+window), and every other frame of EDITOR taking turns on that screen; the
+editor's last frame stays. A client whose last screen it was has ended
+\(END-CLIENT); one with a window left goes on there."
   (let* ((frontend (frame-frontend frame))
-         (client (frame-client frame)))
-    (if (and client (client-remote client) (eq (client-frontend client) frontend))
+         (client (frame-client frame))
+         (left (and client (find-if (lambda (other)
+                                      (and (eq (frame-client other) client) (not (eq (frame-frontend other) frontend))))
+                                    (editor-frames editor)))))
+    (if (and client (client-remote client) (eq (client-frontend client) frontend) (null left))
         (end-client editor client)
-        (dolist (gone (remove frontend (editor-frames editor) :key #'frame-frontend :test-not #'eq))
-          (when (rest (editor-frames editor))
-            (remove-frame editor gone))))))
+        (progn
+          (when (and left (eq (client-frontend client) frontend))
+            (setf (client-frontend client) (frame-frontend left)))
+          (dolist (gone (remove frontend (editor-frames editor) :key #'frame-frontend :test-not #'eq))
+            (when (rest (editor-frames editor))
+              (remove-frame editor gone)))))))
 
 (defun note-frame-painted (frame)
   "Keep in FRAME what it shows as it is painted now (FRAME-PAINTED): the

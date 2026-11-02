@@ -180,47 +180,65 @@ CONDITION, a TUATARA.FRONTEND:REMOTE-REFUSED, says why."
                 name other (tuatara:version-line) (string= name tuatara.defaults::*daemon-default-name*) name)
         (tuatara.frontend:remote-refused-words condition))))
 
-(defun run-client (options &key (terminal (keyboard-available-p)))
-  "Be a client of the daemon OPTIONS name (READ-OPTIONS: --client or --stop),
-in this terminal: its keys sent to the daemon and what it paints shown,
-until it lets the client go; --stop with no terminal shows nothing and asks
-nothing. Standard input, for -, is passed to the daemon to read, the keys
-read from the terminal; TERMINAL is true when there is one. The exit code:
-the one the daemon gave, 1 when no daemon runs or it ended, as is said, or 2
-when this is no terminal to show it in."
+(defun run-client (options &key (terminal (keyboard-available-p)) (desktop (window-wanted-p)))
+  "Be a client of the daemon OPTIONS name (READ-OPTIONS: --client or --stop):
+in this terminal, or with --gui in a window of its own, as when started with
+no terminal on a desktop (DESKTOP), its keys sent to the daemon and what it
+paints shown, until it lets the client go; --stop with no terminal shows
+nothing and asks nothing. Standard input, for -, is passed to the daemon to
+read, the keys read from the terminal or the window; TERMINAL is true when
+there is a terminal. The exit code: the one the daemon gave, 1 when no
+daemon runs or it ended, as is said, or 2 when there is neither a terminal
+nor a window to show it in."
   (let* ((name (or (getf options :client) (getf options :stop)))
-         (stop (getf options :stop)))
-    (when (and (not terminal) (not stop))
-      (format *error-output* "tuatara: a client needs a terminal to show the daemon in: run it in one~%")
+         (stop (getf options :stop))
+         (window (and (not stop) (or (getf options :gui) desktop))))
+    (when (and (not terminal) (not stop) (not window))
+      (format *error-output* "tuatara: a client needs a terminal to show the daemon in: run it in one, or with --gui~%")
       (return-from run-client 2))
     (let ((fd (connect-to-daemon name (getf options :start)))
           (input (and (find '(:standard-input) (getf options :files) :test #'equal)
-                      (sb-posix:fcntl 0 +f-dupfd-cloexec+ 3))))
+                      (sb-posix:fcntl 0 +f-dupfd-cloexec+ 3)))
+          (code nil) (words nil) (refused nil))
       (unless fd
         (when input (sb-posix:close input))
         (return-from run-client 1))
-      (when terminal (read-keys-from-terminal))
-      (let ((frontend (if terminal
-                          (tuatara.frontend.tui:make-tui-frontend)
-                          (tuatara.frontend:make-null-frontend)))
-            (code nil) (words nil) (refused nil))
-        (tuatara.frontend:frontend-start frontend)
-        (unwind-protect
-             (handler-case
-                 (let ((client (tuatara.frontend:make-remote-client
-                                fd frontend
-                                :request (client-request options (tuatara.frontend:frontend-terminal-device frontend))
-                                            :standard-input (shiftf input nil))))
-                   (multiple-value-setq (code words) (tuatara.frontend:run-remote-client client)))
-               (tuatara.frontend:remote-refused (condition)
-                 (setf refused (refusal-words condition name))
-                 (tuatara.io:shut-socket fd)
-                 (sb-posix:close fd)))
-          (when input (sb-posix:close input))
-          (tuatara.frontend:frontend-stop frontend))
-        (cond (refused (format *error-output* "tuatara: ~a~%" (shown refused)) 1)
-              ((null code)
-               (format *error-output* "tuatara: the daemon ~a ended; its log is ~a~%" name (daemon-log-path name))
-               1)
-              (t (when words (format *error-output* "tuatara: ~a~%" (shown words)))
-                 code))))))
+      (unwind-protect
+           (handler-case
+               (let ((greeted (tuatara.frontend:greet-editor fd)))
+                 (if window
+                     (multiple-value-setq (code words)
+                       (tuatara.frontend.gtk:run-window-client fd greeted (client-request options nil)
+                                                               :standard-input (shiftf input nil)
+                                                               :connect (lambda () (connect-to-daemon name nil))))
+                     (multiple-value-setq (code words)
+                       (run-terminal-client fd greeted options terminal (shiftf input nil)))))
+             (tuatara.frontend:remote-refused (condition)
+               (setf refused (refusal-words condition name))
+               (tuatara.frontend:shut-and-close fd)))
+        (when input (sb-posix:close input)))
+      (cond (refused (format *error-output* "tuatara: ~a~%" (shown refused)) 1)
+            ((null code)
+             (format *error-output* "tuatara: the daemon ~a ended; its log is ~a~%" name (daemon-log-path name))
+             1)
+            (t (when words (format *error-output* "tuatara: ~a~%" (shown words)))
+               code)))))
+
+(defun run-terminal-client (fd greeted options terminal input)
+  "Show the daemon at the other end of FD, which has said hello (GREETED, as
+TUATARA.FRONTEND:GREET-EDITOR read it), in this terminal, or with no TERMINAL
+nowhere, as a client started with OPTIONS (READ-OPTIONS), passing INPUT,
+standard input's descriptor or NIL, to be read; until the daemon lets it go.
+Two values: the exit code the daemon gave, or NIL when it went without one,
+and what it said with it."
+  (when terminal (read-keys-from-terminal))
+  (let ((frontend (if terminal
+                      (tuatara.frontend.tui:make-tui-frontend)
+                      (tuatara.frontend:make-null-frontend))))
+    (tuatara.frontend:frontend-start frontend)
+    (unwind-protect
+         (tuatara.frontend:run-remote-client
+          (tuatara.frontend:make-remote-client
+           fd frontend :request (client-request options (tuatara.frontend:frontend-terminal-device frontend))
+                       :standard-input input :greeted greeted))
+      (tuatara.frontend:frontend-stop frontend))))

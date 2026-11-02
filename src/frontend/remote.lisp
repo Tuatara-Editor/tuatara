@@ -21,6 +21,10 @@ in the editor, for what the client's screen is.")
   "The seconds the editor waits for a client to answer a question (the text
 of its clipboard) before taking it as having none.")
 
+(defparameter *window-seconds* 5
+  "The seconds the editor waits for a client it asked for another window to
+open it and attach it, before giving up on it.")
+
 (defparameter *stall-seconds* 600
   "The seconds a client may take to take in what it was sent before it is let
 go. What waits for a client that takes nothing (one stopped, as by C-z) is
@@ -219,6 +223,8 @@ it, what the client sends is not read until the editor has taken some.")
                :documentation "Words the client says as it exits when this frontend stops, or NIL.")
    (request :initform (make-request) :accessor remote-request
             :documentation "What the client asked for as it attached (REQUEST).")
+   (settings-sent :initform nil :accessor remote-settings-sent
+                  :documentation "The values of *DISPLAY-SETTINGS* as last told the client, in their order.")
    (inbox :initform nil :accessor remote-inbox
           :documentation "What the client sends, as it is read.")
    (reader :initform nil :accessor remote-reader
@@ -235,9 +241,15 @@ reading the client's events from it (MAKE-REMOTE-FRONTEND)."))
 (defmethod initialize-instance :after ((f remote-frontend) &key)
   (setf (remote-stopping f) (lambda () (or (remote-closing f) (remote-closed f)))))
 
+(defun settings-now ()
+  "The values of *DISPLAY-SETTINGS* here, in their order, :UNSET for one
+unset."
+  (loop for (name) in *display-settings* collect (if (boundp name) (symbol-value name) :unset)))
+
 (defun make-remote-frontend (fd &key queue)
   "A frontend whose screen is the client's at the other end of the local
-socket FD, once both have said hello and the client what its screen is and
+socket FD, once both have said hello, the client been told how its screen is
+to be shown (*DISPLAY-SETTINGS*), and it has said what its screen is and
 what it asks for (REMOTE-REQUEST); its events go into QUEUE, the queue of
 the editor's other frames, or a queue of its own. Signals REMOTE-REFUSED
 when the client is of another build or says nothing it should; FD is then
@@ -254,6 +266,10 @@ request's to close once taken."
     (unwind-protect
          (progn
            (put-hello box)
+           (let ((at (begin-message box :settings)))
+             (put-settings box)
+             (end-message box at))
+           (setf (remote-settings-sent remote) (settings-now))
            (unless (eq t (send-outbox fd box *hello-seconds*))
              (error 'remote-refused :words "The client took no hello."))
            (read-hello inbox)
@@ -596,6 +612,59 @@ client takes (+MOST-TEXT+), or left out."
 (defmethod frontend-raise ((f remote-frontend))
   (queue-message f :raise (lambda (box) (declare (ignore box))) :needed nil))
 
+(defmethod frontend-scales-rows-p ((f remote-frontend))
+  (facts-window (remote-facts f)))
+
+(defmethod frontend-settings-changed ((f remote-frontend))
+  ;; told again only when one of them has another value than the client was told
+  (unless (loop for (name) in *display-settings*
+                for sent in (remote-settings-sent f)
+                always (equal sent (if (boundp name) (symbol-value name) :unset)))
+    (setf (remote-settings-sent f) (settings-now))
+    (queue-message f :settings #'put-settings)))
+
+;;; Another window for a client, which it attaches as a connection of its own
+
+(defvar *windows-asked-for* '()
+  "The windows asked of clients and not yet attached, each (WORD . REMOTE):
+the word the client was given for it, and the remote frontend of its
+connection once it attached, else NIL.")
+
+(defvar *windows-asked-lock* (sb-thread:make-mutex :name "windows asked for")
+  "Held while *WINDOWS-ASKED-FOR* changes.")
+
+(defvar *windows-asked-moved* (sb-thread:make-waitqueue :name "windows asked for")
+  "Signalled when a window asked for has attached.")
+
+(defmethod frontend-another ((f remote-frontend))
+  ;; a client in a window opens another, a connection of its own attached with the word it was given
+  (when (facts-window (remote-facts f))
+    (let ((entry (list (tuatara.io:random-name))))
+      (sb-thread:with-mutex (*windows-asked-lock*) (push entry *windows-asked-for*))
+      (queue-message f :another (lambda (box) (put-text box (car entry) 64)))
+      (sb-thread:with-mutex (*windows-asked-lock*)
+        (loop with deadline = (tuatara.runtime:deadline-in *window-seconds*)
+              until (or (cdr entry) (remote-ended f) (tuatara.runtime:deadline-passed-p deadline))
+              do (tuatara.runtime:wait-on *windows-asked-moved* *windows-asked-lock*
+                                          (max 0.001 (tuatara.runtime:seconds-left deadline))))
+        (setf *windows-asked-for* (remove entry *windows-asked-for*))
+        (unless (cdr entry)
+          (tuatara.runtime:debug-report :remote "a client asked for another window opened none within ~d seconds"
+                                        *window-seconds*))
+        (cdr entry)))))
+
+(defun take-window-asked-for (remote)
+  "Hand REMOTE, a new connection that says it is a window the editor asked a
+client for (REQUEST-JOINS), to the frame waiting for it (FRONTEND-ANOTHER);
+NIL when no window was asked for by its word, or it came too late."
+  (let ((word (request-joins (remote-request remote))))
+    (sb-thread:with-mutex (*windows-asked-lock*)
+      (let ((entry (and word (assoc word *windows-asked-for* :test #'equal))))
+        (when (and entry (null (cdr entry)))
+          (setf (cdr entry) remote)
+          (sb-thread:condition-broadcast *windows-asked-moved*)
+          t)))))
+
 (defmethod frontend-terminal-device ((f remote-frontend))
   (and (not (facts-window (remote-facts f))) (request-terminal (remote-request f))))
 
@@ -733,7 +802,9 @@ numbers; KEPT, each row as last painted; PICTURES, the pictures kept,
 newest first; ENDED, true once the editor is gone, and EXIT-CODE, the code
 it gave, EXIT-WORDS, what it said with it; FACTS, the facts last sent as
 octets; READER, the thread reading; MOVED, signalled when something has
-arrived or the editor is gone."
+arrived or the editor is gone; SETTINGS, the settings the editor last said
+\(TAKE-SETTINGS); ANOTHER, a function of a word, which opens another window
+attached with that word when the editor asks for one, or NIL."
   (fd -1 :type fixnum :read-only t)
   (frontend nil :read-only t)
   (inbox nil :read-only t)
@@ -748,7 +819,9 @@ arrived or the editor is gone."
   (ended nil)
   (exit-code nil)
   (facts (make-outbox) :read-only t)
-  (reader nil))
+  (reader nil)
+  (settings '())
+  (another nil))
 
 (setf (documentation '%make-remote-client 'function) "A REMOTE-CLIENT of the editor at FD painting on FRONTEND."
       (documentation 'remote-client-p 'function) "True when OBJECT is a REMOTE-CLIENT."
@@ -766,7 +839,10 @@ arrived or the editor is gone."
       (documentation 'remote-client-facts 'function) "The facts CLIENT last sent of its screen, as octets."
       (documentation 'remote-client-reader 'function) "The thread reading what the editor sends CLIENT."
       (documentation 'remote-client-moved 'function) "Signalled when something has arrived for CLIENT or its editor is gone."
-      (documentation 'remote-client-exit-words 'function) "What the editor said as it told CLIENT to exit, or NIL.")
+      (documentation 'remote-client-exit-words 'function) "What the editor said as it told CLIENT to exit, or NIL."
+      (documentation 'remote-client-settings 'function) "The settings CLIENT's editor last said, each (NAME . VALUE)."
+      (documentation 'remote-client-another 'function)
+      "The function of a word that opens another window for CLIENT's editor, or NIL.")
 
 (defun send-to-editor (client write)
   "Send CLIENT's editor the messages WRITE, a function of the box, writes;
@@ -785,36 +861,76 @@ saying what FRONTEND is."
       (put-request box request))
     (end-message box at)))
 
-(defun make-remote-client (fd frontend &key (request (make-request)) standard-input)
+(defun use-settings (settings &key before at-start)
+  "Give each of SETTINGS, (NAME . VALUE) of *DISPLAY-SETTINGS* as the editor
+said them, its value here, but those said the same in BEFORE, settings said
+before, and with AT-START false those taken only as the screen opens; true
+when one was given."
+  (let ((given nil))
+    (loop for (name . value) in settings
+          for entry = (assoc name *display-settings*)
+          unless (or (and (not at-start) (member :at-start entry))
+                     (let ((was (assoc name before))) (and was (equal (cdr was) value))))
+            do (setf (symbol-value name) value given t))
+    given))
+
+(defun greet-editor (fd &key (take t))
+  "Read the hello of the editor at the other end of the new local socket FD
+and the settings it shows its clients by (*DISPLAY-SETTINGS*), and with TAKE
+take them here, before a client's screen opens (not for another window of a
+client that took them already): what was read, for MAKE-REMOTE-CLIENT.
+Signals REMOTE-REFUSED when the editor is of another build, refuses the
+client or says nothing it should; FD is then the caller's to close."
+  (let ((inbox (make-inbox fd :client :deadline (tuatara.runtime:deadline-in *hello-seconds*))))
+    (handler-bind ((remote-refused (lambda (condition)
+                                     (declare (ignore condition))
+                                     (close-descriptors (shiftf (inbox-descriptors inbox) '())))))
+      (read-hello inbox)
+      (let ((settings (handler-case (if (eq (read-message inbox) :settings)
+                                        (take-settings inbox)
+                                        (error 'remote-refused :words "The editor said no settings."))
+                        (malformed-message (condition)
+                          (error 'remote-refused :words (format nil "The editor's settings: ~a"
+                                                                (malformed-message-reason condition)))))))
+        ;; nothing else is sent before the client attaches: a descriptor passed with these is no picture's
+        (when (inbox-descriptors inbox)
+          (error 'remote-refused :words "The editor passed a descriptor with its hello."))
+        (when take (use-settings settings :at-start t))
+        (list inbox settings)))))
+
+(defun make-remote-client (fd frontend &key (request (make-request)) standard-input greeted another)
   "A client painting on FRONTEND, started, what the editor at the other end
 of the local socket FD sends, once both have said hello and the client what
 its screen is and what it asks for, REQUEST; STANDARD-INPUT, a descriptor
 passed with it to be read into a buffer (REQUEST-STANDARD-INPUT then true),
-is closed here once passed. Signals REMOTE-REFUSED when the editor is of
+is closed here once passed. GREETED is what GREET-EDITOR read of FD, when it
+was called before FRONTEND was made, else it is called here. ANOTHER, a
+function of a word, opens another window when the editor asks for one
+\(REMOTE-CLIENT-ANOTHER). Signals REMOTE-REFUSED when the editor is of
 another build, refuses the client or says nothing it should; FD is then the
 caller's to close."
-  (let* ((inbox (make-inbox fd :client :deadline (tuatara.runtime:deadline-in *hello-seconds*)))
-         (client (%make-remote-client fd frontend inbox))
-         (greeted nil))
-    ;; descriptors passed with a hello refused are closed, not kept
-    (unwind-protect
-         (let ((sent (send-to-editor client (lambda (box)
-                                              (put-hello box)
-                                              (let ((at (outbox-fill box)))
-                                                (put-facts-message box frontend :attach request)
-                                                (when standard-input
-                                                  (push (cons at standard-input) (outbox-descriptors box))))))))
-           ;; an editor that refused the client at once and went still says why
-           (read-hello inbox)
-           (unless sent (error 'remote-refused :words "The editor took no hello."))
-           (setf greeted t))
-      (unless greeted (close-descriptors (shiftf (inbox-descriptors inbox) '()))))
-    (setf (inbox-deadline inbox) nil)
-    (put-facts (remote-client-facts client) frontend)
-    (setf (remote-client-reader client)
-          (tuatara.runtime:make-guarded-thread (lambda () (read-from-editor client))
-                                               :name "tuatara client reading" :niceness 0))
-    client))
+  (destructuring-bind (inbox settings)
+      (or greeted
+          (handler-bind ((remote-refused (lambda (condition)
+                                           (declare (ignore condition))
+                                           (when standard-input (close-descriptors (list standard-input))))))
+            (greet-editor fd)))
+    (let ((client (%make-remote-client fd frontend inbox)))
+      (setf (remote-client-settings client) settings
+            (remote-client-another client) another)
+      (unless (send-to-editor client (lambda (box)
+                                       (put-hello box)
+                                       (let ((at (outbox-fill box)))
+                                         (put-facts-message box frontend :attach request)
+                                         (when standard-input
+                                           (push (cons at standard-input) (outbox-descriptors box))))))
+        (error 'remote-refused :words "The editor took no hello."))
+      (setf (inbox-deadline inbox) nil)
+      (put-facts (remote-client-facts client) frontend)
+      (setf (remote-client-reader client)
+            (tuatara.runtime:make-guarded-thread (lambda () (read-from-editor client))
+                                                 :name "tuatara client reading" :niceness 0))
+      client)))
 
 (defun read-from-editor (client)
   "Read what CLIENT's editor sends, keep it to be painted and wake CLIENT's
@@ -846,8 +962,8 @@ what it should not."
 (defun take-from-editor (client kind inbox)
   "Read the message of KIND CLIENT's editor sent from INBOX; what is to be
 done with it on the frontend's thread, as a list whose first is what it is
-\(:FACES :FRAME :TITLE :SELECTION :TOGGLE :RAISE :ASK :TAKE-BACK), or NIL
-when reading it was all."
+\(:FACES :FRAME :TITLE :SELECTION :TOGGLE :RAISE :ASK :TAKE-BACK :SETTINGS
+:ANOTHER), or NIL when reading it was all."
   (let ((names (remote-client-names client)))
     (ecase kind
       (:names (take-names inbox names) nil)
@@ -879,6 +995,12 @@ when reading it was all."
               (message-read inbox)
               (list :ask request question argument)))
       (:take-back (message-read inbox) (list :take-back))
+      (:settings (list :settings (take-settings inbox)))
+      (:another (prog1 (let ((word (take-text inbox 64)))
+                         (unless (window-word-p word)
+                           (malformed "a window asked for by a word of other characters"))
+                         (list :another word))
+                  (message-read inbox)))
       (:exit (setf (remote-client-exit-code client) (take-number inbox 1))
        (let ((words (shown-words (take-text inbox 1024))))
          (setf (remote-client-exit-words client) (and (plusp (length words)) words)))
@@ -973,6 +1095,11 @@ done, and answer its questions, in the order they came."
                                (frontend-set-primary-selection frontend (third item))))
                (:toggle (frontend-toggle-state frontend (second item)))
                (:raise (frontend-raise frontend))
+               (:settings (when (use-settings (second item) :before (remote-client-settings client))
+                            (frontend-settings-changed frontend))
+                (setf (remote-client-settings client) (second item)))
+               (:another (let ((open (remote-client-another client)))
+                           (when open (funcall open (second item)))))
                ;; taken again where it was lent (LEND-TERMINAL), else nothing to take
                (:take-back)
                (:ask (if (eq (third item) :lend)

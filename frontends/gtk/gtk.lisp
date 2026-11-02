@@ -20,7 +20,7 @@
   (:import-from #:tuatara.frontend #:make-event-queue #:queue-push #:queue-pop #:queue-empty-p)
   (:import-from #:tuatara-user #:*gui-font* #:*gui-renderer* #:*gui-padding* #:*window-colours-from-desktop*)
   (:documentation "The GTK4 frontend: Tuatara in a window of its own, one drawing area painted with Pango and Cairo.")
-  (:export #:gtk-frontend #:make-gtk-frontend #:run-in-window #:gdk-key #:paint-frame-to-png
+  (:export #:gtk-frontend #:make-gtk-frontend #:run-in-window #:run-window-client #:gdk-key #:paint-frame-to-png
            #:call-with-painted-frame #:pixel-colour
            #:make-frame #:frame-rows #:colour-rgb))
 
@@ -283,6 +283,9 @@ taking the editor down with GTK's thread, never unwinding through GTK."
 (defmethod tuatara.frontend:frontend-raise ((f gtk-frontend))
   (g-idle-add (callback on-raise) (window-data f)))
 
+(defmethod tuatara.frontend:frontend-scales-rows-p ((f gtk-frontend))
+  t)
+
 (defmethod tuatara.frontend:frontend-size ((f gtk-frontend))
   (sb-thread:with-mutex ((gtk-lock f)) (values (gtk-columns f) (gtk-rows f))))
 
@@ -408,7 +411,9 @@ with FONT the full name that chooses each at SIZE (Pango units), sorted by name.
                (pango-font-description-set-size description (font-size-in-use)))
              (let ((full (pango-font-description-to-string description)))
                (setf *gui-font* full)
-               (g-idle-add (callback on-rescale-font) (window-data f))
+               ;; every window takes it, each at its own font steps
+               (dolist (window (adjoin f (open-windows)))
+                 (follow-font-setting window))
                full))
         (pango-font-description-free description)))))
 
@@ -467,7 +472,12 @@ those the desktop's theme names for windows, else GTK's own. On GTK's thread."
 
 (defmethod tuatara.frontend:frontend-settings-changed ((f gtk-frontend))
   (follow-renderer-setting f)
-  ;; the font or the padding asked for not the ones in use: made again on GTK's thread
+  (follow-font-setting f))
+
+(defun follow-font-setting (f)
+  "Have F's window made again with the font and the padding asked for
+\(*GUI-FONT*, *GUI-PADDING*), on GTK's thread, when they are not the ones in
+use; nothing is done while they are."
   (let ((font (font-name))
         (padding (multiple-value-list (tuatara.frontend:padding-sides *gui-padding*))))
     (when (sb-thread:with-mutex ((gtk-lock f))

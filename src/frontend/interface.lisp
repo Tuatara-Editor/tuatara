@@ -280,6 +280,12 @@ only one. The default keeps none.")
 typed in. The default does nothing: a terminal is where it is.")
   (:method (frontend) (declare (ignore frontend)) nil))
 
+(defgeneric frontend-scales-rows-p (frontend)
+  (:documentation "True when FRONTEND draws a row of more than one row's height where
+a face asks for it (a window of its own, not a terminal): the rows of its frames
+are laid out so (TUATARA.DISPLAY:*ROW-SCALING*). The default answers NIL.")
+  (:method (frontend) (declare (ignore frontend)) nil))
+
 (defgeneric frontend-input-pending-p (frontend)
   (:documentation "True when input is waiting to be read, so that long work on the
 editor thread, such as a search through a file of many gigabytes, can give way

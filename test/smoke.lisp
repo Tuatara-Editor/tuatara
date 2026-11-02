@@ -37,7 +37,7 @@
     (dolist (form (rest tuatara.terminal:*usage-forms*))
       (true (search (format nil "       ~a~%" form) out) "~a is not shown" form))
     (true (search "Usage: tuatara [--gui] [--frames N] [-Q] [-c INIT-FILE] [--safe] [--hex] [[+LINE[:COLUMN]] FILE...]" out))
-    (true (search "tuatara --client[=NAME] [--start]" out))
+    (true (search "tuatara --client[=NAME] [--gui] [--start]" out))
     (true (search "tuatara --stop[=NAME]" out))
     (true (search "--diff OLD NEW" out))
     (true (search "~/.config/tuatara/init.lisp" out))

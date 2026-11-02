@@ -220,13 +220,27 @@ be at once (*MOST-GREETING*), or as many clients show the editor
 (defun greet (daemon fd)
   "Greet the new connection FD to DAEMON (TUATARA.FRONTEND:MAKE-REMOTE-FRONTEND)
 and hand its frontend to the editor, woken for it; a client refused or that
-says nothing it should has its connection closed."
+says nothing it should has its connection closed. A connection that says it
+is another window of a client, asked for by the editor, is handed to the
+frame waiting for it (TUATARA.FRONTEND:TAKE-WINDOW-ASKED-FOR), and let go
+when none waits for it; it brings nothing to open, and the terminal it names
+is kept only when it may be lent (CHECKED-TERMINAL)."
   (unwind-protect
        (handler-case
-           (let ((remote (tuatara.frontend:make-remote-frontend fd :queue (daemon-queue daemon))))
-             (sb-thread:with-mutex ((daemon-mutex daemon))
-               (push remote (daemon-arrived daemon)))
-             (tuatara.frontend:queue-push (daemon-queue daemon) (tuatara.frontend:make-event :tick)))
+           (let* ((remote (tuatara.frontend:make-remote-frontend fd :queue (daemon-queue daemon)))
+                  (request (tuatara.frontend:remote-request remote)))
+             (if (tuatara.frontend:request-joins request)
+                 (progn (close-standard-input request)
+                        (setf (tuatara.frontend:request-terminal request)
+                              (checked-terminal (tuatara.frontend:request-terminal request)))
+                        (unless (tuatara.frontend:take-window-asked-for remote)
+                          (tuatara.runtime:debug-report :daemon "a window no one asked for let go")
+                          (setf (tuatara.frontend:remote-exit-code remote) 1
+                                (tuatara.frontend:remote-exit-words remote) "The daemon asked for no such window")
+                          (tuatara.frontend:frontend-stop remote)))
+                 (progn (sb-thread:with-mutex ((daemon-mutex daemon))
+                          (push remote (daemon-arrived daemon)))
+                        (tuatara.frontend:queue-push (daemon-queue daemon) (tuatara.frontend:make-event :tick)))))
          (tuatara.frontend:remote-refused (condition)
            (tuatara.runtime:debug-report :daemon "a client refused: ~a" (tuatara.frontend:remote-refused-words condition))
            (tuatara.frontend:shut-and-close fd))

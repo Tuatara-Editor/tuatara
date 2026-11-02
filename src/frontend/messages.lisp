@@ -13,7 +13,7 @@
 
 ;;; Kinds and bounds
 
-(defconstant +protocol+ 2
+(defconstant +protocol+ 3
   "The number of the messages' format, said first both ways: a client and an
 editor of different numbers, or of different builds, do not talk.")
 
@@ -24,7 +24,8 @@ editor of different numbers, or of different builds, do not talk.")
     ;; from the editor to a client
     (:frame 16 nil 16777216) (:names 17 nil 1048576) (:faces 18 nil 1048576) (:picture 19 nil 64)
     (:title 20 nil 65536) (:selection 21 nil 16777216) (:toggle 22 nil 64) (:raise 23 nil 64)
-    (:ask 24 nil 65536) (:exit 25 nil 2048) (:refused 26 nil 4096) (:take-back 27 nil 64))
+    (:ask 24 nil 65536) (:exit 25 nil 2048) (:refused 26 nil 4096) (:take-back 27 nil 64) (:settings 28 nil 4096)
+    (:another 29 nil 256))
   "Each kind of message as (NAME CODE FROM-CLIENT FROM-EDITOR): its name, its
 number on the wire, and the most octets it may take as the editor reads it
 from a client and as a client reads it from the editor, NIL where it is never
@@ -417,10 +418,68 @@ its health and its fonts too."
                                       collect (list (take-text inbox 256) (take-text inbox 512)))))))
     facts))
 
+;;; Settings: how the editor's init file has a client's screen shown
+
+(defparameter *display-settings*
+  '((tuatara-user:*gui-font* :font) (tuatara-user:*gui-padding* :padding)
+    (tuatara-user:*window-colours-from-desktop* :boolean)
+    (tuatara-user:*gui-renderer* (:gl :vulkan :cairo nil) :at-start)
+    (tuatara-user:*tui-padding* :padding) (tuatara-user:*tui-pictures* (:auto t nil))
+    (tuatara-user:*tui-mouse* :boolean) (tuatara-user:*tui-colours* (:auto :24-bit 256 16 8 nil))
+    (tuatara-user:*kitty-keyboard* (:auto t nil) :at-start))
+  "The settings a client's window or terminal is shown by, which the editor
+reads from its init file and tells its clients, each (NAME KIND [:AT-START]):
+KIND, :FONT for a font's name or NIL, :PADDING for room round the text,
+:BOOLEAN, or the list of values it may take, its standard first. One said
+:AT-START is taken as the client's screen opens, and not changed after.")
+
+(defun font-name-p (name)
+  "True when NAME may name a client's font: text of at most 256 octets with
+no control character in it."
+  (and (stringp name) (<= (tuatara.text:string-octet-length name) 256)
+       (notany (lambda (c) (tuatara.text:control-code-p (char-code c))) name)))
+
+(defun put-settings (box)
+  "Put in BOX, as fields of a message, the values of *DISPLAY-SETTINGS* here;
+one unset, or of a value it may not take, is left as the client has it."
+  (loop for (name kind) in *display-settings*
+        for value = (if (boundp name) (symbol-value name) :unset)
+        do (case kind
+             (:font (let ((given (or (null value) (font-name-p value))))
+                      (put-number box (if given 1 0) 1)
+                      (when given (put-text box (or value "")))))
+             (:padding (put-number box (if (eq value :unset) 0 1) 1)
+              (unless (eq value :unset)
+                (dolist (side (multiple-value-list (padding-sides value)))
+                  (put-number box (min 999 side) 2))))
+             (:boolean (put-number box (cond ((eq value :unset) 0) (value 2) (t 1)) 1))
+             (t (put-number box (let ((n (position value kind))) (if n (1+ n) 0)) 1)))))
+
+(defun take-settings (inbox)
+  "Read the settings of a message from INBOX, as PUT-SETTINGS put them: each
+given as (NAME . VALUE), in the order of *DISPLAY-SETTINGS*."
+  (prog1 (loop for (name kind) in *display-settings*
+               for value = (case kind
+                             (:font (if (zerop (take-bounded inbox 1 0 1 "a setting's flag"))
+                                        :unset
+                                        (let ((font (take-text inbox 256)))
+                                          (unless (font-name-p font)
+                                            (malformed "a font named with a control character"))
+                                          (and (plusp (length font)) font))))
+                             (:padding (if (zerop (take-bounded inbox 1 0 1 "a setting's flag"))
+                                           :unset
+                                           (loop repeat 4 collect (take-bounded inbox 2 0 999 "padding"))))
+                             (:boolean (case (take-bounded inbox 1 0 2 "a setting") (0 :unset) (1 nil) (t t)))
+                             (t (let ((n (take-bounded inbox 1 0 (length kind) "a setting")))
+                                  (if (zerop n) :unset (nth (1- n) kind)))))
+               unless (eq value :unset)
+                 collect (cons name value))
+    (message-read inbox)))
+
 ;;; What a client asks for as it attaches
 
 (defstruct (request (:constructor make-request (&key directory terminal environment files safe hex standard-input
-                                                      diff merge (frames 1) wait stop))
+                                                      diff merge (frames 1) wait stop joins))
                     (:copier nil))
   "What a client asks of the editor as it attaches, beside what its screen
 is: DIRECTORY, the folder it was started in, an absolute path; TERMINAL, the
@@ -431,9 +490,11 @@ open them so; STANDARD-INPUT, true when its standard input is passed with the
 attach to be read into a buffer (on the editor's side, the descriptor); DIFF,
 the two paths to compare, MERGE the four to merge, or NIL; FRAMES, how many
 frames to open; WAIT, true when the program that started it waits for the
-files to be done with; STOP, true when it asks the editor to stop."
+files to be done with; STOP, true when it asks the editor to stop; JOINS,
+the word the editor gave a client asking it for another window, which this
+connection then is (FRONTEND-ANOTHER), or NIL."
   (directory nil) (terminal nil) (environment '()) (files '()) (safe nil) (hex nil) (standard-input nil)
-  (diff nil) (merge nil) (frames 1 :type fixnum) (wait nil) (stop nil))
+  (diff nil) (merge nil) (frames 1 :type fixnum) (wait nil) (stop nil) (joins nil))
 
 (setf (documentation 'make-request 'function) "A REQUEST of a client, as its keywords give it."
       (documentation 'request-p 'function) "True when OBJECT is a REQUEST."
@@ -449,7 +510,9 @@ files to be done with; STOP, true when it asks the editor to stop."
       (documentation 'request-merge 'function) "The four paths the client merges, or NIL."
       (documentation 'request-frames 'function) "How many frames the client opens."
       (documentation 'request-wait 'function) "True when the client waits for its files to be done with."
-      (documentation 'request-stop 'function) "True when the client asks the editor to stop.")
+      (documentation 'request-stop 'function) "True when the client asks the editor to stop."
+      (documentation 'request-joins 'function)
+      "The word of the window the editor asked the client for that this connection is, or NIL.")
 
 (defconstant +most-path+ 4096 "The most octets of a path a client names.")
 
@@ -458,7 +521,7 @@ files to be done with; STOP, true when it asks the editor to stop."
 past their bounds are the client's to refuse before it is sent."
   (put-number box (logior (if (request-wait request) 1 0) (if (request-stop request) 2 0)
                           (if (request-safe request) 4 0) (if (request-hex request) 8 0)
-                          (if (request-standard-input request) 16 0))
+                          (if (request-standard-input request) 16 0) (if (request-joins request) 32 0))
               2)
   (put-number box (max 1 (min 16 (request-frames request))) 1)
   (put-text box (or (request-directory request) "/") +most-path+)
@@ -473,7 +536,14 @@ past their bounds are the client's to refuse before it is sent."
            (put-number box (if column (1+ column) 0) 4))
   (dolist (paths (list (request-diff request) (request-merge request)))
     (put-number box (length paths) 1)
-    (dolist (path paths) (put-text box path +most-path+))))
+    (dolist (path paths) (put-text box path +most-path+)))
+  (when (request-joins request)
+    (put-text box (request-joins request) 64)))
+
+(defun window-word-p (word)
+  "True when WORD may be the word a window asked for is known by: one to 64
+ASCII letters and digits."
+  (and (stringp word) (<= 1 (length word) 64) (every (lambda (c) (and (< (char-code c) 128) (alphanumericp c))) word)))
 
 (defun take-path (inbox what)
   "An absolute path read from INBOX, of at most +MOST-PATH+ octets with no
@@ -492,7 +562,7 @@ digits and underscores, not first a digit."
 
 (defun take-request (inbox)
   "Read a REQUEST from INBOX, as PUT-REQUEST put it."
-  (let* ((flags (take-bounded inbox 2 0 31 "a request's flags"))
+  (let* ((flags (take-bounded inbox 2 0 63 "a request's flags"))
          (frames (take-bounded inbox 1 1 16 "a count of frames"))
          (directory (take-path inbox "a folder"))
          (terminal (let ((device (take-text inbox 256)))
@@ -511,12 +581,17 @@ digits and underscores, not first a digit."
          (diff (loop repeat (take-bounded inbox 1 0 2 "a count of files to compare")
                      collect (take-path inbox "a file to compare")))
          (merge (loop repeat (take-bounded inbox 1 0 4 "a count of files to merge")
-                      collect (take-path inbox "a file to merge"))))
+                      collect (take-path inbox "a file to merge")))
+         (joins (and (logtest 32 flags)
+                     (let ((word (take-text inbox 64)))
+                       (unless (window-word-p word) (malformed "a window asked for by a word of other characters"))
+                       word))))
     (unless (member (length diff) '(0 2)) (malformed "~d files to compare" (length diff)))
     (unless (member (length merge) '(0 4)) (malformed "~d files to merge" (length merge)))
     (make-request :directory directory :terminal terminal :environment environment :files files
                   :safe (logtest 4 flags) :hex (logtest 8 flags) :standard-input (logtest 16 flags)
-                  :diff diff :merge merge :frames frames :wait (logtest 1 flags) :stop (logtest 2 flags))))
+                  :diff diff :merge merge :frames frames :wait (logtest 1 flags) :stop (logtest 2 flags)
+                  :joins joins)))
 
 ;;; Events, from a client
 
