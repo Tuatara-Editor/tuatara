@@ -12,7 +12,7 @@
            #:row #:row-p #:row-string #:row-bytes #:row-start #:row-end #:row-columns #:row-continuation-p #:row-last-p #:row-shown-end #:row-truncated-p
            #:row-column-of #:buffer-folds #:fold-region #:unfold-region #:unfold-ranges #:unfold-all #:fold-at #:fold-hiding #:fold-from #:fold-before #:folds-cut #:folds-hiding #:hold-folds #:release-folds #:folds-now #:hide-ranges #:hidden-bounds #:hidden-touched-p #:buffer-hides-p #:hidden-edit-p #:shown-parts #:shown-ranges #:lines-left-out #:visible-line-start #:visible-line-end #:point-out-of-folds #:*fold-ellipsis* #:row-faces #:row-char-bytes #:row-spans #:row-extend #:merge-face #:apply-highlights #:layout #:point-row-column
            #:face #:define-face #:find-face #:set-face-attributes #:resolve-face-spec #:face-ground #:cursor-colour #:resolve-face-underline-colour #:combine-faces #:resolve-face-font #:*row-scaling* #:row-scale #:face-attribute #:*faces* #:*face-generation* #:make-face-cache #:face-cache-table
-           #:face-doc #:face-fg #:face-bg #:face-bold #:face-italic #:face-underline #:face-reverse #:face-dim #:face-extend #:face-font #:face-inherit
+           #:face-doc #:face-fg #:face-bg #:face-bold #:face-italic #:face-underline #:face-reverse #:face-dim #:face-extend #:face-font #:face-inherit #:face-underline-colour #:face-height #:*basic-colour-names*
            #:face-base #:face-name #:reset-face #:register-face
            #:theme #:define-theme #:register-theme #:apply-theme #:find-theme #:theme-names #:*themes* #:*current-theme*
            #:theme-name #:theme-doc #:theme-specs #:theme-settings #:theme-palette #:theme-faces-from #:theme-colourless #:theme-role-colour #:face-attribute-in-theme #:theme-source #:role-p
