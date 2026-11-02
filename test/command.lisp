@@ -907,12 +907,44 @@ TEXTS with the mode line's sign of work, P, lit in :mode-line-sign."
     (multiple-value-bind (f editor) (run-keys "i C-q ESC C-g" :text "" :width 60 :height 8)
       (declare (ignore f))
       (is string= (string (code-char 27)) (session-text editor))))
-  ;; as standard, Escape is itself: INSERT state kept, the text typed after it typed
+  ;; as standard, Escape is a key of its own: it neither stops work nor ends a question one key answers
   (let ((tuatara-user:*escape-quits* nil))
     (true (tuatara.command:quit-key-p (tuatara.frontend:make-key #\g :ctrl t)))
     (false (tuatara.command:quit-key-p (tuatara.frontend:make-key :escape)))
     (let ((tuatara-user:*escape-quits* t))
       (true (tuatara.command:quit-key-p (tuatara.frontend:make-key :escape))))))
+
+(define-test (command escape-where-nothing-binds-it)
+  ;; as standard, Escape bound nowhere does what C-g does there: INSERT state left, never "ESC is undefined"
+  (let ((tuatara-user:*escape-quits* nil))
+    (multiple-value-bind (f editor) (run-keys "i a b ESC h c" :text "" :width 60 :height 8)
+      (is string= (run-keys-text "i a b C-g h c") (session-text editor))
+      (false (tuatara.frontend.fake:fake-frame-showing f "ESC is undefined")))
+    (let ((editor (nth-value 1 (run-keys "i a b ESC" :text "" :width 60 :height 8))))
+      (is eq :normal (tuatara.defaults:modal-state (session-buffer editor))))
+    ;; in NORMAL state too, as C-g: the selection dropped
+    (multiple-value-bind (f editor) (run-keys "v l ESC" :text (format nil "ab~%cd") :width 60 :height 8)
+      (false (tuatara.frontend.fake:fake-frame-showing f "ESC is undefined"))
+      (false (tuatara.buffer:buffer-mark-active-p (session-buffer editor))))
+    ;; where Escape is bound it does its own: the minibuffer's question closed, nothing run
+    (multiple-value-bind (f editor) (run-keys "M-x e n d - o f - b u f ESC" :text (format nil "a~%b") :width 60 :height 8)
+      (declare (ignore f))
+      (is = 0 (session-point editor)))
+    ;; and after a prefix key it is no key of the sequence's
+    (true (tuatara.frontend.fake:fake-frame-showing (run-keys "C-x ESC" :text "" :width 60 :height 8)
+                                                    "C-x ESC is undefined"))))
+
+(define-test (command escape-alone-or-as-meta-from-a-terminal)
+  ;; in a terminal, ESC alone is Escape; ESC with a key sent at once is that key with Meta
+  ;; (Alt and the key, or ESC x typed as M-x); with the rest coming later, Escape alone
+  (flet ((spec (script &optional kitty)
+           (tuatara.frontend:key-spec (tuatara.frontend:event-key (scripted-terminal-events script :kitty kitty)))))
+    (is equal '(:escape) (spec '()))
+    (is equal '(:meta #\x) (spec '(#\x)))
+    (is equal '(:escape) (spec '(:gap #\x)))
+    ;; with kitty's keyboard on, Escape alone too, and Alt and a key still Meta
+    (is equal '(:escape) (spec '() t))
+    (is equal '(:meta #\x) (spec '(#\x) t))))
 
 (defun run-keys-text (keys)
   "The text an empty scratch buffer holds after KEYS."
@@ -1028,11 +1060,11 @@ TEXTS with the mode line's sign of work, P, lit in :mode-line-sign."
   "What the stand-in terminal gives next: characters, and :GAP where the
 rest comes only after a wait.")
 
-(defun scripted-terminal-events (script)
+(defun scripted-terminal-events (script &key kitty)
   "The event the TUI makes of an ESC followed by SCRIPT (see *TERMINAL-SCRIPT*),
-the terminal's reads and waits stood in for, with kitty's keyboard off."
+the terminal's reads and waits stood in for, with kitty's keyboard on when KITTY."
   (let ((*terminal-script* script)
-        (tuatara.frontend.tui::*kitty-keyboard-on* nil))
+        (tuatara.frontend.tui::*kitty-keyboard-on* kitty))
     (sb-int:encapsulate 'tuatara.frontend.tui::read-wide-char 'scripted
                         (lambda (original window)
                           (declare (ignore original window))

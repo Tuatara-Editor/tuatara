@@ -279,7 +279,8 @@
   ;; (setf *tuatara-normal-tab-modes* '())
 
   ;; Escape does what C-g does, everywhere, a terminal too. Not set: nil:
-  ;; Escape is a key of its own, doing what it is bound to; Meta only when a
+  ;; Escape is a key of its own, doing what it is bound to, and what C-g does
+  ;; where nothing binds it (it leaves INSERT state); Meta only when a
   ;; terminal sends Escape and another key together.
   ;; (setf *escape-quits* t)
 

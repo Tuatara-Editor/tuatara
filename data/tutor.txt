@@ -12,8 +12,8 @@ explanation.
 Tuatara's modal editing has two states.  In NORMAL state the letter keys
 are commands; in INSERT state they type.  The mode line shows which:
 TUATARA[N] or TUATARA[I].  If a key ever does something you did not
-expect, you are probably in the other state -- press \`C-g' to get back to
-NORMAL.
+expect, you are probably in the other state -- press \`C-g' (or Escape)
+to get back to NORMAL.
 
 \`C-g' also cancels a selection, and it is worth pressing at the end of
 any lesson that made one.  A selection left active changes what the next
@@ -1055,9 +1055,9 @@ room for the letters above.
 A modal editor cannot be entirely free, though, and the price is short
 enough to state in full.
 
-In INSERT state, one key changes: \`C-g' returns to NORMAL state.  It still
-clears the selection, and in the minibuffer it still quits, so the escape
-hatch is where you expect it.
+In INSERT state, one key changes: \`C-g' returns to NORMAL state (Escape
+does too).  It still clears the selection, and in the minibuffer it still
+quits, so the escape hatch is where you expect it.
 
 In NORMAL state, four things differ:
 

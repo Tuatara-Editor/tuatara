@@ -66,17 +66,23 @@ the core's own host, say the keys are undefined.")
   "Look SPECS up in the active keymaps in precedence order, KEY the last of
 them as typed when known (ACTIVE-KEYMAPS). Returns a command, a keymap
 \(prefix), or NIL. A key bound to :UNDEFINED in a keymap is unbound there and
-in the keymaps after it: NIL, as a key bound nowhere."
-  (keymaps-lookup (active-keymaps editor key) specs))
+in the keymaps after it: NIL, as a key bound nowhere. Escape alone, bound
+nowhere, runs what \\`C-g' runs there: it leaves INSERT state, drops a
+selection, closes a list beside the cursor."
+  (let ((keymaps (active-keymaps editor key)))
+    (or (keymaps-lookup keymaps specs)
+        (and (equal specs '((:escape))) (keymaps-lookup keymaps '((:ctrl #\g)))))))
 
 (defvar tuatara-user:*escape-quits* nil
   "True to have Escape do what \\`C-g' does everywhere: leave INSERT state,
 close a question, a list or a popup, stop a wait or work in the background,
 drop a selection; NIL (the standard) for Escape as a key of its own, which
-does what it is bound to and nothing where it is bound to nothing. In a
-terminal, Escape quickly followed by another key arrives as Meta with that
-key, as terminals send the two alike. \\[quoted-insert] still takes Escape
-as itself.")
+does what it is bound to (it closes a question typed in the minibuffer), and
+what \\`C-g' does where it is bound to nothing (it leaves INSERT state, drops
+a selection), but does not end a question one key answers, a wait or work in
+the background. In a terminal, Escape quickly followed by another key arrives
+as Meta with that key, as terminals send the two alike. \\[quoted-insert]
+still takes Escape as itself.")
 
 (defvar *keys-as-typed* nil
   "True while a key is read as it was typed, Escape as Escape whatever
