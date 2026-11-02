@@ -1020,6 +1020,109 @@ a pipe already full is awake enough."
   (tuatara.runtime:ignoring-errors-reported ("closing a wake pipe") (sb-posix:close (cdr pipe)))
   nil)
 
+(defun poll-fd (fd events milliseconds)
+  "Wait up to MILLISECONDS (a second at most) for file descriptor (FD) to have
+any of EVENTS \(POLLIN 1, POLLOUT 4); the events it has, 0 when none came."
+  (declare (type fixnum milliseconds))
+  (sb-alien:with-alien ((poll (array (sb-alien:unsigned 8) 8)))
+    (let ((sap (sb-alien:alien-sap poll)))
+      (setf (sb-sys:signed-sap-ref-32 sap 0) fd
+            (sb-sys:sap-ref-16 sap 4) events
+            (sb-sys:sap-ref-16 sap 6) 0)
+      (if (plusp (sb-alien:alien-funcall
+                  (sb-alien:extern-alien "poll" (function sb-alien:int sb-sys:system-area-pointer sb-alien:unsigned-long
+                                                          sb-alien:int))
+                  sap 1 (max 0 (min 1000 milliseconds))))
+          (sb-sys:sap-ref-16 sap 6)
+          0))))
+
+;;; Local sockets, and descriptors passed over them
+
+(defun socket-pair ()
+  "Two ends of a new local socket, as two descriptors, neither left open in
+programs started (a program is given its end as its input); the first does
+not wait when it cannot be read or written at once."
+  (sb-alien:with-alien ((fds (array sb-alien:int 2)))
+    (unless (zerop (sb-alien:alien-funcall
+                    (sb-alien:extern-alien "socketpair" (function sb-alien:int sb-alien:int sb-alien:int sb-alien:int
+                                                                  (* (array sb-alien:int 2))))
+                    1 (logior 1 #x80000) 0 (sb-alien:addr fds)))     ; AF_UNIX, SOCK_STREAM | SOCK_CLOEXEC
+      (fail "make" "a local socket"))
+    (let ((mine (sb-alien:deref fds 0)))
+      (fcntl-int mine 4 #x800)                                     ; F_SETFL O_NONBLOCK
+      (values mine (sb-alien:deref fds 1)))))
+
+(defun shut-socket (fd)
+  "Shut the socket open as file descriptor (FD) both ways, so that a thread
+waiting to read or write it stops waiting and the other end sees it end; the
+descriptor stays open until closed."
+  (sb-alien:alien-funcall (sb-alien:extern-alien "shutdown" (function sb-alien:int sb-alien:int sb-alien:int))
+                          fd 2)                                ; SHUT_RDWR
+  nil)
+
+(defconstant +most-descriptors+ 4
+  "The most descriptors passed with one piece of what a local socket sends.")
+
+(defun send-with-descriptors (fd sap length &optional descriptors)
+  "Send up to LENGTH octets at SAP over the local socket open as file
+descriptor (FD), without waiting, DESCRIPTORS (a list of at most
++MOST-DESCRIPTORS+ open descriptors) passed with them to the other end, where
+RECEIVE-WITH-DESCRIPTORS takes them; how many octets were sent, or -1 when
+none could be, the reason in errno (EAGAIN: the socket is full for now). A
+socket whose other end has gone gives -1, never a signal."
+  (let ((count (length descriptors)))
+    (assert (<= count +most-descriptors+))
+    (sb-alien:with-alien ((part (array (sb-alien:unsigned 64) 2))
+                          (control (array (sb-alien:unsigned 8) 32))
+                          (message (array (sb-alien:unsigned 8) 56)))
+      (let ((p (sb-alien:alien-sap part)) (c (sb-alien:alien-sap control)) (m (sb-alien:alien-sap message))
+            (control-length (if descriptors (+ 16 (* 8 (ceiling (* 4 count) 8))) 0)))
+        ;; struct iovec, a struct cmsghdr of SCM_RIGHTS, struct msghdr (x86-64 and arm64 lay them out alike)
+        (setf (sb-sys:sap-ref-64 p 0) (sb-sys:sap-int sap) (sb-sys:sap-ref-64 p 8) length)
+        (dotimes (i 32) (setf (sb-sys:sap-ref-8 c i) 0))
+        (setf (sb-sys:sap-ref-64 c 0) (+ 16 (* 4 count)) (sb-sys:sap-ref-32 c 8) 1 (sb-sys:sap-ref-32 c 12) 1)
+        (loop for descriptor in descriptors for at from 16 by 4
+              do (setf (sb-sys:signed-sap-ref-32 c at) descriptor))
+        (dotimes (i 56) (setf (sb-sys:sap-ref-8 m i) 0))
+        (setf (sb-sys:sap-ref-64 m 16) (sb-sys:sap-int p) (sb-sys:sap-ref-64 m 24) 1
+              (sb-sys:sap-ref-64 m 32) (if descriptors (sb-sys:sap-int c) 0) (sb-sys:sap-ref-64 m 40) control-length)
+        (sb-alien:alien-funcall
+         (sb-alien:extern-alien "sendmsg" (function sb-alien:long sb-alien:int sb-sys:system-area-pointer sb-alien:int))
+         fd m (logior #x4000 #x40))))))                     ; MSG_NOSIGNAL, MSG_DONTWAIT
+
+(defun receive-with-descriptors (fd sap length)
+  "Receive up to LENGTH octets into SAP from the local socket open as file
+descriptor (FD), without waiting, and the descriptors passed with them
+\(SEND-WITH-DESCRIPTORS), each closed in programs started. Three values: how
+many octets came, 0 when the other end has gone, -1 when none are there now
+or the socket failed (the reason in errno, EAGAIN for none now); the
+descriptors, a list, which the caller closes; and true when more were passed
+than +MOST-DESCRIPTORS+, those beyond it closed unseen."
+  (sb-alien:with-alien ((part (array (sb-alien:unsigned 64) 2))
+                        (control (array (sb-alien:unsigned 8) 32))
+                        (message (array (sb-alien:unsigned 8) 56)))
+    (let ((p (sb-alien:alien-sap part)) (c (sb-alien:alien-sap control)) (m (sb-alien:alien-sap message)))
+      (setf (sb-sys:sap-ref-64 p 0) (sb-sys:sap-int sap) (sb-sys:sap-ref-64 p 8) length)
+      (dotimes (i 32) (setf (sb-sys:sap-ref-8 c i) 0))
+      (dotimes (i 56) (setf (sb-sys:sap-ref-8 m i) 0))
+      (setf (sb-sys:sap-ref-64 m 16) (sb-sys:sap-int p) (sb-sys:sap-ref-64 m 24) 1
+            (sb-sys:sap-ref-64 m 32) (sb-sys:sap-int c) (sb-sys:sap-ref-64 m 40) 32)
+      (let ((got (sb-alien:alien-funcall
+                  (sb-alien:extern-alien "recvmsg" (function sb-alien:long sb-alien:int sb-sys:system-area-pointer
+                                                             sb-alien:int))
+                  fd m (logior #x40000000 #x40)))       ; MSG_CMSG_CLOEXEC, MSG_DONTWAIT
+            (descriptors '()))
+        (when (>= got 0)
+          ;; each struct cmsghdr in turn, 8-aligned: its length, level and type, then its data
+          (loop with filled = (min 32 (sb-sys:sap-ref-64 m 40))
+                for at = 0 then (+ at (* 8 (ceiling size 8)))
+                for size = (if (<= (+ at 16) filled) (sb-sys:sap-ref-64 c at) 0)
+                while (and (>= size 16) (<= (+ at size) filled))
+                when (and (= 1 (sb-sys:sap-ref-32 c (+ at 8))) (= 1 (sb-sys:sap-ref-32 c (+ at 12))))
+                  do (loop for k from (+ at 16) below (+ at size) by 4
+                           do (push (sb-sys:signed-sap-ref-32 c k) descriptors))))
+        (values got (nreverse descriptors) (logtest 8 (sb-sys:sap-ref-32 m 48)))))))   ; MSG_CTRUNC
+
 (defconstant +watch-events+ (logior #x2 #x4 #x8 #x40 #x80 #x100 #x200 #x400 #x800 #x1000000)
   "The inotify events a watched directory reports: a file in it written
 (IN_MODIFY), its times or permissions changed (IN_ATTRIB), closed after writing

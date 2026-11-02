@@ -272,22 +272,6 @@ held (SAP freed), and its room, as two values."
   (sb-alien:alien-funcall (sb-alien:extern-alien "free" (function sb-alien:void sb-alien:unsigned-long))
                           (sb-sys:sap-int sap)))
 
-(defun poll-fd (fd events milliseconds)
-  "Wait up to MILLISECONDS (a second at most) for file descriptor (FD) to have
-any of EVENTS \(POLLIN 1, POLLOUT 4); the events it has, 0 when none came."
-  (declare (type fixnum milliseconds))
-  (sb-alien:with-alien ((poll (array (sb-alien:unsigned 8) 8)))
-    (let ((sap (sb-alien:alien-sap poll)))
-      (setf (sb-sys:signed-sap-ref-32 sap 0) fd
-            (sb-sys:sap-ref-16 sap 4) events
-            (sb-sys:sap-ref-16 sap 6) 0)
-      (if (plusp (sb-alien:alien-funcall
-                  (sb-alien:extern-alien "poll" (function sb-alien:int sb-sys:system-area-pointer sb-alien:unsigned-long
-                                                          sb-alien:int))
-                  sap 1 (max 0 (min 1000 milliseconds))))
-          (sb-sys:sap-ref-16 sap 6)
-          0))))
-
 (defun milliseconds-to (deadline)
   "The milliseconds until DEADLINE (an internal real time), 0 once it has passed."
   (max 0 (ceiling (- deadline (get-internal-real-time)) (floor internal-time-units-per-second 1000))))
@@ -324,23 +308,10 @@ first. FD may be one that does not wait (O_NONBLOCK)."
   "Ask the helper over its first connection file descriptor (FD) to take the
 socket DESCRIPTOR as a new connection (+OP-CONNECT+); NIL when it cannot be
 sent."
-  (sb-alien:with-alien ((header (array (sb-alien:unsigned 32) 3))
-                        (part (array (sb-alien:unsigned 64) 2))
-                        (control (array (sb-alien:unsigned 8) 24))
-                        (message (array (sb-alien:unsigned 8) 56)))
-    (let ((h (sb-alien:alien-sap header)) (p (sb-alien:alien-sap part))
-          (c (sb-alien:alien-sap control)) (m (sb-alien:alien-sap message)))
+  (sb-alien:with-alien ((header (array (sb-alien:unsigned 32) 3)))
+    (let ((h (sb-alien:alien-sap header)))
       (setf (sb-sys:sap-ref-32 h 0) 0 (sb-sys:sap-ref-32 h 4) 0 (sb-sys:sap-ref-32 h 8) +op-connect+)
-      ;; struct iovec, struct cmsghdr with SCM_RIGHTS, struct msghdr (x86-64 and arm64 lay them out alike)
-      (setf (sb-sys:sap-ref-64 p 0) (sb-sys:sap-int h) (sb-sys:sap-ref-64 p 8) 12)
-      (setf (sb-sys:sap-ref-64 c 0) 20 (sb-sys:sap-ref-32 c 8) 1 (sb-sys:sap-ref-32 c 12) 1
-            (sb-sys:signed-sap-ref-32 c 16) descriptor (sb-sys:sap-ref-32 c 20) 0)
-      (dotimes (i 56) (setf (sb-sys:sap-ref-8 m i) 0))
-      (setf (sb-sys:sap-ref-64 m 16) (sb-sys:sap-int p) (sb-sys:sap-ref-64 m 24) 1
-            (sb-sys:sap-ref-64 m 32) (sb-sys:sap-int c) (sb-sys:sap-ref-64 m 40) 24)
-      (= 12 (sb-alien:alien-funcall
-             (sb-alien:extern-alien "sendmsg" (function sb-alien:long sb-alien:int sb-sys:system-area-pointer sb-alien:int))
-             fd m 16384)))))                            ; MSG_NOSIGNAL
+      (= 12 (send-with-descriptors fd h 12 (list descriptor))))))
 
 (defun take-call (helper)
   "A connection to HELPER no other call uses, made when none is idle; NIL
@@ -644,22 +615,6 @@ NIL then. A reply that cannot be right (REPLY-OVERRUN) leaves BODY with NIL."
           (t result))))))
 
 ;;; Starting and ending helpers
-
-(defun socket-pair ()
-  "Two ends of a new local socket, as two descriptors, neither left open in
-programs started (a program is given its end as its input); the first, the
-editor's, does not wait when it cannot be read or written at once."
-  (sb-alien:with-alien ((fds (array sb-alien:int 2)))
-    (unless (zerop (sb-alien:alien-funcall
-                    (sb-alien:extern-alien "socketpair" (function sb-alien:int sb-alien:int sb-alien:int sb-alien:int
-                                                                  (* (array sb-alien:int 2))))
-                    1 (logior 1 #x80000) 0 (sb-alien:addr fds)))     ; AF_UNIX, SOCK_STREAM | SOCK_CLOEXEC
-      (error "No socket for the syntax helper."))
-    (let ((mine (sb-alien:deref fds 0)))
-      ;; the editor's end never waits: each call has a deadline of its own
-      (sb-alien:alien-funcall (sb-alien:extern-alien "fcntl" (function sb-alien:int sb-alien:int sb-alien:int sb-alien:long))
-                              mine 4 #x800)                                     ; F_SETFL O_NONBLOCK
-      (values mine (sb-alien:deref fds 1)))))
 
 (defun syntax-helper-program (&optional (directories (grammar-directories)))
   "The path of the program that parses for the editor, in the first of

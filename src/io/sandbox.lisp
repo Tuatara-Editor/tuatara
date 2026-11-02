@@ -643,6 +643,14 @@ so that nothing can change it (SEALED-MEMORY-FILE), and with KEPT kept open
 in programs started (for bwrap to read)."
   (sealed-memory-file name (lambda (fd) (write-octets fd octets :path name)) :kept kept))
 
+(defun sealed-file-size (fd)
+  "The size in octets of the file open as file descriptor (FD) when it is
+sealed so that nothing can write it, make it shorter or make it longer, as
+SEALED-MEMORY-FILE seals one; NIL when it is not."
+  (let ((seals (fcntl-int fd 1034 0)))                      ; F_GET_SEALS
+    (and (>= seals 0) (= 14 (logand seals 14))               ; SHRINK, GROW, WRITE
+         (sb-posix:stat-size (sb-posix:fstat fd)))))
+
 (defparameter *sandbox-own-directories* '("/usr" "/bin" "/sbin" "/lib" "/lib64" "/lib32" "/tmp" "/proc" "/dev" "/etc")
   "The directories at the root that the sandbox makes itself, never made links
 because they are links outside it.")
