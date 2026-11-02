@@ -1711,7 +1711,9 @@ the files named: the files a rename across a project changed, say."
   (let ((changed (remove-if-not (lambda (b) (and (tuatara.buffer:buffer-file b) (tuatara.buffer:buffer-modified-p b)))
                                 tuatara.buffer:*buffers*)))
     (cond ((null changed) (message "(No files need saving)"))
-          ((y-or-n-p* (format nil "Save ~d changed file~:p: ~{~a~^, ~}?" (length changed) (mapcar #'tuatara.buffer:buffer-name changed)))
+          ((let ((*buffers-asked-about* changed))
+             (y-or-n-p* (format nil "Save ~d changed file~:p: ~{~a~^, ~}?"
+                                (length changed) (mapcar #'tuatara.buffer:buffer-name changed))))
            (save-buffers-where (lambda (b) (member b changed)) "Saved ~d file~:p"))
           (t (message "Nothing saved")))))
 

@@ -316,11 +316,18 @@ said: a log followed would say it every second."
           (:stale (message "~a was rewritten on disk while shown from it; read-only now, \\[revert-buffer] reads it again"
                            name)))))))
 
+(defvar *disk-news-put-off* '()
+  "Buffers whose files changed on disk while a question waiting in a frame was
+about them (BUFFER-HELD-BY-QUESTION-P): what the change brings is taken in
+once it is answered.")
+
 (defun files-tick (editor)
   "Tick function: take in the countings of lines, saves and snapshots that have
 ended (a large file's lines are counted in the background after it opens),
 keep the watcher told of the files visited, take in what it found
-(REACT-TO-DISK), and say what has become of the shown buffer's file. Asks to
+(REACT-TO-DISK), but for buffers a waiting question is about, put off until
+it is answered (*DISK-NEWS-PUT-OFF*), and say what has become of the shown
+buffer's file. Asks to
 be called soon while work runs; otherwise the watcher wakes the editor when it
 has news."
   (let ((shown (tuatara.display:window-buffer (editor-window editor)))
@@ -335,11 +342,14 @@ has news."
                                       (loop for b in changed
                                             collect (tuatara.buffer:buffer-name b) collect (tuatara.io:file-disk-state b))
                                       (and changed again) (mapcar #'tuatara.buffer:buffer-name again)))
-      (let ((news (append changed (remove-if-not #'following-p again))))
-        (when news (react-to-disk news))))
+      (let* ((news (remove-duplicates (append (shiftf *disk-news-put-off* '())
+                                              changed (remove-if-not #'following-p again))))
+             (now (remove-if #'buffer-held-by-question-p news)))
+        (setf *disk-news-put-off* (remove-if-not #'buffer-held-by-question-p news))
+        (when now (react-to-disk now))))
     (say-disk-state shown)
     (and (or counting (tuatara.io:saves-running) (tuatara.io:snapshots)
-             (tuatara.io:leases-moving-p))
+             (tuatara.io:leases-moving-p) *disk-news-put-off*)
          t)))
 
 (defun safe-mode-line (editor buffer)

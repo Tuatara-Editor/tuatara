@@ -52,8 +52,13 @@ it move, and calm to look at.")
   "Call the tick FUNCTION with EDITOR and return what it wants. An error in it
 is said and reported in debug mode with the calls under way, and counts as
 wanting nothing, so that work taken in from the background cannot take the
-editor down."
-  (call-with-guard (lambda () (funcall function editor)) function 'call-tick-function :quit nil))
+editor down. An edit of a buffer a waiting question is about, refused
+\(BUFFER-HELD-BY-QUESTION), is put off: said nothing of, it wants another
+call soon, as the question will be answered."
+  (call-with-guard (lambda ()
+                     (handler-case (funcall function editor)
+                       (buffer-held-by-question () t)))
+                   function 'call-tick-function :quit nil))
 
 (defvar *after-tick-functions* '()
   "Functions of the editor called after *TICK-FUNCTIONS*, each time, and when

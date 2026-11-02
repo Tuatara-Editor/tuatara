@@ -893,10 +893,10 @@ second frame waiting its turn on it."
 
 (define-test (frames questions-open-at-once-bounded)
   ;; past the most questions open at once, what is done in another frame waits, the frame saying
-  ;; so, and runs once a question has ended
+  ;; so, and runs once a question has ended (the first question about a buffer of its own)
   (let ((tuatara.command::*frames-question-depth* 2) (waiting nil))
     (multiple-value-bind (editor frames frontends)
-        (run-frames (list '(0 "C-x b") '(1 "M-x") '(2 "i k")
+        (run-frames (list '(0 "C-x b k i w i C-j C-x b") '(1 "M-x") '(2 "i k")
                           (frames-probe 0 (lambda (frames)
                                             (setf waiting (list (length (tuatara.command::frame-unread (third frames)))
                                                                 (tuatara.buffer:buffer-string
@@ -1015,3 +1015,46 @@ second frame waiting its turn on it."
       (is = 2 count)
       (true active)
       (true typed))))
+
+(define-test (frames buffer-of-a-waiting-question-kept-as-asked)
+  ;; while a replacement asks at a match in one frame, an edit of its buffer typed in another frame
+  ;; is refused, saying where the question is, and the replacement then replaces the text it asked at
+  (with-frames (editor (first second) :text "kea kea")
+      '((0 "M-% k e a RET t u i RET") (1 "i x") (0 "y q"))
+    (is equal "tui kea" (tuatara.buffer:buffer-string (tuatara.buffer:find-buffer "*scratch*")))
+    (true (tuatara.frontend.fake:fake-frame-showing-across-rows
+           (tuatara.command::frame-frontend second) "*scratch* has a question open in F1"))))
+
+(define-test (frames save-question-gives-up-for-a-killed-buffer)
+  ;; a question about other buffers than its own (which files to save) is given up when one of them
+  ;; is killed in another frame meanwhile
+  (with-test-directory (dir)
+    (let ((path (put-file (merge-pathnames "kea.txt" dir) "kea")))
+      (with-frames (editor (first second))
+          (list (list 1 (format nil "C-x C-f C-a C-k ~a RET i x C-x b k i w i C-j" (rimu-typed (namestring path))))
+                '(0 "C-x s") '(1 "C-x b k e a . t x t RET C-x k y RET"))
+        (false (tuatara.buffer:find-buffer "kea.txt"))
+        (false (tuatara.command::frame-minibuffer-active first))
+        (true (search "was killed in another frame" (or (tuatara.command::frame-message first) "")))))))
+
+(define-test (frames file-change-put-off-while-a-question-is-about-it)
+  ;; a file followed that grows on disk while a question in a frame is about its buffer takes in
+  ;; what was added only once the question is answered, and then all of it
+  (with-slow-polling
+    (with-test-directory (dir)
+      (let ((path (put-file (merge-pathnames "lines.txt" dir) (format nil "l1~%")))
+            (during nil))
+        (with-frames (editor (first second) :count 2)
+            (list (list 0 (format nil "C-x C-f C-a C-k ~a RET M-x f o l l o w - f i l e RET"
+                                  (rimu-typed (namestring path))))
+                  '(0 "M-x")
+                  (list 0 (lambda () (append-on-disk path (format nil "l2~%")) (sleep 1)))
+                  (list 0 (lambda () (sleep 0.2)))
+                  (frames-probe 0 (lambda (frames)
+                                    (declare (ignore frames))
+                                    (setf during (tuatara.buffer:buffer-string (tuatara.buffer:find-buffer "lines.txt")))))
+                  '(0 "C-g")
+                  (list 0 (lambda () (sleep 0.5))))
+          (is equal (format nil "l1~%") during)
+          (is equal (format nil "l1~%l2~%") (tuatara.buffer:buffer-string (tuatara.buffer:find-buffer "lines.txt")))
+          (tuatara.buffer:kill-buffer (tuatara.buffer:find-buffer "lines.txt")))))))

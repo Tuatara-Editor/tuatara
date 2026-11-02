@@ -277,11 +277,49 @@ of the one worked in (FRAME-TAKING-TURNS-P), nothing is done."
                           look)))
                   look))))))))
 
+(defvar *buffers-asked-about* '()
+  "While a question asks about buffers beside the one its command works in
+\(which of them to save, say), those buffers. A command asking so binds it
+around the question: while the question waits for another frame, those
+buffers are kept as it asks about them (*BUFFERS-HELD-BY-QUESTIONS*), and the
+question is given up when one of them is killed.")
+
+(defvar *buffers-held-by-questions* '()
+  "While questions wait for what is done in other frames to run inside them
+\(RUN-INSIDE-QUESTION), each buffer one of them is about, with the frame it
+asks in, as (BUFFER . FRAME): an edit of one is refused
+\(GUARD-BUFFERS-HELD-BY-QUESTIONS), a job of one waits (HOST-JOB-WAITS-P),
+and work in the background on one is put off, until its question is
+answered.")
+
+(define-condition buffer-held-by-question (tuatara.runtime:refusal) ()
+  (:documentation "An edit refused because a question waiting in another frame is about the
+buffer (GUARD-BUFFERS-HELD-BY-QUESTIONS)."))
+
+(defun buffer-held-by-question-p (buffer)
+  "True when a question waiting in a frame is about BUFFER: what changes it is
+put off until the question is answered (*BUFFERS-HELD-BY-QUESTIONS*)."
+  (and *buffers-held-by-questions* (assoc buffer *buffers-held-by-questions*) t))
+
+(defun guard-buffers-held-by-questions (buffer edits)
+  "Before-edit function (TUATARA.BUFFER:*BEFORE-EDIT-FUNCTIONS*): refuse EDITS
+of BUFFER while a question waiting in another frame is about it, saying in
+which frame (*BUFFERS-HELD-BY-QUESTIONS*): the question holds places in its
+text, which the edits would move."
+  (declare (ignore edits))
+  (let ((held (and *buffers-held-by-questions* (assoc buffer *buffers-held-by-questions*))))
+    (when held
+      (error 'buffer-held-by-question :format-control "~a has a question open in ~a"
+                                      :format-arguments (list (tuatara.buffer:buffer-name buffer)
+                                                              (frame-name (cdr held)))))))
+
+(pushnew 'guard-buffers-held-by-questions tuatara.buffer:*before-edit-functions*)
+
 (defvar *question-variables*
   '(*key-question* *minibuffer-hidden* *minibuffer-question-keymap* *minibuffer-finish* *minibuffer-history*
     *minibuffer-initial-selected* *read-key-replay* *keys-as-typed* *command-notes* *command-undo-since*
     *this-command-keys* *current-buffer* *dropped* *pasted* tuatara.buffer:*narrowing-in-force*
-    tuatara.runtime:*secret-at-hand*)
+    tuatara.runtime:*secret-at-hand* *buffers-asked-about*)
   "The variables a command binds that belong to the question it asks, and so
 to the frame it asks in: what is done in another frame inside that question
 \(RUN-INSIDE-QUESTION) runs with each as it is outside every command, and
@@ -315,16 +353,15 @@ the buffer such a question is about, waits for that question then.")
 
 (defmethod tuatara.runtime:host-job-waits-p ((host editor-host) job)
   "While work is taken in inside an open question (*TAKING-IN-INSIDE-QUESTION*),
-true for JOB begun in a frame whose question waits, or of the buffer such a
-question is about: what it takes in could change what that question asks
-about, so it is taken in once the question is answered."
+true for JOB begun in a frame whose question waits, or of a buffer such a
+question is about (BUFFER-HELD-BY-QUESTION-P): what it takes in could change
+what that question asks about, so it is taken in once the question is
+answered."
   (let ((editor *editor*))
     (and *taking-in-inside-question* editor
-         (some (lambda (frame)
-                 (let ((held (frame-held frame)))
-                   (and held (or (eq frame (tuatara.runtime:job-frame job))
-                                 (eq (third held) (tuatara.runtime:job-buffer job))))))
-               (editor-frames editor)))))
+         (or (buffer-held-by-question-p (tuatara.runtime:job-buffer job))
+             (let ((frame (tuatara.runtime:job-frame job)))
+               (and frame (frame-held frame) t))))))
 
 (defun run-free-frames-deferred (editor)
   "Do what waits to be done in the frames of EDITOR whose question does not
@@ -347,18 +384,23 @@ the jobs a waiting question holds back (HOST-JOB-WAITS-P), and what waits to
 be done in the frames whose question does not wait is done
 \(RUN-FREE-FRAMES-DEFERRED). The frame asking is the one worked in again
 after, its question going on, and the frames whose text changed are painted.
-That question is given up, as \\`C-g' gives it up, when what ran stopped the
-editor or killed the buffer the question is about; when it closed the frame
-asking, once the question reads on (READ-EVENT)."
+Meanwhile the buffers the question is about, the one its command works in and
+*BUFFERS-ASKED-ABOUT*, are held as it asks about them
+\(*BUFFERS-HELD-BY-QUESTIONS*). That question is given up, as \\`C-g' gives
+it up, when what ran stopped the editor or killed a buffer the question is
+about; when it closed the frame asking, once the question reads on
+\(READ-EVENT)."
   (let ((asking (editor-frame editor))
-        (about (current-buffer))
+        (about (adjoin (current-buffer) *buffers-asked-about*))
         (this-command (editor-this-command editor))
         (room (< (1+ (count-if #'frame-held (editor-frames editor))) *frames-question-depth*))
         (generation *display-generation*)
         (painted nil))
     (setf (frame-held asking) (list *question-variables* (mapcar #'symbol-value *question-variables*) about))
     (unwind-protect
-         (progv *question-variables* (outside-question-values)
+         (progv (list* '*buffers-held-by-questions* *question-variables*)
+             (list* (append (mapcar (lambda (buffer) (cons buffer asking)) about) *buffers-held-by-questions*)
+                    (outside-question-values))
            (when event
              (select-frame editor frame)
              (setf *last-input-time* (get-internal-real-time))
@@ -382,9 +424,9 @@ asking, once the question reads on (READ-EVENT)."
           (select-frame editor asking)))
     (cond ((frame-deleted asking)) ; given up as its question reads on
           ((not (editor-running editor)) (keyboard-quit-signal))
-          ((not (live-buffer-p about))
+          ((notevery #'live-buffer-p about)
            (keyboard-quit-signal (format nil "~a was killed in another frame: the question about it is given up"
-                                         (tuatara.buffer:buffer-name about))))
+                                         (tuatara.buffer:buffer-name (find-if-not #'live-buffer-p about)))))
           ((or event (/= generation *display-generation*))
            (when painted (note-frame-painted painted))
            (unless (tuatara.frontend:frontend-input-pending-p (frame-frontend asking))
