@@ -17,7 +17,7 @@
 (defparameter *decoding-carried-settings*
   '(tuatara-user:*sandbox-program* tuatara-user:*sandbox-seconds* tuatara-user:*sandbox-memory*
     tuatara-user:*sandbox-total-memory* *pdf-decoders* *pdf-text-pages* *image-decoders* *magick-largest-side*
-    *picture-memory* *picture-seconds* *image-view-largest*)
+    *picture-memory* *image-view-largest*)
   "The settings that decoding reads, carried to the thread that draws a PDF's
 page, takes out its text, draws an image or makes a preview, as they are on
 the editor's when that starts (TUATARA.RUNTIME:CARRY-SETTINGS).")
@@ -292,7 +292,9 @@ made.")
 picture's own size, read from its file, tells how much it needs (about 32
 octets a pixel, a hundred-megapixel PNG some 3.9 GB), never less than
 *SANDBOX-MEMORY*; one needing more than this is not drawn, and says so. A
-JPEG needs little whatever its size, decoded at a fraction of it.")
+JPEG needs little whatever its size, decoded at a fraction of it. A JPEG 2000
+or JPEG XL picture is given time for its size (PICTURE-SECONDS), so this
+bounds that too.")
 
 (defun picture-pixels (fd head)
   "How many pixels the picture open as file descriptor (FD), whose first
@@ -365,29 +367,23 @@ to *PICTURE-MEMORY*."
 them is decoded (CODED-PICTURE-HEADER), gives their size, and that size is
 within what *PICTURE-MEMORY* allows: JPEG 2000 and JPEG XL.")
 
-(defvar *picture-seconds* 120
-  "The most seconds the program drawing a JPEG 2000 or JPEG XL picture is
-given (2 minutes), however large the picture says it is: it is given
-*SANDBOX-SECONDS* and *PICTURE-SECONDS-PER-MEGAPIXEL* more for each
-megapixel, up to this. A picture not drawn in that time says so. NIL: no
-such cap, the time then growing with the size the picture claims, which
-*PICTURE-MEMORY* bounds.")
-
 (defparameter *picture-seconds-per-megapixel* 3/2
   "The seconds, beyond *SANDBOX-SECONDS*, the program drawing a JPEG 2000 or
 JPEG XL picture is given for each megapixel its header claims (PICTURE-SECONDS):
-a picture of 20 megapixels is given 40 seconds, *SANDBOX-SECONDS* at 10.")
+a picture of 20 megapixels is given 40 seconds, *SANDBOX-SECONDS* at 10. The
+time so grows only as far as the largest picture *PICTURE-MEMORY* lets be
+drawn: 138 seconds for one of three components and 85 megapixels, the
+largest 4 GB allows.")
 
 (defun picture-seconds (pixels)
   "The seconds, of the clock and of the processor, the program drawing a JPEG
 2000 or JPEG XL picture of PIXELS pixels is given: *SANDBOX-SECONDS* and
-*PICTURE-SECONDS-PER-MEGAPIXEL* for each megapixel, no more than
-*PICTURE-SECONDS* (nor less than *SANDBOX-SECONDS*); NIL when
-*SANDBOX-SECONDS* is NIL, no limit."
+*PICTURE-SECONDS-PER-MEGAPIXEL* for each megapixel; NIL when
+*SANDBOX-SECONDS* is NIL, no limit. A picture larger than *PICTURE-MEMORY*
+allows is never drawn, which bounds the time."
   (let ((base tuatara-user:*sandbox-seconds*))
     (when base
-      (let ((seconds (ceiling (+ base (* *picture-seconds-per-megapixel* (/ pixels 1000000))))))
-        (if *picture-seconds* (max base (min seconds *picture-seconds*)) seconds)))))
+      (ceiling (+ base (* *picture-seconds-per-megapixel* (/ pixels 1000000)))))))
 
 (defun coded-picture-header (fd head kind)
   "What the JPEG 2000 or JPEG XL picture of KIND (:jp2 or :j2k, either
@@ -749,7 +745,7 @@ its car turns true; NIL, NIL then. DENSITY, dots an inch, draws a drawing
                (done image)))
             (:timeout
              (note (if header
-                       (format nil ", not shown: ~a was stopped after ~d second~:p, all a picture of ~,1f megapixels is given (*sandbox-seconds*, *picture-seconds*)"
+                       (format nil ", not shown: ~a was stopped after ~d second~:p, all a picture of ~,1f megapixels is given (*sandbox-seconds* and more for each megapixel)"
                                program seconds (/ pixels 1d6))
                        (format nil ", not shown: ~a" (tuatara.io:sandbox-outcome-words outcome said :label program)))
                    :comment)

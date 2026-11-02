@@ -16,8 +16,9 @@
 
 (defvar *org-macro-limit* (* 16 1024 1024)
   "The most characters a note may grow to as its macro calls are put in place
-for an export, a whole number; 16 MB when not set. The calls past it are left
-as they are written, and that is said.")
+for an export, 16 M: calls that would make a note of a few lines gigabytes
+long are past it. The calls past it are left as they are written, and that
+is said.")
 
 (defstruct (org-latex (:constructor make-org-latex (text directory file)) (:copier nil))
   "What writing one Org document as LaTeX knows: TEXT, the document as
@@ -290,7 +291,7 @@ is an error, never its text printed."
               ((or (eq value :too-long) (> growth room))
                (when *org-latex*
                  (setf (org-latex-macro-room *org-latex*) -1)
-                 (export-note "Macro calls would make the note longer than ~:d characters, so those past that are left as written (*org-macro-limit*)"
+                 (export-note "Macro calls would make the note longer than ~:d characters, so those past that are left as written"
                               *org-macro-limit*))
                nil)
               (t (when *org-latex* (decf (org-latex-macro-room *org-latex*) growth))

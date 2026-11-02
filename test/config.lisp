@@ -371,11 +371,6 @@ commented inside another one commented (;;   ;; (setf ...) in a load-package's
                           (tuatara.defaults::note-templates-directory)))
       (true (uiop:string-prefix-p config folder) "~a" folder))))
 
-(define-test (config macro-limit-is-a-setting)
-  ;; how far macro calls may grow a note for an export is set in the init file
-  (is eq :external (nth-value 1 (find-symbol "*ORG-MACRO-LIMIT*" :tuatara-user)))
-  (true (search ";; (setf *org-macro-limit* " tuatara.defaults::*starter-config*)))
-
 (define-test (config definitions-named-in-the-init-file)
   ;; help names the init file as where its commands and recorded keys are defined, and its
   ;; link goes to the line there

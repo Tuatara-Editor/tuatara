@@ -1214,14 +1214,6 @@
   ;; asks for comes from it or the note's own folder, never from elsewhere.
   ;; Not set: logos/ in the configuration directory (~/.config/tuatara/logos/).
   ;; (setf *logos-directory* "~/notes/logos/")
-
-  ;; A picture of up to 256 MB a LaTeX document shows saved with the template
-  ;; made from it (make-template-from-latex). Not set: 64 MB.
-  ;; (setf *latex-import-picture-limit* (* 256 1024 1024))
-
-  ;; The most characters a note may grow to as its macro calls are put in
-  ;; place for an export. Not set: 16 MB.
-  ;; (setf *org-macro-limit* (* 32 1024 1024))
   )
 
 ;;;; ================================================================
@@ -1433,12 +1425,9 @@
   ;; (setf *sandbox-memory* (* 2 1024 1024 1024))
 
   ;; A large picture (a PNG, TIFF or WebP of a hundred megapixels) may be given
-  ;; up to 8 GB to be drawn. Not set: 4 GB; a JPEG needs little whatever its size.
+  ;; up to 8 GB to be drawn, a JPEG 2000 or JPEG XL the time that size takes.
+  ;; Not set: 4 GB; a JPEG needs little whatever its size.
   ;; (setf *picture-memory* (* 8 1024 1024 1024))
-
-  ;; A JPEG 2000 or JPEG XL picture is given more time the larger it is, up to
-  ;; 5 minutes here. Not set: 2 minutes; nil: no such limit.
-  ;; (setf *picture-seconds* 300)
 
   ;; All of one file's decoding together 4 GB. Not set: 2 GB, where systemd-run
   ;; holds it; nil: no limit.
@@ -1459,10 +1448,6 @@
   ;; namespaces, modules, tracing, io_uring, BPF, sockets refused.
   ;; (setf *sandbox-seccomp* nil)
 
-  ;; ImageMagick refuses pictures wider or taller than 16,384 pixels. Not set:
-  ;; "64KP".
-  ;; (setf *magick-largest-side* "16KP")
-
   ;; PDF pages dark, as the theme. Not set: nil; d in a PDF.
   ;; (setf *pdf-view-dark-pages* t)
 
@@ -1478,10 +1463,6 @@
   ;; And up to 10,000 columns of one value (a cell, a formula), cut there
   ;; ending in …. Not set: 2000.
   ;; (setf *office-value-longest* 10000)
-
-  ;; A Word document's note names the stand-ins of up to 40 fonts not
-  ;; installed. Not set: 16.
-  ;; (setf *docx-read-most-stand-ins* 40)
 
   ;; O opens pictures, PDFs, sound, video in the desktop's program at once. Not
   ;; set: t: asks.

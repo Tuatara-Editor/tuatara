@@ -1851,7 +1851,7 @@ Shut in.
     (multiple-value-bind (latex named lines missing notes) (tuatara.defaults::org-latex-document text)
       (declare (ignore named lines missing))
       (true (< (length latex) 30000) "~:d characters" (length latex))
-      (true (find-if (lambda (n) (search "*org-macro-limit*" n)) notes) "~s" notes))
+      (true (find-if (lambda (n) (search "left as written" n)) notes) "~s" notes))
     ;; one call whose value alone is past the limit: left as it is
     (let ((latex (tuatara.defaults::org-latex-document
                   (format nil "#+macro: m ~{~a~}~%{{{m(~a)}}}~%" (make-list 100 :initial-element "$1") (make-string 200 :initial-element #\x)))))
