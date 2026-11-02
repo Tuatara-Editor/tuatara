@@ -971,33 +971,31 @@ second frame waiting its turn on it."
       (true (second during))
       (is equal (list second) seen))))
 
-(define-test (frames terminal-question-of-a-hidden-frame-shown-until-answered)
-  ;; on a terminal, a question asked in a frame not shown, by work it began taken in while the frame
-  ;; shown asks, is shown in its place until it is answered; then the frame that asked first is
-  ;; shown again with its question still open
-  (let ((go (sb-thread:make-semaphore)) (job nil) (answer nil) (seen (list '())) (open-after nil))
-    (multiple-value-bind (f editor)
-        (run-keys (list "C-x 5 2"
-                        (lambda ()
-                          (setf job (make-frames-deferring-job
-                                     (lambda ()
-                                       (tuatara.command:defer-action
-                                        (lambda () (setf answer (tuatara.command:read-string "Name: ")))))))
-                          (tuatara.runtime:start-job-thread job (lambda (job)
-                                                                  (declare (ignore job))
-                                                                  (sb-thread:wait-on-semaphore go :timeout 5))))
-                        "C-x 5 o M-x"
-                        (lambda () (sb-thread:signal-semaphore go) (wait-for-job job))
-                        "k e a" (note-shown seen) "RET" (note-shown seen)
-                        (lambda ()
-                          (setf open-after (tuatara.command::frame-minibuffer-active
-                                            (first (tuatara.command:editor-frames tuatara.command:*editor*)))))
-                        "C-g"))
-      (declare (ignore f))
-      (is equal "kea" answer)
-      (is equal '(("F2" 1) ("F1" 0)) (reverse (car seen)))
-      (true open-after)
-      (false (tuatara.command::frame-minibuffer-active (first (tuatara.command:editor-frames editor)))))))
+(define-test (frames terminal-hidden-frame-question-waits-for-the-shown-one)
+  ;; on a terminal, a question work begun in a frame not shown would ask, brought in while the
+  ;; frame shown asks, waits for that question to end: the display stays on the frame asking
+  ;; until then; then the other frame is shown with its question, and once it is answered the
+  ;; first frame is shown again
+  (let ((go (sb-thread:make-semaphore)) (job nil) (answer nil) (seen (list '())) (during nil))
+    (run-keys (list "C-x 5 2"
+                    (lambda ()
+                      (setf job (make-frames-deferring-job
+                                 (lambda ()
+                                   (tuatara.command:defer-action
+                                    (lambda () (setf answer (tuatara.command:read-string "Name: ")))))))
+                      (tuatara.runtime:start-job-thread job (lambda (job)
+                                                              (declare (ignore job))
+                                                              (sb-thread:wait-on-semaphore go :timeout 5))))
+                    "C-x 5 o M-x"
+                    (lambda () (sb-thread:signal-semaphore go) (wait-for-job job))
+                    (note-shown seen)
+                    (lambda ()
+                      (setf during (list answer (and (tuatara.command::editor-minibuffer-active tuatara.command:*editor*)
+                                                     t))))
+                    "C-g k e a" (note-shown seen) "RET" (note-shown seen)))
+    (is equal '(nil t) during)
+    (is equal "kea" answer)
+    (is equal '(("F1" 0) ("F2" 1) ("F1" 0)) (reverse (car seen)))))
 
 (define-test (frames terminal-question-keeps-its-frame-shown)
   ;; on a terminal, the frame keys for going to another frame do not leave a question: the frame

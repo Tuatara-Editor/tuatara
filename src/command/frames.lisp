@@ -364,11 +364,16 @@ answered."
              (let ((frame (tuatara.runtime:job-frame job)))
                (and frame (frame-held frame) t))))))
 
-(defun run-free-frames-deferred (editor)
+(defun run-free-frames-deferred (editor asking)
   "Do what waits to be done in the frames of EDITOR whose question does not
 wait (FRAME-DEFERRED), each with its frame the one worked in, oldest first in
-each frame, until none waits."
-  (loop for frame = (find-if (lambda (frame) (and (frame-deferred frame) (not (frame-held frame))))
+each frame, until none waits; but not in those taking turns on the display
+of ASKING, the frame whose question is answered (FRAME-TAKING-TURNS-P),
+whose work waits for it, so that the display goes over to another frame only
+when you go there."
+  (loop for frame = (find-if (lambda (frame)
+                               (and (frame-deferred frame) (not (frame-held frame))
+                                    (not (eq (frame-frontend frame) (frame-frontend asking)))))
                              (editor-frames editor))
         while frame
         do (let ((item (pop (frame-deferred frame))))
@@ -417,7 +422,7 @@ about; when it closed the frame asking, once the question reads on
            (let ((*taking-in-inside-question* t))
              (take-in-background editor))
            (when room
-             (run-free-frames-deferred editor)))
+             (run-free-frames-deferred editor asking)))
       (setf (frame-held asking) nil
             (editor-this-command editor) this-command)
       (if (frame-deleted asking)
