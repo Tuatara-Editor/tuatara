@@ -184,7 +184,10 @@ not empty are numbers."
 (defun org-table-write (parse model)
   "Put MODEL's table, aligned, in place of its rows of PARSE (an ORG-PARSE) in
 its buffer (its #+TBLFM: line too when its formulas changed), one step to
-undo, point where MODEL has it."
+undo, point where MODEL has it. Refused when the buffer changed since PARSE,
+as it may while a formula is asked for: the table is then left as it is."
+  (unless (eql (org-parse-version parse) (tuatara.buffer:buffer-version (org-parse-buffer parse)))
+    (refuse "The table changed while you answered: it is left as it is"))
   (multiple-value-bind (new point) (org-table-render model)
     (let ((begin (org-table-begin model)) (end (org-table-end model)))
       (when (org-table-formulas-changed model)
@@ -200,12 +203,13 @@ undo, point where MODEL has it."
           (setf (tuatara.buffer:buffer-point (org-parse-buffer parse)) (org-parse-octet parse (+ begin point)))
           (org-replace-chars parse begin end new :point (+ begin point))))))
 
-(defmacro with-org-table ((buffer model) &body body)
-  "Run BODY with MODEL the Org table point is in as an ORG-TABLE-MODEL and BUFFER
-the current buffer, then write the table back aligned; true when point was in a
-table. BODY returning :NOT-DONE leaves the table as it was. A line that does
-not begin with | is no table's, and the file is not parsed for it."
-  (let ((parse (gensym)) (text (gensym)) (position (gensym)) (table (gensym)) (result (gensym)))
+(defmacro with-org-table ((parse model) &body body)
+  "Run BODY with MODEL the Org table point is in as an ORG-TABLE-MODEL and PARSE
+the ORG-PARSE of the current buffer it was read from, then write the table
+back aligned; true when point was in a table. BODY returning :NOT-DONE leaves
+the table as it was. A line that does not begin with | is no table's, and the
+file is not parsed for it."
+  (let ((buffer (gensym)) (text (gensym)) (position (gensym)) (table (gensym)) (result (gensym)))
     `(let* ((,buffer (current-buffer))
             (,parse (and (uiop:string-prefix-p "|" (string-left-trim " 	" (org-line-head ,buffer (point))))
                          (org-parse-now ,buffer))))
@@ -263,7 +267,7 @@ under the first row when there are more, and an empty line after."
 
 (defun org-table-next-field ()
   "In an Org table: align it and go to the next field, a new row made after the last; true when in one."
-  (with-org-table (buffer model)
+  (with-org-table (parse model)
     (org-table-maybe-eval-formula model)
     (let ((row (org-table-row model)) (columns (org-table-columns model)))
       (cond ((and (org-table-data-row-p model row) (< (1+ (org-table-field model)) columns))
@@ -277,7 +281,7 @@ under the first row when there are more, and an empty line after."
 
 (defun org-table-previous-field ()
   "In an Org table: align it and go back to the previous field; true when in one."
-  (with-org-table (buffer model)
+  (with-org-table (parse model)
     (let* ((row (org-table-row model))
            (field (min (org-table-field model) (org-table-columns model))))
       (if (and (org-table-data-row-p model row) (plusp field))
@@ -291,7 +295,7 @@ under the first row when there are more, and an empty line after."
 (defun org-table-next-row ()
   "In an Org table: align it and go to the same field of the row below, a new
 row made at the end or before a rule; true when in one."
-  (with-org-table (buffer model)
+  (with-org-table (parse model)
     (org-table-maybe-eval-formula model)
     (let ((row (org-table-row model))
           (field (min (org-table-field model) (max 0 (1- (org-table-columns model))))))
@@ -303,12 +307,12 @@ row made at the end or before a rule; true when in one."
   "Align the Org table point is in: each column as
 wide as its widest field, numbers to the right, rules as wide as the table.
 A field holding =FORMULA or :=FORMULA makes it a formula of the table, worked out."
-  (unless (with-org-table (buffer model) (org-table-maybe-eval-formula model) model)
+  (unless (with-org-table (parse model) (org-table-maybe-eval-formula model) model)
     (message "Not in a table")))
 
 (define-command org-table-insert-hline ()
   "Put a rule below the row point is in, in an Org table (\\`C-c -')."
-  (unless (with-org-table (buffer model)
+  (unless (with-org-table (parse model)
             (let ((row (org-table-row model)))
               (setf (org-table-rows model)
                     (append (subseq (org-table-rows model) 0 (1+ row)) (list :rule) (nthcdr (1+ row) (org-table-rows model))))))
@@ -316,7 +320,7 @@ A field holding =FORMULA or :=FORMULA makes it a formula of the table, worked ou
 
 (defun org-table-move-row (by)
   "Move the row point is in BY rows (-1 up, 1 down) in the Org table; true when in one."
-  (with-org-table (buffer model)
+  (with-org-table (parse model)
     (let* ((rows (org-table-rows model)) (row (org-table-row model)) (other (+ row by)))
       (if (or (minusp other) (>= other (length rows)))
           (progn (message "Cannot move row further") :not-done)
@@ -325,7 +329,7 @@ A field holding =FORMULA or :=FORMULA makes it a formula of the table, worked ou
 
 (defun org-table-move-column (by)
   "Move the column point is in BY columns (-1 left, 1 right) in the Org table; true when in one."
-  (with-org-table (buffer model)
+  (with-org-table (parse model)
     (org-table-pad-rows model)
     (let* ((field (org-table-field model)) (other (+ field by)) (columns (org-table-columns model)))
       (if (or (>= field columns) (minusp other) (>= other columns))
@@ -336,7 +340,7 @@ A field holding =FORMULA or :=FORMULA makes it a formula of the table, worked ou
 
 (defun org-table-delete-column ()
   "Delete the column point is in, in the Org table; true when in one."
-  (with-org-table (buffer model)
+  (with-org-table (parse model)
     (org-table-pad-rows model)
     (let ((field (min (org-table-field model) (1- (org-table-columns model)))))
       (when (>= field 0)
@@ -347,7 +351,7 @@ A field holding =FORMULA or :=FORMULA makes it a formula of the table, worked ou
 
 (defun org-table-insert-column ()
   "Put an empty column before the one point is in, in the Org table; true when in one."
-  (with-org-table (buffer model)
+  (with-org-table (parse model)
     (org-table-pad-rows model)
     (let ((field (min (org-table-field model) (org-table-columns model))))
       (setf (org-table-rows model)
@@ -357,7 +361,7 @@ A field holding =FORMULA or :=FORMULA makes it a formula of the table, worked ou
 
 (defun org-table-kill-row ()
   "Delete the row point is in, in the Org table, point to the same field of the row after; true when in one."
-  (with-org-table (buffer model)
+  (with-org-table (parse model)
     (let ((row (org-table-row model)) (rows (org-table-rows model)))
       (if (= 1 (length rows))
           (progn (message "Cannot delete the only row of a table: delete the line instead") :not-done)
@@ -366,7 +370,7 @@ A field holding =FORMULA or :=FORMULA makes it a formula of the table, worked ou
 
 (defun org-table-insert-row ()
   "Put an empty row above the one point is in, in the Org table, point in it; true when in one."
-  (with-org-table (buffer model)
+  (with-org-table (parse model)
     (org-table-insert-empty-row model (org-table-row model))
     (org-table-go model (org-table-row model) (min (org-table-field model) (max 0 (1- (org-table-columns model)))))))
 

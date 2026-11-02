@@ -541,6 +541,28 @@ carriage return before a newline taken as that newline."
   (let ((buffer (org-parse-buffer parse)))
     (org-parse-char parse (tuatara.buffer:buffer-point buffer))))
 
+(defun org-ask-keeping-places (parse places ask)
+  "Ask by calling ASK, a function of no arguments that waits for an answer (a
+prompt, a key), PARSE's buffer free to change meanwhile, as a job's result
+taken in or another window's typing changes it. Three values: the answer;
+PARSE itself while the buffer is as it was, else the buffer's parse as it is
+after (ORG-PARSE-NOW); and PLACES, a list of characters of PARSE, as
+characters of that parse, each moved with the text around it. Whatever a
+command found in PARSE before asking it finds again at these places, never
+editing by PARSE's positions once the buffer has changed."
+  (let* ((buffer (org-parse-buffer parse))
+         (version (tuatara.buffer:buffer-version buffer))
+         (anchors (mapcar (lambda (place) (tuatara.text:make-anchor version (org-parse-octet parse place) :bias :after))
+                          places))
+         (answer (funcall ask))
+         (now (tuatara.buffer:buffer-version buffer)))
+    (if (and (eql now version) (eql now (org-parse-version parse)))
+        (values answer parse places)
+        (let ((after (org-parse-now buffer)))
+          (values answer after
+                  (mapcar (lambda (anchor) (org-parse-char after (tuatara.text:anchor-position anchor now)))
+                          anchors))))))
+
 ;;; Colouring
 
 (defvar *org-buffer* nil

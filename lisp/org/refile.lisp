@@ -234,13 +234,20 @@ agenda saves its files. With \\[universal-argument], go to the heading chosen in
         (let* ((parse (org-parse-now buffer))
                (headline (and parse (org-current-headline (org-parse-tree parse) (org-parse-point parse)))))
           (unless headline (refuse "Not under a headline: nothing to refile"))
-          (multiple-value-bind (target at)
-              (org-read-refile-target
-               (format nil "Refile “~a” to: " (org-property headline :raw-value)) buffer
-               :exclude (list parse (org-parse-octet parse (org-node-begin headline))
-                              (org-parse-octet parse (org-node-end headline))))
-            (org-refile-subtree buffer headline target at)
-            (message "Refiled to ~a" (org-olp-text target)))))))
+          (multiple-value-bind (answer parse places)
+              (org-ask-keeping-places
+               parse (list (org-node-begin headline))
+               (lambda ()
+                 (multiple-value-list
+                  (org-read-refile-target
+                   (format nil "Refile “~a” to: " (org-property headline :raw-value)) buffer
+                   :exclude (list parse (org-parse-octet parse (org-node-begin headline))
+                                  (org-parse-octet parse (org-node-end headline)))))))
+            (destructuring-bind (target at) answer
+              (let ((headline (org-headline-on-line (org-parse-tree parse) (org-parse-text parse) (first places))))
+                (unless headline (refuse "The headline is no longer there: nothing refiled"))
+                (org-refile-subtree buffer headline target at)
+                (message "Refiled to ~a" (org-olp-text target)))))))))
 
 (define-command org-agenda-refile ()
   "Move the entry on the agenda's line under another heading, as

@@ -628,3 +628,24 @@ seconds; the editor draws after it as it does when woken."
         (with-visited (buffer path)
           (tuatara.modes:set-auto-mode buffer)
           (is eq 'tuatara.defaults::text-mode (type-of (tuatara.modes:buffer-major-mode buffer))))))))
+
+(define-test (org places-kept-while-asking)
+  ;; text taken in while a command asks (a job's result, here put in at the top): what the command
+  ;; was asked for is found again where it went, the change kept
+  (let ((tuatara.defaults::*org-now* (encode-universal-time 0 0 9 2 10 2026))
+        (text (format nil "* One~%one~%* Two~%two~%")))
+    (flet ((after (keys answer)
+             (session-text
+              (nth-value 1 (run-keys (list (format nil "M-x o r g - m o d e RET j j ~a" keys)
+                                           (lambda ()
+                                             (tuatara.buffer:buffer-insert (tuatara.buffer:find-buffer "*scratch*") 0
+                                                                           (format nil "* Zero~%taken in~%")))
+                                           answer)
+                                     :text text :width 60 :height 12)))))
+      ;; a note: under Two, as asked
+      (let ((note (after "C-c C-z" "h i RET")))
+        (true (search (format nil "* Zero~%taken in~%* One~%one~%* Two~%") note) "~a" note)
+        (true (search "hi" note :start2 (search "* Two" note)) "~a" note))
+      ;; tags: on Two's line
+      (let ((tagged (after "C-c C-q" "w o r k RET")))
+        (true (search (format nil "* Zero~%taken in~%* One~%one~%* Two :work:~%two~%") tagged) "~a" tagged)))))

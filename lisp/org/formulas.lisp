@@ -712,8 +712,8 @@ which could not be worked out, and why."
 first rule (in every row when it has none), field formulas (@4$2=vsum(@2..@3))
 and range formulas (@2$2..@3$3=$1*10), worked out with the table
 arithmetic. Formulas in Emacs Lisp are left out: nothing in a file is run."
-  (let ((done (with-org-table (buffer model)
-                (let ((texts (org-table-formulas-of (org-parse-now buffer))))
+  (let ((done (with-org-table (parse model)
+                (let ((texts (org-table-formulas-of parse)))
                   (cond ((null texts) (message "This table has no formulas (#+TBLFM:)") :not-done)
                         ((org-table-recalculate-model model texts) t)
                         (t :not-done))))))
@@ -779,7 +779,7 @@ work it out (\\`C-c ='); with
 \\[universal-argument], the formula of the field point is in. An empty one
 takes the formula away."
   (let ((field-formula (prefix-argument)))
-    (unless (with-org-table (buffer model)
+    (unless (with-org-table (parse model)
               (let* ((row (org-table-row model))
                      (data-row (1+ (count-if-not (lambda (r) (eq r :rule)) (subseq (org-table-rows model) 0 row))))
                      (lhs (if field-formula
