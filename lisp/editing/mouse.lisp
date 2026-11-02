@@ -223,7 +223,12 @@ beside them. For a window that files from sources not trusted are dropped on.")
   "Visit PATH, a file dropped on the window, as \\[find-file] does (safely
 when *OPEN-DROPPED-FILES-SAFELY*), with VISIT-PATH, without showing it: a PDF
 or a picture as such, a binary file in the hex view, why a file opened safely
-said. Its buffer, or NIL and why not."
+said. Its buffer, or NIL and why not. A name that is empty or holds a
+control character (a NUL, a newline) is no file's that can be opened, and is
+refused (TUATARA.FRONTEND:DROPPED-NAME-P)."
+  (unless (tuatara.frontend:dropped-name-p path)
+    (return-from visit-dropped
+      (values nil "A file dropped whose name is empty or holds a control character was not opened")))
   (handler-case
       (reporting-errors ("opening ~a, dropped on the window" path)
         (multiple-value-bind (buffer existing) (visit-path path :safe *open-dropped-files-safely* :show #'identity)

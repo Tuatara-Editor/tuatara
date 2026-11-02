@@ -349,3 +349,17 @@ cell of TEXT as the frame drawn now shows it, and its release."
   ;; a press and its release: what the press said stays
   (let ((f (run-keys "C-<down-mouse-1> C-<up-mouse-1>" :text "kea" :width 60)))
     (false (tuatara.frontend.fake:fake-frame-showing f "C-<up-mouse-1>"))))
+
+(define-test (mouse dropped-names-with-controls-refused)
+  ;; a file dropped whose name is empty or holds a control character is not opened, and that is said
+  (let ((f (tuatara.frontend.fake:make-fake-frontend :height 8 :width 120))
+        (names (list "" (format nil "/tmp/a~cb" #\Nul) (format nil "/tmp/x~%y"))))
+    (let ((scratch (tuatara.buffer:find-buffer "*scratch*")))
+      (when scratch (tuatara.buffer:kill-buffer scratch)))
+    (tuatara.buffer:make-buffer "*scratch*" :text "kiwi")
+    (tuatara.frontend.fake:fake-queue-event f (tuatara.frontend:make-event :drop :files names :column 1 :row 1))
+    (let ((editor (tuatara.command:run-editor f :setup #'tuatara.defaults:install-defaults
+                                                :buffer (tuatara.buffer:find-buffer "*scratch*"))))
+      (is string= "*scratch*" (tuatara.buffer:buffer-name (tuatara.display:window-buffer
+                                                           (tuatara.command:editor-window editor))))
+      (true (tuatara.frontend.fake:fake-frame-showing f "holds a control character was not opened")))))

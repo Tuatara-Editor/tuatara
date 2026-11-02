@@ -135,6 +135,13 @@ timed read found no key."
       (documentation 'event-text 'function) "The text of a :paste EVENT."
       (documentation 'event-frame 'function) "The frame EVENT happened in, or NIL for the frame being worked in.")
 
+(defun dropped-name-p (name)
+  "True when NAME, the path of a file dropped on a window, may be opened: a
+string, not empty, with no control character in it (a NUL, a newline, an
+escape), which no file name typed or shown would hold."
+  (and (stringp name) (plusp (length name))
+       (notany (lambda (c) (tuatara.text:control-code-p (char-code c))) name)))
+
 (defun input-event-p (item)
   "True when ITEM, an event a frontend has queued, is something you did and
 wait to see answered: a key or a mouse button, text pasted, files dropped, the

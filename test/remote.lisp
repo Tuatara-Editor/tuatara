@@ -904,3 +904,23 @@ read and let go of."
              (is equal "kiwi" (tuatara.frontend.fake:fake-screen-line local 0))))
       (dolist (name made) (remhash name tuatara.display:*faces*))
       (incf tuatara.display:*face-generation*))))
+
+(define-test (remote dropped-names-refused)
+  ;; a file dropped whose name is empty or holds a control character: a client never sends it, and the editor
+  ;; ends the connection of one that does
+  (let ((box (tuatara.frontend::make-outbox)))
+    (tuatara.frontend::put-event box (tuatara.frontend:make-event :drop :column 1 :row 1
+                                                                        :files (list "/tmp/kiwi" (format nil "a~cb" #\Nul)
+                                                                                     "" (format nil "x~%y"))))
+    (let* ((octets (subseq (tuatara.frontend::outbox-octets box) 0 (tuatara.frontend::outbox-fill box)))
+           (inbox (tuatara.frontend::make-inbox nil :editor :octets octets :end (length octets))))
+      (tuatara.frontend::read-message inbox)
+      (is equal '("/tmp/kiwi") (tuatara.frontend:event-files (tuatara.frontend::take-event inbox nil)))))
+  (dolist (name (list (format nil "a~cb" #\Nul) "" (format nil "~c[2J" #\Esc)))
+    (true (ended-after (lambda (fd)
+                         (send-raw fd (message-octets :event
+                                                      (lambda (box)
+                                                        (dolist (n '((3 1) (0 2) (0 2) (1 2)))
+                                                          (apply #'tuatara.frontend::put-number box n))
+                                                        (tuatara.frontend::put-text box name))))))
+          "Not ended by ~s" name)))
