@@ -87,6 +87,13 @@ closed or the process ends."
       (when (deadline-passed-p deadline) (return nil))
       (sleep 0.005))))
 
+(defun unlock-fd (fd)
+  "Let go of the lock LOCK-FD took on the file open as file descriptor (FD),
+for every descriptor of it duplicated from FD too."
+  ;; LOCK_UN 8
+  (sb-alien:alien-funcall (sb-alien:extern-alien "flock" (function sb-alien:int sb-alien:int sb-alien:int)) fd 8)
+  nil)
+
 (defun log-in-use-p (native)
   "True when another session has the log at NATIVE open (OPEN-ROTATED-LOG
 holds a shared lock on it for as long as it writes there)."

@@ -65,6 +65,15 @@ that what it says shows there; without a command loop, where it is.")
     (declare (ignore job))
     (funcall function)))
 
+(defgeneric host-wait-for-job (host job words)
+  (:documentation "Wait for JOB, begun for what the editor is doing now, to end, the editor
+answering keys meanwhile and showing WORDS, a string, once it takes a while;
+signal to give up what waited when the wait is given up (\\`C-g'), JOB going
+on. Without a command loop, simply wait.")
+  (:method ((host host) job words)
+    (declare (ignore words))
+    (sb-thread:join-thread (job-thread job) :default nil)))
+
 (defvar *job-buffer-name* (lambda (buffer) (if buffer (princ-to-string buffer) "no buffer"))
   "A function of a buffer, or NIL, giving its name, for what the jobs report;
 the buffers' package sets it.")

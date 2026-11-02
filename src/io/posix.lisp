@@ -389,12 +389,25 @@ where the file system keeps no birth time; NIL when it cannot be examined.
 Asking changes none of them."
   (let ((buffer (statx-fields +at-fdcwd+ (native path) 0 #xfff)))
     (when buffer
-      (flet ((time-at (offset)
-               (+ (* (octets-signed (octets-integer buffer offset 8) 64) 1000000000)
-                  (octets-integer buffer (+ offset 8) 4))))
-        (list :modified (time-at 112) :changed (time-at 96) :accessed (time-at 64)
-              ;; STATX_BTIME in the mask the system filled: a birth time it keeps
-              :born (and (logtest (octets-integer buffer 0 4) #x800) (time-at 80)))))))
+      (list :modified (statx-time buffer 112) :changed (statx-time buffer 96) :accessed (statx-time buffer 64)
+            :born (statx-birth-time buffer)))))
+
+(defun statx-time (buffer offset)
+  "The time in BUFFER, the octets statx filled, at OFFSET, in nanoseconds since 1970."
+  (+ (* (octets-signed (octets-integer buffer offset 8) 64) 1000000000)
+     (octets-integer buffer (+ offset 8) 4)))
+
+(defun statx-birth-time (buffer)
+  "The birth time in BUFFER, the octets statx filled, in nanoseconds since
+1970; NIL where the file system keeps none."
+  ;; STATX_BTIME in the mask the system filled
+  (and (logtest (octets-integer buffer 0 4) #x800) (statx-time buffer 80)))
+
+(defun fd-birth-time (fd)
+  "When the file open as file descriptor (FD) was made, in nanoseconds since
+1970; NIL where the file system keeps no birth time, or it cannot be examined."
+  (let ((buffer (statx-fields fd "" #x1000 #x800))) ; AT_EMPTY_PATH, STATX_BTIME
+    (and buffer (statx-birth-time buffer))))
 
 (defun terminated-octets (octets)
   "OCTETS with a null (NUL) octet after them, for the system."

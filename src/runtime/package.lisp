@@ -13,12 +13,12 @@
            #:host-say-hook-failure #:*hook-failures-said*
            #:*secret-at-hand* #:refusal #:refuse
            #:host-secret-buffer-p #:secret-buffer-p #:failure-words #:note-editor-busy
-           #:start-hang-watch #:*hang-report-seconds* #:lock-fd #:open-rotated-log
+           #:start-hang-watch #:*hang-report-seconds* #:lock-fd #:unlock-fd #:open-rotated-log
            ;; work stopped at once
            #:stoppable #:stoppable-work #:stop-work #:check-stopped #:*slow-call-seconds*
            ;; jobs in the background
            #:job #:job-p #:job-buffer #:job-status #:job-error #:job-cancel #:job-thread #:job-started #:job-wake #:job-frame #:job-wake-editor #:job-process #:job-program-started
-           #:*jobs* #:*job* #:host-job-started #:host-take-in-job #:*job-buffer-name* #:job-buffer-name #:job-stopped #:job-running-p #:job-check-stop
+           #:*jobs* #:*job* #:host-job-started #:host-take-in-job #:host-wait-for-job #:*job-buffer-name* #:job-buffer-name #:job-stopped #:job-running-p #:job-check-stop
            #:job-percent #:job-doing #:define-job-words #:job-state-words #:job-description #:job-verb #:job-left-words
            #:job-consequence #:job-stop #:job-holds-queue-p #:job-shows-processing-p #:job-at-exit #:job-take-in
            #:job-guarded-spans #:*job-taken-in* #:span-touched-p #:job-guards #:guard-touched #:job-guard-question #:job-guard-refusal

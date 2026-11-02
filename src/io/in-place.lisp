@@ -23,10 +23,18 @@
 ;;;; once step 4 is. In between, after a crash or a power cut, it may be part
 ;;;; old and part new, with the journal beside it: the next time Tuatara opens
 ;;;; the file, or saves or reverts it, it puts the old file back exactly from
-;;;; the journal before reading it (RECOVER-FROM-JOURNAL), whatever
-;;;; *SAVE-IN-PLACE* is by then. Other programs that read the file before then
-;;;; see it part saved. A save that fails, or is
-;;;; stopped, while it writes the file puts the old one back at once.
+;;;; the journal before reading it (RECOVER-CUT-SHORT-SAVE), whatever
+;;;; *SAVE-IN-PLACE* is by then, and a save waits until it has. Other programs
+;;;; that read the file before then see it part saved. A save that fails, or
+;;;; is stopped, while it writes the file puts the old one back at once.
+;;;;
+;;;; A journal is used only when it is a file of its own (one name, written by
+;;;; its owner alone, who owns the file and runs Tuatara), no save or putting
+;;;; back holds it (each holds a lock on it throughout), and it fits the file:
+;;;; the same file, born when it was, its length between the old and the new,
+;;;; last changed by the save. Anything else, such as another program having
+;;;; written the file since, is said and nothing written, and the file is not
+;;;; saved while the journal is there.
 ;;;; FALLOC_FL_INSERT_RANGE and COLLAPSE_RANGE, which open or close a gap of
 ;;;; whole blocks, are not used: an edit of text is almost never a whole
 ;;;; number of blocks long and at a block boundary.
@@ -72,8 +80,16 @@ reached, in order: :JOURNAL-WRITTEN, :JOURNAL-FLUSHED, :JOURNAL-NAMED,
 written), :FILE-WRITTEN, :FILE-FLUSHED, :JOURNAL-REMOVED and
 :DIRECTORY-FLUSHED again. Tests stop a save at each, as a crash would.")
 
-(defconstant +journal-version+ 1
+(defconstant +journal-version+ 2
   "The version of the journal's header this release writes and reads.")
+
+(defconstant +journal-header-most+ (* 1024 1024)
+  "The most octets a journal's header takes; a save that would need more is
+not made in place.")
+
+(defvar *journal-owner* nil
+  "The user a journal must belong to, with the file it is of, to be used:
+NIL for the one Tuatara runs as. Tests name another.")
 
 (defparameter *journal-heading* "Tuatara save journal"
   "The words a journal's header begins with, before its version.")
@@ -113,19 +129,13 @@ MAPPINGS read from that very file at the offset they go to are."
                     (min length (- end offset))))
           (values nil length)))))
 
-(defun reads-file-elsewhere-p (rope mappings existing)
-  "True when ROPE has octets from a mapping other than MAPPINGS that reads
+(defun read-elsewhere-p (mappings existing)
+  "True when a mapping other than MAPPINGS, of any buffer or text kept, reads
 the file EXISTING describes, which a write in place could change under it."
-  (let ((seen '()))
-    (tuatara.text:map-rope-sources
-     (lambda (kind mapping b c)
-       (declare (ignore b c))
-       (when (and (eq kind :file) (not (member mapping mappings)) (not (member mapping seen)))
-         (push mapping seen)
-         (when (some (lambda (source) (reads-file-p (third source) existing)) (tuatara.text:mapping-sources mapping))
-           (return-from reads-file-elsewhere-p t))))
-     rope)
-    nil))
+  (some (lambda (mapping)
+          (and (not (member mapping mappings))
+               (some (lambda (source) (reads-file-p (third source) existing)) (tuatara.text:mapping-sources mapping))))
+        (tuatara.text:live-mappings)))
 
 (defun rope-changes (rope kept)
   "The stretches (START . END) of ROPE, in order and apart, a file must be
@@ -180,18 +190,20 @@ in order and apart."
 
 ;;; The journal
 
-(defun journal-header (existing ranges data)
+(defun journal-header (existing born new-size ranges data)
   "The header of the journal of a save in place of the file EXISTING
-describes, keeping RANGES of it from offset DATA on, as octets."
+describes, born at BORN (NIL where the file system keeps no birth time), to
+be NEW-SIZE long, keeping RANGES of it from offset DATA on, as octets."
   (tuatara.text:string-octets
-   (format nil "~a ~d~%data ~d~%file ~d ~d~%size ~d~%time ~d~%~:{range ~d ~d~%~}end~%"
-           *journal-heading* +journal-version+ data (stamp-dev existing) (stamp-ino existing) (stamp-size existing)
-           (stamp-mtime existing) (mapcar (lambda (range) (list (car range) (cdr range))) ranges))))
+   (format nil "~a ~d~%data ~d~%file ~d ~d~%born ~d~%size ~d~%new ~d~%time ~d~%~:{range ~d ~d~%~}end~%"
+           *journal-heading* +journal-version+ data (stamp-dev existing) (stamp-ino existing) (or born 0)
+           (stamp-size existing) new-size (stamp-mtime existing)
+           (mapcar (lambda (range) (list (car range) (cdr range))) ranges))))
 
 (defun journal-header-lines (fd path)
   "The lines of the header of the journal open as file descriptor (FD): its
-second line says how long the header is (\"data N\"), up to 256 MB. PATH
-names it in messages."
+second line says how long the header is (\"data N\"), up to
++JOURNAL-HEADER-MOST+ octets. PATH names it in messages."
   (flet ((head (octets)
            (let* ((head (make-array octets :element-type '(unsigned-byte 8)))
                   (got (read-fd-at fd head 0 :path path)))
@@ -201,13 +213,14 @@ names it in messages."
            (octets (and data (uiop:string-prefix-p "data " data)
                         (every #'digit-char-p (subseq data 5)) (< 5 (length data) 15)
                         (parse-integer data :start 5))))
-      (if (and octets (< 4096 octets (* 256 1024 1024))) (head octets) start))))
+      (if (and octets (< 4096 octets) (<= octets +journal-header-most+)) (head octets) start))))
 
 (defun read-journal-header (fd path)
   "What the journal open as file descriptor (FD) says, as a property list:
-:DEV, :INO, :SIZE and :MTIME of the file it is of, :DATA, where its octets begin,
-and :RANGES, the stretches (START . END) of the file they are; NIL when it is
-not a journal this release reads. PATH names it in messages."
+:DEV, :INO, :BORN (0 for none), :SIZE and :MTIME of the file it is of, :NEW,
+the length the save gave it, :DATA, where its octets begin, and :RANGES, the
+stretches (START . END) of the file they are; NIL when it is not a journal
+this release reads. PATH names it in messages."
   (let* ((lines (journal-header-lines fd path))
          (fields '()) (ranges '()))
     (flet ((numbers (line words)
@@ -218,56 +231,82 @@ not a journal this release reads. PATH names it in messages."
       (unless (equal (first lines) (format nil "~a ~d" *journal-heading* +journal-version+))
         (return-from read-journal-header nil))
       (dolist (line (rest lines) nil)
-        (let ((word (subseq line 0 (or (position #\Space line) (length line)))))
+        (let* ((word (subseq line 0 (or (position #\Space line) (length line))))
+               (key (cdr (assoc word '(("born" . :born) ("size" . :size) ("new" . :new) ("data" . :data)
+                                       ("time" . :mtime))
+                                :test #'string=))))
           (cond ((string= word "end")
-                 (return (and (getf fields :dev) (getf fields :size) (getf fields :mtime) (getf fields :data)
+                 (return (and (every (lambda (key) (getf fields key)) '(:dev :born :size :new :mtime :data))
                               (list* :ranges (nreverse ranges) fields))))
                 ((string= word "file")
                  (let ((n (numbers line 2)))
                    (unless n (return nil))
                    (setf (getf fields :dev) (first n) (getf fields :ino) (second n))))
-                ((member word '("size" "data" "time") :test #'string=)
+                (key
                  (let ((n (numbers line 1)))
                    (unless n (return nil))
-                   (setf (getf fields (cond ((string= word "size") :size) ((string= word "data") :data) (t :mtime)))
-                         (first n))))
+                   (setf (getf fields key) (first n))))
                 ((string= word "range")
                  (let ((n (numbers line 2)))
                    (unless (and n (< (first n) (second n))) (return nil))
                    (push (cons (first n) (second n)) ranges)))
                 (t (return nil))))))))
 
-(defun write-journal (file existing ranges directory target cancel progress)
-  "Copy RANGES of the file open as FILE, which EXISTING describes, into a new
-journal with no name in DIRECTORY, after its header, and flush it. Returns
-its descriptor, open for reading and writing, and where its octets begin;
-NIL when CANCEL's car turned true first. PROGRESS is called with the octets
-copied so far."
-  (let* ((journal (or (open-unnamed-file directory #o600)
-                      (error 'file-system-error :operation "save" :path target
-                                                :reason "its directory takes no file without a name")))
-         (header (journal-header existing ranges 0))
+(defun journal-refusal (journal path target-stamp)
+  "Why the journal open as file descriptor JOURNAL, at PATH, is not to be used
+for the file TARGET-STAMP describes, in words; NIL when it may be: a plain
+file of one name that its owner alone may write, who owns that file too and
+is the user Tuatara runs as (*JOURNAL-OWNER*)."
+  (let ((stamp (fd-stamp journal path))
+        (owner (or *journal-owner* (sb-posix:geteuid))))
+    (cond ((not (eq (stamp-kind stamp) :regular)) (format nil "it is ~a" (kind-words (stamp-kind stamp))))
+          ((/= (stamp-nlink stamp) 1) "it has other names")
+          ((/= (stamp-uid stamp) owner) "it belongs to another user")
+          ((/= (stamp-uid target-stamp) owner) "the file belongs to another user")
+          ((logtest (stamp-mode stamp) #o022) "others may write it"))))
+
+(defun save-time-bound (header)
+  "The longest, in nanoseconds, a save in place whose journal has HEADER
+could have gone on writing after the journal was made: a minute, and a
+second more for each 10 MB it keeps."
+  (* 1000000000 (+ 60 (ceiling (ranges-octets (getf header :ranges)) (* 10 1024 1024)))))
+
+(defun journal-fits-p (header journal-stamp stamp born)
+  "True when the journal whose header is HEADER, made at JOURNAL-STAMP's time,
+is of the file STAMP describes, born at BORN, as a save cut short left it:
+the same file, its length between the old and the new, not changed since
+the save or changed while it could have gone on."
+  (let ((old (getf header :size)) (new (getf header :new)) (changed (stamp-mtime stamp))
+        (made (stamp-mtime journal-stamp)))
+    (and (= (getf header :dev) (stamp-dev stamp)) (= (getf header :ino) (stamp-ino stamp))
+         (= (getf header :born) (or born 0))
+         (<= (min old new) (stamp-size stamp) (max old new))
+         (or (= changed (getf header :mtime))
+             (<= (- made 2000000000) changed (+ made (save-time-bound header)))))))
+
+(defun write-journal (journal file existing new-size ranges target cancel progress)
+  "Copy RANGES of the file open as FILE, which EXISTING describes and a save
+leaves NEW-SIZE long, into JOURNAL, a new file with no name, after its
+header, and flush it. Returns where its octets begin; NIL when CANCEL's car
+turned true first. PROGRESS is called with the octets copied so far."
+  (let* ((born (fd-birth-time file))
+         (header (journal-header existing born new-size ranges 0))
          (data (* (memory-page-size) (ceiling (+ (length header) 64) (memory-page-size))))
-         (done 0) (kept nil))
-    (unwind-protect
-         (progn
-           (write-octets journal (journal-header existing ranges data) :path target)
-           (loop for (start . end) in ranges
-                 for length = (- (min end (stamp-size existing)) start)
-                 do (sb-posix:lseek journal (+ data start) sb-posix:seek-set)
-                    (unless (copy-fd-contents file journal length :from start :path target :cancel cancel
-                                              :progress (and progress (lambda (n) (funcall progress (+ done n)))))
-                      (return-from write-journal nil))
-                    (incf done length))
-           ;; whole pages, the last too, for the text to read them
-           (sb-posix:ftruncate journal (+ data (if ranges (cdar (last ranges)) 0)))
-           (saving-step :journal-written)
-           (flush-fd journal target)
-           (saving-step :journal-flushed)
-           (setf kept t)
-           (values journal data))
-      (unless kept
-        (tuatara.runtime:ignoring-errors-reported ("closing the journal of ~a" target) (sb-posix:close journal))))))
+         (done 0))
+    (write-octets journal (journal-header existing born new-size ranges data) :path target)
+    (loop for (start . end) in ranges
+          for length = (- (min end (stamp-size existing)) start)
+          do (sb-posix:lseek journal (+ data start) sb-posix:seek-set)
+             (unless (copy-fd-contents file journal length :from start :path target :cancel cancel
+                                       :progress (and progress (lambda (n) (funcall progress (+ done n)))))
+               (return-from write-journal nil))
+             (incf done length))
+    ;; whole pages, the last too, for the text to read them
+    (sb-posix:ftruncate journal (+ data (if ranges (cdar (last ranges)) 0)))
+    (saving-step :journal-written)
+    (flush-fd journal target)
+    (saving-step :journal-flushed)
+    data))
 
 (defun name-journal (journal directory target)
   "Name JOURNAL, a descriptor of an unnamed file in DIRECTORY, as TARGET's
@@ -298,6 +337,10 @@ not needed any more."
   (sync-directory directory)
   (saving-step :directory-flushed))
 
+(defun journal-there-p (target)
+  "True when something is named as TARGET's journal beside it."
+  (and (path-stamp (journal-path target) :follow nil :failure nil) t))
+
 (defun put-back (file journal header target)
   "Put the octets JOURNAL kept back into FILE, open for writing, and give it
 its old length and modification time again: the file before the save,
@@ -312,33 +355,45 @@ exactly. HEADER says what JOURNAL keeps (READ-JOURNAL-HEADER). Flushes FILE."
     (set-fd-modification-time file (getf header :mtime))
     (flush-fd file target)))
 
+(defun same-file-p (fd stamp path)
+  "True when the file open as file descriptor (FD), at PATH, is the one STAMP
+describes, with the same content as far as the system tells."
+  (same-content-p stamp (fd-stamp fd path)))
+
 ;;; Saving in place
 
 (defun move-text-onto-journal (mappings existing journal data ranges)
   "Make what MAPPINGS read of the file EXISTING describes within RANGES read
-from JOURNAL instead, whose octets begin at DATA."
+from JOURNAL instead, whose octets begin at DATA. Signals when the system
+will not, each stretch then read as it was."
   (dolist (mapping mappings)
-    (let ((fd nil))
-      (loop for (start end source delta) in (tuatara.text:mapping-sources mapping)
-            when (and (zerop delta) (reads-file-p source existing))
-              do (loop for (from . to) in ranges
-                       for low = (max start from) and high = (min end to)
-                       when (< low high)
-                         do (unless fd (setf fd (sb-posix:dup journal)))
-                            (unless (tuatara.text:retarget-mapping-range mapping fd low high data)
-                              (sb-posix:close fd)
-                              (return-from move-text-onto-journal)))))))
+    (let ((fd nil) (taken nil))
+      (unwind-protect
+           (loop for (start end source delta) in (tuatara.text:mapping-sources mapping)
+                 when (and (zerop delta) (reads-file-p source existing))
+                   do (loop for (from . to) in ranges
+                            for low = (max start from) and high = (min end to)
+                            when (< low high)
+                              do (unless fd (setf fd (sb-posix:dup journal)))
+                                 (if (tuatara.text:retarget-mapping-range mapping fd low high data)
+                                     (setf taken t)
+                                     ;; closed meanwhile: nothing reads it
+                                     (return))))
+        (when (and fd (not taken))
+          (sb-posix:close fd))))))
 
 (defun in-place-plan (rope existing mappings)
   "How a save in place of ROPE over the file EXISTING describes would go, as a
 property list (:CHANGES and :RANGES, the stretches written and journalled),
-when that writes less than *IN-PLACE-MOST* of the file; else NIL. MAPPINGS
-are those reading the file's own octets."
-  (unless (reads-file-elsewhere-p rope mappings existing)
+when that writes less than *IN-PLACE-MOST* of the file and nothing but
+MAPPINGS reads it; else NIL. MAPPINGS are those reading the file's own
+octets."
+  (unless (read-elsewhere-p mappings existing)
     (let* ((changes (rope-changes rope (in-place-test mappings existing)))
            (size (tuatara.text:rope-bytes rope))
            (ranges (journal-ranges changes (stamp-size existing) size)))
-      (when (< (+ (ranges-octets changes) (ranges-octets ranges)) (* *in-place-most* (max 1 size)))
+      (when (and (< (+ (ranges-octets changes) (ranges-octets ranges)) (* *in-place-most* (max 1 size)))
+                 (< (+ 4096 (length (journal-header existing 0 size ranges 0))) +journal-header-most+))
         (list :changes changes :ranges ranges)))))
 
 (defun write-changes-in-place (rope target existing plan &key mappings cancel progress)
@@ -346,15 +401,18 @@ are those reading the file's own octets."
 changes PLAN (from IN-PLACE-PLAN) gives, in place, after a journal of what
 they overwrite (this file's header); MAPPINGS read TARGET's own octets and
 read the journal for those after. Returns :DONE; :STOPPED with the file as
-it was; or NIL, the file untouched, when a journal of it is there already. A
-failure puts the file back as it was before it is signalled."
+it was; or NIL, the file untouched, for a new file to be written instead:
+when the file system takes no file without a name or no lock, a journal of
+it is there already, the text cannot be moved onto the journal, or the file
+was replaced, changed or about to be written by another program meanwhile.
+A failure puts the file back as it was before it is signalled."
   (let* ((directory (parent-path target))
          (changes (getf plan :changes)) (ranges (getf plan :ranges))
          (size (tuatara.text:rope-bytes rope))
          (journalled (ranges-octets ranges))
          (changed (ranges-octets changes))
          (file (open-for-reading target t :accept '(:regular) :operation "save"))
-         (journal nil) (data 0) (named nil) (out nil) (leases '()))
+         (journal nil) (data 0) (named nil) (writing nil) (out nil) (leases '()))
     (labels ((report (octets)
                ;; counted in the text's octets, as every save's progress is
                (when progress (funcall progress (floor (* size octets) (max 1 (+ journalled changed))) size)))
@@ -362,31 +420,52 @@ failure puts the file back as it was before it is signalled."
                ;; the file as it was and no journal; said when that cannot be
                (when named
                  (setf named nil)
-                 (unless (tuatara.runtime:ignoring-errors-reported ("putting back ~a from its journal" target)
-                           (when out
-                             (put-back out journal (list :size (stamp-size existing) :mtime (stamp-mtime existing)
-                                                  :data data :ranges ranges) target))
-                           (remove-journal directory target)
-                           t)
-                   (tell-writing (format nil "The save of ~a failed part way; its old content is kept in ~a and put back when it is next opened"
-                                         (native target) (journal-path target)))))))
+                 (cond ((not (or (not writing)
+                                 (tuatara.runtime:ignoring-errors-reported ("putting back ~a from its journal" target)
+                                   (put-back out journal (list :size (stamp-size existing) :mtime (stamp-mtime existing)
+                                                               :data data :ranges ranges)
+                                             target)
+                                   t)))
+                        (tell-writing (format nil "The save of ~a failed part way; its old content is kept in ~a and put back when it is next opened"
+                                              (native target) (journal-path target))))
+                       ((tuatara.runtime:ignoring-errors-reported ("removing the journal of ~a" target)
+                          (remove-journal directory target)
+                          t))
+                       ((journal-there-p target)
+                        (tell-writing (format nil "The save of ~a failed; the file is as it was, but its journal ~a could not be removed: it is used, and removed, when the file is next opened"
+                                              (native target) (journal-path target))))
+                       (t (tell-writing (format nil "The save of ~a failed; the file is as it was, but its folder could not be flushed: after a power cut now, its journal may be beside it again, and is used when the file is next opened"
+                                                (native target))))))))
       (unwind-protect
            (handler-bind ((error (lambda (e) (declare (ignore e)) (give-back))))
-             (unless (same-content-p existing (fd-stamp file target))
+             (unless (same-file-p file existing target)
                (error 'file-changed-on-disk :path target))
-             (multiple-value-setq (journal data) (write-journal file existing ranges directory target cancel #'report))
-             (unless journal
+             (setf journal (open-unnamed-file directory #o600))
+             ;; held throughout, so that no other save or putting back uses the journal meanwhile
+             (unless (and journal (tuatara.runtime:lock-fd journal))
+               (return-from write-changes-in-place nil))
+             (setf data (write-journal journal file existing size ranges target cancel #'report))
+             (unless data
                (return-from write-changes-in-place :stopped))
              ;; a journal there already is another save's: this one writes a new file instead
              (unless (name-journal journal directory target)
                (return-from write-changes-in-place nil))
              (setf named t)
-             (move-text-onto-journal mappings existing journal data ranges)
+             (unless (handler-case (progn (move-text-onto-journal mappings existing journal data ranges) t)
+                       (sb-posix:syscall-error () nil))
+               (give-back)
+               (return-from write-changes-in-place nil))
              (saving-step :text-moved)
-             (setf leases (step-aside-leases mappings)
-                   out (handler-case (sb-posix:open (native target) (logior sb-posix:o-wronly +o-nofollow+ +o-cloexec+))
-                         (sb-posix:syscall-error (e) (fail "open for writing" target (sb-posix:syscall-errno e)))))
+             (multiple-value-bind (stood broken) (step-aside-leases mappings)
+               (setf leases stood
+                     out (handler-case (sb-posix:open (native target) (logior sb-posix:o-wronly +o-nofollow+ +o-cloexec+))
+                           (sb-posix:syscall-error (e) (fail "open for writing" target (sb-posix:syscall-errno e)))))
+               ;; another program about to write it, or the file replaced since it was read: a new file instead
+               (when (or broken (not (same-file-p out existing target)))
+                 (give-back)
+                 (return-from write-changes-in-place nil)))
              (check-writing target "save" :fd out)
+             (setf writing t)
              (unless (write-rope out rope :path target :cancel cancel :kept (changes-test changes)
                                           :progress (lambda (done total)
                                                       (saving-step :writing)
@@ -403,8 +482,11 @@ failure puts the file back as it was before it is signalled."
              :done)
         (when out (tuatara.runtime:ignoring-errors-reported ("closing ~a" target) (sb-posix:close out)))
         (take-back-leases leases)
-        (when journal (tuatara.runtime:ignoring-errors-reported ("closing the journal of ~a" target)
-                        (sb-posix:close journal)))
+        (when journal
+          ;; the text may keep the journal open: the lock goes now
+          (tuatara.runtime:unlock-fd journal)
+          (tuatara.runtime:ignoring-errors-reported ("closing the journal of ~a" target)
+            (sb-posix:close journal)))
         (sb-posix:close file)))))
 
 ;;; A save cut short
@@ -415,9 +497,11 @@ a save in place that was cut short (by a crash or a power cut), when its
 journal is beside it: the file is then exactly the old one, and the journal
 gone. Said in words (TELL-WRITING). Nothing is written, and that is said,
 for a file opened SAFE (the journal not even read), where nothing may be
-written (WRITING-REFUSAL), where the system refuses, and for a journal of
-another file or one this release cannot read. True when the file was put
-back."
+written (WRITING-REFUSAL), where the system refuses, for a journal that may
+not be used (JOURNAL-REFUSAL), one that a save or putting back holds now,
+one of another file or that does not fit it as a save cut short left it
+\(JOURNAL-FITS-P), one this release cannot read, and when the file is
+replaced meanwhile. True when the file was put back."
   (let* ((target (or (fd-real-path fd) (native path)))
          (journal-path (journal-path target)))
     (when (path-stamp journal-path :follow nil :failure nil)
@@ -426,40 +510,97 @@ back."
           (tell-writing (format nil "~a may be part saved: a save of it was cut short, and its journal ~a is not used here, as ~a"
                                 target journal-path refusal))
           (return-from recover-from-journal nil)))
-      (handler-case
-          (let ((journal (handler-case (sb-posix:open journal-path (logior sb-posix:o-rdonly +o-nofollow+ +o-cloexec+))
-                           (sb-posix:syscall-error (e) (fail "read" journal-path (sb-posix:syscall-errno e))))))
-            (unwind-protect
-                 (let ((header (read-journal-header journal journal-path))
-                       (stamp (fd-stamp fd path)))
-                   (if (or (null header)
-                           (/= (getf header :dev) (stamp-dev stamp)) (/= (getf header :ino) (stamp-ino stamp)))
-                       (progn
-                         (tell-writing (format nil "~a is not the journal of a save of ~a this release can put back: left as it is"
-                                               journal-path target))
-                         nil)
+      (flet ((left-alone (why)
+               (tell-writing (format nil "~a may be part saved: a save of it was cut short, and its journal ~a is left as it is, as ~a; once you have made sure the file is right, remove the journal"
+                                     target journal-path why))
+               (return-from recover-from-journal nil)))
+        (handler-case
+            (let ((journal (handler-case (sb-posix:open journal-path (logior sb-posix:o-rdonly sb-posix:o-nonblock
+                                                                             +o-nofollow+ +o-cloexec+))
+                             (sb-posix:syscall-error (e) (fail "read" journal-path (sb-posix:syscall-errno e))))))
+              (unwind-protect
+                   (let* ((stamp (fd-stamp fd path))
+                          (refusal (journal-refusal journal journal-path stamp)))
+                     (when refusal (left-alone refusal))
+                     (unless (tuatara.runtime:lock-fd journal)
+                       (left-alone "a save or putting back of it is going on now"))
+                     (let ((header (read-journal-header journal journal-path)))
+                       (unless header (left-alone "this release cannot read it"))
+                       (unless (journal-fits-p header (fd-stamp journal journal-path) stamp (fd-birth-time fd))
+                         (left-alone "the file has been changed or replaced since"))
                        (let ((out (handler-case (sb-posix:open target (logior sb-posix:o-wronly +o-nofollow+ +o-cloexec+))
                                     (sb-posix:syscall-error (e) (fail "open for writing" target (sb-posix:syscall-errno e))))))
                          (unwind-protect
-                              (progn (check-writing target "put back" :fd out)
+                              (progn (unless (same-file-p out stamp target)
+                                       (left-alone "the file was replaced while it was being put back"))
+                                     (check-writing target "put back" :fd out)
                                      (put-back out journal header target))
                            (sb-posix:close out))
                          (remove-journal (parent-path target) target)
                          (tell-writing (format nil "A save of ~a was cut short: the file is put back as it was before it" target))
                          t)))
-              (sb-posix:close journal)))
-        (file-system-error (e)
-          (tell-writing (format nil "~a may be part saved: a save of it was cut short, and it could not be put back from ~a: ~a"
-                                target journal-path (file-system-error-reason e)))
-          nil)))))
+                (sb-posix:close journal)))
+          (file-system-error (e)
+            (tell-writing (format nil "~a may be part saved: a save of it was cut short, and it could not be put back from ~a: ~a"
+                                  target journal-path (file-system-error-reason e)))
+            nil))))))
+
+(defstruct (recovery (:include tuatara.runtime:job) (:constructor %make-recovery) (:copier nil))
+  "A file being put back from the journal of a save in place cut short, in
+the background, a job (TUATARA.RUNTIME:JOB): PATH, through the file
+descriptor (FD) of its own; PUT-BACK true once it was."
+  path fd put-back)
+
+(setf (documentation 'recovery-p 'function) "True when OBJECT is a RECOVERY.")
+
+(tuatara.runtime:define-job-words recovery
+  :doing "Putting back"
+  :description (format nil "Putting back ~a as it was before a save of it was cut short" (native (recovery-path job)))
+  :verb "put the file back"
+  :left-words "the file is put back when it is next opened"
+  :at-exit :wait)
+(defmethod tuatara.runtime:job-holds-queue-p ((job recovery)) nil)
+(defmethod tuatara.runtime:job-shows-processing-p ((job recovery)) nil)
+
+(defun recover-cut-short-save (fd path &key safe)
+  "Put back the file open as file descriptor (FD), at PATH, from the journal
+of a save in place of it that was cut short, when one is beside it
+\(RECOVER-FROM-JOURNAL), with SAFE as there: in the background, a job, which
+what asked waits for (HOST-WAIT-FOR-JOB); already in a job, there and then.
+True when the file was put back."
+  (cond ((not (journal-there-p (or (fd-real-path fd) (native path)))) nil)
+        (tuatara.runtime:*job* (recover-from-journal fd path :safe safe))
+        (t (let ((job (%make-recovery :path path :fd (sb-posix:dup fd))))
+             (tuatara.runtime:start-job-thread
+              job
+              (lambda (job)
+                (unwind-protect
+                     (setf (recovery-put-back job) (recover-from-journal (recovery-fd job) path :safe safe))
+                  (sb-posix:close (recovery-fd job))))
+              :name "tuatara putting back")
+             (if (tuatara.runtime:job-thread job)
+                 (tuatara.runtime:host-wait-for-job tuatara.runtime:*host* job
+                                                    (format nil "Putting back ~a as it was before a save of it was cut short..."
+                                                            (native-file-name path)))
+                 (sb-posix:close (recovery-fd job)))
+             (tuatara.runtime:take-in-jobs (lambda (other) (eq other job)))
+             (recovery-put-back job)))))
 
 (defun recover-before-saving (target existing)
   "Put TARGET, which EXISTING describes, back as it was before a save in
 place of it that was cut short, when its journal is beside it, before it is
-saved again (RECOVER-FROM-JOURNAL): its stamp then, or NIL when nothing was
-put back."
-  (when (and existing (eq (stamp-kind existing) :regular)
-             (path-stamp (journal-path target) :follow nil :failure nil))
+saved again (RECOVER-CUT-SHORT-SAVE): its stamp then, or NIL when there was
+no journal. While a journal stays beside it, it is not saved (an error
+saying why)."
+  (when (and existing (eq (stamp-kind existing) :regular) (journal-there-p target))
     (let ((fd (open-for-reading target t :accept '(:regular) :operation "save")))
-      (unwind-protect (and (recover-from-journal fd target) (fd-stamp fd target))
+      (unwind-protect
+           (progn
+             (recover-cut-short-save fd target)
+             (when (journal-there-p target)
+               (error 'file-system-error
+                      :operation "save" :path target
+                      :reason (format nil "a save of it was cut short and its journal ~a is still beside it (see above); once you have made sure the file is right, remove the journal"
+                                      (journal-path target))))
+             (fd-stamp fd target))
         (sb-posix:close fd)))))

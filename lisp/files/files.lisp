@@ -478,6 +478,12 @@ a command loop the lines are counted there and then (NIL with LINE)."
   "Wait for BUFFER's lines to be counted in the background (WAIT-FOR-COUNTING)."
   (wait-for-counting buffer))
 
+(defmethod tuatara.runtime:host-wait-for-job ((host defaults-host) job words)
+  "Wait for JOB to end, the echo area showing WORDS while it takes a while;
+\\`C-g' gives up what waited, JOB going on."
+  (unless (wait-interruptibly (tuatara.runtime:job-thread job) :message words)
+    (keyboard-quit-signal)))
+
 (defvar *safe-directories* '()
   "Directories whose files always open safely, as \\[find-file-safely] opens a
 file: read-only, with no major mode, hooks or version control, and nothing

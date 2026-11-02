@@ -309,13 +309,20 @@ PLACE. Returns the lease."
   "Have the held leases on what MAPPINGS read stand aside while the editor
 writes their file itself: given up for the time being, so that its own
 writing does not wait on them, and neither copied nor ended (:SAVING).
-Returns them, for TAKE-BACK-LEASES."
+Returns them, for TAKE-BACK-LEASES, and true as a second value when a lease
+on what MAPPINGS read was not held or was breaking: another program is about
+to write their file, or has."
   (sb-thread:with-mutex (*lease-lock*)
-    (loop for lease in *leases*
-          when (and (eq (lease-status lease) :held) (member (lease-target lease) mappings))
-            do (setf (lease-status lease) :saving)
-               (release-lease (lease-fd lease))
-            and collect lease)))
+    (let ((stood '()) (broken nil))
+      (dolist (lease *leases*)
+        (when (member (lease-target lease) mappings)
+          (case (lease-status lease)
+            (:held (when (lease-breaking-p (lease-fd lease)) (setf broken t))
+             (setf (lease-status lease) :saving)
+             (release-lease (lease-fd lease))
+             (push lease stood))
+            ((:moving :moved :lost) (setf broken t)))))
+      (values (nreverse stood) broken))))
 
 (defun take-back-leases (leases)
   "Take again LEASES, which stood aside while the editor wrote their file
@@ -768,7 +775,7 @@ What is opened is what is decided on, however a link is changed meanwhile."
                  (why (setf why (and (not safe) (decision-on-file fd path stamp))))
                  (safe (or safe (and why t)))
                  ;; a save in place cut short is put right before anything reads the file
-                 (stamp (if (recover-from-journal fd path :safe safe) (fd-stamp fd path) stamp)))
+                 (stamp (if (recover-cut-short-save fd path :safe safe) (fd-stamp fd path) stamp)))
             ;; a file with another name may be evidence under it: its access time is never given back
             (unless (or safe (> (stamp-nlink stamp) 1)) (clear-noatime fd))
            (let ((class (file-system-class (fd-file-system fd)))

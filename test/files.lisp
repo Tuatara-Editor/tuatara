@@ -1758,6 +1758,214 @@ beside it."
         (tuatara.io:finish-leases)
         (is equal '("big.txt") (directory-names dir))))))
 
+(defun cut-short-file (path)
+  "Make the file at PATH hold *LONG-LINES-TEXT*, then visit it, edit it far
+apart and save it in place cut short (CUT-SHORT-SAVE), as by a crash: the
+file is left part old and part new, its journal beside it."
+  (put-file path *long-lines-text*)
+  (with-visited (b path)
+    (edit-far-apart b)
+    (cut-short-save b))
+  (tuatara.io:finish-leases)
+  (true (journal-there-p path))
+  (file-text path))
+
+(defun visited-text (path)
+  "The text a visit of PATH shows, the buffer killed after."
+  (with-visited (b path)
+    (prog1 (tuatara.buffer:buffer-string b) (tuatara.io:finish-leases))))
+
+(define-test (visiting-and-saving cut-short-save-put-back-in-the-background)
+  ;; putting a file back is a job of its own thread, which the visit waits for
+  (with-test-directory (dir)
+    (without-shared-blocks
+      (let ((path (merge-pathnames "big.txt" dir))
+            (seen '()))
+        (cut-short-file path)
+        (setf (sb-ext:symbol-global-value 'tuatara.io::*saving-step*)
+              (lambda (step)
+                (when (eq step :journal-removed)
+                  (push (list sb-thread:*current-thread*
+                              (and tuatara.runtime:*job* (tuatara.runtime:job-description tuatara.runtime:*job*)))
+                        seen))))
+        (unwind-protect (is string= *long-lines-text* (visited-text path))
+          (setf (sb-ext:symbol-global-value 'tuatara.io::*saving-step*) nil))
+        (is = 1 (length seen))
+        (isnt eq sb-thread:*current-thread* (first (first seen)))
+        (true (search "Putting back" (or (second (first seen)) "")))
+        (false (find-if (lambda (job) (typep job 'tuatara.io::recovery)) tuatara.runtime:*jobs*))))))
+
+(define-test (visiting-and-saving journal-not-a-plain-file-left-alone)
+  ;; a named pipe in the journal's place is never waited on, never used, and the file is not saved past it
+  (with-test-directory (dir)
+    (without-shared-blocks
+      (let ((path (put-file (merge-pathnames "big.txt" dir) *long-lines-text*)))
+        (sb-posix:mkfifo (tuatara.io::journal-path (namestring path)) #o600)
+        (let ((thread (sb-thread:make-thread
+                       (lambda ()
+                         (with-visited (b path)
+                           (list (tuatara.buffer:buffer-string b)
+                                 (progn (edit-far-apart b)
+                                        (handler-case (progn (tuatara.io:save-buffer-file b) :saved)
+                                          (tuatara.io:file-system-error () :refused)))))))))
+          (is equal (list *long-lines-text* :refused) (sb-thread:join-thread thread :timeout 30 :default :hung)))
+        (tuatara.io:finish-leases)
+        (true (journal-there-p path))
+        (is string= *long-lines-text* (file-text path))))))
+
+(define-test (visiting-and-saving journal-of-another-user-left-alone)
+  (with-test-directory (dir)
+    (without-shared-blocks
+      (let* ((path (merge-pathnames "big.txt" dir))
+             (mixed (cut-short-file path)))
+        ;; the putting back is a job of its own thread
+        (setf (sb-ext:symbol-global-value 'tuatara.io::*journal-owner*) (1+ (sb-posix:geteuid)))
+        (unwind-protect
+             (progn (is string= mixed (visited-text path))
+                    (is string= mixed (file-text path))
+                    (true (journal-there-p path)))
+          (setf (sb-ext:symbol-global-value 'tuatara.io::*journal-owner*) nil))
+        ;; the journal and the file this user's: put back
+        (is string= *long-lines-text* (visited-text path))
+        (false (journal-there-p path))))))
+
+(define-test (visiting-and-saving journal-left-alone-once-the-file-is-written-again)
+  ;; another program wrote the file after the save was cut short: its writing is kept, the journal left
+  (with-test-directory (dir)
+    (without-shared-blocks
+      (let ((path (merge-pathnames "big.txt" dir)))
+        (cut-short-file path)
+        (write-from-another-program path "theirs")
+        (is string= "theirs" (visited-text path))
+        (is string= "theirs" (file-text path))
+        (true (journal-there-p path))
+        ;; the same length, a day later
+        (delete-file (tuatara.io::journal-path (namestring path)))
+        (let ((same (make-string (length (cut-short-file path)) :initial-element #\x)))
+          (with-open-file (out path :direction :output :if-exists :overwrite)
+            (write-string same out))
+          (let ((later (+ (sb-posix:time) 86400)))
+            (sb-posix:utimes (namestring path) later later))
+          (is string= same (visited-text path))
+          (is string= same (file-text path))
+          (true (journal-there-p path)))))))
+
+(define-test (visiting-and-saving journal-of-a-file-gone-left-alone)
+  ;; a new file under the name, even one the system gave the old one's inode number, is not the journal's
+  (with-test-directory (dir)
+    (without-shared-blocks
+      (let* ((path (merge-pathnames "big.txt" dir))
+             (journal (tuatara.io::journal-path (namestring path))))
+        (cut-short-file path)
+        (delete-file path)
+        (put-file path *lines-text*)
+        (let ((fd (sb-posix:open (namestring path) sb-posix:o-rdonly)))
+          (unwind-protect (true (tuatara.io::fd-birth-time fd))
+            (sb-posix:close fd)))
+        (let* ((octets (alexandria:read-file-into-byte-vector journal))
+               (header (sb-ext:octets-to-string octets :end 4096 :external-format :latin-1))
+               (stamp (tuatara.io:path-stamp path))
+               (old (subseq header (search "file " header) (position #\Newline header :start (search "file " header))))
+               (new (format nil "file ~d ~d" (tuatara.io:stamp-dev stamp) (tuatara.io:stamp-ino stamp)))
+               (changed (sb-ext:string-to-octets (concatenate 'string (subseq header 0 (search old header)) new
+                                                              (subseq header (+ (search old header) (length old))))
+                                                 :external-format :latin-1)))
+          (with-open-file (out journal :direction :output :if-exists :overwrite :element-type '(unsigned-byte 8))
+            (write-sequence changed out)))
+        (is string= *lines-text* (visited-text path))
+        (is string= *lines-text* (file-text path))
+        (true (journal-there-p path))))))
+
+(define-test (visiting-and-saving not-saved-while-a-journal-stays)
+  ;; a journal that cannot be used stops a save: the file keeps what it has until the journal is removed
+  (with-test-directory (dir)
+    (without-shared-blocks
+      (let ((path (merge-pathnames "big.txt" dir)))
+        (cut-short-file path)
+        (write-from-another-program path "theirs")
+        (with-visited (b path)
+          (tuatara.buffer:buffer-insert b 0 "mine, ")
+          (dolist (tuatara-user:*save-in-place* '(t nil))
+            (fail (tuatara.io:save-buffer-file b) 'tuatara.io:file-system-error)
+            (is string= "theirs" (file-text path))
+            (true (journal-there-p path)))
+          (delete-file (tuatara.io::journal-path (namestring path)))
+          (tuatara.io:save-buffer-file b)
+          (is string= "mine, theirs" (file-text path)))
+        (tuatara.io:finish-leases)))))
+
+(define-test (visiting-and-saving journal-in-use-left-alone)
+  ;; a journal another program holds (a save going on, or a putting back) is not used until it lets go
+  (with-test-directory (dir)
+    (without-shared-blocks
+      (let* ((path (merge-pathnames "big.txt" dir))
+             (mixed (cut-short-file path))
+             (journal (tuatara.io::journal-path (namestring path)))
+             (holder (sb-ext:run-program "/bin/sh" (list "-c" "exec 9<\"$1\" && flock 9 && exec sleep 60" "sh" journal)
+                                         :wait nil)))
+        (unwind-protect
+             (progn
+               ;; held once a lock of this process's own is refused
+               (loop repeat 1000
+                     while (let ((fd (sb-posix:open journal sb-posix:o-rdonly)))
+                             (unwind-protect (tuatara.runtime:lock-fd fd) (sb-posix:close fd)))
+                     do (sleep 0.01))
+               (is string= mixed (visited-text path))
+               (true (journal-there-p path)))
+          (sb-ext:process-kill holder 15)
+          (sb-ext:process-wait holder))
+        (is string= *long-lines-text* (visited-text path))
+        (false (journal-there-p path))))))
+
+(define-test (visiting-and-saving saved-whole-where-no-unnamed-file-is-made)
+  (with-test-directory (dir)
+    (without-shared-blocks
+      (let* ((path (put-file (merge-pathnames "big.txt" dir) *long-lines-text*))
+             (inode (tuatara.io:stamp-ino (tuatara.io:path-stamp path)))
+             (tuatara.io::*proc-fd-available* nil))
+        (with-visited (b path)
+          (let ((new (edit-far-apart b)))
+            (tuatara.io:save-buffer-file b)
+            (isnt = inode (tuatara.io:stamp-ino (tuatara.io:path-stamp path)))
+            (is string= new (file-text path))))
+        (tuatara.io:finish-leases)
+        (is equal '("big.txt") (directory-names dir))))))
+
+(define-test (visiting-and-saving file-replaced-during-a-save-in-place-untouched)
+  ;; another file put in its place while the journal is made is never written into
+  (with-test-directory (dir)
+    (without-shared-blocks
+      (let* ((path (put-file (merge-pathnames "big.txt" dir) *long-lines-text*))
+             (other (put-file (merge-pathnames "other.txt" dir) *long-lines-text*))
+             (kept (merge-pathnames "kept.txt" dir)))
+        (sb-posix:link (namestring other) (namestring kept))
+        (with-visited (b path)
+          (edit-far-apart b)
+          (let ((tuatara.io::*saving-step* (lambda (step)
+                                             (when (eq step :text-moved)
+                                               (sb-posix:rename (namestring other) (namestring path))))))
+            (handler-case (tuatara.io:save-buffer-file b)
+              (tuatara.io:file-changed-on-disk () nil))))
+        (tuatara.io:finish-leases)
+        (is string= *long-lines-text* (file-text kept))
+        (false (journal-there-p path))))))
+
+(define-test (visiting-and-saving saved-whole-while-other-text-reads-the-file)
+  ;; text read from the file outside the buffer (a mapping of its own) would change under a save in place
+  (with-test-directory (dir)
+    (without-shared-blocks
+      (let* ((path (put-file (merge-pathnames "big.txt" dir) *long-lines-text*))
+             (inode (tuatara.io:stamp-ino (tuatara.io:path-stamp path)))
+             (mapping (tuatara.text:map-file (namestring path))))
+        (unwind-protect
+             (with-visited (b path)
+               (let ((new (edit-far-apart b)))
+                 (tuatara.io:save-buffer-file b)
+                 (isnt = inode (tuatara.io:stamp-ino (tuatara.io:path-stamp path)))
+                 (is string= new (file-text path))))
+          (tuatara.text:close-mapping mapping))
+        (tuatara.io:finish-leases)))))
+
 (define-test (visiting-and-saving moved-stretches-not-unmapped-twice)
   ;; stretches moved onto a journal lie within the region mapped whole: only that region is unmapped
   (with-test-directory (dir)
