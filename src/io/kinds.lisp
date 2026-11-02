@@ -103,8 +103,9 @@ character standing for each; NIL when START is past their end."
 
 (defun octets-search (needle octets &key (start 0) (end (length octets)) from-end)
   "Where NEEDLE, a vector of octets, first stands in OCTETS from START below
-END (the last place, with FROM-END), or NIL: as SEARCH, a file of many
-megabytes gone through in a moment."
+END (with FROM-END, the last place it stands), or NIL, as SEARCH answers:
+quick on simple vectors of octets, as files are read, so that a file of
+hundreds of megabytes is searched in well under a second."
   (let ((end (min end (length octets))))
     (if (and (typep needle 'tuatara.text:octets) (typep octets 'tuatara.text:octets) (plusp (length needle)))
         (and (<= 0 start) (<= (+ start (length needle)) end)

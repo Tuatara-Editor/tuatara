@@ -175,7 +175,7 @@ its form says, as ORG-READ-RULE reads them; :HOUR, :MINUTE, :END-HOUR and
     tuatara.io:percent-decoded-octets file-kind tuatara.io:octets-kind tuatara.io:kind-name-disagrees-p
     tuatara.io:+binary-sample+ tuatara.io:*compound-file-signature*
     ;; octets, text and dates
-    tuatara.text:octets tuatara.io:octets-at-p tuatara.io:octets-integer tuatara.io:octets-signed
+    tuatara.text:octets tuatara.io:octets-at-p tuatara.io:octets-search tuatara.io:octets-integer tuatara.io:octets-signed
     tuatara.io:base64-octets tuatara.io:octets-words
     tuatara.text:octets-string tuatara.text:octets-latin-1 tuatara.text:charset-text tuatara.text:utf-16-text tuatara.text:string-octets
     tuatara.text:string-octet-length tuatara.text:string-line-start tuatara.text:parse-decimal tuatara.text:whole-number
