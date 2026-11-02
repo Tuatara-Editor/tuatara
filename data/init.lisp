@@ -233,18 +233,6 @@
   ;; files stays plain. Not set: '(:common); without :common, only those named.
   ;; (setf *grammars-on* '(:common nix awk))
 
-  ;; The grammars run in programs of their own, shut in. Each held to 8 GB of
-  ;; memory. Not set: 4 GB; nil: no limit.
-  ;; (setf *syntax-helper-memory* (* 8 1024 1024 1024))
-
-  ;; A program running the grammars ended when it is 5 seconds late with an
-  ;; answer, a grammar looping in it. Not set: 2.
-  ;; (setf *syntax-helper-wait* 5)
-
-  ;; Up to 32 programs running the grammars at once, one for each file outside
-  ;; a project you trust. Not set: 16.
-  ;; (setf *syntax-helpers-most* 32)
-
   ;; Without the sandbox (bwrap), the grammars run for the files of projects
   ;; you trust all the same, not shut in; other text is never parsed without
   ;; it. Not set: nil, no text parsed without the sandbox.

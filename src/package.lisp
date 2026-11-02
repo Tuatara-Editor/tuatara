@@ -47,7 +47,7 @@ available unqualified, and the public API of TUATARA is used.")
            #:*lsp-diagnostics-display* #:*lsp-diagnostics-style* #:*lsp-semantic-tokens* #:*lsp-semantic-faces* #:*format-on-save*
            #:*format-in-sandbox* #:*format-seconds*
            ;; the programs that run the grammars
-           #:*syntax-helper-memory* #:*syntax-helper-wait* #:*syntax-helpers-most* #:*syntax-helper-unconfined*
+           #:*syntax-helper-unconfined*
            #:*grammars-on*
            ;; file-local variables, snippets, bookmarks and version control
            #:*file-local-variables* #:*snippet-directories* #:*snippet-tab* #:*bookmarks-kept* #:*bookmark-set-asks-categories* #:*git-log-length*

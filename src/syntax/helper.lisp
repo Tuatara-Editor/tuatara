@@ -94,8 +94,8 @@ LENGTH, the octets up to the first zero."
 
 (defvar *syntax-helper-memory* (* 4 1024 1024 1024)
   "The octets of memory each program parsing for the editor (its syntax
-helper, which runs the grammars) may take, 4 GB unless set; NIL for no limit.
-A helper that runs out stops its parses, as a parse over its budget is
+helper, which runs the grammars) may take, 4 GB; NIL for no limit. A
+helper that runs out stops its parses, as a parse over its budget is
 stopped (*SYNTAX-MEMORY-LIMIT*).")
 
 (defvar *syntax-helper-wait* 2

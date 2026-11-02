@@ -4,7 +4,7 @@
 (defpackage #:tuatara.syntax
   (:use #:cl #:alexandria)
   (:import-from #:tuatara.io #:null-pointer #:null-pointer-p #:sap-octets #:with-foreign-memory)
-  (:import-from #:tuatara-user #:*syntax-helper-memory* #:*syntax-helper-wait* #:*syntax-helpers-most* #:*syntax-helper-unconfined*)
+  (:import-from #:tuatara-user #:*syntax-helper-unconfined*)
   (:documentation "The search and regex interface, the tree-sitter binding, parsing in the background, colouring and moving by syntax.")
   (:export #:search-forward #:search-backward #:search-all #:case-fold-p #:*serial-window* #:*parallel-piece*
            #:compile-regex #:compile-pattern #:*regex-thorough* #:regex-search-forward #:regex-search-backward #:regex-search-all
