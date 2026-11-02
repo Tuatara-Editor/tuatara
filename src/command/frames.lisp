@@ -162,21 +162,26 @@ the others (FRAME-TAKING-TURNS-P): with SELECT it is shown in their place."
 
 (defun remove-frame (editor frame)
   "Take FRAME out of EDITOR's frames and stop its frontend; when it was the
-one worked in, the first of those left is made so. The last frame is never
-taken: that is refused, as an editor has a frame for as long as it runs. Its
-events still to come are dropped (TAKE-TO-ITS-FRAME); what was still to be
-said in it is said in the frame worked in, and work handed on to be done in
-it (DEFER-ACTION) is done there. Its frontend is stopped unless another frame
-takes turns on it, which the frontend then names in its events in its place."
+one worked in, the first of those left is made so, but for a frame closed
+while it asks a question, which stays so until the question is given up, as
+it is at once (READ-EVENT). The last frame is never taken: that is refused,
+as an editor has a frame for as long as it runs. Its events still to come
+are dropped (TAKE-TO-ITS-FRAME); what was still to be said in it is said in
+the frame worked in, and work handed on to be done in it (DEFER-ACTION) is
+done there, or in the first of those left while it stays the one worked in.
+Its frontend is stopped unless another frame takes turns on it, which the
+frontend then names in its events in its place."
   (let ((left (remove frame (editor-frames editor))))
     (unless left
       (refuse "The editor's only frame stays while the editor runs"))
-    (when (eq frame (editor-frame editor))
+    ;; a frame closed while it asks stays the one worked in until its question is given up (READ-EVENT)
+    (when (and (eq frame (editor-frame editor)) (not (frame-minibuffer-active frame)) (not *key-question*))
       (select-frame editor (first left)))
-    (setf (editor-frames editor) left
-          (frame-deleted frame) t
-          (editor-deferred editor) (append (editor-deferred editor)
-                                           (remove-if-not #'functionp (shiftf (frame-deferred frame) '()))))
+    (let ((heir (if (eq frame (editor-frame editor)) (first left) (editor-frame editor))))
+      (setf (editor-frames editor) left
+            (frame-deleted frame) t
+            (frame-deferred heir) (append (frame-deferred heir)
+                                          (remove-if-not #'functionp (shiftf (frame-deferred frame) '())))))
     (let* ((frontend (frame-frontend frame))
            (sharing (find frontend left :key #'frame-frontend)))
       (cond ((null sharing)
@@ -267,11 +272,85 @@ or only frames waiting their turn on the display of the one worked in
                           (dolist (frame frames)
                             (unless (or (not (elsewhere-p frame)) (frame-deleted frame)
                                         (not (frame-shown-changed-p frame)))
-                              (call-in-frame editor frame (lambda () (redisplay-or-say editor)))
-                              (note-frame-painted frame)))
+                              (paint-other-frame editor frame)))
                           (setf (editor-others-painted editor) (get-internal-real-time))
                           look)))
                   look))))))))
+
+(defvar *question-variables*
+  '(*key-question* *minibuffer-hidden* *minibuffer-question-keymap* *minibuffer-finish* *minibuffer-history*
+    *minibuffer-initial-selected* *read-key-replay* *keys-as-typed* *command-notes* *command-undo-since*
+    *this-command-keys* *current-buffer* *dropped* *pasted* tuatara.buffer:*narrowing-in-force*
+    tuatara.runtime:*secret-at-hand*)
+  "The variables a command binds that belong to the question it asks, and so
+to the frame it asks in: what is done in another frame inside that question
+\(RUN-INSIDE-QUESTION) runs with each as it is outside every command, and
+the frame asking is painted meanwhile with its own (FRAME-HELD). Code that
+binds one more while it asks adds it here.")
+
+(defun outside-question-values ()
+  "The value each of *QUESTION-VARIABLES* has outside every command, in order."
+  (mapcar #'sb-ext:symbol-global-value *question-variables*))
+
+(defun call-with-question-of (frame function)
+  "Call FUNCTION with *QUESTION-VARIABLES* as FRAME's question has them while
+it waits (FRAME-HELD), else as they are outside every command; return what
+it returns."
+  (let ((held (frame-held frame)))
+    (if held
+        (progv (car held) (cdr held) (funcall function))
+        (progv *question-variables* (outside-question-values) (funcall function)))))
+
+(defun paint-other-frame (editor frame)
+  "Paint FRAME, one of EDITOR's frames other than the one worked in, a
+question waiting in it shown as it asks (CALL-WITH-QUESTION-OF), and keep
+what it shows (NOTE-FRAME-PAINTED)."
+  (call-in-frame editor frame (lambda () (call-with-question-of frame (lambda () (redisplay-or-say editor)))))
+  (note-frame-painted frame))
+
+(defun run-inside-question (editor frame event)
+  "Handle EVENT, done in FRAME, one of EDITOR's frames, while the frame worked
+in asks a question: with FRAME the one worked in and the variables of the
+question as they are outside every command (*QUESTION-VARIABLES*), it runs
+as the command loop runs it, a question of its own asked in turn, and then
+what its command left to be done after it (FRAME-DEFERRED); then the frame
+asking is the one worked in again, painted, its question going on. That
+question is given up, as \\`C-g' gives it up, when what ran stopped the
+editor or killed the buffer the question is about; when it closed the frame
+asking, once the question reads on (READ-EVENT)."
+  (let ((asking (editor-frame editor))
+        (about (current-buffer))
+        (this-command (editor-this-command editor))
+        (painted nil))
+    (setf (frame-held asking) (cons *question-variables* (mapcar #'symbol-value *question-variables*)))
+    (unwind-protect
+         (progv *question-variables* (outside-question-values)
+           (select-frame editor frame)
+           (setf *last-input-time* (get-internal-real-time))
+           (handle-event-guarded editor event)
+           (loop while (and (frame-deferred frame) (not (frame-deleted frame)))
+                 do (let ((item (pop (frame-deferred frame))))
+                      (call-in-frame editor frame (lambda () (handle-event-guarded editor item)))))
+           ;; the frame the command ended in, drawn as the command loop draws it, but never one whose question waits
+           (let ((ended (editor-frame editor)))
+             (unless (or (frame-deleted ended) (frame-held ended)
+                         (tuatara.frontend:frontend-input-pending-p (frame-frontend ended)))
+               (redisplay-or-say editor)
+               (setf painted ended))))
+      (setf (frame-held asking) nil
+            (editor-this-command editor) this-command)
+      (if (frame-deleted asking)
+          (setf (editor-frame editor) asking)
+          (select-frame editor asking)))
+    (cond ((frame-deleted asking)) ; given up as its question reads on
+          ((not (editor-running editor)) (keyboard-quit-signal))
+          ((not (live-buffer-p about))
+           (keyboard-quit-signal (format nil "~a was killed in another frame: the question about it is given up"
+                                         (tuatara.buffer:buffer-name about))))
+          (t (when painted (note-frame-painted painted))
+             (unless (tuatara.frontend:frontend-input-pending-p (frame-frontend asking))
+               (redisplay-or-say editor))
+             (paint-other-frames editor)))))
 
 (defun editor-job-waker ()
   "A function waking the editor, for the thread of work begun now to call when

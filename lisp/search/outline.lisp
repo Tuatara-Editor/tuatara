@@ -275,6 +275,7 @@ the search does not end at once then, BUFFER's file stays mapped for it
 (defvar *outline-shown* nil
   "While \\[buffer-outline] shows a heading: the window it shows it in and the
 octet the heading begins at, as a cons.")
+(pushnew '*outline-shown* *question-variables*)
 
 (defun outline-shown-range (editor window rows)
   "The line of the heading \\[buffer-outline] shows in WINDOW, as a list of one

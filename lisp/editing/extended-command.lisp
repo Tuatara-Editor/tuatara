@@ -44,10 +44,12 @@ last changed.")
   "While a question other than a search's asks for a pattern (READ-PATTERN,
 \\[search-in-files]): a function of no arguments that switches it between a
 regular expression and literal text, for \\[search-toggle-regex].")
+(pushnew '*toggle-pattern-kind* *question-variables*)
 
 (defvar *pattern-done* nil
   "While READ-PATTERN asks: a function of no arguments that ends its question
 when what is typed can be used, and otherwise says why in the prompt.")
+(pushnew '*pattern-done* *question-variables*)
 
 (defvar *pattern-keymap* (make-keymap :name "pattern")
   "The keys of every question that takes a pattern, before the minibuffer's:

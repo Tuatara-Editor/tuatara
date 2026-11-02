@@ -249,6 +249,7 @@ compiled once, however often it is asked about."
   "True while the search's question reads keys, which takes in what a search
 in the background finds; a search outside it (the next match after it ended)
 is finished at once.")
+(pushnew '*search-in-loop* *question-variables*)
 
 (defvar *search-notice-delay* 1/10
   "Seconds a search runs before [searching] is added to its prompt;

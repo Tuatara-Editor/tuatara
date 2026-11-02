@@ -587,6 +587,7 @@ or before it (-1), at that line, as choosing it in the search does."
 (defvar *list-found-lines* nil
   "While \\[search-in-files] asks: a function of no arguments that ends its question
 and has the lines found listed in a buffer of their own, for \\[search-files-list].")
+(pushnew '*list-found-lines* *question-variables*)
 
 (defvar *search-files-keymap* (make-keymap :name "search-files" :parent *pattern-keymap*)
   "The keys of the question \\[search-in-files] asks: those of *PATTERN-KEYMAP*, and

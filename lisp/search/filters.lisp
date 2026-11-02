@@ -1018,6 +1018,7 @@ in it (KEEP-WORKED-OUT), and returned."
 (defvar *filter-as-typed* nil
   "True while a filter is worked out for what is typed at its prompt, its job
 then waiting for typing to pause.")
+(pushnew '*filter-as-typed* *question-variables*)
 
 (defun work-out-in-background (buffer filtering left previous)
   "Start the job working out the filters LEFT of FILTERING, BUFFER's, from

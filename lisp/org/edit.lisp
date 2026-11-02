@@ -676,6 +676,7 @@ NIL when its #+TODO: lines have neither."
   "While the agenda cancels or schedules the entry on its line, the time of
 that line, an occurrence (ORG-OCCURRENCE-NOTES); NIL for the entry's time
 open now.")
+(pushnew '*org-agenda-occurrence* *question-variables*)
 
 (defun org-repeats-in-p (text start end)
   "True when the entry in TEXT from START below END has a date that repeats:

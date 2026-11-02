@@ -244,6 +244,19 @@ are the last given from them, else first among EDITOR's unread events."
                 (setf (fill-pointer recorded) start))))
           (setf (editor-unread editor) (append events (editor-unread editor)))))))
 
+(defparameter *frames-question-depth* 8
+  "The most questions open at once, each in a frame of its own, one asked
+inside another's: past it, what is done in another frame waits until the
+innermost question ends.")
+
+(defun frame-answers-now-p (editor frame)
+  "True when what is done in FRAME, one of EDITOR's frames other than the one
+worked in, which asks a question, runs now, inside that question
+\(RUN-INSIDE-QUESTION): FRAME has no question of its own waiting
+\(FRAME-HELD), and fewer than *FRAMES-QUESTION-DEPTH* questions are open."
+  (and (not (frame-held frame))
+       (< (1+ (count-if #'frame-held (editor-frames editor))) *frames-question-depth*)))
+
 (defun other-frames-unread (editor)
   "The next event left unread in another frame of EDITOR than the one worked
 in, which has none, taken from that frame's; NIL when there is none."
@@ -252,28 +265,79 @@ in, which has none, taken from that frame's; NIL when there is none."
       (let ((frame (find-if #'frame-unread frames)))
         (and frame (pop (frame-unread frame)))))))
 
-(defun take-to-its-frame (editor event between-commands)
+(defun run-other-frames-unread (editor)
+  "While the frame of EDITOR worked in asks a question, run inside it the next
+event left unread in another frame whose events run now (FRAME-ANSWERS-NOW-P),
+as done there (RUN-INSIDE-QUESTION): true when there was one. A window given
+the keyboard is let go: the frame you go on in becomes the one worked in as
+you do something there."
+  (let ((frames (editor-frames editor)))
+    (when (rest frames)
+      (let ((frame (find-if (lambda (frame)
+                              (and (frame-unread frame) (not (eq frame (editor-frame editor)))
+                                   (frame-answers-now-p editor frame)))
+                            frames)))
+        (when frame
+          (let ((event (pop (frame-unread frame))))
+            (when (tuatara.frontend:input-event-p event)
+              (run-inside-question editor frame event)))
+          t)))))
+
+(defun tell-frame-waits (editor frame)
+  "Say in FRAME, one of EDITOR's frames, that what is typed there waits for
+the question asked in another frame, and paint it so."
+  (let ((words (substitute-command-keys "Waiting for the question in another frame (\\`C-g' there ends it)")))
+    (unless (equal (frame-message frame) words)
+      (setf (frame-message frame) words)
+      (paint-other-frame editor frame))))
+
+(defun take-to-its-frame (editor event reading)
   "Deal with EVENT, just read, as the frame of EDITOR it happened in wants:
 true when it is to be handled now, in the frame worked in. One of no frame, or
-of the frame worked in, is; one of a frame that has gone is dropped. Between
-commands (BETWEEN-COMMANDS, the command loop's own read), what you do in
-another frame, and its window given the keyboard, makes it the one worked
-in, and that frame's window resized is drawn again there; while a command
-asks or works, the event waits among that frame's unread events for its turn."
+of the frame worked in, is; one of a frame that has gone is dropped. READING
+says what read it. While a command works (NIL), what happened in another
+frame waits among that frame's unread events for its turn. Otherwise a
+window of another frame resized is drawn again there, and: between commands
+\(:BETWEEN-COMMANDS, the command loop's own read), what you do in another
+frame, and its window given the keyboard, makes it the one worked in; while
+the frame worked in asks a question (:QUESTION), what you do in another
+frame runs there at once, inside the question (RUN-INSIDE-QUESTION), unless
+that frame has a question of its own waiting or as many questions are open
+as may be (FRAME-ANSWERS-NOW-P): then it waits among the frame's unread
+events, the frame saying so (TELL-FRAME-WAITS), but for its window closed,
+which closes it at once, its question given up once it is reached again. A
+window given the keyboard meanwhile is let go."
   (let ((frame (tuatara.frontend:event-frame event)))
-    (cond ((or (null frame) (eq frame (editor-frame editor))) t)
-          ((frame-deleted frame) nil)
-          ((not between-commands) (setf (frame-unread frame) (append (frame-unread frame) (list event))) nil)
-          ((or (tuatara.frontend:input-event-p event) (eq (tuatara.frontend:event-kind event) :focus))
-           (select-frame editor frame)
-           t)
-          ((eq (tuatara.frontend:event-kind event) :resize)
-           (call-in-frame editor frame (lambda ()
-                                         (resize editor (tuatara.frontend:event-width event)
-                                                 (tuatara.frontend:event-height event))
-                                         (redisplay-or-say editor)))
-           nil)
-          (t t))))
+    (flet ((wait-there ()
+             (setf (frame-unread frame) (append (frame-unread frame) (list event)))
+             nil))
+      (cond ((or (null frame) (eq frame (editor-frame editor))) t)
+            ((frame-deleted frame) nil)
+            ((null reading) (wait-there))
+            ((eq (tuatara.frontend:event-kind event) :resize)
+             (call-in-frame editor frame (lambda ()
+                                           (call-with-question-of frame
+                                                                  (lambda ()
+                                                                    (resize editor (tuatara.frontend:event-width event)
+                                                                            (tuatara.frontend:event-height event))))))
+             (paint-other-frame editor frame)
+             nil)
+            ((eq reading :between-commands)
+             (when (or (tuatara.frontend:input-event-p event) (eq (tuatara.frontend:event-kind event) :focus))
+               (select-frame editor frame))
+             t)
+            ((not (tuatara.frontend:input-event-p event)) nil)
+            ((and (frame-held frame) (eq (tuatara.frontend:event-kind event) :close))
+             (remove-frame editor frame)
+             nil)
+            ((not (frame-answers-now-p editor frame))
+             (wait-there)
+             (tell-frame-waits editor frame)
+             nil)
+            ;; what was done there before waits no more: it runs first, in turn (RUN-OTHER-FRAMES-UNREAD)
+            ((frame-unread frame) (wait-there))
+            (t (run-inside-question editor frame event)
+               nil)))))
 
 (defun keep-or-quit-event (editor event)
   "Deal with EVENT, read from the frontend while EDITOR is busy with work of
@@ -302,46 +366,58 @@ window is given the keyboard; without, only keys and :QUIT
 come back, for the loops reading keys inside a command (the minibuffer, search):
 the window closed, files dropped or text pasted there end the command's
 question as \\`C-g' does, and are handled once the command is done
-\(EDITOR-DEFERRED). With PASTES (the minibuffer), text pasted comes back too.
+\(EDITOR-DEFERRED); a question whose frame was closed meanwhile is given up
+so too. With PASTES (the minibuffer), text pasted comes back too.
 While it waits the editor counts as idle (TUATARA.RUNTIME:NOTE-EDITOR-BUSY).
 While recorded keys are played their keys come first (PLAYED-EVENT); while
 keys are recorded each key and paste read as typed is added (RECORD-EVENT).
-An event of another frame goes to that frame (TAKE-TO-ITS-FRAME); with
+An event of another frame goes to that frame (TAKE-TO-ITS-FRAME): with
 BETWEEN-COMMANDS, for the command loop's read alone, it may make that frame
 the one worked in, and what was left unread in another frame comes once the
-frame worked in has none left."
-  (loop
-    (let* ((frame (editor-frame editor))
-           (playing (frame-keys-playing frame))
-           (event (cond (playing (played-event editor playing timeout ticks))
-                        ((frame-unread frame) (pop (frame-unread frame)))
-                        ((and between-commands (other-frames-unread editor)))
-                        (t (tuatara.runtime:note-editor-busy nil)
-                           (prog1 (if timeout
-                                      (tuatara.frontend:frontend-read-event-timeout (frame-frontend frame) timeout)
-                                      (tuatara.frontend:frontend-read-event (frame-frontend frame)))
-                             (tuatara.runtime:note-editor-busy t))))))
-      ;; keys played are the frame's that plays them, wherever they were recorded
-      (when (or playing (take-to-its-frame editor event between-commands))
-        (let ((recording (editor-keys-recording editor)))
-          (case (tuatara.frontend:event-kind event)
-            (:resize (resize editor (tuatara.frontend:event-width event) (tuatara.frontend:event-height event))
-                     (if ticks
-                         (return (tuatara.frontend:make-event :tick))
-                         (redisplay-or-say editor)))
-            ((:tick :focus) (when ticks (return event)))
-            ((:close :drop :paste)
-             (if (or ticks (and pastes (eq (tuatara.frontend:event-kind event) :paste)))
-                 (progn (when (and recording (not playing) (eq (tuatara.frontend:event-kind event) :paste))
-                          (record-event recording event))
-                        (return event))
-                 (progn (setf (editor-deferred editor) (append (editor-deferred editor) (list event)))
-                        (keyboard-quit-signal))))
-            (t (return (if playing
-                           event
-                           (let ((event (escape-as-quit event)))
-                             (when recording (record-event recording event))
-                             event))))))))))
+frame worked in has none left; without, what is done in another frame runs
+there inside the question (RUN-INSIDE-QUESTION), what was left unread there
+first (RUN-OTHER-FRAMES-UNREAD)."
+  (let ((asking (editor-frame editor))
+        (reading (if between-commands :between-commands :question)))
+    (flet ((from-frontend (frame)
+             (tuatara.runtime:note-editor-busy nil)
+             (prog1 (if timeout
+                        (tuatara.frontend:frontend-read-event-timeout (frame-frontend frame) timeout)
+                        (tuatara.frontend:frontend-read-event (frame-frontend frame)))
+               (tuatara.runtime:note-editor-busy t))))
+      (loop
+        ;; the frame asking was closed by what ran inside its question: the question is given up there
+        (when (and (not between-commands) (frame-deleted asking))
+          (setf (editor-frame editor) asking)
+          (keyboard-quit-signal))
+        (let* ((frame (editor-frame editor))
+               (playing (frame-keys-playing frame))
+               (event (cond (playing (played-event editor playing timeout ticks))
+                            ((frame-unread frame) (pop (frame-unread frame)))
+                            (between-commands (or (other-frames-unread editor) (from-frontend frame)))
+                            ((run-other-frames-unread editor) nil)
+                            (t (from-frontend frame)))))
+          ;; keys played are the frame's that plays them, wherever they were recorded
+          (when (and event (or playing (take-to-its-frame editor event reading)))
+            (let ((recording (editor-keys-recording editor)))
+              (case (tuatara.frontend:event-kind event)
+                (:resize (resize editor (tuatara.frontend:event-width event) (tuatara.frontend:event-height event))
+                         (if ticks
+                             (return (tuatara.frontend:make-event :tick))
+                             (redisplay-or-say editor)))
+                ((:tick :focus) (when ticks (return event)))
+                ((:close :drop :paste)
+                 (if (or ticks (and pastes (eq (tuatara.frontend:event-kind event) :paste)))
+                     (progn (when (and recording (not playing) (eq (tuatara.frontend:event-kind event) :paste))
+                              (record-event recording event))
+                            (return event))
+                     (progn (setf (editor-deferred editor) (append (editor-deferred editor) (list event)))
+                            (keyboard-quit-signal))))
+                (t (return (if playing
+                               event
+                               (let ((event (escape-as-quit event)))
+                                 (when recording (record-event recording event))
+                                 event))))))))))))
 
 (defvar *repeat-maps* (make-hash-table :test 'eq)
   "For each command that can be repeated by a key alone, the keymap of the keys

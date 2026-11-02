@@ -361,6 +361,7 @@ kept."
 
 (defvar *grammar-asking* nil
   "True while the question whether to turn a grammar on is asked.")
+(pushnew '*grammar-asking* *question-variables*)
 
 (defun grammar-question-pending-p (buffer)
   "The language of BUFFER whose grammar is off and was never asked about in

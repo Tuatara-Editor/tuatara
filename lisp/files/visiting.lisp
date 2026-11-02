@@ -286,6 +286,7 @@ home folder.")
 
 (defvar *asking-for-path* nil
   "True while a question for a path asks (READ-PATH).")
+(pushnew '*asking-for-path* *question-variables*)
 
 (defun asking-for-path-p (buffer)
   "True while a question for a file or a folder asks, whatever BUFFER is."

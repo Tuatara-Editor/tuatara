@@ -41,6 +41,7 @@ the date then written at the prompt; NIL to ask without it.")
 
 (defvar *org-date-calendar* nil
   "While Org's date prompt shows the calendar: its buffer; NIL otherwise.")
+(pushnew '*org-date-calendar* *question-variables*)
 
 (defun org-date-calendar-show (day)
   "Show the calendar below the window the date prompt was asked from, point on
@@ -89,6 +90,7 @@ PROMPT, the question asked; KEYMAP, its keys once it is answered at the prompt."
 (defvar *org-date-choosing* nil
   "While Org's date question is answered in the calendar, nothing typed at the
 prompt yet (*ORG-READ-DATE-IN-CALENDAR*): its ORG-DATE-CHOICE; NIL otherwise.")
+(pushnew '*org-date-choosing* *question-variables*)
 
 (defparameter *org-date-choose-keys*
   '(("h" org-calendar-backward-day) ("<left>" org-calendar-backward-day)

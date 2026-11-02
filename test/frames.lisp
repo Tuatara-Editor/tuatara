@@ -96,11 +96,25 @@ of no arguments; returns the job."
     (is equal '("kiwi" "xy") (frame-buffer-text second))
     (is equal '("*scratch*" "aa") (frame-buffer-text first))))
 
-(define-test (frames keys-wait-for-their-frame-while-another-asks)
-  ;; a key of one frame typed while a question is open in another waits, and runs in its own frame
-  (with-frames (editor (first second)) '((1 "C-x b k i w i C-j i") (0 "M-x") (1 "x") (0 "C-g"))
-    (is equal '("kiwi" "x") (frame-buffer-text second))
-    (is equal '("*scratch*" "") (frame-buffer-text first))))
+(defun frames-probe (index function)
+  "A turn of RUN-FRAMES's typing calling FUNCTION with the editor's frames,
+in INDEX's turn."
+  (list index (lambda () (funcall function (tuatara.command:editor-frames tuatara.command:*editor*)))))
+
+(define-test (frames keys-run-in-their-frame-while-another-asks)
+  ;; a key of one frame typed while a question is open in another runs at once, in its own frame,
+  ;; the question staying open with its text
+  (let ((seen nil))
+    (with-frames (editor (first second))
+        (list '(1 "C-x b k i w i C-j i") '(0 "M-x k e a") '(1 "x")
+              (frames-probe 0 (lambda (frames)
+                                (setf seen (list (tuatara.buffer:buffer-string (tuatara.buffer:find-buffer "kiwi"))
+                                                 (tuatara.command::frame-minibuffer-text (first frames))
+                                                 (tuatara.command::editor-frame tuatara.command:*editor*)))))
+              '(0 "C-g"))
+      (is equal (list "x" "kea" first) seen)
+      (is equal '("kiwi" "x") (frame-buffer-text second))
+      (is equal '("*scratch*" "") (frame-buffer-text first)))))
 
 (define-test (frames job-messages-shown-where-begun)
   ;; a message said by work in the background shows in the frame the work was begun in, though
@@ -220,17 +234,26 @@ of no arguments; returns the job."
     (is equal (list first) (tuatara.command::editor-frames editor))
     (false (tuatara.command::frame-deleted first))))
 
-(define-test (frames keys-wait-for-their-frame-while-a-question-takes-in-work)
+(define-test (frames keys-run-in-their-frame-while-a-question-takes-in-work)
   ;; a question whose candidates come from the background (finding a file) reads keys as wakes
-  ;; come; a key typed in another frame meanwhile still waits for that frame, the question keeping
-  ;; its own frame and text
-  (with-frames (editor (first second)) '((1 "C-x b k i w i C-j i") (0 "C-x C-f") (1 "x") (0 "C-g"))
-    (is equal '("kiwi" "x") (frame-buffer-text second))
-    (is equal '("*scratch*" "") (frame-buffer-text first))
-    (false (tuatara.command::frame-minibuffer-active first))
-    (false (tuatara.command::frame-minibuffer-active second))
-    ;; the key waiting in the second frame ran last, there
-    (is eq second (tuatara.command::editor-frame editor))))
+  ;; come; a key typed in another frame meanwhile runs there at once, the question keeping its own
+  ;; frame and text, its frame the one worked in again after
+  (let ((seen nil))
+    (with-frames (editor (first second))
+        (list '(1 "C-x b k i w i C-j i") '(0 "C-x C-f") '(1 "x")
+              (frames-probe 0 (lambda (frames)
+                                (setf seen (list (tuatara.buffer:buffer-string (tuatara.buffer:find-buffer "kiwi"))
+                                                 (tuatara.command::frame-minibuffer-active (first frames))
+                                                 (tuatara.command::editor-frame tuatara.command:*editor*)))))
+              '(0 "C-g"))
+      (is equal "x" (first seen))
+      (true (second seen))
+      (is eq first (third seen))
+      (is equal '("kiwi" "x") (frame-buffer-text second))
+      (is equal '("*scratch*" "") (frame-buffer-text first))
+      (false (tuatara.command::frame-minibuffer-active first))
+      (false (tuatara.command::frame-minibuffer-active second))
+      (is eq first (tuatara.command::editor-frame editor)))))
 
 (define-test (frames recorded-keys-hold-no-frame)
   ;; keys recorded in a frame are kept without it, and play in another frame
@@ -747,3 +770,155 @@ second frame waiting its turn on it."
       (let ((editor (run-window-keys '() :files (list (first paths))
                                          :start (tuatara.terminal::start-function :frames 3))))
         (is equal '("a.txt" "a.txt" "a.txt") (mapcar #'frame-shows (tuatara.command:editor-frames editor)))))))
+
+;;; A question open in one frame while the others work
+
+(define-test (frames another-frame-asks-inside-a-question)
+  ;; a frame works and asks while a question is open in another: C-g there ends only its own
+  ;; question, and the first question's answer, given after, still works, finding what the other made
+  (let ((during nil) (after-quit nil))
+    (with-frames (editor (first second))
+        (list '(1 "C-x b k i w i C-j") '(0 "C-x b") '(1 "i x y")
+              (frames-probe 0 (lambda (frames)
+                                (setf during (list (tuatara.command::frame-minibuffer-active (first frames))
+                                                   (tuatara.command::frame-minibuffer-active (second frames))))))
+              '(1 "C-x b")
+              (frames-probe 0 (lambda (frames)
+                                (setf during
+                                      (append during (list (tuatara.command::frame-minibuffer-active (second frames)))))))
+              '(1 "C-g")
+              (frames-probe 0 (lambda (frames)
+                                (setf after-quit (list (tuatara.command::frame-minibuffer-active (first frames))
+                                                       (tuatara.command::frame-minibuffer-active (second frames))))))
+              '(0 "k i w i C-j"))
+      (is equal '(:reading nil :reading) (mapcar (lambda (x) (and x :reading)) during))
+      (is equal '(:reading nil) (mapcar (lambda (x) (and x :reading)) after-quit))
+      (is equal '("kiwi" "xy") (frame-buffer-text second))
+      (is equal '("kiwi" "xy") (frame-buffer-text first))
+      (is eq first (tuatara.command::editor-frame editor)))))
+
+(define-test (frames keys-of-a-waiting-question-kept)
+  ;; while a frame's question waits for another frame's question, what is typed in it waits, the
+  ;; frame saying so; its C-g is kept too, and ends its question once the other's has ended
+  (let ((waiting nil) (kept nil) (ended nil))
+    (multiple-value-bind (editor frames frontends)
+        (run-frames (list '(1 "C-x b k i w i C-j") '(0 "C-x b") '(1 "M-x") '(0 "k i w i")
+                          (frames-probe 0 (lambda (frames)
+                                            (let ((first (first frames)))
+                                              (setf waiting (list (tuatara.command::frame-minibuffer-text first)
+                                                                  (length (tuatara.command::frame-unread first))
+                                                                  (tuatara.command::frame-minibuffer-active
+                                                                   (second frames)))))))
+                          '(0 "C-g")
+                          (frames-probe 0 (lambda (frames)
+                                            (setf kept (tuatara.command::frame-minibuffer-active (first frames)))))
+                          '(1 "C-g")
+                          (frames-probe 0 (lambda (frames)
+                                            (setf ended (list (tuatara.command::frame-minibuffer-active (first frames))
+                                                              (tuatara.command::frame-minibuffer-active
+                                                               (second frames))
+                                                              (tuatara.command::editor-frame
+                                                               tuatara.command:*editor*)))))))
+      (declare (ignore editor))
+      (destructuring-bind (text unread inner) waiting
+        (is equal "" text)
+        (is = 4 unread)
+        (true inner))
+      (true (tuatara.frontend.fake:fake-frame-showing-across-rows
+             (first frontends) "Waiting for the question in another frame (C-g there ends it)"))
+      (true kept)
+      (is equal (list nil nil (first frames)) ended)
+      (is equal '("*scratch*" "") (frame-buffer-text (first frames))))))
+
+(define-test (frames waiting-question-answered-after)
+  ;; what was typed in a frame whose question waited answers that question once the other ends
+  (with-frames (editor (first second))
+      '((1 "C-x b k i w i C-j") (0 "C-x b") (1 "M-x") (0 "k i w i C-j") (1 "C-g"))
+    (is equal "kiwi" (frame-shows first))
+    (false (tuatara.command::frame-minibuffer-active first))))
+
+(define-test (frames closed-frame-question-given-up)
+  ;; a frame closed by what runs in another while it asks has its question given up; the frame
+  ;; left is worked in after
+  (let ((seen nil))
+    (with-frames (editor (first second))
+        (list '(1 "C-x b k i w i C-j") '(0 "C-x b") '(1 "C-x 5 1")
+              (frames-probe 0 (lambda (frames)
+                                (setf seen (list frames (tuatara.command::editor-frame tuatara.command:*editor*)))))
+              '(1 "i z"))
+      (true (tuatara.command::frame-deleted first))
+      (false (tuatara.command::frame-minibuffer-active first))
+      (is equal (list (list second) second) seen)
+      (is equal '("kiwi" "z") (frame-buffer-text second)))))
+
+(define-test (frames window-closed-while-its-question-waits)
+  ;; a frame's window closed while its question waits for another frame's closes it at once; its
+  ;; question is given up as soon as the other's ends
+  (let ((seen nil))
+    (with-frames (editor (first second))
+        (list '(1 "C-x b k i w i C-j") '(0 "C-x b") '(1 "M-x")
+              (list 0 (lambda ()
+                        (let* ((editor tuatara.command:*editor*)
+                               (closed (first (tuatara.command:editor-frames editor))))
+                          (push (tuatara.frontend:make-event :close :frame closed)
+                                (car (tuatara.frontend.fake::fake-source (tuatara.command:editor-frontend editor)))))))
+              (frames-probe 1 (lambda (frames)
+                                (setf seen (list frames (tuatara.command::frame-minibuffer-active (first frames))))))
+              '(1 "C-g i z"))
+      (is equal (list second) (first seen))
+      (true (second seen))
+      (true (tuatara.command::frame-deleted first))
+      (false (tuatara.command::frame-minibuffer-active first))
+      (is equal (list second) (tuatara.command:editor-frames editor))
+      (is eq second (tuatara.command::editor-frame editor))
+      (is equal '("kiwi" "z") (frame-buffer-text second)))))
+
+(define-test (frames question-given-up-when-its-buffer-killed)
+  ;; a question whose buffer is killed in another frame meanwhile is given up, saying why
+  (with-frames (editor (first second))
+      '((0 "C-x b k i w i C-j") (0 "C-x b") (1 "C-x b k i w i C-j C-x k RET") (1 "C-n"))
+    (false (tuatara.buffer:find-buffer "kiwi"))
+    (false (tuatara.command::frame-minibuffer-active first))
+    (is equal "kiwi was killed in another frame: the question about it is given up"
+        (tuatara.command::frame-message first))))
+
+(define-test (frames quitting-inside-a-question-ends-every-level)
+  ;; quitting the editor from a frame while another asks gives up that question and ends the
+  ;; editor: nothing typed after it runs
+  (with-frames (editor (first second))
+      '((1 "C-x b k i w i C-j") (0 "C-x b") (1 "C-x C-c") (1 "i z"))
+    (false (tuatara.command:editor-running editor))
+    (false (tuatara.command::frame-minibuffer-active first))
+    (is equal '("kiwi" "") (frame-buffer-text second))))
+
+(define-test (frames questions-open-at-once-bounded)
+  ;; past the most questions open at once, what is done in another frame waits, the frame saying
+  ;; so, and runs once a question has ended
+  (let ((tuatara.command::*frames-question-depth* 2) (waiting nil))
+    (multiple-value-bind (editor frames frontends)
+        (run-frames (list '(0 "C-x b") '(1 "M-x") '(2 "i k")
+                          (frames-probe 0 (lambda (frames)
+                                            (setf waiting (list (length (tuatara.command::frame-unread (third frames)))
+                                                                (tuatara.buffer:buffer-string
+                                                                 (tuatara.buffer:find-buffer "*scratch*"))))))
+                          '(1 "C-g") '(0 "C-g")))
+      (declare (ignore editor))
+      (is equal '(2 "") waiting)
+      (true (tuatara.frontend.fake:fake-frame-showing-across-rows (third frontends) "Waiting for the question"))
+      (is equal '("*scratch*" "k") (frame-buffer-text (third frames))))))
+
+(define-test (frames waiting-question-painted-as-it-asks)
+  ;; a frame asking for a secret, painted while its question waits for another frame's, shows the
+  ;; secret as stars: never as typed
+  (let ((answer nil))
+    (multiple-value-bind (editor frames frontends)
+        (run-frames (list '(0 "C-n")
+                          (list 0 (lambda ()
+                                    (tuatara.command:defer-action
+                                     (lambda () (setf answer (tuatara.command:read-password "Passphrase: "))))))
+                          '(0 "t u i") '(1 "M-x") '(0 "x") '(1 "C-g") '(0 "RET")))
+      (declare (ignore editor frames))
+      (is equal "tuix" answer)
+      (true (tuatara.frontend.fake:fake-frame-showing-across-rows (first frontends) "Waiting for the question"))
+      (true (tuatara.frontend.fake:fake-frame-showing (first frontends) "Passphrase: ***"))
+      (false (tuatara.frontend.fake:fake-frame-showing (first frontends) "tui")))))

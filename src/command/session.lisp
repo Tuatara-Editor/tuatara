@@ -112,8 +112,10 @@ out, the minibuffer shown as it reads (PAINT-TROUBLE), and report it, with the
 calls under way in debug mode: so that \\[execute-extended-command] and the questions of
 \\[save-buffers-kill-editor] still work whatever a window's drawing does. While a window shows a
 secret buffer (FRAME-SECRET-P, looked at once by REDISPLAY), only the kind of
-failure is said."
+failure is said. A frame closed is not drawn."
   (let ((trace nil) (secret-then nil))
+    (when (frame-deleted (editor-frame editor))
+      (return-from redisplay-or-say nil))
     (handler-case
         (handler-bind ((error (lambda (e)
                                 (declare (ignore e))
@@ -167,10 +169,8 @@ this often shows where they have got to.")
 redisplay, read an event, dispatch it. While more keys wait, the frame is
 drawn only every *FRAME-AT-LEAST-EVERY* milliseconds, so that typing
 is never held up by drawing; the other frames are painted when what they
-show may have changed (PAINT-OTHER-FRAMES). A command held up longer than
-TUATARA.RUNTIME:*SLOW-CALL-SECONDS* by one stoppable call (a regular
-expression stuck on a line), where nothing goes on with it in the
-background, is stopped and says so."
+show may have changed (PAINT-OTHER-FRAMES). Each event is handled guarded
+\(HANDLE-EVENT-GUARDED)."
   (let ((*editor* editor)
         (drawn (get-internal-real-time)))
     (loop while (editor-running editor)
@@ -200,15 +200,25 @@ background, is stopped and says so."
                    (incf *display-generation*))
                  (when (and event (not (functionp event)))
                    (setf *last-input-time* (get-internal-real-time)))
-                 ;; whatever escapes the command's own guards: said, never the end of the editor
-                 (call-guarded
-                  'command-loop
-                  (lambda ()
-                    (when (eq :slow (nth-value 1 (tuatara.runtime:stoppable-work ((list nil) :slow tuatara.runtime:*slow-call-seconds*)
-                                                   (handle-event editor event)
-                                                   nil)))
-                      ;; a regular expression stuck on a line, where nothing carries it on in the background
-                      (message "Stopped: the pattern is too slow on this text to match here")))))))))
+                 (handle-event-guarded editor event)
+                 ;; the frame worked in closed by what ran: another is worked in from now
+                 (when (frame-deleted (editor-frame editor))
+                   (select-frame editor (first (editor-frames editor)))))))))
+
+(defun handle-event-guarded (editor event)
+  "Handle EVENT, read by the command loop (HANDLE-EVENT), so that whatever
+escapes the command's own guards is said, never the end of the editor. A
+command held up longer than TUATARA.RUNTIME:*SLOW-CALL-SECONDS* by one
+stoppable call (a regular expression stuck on a line), where nothing goes on
+with it in the background, is stopped and says so."
+  (call-guarded
+   'command-loop
+   (lambda ()
+     (when (eq :slow (nth-value 1 (tuatara.runtime:stoppable-work ((list nil) :slow tuatara.runtime:*slow-call-seconds*)
+                                    (handle-event editor event)
+                                    nil)))
+       ;; a regular expression stuck on a line, where nothing carries it on in the background
+       (message "Stopped: the pattern is too slow on this text to match here")))))
 
 (defun handle-event (editor event)
   "Do what EVENT, read by the command loop, asks of EDITOR: run the command its
