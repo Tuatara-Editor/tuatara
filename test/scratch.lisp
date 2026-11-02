@@ -148,6 +148,28 @@ the editor is busy, so that C-g can stop work and keys typed meanwhile are kept.
         (true (search "z" (nth-value 2 (quit-with "C-g i z"))))
         (is string= "a" (file-text path))))))
 
+(define-test (scratch typed-answer-asked-again)
+  ;; a typed answer other than y, yes, n or no, none at all too, says which it takes and asks again
+  (with-test-directory (dir)
+    (let ((path (namestring (merge-pathnames "again.txt" dir))))
+      (alexandria:write-string-into-file "a" path)
+      (flet ((quit-with (answer)
+               ;; the frontend, whether the editor still runs, and the text, once ANSWER is typed
+               (multiple-value-bind (f editor) (run-keys (format nil "i x C-g C-x C-c ~a" answer) :file path :width 100)
+                 (multiple-value-prog1 (values f (tuatara.command:editor-running editor) (session-text editor))
+                   (forget-file-buffers)))))
+        (multiple-value-bind (f running text) (quit-with "y y RET C-g i z")
+          (declare (ignore running))
+          (true (search "z" text))
+          (true (tuatara.frontend.fake:fake-frame-showing-across-rows
+                 f "Answer y or n. Modified buffers exist; exit anyway?")))
+        (true (search "z" (nth-value 2 (quit-with "RET C-g i z"))))
+        (false (nth-value 1 (quit-with "y y RET y RET")))
+        (false (nth-value 1 (quit-with "RET Y E S RET")))
+        (true (search "z" (nth-value 2 (quit-with "y y RET n o RET i z"))))
+        (true (search "z" (nth-value 2 (quit-with "y y RET C-g i z"))))
+        (is string= "a" (file-text path))))))
+
 (defun evaluating (code &key (then "") pending)
   "Start in *lisp-scratch*, type CODE on a new line, evaluate it with C-x C-e,
 then type THEN; return the frontend and the editor."

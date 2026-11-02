@@ -485,13 +485,17 @@ TEXTS with the mode line's sign of work, P, lit in :mode-line-sign."
   "What the question of the yes-or-no test answered.")
 
 (define-test (command yes-or-no-answers)
-  ;; y or yes, in any case and with spaces around, is yes; anything else, an empty answer too, is no
+  ;; y or yes, in any case and with spaces around, is yes; n or no is no; anything else, an
+  ;; empty answer too, says which answers it takes and asks again
   (let ((ask (key-string "(setf tuatara.tests::*yes-or-no-answer* (tuatara.command:yes-or-no-p* \"Go on?\"))")))
-    (dolist (case '(("y" t) ("SPC Y e s SPC" t) ("n" nil) ("" nil) ("y i k e s" nil) ("SPC N o SPC" nil)))
+    (dolist (case '(("y" t) ("SPC Y e s SPC" t) ("n" nil) ("SPC N o SPC" nil)
+                    ("RET n" nil) ("y i k e s RET y" t) ("y y RET n o" nil)))
       (setf *yes-or-no-answer* :none)
-      (let ((f (run-keys (format nil "M-: ~a RET ~@[~a ~]RET" ask (and (plusp (length (first case))) (first case))) :width 120)))
+      (let ((f (run-keys (format nil "M-: ~a RET ~a RET" ask (first case)) :width 120)))
         (is eq (second case) *yes-or-no-answer* "~s" (first case))
-        (false (tuatara.frontend.fake:fake-frame-showing f "Please answer"))))))
+        (is eq (and (search "RET " (first case)) t)
+            (and (tuatara.frontend.fake:fake-frame-showing f "Answer y or n. Go on?") t)
+            "~s" (first case))))))
 
 (define-test (command kill-ring-bounded)
   ;; the kills together held to *kill-ring-max-size*: the oldest forgotten, the latest always kept
