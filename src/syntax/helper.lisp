@@ -966,8 +966,10 @@ helper wanted in its place is started afresh."
               **kept-helpers** (remove helper **kept-helpers** :key #'cdr)))
       (let ((process (helper-process helper)))
         (when process
-          ;; its end waited for here, or, on a thread that must not wait, in another
-          (tuatara.io:end-sandbox process :wait wait)))
+          ;; its end waited for here, or, on a thread that must not wait, in another;
+          ;; its connections closed below even when ending it fails
+          (tuatara.runtime:ignoring-errors-reported ("ending the syntax helper's process")
+            (tuatara.io:end-sandbox process :wait wait))))
       (flet ((shut (fd)
                (sb-alien:alien-funcall (sb-alien:extern-alien "shutdown" (function sb-alien:int sb-alien:int sb-alien:int))
                                        fd 2)))

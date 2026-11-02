@@ -1668,6 +1668,22 @@ has, ended after."
            (false (tuatara.buffer:buffer-local buffer :syntax-helper)))
       (tuatara.buffer:kill-buffer buffer))))
 
+(define-test (syntax helper-connections-closed-when-ending-fails)
+  ;; ending a helper's process failing (no thread to be had to wait for its end): the helper is
+  ;; ended and its connection closed all the same
+  (let* ((helper (tuatara.syntax::start-helper (tuatara.syntax:grammar-directories) :own))
+         (fd (tuatara.syntax::helper-fd helper))
+         (process (tuatara.syntax::helper-process helper)))
+    (sb-int:encapsulate 'tuatara.io:end-sandbox 'failing (lambda (function &rest arguments)
+                                                           (declare (ignore function arguments))
+                                                           (error "No thread to wait for the end")))
+    (unwind-protect
+         (finish (tuatara.syntax::stop-helper helper :wait nil))
+      (sb-int:unencapsulate 'tuatara.io:end-sandbox 'failing))
+    (false (tuatara.syntax:helper-alive helper))
+    (fail (sb-posix:fcntl fd sb-posix:f-getfd))
+    (tuatara.io:end-sandbox process)))
+
 (define-test (syntax honest-helpers-not-blamed)
   ;; tests of a long captured text past what they may read do not pass, the
   ;; helper left alone; a whole text's matches taking long are slow, not a
