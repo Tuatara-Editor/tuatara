@@ -151,12 +151,16 @@ lines beginning with # are comments, never given to PARSE."
   "The native name of LIST's file: NAME in the state directory, made if
 needed. With KNOWN, the name worked out last is given again while where the
 state directory is set to be is the same, nothing looked at on the disk:
-for reading LIST, which an edit may ask for each key."
-  (let ((place (and known (cons tuatara-user:*state-directory* (sb-ext:posix-getenv "XDG_STATE_HOME")))))
-    (if (and known (state-list-known-path list) (equal place (state-list-place list)))
+for reading LIST, which an edit may ask for each key. Never while the state
+directory set is kept in memory for want of its drive (CHOSEN-DIRECTORY):
+it is looked for each time, to be used once there."
+  (let ((place (and known (not (assoc 'tuatara-user:*state-directory* tuatara.io::*directories-in-memory*))
+                    (list tuatara-user:*state-directory* (sb-ext:posix-getenv "XDG_STATE_HOME")
+                          (sb-ext:posix-getenv "HOME")))))
+    (if (and place (state-list-known-path list) (equal place (state-list-place list)))
         (state-list-known-path list)
         (let ((path (tuatara.io:native (merge-pathnames (state-list-name list) (tuatara.io:state-directory)))))
-          (when known
+          (when place
             (setf (state-list-place list) place
                   (state-list-known-path list) path))
           path))))

@@ -577,3 +577,19 @@ file of text; their native names, as two values."
     (let ((octets (nth-value 2 (tuatara.bench::measuring
                                  (dotimes (i 100) (tuatara.defaults::state-list-entries list))))))
       (true (< (/ octets 100) 1024) "~,1f octets each time" (/ octets 100)))))
+
+(define-test (state-and-files lists-read-from-memory-look-for-their-drive)
+  ;; while the state directory set is kept in memory for want of its drive,
+  ;; a list's file is looked for each time it is read, to be read from the
+  ;; drive once that is there
+  (let ((list tuatara.defaults::*lsp-trusted*) (looks 0))
+    (sb-int:encapsulate 'tuatara.io:state-directory 'counting
+                        (lambda (function &rest arguments) (incf looks) (apply function arguments)))
+    (unwind-protect
+         (let ((tuatara.io::*directories-in-memory*
+                 (list (list 'tuatara-user:*state-directory* "/nowhere/" (tuatara.io:state-directory)))))
+           (setf looks 0)
+           (tuatara.defaults::state-list-path list :known t)
+           (tuatara.defaults::state-list-path list :known t)
+           (is = 2 looks))
+      (sb-int:unencapsulate 'tuatara.io:state-directory 'counting))))
