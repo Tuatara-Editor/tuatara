@@ -7,7 +7,7 @@
 ;;;; saved as one, a whole repository written to a single bundle file and a
 ;;;; bundle checked. git am stopped half way goes on, skips or stops.
 
-(in-package #:tuatara.defaults)
+(in-package #:tuatara.git)
 
 (defun git-switches-among (switches allowed)
   "Those of SWITCHES, a menu's switches turned on, that are among ALLOWED:

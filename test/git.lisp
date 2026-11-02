@@ -50,7 +50,7 @@ jobs' too, set back after."
       (with-open-file (out (merge-pathnames ".git/config" dir) :direction :output :if-exists :append)
         (format out "[include]~%	path = fifo~%"))
       (let ((start (get-internal-real-time)))
-        (false (nth-value 1 (tuatara.defaults::run-git (namestring dir) (list "cat-file" "-e" "HEAD:./a.txt") :seconds 1)))
+        (false (nth-value 1 (tuatara.git:run-git (namestring dir) (list "cat-file" "-e" "HEAD:./a.txt") :seconds 1)))
         (true (< (- (get-internal-real-time) start) (* 10 internal-time-units-per-second)))))))
 
 (define-test (git status-stage-commit)
@@ -61,28 +61,28 @@ jobs' too, set back after."
     (let ((tuatara.defaults::*modal-editing* nil)
           (tuatara-user:*lsp-trusted-projects* (list (namestring dir)))
           (staged nil))
-      (flet ((status () (find-if (lambda (b) (typep (tuatara.modes:buffer-major-mode b) 'tuatara.defaults::git-status-mode))
+      (flet ((status () (find-if (lambda (b) (typep (tuatara.modes:buffer-major-mode b) 'tuatara.git::git-status-mode))
                                  tuatara.buffer:*buffers*)))
         (multiple-value-bind (f editor)
             (auto-save-session
              (list (format nil "C-x C-f C-a C-k ~a RET" (rimu-typed (namestring (merge-pathnames "a.txt" dir))))
                    "C-x g"
-                   (list :until (lambda () (and (status) (tuatara.buffer:buffer-local (status) 'tuatara.defaults::git-state))))
+                   (list :until (lambda () (and (status) (tuatara.buffer:buffer-local (status) 'tuatara.git::git-state))))
                    ;; a.txt's changes shown under it
                    "C-s a . t x t RET TAB" (list :until (lambda () (search "+two" (tuatara.buffer:buffer-string (status)))))
                    ;; both staged, b.txt from its section's title
-                   "M-< C-s U n t r a c k e d RET s" (list :until (lambda () (null (tuatara.defaults::git-state-untracked
-                                                                                      (tuatara.buffer:buffer-local (status) 'tuatara.defaults::git-state)))))
+                   "M-< C-s U n t r a c k e d RET s" (list :until (lambda () (null (tuatara.git::git-state-untracked
+                                                                                      (tuatara.buffer:buffer-local (status) 'tuatara.git::git-state)))))
                    "M-< C-s m o d i f i e d RET s"
-                   (list :until (lambda () (= 2 (length (tuatara.defaults::git-state-staged
-                                                         (tuatara.buffer:buffer-local (status) 'tuatara.defaults::git-state))))))
-                   (list :until (lambda () (setf staged (mapcar #'first (tuatara.defaults::git-state-staged
-                                                                          (tuatara.buffer:buffer-local (status) 'tuatara.defaults::git-state))))))
+                   (list :until (lambda () (= 2 (length (tuatara.git::git-state-staged
+                                                         (tuatara.buffer:buffer-local (status) 'tuatara.git::git-state))))))
+                   (list :until (lambda () (setf staged (mapcar #'first (tuatara.git::git-state-staged
+                                                                          (tuatara.buffer:buffer-local (status) 'tuatara.git::git-state))))))
                    ;; committed, its message written in a buffer of its own
-                   "c c" (list :until (lambda () (tuatara.defaults::git-buffer-of (tuatara.defaults::repository-top (namestring dir)) 'tuatara.defaults::git-commit-mode))) "S e c o n d C-c C-c"
+                   "c c" (list :until (lambda () (tuatara.git::git-buffer-of (tuatara.git:repository-top (namestring dir)) 'tuatara.defaults::git-commit-mode))) "S e c o n d C-c C-c"
                    (list :until (lambda () (search "Second" (git-output dir "log" "--format=%s"))))
-                   (list :until (lambda () (null (tuatara.defaults::git-state-staged
-                                                  (tuatara.buffer:buffer-local (status) 'tuatara.defaults::git-state))))))
+                   (list :until (lambda () (null (tuatara.git::git-state-staged
+                                                  (tuatara.buffer:buffer-local (status) 'tuatara.git::git-state))))))
              :width 120 :height 30)
           (declare (ignore editor))
           (true (tuatara.frontend.fake:fake-frame-showing f "Head:     main  First"))
@@ -104,28 +104,28 @@ jobs' too, set back after."
                                         "C-x g" (list :wait 0.1) "n" (list :wait 0.1))
                                   :width 160)))
         (true (tuatara.frontend.fake:fake-frame-showing-across-rows f "git runs the programs it names"))
-        (false (tuatara.defaults::git-buffer-of (tuatara.defaults::repository-top (namestring dir)) 'tuatara.defaults::git-status-mode))))))
+        (false (tuatara.git::git-buffer-of (tuatara.git:repository-top (namestring dir)) 'tuatara.git::git-status-mode))))))
 
 (define-test (git status-read)
   ;; what git status --porcelain=v2 says, read: branch, upstream, files of each kind, a rename
-  (let ((state (tuatara.defaults::parse-git-status
+  (let ((state (tuatara.git::parse-git-status
                 (format nil "# branch.oid abc~a# branch.head main~a# branch.upstream origin/main~a# branch.ab +2 -1~a1 .M N... 100644 100644 100644 1 2 src/a b.lisp~a1 A. N... 0 100644 100644 0 2 new.txt~a2 R. N... 100644 100644 100644 1 2 R100 to.txt~afrom.txt~a? loose.txt~a"
                         #\Nul #\Nul #\Nul #\Nul #\Nul #\Nul #\Nul #\Nul #\Nul))))
-    (is equal "main" (tuatara.defaults::git-state-branch state))
-    (is equal "origin/main" (tuatara.defaults::git-state-upstream state))
-    (is = 2 (tuatara.defaults::git-state-ahead state))
-    (is = 1 (tuatara.defaults::git-state-behind state))
-    (is equal '(("src/a b.lisp" "modified")) (tuatara.defaults::git-state-unstaged state))
-    (is equal '(("new.txt" "new file") ("to.txt" "renamed" "from.txt")) (tuatara.defaults::git-state-staged state))
-    (is equal '(("loose.txt" "untracked")) (tuatara.defaults::git-state-untracked state))))
+    (is equal "main" (tuatara.git::git-state-branch state))
+    (is equal "origin/main" (tuatara.git::git-state-upstream state))
+    (is = 2 (tuatara.git::git-state-ahead state))
+    (is = 1 (tuatara.git::git-state-behind state))
+    (is equal '(("src/a b.lisp" "modified")) (tuatara.git::git-state-unstaged state))
+    (is equal '(("new.txt" "new file") ("to.txt" "renamed" "from.txt")) (tuatara.git::git-state-staged state))
+    (is equal '(("loose.txt" "untracked")) (tuatara.git::git-state-untracked state))))
 
 (define-test (git unmerged-files-read)
   ;; git status's u lines are files in conflict, a section of their own
-  (let ((state (tuatara.defaults::parse-git-status
+  (let ((state (tuatara.git::parse-git-status
                 (format nil "u UU N... 100644 100644 100644 100644 a1 b2 c3 both.txt~au UD N... 100644 100644 0 100644 a1 b2 c3 gone.txt~a1 .M N... 100644 100644 100644 1 2 plain.txt~a"
                         #\Nul #\Nul #\Nul))))
-    (is equal '(("both.txt" "both changed") ("gone.txt" "deleted by them")) (tuatara.defaults::git-state-unmerged state))
-    (is equal '(("plain.txt" "modified")) (tuatara.defaults::git-state-unstaged state))))
+    (is equal '(("both.txt" "both changed") ("gone.txt" "deleted by them")) (tuatara.git::git-state-unmerged state))
+    (is equal '(("plain.txt" "modified")) (tuatara.git::git-state-unstaged state))))
 
 (define-test (git trusted-where-it-really-is)
   ;; a project is trusted by where it really is: a link from a trusted folder lends none,
@@ -185,7 +185,7 @@ jobs' too, set back after."
           (when row
             (true (covered-by-face (aref (tuatara.frontend.fake:fake-spans f) row) :git-status-branch 10 14))))
         (let ((state (git-state-here)))
-          (is equal '("Third" "Second") (mapcar #'second (tuatara.defaults::git-state-unpushed state)))))
+          (is equal '("Third" "Second") (mapcar #'second (tuatara.git::git-state-unpushed state)))))
       ;; a branch of its own, not pushed: on no remote
       (git-output repo "checkout" "-q" "-b" "idea")
       (put-file (merge-pathnames "b.txt" repo) "b")
@@ -197,12 +197,12 @@ jobs' too, set back after."
       (git-output repo "checkout" "-q" "main")
       (git-output repo "push" "-q")
       (let ((f (git-session repo "a.txt" (list (list :until (lambda () (let ((state (git-state-here)))
-                                                                        (and state (equal "main" (tuatara.defaults::git-state-branch state))
-                                                                             (zerop (tuatara.defaults::git-state-ahead state))))))
+                                                                        (and state (equal "main" (tuatara.git::git-state-branch state))
+                                                                             (zerop (tuatara.git::git-state-ahead state))))))
                                                 (list :wait 0.2)))))
         ;; on the screen now, as the frames before showed the section
         (false (loop for row below 30 thereis (search "Unpushed" (tuatara.frontend.fake:fake-screen-line f row))))
-        (false (tuatara.defaults::git-state-unpushed (git-state-here))))
+        (false (tuatara.git::git-state-unpushed (git-state-here))))
       ;; the buffers the sessions made go, for the tests after
       (dolist (buffer (copy-list tuatara.buffer:*buffers*))
         (when (search "unpushed" (tuatara.buffer:buffer-name buffer))
@@ -211,13 +211,13 @@ jobs' too, set back after."
 
 (defun git-status-here ()
   "The status buffer the test running made, when there is one."
-  (find-if (lambda (b) (typep (tuatara.modes:buffer-major-mode b) 'tuatara.defaults::git-status-mode))
+  (find-if (lambda (b) (typep (tuatara.modes:buffer-major-mode b) 'tuatara.git::git-status-mode))
            (test-buffers)))
 
 (defun git-state-here ()
   "The state of the repository the session's status last read, or NIL."
   (let ((status (git-status-here)))
-    (and status (tuatara.buffer:buffer-local status 'tuatara.defaults::git-state))))
+    (and status (tuatara.buffer:buffer-local status 'tuatara.git::git-state))))
 
 (defun git-session (dir file steps &key (width 120) (height 30))
   "Run STEPS (as AUTO-SAVE-SESSION takes them) once FILE in the repository
@@ -237,14 +237,14 @@ DIR is visited and its status read, the project trusted. Returns the frontend."
     (dolist (name (list "*" "loose.txt" (format nil "two~%lines.txt")))
       (put-file (sb-ext:parse-native-namestring (native-in dir name)) "text"))
     (assert (search (namestring *test-data-directory*) (tuatara.io:home-trash)))
-    (flet ((staged () (mapcar #'first (tuatara.defaults::git-state-staged (git-state-here))))
+    (flet ((staged () (mapcar #'first (tuatara.git::git-state-staged (git-state-here))))
            (gone (name) (lambda () (null (tuatara.io:path-kind (native-in dir name) :follow nil)))))
       (let ((f (git-session dir "a.txt"
                             (list "M-< C-s U n t r a c k e d RET C-n s"
                                   (list :until (lambda () (staged)))
                                   "M-< C-s l o o s e RET x y e s RET" (list :until (gone "loose.txt"))
                                   "M-< C-s l i n e s RET x y e s RET" (list :until (gone (format nil "two~%lines.txt")))
-                                  (list :until (lambda () (null (tuatara.defaults::git-state-untracked (git-state-here)))))))))
+                                  (list :until (lambda () (null (tuatara.git::git-state-untracked (git-state-here)))))))))
         (true (tuatara.frontend.fake:fake-frame-showing f "untracked  two^Jlines.txt"))
         (is equal '("*") (staged))
         (true (tuatara.io:path-kind (native-in dir "*")))
@@ -259,9 +259,9 @@ DIR is visited and its status read, the project trusted. Returns the frontend."
       (ensure-directories-exist (merge-pathnames "real/" dir))
       (put-file (merge-pathnames "real/x.txt" dir) "x")
       (sb-posix:symlink (native-in dir "real") (native-in dir "link"))
-      (true (tuatara.defaults::git-file-inside-p top "real/x.txt"))
-      (true (tuatara.defaults::git-file-inside-p top "link"))
-      (false (tuatara.defaults::git-file-inside-p top "link/x.txt")))))
+      (true (tuatara.git::git-file-inside-p top "real/x.txt"))
+      (true (tuatara.git::git-file-inside-p top "link"))
+      (false (tuatara.git::git-file-inside-p top "link/x.txt")))))
 
 (define-test (git no-commit-yet)
   ;; in a repository with no commit, a new file is unstaged, and moved to the trash
@@ -271,8 +271,8 @@ DIR is visited and its status read, the project trusted. Returns the frontend."
       (trust-test-repository dir)
       (put-file (merge-pathnames "new.txt" dir) "new")
       (git "add" "new.txt")
-      (flet ((untracked () (tuatara.defaults::git-state-untracked (git-state-here)))
-             (staged () (tuatara.defaults::git-state-staged (git-state-here))))
+      (flet ((untracked () (tuatara.git::git-state-untracked (git-state-here)))
+             (staged () (tuatara.git::git-state-staged (git-state-here))))
         (let ((f (git-session dir "new.txt"
                               (list "M-< C-s n e w RET u" (list :until (lambda () (untracked)))
                                     "M-< C-s n e w RET s" (list :until (lambda () (staged)))
@@ -300,15 +300,15 @@ DIR is visited and its status read, the project trusted. Returns the frontend."
   (with-test-directory (dir)
     (let* ((one (native-in dir "one/repo/"))
            (two (native-in dir "two/repo/"))
-           (a (tuatara.defaults::git-status-buffer one))
-           (b (tuatara.defaults::git-status-buffer two)))
+           (a (tuatara.git::git-status-buffer one))
+           (b (tuatara.git::git-status-buffer two)))
       (unwind-protect
            (progn
              (false (eq a b))
              (is equal "*git: repo*" (tuatara.buffer:buffer-name a))
              (is equal "*git: repo*<2>" (tuatara.buffer:buffer-name b))
-             (is eq a (tuatara.defaults::git-status-buffer one))
-             (is equal two (tuatara.buffer:buffer-local b 'tuatara.defaults::git-top)))
+             (is eq a (tuatara.git::git-status-buffer one))
+             (is equal two (tuatara.buffer:buffer-local b :git-top)))
         (tuatara.buffer:kill-buffer a)
         (tuatara.buffer:kill-buffer b)))))
 
@@ -319,7 +319,7 @@ DIR is visited and its status read, the project trusted. Returns the frontend."
              (if askpass (sb-posix:setenv "SSH_ASKPASS" askpass 1) (sb-posix:unsetenv "SSH_ASKPASS"))
              (if display (sb-posix:setenv "DISPLAY" display 1) (sb-posix:unsetenv "DISPLAY"))
              (sb-posix:unsetenv "WAYLAND_DISPLAY")
-             (tuatara.defaults::git-network-environment)))
+             (tuatara.git:git-network-environment)))
       (unwind-protect
            (progn
              (let ((env (with-env "/bin/true" ":0")))
@@ -336,21 +336,21 @@ DIR is visited and its status read, the project trusted. Returns the frontend."
 (define-test (git what-went-wrong)
   ;; what git said went wrong: its fatal: or error: line, else its last
   (is equal "git push: fatal: You are not currently on a branch."
-      (tuatara.defaults::git-failure-words "push" (format nil "fatal: You are not currently on a branch.~%To push the history leading to the current (detached HEAD)~%state now, use~%~%    git push origin HEAD:<name-of-remote-branch>~%")))
+      (tuatara.git:git-failure-words "push" (format nil "fatal: You are not currently on a branch.~%To push the history leading to the current (detached HEAD)~%state now, use~%~%    git push origin HEAD:<name-of-remote-branch>~%")))
   (is equal "git commit: nothing added to commit"
-      (tuatara.defaults::git-failure-words "commit" (format nil "On branch main~%nothing added to commit~%~%")))
-  (is equal "git status: it failed" (tuatara.defaults::git-failure-words "status" ""))
+      (tuatara.git:git-failure-words "commit" (format nil "On branch main~%nothing added to commit~%~%")))
+  (is equal "git status: it failed" (tuatara.git:git-failure-words "status" ""))
   ;; no key the server takes: said plainly, with how to give ssh yours
   (is equal "git push: the server took none of the ssh keys offered (Permission denied (publickey)): ssh-add puts yours in your ssh agent"
-      (tuatara.defaults::git-failure-words "push" (format nil "git@github.com: Permission denied (publickey).~%fatal: Could not read from remote repository.~%~%Please make sure you have the correct access rights~%")))
+      (tuatara.git:git-failure-words "push" (format nil "git@github.com: Permission denied (publickey).~%fatal: Could not read from remote repository.~%~%Please make sure you have the correct access rights~%")))
   ;; a submodule's changes are its own: said so, and nothing claimed reversed
   (is equal "Left sub as it is: a submodule, whose changes are its own repository's"
-      (tuatara.defaults::git-reverse-words '() '() '(("sub" "a submodule, whose changes are its own repository's"))))
+      (tuatara.git::git-reverse-words '() '() '(("sub" "a submodule, whose changes are its own repository's"))))
   (is equal "Reversed the changes of 2 files; moved 1 file to the trash"
-      (tuatara.defaults::git-reverse-words '("a" "b") '("c") '()))
+      (tuatara.git::git-reverse-words '("a" "b") '("c") '()))
   (is equal '(("sub" "submodule"))
-      (tuatara.defaults::git-state-unstaged
-       (tuatara.defaults::parse-git-status (format nil "1 .M S.M. 160000 160000 160000 abc abc sub~a" #\Nul)))))
+      (tuatara.git::git-state-unstaged
+       (tuatara.git::parse-git-status (format nil "1 .M S.M. 160000 160000 160000 abc abc sub~a" #\Nul)))))
 
 (define-test (git work-is-a-job)
   ;; git's work is a job: listed, and stopped by M-x stop-job, a commit not made
@@ -362,9 +362,9 @@ DIR is visited and its status read, the project trusted. Returns the frontend."
           (described '()))
       (put-file hook (format nil "#!/bin/sh~%sleep 30~%"))
       (sb-posix:chmod (namestring hook) #o755)
-      (flet ((git-jobs () (remove-if-not #'tuatara.defaults::git-job-p tuatara.runtime:*jobs*)))
+      (flet ((git-jobs () (remove-if-not #'tuatara.git::git-job-p tuatara.runtime:*jobs*)))
         (let ((f (git-session dir "a.txt"
-                              (list "c c" (list :until (lambda () (tuatara.defaults::git-buffer-of (tuatara.defaults::repository-top (namestring dir)) 'tuatara.defaults::git-commit-mode))) "S e c o n d C-c C-c"
+                              (list "c c" (list :until (lambda () (tuatara.git::git-buffer-of (tuatara.git:repository-top (namestring dir)) 'tuatara.defaults::git-commit-mode))) "S e c o n d C-c C-c"
                                     (list :until (lambda () (setf described (mapcar #'tuatara.runtime:job-description (git-jobs)))))
                                     "M-x s t o p - j o b RET y e s RET"
                                     (list :until (lambda () (null (git-jobs))))))))
@@ -380,36 +380,36 @@ DIR is visited and its status read, the project trusted. Returns the frontend."
     (let ((path (sb-posix:getenv "PATH")))
       (unwind-protect
            (progn (sb-posix:setenv "PATH" "bin:." 1)
-                  (false (nth-value 1 (tuatara.defaults::run-git (tuatara.io:native dir) '("rev-parse")))))
+                  (false (nth-value 1 (tuatara.git:run-git (tuatara.io:native dir) '("rev-parse")))))
         (sb-posix:setenv "PATH" path 1)))
-    (true (nth-value 1 (tuatara.defaults::run-git (tuatara.io:native dir) '("rev-parse"))))))
+    (true (nth-value 1 (tuatara.git:run-git (tuatara.io:native dir) '("rev-parse"))))))
 
 (define-test (git hunk-patches)
   ;; a hunk's lines chosen: a change not chosen stays as it is, a line taken away
   ;; kept and one added left out, or the other way round for a patch applied backwards
   (let ((hunk '("@@ -3,4 +3,5 @@ (defun f ()" " a" "-b" "+B" "+C" " d" "\\ No newline at end of file")))
-    (multiple-value-bind (old-start old-count start count) (tuatara.defaults::git-hunk-range hunk)
+    (multiple-value-bind (old-start old-count start count) (tuatara.git::git-hunk-range hunk)
       (is equal '(3 4 3 5) (list old-start old-count start count)))
-    (is equal hunk (tuatara.defaults::git-hunk-patch hunk))
+    (is equal hunk (tuatara.git::git-hunk-patch hunk))
     (is equal '("@@ -3,3 +3,4 @@" " a" " b" "+B" " d" "\\ No newline at end of file")
-        (tuatara.defaults::git-hunk-patch hunk :lines '(3)))
+        (tuatara.git::git-hunk-patch hunk :lines '(3)))
     (is equal '("@@ -3,3 +3,2 @@" " a" "-b" " d" "\\ No newline at end of file")
-        (tuatara.defaults::git-hunk-patch hunk :lines '(2)))
+        (tuatara.git::git-hunk-patch hunk :lines '(2)))
     (is equal '("@@ -3,3 +3,4 @@" " a" "+B" " C" " d" "\\ No newline at end of file")
-        (tuatara.defaults::git-hunk-patch hunk :lines '(3) :reverse t))
-    (false (tuatara.defaults::git-hunk-patch hunk :lines '(1 5)))
+        (tuatara.git::git-hunk-patch hunk :lines '(3) :reverse t))
+    (false (tuatara.git::git-hunk-patch hunk :lines '(1 5)))
     ;; where a hunk's lines are in the file, and which lines it covers
-    (is = 3 (tuatara.defaults::git-hunk-line hunk 1))
-    (is = 4 (tuatara.defaults::git-hunk-line hunk 3))
-    (is = 6 (tuatara.defaults::git-hunk-line hunk 5))
-    (true (tuatara.defaults::git-hunk-covers-p hunk 5))
-    (true (tuatara.defaults::git-hunk-covers-p hunk 4))
-    (false (tuatara.defaults::git-hunk-covers-p hunk 6))
-    (true (tuatara.defaults::git-hunk-covers-p '("@@ -4,3 +4,2 @@" " a" "-gone" " b") 5))
-    (false (tuatara.defaults::git-hunk-covers-p '("@@ -4,3 +4,2 @@" " a" "-gone" " b") 3)))
+    (is = 3 (tuatara.git::git-hunk-line hunk 1))
+    (is = 4 (tuatara.git::git-hunk-line hunk 3))
+    (is = 6 (tuatara.git::git-hunk-line hunk 5))
+    (true (tuatara.git::git-hunk-covers-p hunk 5))
+    (true (tuatara.git::git-hunk-covers-p hunk 4))
+    (false (tuatara.git::git-hunk-covers-p hunk 6))
+    (true (tuatara.git::git-hunk-covers-p '("@@ -4,3 +4,2 @@" " a" "-gone" " b") 5))
+    (false (tuatara.git::git-hunk-covers-p '("@@ -4,3 +4,2 @@" " a" "-gone" " b") 3)))
   (is equal (list (format nil "diff --git a/a b/a~%") '("@@ -1 +1 @@" "-x" "+y") '("@@ -9 +9 @@" "-p" "+q"))
-      (tuatara.defaults::git-parse-diff (format nil "diff --git a/a b/a~%@@ -1 +1 @@~%-x~%+y~%@@ -9 +9 @@~%-p~%+q~%")))
-  (is equal '("") (tuatara.defaults::git-parse-diff "")))
+      (tuatara.git::git-parse-diff (format nil "diff --git a/a b/a~%@@ -1 +1 @@~%-x~%+y~%@@ -9 +9 @@~%-p~%+q~%")))
+  (is equal '("") (tuatara.git::git-parse-diff "")))
 
 (defun numbered-lines (count &rest changed)
   "COUNT lines, l1, l2 ..., but for those whose numbers CHANGED names, given in upper case, L2."
@@ -564,12 +564,12 @@ DIR is visited and its status read, the project trusted. Returns the frontend."
     ;; an action pushed to the slim menus by an init file, its symbol its own, is shown
     (let ((tuatara-user:*git-slim-actions* (list (intern "GIT-BRANCH-RESET" :tuatara-user)))
           (tuatara.command::*current-buffer* (tuatara.buffer:make-buffer "*slim test*")))
-      (true (tuatara.defaults::git-menu-shows-p
-             (find 'tuatara.defaults::git-branch-reset (tuatara.command::menu-entries (gethash 'tuatara.defaults::git-branch-menu tuatara.command::*menus*) :all t)
+      (true (tuatara.git::git-menu-shows-p
+             (find 'tuatara.git::git-branch-reset (tuatara.command::menu-entries (gethash 'tuatara.git::git-branch-menu tuatara.command::*menus*) :all t)
                    :key #'tuatara.command:menu-entry-command))))
-    (false (tuatara.defaults::git-name-p "--force"))
-    (false (tuatara.defaults::git-name-p "a b"))
-    (true (tuatara.defaults::git-name-p "origin/main"))))
+    (false (tuatara.git::git-name-p "--force"))
+    (false (tuatara.git::git-name-p "a b"))
+    (true (tuatara.git::git-name-p "origin/main"))))
 
 (define-test (git worktree-menu)
   ;; Z makes a worktree for a new branch, shows its status, and deletes it, asked
@@ -610,7 +610,7 @@ DIR is visited and its status read, the project trusted. Returns the frontend."
     (scratch-repository dir)
     (flet ((change (name text) (put-file (merge-pathnames name dir) text))
            (committed-p (subject) (lambda () (equal subject (first (git-log-subjects dir)))))
-           (commit-buffer () (tuatara.defaults::git-buffer-of (tuatara.defaults::repository-top (namestring dir)) 'tuatara.defaults::git-commit-mode)))
+           (commit-buffer () (tuatara.git::git-buffer-of (tuatara.git:repository-top (namestring dir)) 'tuatara.defaults::git-commit-mode)))
       (change "a.txt" (format nil "one~%two~%"))
       (let* ((first (string-trim '(#\Newline) (git-output dir "rev-parse" "--short" "HEAD")))
              (reworded nil)
@@ -653,7 +653,7 @@ DIR is visited and its status read, the project trusted. Returns the frontend."
     (let ((tuatara.defaults::*modal-editing* t)
           (tuatara-user:*lsp-trusted-projects* (list (namestring dir)))
           (states '()))
-      (flet ((commit-buffer () (tuatara.defaults::git-buffer-of (tuatara.defaults::repository-top (namestring dir)) 'tuatara.defaults::git-commit-mode))
+      (flet ((commit-buffer () (tuatara.git::git-buffer-of (tuatara.git:repository-top (namestring dir)) 'tuatara.defaults::git-commit-mode))
              (committed-p (subject) (lambda () (equal subject (first (git-log-subjects dir))))))
         (auto-save-session (list (format nil "C-x C-f C-a C-k ~a RET" (rimu-typed (native-in dir "a.txt")))
                                  "C-x g" (list :until #'git-state-here)
@@ -788,7 +788,7 @@ DIR is visited and its status read, the project trusted. Returns the frontend."
                             (git-output other "commit" "-q" "-m" "Theirs")
                             (git-output other "push" "-q"))
                           "f u" (list :until (lambda () (search "Theirs" (git-output repo "log" "--format=%s" "origin/main"))))
-                          (list :until (lambda () (notany #'tuatara.defaults::git-job-p tuatara.runtime:*jobs*)))
+                          (list :until (lambda () (notany #'tuatara.git::git-job-p tuatara.runtime:*jobs*)))
                           (list :wait 0.1)
                           "F u" (list :until (lambda () (equal "Theirs" (first (git-log-subjects repo)))))
                           "P - f p" (list :until (asking "Force the push")) "n o RET" (list :wait 0.3))
@@ -1155,7 +1155,7 @@ DIR is visited and its status read, the project trusted. Returns the frontend."
     (put-file (merge-pathnames "big/deep/g.txt" dir) "x")
     (flet ((status-text () (tuatara.buffer:buffer-string (git-status-here)))
            (rimu () (find-if #'tuatara.defaults::rimu-list-p tuatara.buffer:*buffers*))
-           (staged () (tuatara.defaults::git-state-staged (git-state-here))))
+           (staged () (tuatara.git::git-state-staged (git-state-here))))
       (git-session dir "a.txt"
                    (list (lambda () (setf (getf (symbol-plist 'untracked-folder) :first) (status-text)))
                          "M-< C-s b i g RET l" (list :until #'rimu)
@@ -1191,9 +1191,9 @@ DIR is visited and its status read, the project trusted. Returns the frontend."
 
 (define-test (git staged-kinds-coloured)
   ;; staged files are coloured as staged, but for a deletion
-  (is eq :git-status-deleted (tuatara.defaults::git-staged-face "deleted"))
+  (is eq :git-status-deleted (tuatara.git::git-staged-face "deleted"))
   (dolist (kind '("new file" "renamed" "modified"))
-    (is eq :git-status-staged (tuatara.defaults::git-staged-face kind))))
+    (is eq :git-status-staged (tuatara.git::git-staged-face kind))))
 
 (define-test (git status-follows-git-elsewhere)
   ;; git run from elsewhere (a terminal) changes the repository: the status
@@ -1203,7 +1203,7 @@ DIR is visited and its status read, the project trusted. Returns the frontend."
     (let ((tuatara-user:*git-watch-seconds* 0.2))
       (flet ((status-text () (tuatara.buffer:buffer-string (git-status-here))))
         (git-session dir "a.txt"
-                     (list (list :until (lambda () (tuatara.buffer:buffer-local (git-status-here) 'tuatara.defaults::git-stamps)))
+                     (list (list :until (lambda () (tuatara.buffer:buffer-local (git-status-here) 'tuatara.git:git-stamps)))
                            (lambda () (git-commit-file dir "b.txt" "b" "Made in a terminal"))
                            (list :until (lambda () (search "Made in a terminal" (status-text))))))
         (true (search "Made in a terminal" (status-text)))))))
@@ -1215,11 +1215,11 @@ DIR is visited and its status read, the project trusted. Returns the frontend."
     (scratch-repository dir)
     (let ((tick :unset) (watched '()))
       (git-session dir "a.txt"
-                   (list (list :until (lambda () (tuatara.buffer:buffer-local (git-status-here) 'tuatara.defaults::git-stamps)))
+                   (list (list :until (lambda () (tuatara.buffer:buffer-local (git-status-here) 'tuatara.git:git-stamps)))
                          (list :wait 0.3)
                          (lambda ()
-                           (setf tick (tuatara.defaults::git-watch-tick tuatara.command:*editor*)
-                                 watched (tuatara.defaults::git-watched-folders)))))
+                           (setf tick (tuatara.git::git-watch-tick tuatara.command:*editor*)
+                                 watched (tuatara.git::git-watched-folders)))))
       (false tick)
       (true (find-if (lambda (folder) (uiop:string-suffix-p folder "/.git/")) watched)))))
 
@@ -1318,20 +1318,20 @@ DIR is visited and its status read, the project trusted. Returns the frontend."
 (define-test (git commands-only-where-they-work)
   ;; the commands of a status, a log, a blame, a list of references, a commit's
   ;; message and a rebase's list run there alone, and M-x offers them nowhere else
-  (loop for (mode . commands) in '((tuatara.defaults::git-status-mode tuatara.defaults::git-stage tuatara.defaults::git-unstage
-                                    tuatara.defaults::git-reverse tuatara.defaults::git-toggle-diff tuatara.defaults::git-next-section
-                                    tuatara.defaults::git-previous-section tuatara.defaults::git-visit tuatara.defaults::git-toggle-full-menus)
-                                   (tuatara.defaults::git-log-mode tuatara.defaults::git-log-show)
-                                   (tuatara.defaults::git-blame-mode tuatara.defaults::git-blame-show)
-                                   (tuatara.defaults::git-refs-mode tuatara.defaults::git-refs-log)
-                                   (tuatara.defaults::git-commit-mode tuatara.defaults::git-commit-finish tuatara.defaults::git-commit-cancel)
-                                   (tuatara.defaults::git-rebase-mode tuatara.defaults::git-rebase-todo-finish tuatara.defaults::git-rebase-todo-cancel))
+  (loop for (mode . commands) in '((tuatara.git::git-status-mode tuatara.git::git-stage tuatara.git::git-unstage
+                                    tuatara.git::git-reverse tuatara.git::git-toggle-diff tuatara.git::git-next-section
+                                    tuatara.git::git-previous-section tuatara.git::git-visit tuatara.git::git-toggle-full-menus)
+                                   (tuatara.git::git-log-mode tuatara.git::git-log-show)
+                                   (tuatara.git::git-blame-mode tuatara.git::git-blame-show)
+                                   (tuatara.git::git-refs-mode tuatara.git::git-refs-log)
+                                   (tuatara.defaults::git-commit-mode tuatara.git::git-commit-finish tuatara.git::git-commit-cancel)
+                                   (tuatara.defaults::git-rebase-mode tuatara.git::git-rebase-todo-finish tuatara.git::git-rebase-todo-cancel))
         do (dolist (command commands)
              (true (assoc mode (gethash command tuatara.defaults::*mode-commands*)) "~a only in ~a" command mode)))
   (let ((refusal nil) (offered :unset))
     (auto-save-session (list (lambda ()
-                               (setf refusal (tuatara.defaults::mode-command-refusal 'tuatara.defaults::git-stage)
-                                     offered (find 'tuatara.defaults::git-stage (tuatara.defaults::command-candidates)
+                               (setf refusal (tuatara.defaults::mode-command-refusal 'tuatara.git::git-stage)
+                                     offered (find 'tuatara.git::git-stage (tuatara.defaults::command-candidates)
                                                    :key #'tuatara.command:candidate-result)))))
     (true (search "works in a repository's status" refusal))
     (false offered)))
@@ -1343,16 +1343,16 @@ DIR is visited and its status read, the project trusted. Returns the frontend."
   (with-test-directory (dir)
     (scratch-repository dir)
     (put-file (merge-pathnames "loose.txt" dir) "loose")
-    (true (nth-value 1 (tuatara.defaults::run-git (tuatara.io:native dir) (list "stash" "push" "-u" "-m" "Parked"))))
+    (true (nth-value 1 (tuatara.git:run-git (tuatara.io:native dir) (list "stash" "push" "-u" "-m" "Parked"))))
     (false (probe-file (merge-pathnames "loose.txt" dir)))
     (true (search "Parked" (git-output dir "stash" "list")))
-    (true (nth-value 1 (tuatara.defaults::run-git (tuatara.io:native dir) (list "stash" "pop"))))
+    (true (nth-value 1 (tuatara.git:run-git (tuatara.io:native dir) (list "stash" "pop"))))
     (true (probe-file (merge-pathnames "loose.txt" dir)))
     (is equal '("--no-lazy-fetch" "-c" "core.fsmonitor=false" "-c" "log.showSignature=false" "-c" "core.pager=cat")
-        (tuatara.defaults::git-safety '("stash" "push")))
-    (true (member "--literal-pathspecs" (tuatara.defaults::git-safety '("add" "--" "*")) :test #'string=))
+        (tuatara.git::git-safety '("stash" "push")))
+    (true (member "--literal-pathspecs" (tuatara.git::git-safety '("add" "--" "*")) :test #'string=))
     ;; more than the limit: nothing given, and said too large
-    (multiple-value-bind (octets ok too-large) (tuatara.defaults::run-git (tuatara.io:native dir) (list "log") :limit 10)
+    (multiple-value-bind (octets ok too-large) (tuatara.git:run-git (tuatara.io:native dir) (list "log") :limit 10)
       (false octets) (false ok) (true too-large))))
 
 (define-test (git lines-after-no-newline-staged)
@@ -1362,18 +1362,18 @@ DIR is visited and its status read, the project trusted. Returns the frontend."
     (scratch-repository dir)
     (git-commit-file dir "nonl.txt" (format nil "l1~%l2~%l3") "No newline")
     (put-file (merge-pathnames "nonl.txt" dir) (format nil "l1~%l2~%l3~%l4~%l5"))
-    (let* ((diff (tuatara.defaults::git-parse-diff (git-output dir "diff" "--no-color" "--" "nonl.txt")))
+    (let* ((diff (tuatara.git::git-parse-diff (git-output dir "diff" "--no-color" "--" "nonl.txt")))
            (hunk (second diff))
            (l4 (position "+l4" hunk :test #'string=))
-           (patch (tuatara.defaults::git-patch (first diff) (list (tuatara.defaults::git-hunk-patch hunk :lines (list l4))))))
+           (patch (tuatara.git::git-patch (first diff) (list (tuatara.git::git-hunk-patch hunk :lines (list l4))))))
       (uiop:run-program (list "git" "-C" (namestring dir) "apply" "--cached" "--whitespace=nowarn")
                         :input (make-string-input-stream patch))
       (is equal (format nil "l1~%l2~%l3~%l4~%") (git-output dir "show" ":nonl.txt"))
       ;; and unstaged again, applied backwards from what is staged
-      (let* ((staged (tuatara.defaults::git-parse-diff (git-output dir "diff" "--cached" "--no-color" "--" "nonl.txt")))
+      (let* ((staged (tuatara.git::git-parse-diff (git-output dir "diff" "--cached" "--no-color" "--" "nonl.txt")))
              (hunk (second staged))
-             (patch (tuatara.defaults::git-patch (first staged)
-                                                 (list (tuatara.defaults::git-hunk-patch
+             (patch (tuatara.git::git-patch (first staged)
+                                                 (list (tuatara.git::git-hunk-patch
                                                         hunk :lines (list (position "+l4" hunk :test #'string=)) :reverse t)))))
         (uiop:run-program (list "git" "-C" (namestring dir) "apply" "--cached" "--reverse" "--whitespace=nowarn")
                           :input (make-string-input-stream patch))
@@ -1382,14 +1382,14 @@ DIR is visited and its status read, the project trusted. Returns the frontend."
 (define-test (git rebase-list-subjects)
   ;; git writes its list as pick HASH # SUBJECT, an empty commit's ending # empty
   (is equal '("abc1234" "Real subject")
-      (multiple-value-list (tuatara.defaults::git-reword-line-p "reword abc1234 # Real subject")))
+      (multiple-value-list (tuatara.git::git-reword-line-p "reword abc1234 # Real subject")))
   (is equal '("abc1234" "Multi subject")
-      (multiple-value-list (tuatara.defaults::git-reword-line-p "r abc1234 # Multi subject # empty")))
+      (multiple-value-list (tuatara.git::git-reword-line-p "r abc1234 # Multi subject # empty")))
   (is equal '("abc1234" "Plain one")
-      (multiple-value-list (tuatara.defaults::git-reword-line-p "reword abc1234 Plain one")))
-  (false (tuatara.defaults::git-reword-line-p "pick abc1234 # Real subject"))
+      (multiple-value-list (tuatara.git::git-reword-line-p "reword abc1234 Plain one")))
+  (false (tuatara.git::git-reword-line-p "pick abc1234 # Real subject"))
   ;; a hash git would read as an option is no reword: never handed to git log
-  (false (tuatara.defaults::git-reword-line-p "reword --output=/tmp/x s")))
+  (false (tuatara.git::git-reword-line-p "reword --output=/tmp/x s")))
 
 (define-test (git staged-rename-both-names)
   ;; a rename staged shows both names; u unstages it whole and x undoes it,
@@ -1415,29 +1415,29 @@ DIR is visited and its status read, the project trusted. Returns the frontend."
 (define-test (git ignore-patterns-escaped)
   ;; a name holding what a pattern reads otherwise is written as itself, and a
   ;; line there already is not added again
-  (is equal "a\\[1\\].txt" (tuatara.defaults::git-ignore-escaped "a[1].txt"))
-  (is equal "back\\\\slash" (tuatara.defaults::git-ignore-escaped "back\\slash"))
-  (is equal "star\\*\\?" (tuatara.defaults::git-ignore-escaped "star*?"))
-  (is equal "trail\\ \\ " (tuatara.defaults::git-ignore-escaped "trail  "))
+  (is equal "a\\[1\\].txt" (tuatara.git::git-ignore-escaped "a[1].txt"))
+  (is equal "back\\\\slash" (tuatara.git::git-ignore-escaped "back\\slash"))
+  (is equal "star\\*\\?" (tuatara.git::git-ignore-escaped "star*?"))
+  (is equal "trail\\ \\ " (tuatara.git::git-ignore-escaped "trail  "))
   (with-test-directory (dir)
     (scratch-repository dir)
     (let ((file (native-in dir ".gitignore")))
-      (tuatara.defaults::git-add-ignore-pattern file "/a\\[1\\].txt" (tuatara.io:native dir))
-      (tuatara.defaults::git-add-ignore-pattern file "/a\\[1\\].txt" (tuatara.io:native dir))
+      (tuatara.git::git-add-ignore-pattern file "/a\\[1\\].txt" (tuatara.io:native dir))
+      (tuatara.git::git-add-ignore-pattern file "/a\\[1\\].txt" (tuatara.io:native dir))
       (is equal (format nil "/a\\[1\\].txt~%") (alexandria:read-file-into-string file))
       (put-file (sb-ext:parse-native-namestring (native-in dir "a[1].txt")) "x")
       (put-file (merge-pathnames "a1.txt" dir) "x")
       (is equal (format nil "?? .gitignore~%?? a1.txt~%") (git-output dir "status" "--short"))
       ;; git's own exclude file, its folder not there yet: both made
       (uiop:delete-directory-tree (merge-pathnames ".git/info/" dir) :validate t :if-does-not-exist :ignore)
-      (tuatara.defaults::git-add-ignore-pattern (native-in dir ".git/info/exclude") "/x" (tuatara.io:native dir))
+      (tuatara.git::git-add-ignore-pattern (native-in dir ".git/info/exclude") "/x" (tuatara.io:native dir))
       (is equal (format nil "/x~%") (alexandria:read-file-into-string (merge-pathnames ".git/info/exclude" dir)))
       ;; a name holding \\ and * offered from its folder as written, not as a Lisp pathname reads it
-      (sb-int:encapsulate 'tuatara.defaults::git-file-here 'ignore-test (lambda (f top) (declare (ignore f top)) "sub/a*\\b.txt"))
+      (sb-int:encapsulate 'tuatara.git::git-file-here 'ignore-test (lambda (f top) (declare (ignore f top)) "sub/a*\\b.txt"))
       (unwind-protect
            (is equal "/a\\*\\\\b.txt"
-               (tuatara.defaults::git-ignore-pattern (tuatara.io:native dir) (concatenate 'string (tuatara.io:native dir) "sub/")))
-        (sb-int:unencapsulate 'tuatara.defaults::git-file-here 'ignore-test)))))
+               (tuatara.git::git-ignore-pattern (tuatara.io:native dir) (concatenate 'string (tuatara.io:native dir) "sub/")))
+        (sb-int:unencapsulate 'tuatara.git::git-file-here 'ignore-test)))))
 
 (define-test (git conflict-staged-whole)
   ;; a hunk of a file in conflict is not made a patch: said plainly that the
@@ -1461,7 +1461,7 @@ DIR is visited and its status read, the project trusted. Returns the frontend."
   ;; a git buffer stands in its repository's top: files are asked for from there
   (with-test-directory (dir)
     (let* ((top (native-in dir "repo/"))
-           (status (tuatara.defaults::git-status-buffer top)))
+           (status (tuatara.git::git-status-buffer top)))
       (unwind-protect (is equal top (tuatara.command:buffer-directory status))
         (tuatara.buffer:kill-buffer status)))))
 
@@ -1491,11 +1491,11 @@ DIR is visited and its status read, the project trusted. Returns the frontend."
 
 (define-test (git hashes-told-one-way)
   ;; a commit's hash, whole or cut short, told by one test: the packages' and the logs'
-  (true (tuatara.defaults::git-hash-p (make-string 40 :initial-element #\a)))
-  (false (tuatara.defaults::git-hash-p "abc1234"))
-  (true (tuatara.defaults::git-hash-p "abc1234" :short t))
-  (false (tuatara.defaults::git-hash-p "abc12" :short t))
-  (false (tuatara.defaults::git-hash-p "abc123g" :short t))
+  (true (tuatara.git:git-hash-p (make-string 40 :initial-element #\a)))
+  (false (tuatara.git:git-hash-p "abc1234"))
+  (true (tuatara.git:git-hash-p "abc1234" :short t))
+  (false (tuatara.git:git-hash-p "abc12" :short t))
+  (false (tuatara.git:git-hash-p "abc123g" :short t))
   (is string= "abc1234" (tuatara.defaults::package-commit-name (format nil "abc1234~%") "here"))
   (fail (tuatara.defaults::package-commit-name "not-a-hash" "here"))
   ;; a path as an address writes it, one way for a file: address and the trash
@@ -1521,15 +1521,15 @@ DIR is visited and its status read, the project trusted. Returns the frontend."
       (true (tuatara.frontend.fake:fake-frame-showing f "HEAD is detached: no branch to pull into")))))
 
 (define-test (git binary-changes-said)
-  (true (tuatara.defaults::git-diff-binary-p
-         (tuatara.defaults::git-parse-diff (format nil "diff --git a/b.dat b/b.dat~%index 1..2 100644~%Binary files a/b.dat and b/b.dat differ~%"))))
-  (false (tuatara.defaults::git-diff-binary-p (tuatara.defaults::git-parse-diff (format nil "diff --git a/a b/a~%@@ -1 +1 @@~%-a~%+b~%")))))
+  (true (tuatara.git::git-diff-binary-p
+         (tuatara.git::git-parse-diff (format nil "diff --git a/b.dat b/b.dat~%index 1..2 100644~%Binary files a/b.dat and b/b.dat differ~%"))))
+  (false (tuatara.git::git-diff-binary-p (tuatara.git::git-parse-diff (format nil "diff --git a/a b/a~%@@ -1 +1 @@~%-a~%+b~%")))))
 
 (define-test (git refs-tags-and-columns)
   ;; an annotated tag is listed at its commit, with its subject; a wide name
   ;; keeps the columns
-  (is = (tuatara.defaults::text-columns (tuatara.defaults::git-refs-line "" "main" "abc1234" "" "x"))
-      (tuatara.defaults::text-columns (tuatara.defaults::git-refs-line "" "機能ブランチ" "abc1234" "" "x")))
+  (is = (tuatara.defaults::text-columns (tuatara.git::git-refs-line "" "main" "abc1234" "" "x"))
+      (tuatara.defaults::text-columns (tuatara.git::git-refs-line "" "機能ブランチ" "abc1234" "" "x")))
   (with-test-directory (dir)
     (scratch-repository dir)
     (git-output dir "tag" "-a" "v1" "-m" "Release one")
@@ -1568,7 +1568,7 @@ DIR is visited and its status read, the project trusted. Returns the frontend."
                        (list "M-< C-s m o d i f i e d RET" (list :wait 0.1)
                              "C-x 2 C-x o C-x b a . t x t RET" (list :wait 0.2)
                              (lambda () (git-output dir "add" "a.txt"))
-                             (list :until (lambda () (tuatara.defaults::git-state-staged (git-state-here))))
+                             (list :until (lambda () (tuatara.git::git-state-staged (git-state-here))))
                              (list :wait 0.2)
                              (lambda ()
                                (let ((window (find (git-status-here) (tuatara.command:editor-windows tuatara.command:*editor*)
@@ -1638,8 +1638,8 @@ DIR is visited and its status read, the project trusted. Returns the frontend."
                    "r" (list :until (asking "Rewind to:")) "F o u r t h RET"
                    (list :until (lambda () (equal (rewind-text) (format nil "one~%two~%three~%four~%"))))
                    "C-c w" (list :wait 0.1)
-                   (lambda () (push (tuatara.defaults::git-rewind-mode-line nil (rewind)) seen)
-                                (push (tuatara.defaults::git-rewind-mode-line-place nil (rewind)) seen))
+                   (lambda () (push (tuatara.git::git-rewind-mode-line nil (rewind)) seen)
+                                (push (tuatara.git::git-rewind-mode-line-place nil (rewind)) seen))
                    "c" (list :until (lambda () (git-buffer-named (format nil "*git commit ~a" fourth))))
                    ;; C-x G, as M-x git-rewind, back to now
                    "q C-x G" (list :until (lambda () (null (rewind))))
@@ -1691,7 +1691,7 @@ DIR is visited and its status read, the project trusted. Returns the frontend."
                (list :wait 0.3) "M-x g i t - r e w i n d RET"
                (list :until (lambda () (search "c.txt" (or (text (rewound)) ""))))
                (lambda () (push (text (rewound)) seen)
-                          (push (tuatara.defaults::git-rewind-mode-line nil (rewound)) seen))
+                          (push (tuatara.git::git-rewind-mode-line nil (rewound)) seen))
                "p" (list :until (lambda () (search "a.txt" (or (text (rewound)) ""))))
                (lambda () (push (text (rewound)) seen))
                "C" (list :wait 0.2)
@@ -1753,39 +1753,39 @@ DIR is visited and its status read, the project trusted. Returns the frontend."
                          "2 days ago" (code-char #x1f) "" (code-char #x1f) subject)
                    (code-char 0) name (code-char 0))))
     (let* ((h1 (make-string 40 :initial-element #\a)) (h3 (make-string 40 :initial-element #\c))
-           (revisions (tuatara.defaults::git-file-history
+           (revisions (tuatara.git::git-file-history
                        (concatenate 'string (record h1 "s1" "2026-10-15" "Ann" "Four" "b.txt")
                                     (record (make-string 40 :initial-element #\b) "s2" "2026-10-14" "Bo" "Merge")
                                     (record h3 "s3" "2026-10-13" "Bo" "One" "a.txt")))))
       (is = 2 (length revisions))
       (let ((first (svref revisions 0)))
         (is equal (list h1 "s1" "2026-10-15" "Ann" "2 days ago" "Four" "b.txt")
-            (list (tuatara.defaults::git-commit-hash first) (tuatara.defaults::git-commit-short first)
-                  (tuatara.defaults::git-commit-date first) (tuatara.defaults::git-commit-author first)
-                  (tuatara.defaults::git-commit-ago first) (tuatara.defaults::git-commit-subject first)
-                  (tuatara.defaults::git-commit-path first))))
-      (is equal "a.txt" (tuatara.defaults::git-commit-path (svref revisions 1))))
+            (list (tuatara.git:git-commit-hash first) (tuatara.git::git-commit-short first)
+                  (tuatara.git::git-commit-date first) (tuatara.git::git-commit-author first)
+                  (tuatara.git:git-commit-ago first) (tuatara.git:git-commit-subject first)
+                  (tuatara.git::git-commit-path first))))
+      (is equal "a.txt" (tuatara.git::git-commit-path (svref revisions 1))))
     ;; a subject holding git's separators makes no commit of its own, whose hash would go to git
-    (let ((revisions (tuatara.defaults::git-file-history
+    (let ((revisions (tuatara.git::git-file-history
                       (record (make-string 40 :initial-element #\d) "s4" "2026-10-12" "Eve"
                               (format nil "Hi~c--output=/tmp/x~cs~cd~ca~cb~cc~cd" (code-char #x1e) (code-char #x1f) (code-char #x1f)
                                       (code-char #x1f) (code-char #x1f) (code-char #x1f) (code-char #x1f))
                               "c.txt"))))
-      (true (every (lambda (revision) (tuatara.defaults::git-hash-p (tuatara.defaults::git-commit-hash revision))) revisions))
-      (false (find "--output=/tmp/x" revisions :key #'tuatara.defaults::git-commit-hash :test #'equal))))
+      (true (every (lambda (revision) (tuatara.git:git-hash-p (tuatara.git:git-commit-hash revision))) revisions))
+      (false (find "--output=/tmp/x" revisions :key #'tuatara.git:git-commit-hash :test #'equal))))
   ;; one format for every log: a graph's lines kept, each commit's graph before it
   (let* ((hash (make-string 40 :initial-element #\e))
          (fields (format nil "~a~c~a~c2026-10-11~cAnn~c3 days ago~cHEAD -> main~cA subject" hash (code-char #x1f) "eeeeeee"
                          (code-char #x1f) (code-char #x1f) (code-char #x1f) (code-char #x1f) (code-char #x1f)))
-         (commits (tuatara.defaults::parse-git-commits
+         (commits (tuatara.git:parse-git-commits
                    (format nil "* ~c~a~%|\\~%| * ~c~a~%" (code-char #x1e) fields (code-char #x1e) fields))))
     (is = 3 (length commits))
-    (is equal "* " (tuatara.defaults::git-commit-graph (first commits)))
-    (is equal "HEAD -> main" (tuatara.defaults::git-commit-names (first commits)))
-    (false (tuatara.defaults::git-commit-hash (second commits)))
-    (is equal "|\\" (tuatara.defaults::git-commit-graph (second commits)))
-    (is equal "| * " (tuatara.defaults::git-commit-graph (third commits)))
-    (is equal "A subject" (tuatara.defaults::git-commit-subject (third commits)))))
+    (is equal "* " (tuatara.git::git-commit-graph (first commits)))
+    (is equal "HEAD -> main" (tuatara.git::git-commit-names (first commits)))
+    (false (tuatara.git:git-commit-hash (second commits)))
+    (is equal "|\\" (tuatara.git::git-commit-graph (second commits)))
+    (is equal "| * " (tuatara.git::git-commit-graph (third commits)))
+    (is equal "A subject" (tuatara.git:git-commit-subject (third commits)))))
 
 (define-test (git rewind-binary-and-untracked)
   ;; a file that is not text, and one git does not keep, are said so, the
@@ -1814,7 +1814,7 @@ DIR is visited and its status read, the project trusted. Returns the frontend."
                (format nil "C-x C-f C-a C-k ~a RET" (rimu-typed (native-in dir "r ü.txt")))
                "M-x g i t - r e w i n d RET"
                (list :until (lambda () (let ((b (git-buffer-named "*git rewind: r ü.txt*")))
-                                         (and b (tuatara.buffer:buffer-local b 'tuatara.defaults::git-rewind-revisions)))))
+                                         (and b (tuatara.buffer:buffer-local b :git-rewind-revisions)))))
                (lambda () (push (tuatara.buffer:buffer-string (git-buffer-named "*git rewind: r ü.txt*")) seen)))
          :width 120 :height 30)
         (destructuring-bind (binary untracked renamed) (reverse seen)
@@ -1832,20 +1832,20 @@ DIR is visited and its status read, the project trusted. Returns the frontend."
     (scratch-repository dir)
     (let ((top (tuatara.io:native dir)))
       (is equal (format nil "one~%")
-          (tuatara.text:lenient-string (tuatara.defaults::run-git top (list "show" "HEAD:a.txt"))))
+          (tuatara.text:lenient-string (tuatara.git:run-git top (list "show" "HEAD:a.txt"))))
       (let ((tuatara-user:*program-output-limit* 2))
-        (is equal '(nil nil t) (multiple-value-list (tuatara.defaults::run-git top (list "show" "HEAD:a.txt"))))
-        (is equal '(nil nil t) (multiple-value-list (tuatara.defaults::run-git top (list "show" "HEAD:a.txt")
+        (is equal '(nil nil t) (multiple-value-list (tuatara.git:run-git top (list "show" "HEAD:a.txt"))))
+        (is equal '(nil nil t) (multiple-value-list (tuatara.git:run-git top (list "show" "HEAD:a.txt")
                                                                                :line (lambda (line) (declare (ignore line)) nil))))))))
 
 (define-test (git hunk-changes-counted-once)
   ;; the changes among the lines chosen of a hunk, each line looked at once
-  (is = 2 (tuatara.defaults::hunk-changes-among '(" a" "+b" "-c" " d") '(0 1 2 3 9)))
+  (is = 2 (tuatara.git::hunk-changes-among '(" a" "+b" "-c" " d") '(0 1 2 3 9)))
   (flet ((seconds (n)
            (let ((hunk (loop for i below n collect (if (evenp i) "+x" " y")))
                  (numbers (loop for i below n collect i))
                  (start (get-internal-real-time)))
-             (tuatara.defaults::hunk-changes-among hunk numbers)
+             (tuatara.git::hunk-changes-among hunk numbers)
              (/ (- (get-internal-real-time) start) internal-time-units-per-second))))
     (let ((each (/ (- (seconds 40000) (seconds 10000)) 30000)))
       (true (< each 0.000005) "~,2f µs for each more line" (* each 1000000)))))
@@ -1874,15 +1874,15 @@ DIR is visited and its status read, the project trusted. Returns the frontend."
       (sb-posix:chmod locked 0)
       (unwind-protect
            (let* ((top (namestring dir))
-                  (state (catch 'tuatara.defaults::git-failed
-                           (tuatara.defaults::git-read-state (tuatara.defaults::%make-hash-job :what "git") top
+                  (state (catch 'tuatara.git::git-failed
+                           (tuatara.git::git-read-state (tuatara.defaults::%make-hash-job :what "git") top
                                                              (concatenate 'string top ".git/"))))
-                  (untracked (mapcar #'first (tuatara.defaults::git-state-untracked state))))
+                  (untracked (mapcar #'first (tuatara.git::git-state-untracked state))))
              (true (member "b.txt" untracked :test #'string=))
              (true (member "c.txt" untracked :test #'string=))
              (false (find-if (lambda (path) (search "warning" path)) untracked))
-             (true (tuatara.defaults::git-hash-p (tuatara.defaults::git-state-commit state)))
-             (is equal "main" (tuatara.defaults::git-state-branch state)))
+             (true (tuatara.git:git-hash-p (tuatara.git::git-state-commit state)))
+             (is equal "main" (tuatara.git::git-state-branch state)))
         (sb-posix:chmod locked #o700)))))
 
 (define-test (git status-read-in-one-walk)
@@ -1897,18 +1897,18 @@ DIR is visited and its status read, the project trusted. Returns the frontend."
     (ensure-directories-exist (merge-pathnames "build/deep/" dir))
     (put-file (merge-pathnames "build/deep/out.o" dir) "x")
     (let ((runs '()) (top (namestring dir)))
-      (sb-int:encapsulate 'tuatara.defaults::run-git-program 'count-runs
+      (sb-int:encapsulate 'tuatara.git:run-git-program 'count-runs
                           (lambda (function git directory arguments &rest keys)
                             (push (first arguments) runs)
                             (apply function git directory arguments keys)))
       (unwind-protect
-           (let ((state (catch 'tuatara.defaults::git-failed
-                          (tuatara.defaults::git-read-state (tuatara.defaults::%make-hash-job :what "git") top
+           (let ((state (catch 'tuatara.git::git-failed
+                          (tuatara.git::git-read-state (tuatara.defaults::%make-hash-job :what "git") top
                                                             (concatenate 'string top ".git/")))))
-             (is equal '("build/" "debug.log") (sort (mapcar #'first (tuatara.defaults::git-state-ignored state)) #'string<))
+             (is equal '("build/" "debug.log") (sort (mapcar #'first (tuatara.git::git-state-ignored state)) #'string<))
              (is equal 1 (count "status" runs :test #'string=))
              (true (<= (length runs) 3) "git ran ~d times: ~{~a~^, ~}" (length runs) (reverse runs)))
-        (sb-int:unencapsulate 'tuatara.defaults::run-git-program 'count-runs)))))
+        (sb-int:unencapsulate 'tuatara.git:run-git-program 'count-runs)))))
 
 (define-test (git log-filtered-by-a-column)
   ;; the log is a table as the other lists are: a filter tries its pattern on one column

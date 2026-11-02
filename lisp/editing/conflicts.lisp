@@ -492,7 +492,7 @@ left, and, for a file in git, how to stage it."
                                        :for-format t)
           (escape-controls (tuatara.buffer:buffer-name buffer))
           (let ((file (tuatara.buffer:buffer-file buffer)))
-            (and file (repository-top (tuatara.io:parent-path file))))))
+            (and file (tuatara.git:repository-top (tuatara.io:parent-path file))))))
 
 (defun conflict-outside-words ()
   "What is said when point is in no conflict."

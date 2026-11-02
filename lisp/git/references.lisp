@@ -6,7 +6,7 @@
 ;;;; A remote's address is never one of git's ext:: kind, which names a
 ;;;; program to run, nor anything git would read as an option.
 
-(in-package #:tuatara.defaults)
+(in-package #:tuatara.git)
 
 ;;; Tags
 

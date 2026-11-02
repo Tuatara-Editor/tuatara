@@ -46,10 +46,11 @@ or narrow it; KIND :added, :changed or :deleted."
 process (RUN-GIT) that reads nothing of it; NIL when git has no such file,
 and no process at all outside a repository."
   (multiple-value-bind (octets ok)
-      (run-git (tuatara.io:parent-path path) (list "rev-parse" "--verify" "--quiet" (git-object-name "HEAD" (committed-name path)))
-               :cancel cancel :seconds *git-look-seconds*)
+      (tuatara.git:run-git (tuatara.io:parent-path path)
+                           (list "rev-parse" "--verify" "--quiet" (tuatara.git:git-object-name "HEAD" (committed-name path)))
+                           :cancel cancel :seconds tuatara.git:*git-look-seconds*)
     (let ((id (and ok octets (string-trim '(#\Newline) (tuatara.text:lenient-string octets)))))
-      (and (git-hash-p id) id))))
+      (and (tuatara.git:git-hash-p id) id))))
 
 (defun committed-text (path &key cancel id)
   "The text of the file at PATH as git has it in HEAD, or the text whose id
@@ -57,8 +58,8 @@ is ID, as octets, by one git process (GIT-BLOB-OCTETS); NIL when git has no
 such file, and no process at all outside a repository. A text larger than
 *VC-GUTTER-MAX-BYTES* is not read: NIL, and true as a second value."
   (multiple-value-bind (octets ok too-large)
-      (git-blob-octets (tuatara.io:parent-path path) (or id "HEAD") (and (not id) (committed-name path))
-                       :cancel cancel :seconds *git-look-seconds* :limit *vc-gutter-max-bytes*)
+      (tuatara.git:git-blob-octets (tuatara.io:parent-path path) (or id "HEAD") (and (not id) (committed-name path))
+                                   :cancel cancel :seconds tuatara.git:*git-look-seconds* :limit *vc-gutter-max-bytes*)
     (values (and ok octets) too-large)))
 
 (sb-ext:defglobal **committed-lines** (make-hash-table :test 'equal :synchronized t)
@@ -90,8 +91,9 @@ as a second value for a text larger than *VC-GUTTER-MAX-BYTES*."
   "True when git has the file at PATH in HEAD, asked by one git process
 \(RUN-GIT) that reads nothing of it; NIL with no process at all outside a
 repository."
-  (nth-value 1 (run-git (tuatara.io:parent-path path) (list "cat-file" "-e" (git-object-name "HEAD" (committed-name path)))
-                        :cancel cancel :seconds *git-look-seconds*)))
+  (nth-value 1 (tuatara.git:run-git (tuatara.io:parent-path path)
+                                    (list "cat-file" "-e" (tuatara.git:git-object-name "HEAD" (committed-name path)))
+                                    :cancel cancel :seconds tuatara.git:*git-look-seconds*)))
 
 (defun line-mark (buffer first last kind)
   "A mark of KIND over the lines FIRST to LAST (from 0) of BUFFER's text as it is now."

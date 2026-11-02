@@ -8,7 +8,7 @@
 ;;;; of. Git keeps the messages it would ask to be edited as they are; what
 ;;;; would lose changes not committed is asked first.
 
-(in-package #:tuatara.defaults)
+(in-package #:tuatara.git)
 
 (defparameter *git-keep-messages* (list "GIT_EDITOR=true")
   "What git is given where it would open an editor on a message (going on
@@ -64,7 +64,7 @@ and NOUN what it is called, at TOP; ASK, when given, is asked first."
   "Define the commands going on with, skipping a commit of (with SKIP), and
 stopping the WHAT (a git command, a string) git is in the middle of, NOUN
 saying what it is in their documentation."
-  (flet ((name (step) (intern (format nil "GIT-~:@(~a~)-~a" what step) :tuatara.defaults)))
+  (flet ((name (step) (intern (format nil "GIT-~:@(~a~)-~a" what step) :tuatara.git)))
     `(progn
        (define-command ,(name "CONTINUE") ()
          ,(format nil "Go on with the ~a stopped half way, once the files git could not join are put right and staged." noun)

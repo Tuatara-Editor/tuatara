@@ -1634,9 +1634,9 @@ and the editor."
         (run-keys (list (format nil "M-x f i n d - f i l e - s a f e l y RET C-a C-k ~a C-j C-s i n s i d e RET"
                                 (rimu-typed (namestring dir)))
                         (lambda ()
-                          (dolist (command '(tuatara.defaults::wipe-file tuatara.defaults::git-stage-file
-                                             tuatara.defaults::git-delete-file tuatara.defaults::git-rename-file
-                                             tuatara.defaults::git-reset-file))
+                          (dolist (command '(tuatara.defaults::wipe-file tuatara.git::git-stage-file
+                                             tuatara.git::git-delete-file tuatara.git::git-rename-file
+                                             tuatara.git::git-reset-file))
                             (push (tuatara.defaults::mode-command-refusal command) refusals))))
                   :width 120 :height 20)
         (is = 5 (length refusals))
@@ -1724,7 +1724,7 @@ and the editor."
             (map 'vector (lambda (entry) (tuatara.io:listed-name entry)) (tuatara.defaults::rimu-listing-entries old))
             (gethash :sizes (tuatara.defaults::rimu-listing-cells old))
             (map 'vector (lambda (entry) (declare (ignore entry)) "old") (tuatara.defaults::rimu-listing-entries old)))
-      (sb-int:encapsulate 'tuatara.defaults::run-git-program 'count-runs
+      (sb-int:encapsulate 'tuatara.git:run-git-program 'count-runs
                           (lambda (function &rest arguments) (incf runs) (apply function arguments)))
       (unwind-protect
            (let ((again (tuatara.defaults::rimu-carry-cells old (tuatara.defaults::rimu-read directory) view)))
@@ -1737,7 +1737,7 @@ and the editor."
              (git-output dir "commit" "-q" "-m" "Second")
              (let ((later (tuatara.defaults::rimu-carry-cells again (tuatara.defaults::rimu-read directory) view)))
                (false (gethash :git (tuatara.defaults::rimu-listing-cells later)))))
-        (sb-int:unencapsulate 'tuatara.defaults::run-git-program 'count-runs)))))
+        (sb-int:unencapsulate 'tuatara.git:run-git-program 'count-runs)))))
 
 (define-test (rimu marks-found-without-garbage)
   ;; the mark of each entry shown is found by a key made once for the entry, not again at each

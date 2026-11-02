@@ -8,7 +8,7 @@
 ;;;; stage it, unstage it, its hunk at point, its changes, its log, its lines'
 ;;;; commits, its history, put it back, rename or delete it.
 
-(in-package #:tuatara.defaults)
+(in-package #:tuatara.git)
 
 ;;; Who changed each line
 

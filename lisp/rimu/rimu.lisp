@@ -135,7 +135,7 @@ read, for a list read again to keep that column while they are unchanged
   (directory "" :read-only t) (entries #() :read-only t) (free nil :read-only t) (reason nil :read-only t)
   (found nil :read-only t) (groups nil :read-only t)
   (cells (make-hash-table :test 'eq :synchronized t) :read-only t)
-  (git-stamps nil)
+  (tuatara.git:git-stamps nil)
   (mark-keys (make-hash-table :test 'eq :synchronized t) :read-only t))
 
 (setf (documentation 'rimu-listing-p 'function) "True when OBJECT is a RIMU-LISTING.")
@@ -721,7 +721,7 @@ order, and opened safely when it is), or else what the settings say."
     ;; and from one of a commit, a preview's, lists that commit too
     (when (and like (rimu-rewound-p like))
       (setf (tuatara.buffer:buffer-local buffer 'rimu-rewound) (rimu-rewound-p like)
-            (tuatara.buffer:buffer-local buffer 'git-top) (car (rimu-rewound-p like))))))
+            (tuatara.buffer:buffer-local buffer :git-top) (car (rimu-rewound-p like))))))
 
 (defun rimu-make-list (directory &key name like)
   "A new rimu list of DIRECTORY (a native name ending in /), called NAME or
@@ -917,8 +917,8 @@ background, showing the old ones of the same names meanwhile. Returns NEW."
   (let* ((columns (mapcar #'rimu-column-name (rimu-view-columns view)))
          (git (and (member :git columns)
                    (let ((top (ignoring-errors-reported ("finding the repository of ~a" (rimu-listing-directory new))
-                                (repository-top (rimu-listing-directory new)))))
-                     (and top (let ((stamps (git-stamps (concatenate 'string top ".git/"))))
+                                (tuatara.git:repository-top (rimu-listing-directory new)))))
+                     (and top (let ((stamps (tuatara.git:git-stamps (concatenate 'string top ".git/"))))
                                 (and (some #'identity stamps) stamps)))))))
     (setf (rimu-listing-git-stamps new) git)
     (when (and old (equal (rimu-listing-directory old) (rimu-listing-directory new)))

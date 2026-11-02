@@ -7,7 +7,7 @@
 ;;;; from git in the background before the question is asked; a name git
 ;;;; would read as an option (beginning with -) is never given to it.
 
-(in-package #:tuatara.defaults)
+(in-package #:tuatara.git)
 
 ;;; Branches
 

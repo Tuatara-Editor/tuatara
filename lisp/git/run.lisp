@@ -8,7 +8,7 @@
 ;;;; for those, and a repository from an archive or a download is not to be
 ;;;; trusted.
 
-(in-package #:tuatara.defaults)
+(in-package #:tuatara.git)
 
 (defparameter *git-safety* '("--no-lazy-fetch" "--literal-pathspecs" "-c" "core.fsmonitor=false" "-c" "log.showSignature=false" "-c" "core.pager=cat")
   "Options every git command gets (RUN-GIT): no fetching of objects a partial

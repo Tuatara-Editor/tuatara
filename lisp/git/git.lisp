@@ -25,7 +25,7 @@
 ;;;; none of its programs (CALL-GIT-READING), and what would change the
 ;;;; repository is shown dimmed in the menus and key hints and refused.
 
-(in-package #:tuatara.defaults)
+(in-package #:tuatara.git)
 
 (defvar *git-log-length* 200
   "How many commits \\[git-log] lists.")
@@ -190,14 +190,14 @@ wrong is said when it failed."
 (defun git-top (buffer)
   "The top of the repository BUFFER's file or folder is in, or NIL."
   (let ((directory (or (let ((file (tuatara.buffer:buffer-file buffer))) (and file (tuatara.io:parent-path file)))
-                       (tuatara.buffer:buffer-local buffer 'git-top)
+                       (tuatara.buffer:buffer-local buffer :git-top)
                        (buffer-directory buffer))))
     (and directory (ignoring-errors-reported ("finding the repository of ~a" directory) (repository-top directory)))))
 
 (defun git-here (&optional (buffer (current-buffer)))
   "The top of the repository BUFFER (the current buffer), a status, log,
 commit's message or history, is for."
-  (tuatara.buffer:buffer-local buffer 'git-top))
+  (tuatara.buffer:buffer-local buffer :git-top))
 
 (defun git-may-run-p (top)
   "True when git may run for the repository at TOP: a project trusted, or
@@ -359,6 +359,9 @@ it, with --graph. A line of the graph alone is a GIT-COMMIT with no HASH."
   hash short date author ago names subject path (graph ""))
 
 (setf (documentation 'git-commit-p 'function) "True when OBJECT is a GIT-COMMIT.")
+(setf (documentation 'git-commit-hash 'function) "The whole hash of the GIT-COMMIT, NIL for a line of the graph alone.")
+(setf (documentation 'git-commit-subject 'function) "The first line of the GIT-COMMIT's message, as git writes it.")
+(setf (documentation 'git-commit-ago 'function) "How long ago the GIT-COMMIT was made, as git says it: 2 days ago.")
 
 (defun parse-git-commit-fields (text)
   "TEXT, a commit's fields as *GIT-COMMIT-FORMAT* writes them after its
@@ -953,7 +956,7 @@ on a shadow has it made anew, a reference written over in place seen too,
 and one whose git took too long is tried again (FORGET-GIT-SHADOW). The stamps of git's own files are kept, and the
 folders they are in watched, for GIT-WATCH-TICK to see when the repository
 changes."
-  (let ((top (tuatara.buffer:buffer-local buffer 'git-top))
+  (let ((top (tuatara.buffer:buffer-local buffer :git-top))
         (shown (mapcar (lambda (key) (cons key (git-shown-paths buffer key)))
                        (alexandria:hash-table-keys (tuatara.buffer:buffer-local buffer 'git-shown))))
         (folder (tuatara.buffer:buffer-local buffer 'git-folder))
@@ -1044,7 +1047,7 @@ again is looked at once."
   "The buffer in MODE kept for the repository at TOP (its status, its
 commit's message), when there is one."
   (find-if (lambda (b) (and (typep (buffer-major-mode b) mode)
-                            (equal (tuatara.buffer:buffer-local b 'git-top) top)))
+                            (equal (tuatara.buffer:buffer-local b :git-top) top)))
            tuatara.buffer:*buffers*))
 
 (defun git-buffer-name (control top)
@@ -1527,7 +1530,7 @@ at point's line."
   "Make BUFFER one of the repository at TOP: git acts there on it, files
 asked for from it are looked for from its top, and why it is looked at
 only, when it is, is kept for its mode line (GIT-LOOK-ONLY-OF)."
-  (setf (tuatara.buffer:buffer-local buffer 'git-top) top
+  (setf (tuatara.buffer:buffer-local buffer :git-top) top
         (buffer-given-directory buffer) top
         (tuatara.buffer:buffer-local buffer 'git-look-only) (git-look-only-reason top)))
 
@@ -1654,7 +1657,7 @@ phrase: that it is, why, and what that means."
 (defun git-command-p (command)
   "True when COMMAND is one of git's: its name begins with git- or is git."
   (let ((name (symbol-name command)))
-    (and (eq (symbol-package command) (find-package '#:tuatara.defaults))
+    (and (eq (symbol-package command) (find-package '#:tuatara.git))
          (or (string= name "GIT") (uiop:string-prefix-p "GIT-" name)))))
 
 (defun git-look-only-refusal (command buffer)
@@ -1714,7 +1717,9 @@ git run from anywhere, look at its repository again (GIT-WATCH-TICK), the
 folders of git's own files watched on disk for it. A repository looked at
 only says so in its buffers' mode lines, refuses what would change it, and
 is looked at again when \\[trust-project] answers anew; the shadows of
-repositories not trusted that sessions no longer running left are deleted."
+repositories not trusted that sessions no longer running left are deleted.
+Then the keys of the rest: commits, stashes, branches, the log, remotes,
+history, references, files, rewinding, the repository's parts and patches."
   (define-key *global-keymap* "C-x g" 'git)
   (define-keys *git-status-keymap* '(("s" git-stage) ("u" git-unstage) ("x" git-reverse) ("TAB" git-toggle-diff)
                                      ("RET" git-visit) ("l" git-visit) ("h" quit-window)
@@ -1725,4 +1730,15 @@ repositories not trusted that sessions no longer running left are deleted."
   (pushnew 'git-trust-changed *trust-changed-functions*)
   (forget-old-git-shadows)
   (pushnew 'git-watch-tick *tick-functions*)
-  (follow-directories-for 'git-watched-folders 'git-folders-changed))
+  (follow-directories-for 'git-watched-folders 'git-folders-changed)
+  (install-git-commits)
+  (install-git-stash)
+  (install-git-branches)
+  (install-git-log)
+  (install-git-remote)
+  (install-git-history)
+  (install-git-references)
+  (install-git-files)
+  (install-git-rewind)
+  (install-git-repository)
+  (install-git-patches))

@@ -194,10 +194,10 @@ git reading it and running nothing of it; n forgets the answer, to be asked
 again. A project in or holding an evidence folder cannot be trusted, and a
 folder of *LSP-TRUSTED-PROJECTS* stays trusted whatever is answered."
   (let* ((buffer (current-buffer))
-         (root (or (tuatara.buffer:buffer-local buffer 'git-top)
+         (root (or (tuatara.buffer:buffer-local buffer :git-top)
                    (let ((directory (buffer-directory buffer)))
                      (and directory (or (ignoring-errors-reported ("finding the repository of ~a" directory)
-                                           (repository-top directory))
+                                           (tuatara.git:repository-top directory))
                                          (project-root directory) directory))))))
     (if (null root)
         (message "~a is in no project" (tuatara.buffer:buffer-name buffer))

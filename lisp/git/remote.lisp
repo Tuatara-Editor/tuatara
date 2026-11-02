@@ -10,7 +10,7 @@
 ;;;; switch only moves the branch on (fast-forward); a forced push is asked
 ;;;; first.
 
-(in-package #:tuatara.defaults)
+(in-package #:tuatara.git)
 
 (defun ssh-askpass-window-p ()
   "True when ssh can ask for a passphrase in a window: a desktop is running

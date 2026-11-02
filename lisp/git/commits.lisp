@@ -10,7 +10,7 @@
 ;;;; a file git tracks, -e an empty commit, -s a Signed-off-by line, -n no
 ;;;; hooks, -R you as its author again, =A another author.
 
-(in-package #:tuatara.defaults)
+(in-package #:tuatara.git)
 
 (defun git-staged-files (job top)
   "On JOB's thread: the files staged at TOP, each (PATH KIND), as git diff --cached --name-status lists them."
@@ -167,7 +167,7 @@ asked the editor for, end the editor git started with an error, so that git
 makes nothing (Aborting commit)."
   (if (and (null (git-here)) (git-message-file-p (current-buffer)))
       (git-message-file-done (current-buffer) :give-up t)
-      (git-give-up 'git-top "Not committed" "Not a commit's message written here")))
+      (git-give-up :git-top "Not committed" "Not a commit's message written here")))
 
 (define-menu git-commit-menu (:title "Commit" :show git-menu-shows-p :note git-menu-note)
   "Open the commit menu: write a commit, amend, reword or extend the last

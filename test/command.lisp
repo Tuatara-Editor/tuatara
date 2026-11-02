@@ -408,8 +408,8 @@ TEXTS with the mode line's sign of work, P, lit in :mode-line-sign."
                             (lambda (function &rest arguments) (incf said) (apply function arguments)))
         (unwind-protect (setf offered (tuatara.defaults::command-candidates))
           (sb-int:unencapsulate 'tuatara.defaults::mode-command-refusal 'counted))
-        (true (tuatara.defaults::mode-command-refusal 'tuatara.defaults::git-stage))
-        (false (find 'tuatara.defaults::git-stage offered :key #'tuatara.command:candidate-result))
+        (true (tuatara.defaults::mode-command-refusal 'tuatara.git::git-stage))
+        (false (find 'tuatara.git::git-stage offered :key #'tuatara.command:candidate-result))
         (true (find 'tuatara.defaults::find-file offered :key #'tuatara.command:candidate-result))))
     (is = 0 said)))
 

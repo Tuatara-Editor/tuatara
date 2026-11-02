@@ -7,7 +7,7 @@
 ;;;; status. A file of patterns git ignores is written here only when it is a
 ;;;; file of its own, never through a link.
 
-(in-package #:tuatara.defaults)
+(in-package #:tuatara.git)
 
 ;;; Submodules
 

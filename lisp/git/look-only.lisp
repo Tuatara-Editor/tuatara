@@ -17,7 +17,7 @@
 ;;;; nothing is fetched. A shadow is made again only when what it copies has
 ;;;; changed.
 
-(in-package #:tuatara.defaults)
+(in-package #:tuatara.git)
 
 ;;; What is run
 

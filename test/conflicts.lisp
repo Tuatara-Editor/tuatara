@@ -177,20 +177,20 @@ the frontend and the editor."
       (git "merge" "-q" "other"))
     (let ((at-conflict nil))
       (let ((f (git-session dir "a.txt"
-                            (list (list :until (lambda () (tuatara.defaults::git-state-unmerged (git-state-here))))
+                            (list (list :until (lambda () (tuatara.git::git-state-unmerged (git-state-here))))
                                   "M-< C-s b o t h SPC c h RET RET"
                                   (list :until (lambda () (and (conflicts-of "a.txt")
                                                                (eql 5 (tuatara.buffer:buffer-point (tuatara.buffer:find-buffer "a.txt")))
                                                                (setf at-conflict t))))
                                   "C-c ^ l" "C-x C-s" "C-x g" (list :until #'git-state-here)
                                   "M-< C-s b o t h SPC c h RET s"
-                                  (list :until (lambda () (null (tuatara.defaults::git-state-unmerged (git-state-here)))))))))
+                                  (list :until (lambda () (null (tuatara.git::git-state-unmerged (git-state-here)))))))))
         (true (tuatara.frontend.fake:fake-frame-showing f "Unmerged files (1)"))
         (true (tuatara.frontend.fake:fake-frame-showing f "both changed" "a.txt"))
         (true at-conflict)
         (true (tuatara.frontend.fake:fake-frame-showing-across-rows f "No conflicts left in a.txt: save it (C-x C-s), then C-x g and s on its line stage it"))
         (is string= (format nil "zero~%two~%") (alexandria:read-file-into-string (merge-pathnames "a.txt" dir)))
-        (is equal '("a.txt") (mapcar #'first (tuatara.defaults::git-state-staged (git-state-here))))))))
+        (is equal '("a.txt") (mapcar #'first (tuatara.git::git-state-staged (git-state-here))))))))
 
 (defun conflict-count-of (name)
   "How many conflicts stand in the buffer called NAME."

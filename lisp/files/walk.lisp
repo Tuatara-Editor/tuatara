@@ -281,7 +281,7 @@ BELOW-HOME, never the home directory (by any of its names), one above it or /."
 in a repository, those of your excludes file (GIT-EXCLUDES-FILE), of the
 repository's .git/info/exclude and of the .gitignore files of the directories
 from the repository's top down to ROOT's parent, the outer ones first."
-  (let ((top (repository-top root)) (root (directory-name root)))
+  (let ((top (tuatara.git:repository-top root)) (root (directory-name root)))
     (when top
       (let ((global (git-excludes-file))
             (above '()))

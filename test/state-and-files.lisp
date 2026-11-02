@@ -260,11 +260,11 @@ file of text; their native names, as two values."
     (unwind-protect
          (let* ((native (tuatara.io:native dir))
                 (file (tuatara.io:native (put-file (merge-pathnames "data.txt" dir) "data"))))
-           (if (tuatara.defaults::repository-top native)
+           (if (tuatara.git:repository-top native)
                (skip "the temporary directory is in a repository" (true t))
                (is = 0 (count-git-processes
                         (lambda ()
-                          (false (tuatara.defaults::run-git native '("status")))
+                          (false (tuatara.git:run-git native '("status")))
                           (false (tuatara.defaults::committed-text file))
                           (false (tuatara.defaults::git-tracked-p file))
                           (false (tuatara.defaults::rimu-git-commits native '("data.txt"))))))))
@@ -285,7 +285,7 @@ file of text; their native names, as two values."
       (trust-test-repository dir)
       (put-file file (format nil "one~%two~%three~%"))
       (let ((threads '()))
-        (sb-int:encapsulate 'tuatara.defaults::run-git 'note-thread
+        (sb-int:encapsulate 'tuatara.git:run-git 'note-thread
                             (lambda (function &rest arguments)
                               (push sb-thread:*current-thread* threads)
                               (apply function arguments)))
@@ -300,7 +300,7 @@ file of text; their native names, as two values."
                (clrhash tuatara.defaults::**committed-lines**)
                (is = 2 (visit))
                (is = 1 (visit)))
-          (sb-int:unencapsulate 'tuatara.defaults::run-git 'note-thread))
+          (sb-int:unencapsulate 'tuatara.git:run-git 'note-thread))
         (false (member sb-thread:*current-thread* threads))))))
 
 (define-test (state-and-files logs-rotated-alike)
@@ -364,10 +364,10 @@ file of text; their native names, as two values."
       (ensure-directories-exist (sb-ext:parse-native-namestring (concatenate 'string deep "x")))
       (put-file (sb-ext:parse-native-namestring (concatenate 'string project ".project")) "")
       (is string= project (tuatara.defaults::project-root deep))
-      (unless (tuatara.defaults::repository-top root)
-        (false (tuatara.defaults::repository-top deep)))
+      (unless (tuatara.git:repository-top root)
+        (false (tuatara.git:repository-top deep)))
       (sb-posix:mkdir (concatenate 'string project ".git") #o700)
-      (is string= project (tuatara.defaults::repository-top deep))
+      (is string= project (tuatara.git:repository-top deep))
       (is string= project (tuatara.defaults::marked-directory deep '(".git")))
       ;; the home directory and / are never a project's root
       (false (tuatara.defaults::project-root (tuatara.io:home-directory)))

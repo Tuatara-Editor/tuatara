@@ -89,7 +89,7 @@ decided on."
 
 (defun kept-versions (where)
   "The commits of pkgv from WHERE kept on disk."
-  (remove-if-not (lambda (folder) (tuatara.defaults::git-hash-p (car (last (pathname-directory folder))) :short t))
+  (remove-if-not (lambda (folder) (tuatara.git:git-hash-p (car (last (pathname-directory folder))) :short t))
                  (ignore-errors (uiop:subdirectories (tuatara.defaults::package-kept-folder where "pkgv")))))
 
 (define-test (package-trust needs-read-from-the-header)
