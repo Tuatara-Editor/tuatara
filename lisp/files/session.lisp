@@ -14,7 +14,7 @@
 ;;;; The file is lines of words, read as text, never as Lisp: a line that is
 ;;;; not one of its own kinds ends the reading. What a frame shows is a
 ;;;; section of its own, the frame worked in first: a session of several
-;;;; frames opens them all again, where frames can open (a window).
+;;;; frames opens them all again, as windows or in the terminal.
 
 (in-package #:tuatara.defaults)
 
@@ -54,10 +54,9 @@ not kept (help, lists, terminals, buffers with no file, an encrypted file's text
            (list :scratch point (tuatara.buffer:buffer-name buffer))))))
 
 (defvar *session-sections-kept* '()
-  "The sections of the session read whose frames were not opened again (in a
-terminal, started with files, or past *MOST-FRAMES*), each a list of its lines
-as written: kept in the session as they were, to be opened where frames can
-open.")
+  "The sections of the session read whose frames were not opened again
+\(started with files, or past *MOST-FRAMES*), each a list of its lines as
+written: kept in the session as they were, to be opened at a later start.")
 
 (defvar *session-sections-read* 0
   "How many frame sections the session read had: with the frames open, the
@@ -334,10 +333,10 @@ that was selected is selected again."
 (defun session-layout-tick (editor)
   "Split the windows of the editor's frames as the session opened again had
 them, once, its first window there: the frame worked in first, then the
-frames opened at the start, then frames opened for those left, where frames
-can open (a window); in a terminal their files are open behind and their
-sections kept as they were (*SESSION-SECTIONS-KEPT*). Started with files, the
-session's files opened behind them instead (SESSION-BUFFERS-BEHIND)."
+frames opened at the start, then frames opened for those left, up to
+*MOST-FRAMES*; the sections past them kept as they were
+\(*SESSION-SECTIONS-KEPT*). Started with files, the session's files opened
+behind them instead (SESSION-BUFFERS-BEHIND)."
   (setf *tick-functions* (remove 'session-layout-tick *tick-functions*))
   (when (and *keep-session* (not *session-opened*))
     (ignoring-errors-reported ("opening the session's files") (session-buffers-behind editor)))
@@ -351,9 +350,8 @@ session's files opened behind them instead (SESSION-BUFFERS-BEHIND)."
         (loop for (layout . left) on (rest layouts)
               for frame = (or (pop others)
                               (and (< (length (editor-frames editor)) *most-frames*)
-                                   (handler-case (open-frame editor :select nil)
-                                     (tuatara.runtime:refusal () nil)))
-                              ;; no frame for it (a terminal, or frames enough): the sections left kept as they were
+                                   (open-frame editor :select nil))
+                              ;; no room for more frames: the sections left kept as they were
                               (progn (setf *session-sections-kept* (append (mapcar #'third (cons layout left))
                                                                            *session-sections-kept*))
                                      (return)))

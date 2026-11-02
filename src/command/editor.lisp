@@ -22,8 +22,11 @@ REPEAT-MAP are what the next command typed in it follows on from;
 KEYS-RECORDING and KEYS-PLAYING the keys being recorded in it and played
 into it. PAINTED is what it showed when it was last painted while another
 frame was worked in, for PAINT-OTHER-FRAMES, or NIL to be painted again.
-DELETED is true once the frame has left the editor."
+DELETED is true once the frame has left the editor. NAME is what it is
+called, F1 for the first: the mode line shows it while frames take turns on
+one display, as in a terminal."
   (frontend nil :read-only t)
+  (name "F1" :type string)
   (window nil)
   (minibuffer-prompt nil)
   (minibuffer-text nil)
@@ -60,6 +63,7 @@ DELETED is true once the frame has left the editor."
 (setf (documentation 'make-frame 'function) "A FRAME painted through FRONTEND, with no window yet."
       (documentation 'frame-p 'function) "True when OBJECT is a FRAME."
       (documentation 'frame-deleted 'function) "True once FRAME has left its editor (REMOVE-FRAME)."
+      (documentation 'frame-name 'function) "What FRAME is called: F1, F2, the smallest number no other frame has."
       (documentation 'frame-painted 'function)
       "What FRAME showed when it was last painted while another frame was worked in, or NIL (PAINT-OTHER-FRAMES).")
 

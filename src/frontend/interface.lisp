@@ -224,7 +224,8 @@ looking for it at intervals. Any thread may call it. The default does nothing.")
 for, showing it beside FRONTEND's (a window of its own), shown only once it
 is started (FRONTEND-START), after it is given its frame (FRONTEND-FRAME): it
 delivers its events into the source FRONTEND's come from, each naming that
-frame. NIL, the default, when FRONTEND cannot show another frame.")
+frame. NIL, the default, when FRONTEND shows one frame at a time, as a
+terminal does: the frames then take turns on FRONTEND itself.")
   (:method (frontend) (declare (ignore frontend)) nil))
 
 (defgeneric frontend-frame (frontend)

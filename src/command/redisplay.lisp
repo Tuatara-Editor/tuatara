@@ -368,14 +368,16 @@ or NIL before it has one."
 (defun default-mode-line (editor &optional (window (editor-window editor)))
   "The mode line of WINDOW, the selected window by default: [-], [*] or [%] as
 the buffer is saved, changed or read-only (MODIFIED-INDICATOR), the buffer's
-name (cut in its middle when long, MODE-LINE-NAME), the line and column of the
-window's point, digits grouped with commas (L100,000,001) so large numbers
-read at a glance, the major mode's name when the buffer has one
-\(BUFFER-MODE-NAME), what *MODE-LINE-FUNCTIONS* add, and last the buffer's
-directory in the :mode-line-directory face; what *MODE-LINE-LEAD-FUNCTIONS*
-give goes first, before [-], and what *MODE-LINE-NAME-FUNCTIONS* give just
-before the name. Returns the text and, as a second value, the spans of it in
-faces of their own, each (START END FACE)."
+name (cut in its middle when long, MODE-LINE-NAME), the name of the frame
+before it while frames take turns on one display (F2, FRAME-TAKING-TURNS-P),
+the line and column of the window's point, digits grouped with commas
+\(L100,000,001) so large numbers read at a glance, the major mode's name when
+the buffer has one (BUFFER-MODE-NAME), what *MODE-LINE-FUNCTIONS* add, and
+last the buffer's directory in the :mode-line-directory face; what
+*MODE-LINE-LEAD-FUNCTIONS* give goes first, before [-], and what
+*MODE-LINE-NAME-FUNCTIONS* give just before the name. Returns the text and,
+as a second value, the spans of it in faces of their own, each (START END
+FACE)."
   (let* ((buffer (tuatara.display:window-buffer window))
          (point (tuatara.display:window-point window))
          (spans '())
@@ -396,6 +398,9 @@ faces of their own, each (START END FACE)."
                      (write-char #\Space out)
                      (parts *mode-line-lead-functions*)
                      (format out "~a " (modified-indicator buffer))
+                     (let ((frame (editor-frame editor)))
+                       (when (frame-taking-turns-p editor frame)
+                         (format out "~a " (frame-name frame))))
                      (parts *mode-line-name-functions*))))
          (after (format nil "  L~:[…~;~:*~:d~] C~:[…~;~:*~:d~]~@[  ~a~]"
                         ;; not waited for: while a large file's lines are counted, the line

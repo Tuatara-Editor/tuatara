@@ -7,6 +7,9 @@
 ;;;; Every frame shares the buffers; each has its own windows, and so its own
 ;;;; point in a buffer it shows. The list of frames is read from other threads
 ;;;; (KEY-WAITING-P, HOST-BUFFER-SHOWN-P), so it is replaced, never changed in place.
+;;;; Frames on a display that shows one at a time, a terminal, share its
+;;;; frontend and take turns on it: the one worked in is shown, the others
+;;;; wait unpainted (FRAME-TAKING-TURNS-P).
 
 (in-package #:tuatara.command)
 
@@ -48,12 +51,21 @@ its place while the buffer changes."
       (push window windows))
     (nreverse windows)))
 
+(defun frame-taking-turns-p (editor frame)
+  "True when FRAME shares its display with another of EDITOR's frames, as the
+frames of one terminal do: one of them is shown at a time, the one worked in,
+and the others wait unpainted until they are worked in again."
+  (let ((frontend (frame-frontend frame)))
+    (loop for other in (editor-frames editor)
+          thereis (and (not (eq other frame)) (eq (frame-frontend other) frontend)))))
+
 (defun select-frame (editor frame)
   "Make FRAME, one of EDITOR's frames, the one worked in. The selected window
 of the frame left keeps its point, and that of FRAME moves its buffer's point
 to its own, as selecting a window does (SELECT-WINDOW); what follows the
-buffer shown is brought in line with FRAME's (*AFTER-TICK-FUNCTIONS*). Returns
-FRAME."
+buffer shown is brought in line with FRAME's (*AFTER-TICK-FUNCTIONS*). On a
+display the two take turns on (FRAME-TAKING-TURNS-P), FRAME is shown in place
+of the other, at the display's size now, and painted whole. Returns FRAME."
   (let ((old (editor-frame editor)))
     (unless (eq old frame)
       (let ((leaving (frame-window old)))
@@ -63,6 +75,12 @@ FRAME."
       (let ((entering (frame-window frame)))
         (when entering (give-window-buffer-point entering)))
       (setf (editor-frame editor) frame)
+      (when (eq (frame-frontend frame) (frame-frontend old))
+        ;; the display may have been resized while FRAME waited; its title is the other's
+        (setf (frame-title-shown frame) nil)
+        (multiple-value-bind (width height) (tuatara.frontend:frontend-size (frame-frontend frame))
+          (unless (and (= (max 1 width) (frame-width frame)) (= (max 3 height) (frame-height frame)))
+            (resize editor width height))))
       (tuatara.runtime:run-hook *after-tick-functions* editor))
     frame))
 
@@ -91,15 +109,27 @@ for a frame runs so without waiting for a key typed there."
           (let ((item (pop (frame-deferred frame))))
             (lambda () (call-in-frame editor frame (lambda () (handle-event editor item))))))))))
 
+(defun free-frame-name (editor)
+  "The name for a new frame of EDITOR: F and the smallest number from 1 that
+no frame of EDITOR is named with."
+  (loop for n from 1
+        for name = (format nil "F~d" n)
+        unless (find name (editor-frames editor) :key #'frame-name :test #'string=)
+          return name))
+
 (defun add-frame (editor frontend &optional (buffer (tuatara.display:window-buffer (editor-window editor))))
-  "Give EDITOR another frame, painted through FRONTEND, which is started, and
-return it: as large as FRONTEND says, with one window showing BUFFER, by
-default the buffer of the window worked in, at its point. FRONTEND delivers
-its events through the source EDITOR's frames share, each naming the frame
-returned (TUATARA.FRONTEND:FRONTEND-FRAME). The frame worked in stays so."
+  "Give EDITOR another frame, painted through FRONTEND, and return it: as large
+as FRONTEND says, with one window showing BUFFER, by default the buffer of the
+window worked in, at its point, named by FREE-FRAME-NAME. A FRONTEND new to
+EDITOR is started, and delivers its events through the source EDITOR's frames
+share, each naming the frame returned (TUATARA.FRONTEND:FRONTEND-FRAME); one
+that paints a frame of EDITOR already is shared: the frames take turns on it
+\(FRAME-TAKING-TURNS-P). The frame worked in stays so."
   (let ((frame (make-frame frontend)))
-    (setf (tuatara.frontend:frontend-frame frontend) frame)
-    (tuatara.frontend:frontend-start frontend)
+    (setf (frame-name frame) (free-frame-name editor))
+    (unless (find frontend (editor-frames editor) :key #'frame-frontend)
+      (setf (tuatara.frontend:frontend-frame frontend) frame)
+      (tuatara.frontend:frontend-start frontend))
     (multiple-value-bind (width height) (tuatara.frontend:frontend-size frontend)
       (setf (frame-width frame) (max 1 width) (frame-height frame) (max 3 height)
             (frame-window frame) (tuatara.display:make-window buffer :width (max 1 width)
@@ -116,11 +146,10 @@ for, and those of the session kept.")
 (defun open-frame (editor &key buffer (select t))
   "Open another frame of EDITOR beside the frame worked in, showing BUFFER,
 else the buffer of the window worked in, and with SELECT make it the one
-worked in, brought before the others; returns it. Refused (a REFUSAL) where
-the display shows one frame alone, as a terminal does."
-  (let ((frontend (tuatara.frontend:frontend-another (editor-frontend editor))))
-    (unless frontend
-      (refuse "Another frame opens in a window of its own: start Tuatara with --gui for frames"))
+worked in, brought before the others; returns it. Where the display shows
+one frame at a time, as a terminal does, the new frame takes turns on it with
+the others (FRAME-TAKING-TURNS-P): with SELECT it is shown in their place."
+  (let ((frontend (or (tuatara.frontend:frontend-another (editor-frontend editor)) (editor-frontend editor))))
     (let ((frame (if buffer (add-frame editor frontend buffer) (add-frame editor frontend))))
       (when select
         (select-frame editor frame)
@@ -133,7 +162,8 @@ one worked in, the first of those left is made so. The last frame is never
 taken: that is refused, as an editor has a frame for as long as it runs. Its
 events still to come are dropped (TAKE-TO-ITS-FRAME); what was still to be
 said in it is said in the frame worked in, and work handed on to be done in
-it (DEFER-ACTION) is done there."
+it (DEFER-ACTION) is done there. Its frontend is stopped unless another frame
+takes turns on it."
   (let ((left (remove frame (editor-frames editor))))
     (unless left
       (refuse "The editor's only frame stays while the editor runs"))
@@ -143,8 +173,9 @@ it (DEFER-ACTION) is done there."
           (frame-deleted frame) t
           (editor-deferred editor) (append (editor-deferred editor)
                                            (remove-if-not #'functionp (shiftf (frame-deferred frame) '()))))
-    (tuatara.runtime:ignoring-errors-reported ("closing a frame's display")
-      (tuatara.frontend:frontend-stop (frame-frontend frame)))
+    (unless (find (frame-frontend frame) left :key #'frame-frontend)
+      (tuatara.runtime:ignoring-errors-reported ("closing a frame's display")
+        (tuatara.frontend:frontend-stop (frame-frontend frame))))
     frame))
 
 (defun note-frame-painted (frame)
@@ -205,29 +236,34 @@ look that is due may be taken."
             nil)))))
 
 (defun paint-other-frames (editor)
-  "Paint each frame of EDITOR other than the one worked in whose text may have
-changed since it was painted (FRAME-SHOWN-CHANGED-P), a setting changed moving
-the display generation on (LOOK-AT-SETTINGS), at most every
-*FRAME-AT-LEAST-EVERY* milliseconds and never while keys wait: returns NIL,
-or the seconds after which it wants to be asked again, a frame or a look
-having waited for its turn. With one frame, nothing is done."
+  "Paint each frame of EDITOR shown on a display of its own beside the one
+worked in whose text may have changed since it was painted
+\(FRAME-SHOWN-CHANGED-P), a setting changed moving the display generation on
+\(LOOK-AT-SETTINGS), at most every *FRAME-AT-LEAST-EVERY* milliseconds and
+never while keys wait: returns NIL, or the seconds after which it wants to
+be asked again, a frame or a look having waited for its turn. With one frame,
+or only frames waiting their turn on the display of the one worked in
+\(FRAME-TAKING-TURNS-P), nothing is done."
   (let ((frames (editor-frames editor)))
     (when (rest frames)
-      (let ((current (editor-frame editor)))
-        (unless (tuatara.frontend:frontend-input-pending-p (frame-frontend current))
-          (let ((look (look-at-settings editor)))
-            (if (some (lambda (frame) (and (not (eq frame current)) (frame-shown-changed-p frame))) frames)
-                (let ((since (tuatara.runtime:milliseconds-since (editor-others-painted editor))))
-                  (if (< since *frame-at-least-every*)
-                      (/ (- *frame-at-least-every* since) 1000)
-                      (progn
-                        (dolist (frame frames)
-                          (unless (or (eq frame current) (frame-deleted frame) (not (frame-shown-changed-p frame)))
-                            (call-in-frame editor frame (lambda () (redisplay-or-say editor)))
-                            (note-frame-painted frame)))
-                        (setf (editor-others-painted editor) (get-internal-real-time))
-                        look)))
-                look)))))))
+      (let* ((current (editor-frame editor))
+             (frontend (frame-frontend current)))
+        (flet ((elsewhere-p (frame) (not (eq (frame-frontend frame) frontend))))
+          (when (and (some #'elsewhere-p frames) (not (tuatara.frontend:frontend-input-pending-p frontend)))
+            (let ((look (look-at-settings editor)))
+              (if (some (lambda (frame) (and (elsewhere-p frame) (frame-shown-changed-p frame))) frames)
+                  (let ((since (tuatara.runtime:milliseconds-since (editor-others-painted editor))))
+                    (if (< since *frame-at-least-every*)
+                        (/ (- *frame-at-least-every* since) 1000)
+                        (progn
+                          (dolist (frame frames)
+                            (unless (or (not (elsewhere-p frame)) (frame-deleted frame)
+                                        (not (frame-shown-changed-p frame)))
+                              (call-in-frame editor frame (lambda () (redisplay-or-say editor)))
+                              (note-frame-painted frame)))
+                          (setf (editor-others-painted editor) (get-internal-real-time))
+                          look)))
+                  look))))))))
 
 (defun editor-job-waker ()
   "A function waking the editor, for the thread of work begun now to call when

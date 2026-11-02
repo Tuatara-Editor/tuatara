@@ -82,8 +82,8 @@ a session file not of its own kind is left alone, nothing in it evaluated; off, 
       (forget-session-buffers))))
 
 (define-test (session frames-kept-and-opened-again)
-  ;; each frame's windows kept in a section of its own, the frame worked in first; opened again in
-  ;; a window as frames, in a terminal as one frame with the other frames' files behind it
+  ;; each frame's windows kept in a section of its own, the frame worked in first; opened again
+  ;; as frames, in a window and in a terminal alike
   (with-test-directory (dir)
     (let ((one (namestring (put-file (merge-pathnames "one.txt" dir) "one")))
           (two (namestring (put-file (merge-pathnames "two.txt" dir) "two")))
@@ -111,14 +111,15 @@ a session file not of its own kind is left alone, nothing in it evaluated; off, 
                       (tuatara.buffer:buffer-name (tuatara.display:window-buffer (tuatara.command:frame-window frame))))
                     (tuatara.command:editor-frames editor)))
         (is eq (first (tuatara.command:editor-frames editor)) (tuatara.command:editor-frame editor)))
-      ;; in a terminal: one frame, the other's file open behind it, its section written back as it was
+      ;; in a terminal: both frames, taking turns on it, the one worked in shown
       (forget-session-buffers)
       (multiple-value-bind (f editor) (session-start nil)
-        (declare (ignore f))
-        (is = 1 (length (tuatara.command:editor-frames editor)))
-        (is string= "two.txt" (tuatara.buffer:buffer-name (tuatara.display:window-buffer
-                                                            (tuatara.command:editor-window editor))))
-        (true (tuatara.buffer:find-buffer "one.txt")))
+        (is equal '("two.txt" "one.txt")
+            (mapcar (lambda (frame)
+                      (tuatara.buffer:buffer-name (tuatara.display:window-buffer (tuatara.command:frame-window frame))))
+                    (tuatara.command:editor-frames editor)))
+        (is eq (first (tuatara.command:editor-frames editor)) (tuatara.command:editor-frame editor))
+        (true (tuatara.frontend.fake:fake-frame-showing f "] F1 two.txt")))
       (let ((kept (alexandria:read-file-into-string (tuatara.defaults::session-path))))
         (true (search (format nil "frame~%window 1 0 file 0 ~a~%frame~%window 1 0 file 0 ~a~%end" two one) kept)
               "~a" kept))
@@ -155,10 +156,10 @@ a session file not of its own kind is left alone, nothing in it evaluated; off, 
       (let ((written (alexandria:read-file-into-string (tuatara.defaults::session-path))))
         (true (search (format nil "frame~%window 1 998 scratch 0 *scratch*~%end") written))
         (false (search "window 1 999 " written)))
-      ;; in a terminal: one frame, every other section kept
+      ;; in a terminal: sixteen too, every other section kept
       (multiple-value-bind (f editor) (session-start nil)
         (declare (ignore f))
-        (is = 1 (length (tuatara.command:editor-frames editor))))
+        (is = 16 (length (tuatara.command:editor-frames editor))))
       (is = 1000 (frames-written))
       (forget-session-buffers))))
 

@@ -4,7 +4,7 @@
 (in-package #:tuatara.tests)
 
 (define-test frames
-  :description "An editor with several frames sharing one queue of events: each event runs in its frame, which holds its own last command, repeat keys and keys recorded; work begun in a frame says its messages there; killing a buffer and keeping windows in place hold in every frame; the list of frames is replaced, never changed.")
+  :description "An editor with several frames sharing one queue of events: each event runs in its frame, which holds its own last command, repeat keys and keys recorded; work begun in a frame says its messages there; killing a buffer and keeping windows in place hold in every frame; the list of frames is replaced, never changed; the frames of one terminal take turns on it, the one shown named in the mode line, the others never painted.")
 
 (defun run-frames (typing &key (count (1+ (reduce #'max typing :key #'first))) (text "") (width 40) (height 8))
   "Run a session of an editor with COUNT frames, each painted by a fake
@@ -366,11 +366,161 @@ first frontend."
       (is = 1 (tuatara.frontend.fake:fake-raised (second frontends)))
       (true (tuatara.frontend.fake:fake-frame-showing (second frontends) "kea")))))
 
-(define-test (frames make-frame-refused-in-a-terminal)
-  ;; a terminal shows one frame: asking for another says how to have them
-  (multiple-value-bind (f editor) (run-keys "C-x 5 2")
-    (is = 1 (length (tuatara.command:editor-frames editor)))
-    (true (tuatara.frontend.fake:fake-frame-showing-across-rows f "start Tuatara with --gui for frames"))))
+;;; Frames taking turns on one terminal
+
+(defun shown-frame-name (f)
+  "The frame's name the mode line of F's last frame shows, F1 to F9, or NIL."
+  (loop for n from 1 to 9
+        for name = (format nil "F~d" n)
+        when (screen-showing f (format nil "] ~a " name))
+          return name))
+
+(defun note-shown (seen)
+  "A function for a test's keys, pushing onto the list in the cell SEEN the
+frame's name the terminal's last frame shows in its mode line, and the
+position of the frame worked in among the editor's frames."
+  (lambda ()
+    (let ((editor tuatara.command:*editor*))
+      (push (list (shown-frame-name (tuatara.command:editor-frontend editor))
+                  (position (tuatara.command:editor-frame editor) (tuatara.command:editor-frames editor)))
+            (car seen)))))
+
+(define-test (frames terminal-frames-take-turns)
+  ;; in a terminal C-x 5 2 opens a frame shown in place of the one before, on the same terminal,
+  ;; the mode line naming the frame shown while there are two or more; C-x 5 o shows the next,
+  ;; painted whole; C-x 5 0 shows the one left, and with one frame no name is shown
+  (let ((seen (list '())))
+    (multiple-value-bind (f editor)
+        (run-keys (list (note-shown seen) "C-x 5 2" (note-shown seen) "C-x b k i w i C-j" (note-shown seen)
+                        "C-x 5 o" (note-shown seen) "C-x 5 o" (note-shown seen) "C-x 5 0" (note-shown seen)))
+      (is equal '((nil 0) ("F2" 1) ("F2" 1) ("F1" 0) ("F2" 1) (nil 0)) (reverse (car seen)))
+      (is = 1 (length (tuatara.command:editor-frames editor)))
+      (is eq f (tuatara.command:editor-frontend editor))
+      ;; F1 shown again showed its own buffer, F2 the one it went to
+      (true (tuatara.frontend.fake:fake-frame-showing f "] F1 *scratch*"))
+      (true (tuatara.frontend.fake:fake-frame-showing f "] F2 kiwi"))
+      (true (tuatara.buffer:find-buffer "kiwi")))))
+
+(define-test (frames terminal-frames-share-the-one-display)
+  ;; every frame of a terminal paints through its one frontend: none is started for them, none
+  ;; stopped as one closes, and the terminal is given back once as the editor ends
+  (let ((frames '()) (starts 0) (stops 0) (stops-before-the-end nil))
+    (sb-int:encapsulate 'tuatara.frontend:frontend-start 'one-display
+                        (lambda (function &rest arguments) (incf starts) (apply function arguments)))
+    (sb-int:encapsulate 'tuatara.frontend:frontend-stop 'one-display
+                        (lambda (function &rest arguments) (incf stops) (apply function arguments)))
+    (unwind-protect
+         (multiple-value-bind (f editor)
+             (run-keys (list "C-x 5 2 C-x 5 2"
+                             (lambda () (setf frames (tuatara.command:editor-frames tuatara.command:*editor*)))
+                             "C-x 5 o C-x 5 o C-x 5 0"
+                             (lambda () (setf stops-before-the-end stops))))
+           (is = 3 (length frames))
+           (true (every (lambda (frame) (eq f (tuatara.command::frame-frontend frame))) frames))
+           (is equal '("F1" "F3") (mapcar #'tuatara.command::frame-name (tuatara.command:editor-frames editor)))
+           (is equal '("F1" "F2" "F3") (mapcar #'tuatara.command::frame-name frames))
+           ;; the name of the frame closed is given to the next opened
+           (is equal "F2" (tuatara.command::free-frame-name editor))
+           (is = 1 starts)
+           (is = 0 stops-before-the-end)
+           (is = 1 stops))
+      (sb-int:unencapsulate 'tuatara.frontend:frontend-start 'one-display)
+      (sb-int:unencapsulate 'tuatara.frontend:frontend-stop 'one-display))))
+
+(define-test (frames terminal-hidden-frame-never-painted)
+  ;; a frame waiting its turn is never painted, though the buffer it shows changes: every frame
+  ;; painted while F2 is shown names F2, and each key paints one frame, the settings never looked
+  ;; at for others
+  (let ((tuatara.command::*frame-at-least-every* 0) (paints 0) (looks 0) (counting nil) (screens '()))
+    (sb-int:encapsulate 'tuatara.command:redisplay 'hidden-frames
+                        (lambda (function &rest arguments) (when counting (incf paints)) (apply function arguments)))
+    (sb-int:encapsulate 'tuatara.command::look-at-settings 'hidden-frames
+                        (lambda (function &rest arguments) (when counting (incf looks)) (apply function arguments)))
+    (unwind-protect
+         (multiple-value-bind (f editor)
+             (run-keys (list "C-x 5 2 i" (lambda () (setf counting t)) "a b c d e f"
+                             (lambda ()
+                               (setf counting nil
+                                     screens (copy-list (tuatara.frontend.fake:fake-history
+                                                         (tuatara.command:editor-frontend tuatara.command:*editor*)))))
+                             "ESC C-x 5 o"))
+           (let ((hidden (first (tuatara.command:editor-frames editor))))
+             ;; one for each key, and one for the wake that began the count
+             (is = 7 paints)
+             (is = 0 looks)
+             (false (tuatara.command::frame-painted hidden))
+             ;; painted before C-x 5 2 had no name; none showed F1 until it was shown again
+             (false (some (lambda (screen) (some (lambda (row) (search "] F1 " row)) screen)) screens))
+             (true (tuatara.frontend.fake:fake-frame-showing f "] F1 *scratch*"))
+             (true (tuatara.frontend.fake:fake-frame-showing f "abcdef"))))
+      (sb-int:unencapsulate 'tuatara.command:redisplay 'hidden-frames)
+      (sb-int:unencapsulate 'tuatara.command::look-at-settings 'hidden-frames))))
+
+(defun ticks-garbage-per-key (keys &key hidden)
+  "The octets the work done between keys makes (RUN-TICK-FUNCTIONS and
+PAINT-OTHER-FRAMES) for each of KEYS typed in a fake terminal, with HIDDEN a
+second frame waiting its turn on it."
+  (let ((counting nil) (octets 0) (frames 0))
+    (dolist (name '(tuatara.command::run-tick-functions tuatara.command::paint-other-frames))
+      (sb-int:encapsulate name 'ticks-garbage
+                          (lambda (function &rest arguments)
+                            (if counting
+                                (let ((before (tuatara.bench::bytes-consed)))
+                                  (multiple-value-prog1 (apply function arguments)
+                                    (incf octets (- (tuatara.bench::bytes-consed) before))))
+                                (apply function arguments)))))
+    (unwind-protect
+         (run-keys (list (if hidden "C-x 5 2 C-x 5 o i" "i")
+                         (lambda () (setf frames (length (tuatara.command:editor-frames tuatara.command:*editor*))
+                                          counting t))
+                         keys
+                         (lambda () (setf counting nil))))
+      (dolist (name '(tuatara.command::run-tick-functions tuatara.command::paint-other-frames))
+        (sb-int:unencapsulate name 'ticks-garbage)))
+    (values (/ octets (1+ (count #\Space keys))) frames)))
+
+(define-test (frames terminal-hidden-frame-makes-no-garbage)
+  ;; a frame waiting its turn makes nothing on each key: the work between keys that goes through
+  ;; every frame's windows makes as much with it as without
+  (let ((keys "a b c d DEL DEL DEL DEL a b c d DEL DEL DEL DEL"))
+    (flet ((least (hidden)
+             ;; the least of three: work timed by the clock may make something once in a while
+             (loop repeat 3 minimize (ticks-garbage-per-key keys :hidden hidden))))
+      (is = 2 (nth-value 1 (ticks-garbage-per-key keys :hidden t)))
+      (let ((alone (least nil)) (hidden (least t)))
+        (true (<= hidden (+ alone 8)) "~,1f octets a key with a frame hidden, ~,1f without" hidden alone)))))
+
+(define-test (frames terminal-frame-shown-at-the-size-now)
+  ;; a frame waiting its turn while the terminal is resized is laid out at the new size when shown
+  (multiple-value-bind (f editor)
+      (run-keys (list "C-x 5 2"
+                      (lambda ()
+                        (let ((f (tuatara.command:editor-frontend tuatara.command:*editor*)))
+                          (setf (tuatara.frontend.fake::fake-width f) 60 (tuatara.frontend.fake::fake-height f) 12)
+                          (push (tuatara.frontend:make-event :resize :width 60 :height 12)
+                                (car (tuatara.frontend.fake::fake-source f)))))
+                      "C-x 5 o"))
+    (declare (ignore f))
+    (is = 2 (length (tuatara.command:editor-frames editor)))
+    (dolist (frame (tuatara.command:editor-frames editor))
+      (is = 60 (tuatara.command::frame-width frame))
+      (is = 12 (tuatara.command::frame-height frame))
+      (is = 60 (tuatara.display:area-width (tuatara.display:area-root (tuatara.command:frame-window frame)))))))
+
+(define-test (frames terminal-start-frames)
+  ;; --frames N in a terminal opens N frames taking turns on it, the files one to each, the
+  ;; first shown
+  (with-test-directory (dir)
+    (let ((paths (loop for name in '("a.txt" "b.txt")
+                       collect (namestring (put-file (merge-pathnames name dir) name))))
+          (f (tuatara.frontend.fake:make-fake-frontend :width 40 :height 8)))
+      (tuatara.frontend.fake:fake-queue-keys f "C-g")
+      (let ((editor (tuatara.command:run-editor f :files paths :setup #'tuatara.defaults:install-defaults
+                                                  :start (tuatara.terminal::start-function :frames 3))))
+        (is equal '("a.txt" "b.txt" "a.txt") (mapcar #'frame-shows (tuatara.command:editor-frames editor)))
+        (is eq (first (tuatara.command:editor-frames editor)) (tuatara.command:editor-frame editor))
+        (true (tuatara.frontend.fake:fake-frame-showing f "] F1 a.txt"))
+        (false (tuatara.frontend.fake:fake-frame-showing f "b.txt"))))))
 
 (define-test (frames delete-frame-keeps-the-last)
   ;; C-x 5 0 closes the frame worked in, its buffer staying; the last frame stays, said in plain words

@@ -2,23 +2,26 @@
 ;;;; Copyright (C) 2026 Michael A Jones.  GPL-3.0-or-later; see LICENSE.
 ;;;;
 ;;;; A frame is a window of Tuatara's own on the desktop, with windows of its
-;;;; own inside; every frame shows the same buffers (src/command/frames.lisp).
+;;;; own inside, or in a terminal one of the screens that take turns on it;
+;;;; every frame shows the same buffers (src/command/frames.lisp).
 
 (in-package #:tuatara.defaults)
 
 (define-command make-frame ()
-  "Open another frame showing the current buffer, a window of its own on the
-desktop, and work in it. Each frame has its own windows, echo area and
-questions; the buffers are the same in every frame, a buffer shown in two of
-them one buffer with a place of its own in each. \\[delete-frame] closes it,
-\\[other-frame] goes from one to the next. In a terminal there is one frame:
-start Tuatara with --gui for more."
+  "Open another frame showing the current buffer and work in it: a window of
+its own on the desktop, or in a terminal a whole screen of its own shown in
+place of the one before, the frames taking turns on the terminal, the mode
+line naming the one shown (F1, F2). Each frame has its own windows, echo area
+and questions; the buffers are the same in every frame, a buffer shown in two
+of them one buffer with a place of its own in each. \\[delete-frame] closes
+it, \\[other-frame] goes from one to the next."
   (open-frame *editor*))
 
 (define-command delete-frame ()
   "Close the frame worked in, with its windows; its buffers stay, shown in the
-other frames as before. The last frame stays: \\[save-buffers-kill-editor]
-quits. A frame's close button does the same."
+other frames as before. In a terminal the first of the frames left is shown
+in its place. The last frame stays: \\[save-buffers-kill-editor] quits. A
+frame's close button does the same."
   (let ((editor *editor*))
     (unless (rest (editor-frames editor))
       (refuse "This is the only frame; ~a quits" (substitute-command-keys "\\[save-buffers-kill-editor]")))
@@ -32,9 +35,10 @@ quits. A frame's close button does the same."
         (remove-frame editor frame)))))
 
 (define-command other-frame ()
-  "Go to the next frame and bring its window before the others; with a count
-N, the Nth frame on, back when N is negative. The frames are taken in the
-order they were opened, the first again after the last."
+  "Go to the next frame and bring its window before the others, or in a
+terminal show it in place of the frame shown; with a count N, the Nth frame
+on, back when N is negative. The frames are taken in the order they were
+opened, the first again after the last."
   (let* ((editor *editor*)
          (frames (editor-frames editor)))
     (if (null (rest frames))

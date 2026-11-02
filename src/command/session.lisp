@@ -486,6 +486,7 @@ buffers) applies to them. Returns the editor."
       (when (and *running-editor* (eq (car *running-editor*) editor))
         (setf *running-editor* nil))
       (take-in-thread-messages editor)
-      (dolist (frame (editor-frames editor))
-        (tuatara.frontend:frontend-stop (frame-frontend frame))))
+      ;; once each: frames taking turns on one display share its frontend
+      (dolist (frontend (remove-duplicates (mapcar #'frame-frontend (editor-frames editor))))
+        (tuatara.frontend:frontend-stop frontend)))
     editor))
