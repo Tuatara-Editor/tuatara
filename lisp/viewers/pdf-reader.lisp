@@ -436,36 +436,83 @@ has the rest passed over.")
 the order written (as MAP-PDF-WRITTEN-OBJECTS gives them, a vector), say
 where its streams are; when they are not given, the file is read for them.
 A %%EOF within a stream whose end is confirmed ends nothing (an attached
-PDF's own), unless it is the first after a cross-reference section the
-file's chain of sections names (PDF-SECTIONS): that one ends a save. Two
-more values: those kept though they lie within a stream whose end is not
-confirmed, each (EOF . NUMBER), NUMBER the stream's object, a stream that
-may hide a save or a save cut into a stream; and the streams whose
-confirmed end the chain of sections gives the lie to, a section it names
-or the save that section ends lying within them, each (OFFSET . NUMBER)."
+PDF's own), unless it is the first after a cross-reference section of the
+file itself: one the file's chain of sections names (PDF-SECTIONS), or one
+within the stream that a startxref there names at its place in the file,
+or whose entries name the file's own objects where the file writes them
+\(PDF-SECTIONS-WITHIN). Two more values: those kept though they lie within
+a stream whose end is not confirmed, each (EOF . NUMBER), NUMBER the
+stream's object, a stream that may hide a save or a save cut into a
+stream; and the streams whose confirmed end such a section gives the lie
+to, the section or the save it ends lying within them, each (OFFSET .
+NUMBER)."
   (let* ((mark (load-time-value (tuatara.text:string-octets "%%EOF")))
-         (sections (mapcar #'car (pdf-sections octets)))
-         (named (remove nil (mapcar (lambda (at) (tuatara.io:octets-search mark octets :start at)) sections)))
+         (eofs (loop for at = (tuatara.io:octets-search mark octets)
+                       then (tuatara.io:octets-search mark octets :start (+ at 5))
+                     for count from 1
+                     while (and at (<= count *pdf-most-eof-lines*))
+                     do (when (zerop (logand count 4095)) (tuatara.runtime:job-check-stop))
+                     collect at))
+         (holding (remove-duplicates (remove nil (mapcar (lambda (at) (pdf-stream-holding objects at t)) eofs))))
+         (sections (append (mapcar #'car (pdf-sections octets))
+                           (loop for stream in holding append (pdf-sections-within octets stream))))
+         (named (remove nil (mapcar (lambda (at) (find-if (lambda (eof) (> eof at)) eofs)) sections)))
          (unconfirmed (remove-if-not (lambda (o) (and (pdf-indirect-stream-start o) (not (pdf-indirect-confirmed o))))
                                      objects))
-         (lines '()) (doubtful '()) (lying '()) (count 0))
+         (lines '()) (doubtful '()) (lying '()))
     (flet ((lie (at stream)
              (unless (find (pdf-indirect-number stream) lying :key #'cdr)
                (push (cons at (pdf-indirect-number stream)) lying))))
       (dolist (at sections)
         (let ((stream (pdf-stream-holding objects at t)))
           (when stream (lie at stream))))
-      (loop for at = (tuatara.io:octets-search mark octets)
-              then (tuatara.io:octets-search mark octets :start (+ at 5))
-            while (and at (< count *pdf-most-eof-lines*))
-            do (when (zerop (logand (incf count) 4095)) (tuatara.runtime:job-check-stop))
-               (let ((confirmed (pdf-stream-holding objects at t)))
-                 (when (or (null confirmed) (member at named))
-                   (push (cons at (pdf-line-end-after octets (+ at 5))) lines)
-                   (when confirmed (lie at confirmed))
-                   (let ((stream (pdf-stream-holding unconfirmed at nil)))
-                     (when stream (push (cons at (pdf-indirect-number stream)) doubtful)))))))
+      (dolist (at eofs)
+        (let ((confirmed (pdf-stream-holding objects at t)))
+          (when (or (null confirmed) (member at named))
+            (push (cons at (pdf-line-end-after octets (+ at 5))) lines)
+            (when confirmed (lie at confirmed))
+            (let ((stream (pdf-stream-holding unconfirmed at nil)))
+              (when stream (push (cons at (pdf-indirect-number stream)) doubtful)))))))
     (values (nreverse lines) (nreverse doubtful) (nreverse lying))))
+
+(defun pdf-sections-within (octets stream)
+  "The cross-reference sections of the PDF in OCTETS itself written within
+STREAM's octets (a PDF-INDIRECT): one a startxref there names at its place
+in the file (PDF-OFFSET-BASE added), or a table whose entries, at most 50
+read and two at least, all name the file's own objects where the file
+writes them. An attached PDF's sections count from its own start, so they
+are none of these. A list of their offsets."
+  (let ((start (pdf-indirect-stream-start stream)) (end (pdf-indirect-stream-end stream))
+        (base (pdf-offset-base octets)) (found '()))
+    (flet ((within-p (at) (and (integerp at) (<= start at) (< at end))))
+      (loop for at = (tuatara.io:octets-search (load-time-value (tuatara.text:string-octets "startxref")) octets
+                                               :start start :end end)
+              then (tuatara.io:octets-search (load-time-value (tuatara.text:string-octets "startxref")) octets
+                                             :start (+ at 9) :end end)
+            while at
+            do (let ((named (let ((n (pdf-integer-at octets (+ at 9) end))) (and n (+ n base)))))
+                 (when (and (within-p named) (pdf-section-at-p octets named))
+                   (pushnew named found))))
+      (loop for at = (tuatara.io:octets-search (load-time-value (tuatara.text:string-octets "xref")) octets
+                                               :start start :end end)
+              then (tuatara.io:octets-search (load-time-value (tuatara.text:string-octets "xref")) octets
+                                             :start (+ at 4) :end end)
+            while at
+            do (unless (or (and (>= at 5) (tuatara.io:octets-at-p octets "start" (- at 5))) (member at found))
+                 (let ((matched 0) (strange nil))
+                   (map-pdf-cross-reference-table
+                    (lambda (number offset generation kind)
+                      (declare (ignore generation))
+                      (when (eq kind :used)
+                        (let ((object (and (< -1 offset (length octets)) (pdf-indirect-object-at octets offset))))
+                          (if (and object (eql (pdf-indirect-number object) number))
+                              (incf matched)
+                              (setf strange t))))
+                      (or strange (>= matched 50)))
+                    octets at)
+                   (when (and (>= matched 2) (not strange))
+                     (push at found))))))
+    found))
 
 (defun pdf-stream-holding (objects at confirmed)
   "The object of OBJECTS (a vector of PDF-INDIRECT in the order written)

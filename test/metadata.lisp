@@ -380,8 +380,10 @@ endobj"))))
    (asdf:system-relative-pathname :tuatara (format nil "test/pdf-reader/~a" name))))
 
 (define-test (metadata pdf-saves-by-chain)
-  ;; a save the chain of trailers names is a save, though a /Length runs over it: and that length is named a lie
-  (dolist (name '("length-over-save.pdf" "indirect-length-over-save.pdf"))
+  ;; a save the chain of trailers names, or one written whole within a stream as the file's own (its startxref or
+  ;; its entries naming the file's places), is a save, though a /Length runs over it: and that length is named a lie
+  (dolist (name '("length-over-save.pdf" "indirect-length-over-save.pdf"
+                  "length-over-whole-save.pdf" "length-over-whole-save-unnamed.pdf"))
     (let ((octets (pdf-sample name)))
       (multiple-value-bind (lines doubtful lying) (tuatara:pdf-eof-lines octets)
         (declare (ignore doubtful))
