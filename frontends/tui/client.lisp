@@ -158,19 +158,20 @@ TERMINAL, the device of its terminal or NIL, and whether it stops the daemon."
    :wait t
    :stop (and (getf options :stop) t)))
 
-(defun connect-to-daemon (name start)
+(defun connect-to-daemon (name start &key quiet)
   "A connection to the daemon NAME, as a descriptor; with START, the daemon
 started first when none runs (START-DAEMON). NIL, why said on the error
-output, when there is none."
+output unless QUIET, when there is none."
   (let ((path (handler-case (tuatara.defaults::daemon-path name "socket")
                 (tuatara.runtime:refusal (condition)
                   (format *error-output* "tuatara: ~a~%" condition)
                   (return-from connect-to-daemon nil)))))
     (or (tuatara.io:connect-to path)
         (and start (zerop (start-daemon name nil :quiet t)) (tuatara.io:connect-to path))
-        (progn (format *error-output* "tuatara: no daemon named ~a runs: tuatara --daemon~:[=~a~;~*~] starts one~
+        (progn (unless quiet
+                 (format *error-output* "tuatara: no daemon named ~a runs: tuatara --daemon~:[=~a~;~*~] starts one~
                                        ~@[, or tuatara --client --start~]~%"
-                       name (string= name tuatara.defaults::*daemon-default-name*) name (not start))
+                         name (string= name tuatara.defaults::*daemon-default-name*) name (not start)))
                nil))))
 
 (defun refusal-words (condition name)
@@ -192,20 +193,21 @@ nothing and asks nothing. Standard input, for -, is passed to the daemon to
 read, the keys read from the terminal or the window; TERMINAL is true when
 there is a terminal. The exit code: the one the daemon gave, 1 when no
 daemon runs or it ended, as is said, or 2 when there is neither a terminal
-nor a window to show it in."
+nor a window to show it in; :FALLBACK, nothing said, when no daemon runs and
+--fallback asks for an editor of its own instead."
   (let* ((name (or (getf options :client) (getf options :stop)))
          (stop (getf options :stop))
          (window (and (not stop) (or (getf options :gui) desktop))))
     (when (and (not terminal) (not stop) (not window))
       (format *error-output* "tuatara: a client needs a terminal to show the daemon in: run it in one, or with --gui~%")
       (return-from run-client 2))
-    (let ((fd (connect-to-daemon name (getf options :start)))
+    (let ((fd (connect-to-daemon name (getf options :start) :quiet (getf options :fallback)))
           (input (and (find '(:standard-input) (getf options :files) :test #'equal)
                       (sb-posix:fcntl 0 +f-dupfd-cloexec+ 3)))
           (code nil) (words nil) (refused nil))
       (unless fd
         (when input (sb-posix:close input))
-        (return-from run-client 1))
+        (return-from run-client (if (getf options :fallback) :fallback 1)))
       (unwind-protect
            (handler-case
                (let ((greeted (tuatara.frontend:greet-editor fd)))

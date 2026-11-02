@@ -30,6 +30,7 @@ set -euo pipefail
 root="$(cd "$(dirname "$0")/.." && pwd)"
 cd "$root"
 . tools/containers.sh
+. tools/inside.sh
 tools_dir="$root/build/appimage-tools"
 appdir="$root/build/appimage/Tuatara.AppDir"
 out="$root/build/Tuatara-x86_64.AppImage"
@@ -131,7 +132,13 @@ exec "$here/tuatara/tuatara" "$@"
 APPRUN
 chmod +x "$appdir/AppRun"
 cp tools/install-desktop.sh "$appdir/install-desktop.sh"
-sed "s|@EXEC@|tuatara|" data/tuatara.desktop.in > "$appdir/tuatara.desktop"
+# the application's entry, the one an AppImage holds, written by the program as
+# it writes it for --install-desktop (which writes the client's beside it too)
+entries="$root/build/appimage/entries"
+inside env TUATARA_DESKTOP_ENTRIES="$entries" build/release/tuatara/tuatara tuatara >/dev/null
+cp "$entries/tuatara.desktop" "$appdir/tuatara.desktop"
+chmod 644 "$appdir/tuatara.desktop"
+rm -rf "$entries"
 cp data/icons/hicolor/256x256/apps/tuatara.png "$appdir/tuatara.png"
 ln -s tuatara.png "$appdir/.DirIcon"
 

@@ -18,10 +18,11 @@
     "tuatara [--gui] [-Q] [-c INIT-FILE] --merge LOCAL BASE REMOTE MERGED"
     "tuatara [--gui] [-Q] [-c INIT-FILE] --tutor"
     "tuatara --daemon[=NAME] [-c INIT-FILE]"
-    "tuatara --client[=NAME] [--gui] [--start] [--frames N] [--safe] [--hex] [[+LINE[:COLUMN]] FILE...]"
-    "tuatara --client[=NAME] [--gui] [--start] --diff OLD NEW"
-    "tuatara --client[=NAME] [--gui] [--start] --merge LOCAL BASE REMOTE MERGED"
-    "tuatara --stop[=NAME]")
+    "tuatara --client[=NAME] [--gui] [--start] [--fallback] [--frames N] [--safe] [--hex] [[+LINE[:COLUMN]] FILE...]"
+    "tuatara --client[=NAME] [--gui] [--start] [--fallback] --diff OLD NEW"
+    "tuatara --client[=NAME] [--gui] [--start] [--fallback] --merge LOCAL BASE REMOTE MERGED"
+    "tuatara --stop[=NAME]"
+    "tuatara --generate-autostart [--daemon=NAME]")
   "The ways of starting Tuatara, as --help and the manual page show them.")
 
 (defparameter *usage-introduction*
@@ -75,9 +76,12 @@ License, version 3 or later.
      :text ("run one editor in the background, with no screen, for"
             "tuatara --client to show in terminals, and return once it is"
             "ready; it reads the init file and loads the packages as Tuatara"
-            "does, and runs until M-x daemon-quit or tuatara --stop; NAME,"
-            "default when none is given, tells several apart; its log is"
-            "~/.cache/tuatara/daemon-NAME.log"))
+            "does, and runs until M-x daemon-quit or tuatara --stop, or until"
+            "it is sent SIGTERM, as at logout, which keeps the changes not"
+            "saved as auto-saved copies and asks nothing; NAME, default when"
+            "none is given, tells several apart; its log is"
+            "~/.cache/tuatara/daemon-NAME.log, its session"
+            "~/.local/state/tuatara/session-daemon-NAME"))
     (:flags (("--client[=NAME]"))
      :text ("show the daemon NAME in this terminal, or with --gui in a window"
             "of its own (C-x 5 2 opens another), a frame of its own, the files"
@@ -90,6 +94,10 @@ License, version 3 or later.
             "when it ends"))
     (:flags (("--start"))
      :text ("with --client: start the daemon first when none runs"))
+    (:flags (("--fallback"))
+     :text ("with --client: when no daemon runs, start Tuatara as it starts"
+            "without --client instead, the files opened in an editor of its"
+            "own; the desktop's Tuatara (client) starts it so"))
     (:flags (("--stop[=NAME]"))
      :text ("stop the daemon NAME, asking in this terminal about the changes"
             "not saved in it, as M-x daemon-quit does; with no terminal,"
@@ -105,6 +113,12 @@ License, version 3 or later.
             "setting in it commented out, as"
             "~/.config/tuatara/generated-init.lisp, and exit; a file there"
             "already is left as it is"))
+    (:flags (("--generate-autostart"))
+     :text ("write the entry that has the desktop start the daemon as you log"
+            "in, ~/.config/autostart/tuatara-daemon.desktop, running tuatara"
+            "--daemon, and exit; with --daemon=NAME, the daemon NAME's,"
+            "tuatara-daemon-NAME.desktop; a file there already is left as it"
+            "is"))
     (:flags (("--help") ("-h"))
      :text ("show this and exit"))
     (:flags (("--version") ("-V"))
@@ -114,7 +128,8 @@ License, version 3 or later.
             "dash or a plus"))
     (:flags (("--install-desktop")) :only :appimage
      :text ("(the AppImage) copy it to ~/.local/bin/tuatara and put Tuatara"
-            "in the desktop's applications, its icon too"))
+            "and Tuatara (client) in the desktop's applications, the icon"
+            "too"))
     (:flags (("--remove-desktop")) :only :appimage
      :text ("(the AppImage) take them away again"))
     (:flags (("--dark") ("--light")) :only :appimage
@@ -347,7 +362,8 @@ more than a dash."
 :GENERATE-CONFIG, :VERSION, :HELP,
 :DIFF (the two names after --diff), :MERGE (the four after --merge), :SAFE,
 :HEX, :TUTOR, :BARE (-Q), :DAEMON, :CLIENT and :STOP (each the daemon's
-name, *DAEMON-DEFAULT-NAME* when none is given), :START and :FILES, the
+name, *DAEMON-DEFAULT-NAME* when none is given), :START, :FALLBACK,
+:GENERATE-AUTOSTART and :FILES, the
 files named; or :ERROR, what is wrong with them. Options may stand anywhere before --, among the files; --safe
 and --hex hold for every file of the call, a +LINE[:COLUMN] for the file after
 it, which is then (NAME LINE COLUMN) in :FILES, the column NIL when none was
@@ -382,6 +398,8 @@ or -- before the files. After --, every argument is a file's name."
                        (fail "~a cannot name a daemon: letters, digits, - and _, at most 40" name))
                      (setf (getf options (intern (string-upcase (subseq (or option argument) 2)) :keyword)) name))))
                 ((string= argument "--start") (given :start))
+                ((string= argument "--fallback") (given :fallback))
+                ((string= argument "--generate-autostart") (given :generate-autostart))
                 ((member argument '("--version" "-V") :test #'string=) (given :version))
                 ((member argument '("--help" "-h") :test #'string=) (given :help))
                 ((string= argument "--gui") (given :gui))
@@ -430,6 +448,15 @@ or -- before the files. After --, every argument is a file's name."
                    (getf options :daemon)))
             ((and (getf options :start) (not (getf options :client)))
              (fail "--start goes with --client"))
+            ((and (getf options :fallback) (not (getf options :client)))
+             (fail "--fallback goes with --client"))
+            ((and (getf options :fallback) (getf options :start))
+             (fail "--start and --fallback are given one at a time: with no daemon running, --start starts one, ~
+                    --fallback an editor of its own"))
+            ((and (getf options :generate-autostart)
+                  (or named (loop for (key) on options by #'cddr
+                                  thereis (not (member key '(:generate-autostart :daemon))))))
+             (fail "--generate-autostart takes nothing but --daemon=NAME, for a daemon of that name"))
             ((and (or (getf options :stop) (getf options :daemon))
                   (or named (getf options :diff) (getf options :merge) (getf options :tutor) (getf options :frames)
                       (getf options :safe) (getf options :hex)))
@@ -581,10 +608,13 @@ in the scratch buffers when there are none, as its options say
 instead; --diff OLD NEW shows what differs between two files; -c names the
 init file; +LINE[:COLUMN] before a file opens it there; -- before the files
 lets a file's name start with a dash or a plus. With --gui, or when started with no terminal on a
-desktop, Tuatara opens a window of its own. --daemon starts an editor in the
-background (START-DAEMON), --client shows one in this terminal, or a window
-with --gui, and --stop stops one (RUN-CLIENT). Returns the exit code: 0, or
-what the session left (*EXIT-CODE*); 2 for options it cannot take."
+desktop, Tuatara opens a window of its own (RUN-INSTANCE). --daemon starts an
+editor in the background (START-DAEMON), --client shows one in this terminal,
+or a window with --gui, and --stop stops one (RUN-CLIENT), --client
+--fallback starting an editor of its own when none runs; --generate-autostart
+writes the entry that starts the daemon with the desktop (GENERATE-AUTOSTART).
+Returns the exit code: 0, or what the session left (*EXIT-CODE*); 2 for
+options it cannot take."
   (let* ((options (read-options arguments))
          (config (getf options :config))
          ;; named from where Tuatara was started, as the files are
@@ -600,6 +630,8 @@ what the session left (*EXIT-CODE*); 2 for options it cannot take."
            0)
           ((getf options :generate-config)
            (generate-config))
+          ((getf options :generate-autostart)
+           (generate-autostart (or (getf options :daemon) tuatara.defaults::*daemon-default-name*)))
           ((getf options :daemon)
            (start-daemon (getf options :daemon) config-path))
           ((missing-file (getf options :diff))
@@ -618,31 +650,44 @@ what the session left (*EXIT-CODE*); 2 for options it cannot take."
            (format *error-output* "tuatara: no init file at ~a (tuatara --generate-config writes one to start from)~%" (shown config))
            2)
           ((or (getf options :client) (getf options :stop))
-           (run-client options))
-          ((and (not (or (getf options :gui) (window-wanted-p))) (not (keyboard-available-p)))
-           (format *error-output* "tuatara: its input is not a terminal and there is none to read keys from (/dev/tty): run it in a terminal, or with --gui~%")
-           2)
-          (t
-           (tuatara.defaults::set-collection-policy)
-           (when config
-             (setf tuatara.defaults::*config-file* (pathname config-path)))
-           (multiple-value-bind (files start) (startup-from options)
-             (let ((gui (or (getf options :gui) (window-wanted-p))))
-               ;; a copy started to measure how the window draws (check-health): no init
-               ;; file, the window's font as the one measuring has it
-               (let ((measure (uiop:getenv "TUATARA_MEASURE_DRAWING")))
-                 (when measure
-                   (setf tuatara.defaults::*config-file* (merge-pathnames "no-init-file.lisp" measure)
-                         tuatara-user:*gui-font* (uiop:getenv "TUATARA_MEASURE_FONT"))))
-               (if gui
-                   (tuatara.frontend.gtk:run-in-window files #'tuatara.defaults:install-defaults :start start)
-                   (progn
-                     (read-keys-from-terminal)
-                     (tuatara.command:run-editor (tuatara.frontend.tui:make-tui-frontend)
-                                                 :files files
-                                                 :setup #'tuatara.defaults:install-defaults
-                                                 :start start)))
-               tuatara.command:*exit-code*))))))
+           (let ((code (run-client options)))
+             ;; --client --fallback with no daemon running: an editor of its own instead
+             (if (eq code :fallback)
+                 (run-instance options config-path)
+                 code)))
+          (t (run-instance options config-path)))))
+
+(defun run-instance (options config-path)
+  "Run an editor of its own, as OPTIONS say (READ-OPTIONS), CONFIG-PATH the
+init file -c names, or NIL: in this terminal, or in a window of its own with
+--gui or when started with no terminal on a desktop. Returns the exit code:
+what the session left (*EXIT-CODE*), or 2 when there is no terminal to read
+keys from and no window wanted."
+  (if (and (not (or (getf options :gui) (window-wanted-p))) (not (keyboard-available-p)))
+      (progn (format *error-output* "tuatara: its input is not a terminal and there is none to read keys from ~
+                                     (/dev/tty): run it in a terminal, or with --gui~%")
+             2)
+      (progn
+        (tuatara.defaults::set-collection-policy)
+        (when config-path
+          (setf tuatara.defaults::*config-file* (pathname config-path)))
+        (multiple-value-bind (files start) (startup-from options)
+          (let ((gui (or (getf options :gui) (window-wanted-p))))
+            ;; a copy started to measure how the window draws (check-health): no init
+            ;; file, the window's font as the one measuring has it
+            (let ((measure (uiop:getenv "TUATARA_MEASURE_DRAWING")))
+              (when measure
+                (setf tuatara.defaults::*config-file* (merge-pathnames "no-init-file.lisp" measure)
+                      tuatara-user:*gui-font* (uiop:getenv "TUATARA_MEASURE_FONT"))))
+            (if gui
+                (tuatara.frontend.gtk:run-in-window files #'tuatara.defaults:install-defaults :start start)
+                (progn
+                  (read-keys-from-terminal)
+                  (tuatara.command:run-editor (tuatara.frontend.tui:make-tui-frontend)
+                                              :files files
+                                              :setup #'tuatara.defaults:install-defaults
+                                              :start start)))
+            tuatara.command:*exit-code*)))))
 
 (defun leave-appimage-environment ()
   "Run from Tuatara's AppImage (its AppRun says so in TUATARA_APPIMAGE), give
@@ -676,8 +721,9 @@ programs it starts are given the environment as it was before
 TUATARA_COMPILE_PACKAGE in its environment, it compiles a package apart from
 it instead, its arguments never looked at
 \(TUATARA.PACKAGES:COMPILE-PACKAGE-CHILD); run again by tuatara --daemon
-with TUATARA_DAEMON, it is that daemon (RUN-DAEMON). A client keeps the heap
-it was saved with."
+with TUATARA_DAEMON, it is that daemon (RUN-DAEMON); run by the scripts
+installing it with TUATARA_DESKTOP_ENTRIES, it writes its desktop entries
+\(DESKTOP-ENTRIES-CHILD). A client keeps the heap it was saved with."
   (sb-ext:disable-debugger)
   (setf sb-ext:*posix-argv* (command-line-arguments))
   (fresh-random-state)
@@ -697,6 +743,11 @@ it was saved with."
   ;; environment the editor gave it, never by the command line
   (when (uiop:getenv "TUATARA_COMPILE_PACKAGE")
     (let ((code (tuatara.packages:compile-package-child)))
+      (finish-output)
+      (sb-ext:exit :code code :abort t)))
+  ;; run by the scripts that install it to write its desktop entries, told so likewise
+  (when (uiop:getenv "TUATARA_DESKTOP_ENTRIES")
+    (let ((code (desktop-entries-child (rest sb-ext:*posix-argv*))))
       (finish-output)
       (sb-ext:exit :code code :abort t)))
   ;; run again by tuatara --daemon to be the daemon, told so likewise

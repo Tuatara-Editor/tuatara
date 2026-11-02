@@ -162,8 +162,12 @@ chmod +x Tuatara-x86_64.AppImage
 #+end_example
 
 =--install-desktop= copies it to =~/.local/bin/tuatara= and puts Tuatara in
-the desktop's applications, with its icon and in "Open With" for text files;
-=tuatara --remove-desktop= takes them away again.
+the desktop's applications, with its icon and in "Open With" for text files,
+and beside it "Tuatara (client)", which opens the files in a window of the
+daemon (=tuatara --daemon=), or of an editor of its own when none runs;
+=tuatara --remove-desktop= takes them away again. =tuatara
+--generate-autostart= has the desktop start the daemon as you log in; nothing
+starts it unless you do.
 
 The window's title bar is in GTK's light style unless asked otherwise: =--dark=
 before the rest shows it dark (=./Tuatara-x86_64.AppImage --dark --gui FILE=),

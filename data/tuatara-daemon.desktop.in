@@ -1,0 +1,9 @@
+[Desktop Entry]
+Type=Application
+Name=Tuatara daemon@TITLE@
+Comment=One Tuatara editor in the background for tuatara --client
+Exec=@EXEC@ --daemon@NAME@
+Icon=tuatara
+Terminal=false
+NoDisplay=true
+X-GNOME-Autostart-enabled=true

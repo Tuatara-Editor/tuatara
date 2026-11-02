@@ -10,8 +10,9 @@
 # TeX Live): the packages *outside-programs* names (lisp/files/external.lisp),
 # which a test holds the lists here to. All three hold Tuatara as
 # tools/release.sh lays it out, in
-# /usr/lib/tuatara/, with the command tuatara in /usr/bin, the desktop entry
-# and the icons; each is made by its system's own tools (rpmbuild, dpkg-deb,
+# /usr/lib/tuatara/, with the command tuatara in /usr/bin, the desktop entries
+# (Tuatara, and Tuatara (client), which opens files in a window of the daemon),
+# written by the program itself, and the icons; each is made by its system's own tools (rpmbuild, dpkg-deb,
 # makepkg) in a container of the system's image pinned in tools/containers.sh,
 # kept between runs. They are for Fedora 40, Ubuntu 24.04 and later, and Arch
 # as it is.
@@ -22,7 +23,8 @@
 #
 # --check installs each package made in a new container of its system, with
 # nothing else installed first, checks that every library Tuatara loads came
-# with it, and runs tuatara --version there and then Tuatara itself in a
+# with it, and that both desktop entries are in place, the client's starting
+# a client, and runs tuatara --version there and then Tuatara itself in a
 # terminal on a Rust file, which must show the file's mode line and colour
 # its code; the container is removed after.
 # Usage: tools/distro-packages.sh [--check] [fedora] [ubuntu] [arch]
@@ -31,6 +33,7 @@ set -euo pipefail
 root="$(cd "$(dirname "$0")/.." && pwd)"
 cd "$root"
 . tools/containers.sh
+. tools/inside.sh
 
 check=""
 systems=()
@@ -86,7 +89,12 @@ rm -rf "$stage/usr/lib/tuatara/man"
 gzip -9n -c build/release/tuatara/man/tuatara.1 > "$stage/usr/share/man/man1/tuatara.1.gz"
 gzip -9n -c build/release/tuatara/man/tuatara-init.5 > "$stage/usr/share/man/man5/tuatara-init.5.gz"
 ln -s ../lib/tuatara/tuatara "$stage/usr/bin/tuatara"
-sed "s|@EXEC@|tuatara|" data/tuatara.desktop.in > "$stage/usr/share/applications/tuatara.desktop"
+# the desktop entries, written by the program as it writes them for --install-desktop
+inside env TUATARA_DESKTOP_ENTRIES="$stage/usr/share/applications" build/release/tuatara/tuatara tuatara >/dev/null
+if command -v desktop-file-validate >/dev/null; then
+  desktop-file-validate "$stage/usr/share/applications/tuatara.desktop" \
+                        "$stage/usr/share/applications/tuatara-client.desktop"
+fi
 cp -r data/icons "$stage/usr/share/icons"
 cp LICENSE "$stage/usr/share/licenses/tuatara/LICENSE"
 cp build/release/tuatara/terminal/LICENSE-ghostty "$stage/usr/share/licenses/tuatara/LICENSE-ghostty"
@@ -134,6 +142,7 @@ cp -a /tmp/package/root/. %{buildroot}/
 /usr/lib/tuatara
 /usr/bin/tuatara
 /usr/share/applications/tuatara.desktop
+/usr/share/applications/tuatara-client.desktop
 /usr/share/icons/hicolor/*/apps/tuatara.*
 /usr/share/man/man1/tuatara.1*
 /usr/share/man/man5/tuatara-init.5*
@@ -242,6 +251,11 @@ check_package() {
       echo "$known" | grep -q "^\s*$name " || { echo "$name is not installed" >&2; exit 1; }
     done
     tuatara --version
+    for entry in tuatara tuatara-client; do
+      [ -f /usr/share/applications/$entry.desktop ] || { echo "$entry.desktop is not installed" >&2; exit 1; }
+    done
+    grep -q "^Exec=tuatara --gui --client --fallback %F$" /usr/share/applications/tuatara-client.desktop ||
+      { echo "tuatara-client.desktop does not start a client" >&2; exit 1; }
     cd /tmp
     printf "fn main() {}\n" > probe.rs
     TERM=xterm-256color timeout 10 script -qfc "stty rows 24 cols 80; tuatara probe.rs" screen >/dev/null 2>&1 || true

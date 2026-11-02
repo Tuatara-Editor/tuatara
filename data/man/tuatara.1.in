@@ -21,6 +21,26 @@ one executable.
 Everything it does is done inside it and documented there: \fBC\-h\fR shows
 the help commands, and the handbooks teach each area.
 This page covers what is done from the terminal.
+.PP
+With
+.BR \-\-daemon ,
+one editor runs in the background, with no screen, and
+.B tuatara \-\-client
+shows it, a frame of its own, in the terminal it is run in; the daemon's
+buffers stay when a client closes, for the next client.
+Nothing starts the daemon unless you do: from a shell, or from the desktop as
+you log in, with the entry
+.B \-\-generate\-autostart
+writes.
+.B M\-x daemon\-quit
+or
+.B tuatara \-\-stop
+stops it, asking about the changes not saved; sent SIGTERM, as at logout, it
+asks nothing, keeps the changes it may as auto-saved copies (never an
+encrypted file's text, nor a file opened safely), and ends.
+Plain
+.B tuatara
+never joins a daemon: case work kept in an editor of its own ends with it.
 .SH OPTIONS
 Options may stand anywhere before
 .BR \-\- ,
@@ -44,8 +64,16 @@ With
 .BR \-\-merge ,
 the merged file was not saved or conflicts are left in it.
 With
-.BR \-\-generate\-config ,
+.BR \-\-generate\-config
+or
+.BR \-\-generate\-autostart ,
 no file was written.
+With
+.B \-\-client
+or
+.BR \-\-stop ,
+no daemon of that name runs, it ended, or it went on (a change it could not
+keep), as is said.
 When git started tuatara to write a message (see
 .BR ENVIRONMENT ),
 \fBC\-c C\-k\fR gives the message up and ends the session with 1, so that git
@@ -72,7 +100,7 @@ are not set.
 .TP
 .B XDG_CONFIG_HOME
 Where the configuration folder, tuatara/, is: the init file, snippets and
-templates.
+templates; and the desktop's autostart/ folder.
 Not set: ~/.config.
 .TP
 .B XDG_STATE_HOME
@@ -91,7 +119,9 @@ Not set: ~/.cache.
 .TP
 .B XDG_RUNTIME_DIR
 Where a folder named by a setting is kept in memory while it is not there, as
-when its drive is not mounted.
+when its drive is not mounted; and where a daemon's socket is, in tuatara/,
+for you alone.
+Not set: no daemon starts, and no client finds one.
 .TP
 .B NO_COLOR
 When set and not empty, tuatara uses no colours in the terminal, unless the
@@ -160,7 +190,19 @@ The grammars you added and the packages fetched.
 .TP
 .I ~/.cache/tuatara/
 Files made again when they are gone, the debug log (debug.log) and the errors
-of the program's own (stderr.log).
+of the program's own (stderr.log); a daemon's log, daemon\-NAME.log.
+.TP
+.I ~/.local/state/tuatara/session\-daemon\-NAME
+The session of the daemon NAME, kept apart from an editor's own: its clients'
+folders and their windows.
+.TP
+.I $XDG_RUNTIME_DIR/tuatara/
+The sockets of the daemons running, NAME.socket, and their locks.
+.TP
+.I ~/.config/autostart/tuatara\-daemon.desktop
+The entry that has the desktop start the daemon as you log in, written by
+.BR \-\-generate\-autostart ;
+tuatara\-daemon\-NAME.desktop for the daemon NAME.
 .PP
 .BR tuatara\-init (5)
 says which of these a later release still reads and which it may remake.
@@ -234,6 +276,17 @@ Write commit messages in tuatara:
 .RS
 .nf
 git config \-\-global core.editor tuatara
+.fi
+.RE
+.PP
+Run one editor in the background, started by the desktop from now on, and
+show it in this terminal:
+.PP
+.RS
+.nf
+tuatara \-\-daemon
+tuatara \-\-generate\-autostart
+tuatara \-\-client notes.org
 .fi
 .RE
 .SH SEE ALSO

@@ -1019,3 +1019,25 @@ after, as it does by itself."
                  (client-ends runner))))
         (setf tuatara.defaults::*keep-session* was)
         (ignore-errors (delete-file (daemon-session-path name)))))))
+
+(define-test (daemon client-fallback)
+  ;; tuatara --client --fallback with no daemon running: nothing said, an editor of its own instead
+  (let ((name (format nil "none~d" (incf *test-daemons*))))
+    (let ((said (with-output-to-string (*error-output*)
+                  (is eq :fallback (tuatara.terminal::run-client (list :client name :fallback t :files '())
+                                                                 :terminal t)))))
+      (is string= "" said))
+    (let ((said (with-output-to-string (*error-output*)
+                  (is eql 1 (tuatara.terminal::run-client (list :client name :files '()) :terminal t)))))
+      (true (search "no daemon named" said)))))
+
+(define-test (daemon lifetime-options-read)
+  ;; --fallback goes with --client alone; --generate-autostart with nothing but --daemon=NAME
+  (flet ((options (&rest arguments) (tuatara.terminal::read-options arguments :directory "/nonexistent/")))
+    (true (getf (options "--client" "--fallback" "a.txt") :fallback))
+    (true (getf (options "--generate-autostart") :generate-autostart))
+    (is string= "work" (getf (options "--generate-autostart" "--daemon=work") :daemon))
+    (dolist (wrong '(("--fallback") ("--client" "--start" "--fallback") ("--stop" "--fallback")
+                     ("--generate-autostart" "a.txt") ("--generate-autostart" "--client")
+                     ("--generate-autostart" "-c" "init.lisp") ("--generate-autostart" "--gui")))
+      (true (getf (apply #'options wrong) :error) "~s taken" wrong))))

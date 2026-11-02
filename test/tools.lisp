@@ -17,10 +17,132 @@
 (define-test (tools desktop-entry-exec-line)
   ;; a path with characters a desktop entry's Exec= line treats specially: each
   ;; escaped as a quoted argument wants it after the line is read as a string
-  (let ((line (bash-output (format nil "eval \"$(sed -n '/^exec_argument() {/,/^}/p' '~a')\"
-printf 'Exec=@EXEC@ %%F\\n' | sed \"s|@EXEC@|$(exec_argument \"$1\")|\"" (tools-script "install-desktop.sh"))
-                           "/opt/50%/a\\b\"c`d$e f|g&h/tuatara")))
-    (is string= (format nil "Exec=\"/opt/50%%/a\\\\\\\\b\\\\\"c\\\\`d\\\\$e f|g&h/tuatara\" %F~%") line)))
+  (let* ((entry (tuatara.terminal::desktop-entry :application :program "/opt/50%/a\\b\"c`d$e f|g&h/tuatara"))
+         (line (find-if (lambda (line) (uiop:string-prefix-p "Exec=" line))
+                        (uiop:split-string entry :separator '(#\Newline)))))
+    (is string= "Exec=\"/opt/50%%/a\\\\\\\\b\\\\\"c\\\\`d\\\\$e f|g&h/tuatara\" --gui %F" line))
+  ;; no word with a control character in it, which would end the line
+  (fail (tuatara.terminal::exec-argument (format nil "/opt/a~%Exec=evil")) 'tuatara.runtime:refusal))
+
+(defun template-with-exec (name exec)
+  "The template NAME of data/ as the scripts filled it before the program did,
+its @EXEC@ replaced by EXEC."
+  (let* ((text (uiop:read-file-string (asdf:system-relative-pathname :tuatara (format nil "data/~a" name))))
+         (at (search "@EXEC@" text)))
+    (concatenate 'string (subseq text 0 at) exec (subseq text (+ at 6)))))
+
+(define-test (tools application-entries-as-before)
+  ;; the application entry the program writes is, byte for byte, the one the scripts wrote: the packages'
+  ;; and the AppImage's (tuatara), the AppImage installed (its path, a style), the project's own
+  (is string= (template-with-exec "tuatara.desktop.in" "tuatara") (tuatara.terminal::desktop-entry :application))
+  (is string= (template-with-exec "tuatara.desktop.in"
+                                  "\"/home/k a/50%%/x\\\\\\\\y\\\\\"z\\\\`\\\\$w|q&r/tuatara\" --dark")
+      (tuatara.terminal::desktop-entry :application :program "/home/k a/50%/x\\y\"z`$w|q&r/tuatara"
+                                                    :arguments '("--dark")))
+  (is string= (template-with-exec "tuatara.desktop.in" "\"/opt/my tools/tuatara-tui.sh\"")
+      (tuatara.terminal::desktop-entry :application :program "/opt/my tools/tuatara-tui.sh")))
+
+(defun desktop-entry-valid-p (path)
+  "True when desktop-file-validate finds nothing wrong in the entry at PATH,
+or is not installed here; what it says as a second value."
+  (if (tuatara.io:find-program "desktop-file-validate")
+      (multiple-value-bind (out error code)
+          (uiop:run-program (list "desktop-file-validate" path) :output :string :error-output :output
+                                                                :ignore-error-status t)
+        (declare (ignore error))
+        (values (and (zerop code) (zerop (length (string-trim '(#\Newline #\Space) out)))) out))
+      (values t "")))
+
+(define-test (tools application-entries-written)
+  ;; both application entries, Tuatara's and the client's, written where asked, each valid, the client's
+  ;; starting a client that falls back to an editor of its own
+  (with-test-directory (directory)
+    (let* ((folder (namestring (merge-pathnames "applications/" directory)))
+           (paths (tuatara.terminal::write-application-entries folder "/opt/tuatara 1/tuatara" "--light")))
+      (is equal (list (concatenate 'string folder "tuatara.desktop")
+                      (concatenate 'string folder "tuatara-client.desktop"))
+          paths)
+      (dolist (path paths)
+        (multiple-value-bind (valid said) (desktop-entry-valid-p path)
+          (true valid "~a: ~a" path said)))
+      (let ((client (file-text (second paths))))
+        (true (search (format nil "~%Name=Tuatara (client)~%") client))
+        (true (search (format nil "~%Exec=\"/opt/tuatara 1/tuatara\" --light --gui --client --fallback %F~%") client)))
+      ;; asked by the environment, as the scripts ask: the folder there, the program and its words as arguments
+      (let ((again (namestring (merge-pathnames "again/" directory))))
+        (sb-posix:setenv "TUATARA_DESKTOP_ENTRIES" again 1)
+        (let ((out (with-output-to-string (*standard-output*)
+                     (is = 0 (tuatara.terminal::desktop-entries-child '("tuatara"))))))
+          (true (search "tuatara-client.desktop" out)))
+        (false (sb-posix:getenv "TUATARA_DESKTOP_ENTRIES") "the request goes with its answer")
+        (is string= (tuatara.terminal::desktop-entry :client)
+            (file-text (concatenate 'string again "tuatara-client.desktop")))))))
+
+(define-test (tools autostart-generated)
+  ;; tuatara --generate-autostart writes the daemon's autostart entry and says where; never over a file
+  ;; there, a link neither; --daemon=NAME writes the named daemon's
+  (let* ((folder (namestring (uiop:xdg-config-home "autostart/")))
+         (path (concatenate 'string folder "tuatara-daemon.desktop"))
+         (named (concatenate 'string folder "tuatara-daemon-work.desktop")))
+    (true (search "/config/" folder) "the tests' own configuration folder")
+    (unwind-protect
+         (progn
+           (let ((out (with-output-to-string (*standard-output*)
+                        (is = 0 (tuatara.terminal:main '("--generate-autostart"))))))
+             (true (search (format nil "Wrote ~a" path) out)))
+           (let ((text (file-text path)))
+             (true (search (format nil "~%Exec=") text))
+             (true (search (format nil " --daemon~%") text))
+             (true (search (format nil "~%Name=Tuatara daemon~%") text))
+             (true (search (format nil "~%NoDisplay=true~%") text)))
+           (multiple-value-bind (valid said) (desktop-entry-valid-p path)
+             (true valid "~a" said))
+           (alexandria:write-string-into-file "mine" path :if-exists :supersede)
+           (let ((said (with-output-to-string (*error-output*)
+                         (is = 1 (tuatara.terminal:main '("--generate-autostart"))))))
+             (true (search "move it away" said)))
+           (is string= "mine" (file-text path) "a file there is left as it is")
+           (let ((out (with-output-to-string (*standard-output*)
+                        (is = 0 (tuatara.terminal:main '("--generate-autostart" "--daemon=work"))))))
+             (true (search named out)))
+           (let ((text (file-text named)))
+             (true (search (format nil " --daemon=work~%") text))
+             (true (search (format nil "~%Name=Tuatara daemon (work)~%") text)))
+           ;; a link where the entry goes is not written through
+           (delete-file named)
+           (let ((target (concatenate 'string folder "target")))
+             (tuatara.io:make-symbolic-link target named)
+             (is = 1 (tuatara.terminal:main '("--generate-autostart" "--daemon=work")))
+             (false (probe-file target) "nothing written through the link")))
+      (dolist (file (list path named))
+        (ignore-errors (tuatara.io:remove-file file)))))
+  ;; the program named as the PATH finds it when it is this one, else by its own path
+  (is string= "tuatara" (tuatara.terminal::autostart-program :self "/bin/sh" :found "/bin/sh"))
+  (is string= "/bin/sh" (tuatara.terminal::autostart-program :self "/bin/sh" :found "/bin/ls"))
+  (is string= "/bin/sh" (tuatara.terminal::autostart-program :self "/bin/sh" :found nil)))
+
+(define-test (tools remove-desktop-takes-both)
+  ;; tools/install-desktop.sh --remove takes away both application entries and the icon, and no program but
+  ;; the AppImage it put there
+  (with-test-directory (directory)
+    (let* ((home (merge-pathnames "home/" directory))
+           (applications (merge-pathnames ".local/share/applications/" home))
+           (bin (merge-pathnames ".local/bin/tuatara" home)))
+      (ensure-directories-exist applications)
+      (ensure-directories-exist bin)
+      (dolist (name '("tuatara.desktop" "tuatara-client.desktop" "other.desktop"))
+        (put-file (merge-pathnames name applications) "[Desktop Entry]"))
+      (put-file bin "#!/bin/sh")
+      (uiop:run-program (list "bash" (tools-script "install-desktop.sh") "--remove")
+                        :output nil :error-output nil
+                        :environment (list (format nil "HOME=~a" (uiop:native-namestring home))
+                                           (format nil "XDG_DATA_HOME=~a"
+                                                   (uiop:native-namestring (merge-pathnames ".local/share/" home)))
+                                           "PATH=/usr/bin:/bin"))
+      (false (probe-file (merge-pathnames "tuatara.desktop" applications)))
+      (false (probe-file (merge-pathnames "tuatara-client.desktop" applications)))
+      (true (probe-file (merge-pathnames "other.desktop" applications)))
+      (true (probe-file bin) "not an AppImage: left"))))
 
 (define-test (tools weekly-check-asked-first)
   ;; setting up the container starts no weekly network job unless asked, and
