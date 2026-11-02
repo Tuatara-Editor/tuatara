@@ -249,7 +249,10 @@ taking the editor down with GTK's thread, never unwinding through GTK."
     (g-idle-add (callback on-draw-request) (window-data f))))
 
 (defmethod tuatara.frontend:frontend-start ((f gtk-frontend))
-  ;; the window was opened on GTK's thread; wait for it to know its size
+  ;; the window is opened on GTK's thread, the first before the editor starts, another now that
+  ;; it knows its frame; wait for it to know its size
+  (unless (gtk-window f)
+    (g-idle-add (callback on-open-window) (window-data f)))
   (sb-thread:with-mutex ((gtk-lock f))
     (tuatara.runtime:wait-on-until (gtk-changed f) (gtk-lock f) (lambda () (gtk-sized f)) nil))
   (unless (gtk-window f)
@@ -264,11 +267,11 @@ taking the editor down with GTK's thread, never unwinding through GTK."
   (g-idle-add (callback on-close-window) (window-data f)))
 
 (defmethod tuatara.frontend:frontend-another ((f gtk-frontend))
-  ;; a window beside F's, sharing its queue; the way of drawing was decided as F's opened
+  ;; a window beside F's, sharing its queue, opened as it is started; the way of drawing was
+  ;; decided as F's opened
   (let ((another (make-gtk-frontend :queue (gtk-queue f))))
     (setf (gtk-renderer-checked another) t
           (gtk-renderer-said another) (gtk-renderer-said f))
-    (g-idle-add (callback on-open-window) (window-data another))
     another))
 
 (defmethod tuatara.frontend:frontend-frame ((f gtk-frontend))

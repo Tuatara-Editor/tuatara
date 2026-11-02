@@ -276,8 +276,9 @@ the editor names files: a name's octets that are not UTF-8 kept as they are."
       (setf (gtk-focused f) t)
       (gtk-im-context-focus-in (gtk-im f))
       (redraw f)
-      ;; the frame given the keyboard is the one worked in
-      (push-event f :focus))))
+      ;; the frame given the keyboard is the one worked in, once the window knows its frame
+      (when (gtk-owner f)
+        (push-event f :focus)))))
 
 (define-callback on-focus-leave :void ((controller :pointer) (data :pointer))
   (declare (ignore controller))

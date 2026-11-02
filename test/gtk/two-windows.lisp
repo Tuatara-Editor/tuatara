@@ -5,8 +5,9 @@
 ;;;; FILE-A FILE-B OUT. Starts Tuatara from these sources with --gui --frames 2
 ;;;; on the two files, then types in the second window, closes it with its
 ;;;; close button's signal, types in the first, opens a frame with C-x 5 2 and
-;;;; gives the first window the keyboard again, writing to OUT what it saw at
-;;;; each step, as a property list.
+;;;; gives the first window the keyboard again, measures the first window's
+;;;; painting as check-health does, and writes to OUT what it saw at each step,
+;;;; as a property list. Every event a window hands on names its frame.
 
 (load (merge-pathnames "../../tools/quicklisp.lisp" *load-truename*))
 (push (merge-pathnames "../../" (make-pathname :name nil :type nil :defaults *load-truename*)) asdf:*central-registry*)
@@ -62,6 +63,16 @@
   (tuatara.gtk:gtk-widget-grab-focus (tuatara.frontend.gtk::gtk-area *to-present*))
   nil)
 
+(defvar *unnamed* '()
+  "The events a window handed on naming no frame, but the editor's wakes.")
+
+;; every event put in the editor's queue: one of a window's names the frame it happened in
+(sb-int:encapsulate 'tuatara.frontend:queue-push 'naming
+                    (lambda (function queue event)
+                      (unless (or (tuatara.frontend:tick-p event) (tuatara.frontend:event-frame event))
+                        (push (tuatara.frontend:event-kind event) *unnamed*))
+                      (funcall function queue event)))
+
 (defun editor-frames ()
   "The frames of the editor running."
   (tuatara.command:editor-frames (tuatara.command:running-editor)))
@@ -109,7 +120,18 @@
                                            (eq (tuatara.command::editor-frame (tuatara.command:running-editor))
                                                (first (editor-frames))))
                                          10)
-                               t)))))
+                               t))
+      ;; the first window's frames counted from its frame clock, as check-health measures them
+      (let ((measured (vector (make-array 0 :adjustable t :fill-pointer 0) (make-array 0 :adjustable t :fill-pointer 0)
+                              (make-array 0 :adjustable t :fill-pointer 0))))
+        (sb-thread:with-mutex ((tuatara.frontend.gtk::gtk-lock first))
+          (setf (tuatara.frontend.gtk::gtk-measured first) measured))
+        (tuatara.gtk:g-idle-add (tuatara.gtk:callback tuatara.frontend.gtk::on-measure-frames)
+                                (tuatara.frontend.gtk::window-data first))
+        (sleep 0.5)
+        (type-keys first "i a b c")
+        (see :frames-measured (and (wait-until (lambda () (plusp (length (aref measured 2)))) 10) t)))
+      (see :unnamed *unnamed*))))
 
 (sb-thread:make-thread
  (lambda ()

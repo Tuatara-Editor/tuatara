@@ -401,7 +401,7 @@ milliseconds from a key to the painting of the frame that shows it."
 (define-callback on-measure-frames :boolean ((data :pointer))
   (let ((f (data-window data)))
     (when (and f (gtk-window f))
-      (g-signal-connect (gtk-widget-get-frame-clock (gtk-window f)) "after-paint" (callback on-frame-painted))))
+      (g-signal-connect (gtk-widget-get-frame-clock (gtk-window f)) "after-paint" (callback on-frame-painted) data)))
   nil)
 
 (defun measure-drawing (f out)

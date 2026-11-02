@@ -221,10 +221,10 @@ looking for it at intervals. Any thread may call it. The default does nothing.")
 
 (defgeneric frontend-another (frontend)
   (:documentation "A new frontend for another frame of the editor FRONTEND paints
-for, showing it beside FRONTEND's (a window of its own), not yet started: it
-delivers its events into the source FRONTEND's come from, each naming the
-frame it is given (FRONTEND-FRAME). NIL, the default, when FRONTEND cannot
-show another frame.")
+for, showing it beside FRONTEND's (a window of its own), shown only once it
+is started (FRONTEND-START), after it is given its frame (FRONTEND-FRAME): it
+delivers its events into the source FRONTEND's come from, each naming that
+frame. NIL, the default, when FRONTEND cannot show another frame.")
   (:method (frontend) (declare (ignore frontend)) nil))
 
 (defgeneric frontend-frame (frontend)

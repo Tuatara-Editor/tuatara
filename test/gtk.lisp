@@ -492,11 +492,13 @@ windows side by side."
           (false (getf seen :error) "~a" (getf seen :error))
           (is = 2 (getf seen :windows))
           (dolist (step '(:first-shows-a :second-shows-b :typed-in-second :closed-one
-                          :first-still-typed :opened-by-key :new-worked-in :focus-selects))
+                          :first-still-typed :opened-by-key :new-worked-in :focus-selects :frames-measured))
             (true (getf seen step) "~(~a~) in ~s" step seen))
           ;; twenty keys typed in the second window: the first painted again for work taken in alone
           (true (<= (getf seen :first-painted-while-typing 99) 4) "~d paints" (getf seen :first-painted-while-typing))
-          (is = 1 (getf seen :frames-left))))))
+          (is = 1 (getf seen :frames-left))
+          ;; every event a window handed on named its frame, a new window's from its first
+          (is equal '() (getf seen :unnamed))))))
 
 (define-test (gtk large-parts-painted)
   ;; a part drawn twice as large covers the row under it, its cursor as large, the text before it as it is
