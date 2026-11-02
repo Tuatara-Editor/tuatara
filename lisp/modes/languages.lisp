@@ -71,35 +71,6 @@ for one of Tuatara's grammars are said as they are taken."
                         (abbreviated-path (namestring (tuatara.syntax:user-grammar-directory)))))
         text)))
 
-(defun read-rules (name)
-  "The text of the colouring rules NAME (a grammar's or a language's name), from
-syntax/rules/NAME.scm (READ-KIND-QUERY), or NIL when there are none."
-  (read-kind-query "rules" name))
-
-(defun read-indents (name)
-  "The text of the indentation rules for NAME, from indents/NAME.scm (READ-KIND-QUERY), or NIL when there are none."
-  (read-kind-query "indents" name))
-
-(defun read-textobjects (name)
-  "The text of the rules for selecting functions, types, parameters and
-comments in NAME, from textobjects/NAME.scm (READ-KIND-QUERY), or NIL when there are none."
-  (read-kind-query "textobjects" name))
-
-(defun read-injections (name)
-  "The text of the rules for text in other languages in NAME, from
-injections/NAME.scm (READ-KIND-QUERY), or NIL when there are none."
-  (read-kind-query "injections" name))
-
-(defun read-locals (name)
-  "The text of the rules for local names in NAME, from locals/NAME.scm
-\(READ-KIND-QUERY), or NIL when there are none."
-  (read-kind-query "locals" name))
-
-(defun read-tags (name)
-  "The text of the rules naming the definitions and headings in NAME, from
-tags/NAME.scm (READ-KIND-QUERY), or NIL when there are none."
-  (read-kind-query "tags" name))
-
 (defstruct (language (:constructor make-language (name doc grammar modes rules indents indent textobjects
                                                   injections injection-names locals definitions tags))
                      (:copier nil))
@@ -219,14 +190,14 @@ package runs Lisp with all the rights Tuatara has."
         (refuse "The injection names of ~(~a~), ~s, are not a regular expression: ~a" name injection-names e))))
   (let* ((old (find-language name))
          (queries (or queries grammar))
-         (textobjects (let ((read (read-textobjects queries)))
+         (textobjects (let ((read (read-kind-query "textobjects" queries)))
                         (if (and read more-textobjects)
                             (format nil "~a~%~a" read more-textobjects)
                             (or read more-textobjects))))
          (definitions (if (eq definitions :textobjects) (textobject-definitions textobjects) definitions))
-         (language (make-language name doc grammar modes (read-rules queries) (read-indents queries) indent textobjects
-                                  (read-injections queries) injection-names (read-locals queries) definitions
-                                  (read-tags queries))))
+         (language (make-language name doc grammar modes (read-kind-query "rules" queries) (read-kind-query "indents" queries)
+                                  indent textobjects (read-kind-query "injections" queries) injection-names
+                                  (read-kind-query "locals" queries) definitions (read-kind-query "tags" queries))))
     (when old
       (setf (language-style language) (language-style old)
             (language-level language) (language-level old)))
