@@ -491,13 +491,24 @@ background, the editor reading keys meanwhile (\\`C-g' gives the command up)."
 
 ;;; A parse and the buffer it is of
 
-(defstruct (org-parse (:constructor make-org-parse (buffer version tree text returns)) (:copier nil) (:predicate nil))
+(defstruct (org-parse (:constructor make-org-parse (buffer version root text returns)) (:copier nil) (:predicate nil))
   "The parse of an Org buffer, as ORG-BUFFER-PARSE and ORG-PARSE-NOW give it:
-TREE, its elements and objects (ORG-NODE), whose positions are characters of
-TEXT, the text BUFFER had at VERSION as Org reads it. A position of the parse
-goes to an octet of BUFFER by ORG-PARSE-OCTET and back by ORG-PARSE-CHAR;
-RETURNS is theirs to use."
-  buffer version tree text returns)
+its tree of elements and objects (ORG-PARSE-TREE), whose positions are
+characters of TEXT, the text BUFFER had at VERSION as Org reads it. A position
+of the parse goes to an octet of BUFFER by ORG-PARSE-OCTET and back by
+ORG-PARSE-CHAR, RETURNS theirs to use. While BUFFER is at VERSION they count
+by the parse's own text; once it has changed, by the text it has now, so that
+a position given after an edit is one of the text after it. A command that
+asks something keeps its places across the answer by ORG-ASK-KEEPING-PLACES.
+ORG-TEXT-NOW makes one with no tree, of the text alone."
+  buffer version root text returns)
+
+(defun org-parse-tree (parse)
+  "The tree of PARSE, its root an ORG-NODE of type ORG-DATA over all of its
+text. A parse of the text alone (ORG-TEXT-NOW) has none, and is refused."
+  (or (org-parse-root parse)
+      (error "The text of ~a was read, not parsed: it has no tree"
+             (tuatara.buffer:buffer-name (org-parse-buffer parse)))))
 
 (defun org-state-parse-of (buffer state)
   "The ORG-PARSE of STATE, BUFFER's whole parse, made once for each tree; NIL
@@ -505,7 +516,7 @@ while it has none."
   (let ((tree (org-state-tree state))
         (kept (org-state-parse state)))
     (cond ((null tree) nil)
-          ((and kept (eq (org-parse-tree kept) tree) (eql (org-parse-version kept) (org-state-version state))) kept)
+          ((and kept (eq (org-parse-root kept) tree) (eql (org-parse-version kept) (org-state-version state))) kept)
           (t (setf (org-state-parse state)
                    (make-org-parse buffer (org-state-version state) tree
                                    (org-state-text state) (org-state-returns state)))))))
@@ -513,7 +524,8 @@ while it has none."
 (defun org-text-now (buffer)
   "BUFFER's text as Org reads it now (ORG-BUFFER-TEXT), as an ORG-PARSE with
 no tree, for a command that reads the text without parsing it: its
-positions go to the buffer's octets as a parse's do."
+positions go to the buffer's octets as a parse's do, and ORG-PARSE-TREE
+refuses it."
   (make-org-parse buffer (tuatara.buffer:buffer-version buffer) nil (org-buffer-text buffer) (org-returns-of buffer)))
 
 (defun org-parse-returns-now (parse)
