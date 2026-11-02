@@ -469,9 +469,7 @@ great many it does not have is read in a bounded time."
   "The sections of PDF-METADATA's note for the PDF in OCTETS."
   (let* ((version (let ((header (tuatara.io:pdf-header-at octets)))
                     (and header (octets-text octets (+ header 5) (min (length octets) (+ header 8))))))
-         (saves (loop with mark = (map '(vector (unsigned-byte 8)) #'char-code "%%EOF")
-                      for at = (search mark octets) then (search mark octets :start2 (1+ at))
-                      while at count t))
+         (saves (length (pdf-eof-lines octets)))
          (info-mark (map '(vector (unsigned-byte 8)) #'char-code "/Info"))
          (info-at (search info-mark octets :from-end t))
          (info (and info-at (pdf-resolve octets (pdf-object-at octets (+ info-at (length info-mark))))))

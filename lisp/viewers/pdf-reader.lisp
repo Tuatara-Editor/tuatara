@@ -1,14 +1,16 @@
-;;;; lisp/viewers/pdf-reader.lisp --- Tuatara's PDF reader: values, objects, streams and object streams, from octets alone.
+;;;; lisp/viewers/pdf-reader.lisp --- Tuatara's PDF reader: objects, streams, saves and content, from octets alone.
 ;;;; Copyright (C) 2026 Michael A Jones.  GPL-3.0-or-later; see LICENSE.
 ;;;;
 ;;;; A PDF read by Tuatara alone, nothing in it run: its values (numbers,
 ;;;; strings, names, arrays, dictionaries, references), its objects where the
-;;;; file writes them, its streams decoded by every filter and predictor, and
-;;;; the objects packed in object streams. M-x file-metadata reads a PDF's
-;;;; account of itself with it, and packages examining PDFs use it too. Every
-;;;; offset and length a file gives is checked against its octets, every
-;;;; structure held to a count, and a file that names objects it does not
-;;;; have costs a bounded time (*PDF-OBJECTS-FOUND*).
+;;;; file writes them, its streams decoded by every filter and predictor, the
+;;;; objects packed in object streams, the %%EOF lines and cross-reference
+;;;; tables of its saves, and the operators of its pages' content. M-x
+;;;; file-metadata reads a PDF's account of itself with it, and packages
+;;;; examining PDFs use it too. Every offset and length a file gives is
+;;;; checked against its octets, every structure held to a count, and a file
+;;;; that names objects it does not have costs a bounded time
+;;;; (*PDF-OBJECTS-FOUND*).
 
 (in-package #:tuatara.defaults)
 
@@ -85,21 +87,46 @@ has more than 15 digits."
               do (setf value (+ (* value 10) (- (aref octets j) 48))) (incf j))
         (and (< (- j i) 16) (values value j))))))
 
+(defun walk-pdf-dictionary (function octets i depth)
+  "Call FUNCTION with each entry of the << dictionary >> in OCTETS from I,
+nested DEPTH deep, in the order written: its key, its value, where the key
+ends and where the value ends. Return where the reading ended (past the >>,
+or where an entry could not be read) and where the >> is, NIL when it was
+not reached, as two values."
+  (let ((n (length octets)) (j (+ i 2)))
+    (loop
+      (setf j (pdf-skip-space octets j))
+      (when (>= j n) (return (values j nil)))
+      (when (and (= (aref octets j) 62) (< (1+ j) n) (= (aref octets (1+ j)) 62)) (return (values (+ j 2) j)))
+      (multiple-value-bind (key after) (pdf-object-at octets j (1+ depth))
+        (unless (and (stringp key) (plusp (length key)) (char= (char key 0) #\/) (> after j)) (return (values j nil)))
+        (multiple-value-bind (value next) (pdf-object-at octets after (1+ depth))
+          (when (<= next after) (return (values j nil)))
+          (funcall function key value after next)
+          (setf j next))))))
+
 (defun pdf-dictionary-at (octets i depth)
   "The << dictionary >> in OCTETS from I, nested DEPTH deep, as an alist of
 (NAME . VALUE), and where it ends."
-  (let ((n (length octets)) (pairs '()) (j (+ i 2)))
-    (loop
-      (setf j (pdf-skip-space octets j))
-      (when (>= j n) (return))
-      (when (and (= (aref octets j) 62) (< (1+ j) n) (= (aref octets (1+ j)) 62)) (incf j 2) (return))
-      (multiple-value-bind (key after) (pdf-object-at octets j (1+ depth))
-        (unless (and (stringp key) (plusp (length key)) (char= (char key 0) #\/) (> after j)) (return))
-        (multiple-value-bind (value next) (pdf-object-at octets after (1+ depth))
-          (when (<= next after) (return))
-          (push (cons key value) pairs)
-          (setf j next))))
-    (values (nreverse pairs) j)))
+  (let ((pairs '()))
+    (flet ((pair (key value after next)
+             (declare (ignore after next))
+             (push (cons key value) pairs)))
+      (declare (dynamic-extent #'pair))
+      (let ((end (walk-pdf-dictionary #'pair octets i depth)))
+        (values (nreverse pairs) end)))))
+
+(defun map-pdf-dictionary (function octets at)
+  "Call FUNCTION with each entry of the << dictionary >> written in OCTETS
+from AT (white space and comments before it passed over), in the order
+written: its key (a name with its /), its value as PDF-OBJECT-AT reads it,
+where the key ends and where the value ends. Return where the dictionary
+begins and where its closing >> is, as two values; NIL when no dictionary
+begins there, or it cannot be read to its >>."
+  (let ((n (length octets)) (start (pdf-skip-space octets at)))
+    (when (and (< (1+ start) n) (= (aref octets start) 60) (= (aref octets (1+ start)) 60))
+      (let ((close (nth-value 1 (walk-pdf-dictionary function octets start 0))))
+        (and close (values start close))))))
 
 (defun pdf-hex-string-at (octets i &optional raw)
   "The <hex string> in OCTETS from I, as text (with RAW, as the octets it
@@ -251,24 +278,33 @@ NIL for NIL."
 
 (defstruct (pdf-indirect (:copier nil))
   "An object of a PDF as the file writes it (NUMBER GENERATION obj ...
-endobj): its NUMBER and GENERATION; its VALUE as PDF-OBJECT-AT reads it; AT,
-where it begins (its number), END, where it ends (after endobj);
-STREAM-START and STREAM-END, where its stream's octets lie, or NIL; LENGTH,
-the length its dictionary gives its stream; PACKED-IN, the number of the
-object stream holding it, AT and END then counting in that stream's decoded
-octets, else NIL."
+endobj): its number, generation and value, where it and its stream lie, and
+the object stream holding it, each read by PDF-INDIRECT-GET."
   number generation value at end stream-start stream-end length packed-in)
 
-(setf (documentation 'pdf-indirect-p 'function) "True when OBJECT is a PDF-INDIRECT."
-      (documentation 'pdf-indirect-number 'function) "The object number of a PDF-INDIRECT."
-      (documentation 'pdf-indirect-generation 'function) "The generation number of a PDF-INDIRECT."
-      (documentation 'pdf-indirect-value 'function) "The value of a PDF-INDIRECT, as PDF-OBJECT-AT reads it."
-      (documentation 'pdf-indirect-at 'function) "Where a PDF-INDIRECT begins: its number in the file, or in its object stream's octets."
-      (documentation 'pdf-indirect-end 'function) "Where a PDF-INDIRECT ends: after its endobj, or its value in an object stream."
-      (documentation 'pdf-indirect-stream-start 'function) "Where the octets of a PDF-INDIRECT's stream begin in the file, or NIL for one with none."
-      (documentation 'pdf-indirect-stream-end 'function) "Where the octets of a PDF-INDIRECT's stream end in the file, or NIL for one with none."
-      (documentation 'pdf-indirect-length 'function) "The length a PDF-INDIRECT's dictionary gives its stream, as written."
-      (documentation 'pdf-indirect-packed-in 'function) "The number of the object stream holding a PDF-INDIRECT, or NIL.")
+(setf (documentation 'pdf-indirect-p 'function) "True when OBJECT is a PDF-INDIRECT.")
+
+(declaim (inline pdf-indirect-get))
+(defun pdf-indirect-get (object field)
+  "FIELD of OBJECT, an object of a PDF as the file writes it (from
+PDF-INDIRECT-OBJECT-AT, MAP-PDF-WRITTEN-OBJECTS or PDF-PACKED-OBJECT):
+:NUMBER and :GENERATION, its object number and generation; :VALUE, its
+value as PDF-OBJECT-AT reads it; :AT, where it begins (its number), and
+:END, where it ends (after endobj); :STREAM-START and :STREAM-END, where the
+octets of its stream lie in the file, or NIL for one with none; :LENGTH, the
+length its dictionary gives its stream, as written; :PACKED-IN, the number
+of the object stream holding it, :AT and :END then counting in that
+stream's decoded octets, else NIL."
+  (ecase field
+    (:number (pdf-indirect-number object))
+    (:generation (pdf-indirect-generation object))
+    (:value (pdf-indirect-value object))
+    (:at (pdf-indirect-at object))
+    (:end (pdf-indirect-end object))
+    (:stream-start (pdf-indirect-stream-start object))
+    (:stream-end (pdf-indirect-stream-end object))
+    (:length (pdf-indirect-length object))
+    (:packed-in (pdf-indirect-packed-in object))))
 
 (defun pdf-object-header-before (octets p)
   "Where the object whose obj keyword is at P in OCTETS begins (the first
@@ -319,6 +355,84 @@ there, else as far as endstream."
                 (setf (pdf-indirect-end object)
                       (if (tuatara.io:octets-at-p octets "endobj" next) (+ next 6) (max next (pdf-indirect-end object))))
                 object))))))))
+
+;;; The file's objects, saves and cross-reference tables
+
+(defun map-pdf-written-objects (function octets)
+  "Call FUNCTION with each object written in the PDF in OCTETS, as a
+PDF-INDIRECT, in the order written: each found by its NUMBER GENERATION obj,
+its own octets (its stream among them) not looked in again. Stop when
+FUNCTION returns true, and return that. In a job, it ends when the job is
+asked to stop."
+  (let ((n (length octets)) (mark (load-time-value (tuatara.text:string-octets "obj"))) (i 0) (count 0))
+    (loop
+      (let ((p (search mark octets :start2 i)))
+        (unless p (return nil))
+        (when (zerop (mod (incf count) 4096)) (tuatara.runtime:job-check-stop))
+        (let ((at (pdf-object-header-before octets p))
+              (next (+ p 3)))
+          (when (and at (or (>= (+ p 3) n) (pdf-delimiter-p (aref octets (+ p 3)))))
+            (let ((object (pdf-indirect-object-at octets at)))
+              (when object
+                (let ((result (funcall function object)))
+                  (when result (return result)))
+                (setf next (max next (pdf-indirect-end object))))))
+          (setf i next))))))
+
+(defun pdf-eof-lines (octets)
+  "The %%EOF lines of the PDF in OCTETS, each of which ends a save of it, as
+a list of (EOF . END), in order: where its %%EOF is, and where its line
+ends."
+  (let ((mark (load-time-value (tuatara.text:string-octets "%%EOF"))))
+    (loop for at = (search mark octets) then (search mark octets :start2 (+ at 5))
+          while at
+          collect (cons at (pdf-line-end-after octets (+ at 5))))))
+
+(defun pdf-startxref (octets &key (start 0) (end (length octets)))
+  "The offset the last startxref from START below END in the PDF in OCTETS
+names (where a save's cross-reference section is said to be), and where
+that startxref is, as two values: the offset NIL when it names none that can
+be read, both NIL when there is no startxref."
+  (let ((at (search (load-time-value (tuatara.text:string-octets "startxref")) octets
+                    :start2 start :end2 end :from-end t)))
+    (values (and at (values (pdf-integer-at octets (+ at 9) end))) at)))
+
+(defun map-pdf-cross-reference-table (function octets at)
+  "Call FUNCTION with each entry of the cross-reference table written in
+OCTETS at AT (its xref keyword, white space and comments before it passed
+over), in the order written: the object's number, its offset (for a free
+object, the number of the next free one), its generation, and :USED or
+:FREE. Stop when FUNCTION returns true. NIL when no table is at AT; else,
+as three values, how its entries ended: :END, at its trailer or the file's
+end; :STOPPED, by FUNCTION; :CUT-SHORT, where the first number and count of
+a part of it could not be read; :UNREADABLE, where an entry could not be
+read. Then the trailer dictionary written where they ended, or NIL; and
+where they ended."
+  (let* ((n (length octets)) (i (pdf-skip-space octets at)) (ending :end))
+    (when (tuatara.io:octets-at-p octets "xref" i)
+      (setf i (+ i 4))
+      (block sections
+        (loop
+          (setf i (pdf-skip-space octets i))
+          (when (or (>= i n) (tuatara.io:octets-at-p octets "trailer" i)) (return))
+          (multiple-value-bind (start after) (pdf-integer-at octets i)
+            (multiple-value-bind (count after) (and start (pdf-integer-at octets after))
+              (unless count (setf ending :cut-short) (return))
+              (setf i after)
+              (dotimes (k count)
+                (when (zerop (logand k 4095)) (tuatara.runtime:job-check-stop))
+                (multiple-value-bind (offset after) (pdf-integer-at octets i)
+                  (multiple-value-bind (generation after) (and offset (pdf-integer-at octets after))
+                    (let ((kind (and generation (pdf-skip-space octets after))))
+                      (unless (and kind (< kind n) (member (aref octets kind) '(102 110)))
+                        (setf ending :unreadable)
+                        (return-from sections))
+                      (when (funcall function (+ start k) offset generation (if (= (aref octets kind) 110) :used :free))
+                        (setf ending :stopped)
+                        (return-from sections))
+                      (setf i (1+ kind))))))))))
+      (let ((trailer (and (tuatara.io:octets-at-p octets "trailer" i) (pdf-object-at octets (+ i 7)))))
+        (values ending (and (pdf-dictionary-p trailer) trailer) i)))))
 
 ;;; Streams decoded
 
@@ -644,3 +758,97 @@ what it names (PDF-FIND-OBJECT)."
       (let ((object (pdf-find-object octets (second value) (third value))))
         (and object (pdf-indirect-value object)))
       value))
+
+;;; Content streams
+
+(defparameter *pdf-most-operators* 2000000
+  "The most operators of one content stream MAP-PDF-CONTENT reads, as
+standard: past them the rest is not read.")
+
+(defun map-pdf-content (function octets &key (limit *pdf-most-operators*))
+  "Read OCTETS, a content stream (or a CMap), calling FUNCTION with each
+operator met (a string), its operands (a list, in order: numbers, names as
+strings with their /, strings as octets, arrays as lists, dictionaries as
+alists, :TRUE, :FALSE and :NULL), where its first operand begins (or the
+operator, when it has none) and where the operator ends. An inline picture
+\(BI ... ID ... EI) is given as the operator BI with its dictionary as its
+one operand, its data passed over. At most LIMIT operators; returns how many
+there were. Nothing in it is run. In a job, it ends when the job is asked to
+stop."
+  (let ((n (length octets)) (i 0) (stack '()) (depth 0) (count 0) (from nil))
+    (labels ((value (i depth)
+               ;; one operand at I, and where it ends
+               (let ((c (aref octets i)))
+                 (cond ((= c 40) (pdf-literal-string-at octets i t))
+                       ((and (= c 60) (< (1+ i) n) (= (aref octets (1+ i)) 60))
+                        (pdf-object-at octets i))
+                       ((= c 60) (pdf-hex-string-at octets i t))
+                       ((= c 47) (multiple-value-bind (name end) (pdf-object-at octets i) (values name end)))
+                       ((= c 91)
+                        (let ((items '()) (j (1+ i)))
+                          (loop
+                            (setf j (pdf-skip-space octets j))
+                            (when (or (>= j n) (> depth 16)) (return))
+                            (when (= (aref octets j) 93) (incf j) (return))
+                            (multiple-value-bind (item end) (value j (1+ depth))
+                              (when (<= end j) (return))
+                              (setf j end)
+                              (unless (eq item :skip) (push item items))))
+                          (values (nreverse items) j)))
+                       ((or (<= 48 c 57) (member c '(43 45 46)))
+                        (multiple-value-bind (number end) (pdf-number-at octets i n)
+                          (values (if (numberp number) number :skip) (max end (1+ i)))))
+                       ((pdf-delimiter-p c) (values :skip (1+ i)))
+                       (t (let ((j i))
+                            (loop while (and (< j n) (not (pdf-delimiter-p (aref octets j)))) do (incf j))
+                            (values (tuatara.text:octets-latin-1 octets :start i :end j) j))))))
+             (inline-image (i)
+               ;; after BI: its keys and values to ID, then its data to EI
+               (let ((pairs '()) (j i))
+                 (loop
+                   (setf j (pdf-skip-space octets j))
+                   (when (>= j n) (return))
+                   (when (and (tuatara.io:octets-at-p octets "ID" j)
+                              (or (>= (+ j 2) n) (pdf-white-p (aref octets (+ j 2)))))
+                     (incf j 3) (return))
+                   (multiple-value-bind (key end) (value j 0)
+                     (when (<= end j) (return))
+                     (multiple-value-bind (v after) (value (pdf-skip-space octets end) 0)
+                       (when (<= after end) (return))
+                       (when (stringp key) (push (cons key v) pairs))
+                       (setf j after))))
+                 (let ((close (loop with mark = (load-time-value (tuatara.text:string-octets "EI"))
+                                    for at = (search mark octets :start2 j) then (search mark octets :start2 (+ at 2))
+                                    while at
+                                    when (and (> at 0) (pdf-white-p (aref octets (1- at)))
+                                              (or (>= (+ at 2) n) (pdf-white-p (aref octets (+ at 2)))
+                                                  (pdf-delimiter-p (aref octets (+ at 2)))))
+                                      return at)))
+                   (values (nreverse pairs) (if close (+ close 2) n))))))
+      (loop
+        (setf i (pdf-skip-space octets i))
+        (when (or (>= i n) (>= count limit)) (return))
+        (multiple-value-bind (item end) (value i 0)
+          (setf end (max end (1+ i)))
+          (unless (or from (eq item :skip)) (setf from i))
+          (flet ((operand (x)
+                   (push x stack)
+                   (when (> (incf depth) 100000) (setf stack '() depth 0)))
+                 (counted ()
+                   (when (zerop (logand (incf count) 4095)) (tuatara.runtime:job-check-stop))))
+            (cond ((eq item :skip))
+                  ((and (stringp item) (plusp (length item)) (char/= #\/ (char item 0)))
+                   (cond ((string= item "true") (operand :true))
+                         ((string= item "false") (operand :false))
+                         ((string= item "null") (operand :null))
+                         ((string= item "BI")
+                          (multiple-value-bind (dict after) (inline-image end)
+                            (counted)
+                            (funcall function "BI" (list dict) from after)
+                            (setf stack '() depth 0 from nil end after)))
+                         (t (counted)
+                            (funcall function item (reverse stack) from end)
+                            (setf stack '() depth 0 from nil))))
+                  (t (operand item))))
+          (setf i end))))
+    count))

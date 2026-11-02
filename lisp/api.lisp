@@ -203,12 +203,11 @@ its form says, as ORG-READ-RULE reads them; :HOUR, :MINUTE, :END-HOUR and
     org-safe-line org-safe-line-words org-escape-block org-unescape-block
     tuatara.io:inflate tuatara.text:xml-parse xmp-fields jpeg-metadata file-sha256 shown-file
     ;; PDF objects, read from octets alone
-    pdf-object-at pdf-skip-space pdf-delimiter-p pdf-literal-string-at pdf-hex-string-at pdf-string-text pdf-date-words
-    *pdf-most-items* tuatara.io:pdf-header-at pdf-white-p pdf-line-end-after pdf-integer-at pdf-number-at
-    pdf-get pdf-dictionary-p pdf-ref-p pdf-array-items pdf-object-header-before pdf-indirect-object-at
-    pdf-indirect-p pdf-indirect-number pdf-indirect-generation pdf-indirect-value pdf-indirect-at pdf-indirect-end
-    pdf-indirect-stream-start pdf-indirect-stream-end pdf-indirect-length pdf-indirect-packed-in
-    pdf-stream-filters pdf-stream-octets *pdf-picture-filters* pdf-object-stream-offsets pdf-packed-object
+    pdf-object-at pdf-string-text pdf-date-words *pdf-most-items* tuatara.io:pdf-header-at pdf-white-p
+    pdf-get pdf-dictionary-p pdf-ref-p pdf-array-items map-pdf-dictionary
+    pdf-indirect-object-at pdf-indirect-get map-pdf-written-objects pdf-eof-lines pdf-startxref
+    map-pdf-cross-reference-table pdf-stream-filters pdf-stream-octets *pdf-picture-filters*
+    pdf-object-stream-offsets pdf-packed-object map-pdf-content
     ;; octets shown as a hex dump, text shortened, and text from a file with its control characters shown
     show-octets-in-hex tuatara.text:octets-hex tuatara.display:shorten-string tuatara.command:escape-controls tuatara.text:xml-unprefixed tuatara.io:ensure-directories
     ;; programs from outside, shut in
