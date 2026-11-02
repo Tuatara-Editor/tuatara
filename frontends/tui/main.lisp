@@ -329,9 +329,10 @@ or -- before the files. After --, every argument is a file's name."
                 ((string= argument "--tutor") (given :tutor))
                 ((string= argument "--frames")
                  (let ((count (tuatara.text:whole-number (pop arguments))))
-                   (if (and count (<= 1 count 16))
+                   (if (and count (<= 1 count tuatara.command:*most-frames*))
                        (setf (getf options :frames) count)
-                       (fail "--frames needs how many frames to open after it, from 1 to 16"))))
+                       (fail "--frames needs how many frames to open after it, from 1 to ~d"
+                             tuatara.command:*most-frames*))))
                 ((member argument '("-Q" "--no-init") :test #'string=) (given :bare))
                 ((string= argument "--merge")
                  (if (and (>= (length arguments) 4) (every #'plusp (mapcar #'length (subseq arguments 0 4))))

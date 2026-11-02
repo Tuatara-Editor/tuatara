@@ -85,6 +85,10 @@ returned (TUATARA.FRONTEND:FRONTEND-FRAME). The frame worked in stays so."
     (call-in-frame editor frame (lambda () (fit-windows editor)))
     frame))
 
+(defparameter *most-frames* 16
+  "The most frames the editor opens by itself as it starts: those --frames asks
+for, and those of the session kept.")
+
 (defun open-frame (editor &key buffer (select t))
   "Open another frame of EDITOR beside the frame worked in, showing BUFFER,
 else the buffer of the window worked in, and with SELECT make it the one

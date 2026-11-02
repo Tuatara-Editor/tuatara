@@ -129,6 +129,39 @@ a session file not of its own kind is left alone, nothing in it evaluated; off, 
         (is = 2 (length (tuatara.command:editor-frames editor))))
       (forget-session-buffers))))
 
+(define-test (session frames-of-a-session-bounded)
+  ;; a session of a thousand frames opens sixteen, in a window; the others are kept as they
+  ;; were, never dropped, and the session written back never holds more frames than it had
+  (let ((tuatara-user:*keep-session* t)
+        (tuatara.defaults::*modal-editing* nil)
+        (text (with-output-to-string (out)
+                (format out "tuatara session 1~%")
+                (dotimes (i 1000) (format out "frame~%window 1 ~d scratch 0 *scratch*~%" i))
+                (format out "end~%"))))
+    (flet ((frames-written ()
+             (count "frame" (uiop:split-string (alexandria:read-file-into-string (tuatara.defaults::session-path))
+                                               :separator '(#\Newline))
+                    :test #'string=)))
+      (forget-session-buffers)
+      (alexandria:write-string-into-file text (tuatara.defaults::session-path) :if-exists :supersede)
+      (let* ((f (tuatara.frontend.fake:make-fake-frontend :width 80 :height 20 :font-steps 0))
+             (editor (progn (queue-test-keys f (list "C-x 5 2"))
+                            (tuatara.command:run-editor f :setup #'tuatara.defaults:install-defaults))))
+        ;; sixteen opened, and one more by C-x 5 2
+        (is = 17 (length (tuatara.command:editor-frames editor))))
+      (is = 1000 (frames-written))
+      ;; the sections not opened are those read, as they were, but the last, which the frame
+      ;; opened since took the room of
+      (let ((written (alexandria:read-file-into-string (tuatara.defaults::session-path))))
+        (true (search (format nil "frame~%window 1 998 scratch 0 *scratch*~%end") written))
+        (false (search "window 1 999 " written)))
+      ;; in a terminal: one frame, every other section kept
+      (multiple-value-bind (f editor) (session-start nil)
+        (declare (ignore f))
+        (is = 1 (length (tuatara.command:editor-frames editor))))
+      (is = 1000 (frames-written))
+      (forget-session-buffers))))
+
 (define-test (session never-evaluated-and-off)
   (with-test-directory (dir)
     (let ((one (namestring (merge-pathnames "one.txt" dir))))
