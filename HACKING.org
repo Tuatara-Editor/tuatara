@@ -77,6 +77,11 @@ with the same sanitizers and sends it requests of every kind, well made and
 spoilt (=tools/fuzz-helper.py=); it fails on the first sanitizer report or
 the helper ending, the last requests sent in =build/fuzz/helper.log.last=;
 over one connection, then over two, the second using what the first uses.
+=tools/fuzz-pdf.sh [-n ROUNDS] [--seed SEED] [--deadline SECONDS]= spoils PDFs
+it makes itself (=tools/fuzz-pdf.lisp=) and reads each with every reader of
+=lisp/viewers/pdf-reader.lisp= and file-metadata's PDF part; it fails on an
+error escaping a reader, a reader running past the deadline on one file or
+too much memory kept, the file that did it kept in =build/fuzz/=.
 
 * Building and running
 
