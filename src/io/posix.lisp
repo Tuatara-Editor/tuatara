@@ -1385,6 +1385,11 @@ is not there nothing is kept in its place.")
   "The settings naming a folder that was not there when it was wanted
 \(CHOSEN-DIRECTORY), each with the folder in memory used in its place.")
 
+(defun directory-in-memory-p (setting)
+  "True while the folder the setting SETTING (a symbol) names is kept in memory
+for want of its drive (CHOSEN-DIRECTORY)."
+  (and (assoc setting *directories-in-memory*) t))
+
 (defun chosen-directory (setting standard)
   "The folder the setting SETTING (a symbol) names, as a pathname, when it
 names one, else STANDARD, made if needed, for you alone. A folder named must

@@ -154,7 +154,7 @@ state directory is set to be is the same, nothing looked at on the disk:
 for reading LIST, which an edit may ask for each key. Never while the state
 directory set is kept in memory for want of its drive (CHOSEN-DIRECTORY):
 it is looked for each time, to be used once there."
-  (let ((place (and known (not (assoc 'tuatara-user:*state-directory* tuatara.io::*directories-in-memory*))
+  (let ((place (and known (not (tuatara.io:directory-in-memory-p 'tuatara-user:*state-directory*))
                     (list tuatara-user:*state-directory* (sb-ext:posix-getenv "XDG_STATE_HOME")
                           (sb-ext:posix-getenv "HOME")))))
     (if (and place (state-list-known-path list) (equal place (state-list-place list)))
