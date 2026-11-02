@@ -371,6 +371,36 @@ commented inside another one commented (;;   ;; (setf ...) in a load-package's
                           (tuatara.defaults::note-templates-directory)))
       (true (uiop:string-prefix-p config folder) "~a" folder))))
 
+(define-test (config budgets-are-not-settings)
+  ;; limits the editor decides for itself are neither the init file's settings nor in the starter
+  ;; init file; those that became internal are still there, documented, where they are used
+  (let ((starter tuatara.defaults::*starter-config*))
+    (loop for (name home) in '(("*LSP-EVENTS-KEPT*" :tuatara.defaults)
+                               ("*LSP-EVENT-LENGTH*" :tuatara.defaults)
+                               ("*LSP-MOST-CHANGES*" :tuatara.defaults)
+                               ("*LSP-WATCHED-MOST*" :tuatara.defaults)
+                               ("*LSP-LOCATION-FILES-TOTAL*" :tuatara.defaults)
+                               ("*LSP-SYNC-DELAY*" nil)
+                               ("*SYNTAX-HELPER-MEMORY*" :tuatara.syntax)
+                               ("*SYNTAX-HELPER-WAIT*" :tuatara.syntax)
+                               ("*SYNTAX-HELPERS-MOST*" :tuatara.syntax)
+                               ("*TYPING-PAUSE-OCTETS*" nil)
+                               ("*SEARCH-FILTER-SCREEN-SECONDS*" :tuatara.defaults)
+                               ("*VC-GUTTER-MAX-BYTES*" :tuatara.defaults)
+                               ("*CONFLICT-MARKERS-MAX-BYTES*" :tuatara.defaults)
+                               ("*DOCX-READ-MOST-STAND-INS*" :tuatara.defaults)
+                               ("*MAGICK-LARGEST-SIDE*" :tuatara.defaults)
+                               ("*LATEX-IMPORT-PICTURE-LIMIT*" :tuatara.defaults)
+                               ("*ORG-MACRO-LIMIT*" :tuatara.defaults)
+                               ("*KILL-RING-MAX-SIZE*" :tuatara.defaults)
+                               ("*GLOBAL-MARK-RING-MAX*" nil)
+                               ("*PICTURE-SECONDS*" nil))
+          do (isnt eq :external (nth-value 1 (find-symbol name :tuatara-user)) "~a a setting" name)
+             (false (search (string-downcase name) starter) "~(~a~) in the starter init file" name)
+             (when home
+               (let ((symbol (find-symbol name home)))
+                 (true (and symbol (boundp symbol) (documentation symbol 'variable)) "~a in ~a" name home))))))
+
 (define-test (config definitions-named-in-the-init-file)
   ;; help names the init file as where its commands and recorded keys are defined, and its
   ;; link goes to the line there
