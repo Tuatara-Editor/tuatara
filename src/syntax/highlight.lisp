@@ -616,6 +616,8 @@ text is made of them."
          (opens (local-room-opens room)) (stack (local-room-stack room)) (bindings (local-room-bindings room))
          (latest (clrhash (local-room-latest room))) (left (clrhash (local-room-left room)))
          (resolved (if *local-room* (clrhash (local-room-resolved room)) (make-hash-table)))
+         ;; the face of each kind of definition, by its capture's number, asked for once
+         (faces (make-array (length roles) :initial-element 0))
          (ranges '()))
     (dolist (v (list scopes definitions references events opens stack bindings))
       (setf (fill-pointer v) 0))
@@ -699,9 +701,13 @@ text is made of them."
                             (sealed (loop for k from (- (length stack) 1) downto 1 by 2
                                           when (= 1 (aref stack k)) return (1+ (floor k 2))
                                           finally (return 0)))
-                            (kind (and binding (>= (aref bindings (+ binding 2)) sealed)
-                                       (svref roles (aref definitions (+ 2 (* 3 (aref bindings (+ binding 1))))))))
-                            (face (and kind (funcall face-of kind))))
+                            (capture (and binding (>= (aref bindings (+ binding 2)) sealed)
+                                          (aref definitions (+ 2 (* 3 (aref bindings (+ binding 1)))))))
+                            (kind (and capture (svref roles capture)))
+                            (face (and kind (let ((known (svref faces capture)))
+                                              (if (eql known 0)
+                                                  (setf (svref faces capture) (funcall face-of kind))
+                                                  known)))))
                        (when kind
                          (setf (gethash (logior (ash s 31) e) resolved) t))
                        (when (and face (not (eq face :none)))
