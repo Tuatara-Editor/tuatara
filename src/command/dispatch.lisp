@@ -453,7 +453,7 @@ gets no strings of it."
                                              (not (typep e 'quit)))
                                     (setf trace (capture-backtrace :stop stop))))))
             (funcall thunk))
-        (quit () (when quit (message "~a" quit)) nil)
+        (quit (c) (when quit (message "~a" (or (quit-words c) quit))) nil)
         (error (e)
           (let* ((tuatara.runtime:*secret-at-hand* (or tuatara.runtime:*secret-at-hand* secret-then))
                  (words (tuatara.runtime:failure-words e :said t)))

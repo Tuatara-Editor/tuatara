@@ -623,11 +623,12 @@ in *Messages*: the keys of a sequence being typed, prompts."
   (setf (editor-message *editor*)
         (unmark-keys (apply #'format nil (substitute-command-keys control :marks t :for-format t) arguments))))
 
-(defun keyboard-quit-signal ()
-  "Signal QUIT: abandon the current command or minibuffer read. Keys being
-recorded are given up (GIVE-UP-KEY-RECORDING)."
+(defun keyboard-quit-signal (&optional words)
+  "Signal QUIT: abandon the current command or minibuffer read, saying WORDS,
+when given, of why in place of Quit. Keys being recorded are given up
+\(GIVE-UP-KEY-RECORDING)."
   (give-up-keys-recording)
-  (error 'quit))
+  (error 'quit :words words))
 
 (defvar *key-question* nil
   "True while a question in the echo area waits for one key (READ-KEY): the

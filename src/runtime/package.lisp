@@ -9,7 +9,7 @@
            #:set-debug #:milliseconds-since #:seconds-since #:deadline-in #:deadline-passed-p #:seconds-left #:*debug-log-path* #:log-in-use-p #:debug-report-line #:backtrace-lines
            #:reporting-errors #:ignoring-errors-reported
            ;; hooks
-           #:quit #:run-hook #:run-hook-until-success #:run-hook-until-done #:call-hook-function #:hook-function-name
+           #:quit #:quit-words #:run-hook #:run-hook-until-success #:run-hook-until-done #:call-hook-function #:hook-function-name
            #:host-say-hook-failure #:*hook-failures-said*
            #:*secret-at-hand* #:refusal #:refuse
            #:host-secret-buffer-p #:secret-buffer-p #:failure-words #:note-editor-busy

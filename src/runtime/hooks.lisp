@@ -18,9 +18,13 @@
 
 (in-package #:tuatara.runtime)
 
-(define-condition quit (error) ()
+(define-condition quit (error)
+  ((words :initarg :words :initform nil :reader quit-words
+          :documentation "What to say of why, in place of Quit, or NIL."))
   (:documentation "Signalled by keyboard-quit (\\`C-g') to abandon the current command or minibuffer.")
-  (:report (lambda (c s) (declare (ignore c)) (format s "Quit"))))
+  (:report (lambda (c s) (format s "~a" (or (quit-words c) "Quit")))))
+
+(setf (documentation 'quit-words 'function) "What a QUIT says of why it was signalled, in place of Quit, or NIL.")
 
 (defgeneric host-say-hook-failure (host text)
   (:documentation "Say TEXT, that a hook function failed, where it is seen (the editor's echo
