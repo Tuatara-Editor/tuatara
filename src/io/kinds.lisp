@@ -25,16 +25,6 @@ first unless BIG-ENDIAN; NIL when they are not all there."
   "VALUE, an unsigned integer of BITS bits, as the signed one it stands for; NIL for NIL."
   (and value (if (logbitp (1- bits) value) (- value (ash 1 bits)) value)))
 
-(defun octets-le (octets start count)
-  "The unsigned number in COUNT octets of OCTETS from START, least significant
-first; NIL past their end (OCTETS-INTEGER)."
-  (octets-integer octets start count))
-
-(defun octets-be (octets start count)
-  "The unsigned number in COUNT octets of OCTETS from START, most significant
-first; NIL past their end (OCTETS-INTEGER)."
-  (octets-integer octets start count :big-endian t))
-
 (declaim (inline octets-put-integer))
 (defun octets-put-integer (octets value count &key at big-endian)
   "Write the unsigned integer VALUE as COUNT octets, least significant first
@@ -140,8 +130,8 @@ header); NIL when it is not there."
   "The width and height of the PNG image whose first octets are O, as two
 values, from the image header that comes straight after the signature; NIL
 when that header is not there, is cut short or holds values no PNG has."
-  (let ((width (octets-be o 16 4)) (height (octets-be o 20 4)))
-    (if (and (eql (octets-be o 8 4) 13) (octets-at-p o "IHDR" 12)
+  (let ((width (octets-integer o 16 4 :big-endian t)) (height (octets-integer o 20 4 :big-endian t)))
+    (if (and (eql (octets-integer o 8 4 :big-endian t) 13) (octets-at-p o "IHDR" 12)
              width height (plusp width) (plusp height)
              (member (octet-at o 24) '(1 2 4 8 16)) (member (octet-at o 25) '(0 2 3 4 6)))
         (values width height)
@@ -171,7 +161,7 @@ markers are looked at."
                (cond ((= marker #xFF) (incf at))
                      ((or (<= #xD0 marker #xD7) (= marker #x01)) (incf at 2))
                      ((member marker '(#xDA #xD9)) (return nil))
-                     (t (let ((length (octets-be octets (+ at 2) 2)))
+                     (t (let ((length (octets-integer octets (+ at 2) 2 :big-endian t)))
                           (unless (and length (>= length 2)) (return nil))
                           (let ((result (funcall function marker (+ at 4) (min (length octets) (+ at 2 length)))))
                             (when result (return result)))
@@ -183,7 +173,8 @@ values, from its first frame header; NIL when that is not among O."
   (let ((size (jpeg-segments o (lambda (marker start end)
                                  (and (member marker '(#xC0 #xC1 #xC2 #xC3 #xC5 #xC6 #xC7 #xC9 #xCA #xCB #xCD #xCE #xCF))
                                       (<= (+ start 5) end)
-                                      (list (octets-be o (+ start 3) 2) (octets-be o (+ start 1) 2)))))))
+                                      (list (octets-integer o (+ start 3) 2 :big-endian t)
+                                            (octets-integer o (+ start 1) 2 :big-endian t)))))))
     (values (first size) (second size))))
 
 (defun jpeg-words (o)
@@ -193,16 +184,16 @@ values, from its first frame header; NIL when that is not among O."
 
 (defun gif-size (o)
   "The width and height of the GIF image whose first octets are O, as two values."
-  (values (octets-le o 6 2) (octets-le o 8 2)))
+  (values (octets-integer o 6 2) (octets-integer o 8 2)))
 
 (defun bmp-size (o)
   "The width and height of the BMP image whose first octets are O, as two
 values (a height written negative, for rows kept top first, made positive)."
-  (values (octets-le o 18 4) (let ((h (octets-signed (octets-le o 22 4) 32))) (and h (abs h)))))
+  (values (octets-integer o 18 4) (let ((h (octets-signed (octets-integer o 22 4) 32))) (and h (abs h)))))
 
 (defun psd-size (o)
   "The width and height of the Photoshop image whose first octets are O, as two values."
-  (values (octets-be o 18 4) (octets-be o 14 4)))
+  (values (octets-integer o 18 4 :big-endian t) (octets-integer o 14 4 :big-endian t)))
 
 (defparameter *jp2-signature* '(0 0 0 12 #x6A #x50 #x20 #x20 13 10 #x87 10)
   "The twelve octets a JPEG 2000 file (JP2, JPX, JPM or Motion JPEG 2000) starts
@@ -228,11 +219,11 @@ size read in the long form too; NIL when no header is there or its size is
 shorter than its header."
   (let ((header (funcall read at 16)))
     (when (and header (>= (length header) 8))
-      (let ((size (octets-be header 0 4))
+      (let ((size (octets-integer header 0 4 :big-endian t))
             (type (octets-ascii header 4 8)))
         (case size
           (0 (values type (+ at 8) nil))
-          (1 (let ((large (octets-be header 8 8)))
+          (1 (let ((large (octets-integer header 8 8 :big-endian t)))
                (and large (>= large 16) (values type (+ at 16) (+ at large)))))
           (t (and (>= size 8) (values type (+ at 8) (+ at size)))))))))
 
@@ -258,7 +249,7 @@ header, as a list of :WIDTH and :HEIGHT, :COMPONENTS (colours and the
 like, alpha too), :PRECISION (the most bits of any one, NIL when not all are
 among O) and :TILES (how many pieces the picture is cut in); NIL when its
 size marker is not there or holds values no codestream has."
-  (flet ((n (offset count) (octets-be o (+ at offset) count)))
+  (flet ((n (offset count) (octets-integer o (+ at offset) count :big-endian t)))
     (let ((x (n 8 4)) (y (n 12 4)) (xo (n 16 4)) (yo (n 20 4))
           (xt (n 24 4)) (yt (n 28 4)) (xto (n 32 4)) (yto (n 36 4))
           (count (n 40 2)))
@@ -405,7 +396,7 @@ LITTLE-endian (as standard, when the structure begins II) or not. As a second
 value a function of an offset from START and a length reading a number that
 way, and as a third the offset of the next directory. NIL when the directory
 is not among OCTETS."
-  (let* ((int (lambda (at n) (if little (octets-le octets (+ start at) n) (octets-be octets (+ start at) n))))
+  (let* ((int (lambda (at n) (octets-integer octets (+ start at) n :big-endian (not little))))
          (ifd (or ifd (funcall int 4 4)))
          (count (and ifd (funcall int ifd 2))))
     (values (and count
@@ -467,13 +458,13 @@ ORF, Panasonic or Leica RW2, Minolta MRW; NIL otherwise."
 (defun webp-size (o)
   "The width and height of the WebP image whose first octets are O, as two
 values, from whichever of its three headers it has; NIL when none is among O."
-  (cond ((and (octets-at-p o "VP8X" 12) (octets-le o 27 3))
-         (values (1+ (octets-le o 24 3)) (1+ (octets-le o 27 3))))
-        ((and (octets-at-p o "VP8L" 12) (octets-le o 21 4))
-         (let ((bits (octets-le o 21 4)))
+  (cond ((and (octets-at-p o "VP8X" 12) (octets-integer o 27 3))
+         (values (1+ (octets-integer o 24 3)) (1+ (octets-integer o 27 3))))
+        ((and (octets-at-p o "VP8L" 12) (octets-integer o 21 4))
+         (let ((bits (octets-integer o 21 4)))
            (values (1+ (logand bits #x3FFF)) (1+ (logand (ash bits -14) #x3FFF)))))
-        ((and (octets-at-p o "VP8 " 12) (octets-le o 28 2))
-         (values (logand (octets-le o 26 2) #x3FFF) (logand (octets-le o 28 2) #x3FFF)))
+        ((and (octets-at-p o "VP8 " 12) (octets-integer o 28 2))
+         (values (logand (octets-integer o 26 2) #x3FFF) (logand (octets-integer o 28 2) #x3FFF)))
         (t (values nil nil))))
 
 (defun webp-words (o)
@@ -484,7 +475,7 @@ values, from whichever of its three headers it has; NIL when none is among O."
   "An executable and linkable format (ELF) file described: its width, what it
 is, the processor it is for."
   (let ((class (octet-at o 4)) (le (eql (octet-at o 5) 1)))
-    (flet ((field (start count) (if le (octets-le o start count) (octets-be o start count))))
+    (flet ((field (start count) (octets-integer o start count :big-endian (not le))))
       (joined-words (format nil "ELF ~a-bit ~a" (case class (1 32) (2 64) (t "?"))
                      (case (field 16 2) (1 "relocatable object") (2 "executable") (3 "shared object or executable")
                        (4 "core dump") (t "file")))
@@ -494,11 +485,11 @@ is, the processor it is for."
 
 (defun pe-words (o)
   "A Windows program described: executable or DLL, its format and processor."
-  (let ((pe (octets-le o #x3C 4)))
+  (let ((pe (octets-integer o #x3C 4)))
     (if (and pe (octets-at-p o (list 80 69 0 0) pe))
-        (let ((machine (octets-le o (+ pe 4) 2))
-              (characteristics (octets-le o (+ pe 22) 2))
-              (magic (octets-le o (+ pe 24) 2)))
+        (let ((machine (octets-integer o (+ pe 4) 2))
+              (characteristics (octets-integer o (+ pe 22) 2))
+              (magic (octets-integer o (+ pe 24) 2)))
           (joined-words (format nil "Windows ~:[program~;DLL~]~@[ (~a)~]"
                          (and characteristics (logtest characteristics #x2000))
                          (case magic (#x10B "PE32") (#x20B "PE32+") (t nil)))
@@ -511,11 +502,11 @@ DATA-END), as MP4, QuickTime and HEIF files keep their parts; at most 10,000,
 one whose size does not fit ending the list."
   (let ((boxes '()) (at start))
     (loop while (and (<= (+ at 8) end) (< (length boxes) 10000))
-          do (let ((size (octets-be octets at 4))
+          do (let ((size (octets-integer octets at 4 :big-endian t))
                    (type (octets-ascii octets (+ at 4) (+ at 8)))
                    (header 8))
                (case size
-                 (1 (setf size (octets-be octets (+ at 8) 8) header 16))
+                 (1 (setf size (octets-integer octets (+ at 8) 8 :big-endian t) header 16))
                  (0 (setf size (- end at))))
                (when (or (null size) (< size header) (> (+ at size) end)) (return))
                (push (list type (+ at header) (+ at size)) boxes)
@@ -544,7 +535,8 @@ when none is among O."
     (when ipco
       (loop for (type start end) in (box-children o (second ipco) (third ipco))
             when (and (equal type "ispe") (<= (+ start 12) end))
-              do (let ((width (octets-be o (+ start 4) 4)) (height (octets-be o (+ start 8) 4)))
+              do (let ((width (octets-integer o (+ start 4) 4 :big-endian t))
+                       (height (octets-integer o (+ start 8) 4 :big-endian t)))
                    (when (or (null best) (> (* width height) (* (first best) (second best))))
                      (setf best (list width height))))))
     (values (first best) (second best))))
@@ -577,10 +569,10 @@ than MOST of them."
   (let ((names '()) (at 0) (n (length o)))
     (loop repeat most
           while (and (<= (+ at 30) n) (octets-at-p o (list 80 75 3 4) at))
-          do (let* ((flags (octets-le o (+ at 6) 2))
-                    (packed (octets-le o (+ at 18) 4))
-                    (name-length (octets-le o (+ at 26) 2))
-                    (data (+ at 30 name-length (octets-le o (+ at 28) 2))))
+          do (let* ((flags (octets-integer o (+ at 6) 2))
+                    (packed (octets-integer o (+ at 18) 4))
+                    (name-length (octets-integer o (+ at 26) 2))
+                    (data (+ at 30 name-length (octets-integer o (+ at 28) 2))))
                (when (> (+ at 30 name-length) n) (return))
                (push (octets-ascii o (+ at 30) (+ at 30 name-length)) names)
                ;; sizes written after the data: the next entry is the next header found
@@ -673,13 +665,14 @@ parts, as data packets have it); NIL when no packet header is there."
                   ((< l 192) (values (logand b #x3F) (+ at 2) l))
                   ((< l 224) (let ((l2 (octet-at octets (+ at 2))))
                                (and l2 (values (logand b #x3F) (+ at 3) (+ (ash (- l 192) 8) l2 192)))))
-                  ((= l 255) (let ((n (octets-be octets (+ at 2) 4))) (and n (values (logand b #x3F) (+ at 6) n))))
+                  ((= l 255) (let ((n (octets-integer octets (+ at 2) 4 :big-endian t)))
+                               (and n (values (logand b #x3F) (+ at 6) n))))
                   (t (values (logand b #x3F) (+ at 2) nil))))
           (let ((tag (ldb (byte 4 2) b)))
             (case (logand b 3)
               (0 (let ((n (octet-at octets (+ at 1)))) (and n (values tag (+ at 2) n))))
-              (1 (let ((n (octets-be octets (+ at 1) 2))) (and n (values tag (+ at 3) n))))
-              (2 (let ((n (octets-be octets (+ at 1) 4))) (and n (values tag (+ at 5) n))))
+              (1 (let ((n (octets-integer octets (+ at 1) 2 :big-endian t))) (and n (values tag (+ at 3) n))))
+              (2 (let ((n (octets-integer octets (+ at 1) 4 :big-endian t))) (and n (values tag (+ at 5) n))))
               (t (values tag (+ at 1) nil))))))))
 
 (defparameter *openpgp-packet-versions* '((1 3 6) (3 4 5 6) (18 1 2) (20 1))
@@ -725,7 +718,7 @@ octets, up to 64 KB, the more kinds are told (a disc image's mark is 32 KB in)."
         ((or (is *jxl-signature*) (and (is (list #xFF #x0A)) (jxl-header o))) (values (jxl-words o) :jxl))
         ((or (is "GIF87a") (is "GIF89a")) (values (joined-words "GIF image" (multiple-value-call #'size-words (gif-size o))) :gif))
         ((and (is "RIFF") (is "WEBP" 8)) (values (webp-words o) :webp))
-        ((and (is "BM") (member (octets-le o 14 4) '(12 40 52 56 64 108 124)))
+        ((and (is "BM") (member (octets-integer o 14 4) '(12 40 52 56 64 108 124)))
          (values (joined-words "BMP image" (multiple-value-call #'size-words (bmp-size o))) :bmp))
         ((raw-words o) (values (format nil "Camera raw, ~a" (raw-words o)) :raw))
         ((tiff-octets-p o)
@@ -733,8 +726,8 @@ octets, up to 64 KB, the more kinds are told (a disc image's mark is 32 KB in)."
            (if raw
                (values (format nil "Camera raw, ~a" raw) :raw)
                (values (joined-words "TIFF image" (multiple-value-call #'size-words (tiff-size o))) :tiff))))
-        ((and (is (list 0 0 1 0)) (octets-le o 4 2) (< 0 (octets-le o 4 2) 256))
-         (values (format nil "Windows icon, ~d image~:p" (octets-le o 4 2)) :ico))
+        ((and (is (list 0 0 1 0)) (octets-integer o 4 2) (< 0 (octets-integer o 4 2) 256))
+         (values (format nil "Windows icon, ~d image~:p" (octets-integer o 4 2)) :ico))
         ((is "8BPS") (values (joined-words "Photoshop image" (multiple-value-call #'size-words (psd-size o))) :psd))
         ((is "gimp xcf") (values "GIMP image" :xcf))
         ;; documents
@@ -772,7 +765,7 @@ octets, up to 64 KB, the more kinds are told (a disc image's mark is 32 KB in)."
              (is (list #xCE #xFA #xED #xFE)) (is (list #xCF #xFA #xED #xFE)))
          (values "Mach-O program (macOS)" :mach-o))
         ((is (list #xCA #xFE #xBA #xBE))
-         (let ((major (octets-be o 6 2)))
+         (let ((major (octets-integer o 6 2 :big-endian t)))
            (if (and major (<= 45 major 99))
                (values (format nil "Java class, version ~d" major) :java-class)
                (values "Mach-O universal program (macOS)" :mach-o))))

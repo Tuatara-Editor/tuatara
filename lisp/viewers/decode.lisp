@@ -314,8 +314,8 @@ are HEAD, carries of its picture (its header gives where, at octet 84, and
 how long, at 88), read with pread; NIL when FD is no such raw or the JPEG
 is not where it says."
   (when (and head (tuatara.io:octets-at-p head "FUJIFILMCCD-RAW"))
-    (let ((offset (tuatara.io:octets-be head 84 4))
-          (length (tuatara.io:octets-be head 88 4)))
+    (let ((offset (tuatara.io:octets-integer head 84 4 :big-endian t))
+          (length (tuatara.io:octets-integer head 88 4 :big-endian t)))
       (when (and offset length (< 0 length (* 64 1024 1024)))
         (let ((jpeg (tuatara.io:read-fd-exactly fd length offset)))
           (and jpeg (tuatara.io:octets-at-p jpeg '(#xFF #xD8 #xFF)) jpeg))))))

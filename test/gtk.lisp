@@ -1048,7 +1048,7 @@ windows side by side."
         (with-open-file (in png :element-type '(unsigned-byte 8))
           (let ((octets (make-array (file-length in) :element-type '(unsigned-byte 8))))
             (read-sequence octets in)
-            (flet ((u32 (at) (tuatara.io:octets-be octets at 4)))
+            (flet ((u32 (at) (tuatara.io:octets-integer octets at 4 :big-endian t)))
               (is = size (u32 16))
               (is = size (u32 20))
               (let ((kinds (loop with at = 8

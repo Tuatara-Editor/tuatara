@@ -108,12 +108,14 @@ of *DOCX-BASE-SIZE* (132 at 11 points in Courier New)."
 
 (defun font-file-tables (octets)
   "The tables of the TrueType or OpenType font OCTETS, each (TAG OFFSET LENGTH); NIL for another kind."
-  (when (and (>= (length octets) 12) (member (tuatara.io:octets-be octets 0 4) '(#x00010000 #x4F54544F)))
-    (loop for i below (tuatara.io:octets-be octets 4 2)
+  (when (and (>= (length octets) 12)
+             (member (tuatara.io:octets-integer octets 0 4 :big-endian t) '(#x00010000 #x4F54544F)))
+    (loop for i below (tuatara.io:octets-integer octets 4 2 :big-endian t)
           for at = (+ 12 (* 16 i))
           while (<= (+ at 16) (length octets))
           collect (list (tuatara.text:octets-latin-1 octets :start at :end (+ at 4))
-                        (tuatara.io:octets-be octets (+ at 8) 4) (tuatara.io:octets-be octets (+ at 12) 4)))))
+                        (tuatara.io:octets-integer octets (+ at 8) 4 :big-endian t)
+                        (tuatara.io:octets-integer octets (+ at 12) 4 :big-endian t)))))
 
 (defun font-character-ratio (family)
   "The width of a character of the font FAMILY as a part of its size, when it
@@ -130,9 +132,10 @@ ten of its glyphs that width. NIL otherwise."
           (flet ((table (tag) (second (assoc tag tables :test #'string=))))
             (let ((head (table "head")) (hhea (table "hhea")) (hmtx (table "hmtx")))
               (when (and head hhea hmtx)
-                (let* ((units (tuatara.io:octets-be octets (+ head 18) 2))
-                       (metrics (tuatara.io:octets-be octets (+ hhea 34) 2))
-                       (widths (loop for i below metrics collect (tuatara.io:octets-be octets (+ hmtx (* 4 i)) 2)))
+                (let* ((units (tuatara.io:octets-integer octets (+ head 18) 2 :big-endian t))
+                       (metrics (tuatara.io:octets-integer octets (+ hhea 34) 2 :big-endian t))
+                       (widths (loop for i below metrics
+                                     collect (tuatara.io:octets-integer octets (+ hmtx (* 4 i)) 2 :big-endian t)))
                        (counts (make-hash-table)))
                   (dolist (w widths) (when (plusp w) (incf (gethash w counts 0))))
                   (let ((common 0) (most 0))

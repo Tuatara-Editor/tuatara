@@ -645,7 +645,7 @@ is not offered by M-x either; NIL when it runs there."
     (is equalp #(137 80 78 71 13 10 26 10) (subseq png 0 8))
     (is equalp #(0 0 0 2 0 0 0 1 8 2) (subseq png 16 26))
     (is = (tuatara.defaults::crc32 png 12 29)
-        (tuatara.io:octets-be png 29 4)))
+        (tuatara.io:octets-integer png 29 4 :big-endian t)))
   (with-test-directory (dir)
     (alexandria:write-string-into-file
      "<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"40\" height=\"20\"><rect width=\"40\" height=\"20\" fill=\"#3a6ea5\"/></svg>"
@@ -665,7 +665,7 @@ is not offered by M-x either; NIL when it runs there."
             (let ((octets (alexandria:read-file-into-byte-vector (subseq png 1))))
               (is equalp #(137 80 78 71) (subseq octets 0 4))
               ;; 40 pixels wide drawn at 300 dots an inch, not at its own size
-              (true (> (tuatara.io:octets-be octets 18 2) 40)))))
+              (true (> (tuatara.io:octets-integer octets 18 2 :big-endian t) 40)))))
         ;; one that is no picture: its name in a frame, and why said
         (true (search "\\fbox{\\texttt{broken.svg}}" latex))
         (true (some (lambda (n) (search "broken.svg is no picture" n)) notes)))
@@ -1955,14 +1955,15 @@ Shut in.
     (let* ((image (picture 200))
            (png (tuatara.defaults::png-octets image))
            (idat (search (map 'vector #'char-code "IDAT") png))
-           (length (tuatara.io:octets-be png (- idat 4) 4))
+           (length (tuatara.io:octets-integer png (- idat 4) 4 :big-endian t))
            (raw (tuatara.io:inflate png :start (+ idat 6) :end (+ idat 4 length -4))))
       (is = (* 200 (1+ (* 200 4))) (length raw))
       (true (loop for y below 200
                   always (and (zerop (aref raw (* y 801)))
                               (equalp (subseq raw (1+ (* y 801)) (* (1+ y) 801))
                                       (subseq (tuatara.frontend:image-pixels image) (* y 800) (* (1+ y) 800))))))
-      (is = (tuatara.defaults::crc32 png idat (+ idat 4 length)) (tuatara.io:octets-be png (+ idat 4 length) 4))
+      (is = (tuatara.defaults::crc32 png idat (+ idat 4 length))
+            (tuatara.io:octets-integer png (+ idat 4 length) 4 :big-endian t))
       (is = (+ idat 4 length 4 12) (length png)))
     (flet ((consed (side)
              (let ((image (picture side)))

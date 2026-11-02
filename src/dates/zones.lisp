@@ -198,10 +198,10 @@ when it says none this reads."
     (labels ((header-at (at)
                ;; the six counts of a header at AT, or NIL
                (when (and (<= (+ at 44) length)
-                          (= (tuatara.io:octets-be octets at 4) #x545A6966)) ; TZif
-                 (loop for i below 6 collect (tuatara.io:octets-be octets (+ at 20 (* 4 i)) 4))))
+                          (= (tuatara.io:octets-integer octets at 4 :big-endian t) #x545A6966)) ; TZif
+                 (loop for i below 6 collect (tuatara.io:octets-integer octets (+ at 20 (* 4 i)) 4 :big-endian t))))
              (signed-at (at count)
-               (tuatara.io:octets-signed (tuatara.io:octets-be octets at count) (* 8 count)))
+               (tuatara.io:octets-signed (tuatara.io:octets-integer octets at count :big-endian t) (* 8 count)))
              (block-length (counts size)
                (destructuring-bind (utc-count std-count leap-count time-count type-count char-count) counts
                  (+ (* time-count size) time-count (* type-count 6) char-count (* leap-count (+ size 4)) std-count utc-count))))

@@ -350,13 +350,14 @@ pipe named so is not woken.")
 
 (defun statx-buffer-stamp (buffer)
   "The STAMP in BUFFER, the octets statx filled."
-  (make-stamp (+ (ash (octets-le buffer 136 4) 32) (octets-le buffer 140 4)) ; dev major, minor
-              (octets-le buffer 32 8) (octets-le buffer 40 8)
-              (+ (* (octets-signed (octets-le buffer 112 8) 64) 1000000000)
-                 (octets-le buffer 120 4))
-              (octets-le buffer 16 4) (octets-le buffer 28 2) (octets-le buffer 20 4) (octets-le buffer 24 4)
-              (+ (* (octets-signed (octets-le buffer 96 8) 64) 1000000000)
-                 (octets-le buffer 104 4))))
+  (make-stamp (+ (ash (octets-integer buffer 136 4) 32) (octets-integer buffer 140 4)) ; dev major, minor
+              (octets-integer buffer 32 8) (octets-integer buffer 40 8)
+              (+ (* (octets-signed (octets-integer buffer 112 8) 64) 1000000000)
+                 (octets-integer buffer 120 4))
+              (octets-integer buffer 16 4) (octets-integer buffer 28 2)
+              (octets-integer buffer 20 4) (octets-integer buffer 24 4)
+              (+ (* (octets-signed (octets-integer buffer 96 8) 64) 1000000000)
+                 (octets-integer buffer 104 4))))
 
 (defun statx-fields (dirfd name flags &optional (mask #x7ff))
   "The 256 octets statx fills for NAME (a string, or octets) relative to the
@@ -389,10 +390,11 @@ Asking changes none of them."
   (let ((buffer (statx-fields +at-fdcwd+ (native path) 0 #xfff)))
     (when buffer
       (flet ((time-at (offset)
-               (+ (* (octets-signed (octets-le buffer offset 8) 64) 1000000000) (octets-le buffer (+ offset 8) 4))))
+               (+ (* (octets-signed (octets-integer buffer offset 8) 64) 1000000000)
+                  (octets-integer buffer (+ offset 8) 4))))
         (list :modified (time-at 112) :changed (time-at 96) :accessed (time-at 64)
               ;; STATX_BTIME in the mask the system filled: a birth time it keeps
-              :born (and (logtest (octets-le buffer 0 4) #x800) (time-at 80)))))))
+              :born (and (logtest (octets-integer buffer 0 4) #x800) (time-at 80)))))))
 
 (defun terminated-octets (octets)
   "OCTETS with a null (NUL) octet after them, for the system."
@@ -408,7 +410,8 @@ values the octets it takes on the disk and the device numbers it stands for,
 examined."
   (let ((buffer (statx-fields dirfd octets flags)))
     (when buffer
-      (values (statx-buffer-stamp buffer) (* 512 (octets-le buffer 48 8)) (cons (octets-le buffer 128 4) (octets-le buffer 132 4))))))
+      (values (statx-buffer-stamp buffer) (* 512 (octets-integer buffer 48 8))
+              (cons (octets-integer buffer 128 4) (octets-integer buffer 132 4))))))
 
 (defun openat-octets (dirfd octets flags &optional (mode 0))
   "A descriptor for the entry whose name is OCTETS in the directory open as
@@ -550,7 +553,7 @@ descriptor (FD), or NIL."
       (when (zerop (sb-alien:alien-funcall
                     (sb-alien:extern-alien "fstatfs" (function sb-alien:int sb-alien:int sb-sys:system-area-pointer))
                     fd sap))
-        (octets-le buffer 0 8)))))
+        (octets-integer buffer 0 8)))))
 
 (defun path-file-system (path &key (follow t))
   "The magic number of the file system holding PATH, a symbolic link followed
@@ -577,7 +580,7 @@ cannot change through that mount."
       (and (zerop (sb-alien:alien-funcall
                    (sb-alien:extern-alien "fstatvfs" (function sb-alien:int sb-alien:int sb-sys:system-area-pointer))
                    fd sap))
-           (logbitp 0 (octets-le buffer 72 8))))))            ; f_flag's ST_RDONLY
+           (logbitp 0 (octets-integer buffer 72 8))))))            ; f_flag's ST_RDONLY
 
 (defconstant +f-setlease+ 1024 "fcntl's F_SETLEASE.")
 (defconstant +f-getlease+ 1025 "fcntl's F_GETLEASE.")
@@ -628,7 +631,7 @@ or NIL when the system does not say."
       (when (zerop (sb-alien:alien-funcall
                     (sb-alien:extern-alien "statvfs" (function sb-alien:int sb-alien:c-string sb-sys:system-area-pointer))
                     (native path) sap))
-        (* (octets-le buffer 32 8) (octets-le buffer 8 8))))))
+        (* (octets-integer buffer 32 8) (octets-integer buffer 8 8))))))
 
 (defun octets-words (n &key binary compact)
   "N octets in words, to one decimal: 950 B, 12.3 MB, 11.5 GB; with BINARY in
@@ -1058,9 +1061,9 @@ as octets (NIL for the directory itself). NIL when none wait."
         (cond ((plusp got)
                (let ((at 0))
                  (loop while (< at got)
-                       do (let* ((wd (octets-le octets at 4))
-                                 (mask (octets-le octets (+ at 4) 4))
-                                 (length (octets-le octets (+ at 12) 4))
+                       do (let* ((wd (octets-integer octets at 4))
+                                 (mask (octets-integer octets (+ at 4) 4))
+                                 (length (octets-integer octets (+ at 12) 4))
                                  (start (+ at 16))
                                  (end (or (position 0 octets :start start :end (+ start length)) (+ start length))))
                             (push (list (if (= wd #xffffffff) -1 wd) mask (and (> end start) (subseq octets start end)))
