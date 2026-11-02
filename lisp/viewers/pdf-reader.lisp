@@ -466,7 +466,7 @@ them, though nothing of the file names it."
     (flet ((embedded ()
              (or embedded (setf embedded (pdf-embedded-file-numbers octets objects)))))
       (let* ((sections (append (mapcar #'car (pdf-sections octets))
-                               (loop for stream in holding append (pdf-sections-within octets stream (embedded)))))
+                               (loop for stream in holding append (pdf-sections-within octets stream))))
              (named (remove nil (mapcar (lambda (at) (tuatara.io:octets-search mark octets :start at)) sections)))
              (eofs (sort (remove-duplicates
                           (append outside (remove-if-not (lambda (at) (pdf-stream-holding objects at t)) named)))
@@ -499,38 +499,66 @@ them, though nothing of the file names it."
 \(WITH-PDF-OBJECTS-FOUND); the objects of those past them are not found.")
 
 (defun pdf-embedded-file-numbers (octets objects)
-  "The numbers of the streams the file specifications of the PDF in OCTETS
-keep as files (their /EF), as a hash table: in the dictionaries of OBJECTS
-\(a vector of PDF-INDIRECT) and of the objects their object streams hold,
-those past *PDF-OBJECT-STREAMS-READ* octets not read."
-  (let ((numbers (make-hash-table)) (read 0))
-    (labels ((walk (value depth)
-               (cond ((> depth 16))
-                     ((pdf-dictionary-p value)
-                      (let ((files (pdf-get value "/EF")))
-                        (when (pdf-dictionary-p files)
-                          (loop for (nil . file) in files
-                                for number = (pdf-ref-p file)
-                                when number do (setf (gethash number numbers) t))))
-                      (loop for (nil . item) in value do (walk item (1+ depth))))
-                     ((and (consp value) (not (pdf-ref-p value)))
-                      (dolist (item value) (walk item (1+ depth)))))))
-      (loop for object across objects
-            do (walk (pdf-indirect-value object) 0)
-               (when (and (pdf-indirect-stream-start object) (<= read *pdf-object-streams-read*)
-                          (equal (pdf-get (pdf-indirect-value object) "/Type") "/ObjStm"))
-                 (multiple-value-bind (data offsets) (pdf-object-stream-contents octets object)
-                   (when (and data (tuatara.io:octets-search (load-time-value (tuatara.text:string-octets "/EF")) data))
-                     (incf read (length data))
-                     (loop for (nil . at) across offsets
-                           do (walk (pdf-object-at data at) 0)))))))
+  "The numbers of the streams the PDF in OCTETS keeps as files, as a hash
+table: those the /EF of a file specification names, the specification
+reached from the document's catalog, by its embedded files' name tree or a
+page's annotation (/FS). Objects are taken from OBJECTS (a vector of
+PDF-INDIRECT, the last of a number written last) and the object streams
+among them, those past *PDF-OBJECT-STREAMS-READ* octets not read; the last
+trailer naming /Root gives the catalog. At most 100,000 dictionaries are
+gone through."
+  (let ((numbers (make-hash-table)) (written (make-hash-table)) (packed (make-hash-table)) (read 0) (steps 0))
+    (loop for object across objects
+          do (setf (gethash (pdf-indirect-number object) written) object)
+             (when (and (pdf-indirect-stream-start object) (<= read *pdf-object-streams-read*)
+                        (equal (pdf-get (pdf-indirect-value object) "/Type") "/ObjStm"))
+               (multiple-value-bind (data offsets) (pdf-object-stream-contents octets object)
+                 (when data
+                   (incf read (length data))
+                   (loop for (number . at) across offsets
+                         do (unless (gethash number packed)
+                              (setf (gethash number packed) (cons data at))))))))
+    (labels ((value (v)
+               (let ((number (pdf-ref-p v)))
+                 (cond ((null number) v)
+                       ((gethash number written) (pdf-indirect-value (gethash number written)))
+                       ((gethash number packed)
+                        (destructuring-bind (data . at) (gethash number packed) (pdf-object-at data at)))
+                       (t nil))))
+             (step-p () (< (incf steps) 100000))
+             (file (spec)
+               (let ((files (value (pdf-get (value spec) "/EF"))))
+                 (when (pdf-dictionary-p files)
+                   (loop for (nil . file) in files
+                         for number = (pdf-ref-p file)
+                         when number do (setf (gethash number numbers) t)))))
+             (names (node depth)
+               (let ((node (value node)))
+                 (when (and (pdf-dictionary-p node) (< depth 32) (step-p))
+                   (loop for (nil spec) on (pdf-array-items (value (pdf-get node "/Names"))) by #'cddr
+                         do (file spec))
+                   (dolist (kid (pdf-array-items (value (pdf-get node "/Kids"))))
+                     (names kid (1+ depth))))))
+             (pages (node depth)
+               (let ((node (value node)))
+                 (when (and (pdf-dictionary-p node) (< depth 32) (step-p))
+                   (dolist (annotation (pdf-array-items (value (pdf-get node "/Annots"))))
+                     (let ((annotation (value annotation)))
+                       (when (pdf-dictionary-p annotation) (file (pdf-get annotation "/FS")))))
+                   (dolist (kid (pdf-array-items (value (pdf-get node "/Kids"))))
+                     (pages kid (1+ depth)))))))
+      (let ((catalog (value (some (lambda (section) (pdf-get (cdr section) "/Root")) (pdf-sections octets)))))
+        (when (pdf-dictionary-p catalog)
+          (names (pdf-get (value (pdf-get catalog "/Names")) "/EmbeddedFiles") 0)
+          (pages (pdf-get catalog "/Pages") 0))))
     numbers))
 
 (defun pdf-own-saves-p (octets stream)
   "True when each %%EOF in the data of STREAM, a PDF-INDIRECT of the PDF in
 OCTETS, the first 64 of them, follows a startxref there whose number,
-counted from where the data begins, names a cross-reference section: the
-saves of a file kept within the PDF, not the PDF's own."
+counted from where the data begins, names a cross-reference section that
+lists an object written within that data, as its own: the saves of a file
+kept within the PDF, not the PDF's own."
   (let ((start (pdf-indirect-stream-start stream)) (end (pdf-indirect-stream-end stream))
         (mark (load-time-value (tuatara.text:string-octets "%%EOF"))))
     (loop for eof = (tuatara.io:octets-search mark octets :start start :end end)
@@ -538,15 +566,46 @@ saves of a file kept within the PDF, not the PDF's own."
           repeat 64
           while eof
           always (let ((named (pdf-startxref-written octets :start start :end eof)))
-                   (and named (pdf-section-at-p octets (+ start named)))))))
+                   (and named (pdf-section-lists-within-p octets (+ start named) start end))))))
+
+(defun pdf-section-lists-within-p (octets at start end)
+  "True when the cross-reference section at AT in OCTETS, of a file whose
+data runs from START below END and whose offsets count from START, lists
+an object in use written there: a table, or a cross-reference stream."
+  (let ((shift (- start (pdf-offset-base octets))) (found nil))
+    (flet ((own-p (number place)
+             (and (<= start place) (< place end)
+                  (let ((object (pdf-indirect-object-at octets place)))
+                    (and object (eql (pdf-indirect-number object) number))))))
+      (if (map-pdf-cross-reference-table (lambda (number offset generation kind)
+                                           (declare (ignore generation))
+                                           (and (eq kind :used) (own-p number (+ offset shift)) (setf found t)))
+                                         octets at)
+          found
+          (let ((object (and (< -1 at (length octets)) (pdf-indirect-object-at octets at))))
+            (when (and object (pdf-indirect-stream-start object)
+                       (equal (pdf-get (pdf-indirect-value object) "/Type") "/XRef"))
+              (let ((data (pdf-stream-octets (pdf-indirect-value object)
+                                             (subseq octets (pdf-indirect-stream-start object)
+                                                     (pdf-indirect-stream-end object)))))
+                (and data
+                     (map-pdf-cross-reference-stream
+                      (lambda (number type second third)
+                        (declare (ignore third))
+                        (and (eql type 1) (own-p number (+ start second)) (setf found t)))
+                      (pdf-indirect-value object) data)
+                     found))))))))
 
 (defun pdf-attachment-p (octets stream embedded)
   "True when STREAM, a PDF-INDIRECT of the PDF in OCTETS, is a file kept
-within it: a file specification keeps it (its number in EMBEDDED, as
-PDF-EMBEDDED-FILE-NUMBERS gives them), and each %%EOF in its data is that
-file's own (PDF-OWN-SAVES-P). A stream merely beginning with %PDF- or
-calling itself an /EmbeddedFile is none."
-  (and (gethash (pdf-indirect-number stream) embedded) (pdf-own-saves-p octets stream)))
+within it: a file specification the document reaches keeps it (its number
+in EMBEDDED, as PDF-EMBEDDED-FILE-NUMBERS gives them), its data begins
+with %PDF-, and each %%EOF in its data is that file's own
+\(PDF-OWN-SAVES-P). A stream merely beginning with %PDF-, calling itself an
+/EmbeddedFile or named by a file specification nothing reaches is none."
+  (and (gethash (pdf-indirect-number stream) embedded)
+       (tuatara.io:octets-at-p octets "%PDF-" (pdf-indirect-stream-start stream))
+       (pdf-own-saves-p octets stream)))
 
 (defun pdf-table-names-objects-p (octets at shift)
   "True when the cross-reference table at AT in OCTETS lists two used
@@ -566,17 +625,19 @@ at their offsets moved by SHIFT."
      octets at)
     (and (>= matched 2) (not strange))))
 
-(defun pdf-sections-within (octets stream embedded)
+(defun pdf-sections-within (octets stream)
   "The cross-reference sections of the PDF in OCTETS itself written within
 STREAM's octets (a PDF-INDIRECT): one a startxref there names at its place
 in the file (PDF-OFFSET-BASE added), or a table whose entries, at most 50
 read and two at least, all name the file's own objects where the file
-writes them. Within a file kept in the PDF (PDF-ATTACHMENT-P, EMBEDDED the
-numbers of the streams kept as files), whose own offsets count from where
-its data begins, a section that stands where they put it is that file's
-own, and none of these. A list of their offsets."
+writes them. Within data that begins with %PDF- and whose %%EOF lines are
+explained by sections counted from where the data begins (PDF-OWN-SAVES-P),
+a PDF kept whole as data, a section that stands where those offsets put it
+is that file's own, and none of these. A list of their offsets."
   (let* ((start (pdf-indirect-stream-start stream)) (end (pdf-indirect-stream-end stream))
-         (base (pdf-offset-base octets)) (attachment (pdf-attachment-p octets stream embedded)) (found '()))
+         (base (pdf-offset-base octets))
+         (attachment (and (tuatara.io:octets-at-p octets "%PDF-" start) (pdf-own-saves-p octets stream)))
+         (found '()))
     (flet ((within-p (at) (and (integerp at) (<= start at) (< at end))))
       (loop for at = (tuatara.io:octets-search (load-time-value (tuatara.text:string-octets "startxref")) octets
                                                :start start :end end)

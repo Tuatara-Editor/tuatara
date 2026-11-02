@@ -401,18 +401,22 @@ endobj"))))
 
 (define-test (metadata pdf-attachments-and-save-signs)
   ;; a PDF attached to itself, or its original to its later save, uncompressed: the attachment's own sections
-  ;; count from its own start, and end no save of the file
+  ;; count from its own start, and end no save of the file; its file specification linked from nothing, it
+  ;; stays a stream a save may hide in
   (loop for (name saves) in '(("self-attached.pdf" 2) ("original-attached-to-later.pdf" 3))
         do (multiple-value-bind (lines doubtful lying signs) (tuatara:pdf-eof-lines (pdf-sample name))
              (declare (ignore doubtful))
              (is = saves (length lines) "~a" name)
              (false lying "~a" name)
-             (false signs "~a" name)))
+             (true signs "~a" name)))
+  ;; one the document's embedded files name is an attached file, no sign
+  (false (nth-value 3 (tuatara:pdf-eof-lines (pdf-sample "attached-pdf.pdf"))))
   ;; a save written within another stream's data, nothing of the file naming it: a sign, not a save
   ;; a stream merely beginning with %PDF- or calling itself an /EmbeddedFile, no file specification keeping it,
   ;; is no attached file
   (dolist (name '("save-in-stream-xref-stream.pdf" "save-in-stream-offsets.pdf" "save-in-stream-bare.pdf"
-                  "save-in-stream-said-pdf.pdf" "save-in-stream-said-embedded.pdf"))
+                  "save-in-stream-said-pdf.pdf" "save-in-stream-said-embedded.pdf"
+                  "save-in-stream-own-file-reached.pdf" "save-in-stream-own-file-unreached.pdf"))
     (multiple-value-bind (lines doubtful lying signs) (tuatara:pdf-eof-lines (pdf-sample name))
       (declare (ignore doubtful))
       (is = 1 (length lines) "~a" name)
