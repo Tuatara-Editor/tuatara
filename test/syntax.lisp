@@ -3395,6 +3395,32 @@ bound to the fake frontend and the editor; the file and its buffer go afterwards
       (sb-int:unencapsulate 'tuatara.syntax::parse-texts 'slow)
       (kill-records buffer path))))
 
+(define-test (syntax edits-refused-parse-afresh)
+  ;; a helper that refuses to be told of an edit (one older than the editor)
+  ;; leaves no tree at the old places: the text is parsed afresh
+  (let* ((text (with-output-to-string (s) (dotimes (i 40) (format s "fn f~d() {}~%" i))))
+         (buffer (tuatara.buffer:make-buffer "*syntax-refused*" :text text))
+         (refusing nil) (left nil))
+    (sb-int:encapsulate 'tuatara.syntax::call-send 'refusing
+                        (lambda (function call &rest arguments)
+                          (if (and refusing (= (sb-sys:sap-ref-32 (tuatara.syntax::call-out call) 8)
+                                               tuatara.syntax::+op-edits+))
+                              (setf (tuatara.syntax::call-status call) 1)
+                              (apply function call arguments))))
+    (unwind-protect
+         (let ((syntax (tuatara.syntax:attach-syntax buffer (tuatara.syntax:find-grammar "rust"))))
+           (parse-done syntax)
+           (setf refusing t)
+           (tuatara.buffer:buffer-insert buffer 0 "fn first() {}")
+           (setf left (tuatara.syntax:syntax-tree syntax) refusing nil)
+           (false left "the tree of the text before the edit is kept")
+           (parse-done syntax)
+           (true (tuatara.syntax:syntax-tree syntax))
+           (false (tuatara.syntax:tree-has-error-p (tuatara.syntax:syntax-tree syntax))))
+      (sb-int:unencapsulate 'tuatara.syntax::call-send 'refusing)
+      (tuatara.syntax:detach-syntax buffer)
+      (tuatara.buffer:kill-buffer buffer))))
+
 (define-test (syntax colours-kept-for-several-ranges)
   ;; two parts of a buffer shown at once keep their colours, each worked out once
   (let* ((text (with-output-to-string (s) (dotimes (i 40) (format s "fn f~d() {}~%" i))))

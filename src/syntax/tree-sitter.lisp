@@ -374,8 +374,10 @@ ends it."
   "Tell TREE of the edits RECORDS, in order, each (START OLD-END NEW-END
 START-POINT OLD-END-POINT NEW-END-POINT): its octets from START below OLD-END
 became the octets from START below NEW-END, each point a cons of the row and
-the column (in octets) of the offset before it; all in one request. With
-COPY, a copy of TREE after them, as COPY-TREE-POINTER gives one; else NIL."
+the column (in octets) of the offset before it; all in one request. Two
+values: with COPY, a copy of TREE after them, as COPY-TREE-POINTER gives one,
+else NIL; and true when TREE was told, NIL when its helper refused or had
+ended (TREE then no longer matches its text)."
   (with-call (call (tree-helper tree) +op-edits+)
     (call-u32 call (tree-number tree)) (call-u32 call (if copy 1 0)) (call-u32 call (length records))
     (loop for (start old-end new-end start-point old-end-point new-end-point) in records
@@ -385,7 +387,7 @@ COPY, a copy of TREE after them, as COPY-TREE-POINTER gives one; else NIL."
              (call-u32 call (car new-end-point)) (call-u32 call (cdr new-end-point)))
     (when (eql 0 (call-send call))
       (let ((number (reply-u32 call 0)))
-        (and copy (/= number 0) (%make-tree (tree-helper tree) number))))))
+        (values (and copy (/= number 0) (%make-tree (tree-helper tree) number)) t)))))
 
 (defstruct (tree-node (:constructor make-tree-node (start end name named children &optional broken symbol)) (:copier nil))
   "A node of a syntax tree: the octets START below END it covers, the NAME of

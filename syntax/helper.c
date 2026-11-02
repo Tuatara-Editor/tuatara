@@ -71,8 +71,7 @@ enum {
   OP_PARSER_DELETE,   /* parser -> */
   OP_PARSE,           /* parser, old tree or 0, limit ms, budget (64 bits) -> tree or 0, why */
   OP_CANCEL,          /* parser, on the first connection -> (no reply) */
-  OP_EDIT,            /* tree, nine numbers -> */
-  OP_COPY,            /* tree -> tree */
+  OP_COPY = 7,        /* tree -> tree (6 is not used) */
   OP_TREE_DELETE,     /* tree -> */
   OP_QUERY,           /* query, grammar name, source -> 0, captures, patterns, ... or 1, offset, kind */
   OP_QUERY_DELETE,    /* query -> */
@@ -93,8 +92,8 @@ enum {
                          its matches, after their octets (as OP_MATCHES gives them) */
   OP_MATCHES_MANY,    /* n, n x (query, tree, start, end) -> for each, its matches after their octets */
   OP_CHILDREN_MANY,   /* n, n x (tree, start, end, symbol, named, from, to) -> for each, as OP_CHILDREN gives */
-  OP_EDITS,           /* tree, copy (0/1), n, n x nine numbers, as OP_EDIT's, in order -> with copy 1,
-                         a copy of the tree after them, else 0 */
+  OP_EDITS,           /* tree, copy (0/1), n, n x (start, old end, new end, and the row and column of
+                         each), in order -> with copy 1, a copy of the tree after them, else 0 */
   OP_READ = 64,       /* asked of the editor: parser, octet -> the octets */
 };
 
@@ -627,11 +626,6 @@ static bool answer(Connection *c, Answering *a, uint32_t id, uint32_t how, char 
         TSTree *made_tree = table_take(&trees, made[i]);
         if (made_tree) ts_tree_delete(made_tree);
       }
-    break;
-  }
-  case OP_EDIT: {
-    TSTree *tree = table_get(&trees, W(0));
-    if (tree) tuatara_edit(tree, W(1), W(2), W(3), W(4), W(5), W(6), W(7), W(8), W(9));
     break;
   }
   case OP_EDITS: {

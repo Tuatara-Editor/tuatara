@@ -306,9 +306,13 @@ is back."
                 (not (tuatara.text:rope-indexed-p old)))
             (drop-tree syntax)
             (let ((records (edit-records old edits)))
-              ;; the copy a parse starting now begins from, made with the edits
-              (setf copy (and (syntax-tree syntax)
-                              (edit-tree (syntax-tree syntax) records :copy (null (syntax-job syntax)))))
+              ;; the copy a parse starting now begins from, made with the edits;
+              ;; a tree not told of them is of no more use: the text parsed afresh
+              (when (syntax-tree syntax)
+                (multiple-value-bind (made told)
+                    (edit-tree (syntax-tree syntax) records :copy (null (syntax-job syntax)))
+                  (setf copy made)
+                  (unless told (drop-tree syntax))))
               (when (syntax-job syntax)
                 (setf (syntax-edits syntax) (revappend records (syntax-edits syntax))))
               (setf (syntax-current syntax) nil)
@@ -504,11 +508,13 @@ another parse if the tree is not current."
                          (syntax-patched syntax) t)
                    (setf (syntax-fresh-cost syntax) (- (parse-job-ended job) (parse-job-started job))
                          (syntax-patched syntax) nil))
-               (when edits (edit-tree tree edits))
-               (when (syntax-tree syntax) (delete-tree (syntax-tree syntax)))
-               (setf (syntax-tree syntax) tree
-                     (syntax-current syntax) (null edits))
-               (incf (syntax-generation syntax)))
+               (if (and edits (not (nth-value 1 (edit-tree tree edits))))
+                   ;; not told of the edits made meanwhile: of no use, the text parsed afresh
+                   (progn (delete-tree tree) (drop-tree syntax))
+                   (progn (when (syntax-tree syntax) (delete-tree (syntax-tree syntax)))
+                          (setf (syntax-tree syntax) tree
+                                (syntax-current syntax) (null edits))
+                          (incf (syntax-generation syntax)))))
               ((parse-job-fault job) (grammar-failed syntax (parse-job-fault job)))
               ((and (parse-job-refresh job) (not (eq (parse-job-slow job) :short)))
                ;; a parse afresh given up (too slow, too large) leaves the
