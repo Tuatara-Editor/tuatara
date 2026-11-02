@@ -567,3 +567,13 @@ file of text; their native names, as two values."
     (is eql 1 (fourth entry))
     (false (find-symbol name :tuatara.tests))
     (is eql 1 (fourth (tuatara.defaults::parse-pdf-place-line "2 page #.(error\"run\") /tmp/b.pdf")))))
+
+(define-test (state-and-files unchanged-lists-looked-at-cheaply)
+  ;; a list kept between sessions that nothing changed is looked at again
+  ;; (as each edit asks whether its file's project is trusted) with its file
+  ;; looked at only for a change, its name and folder not worked out again
+  (let ((list tuatara.defaults::*lsp-trusted*))
+    (tuatara.defaults::state-list-entries list)
+    (let ((octets (nth-value 2 (tuatara.bench::measuring
+                                 (dotimes (i 100) (tuatara.defaults::state-list-entries list))))))
+      (true (< (/ octets 100) 1024) "~,1f octets each time" (/ octets 100)))))

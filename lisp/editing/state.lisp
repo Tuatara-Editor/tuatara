@@ -117,9 +117,10 @@ WRITING, those being written, the latest first, each (FILE . CHANGE); SHOWN,
 the entries as STATE-LIST-ENTRIES gave them last; NOTED and TRIED, how many
 changes were made, and how many there were when the writer last took them;
 LOCK, held while these change; UNREADABLE, the file last said could not be
-read, until it is written."
+read, until it is written; KNOWN-PATH, the native name of its file as last
+worked out, and PLACE, where the state directory was set to be then."
   name parse print limit-variable header path-of key version class fields trust line-key
-  (unreadable nil)
+  (unreadable nil) (known-path nil) (place nil)
   (file nil) (stamp nil) (disk '()) (pending '()) (writing '()) (shown nil)
   (noted 0) (tried 0)
   (lock (sb-thread:make-mutex :name "state list")))
@@ -146,9 +147,19 @@ lines beginning with # are comments, never given to PARSE."
      (setf *state-lists* (cons ,variable (remove ,name *state-lists* :key #'state-list-name :test #'string=)))
      ',variable))
 
-(defun state-list-path (list)
-  "The native name of LIST's file: NAME in the state directory."
-  (tuatara.io:native (merge-pathnames (state-list-name list) (tuatara.io:state-directory))))
+(defun state-list-path (list &key known)
+  "The native name of LIST's file: NAME in the state directory, made if
+needed. With KNOWN, the name worked out last is given again while where the
+state directory is set to be is the same, nothing looked at on the disk:
+for reading LIST, which an edit may ask for each key."
+  (let ((place (and known (cons tuatara-user:*state-directory* (sb-ext:posix-getenv "XDG_STATE_HOME")))))
+    (if (and known (state-list-known-path list) (equal place (state-list-place list)))
+        (state-list-known-path list)
+        (let ((path (tuatara.io:native (merge-pathnames (state-list-name list) (tuatara.io:state-directory)))))
+          (when known
+            (setf (state-list-place list) place
+                  (state-list-known-path list) path))
+          path))))
 
 (defun state-file-stamp (file)
   "What FILE is like now, to tell whether it has changed: (INODE SIZE TIME),
@@ -338,7 +349,8 @@ FILE, the oldest first."
 once another session has changed it, with the changes made here and not yet
 written made to them; at most as many as it keeps (STATE-LIST-MOST). The same list is given
 again while nothing changed; empty when there is no state directory."
-  (let* ((file (or (ignoring-errors-reported ("finding the file of ~a" (state-list-name list)) (state-list-path list))
+  (let* ((file (or (ignoring-errors-reported ("finding the file of ~a" (state-list-name list))
+                     (state-list-path list :known t))
                    (return-from state-list-entries '())))
          (stamp (state-file-stamp file))
          (lock (state-list-lock list))
