@@ -1020,6 +1020,23 @@ editor instead."
             (when missing (refuse-package check missing)))))
     file))
 
+(defun load-package-for-test (name folder)
+  "Load the package NAME from FOLDER as load-package loads one fetched anew:
+each of its files compiled afresh, its names checked; then FOLDER's
+test.lisp, its tests, when there is one. For a package repository's tests,
+run against a Tuatara source tree. NIL when it loaded; else why Tuatara
+refused it, a string: it uses a name this Tuatara lacks."
+  (dolist (file (uiop:directory-files folder "*.lisp"))
+    (uiop:delete-file-if-exists (package-fasl file)))
+  (handler-case
+      (let ((*package-folder* folder)
+            (*loading-package-name* name))
+        (tuatara-user:load-package-file (concatenate 'string name ".lisp"))
+        (let ((tests (merge-pathnames "test.lisp" folder)))
+          (when (probe-file tests) (load tests)))
+        nil)
+    (package-lacks-names (refusal) (princ-to-string refusal))))
+
 (defun claim-package-setting (name owner)
   "The symbol of the setting NAME (a string) of the package whose Lisp package
 is OWNER: in TUATARA-USER, exported, so that an init file names it as it

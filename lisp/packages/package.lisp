@@ -26,6 +26,7 @@
 about, compiled apart from the editor, loaded and listed. The rest of the
 editor installs it, reads the init file with the packages it loads timed,
 makes a package's settings, and runs a compile of a package asked for in a
-process of its own.")
+process of its own; a package repository's tests load its package through
+LOAD-PACKAGE-FOR-TEST.")
   (:export #:install-packages #:packages-directory #:call-with-start-packages #:define-package-setting
-           #:claim-package-setting #:compile-package-child))
+           #:claim-package-setting #:compile-package-child #:load-package-for-test))

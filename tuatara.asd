@@ -260,6 +260,7 @@
                (:file "prose")
                (:file "ended-tests")
                (:file "feature-packages")
+               (:file "package-runner")
                (:file "compile-warning-gate")
                (:file "bench-rope"))
   :perform (test-op (o c)
