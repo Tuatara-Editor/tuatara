@@ -14,8 +14,8 @@
 ;;;; descriptor passed, with the hello or after it, and must end its
 ;;;; connection within seconds. Every 5,000 rounds one of these hostile but
 ;;;; well-made rounds runs too: a paste past the most taken, more pictures in
-;;;; a frame than are kept, a flood of events the editor does not take, and
-;;;; a session of the editor given sizes, mouse places and closings at their
+;;;; a frame than are kept, a flood of events the editor does not take, an
+;;;; editor busy for seconds with a client typing, and a session of the editor given sizes, mouse places and closings at their
 ;;;; bounds. A failure is an error other than a malformed message, a read
 ;;;; running past the deadline, a connection not ended, a hostile round not
 ;;;; answered as it should be, descriptors left open, or the heap growing
@@ -343,6 +343,24 @@ connected and keeps at most +MOST-PICTURES+, else what went wrong."
         (cond ((> read (1+ tuatara.frontend::+most-waiting-events+)) (format nil "~d events read ahead" read))
               ((> (tuatara.runtime:seconds-since began) 5) "the frontend took more than 5 s to stop"))))))
 
+(defun editor-busy ()
+  "An editor that takes no event for over two seconds while a client types:
+NIL when the connection survives and every event comes once it takes them,
+else what went wrong."
+  (multiple-value-bind (remote theirs) (peer-editor-frontend)
+    (let* ((count (+ 2000 (random 2000 *random*)))
+           (key (tuatara.frontend:make-event :key :key (tuatara.frontend:make-key #\b)))
+           (sender (sb-thread:make-thread (lambda () (send-events theirs (make-list count :initial-element key))))))
+      (sleep (+ 2 (random 1.0 *random*)))
+      (prog1 (cond ((tuatara.frontend::remote-ended remote) "the connection ended while the editor was busy")
+                   ((/= count (loop repeat count
+                                    count (tuatara.frontend:queue-pop (tuatara.frontend::remote-queue remote) 2)))
+                    "events were lost")
+                   ((tuatara.frontend::remote-ended remote) "the connection ended once events were taken"))
+        (tuatara.frontend:frontend-stop remote)
+        (sb-thread:join-thread sender :timeout 30 :default nil)
+        (sb-posix:close theirs)))))
+
 (defun editor-at-the-bounds ()
   "An editor session whose one screen is a client's, given sizes, mouse
 places and closings at their bounds, then left: NIL when it ends so, else
@@ -389,7 +407,8 @@ what went wrong."
           (sb-thread:join-thread draining :timeout 10 :default nil)
           (sb-posix:close theirs))))))
 
-(defparameter *hostile-rounds* (list #'paste-past-the-most #'more-pictures-than-kept #'flood #'editor-at-the-bounds)
+(defparameter *hostile-rounds* (list #'paste-past-the-most #'more-pictures-than-kept #'flood #'editor-busy
+                                     #'editor-at-the-bounds)
   "The hostile but well-made rounds, run in turn.")
 
 ;;; The run
