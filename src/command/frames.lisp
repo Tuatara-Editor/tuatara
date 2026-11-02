@@ -65,7 +65,9 @@ of the frame left keeps its point, and that of FRAME moves its buffer's point
 to its own, as selecting a window does (SELECT-WINDOW); what follows the
 buffer shown is brought in line with FRAME's (*AFTER-TICK-FUNCTIONS*). On a
 display the two take turns on (FRAME-TAKING-TURNS-P), FRAME is shown in place
-of the other, at the display's size now, and painted whole. Returns FRAME."
+of the other, at the display's size now, and painted whole, and the display
+names it in the events it delivers (TUATARA.FRONTEND:FRONTEND-FRAME). Returns
+FRAME."
   (let ((old (editor-frame editor)))
     (unless (eq old frame)
       (let ((leaving (frame-window old)))
@@ -76,8 +78,10 @@ of the other, at the display's size now, and painted whole. Returns FRAME."
         (when entering (give-window-buffer-point entering)))
       (setf (editor-frame editor) frame)
       (when (eq (frame-frontend frame) (frame-frontend old))
-        ;; the display may have been resized while FRAME waited; its title is the other's
-        (setf (frame-title-shown frame) nil)
+        ;; what is typed now is typed in FRAME; the display may have been resized while
+        ;; FRAME waited; its title is the other's
+        (setf (tuatara.frontend:frontend-frame (frame-frontend frame)) frame
+              (frame-title-shown frame) nil)
         (multiple-value-bind (width height) (tuatara.frontend:frontend-size (frame-frontend frame))
           (unless (and (= (max 1 width) (frame-width frame)) (= (max 3 height) (frame-height frame)))
             (resize editor width height))))
@@ -163,7 +167,7 @@ taken: that is refused, as an editor has a frame for as long as it runs. Its
 events still to come are dropped (TAKE-TO-ITS-FRAME); what was still to be
 said in it is said in the frame worked in, and work handed on to be done in
 it (DEFER-ACTION) is done there. Its frontend is stopped unless another frame
-takes turns on it."
+takes turns on it, which the frontend then names in its events in its place."
   (let ((left (remove frame (editor-frames editor))))
     (unless left
       (refuse "The editor's only frame stays while the editor runs"))
@@ -173,9 +177,13 @@ takes turns on it."
           (frame-deleted frame) t
           (editor-deferred editor) (append (editor-deferred editor)
                                            (remove-if-not #'functionp (shiftf (frame-deferred frame) '()))))
-    (unless (find (frame-frontend frame) left :key #'frame-frontend)
-      (tuatara.runtime:ignoring-errors-reported ("closing a frame's display")
-        (tuatara.frontend:frontend-stop (frame-frontend frame))))
+    (let* ((frontend (frame-frontend frame))
+           (sharing (find frontend left :key #'frame-frontend)))
+      (cond ((null sharing)
+             (tuatara.runtime:ignoring-errors-reported ("closing a frame's display")
+               (tuatara.frontend:frontend-stop frontend)))
+            ((eq (tuatara.frontend:frontend-frame frontend) frame)
+             (setf (tuatara.frontend:frontend-frame frontend) sharing))))
     frame))
 
 (defun note-frame-painted (frame)

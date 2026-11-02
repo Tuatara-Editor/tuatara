@@ -401,6 +401,53 @@ position of the frame worked in among the editor's frames."
       (true (tuatara.frontend.fake:fake-frame-showing f "] F2 kiwi"))
       (true (tuatara.buffer:find-buffer "kiwi")))))
 
+(defclass naming-fake-frontend (tuatara.frontend.fake:fake-frontend)
+  ((frame :initform nil :accessor naming-frame
+          :documentation "The frame its events name (FRONTEND-FRAME)."))
+  (:documentation "A fake terminal that names a frame in the events it delivers, as a terminal
+reached from elsewhere does."))
+
+(defmethod tuatara.frontend:frontend-frame ((f naming-fake-frontend))
+  (naming-frame f))
+
+(defmethod (setf tuatara.frontend:frontend-frame) (frame (f naming-fake-frontend))
+  (setf (naming-frame f) frame))
+
+(defun type-in-named-frame (keys)
+  "A function for a test's turn: KEYS typed on the display of the frame worked
+in, each event naming the frame that display names."
+  (lambda ()
+    (let* ((f (tuatara.command:editor-frontend tuatara.command:*editor*))
+           (frame (tuatara.frontend:frontend-frame f)))
+      (dolist (spec (reverse (tuatara.frontend:parse-key-sequence keys)))
+        (push (tuatara.frontend:make-event :key :key (tuatara.frontend:spec-key spec) :frame frame)
+              (car (tuatara.frontend.fake::fake-source f)))))))
+
+(define-test (frames terminal-display-names-the-frame-shown)
+  ;; a display whose events name their frame names the one shown: keys typed after C-x 5 o run
+  ;; there, and after the frame it named is closed, in the one shown in its place
+  (let ((f (make-instance 'naming-fake-frontend)) (named '()))
+    (let ((scratch (tuatara.buffer:find-buffer "*scratch*")))
+      (when scratch (tuatara.buffer:kill-buffer scratch)))
+    (let ((left (tuatara.buffer:find-buffer "kiwi")))
+      (when left (tuatara.buffer:kill-buffer left)))
+    (tuatara.buffer:make-buffer "*scratch*" :text "")
+    (queue-test-keys f (list "C-x 5 2 C-x b k i w i C-j"
+                             (type-in-named-frame "i k e a ESC")
+                             "C-x 5 o C-x 5 o C-x 5 o C-x 5 0"
+                             (lambda () (push (tuatara.frontend:frontend-frame f) named))
+                             (type-in-named-frame "i t u i ESC")))
+    (let ((editor (without-grammar-questions
+                    (tuatara.command:run-editor f :setup #'tuatara.defaults:install-defaults
+                                                  :buffer (tuatara.buffer:find-buffer "*scratch*")))))
+      (is = 1 (length (tuatara.command:editor-frames editor)))
+      (is eq (tuatara.command:editor-frame editor) (first named))
+      (false (tuatara.command::frame-deleted (first named)))
+      (let ((kiwi (tuatara.buffer:buffer-string (tuatara.buffer:find-buffer "kiwi"))))
+        (true (search "kea" kiwi) "~s" kiwi)
+        (true (search "tui" kiwi) "~s" kiwi))
+      (is equal "" (tuatara.buffer:buffer-string (tuatara.buffer:find-buffer "*scratch*"))))))
+
 (define-test (frames terminal-frames-share-the-one-display)
   ;; every frame of a terminal paints through its one frontend: none is started for them, none
   ;; stopped as one closes, and the terminal is given back once as the editor ends
