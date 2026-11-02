@@ -188,6 +188,7 @@ sub-heading, then each setting with the first sentence of its documentation."
     ("grammars/" . "the grammars you added")
     ("auto-save/" . "the auto-saved copies of buffers not saved")
     ("session" . "the files and windows open when you last left, for the next start")
+    ("session-daemon-NAME" . "the session of the daemon NAME: its clients' folders and their windows")
     ("grammar-store/" . "the grammars Tuatara compiled")
     ("packages/" . "the packages fetched, compiled")
     ("" . "everything made again when it is gone: compiled packages, previews, copies of files opened outside"))

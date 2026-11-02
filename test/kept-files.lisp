@@ -34,6 +34,7 @@
     (:file "data" "grammars/" :kept nil)
     (:file "state" "auto-save/" :kept nil)
     (:file "state" "session" :remembered 1)
+    (:file "state" "session-daemon-NAME" :remembered 1)
     (:file "state" "grammar-store/" :rebuilt nil)
     (:file "data" "packages/" :rebuilt nil)
     (:file "cache" "" :rebuilt nil))

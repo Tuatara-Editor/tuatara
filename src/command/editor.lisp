@@ -10,7 +10,7 @@
 (in-package #:tuatara.command)
 
 (defstruct (client (:constructor make-client (&key frontend directory environment (number 1)
-                                                  &aux (remote (and frontend t))))
+                                                    (remote (and frontend t))))
                    (:copier nil))
   "Someone working with the editor on screens of their own (clients.lisp):
 in an editor of its own, the one who started it, on its own screen
@@ -38,7 +38,9 @@ its number, folder and times."
   (exit-words nil)
   (endings '()))
 
-(setf (documentation 'make-client 'function) "A CLIENT on FRONTEND (NIL: the editor's own screen), started in DIRECTORY."
+(setf (documentation 'make-client 'function)
+      "A CLIENT on FRONTEND (NIL: the editor's own screen), started in DIRECTORY; REMOTE for one that showed an
+editor running in the background, by default when it has a FRONTEND."
       (documentation 'client-p 'function) "True when OBJECT is a CLIENT."
       (documentation 'client-frontend 'function)
       "The remote frontend CLIENT paints, or NIL for the editor's own screen or once CLIENT has ended."

@@ -389,9 +389,10 @@ for: what is greeted wakes the editor."
 (defun start-client (editor client request)
   "Do what CLIENT of EDITOR asked for as it attached, REQUEST, in its frame:
 open its files (standard input among them), each where its +LINE asks, the
-first shown; or compare or merge files; open the frames asked for; or stop
-the editor. A file that cannot be opened is said, as when the editor starts
-with it."
+first shown; or compare or merge files; or, asking for none, take up the
+folder of the client that ended last, with its layouts, when the session is
+kept (TAKE-UP-ENDED-FOLDER); open the frames asked for; or stop the editor. A
+file that cannot be opened is said, as when the editor starts with it."
   (let* ((merge (tuatara.frontend:request-merge request))
          (entries (if merge
                       (list (fourth merge))
@@ -418,6 +419,8 @@ with it."
         (compare-paths (first diff) (second diff))
         (only-window (current-window))))
     (when merge (merge-files-into (first merge) (second merge) (third merge) (fourth merge)))
+    (unless (or entries input (tuatara.frontend:request-diff request))
+      (take-up-ended-folder editor client))
     (let ((frames (tuatara.frontend:request-frames request)))
       (when (> frames 1) (open-start-frames editor frames)))))
 
@@ -654,11 +657,13 @@ given up."
   "Run DAEMON's editor on this thread until it stops: an editor whose frame
 is on a frontend with no screen while no client shows it, its clients given
 frames as they attach (START-TAKING-CONNECTIONS, TAKE-IN-CLIENTS), ended
-when it is asked to (END-WHEN-ASKED). SETUP is called with the editor as RUN-EDITOR calls it
+when it is asked to (END-WHEN-ASKED), its session kept in a file of its own
+\(*SESSION-NAME*). SETUP is called with the editor as RUN-EDITOR calls it
 \(the init file read, the packages loaded), and READY, a function of none,
 once the editor runs and takes clients. DAEMON is closed once the editor has
 ended (CLOSE-DAEMON). Returns the editor."
-  (let ((idle (tuatara.frontend:make-null-frontend (daemon-queue daemon))))
+  (let ((idle (tuatara.frontend:make-null-frontend (daemon-queue daemon)))
+        (*session-name* (format nil "session-daemon-~a" (daemon-name daemon))))
     (setf *daemon* daemon)
     (pushnew 'take-in-clients *tick-functions*)
     (pushnew 'end-when-asked *tick-functions*)

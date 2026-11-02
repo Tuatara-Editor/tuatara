@@ -960,3 +960,62 @@ after, as it does by itself."
           (is eql 1 (first (client-ends runner)))
           (false (probe-file (tuatara.defaults::auto-save-path file)))
           (is string= "off" (file-text file)))))))
+
+(defun daemon-session-path (name)
+  "The file the daemon NAME keeps its session in."
+  (tuatara.io:path-join (tuatara.io:native (tuatara.io:state-directory)) (format nil "session-daemon-~a" name)))
+
+(defun client-frame-windows (editor)
+  "How many windows the frame of EDITOR's one client attached now shows."
+  (let ((client (find-if (lambda (client) (and (tuatara.command:client-remote client)
+                                               (not (tuatara.command:client-ended client))))
+                         (tuatara.command:editor-clients editor))))
+    (length (tuatara.display:area-windows
+             (tuatara.display:area-root
+              (tuatara.command:frame-window (first (tuatara.command:client-frames editor client))))))))
+
+(define-test (daemon session-kept-by-name)
+  ;; with the session kept, a daemon keeps it in a file of its name, the editor's own left alone; started
+  ;; again it has its clients' folders, as ended, and a client asking for no files takes up the last, its
+  ;; windows as they were
+  (with-test-directory (dir)
+    (let* ((file (namestring (put-file (merge-pathnames "kept.txt" dir) "kept text")))
+           (name (format nil "kept~d" (incf *test-daemons*)))
+           (own (tuatara.defaults::session-path))
+           (own-before (and (probe-file own) (file-text own)))
+           (was tuatara.defaults::*keep-session*))
+      (setf tuatara.defaults::*keep-session* t)
+      (unwind-protect
+           (progn
+             (with-test-daemon (daemon-name thread daemon name)
+               (multiple-value-bind (local runner) (attach-test-client daemon-name :directory dir :files (list file))
+                 (true (shows local "kept text"))
+                 (type-keys local "C-x 2")
+                 (true (wait-until (lambda () (in-daemon (lambda () (= 2 (client-frame-windows (daemon-editor)))))) 10))
+                 (type-keys local "C-x C-c")
+                 (is equal '(0 nil) (client-ends runner))))
+             (let ((text (file-text (daemon-session-path name))))
+               (true (search (format nil "~%client 1 ") text) "~a" text)
+               (true (search "kept.txt" text)))
+             (is equal own-before (and (probe-file own) (file-text own)) "the editor's own session is left alone")
+             ;; a daemon started again is a process of its own: none of the buffers of the one before
+             (let ((buffer (tuatara.defaults::buffer-visiting file)))
+               (when buffer (tuatara.buffer:kill-buffer buffer)))
+             (with-test-daemon (daemon-name thread daemon name)
+               (true (in-daemon (lambda ()
+                                  (let ((buffer (tuatara.defaults::buffer-visiting file)))
+                                    (and buffer (some #'tuatara.command:client-ended
+                                                      (tuatara.command:buffer-clients buffer))))))
+                     "its folder is there, as ended")
+               (multiple-value-bind (local runner) (attach-test-client daemon-name :directory dir)
+                 (true (shows local "kept text"))
+                 (true (wait-until (lambda () (in-daemon (lambda () (= 2 (client-frame-windows (daemon-editor)))))) 10)
+                       "its windows as they were")
+                 (in-daemon (lambda ()
+                              (let ((clients (tuatara.command:buffer-clients (tuatara.defaults::buffer-visiting file))))
+                                (is = 1 (length clients))
+                                (false (tuatara.command:client-ended (first clients)) "the folder taken up"))))
+                 (type-keys local "C-x C-c")
+                 (client-ends runner))))
+        (setf tuatara.defaults::*keep-session* was)
+        (ignore-errors (delete-file (daemon-session-path name)))))))
