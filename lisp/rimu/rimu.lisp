@@ -1256,6 +1256,15 @@ rimu-mode for its keys."
   (let ((chosen (read-directory-path "Rimu (directory): " :note nil)))
     (when chosen (note-visited-path chosen (rimu-show-directory chosen) :directory t))))
 
+(define-command rimu-other-frame ()
+  "List a folder with rimu in another frame and work in it, the folder asked
+for as \\[rimu] asks."
+  (let ((chosen (read-directory-path "Rimu in other frame (directory): " :note nil)))
+    (when chosen
+      (note-visited-path chosen
+                         (rimu-show-directory chosen :show (lambda (buffer) (open-frame *editor* :buffer buffer)))
+                         :directory t))))
+
 (define-command rimu-jump ()
   "List the directory of the current buffer's file with rimu, point on the
 file; a buffer with no file lists the directory it
@@ -1483,6 +1492,7 @@ the commands that change files in a list opened safely."
   (define-key *rimu-quick-edit-normal-keymap* "q" 'rimu-quick-edit-done)
   (pushnew 'rimu-quick-edit-mode-line *mode-line-functions*)
   (define-key *global-keymap* "C-x d" 'rimu)
+  (define-key *global-keymap* "C-x 5 d" 'rimu-other-frame)
   (define-key *global-keymap* "C-x C-j" 'rimu-jump)
   (pushnew 'rimu-preview-hex *hex-view-functions*)
   (install-rimu-operations)

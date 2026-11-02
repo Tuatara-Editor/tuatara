@@ -869,15 +869,15 @@ or one another program renamed."
                                     (show (lambda (buffer) (show-buffer buffer))))
   "Ask for a file with PROMPT (READ-FILE-PATH) and show it with SHOW, a
 function of the buffer (in the selected window by default): visited as usual,
-or with SAFE safely (VISIT-PATH), a folder listed so. A name that does not
+or with SAFE safely (VISIT-PATH), a folder listed so, its list shown by SHOW too. A name that does not
 exist becomes a new file, except for a safe visit. The path is remembered
 as the latest chosen (NOTE-CHOSEN-PATH) unless it opened safely."
   (multiple-value-bind (path kind) (read-file-path prompt :preview *preview-files* :note nil)
     (cond ((null path))
-          ;; a directory taken as typed: listed in rimu
+          ;; a directory taken as typed: listed in rimu, shown as SHOW shows
           ((and (eq kind :directory) (fboundp 'rimu-show-directory))
            (note-visited-path path (funcall 'rimu-show-directory (tuatara.io:native (tuatara.io:expand-path path))
-                                            :safe safe)
+                                            :safe safe :show show)
                               :directory t))
           ;; noted once shown: what opened safely, asked or not, leaves no trace
           (t (note-visited-path path (visit-path path :safe safe :show show))))))

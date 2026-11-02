@@ -133,7 +133,7 @@ on, so that a setting written wrong never stops the editor starting."
 
 (defparameter *global-prefix-labels*
   '(("C-x n" "notes") ("C-x a" "agenda") ("C-x T" "toggles") ("C-x w" "windows") ("C-x x" "buffers") ("C-x 8" "characters")
-    ("C-x r" "rectangles and registers") ("C-x m" "bookmarks") ("C-x p" "project") ("C-x 4" "other window") ("C-x RET" "input method") ("C-x /" "filters"))
+    ("C-x r" "rectangles and registers") ("C-x m" "bookmarks") ("C-x p" "project") ("C-x 4" "other window") ("C-x 5" "other frame") ("C-x RET" "input method") ("C-x /" "filters"))
   "What the key hints call the prefixes of the standard keys.")
 
 ;;; C-c in every mode
@@ -262,6 +262,7 @@ so that \\`C-c' shows, and runs, what the buffer at hand can do in every mode
     (install-centred-text)
     (install-visual-line)
     (install-windows)
+    (install-frames)
     (tuatara.export:install-latex-export)
     ;; after the windows' standard rules, which it adds to
     (install-calendar)

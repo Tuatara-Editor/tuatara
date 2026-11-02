@@ -316,3 +316,190 @@ Returns the editor and its frames, as RUN-FRAMES does."
                                (tuatara.command::remove-frame editor (tuatara.command::editor-frame editor)))))
       (is equal (list (first frames)) seen)
       (is equal (list (first frames)) (tuatara.command::editor-frames editor)))))
+
+;;; Frames opened and closed by their commands, in a window
+
+(defun run-window-keys (typing &key (text "") (width 40) (height 8) files start)
+  "Run a session of an editor in a fake window, which can open other frames,
+on a scratch buffer holding TEXT (or FILES), START called once they are shown.
+TYPING is a list of keys, as a string, or (FRAME-INDEX KEYS) for keys typed
+in the INDEXth frame open then (0 the first), or a function called in its
+turn. Returns the editor, its frames' frontends as they were opened, and the
+first frontend."
+  (let ((first (tuatara.frontend.fake:make-fake-frontend :width width :height height :font-steps 0)))
+    (let ((scratch (tuatara.buffer:find-buffer "*scratch*")))
+      (when scratch (tuatara.buffer:kill-buffer scratch)))
+    (dolist (name '("kiwi"))
+      (let ((left (tuatara.buffer:find-buffer name)))
+        (when left (tuatara.buffer:kill-buffer left))))
+    (tuatara.buffer:make-buffer "*scratch*" :text text)
+    (setf tuatara.defaults::*command-history* '() tuatara.defaults::*pattern-history* '())
+    (dolist (item typing)
+      (cond ((stringp item) (tuatara.frontend.fake:fake-queue-keys first item))
+            ((functionp item) (tuatara.frontend.fake:fake-queue-action first item))
+            (t (destructuring-bind (index keys) item
+                 (tuatara.frontend.fake:fake-queue-action
+                  first (lambda ()
+                          (let ((frame (nth index (tuatara.command:editor-frames tuatara.command:*editor*))))
+                            (dolist (spec (reverse (tuatara.frontend:parse-key-sequence keys)))
+                              (push (tuatara.frontend:make-event :key :key (tuatara.frontend:spec-key spec) :frame frame)
+                                    (car (tuatara.frontend.fake::fake-source first)))))))))))
+    (let ((editor (without-grammar-questions
+                    (tuatara.command:run-editor first :files files :setup #'tuatara.defaults:install-defaults
+                                                      :buffer (tuatara.buffer:find-buffer "*scratch*")
+                                                      :start start))))
+      (values editor (mapcar #'tuatara.command::frame-frontend (tuatara.command:editor-frames editor)) first))))
+
+(defun frame-shows (frame)
+  "The name of the buffer FRAME's selected window shows."
+  (tuatara.buffer:buffer-name (tuatara.display:window-buffer (tuatara.command:frame-window frame))))
+
+(define-test (frames make-frame-opens-another)
+  ;; C-x 5 2 opens a frame showing the current buffer, brought before the others and worked in:
+  ;; what is typed then goes there, into the same buffer
+  (multiple-value-bind (editor frontends) (run-window-keys '("C-x 5 2 i k e a"))
+    (destructuring-bind (first second) (tuatara.command:editor-frames editor)
+      (is eq second (tuatara.command:editor-frame editor))
+      (is equal "*scratch*" (frame-shows first))
+      (is equal "*scratch*" (frame-shows second))
+      (is equal "kea" (tuatara.buffer:buffer-string (tuatara.buffer:find-buffer "*scratch*")))
+      (is = 1 (tuatara.frontend.fake:fake-raised (second frontends)))
+      (true (tuatara.frontend.fake:fake-frame-showing (second frontends) "kea")))))
+
+(define-test (frames make-frame-refused-in-a-terminal)
+  ;; a terminal shows one frame: asking for another says how to have them
+  (multiple-value-bind (f editor) (run-keys "C-x 5 2")
+    (is = 1 (length (tuatara.command:editor-frames editor)))
+    (true (tuatara.frontend.fake:fake-frame-showing-across-rows f "start Tuatara with --gui for frames"))))
+
+(define-test (frames delete-frame-keeps-the-last)
+  ;; C-x 5 0 closes the frame worked in, its buffer staying; the last frame stays, said in plain words
+  (multiple-value-bind (editor frontends first-frontend)
+      (run-window-keys '("C-x 5 2 C-x b k i w i C-j C-x 5 0 C-x 5 0"))
+    (declare (ignore frontends))
+    (is = 1 (length (tuatara.command:editor-frames editor)))
+    (is equal "*scratch*" (frame-shows (tuatara.command:editor-frame editor)))
+    (true (tuatara.buffer:find-buffer "kiwi"))
+    (true (tuatara.frontend.fake:fake-frame-showing first-frontend "This is the only frame; C-x C-c quits"))))
+
+(define-test (frames delete-other-frames-keeps-this-one)
+  ;; C-x 5 1 closes every frame but the one worked in
+  (multiple-value-bind (editor frontends) (run-window-keys '("C-x 5 2 C-x 5 2 C-x b k i w i C-j C-x 5 1"))
+    (declare (ignore frontends))
+    (is = 1 (length (tuatara.command:editor-frames editor)))
+    (is equal "kiwi" (frame-shows (tuatara.command:editor-frame editor)))))
+
+(define-test (frames close-button-closes-its-frame)
+  ;; a frame's close button closes that frame only, the editor going on in the others; the last
+  ;; one's quits, as C-x C-c does
+  (let ((closed nil) (running nil))
+    (multiple-value-bind (editor frontends first-frontend)
+        (run-window-keys (list "C-x 5 2"
+                               (lambda ()
+                                 (let ((editor tuatara.command:*editor*))
+                                   (setf closed (second (tuatara.command:editor-frames editor)))
+                                   (push (tuatara.frontend:make-event :close :frame closed)
+                                         (car (tuatara.frontend.fake::fake-source
+                                               (tuatara.command:editor-frontend editor))))))
+                               "i t u i"
+                               (lambda () (setf running (tuatara.command:editor-running tuatara.command:*editor*)))
+                               (lambda ()
+                                 (push (tuatara.frontend:make-event
+                                        :close :frame (first (tuatara.command:editor-frames tuatara.command:*editor*)))
+                                       (car (tuatara.frontend.fake::fake-source
+                                             (tuatara.command:editor-frontend tuatara.command:*editor*)))))
+                               "i k e a"))
+      (declare (ignore frontends first-frontend))
+      (true (tuatara.command::frame-deleted closed))
+      (true running)
+      (is = 1 (length (tuatara.command:editor-frames editor)))
+      ;; the last frame's close button ended the editor before what came after it
+      (false (tuatara.command:editor-running editor))
+      (is equal "tui" (tuatara.buffer:buffer-string (tuatara.buffer:find-buffer "*scratch*"))))))
+
+(define-test (frames other-frame-goes-round)
+  ;; C-x 5 o goes to the next frame, the first after the last, and brings its window before the others
+  (let ((seen '()))
+    (flet ((note () (push (position (tuatara.command:editor-frame tuatara.command:*editor*)
+                                    (tuatara.command:editor-frames tuatara.command:*editor*))
+                          seen)))
+      (multiple-value-bind (editor frontends first-frontend)
+          (run-window-keys (list "C-x 5 o" "C-x 5 2" #'note "C-x 5 o" #'note "C-x 5 o" #'note "C-u - 1 C-x 5 o" #'note))
+        (declare (ignore editor))
+        (is equal '(1 0 1 0) (reverse seen))
+        (is = 2 (tuatara.frontend.fake:fake-raised first-frontend))
+        (is = 2 (tuatara.frontend.fake:fake-raised (second frontends)))
+        (true (tuatara.frontend.fake:fake-frame-showing first-frontend "There is no other frame"))))))
+
+(define-test (frames focus-selects-its-frame)
+  ;; the frame whose window is given the keyboard is the one worked in, where a message said by
+  ;; no frame's work shows
+  (with-frames (editor (first second))
+      (list '(1 "C-x b k i w i C-j")
+            '(0 "C-n")
+            (list 0 (lambda ()
+                      (push (tuatara.frontend:make-event :focus :frame (second (tuatara.command:editor-frames
+                                                                                 tuatara.command:*editor*)))
+                            (car (tuatara.frontend.fake::fake-source
+                                  (tuatara.command:editor-frontend tuatara.command:*editor*))))))
+            (list 0 (lambda ()
+                      (sb-thread:join-thread (sb-thread:make-thread (lambda () (tuatara.command:message "Ruru")))))))
+    (is eq second (tuatara.command:editor-frame editor))
+    (is equal "Ruru" (tuatara.command::frame-message second))
+    (false (equal "Ruru" (tuatara.command::frame-message first)))))
+
+(define-test (frames others-painted-only-on-change)
+  ;; a frame not worked in is painted again only when what it shows changed: typing in another
+  ;; buffer leaves it alone, typing in its buffer paints it, the text shown
+  (let ((tuatara.command::*frame-at-least-every* 0) (counts '()))
+    (flet ((note-paints (editor)
+             (push (tuatara.frontend.fake:fake-frames
+                    (tuatara.command::frame-frontend (second (tuatara.command:editor-frames editor))))
+                   counts)))
+      (with-frames (editor (first second))
+          (list '(1 "C-x b k i w i C-j")
+                '(0 "i")
+                (list 0 (lambda ()
+                          (push #'note-paints (tuatara.command:editor-post-command-functions tuatara.command:*editor*))))
+                '(0 "a b c d e f")
+                (list 0 (lambda ()
+                          (setf (tuatara.command:editor-post-command-functions tuatara.command:*editor*)
+                                (remove #'note-paints (tuatara.command:editor-post-command-functions
+                                                       tuatara.command:*editor*)))))
+                '(0 "C-x b k i w i C-j i t i e k e"))
+        ;; noted after each of a to f: the second frame painted no more meanwhile
+        (is = 6 (length counts))
+        (is = 1 (length (remove-duplicates counts)) "~s" counts)
+        (true (> (tuatara.frontend.fake:fake-frames (tuatara.command::frame-frontend second)) (first counts)))
+        (true (tuatara.frontend.fake:fake-frame-showing (tuatara.command::frame-frontend second) "tieke"))))))
+
+(define-test (frames find-file-in-another)
+  ;; C-x 5 f, C-x 5 b and C-x 5 d open a file, a buffer and a folder in a new frame, worked in;
+  ;; the frame they were asked in shows what it showed
+  (with-test-directory (dir)
+    (let ((path (put-file (merge-pathnames "kea.txt" dir) "kea")))
+      (multiple-value-bind (editor frontends)
+          (run-window-keys (list (format nil "C-x 5 f C-a C-k ~a RET" (rimu-typed (namestring path)))
+                                 '(0 "C-x 5 b k i w i C-j")
+                                 (format nil "C-x 5 d C-a C-k ~a RET" (rimu-typed (namestring dir)))))
+        (declare (ignore frontends))
+        (destructuring-bind (first second third fourth) (tuatara.command:editor-frames editor)
+          (is equal "*scratch*" (frame-shows first))
+          (is equal "kea.txt" (frame-shows second))
+          (is equal "kiwi" (frame-shows third))
+          (true (tuatara.defaults::rimu-list-p (tuatara.display:window-buffer (tuatara.command:frame-window fourth))))
+          (is eq fourth (tuatara.command:editor-frame editor)))))))
+
+(define-test (frames start-frames-spread-files)
+  ;; --frames N opens N frames as the editor starts, the files one to each in turn, those left
+  ;; over behind the first; the first frame is the one worked in
+  (with-test-directory (dir)
+    (let ((paths (loop for name in '("a.txt" "b.txt" "c.txt" "d.txt")
+                       collect (namestring (put-file (merge-pathnames name dir) name)))))
+      (let ((editor (run-window-keys '() :files paths :start (tuatara.terminal::start-function :frames 3))))
+        (is equal '("a.txt" "b.txt" "c.txt") (mapcar #'frame-shows (tuatara.command:editor-frames editor)))
+        (is eq (first (tuatara.command:editor-frames editor)) (tuatara.command:editor-frame editor))
+        (true (tuatara.buffer:find-buffer "d.txt")))
+      (let ((editor (run-window-keys '() :files (list (first paths))
+                                         :start (tuatara.terminal::start-function :frames 3))))
+        (is equal '("a.txt" "a.txt" "a.txt") (mapcar #'frame-shows (tuatara.command:editor-frames editor)))))))
