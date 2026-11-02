@@ -3421,6 +3421,18 @@ bound to the fake frontend and the editor; the file and its buffer go afterwards
       (tuatara.syntax:detach-syntax buffer)
       (tuatara.buffer:kill-buffer buffer))))
 
+(define-test (syntax kept-layers-held-to-column-and-depth)
+  ;; the colours of a text in another language are given again only for the
+  ;; same octets starting at the same column of a line (a grammar may read
+  ;; columns: a heredoc's end) and as deep in texts in other languages
+  (let* ((rope (tuatara.text:string->rope (format nil "x = 1~%    x = 1~%x = 1~%")))
+         (first-line (list (cons 0 5))) (indented (list (cons 10 15))) (third-line (list (cons 16 21)))
+         (tuatara.syntax::*injected-colours* (make-hash-table)))
+    (tuatara.syntax::keep-layer "python" :query :faces 1 rope first-line 0 22 '((0 1 :variable)))
+    (true (tuatara.syntax::kept-layer "python" :query :faces 1 rope third-line 0 22))
+    (false (tuatara.syntax::kept-layer "python" :query :faces 1 rope indented 0 22))
+    (false (tuatara.syntax::kept-layer "python" :query :faces 2 rope third-line 0 22))))
+
 (define-test (syntax colours-kept-for-several-ranges)
   ;; two parts of a buffer shown at once keep their colours, each worked out once
   (let* ((text (with-output-to-string (s) (dotimes (i 40) (format s "fn f~d() {}~%" i))))

@@ -319,21 +319,28 @@ them, all are let go and worked out again as they are needed.")
 (defparameter *injected-text-most* 4096
   "The most octets of a text in another language whose colours are kept.")
 
-(defstruct (kept-layer (:constructor make-kept-layer (name query faces offsets octets colours)) (:copier nil))
+(defstruct (kept-layer (:constructor make-kept-layer (name query faces depth offsets columns octets colours))
+                       (:copier nil))
   "The colours worked out for a text in another language: NAME the language
-as the rules name it, QUERY and FACES its colouring rules and faces, OFFSETS
-its ranges, each (START . END), and COLOURS its ranges of colour, (START END
-FACE), both from the start of its first range; OCTETS the text of each of its
-ranges."
+as the rules name it, QUERY and FACES its colouring rules and faces, DEPTH
+how deep in texts in other languages it lies, OFFSETS its ranges, each
+\(START . END), and COLOURS its ranges of colour, (START END FACE), both from
+the start of its first range; COLUMNS the column, in octets, each range
+starts at in its line, and OCTETS the text of each, as a grammar may read
+them."
   (name nil :read-only t)
   (query nil :read-only t)
   (faces nil :read-only t)
+  (depth 1 :read-only t)
   (offsets nil :read-only t)
+  (columns nil :read-only t)
   (octets nil :read-only t)
   (colours nil :read-only t))
 
 (setf (documentation 'kept-layer-p 'function) "True when OBJECT is a KEPT-LAYER."
-      (documentation 'make-kept-layer 'function) "A KEPT-LAYER of NAME, QUERY, FACES, OFFSETS, OCTETS and COLOURS."
+      (documentation 'make-kept-layer 'function) "A KEPT-LAYER of NAME, QUERY, FACES, DEPTH, OFFSETS, COLUMNS, OCTETS and COLOURS."
+      (documentation 'kept-layer-depth 'function) "How deep in texts in other languages the text lies."
+      (documentation 'kept-layer-columns 'function) "The column, in octets, each range starts at in its line."
       (documentation 'kept-layer-name 'function) "The language of the text, as the rules name it."
       (documentation 'kept-layer-query 'function) "The colouring rules the colours were worked out with."
       (documentation 'kept-layer-faces 'function) "The faces the colours were worked out in."
@@ -371,34 +378,43 @@ that none of its colours depend on where that begins or ends, and is short."
        (<= start (car (first ranges))) (<= (cdr (car (last ranges))) end)
        (<= (loop for (s . e) in ranges sum (- e s)) *injected-text-most*)))
 
-(defun kept-layer (name query faces rope ranges start end)
+(defun octet-column (rope byte)
+  "The column, in octets, octet BYTE of ROPE stands at in its line."
+  (- byte (tuatara.text:row->byte rope (tuatara.text:byte->row rope byte))))
+
+(defun kept-layer (name query faces depth rope ranges start end)
   "The KEPT-LAYER of the text of ROPE in RANGES read as the language NAME with
-QUERY and FACES, kept for the text from octet START below END: one worked out
-for the same octets in ranges the same distance apart, wherever they stood;
-NIL when there is none."
+QUERY and FACES, DEPTH deep in texts in other languages, kept for the text
+from octet START below END: one worked out for the same octets in ranges the
+same distance apart, each starting at the same column of its line, wherever
+they stood; NIL when there is none."
   (when (layer-keepable-p ranges start end)
     (let ((base (car (first ranges))))
       (find-if (lambda (kept)
                  (and (equal name (kept-layer-name kept))
                       (eq query (kept-layer-query kept)) (eq faces (kept-layer-faces kept))
+                      (= depth (kept-layer-depth kept))
                       (= (length ranges) (length (kept-layer-offsets kept)))
                       (loop for (s . e) in ranges
                             for (ks . ke) in (kept-layer-offsets kept)
+                            for column in (kept-layer-columns kept)
                             for octets in (kept-layer-octets kept)
                             always (and (= (- s base) ks) (= (- e base) ke)
+                                        (= column (octet-column rope s))
                                         (rope-octets-equal-p rope s e octets)))))
                (gethash (layer-text-hash rope ranges) *injected-colours*)))))
 
-(defun keep-layer (name query faces rope ranges start end colours)
+(defun keep-layer (name query faces depth rope ranges start end colours)
   "Keep COLOURS, worked out for the text of ROPE in RANGES read as the language
-NAME with QUERY and FACES, for the text from octet START below END, as
-KEPT-LAYER finds them."
+NAME with QUERY and FACES, DEPTH deep, for the text from octet START below
+END, as KEPT-LAYER finds them."
   (when (layer-keepable-p ranges start end)
     (when (>= (hash-table-count *injected-colours*) *injected-colours-kept*)
       (clrhash *injected-colours*))
     (let ((base (car (first ranges))))
-      (push (make-kept-layer name query faces
+      (push (make-kept-layer name query faces depth
                              (loop for (s . e) in ranges collect (cons (- s base) (- e base)))
+                             (loop for (s . nil) in ranges collect (octet-column rope s))
                              (loop for (s . e) in ranges collect (tuatara.text:rope-octets rope :start s :end e))
                              (loop for (s e face) in colours collect (list (- s base) (- e base) face)))
             (gethash (layer-text-hash rope ranges) *injected-colours*)))))
@@ -429,7 +445,7 @@ second value, true when that holds for all of LAYERS."
                                  ;; no helper yet, or a parse that went wrong this time: tried again later
                                  (unless helper (setf settled nil))
                                  (and helper grammar colours ranges (not (grammar-off-p grammar where))
-                                      (let ((kept (kept-layer name colours faces rope ranges start end))
+                                      (let ((kept (kept-layer name colours faces depth rope ranges start end))
                                             (key (and *injected-trees* (list name ranges))))
                                         (if kept
                                             (list :kept kept :base (car (first ranges)))
@@ -522,7 +538,7 @@ second value, true when that holds for all of LAYERS."
                           for list in (or inner-layers (make-list (length wanted)))
                           when (and tree (or inner-settled (null list)))
                             do (destructuring-bind (&key name ranges ((:colours query)) faces &allow-other-keys) layer
-                                 (keep-layer name query faces rope ranges start end colours)))
+                                 (keep-layer name query faces depth rope ranges start end colours)))
                     (values (funcall all-colours results) settled))
                (dolist (tree made) (delete-tree tree)))))))))
 
