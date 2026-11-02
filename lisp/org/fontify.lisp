@@ -691,24 +691,32 @@ faces, any other in :org-meta-line."
   "The colours of the code of BLOCKS (as *ORG-SRC-BLOCKS* has them) in their
 languages, from octet FIRST below LAST of ROPE, each language in its own
 colouring style; a block's code is read as far as *INJECTION-REACH* around
-what is shown."
-  (loop for (name from to) in blocks
-        for language = (org-src-language name)
-        for start = (max first from)
-        for end = (min last to)
-        when (and language (< start end))
-          append (multiple-value-bind (style level) (language-colouring language)
-                   (unless (eq style :none)
-                     (let* ((reach tuatara.syntax:*injection-reach*)
-                            (window-from (tuatara.syntax:injection-cut rope (max from (- start reach))))
-                            (window-to (tuatara.text:rope-char-start rope (min to (+ end reach)))))
-                       (when (< window-from window-to)
-                         ;; parsed by the program parsing this buffer's text, as its own
-                         (let ((tuatara.syntax:*helper* (or (tuatara.syntax:buffer-helper-soon buffer) :none))
-                               (tuatara.syntax:*parsing-buffer* buffer))
-                           (tuatara.syntax:language-highlights (injection-resolver style level)
-                                                               (symbol-name (language-name language))
-                                                               (list (cons window-from window-to)) rope start end))))))))
+what is shown. As a second value, NIL when a block was left plain because
+the program parsing BUFFER's text was not running yet: it is started in the
+background, and the editor redrawn once it is."
+  (let ((whole t))
+    (values
+     (loop for (name from to) in blocks
+           for language = (org-src-language name)
+           for start = (max first from)
+           for end = (min last to)
+           when (and language (< start end))
+             append (multiple-value-bind (style level) (language-colouring language)
+                      (unless (eq style :none)
+                        (let* ((reach tuatara.syntax:*injection-reach*)
+                               (window-from (tuatara.syntax:injection-cut rope (max from (- start reach))))
+                               (window-to (tuatara.text:rope-char-start rope (min to (+ end reach)))))
+                          (when (< window-from window-to)
+                            ;; parsed by the program parsing this buffer's text, as its own
+                            (let ((helper (tuatara.syntax:buffer-helper-soon buffer)))
+                              (unless helper (setf whole nil))
+                              (let ((tuatara.syntax:*helper* (or helper :none))
+                                    (tuatara.syntax:*parsing-buffer* buffer))
+                                (tuatara.syntax:language-highlights (injection-resolver style level)
+                                                                    (symbol-name (language-name language))
+                                                                    (list (cons window-from window-to))
+                                                                    rope start end))))))))
+     whole)))
 
 (defun org-fontify-drawer (node)
   "A drawer: its first and last lines in :org-drawer; in an :EXPORT: drawer each
@@ -859,13 +867,15 @@ parses of the parts of it they show (ORG-VIEWS)."
 (defun org-src-cached-highlights (buffer rope first last)
   "ORG-SRC-HIGHLIGHTS for *ORG-SRC-BLOCKS* of BUFFER from octet FIRST below
 LAST, kept and given again while the text, the range, the blocks and the
-rules compiled are as they were; the last eight ranges asked for are kept."
+rules compiled are as they were; the last eight ranges asked for are kept,
+but not those made before the program parsing the code was running."
   (let* ((key (list (tuatara.buffer:buffer-version buffer) first last *org-src-blocks* (car tuatara.syntax:*rules-generation*)))
          (cache (tuatara.buffer:buffer-local buffer 'org-src-colours))
          (hit (assoc key cache :test #'equal)))
     (if hit
         (cdr hit)
-        (let ((ranges (org-src-highlights buffer rope *org-src-blocks* first last)))
-          (setf (tuatara.buffer:buffer-local buffer 'org-src-colours)
-                (cons (cons key ranges) (subseq cache 0 (min 7 (length cache)))))
+        (multiple-value-bind (ranges whole) (org-src-highlights buffer rope *org-src-blocks* first last)
+          (when whole
+            (setf (tuatara.buffer:buffer-local buffer 'org-src-colours)
+                  (cons (cons key ranges) (subseq cache 0 (min 7 (length cache))))))
           ranges))))
