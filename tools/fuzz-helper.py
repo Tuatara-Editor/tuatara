@@ -13,7 +13,8 @@
 # goes to LOG; the last requests sent, each its op and body in hexadecimal,
 # to LOG.last when the helper ends. With two, a second connection, from a
 # thread of its own, lets go of, edits, copies and runs the trees and queries
-# the first is using, all the while: as it parses, matches or reads them.
+# the first is using, all the while: as it parses, matches or reads them, or
+# makes large rules and answers with them.
 import array, collections, itertools, random, socket, struct, subprocess, sys, threading
 
 helper, grammars, rounds, seed, log = sys.argv[1], sys.argv[2], int(sys.argv[3]), int(sys.argv[4]), sys.argv[5]
@@ -48,6 +49,9 @@ TEXTS = [
     b'\xff\xfe\x00' * 200,
     b'',
 ]
+
+# rules large enough to take a while to answer, many patterns and tests each
+LARGE_RULES = b' '.join(b'((identifier) @c%d (#match? @c%d "^x%d$") (#set! k "v%d"))' % (i, i, i, i) for i in range(400))
 
 u = lambda *xs: struct.pack('<%dI' % len(xs), *[x & 0xffffffff for x in xs])
 padded = lambda b: b + b'\0' * (-len(b) % 4)
@@ -120,7 +124,7 @@ def interfere(rnd):
     using, or another tree or query."""
     with held:
         tree = rnd.choice(using + trees) if using or trees else 0
-        query = rnd.choice(list(queries.values()) + [rnd.randrange(1, 40)])
+        query = rnd.choice(list(queries.values()) + [rnd.randrange(1, 40)] * 3)
     n = len(text)
     s = rnd.randrange(n + 1)
     op, body = rnd.choice([
@@ -130,6 +134,7 @@ def interfere(rnd):
         (OP_QUERY_DELETE, u(query)),
         (OP_DISABLE, u(query, rnd.randrange(4))),
         (OP_QUERY, u(query, 4) + b'rust' + LANGUAGES['rust']),
+        (OP_QUERY, u(query, 4) + b'rust' + LARGE_RULES),
         (OP_MATCHES, u(query, tree, 0, n)),
         (OP_HAS_ERROR, u(tree)),
     ])
@@ -177,7 +182,11 @@ def made_request():
     elif op in (OP_COPY, OP_TREE_DELETE, OP_HAS_ERROR):
         body = u(a([tree, word()]))
     elif op == OP_QUERY:
-        source = rnd.choice([LANGUAGES[name], b'(((', b'(identifier) @x (#match? @x "[")', bytes(rnd.randrange(256) for _ in range(40))])
+        if rnd.random() < 0.1:
+            name, source = 'rust', LARGE_RULES
+        else:
+            source = rnd.choice([LANGUAGES[name], b'(((', b'(identifier) @x (#match? @x "[")',
+                                 bytes(rnd.randrange(256) for _ in range(40))])
         body = u(rnd.randrange(1, 40), len(name)) + padded(name.encode()) + source
     elif op == OP_QUERY_DELETE:
         body = u(a([query, word()]))
