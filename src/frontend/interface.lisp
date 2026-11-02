@@ -173,17 +173,25 @@ first, with how many wait of each frame."
   "True when EVENT is a :TICK, a wake with nothing done by you."
   (and (event-p event) (eq (event-kind event) :tick)))
 
+(defgeneric events-held (frame)
+  (:documentation "How many events of FRAME the editor has taken from their queue and holds
+still to be handled (keys typed in a frame while another asks a question). The default
+holds none.")
+  (:method (frame) (declare (ignore frame)) 0))
+
 (defun queue-push (queue event &key most stop)
   "Add EVENT to QUEUE from any thread, waking the editor if it waits; a :TICK
 after another waiting is one wake, not two. With MOST, first wait while
-MOST events or more of EVENT's frame wait to be taken, until STOP, a
-function of no arguments asked every half second, is true: a thread reading
-events from elsewhere so reads no faster than the editor takes them."
+MOST events or more of EVENT's frame wait to be handled, in QUEUE or held
+by the editor (EVENTS-HELD), until STOP, a function of no arguments asked
+every half second, is true: a thread reading events from elsewhere so reads
+no faster than the editor handles them."
   (sb-thread:with-mutex ((event-queue-lock queue))
     (let ((counts (event-queue-counts queue)) (frame (and (event-p event) (event-frame event))))
       (when most
-        (loop while (and (>= (gethash frame counts 0) most) (not (funcall stop)))
-              do (sb-thread:condition-wait (event-queue-taken queue) (event-queue-lock queue) :timeout 0.5)))
+        (loop while (and (>= (+ (gethash frame counts 0) (if frame (events-held frame) 0)) most)
+                         (not (funcall stop)))
+              do (tuatara.runtime:wait-on (event-queue-taken queue) (event-queue-lock queue) 0.5)))
       (unless (and (tick-p event)
                    (event-queue-items queue)
                    (tick-p (first (event-queue-tail queue))))

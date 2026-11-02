@@ -924,3 +924,149 @@ read and let go of."
                                                           (apply #'tuatara.frontend::put-number box n))
                                                         (tuatara.frontend::put-text box name))))))
           "Not ended by ~s" name)))
+
+(defun key-octets (count &optional (base #\a))
+  "COUNT key events of BASE written as a client sends them, as octets."
+  (let ((box (tuatara.frontend::make-outbox))
+        (key (tuatara.frontend:make-event :key :key (tuatara.frontend:make-key base))))
+    (dotimes (i count) (tuatara.frontend::put-event box key))
+    (subseq (tuatara.frontend::outbox-octets box) 0 (tuatara.frontend::outbox-fill box))))
+
+(define-test (remote reader-waits-past-a-busy-editor)
+  ;; an editor that takes no event for seconds holds a client's reading back, never ends the connection;
+  ;; once it takes them, every event comes
+  (multiple-value-bind (mine theirs) (tuatara.io:socket-pair)
+    (raw-peer theirs)
+    (let* ((remote (tuatara.frontend:make-remote-frontend mine))
+           (octets (key-octets 3000))
+           (sender (sb-thread:make-thread
+                    (lambda () (tuatara.io:with-octets-sap (sap octets)
+                                 (loop with at = 0 while (< at (length octets))
+                                       do (let ((sent (tuatara.io:send-with-descriptors
+                                                       theirs (sb-sys:sap+ sap at) (- (length octets) at))))
+                                            (if (plusp sent) (incf at sent) (tuatara.io:poll-fd theirs 4 1000)))))))))
+      (sleep 2.5)
+      (false (tuatara.frontend::remote-ended remote))
+      (true (sb-thread:thread-alive-p (tuatara.frontend::remote-reader remote)))
+      (is = 3000 (loop repeat 3000
+                       for event = (tuatara.frontend:queue-pop (tuatara.frontend::remote-queue remote) 2)
+                       count (and event (eq :key (tuatara.frontend:event-kind event)))))
+      (false (tuatara.frontend::remote-ended remote))
+      (sb-thread:join-thread sender :timeout 5 :default nil)
+      (tuatara.frontend:frontend-stop remote)
+      (sb-posix:close theirs))))
+
+(define-test (remote unanswered-while-the-lock-is-busy)
+  ;; a question unanswered while other threads keep taking the frontend's lock ends with none, its lock let go
+  (let ((local (make-instance 'queued-fake-frontend)))
+    (multiple-value-bind (remote client) (connect-remote local :run nil)
+      (let* ((busy t)
+             (holder (sb-thread:make-thread
+                      (lambda () (loop while busy
+                                       do (sb-thread:with-mutex ((tuatara.frontend::remote-lock remote)) (sleep 0.02))
+                                          (sleep 0.001))))))
+        (dotimes (i 3)
+          (let ((tuatara.frontend::*answer-seconds* 0.3))
+            (is eq nil (tuatara.frontend::ask-client remote :clipboard))))
+        (false (sb-thread:holding-mutex-p (tuatara.frontend::remote-lock remote)))
+        (setf busy nil)
+        (sb-thread:join-thread holder))
+      (tuatara.frontend::close-remote-client client)
+      (tuatara.frontend:frontend-stop remote))))
+
+(define-test (remote flood-while-another-frame-asks)
+  ;; while one client's frame asks a question, another's keys wait in the editor, at most a bound of them
+  ;; read; once the question is done they are all handled
+  (let ((one (make-instance 'queued-fake-frontend :width 40 :height 8))
+        (two (make-instance 'queued-fake-frontend :width 40 :height 8))
+        (count 5000) (most 0))
+    (multiple-value-bind (first-remote client-one runner-one) (connect-remote one)
+      (declare (ignore client-one))
+      (multiple-value-bind (second-remote client-two runner-two)
+          (connect-remote two :queue (tuatara.frontend::remote-queue first-remote))
+        (declare (ignore client-two))
+        (let ((scratch (tuatara.buffer:find-buffer "*scratch*")))
+          (when scratch (tuatara.buffer:kill-buffer scratch)))
+        (tuatara.buffer:make-buffer "*scratch*" :text "")
+        (flet ((keys (text)
+                 (mapcar (lambda (spec) (tuatara.frontend:make-event :key :key (tuatara.frontend:spec-key spec)))
+                         (tuatara.frontend:parse-key-sequence text))))
+          (let ((editor
+                  (without-grammar-questions
+                    (tuatara.command:run-editor
+                     first-remote
+                     :setup #'tuatara.defaults:install-defaults :buffer (tuatara.buffer:find-buffer "*scratch*")
+                     :start (lambda (editor)
+                              (tuatara.command::add-frame editor second-remote)
+                              ;; the first asks (M-x); the second floods; then the first gives up asking and leaves
+                              (apply #'type-at one (keys "M-x"))
+                              (sb-thread:make-thread
+                               (lambda ()
+                                 (sleep 0.5)
+                                 (apply #'type-at two (make-list count :initial-element (first (keys "i"))))
+                                 (loop repeat 30
+                                       do (sleep 0.1)
+                                          (setf most (max most (tuatara.frontend::remote-received second-remote))))
+                                 (apply #'type-at one (keys "C-g"))
+                                 (loop repeat 600
+                                       until (= count (tuatara.frontend::remote-received second-remote))
+                                       do (sleep 0.05))
+                                 (sleep 0.5)
+                                 (apply #'type-at one (keys "C-x C-c")))))))))
+            (declare (ignorable editor))
+            ;; while the first asked, no more than the bound were read of the second's
+            (true (<= most (+ 2 tuatara.frontend::+most-waiting-events+)) "~d read while held" most)
+            (is = count (tuatara.frontend::remote-received second-remote))
+            (client-done runner-two)
+            (client-done runner-one)))))))
+
+(define-test (remote screen-too-large-says-so)
+  ;; a screen too large to send whole: rows sent plainer first, then a word in place of those left out, said
+  ;; once; never a blank row standing for text
+  (let ((local (make-instance 'queued-fake-frontend :width 4096 :height 2048)))
+    (multiple-value-bind (remote client runner) (connect-remote local)
+      (declare (ignore client))
+      (let ((text (make-string 4096 :initial-element (code-char #x101))))
+        (tuatara.frontend:frontend-begin-frame remote)
+        (dotimes (row 2048)
+          (tuatara.frontend:frontend-put-row remote row text :face :mode-line :spans '((0 10 :keyword))))
+        (tuatara.frontend:frontend-end-frame remote)
+        (let ((said (loop for event = (tuatara.frontend:queue-pop (tuatara.frontend::remote-queue remote) 2)
+                          while event
+                          when (eq :said (tuatara.frontend:event-kind event)) collect event)))
+          (is = 1 (length said)))
+        (tuatara.frontend:frontend-stop remote)
+        (is eql 0 (client-done runner))
+        (let ((rows (map 'list #'identity (tuatara.frontend.fake:fake-screen local))))
+          (true (every (lambda (row) (or (string= row text) (string= row tuatara.frontend::*row-left-out*))) rows))
+          (true (find tuatara.frontend::*row-left-out* rows :test #'string=))
+          (true (find text rows :test #'string=))
+          ;; the first rows kept their faces, those sent plainer lost them
+          (is eq :mode-line (aref (tuatara.frontend.fake:fake-row-faces local) 0)))))))
+
+(define-test (remote paused-client-resumes)
+  ;; a client that takes nothing for longer than half a minute (stopped, as by C-z) is kept, and given the
+  ;; newest frame once it reads again
+  (multiple-value-bind (mine theirs) (tuatara.io:socket-pair)
+    (raw-peer theirs)
+    (let ((remote (tuatara.frontend:make-remote-frontend mine))
+          (row (make-string 190 :initial-element #\k)))
+      (dotimes (n 200)
+        (tuatara.frontend:frontend-begin-frame remote)
+        (dotimes (r 50)
+          (tuatara.frontend:frontend-put-row remote r (format nil "~d ~a" n row)))
+        (tuatara.frontend:frontend-end-frame remote))
+      (sleep 32)
+      (false (tuatara.frontend::remote-ended remote))
+      (let* ((inbox (tuatara.frontend::make-inbox theirs :client :deadline (tuatara.runtime:deadline-in 10)))
+             (client (tuatara.frontend::%make-remote-client theirs nil inbox))
+             (last nil))
+        (tuatara.frontend::read-hello inbox)
+        (loop for kind = (tuatara.frontend::read-message inbox)
+              for item = (and kind (tuatara.frontend::take-from-editor client kind inbox))
+              when (eq (first item) :frame) do (setf last (rest item))
+              until (or (null kind) (and last (search "199 " (third (first last))))))
+        (true (and last (eql 0 (search "199 " (third (first last)))))))
+      (false (tuatara.frontend::remote-ended remote))
+      (tuatara.frontend:frontend-stop remote)
+      (sb-posix:close theirs))))

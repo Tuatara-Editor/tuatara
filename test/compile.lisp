@@ -638,3 +638,22 @@ in, one after another, through OUTPUT-PAST-RETURNS."
       (false (search "tui" during))
       (true (search "tui" (compile-output)))
       (true (search "Compile finished" (compile-output))))))
+
+(define-test (compiling output-waits-past-its-timeout)
+  ;; the reading of a compile's output that waits for room longer than one wait's half second keeps its lock,
+  ;; and goes on once the editor has taken output in
+  (let* ((job (tuatara.compile::make-compile-job nil nil nil 1000))
+         (tuatara.compile::*compile-waiting-most* 10))
+    (setf (tuatara.compile::compile-job-waiting job) 100)
+    (let ((reader (sb-thread:make-thread
+                   (let ((most tuatara.compile::*compile-waiting-most*))
+                     (lambda ()
+                       (let ((tuatara.compile::*compile-waiting-most* most))
+                         (handler-case (progn (tuatara.compile::hand-output job (tuatara.text:make-octets 4)) :handed)
+                           (error (condition) (princ-to-string condition)))))))))
+      (sleep 1.3)
+      (true (sb-thread:thread-alive-p reader))
+      (sb-thread:with-mutex ((tuatara.compile::compile-job-lock job))
+        (setf (tuatara.compile::compile-job-waiting job) 0)
+        (sb-thread:condition-broadcast (tuatara.compile::compile-job-room job)))
+      (is eq :handed (sb-thread:join-thread reader :timeout 5 :default :late)))))

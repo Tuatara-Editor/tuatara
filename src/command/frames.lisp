@@ -160,6 +160,9 @@ the others (FRAME-TAKING-TURNS-P): with SELECT it is shown in their place."
         (tuatara.frontend:frontend-raise frontend))
       frame)))
 
+(defmethod tuatara.frontend:events-held ((frame frame))
+  (+ (length (frame-unread frame)) (count-if #'tuatara.frontend:event-p (frame-deferred frame))))
+
 (defun remove-frame (editor frame)
   "Take FRAME out of EDITOR's frames and stop its frontend; when it was the
 one worked in, the first of those left is made so, but for a frame closed

@@ -726,8 +726,8 @@ seconds; the starting thread RETIRE'd when it did not answer in them."
       (loop until (or (nth-value 1 (gethash token **starter-done**))
                       (not (sb-thread:thread-alive-p starter))
                       (tuatara.runtime:deadline-passed-p deadline))
-            do (sb-thread:condition-wait **starter-wake** **starter-lock**
-                                         :timeout (max 0.005 (min 1 (/ (milliseconds-to deadline) 1000)))))
+            do (tuatara.runtime:wait-on **starter-wake** **starter-lock**
+                                        (max 0.005 (min 1 (/ (milliseconds-to deadline) 1000)))))
       (multiple-value-bind (result done) (gethash token **starter-done**)
         (remhash token **starter-done**)
         (cond (done (values-list result))

@@ -464,7 +464,7 @@ the editor woken when it took in all there was before."
     (sb-thread:with-mutex ((compile-job-lock job))
       (loop while (and (> (compile-job-waiting job) *compile-waiting-most*)
                        (not (car (tuatara.runtime:job-cancel job))))
-            do (sb-thread:condition-wait (compile-job-room job) (compile-job-lock job) :timeout 0.5))
+            do (tuatara.runtime:wait-on (compile-job-room job) (compile-job-lock job) 0.5))
       ;; a large piece made a rope here, its lines counted on this thread, to go into the
       ;; buffer as it is; (:BACK N) as it is
       (push (if (and (not (consp octets)) (>= (length octets) *compile-rope-least*)) (tuatara.text:octets->rope octets) octets)

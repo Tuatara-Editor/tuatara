@@ -21,8 +21,11 @@ in the editor, for what the client's screen is.")
   "The seconds the editor waits for a client to answer a question (the text
 of its clipboard) before taking it as having none.")
 
-(defparameter *stall-seconds* 30
-  "The seconds a connection may take nothing it is sent before it is ended.")
+(defparameter *stall-seconds* 600
+  "The seconds a client may take to take in what it was sent before it is let
+go. What waits for a client that takes nothing (one stopped, as by C-z) is
+bounded, its frames replaced by newer ones, so it is kept long: given its
+terminal again, it is given the frame of now.")
 
 (defconstant +most-unsent+ 2097152
   "The most octets of messages kept for a client beside its newest frame:
@@ -40,8 +43,8 @@ is of another build, or said nothing it should."))
 (defun send-outbox (fd box stall-seconds)
   "Send the messages of BOX over the socket FD, waiting while it is full, and
 empty BOX; its descriptors are closed once passed or given up on. True when
-all were sent; NIL when the socket failed or had not taken them all within
-STALL-SECONDS, however little at a time it took."
+all were sent; :STALLED when the other end had not taken them all within
+STALL-SECONDS, however little at a time it took; NIL when the socket failed."
   (let ((octets (outbox-octets box)) (fill (outbox-fill box))
         (passes (and (outbox-descriptors box) (sort (copy-list (outbox-descriptors box)) #'< :key #'car)))
         (at 0) (began (get-internal-real-time)))
@@ -58,10 +61,9 @@ STALL-SECONDS, however little at a time it took."
                              (when (and passes (= (car (first passes)) at)) (pop passes))
                              (incf at sent))
                             ((= errno sb-posix:eintr))
-                            ((and (= errno sb-posix:eagain)
-                                  (< (tuatara.runtime:seconds-since began) stall-seconds))
-                             (tuatara.io:poll-fd fd 4 1000))
-                            (t (return-from send-outbox nil)))))
+                            ((/= errno sb-posix:eagain) (return-from send-outbox nil))
+                            ((< (tuatara.runtime:seconds-since began) stall-seconds) (tuatara.io:poll-fd fd 4 1000))
+                            (t (return-from send-outbox :stalled)))))
            t)
       (close-descriptors (mapcar #'cdr (outbox-descriptors box)))
       (setf (outbox-fill box) 0 (outbox-descriptors box) '()))))
@@ -172,6 +174,8 @@ it, what the client sends is not read until the editor has taken some.")
            :documentation "The pieces of a paste come so far, as GATHER-TEXT keeps them, by the reading thread alone.")
    (stopping :accessor remote-stopping
              :documentation "A function of no arguments, true once the frontend is being stopped.")
+   (cut-said :initform nil :accessor remote-cut-said
+             :documentation "True once the client has been told a frame was too large to send whole.")
    (received :initform 0 :accessor remote-received
              :documentation "How many events the client has sent.")
    (ended :initform nil :accessor remote-ended
@@ -207,7 +211,7 @@ greeted at once."
         (inbox (make-inbox fd :editor :deadline (tuatara.runtime:deadline-in *hello-seconds*)))
         (box (make-outbox)))
     (put-hello box)
-    (unless (send-outbox fd box *hello-seconds*)
+    (unless (eq t (send-outbox fd box *hello-seconds*))
       (error 'remote-refused :words "The client took no hello."))
     (read-hello inbox)
     (handler-case
@@ -259,9 +263,15 @@ all, or its connection ends; a client that takes nothing for
              (unless box
                (setf reason nil)
                (return))
-             (unless (send-outbox (remote-fd remote) box *stall-seconds*)
-               (setf reason "the client took nothing sent to it")
-               (return))))
+             (case (send-outbox (remote-fd remote) box *stall-seconds*)
+               ((nil) (return))
+               (:stalled
+                (setf reason (format nil "the client took in nothing for ~d minutes" (round *stall-seconds* 60)))
+                (queue-push (remote-queue remote)
+                            (make-event :said :frame (remote-frame remote)
+                                              :text (format nil "A client that took in nothing for ~d minutes was let go"
+                                                            (round *stall-seconds* 60))))
+                (return)))))
       (when reason (end-connection remote reason)))))
 
 (defun read-from-client (remote)
@@ -357,7 +367,9 @@ was put."
 (defun ask-client (remote question &optional argument)
   "Ask REMOTE's client QUESTION (*QUESTIONS*), with ARGUMENT, a font's name
 or font steps, and wait at most *ANSWER-SECONDS* for its answer; NIL when it
-gives none."
+gives none. An answer read only after the client's events waiting to be
+handled (the most, +MOST-WAITING-EVENTS+, while the editor is busy) comes
+too late, and is NIL too."
   (sb-thread:with-mutex ((remote-lock remote))
     (unless (or (remote-ended remote) (remote-closing remote))
       (let ((box (remote-unsent remote)) (request (incf (remote-requests remote))))
@@ -374,8 +386,8 @@ gives none."
         (loop with deadline = (tuatara.runtime:deadline-in *answer-seconds*)
               until (or (not (eq (remote-answer remote) :none)) (remote-ended remote)
                         (tuatara.runtime:deadline-passed-p deadline))
-              do (sb-thread:condition-wait (remote-moved remote) (remote-lock remote)
-                                           :timeout (max 0.001 (tuatara.runtime:seconds-left deadline))))
+              do (tuatara.runtime:wait-on (remote-moved remote) (remote-lock remote)
+                                          (max 0.001 (tuatara.runtime:seconds-left deadline))))
         (setf (remote-asked remote) nil)
         (let ((answer (shiftf (remote-answer remote) :none)))
           (if (eq answer :none) nil answer))))))
@@ -529,17 +541,33 @@ client takes (+MOST-TEXT+), or left out."
         (fill-pointer (remote-kept-calls f)) 0
         (remote-frame-pictures f) '()))
 
-(defconstant +most-frame+ (- 16777216 65536)
-  "The most octets of a frame's painting; a row past it is sent blank.")
+(defparameter *row-left-out* "[This row was left out: the screen is too large to send whole]"
+  "What a client is shown in place of a row that does not fit in a frame it can take.")
+
+(defconstant +most-frame+ (- 16777216 (* +most-rows+ 128) 65536)
+  "The most octets of a frame's painting before rows are sent plainer, or
+left out, with room kept for every row to say so.")
+
+(defun row-left-out (remote)
+  "Say once, for REMOTE's connection, that rows of a frame were too large to send whole."
+  (unless (shiftf (remote-cut-said remote) t)
+    (tuatara.runtime:debug-report :remote "a frame too large for the client: rows sent without colours, or left out")
+    (queue-push (remote-queue remote)
+                (make-event :said :frame (remote-frame remote)
+                                  :text "This screen is too large to send whole: some rows show without colours or are left out"))))
 
 (defmethod frontend-put-row ((f remote-frontend) row string &key face spans scales over parts)
   (when (< -1 row +most-rows+)
     (let* ((box (remote-painting f)) (start (outbox-fill box)))
       (put-row-call box (remote-names f) row string face spans scales over parts)
-      ;; a frame larger than a client takes: what does not fit is left blank
+      ;; a frame larger than a client takes: the row's text alone, and past that a word in its place
       (when (> (outbox-fill box) +most-frame+)
         (setf (outbox-fill box) start)
-        (put-row-call box (remote-names f) row "" nil nil nil nil nil))
+        (put-row-call box (remote-names f) row string nil nil nil nil nil)
+        (when (> (outbox-fill box) +most-frame+)
+          (setf (outbox-fill box) start)
+          (put-row-call box (remote-names f) row *row-left-out* nil nil nil nil nil))
+        (row-left-out f))
       (let* ((end (outbox-fill box)) (length (- end start))
              (kept (svref (remote-kept f) row)) (kept-length (aref (remote-kept-lengths f) row)))
         (if (and kept (= length kept-length)
@@ -662,7 +690,7 @@ NIL when they could not be sent."
   (let ((box (remote-client-out client)))
     (setf (outbox-fill box) 0)
     (funcall write box)
-    (send-outbox (remote-client-fd client) box *stall-seconds*)))
+    (eq t (send-outbox (remote-client-fd client) box *stall-seconds*))))
 
 (defun put-facts-message (box frontend kind)
   "Put a message of KIND (:ATTACH, whole, or :FACTS) in BOX saying what

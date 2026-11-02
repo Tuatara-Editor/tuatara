@@ -1297,16 +1297,14 @@ until one prints, never waking for nothing."
                       (setf (emulator-to-compress emulator) t
                             soonest (min (* after internal-time-units-per-second)
                                          (or soonest (* after internal-time-units-per-second)))))))))))
-      ;; a wake meanwhile is not lost: it set *COMPRESSOR-WOKEN*; after a timeout
-      ;; the lock is not held
-      (sb-thread:grab-mutex *compressor-lock*)
-      (let ((held (or *compressor-woken*
-                      (if soonest
-                          (sb-thread:condition-wait *compressor-wake* *compressor-lock*
-                                                    :timeout (max 0.05 (/ soonest internal-time-units-per-second)))
-                          (sb-thread:condition-wait *compressor-wake* *compressor-lock*)))))
-        (setf *compressor-woken* nil)
-        (when held (sb-thread:release-mutex *compressor-lock*))))))
+      ;; a wake meanwhile is not lost: it set *COMPRESSOR-WOKEN*
+      (sb-thread:with-mutex (*compressor-lock*)
+        (unless *compressor-woken*
+          (if soonest
+              (tuatara.runtime:wait-on *compressor-wake* *compressor-lock*
+                                       (max 0.05 (/ soonest internal-time-units-per-second)))
+              (sb-thread:condition-wait *compressor-wake* *compressor-lock*)))
+        (setf *compressor-woken* nil)))))
 
 (defun emulator-memory (emulator)
   "How much memory EMULATOR's screen and scrollback hold, a property list:

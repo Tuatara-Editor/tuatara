@@ -7,7 +7,7 @@
   (:export #:key #:key-p #:make-key #:key-base #:key-ctrl #:key-meta #:key-shift #:key-column #:key-row #:key-spec #:key-sequence-description
            #:parse-key #:parse-key-sequence #:key-description #:spec-key
            #:event #:event-p #:input-event-p #:make-event #:event-kind #:event-key #:event-width #:event-height
-           #:event-files #:event-column #:event-row #:event-text #:event-frame #:dropped-name-p
+           #:event-files #:event-column #:event-row #:event-text #:event-frame #:dropped-name-p #:events-held
            #:event-queue #:make-event-queue #:queue-push #:queue-pop #:queue-empty-p #:queue-input-p #:tick-p
            #:frontend-start #:frontend-stop #:frontend-size #:frontend-read-event #:frontend-read-event-timeout
            #:frontend-input-pending-p #:frontend-wake #:frontend-another #:frontend-frame #:frontend-raise
