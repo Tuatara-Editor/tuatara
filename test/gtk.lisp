@@ -1295,16 +1295,18 @@ windows side by side."
            (consed (progn (dotimes (i 1000) (pointer)) (- (tuatara.bench::bytes-consed) before))))
       (true (< consed 1000) "~d octets for 1000 pointers" consed))))
 
+;; right-to-left text is put in the order it is read by the layout; Pango is handed Hebrew a letter at a time,
+;; so that it does not turn it round again, and an Arabic word whole and in the order written, so that it joins
 (define-test (gtk right-to-left-text-painted-in-row-order)
-  ;; a row holds right-to-left text in the order it is read: each letter goes to Pango on its own, and a
-  ;; run in a face's own font goes whole with an override that keeps that order
   (tuatara.display:register-face :test-sample "A test face with a font of its own." (list :font "Adwaita Mono Bold"))
   (let ((theme tuatara.display::*current-theme*)
-        (row (format nil "x ~{~c~} y" (mapcar #'code-char '(#x5D2 #x5D1 #x5D0)))))
+        (hebrew (format nil "x ~{~c~} y" (mapcar #'code-char '(#x5D2 #x5D1 #x5D0))))
+        ;; كتب (k t b) as the row shows it, b t k
+        (arabic (format nil "x ~{~c~} y" (mapcar #'code-char '(#x628 #x62A #x643)))))
     (unwind-protect
          (progn
            (tuatara.display:apply-theme 'ao-dark)
-           (flet ((texts (spans)
+           (flet ((texts (row spans)
                     (let ((frame (tuatara.frontend.gtk:make-frame (vector (list row nil spans) nil)))
                           (texts '()))
                       (setf (tuatara.frontend.gtk::frame-cursor-row frame) 1)
@@ -1318,9 +1320,10 @@ windows side by side."
                             frame :columns 10 :rows 2 :font "Adwaita Mono 11")
                         (sb-int:unencapsulate 'tuatara.gtk:pango-layout-set-text 'seen))
                       texts)))
-             (flet ((hebrew-count (text) (count-if (lambda (c) (<= #x5D0 (char-code c) #x5EA)) text)))
-               (false (find-if (lambda (text) (> (hebrew-count text) 1)) (texts nil)))
-               (let ((whole (find-if (lambda (text) (= 3 (hebrew-count text))) (texts '((0 7 :test-sample))))))
-                 (true whole)
-                 (is eql (code-char #x202D) (and whole (char whole 0)))))))
+             (flet ((count-of (text low high) (count-if (lambda (c) (<= low (char-code c) high)) text)))
+               (dolist (spans '(((2 5 :right-to-left)) ((0 7 (:test-sample :right-to-left)))))
+                 (false (find-if (lambda (text) (> (count-of text #x5D0 #x5EA) 1)) (texts hebrew spans))))
+               (dolist (spans '(((2 5 :right-to-left)) ((0 2 :test-sample) (2 5 (:test-sample :right-to-left)))))
+                 (true (member (format nil "~{~c~}" (mapcar #'code-char '(#x202B #x643 #x62A #x628 #x202C)))
+                               (texts arabic spans) :test #'string=))))))
       (tuatara.display:apply-theme theme))))

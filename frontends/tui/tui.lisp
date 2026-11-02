@@ -1102,8 +1102,8 @@ may reach another thread and so not end the wait."
 
 (defmethod tuatara.frontend:frontend-put-row ((f tui-frontend) row string &key face spans scales over parts)
   (declare (ignore scales over parts))     ; a terminal's rows are all one size, painted as ncurses keeps them
-  ;; nothing the terminal cannot be sent or that would move its cursor
-  (setf string (tuatara.display:displayable string))
+  ;; nothing the terminal cannot be sent or that would move its cursor; Arabic letters joined, as no terminal does
+  (setf string (tuatara.display:joined-arabic (tuatara.display:displayable string) spans))
   ;; a mark beginning the row would be drawn on the cell before it: on a dotted circle
   (when (and (plusp (length string)) (tuatara.display:mark-code-p (char-code (char string 0))))
     (setf string (concatenate 'string (string tuatara.display:*mark-base*) string)

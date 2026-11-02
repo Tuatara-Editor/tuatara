@@ -299,15 +299,12 @@ stand otherwise than the same letters split among colours."
                (and (< (char-code (char string i)) 128)
                     (= (tuatara.text:string-cluster-end string i end) (1+ i)))))
         (cond
-          ((and font (not each))
-           ;; a face's own font: the run in one piece, as that font spaces it, in the order the row has it
-           ;; (right-to-left text is in the order it is read already: Pango is told to leave it so)
-           (let ((text (subseq string start end)))
-             (draw-text f cr layouts
-                        (if (find-if (lambda (c) (tuatara.display:right-to-left-code-p (char-code c))) text)
-                            (format nil "~c~a~c" (code-char #x202D) text (code-char #x202C))
-                            text)
-                        column y flags font)))
+          ((and font (not each)
+                (loop for i from start below end
+                      never (tuatara.display:right-to-left-code-p (char-code (char string i)))))
+           ;; a face's own font: the run in one piece, as that font spaces it (right-to-left text, in the order it
+           ;; is read already, a letter at a time below, so that it is not turned round again)
+           (draw-text f cr layouts (subseq string start end) column y flags font))
           (t
            (let ((at column) (i start))
              (loop while (< i end)
@@ -327,6 +324,74 @@ stand otherwise than the same letters split among colours."
       (when (member :underline flags)
         (draw-underline f cr column columns y flags underline))
       (+ column columns))))
+
+(defun logical-text (string start end)
+  "The characters of STRING from START below END, a run of right-to-left text
+in the order it is read, in the order they are written: its grapheme
+clusters turned round, each bracket given back its own shape."
+  (let ((clusters '()) (i start))
+    (loop while (< i end)
+          do (let ((next (tuatara.text:string-cluster-end string i end)))
+               (push (if (= next (1+ i))
+                         (string (tuatara.display:mirrored-char (char string i)))
+                         (subseq string i next))
+                     clusters)
+               (setf i next)))
+    (apply #'concatenate 'string clusters)))
+
+(defun joined-runs (string spans)
+  "The runs of STRING, a row as drawn, of right-to-left text holding Arabic
+letters, which join: each (START . END), from the SPANS whose face holds
+:right-to-left, neighbouring ones together; NIL for none."
+  (let ((runs '()))
+    (loop for (start end face) in spans
+          when (tuatara.display:right-to-left-face-p face)
+            do (if (and runs (= (cdr (first runs)) start))
+                   (setf (cdr (first runs)) end)
+                   (push (cons start end) runs)))
+    (remove-if-not (lambda (run)
+                     (loop for i from (car run) below (min (cdr run) (length string))
+                           thereis (tuatara.display:arabic-joining (char-code (char string i)))))
+                   (nreverse runs))))
+
+(defun paint-joined-run (f cr layouts string faces face start end column y)
+  "Paint the characters of STRING from START below END, a run of right-to-left
+text holding Arabic letters, from COLUMN on the row whose top is at Y: the
+run handed to Pango in the order it is written, so that its letters are
+joined as they are written, set against the right of its cells; each
+stretch of one face of FACES (FACE where none) in its own colours, kept to
+its cells. Returns the column after them."
+  (let* ((cw (cell-width f)) (ch (cell-height f))
+         (columns (tuatara.display:string-columns string :start start :end end))
+         (right (* (+ column columns) cw))
+         ;; in an embedding of its own, so that Pango lays it out from right to left whatever the run's first letter
+         (text (concatenate 'string (string (code-char #x202B)) (logical-text string start end)
+                            (string (code-char #x202C))))
+         (i start) (at column))
+    (loop while (< i end)
+          do (let* ((spec (or (aref faces i) face))
+                    (j (loop for j from (1+ i) below end
+                             unless (equal (or (aref faces j) face) spec) return j
+                             finally (return end)))
+                    (wide (tuatara.display:string-columns string :start i :end j)))
+               (multiple-value-bind (fg bg flags font) (face-colours spec)
+                 (when spec
+                   (set-colour cr bg)
+                   (cairo-rectangle cr (float (* at cw) 1d0) (float y 1d0) (float (* wide cw) 1d0) (float ch 1d0))
+                   (cairo-fill cr))
+                 (cairo-save cr)
+                 (cairo-rectangle cr (float (* at cw) 1d0) (float y 1d0) (float (* wide cw) 1d0) (float ch 1d0))
+                 (cairo-clip cr)
+                 (set-colour cr fg)
+                 (let ((layout (kept-layout f cr layouts text font (font-index flags))))
+                   (cairo-move-to cr (float (- right (pango-layout-get-pixel-size layout)) 1d0)
+                                  (float (+ y (- (cell-baseline f)
+                                                 (round (pango-layout-get-baseline layout) +pango-scale+)))
+                                         1d0))
+                   (pango-cairo-show-layout cr layout))
+                 (cairo-restore cr))
+               (setf i j at (+ at wide))))
+    (+ column columns)))
 
 (defun char-index-at (string column)
   "The index of the character of STRING at COLUMN, the first of its grapheme
@@ -359,25 +424,36 @@ the first on top."
     (let* ((string (tuatara.display:displayable string))
            (n (length string))
            (faces (make-array n :initial-element nil))
+           (joined (joined-runs string spans))
            (cw (cell-width f)) (ch (cell-height f)))
       (loop for (start end span-face) in spans
             do (loop with combined = (tuatara.display:combine-faces span-face face)
                      for i from (max 0 start) below (min n end)
                      do (setf (aref faces i) combined)))
-      (labels ((paint-chars (string faces face start below column y &optional each (layouts layouts))
+      (labels ((paint-chars (string faces face start below column y &optional each (layouts layouts) joined)
+                 ;; JOINED, runs of right-to-left text whose Arabic letters Pango joins (JOINED-RUNS)
                  (let ((i start))
                    ;; no further than the columns asked for
                    (loop while (and (< i below) (< column to))
-                         do (let* ((spec (or (aref faces i) face))
-                                   ;; a mark or a joined emoji goes with the letter it is drawn on, whatever its own face
-                                   (j (tuatara.text:string-cluster-end string i below)))
-                              (loop while (and (< j below) (equal (or (aref faces j) face) spec))
-                                    do (setf j (tuatara.text:string-cluster-end string j below)))
-                              (setf column (if (or (>= column to)
-                                                   (<= (+ column (tuatara.display:string-columns string :start i :end j)) from))
-                                               (+ column (tuatara.display:string-columns string :start i :end j))
-                                               (paint-run f cr layouts string i j column y spec :each each)))
-                              (setf i j))))))
+                         do (let ((run (assoc i joined)))
+                              (if run
+                                  (let ((j (min below (cdr run))))
+                                    (setf column (paint-joined-run f cr layouts string faces face i j column y)
+                                          i j))
+                                  (let* ((spec (or (aref faces i) face))
+                                         ;; a mark or a joined emoji goes with the letter it is drawn on, whatever its
+                                         ;; own face
+                                         (j (tuatara.text:string-cluster-end string i below))
+                                         (stop (loop for (from) in joined
+                                                     when (> from i) minimize from into low
+                                                     finally (return (if (plusp low) (min low below) below)))))
+                                    (loop while (and (< j stop) (equal (or (aref faces j) face) spec))
+                                          do (setf j (tuatara.text:string-cluster-end string j below)))
+                                    (let ((columns (tuatara.display:string-columns string :start i :end j)))
+                                      (setf column (if (or (>= column to) (<= (+ column columns) from))
+                                                       (+ column columns)
+                                                       (paint-run f cr layouts string i j column y spec :each each))))
+                                    (setf i j))))))))
         (ecase pass
           (:grid
            ;; the row's face covers the whole row, past the text too
@@ -389,7 +465,7 @@ the first on top."
                                                (list (list n n)))
                    do (when (< i from)
                         (paint-chars string faces face i from
-                                     (tuatara.display:string-columns string :end i) y))
+                                     (tuatara.display:string-columns string :end i) y nil layouts joined))
                       (setf i (max i below)))))
           (:large
            (loop for (start end scale shift height) in scales
