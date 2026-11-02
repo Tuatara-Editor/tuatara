@@ -560,7 +560,8 @@ window draws them with (set-face :org-level-1 :height 2)."
 
 (define-test (org todo-return)
   ;; RET in NORMAL state on a headline with a keyword: the next keyword, round to the first, never none
-  (let ((tuatara-user:*org-log-done* nil))
+  (let ((tuatara-user:*org-log-done* nil)
+        (tuatara.defaults::*org-now* (encode-universal-time 0 0 12 28 10 2026)))
     (flet ((after (keys text) (session-text (nth-value 1 (org-screen keys :text text)))))
       (is string= (format nil "* WAIT Mow the lawn~%") (after "RET" (format nil "* TODO Mow the lawn~%")))
       (is string= (format nil "* DONE Mow the lawn~%") (after "RET RET" (format nil "* TODO Mow the lawn~%")))
