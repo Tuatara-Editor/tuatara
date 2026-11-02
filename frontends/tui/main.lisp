@@ -13,7 +13,7 @@
 (in-package #:tuatara.terminal)
 
 (defparameter *usage-forms*
-  '("tuatara [--gui] [-Q] [-c INIT-FILE] [--safe] [--hex] [[+LINE[:COLUMN]] FILE...]"
+  '("tuatara [--gui [--frames N]] [-Q] [-c INIT-FILE] [--safe] [--hex] [[+LINE[:COLUMN]] FILE...]"
     "tuatara [--gui] [-Q] [-c INIT-FILE] --diff OLD NEW"
     "tuatara [--gui] [-Q] [-c INIT-FILE] --merge LOCAL BASE REMOTE MERGED"
     "tuatara [--gui] [-Q] [-c INIT-FILE] --tutor")
@@ -31,6 +31,10 @@ License, version 3 or later.
 (defparameter *option-help*
   '((:flags (("--gui"))
      :text ("open a window of its own instead (as when started with no terminal)"))
+    (:flags (("--frames" "N"))
+     :text ("with --gui, open N frames, each a window of its own, from 1 to"
+            "16: the files named are shown one in each frame in turn, those"
+            "left over open behind the first"))
     (:flags (("-c" "INIT-FILE") ("--config" "INIT-FILE"))
      :text ("read INIT-FILE as the init file instead of"
             "~/.config/tuatara/init.lisp; --config=INIT-FILE does as well"))
@@ -267,7 +271,8 @@ more than a dash."
 
 (defun read-options (arguments &key (directory (uiop:getcwd)))
   "The options of ARGUMENTS, the program's (strings), as a plist: :GUI,
-:CONFIG (the init file -c names), :GENERATE-CONFIG, :VERSION, :HELP,
+:FRAMES (how many --frames opens), :CONFIG (the init file -c names),
+:GENERATE-CONFIG, :VERSION, :HELP,
 :DIFF (the two names after --diff), :MERGE (the four after --merge), :SAFE,
 :HEX, :TUTOR, :BARE (-Q) and :FILES, the files named; or :ERROR, what is
 wrong with them. Options may stand anywhere before --, among the files; --safe
@@ -299,6 +304,11 @@ or -- before the files. After --, every argument is a file's name."
                 ((member argument '("--safe" "-R") :test #'string=) (given :safe))
                 ((string= argument "--hex") (given :hex))
                 ((string= argument "--tutor") (given :tutor))
+                ((string= argument "--frames")
+                 (let ((count (tuatara.text:whole-number (pop arguments))))
+                   (if (and count (<= 1 count 16))
+                       (setf (getf options :frames) count)
+                       (fail "--frames needs how many frames to open after it, from 1 to 16"))))
                 ((member argument '("-Q" "--no-init") :test #'string=) (given :bare))
                 ((string= argument "--merge")
                  (if (and (>= (length arguments) 4) (every #'plusp (mapcar #'length (subseq arguments 0 4))))
@@ -438,28 +448,30 @@ START-FUNCTION for the rest. With -Q the editor is set to start bare first
                                          (startup-file path safe hex)))))))
     (values files
             (start-function :places (nreverse places) :diff (mapcar #'named-here (getf options :diff))
-                            :merge merge :tutor (getf options :tutor) :bare (getf options :bare)))))
+                            :merge merge :tutor (getf options :tutor) :bare (getf options :bare)
+                            :frames (getf options :frames)))))
 
 (defun startup-file (path safe hex)
   "PATH, a file to open, as RUN-EDITOR takes it: with SAFE and HEX as asked."
   (if (or safe hex) (list path :safe safe :hex hex) path))
 
-(defun start-function (&key places diff merge tutor bare)
+(defun start-function (&key places diff merge tutor bare frames)
   "What the editor does once the files are shown, as a function of the editor,
 or NIL when there is nothing to do: go to the line each of PLACES asks for,
 \(PATH LINE COLUMN); show the differences of DIFF, the old and the new file;
 merge MERGE, the local, base and remote file and the one the merge goes into;
-open the tutor; and say that it started BARE."
-  (when (or places diff merge tutor bare)
+open the tutor; say that it started BARE; and open FRAMES frames in all, the
+files spread over them (TUATARA.DEFAULTS::OPEN-START-FRAMES)."
+  (when (or places diff merge tutor bare (and frames (> frames 1)))
     (lambda (editor)
-      (declare (ignore editor))
       (when places (tuatara.defaults::show-start-places places))
       (when diff
         (tuatara.defaults::compare-paths (first diff) (second diff))
         (tuatara.command:only-window (tuatara.command:current-window)))
       (when merge (tuatara.defaults::merge-files-into (first merge) (second merge) (third merge) (fourth merge)))
       (when tutor (tuatara.defaults::tuatara-tutor))
-      (when bare (tuatara.defaults::say-started-bare)))))
+      (when bare (tuatara.defaults::say-started-bare))
+      (when (and frames (> frames 1)) (tuatara.defaults::open-start-frames editor frames)))))
 
 (defun main (arguments)
   "Run Tuatara in this terminal on the files named in ARGUMENTS (strings), or
@@ -499,6 +511,9 @@ what the session left (*EXIT-CODE*); 2 for options it cannot take."
                                   (tuatara.io:path-kind config-path))
                                 :regular)))
            (format *error-output* "tuatara: no init file at ~a (tuatara --generate-config writes one to start from)~%" (shown config))
+           2)
+          ((and (getf options :frames) (not (or (getf options :gui) (window-wanted-p))))
+           (format *error-output* "tuatara: --frames opens windows of their own: give --gui with it~%")
            2)
           ((and (not (or (getf options :gui) (window-wanted-p))) (not (keyboard-available-p)))
            (format *error-output* "tuatara: its input is not a terminal and there is none to read keys from (/dev/tty): run it in a terminal, or with --gui~%")

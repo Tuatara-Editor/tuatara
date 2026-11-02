@@ -411,6 +411,15 @@ frontend, the editor, and the options read."
               (true (tuatara.io:safe-visit-p (shown-buffer editor)))))
           (is string= (format nil "* kept as found~%") (file-text ev)))))))
 
+(define-test (command-line frames-asked-for)
+  ;; --frames N, from 1 to 16; anything else said
+  (with-test-directory (dir)
+    (flet ((read-them (&rest arguments) (tuatara.terminal::read-options arguments :directory (namestring dir))))
+      (is = 3 (getf (read-them "--gui" "--frames" "3" "a.txt") :frames))
+      (is equal '("a.txt") (getf (read-them "--frames" "2" "a.txt") :files))
+      (dolist (wrong '(("--frames") ("--frames" "0") ("--frames" "17") ("--frames" "two")))
+        (true (search "--frames needs how many frames" (getf (apply #'read-them wrong) :error)) "~s" wrong)))))
+
 (define-test (command-line keys-need-a-terminal)
   (true (tuatara.terminal::keyboard-available-p :input-terminal t :tty "/nonexistent/tty"))
   (false (tuatara.terminal::keyboard-available-p :input-terminal nil :tty "/nonexistent/tty"))
