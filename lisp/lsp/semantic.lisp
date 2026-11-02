@@ -8,7 +8,7 @@
 ;;;; syntax; off, the mode's colours alone. Asked for each time the text is sent
 ;;;; to the server, and moved with the text typed meanwhile.
 
-(in-package #:tuatara.defaults)
+(in-package #:tuatara.lsp)
 
 (defvar *lsp-semantic-tokens* nil
   "True for code to be coloured as its language server sees it: each name in

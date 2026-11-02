@@ -11,7 +11,7 @@
 ;;;; M-x format-region lay out code as the server does. Of several servers for
 ;;;; one language, each does what the language leaves to it.
 
-(in-package #:tuatara.defaults)
+(in-package #:tuatara.lsp)
 
 (defvar *lsp-signature-help* t
   "True for the echo area to show the parameters of the call the cursor is in,

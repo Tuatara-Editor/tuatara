@@ -9,7 +9,7 @@
 ;;;; language's project; *LANGUAGE-SERVERS* and *LANGUAGE-FORMATTERS* change
 ;;;; it for a language. M-x check-health says which are installed.
 
-(in-package #:tuatara.defaults)
+(in-package #:tuatara.lsp)
 
 (defvar *known-language-servers* (make-hash-table :test 'equal)
   "The language servers known, by name: each a plist of :COMMAND (the program

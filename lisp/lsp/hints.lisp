@@ -11,7 +11,7 @@
 ;;;; says of a line (3 references, Run test), are shown so at the line's end
 ;;;; when M-x lsp-code-lenses-mode is on, M-x lsp-code-lens running one.
 
-(in-package #:tuatara.defaults)
+(in-package #:tuatara.lsp)
 
 (defvar *lsp-inlay-hints* t
   "True for language servers' inlay hints to be shown within the code: the

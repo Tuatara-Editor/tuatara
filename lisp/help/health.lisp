@@ -125,7 +125,7 @@ them to start, and in a window, how it draws each way it can
              (health-check-exporters check)
              (remove nil (list (latex-export-words) (latex-language-words)))
              (health-check-tools check)
-             (mapcar (lambda (language) (multiple-value-list (language-tools-words language))) languages)
+             (mapcar (lambda (language) (multiple-value-list (tuatara.lsp:language-tools-words language))) languages)
              (health-check-results check)
              (mapcar #'check-language-rules languages (health-check-grammars check))
              (health-check-drawing check)

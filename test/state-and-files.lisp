@@ -505,8 +505,8 @@ file of text; their native names, as two values."
         (is equal '() (entered :cancel (list t)))
         (false (tuatara.defaults::walk-directory root (constantly t) :limit 2)))
       ;; the language servers' watch: nearest folders first, hidden ones left out, as many as allowed
-      (let ((tuatara.defaults::*lsp-watched-most* 3))
-        (multiple-value-bind (folders stamps) (tuatara.defaults::project-folders root)
+      (let ((tuatara.lsp::*lsp-watched-most* 3))
+        (multiple-value-bind (folders stamps) (tuatara.lsp::project-folders root)
           (is equal (list root (concatenate 'string root "a/") (concatenate 'string root "b/")) folders)
           (is eq :directory (gethash "deep" (gethash (concatenate 'string root "a/") stamps)))
           (true (gethash ".h" (gethash root stamps)))))

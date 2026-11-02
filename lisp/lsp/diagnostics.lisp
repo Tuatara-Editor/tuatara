@@ -12,7 +12,7 @@
 ;;;; M-g p once they have (the list of places in force). Each moves with the
 ;;;; text typed before the server has looked again.
 
-(in-package #:tuatara.defaults)
+(in-package #:tuatara.lsp)
 
 (defvar *lsp-diagnostics-display* :box
   "How what a language server found where the cursor rests is said: :box, in a
@@ -464,9 +464,12 @@ bottom, 30% of the height, kept for it and selected."
   (place-buffers 'diagnostics-mode :bottom :size 0.3 :keep t :select t))
 
 (defun install-lsp (editor)
-  "Have files opened in their projects' language servers, kept in step, what
-the servers find shown, and the servers ended as the editor stops."
-  (declare (ignore editor))
+  "Have buffers formatted before they are saved, as *FORMAT-ON-SAVE* says;
+files opened in their projects' language servers, kept in step, what the
+servers find shown, and the servers ended as the editor stops; and what the
+servers know of where the cursor rests shown in EDITOR, with code's keys
+under \\`C-c'."
+  (install-format)
   (pushnew 'lsp-tick *tick-functions*)
   (setf tuatara.buffer:*find-file-functions* (append (remove 'lsp-visit tuatara.buffer:*find-file-functions*) (list 'lsp-visit)))
   (pushnew 'lsp-killed tuatara.buffer:*kill-buffer-functions*)
@@ -477,4 +480,5 @@ the servers find shown, and the servers ended as the editor stops."
   (install-semantic-tokens)
   (install-lsp-watching)
   (pushnew 'lsp-selection-ranges *selection-ranges-functions*)
-  (install-org-blocks))
+  (install-org-blocks)
+  (install-lsp-features editor))

@@ -375,11 +375,11 @@ headline's title objects too), to tell two parses apart."
   ;; file open in a buffer being seen by the note's own name
   (let ((note (org-parts-buffer (format nil "#+begin_src python :tangle x.py~%x = 1~%#+end_src~%") nil)))
     (unwind-protect
-         (let ((before (tuatara.defaults::org-block-specs-key note))
+         (let ((before (tuatara.lsp::org-block-specs-key note))
                (other (tuatara.buffer:make-buffer (tuatara.buffer:unique-buffer-name "x.py"))))
            (unwind-protect
                 (progn (setf (tuatara.buffer:buffer-file other) #p"/tmp/x.py")
-                       (false (equal before (tuatara.defaults::org-block-specs-key note))))
+                       (false (equal before (tuatara.lsp::org-block-specs-key note))))
              (tuatara.buffer:kill-buffer other)))
       (tuatara.buffer:kill-buffer note))))
 

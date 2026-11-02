@@ -14,7 +14,7 @@
 ;;;; server but where a command must (a completion, *LSP-WAIT* seconds at
 ;;;; most), and a key stops that.
 
-(in-package #:tuatara.defaults)
+(in-package #:tuatara.lsp)
 
 (defvar *lsp-largest-message* (* 32 1024 1024)
   "The largest message read from a language server, in octets: a larger one

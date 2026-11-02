@@ -375,11 +375,11 @@ commented inside another one commented (;;   ;; (setf ...) in a load-package's
   ;; limits the editor decides for itself are neither the init file's settings nor in the starter
   ;; init file; those that became internal are still there, documented, where they are used
   (let ((starter tuatara.defaults::*starter-config*))
-    (loop for (name home) in '(("*LSP-EVENTS-KEPT*" :tuatara.defaults)
-                               ("*LSP-EVENT-LENGTH*" :tuatara.defaults)
-                               ("*LSP-MOST-CHANGES*" :tuatara.defaults)
-                               ("*LSP-WATCHED-MOST*" :tuatara.defaults)
-                               ("*LSP-LOCATION-FILES-TOTAL*" :tuatara.defaults)
+    (loop for (name home) in '(("*LSP-EVENTS-KEPT*" :tuatara.lsp)
+                               ("*LSP-EVENT-LENGTH*" :tuatara.lsp)
+                               ("*LSP-MOST-CHANGES*" :tuatara.lsp)
+                               ("*LSP-WATCHED-MOST*" :tuatara.lsp)
+                               ("*LSP-LOCATION-FILES-TOTAL*" :tuatara.lsp)
                                ("*LSP-SYNC-DELAY*" nil)
                                ("*SYNTAX-HELPER-MEMORY*" :tuatara.syntax)
                                ("*SYNTAX-HELPER-WAIT*" :tuatara.syntax)

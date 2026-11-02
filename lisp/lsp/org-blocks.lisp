@@ -16,7 +16,7 @@
 ;;;; reaches are read again, the others moved with the lines before them
 ;;;; (ORG-BLOCKS-SHADOW-CHANGES).
 
-(in-package #:tuatara.defaults)
+(in-package #:tuatara.lsp)
 
 (defun org-source-block-edge (line open)
   "What LINE, a line of a note's text, is to its source blocks: with OPEN true

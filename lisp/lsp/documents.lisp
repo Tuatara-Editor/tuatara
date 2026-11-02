@@ -12,7 +12,7 @@
 ;;;; meanwhile (PLACED), so that nothing it marks jumps about or stands in the
 ;;;; wrong place.
 
-(in-package #:tuatara.defaults)
+(in-package #:tuatara.lsp)
 
 (defvar *lsp-largest-document* (* 8 1024 1024)
   "The largest document, in octets, given to a language server: a file's

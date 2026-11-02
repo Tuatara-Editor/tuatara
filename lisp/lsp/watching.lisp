@@ -11,7 +11,7 @@
 ;;;; editor watches folders; a folder found changed is listed again and
 ;;;; compared with what it held.
 
-(in-package #:tuatara.defaults)
+(in-package #:tuatara.lsp)
 
 (defvar *lsp-watch-files* t
   "True for language servers that ask to be told of their project's files

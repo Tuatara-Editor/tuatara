@@ -8,7 +8,7 @@
 ;;;; it, wherever in the project it is. M-x buffer-outline lists the file's
 ;;;; functions, types and the rest as its server knows them, nested as they are.
 
-(in-package #:tuatara.defaults)
+(in-package #:tuatara.lsp)
 
 (defparameter *symbol-kinds*
   #("file" "module" "namespace" "package" "class" "method" "property" "field" "constructor" "enum"

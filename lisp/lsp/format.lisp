@@ -12,7 +12,7 @@
 ;;;; is indented as Tuatara indents it. *FORMAT-ON-SAVE* has the languages it
 ;;;; names formatted before each save.
 
-(in-package #:tuatara.defaults)
+(in-package #:tuatara.lsp)
 
 (defvar *format-on-save* '()
   "The languages whose buffers are formatted (\\[format-buffer]) before each

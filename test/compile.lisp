@@ -387,12 +387,12 @@ force; *compile* killed afterwards."
 0), as a language server would; true then."
   (let ((b (tuatara.buffer:find-buffer "d.txt")))
     (when b
-      (setf (tuatara.buffer:buffer-local b 'tuatara.defaults::lsp-diagnostics)
-            (list (cons :one (tuatara.defaults::make-placed
+      (setf (tuatara.buffer:buffer-local b 'tuatara.lsp::lsp-diagnostics)
+            (list (cons :one (tuatara.lsp::make-placed
                               (tuatara.buffer:buffer-version b)
                               (loop for line in '(1 3 5)
                                     for at = (tuatara.buffer:buffer-goto-line b line)
-                                    collect (tuatara.defaults::make-diagnostic at (+ at 2) 1 "wrong" "test"))))))
+                                    collect (tuatara.lsp::make-diagnostic at (+ at 2) 1 "wrong" "test"))))))
       t)))
 
 (define-test (compiling diagnostics-are-places)

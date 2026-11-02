@@ -47,6 +47,7 @@
                ;; the features with Lisp packages of their own, each defined before any file names what it exports
                (:file "git/package")
                (:file "terminal/package")
+               (:file "lsp/package")
                (:file "theme")
                (:file "garbage")
                (:module "modes"   :serial t :components ((:file "base") (:file "special") (:file "list-preview") (:file "csv") (:file "languages") (:file "more-languages-data") (:file "more-languages-markup") (:file "more-languages-programming") (:file "more-languages-build") (:file "json-lines") (:file "git-commit")))
