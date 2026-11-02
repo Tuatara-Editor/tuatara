@@ -3202,6 +3202,18 @@ bound to the fake frontend and the editor; the file and its buffer go afterwards
         (true (< (/ (- high low) 40) 1024) "~,1f octets a key at 20 rows, ~,1f at 60: ~,1f more for each row"
               low high (/ (- high low) 40))))))
 
+(define-test (syntax local-names-garbage-flat-with-rows)
+  ;; typing in Rust: the local names shown are told apart by their octets in
+  ;; room used again, so a taller window makes next to no more garbage for each key
+  (let ((text (with-output-to-string (s)
+                (dotimes (i 300) (format s "fn f~d(p: u8, q: u8) -> u8 { let a = p + q; g(a, p) }~%" i)))))
+    (multiple-value-bind (low low-worked) (typing-garbage-per-key text "rs" 20 '(tuatara.syntax::local-highlights))
+      (multiple-value-bind (high high-worked) (typing-garbage-per-key text "rs" 60 '(tuatara.syntax::local-highlights))
+        (true (>= low-worked 16) "~d colourings" low-worked)
+        (true (>= high-worked 16) "~d colourings" high-worked)
+        (true (< (/ (- high low) 40) 256) "~,1f octets a key at 20 rows, ~,1f at 60: ~,1f more for each row"
+              low high (/ (- high low) 40))))))
+
 (define-test (syntax colours-kept-for-several-ranges)
   ;; two parts of a buffer shown at once keep their colours, each worked out once
   (let* ((text (with-output-to-string (s) (dotimes (i 40) (format s "fn f~d() {}~%" i))))

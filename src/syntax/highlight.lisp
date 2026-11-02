@@ -341,18 +341,26 @@ ranges."
       (documentation 'kept-layer-octets 'function) "The octets of each of the text's ranges."
       (documentation 'kept-layer-colours 'function) "The colours, from the start of the text's first range.")
 
+(defun octets-hash (rope start end &optional (hash 2166136261))
+  "A number made of the octets of ROPE from START below END, the same for the
+same octets wherever they stand; HASH, one made of octets before them, taken
+on."
+  (declare (type fixnum start end) (type (unsigned-byte 32) hash))
+  (let ((window (make-array 256 :element-type '(unsigned-byte 8))))
+    (declare (dynamic-extent window))
+    (loop for from of-type fixnum from start below end by 256
+          for to of-type fixnum = (min end (+ from 256))
+          do (tuatara.text:rope-copy-into rope from to window)
+             (loop for i of-type fixnum from 0 below (- to from)
+                   do (setf hash (logand #xffffffff (* (logxor hash (aref window i)) 16777619)))))
+    hash))
+
 (defun layer-text-hash (rope ranges)
   "A number made of the octets of ROPE in RANGES, each (START . END), the same
-for the same octets wherever they stand."
-  (let ((hash 2166136261)
-        (window (make-array 256 :element-type '(unsigned-byte 8))))
-    (declare (dynamic-extent window) (type (unsigned-byte 32) hash))
+for the same octets wherever they stand (OCTETS-HASH)."
+  (let ((hash 2166136261))
     (loop for (start . end) in ranges
-          do (loop for from of-type fixnum from start below end by 256
-                   for to of-type fixnum = (min end (+ from 256))
-                   do (tuatara.text:rope-copy-into rope from to window)
-                      (loop for i of-type fixnum from 0 below (- to from)
-                            do (setf hash (logand #xffffffff (* (logxor hash (aref window i)) 16777619))))))
+          do (setf hash (octets-hash rope start end hash)))
     hash))
 
 (defun layer-keepable-p (ranges start end)
@@ -526,6 +534,67 @@ language has rules for local names. See SYNTAX-HIGHLIGHTS for INJECTIONS."
 
 ;;; Local names
 
+(defun fixnums ()
+  "An empty vector of fixnums that grows as they are added (VECTOR-PUSH-EXTEND)."
+  (make-array 64 :element-type 'fixnum :adjustable t :fill-pointer 0))
+
+(defstruct (local-room (:constructor make-local-room ()) (:copier nil))
+  "The room LOCAL-HIGHLIGHTS works in, emptied and used again: SCOPES, three
+numbers for each scope (start, end, 1 when it sees no definition made outside
+it); DEFINITIONS, three for each definition (start, end, the number of its
+capture); REFERENCES, two for each name used (start, end); EVENTS, the
+definitions and names used in the order of the text; OPENS, the scopes in
+the order they open; STACK, the scopes open, two numbers each (end, 1 when
+sealed); BINDINGS, four numbers for each definition seen in the scopes open
+\(its name's hash, the definition, how many scopes were open, the binding of
+the same hash before it, or -1); LATEST, the latest binding of each hash;
+LEFT, the names left alone; RESOLVED, the names that name a local definition."
+  (scopes (fixnums) :read-only t)
+  (definitions (fixnums) :read-only t)
+  (references (fixnums) :read-only t)
+  (events (fixnums) :read-only t)
+  (opens (fixnums) :read-only t)
+  (stack (fixnums) :read-only t)
+  (bindings (fixnums) :read-only t)
+  (latest (make-hash-table) :read-only t)
+  (left (make-hash-table) :read-only t)
+  (resolved (make-hash-table) :read-only t))
+
+(setf (documentation 'local-room-p 'function) "True when OBJECT is a LOCAL-ROOM."
+      (documentation 'make-local-room 'function) "An empty LOCAL-ROOM."
+      (documentation 'local-room-scopes 'function) "Three numbers for each scope: start, end, sealed."
+      (documentation 'local-room-definitions 'function) "Three numbers for each definition: start, end, capture."
+      (documentation 'local-room-references 'function) "Two numbers for each name used: start, end."
+      (documentation 'local-room-events 'function) "The definitions and names used, in the order of the text."
+      (documentation 'local-room-opens 'function) "The scopes, in the order they open."
+      (documentation 'local-room-stack 'function) "The scopes open: end and sealed, for each."
+      (documentation 'local-room-bindings 'function) "Four numbers a definition seen: hash, definition, depth, before."
+      (documentation 'local-room-latest 'function) "The latest binding of each hash of a name."
+      (documentation 'local-room-left 'function) "The names the rules leave alone."
+      (documentation 'local-room-resolved 'function) "The names that name a local definition.")
+
+(defvar *local-room* nil
+  "While SYNTAX-HIGHLIGHTS works out colours, the LOCAL-ROOM LOCAL-HIGHLIGHTS
+works in; NIL elsewhere, a new one made.")
+
+(defvar *capture-roles* (make-hash-table :test 'eq :weakness :key :synchronized t)
+  "For each set of rules for local names, the role of each of its captures
+\(CAPTURE-ROLES).")
+
+(defun capture-roles (query)
+  "What each capture of QUERY, rules for local names, stands for, by its
+number: :SCOPE, :REFERENCE, :LEFT (the name is left alone), the kind of a
+definition (such as \"variable.parameter\"), or NIL."
+  (or (gethash query *capture-roles*)
+      (setf (gethash query *capture-roles*)
+            (map 'simple-vector
+                 (lambda (name)
+                   (cond ((string= name "local.scope") :scope)
+                         ((string= name "local.reference") :reference)
+                         ((and (> (length name) 17) (string= "local.definition." name :end2 17)) (subseq name 17))
+                         ((string= name "_") :left)))
+                 (query-captures query)))))
+
 (defun local-highlights (query tree rope from start end face-of)
   "The colours QUERY, a language's rules for local names, gives the names in
 TREE (the tree of ROPE) from octet START below END that are defined earlier
@@ -537,67 +606,106 @@ to leave it. Names the rules also capture as _ are left alone. A scope whose
 rules set local.scope-inherits to false (a Ruby method) sees no definition
 made outside it. A list of (START END FACE) ranges, as RICH-HIGHLIGHTS gives,
 and as a second value the names that name a local definition, as
-*LOCAL-REFERENCES* holds them."
-  (let ((names (query-captures query))
-        (properties (query-properties query))
-        (scopes '()) (definitions (make-hash-table :test 'equal)) (references '()) (left (make-hash-table))
-        (resolved (make-hash-table)))
+*LOCAL-REFERENCES* holds them. Names are told apart by their octets: no
+text is made of them."
+  (let* ((room (or *local-room* (make-local-room)))
+         (roles (capture-roles query))
+         (properties (query-properties query))
+         (scopes (local-room-scopes room)) (definitions (local-room-definitions room))
+         (references (local-room-references room)) (events (local-room-events room))
+         (opens (local-room-opens room)) (stack (local-room-stack room)) (bindings (local-room-bindings room))
+         (latest (clrhash (local-room-latest room))) (left (clrhash (local-room-left room)))
+         (resolved (if *local-room* (clrhash (local-room-resolved room)) (make-hash-table)))
+         (ranges '()))
+    (dolist (v (list scopes definitions references events opens stack bindings))
+      (setf (fill-pointer v) 0))
     (map-query-matches
      (lambda (pattern captures count)
        (dotimes (i count)
-         (let ((name (aref names (aref captures (* 4 i))))
+         (let ((role (svref roles (aref captures (* 4 i))))
                (s (aref captures (+ 1 (* 4 i))))
                (e (aref captures (+ 2 (* 4 i)))))
-           (cond ((string= name "local.scope")
-                  (push (list s e (equal (getf (aref properties pattern) :local.scope-inherits) "false")) scopes))
-                 ((string= name "local.reference") (push (cons s e) references))
-                 ((and (> (length name) 17) (string= "local.definition." name :end2 17))
-                  (push (list s e (subseq name 17)) (gethash (capture-text rope s e) definitions)))
-                 ((string= name "_") (setf (gethash (logior (ash s 31) e) left) t))))))
+           (case role
+             (:scope (vector-push-extend s scopes) (vector-push-extend e scopes)
+              (vector-push-extend (if (equal (getf (aref properties pattern) :local.scope-inherits) "false") 1 0)
+                                  scopes))
+             (:reference (vector-push-extend s references) (vector-push-extend e references))
+             (:left (setf (gethash (logior (ash s 31) e) left) t))
+             ((nil))
+             (t (vector-push-extend s definitions) (vector-push-extend e definitions)
+              (vector-push-extend (aref captures (* 4 i)) definitions))))))
      query tree rope from end)
-    ;; one sweep in the order of the text: the scopes open at each point, each
-    ;; with the latest definition of each name so far in it; a name takes the
-    ;; definition of the innermost open scope that has one, else one made
-    ;; outside every scope. Scopes nest, as the nodes they are.
-    (let ((items '())
-          (opens (sort scopes (lambda (a b) (or (< (first a) (first b))
-                                                (and (= (first a) (first b)) (> (second a) (second b)))))))
-          (stack '())                   ; open scopes, innermost first: (END TABLE SEALED)
-          (outside (make-hash-table :test 'equal))
-          (ranges '()))
-      (maphash (lambda (text list)
-                 (dolist (definition list)
-                   (push (list (first definition) 1 text (third definition)) items)))
-               definitions)
-      (dolist (reference references)
-        (destructuring-bind (s . e) reference
-          (when (and (< s end) (> e start) (not (gethash (logior (ash s 31) e) left)))
-            (push (list s 0 (capture-text rope s e) e) items))))
-      ;; by place, a name used before one defined at the same place
-      (setf items (sort items (lambda (a b) (or (< (first a) (first b))
-                                                (and (= (first a) (first b)) (< (second a) (second b)))))))
-      (dolist (item items)
-        (destructuring-bind (at what text other) item
-          ;; open the scopes begun by here, closing those ended before each
-          (loop while (and opens (<= (first (first opens)) at))
-                do (destructuring-bind (s e sealed) (pop opens)
-                     (loop while (and stack (<= (first (first stack)) s)) do (pop stack))
-                     (push (list e (make-hash-table :test 'equal) sealed) stack)))
-          (loop while (and stack (<= (first (first stack)) at)) do (pop stack))
-          (if (= what 1)
-              ;; a definition, OTHER its kind
-              (setf (gethash text (if stack (second (first stack)) outside)) other)
-              ;; a name used, OTHER where it ends; a sealed scope looks no further out
-              (let* ((kind (loop for (nil table sealed) in stack
-                                 for found = (gethash text table)
-                                 when found return found
-                                 when sealed return nil
-                                 finally (return (gethash text outside))))
-                     (face (and kind (funcall face-of kind))))
-                (when kind
-                  (setf (gethash (logior (ash at 31) other) resolved) t))
-                (when (and face (not (eq face :none)))
-                  (setf ranges (range-cell at other face ranges)))))))
+    ;; the definitions and the names used shown, by place, a name used before
+    ;; one defined at the same place, each as (place, 0 or 1, its number)
+    (loop for i from 0 below (length definitions) by 3
+          do (vector-push-extend (logior (ash (aref definitions i) 33) (ash 1 32) (floor i 3)) events))
+    (loop for i from 0 below (length references) by 2
+          for s = (aref references i) for e = (aref references (1+ i))
+          when (and (< s end) (> e start) (not (gethash (logior (ash s 31) e) left)))
+            do (vector-push-extend (logior (ash s 33) (floor i 2)) events))
+    (sort events #'<)
+    ;; the scopes by where they open, the outer of two opening together first
+    (loop for i from 0 below (floor (length scopes) 3) do (vector-push-extend i opens))
+    (sort opens (lambda (a b)
+                  (let ((sa (aref scopes (* 3 a))) (sb (aref scopes (* 3 b))))
+                    (or (< sa sb) (and (= sa sb) (> (aref scopes (+ 1 (* 3 a))) (aref scopes (+ 1 (* 3 b)))))))))
+    ;; one sweep in the order of the text: the scopes open at each point; a
+    ;; name takes the latest definition of it in the scopes open, else one
+    ;; made outside every scope; scopes nest, as the nodes they are, and the
+    ;; definitions made in a scope are let go as it closes
+    (let ((next 0))
+      (labels ((close-scope ()
+                 (decf (fill-pointer stack) 2)
+                 (let ((depth (floor (length stack) 2)))
+                   (loop while (and (plusp (length bindings))
+                                    (> (aref bindings (- (length bindings) 2)) depth))
+                         do (let* ((at (- (length bindings) 4))
+                                   (hash (aref bindings at)) (before (aref bindings (+ at 3))))
+                              (if (minusp before) (remhash hash latest) (setf (gethash hash latest) before))
+                              (decf (fill-pointer bindings) 4)))))
+               (close-ended (at)
+                 (loop while (and (plusp (length stack)) (<= (aref stack (- (length stack) 2)) at))
+                       do (close-scope))))
+        (loop for event across events
+              for at = (ash event -33)
+              for index = (logand event #xffffffff)
+              do ;; open the scopes begun by here, closing those ended before each
+                 (loop while (and (< next (length opens)) (<= (aref scopes (* 3 (aref opens next))) at))
+                       do (let ((scope (* 3 (aref opens next))))
+                            (close-ended (aref scopes scope))
+                            (vector-push-extend (aref scopes (+ scope 1)) stack)
+                            (vector-push-extend (aref scopes (+ scope 2)) stack)
+                            (incf next)))
+                 (close-ended at)
+                 (if (logbitp 32 event)
+                     ;; a definition: bound in the innermost scope open, or outside them all
+                     (let* ((s (aref definitions (* 3 index))) (e (aref definitions (+ 1 (* 3 index))))
+                            (hash (octets-hash rope s e)))
+                       (vector-push-extend hash bindings)
+                       (vector-push-extend index bindings)
+                       (vector-push-extend (floor (length stack) 2) bindings)
+                       (vector-push-extend (gethash hash latest -1) bindings)
+                       (setf (gethash hash latest) (- (length bindings) 4)))
+                     ;; a name used: the latest definition of the same octets, unless a
+                     ;; sealed scope open is inside the scope it was made in
+                     (let* ((s (aref references (* 2 index))) (e (aref references (+ 1 (* 2 index))))
+                            (binding (loop for b = (gethash (octets-hash rope s e) latest -1)
+                                             then (aref bindings (+ b 3))
+                                           while (>= b 0)
+                                           when (let ((d (* 3 (aref bindings (+ b 1)))))
+                                                  (rope-ranges-equal-p rope s e (aref definitions d)
+                                                                       (aref definitions (+ d 1))))
+                                             return b))
+                            (sealed (loop for k from (- (length stack) 1) downto 1 by 2
+                                          when (= 1 (aref stack k)) return (1+ (floor k 2))
+                                          finally (return 0)))
+                            (kind (and binding (>= (aref bindings (+ binding 2)) sealed)
+                                       (svref roles (aref definitions (+ 2 (* 3 (aref bindings (+ binding 1))))))))
+                            (face (and kind (funcall face-of kind))))
+                       (when kind
+                         (setf (gethash (logior (ash s 31) e) resolved) t))
+                       (when (and face (not (eq face :none)))
+                         (setf ranges (range-cell s e face ranges)))))))
       (values (nreverse ranges) resolved))))
 
 ;;; Colours for display
@@ -636,7 +744,9 @@ lists given out before are then no longer to be read."
                              (syntax-cache syntax)))
                (ranges (let ((*spare-ranges* (cdr old))
                              (*capture-table* (or (syntax-capture-table syntax)
-                                                  (setf (syntax-capture-table syntax) (make-hash-table)))))
+                                                  (setf (syntax-capture-table syntax) (make-hash-table))))
+                             (*local-room* (or (syntax-local-room syntax)
+                                               (setf (syntax-local-room syntax) (make-local-room)))))
                          (funcall make))))
           (setf (syntax-cache syntax)
                 (cons (cons key ranges)

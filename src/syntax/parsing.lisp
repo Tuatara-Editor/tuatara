@@ -141,7 +141,8 @@ edits since it was last parsed afresh, FRESH-COST how long that took, and
 NO-REFRESH once a parse afresh of the text was given up (REFRESH-SYNTAX). LOCK
 and DONE guard the job's result, NEXT and ENDING. CACHE keeps the colours
 worked out lately (KEPT-COLOURS), CAPTURE-TABLE the table they are sorted out
-in, and INJECTED-COLOURS those of its texts in other languages (KEPT-LAYER)."
+in, INJECTED-COLOURS those of its texts in other languages (KEPT-LAYER) and
+LOCAL-ROOM the room its local names are sorted out in."
   (buffer nil :read-only t)
   (grammar nil :read-only t)
   (helper nil)
@@ -162,6 +163,7 @@ in, and INJECTED-COLOURS those of its texts in other languages (KEPT-LAYER)."
   (cache nil)
   (capture-table nil)
   (injected-colours nil)
+  (local-room nil)
   (injected nil)
   (worker nil)
   (next nil)
@@ -189,6 +191,7 @@ in, and INJECTED-COLOURS those of its texts in other languages (KEPT-LAYER)."
       (documentation 'syntax-no-refresh 'function) "True once a parse afresh of the text was given up: it is not tried again."
       (documentation 'syntax-cache 'function) "The colours worked out lately, each with what it was for, as KEPT-COLOURS keeps them."
       (documentation 'syntax-capture-table 'function) "The table colours are sorted out in, used again (*CAPTURE-TABLE*)."
+      (documentation 'syntax-local-room 'function) "The room local names are sorted out in, used again (*LOCAL-ROOM*), or NIL."
       (documentation 'syntax-injected-colours 'function) "The colours of texts in other languages kept by their text (*INJECTED-COLOURS*), or NIL."
       (documentation 'syntax-injected 'function) "The trees of text in other languages kept for the colours, as (GENERATION . TABLE), or NIL."
       (documentation 'syntax-worker 'function) "The thread that parses the text, or NIL while none is needed."
