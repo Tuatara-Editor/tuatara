@@ -65,6 +65,14 @@ that what it says shows there; without a command loop, where it is.")
     (declare (ignore job))
     (funcall function)))
 
+(defgeneric host-job-waits-p (host job)
+  (:documentation "True when JOB, ended, is to be taken in later, not now (TAKE-IN-JOBS): the
+editor keeps a job waiting while a question its taking in could change waits
+for another to be answered. Without a command loop, never.")
+  (:method ((host host) job)
+    (declare (ignore job))
+    nil))
+
 (defgeneric host-wait-for-job (host job words)
   (:documentation "Wait for JOB, begun for what the editor is doing now, to end, the editor
 answering keys meanwhile and showing WORDS, a string, once it takes a while;
@@ -408,10 +416,11 @@ Returns JOB."
   "Take in the jobs that have ended and pass TEST, a function of a job, on the
 editor's thread, the oldest first: each leaves *JOBS*, its end is reported in
 the debug log, and JOB-TAKE-IN takes it in, where the job belongs in the
-editor (HOST-TAKE-IN-JOB). Returns the jobs taken in."
+editor (HOST-TAKE-IN-JOB). One the host keeps waiting (HOST-JOB-WAITS-P)
+stays for a later call. Returns the jobs taken in."
   (let ((taken '()))
     (dolist (job (copy-list *jobs*))
-      (when (and (not (job-running-p job)) (member job *jobs*) (funcall test job))
+      (when (and (not (job-running-p job)) (member job *jobs*) (funcall test job) (not (host-job-waits-p *host* job)))
         (forget-job job)
         (report-job-ended job)
         (push job taken)

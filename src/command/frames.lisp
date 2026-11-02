@@ -248,15 +248,15 @@ look that is due may be taken."
               (incf *display-generation*))
             nil)))))
 
-(defun paint-other-frames (editor)
+(defun paint-other-frames (editor &key now)
   "Paint each frame of EDITOR shown on a display of its own beside the one
 worked in whose text may have changed since it was painted
 \(FRAME-SHOWN-CHANGED-P), a setting changed moving the display generation on
-\(LOOK-AT-SETTINGS), at most every *FRAME-AT-LEAST-EVERY* milliseconds and
-never while keys wait: returns NIL, or the seconds after which it wants to
-be asked again, a frame or a look having waited for its turn. With one frame,
-or only frames waiting their turn on the display of the one worked in
-\(FRAME-TAKING-TURNS-P), nothing is done."
+\(LOOK-AT-SETTINGS), at most every *FRAME-AT-LEAST-EVERY* milliseconds, or
+with NOW at once, and never while keys wait: returns NIL, or the seconds
+after which it wants to be asked again, a frame or a look having waited for
+its turn. With one frame, or only frames waiting their turn on the display
+of the one worked in (FRAME-TAKING-TURNS-P), nothing is done."
   (let ((frames (editor-frames editor)))
     (when (rest frames)
       (let* ((current (editor-frame editor))
@@ -266,7 +266,7 @@ or only frames waiting their turn on the display of the one worked in
             (let ((look (look-at-settings editor)))
               (if (some (lambda (frame) (and (elsewhere-p frame) (frame-shown-changed-p frame))) frames)
                   (let ((since (tuatara.runtime:milliseconds-since (editor-others-painted editor))))
-                    (if (< since *frame-at-least-every*)
+                    (if (and (not now) (< since *frame-at-least-every*))
                         (/ (- *frame-at-least-every* since) 1000)
                         (progn
                           (dolist (frame frames)
@@ -298,7 +298,7 @@ it waits (FRAME-HELD), else as they are outside every command; return what
 it returns."
   (let ((held (frame-held frame)))
     (if held
-        (progv (car held) (cdr held) (funcall function))
+        (progv (first held) (second held) (funcall function))
         (progv *question-variables* (outside-question-values) (funcall function)))))
 
 (defun paint-other-frame (editor frame)
@@ -308,35 +308,73 @@ what it shows (NOTE-FRAME-PAINTED)."
   (call-in-frame editor frame (lambda () (call-with-question-of frame (lambda () (redisplay-or-say editor)))))
   (note-frame-painted frame))
 
+(defvar *taking-in-inside-question* nil
+  "True while work in the background is taken in inside an open question
+\(RUN-INSIDE-QUESTION): a job begun in a frame whose question waits, or of
+the buffer such a question is about, waits for that question then.")
+
+(defmethod tuatara.runtime:host-job-waits-p ((host editor-host) job)
+  "While work is taken in inside an open question (*TAKING-IN-INSIDE-QUESTION*),
+true for JOB begun in a frame whose question waits, or of the buffer such a
+question is about: what it takes in could change what that question asks
+about, so it is taken in once the question is answered."
+  (let ((editor *editor*))
+    (and *taking-in-inside-question* editor
+         (some (lambda (frame)
+                 (let ((held (frame-held frame)))
+                   (and held (or (eq frame (tuatara.runtime:job-frame job))
+                                 (eq (third held) (tuatara.runtime:job-buffer job))))))
+               (editor-frames editor)))))
+
+(defun run-free-frames-deferred (editor)
+  "Do what waits to be done in the frames of EDITOR whose question does not
+wait (FRAME-DEFERRED), each with its frame the one worked in, oldest first in
+each frame, until none waits."
+  (loop for frame = (find-if (lambda (frame) (and (frame-deferred frame) (not (frame-held frame))))
+                             (editor-frames editor))
+        while frame
+        do (let ((item (pop (frame-deferred frame))))
+             (call-in-frame editor frame (lambda () (handle-event-guarded editor item))))))
+
 (defun run-inside-question (editor frame event)
   "Handle EVENT, done in FRAME, one of EDITOR's frames, while the frame worked
-in asks a question: with FRAME the one worked in and the variables of the
-question as they are outside every command (*QUESTION-VARIABLES*), it runs
-as the command loop runs it, a question of its own asked in turn, and then
-what its command left to be done after it (FRAME-DEFERRED); then the frame
-asking is the one worked in again, painted, its question going on. That
-question is given up, as \\`C-g' gives it up, when what ran stopped the
+in asks a question; with no EVENT, only take in work in the background. With
+the variables of the question as they are outside every command
+\(*QUESTION-VARIABLES*), EVENT runs in FRAME as the command loop runs it, a
+question of its own asked in turn; then, as between commands, what work in
+the background has for the editor is taken in (TAKE-IN-BACKGROUND), but for
+the jobs a waiting question holds back (HOST-JOB-WAITS-P), and what waits to
+be done in the frames whose question does not wait is done
+\(RUN-FREE-FRAMES-DEFERRED). The frame asking is the one worked in again
+after, its question going on, and the frames whose text changed are painted.
+That question is given up, as \\`C-g' gives it up, when what ran stopped the
 editor or killed the buffer the question is about; when it closed the frame
 asking, once the question reads on (READ-EVENT)."
   (let ((asking (editor-frame editor))
         (about (current-buffer))
         (this-command (editor-this-command editor))
+        (room (< (1+ (count-if #'frame-held (editor-frames editor))) *frames-question-depth*))
+        (generation *display-generation*)
         (painted nil))
-    (setf (frame-held asking) (cons *question-variables* (mapcar #'symbol-value *question-variables*)))
+    (setf (frame-held asking) (list *question-variables* (mapcar #'symbol-value *question-variables*) about))
     (unwind-protect
          (progv *question-variables* (outside-question-values)
-           (select-frame editor frame)
-           (setf *last-input-time* (get-internal-real-time))
-           (handle-event-guarded editor event)
-           (loop while (and (frame-deferred frame) (not (frame-deleted frame)))
-                 do (let ((item (pop (frame-deferred frame))))
-                      (call-in-frame editor frame (lambda () (handle-event-guarded editor item)))))
-           ;; the frame the command ended in, drawn as the command loop draws it, but never one whose question waits
-           (let ((ended (editor-frame editor)))
-             (unless (or (frame-deleted ended) (frame-held ended)
-                         (tuatara.frontend:frontend-input-pending-p (frame-frontend ended)))
-               (redisplay-or-say editor)
-               (setf painted ended))))
+           (when event
+             (select-frame editor frame)
+             (setf *last-input-time* (get-internal-real-time))
+             (handle-event-guarded editor event)
+             ;; the frame the command ended in, drawn as the command loop draws it, but never one whose question waits
+             (let ((ended (editor-frame editor)))
+               (unless (or (frame-deleted ended) (frame-held ended)
+                           (tuatara.frontend:frontend-input-pending-p (frame-frontend ended)))
+                 (redisplay-or-say editor)
+                 (setf painted ended))))
+           (unless (frame-deleted asking)
+             (select-frame editor asking))
+           (let ((*taking-in-inside-question* t))
+             (take-in-background editor))
+           (when room
+             (run-free-frames-deferred editor)))
       (setf (frame-held asking) nil
             (editor-this-command editor) this-command)
       (if (frame-deleted asking)
@@ -347,10 +385,11 @@ asking, once the question reads on (READ-EVENT)."
           ((not (live-buffer-p about))
            (keyboard-quit-signal (format nil "~a was killed in another frame: the question about it is given up"
                                          (tuatara.buffer:buffer-name about))))
-          (t (when painted (note-frame-painted painted))
-             (unless (tuatara.frontend:frontend-input-pending-p (frame-frontend asking))
-               (redisplay-or-say editor))
-             (paint-other-frames editor)))))
+          ((or event (/= generation *display-generation*))
+           (when painted (note-frame-painted painted))
+           (unless (tuatara.frontend:frontend-input-pending-p (frame-frontend asking))
+             (redisplay-or-say editor))
+           (paint-other-frames editor :now t)))))
 
 (defun editor-job-waker ()
   "A function waking the editor, for the thread of work begun now to call when

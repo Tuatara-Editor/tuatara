@@ -164,8 +164,22 @@ editor may go without drawing a frame: the keys are handled first, so that
 none is left over to act after the key is let go, and a frame drawn at least
 this often shows where they have got to.")
 
+(defun take-in-background (editor)
+  "Take in, on EDITOR's thread, what work in the background has for it: what
+other threads said and handed on (TAKE-IN-THREAD-MESSAGES), then what the
+tick functions take in (RUN-TICK-FUNCTIONS), moving the display generation on
+when anything may show differently. The seconds until a tick function wants
+another call, or NIL."
+  (when (take-in-thread-messages editor)
+    (incf *display-generation*))
+  (let ((working *background-work*))
+    (prog1 (run-tick-functions editor)
+      ;; work going on in the background, or just ended: what it brought may show anywhere
+      (when (or working *background-work*)
+        (incf *display-generation*)))))
+
 (defun command-loop (editor)
-  "Run EDITOR until it stops: take in background work (*TICK-FUNCTIONS*),
+  "Run EDITOR until it stops: take in background work (TAKE-IN-BACKGROUND),
 redisplay, read an event, dispatch it. While more keys wait, the frame is
 drawn only every *FRAME-AT-LEAST-EVERY* milliseconds, so that typing
 is never held up by drawing; the other frames are painted when what they
@@ -174,13 +188,7 @@ show may have changed (PAINT-OTHER-FRAMES). Each event is handled guarded
   (let ((*editor* editor)
         (drawn (get-internal-real-time)))
     (loop while (editor-running editor)
-          do (when (take-in-thread-messages editor)
-               (incf *display-generation*))
-             (let ((wait (let ((working *background-work*))
-                           (prog1 (run-tick-functions editor)
-                             ;; work going on in the background, or just ended: what it brought may show anywhere
-                             (when (or working *background-work*)
-                               (incf *display-generation*)))))
+          do (let ((wait (take-in-background editor))
                    (began (get-internal-real-time)))
                (unless (and (tuatara.frontend:frontend-input-pending-p (frame-frontend (editor-frame editor)))
                             (< (tuatara.runtime:milliseconds-since drawn) *frame-at-least-every*))

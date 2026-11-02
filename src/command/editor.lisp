@@ -23,11 +23,11 @@ KEYS-RECORDING and KEYS-PLAYING the keys being recorded in it and played
 into it. PAINTED is what it showed when it was last painted while another
 frame was worked in, for PAINT-OTHER-FRAMES, or NIL to be painted again.
 HELD is, while its question waits for what is done in another frame to run
-inside it (RUN-INSIDE-QUESTION), the variables of that question and their
-values there, as (VARIABLES . VALUES); NIL otherwise. DELETED is true once
-the frame has left the editor. NAME is what it is called, F1 for the first:
-the mode line shows it while frames take turns on one display, as in a
-terminal."
+inside it (RUN-INSIDE-QUESTION), the variables of that question, their
+values there and the buffer it is about, as (VARIABLES VALUES BUFFER); NIL
+otherwise. DELETED is true once the frame has left the editor. NAME is what
+it is called, F1 for the first: the mode line shows it while frames take
+turns on one display, as in a terminal."
   (frontend nil :read-only t)
   (name "F1" :type string)
   (window nil)
@@ -71,7 +71,7 @@ terminal."
       (documentation 'frame-painted 'function)
       "What FRAME showed when it was last painted while another frame was worked in, or NIL (PAINT-OTHER-FRAMES)."
       (documentation 'frame-held 'function)
-      "FRAME's question's variables and values while another frame's command runs inside it, as (VARIABLES . VALUES).")
+      "While FRAME's question waits for another frame, its variables, their values and its buffer, as (VARIABLES VALUES BUFFER).")
 
 (defstruct (editor (:constructor %make-editor (frontend &aux (frame (make-frame frontend)) (frames (list frame))))
                    (:copier nil))
@@ -553,8 +553,9 @@ where what was meant for FRAME goes once FRAME has gone."
 threads since last time, in the order they were said, and have the functions
 given to DEFER-ACTION there run as EDITOR's next commands, in that order too.
 Each message shows in the frame it is for while that frame is open, else in
-the frame you are in; each function runs with its frame the one worked in
-\(CALL-IN-FRAME), likewise. True when there was anything to take in."
+the frame you are in; each function waits among the things to be done in
+that frame likewise (FRAME-DEFERRED), to run with it the one worked in. True
+when there was anything to take in."
   (when (or *messages-from-threads* *actions-from-threads*)
     (let (texts actions)
       (sb-thread:with-mutex (*messages-from-threads-lock*)
@@ -565,14 +566,9 @@ the frame you are in; each function runs with its frame the one worked in
                  (setf (frame-message shown) text
                        (frame-painted shown) nil))
                (tuatara.runtime:ignoring-errors-reported ("keeping a message in *Messages*") (log-message text)))
-      (when actions
-        (setf (editor-deferred editor)
-              (append (editor-deferred editor)
-                      (loop for (frame . action) in (reverse actions)
-                            collect (if frame
-                                        (let ((frame frame) (action action))
-                                          (lambda () (call-in-frame editor (frame-or-current editor frame) action)))
-                                        action)))))
+      (loop for (frame . action) in (reverse actions)
+            do (let ((done-in (frame-or-current editor frame)))
+                 (setf (frame-deferred done-in) (append (frame-deferred done-in) (list action)))))
       t)))
 
 (defvar *command-notes* nil
