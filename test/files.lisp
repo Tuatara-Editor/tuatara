@@ -1478,3 +1478,12 @@ serves it alone."
           (tuatara.io::call-with-parent path (lambda (fd name) (declare (ignore fd)) (setf given (tuatara.text:octets-string name))))
           (is string= (nth-value 1 (tuatara.io:path-folder-and-name (string-right-trim "/" path))) given)))
       (fail (tuatara.io::call-with-parent (concatenate 'string top "/..") (lambda (fd name) (list fd name)))))))
+
+(define-test (visiting-and-saving scratch-copy-closed-when-it-cannot-be-mapped)
+  ;; standard input's copy is closed, not left open, when it cannot be mapped
+  (with-test-directory (dir)
+    (let* ((path (namestring (put-file (merge-pathnames "copy" dir) *lines-text*)))
+           (fd (sb-posix:open path sb-posix:o-wronly))
+           (tuatara.io:*memory-read-limit* 1024))
+      (fail (tuatara.io:scratch-file-text fd (length *lines-text*) "standard input"))
+      (isnt equal path (ignore-errors (sb-posix:readlink (format nil "/proc/self/fd/~d" fd)))))))

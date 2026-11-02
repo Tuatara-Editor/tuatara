@@ -1050,13 +1050,16 @@ work in the background."
 (COPY-DESCRIPTOR-TO-SCRATCH), as two values: a rope, and the mapping it
 reads, or NIL. One of at most *MEMORY-READ-LIMIT* octets is read into
 memory and FD closed; a larger one is mapped, as a large file is, and the
-mapping owns FD from then on."
+mapping owns FD from then on. FD is closed when it cannot be read or mapped."
   (if (<= size *memory-read-limit*)
       (unwind-protect
            (progn (sb-posix:lseek fd 0 sb-posix:seek-set)
                   (values (tuatara.text:octets->rope (read-fd-octets fd :path path :size-hint size)) nil))
         (tuatara.runtime:ignoring-errors-reported ("closing the copy of ~a" path) (sb-posix:close fd)))
-      (let ((mapping (tuatara.text:map-fd fd size path)))
+      (let ((mapping nil))
+        (unwind-protect (setf mapping (tuatara.text:map-fd fd size path))
+          (unless mapping
+            (tuatara.runtime:ignoring-errors-reported ("closing the copy of ~a" path) (sb-posix:close fd))))
         (values (rope-over mapping) mapping))))
 
 (defun buffer-file-stamp (buffer)
