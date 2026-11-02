@@ -16,7 +16,7 @@
    #:octets #:make-octets #:with-octet-block #:fixvec #:+max-leaf+ #:+target-leaf+ #:+min-leaf+ #:+max-fanout+ #:+span-size+
    ;; mapped files
    #:mapping #:mapping-p #:map-file #:map-fd #:close-mapping #:retarget-mapping #:retarget-mapping-range
-   #:mapping-source #:mapping-sources
+   #:mapping-source #:mapping-sources #:live-mappings
    #:mapping-path #:mapping-length #:mapping-live #:mapping-fd #:mapping-sap #:mapping-rope #:map-rope-sources
    ;; ropes
    #:rope #:rope-p #:make-rope #:string->rope #:octets->rope #:open-file-rope #:index-rope

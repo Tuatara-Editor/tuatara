@@ -1758,6 +1758,19 @@ beside it."
         (tuatara.io:finish-leases)
         (is equal '("big.txt") (directory-names dir))))))
 
+(define-test (visiting-and-saving moved-stretches-not-unmapped-twice)
+  ;; stretches moved onto a journal lie within the region mapped whole: only that region is unmapped
+  (with-test-directory (dir)
+    (without-shared-blocks
+      (let ((path (put-file (merge-pathnames "big.txt" dir) *long-lines-text*)))
+        (with-visited (b path)
+          (edit-far-apart b)
+          (tuatara.io:save-buffer-file b)
+          (let ((regions (car (tuatara.text::mapping-resources (tuatara.buffer:buffer-mapping b)))))
+            (true (> (length regions) 1))
+            (is = 1 (count-if #'first regions))))
+        (tuatara.io:finish-leases)))))
+
 (define-test (visiting-and-saving scratch-copy-closed-when-it-cannot-be-mapped)
   ;; standard input's copy is closed, not left open, when it cannot be mapped
   (with-test-directory (dir)
