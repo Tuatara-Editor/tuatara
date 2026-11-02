@@ -186,13 +186,15 @@ as TUATARA.IO:MOUNT-NAMESPACE gives it, and its process id (PID), two
 values: read through /proc while a pidfd of that very process
 \(TUATARA.IO:PEER-PROCESS) says it still runs under that number, so that no
 other process given its number meanwhile answers for it. NIL when the system
-cannot say, or the process ended."
+cannot say, or the process ended; with :UNSUPPORTED as a second value when
+this kernel cannot give the pidfd."
   (multiple-value-bind (pidfd pid) (tuatara.io:peer-process fd)
-    (when pidfd
-      (unwind-protect
-           (let ((namespace (tuatara.io:mount-namespace pid)))
-             (and namespace (eql pid (tuatara.io:pidfd-process pidfd)) (values namespace pid)))
-        (sb-posix:close pidfd)))))
+    (if (null pidfd)
+        (values nil pid)
+        (unwind-protect
+             (let ((namespace (tuatara.io:mount-namespace pid)))
+               (and namespace (eql pid (tuatara.io:pidfd-process pidfd)) (values namespace pid)))
+          (sb-posix:close pidfd)))))
 
 (defun take-connection (daemon editor fd)
   "Take the new connection FD to DAEMON, whose editor is EDITOR: refused,
@@ -202,7 +204,9 @@ be at once (*MOST-GREETING*), or as many clients show the editor
 \(*MOST-CLIENTS*); else greeted on a thread of its own (GREET)."
   (multiple-value-bind (namespace pid) (peer-namespace fd)
     (let* ((uid (nth-value 1 (tuatara.io:peer-credentials fd)))
-           (why (cond ((or (null pid) (null uid)) "The daemon could not tell who connected")
+           (why (cond ((eq pid :unsupported)
+                       "This kernel cannot tell the daemon who connected (Linux 6.5 or newer is needed)")
+                      ((or (null pid) (null uid)) "The daemon could not tell who connected")
                       ((peer-refusal uid namespace :own-namespace (daemon-namespace daemon)))
                       ((>= (daemon-greeting daemon) *most-greeting*) "Too many clients are attaching at once: try again")
                       ((>= (live-client-count editor) *most-clients*)
@@ -381,11 +385,11 @@ with it."
 (defun close-encrypted-with-client (client)
   "Client end function (*CLIENT-END-FUNCTIONS*): close CLIENT's encrypted
 buffers (CLIENT-ENCRYPTED-BUFFERS), their text not kept beyond those who
-opened them, what was killed from them taken off the kill ring
-\(FORGET-PLAINTEXT-KILLS); one with changes not saved is kept, as its text
+opened them, what was killed or copied to registers from them let go
+\(FORGET-PLAINTEXT-COPIES); one with changes not saved is kept, as its text
 would be lost, and that is said."
   (dolist (buffer (client-encrypted-buffers client))
-    (forget-plaintext-kills buffer)
+    (forget-plaintext-copies buffer)
     (if (tuatara.buffer:buffer-modified-p buffer)
         (message "~a, encrypted, has changes not saved: kept, though its client ended"
                  (tuatara.buffer:buffer-name buffer))
@@ -501,6 +505,18 @@ in the log."
           (incf written))))
     (message "The daemon stopped with no one to ask: ~d buffer~:p with changes auto-saved" written)))
 
+(defun lost-changes-words (lost)
+  "Why the daemon is not stopped with no one to ask, LOST being the buffers
+whose changes would be lost: how many, how many of them encrypted, and the
+names of the others alone, an encrypted file's name being kept to its
+client."
+  (let ((encrypted (count-if #'encrypted-buffer-p lost))
+        (named (mapcar #'tuatara.buffer:buffer-name (remove-if #'encrypted-buffer-p lost))))
+    (format nil "The daemon goes on: ~d buffer~:*~p ~:*~[~;has~:;have~] changes no auto-saved copy would keep~
+                 ~[~:;, ~:*~d of them encrypted~]~@[: ~{~a~^, ~}~]; stop it from a terminal (tuatara --stop in ~
+                 one, or M-x daemon-quit in a client), where they are asked about"
+            (length lost) encrypted named)))
+
 (defun stop-from-client (editor client request)
   "Stop EDITOR as CLIENT asked as it attached (tuatara --stop), REQUEST
 saying how: asked in its terminal as \\[daemon-quit] asks. With no
@@ -515,10 +531,7 @@ goes on and CLIENT closes, exiting 1."
     (if (null (tuatara.frontend:request-terminal request))
         (let ((lost (unsaved-not-kept)))
           (if lost
-              (not-stopped (format nil "The daemon goes on: ~{~a~^, ~} ~:[has~;have~] changes no auto-saved copy ~
-                                        would keep; stop it from a terminal (tuatara --stop in one, or ~
-                                        M-x daemon-quit in a client), where they are asked about"
-                                   (mapcar #'tuatara.buffer:buffer-name lost) (rest lost)))
+              (not-stopped (lost-changes-words lost))
               (progn (auto-save-unsaved)
                      (stop-daemon editor :words "The daemon was stopped (tuatara --stop)"))))
         (let ((stopped nil))

@@ -470,7 +470,8 @@ list, waiting SECONDS at most; :LATE when it has not ended."
   ;; a daemon started from a command line keeps none of what that line ran with
   (let ((kept (tuatara.terminal::daemon-environment
                '("HOME=/home/k" "PATH=/bin" "LC_TIME=mi_NZ" "XDG_RUNTIME_DIR=/run/user/1" "GIT_DIR=/x"
-                 "GIT_INDEX_FILE=/x/index" "PWD=/tmp" "TERM=xterm" "GPG_TTY=/dev/pts/1" "TMUX=/tmp/t"))))
+                 "GIT_INDEX_FILE=/x/index" "PWD=/tmp" "TERM=xterm" "GPG_TTY=/dev/pts/1" "TMUX=/tmp/t"
+                 "LD_LIBRARY_PATH=/x" "APPDIR=/x" "TUATARA_APPIMAGE=1"))))
     (is equal '("HOME=/home/k" "PATH=/bin" "LC_TIME=mi_NZ" "XDG_RUNTIME_DIR=/run/user/1") kept)))
 
 (define-test (daemon terminal-checked)
@@ -481,6 +482,12 @@ list, waiting SECONDS at most; :LATE when it has not ended."
   (false (tuatara.defaults::checked-terminal "/dev/pts/../null"))
   (false (tuatara.defaults::checked-terminal "/dev/pts/ptmx") "the user's it is not")
   (false (tuatara.defaults::checked-terminal "/dev/tty" :uid (1+ (sb-posix:geteuid)))))
+
+(define-test (daemon old-kernel-said-plainly)
+  ;; a kernel that cannot give the peer's pidfd: refused, saying so in plain words
+  (multiple-value-bind (namespace why) (tuatara.defaults::peer-namespace -1)
+    (false namespace)
+    (false (eq why :unsupported) "a bad descriptor is not an old kernel")))
 
 (define-test (daemon kills-from-decrypted-text-go-with-it)
   ;; text killed in an encrypted file's buffer leaves the kill ring as the client that had it closes
@@ -507,3 +514,51 @@ list, waiting SECONDS at most; :LATE when it has not ended."
                    "the kill stayed on the ring")
             (type-keys other "C-x C-c")
             (client-ends other-runner)))))))
+
+(define-test (daemon registers-from-decrypted-text-go-with-it)
+  ;; text kept in a register from an encrypted file's buffer goes as the client that had it closes
+  (with-test-directory (dir)
+    (let ((file (namestring (put-file (merge-pathnames "secret.txt" dir) "the secret line"))))
+      (with-test-daemon (name)
+        (multiple-value-bind (local runner) (attach-test-client name :directory dir :files (list file))
+          (true (shows local "the secret line"))
+          (in-daemon (lambda ()
+                       (let* ((editor (daemon-editor))
+                              (buffer (tuatara.defaults::buffer-visiting file))
+                              (frame (find buffer (tuatara.command:editor-frames editor)
+                                           :key (lambda (f) (tuatara.display:window-buffer (tuatara.command:frame-window f))))))
+                         (setf (tuatara.buffer:buffer-local buffer :encrypted) (list :symmetric t)
+                               (tuatara.io:buffer-plaintext-p buffer) t
+                               (tuatara.buffer:buffer-mark buffer) 0
+                               (tuatara.buffer:buffer-point buffer) 10
+                               (tuatara.display:window-point (tuatara.command:frame-window frame)) 10))))
+          (type-keys local "C-x r s a")
+          (true (wait-until (lambda () (in-daemon (lambda () (gethash #\a tuatara.defaults::*registers*)))) 10))
+          (multiple-value-bind (other other-runner) (attach-test-client name :directory dir)
+            (true (shows other "scratch"))
+            (type-keys local "C-x C-c")
+            (is eql 0 (first (client-ends runner)))
+            (false (in-daemon (lambda () (gethash #\a tuatara.defaults::*registers*))) "the register stayed")
+            (type-keys other "C-x r i a")
+            (true (shows other "Register a is empty"))
+            (type-keys other "C-x r l")
+            (true (shows other "Register"))
+            (false (showing-now other "the secret"))
+            (type-keys other "C-x C-c")
+            (client-ends other-runner)))))))
+
+(define-test (daemon refusal-names-no-encrypted-file)
+  ;; a stop refused for changes that would be lost counts them, and names none of an encrypted file
+  (let ((plain (tuatara.buffer:make-buffer "notes.txt"))
+        (secret (tuatara.buffer:make-buffer "diary.gpg")))
+    (unwind-protect
+         (progn
+           (setf (tuatara.buffer:buffer-local secret :encrypted) (list :symmetric t))
+           (let ((words (tuatara.defaults::lost-changes-words (list plain secret))))
+             (true (search "2 buffers have changes" words) "~a" words)
+             (true (search "1 of them encrypted: notes.txt;" words) "~a" words)
+             (false (search "diary" words)))
+           (let ((words (tuatara.defaults::lost-changes-words (list secret))))
+             (true (search "1 buffer has changes no auto-saved copy would keep, 1 of them encrypted;" words) "~a" words)))
+      (tuatara.buffer:kill-buffer plain)
+      (tuatara.buffer:kill-buffer secret))))

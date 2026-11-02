@@ -24,12 +24,12 @@ listens before taking it as failed.")
 
 (defparameter *daemon-variables*
   '("HOME" "USER" "LOGNAME" "SHELL" "PATH" "LANG" "LANGUAGE" "LC_*" "TZ" "TMPDIR" "XDG_*" "DISPLAY"
-    "WAYLAND_DISPLAY" "DBUS_SESSION_BUS_ADDRESS" "SSH_AUTH_SOCK" "GNUPGHOME" "NO_COLOR" "TUATARA_HEAP_MB"
-    "APPIMAGE" "APPDIR" "ARGV0" "TUATARA_APPIMAGE" "TUATARA_LD_LIBRARY_PATH" "LD_LIBRARY_PATH")
+    "WAYLAND_DISPLAY" "DBUS_SESSION_BUS_ADDRESS" "SSH_AUTH_SOCK" "GNUPGHOME" "NO_COLOR" "TUATARA_HEAP_MB")
   "The environment variables a daemon is started with, of those of the
 program starting it, a * at the end standing for any ending: who you are,
-where your files, folders and programs are, your language and time zone, the
-desktop and the agents it reaches, and what the AppImage it runs from needs.
+where your files, folders and programs are, your language and time zone, and
+the desktop and the agents it reaches; the AppImage it may run from sets its
+own.
 None of what one command line is run with (git's variables, a terminal's)
 outlives it in the daemon.")
 

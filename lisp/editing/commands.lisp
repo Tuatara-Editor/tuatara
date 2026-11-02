@@ -1142,18 +1142,7 @@ made a string."
 (defvar *plaintext-kills* (make-hash-table :test 'eq :weakness :key)
   "The kills taken from a decrypted file's text (TUATARA.IO:BUFFER-PLAINTEXT-P),
 each with the buffers it came from: they leave the kill ring with any of
-those buffers (FORGET-PLAINTEXT-KILLS).")
-
-(defun forget-plaintext-kills (buffer)
-  "Take off the kill ring every kill taken from BUFFER's decrypted text
-\(*PLAINTEXT-KILLS*): its text is kept no longer than the buffer. Runs as a
-buffer is killed, and as its client ends."
-  (let ((editor (or *editor* (running-editor))))
-    (when editor
-      (setf (editor-kill-ring editor)
-            (remove-if (lambda (kill) (member buffer (gethash kill *plaintext-kills*))) (editor-kill-ring editor))))))
-
-(pushnew 'forget-plaintext-kills tuatara.buffer:*kill-buffer-functions*)
+those buffers (FORGET-PLAINTEXT-COPIES).")
 
 (defun kill-text (text &key (append (kill-command-p (editor-last-command *editor*))) (prepend nil))
   "Put TEXT on the kill ring, a string, or a rope for a kill too large for the

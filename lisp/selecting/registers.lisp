@@ -10,14 +10,22 @@
 
 (in-package #:tuatara.defaults)
 
-(defstruct (register (:constructor make-register (kind value)) (:copier nil))
+(defstruct (register (:constructor make-register (kind value &optional sources)) (:copier nil))
   "What a register keeps: KIND :POSITION, :TEXT, :BLOCK or :NUMBER, and VALUE,
 a REGISTER-PLACE, a string or a rope (as the kill ring holds), a rectangle
-\(what *KILLED-RECTANGLE* holds) or a whole number."
-  kind value)
+\(what *KILLED-RECTANGLE* holds) or a whole number; SOURCES, the buffers of
+decrypted text its text or block came from, with which it goes
+\(FORGET-PLAINTEXT-COPIES)."
+  kind value sources)
 
-(setf (documentation 'make-register 'function) "Return a REGISTER of KIND keeping VALUE."
+(setf (documentation 'make-register 'function)
+      "Return a REGISTER of KIND keeping VALUE, taken from the buffers of decrypted text SOURCES."
       (documentation 'register-p 'function) "True when OBJECT is a REGISTER.")
+
+(defun plaintext-sources (buffer &optional sources)
+  "SOURCES, buffers of decrypted text something kept came from, with BUFFER
+when its text is decrypted (TUATARA.IO:BUFFER-PLAINTEXT-P)."
+  (if (tuatara.io:buffer-plaintext-p buffer) (adjoin buffer sources) sources))
 
 (defstruct (register-place (:constructor make-register-place (buffer anchor place)) (:copier nil))
   "A place a register keeps: in BUFFER, at ANCHOR, which follows the text through
@@ -94,7 +102,7 @@ character replaces what was there. The kill ring is left as it was."
     (when name
       (multiple-value-bind (kind value) (copy-to-register-value (current-buffer))
         (when kind
-          (setf (gethash name *registers*) (make-register kind value))
+          (setf (gethash name *registers*) (make-register kind value (plaintext-sources (current-buffer))))
           (message "Register ~a keeps ~a" name (register-kind-words (gethash name *registers*))))))))
 
 (define-command point-to-register ()
@@ -130,7 +138,8 @@ keeps, or before with FRONT."
         (message "The region is empty")
         (let ((text (region-text buffer start end)) (kept (register-value register)))
           (setf (gethash name *registers*)
-                (make-register :text (if front (kill-join text kept) (kill-join kept text)))
+                (make-register :text (if front (kill-join text kept) (kill-join kept text))
+                               (plaintext-sources buffer (register-sources register)))
                 (tuatara.buffer:buffer-mark-active-p buffer) nil)
           (message "Added to register ~a" name)))))
 
@@ -155,6 +164,23 @@ character, as \\[add-to-register] puts it after."
     (when name
       (let ((register (kept-in-register name '(:text))))
         (when register (add-to-text-register name register (current-buffer) t))))))
+
+;;; Decrypted text kept no longer than its buffer
+
+(defun forget-plaintext-copies (buffer)
+  "Let go of every copy of BUFFER's decrypted text the editor keeps beside
+it: the kills taken from it (*PLAINTEXT-KILLS*) leave the kill ring, and the
+registers keeping its text or a block of it are emptied. Runs as a buffer is
+killed, and as its client ends."
+  (let ((editor (or *editor* (running-editor))))
+    (when editor
+      (setf (editor-kill-ring editor)
+            (remove-if (lambda (kill) (member buffer (gethash kill *plaintext-kills*))) (editor-kill-ring editor)))))
+  (loop for name in (register-names)
+        when (member buffer (register-sources (gethash name *registers*)))
+          do (remhash name *registers*)))
+
+(pushnew 'forget-plaintext-copies tuatara.buffer:*kill-buffer-functions*)
 
 ;;; Using
 

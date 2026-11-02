@@ -1142,17 +1142,19 @@ and group id (GID); NIL when the system cannot say."
   "A pidfd of the process at the other end of the local socket FD as it
 connected (SO_PEERPIDFD), and its process id (PID) as the system gives it
 now, two values: the pidfd names that process however long it lives, never
-another given its number after it. NIL when the system cannot say; the
-pidfd is the caller's to close."
+another given its number after it. NIL when the system cannot say, and
+then :UNSUPPORTED as a second value when this kernel has no such question
+\(before Linux 6.5); the pidfd is the caller's to close."
   (sb-alien:with-alien ((pidfd sb-alien:int -1) (length sb-alien:unsigned-int 4))
-    (when (zerop (sb-alien:alien-funcall
-                  (sb-alien:extern-alien "getsockopt" (function sb-alien:int sb-alien:int sb-alien:int sb-alien:int
-                                                                (* sb-alien:int) (* sb-alien:unsigned-int)))
-                  fd 1 77 (sb-alien:addr pidfd) (sb-alien:addr length)))       ; SOL_SOCKET, SO_PEERPIDFD
-      (let ((pid (pidfd-process pidfd)))
-        (if pid
-            (values pidfd pid)
-            (progn (sb-posix:close pidfd) nil))))))
+    (if (zerop (sb-alien:alien-funcall
+                (sb-alien:extern-alien "getsockopt" (function sb-alien:int sb-alien:int sb-alien:int sb-alien:int
+                                                              (* sb-alien:int) (* sb-alien:unsigned-int)))
+                fd 1 77 (sb-alien:addr pidfd) (sb-alien:addr length)))       ; SOL_SOCKET, SO_PEERPIDFD
+        (let ((pid (pidfd-process pidfd)))
+          (if pid
+              (values pidfd pid)
+              (progn (sb-posix:close pidfd) nil)))
+        (values nil (and (= (sb-alien:get-errno) 92) :unsupported)))))   ; ENOPROTOOPT
 
 (defun pidfd-process (pidfd)
   "The process id the pidfd PIDFD names while that process runs, as
