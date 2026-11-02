@@ -78,6 +78,45 @@ or is not installed here; what it says as a second value."
         (is string= (tuatara.terminal::desktop-entry :client)
             (file-text (concatenate 'string again "tuatara-client.desktop")))))))
 
+(define-test (tools desktop-entries-request-checked)
+  ;; the request to write desktop entries is taken only for this program and option words, into a folder
+  ;; named from the root: a file named on the command line with the variable left set never becomes a
+  ;; program the desktop runs, and the program starts as it would
+  (with-test-directory (directory)
+    (let* ((folder (namestring (merge-pathnames "applications/" directory)))
+           (evidence (namestring (put-file (merge-pathnames "attachment.exe" directory) "MZ"))))
+      (flet ((asked (folder &rest arguments)
+               (sb-posix:setenv "TUATARA_DESKTOP_ENTRIES" folder 1)
+               (let* ((code :none)
+                      (said (with-output-to-string (*error-output*)
+                              (let ((*standard-output* (make-broadcast-stream)))
+                                (setf code (tuatara.terminal::desktop-entries-child arguments))))))
+                 (false (sb-posix:getenv "TUATARA_DESKTOP_ENTRIES") "the request goes, taken or not")
+                 (values code said))))
+        (dolist (refused (list (list folder evidence) (list "applications/" "tuatara")
+                               (list folder "tuatara" evidence) (list folder "tuatara" "--dark" "~/x.exe")
+                               (list folder)))
+          (multiple-value-bind (code said) (apply #'asked refused)
+            (false code "~s taken" refused)
+            (true (search "TUATARA_DESKTOP_ENTRIES left alone" said))
+            (false (probe-file (concatenate 'string folder "tuatara.desktop")))))
+        (is eql 0 (asked folder "tuatara" "--dark"))
+        (true (search (format nil "~%Exec=tuatara --dark --gui %F~%")
+                      (file-text (concatenate 'string folder "tuatara.desktop"))))))
+    ;; this program, the AppImage it runs from, or the launcher of the checkout it was built in
+    (let ((self (namestring (merge-pathnames "checkout/build/tuatara" directory)))
+          (launcher (namestring (merge-pathnames "checkout/tools/tuatara-tui.sh" directory))))
+      (dolist (file (list self launcher))
+        (put-file (ensure-directories-exist file) ""))
+      (false (tuatara.terminal::desktop-entries-refusal "/a/" (list self) :self self :appimage nil))
+      (false (tuatara.terminal::desktop-entries-refusal "/a/" (list launcher) :self self :appimage nil))
+      (false (tuatara.terminal::desktop-entries-refusal "/a/" (list "/bin/sh" "--light")
+                                                        :self self :appimage "/bin/sh"))
+      (true (tuatara.terminal::desktop-entries-refusal "/a/" (list "/bin/sh") :self self :appimage nil))))
+  ;; every word of the Exec line quoted as it needs
+  (is string= "--dark" (tuatara.terminal::exec-argument "--dark" :plain t))
+  (is string= "\"a b\"" (tuatara.terminal::exec-argument "a b" :plain t)))
+
 (define-test (tools autostart-generated)
   ;; tuatara --generate-autostart writes the daemon's autostart entry and says where; never over a file
   ;; there, a link neither; --daemon=NAME writes the named daemon's

@@ -56,20 +56,23 @@ if [ "${1:-}" = "--appimage" ]; then
   cp "$appimage" "$installed.new"
   chmod 755 "$installed.new"
   mv -f "$installed.new" "$installed"
-  # the icons it holds and the program: where it is mounted when it runs this
-  # (--install-desktop), else the icons unpacked where nothing else is, and the
-  # program run unpacked
-  if [ -n "${APPDIR:-}" ] && [ -x "$APPDIR/AppRun" ]; then
+  # the icons it holds: where it is mounted when it runs this (--install-desktop),
+  # else unpacked where nothing else is; the entries are written by the copy
+  # installed (it takes the request only for itself), run unpacked when FUSE
+  # may be missing
+  if [ -n "${APPDIR:-}" ] && [ -d "$APPDIR/tuatara/icons" ]; then
     inside="$APPDIR"
-    entries() { TUATARA_DESKTOP_ENTRIES="$applications" "$APPDIR/AppRun" "$installed" ${style:+"$style"}; }
+    unpack=""
   else
     unpacked="$(mktemp -d)"
     (cd "$unpacked" && "$installed" --appimage-extract 'tuatara/icons/*' >/dev/null)
     inside="$unpacked/squashfs-root"
-    entries() {
-      TUATARA_DESKTOP_ENTRIES="$applications" APPIMAGE_EXTRACT_AND_RUN=1 "$installed" "$installed" ${style:+"$style"}
-    }
+    unpack=1
   fi
+  entries() {
+    env TUATARA_DESKTOP_ENTRIES="$applications" ${unpack:+APPIMAGE_EXTRACT_AND_RUN=1} \
+      "$installed" "$installed" ${style:+"$style"}
+  }
   source_icons="$inside/tuatara/icons/hicolor"
 else
   source_icons="$root/data/icons/hicolor"

@@ -723,7 +723,8 @@ it instead, its arguments never looked at
 \(TUATARA.PACKAGES:COMPILE-PACKAGE-CHILD); run again by tuatara --daemon
 with TUATARA_DAEMON, it is that daemon (RUN-DAEMON); run by the scripts
 installing it with TUATARA_DESKTOP_ENTRIES, it writes its desktop entries
-\(DESKTOP-ENTRIES-CHILD). A client keeps the heap it was saved with."
+\(DESKTOP-ENTRIES-CHILD), a request it does not take said and left alone. A
+client keeps the heap it was saved with."
   (sb-ext:disable-debugger)
   (setf sb-ext:*posix-argv* (command-line-arguments))
   (fresh-random-state)
@@ -745,11 +746,13 @@ installing it with TUATARA_DESKTOP_ENTRIES, it writes its desktop entries
     (let ((code (tuatara.packages:compile-package-child)))
       (finish-output)
       (sb-ext:exit :code code :abort t)))
-  ;; run by the scripts that install it to write its desktop entries, told so likewise
+  ;; run by the scripts that install it to write its desktop entries, told so likewise; a request
+  ;; not taken leaves it to start as it would
   (when (uiop:getenv "TUATARA_DESKTOP_ENTRIES")
     (let ((code (desktop-entries-child (rest sb-ext:*posix-argv*))))
-      (finish-output)
-      (sb-ext:exit :code code :abort t)))
+      (when code
+        (finish-output)
+        (sb-ext:exit :code code :abort t))))
   ;; run again by tuatara --daemon to be the daemon, told so likewise
   (let ((daemon (uiop:getenv "TUATARA_DAEMON")))
     (when daemon
