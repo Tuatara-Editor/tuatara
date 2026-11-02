@@ -334,8 +334,8 @@ that was selected is selected again."
   "Split the windows of the editor's frames as the session opened again had
 them, once, its first window there: the frame worked in first, then the
 frames opened at the start, then frames opened for those left, up to
-*MOST-FRAMES*; the sections past them kept as they were
-\(*SESSION-SECTIONS-KEPT*). Started with files, the session's files opened
+*MOST-FRAMES*; the sections past them, or from one that would not open, kept
+as they were (*SESSION-SECTIONS-KEPT*). Started with files, the session's files opened
 behind them instead (SESSION-BUFFERS-BEHIND)."
   (setf *tick-functions* (remove 'session-layout-tick *tick-functions*))
   (when (and *keep-session* (not *session-opened*))
@@ -350,8 +350,9 @@ behind them instead (SESSION-BUFFERS-BEHIND)."
         (loop for (layout . left) on (rest layouts)
               for frame = (or (pop others)
                               (and (< (length (editor-frames editor)) *most-frames*)
-                                   (open-frame editor :select nil))
-                              ;; no room for more frames: the sections left kept as they were
+                                   (ignoring-errors-reported ("opening a frame of the session")
+                                     (open-frame editor :select nil)))
+                              ;; no room for more frames, or one would not open: the sections left kept as they were
                               (progn (setf *session-sections-kept* (append (mapcar #'third (cons layout left))
                                                                            *session-sections-kept*))
                                      (return)))

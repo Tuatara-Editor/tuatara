@@ -163,6 +163,30 @@ a session file not of its own kind is left alone, nothing in it evaluated; off, 
       (is = 1000 (frames-written))
       (forget-session-buffers))))
 
+(define-test (session frames-that-cannot-open-kept)
+  ;; a frame of the session that cannot open (a window refused by the desktop) leaves its section
+  ;; and those after it in the session as they were
+  (let ((tuatara-user:*keep-session* t)
+        (tuatara.defaults::*modal-editing* nil)
+        (text (with-output-to-string (out)
+                (format out "tuatara session 1~%")
+                (dotimes (i 3) (format out "frame~%window 1 ~d scratch 0 *scratch*~%" i))
+                (format out "end~%"))))
+    (forget-session-buffers)
+    (alexandria:write-string-into-file text (tuatara.defaults::session-path) :if-exists :supersede)
+    (let ((editor (with-functions-replaced ((tuatara.command:open-frame
+                                             (lambda (&rest arguments)
+                                               (declare (ignore arguments))
+                                               (error "No window could be opened"))))
+                    (let ((f (tuatara.frontend.fake:make-fake-frontend :width 80 :height 20 :font-steps 0)))
+                      (tuatara.command:run-editor f :setup #'tuatara.defaults:install-defaults)))))
+      (is = 1 (length (tuatara.command:editor-frames editor))))
+    (let ((written (alexandria:read-file-into-string (tuatara.defaults::session-path))))
+      (true (search (format nil "frame~%window 1 1 scratch 0 *scratch*~%frame~%window 1 2 scratch 0 *scratch*~%end")
+                    written)
+            "~a" written))
+    (forget-session-buffers)))
+
 (define-test (session never-evaluated-and-off)
   (with-test-directory (dir)
     (let ((one (namestring (merge-pathnames "one.txt" dir))))
