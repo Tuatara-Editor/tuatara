@@ -871,10 +871,6 @@ when JOB was stopped."
 
 ;;; Jobs
 
-(defun sort-job-of (buffer)
-  "The sort or filter running in BUFFER, or NIL."
-  (tuatara.runtime:running-job buffer 'sort-job))
-
 (defun sort-progress (job)
   "How much of JOB is done, from 0 to 99 while it runs."
   (tuatara.runtime:running-percent (car (sort-job-progress job)) (sort-job-total job)))
@@ -1625,7 +1621,7 @@ gives up the result."
   "Job highlight function: the region a sort or filter running in WINDOW's
 buffer is changing, in ROWS only (SORT-SHADING)."
   (declare (ignore editor))
-  (let ((job (sort-job-of (tuatara.display:window-buffer window))))
+  (let ((job (tuatara.runtime:running-job (tuatara.display:window-buffer window) 'sort-job)))
     (when (and job (plusp (length rows)))
       (sort-shading job (tuatara.display:row-start (aref rows 0))
                     (tuatara.display:row-end (aref rows (1- (length rows))))))))

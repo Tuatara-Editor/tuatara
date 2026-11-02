@@ -141,10 +141,6 @@ COUNT is a number, or a job (REWRITE) whose HIDDEN-LEFT counts them."
                  (t 0))))
     (if (plusp n) (format nil "; ~:d hidden in folds left alone" n) "")))
 
-(defun rewrite-of (buffer)
-  "The replacement or count running in BUFFER, or NIL."
-  (tuatara.runtime:running-job buffer 'rewrite))
-
 (defun rewrite-progress (job)
   "How much of JOB's scope, its pieces, is done, from 0 to 100."
   (let ((size (loop for p across (rewrite-pieces job) sum (- (rewrite-piece-end p) (rewrite-piece-start p)))))
@@ -891,7 +887,7 @@ changing, in ROWS only, :JOB-QUEUED, only what the rows show looked at
 gigabytes). A count changes nothing, and is not shown."
   (declare (ignore editor))
   (let* ((buffer (tuatara.display:window-buffer window))
-         (job (rewrite-of buffer)))
+         (job (tuatara.runtime:running-job buffer 'rewrite)))
     (when (and job (not (rewrite-count-only job)) (plusp (length rows)))
       (loop for (from . to) in (tuatara.display:shown-ranges rows :buffer buffer)
             nconc (funcall (or (rewrite-shade job) #'job-shading) job from to)))))

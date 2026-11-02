@@ -158,10 +158,6 @@ puts a line break in it."
       (draw-results buffer)
       (setf (tuatara.buffer:buffer-point buffer) (min point (tuatara.buffer:buffer-size buffer))))))
 
-(defun results-writing (buffer)
-  "The job writing the lines of BUFFER, lines found, into their files, or NIL."
-  (tuatara.runtime:running-job buffer 'write-back-job))
-
 (define-command search-results-edit ()
   "Make the text after path:line: of the lines found changeable, with the keys
 that change text: the path and line number stay as they are, and a line is
@@ -179,7 +175,8 @@ revert or leave are typed text meanwhile."
 (define-command search-results-discard ()
   "Throw away the changes made to the lines found, and make them read-only again; the files are not touched."
   (let ((buffer (current-buffer)))
-    (cond ((results-writing buffer) (message "Lines are being written: \\[stop-job] stops it first"))
+    (cond ((tuatara.runtime:running-job buffer 'write-back-job)
+           (message "Lines are being written: \\[stop-job] stops it first"))
           ((not (results-editing-p buffer)) (message "No lines are being changed"))
           (t (draw-results buffer)
              (message "Changes thrown away")))))
@@ -507,7 +504,7 @@ the background, the editor free meanwhile, \\[stop-job] stopping it; lines writt
 and those not written stay changed here. A line listed twice and changed to the same text is written
 once."
   (let ((buffer (current-buffer)))
-    (cond ((results-writing buffer) (message "Lines are being written already"))
+    (cond ((tuatara.runtime:running-job buffer 'write-back-job) (message "Lines are being written already"))
           ((not (results-editing-p buffer))
            (message "No lines are being changed: \\<search-results-mode>\\[search-results-edit] makes them changeable"))
           (t (let ((changes (results-changes buffer)))

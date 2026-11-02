@@ -293,7 +293,7 @@ large buffer is done in the background, as \\[replace-regexp] does it."
                                          t low (min high (tuatara.buffer:buffer-end b)) "trailing whitespace"
                                          (min origin (tuatara.buffer:buffer-end b)) :flags "g"))))
           ;; in the background the job says what it does; here, what was done
-          (unless (rewrite-of b)
+          (unless (tuatara.runtime:running-job b 'rewrite)
             (cond ((and (zerop lines) (zerop blank-lines)) (message "No trailing whitespace"))
                   ((zerop blank-lines) (message "Deleted trailing whitespace on ~:d line~:p" lines))
                   ((zerop lines) (message "Deleted ~:d blank line~:p at the end" blank-lines))
