@@ -1486,9 +1486,10 @@ serves it alone."
 
 (defmacro without-shared-blocks (&body body)
   "Run BODY as on a file system that cannot share blocks between files (ext4),
-large files mapped from 1,024 octets on."
+large files mapped from 1,024 octets on, with saving in place turned on."
   `(let ((tuatara.io::*block-sharing-file-systems* '())
-         (tuatara.io:*memory-read-limit* 1024))
+         (tuatara.io:*memory-read-limit* 1024)
+         (tuatara-user:*save-in-place* t))
      ,@body))
 
 (defun journal-there-p (path)
@@ -1556,8 +1557,10 @@ length, and a line inserted near the end. Returns the text it has then."
         ;; in the background as well, where the save's own thread sees no shared blocks
         (put-file path *long-lines-text*)
         (let ((inode (tuatara.io:stamp-ino (tuatara.io:path-stamp path)))
-              (shared (sb-ext:symbol-global-value 'tuatara.io::*block-sharing-file-systems*)))
-          (setf (sb-ext:symbol-global-value 'tuatara.io::*block-sharing-file-systems*) '())
+              (shared (sb-ext:symbol-global-value 'tuatara.io::*block-sharing-file-systems*))
+              (in-place (sb-ext:symbol-global-value 'tuatara-user:*save-in-place*)))
+          (setf (sb-ext:symbol-global-value 'tuatara.io::*block-sharing-file-systems*) '()
+                (sb-ext:symbol-global-value 'tuatara-user:*save-in-place*) t)
           (unwind-protect
                (with-visited (b path)
                  (let* ((new (edit-far-apart b))
@@ -1568,7 +1571,25 @@ length, and a line inserted near the end. Returns the text it has then."
                    (is = inode (tuatara.io:stamp-ino (tuatara.io:path-stamp path)))
                    (is string= new (file-text path))
                    (false (tuatara.buffer:buffer-modified-p b))))
-            (setf (sb-ext:symbol-global-value 'tuatara.io::*block-sharing-file-systems*) shared)))
+            (setf (sb-ext:symbol-global-value 'tuatara.io::*block-sharing-file-systems*) shared
+                  (sb-ext:symbol-global-value 'tuatara-user:*save-in-place*) in-place)))
+        (tuatara.io:finish-leases)
+        (is equal '("big.txt") (directory-names dir))))))
+
+(define-test (visiting-and-saving saved-whole-unless-saving-in-place-is-on)
+  ;; saving in place is turned on in the init file: as standard, a save is a new file put in place
+  (with-test-directory (dir)
+    (let ((tuatara.io::*block-sharing-file-systems* '())
+          (tuatara.io:*memory-read-limit* 1024))
+      (false tuatara-user:*save-in-place*)
+      (let* ((path (put-file (merge-pathnames "big.txt" dir) *long-lines-text*))
+             (inode (tuatara.io:stamp-ino (tuatara.io:path-stamp path))))
+        (with-visited (b path)
+          (let ((new (edit-far-apart b)))
+            (tuatara.io:save-buffer-file b)
+            (isnt = inode (tuatara.io:stamp-ino (tuatara.io:path-stamp path)))
+            (is string= new (file-text path))
+            (is string= new (tuatara.buffer:buffer-string b))))
         (tuatara.io:finish-leases)
         (is equal '("big.txt") (directory-names dir))))))
 

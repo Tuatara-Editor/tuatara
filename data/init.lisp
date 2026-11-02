@@ -726,6 +726,13 @@
   ;; Buffers of up to 1 GB copied. Not set: 256 MB.
   ;; (setf *auto-save-largest* (* 1024 1024 1024))
 
+  ;; Large files on ext4 saved by writing only what changed, into the file
+  ;; itself: one changed line of a 10 GB file in a few hundredths of a second,
+  ;; not a minute. The cost: after a crash or power cut during such a save,
+  ;; another program may find the file half saved until Tuatara opens it again
+  ;; and puts it back. Not set: nil: every save a new file, whole.
+  ;; (setf *save-in-place* t)
+
   ;; C-x i (insert-note-template) reads other files of up to 64 MB. Not set: 16
   ;; MB.
   ;; (setf *insert-file-limit* (* 64 1024 1024))

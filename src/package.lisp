@@ -37,7 +37,7 @@ available unqualified, and the public API of TUATARA is used.")
            #:*debug-mode* #:*debug-log-max* #:*idle-collection-seconds* #:*csv-separator* #:*list-header-lock* #:*csv-header*
            ;; saving work and the session
            #:*auto-save* #:*auto-save-directory* #:*auto-save-idle* #:*auto-save-interval* #:*auto-save-largest* #:*keep-session*
-           #:*keep-session-interval*
+           #:*keep-session-interval* #:*save-in-place*
            ;; encryption, and wiping files
            #:*gpg-program* #:*gpg-passphrase-from* #:*metadata-look-up-key-owners* #:*wipe-passes* #:*cache-directory* #:*state-directory* #:*packages-directory* #:*package-most-octets* #:*archive-seconds* #:*archive-free-reserve* #:*archive-listing-limit* #:*differences-limit* #:*gpg-loopback-warning*
            ;; language servers and formatters

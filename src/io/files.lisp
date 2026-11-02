@@ -33,10 +33,10 @@
 ;;;; rename the file system refuses, and the pseudo file systems are written in
 ;;;; place instead, after a backup copy that is kept if the write fails. A save
 ;;;; never overwrites a file changed since it was read without being told to.
-;;;; Large buffers are saved in the background. On a file system that cannot
-;;;; share blocks, a large file the buffer reads where it is has only its
-;;;; changes written, in place, after a journal of what they overwrite, when
-;;;; that writes less (in-place.lisp).
+;;;; Large buffers are saved in the background. With *SAVE-IN-PLACE*, on a
+;;;; file system that cannot share blocks, a large file the buffer reads where
+;;;; it is has only its changes written, in place, after a journal of what they
+;;;; overwrite, when that writes less (in-place.lisp).
 ;;;;
 ;;;; Copying octets that come from the file (the unchanged parts of a large
 ;;;; buffer) is left to the kernel (copy_file_range), which shares blocks

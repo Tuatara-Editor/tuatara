@@ -5,8 +5,9 @@
 ;;;; one but btrfs, XFS, bcachefs and ZFS), a new file renamed over the old
 ;;;; costs a copy of every octet: a 10 GB file written whole for one line. A
 ;;;; large file the buffer reads where it is (mapped) holds most of the new
-;;;; text already where it belongs, so where the changes, with the journal
-;;;; below, come to less than two thirds of the file it is saved in place:
+;;;; text already where it belongs, so with *SAVE-IN-PLACE*, where the changes,
+;;;; with the journal below, come to less than two thirds of the file, it is
+;;;; saved in place:
 ;;;;
 ;;;;   1. The octets the save overwrites or cuts off, in whole pages, are
 ;;;;      copied into a file with no name beside the file, after a header
@@ -22,8 +23,9 @@
 ;;;; once step 4 is. In between, after a crash or a power cut, it may be part
 ;;;; old and part new, with the journal beside it: the next time Tuatara opens
 ;;;; the file, or saves or reverts it, it puts the old file back exactly from
-;;;; the journal before reading it (RECOVER-FROM-JOURNAL). Other programs that
-;;;; read the file before then see it part saved. A save that fails, or is
+;;;; the journal before reading it (RECOVER-FROM-JOURNAL), whatever
+;;;; *SAVE-IN-PLACE* is by then. Other programs that read the file before then
+;;;; see it part saved. A save that fails, or is
 ;;;; stopped, while it writes the file puts the old one back at once.
 ;;;; FALLOC_FL_INSERT_RANGE and COLLAPSE_RANGE, which open or close a gap of
 ;;;; whole blocks, are not used: an edit of text is almost never a whole
@@ -31,11 +33,30 @@
 
 (in-package #:tuatara.io)
 
-(defvar *save-in-place* t
-  "True to save a large file on a file system that cannot share blocks by
-writing only what changed, in place, after a journal of what it overwrites
-\(this file's header), where that writes less than a new file would. Tests
-turn it off to take the other way.")
+(defvar *save-in-place* nil
+  "True to save a large file by writing only what changed into the file
+itself, where that is quicker than writing it whole; NIL, as standard, to
+write every save as a new file put in the old one's place.
+
+It is used on ext4 and the other file systems that cannot share blocks
+between files (all but btrfs, XFS, bcachefs and ZFS, where a new file costs
+no more than the change anyway), for a file of over 64 MB on a local drive,
+when the edit keeps the length of the text or lies in about the last third
+of the file. A 10 GB file with one line changed is then saved in a few
+hundredths of a second, where writing it whole takes about a minute. An
+edit nearer the start moves all that follows it, so it is saved as a new
+file either way.
+
+What such a save will overwrite is first copied into .NAME.tuatara-journal
+beside the file and put on the disk; the journal goes once the changes are
+on the disk too. The trade-off: should the computer crash or lose power
+during such a save, another program that reads the file before Tuatara
+opens it again may find it half saved. Tuatara itself always gets the old
+file or the new one: the next time it opens, saves or reverts the file, it
+puts the old file back exactly from the journal, whatever this setting is
+then. With NIL, every program finds the old file or the new one. A file
+opened safely, or in an evidence folder, is never written, so never put
+back either.")
 
 (defvar *in-place-most* 2/3
   "The most a save in place writes, journal and changes together, as a share

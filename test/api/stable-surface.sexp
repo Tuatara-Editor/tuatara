@@ -2177,6 +2177,7 @@
 (:setting "*SANDBOX-SECCOMP*")
 (:setting "*SANDBOX-SECONDS*")
 (:setting "*SANDBOX-TOTAL-MEMORY*")
+(:setting "*SAVE-IN-PLACE*")
 (:setting "*SAVE-PLACE-LIMIT*")
 (:setting "*SAVE-PLACE-MODE*")
 (:setting "*SCROLL-MARGIN*")
