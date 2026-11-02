@@ -991,11 +991,12 @@ for a status never to follow it: then \\<git-status-mode>\\[revert-buffer] reads
 (defun git-statuses-shown ()
   "The statuses shown in the editor's windows, each once."
   (and *editor*
-       (remove-duplicates
-        (loop for window in (frames-windows *editor*)
-              for buffer = (tuatara.display:window-buffer window)
-              when (typep (buffer-major-mode buffer) 'git-status-mode)
-                collect buffer))))
+       (let ((statuses '()))
+         (do-frames-windows (window *editor*)
+           (let ((buffer (tuatara.display:window-buffer window)))
+             (when (typep (buffer-major-mode buffer) 'git-status-mode)
+               (pushnew buffer statuses))))
+         (nreverse statuses))))
 
 (defun git-watched-folders ()
   "The folders of git's own files (*GIT-WATCHED-FILES*) of each status shown,

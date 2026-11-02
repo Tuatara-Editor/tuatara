@@ -10,19 +10,43 @@
 
 (in-package #:tuatara.command)
 
+(defun %map-frames-windows (function editor)
+  "Call FUNCTION with each window of every frame of EDITOR, those of the frame
+worked in first, each frame's from the top left, making nothing to go
+through them (DO-FRAMES-WINDOWS)."
+  (declare (function function))
+  (labels ((walk (area)
+             (if (typep area 'tuatara.display:window)
+                 (funcall function area)
+                 (dolist (child (tuatara.display:split-children area))
+                   (walk child))))
+           (walk-frame (frame)
+             (let ((window (frame-window frame)))
+               (when window (walk (tuatara.display:area-root window))))))
+    (let ((current (editor-frame editor)))
+      (walk-frame current)
+      (dolist (frame (editor-frames editor))
+        (unless (eq frame current) (walk-frame frame))))))
+
+(defmacro do-frames-windows ((window &optional (editor '*editor*)) &body body)
+  "Run BODY with WINDOW bound to each window of every frame of EDITOR, those of
+the frame worked in first, each frame's from the top left, making nothing to
+go through them however many frames there are: for what holds wherever a
+buffer is shown, as a list kept current while it is in sight."
+  (let ((visit (gensym "VISIT")))
+    `(flet ((,visit (,window) ,@body))
+       (declare (dynamic-extent #',visit))
+       (%map-frames-windows #',visit ,editor))))
+
 (defun frames-windows (&optional (editor *editor*))
   "Every window of every frame of EDITOR, each frame's from the top left, those
-of the frame worked in first: for what holds wherever a buffer is shown, as
-a window keeping its place while the buffer changes."
-  (let ((frames (editor-frames editor)))
-    (if (null (rest frames))
-        (editor-windows editor)
-        (let ((current (editor-frame editor)))
-          (append (editor-windows editor)
-                  (loop for frame in frames
-                        for window = (frame-window frame)
-                        unless (or (eq frame current) (null window))
-                          append (tuatara.display:area-windows (tuatara.display:area-root window))))))))
+of the frame worked in first, as a list (DO-FRAMES-WINDOWS goes through them
+without one): for what holds wherever a buffer is shown, as a window keeping
+its place while the buffer changes."
+  (let ((windows '()))
+    (do-frames-windows (window editor)
+      (push window windows))
+    (nreverse windows)))
 
 (defun select-frame (editor frame)
   "Make FRAME, one of EDITOR's frames, the one worked in. The selected window

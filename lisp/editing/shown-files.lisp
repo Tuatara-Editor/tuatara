@@ -68,7 +68,7 @@ called once, the buffer's local KEY marking it done, for a file of at most
 MOST octets; AGAIN, a function of the buffer, called each time after, when
 given. Never a file opened safely, whose surroundings may not be read, nor
 one whose text no program may see (decrypted: :PLAINTEXT)."
-  (dolist (window (frames-windows editor))
+  (do-frames-windows (window editor)
     (let ((b (tuatara.display:window-buffer window)))
       (when (and (tuatara.buffer:buffer-file b)
                  (not (tuatara.io:safe-visit-p b))

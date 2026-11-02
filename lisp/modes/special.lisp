@@ -953,7 +953,7 @@ one), when given, else as \\[revert-buffer] makes it (its :REFILL)."
 window of EDITOR shows and whose key has changed since it was filled; a list
 whose key is the same is left as it is. Wants no tick of its own."
   (let ((seen '()))
-    (dolist (window (frames-windows editor))
+    (do-frames-windows (window editor)
       (let ((buffer (and window (tuatara.display:window-buffer window))))
         (when (and buffer (not (member buffer seen)))
           (push buffer seen)

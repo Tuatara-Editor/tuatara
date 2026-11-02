@@ -35,6 +35,7 @@
            #:editor-minibuffer-prompt #:editor-minibuffer-text #:editor-minibuffer-point
            ;; windows
            #:editor-windows #:frames-windows #:editor-frames #:editor-frame #:frame-window #:open-frame #:*most-frames* #:remove-frame
+           #:do-frames-windows
            #:select-frame #:call-in-frame #:*display-generation* #:editor-job-waker #:buffer-window #:buffer-windows #:editor-selections #:one-window-p #:fit-windows #:select-window #:split-window
            #:remove-window #:only-window #:swap-windows #:rotate-window-states #:window-towards
            #:window-cursor-cell #:window-at-cell #:window-text-cell #:window-cell-position #:most-recent-window
