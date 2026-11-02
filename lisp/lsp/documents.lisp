@@ -6,18 +6,13 @@
 ;;;; trust (trust.lisp: M-x lsp asks, once, and remembers; *LSP-TRUSTED-PROJECTS*),
 ;;;; and never for a file opened safely, in *SAFE-DIRECTORIES*, the text of an
 ;;;; encrypted file, or one not all UTF-8. A buffer of a project that has one
-;;;; is opened in it, and each change sent once typing pauses (*LSP-SYNC-DELAY*):
+;;;; is opened in it, and each change sent once typing pauses (*TYPING-PAUSE*):
 ;;;; only what changed, to a server that takes changes so, else its whole
 ;;;; text. What a server says of a place is moved with the text typed
 ;;;; meanwhile (PLACED), so that nothing it marks jumps about or stands in the
 ;;;; wrong place.
 
 (in-package #:tuatara.defaults)
-
-(defvar *lsp-sync-delay* 0.5
-  "The seconds after the last change to a buffer before its text is sent to its
-language servers: what they find, hint at and colour is brought up to date
-that long after typing stops.")
 
 (defvar *lsp-largest-document* (* 8 1024 1024)
   "The largest document, in octets, given to a language server: a file's
@@ -596,9 +591,9 @@ what it showed and SKIPPED what SKIPPED is now."
         (push (cons buffer (get-internal-real-time)) *lsp-changed*))))
 
 (defun lsp-send-changes (&key now)
-  "Send the text of each buffer changed *LSP-SYNC-DELAY* seconds ago or more
+  "Send the text of each buffer changed *TYPING-PAUSE* seconds ago or more
 \(or at once, with NOW) to its servers that want it."
-  (let ((due (- (get-internal-real-time) (* *lsp-sync-delay* internal-time-units-per-second))))
+  (let ((due (- (get-internal-real-time) (* *typing-pause* internal-time-units-per-second))))
     (dolist (entry *lsp-changed*)
       (destructuring-bind (buffer . when) entry
         (when (or now (<= when due) (not (live-buffer-p buffer)))
@@ -608,10 +603,10 @@ what it showed and SKIPPED what SKIPPED is now."
 
 (defun lsp-changes-due-in ()
   "The seconds until the soonest change waiting in *LSP-CHANGED* is due to be
-sent (*LSP-SYNC-DELAY* after it was made), or NIL when none waits."
+sent (*TYPING-PAUSE* after it was made), or NIL when none waits."
   (when *lsp-changed*
     (let ((soonest (reduce #'min *lsp-changed* :key #'cdr)))
-      (max 0.01 (- *lsp-sync-delay*
+      (max 0.01 (- *typing-pause*
                    (/ (- (get-internal-real-time) soonest) internal-time-units-per-second))))))
 
 (defun lsp-send-text (buffer)

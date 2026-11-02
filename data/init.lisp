@@ -517,8 +517,8 @@
   ;; (setf *line-record-modes* (cons 'ini-mode *line-record-modes*))
   ;; While a pattern is typed (C-s, C-x / s), a text larger than 64 MB has its
   ;; matches counted and filtered once typing pauses for 1/2 s, the lines in
-  ;; the window shown at once; a smaller one at each key. Not set: 1/2 and
-  ;; 64 MB.
+  ;; the window shown at once; a smaller one at each key. Changes are sent to
+  ;; language servers once typing pauses too. Not set: 1/2 and 64 MB.
   ;; (setf *typing-pause* 3/10)
   ;; (setf *typing-pause-octets* (* 16 1024 1024))
 
@@ -1287,9 +1287,6 @@
   ;; A formatter stopped after 60 seconds, nothing changed. Not set: 30.
   ;; (setf *format-seconds* 60)
 
-  ;; The text sent to servers 1 second after typing stops. Not set: 0.5.
-  ;; (setf *lsp-sync-delay* 1)
-
   ;; What is known where the cursor rests shown after 1 second. Not set: 0.5.
   ;; (setf *lsp-idle-delay* 1)
 
@@ -1335,29 +1332,12 @@
   ;; The face a kind of name is coloured in.
   ;; (push '("parameter" . :variable.other) *lsp-semantic-faces*)
 
-  ;; More than 200 edits at once sent as the whole text. Not set: 1000.
-  ;; (setf *lsp-most-changes* 200)
-
   ;; Servers not told of their project's files changed by other programs. Not set:
   ;; t.
   ;; (setf *lsp-watch-files* nil)
 
   ;; build/ folders not watched either (target, node_modules ...)
   ;; (push "build" *lsp-watch-skipped*)
-
-  ;; Up to 20,000 folders of a project watched. Not set: 5000.
-  ;; (setf *lsp-watched-most* 20000)
-
-  ;; M-x lsp-events keeps each server's last 2000 messages. Not set: 500; 0: none.
-  ;; (setf *lsp-events-kept* 2000)
-
-  ;; And the first 10,000 characters of each. Not set: 2000.
-  ;; (setf *lsp-event-length* 10000)
-
-  ;; The places a question to a server names (references, definitions) show
-  ;; their lines from up to 64 MB of files read; past it, the places alone.
-  ;; Not set: 16 MB.
-  ;; (setf *lsp-location-files-total* (* 64 1024 1024))
 
   ;;; Git (C-x g)
 

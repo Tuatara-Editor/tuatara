@@ -107,7 +107,9 @@ keys are played a search runs on the editor's thread until it ends or
 search's matches (\\[regex-search-forward]) and a filter being typed
 \(\\[search-filter-regex]), its lines in the window shown at once. Typing so
 stays quick on a text of gigabytes, the count and the rest coming a moment
-after the last key; on a smaller text they come as each key is typed.")
+after the last key; on a smaller text they come as each key is typed. A
+buffer's changes are sent to its language servers that long after typing in
+it stops, and what they find brought up to date then.")
 
 (defvar *typing-pause-octets* (* 64 1024 1024)
   "The largest text, in octets, whose matches are counted and filtered as each

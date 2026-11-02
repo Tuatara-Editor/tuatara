@@ -656,7 +656,7 @@ again; \\[quit-window] closes."
   "List the last messages to and from the language servers the current buffer
 is open in (all those running when it is in none), the newest last, and what
 each said on its error output: to see what a server was asked and answered
-when it does not do what it should. *lsp-events-kept* says how many are kept."
+when it does not do what it should; the last 500 of each are kept."
   (let* ((servers (or (buffer-servers (current-buffer)) *lsp-servers*))
          (list (buffer-in-mode "*Language server events*" 'lsp-events-mode)))
     (render-pieces list (lambda () (lsp-events-pieces servers)) :point :start)

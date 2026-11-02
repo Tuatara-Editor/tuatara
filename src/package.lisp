@@ -42,10 +42,10 @@ available unqualified, and the public API of TUATARA is used.")
            #:*gpg-program* #:*gpg-passphrase-from* #:*metadata-look-up-key-owners* #:*wipe-passes* #:*cache-directory* #:*state-directory* #:*packages-directory* #:*package-most-octets* #:*vc-gutter-max-bytes* #:*conflict-markers-max-bytes* #:*archive-seconds* #:*archive-free-reserve* #:*archive-listing-limit* #:*differences-limit* #:*gpg-loopback-warning*
            ;; language servers and formatters
            #:*language-servers* #:*language-formatters* #:*lsp-trusted-projects* #:*lsp-languages* #:*lsp-signature-help* #:*lsp-inlay-hints*
-           #:*lsp-wait* #:*lsp-events-kept* #:*lsp-watch-files* #:*lsp-watch-skipped* #:*lsp-watched-most* #:*lsp-most-changes* #:*lsp-event-length*
-           #:*lsp-sync-delay* #:*lsp-idle-delay* #:*lsp-hover-echo* #:*lsp-highlight-symbol* #:*lsp-code-lenses* #:*lsp-outline*
+           #:*lsp-wait* #:*lsp-watch-files* #:*lsp-watch-skipped*
+           #:*lsp-idle-delay* #:*lsp-hover-echo* #:*lsp-highlight-symbol* #:*lsp-code-lenses* #:*lsp-outline*
            #:*lsp-diagnostics-display* #:*lsp-diagnostics-style* #:*lsp-semantic-tokens* #:*lsp-semantic-faces* #:*format-on-save*
-           #:*format-in-sandbox* #:*format-seconds* #:*lsp-location-files-total*
+           #:*format-in-sandbox* #:*format-seconds*
            ;; the programs that run the grammars
            #:*syntax-helper-memory* #:*syntax-helper-wait* #:*syntax-helpers-most* #:*syntax-helper-unconfined*
            #:*grammars-on*
