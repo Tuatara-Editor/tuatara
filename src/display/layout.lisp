@@ -906,6 +906,7 @@ O(WIDTH × HEIGHT), and for each row scrolled sideways O(*SCREEN-COLUMN-REACH*
                  (setf position (row-end row)
                        continuation wrapped)
                  (when finished (return))))
+      (when bidi (forget-unused-paragraphs bidi rope))
       (let ((result (coerce rows 'simple-vector)))
         (when highlights (apply-highlights result highlights))
         result))))

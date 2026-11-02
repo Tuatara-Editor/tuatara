@@ -253,6 +253,8 @@ in the window's history, unless REMEMBER is false. Returns BUFFER."
                                       :bias :before)
             (window-hscroll window) 0
             (window-goal-column window) nil
+            ;; nothing of the text shown before kept for its right-to-left lines
+            (window-bidi window) nil
             (window-history window) (remove entry (window-history window)))
       (if (window-point-anchor window)
           (setf (window-point-anchor window) (tuatara.text:make-anchor version point :bias :after))

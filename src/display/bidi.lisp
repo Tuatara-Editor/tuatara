@@ -104,19 +104,19 @@ one (PARTNER); for a line, the levels it is shown at (LINE) and the order
   (size 0 :type fixnum)
   (classes #() :type simple-vector)
   (types #() :type simple-vector)
-  (codes (make-array 0 :element-type 'fixnum) :type (simple-array fixnum (*)))
+  (codes (make-array 0 :element-type '(signed-byte 32)) :type (simple-array (signed-byte 32) (*)))
   (levels (make-array 0 :element-type '(unsigned-byte 8)) :type (simple-array (unsigned-byte 8) (*)))
   (explicit (make-array 0 :element-type '(unsigned-byte 8)) :type (simple-array (unsigned-byte 8) (*)))
-  (match (make-array 0 :element-type 'fixnum) :type (simple-array fixnum (*)))
-  (run-of (make-array 0 :element-type 'fixnum) :type (simple-array fixnum (*)))
-  (stack (make-array 0 :element-type 'fixnum) :type (simple-array fixnum (*)))
-  (run-first (make-array 0 :element-type 'fixnum) :type (simple-array fixnum (*)))
-  (run-last (make-array 0 :element-type 'fixnum) :type (simple-array fixnum (*)))
-  (sequence (make-array 0 :element-type 'fixnum) :type (simple-array fixnum (*)))
+  (match (make-array 0 :element-type '(signed-byte 32)) :type (simple-array (signed-byte 32) (*)))
+  (run-of (make-array 0 :element-type '(signed-byte 32)) :type (simple-array (signed-byte 32) (*)))
+  (stack (make-array 0 :element-type '(signed-byte 32)) :type (simple-array (signed-byte 32) (*)))
+  (run-first (make-array 0 :element-type '(signed-byte 32)) :type (simple-array (signed-byte 32) (*)))
+  (run-last (make-array 0 :element-type '(signed-byte 32)) :type (simple-array (signed-byte 32) (*)))
+  (sequence (make-array 0 :element-type '(signed-byte 32)) :type (simple-array (signed-byte 32) (*)))
   (ts #() :type simple-vector)
-  (partner (make-array 0 :element-type 'fixnum) :type (simple-array fixnum (*)))
+  (partner (make-array 0 :element-type '(signed-byte 32)) :type (simple-array (signed-byte 32) (*)))
   (line (make-array 0 :element-type '(unsigned-byte 8)) :type (simple-array (unsigned-byte 8) (*)))
-  (order (make-array 0 :element-type 'fixnum) :type (simple-array fixnum (*)))
+  (order (make-array 0 :element-type '(signed-byte 32)) :type (simple-array (signed-byte 32) (*)))
   (stack-level (make-array (+ 2 +bidi-max-depth+) :element-type 'fixnum) :type (simple-array fixnum (*)))
   (stack-override (make-array (+ 2 +bidi-max-depth+) :initial-element nil) :type simple-vector)
   (stack-isolate (make-array (+ 2 +bidi-max-depth+) :initial-element nil) :type simple-vector)
@@ -146,31 +146,38 @@ one (PARTNER); for a line, the levels it is shown at (LINE) and the order
       (documentation 'bidi-scratch-open-code 'function) "The brackets' stack: the closing bracket awaited."
       (documentation 'bidi-scratch-open-at 'function) "The brackets' stack: where the opening one is.")
 
-(defun bidi-scratch-room (scratch n)
-  "Make SCRATCH large enough for N characters, its arrays made anew, twice as
-large, only when it is not. Returns SCRATCH."
+(defun bidi-scratch-room (scratch n &optional (keep 0))
+  "Make SCRATCH large enough for N characters, its arrays made anew, half as
+large again as N, only when it is not, the CLASSES and CODES of its first KEEP
+characters kept. Returns SCRATCH."
   (let ((size (bidi-scratch-size scratch)))
     (when (> n size)
-      (let ((size (max n (* 2 size) 64)))
-        (flet ((fixnums () (make-array size :element-type 'fixnum))
+      (let ((size (max (floor (* 3 n) 2) (floor (* 3 size) 2) 64))
+            (classes (bidi-scratch-classes scratch))
+            (codes (bidi-scratch-codes scratch)))
+        (flet ((indices () (make-array size :element-type '(signed-byte 32)))
                (octets () (make-array size :element-type '(unsigned-byte 8))))
           (setf (bidi-scratch-size scratch) size
-                (bidi-scratch-classes scratch) (make-array size :initial-element :l)
+                (bidi-scratch-classes scratch) (replace (make-array size :initial-element :l) classes :end2 keep)
                 (bidi-scratch-types scratch) (make-array size :initial-element :l)
                 (bidi-scratch-ts scratch) (make-array size :initial-element :l)
-                (bidi-scratch-codes scratch) (fixnums)
+                (bidi-scratch-codes scratch) (replace (indices) codes :end2 keep)
                 (bidi-scratch-levels scratch) (octets)
                 (bidi-scratch-explicit scratch) (octets)
                 (bidi-scratch-line scratch) (octets)
-                (bidi-scratch-match scratch) (fixnums)
-                (bidi-scratch-run-of scratch) (fixnums)
-                (bidi-scratch-stack scratch) (fixnums)
-                (bidi-scratch-run-first scratch) (fixnums)
-                (bidi-scratch-run-last scratch) (fixnums)
-                (bidi-scratch-sequence scratch) (fixnums)
-                (bidi-scratch-partner scratch) (fixnums)
-                (bidi-scratch-order scratch) (fixnums))))))
+                (bidi-scratch-match scratch) (indices)
+                (bidi-scratch-run-of scratch) (indices)
+                (bidi-scratch-stack scratch) (indices)
+                (bidi-scratch-run-first scratch) (indices)
+                (bidi-scratch-run-last scratch) (indices)
+                (bidi-scratch-sequence scratch) (indices)
+                (bidi-scratch-partner scratch) (indices)
+                (bidi-scratch-order scratch) (indices))))))
   scratch)
+
+(defun bidi-scratch-octets (scratch)
+  "The octets SCRATCH's arrays take, about."
+  (* (bidi-scratch-size scratch) (+ (* 3 8) (* 9 4) 3)))
 
 ;;; The levels of a paragraph (rules P2 to I2)
 
@@ -736,40 +743,130 @@ asked the same, else looked for and remembered."
       (setf (bidi-cache-scan-rope cache) rope (bidi-cache-scan-from cache) from (bidi-cache-scan-to cache) to
             (bidi-cache-scan-found cache) (right-to-left-between-p rope from to))))
 
-(defun free-paragraph (cache)
-  "A paragraph of CACHE to fill: one of a text no longer shown, else a new
-one while it keeps fewer than +PARAGRAPHS-KEPT+, else the next in turn."
+(defparameter *bidi-paragraph-octets* (* 8 1024 1024)
+  "The most octets the paragraphs a window keeps worked out (BIDI-CACHE) take
+in all: past it, those of other stretches are let go of, the ones of a text
+no longer shown first. With the room they are worked out in, a window keeps
+no more than about twice this for right-to-left text, however long its
+lines.")
+
+(defparameter *bidi-paragraph-kept-size* 65536
+  "The most characters a paragraph of a text no longer shown keeps room for
+after a layout (FORGET-UNUSED-PARAGRAPHS): one larger is let go of.")
+
+(defun paragraph-octets (paragraph)
+  "The octets PARAGRAPH's arrays take, about."
+  (+ (* 8 (length (bidi-paragraph-bytes paragraph))) (* 8 (length (bidi-paragraph-classes paragraph)))
+     (length (bidi-paragraph-levels paragraph))))
+
+(defun bidi-cache-octets (cache)
+  "The octets what CACHE keeps takes, about: its paragraphs and the room they
+are worked out in."
+  (+ (bidi-scratch-octets (bidi-cache-scratch cache))
+     (loop for paragraph across (bidi-cache-paragraphs cache) sum (paragraph-octets paragraph))))
+
+(defun release-paragraph (paragraph)
+  "Let go of PARAGRAPH's text and arrays, for it to be filled anew."
+  (setf (bidi-paragraph-rope paragraph) nil
+        (bidi-paragraph-count paragraph) 0
+        (bidi-paragraph-bytes paragraph) (load-time-value (make-array 0 :element-type 'fixnum) t)
+        (bidi-paragraph-classes paragraph) (load-time-value (vector) t)
+        (bidi-paragraph-levels paragraph) (load-time-value (make-array 0 :element-type '(unsigned-byte 8)) t)))
+
+(defun forget-unused-paragraphs (cache rope)
+  "Let go of what CACHE keeps of any text but ROPE, the one just laid out:
+its paragraphs' hold on that text, and the arrays of those larger than
+*BIDI-PARAGRAPH-KEPT-SIZE*, so that a text let go of elsewhere (a buffer
+killed, reverted, or shown no more) is not kept for them. Called after each
+layout given CACHE."
+  (setf (bidi-cache-rope cache) rope)
+  (unless (eq (bidi-cache-scan-rope cache) rope)
+    (setf (bidi-cache-scan-rope cache) nil))
+  (loop for paragraph across (bidi-cache-paragraphs cache)
+        unless (eq (bidi-paragraph-rope paragraph) rope)
+          do (if (> (length (bidi-paragraph-bytes paragraph)) *bidi-paragraph-kept-size*)
+                 (release-paragraph paragraph)
+                 (setf (bidi-paragraph-rope paragraph) nil))))
+
+(defun free-paragraph (cache octets)
+  "A paragraph of CACHE to fill, to take about OCTETS: one of a text no longer
+shown, else a new one while it keeps fewer than +PARAGRAPHS-KEPT+ and those
+OCTETS more keep it within *BIDI-PARAGRAPH-OCTETS*, else the next in turn,
+its arrays used again."
   (let ((paragraphs (bidi-cache-paragraphs cache)))
     (or (loop for paragraph across paragraphs
               unless (eq (bidi-paragraph-rope paragraph) (bidi-cache-rope cache))
                 return paragraph)
-        (if (< (length paragraphs) +paragraphs-kept+)
+        (if (and (< (length paragraphs) +paragraphs-kept+)
+                 (<= (+ octets (loop for paragraph across paragraphs sum (paragraph-octets paragraph)))
+                     *bidi-paragraph-octets*))
             (let ((paragraph (make-bidi-paragraph)))
               (vector-push-extend paragraph paragraphs)
               paragraph)
-            (prog1 (aref paragraphs (bidi-cache-next cache))
-              (setf (bidi-cache-next cache) (mod (1+ (bidi-cache-next cache)) +paragraphs-kept+)))))))
+            (prog1 (aref paragraphs (mod (bidi-cache-next cache) (length paragraphs)))
+              (setf (bidi-cache-next cache) (mod (1+ (bidi-cache-next cache)) (length paragraphs))))))))
 
-(defun fill-paragraph (paragraph scratch rope from to direction level stored)
-  "Work PARAGRAPH out of ROPE's text from FROM below TO in SCRATCH, as
-DIRECTION says, or at LEVEL (0 or 1) when it is not NIL; STORED marks it
-shown in the order stored. Its arrays are made larger only when they must."
-  (let ((room (- to from)))
-    (bidi-scratch-room scratch room)
-    (when (< (length (bidi-paragraph-bytes paragraph)) room)
-      (let ((size (max room 64)))
-        (setf (bidi-paragraph-bytes paragraph) (make-array size :element-type 'fixnum)
+(defun make-paragraph-room (cache paragraph octets)
+  "Let go of other paragraphs of CACHE than PARAGRAPH, those of a text no
+longer shown first, until PARAGRAPH may take OCTETS more within
+*BIDI-PARAGRAPH-OCTETS*."
+  (let ((paragraphs (bidi-cache-paragraphs cache)))
+    (flet ((total () (loop for other across paragraphs sum (paragraph-octets other))))
+      (dolist (shown '(nil t))
+        (loop for other across paragraphs
+              while (> (+ (total) octets) *bidi-paragraph-octets*)
+              when (and (not (eq other paragraph)) (plusp (paragraph-octets other))
+                        (eq shown (eq (bidi-paragraph-rope other) (bidi-cache-rope cache))))
+                do (release-paragraph other))))))
+
+(defun paragraph-room (cache paragraph n &optional (keep 0))
+  "Make PARAGRAPH's arrays large enough for N characters, half as large again
+as N when they are not, the offsets of its first KEEP kept, room made among
+CACHE's others for them."
+  (let ((size (length (bidi-paragraph-bytes paragraph))))
+    (when (> n size)
+      (let ((size (max (floor (* 3 n) 2) (floor (* 3 size) 2) 64)))
+        (make-paragraph-room cache paragraph (- (* 17 size) (paragraph-octets paragraph)))
+        (setf (bidi-paragraph-bytes paragraph) (replace (make-array size :element-type 'fixnum)
+                                                        (bidi-paragraph-bytes paragraph) :end2 keep)
               (bidi-paragraph-classes paragraph) (make-array size :initial-element :l)
-              (bidi-paragraph-levels paragraph) (make-array size :element-type '(unsigned-byte 8))))))
-  (let ((n 0) (classes (bidi-scratch-classes scratch)) (codes (bidi-scratch-codes scratch))
-        (bytes (bidi-paragraph-bytes paragraph)))
+              (bidi-paragraph-levels paragraph) (make-array size :element-type '(unsigned-byte 8)))))))
+
+(defun octet-characters (rope from to)
+  "About how many characters ROPE's text from FROM below TO holds: its octets
+that begin one (any but #x80 to #xBF). Complexity: O(TO - FROM)."
+  (let ((total (tuatara.text:rope-bytes rope)) (count 0))
+    (declare (type fixnum count))
+    (tuatara.text:with-octet-block (block 65536)
+      (loop for pos of-type fixnum from from below to by 65536
+            do (let ((stop (min to (+ pos 65536) total)))
+                 (tuatara.text:rope-copy-into rope pos stop block)
+                 (loop for i of-type fixnum from 0 below (- stop pos)
+                       unless (<= #x80 (aref block i) #xBF) do (incf count)))))
+    count))
+
+(defun fill-paragraph (cache paragraph rope from to direction level stored room)
+  "Work PARAGRAPH out of ROPE's text from FROM below TO in CACHE's room, as
+DIRECTION says, or at LEVEL (0 or 1) when it is not NIL, ROOM about how many
+characters it holds (OCTET-CHARACTERS); STORED marks it shown in the order
+stored. Its arrays and the room are made larger only when they must be, half
+as large again as needed, so that a line growing a character at a time
+makes them anew seldom."
+  (let ((scratch (bidi-cache-scratch cache)) (n 0))
     (declare (type fixnum n))
+    ;; room for its characters made at once, when it must be; more as they are read, should they be more
+    (bidi-scratch-room scratch room)
+    (paragraph-room cache paragraph room)
     (do-line-codes (code at rope from to)
-      (setf (aref bytes n) at (aref codes n) code (svref classes n) (code-bidi-class code))
+      (when (>= n (bidi-scratch-size scratch)) (bidi-scratch-room scratch (1+ n) n))
+      (when (>= n (length (bidi-paragraph-bytes paragraph))) (paragraph-room cache paragraph (1+ n) n))
+      (setf (aref (bidi-paragraph-bytes paragraph) n) at
+            (aref (bidi-scratch-codes scratch) n) code
+            (svref (bidi-scratch-classes scratch) n) (code-bidi-class code))
       (incf n))
     (let ((level (resolve-levels scratch n (or level (case direction (:left-to-right 0) (:right-to-left 1)))
                                  :brackets t)))
-      (replace (bidi-paragraph-classes paragraph) classes :end2 n)
+      (replace (bidi-paragraph-classes paragraph) (bidi-scratch-classes scratch) :end2 n)
       (replace (bidi-paragraph-levels paragraph) (bidi-scratch-levels scratch) :end2 n)
       (setf (bidi-paragraph-rope paragraph) rope (bidi-paragraph-start paragraph) from
             (bidi-paragraph-end paragraph) to (bidi-paragraph-direction paragraph) direction
@@ -782,12 +879,13 @@ shown in the order stored. Its arrays are made larger only when they must."
 starts on the line beginning at LINE-START, as DIRECTION (:AUTO,
 :LEFT-TO-RIGHT, :RIGHT-TO-LEFT) says: the one CACHE keeps for them, else
 worked out and kept, in arrays used again (no garbage once they are large
-enough). A stretch beginning after LINE-START takes its direction under
-:AUTO from the line's first letter within REACH octets of its start; it is
-shown in the order stored (BIDI-PARAGRAPH-STORED) when an embedding,
-override or isolate comes before it on the line, or it begins more than
-REACH octets into the line, as the order read cannot then be told.
-Complexity: O(TO - FROM) the first time, O(paragraphs kept) after."
+enough), no more than *BIDI-PARAGRAPH-OCTETS* kept in all. A stretch
+beginning after LINE-START takes its direction under :AUTO from the line's
+first letter within REACH octets of its start; it is shown in the order
+stored (BIDI-PARAGRAPH-STORED) when an embedding, override or isolate comes
+before it on the line, or it begins more than REACH octets into the line, as
+the order read cannot then be told. Complexity: O(TO - FROM) the first time,
+O(paragraphs kept) after."
   (unless (eq rope (bidi-cache-rope cache))
     (setf (bidi-cache-rope cache) rope))
   (or (loop for paragraph across (bidi-cache-paragraphs cache)
@@ -800,7 +898,8 @@ Complexity: O(TO - FROM) the first time, O(paragraphs kept) after."
                            (:l 0) (:r 1))))
              (stored (and inside (or (> (- from line-start) reach)
                                      (direction-controls-between-p rope line-start from)))))
-        (fill-paragraph (free-paragraph cache) (bidi-cache-scratch cache) rope from to direction level stored))))
+        (let ((room (octet-characters rope from to)))
+          (fill-paragraph cache (free-paragraph cache (* 26 room)) rope from to direction level stored room)))))
 
 ;;; Arabic letters joined, for a frontend that cannot join them itself
 

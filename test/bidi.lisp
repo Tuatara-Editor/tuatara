@@ -170,23 +170,61 @@ order, worked out then wanted."
       (true (search text (tuatara.frontend.fake:fake-screen-line f 0))))))
 
 (define-test (bidi lines-cost-no-more-garbage-for-their-length)
-  ;; a right-to-left line edited and laid out again: worked out again in the room kept, no garbage for each
-  ;; character more of it (once the room is large enough)
+  ;; a right-to-left line typed at, a letter at a time, laid out after each: worked out again in the room kept,
+  ;; no garbage for each character more of the line (the room grows by half as much again when it must)
   (flet ((garbage (length)
            (let* ((cache (tuatara.display:make-bidi-cache))
                   (line (with-output-to-string (out)
-                          (dotimes (i length) (write-char (code-char (+ #x5D0 (mod i 20))) out)
+                          (dotimes (i length)
+                            (write-char (code-char (+ #x5D0 (mod i 20))) out)
                             (when (zerop (mod i 7)) (write-char #\Space out)))))
-                  (ropes (loop for i below 6
-                               collect (tuatara.text:string->rope (format nil "~a~c~%" line (code-char (+ #x5D0 i)))))))
+                  (rope (tuatara.text:string->rope (format nil "~a~%" line)))
+                  (end (utf-8-octet-count line))
+                  (typed (loop for i below 5
+                               collect (setf rope (tuatara.text:rope-insert rope (+ end (* 2 i)) (letters #x5D3))))))
              ;; what each text works out for itself the first time it is laid out, whatever its direction, first
-             (dolist (rope ropes) (tuatara.display:layout rope 0 60 10))
-             (flet ((lay (rope) (tuatara.display:layout rope 0 60 10 :direction :auto :bidi cache)))
-               (lay (first ropes))
-               (nth-value 2 (measuring (dolist (rope (rest ropes)) (lay rope))))))))
+             (dolist (rope typed) (tuatara.display:layout rope 0 60 10))
+             (tuatara.display:layout (first typed) 0 60 10 :direction :auto :bidi cache)
+             (nth-value 2 (measuring (dolist (rope (rest typed))
+                                       (tuatara.display:layout rope 0 60 10 :direction :auto :bidi cache)))))))
     (garbage 2000) (garbage 4000)
-    (let ((each (/ (- (garbage 4000) (garbage 2000)) 2000 5)))
+    (let ((each (/ (- (garbage 4000) (garbage 2000)) 2000 4)))
       (true (< each 1) "~,2f octets for each character more of a line laid out" each))))
+
+(defun laid-out-and-let-go (cache)
+  "A weak pointer to a text of right-to-left letters laid out with CACHE and
+held by nothing else."
+  (let ((rope (tuatara.text:string->rope (letters "abc " #x5D0 #x5D1 #x5D2))))
+    (tuatara.display:layout rope 0 20 5 :direction :auto :bidi cache)
+    (sb-ext:make-weak-pointer rope)))
+
+(define-test (bidi kept-within-bounds)
+  ;; a window scrolled along a line of two million right-to-left letters keeps no more than its bound
+  (let* ((rope (tuatara.text:string->rope (make-string 2000000 :initial-element (code-char #x5D0))))
+         (cache (tuatara.display:make-bidi-cache)))
+    (loop for start from 0 below 4000000 by 100000
+          do (tuatara.display:layout rope (tuatara.text:rope-char-start rope start) 80 10 :wrap t :direction :auto
+                                     :bidi cache))
+    (let ((octets (tuatara.display::bidi-cache-octets cache)))
+      (true (< octets (* 16 1024 1024)) "~:d octets kept" octets)))
+  ;; a text no longer shown is not kept: the paragraphs let go of it, and it can be collected
+  (let* ((cache (tuatara.display:make-bidi-cache))
+         (gone (laid-out-and-let-go cache)))
+    (dotimes (i 3)
+      (tuatara.display:layout (tuatara.text:string->rope (format nil "x~d" i)) 0 20 5 :direction :auto :bidi cache))
+    (true (every (lambda (paragraph) (null (tuatara.display::bidi-paragraph-rope paragraph)))
+                 (tuatara.display::bidi-cache-paragraphs cache)))
+    (sb-ext:gc :full t)
+    (sb-ext:gc :full t)
+    (false (sb-ext:weak-pointer-value gone)))
+  ;; a window showing another buffer keeps nothing of the one before
+  (with-test-buffer (a "*rtl-a*" :text (letters #x5D0 #x5D1))
+    (with-test-buffer (b "*rtl-b*" :text "x")
+      (let ((window (tuatara.display:make-window a :width 20 :height 5)))
+        (tuatara.display:window-ensure-point-visible window)
+        (true (tuatara.display::window-bidi window))
+        (tuatara.display:set-window-buffer window b)
+        (false (tuatara.display::window-bidi window))))))
 
 (define-test (bidi direction-from-a-letter-past-the-rows-shown)
   ;; a line whose first letter is past the end of the row shown, cut off: written from right to left
