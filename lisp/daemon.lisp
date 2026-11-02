@@ -510,12 +510,14 @@ folder of the client working in the frame first."
 (defun stop-daemon (editor &key (words "The daemon was stopped (M-x daemon-quit)") (here (current-client editor)))
   "Stop EDITOR, a daemon's: every client but HERE, by default the one working
 in the frame, is told the daemon ends, with WORDS, and exits 1; HERE exits
-0; then the editor ends, writing what it keeps as an editor does."
+0; then the editor ends, writing what it keeps as an editor does, at once
+wherever this is called from (it is woken)."
   (dolist (client (editor-clients editor))
     (unless (or (eq client here) (client-ended client) (not (client-remote client)))
       (setf (client-exit-code client) 1 (client-exit-words client) words)
       (end-client editor client)))
-  (setf (editor-running editor) nil))
+  (setf (editor-running editor) nil)
+  (wake-editor editor))
 
 (define-command daemon-quit ()
   "Stop the editor running in the background (tuatara --daemon), from any of
@@ -546,18 +548,28 @@ or every one when auto-saving is off."
   (remove-if (lambda (buffer) (and (tuatara.buffer:buffer-modified-p buffer) (auto-save-wanted-p buffer)))
              (remove-if-not #'unsaved-p tuatara.buffer:*buffers*)))
 
+(defun say-in-daemon-log (control &rest arguments)
+  "Say what CONTROL and ARGUMENTS make, as FORMAT makes it, in *Messages* and
+on the standard error, which is a daemon's log
+\(~/.cache/tuatara/daemon-NAME.log): for what a daemon does where no one sees
+it."
+  (let ((words (apply #'format nil control arguments)))
+    (message "~a" words)
+    (format *error-output* "~a~%" words)
+    (finish-output *error-output*)))
+
 (defun auto-save-unsaved ()
   "Write the changes not saved of the editor's buffers as auto-saved copies,
 for \\[recover-file] and \\[list-auto-saves] to offer on the next visit:
-each that may be auto-saved (AUTO-SAVE-WANTED-P). Said in *Messages*, and so
-in the log."
+each that may be auto-saved (AUTO-SAVE-WANTED-P). Said in *Messages* and the
+daemon's log (SAY-IN-DAEMON-LOG)."
   (let ((written 0))
     (dolist (buffer tuatara.buffer:*buffers*)
       (when (and (tuatara.buffer:buffer-modified-p buffer) (auto-save-wanted-p buffer))
         (ignoring-errors-reported ("auto-saving ~a" (tuatara.buffer:buffer-name buffer))
           (auto-save-now buffer)
           (incf written))))
-    (message "The daemon stopped with no one to ask: ~d buffer~:p with changes auto-saved" written)))
+    (say-in-daemon-log "The daemon stopped with no one to ask: ~d buffer~:p with changes auto-saved" written)))
 
 (defun lost-changes-count-words (lost)
   "What LOST, buffers whose changes no auto-saved copy would keep, are, in
@@ -583,7 +595,7 @@ are written as auto-saved copies first (AUTO-SAVE-UNSAVED), as the
 auto-saving settings allow and never of an encrypted file's text or a file
 opened safely; then every client but HERE is told WORDS and exits 1, HERE
 exiting 0 (STOP-DAEMON). Changes no copy would keep (UNSAVED-NOT-KEPT) are
-lost, said in the log; with KEEP-CHANGES nothing is stopped while there are
+lost, said in the daemon's log (SAY-IN-DAEMON-LOG); with KEEP-CHANGES nothing is stopped while there are
 such changes, and why is returned in words (LOST-CHANGES-WORDS). NIL once
 stopped."
   (let ((lost (unsaved-not-kept)))
@@ -591,8 +603,8 @@ stopped."
         (lost-changes-words lost)
         (progn (auto-save-unsaved)
                (when lost
-                 (message "The daemon stopped with no one to ask, though ~a: they are lost"
-                          (lost-changes-count-words lost)))
+                 (say-in-daemon-log "The daemon stopped with no one to ask, though ~a: they are lost"
+                                    (lost-changes-count-words lost)))
                (stop-daemon editor :words words :here here)
                nil))))
 

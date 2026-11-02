@@ -53,7 +53,7 @@ wait for it; true when it ended."
 \(START-TEST-DAEMON), NAMED when given, THREAD to the thread its editor runs
 on and DAEMON to the daemon, stopped after."
   `(multiple-value-bind (,daemon ,thread ,name) ,(if named `(start-test-daemon ,named) '(start-test-daemon))
-     (declare (ignorable ,daemon))
+     (declare (ignorable ,daemon ,name))
      (unwind-protect (progn ,@body)
        (stop-test-daemon ,thread))))
 
@@ -945,6 +945,18 @@ after, as it does by itself."
                (is string= "plain" (file-text plain) "nothing saved")
                (is string= "secret" (file-text secret))))
         (setf tuatara-user:*auto-save* was)))))
+
+(define-test (daemon stopping-wakes-its-loop)
+  ;; a daemon stopped by work taken in on a wake, as SIGTERM's is, is woken to end at once, never left
+  ;; waiting for an event that may not come
+  (with-test-daemon (name thread daemon)
+    (true (in-daemon (lambda ()
+                       (let ((queue (tuatara.defaults::daemon-queue daemon)))
+                         (loop while (tuatara.frontend:queue-pop queue 0))
+                         (tuatara.defaults::stop-daemon (daemon-editor) :here nil)
+                         (not (tuatara.frontend:queue-empty-p queue)))))
+          "woken")
+    (true (not (eq :late (sb-thread:join-thread thread :timeout 30 :default :late))))))
 
 (define-test (daemon terminated-with-auto-saving-off)
   ;; SIGTERM cannot be refused as tuatara --stop is: with auto-saving off, nothing is written and the daemon
