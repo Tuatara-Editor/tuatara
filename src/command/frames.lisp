@@ -296,10 +296,17 @@ answered.")
   (:documentation "An edit refused because a question waiting in another frame is about the
 buffer (GUARD-BUFFERS-HELD-BY-QUESTIONS)."))
 
-(defun buffer-held-by-question-p (buffer)
-  "True when a question waiting in a frame is about BUFFER: what changes it is
-put off until the question is answered (*BUFFERS-HELD-BY-QUESTIONS*)."
-  (and *buffers-held-by-questions* (assoc buffer *buffers-held-by-questions*) t))
+(defun buffer-held-by-question-p (&optional (buffer nil given))
+  "True when a question waiting in a frame is about BUFFER, or without BUFFER,
+about any buffer (*BUFFERS-HELD-BY-QUESTIONS*). Work in the background that
+would change such a buffer leaves what it would take in where it is, to be
+taken in once the question is answered: an edit of it is refused meanwhile
+\(GUARD-BUFFERS-HELD-BY-QUESTIONS), and what was taken for it would be lost.
+Work that cannot tell beforehand which buffers it changes waits while any is
+held."
+  (and *buffers-held-by-questions*
+       (or (not given) (assoc buffer *buffers-held-by-questions*))
+       t))
 
 (defun guard-buffers-held-by-questions (buffer edits)
   "Before-edit function (TUATARA.BUFFER:*BEFORE-EDIT-FUNCTIONS*): refuse EDITS

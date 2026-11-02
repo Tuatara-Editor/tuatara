@@ -1020,7 +1020,8 @@ looked at again, and look at them (GIT-WATCH-TICK)."
   "Tick function: read again each status shown whose repository changed on
 disk since it was read, as when git ran in a terminal (*GIT-WATCHED-FILES*),
 no sooner than *GIT-WATCH-SECONDS* after its last reading; a status shown
-again is looked at once."
+again is looked at once; one a waiting question is about, once it is answered
+\(BUFFER-HELD-BY-QUESTION-P)."
   (declare (ignore editor))
   (let ((soonest nil) (shown (git-statuses-shown)))
     (when *git-watch-seconds*
@@ -1029,7 +1030,8 @@ again is looked at once."
           (setf (tuatara.buffer:buffer-local buffer 'git-disk-changed) t))))
     (setf *git-statuses-followed* shown)
     (dolist (buffer shown soonest)
-      (when (tuatara.buffer:buffer-local buffer 'git-disk-changed)
+      ;; a status a waiting question is about is read again once it is answered
+      (when (and (tuatara.buffer:buffer-local buffer 'git-disk-changed) (not (buffer-held-by-question-p buffer)))
         (let ((folder (tuatara.buffer:buffer-local buffer 'git-folder))
               (left (if *git-watch-seconds*
                         (- *git-watch-seconds* (tuatara.runtime:seconds-since (or (tuatara.buffer:buffer-local buffer 'git-read-at) 0)))

@@ -744,9 +744,11 @@ itself (ORG-AGENDA-NEXT-REDRAW), worked out again only when DRAWN or
 (defun org-agenda-refresh-tick (editor)
   "Tick function: draw the agenda a window of EDITOR shows again once its
 time comes (ORG-AGENDA-REDRAW-DUE), as when an agenda file changes
-\(ORG-AGENDA-FOLLOW). Wants a tick at that time; none with no agenda shown."
+\(ORG-AGENDA-FOLLOW), but not while a waiting question is about it
+\(BUFFER-HELD-BY-QUESTION-P). Wants a tick at that time; none with no agenda
+shown."
   (multiple-value-bind (buffer window) (org-agenda-shown-window editor)
-    (when (and buffer (org-agenda-view buffer))
+    (when (and buffer (org-agenda-view buffer) (not (buffer-held-by-question-p buffer)))
       (let* ((now (org-now))
              (drawn (or (tuatara.buffer:buffer-local buffer 'org-agenda-drawn-at) now)))
         (when (>= now (org-agenda-redraw-due buffer drawn))

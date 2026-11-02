@@ -579,7 +579,9 @@ force, fit each terminal shown to its window, and show what its program
 changed while it is typed into; a terminal whose program has ended is
 killed, saying how it ended. Waits for the next wake, which a program's
 output brings, but for a terminal whose library was held (a picture being
-drawn), looked at again a moment later."
+drawn), looked at again a moment later. A terminal a waiting question is
+about is left as it is until the question is answered, what its program does
+meanwhile kept by its emulator (BUFFER-HELD-BY-QUESTION-P)."
   (unless (eql *terminal-face-generation* tuatara.display:*face-generation*)
     (recolour-terminal-faces)
     (setf *terminal-face-generation* tuatara.display:*face-generation*))
@@ -589,6 +591,8 @@ drawn), looked at again a moment later."
           (window (buffer-window buffer editor)))
       (cond ((or (null emulator) (not (live-buffer-p buffer)))
              (setf *terminal-buffers* (remove buffer *terminal-buffers*)))
+            ;; its program's changes stay in the emulator while a waiting question is about it
+            ((buffer-held-by-question-p buffer))
             (t
              (let ((all nil))
                (when window

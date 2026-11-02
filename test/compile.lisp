@@ -612,3 +612,29 @@ in, one after another, through OUTPUT-PAST-RETURNS."
     (is equal '(("a.c" 1 10)) *places-reached*)
     (true (search (format nil "~%100%~%a.c:2:11: error: bad~%") (compile-output)))
     (false (find #\Return (compile-output)))))
+
+(define-test (compiling output-put-in-after-a-question-about-it)
+  ;; while a question waiting in a frame is about *compile*, work taken in inside it leaves the
+  ;; output where it comes in, none of it lost; once the question is answered, all of it is put in
+  (with-compile-session (dir (format nil "printf 'kea\\n'~%sleep 0.5~%printf 'tui\\n'~%"))
+    (let ((during nil))
+      (unwind-protect
+           (auto-save-session
+            (compile-steps dir
+                           (list :until (lambda () (search "kea" (compile-output))))
+                           (lambda ()
+                             (setf tuatara.command::*taking-in-inside-question* t
+                                   tuatara.command::*buffers-held-by-questions*
+                                   (list (cons (compile-buffer) (tuatara.command:editor-frame tuatara.command:*editor*)))))
+                           (list :wait 1.5)
+                           (lambda ()
+                             (setf during (compile-output)
+                                   tuatara.command::*taking-in-inside-question* nil
+                                   tuatara.command::*buffers-held-by-questions* '()))
+                           (list :until #'compile-ended-p)))
+        (setf tuatara.command::*taking-in-inside-question* nil
+              tuatara.command::*buffers-held-by-questions* '()))
+      (true (search "kea" during))
+      (false (search "tui" during))
+      (true (search "tui" (compile-output)))
+      (true (search "Compile finished" (compile-output))))))

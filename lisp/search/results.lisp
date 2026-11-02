@@ -350,10 +350,12 @@ asked to stop between the files; at the end wait for the saves to end."
 
 (defun write-back-tick (editor)
   "Tick function: deal with the file a job writing lines back has handed over, on the editor's thread,
-one for each time."
+one for each time; while a question waiting in a frame is about a buffer, the file waits for it to be
+answered (BUFFER-HELD-BY-QUESTION-P), the job with it."
   (declare (ignore editor))
   (dolist (job tuatara.runtime:*jobs*)
-    (when (write-back-job-p job)
+    ;; the file's buffer is found only as it is written: none is written while a question waits on a buffer
+    (when (and (write-back-job-p job) (not (buffer-held-by-question-p)))
       (let ((request (shiftf (write-back-job-request job) nil)))
         (when request
           (unwind-protect (apply #'write-back-file job request)

@@ -31,9 +31,11 @@ what the editor's parts do is reported in *Debug*. Set it in the init file.")
 (defun show-debug-reports (editor)
   "Tick function: put the reports made since it was last called at the end of
 *Debug*, keeping *DEBUG-LOG-MAX* lines; a window showing the end of *Debug*
-goes on showing it."
+goes on showing it. While a waiting question is about *Debug*, the reports
+wait (BUFFER-HELD-BY-QUESTION-P)."
   (declare (ignore editor))
-  (let ((first (sb-concurrency:dequeue tuatara.runtime:*debug-reports*)))
+  (let ((first (and (not (buffer-held-by-question-p (debug-buffer)))
+                    (sb-concurrency:dequeue tuatara.runtime:*debug-reports*))))
     (when first
       (add-to-log (debug-buffer) *debug-log-max*
                   (lambda (buffer)

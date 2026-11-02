@@ -888,3 +888,33 @@ be shown 4 columns by 2 rows, then prints ready and waits."
              (true (find-if (lambda (text) (search "reading the keys \"C-<nokey>\" failed" text)) texts)
                    "~s" texts)))
       (drain-debug-reports))))
+
+(define-test (terminal screen-waits-for-a-question-about-it)
+  ;; while a question waiting in a frame is about a terminal, what its program prints stays in
+  ;; the terminal, not shown in the buffer; once the question is answered, it is shown
+  (let ((during nil))
+    (unwind-protect
+         (multiple-value-bind (f editor)
+             (terminal-session
+              (list "M-x t e r m i n a l RET" (list :until (buffer-holding "$"))
+                    (list :do (lambda (buffer)
+                                (setf tuatara.command::*taking-in-inside-question* t
+                                      tuatara.command::*buffers-held-by-questions*
+                                      (list (cons buffer (tuatara.command:editor-frame tuatara.command:*editor*))))))
+                    "e c h o SPC k e a - $ ( ( 6 * 7 ) ) RET"
+                    ;; a second for the program to print, the editor going round meanwhile
+                    (list :until (let ((end nil))
+                                   (lambda (buffer)
+                                     (declare (ignore buffer))
+                                     (> (get-internal-real-time)
+                                        (or end (setf end (+ (get-internal-real-time) internal-time-units-per-second)))))))
+                    (list :do (lambda (buffer)
+                                (setf during (tuatara.buffer:buffer-string buffer)
+                                      tuatara.command::*taking-in-inside-question* nil
+                                      tuatara.command::*buffers-held-by-questions* '())))
+                    (list :until (buffer-holding "kea-42"))))
+           (declare (ignore f))
+           (false (search "kea-42" during))
+           (true (search "kea-42" (tuatara.buffer:buffer-string (session-buffer editor)))))
+      (setf tuatara.command::*taking-in-inside-question* nil
+            tuatara.command::*buffers-held-by-questions* '()))))

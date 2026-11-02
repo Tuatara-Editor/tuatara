@@ -993,20 +993,22 @@ took its place or the buffer was killed meanwhile."
 
 (defun rimu-show-ready ()
   "Show the texts of columns found in the background (RIMU-COLUMN-READY) in
-the lists showing the entries they are for."
+the lists showing the entries they are for, but for those a waiting question
+is about, kept for once it is answered (BUFFER-HELD-BY-QUESTION-P)."
   (let ((ready (sb-thread:with-mutex (*rimu-ready-lock*) (shiftf *rimu-ready* '())))
         (unshown '()))
     (loop for item in (reverse ready)
           for (name entries cells) = item
           do (unless (plusp (loop for buffer in tuatara.buffer:*buffers*
                                   for listing = (and (rimu-list-p buffer) (tuatara.buffer:buffer-local buffer 'rimu-listing))
-                                  when (and listing (eq (rimu-listing-entries listing) entries))
+                                  when (and listing (eq (rimu-listing-entries listing) entries)
+                                            (not (buffer-held-by-question-p buffer)))
                                     do (setf (gethash name (rimu-listing-cells listing)) cells)
                                        (rimu-update buffer :wait nil)
                                     and count t))
                (push item unshown)))
-    ;; for a list read in the background not shown yet: kept for when it is
-    (when (and unshown *rimu-waiting*)
+    ;; for a list read in the background not shown yet, or one a waiting question is about: kept for when it is
+    (when (and unshown (or *rimu-waiting* (buffer-held-by-question-p)))
       (sb-thread:with-mutex (*rimu-ready-lock*)
         (setf *rimu-ready* (append *rimu-ready* unshown))))))
 
@@ -1038,11 +1040,12 @@ again, and read them (RIMU-FOLLOW-DISK)."
 (defun rimu-follow-disk ()
   "Read again, in the background, the lists whose directory changed on disk
 \(*RIMU-FOLLOW-CHANGES*), point and marks kept; a list being read just then,
-once that is over."
+or one a waiting question is about, once that is over."
   (when *rimu-follow-changes*
     (dolist (list (remove-if-not #'rimu-list-p tuatara.buffer:*buffers*))
       (when (and (tuatara.buffer:buffer-local list 'rimu-disk-changed)
-                 (not (tuatara.buffer:buffer-local list 'rimu-job)))
+                 (not (tuatara.buffer:buffer-local list 'rimu-job))
+                 (not (buffer-held-by-question-p list)))
         (setf (tuatara.buffer:buffer-local list 'rimu-disk-changed) nil)
         (rimu-update list :reread t :wait nil)))))
 
@@ -1050,23 +1053,27 @@ once that is over."
   "Lay out again, in the background, the lists narrowed by search filters
 whose marks changed line by line since they were laid out, so that the whole
 list they are narrowed from shows those marks too; a list being read just
-then, once that is over."
+then, or one a waiting question is about, once that is over."
   (dolist (list (remove-if-not #'rimu-list-p tuatara.buffer:*buffers*))
     (when (and (tuatara.buffer:buffer-local list 'rimu-marks-changed)
-               (not (tuatara.buffer:buffer-local list 'rimu-job)))
+               (not (tuatara.buffer:buffer-local list 'rimu-job))
+               (not (buffer-held-by-question-p list)))
       (setf (tuatara.buffer:buffer-local list 'rimu-marks-changed) nil)
       (rimu-update list :wait nil))))
 
 (defun rimu-tick (editor)
   "Tick function: show the lists whose directories were read in the
-background, the texts of columns found there, and the preview; T while
-something is read, the seconds until the preview is due, or NIL."
+background, the texts of columns found there, and the preview, but for the
+lists a waiting question is about, shown once it is answered
+\(BUFFER-HELD-BY-QUESTION-P); T while something is read, the seconds until
+the preview is due, or NIL."
   (setf *rimu-editor* editor)
   (let ((working nil))
     (when *rimu-ready* (rimu-show-ready))
     (dolist (buffer (copy-list *rimu-waiting*))
       (let ((job (and (live-buffer-p buffer) (tuatara.buffer:buffer-local buffer 'rimu-job))))
-        (cond ((or (null job) (rimu-job-done job))
+        (cond ((and job (rimu-job-done job) (buffer-held-by-question-p buffer)))
+              ((or (null job) (rimu-job-done job))
                (setf *rimu-waiting* (remove buffer *rimu-waiting*))
                (when job (rimu-take-in buffer job)))
               (t (setf working t)))))

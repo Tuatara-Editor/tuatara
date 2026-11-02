@@ -432,10 +432,13 @@ then those around it (PDF-VIEW-WANTED-PAGES), as wide as its window and zoom
 ask, some at once; let go of those past *PDF-VIEW-MEMORY*; keep the page and
 zoom of those changed a while ago. T while a page or a text is being made,
 and once more after the text is taken in: its header line takes a row of
-the window, so the page is fitted again to the rows left."
+the window, so the page is fitted again to the rows left. A PDF a waiting
+question is about is left as it is until the question is answered
+\(BUFFER-HELD-BY-QUESTION-P)."
   (declare (ignore editor))
   (let ((working nil))
-    (dolist (buffer (copy-list *pdf-views*))
+    ;; what was drawn and taken out for a PDF a waiting question is about waits for the answer
+    (dolist (buffer (remove-if #'buffer-held-by-question-p *pdf-views*))
       (let ((view (pdf-view-of buffer)))
         (if (null view)
             (setf *pdf-views* (remove buffer *pdf-views*))

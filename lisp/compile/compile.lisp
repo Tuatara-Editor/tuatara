@@ -843,17 +843,20 @@ or ended with its output still being put in; NIL when there is none."
   "Tick function: put what the compiles' output has brought into their
 buffers, a part at a time between keys, so that a flood of it never holds
 typing up; a compile ended, once all its output is in, finished
-\(FINISH-COMPILE). Called again soon while some has come."
+\(FINISH-COMPILE). The output of a compile whose buffer a waiting question
+is about stays where it is until the question is answered
+\(BUFFER-HELD-BY-QUESTION-P). Called again soon while some has come."
   (declare (ignore editor))
   (let ((took nil))
     (dolist (job tuatara.runtime:*jobs*)
-      (when (and (compile-job-p job) (take-in-output job))
+      (when (and (compile-job-p job) (not (buffer-held-by-question-p (compile-job-buffer job))) (take-in-output job))
         (setf took t)))
     (dolist (job (reverse *compiles-ending*))
-      (if (take-in-output job)
-          (setf took t)
-          (progn (setf *compiles-ending* (remove job *compiles-ending*))
-                 (finish-compile job))))
+      (unless (buffer-held-by-question-p (compile-job-buffer job))
+        (if (take-in-output job)
+            (setf took t)
+            (progn (setf *compiles-ending* (remove job *compiles-ending*))
+                   (finish-compile job)))))
     (cond (*compiles-ending* 0.001)
           (took 0.03))))
 

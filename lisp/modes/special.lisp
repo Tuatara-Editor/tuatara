@@ -951,11 +951,12 @@ one), when given, else as \\[revert-buffer] makes it (its :REFILL)."
 (defun keep-shown-lists-current (editor)
   "Tick function: make again each list kept current (KEEP-SHOWN-CURRENT) that a
 window of EDITOR shows and whose key has changed since it was filled; a list
-whose key is the same is left as it is. Wants no tick of its own."
+whose key is the same is left as it is, as is one a waiting question is about
+\(BUFFER-HELD-BY-QUESTION-P). Wants no tick of its own."
   (let ((seen '()))
     (do-frames-windows (window editor)
       (let ((buffer (and window (tuatara.display:window-buffer window))))
-        (when (and buffer (not (member buffer seen)))
+        (when (and buffer (not (member buffer seen)) (not (buffer-held-by-question-p buffer)))
           (push buffer seen)
           (let ((kind (shown-list-kind buffer)))
             (when (and kind (not (equal (funcall (second kind) buffer)
