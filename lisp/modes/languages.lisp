@@ -770,7 +770,7 @@ a text left alone be parsed afresh (SYNTAX-REFRESH-TICK)."
   ;; looks for the sandbox, which may take a moment
   (sb-thread:make-thread (lambda ()
                            (ignoring-errors-reported ("starting the syntax helpers")
-                             (tuatara.syntax:rules-helper) (tuatara.syntax:shared-helper)))
+                             (tuatara.syntax:kept-helper :rules) (tuatara.syntax:kept-helper :shared)))
                          :name "syntax helpers starting")
   (pushnew 'syntax-refresh-tick *tick-functions*))
 

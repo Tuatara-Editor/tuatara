@@ -1075,14 +1075,6 @@ started in the background, the editor woken once it is."
                                          (setf (cdr cell) nil)))))
               nil)))))
 
-(defun shared-helper ()
-  "The helper parsing the files of projects you trust (KEPT-HELPER)."
-  (kept-helper :shared))
-
-(defun rules-helper ()
-  "The helper loading grammars and compiling rules, never given any text (KEPT-HELPER)."
-  (kept-helper :rules))
-
 (defvar *helper* :none
   "The helper parsing the text being worked on (a buffer's, its syntax's),
 for the parsers made meanwhile, as of text in another language in it: a
@@ -1094,7 +1086,7 @@ parsed: what parses text says which.")
 (defun current-helper ()
   "The helper for what is parsed now (*HELPER*): NIL when there is none to be had."
   (let ((helper *helper*))
-    (cond ((eq helper :shared) (shared-helper))
+    (cond ((eq helper :shared) (kept-helper :shared))
           ((eq helper :own) (setf *helper* (or (start-own-helper :kept t) :none))
                             (current-helper))
           ((and (helper-p helper) (helper-alive helper)) helper))))
@@ -1172,7 +1164,7 @@ the buffer (FAULTED-NAMES), whichever helper parses it."
   (let ((own (tuatara.buffer:buffer-local buffer :syntax-helper)))
     (cond ((buffer-text-trusted-p buffer)
            (when (and own (helper-alive own)) (forget-buffer-helper buffer))
-           (shared-helper))
+           (kept-helper :shared))
           ((and own (helper-alive own)) own)
           (t (start-own-helper :buffer buffer)))))
 
@@ -1190,7 +1182,7 @@ once it is, the text shown uncoloured meanwhile."
           ((buffer-text-trusted-p buffer)
            ;; one of its own started before its project was trusted: ended
            (when own (forget-buffer-helper buffer))
-           (shared-helper))
+           (kept-helper :shared))
           ((helpers-refused-p :own) (refuse-unconfined nil))
           ;; the sandbox known and no other start under way: set going now,
           ;; which takes no waiting for the program to be ready

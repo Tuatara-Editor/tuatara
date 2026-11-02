@@ -18,7 +18,7 @@ afterwards."
                   tuatara.defaults::*grammars-not-now* '())))
      (forget)
      ;; the grammars loaded first, as a session started earlier would have them
-     (tuatara.syntax:rules-helper)
+     (tuatara.syntax:kept-helper :rules)
      (dolist (grammar '("awk" "markdown" "markdown_inline" "python")) (tuatara.syntax:find-grammar grammar))
      (let ((tuatara-user:*grammars-on* '(:common))
            (*grammar-questions-wanted* t))

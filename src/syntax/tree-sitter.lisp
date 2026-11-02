@@ -122,7 +122,7 @@ asked again. When the helper ends as the grammar loads, alone, that counts
 against it (*GRAMMAR-LOAD-DEATHS-MOST*); a slow load, or the helper ending
 while others load too, does not."
   (let ((octets (tuatara.text:string-octets name))
-        (helper (rules-helper)))
+        (helper (kept-helper :rules)))
     (unless (and helper (helper-alive helper)) (return-from load-grammar :unknown))
     (let ((loaded
             (with-call (call helper +op-grammar+)
@@ -809,7 +809,7 @@ in the helper compiling rules, which is never given any text to parse.
 Signals QUERY-NOT-ANSWERED when that helper ended or did not answer in
 time (QUERY-COMPILE-WAIT): the rules may compile when asked again."
   (let ((number (1+ (sb-ext:atomic-incf (car **query-numbers**))))
-        (helper (rules-helper)))
+        (helper (kept-helper :rules)))
     (with-call (call helper +op-query+)
       (let ((status (send-query call number grammar source)))
         (unless (eql 0 status)

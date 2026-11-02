@@ -21,7 +21,7 @@ and the colouring options.")
   "Parse TEXT with the grammar called GRAMMAR; return the tree, the rope and
 the parser. Release them with RELEASE-PARSE."
   (let* ((g (tuatara.syntax:find-grammar grammar))
-         (parser (tuatara.syntax:make-parser g (tuatara.syntax::shared-helper)))
+         (parser (tuatara.syntax:make-parser g (tuatara.syntax:kept-helper :shared)))
          (rope (tuatara.text:string->rope text)))
     (values (tuatara.syntax:parse-rope parser rope) rope parser)))
 
@@ -1045,7 +1045,7 @@ and its SYNTAX; the buffer is to be killed by the caller."
      (true grammar)
      (when grammar
        (dolist (text '("abc !s def" "abc # def" "abc bad def" "abc !z def"))
-         (let ((parser (tuatara.syntax:make-parser grammar (tuatara.syntax::shared-helper))))
+         (let ((parser (tuatara.syntax:make-parser grammar (tuatara.syntax:kept-helper :shared))))
            (unwind-protect
                 (multiple-value-bind (tree why)
                     (tuatara.syntax:parse-rope parser (tuatara.text:string->rope text))
@@ -1087,7 +1087,7 @@ and its SYNTAX; the buffer is to be killed by the caller."
    (lambda (grammar directory)
      (declare (ignore directory))
      (let* ((text (with-output-to-string (o) (dotimes (i 64) (write-string "word !m " o))))
-            (parser (tuatara.syntax:make-parser grammar (tuatara.syntax::shared-helper)))
+            (parser (tuatara.syntax:make-parser grammar (tuatara.syntax:kept-helper :shared)))
             (helper (tuatara.syntax::parser-helper parser))
             (held (held-in-helper helper)))
        (unwind-protect
@@ -1150,7 +1150,7 @@ and its SYNTAX; the buffer is to be killed by the caller."
   (call-with-misbehaving-grammar
    (lambda (grammar directory)
      (declare (ignore directory))
-     (let* ((parser (tuatara.syntax:make-parser grammar (tuatara.syntax::shared-helper)))
+     (let* ((parser (tuatara.syntax:make-parser grammar (tuatara.syntax:kept-helper :shared)))
             (helper (tuatara.syntax::parser-helper parser)))
        (multiple-value-bind (tree why unusable)
            (tuatara.syntax:parse-rope parser (tuatara.text:string->rope "abc !h def"))
@@ -1175,7 +1175,7 @@ and its SYNTAX; the buffer is to be killed by the caller."
 
 (defun parses-elsewhere ()
   "True when text is still parsed after a program parsing went wrong."
-  (let ((parser (tuatara.syntax:make-parser (tuatara.syntax:find-grammar "json") (tuatara.syntax::shared-helper))))
+  (let ((parser (tuatara.syntax:make-parser (tuatara.syntax:find-grammar "json") (tuatara.syntax:kept-helper :shared))))
     (unwind-protect
          (let ((tree (tuatara.syntax:parse-rope parser (tuatara.text:string->rope "[1, 2]"))))
            (prog1 (and tree t)
@@ -1306,7 +1306,7 @@ has, ended after."
                                 collect (sb-thread:make-thread
                                          (lambda ()
                                            (let* ((tuatara.syntax:*grammar-directories* directories)
-                                                  (helper (tuatara.syntax:shared-helper)))
+                                                  (helper (tuatara.syntax:kept-helper :shared)))
                                              (sb-thread:with-mutex (lock) (push helper got))))))))
              (mapc #'sb-thread:join-thread threads)
              (is = 1 (length (remove-duplicates got)))
@@ -1334,7 +1334,7 @@ has, ended after."
                                      (apply function arguments)))
                (unwind-protect
                     (progn
-                      (false (tuatara.syntax:rules-helper))
+                      (false (tuatara.syntax:kept-helper :rules))
                       (true (loop repeat 500
                                   thereis (tuatara.syntax::known-kept-helper (cons :rules directories))
                                   do (sleep 0.01)))
@@ -1762,7 +1762,7 @@ has, ended after."
     (remhash "toml" tuatara.syntax::*grammars*)
     (unwind-protect
          (progn
-           (tuatara.syntax:rules-helper)
+           (tuatara.syntax:kept-helper :rules)
            (sb-int:encapsulate 'tuatara.syntax::take-call 'none (lambda (function helper) (declare (ignore function helper)) nil))
            (unwind-protect (false (tuatara.syntax:find-grammar "toml"))
              (sb-int:unencapsulate 'tuatara.syntax::take-call 'none))
@@ -2021,7 +2021,7 @@ has, ended after."
    (lambda (grammar directory)
      (declare (ignore directory))
      (dolist (text '("abc !o def" "abc !O def"))
-       (let ((parser (tuatara.syntax:make-parser grammar (tuatara.syntax::shared-helper))))
+       (let ((parser (tuatara.syntax:make-parser grammar (tuatara.syntax:kept-helper :shared))))
          (multiple-value-bind (tree why unusable) (tuatara.syntax:parse-rope parser (tuatara.text:string->rope text))
            (false tree)
            (is eq :crashed why "~s" text)
@@ -2038,7 +2038,8 @@ has, ended after."
                          (true (tuatara.syntax:syntax-broken syntax))
                          ;; editing goes on, and another language still parses
                          (tuatara.buffer:buffer-insert buffer 0 "more ")
-                         (let ((parser (tuatara.syntax:make-parser (tuatara.syntax:find-grammar "json") (tuatara.syntax::shared-helper))))
+                         (let ((parser (tuatara.syntax:make-parser (tuatara.syntax:find-grammar "json")
+                                                                   (tuatara.syntax:kept-helper :shared))))
                            (unwind-protect
                                 (let ((tree (tuatara.syntax:parse-rope parser (tuatara.text:string->rope "[1, 2]"))))
                                   (true tree)
@@ -2056,7 +2057,7 @@ has, ended after."
   (let ((text (with-output-to-string (o)
                 (dotimes (i 20000) (format o "fn f~d() {{ let x = ~d; }}~%" i i)))))
     (let* ((grammar (tuatara.syntax:find-grammar "rust"))
-           (parser (tuatara.syntax:make-parser grammar (tuatara.syntax::shared-helper))))
+           (parser (tuatara.syntax:make-parser grammar (tuatara.syntax:kept-helper :shared))))
       (unwind-protect
            (multiple-value-bind (tree why)
                (tuatara.syntax:parse-rope parser (tuatara.text:string->rope text) :limit 0.0001)
@@ -2084,8 +2085,9 @@ has, ended after."
   ;; gone wrong would take without end, and all it took is given back; the
   ;; buffer shows no syntax colours and the editor says so
   (let ((numbers (format nil "[~{~d~^,~}]~%" (loop repeat 100000 collect (random 10))))
-        (held (lambda () (held-in-helper (tuatara.syntax::shared-helper)))))
-    (let* ((parser (tuatara.syntax:make-parser (tuatara.syntax:find-grammar "json") (tuatara.syntax::shared-helper)))
+        (held (lambda () (held-in-helper (tuatara.syntax:kept-helper :shared)))))
+    (let* ((parser (tuatara.syntax:make-parser (tuatara.syntax:find-grammar "json")
+                                               (tuatara.syntax:kept-helper :shared)))
            (before (funcall held)))
       (unwind-protect
            (multiple-value-bind (tree why)
@@ -2093,9 +2095,10 @@ has, ended after."
              (false tree)
              (is eq :memory why))
         (tuatara.syntax:delete-parser parser))
-      (true (held-falls-to (tuatara.syntax::shared-helper) (+ before (* 1024 1024)))))
+      (true (held-falls-to (tuatara.syntax:kept-helper :shared) (+ before (* 1024 1024)))))
     ;; within the budget its length and tokens call for, it is parsed
-    (let ((parser (tuatara.syntax:make-parser (tuatara.syntax:find-grammar "json") (tuatara.syntax::shared-helper))))
+    (let ((parser (tuatara.syntax:make-parser (tuatara.syntax:find-grammar "json")
+                                              (tuatara.syntax:kept-helper :shared))))
       (unwind-protect
            (let ((tree (tuatara.syntax:parse-rope parser (tuatara.text:string->rope numbers)
                                                   :budget (tuatara.syntax:parse-memory-limit (length numbers)))))
@@ -2122,7 +2125,8 @@ has, ended after."
   (loop for (grammar text) in (list (list "beancount" (format nil "2014-01-01 balance Assets:Cash 0.0 #~%*~%"))
                                     (list "tera" "{")
                                     (list "tera" (format nil "{% for x in y %}~%  {{ x }}~%{% endfor %}{")))
-        do (let ((parser (tuatara.syntax:make-parser (tuatara.syntax:find-grammar grammar) (tuatara.syntax::shared-helper)))
+        do (let ((parser (tuatara.syntax:make-parser (tuatara.syntax:find-grammar grammar)
+                                                     (tuatara.syntax:kept-helper :shared)))
                  (start (get-internal-real-time)))
              (unwind-protect
                   (let ((tree (tuatara.syntax:parse-rope parser (tuatara.text:string->rope text)
@@ -2902,7 +2906,7 @@ bound to the fake frontend and the editor; the file and its buffer go afterwards
            (let* ((language (tuatara.defaults::find-language language))
                   (grammar (tuatara.syntax:find-grammar (tuatara.defaults::language-grammar language)))
                   (rope (tuatara.text:string->rope text))
-                  (parser (tuatara.syntax:make-parser grammar (tuatara.syntax::shared-helper))))
+                  (parser (tuatara.syntax:make-parser grammar (tuatara.syntax:kept-helper :shared))))
              (values (tuatara.syntax:parse-rope parser rope) rope language parser)))
          (resolved-starts (table)
            (sort (loop for key being the hash-keys of table collect (ash key -31)) #'<)))
@@ -3161,7 +3165,8 @@ bound to the fake frontend and the editor; the file and its buffer go afterwards
                      (dotimes (i 300)
                        (format o "pub fn kea_~d(x: &str) -> Result<String, Error> {~%    if x == \"kea\" { return Ok(None); }~%    self.call(true, 'c')?~%}~%" i))))
              (rope (tuatara.text:string->rope text))
-             (parser (tuatara.syntax:make-parser (tuatara.syntax:find-grammar (tuatara.defaults::language-grammar language)) (tuatara.syntax::shared-helper)))
+             (parser (tuatara.syntax:make-parser (tuatara.syntax:find-grammar (tuatara.defaults::language-grammar language))
+                                                 (tuatara.syntax:kept-helper :shared)))
              (tree (tuatara.syntax:parse-rope parser rope))
              (matches 0))
         (unwind-protect
@@ -3607,7 +3612,8 @@ bound to the fake frontend and the editor; the file and its buffer go afterwards
                                                        (write-string "x" o)
                                                        (dotimes (i 300000) (write-string "}`" o))
                                                        (format o "}~%"))))
-          do (let* ((parser (tuatara.syntax:make-parser (tuatara.syntax:find-grammar grammar) (tuatara.syntax::shared-helper))))
+          do (let* ((parser (tuatara.syntax:make-parser (tuatara.syntax:find-grammar grammar)
+                                                        (tuatara.syntax:kept-helper :shared))))
                (multiple-value-bind (tree why) (tuatara.syntax:parse-rope parser (tuatara.text:string->rope text))
                  (true tree "~a nested deeply is parsed (~s)" grammar why)
                  (when tree (tuatara.syntax:delete-tree tree)))
@@ -3618,7 +3624,8 @@ bound to the fake frontend and the editor; the file and its buffer go afterwards
   ;; from the error, its scanner does not read the rest of the text again
   ;; from each place, so the parse takes a moment, not minutes
   (let* ((run (make-string 100000 :initial-element #\M))
-         (parser (tuatara.syntax:make-parser (tuatara.syntax:find-grammar "svelte") (tuatara.syntax::shared-helper))))
+         (parser (tuatara.syntax:make-parser (tuatara.syntax:find-grammar "svelte")
+                                             (tuatara.syntax:kept-helper :shared))))
     (multiple-value-bind (tree why)
         (tuatara.syntax:parse-rope parser (tuatara.text:string->rope (concatenate 'string run "{" run)) :limit 2)
       (true tree "parsed within two seconds (~s)" why)
@@ -3631,7 +3638,7 @@ bound to the fake frontend and the editor; the file and its buffer go afterwards
   (let* ((language (tuatara.defaults::find-language 'toml))
          (kept (tuatara.defaults::language-query language))
          (tuatara.defaults::*rules-unanswered-wait* 0.2))
-    (tuatara.syntax:rules-helper)
+    (tuatara.syntax:kept-helper :rules)
     (setf (tuatara.defaults::language-query language) nil)
     (remhash language tuatara.defaults::*rules-unanswered*)
     (unwind-protect
@@ -3675,7 +3682,7 @@ bound to the fake frontend and the editor; the file and its buffer go afterwards
   (let* ((language (tuatara.defaults::find-language 'rust))
          (kept (tuatara.defaults::language-indent-query language))
          (tuatara.defaults::*rules-editor-wait* 0.2))
-    (tuatara.syntax:rules-helper)
+    (tuatara.syntax:kept-helper :rules)
     (setf (tuatara.defaults::language-indent-query language) nil)
     (sb-int:encapsulate 'tuatara.syntax:compile-query 'slow
                         (lambda (function grammar source &rest more)
@@ -3700,7 +3707,7 @@ bound to the fake frontend and the editor; the file and its buffer go afterwards
          (tuatara.defaults::*rules-unanswered-wait* 0.01)
          (tuatara.defaults::*rules-unanswered-most* 2)
          (tuatara.defaults::*rules-quiet* t))
-    (tuatara.syntax:rules-helper)
+    (tuatara.syntax:kept-helper :rules)
     (setf (tuatara.defaults::language-query language) nil)
     (remhash language tuatara.defaults::*rules-unanswered*)
     (sb-int:encapsulate 'tuatara.syntax::send-query 'dead
