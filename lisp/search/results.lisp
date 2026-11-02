@@ -62,12 +62,16 @@ while it still holds what was found, \\[search-results-discard] throws the chang
   (tuatara.buffer:buffer-local buffer 'results-editing))
 
 (defun results-header (buffer)
-  "The words above BUFFER, lines a search found, on how to go on."
-  (substitute-command-keys
-   (if (results-editing-p buffer)
-       (concatenate 'string " Changing: \\<search-results-editing-mode>\\[search-results-apply] writes,"
-                    " \\[search-results-discard] throws away")
-       " \\<search-results-mode>\\[search-results-edit] makes the lines changeable")))
+  "The words above BUFFER, lines a search found, on how to go on, after what
+says the lines are not all the search may find, when they are not."
+  (let ((cut (tuatara.buffer:buffer-local buffer 'results-cut)))
+    (concatenate 'string
+                 (if cut (format nil " ~a." cut) "")
+                 (substitute-command-keys
+                  (if (results-editing-p buffer)
+                      (concatenate 'string " Changing: \\<search-results-editing-mode>\\[search-results-apply] writes,"
+                                   " \\[search-results-discard] throws away")
+                      " \\<search-results-mode>\\[search-results-edit] makes the lines changeable")))))
 
 (defun results-header-line (buffer)
   "Make the header of BUFFER, lines a search found, say how to go on as it is now."
@@ -76,21 +80,26 @@ while it still holds what was found, \\[search-results-discard] throws the chang
 
 (defun draw-results (buffer)
   "Make all the lines found that BUFFER lists, as they were found or last written, its text, read-only,
-the lines no longer waiting to be written."
-  (let ((entries (tuatara.buffer:buffer-local buffer 'results-all)))
+the lines no longer waiting to be written; when they are not all the search may find, a first line
+says so, in the text, so that it goes wherever the text goes."
+  (let ((entries (tuatara.buffer:buffer-local buffer 'results-all))
+        (cut (tuatara.buffer:buffer-local buffer 'results-cut)))
     (setf (tuatara.buffer:buffer-local buffer 'results-editing) nil)
     (unless (typep (buffer-major-mode buffer) 'search-results-mode)
       (set-major-mode buffer 'search-results-mode))
-    (render-pieces buffer (loop for entry across entries
-                                collect (let ((text (or (result-line-text entry) "")))
-                                          (concatenate 'string (result-line-prefix entry) text (string #\Newline))))
-                   :entries entries :point :start :refill #'draw-results)
+    (render-pieces buffer (append (and cut (list (format nil "~a.~%" cut)))
+                                  (loop for entry across entries
+                                        collect (let ((text (or (result-line-text entry) "")))
+                                                  (concatenate 'string (result-line-prefix entry) text
+                                                               (string #\Newline)))))
+                   :entries entries :first-line (if cut 1 0) :point :start :refill #'draw-results)
     (setf (buffer-read-only-p buffer) t)
     (results-header-line buffer)))
 
-(defun show-search-results (found words)
+(defun show-search-results (found words &key cut)
   "List the lines FOUND, candidates of a search of files for WORDS, in a buffer of their own and show
-it; the lines are also the places \\[next-place] goes through."
+it; the lines are also the places \\[next-place] goes through. CUT, words saying the lines are not all
+the search may find, or NIL, heads the list and its header and is said in the echo area."
   (let* ((entries (coerce (loop for candidate in found
                                 for (path line nil text) = (candidate-value candidate)
                                 for string = (candidate-string candidate)
@@ -107,10 +116,12 @@ it; the lines are also the places \\[next-place] goes through."
                    (format nil "*Found: ~a*"
                            (tuatara.display:shorten-string (escape-controls words) 40 :one-line t))))))
     (set-major-mode buffer 'search-results-mode)
-    (setf (tuatara.buffer:buffer-local buffer 'results-all) entries)
+    (setf (tuatara.buffer:buffer-local buffer 'results-all) entries
+          (tuatara.buffer:buffer-local buffer 'results-cut) cut)
     (draw-results buffer)
     (use-places (make-found-lines (map 'vector #'candidate-value found) 0 words))
-    (show-buffer buffer)))
+    (show-buffer buffer)
+    (when cut (message "~a" cut))))
 
 (defmethod visit-entry ((mode search-results-mode) list entry other)
   "Open the file ENTRY, a line found, is of, at its line."

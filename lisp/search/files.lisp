@@ -603,6 +603,16 @@ back into their files."
 
 (define-keys *search-files-keymap* '(("C-c C-l" search-files-list)))
 
+(defun found-lines-cut (count most ended)
+  "What to say of COUNT lines found by a search of files when they are listed
+without all it may find, or NIL when they are all: the search stopped at MOST
+\(*SEARCH-FILES-MAX-LINES* when it began), or had not ENDED."
+  (cond ((>= count most)
+         (format nil "The first ~:d lines found only: the search stops there, and more may be found ~
+(*search-files-max-lines* to see more)" count))
+        ((not ended)
+         (format nil "Only the ~:d line~:p found so far: the search had not ended" count))))
+
 (defun search-files-as-read (root prompt &key (left-out-words "Searching the first ~:d files only") preview)
   "Ask with PROMPT for words to find in the files under ROOT, read in the
 background meanwhile (GATHER-FILE-TEXTS), or kept read already
@@ -639,6 +649,8 @@ opened safely (CALL-WITH-WINDOW-PREVIEW)."
            (left-out nil)
            ;; the search of the input typed last, and the lines it found
            (searching nil) (searched-input nil) (found '())
+           ;; true once the search of the input typed last has ended; the most lines it gives
+           (searched-all nil) (most *search-files-max-lines*)
            ;; true once the lines found are to be listed in a buffer, not one of them visited
            (listing nil)
            ;; whether what is typed is a regular expression's words, else literal text;
@@ -664,7 +676,7 @@ opened safely (CALL-WITH-WINDOW-PREVIEW)."
                          (t :wait))))
                (start-search (input)
                  (when searching (stop-gathering searching))
-                 (setf searched-input (list input regex) fresh t
+                 (setf searched-input (list input regex) fresh t searched-all nil
                        searching
                        (start-gathering
                         "tuatara searching files"
@@ -680,20 +692,20 @@ opened safely (CALL-WITH-WINDOW-PREVIEW)."
                                                          do (sleep 0.02)
                                                          finally (return p))
                                       while (and corpus (not (eq corpus :wait)) (not (car cancel))
-                                                 (< count *search-files-max-lines*))
+                                                 (< count most))
                                       do (multiple-value-bind (from to) (corpus-range corpus inside)
                                            (when from
                                              (let ((lines (corpus-lines corpus input :regex regex :start from :end to
-                                                                                     :most (- *search-files-max-lines* count)
+                                                                                     :most (- most count)
                                                                                      :stop (lambda () (car cancel)))))
                                                (incf count (length lines))
                                                (dolist (candidate (line-candidates corpus lines inside))
                                                  (funcall give candidate))))))
                                 ;; then the files too large to keep, from disk, once all is read
-                                (when (< count *search-files-max-lines*)
+                                (when (< count most)
                                   (dolist (candidate (lines-on-disk-many (sb-thread:with-mutex (lock) (copy-list large))
                                                                          root-name input :regex regex :cancel cancel
-                                                                         :most (- *search-files-max-lines* count) :inside inside))
+                                                                         :most (- most count) :inside inside))
                                     (funcall give candidate))))
                             (when index
                               (sb-ext:atomic-decf (car *index-searches*))
@@ -721,7 +733,7 @@ opened safely (CALL-WITH-WINDOW-PREVIEW)."
                              ;; the search ended with nothing: the lines before go too
                              ((and done fresh)
                               (setf found '() fresh nil changed t)))
-                       (unless done (setf working t))))
+                       (if done (setf searched-all t) (setf working t))))
                    ;; while files are read: how many so far
                    (values changed working (and (not read-all) (files-read)))))
                (lines (input)
@@ -756,7 +768,8 @@ opened safely (CALL-WITH-WINDOW-PREVIEW)."
                                                :source #'take :keymap *search-files-keymap*
                                                :preview (and preview show)))))))
                (when listing
-                 (show-search-results found (or (first searched-input) "")))
+                 (show-search-results found (or (first searched-input) "")
+                                      :cut (found-lines-cut (length found) most searched-all)))
                (when (consp chosen)
                  ;; the lines found, for M-g n and M-g p to go on from the one chosen
                  (let ((lines (map 'vector #'candidate-value found)))

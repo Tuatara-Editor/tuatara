@@ -236,6 +236,65 @@ shown, by an ordinary change of the buffer."
           (true (search "a.txt:3: kiwi two" (session-text editor)))
           (is string= (format nil "alpha kiwi~%other~%kiwi two~%") (file-text a)))))))
 
+(define-test (search-results cut-list-said-so)
+  ;; lines listed past *search-files-max-lines*: the list says it holds the first ones only, in its
+  ;; text (so that a copy of it says so too), its header and the echo area; a whole list says nothing
+  (with-test-directory (dir)
+    (let ((a (put-file (merge-pathnames "a.txt" dir) (format nil "alpha kiwi~%other~%kiwi two~%kiwi three~%")))
+          (said "The first 2 lines found only: the search stops there, and more may be found"))
+      (let ((tuatara.defaults::*search-files-max-lines* 2))
+        (multiple-value-bind (f editor)
+            (run-keys (list (format nil "C-x C-f ~a RET M-s g k i w i" (key-string (tuatara.io:native a)))
+                            :wait "C-c C-l")
+                      :width 200 :height 12)
+          (let ((buffer (session-buffer editor)))
+            (is = 2 (length (tuatara.buffer:buffer-local buffer 'tuatara.defaults::list-entries)))
+            (true (uiop:string-prefix-p said (session-text editor)) "~s" (session-text editor))
+            (true (search said (tuatara.defaults::results-header buffer)))
+            (true (tuatara.frontend.fake:fake-frame-showing f "(*search-files-max-lines* to see more)"))
+            ;; the lines below the note are still the entries, one each
+            (true (search "a.txt:1: alpha kiwi" (session-text editor))))))
+      (multiple-value-bind (f editor)
+          (run-keys (list (format nil "C-x C-f ~a RET M-s g k i w i" (key-string (tuatara.io:native a)))
+                          :wait "C-c C-l")
+                    :width 200 :height 12)
+        (declare (ignore f))
+        (is = 3 (length (tuatara.buffer:buffer-local (session-buffer editor) 'tuatara.defaults::list-entries)))
+        (false (search "found only" (session-text editor)))
+        (false (search "so far" (session-text editor)))))))
+
+(define-test (search-results unfinished-list-said-so)
+  ;; lines listed before the search of files ended: the list says they are only those found so far
+  (with-test-directory (dir)
+    (let ((a (put-file (merge-pathnames "a.txt" dir) (format nil "alpha kiwi~%other~%kiwi two~%")))
+          (entered (list nil)) (release (list nil))
+          (said "Only the 2 lines found so far: the search had not ended"))
+      ;; the files too large to keep, searched last, are held up until the list is made
+      (sb-int:encapsulate 'tuatara.defaults::lines-on-disk-many 'held
+                          (lambda (function &rest arguments)
+                            (setf (car entered) t)
+                            (let ((cancel (getf (nthcdr 3 arguments) :cancel)))
+                              (loop repeat 500 until (or (car release) (and cancel (car cancel))) do (sleep 0.01)))
+                            (apply function arguments)))
+      (unwind-protect
+           (multiple-value-bind (f editor)
+               (run-keys (append (list (format nil "C-x C-f ~a RET M-s g k i w i" (key-string (tuatara.io:native a))))
+                                 ;; turns of the editor's own, each taking in the files read, then the lines
+                                 ;; found, until the search waits on the files too large to keep
+                                 (loop repeat 500
+                                       collect (lambda ()
+                                                 (unless (car entered) (sleep 0.01))
+                                                 (tuatara.command::take-in-source tuatara.command:*editor*)))
+                                 (list "C-c C-l"))
+                         :width 200 :height 12)
+             (let ((buffer (session-buffer editor)))
+               (is = 2 (length (tuatara.buffer:buffer-local buffer 'tuatara.defaults::list-entries)))
+               (true (uiop:string-prefix-p said (session-text editor)) "~s" (session-text editor))
+               (true (search said (tuatara.defaults::results-header buffer)))
+               (true (tuatara.frontend.fake:fake-frame-showing f said))))
+        (setf (car release) t)
+        (sb-int:unencapsulate 'tuatara.defaults::lines-on-disk-many 'held)))))
+
 (defun put-point-at-text-end (index)
   "A turn that puts point at the end of the INDEXth (from 0) line found shown."
   (lambda ()
