@@ -1053,3 +1053,65 @@ after, as it does by itself."
                      ("--generate-autostart" "a.txt") ("--generate-autostart" "--client")
                      ("--generate-autostart" "-c" "init.lisp") ("--generate-autostart" "--gui")))
       (true (getf (apply #'options wrong) :error) "~s taken" wrong))))
+
+(defun call-with-slow-saves (seconds function)
+  "Call FUNCTION while every save takes SECONDS longer, as on a slow drive."
+  (sb-int:encapsulate 'tuatara.io::transformed-text 'slow (lambda (transformed &rest arguments)
+                                                            (sleep seconds)
+                                                            (apply transformed arguments)))
+  (unwind-protect (funcall function)
+    (sb-int:unencapsulate 'tuatara.io::transformed-text 'slow)))
+
+(define-test (daemon quit-waits-for-saves-begun)
+  ;; M-x daemon-quit answered s: the daemon ends only once the saves it began are written, never cut short
+  (with-test-directory (dir)
+    (let ((file (namestring (put-file (merge-pathnames "slow.txt" dir) "slow"))))
+      (call-with-slow-saves
+       2 (lambda ()
+           (with-test-daemon (name thread)
+             (multiple-value-bind (local runner) (attach-test-client name :directory dir :files (list file))
+               (true (shows local "slow"))
+               (type-keys local "i x")
+               (true (shows local "xslow"))
+               (type-keys local "M-x d a e m o n - q u i t RET")
+               (true (shows local "changes not saved"))
+               (type-keys local "s")
+               (is eql 0 (first (client-ends runner 30)))
+               (true (not (eq :late (sb-thread:join-thread thread :timeout 30 :default :late))))
+               (is string= "xslow" (file-text file) "written before the daemon ended"))))))))
+
+(define-test (daemon terminated-waits-for-saves)
+  ;; SIGTERM while a save runs: the save ends before the daemon does; one that takes longer than the daemon
+  ;; waits is said, by its buffer's name, and the daemon ends all the same
+  (with-test-directory (dir)
+    (let ((file (namestring (put-file (merge-pathnames "saving.txt" dir) "saving"))))
+      (call-with-slow-saves
+       2 (lambda ()
+           (with-test-daemon (name thread daemon)
+             (multiple-value-bind (local runner) (attach-test-client name :directory dir :files (list file))
+               (true (shows local "saving"))
+               (type-keys local "i x C-x C-s")
+               (true (wait-until (lambda () (tuatara.defaults::running-jobs)) 10) "the save runs")
+               (true (daemon-terminated daemon thread))
+               (is eql 1 (first (client-ends runner)))
+               (is string= "xsaving" (file-text file) "written before the daemon ended")))))
+      (let ((was tuatara.defaults::*no-one-to-ask-save-seconds*))
+        (setf tuatara.defaults::*no-one-to-ask-save-seconds* 1)
+        (unwind-protect
+             (call-with-slow-saves
+              6 (lambda ()
+                  (with-test-daemon (name thread daemon)
+                    (multiple-value-bind (local runner) (attach-test-client name :directory dir :files (list file))
+                      (true (shows local "xsaving"))
+                      (type-keys local "i y C-x C-s")
+                      (true (wait-until (lambda () (tuatara.defaults::running-jobs)) 10))
+                      (let ((start (get-internal-real-time)))
+                        (true (daemon-terminated daemon thread))
+                        (true (< (- (get-internal-real-time) start) (* 5 internal-time-units-per-second))
+                              "the daemon waits no longer than it may"))
+                      (is eql 1 (first (client-ends runner)))
+                      (true (search "cut short: saving.txt"
+                                    (tuatara.buffer:buffer-string (tuatara.buffer:find-buffer "*Messages*"))))))
+                  ;; the save cut short in a real daemon goes on here: let it end before the folder goes
+                  (wait-until (lambda () (null (tuatara.defaults::running-jobs))) 10)))
+          (setf tuatara.defaults::*no-one-to-ask-save-seconds* was))))))

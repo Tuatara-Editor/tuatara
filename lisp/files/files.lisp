@@ -385,17 +385,21 @@ of this buffer's file on disk."
                               saves)
                       (and state (list state)))))))
 
-(defun wait-for-saves (jobs)
+(defun wait-for-saves (jobs &key seconds)
   "Wait for the background saves JOBS to end, saying so meanwhile, the editor
 reading keys all the while, and take them in: true when they all ended; NIL
 when \\[keyboard-quit] stopped the waiting (a save on a file system that does not
-answer), the saves going on in the background."
-  (prog1 (loop for job in jobs
-               always (wait-interruptibly (tuatara.runtime:job-thread job)
-                                          :message (format nil "Waiting for ~a to be saved"
-                                                           (tuatara.buffer:buffer-name (tuatara.runtime:job-buffer job)))
-                                          :grace 1/20))
-    (take-in-saves)))
+answer), or SECONDS in all went by when given, the saves going on in the
+background."
+  (let ((deadline (and seconds (tuatara.runtime:deadline-in seconds))))
+    (prog1 (loop for job in jobs
+                 always (wait-interruptibly (tuatara.runtime:job-thread job)
+                                            :message (format nil "Waiting for ~a to be saved"
+                                                             (tuatara.buffer:buffer-name
+                                                              (tuatara.runtime:job-buffer job)))
+                                            :grace 1/20
+                                            :seconds (and deadline (tuatara.runtime:seconds-left deadline))))
+      (take-in-saves))))
 
 (define-command revert-buffer ()
   "Read the current buffer's file again, replacing its text: one step that undo

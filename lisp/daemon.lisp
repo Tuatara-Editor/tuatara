@@ -523,9 +523,10 @@ wherever this is called from (it is woken)."
   "Stop the editor running in the background (tuatara --daemon), from any of
 its clients: asked first about every change not saved in it, the clients
 that ended included, folder by folder: s saves those of a folder, l leaves
-them unsaved, \\`C-g' keeps the daemon running. Then every other client is
-told the daemon ends, gives its terminal back and exits 1, and the daemon
-writes what it keeps (the files visited lately, the places) and ends.
+them unsaved, \\`C-g' keeps the daemon running; the saves begun are waited
+for (\\`C-g' there keeps it running too). Then every other client is told the
+daemon ends, gives its terminal back and exits 1, and the daemon writes what
+it keeps (the files visited lately, the places) and ends.
 \\[save-buffers-kill-editor] in a client closes that client alone."
   (let ((editor *editor*))
     (unless *daemon*
@@ -537,8 +538,23 @@ writes what it keeps (the files visited lately, the places) and ends.
                          collect answer)))
       (unless (eq answers :stay)
         (ask-about-unsaved-by-folder editor)
+        ;; the saves just begun end before the daemon does, never cut short by its exit
+        (unless (wait-for-saves-begun)
+          (refuse "Not stopped: saves are still running"))
         (dolist (answer answers) (when (functionp answer) (call-hook-function answer)))
         (stop-daemon editor)))))
+
+(defparameter *no-one-to-ask-save-seconds* 30
+  "The seconds a daemon stopping with no one to ask (tuatara --stop with no
+terminal, SIGTERM at logout) waits for the saves running to end before it
+ends all the same: well within what the system gives a program asked to end.")
+
+(defun wait-for-saves-begun (&key seconds)
+  "Wait for the saves running in the background, those an exit waits for
+\(TUATARA.RUNTIME:JOB-AT-EXIT :WAIT), to end, as WAIT-FOR-SAVES waits, at
+most SECONDS when given: true when they all ended, or none ran."
+  (let ((saves (remove-if-not (lambda (job) (eq :wait (tuatara.runtime:job-at-exit job))) (running-jobs))))
+    (or (null saves) (wait-for-saves saves :seconds seconds))))
 
 (defun unsaved-not-kept ()
   "The buffers with changes leaving the editor would lose (UNSAVED-P) that
@@ -593,7 +609,9 @@ stopped instead."
   "Stop EDITOR, a daemon's, where no one can be asked: the changes not saved
 are written as auto-saved copies first (AUTO-SAVE-UNSAVED), as the
 auto-saving settings allow and never of an encrypted file's text or a file
-opened safely; then every client but HERE is told WORDS and exits 1, HERE
+opened safely, once the saves running have ended, waited for at most
+*NO-ONE-TO-ASK-SAVE-SECONDS* (those still running then said in the log);
+then every client but HERE is told WORDS and exits 1, HERE
 exiting 0 (STOP-DAEMON). Changes no copy would keep (UNSAVED-NOT-KEPT) are
 lost, said in the daemon's log (SAY-IN-DAEMON-LOG); with KEEP-CHANGES nothing is stopped while there are
 such changes, and why is returned in words (LOST-CHANGES-WORDS). NIL once
@@ -601,7 +619,13 @@ stopped."
   (let ((lost (unsaved-not-kept)))
     (if (and lost keep-changes)
         (lost-changes-words lost)
-        (progn (auto-save-unsaved)
+        (progn (unless (wait-for-saves-begun :seconds *no-one-to-ask-save-seconds*)
+                 (say-in-daemon-log "The daemon stopped with no one to ask while saves still ran, ~
+                                     cut short: ~{~a~^, ~}"
+                                    (loop for job in (running-jobs)
+                                          when (eq :wait (tuatara.runtime:job-at-exit job))
+                                            collect (tuatara.runtime:job-buffer-name job))))
+               (auto-save-unsaved)
                (when lost
                  (say-in-daemon-log "The daemon stopped with no one to ask, though ~a: they are lost"
                                     (lost-changes-count-words lost)))
