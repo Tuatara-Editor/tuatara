@@ -101,9 +101,35 @@ character standing for each; NIL when START is past their end."
   (let ((end (min end (length octets))))
     (and (< start end) (tuatara.text:octets-latin-1 octets :start start :end end))))
 
+(defun octets-search (needle octets &key (start 0) (end (length octets)) from-end)
+  "Where NEEDLE, a vector of octets, first stands in OCTETS from START below
+END (the last place, with FROM-END), or NIL: as SEARCH, a file of many
+megabytes gone through in a moment."
+  (let ((end (min end (length octets))))
+    (if (and (typep needle 'tuatara.text:octets) (typep octets 'tuatara.text:octets) (plusp (length needle)))
+        (and (<= 0 start) (<= (+ start (length needle)) end)
+             (octets-search-simple needle octets start end from-end))
+        (search needle octets :start2 start :end2 end :from-end from-end))))
+
+(defun octets-search-simple (needle octets start end from-end)
+  "OCTETS-SEARCH's work on simple vectors of octets, NEEDLE not empty and
+fitting between START and END."
+  (declare (type tuatara.text:octets needle octets) (type fixnum start end) (optimize speed (safety 0)))
+  (let ((n (length needle)) (first (aref needle 0)))
+    (declare (type fixnum n))
+    (flet ((match-p (i)
+             (declare (type fixnum i))
+             (loop for k of-type fixnum from 1 below n always (= (aref octets (+ i k)) (aref needle k)))))
+      (declare (inline match-p))
+      (if from-end
+          (loop for i of-type fixnum from (- end n) downto start
+                when (and (= (aref octets i) first) (match-p i)) return i)
+          (loop for i of-type fixnum from start to (- end n)
+                when (and (= (aref octets i) first) (match-p i)) return i)))))
+
 (defun octets-find (octets needle &key (start 0) (end (length octets)))
   "Where the ASCII string NEEDLE first stands in OCTETS from START below END, or NIL."
-  (search (map 'vector #'char-code needle) octets :start2 start :end2 (min end (length octets))))
+  (octets-search (tuatara.text:string-octets needle) octets :start start :end end))
 
 (defun pdf-header-at (octets)
   "Where %PDF- followed by a digit begins among the first 1,024 octets of

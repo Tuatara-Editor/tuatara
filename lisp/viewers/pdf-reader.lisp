@@ -342,7 +342,8 @@ there, else as far as endstream."
                                      (tuatara.io:octets-at-p octets "endstream" (pdf-skip-space octets (+ data length)))
                                      (+ data length)))
                          (close (or (and exact (pdf-skip-space octets exact))
-                                    (search (load-time-value (tuatara.text:string-octets "endstream")) octets :start2 data)))
+                                    (tuatara.io:octets-search (load-time-value (tuatara.text:string-octets "endstream"))
+                                                              octets :start data)))
                          (data-end (or exact
                                        (and close (let ((e close))
                                                     (when (and (> e data) (= (aref octets (1- e)) 10)) (decf e))
@@ -366,7 +367,7 @@ FUNCTION returns true, and return that. In a job, it ends when the job is
 asked to stop."
   (let ((n (length octets)) (mark (load-time-value (tuatara.text:string-octets "obj"))) (i 0) (count 0))
     (loop
-      (let ((p (search mark octets :start2 i)))
+      (let ((p (tuatara.io:octets-search mark octets :start i)))
         (unless p (return nil))
         (when (zerop (mod (incf count) 4096)) (tuatara.runtime:job-check-stop))
         (let ((at (pdf-object-header-before octets p))
@@ -384,7 +385,8 @@ asked to stop."
 a list of (EOF . END), in order: where its %%EOF is, and where its line
 ends."
   (let ((mark (load-time-value (tuatara.text:string-octets "%%EOF"))))
-    (loop for at = (search mark octets) then (search mark octets :start2 (+ at 5))
+    (loop for at = (tuatara.io:octets-search mark octets)
+            then (tuatara.io:octets-search mark octets :start (+ at 5))
           while at
           collect (cons at (pdf-line-end-after octets (+ at 5))))))
 
@@ -393,8 +395,8 @@ ends."
 names (where a save's cross-reference section is said to be), and where
 that startxref is, as two values: the offset NIL when it names none that can
 be read, both NIL when there is no startxref."
-  (let ((at (search (load-time-value (tuatara.text:string-octets "startxref")) octets
-                    :start2 start :end2 end :from-end t)))
+  (let ((at (tuatara.io:octets-search (load-time-value (tuatara.text:string-octets "startxref")) octets
+                                     :start start :end end :from-end t)))
     (values (and at (values (pdf-integer-at octets (+ at 9) end))) at)))
 
 (defun map-pdf-cross-reference-table (function octets at)
@@ -801,7 +803,8 @@ stop."
                        (when (stringp key) (push (cons key v) pairs))
                        (setf j after))))
                  (let ((close (loop with mark = (load-time-value (tuatara.text:string-octets "EI"))
-                                    for at = (search mark octets :start2 j) then (search mark octets :start2 (+ at 2))
+                                    for at = (tuatara.io:octets-search mark octets :start j)
+                                      then (tuatara.io:octets-search mark octets :start (+ at 2))
                                     while at
                                     when (and (> at 0) (pdf-white-p (aref octets (1- at)))
                                               (or (>= (+ at 2) n) (pdf-white-p (aref octets (+ at 2)))

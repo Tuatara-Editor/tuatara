@@ -441,13 +441,16 @@ the text of edits and of who made the file as programs keep it."
         (end-mark (map '(vector (unsigned-byte 8)) #'char-code "</x:xmpmeta>"))
         (sections '()) (at 0))
     (loop repeat 4
-          for start = (search start-mark octets :start2 at)
-          for end = (and start (search end-mark octets :start2 start))
+          for start = (tuatara.io:octets-search start-mark octets :start at)
+          for end = (and start (tuatara.io:octets-search end-mark octets :start start))
           while end
           do (let ((tree (ignoring-errors-reported ("reading an XMP packet")
                            (xml-parse (octets-text octets start (+ end (length end-mark)))))))
                (when tree
-                 (push (metadata-section (format nil "XMP~@[ (packet ~d)~]" (and (or sections (search start-mark octets :start2 (1+ end))) (1+ (length sections))))
+                 (push (metadata-section (format nil "XMP~@[ (packet ~d)~]"
+                                                 (and (or sections
+                                                          (tuatara.io:octets-search start-mark octets :start (1+ end)))
+                                                      (1+ (length sections))))
                                          (xmp-fields tree))
                        sections)))
              (setf at (1+ end)))
@@ -471,14 +474,14 @@ great many it does not have is read in a bounded time."
                     (and header (octets-text octets (+ header 5) (min (length octets) (+ header 8))))))
          (saves (length (pdf-eof-lines octets)))
          (info-mark (map '(vector (unsigned-byte 8)) #'char-code "/Info"))
-         (info-at (search info-mark octets :from-end t))
+         (info-at (tuatara.io:octets-search info-mark octets :from-end t))
          (info (and info-at (pdf-resolve octets (pdf-object-at octets (+ info-at (length info-mark))))))
-         (encrypted (search (map '(vector (unsigned-byte 8)) #'char-code "/Encrypt") octets))
+         (encrypted (tuatara.io:octets-search (tuatara.text:string-octets "/Encrypt") octets))
          (acts (loop for (mark . words) in '(("/JavaScript" . "JavaScript") ("/JS" . "JavaScript") ("/OpenAction" . "an action on opening")
                                               ("/AA" . "actions on events") ("/Launch" . "an action starting a program")
                                               ("/EmbeddedFile" . "files kept inside it") ("/RichMedia" . "media")
                                               ("/XFA" . "an XFA form") ("/SubmitForm" . "a form sent somewhere"))
-                     when (search (map '(vector (unsigned-byte 8)) #'char-code mark) octets)
+                     when (tuatara.io:octets-search (tuatara.text:string-octets mark) octets)
                        collect words)))
     (list (metadata-section
            "What the PDF says of itself"

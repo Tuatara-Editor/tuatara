@@ -271,6 +271,34 @@ integers (SHORT, LONG) or of fractions (N . D) (RATIONAL), or octets."
          (note (first (tuatara.defaults::pdf-metadata octets))))
     (true (search "PDF version" note))))
 
+(define-test (metadata pdf-large-file-read-quickly)
+  ;; a PDF of 48 MB, its pictures' octets naming nothing: what it says of itself read in a moment
+  (let* ((filler (make-array (* 48 1024 1024) :element-type '(unsigned-byte 8) :initial-element 255))
+         (octets (octets-of "%PDF-1.7" 10 "1 0 obj << /Title (Kept) >> endobj" 10
+                            (format nil "2 0 obj << /Length ~d >> stream~%" (length filler)) filler
+                            (format nil "~%endstream endobj~%trailer << /Info 1 0 R >>~%%%EOF~%")))
+         (start (get-internal-real-time))
+         (sections (tuatara.defaults::pdf-metadata octets))
+         (seconds (/ (- (get-internal-real-time) start) internal-time-units-per-second)))
+    (true (search "- Title :: Kept" (first sections)))
+    (true (< seconds 2) "read in ~,2f seconds" seconds)))
+
+(define-test (metadata octets-search-agrees)
+  ;; the quick search finds what SEARCH finds, from the start or the end, within bounds, in any vector
+  (let ((random (sb-ext:seed-random-state 7)) (disagreeing '()))
+    (dotimes (k 2000)
+      (let* ((octets (coerce (loop repeat (random 60 random) collect (random 3 random)) 'tuatara.text:octets))
+             (needle (coerce (loop repeat (random 4 random) collect (random 3 random)) 'tuatara.text:octets))
+             (start (random (1+ (length octets)) random))
+             (end (+ start (random (1+ (- (length octets) start)) random)))
+             (from-end (zerop (random 2 random))))
+        (unless (eql (search needle octets :start2 start :end2 end :from-end from-end)
+                     (tuatara.io:octets-search needle octets :start start :end end :from-end from-end))
+          (push (list needle octets start end from-end) disagreeing))))
+    (is equal '() disagreeing))
+  (is = 2 (tuatara.io:octets-search #(1 2) (make-array 4 :initial-contents '(0 0 1 2) :adjustable t)))
+  (false (tuatara.io:octets-search (octets-of "obj") (octets-of "ob"))))
+
 (defun zlib-stored-octets (octets)
   "OCTETS as zlib data of one stored deflate block, as /FlateDecode takes them."
   (let ((n (length octets)))
