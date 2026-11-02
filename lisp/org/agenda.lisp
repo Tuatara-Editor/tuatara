@@ -169,8 +169,10 @@ number: 2000 for [#A], 1000 for B and none, 0 for C), TITLE, TAGS (inherited
 first) and LOCAL-TAGS (its own, on its headline), CATEGORY, its planning's SCHEDULED, DEADLINE and CLOSED timestamps
 (texts), HEADING, its line after the stars, its PROPERTIES (an alist), its
 plain active STAMPS (texts), its RANGES of days ((FROM TO) texts) and its LOGS
-((KIND TIMESTAMP DURATION END) of its CLOSED: and CLOCK: lines, END the time a
-clock stopped), and the FACTS
+\((:CLOSED TIMESTAMP NIL NIL), (:CLOCK FROM DURATION STOPPED OPEN), STOPPED
+the time of day a clock stopped and OPEN true while it has no end, and
+\(:DONE-NOTE TIMESTAMP NIL NIL TICKED), TICKED (DONE . TOTAL) of its
+checkboxes or NIL), and the FACTS
 of its dates the agenda works with, read once (ORG-ENTRY-FACTS). Its KIND is
 :HEADLINE, or :CHECKBOX for a list item with a checkbox kept as a task (an open
 box TODO, a ticked one DONE); SKIP, the stretches of its text that are its

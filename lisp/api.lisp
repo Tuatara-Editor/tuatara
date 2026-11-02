@@ -34,9 +34,13 @@ timestamps in its text, its planning line's left out; :RANGES, its ranges of
 days, each (FROM TO), the two timestamps' texts; :KIND, :HEADLINE, or
 :CHECKBOX for a list item with a checkbox kept as a task; :PRIORITY, Org's
 number for it, 2000 for [#A], 1000 for [#B] and none, 0 for [#C];
-:CATEGORY, its category; :LOGS, its CLOSED: and CLOCK: lines, each (KIND
-TIMESTAMP DURATION END OPEN), KIND :CLOSED or :CLOCK, END the time a clock
-stopped, OPEN true for a clock still running."
+:CATEGORY, its category; :LOGS, what its log says, in order, each one of
+\(:CLOSED TIMESTAMP NIL NIL) for its CLOSED: line; (:CLOCK FROM DURATION
+STOPPED OPEN) for a CLOCK: line, FROM its start as written, DURATION as
+written (1:05) and STOPPED the time of day it stopped (10:00) when it has an
+end, OPEN true while it has none; (:DONE-NOTE TIMESTAMP NIL NIL TICKED) for
+a note of being done, TICKED (DONE . TOTAL) of its checkboxes when the line
+after says so, else NIL."
   (ecase field
     (:file (agenda-entry-file entry))
     (:text (agenda-entry-text entry))
