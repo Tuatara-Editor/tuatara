@@ -64,9 +64,12 @@ the next word, each time it is given."
 
 (defun git-places (directory arguments environment)
   "Where git run with ARGUMENTS in DIRECTORY and ENVIRONMENT (NAME=VALUE
-strings) works, as three values, native names: the folder it runs in, each
--C taken in turn; the repository folder --git-dir or GIT_DIR names, or NIL;
-the working folder --work-tree or GIT_WORK_TREE names, or NIL."
+strings, the first of a name the one in force, as a program reads them)
+works, as four values, native names: the folder it runs in, each -C taken
+in turn; the repository folder --git-dir or GIT_DIR names, or NIL; the
+working folder --work-tree or GIT_WORK_TREE names, or NIL; and the other
+places its variables have it write in (GIT_INDEX_FILE, GIT_OBJECT_DIRECTORY,
+GIT_COMMON_DIR), a list."
   (let ((here (tuatara.io:native directory)) (git-dir nil) (work-tree nil))
     (flet ((from-here (path) (tuatara.io:clean-path (if (uiop:string-prefix-p "/" path) path (tuatara.io:path-join here path)))))
       (loop for (name . more) on arguments
@@ -76,10 +79,17 @@ the working folder --work-tree or GIT_WORK_TREE names, or NIL."
                      ((and (string= name "--git-dir") more) (setf git-dir (first more)))
                      ((uiop:string-prefix-p "--work-tree=" name) (setf work-tree (subseq name 12)))
                      ((and (string= name "--work-tree") more) (setf work-tree (first more)))))
-      (dolist (setting environment)
-        (cond ((uiop:string-prefix-p "GIT_DIR=" setting) (setf git-dir (subseq setting 8)))
-              ((uiop:string-prefix-p "GIT_WORK_TREE=" setting) (setf work-tree (subseq setting 14)))))
-      (values here (and git-dir (from-here git-dir)) (and work-tree (from-here work-tree))))))
+      (flet ((variable (name)
+               (let ((prefix (concatenate 'string name "=")))
+                 (loop for setting in environment
+                       when (uiop:string-prefix-p prefix setting) return (subseq setting (length prefix))))))
+        ;; options name the places before the variables do
+        (unless git-dir (setf git-dir (variable "GIT_DIR")))
+        (unless work-tree (setf work-tree (variable "GIT_WORK_TREE")))
+        (values here (and git-dir (from-here git-dir)) (and work-tree (from-here work-tree))
+                (loop for name in '("GIT_INDEX_FILE" "GIT_OBJECT_DIRECTORY" "GIT_COMMON_DIR")
+                      for value = (variable name)
+                      when (and value (plusp (length value))) collect (from-here value)))))))
 
 (defun git-output-paths (words)
   "The files and folders git's command WORDS (GIT-COMMAND-WORDS) writes
@@ -164,11 +174,13 @@ place is refused."
   "CHECK-GIT-WRITING's looks, refusing in the words of a write refused."
   (let* ((words (git-command-words arguments))
          (doing (format nil "run git ~a in" (or (first words) ""))))
-      (multiple-value-bind (here git-dir work-tree) (git-places directory arguments environment)
+      (multiple-value-bind (here git-dir work-tree others) (git-places directory arguments environment)
         (let ((top (or work-tree (ignoring-errors-reported ("finding the repository of ~a" here)
                                    (repository-top here)))))
           (dolist (place (remove nil (list git-dir top)))
             (tuatara.io:check-writing place doing))
+          (dolist (place others)
+            (tuatara.io:check-tree-writing place doing))
           (dolist (path (git-output-paths words))
             (when (and path (plusp (length path)))
               (tuatara.io:check-tree-writing (if (uiop:string-prefix-p "/" path) path (tuatara.io:path-join here path))
@@ -335,6 +347,12 @@ command, so that they are the ones in force."
   (let* ((limit (or limit *program-output-limit*))
          (words (git-command-words arguments))
          (leading (ldiff arguments words))
+         ;; all git is given, the editor's own variables and its client's among them: what it is checked against
+         (environment (append environment (list "GIT_TERMINAL_PROMPT=0")
+                              (if reading
+                                  (remove-if (lambda (setting) (uiop:string-prefix-p "GIT_" setting))
+                                             (tuatara.io:program-environment))
+                                  (tuatara.io:program-environment))))
          ;; the editor's own options after yours, so that they are the ones in force
          (arguments (append leading (git-safety arguments) options
                             (and (not reading)
@@ -388,9 +406,5 @@ command, so that they are the ones in force."
                        (listener (values (and (not line) (not cancelled) octets) ok nil said))
                        (t (values (and (not line) (not cancelled) octets) ok))))))
            :job tuatara.runtime:*job* :input (and input :stream) :output :stream :error (and errors :stream)
-           :environment (append environment (list "GIT_TERMINAL_PROMPT=0")
-                                (if reading
-                                    (remove-if (lambda (setting) (uiop:string-prefix-p "GIT_" setting))
-                                               (tuatara.io:program-environment))
-                                    (tuatara.io:program-environment)))))
+           :environment environment))
       (error () (values nil nil)))))

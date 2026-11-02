@@ -549,3 +549,22 @@ since their commit."
                   (true (tuatara.io:path-kind elsewhere))
                   (false (tuatara.io:path-kind here)))
         (ignore-errors (tuatara.io:delete-tree elsewhere))))))
+
+(define-test (git evidence-refused-by-variables)
+  ;; GIT_DIR, GIT_WORK_TREE or GIT_INDEX_FILE in the editor's own environment, the one git is given, naming an
+  ;; evidence folder: the command that would write there is refused, never run
+  (with-test-directory (dir)
+    (let* ((ev (namestring (ensure-directories-exist (merge-pathnames "ev/" dir))))
+           (work (namestring (ensure-directories-exist (merge-pathnames "work/" dir)))))
+      (scratch-repository work)
+      (scratch-repository ev)
+      (with-evidence-folders ((list ev))
+        (dolist (setting (list (cons "GIT_DIR" (concatenate 'string ev ".git"))
+                               (cons "GIT_WORK_TREE" ev)
+                               (cons "GIT_INDEX_FILE" (concatenate 'string ev ".git/index"))))
+          (sb-posix:setenv (car setting) (cdr setting) 1)
+          (unwind-protect
+               (true (handler-case (progn (tuatara.git:run-git work '("add" "a.txt")) nil)
+                       (tuatara.io:writing-refused () t))
+                     "~a into evidence not refused" (car setting))
+            (sb-posix:unsetenv (car setting))))))))
