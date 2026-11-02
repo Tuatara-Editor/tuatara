@@ -1049,8 +1049,8 @@ since; NIL keeps killed text to the editor.")
 
 (defvar *kill-ring-max-size* (* 64 1024 1024)
   "The most characters (octets, for a kill kept where it is) the kills on the
-kill ring may hold together: past it the oldest are forgotten, the latest
-always kept; NIL for no such limit.")
+kill ring may hold together, 64 M: past it the oldest are forgotten, the
+latest always kept, however large.")
 
 (defun push-kill (text)
   "Put TEXT first on the kill ring, forgetting the kills past *KILL-RING-MAX*,
@@ -1318,10 +1318,8 @@ is a keyboard macro's work."
 ;;; The mark ring
 
 (defvar *mark-ring-max* 16
-  "How many marks each buffer's mark ring keeps; past that the oldest goes.")
-
-(defvar *global-mark-ring-max* 16
-  "How many marks the global mark ring keeps; past that the oldest goes.")
+  "How many marks each buffer's mark ring keeps, and the global mark ring
+across buffers; past that the oldest goes.")
 
 (defvar *set-mark-command-repeat-pop* nil
   "True for \\[set-mark-command] pressed again right after
@@ -1344,10 +1342,9 @@ back to the mark before; NIL, as standard, for it to set the mark.")
 
 (defun push-mark (&key (position (point)) quiet activate (buffer (current-buffer)))
   "Set BUFFER's mark at POSITION (point by default), the mark it had put on
-its mark ring (*MARK-RING-MAX* kept); when the newest
-mark of the global mark ring is another buffer's, this one goes there too
-\(*GLOBAL-MARK-RING-MAX* kept). Says Mark set unless QUIET; ACTIVATE makes the
-region active."
+its mark ring; when the newest mark of the global mark ring is another
+buffer's, this one goes there too (*MARK-RING-MAX* kept in each). Says Mark
+set unless QUIET; ACTIVATE makes the region active."
   (let ((old (tuatara.buffer:buffer-mark buffer))
         (version (tuatara.buffer:buffer-version buffer)))
     (when old
@@ -1357,8 +1354,8 @@ region active."
     (setf (tuatara.buffer:buffer-mark buffer) position)
     (unless (and *global-mark-ring* (eq (car (first *global-mark-ring*)) buffer))
       (push (cons buffer (tuatara.text:make-anchor version position)) *global-mark-ring*)
-      (when (> (length *global-mark-ring*) *global-mark-ring-max*)
-        (setf *global-mark-ring* (subseq *global-mark-ring* 0 *global-mark-ring-max*))))
+      (when (> (length *global-mark-ring*) *mark-ring-max*)
+        (setf *global-mark-ring* (subseq *global-mark-ring* 0 *mark-ring-max*))))
     (unless quiet (message "Mark set"))
     (when activate (setf (tuatara.buffer:buffer-mark-active-p buffer) t))
     nil))

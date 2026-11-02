@@ -449,7 +449,7 @@ TEXTS with the mode line's sign of work, P, lit in :mode-line-sign."
 
 (define-test (command kill-ring-bounded)
   ;; the kills together held to *kill-ring-max-size*: the oldest forgotten, the latest always kept
-  (let ((tuatara-user:*kill-ring-max-size* 10))
+  (let ((tuatara.defaults::*kill-ring-max-size* 10))
     (multiple-value-bind (f editor) (run-keys "M-x k i l l - l i n e RET M-x k i l l - l i n e RET M-x k i l l - l i n e RET"
                                               :text (format nil "abcdef~%ghijkl~%") :width 80)
       (declare (ignore f))

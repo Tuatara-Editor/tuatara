@@ -421,18 +421,13 @@
   ;; The kill ring keeps the 60 newest kills. Not set: 120.
   ;; (setf *kill-ring-max* 60)
 
-  ;; The kills together hold at most 256 M characters. Not set: 64 M.
-  ;; (setf *kill-ring-max-size* (* 256 1024 1024))
-
   ;; Undo keeps at most 256 MB of changes a buffer; past it the oldest can no
   ;; longer be undone. Not set: nil, every change kept back to the file as opened.
   ;; (setf *undo-limit* (* 256 1024 1024))
 
-  ;; Marks kept a buffer, for C-u C-SPC to go back through. Not set: 16.
+  ;; Marks kept a buffer, for C-u C-SPC to go back through, and across
+  ;; buffers, for C-x C-SPC. Not set: 16.
   ;; (setf *mark-ring-max* 32)
-
-  ;; Marks kept across buffers, for C-x C-SPC. Not set: 16.
-  ;; (setf *global-mark-ring-max* 32)
 
   ;; C-u C-SPC, then C-SPC C-SPC ... go on back through the marks. Not set: nil.
   ;; (setf *set-mark-command-repeat-pop* t)

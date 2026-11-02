@@ -88,7 +88,7 @@ available unqualified, and the public API of TUATARA is used.")
            ;; marks, places kept, input methods, help windows and Escape
            #:*help-window-select* #:*insert-file-limit* #:*escape-quits* #:*save-place-mode*
            #:*save-place-limit* #:*default-input-method* #:*input-method-keys* #:*mark-ring-max*
-           #:*global-mark-ring-max* #:*set-mark-command-repeat-pop*
+           #:*set-mark-command-repeat-pop*
            ;; the sandbox programs decoding files run in
            #:*sandbox-program* #:*sandbox-seconds* #:*sandbox-memory* #:*sandbox-input-limit* #:*program-output-limit* #:*deepest-folder-tree* #:*office-note-largest* #:*office-value-longest* #:*sandbox-total-memory* #:*sandbox-seccomp* #:*picture-memory* #:*pdf-view-dark-pages* #:*office-view-pages* #:*user-full-name*
            #:*open-externally-program* #:*open-externally-programs* #:*hex-view-binary-files* #:*open-externally-kinds* #:*open-externally-ask* #:*rimu-delete-to-trash* #:*latex-engines* #:*latex-main-font* #:*latex-sans-font* #:*latex-mono-font* #:*latex-redaction-commands* #:*export-trusted-folders* #:*logos-directory*
@@ -105,7 +105,7 @@ available unqualified, and the public API of TUATARA is used.")
            #:*formatted-file-types* #:*search-files-min-input* #:*search-files-limit* #:*indexed-directories* #:*processing-indicator* #:*indexing-indicator* #:*searching-indicator* #:*indexes-kept-on-disk* #:*preview-files* #:*preview-formatted-files* #:*preview-formatted-search* #:*preview-file-search* #:*preview-buffers* #:*search-results-save-files*
            #:*search-files-max-lines* #:*search-filter-screen-seconds* #:*typing-pause* #:*typing-pause-octets* #:*line-record-modes*
            ;; the kill ring and the system clipboard
-           #:*kill-ring-max* #:*kill-ring-max-size* #:*undo-limit* #:*use-system-clipboard* #:*clipboard-max-size*
+           #:*kill-ring-max* #:*undo-limit* #:*use-system-clipboard* #:*clipboard-max-size*
            #:*show-completion-count* #:*prompt-above-candidates* #:*key-hint-rows* #:*fill-column* #:*leader-key* #:*sentence-end-double-space* #:*extra-sentence-abbreviations* #:*removed-sentence-abbreviations* #:*git-commit-fill-column* #:*fill-paragraph-limit* #:*fill-ask-column* #:*global-hl-line-mode* #:*global-soft-wrap-mode* #:*soft-wrap-modes* #:*centred-text-width* #:*centred-text-modes* #:*soft-wrap-at-fill-column* #:*soft-wrap-indicator* #:*global-visual-line-mode* #:*visual-line-modes*
            #:*hl-line-modes* #:*global-cursor-column-mode* #:*cursor-column-modes* #:*global-spellcheck-mode* #:*spellcheck-modes* #:*spellcheck-languages* #:*spellcheck-excluded-faces* #:*spellcheck-comment-faces* #:*spellcheck-string-faces* #:*global-centred-text-mode* #:*line-numbers-modes* #:*global-invisible-characters-mode* #:*invisible-characters-modes* #:*invisible-characters-when-safe*
            ;; files visited lately
