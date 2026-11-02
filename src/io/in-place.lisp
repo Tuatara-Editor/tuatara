@@ -36,7 +36,9 @@
 ;;;; the time every few seconds, so that a change to the file after the save
 ;;;; was cut short is told from one the save made. Anything else, such as
 ;;;; another program having written the file since, is said and nothing
-;;;; written, and the file is not saved while the journal is there.
+;;;; written, and the file is not saved while the journal is there. A journal
+;;;; held by a save going on, or a putting back, is waited for a little; the
+;;;; file is not opened meanwhile.
 ;;;; FALLOC_FL_INSERT_RANGE and COLLAPSE_RANGE, which open or close a gap of
 ;;;; whole blocks, are not used: an edit of text is almost never a whole
 ;;;; number of blocks long and at a block boundary.
@@ -96,6 +98,14 @@ not made in place.")
 (defconstant +journal-heartbeat+ 2
   "Seconds between the marks a save in place makes on its journal, with the
 time, while it writes.")
+
+(defvar *journal-busy-wait* 10
+  "Seconds opening, saving or reverting a file waits for another save of it,
+or a putting back, to let its journal go, before it is refused.")
+
+(define-condition journal-busy (file-system-error) ()
+  (:documentation "A file that another save in place, or a putting back, is writing now: it is not
+opened or saved until that has ended."))
 
 (defvar *journal-owner* nil
   "The user a journal must belong to, with the file it is of, to be used:
@@ -525,17 +535,19 @@ A failure puts the file back as it was before it is signalled."
 
 ;;; A save cut short
 
-(defun recover-from-journal (fd path &key safe)
+(defun recover-from-journal (fd path &key safe (operation "open"))
   "Put back the file open as file descriptor (FD), at PATH, as it was before
 a save in place that was cut short (by a crash or a power cut), when its
 journal is beside it: the file is then exactly the old one, and the journal
 gone. Said in words (TELL-WRITING). Nothing is written, and that is said,
 for a file opened SAFE (the journal not even read), where nothing may be
 written (WRITING-REFUSAL), where the system refuses, for a journal that may
-not be used (JOURNAL-REFUSAL), one that a save or putting back holds now,
-one of another file or that does not fit it as a save cut short left it
-\(JOURNAL-FITS-P), one this release cannot read, and when the file is
-replaced meanwhile. True when the file was put back."
+not be used (JOURNAL-REFUSAL), one of another file or that does not fit it
+as a save cut short left it (JOURNAL-FITS-P), one this release cannot read,
+and when the file is replaced meanwhile. A journal another save or putting
+back holds is waited for, *JOURNAL-BUSY-WAIT* seconds at most, else
+JOURNAL-BUSY is signalled for OPERATION (\"open\"). True when the file was
+put back, or changed by the one waited for."
   (let* ((target (or (fd-real-path fd) (native path)))
          (journal-path (journal-path target)))
     (when (path-stamp journal-path :follow nil :failure nil)
@@ -553,15 +565,20 @@ replaced meanwhile. True when the file was put back."
                                                                              +o-nofollow+ +o-cloexec+))
                              (sb-posix:syscall-error (e) (fail "read" journal-path (sb-posix:syscall-errno e))))))
               (unwind-protect
-                   (let* ((stamp (fd-stamp fd path))
-                          (refusal (journal-refusal journal journal-path stamp)))
+                   (let ((refusal (journal-refusal journal journal-path (fd-stamp fd path))))
                      (when refusal (left-alone refusal))
-                     (unless (tuatara.runtime:lock-fd journal)
-                       (left-alone "a save or putting back of it is going on now"))
-                     (let ((header (read-journal-header journal journal-path)))
+                     (unless (tuatara.runtime:lock-fd journal :wait *journal-busy-wait*)
+                       (error 'journal-busy :operation operation :path target
+                                            :reason "a save of it, or a putting back, is going on now; try again shortly"))
+                     ;; the one waited for has ended, its journal gone: the file is as it left it
+                     (let ((named (path-stamp journal-path :follow nil :failure nil)))
+                       (unless (and named (= (stamp-ino named) (stamp-ino (fd-stamp journal journal-path))))
+                         (return-from recover-from-journal t)))
+                     (let ((stamp (fd-stamp fd path))
+                           (header (read-journal-header journal journal-path)))
                        (unless header (left-alone "this release cannot read it"))
                        (unless (journal-fits-p header (fd-stamp journal journal-path) stamp (fd-birth-time fd))
-                         (left-alone "the file has been changed or replaced since"))
+                         (left-alone "the file has been changed or replaced since the save was cut short"))
                        (let ((out (handler-case (sb-posix:open target (logior sb-posix:o-wronly +o-nofollow+ +o-cloexec+))
                                     (sb-posix:syscall-error (e) (fail "open for writing" target (sb-posix:syscall-errno e))))))
                          (unwind-protect
@@ -574,6 +591,7 @@ replaced meanwhile. True when the file was put back."
                          (tell-writing (format nil "A save of ~a was cut short: the file is put back as it was before it" target))
                          t)))
                 (sb-posix:close journal)))
+          (journal-busy (e) (error e))
           (file-system-error (e)
             (tell-writing (format nil "~a may be part saved: a save of it was cut short, and it could not be put back from ~a: ~a"
                                   target journal-path (file-system-error-reason e)))
@@ -582,8 +600,10 @@ replaced meanwhile. True when the file was put back."
 (defstruct (recovery (:include tuatara.runtime:job) (:constructor %make-recovery) (:copier nil))
   "A file being put back from the journal of a save in place cut short, in
 the background, a job (TUATARA.RUNTIME:JOB): PATH, through the file
-descriptor (FD) of its own; PUT-BACK true once it was."
-  path fd put-back)
+descriptor (FD) of its own; PUT-BACK true once it was, and REFUSAL the
+JOURNAL-BUSY signalled when it was not, as another save or putting back held
+the journal."
+  path fd put-back refusal)
 
 (setf (documentation 'recovery-p 'function) "True when OBJECT is a RECOVERY.")
 
@@ -596,20 +616,25 @@ descriptor (FD) of its own; PUT-BACK true once it was."
 (defmethod tuatara.runtime:job-holds-queue-p ((job recovery)) nil)
 (defmethod tuatara.runtime:job-shows-processing-p ((job recovery)) nil)
 
-(defun recover-cut-short-save (fd path &key safe)
+(defun recover-cut-short-save (fd path &key safe (operation "open"))
   "Put back the file open as file descriptor (FD), at PATH, from the journal
 of a save in place of it that was cut short, when one is beside it
-\(RECOVER-FROM-JOURNAL), with SAFE as there: in the background, a job, which
-what asked waits for (HOST-WAIT-FOR-JOB); already in a job, there and then.
-True when the file was put back."
+\(RECOVER-FROM-JOURNAL), with SAFE and OPERATION as there: in the background,
+a job, which what asked waits for (HOST-WAIT-FOR-JOB); already in a job,
+there and then. True when the file was put back, or changed meanwhile by a
+save waited for; JOURNAL-BUSY when another save or putting back held it too
+long."
   (cond ((not (journal-there-p (or (fd-real-path fd) (native path)))) nil)
-        (tuatara.runtime:*job* (recover-from-journal fd path :safe safe))
+        (tuatara.runtime:*job* (recover-from-journal fd path :safe safe :operation operation))
         (t (let ((job (%make-recovery :path path :fd (sb-posix:dup fd))))
              (tuatara.runtime:start-job-thread
               job
               (lambda (job)
                 (unwind-protect
-                     (setf (recovery-put-back job) (recover-from-journal (recovery-fd job) path :safe safe))
+                     (handler-case
+                         (setf (recovery-put-back job)
+                               (recover-from-journal (recovery-fd job) path :safe safe :operation operation))
+                       (journal-busy (e) (setf (recovery-refusal job) e)))
                   (sb-posix:close (recovery-fd job))))
               :name "tuatara putting back")
              (if (tuatara.runtime:job-thread job)
@@ -618,6 +643,8 @@ True when the file was put back."
                                                             (native-file-name path)))
                  (sb-posix:close (recovery-fd job)))
              (tuatara.runtime:take-in-jobs (lambda (other) (eq other job)))
+             (when (recovery-refusal job)
+               (error (recovery-refusal job)))
              (recovery-put-back job)))))
 
 (defun recover-before-saving (target existing)
@@ -630,7 +657,7 @@ saying why)."
     (let ((fd (open-for-reading target t :accept '(:regular) :operation "save")))
       (unwind-protect
            (progn
-             (recover-cut-short-save fd target)
+             (recover-cut-short-save fd target :operation "save")
              (when (journal-there-p target)
                (error 'file-system-error
                       :operation "save" :path target

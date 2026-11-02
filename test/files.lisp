@@ -1894,6 +1894,25 @@ file is left part old and part new, its journal beside it."
           (is string= "mine, theirs" (file-text path)))
         (tuatara.io:finish-leases)))))
 
+(defun hold-journal (path)
+  "Have another process hold the lock on the journal of PATH, as a save going
+on or a putting back does, until it is ended; returns that process once the
+lock is held."
+  (let* ((journal (tuatara.io::journal-path (namestring path)))
+         (holder (sb-ext:run-program "/bin/sh" (list "-c" "exec 9<\"$1\" && flock 9 && exec sleep 60" "sh" journal)
+                                     :wait nil)))
+    ;; held once a lock of this process's own is refused
+    (loop repeat 1000
+          while (let ((fd (sb-posix:open journal sb-posix:o-rdonly)))
+                  (unwind-protect (tuatara.runtime:lock-fd fd) (sb-posix:close fd)))
+          do (sleep 0.01))
+    holder))
+
+(defun end-holder (holder)
+  "End HOLDER, from HOLD-JOURNAL, letting the journal go."
+  (sb-ext:process-kill holder 15)
+  (sb-ext:process-wait holder))
+
 (defmacro with-global ((symbol value) &body body)
   "Run BODY with the global value of SYMBOL, as every thread sees it, VALUE,
 the old one put back after."
@@ -1903,27 +1922,31 @@ the old one put back after."
        (unwind-protect (progn ,@body)
          (setf (sb-ext:symbol-global-value ',symbol) ,old)))))
 
-(define-test (visiting-and-saving journal-in-use-left-alone)
-  ;; a journal another program holds (a save going on, or a putting back) is not used until it lets go
+(define-test (visiting-and-saving journal-in-use-waited-for-or-refused)
+  ;; a journal another save or putting back holds: the file is never opened meanwhile; once it is let go,
+  ;; the visit goes on, and while it is held too long the visit is refused, the journal not to be removed
   (with-test-directory (dir)
     (without-shared-blocks
-      (let* ((path (merge-pathnames "big.txt" dir))
-             (mixed (cut-short-file path))
-             (journal (tuatara.io::journal-path (namestring path)))
-             (holder (sb-ext:run-program "/bin/sh" (list "-c" "exec 9<\"$1\" && flock 9 && exec sleep 60" "sh" journal)
-                                         :wait nil)))
-        (unwind-protect
-             (progn
-               ;; held once a lock of this process's own is refused
-               (loop repeat 1000
-                     while (let ((fd (sb-posix:open journal sb-posix:o-rdonly)))
-                             (unwind-protect (tuatara.runtime:lock-fd fd) (sb-posix:close fd)))
-                     do (sleep 0.01))
-               (is string= mixed (visited-text path))
-               (true (journal-there-p path)))
-          (sb-ext:process-kill holder 15)
-          (sb-ext:process-wait holder))
-        (is string= *long-lines-text* (visited-text path))
+      (let ((path (merge-pathnames "big.txt" dir)))
+        (cut-short-file path)
+        (let ((holder (hold-journal path)))
+          (unwind-protect
+               (with-global (tuatara.io::*journal-busy-wait* 1)
+                 (let ((refusal (handler-case (progn (visited-text path) nil)
+                                  (tuatara.io::journal-busy (e) e))))
+                   (true refusal)
+                   (when refusal
+                     (let ((words (princ-to-string refusal)))
+                       (true (search "try again shortly" words) "~a" words)
+                       (false (search "remove" words) "~a" words))))
+                 (false (tuatara.io:buffer-for-file path))
+                 (true (journal-there-p path)))
+            (end-holder holder)))
+        ;; let go while the visit waits: put back then
+        (let ((holder (hold-journal path)))
+          (with-global (tuatara.io::*journal-busy-wait* 30)
+            (sb-thread:make-thread (lambda () (sleep 1) (end-holder holder)))
+            (is string= *long-lines-text* (visited-text path))))
         (false (journal-there-p path))))))
 
 (define-test (visiting-and-saving journal-left-alone-after-its-last-mark)
