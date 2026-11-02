@@ -75,7 +75,8 @@ sanitizer libraries (=libasan=, =libubsan=). Its logs are in =build/fuzz/=.
 =tools/fuzz-helper.sh [-n ROUNDS] [--seed SEED]= builds the syntax helper
 with the same sanitizers and sends it requests of every kind, well made and
 spoilt (=tools/fuzz-helper.py=); it fails on the first sanitizer report or
-the helper ending, the last requests sent in =build/fuzz/helper.log.last=.
+the helper ending, the last requests sent in =build/fuzz/helper.log.last=;
+over one connection, then over two, the second using what the first uses.
 
 * Building and running
 

@@ -1,6 +1,6 @@
 # tools/fuzz-helper.py --- Send the syntax helper requests made to be wrong.
 # Copyright (C) 2026 Michael A Jones.  GPL-3.0-or-later; see LICENSE.
-# Run by tools/fuzz-helper.sh: python3 -I tools/fuzz-helper.py HELPER GRAMMARS ROUNDS SEED LOG
+# Run by tools/fuzz-helper.sh: python3 -I tools/fuzz-helper.py HELPER GRAMMARS ROUNDS SEED LOG [two]
 # Starts HELPER (syntax/helper.c, built with the sanitizers) on the grammars of
 # GRAMMARS, as the editor starts it, and sends it ROUNDS rounds of requests of
 # every kind it takes, and some it does not: each made from the parsers,
@@ -11,10 +11,13 @@
 # follows; a connection the helper closes on a request it cannot read is
 # opened again. What the helper writes, its sanitizers' reports among it,
 # goes to LOG; the last requests sent, each its op and body in hexadecimal,
-# to LOG.last when the helper ends.
-import array, collections, random, socket, struct, subprocess, sys
+# to LOG.last when the helper ends. With two, a second connection, from a
+# thread of its own, lets go of, edits, copies and runs the trees and queries
+# the first is using, all the while: as it parses, matches or reads them.
+import array, collections, itertools, random, socket, struct, subprocess, sys, threading
 
 helper, grammars, rounds, seed, log = sys.argv[1], sys.argv[2], int(sys.argv[3]), int(sys.argv[4]), sys.argv[5]
+two = sys.argv[6:] == ['two']
 rnd = random.Random(seed)
 
 OP_GRAMMAR, OP_PARSER, OP_PARSER_DELETE, OP_PARSE, OP_CANCEL = 1, 2, 3, 4, 5
@@ -69,35 +72,37 @@ def connect():
 
 
 conn = connect()
+other = connect() if two else None
 text = TEXTS[0]
-serial = [1]
+serial = {}
+held = threading.Lock()
 sent = collections.deque(maxlen=40)
 stats = {'answered': 0, 'refused': 0, 'closed': 0}
 
 
-def received(n):
+def received(connection, n):
     data = b''
     while len(data) < n:
-        chunk = conn.recv(n - len(data))
+        chunk = connection.recv(n - len(data))
         if not chunk:
             raise Ended()
         data += chunk
     return data
 
 
-def request(op, body):
+def request(op, body, connection=None):
     """Send a request, giving the text a parse asks for, and return its status and reply."""
-    serial[0] += 1
-    number = serial[0]
+    connection = connection or conn
+    number = next(serial.setdefault(connection, itertools.count(2)))
     sent.append((op, body))
-    conn.sendall(u(len(body), number, op) + body)
+    connection.sendall(u(len(body), number, op) + body)
     while True:
-        size, answering, status = struct.unpack('<III', received(12))
-        data = received(size)
+        size, answering, status = struct.unpack('<III', received(connection, 12))
+        data = received(connection, size)
         if status == OP_READ and answering & 0x80000000:
             parser, octet = struct.unpack('<II', data[:8]) if len(data) >= 8 else (0, 0)
             chunk = text[octet:octet + rnd.choice([1, 7, 4096])] if octet < len(text) else b''
-            conn.sendall(u(len(chunk), answering, OP_READ) + chunk)
+            connection.sendall(u(len(chunk), answering, OP_READ) + chunk)
             continue
         if answering != number:
             print('reply %d to request %d (op %d)' % (answering, number, op))
@@ -107,6 +112,42 @@ def request(op, body):
 
 
 parsers, trees, queries = {}, [], {}
+using = []
+
+
+def interfere(rnd):
+    """On the second connection: let go of, edit, copy or run what the first is
+    using, or another tree or query."""
+    with held:
+        tree = rnd.choice(using + trees) if using or trees else 0
+        query = rnd.choice(list(queries.values()) + [rnd.randrange(1, 40)])
+    n = len(text)
+    s = rnd.randrange(n + 1)
+    op, body = rnd.choice([
+        (OP_TREE_DELETE, u(tree)),
+        (OP_EDITS, u(tree, rnd.randrange(2), 1, s, s, s + 1, 0, s, 0, s, 0, s + 1)),
+        (OP_COPY, u(tree)),
+        (OP_QUERY_DELETE, u(query)),
+        (OP_DISABLE, u(query, rnd.randrange(4))),
+        (OP_QUERY, u(query, 4) + b'rust' + LANGUAGES['rust']),
+        (OP_MATCHES, u(query, tree, 0, n)),
+        (OP_HAS_ERROR, u(tree)),
+    ])
+    status, data = request(op, body, other)
+    take(op, status, data)
+
+
+stopping = threading.Event()
+
+
+def interfering():
+    """The second connection's thread, all the while."""
+    rnd = random.Random(seed + 1)
+    while not stopping.is_set():
+        try:
+            interfere(rnd)
+        except (Ended, ConnectionError, socket.timeout, OSError):
+            return
 
 
 def word():
@@ -210,7 +251,8 @@ def take(op, status, data):
     elif op in (OP_PARSE, OP_COPY, OP_EDITS) and len(data) >= 4:
         number = struct.unpack('<I', data[:4])[0]
         if number:
-            trees.append(number)
+            with held:
+                trees.append(number)
 
 
 # well-made first: a parser and rules for each language
@@ -223,22 +265,34 @@ for name, source in LANGUAGES.items():
     if status == 0 and data[:4] == u(0):
         queries[name] = number
 
+if two:
+    other_thread = threading.Thread(target=interfering, daemon=True)
+    other_thread.start()
 for _ in range(rounds):
     try:
         op, body = made_request()
+        # the tree a parse begins from and those given with texts, for the second connection
+        using[:] = [w for w in struct.unpack('<%dI' % (len(body) // 4), body[:len(body) // 4 * 4])[:2]] \
+            if op in (OP_PARSE, OP_PARSE_RANGES) else []
         take(op, *request(op, body))
         if rnd.random() < 0.05 and parsers:
             # a parse stopped over the first connection, which has no reply
             first.sendall(u(4, 0, OP_CANCEL) + u(rnd.choice(list(parsers.values()) + [0, 0xffffffff])))
         while len(trees) > 40:
-            request(OP_TREE_DELETE, u(trees.pop(0)))
+            with held:
+                gone = trees.pop(0)
+            request(OP_TREE_DELETE, u(gone))
     except (Ended, ConnectionError, socket.timeout):
         if proc.poll() is not None:
             break
         stats['closed'] += 1
         conn.close()
         conn = connect()
+        if two:
+            other.close()
+            other = connect()
 
+stopping.set()
 alive = proc.poll() is None
 if not alive:
     with open(log + '.last', 'w') as last:
@@ -249,6 +303,8 @@ print('rounds %d, seed %d: %d answered, %d refused, %d connections closed by the
          'alive' if alive else 'ENDED (exit %s)' % proc.returncode))
 first.close()
 conn.close()
+if other:
+    other.close()
 try:
     proc.wait(timeout=60)
 except subprocess.TimeoutExpired:
