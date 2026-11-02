@@ -18,7 +18,7 @@
 ;;;; (lisp/files/trust.lisp); nothing of any file is run, only the command
 ;;;; typed. As Emacs's compile, whose idea it is.
 
-(in-package #:tuatara.defaults)
+(in-package #:tuatara.compile)
 
 (defvar *compile-command* "make -k "
   "The command \\[compile] offers the first time, before you have typed one; after

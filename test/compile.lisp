@@ -18,14 +18,14 @@
 (defun compile-running-p ()
   "True while a compile's command runs."
   (let ((b (compile-buffer)))
-    (and b (tuatara.runtime:running-job b 'tuatara.defaults::compile-job) t)))
+    (and b (tuatara.runtime:running-job b 'tuatara.compile::compile-job) t)))
 
 (defun compile-ended-p ()
   "True once the compile has ended, all its output in, and said how at its end."
   (let ((b (compile-buffer)))
     (and b (not (compile-running-p))
-         (not (find-if #'tuatara.defaults::compile-job-p tuatara.runtime:*jobs*))
-         (null tuatara.defaults::*compiles-ending*)
+         (not (find-if #'tuatara.compile::compile-job-p tuatara.runtime:*jobs*))
+         (null tuatara.compile::*compiles-ending*)
          (let* ((size (tuatara.buffer:buffer-size b))
                 (tail (tuatara.buffer:buffer-string b :start (max 0 (- size 300)))))
            (or (search "Compile " tail :start2 (if (< size 300) 10 0))
@@ -85,7 +85,7 @@ force; *compile* killed afterwards."
      (compile-project ,dir ,script)
      (let ((tuatara.defaults::*modal-editing* nil)
            (tuatara-user:*lsp-trusted-projects* (if ,trusted (list (namestring ,dir)) '()))
-           (tuatara.defaults::*compile-history* (list "sh out.sh"))
+           (tuatara.compile::*compile-history* (list "sh out.sh"))
            (tuatara.defaults::*places-in-force* nil)
            (*places-reached* '()))
        (unwind-protect (progn ,@body)
@@ -104,7 +104,7 @@ force; *compile* killed afterwards."
 (define-test (compiling lines-name-places)
   ;; what each kind of line names: its kind, file, line and column
   (flet ((place (line &key before (exists (lambda (file) (member file '("notes/todo.org" "x.lisp" "Makefile") :test #'string=))))
-           (multiple-value-list (tuatara.defaults::output-line-place line :kind-before before :exists exists))))
+           (multiple-value-list (tuatara.compile::output-line-place line :kind-before before :exists exists))))
     (is equal '(:error "src/a.c" 12 5) (place "src/a.c:12:5: error: expected ';' before '}' token"))
     (is equal '(:error "a.c" 3 nil) (place "a.c:3: fatal error: x.h: No such file or directory"))
     (is equal '(:warning "lib/b.cpp" 7 1) (place "lib/b.cpp:7:1: warning: unused variable 'x' [-Wunused-variable]"))
@@ -143,13 +143,13 @@ force; *compile* killed afterwards."
     (is equal '(nil) (place "a.c:12345678901234567890:1: error: far"))
     ;; make going into a directory and out of it
     (let ((in "make[1]: Entering directory '/tmp/x/sub'") (out "make[1]: Leaving directory '/tmp/x/sub'"))
-      (is equal '(:entering "/tmp/x/sub") (multiple-value-list (tuatara.defaults::make-directory-line in (length in))))
-      (is equal '(:leaving "/tmp/x/sub") (multiple-value-list (tuatara.defaults::make-directory-line out (length out)))))))
+      (is equal '(:entering "/tmp/x/sub") (multiple-value-list (tuatara.compile::make-directory-line in (length in))))
+      (is equal '(:leaving "/tmp/x/sub") (multiple-value-list (tuatara.compile::make-directory-line out (length out)))))))
 
 (define-test (compiling test-failures-name-places)
   ;; a Rust test failing names where it panicked, as cargo test prints it now and before 1.73;
   ;; tsc, C# and MSVC name a place as file(line,col): error
-  (flet ((place (line) (multiple-value-list (tuatara.defaults::output-line-place line :exists (constantly nil)))))
+  (flet ((place (line) (multiple-value-list (tuatara.compile::output-line-place line :exists (constantly nil)))))
     (is equal '(:error "src/tide.rs" 12 9) (place "thread 'tide::tests::rises' panicked at src/tide.rs:12:9:"))
     (is equal '(:error "src/main.rs" 4 37)
         (place "thread 'main' panicked at 'called `Option::unwrap()` on a `None` value', src/main.rs:4:37"))
@@ -340,7 +340,7 @@ force; *compile* killed afterwards."
   ;; killing *compile* drops its places from those in force
   (with-compile-session (dir (format nil "echo 'a.c:1: x'~%"))
     (auto-save-session (compile-steps dir (list :until #'compile-ended-p)) :width 100 :height 30)
-    (true (typep tuatara.defaults::*places-in-force* 'tuatara.defaults::compile-run))
+    (true (typep tuatara.defaults::*places-in-force* 'tuatara.compile::compile-run))
     (tuatara.buffer:kill-buffer (compile-buffer))
     (false tuatara.defaults::*places-in-force*)))
 
@@ -512,7 +512,7 @@ force; *compile* killed afterwards."
        (compile-steps dir
                       (list :until (lambda () (setf child (numbers-after "child" (compile-output)))))
                       "C-x o C-c C-k"
-                      (lambda () (setf began (get-internal-real-time)) (tuatara.defaults::kill-compiles-at-exit nil))
+                      (lambda () (setf began (get-internal-real-time)) (tuatara.compile::kill-compiles-at-exit nil))
                       (list :until (lambda () (when (not (pid-alive-p child)) (setf gone-at (get-internal-real-time)))))
                       (list :until #'compile-ended-p))
        :width 100 :height 30)
@@ -548,7 +548,7 @@ force; *compile* killed afterwards."
     (unwind-protect
          (let ((pieces (loop for i below 10000
                              collect (tuatara.text:string-octets (format nil "~98,,,'-a~%" i)))))
-           (auto-save-session (list (lambda () (tuatara.defaults::add-compile-output b pieces))) :width 100 :height 20)
+           (auto-save-session (list (lambda () (tuatara.compile::add-compile-output b pieces))) :width 100 :height 20)
            (is = (+ 7 (* 99 10000)) (tuatara.buffer:buffer-size b))
            (tuatara.text::map-leaves (lambda (leaf) (declare (ignore leaf)) (incf leaves)) (tuatara.buffer:buffer-text b))
            (true (< leaves 400) "~d pieces of text for 1 MB" leaves))
@@ -570,7 +570,7 @@ force; *compile* killed afterwards."
 (define-test (compiling setsid-missing-said)
   ;; without setsid the compile still runs, and says once that it has no session of its own
   (with-compile-session (dir (format nil "echo ran~%"))
-    (let ((tuatara.defaults::*setsid-missing-said* nil)
+    (let ((tuatara.compile::*setsid-missing-said* nil)
           (find (fdefinition 'tuatara.io:find-program)))
       (with-functions-replaced ((tuatara.io:find-program (lambda (name &rest more)
                                                             (unless (string= name "setsid") (apply find name more)))))
@@ -582,9 +582,9 @@ force; *compile* killed afterwards."
 (defun output-as-a-terminal-shows-it (pieces)
   "The text a compile's buffer holds after the output PIECES (strings) come
 in, one after another, through OUTPUT-PAST-RETURNS."
-  (let ((returns (tuatara.defaults::make-output-returns)) (shown (tuatara.text:make-octets 0)))
+  (let ((returns (tuatara.compile::make-output-returns)) (shown (tuatara.text:make-octets 0)))
     (dolist (piece pieces (tuatara.text:octets-string shown))
-      (multiple-value-bind (octets back) (tuatara.defaults::output-past-returns returns (tuatara.text:string-octets piece))
+      (multiple-value-bind (octets back) (tuatara.compile::output-past-returns returns (tuatara.text:string-octets piece))
         (setf shown (concatenate 'tuatara.text:octets (subseq shown 0 (- (length shown) back)) octets))))))
 
 (define-test (compiling progress-redrawn-on-one-line)
@@ -602,7 +602,7 @@ in, one after another, through OUTPUT-PAST-RETURNS."
   (is string= "X00%" (output-as-a-terminal-shows-it (list (format nil "100%~cX" #\Return))))
   ;; a line too long to follow goes in as it came to its newline, and what follows is
   ;; followed again; a carriage return making one too long gives it up too
-  (let ((tuatara.defaults::*compile-return-line-most* 4))
+  (let ((tuatara.compile::*compile-return-line-most* 4))
     (is string= (format nil "abcdefABC~%Zy") (output-as-a-terminal-shows-it (list "abcdefAB" (format nil "C~%xy~c" #\Return) "Z")))
     (is string= (format nil "xyzwv~cQ" #\Return) (output-as-a-terminal-shows-it (list (format nil "ab~cxyzwv" #\Return) (format nil "~cQ" #\Return)))))
   ;; in *compile*: the progress shows as one line, the places after it found where they are
