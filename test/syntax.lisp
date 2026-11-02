@@ -3313,10 +3313,9 @@ bound to the fake frontend and the editor; the file and its buffer go afterwards
            (dolist (link (list in-tmp elsewhere))
              (let* ((program (tuatara.syntax:syntax-helper-program
                               (list (uiop:ensure-directory-pathname link))))
-                    (arguments (tuatara.io::sandbox-arguments (uiop:native-namestring program) '() nil nil
-                                                              :directories (list link)))
+                    (run (tuatara.syntax::shut-in-helper-program program))
+                    (arguments (tuatara.io::sandbox-arguments run '() nil nil :directories (list link)))
                     (shown (tuatara.io:real-place link)))
                (true (member shown arguments :test #'string=) "~a shown" shown)
-               (true (uiop:string-prefix-p (concatenate 'string shown "/") (car (last arguments)))
-                     "~a run within ~a" (car (last arguments)) shown)))
+               (true (uiop:string-prefix-p (concatenate 'string shown "/") run) "~a run within ~a" run shown)))
         (tuatara.io:remove-file in-tmp)))))

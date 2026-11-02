@@ -662,6 +662,12 @@ text is parsed. Shut in, it is run where its directory is shown."
         for path = (merge-pathnames *helper-program* directory)
         when (probe-file path) return path))
 
+(defun shut-in-helper-program (program)
+  "Where PROGRAM, found by SYNTAX-HELPER-PROGRAM, is run shut in: at the place
+the sandbox shows its directory (TUATARA.IO:REAL-PLACE), which a link to a
+directory under /tmp, the sandbox's own there, leaves as written."
+  (tuatara.io:real-place (uiop:native-namestring program)))
+
 (sb-ext:defglobal **starter** nil
   "The thread helpers are started from, kept as long as the editor runs: a
 helper, and the sandbox it is shut in, end when the thread that started them
@@ -831,7 +837,7 @@ says the caller holds already."
                    (unwind-protect
                         (if (eq :ready (tuatara.io:sandbox-status))
                             (progn (setf how :shut-in)
-                                   (tuatara.io:sandbox-start (uiop:native-namestring program) places stream
+                                   (tuatara.io:sandbox-start (shut-in-helper-program program) places stream
                                                              :memory memory :directories places
                                                              :processes processes :descriptors descriptors))
                             (when unconfined
