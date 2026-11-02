@@ -269,3 +269,50 @@ of no arguments; returns the job."
       (is equal (list second) *frames-taken-in*)
       (is equal "Kōkako" (tuatara.command::frame-message second))
       (is eq first (tuatara.command::editor-frame editor)))))
+
+(defstruct (frames-deferring-job (:include frames-test-job) (:constructor make-frames-deferring-job (taken)))
+  "A job of the frames' tests whose taking in calls TAKEN, a function of no arguments."
+  (taken nil))
+
+(defmethod tuatara.runtime:job-take-in ((job frames-deferring-job))
+  "Call JOB's TAKEN."
+  (funcall (frames-deferring-job-taken job)))
+
+(defun run-deferring-job (taken)
+  "Run a session of two frames: a FRAMES-DEFERRING-JOB begun in the second
+frame, calling TAKEN as it is taken in, ends while the first is worked in.
+Returns the editor and its frames, as RUN-FRAMES does."
+  (let ((go (sb-thread:make-semaphore)) (job nil))
+    (run-frames (list '(1 "C-x b k i w i C-j")
+                      (list 1 (lambda ()
+                                (setf job (tuatara.runtime:start-job-thread
+                                           (make-frames-deferring-job taken)
+                                           (lambda (job)
+                                             (declare (ignore job))
+                                             (sb-thread:wait-on-semaphore go :timeout 5))))))
+                      '(0 "C-n")
+                      (list 0 (lambda () (sb-thread:signal-semaphore go) (wait-for-job job)))
+                      '(0 "C-n")))))
+
+(define-test (frames work-deferred-at-taking-in-runs-in-its-frame)
+  ;; work a job's taking in hands on runs at once, with the job's frame the one worked in, though
+  ;; nothing more is typed there
+  (let ((seen '()))
+    (multiple-value-bind (editor frames)
+        (run-deferring-job (lambda ()
+                             (tuatara.command:defer-action
+                              (lambda () (push (tuatara.command::editor-frame tuatara.command:*editor*) seen)))))
+      (is equal (list (second frames)) seen)
+      (is eq (first frames) (tuatara.command::editor-frame editor)))))
+
+(define-test (frames work-deferred-in-a-closed-frame-still-runs)
+  ;; work handed on to be done in a frame that closes before it runs is done in the frame left
+  (let ((seen '()))
+    (multiple-value-bind (editor frames)
+        (run-deferring-job (lambda ()
+                             (let ((editor tuatara.command:*editor*))
+                               (tuatara.command:defer-action
+                                (lambda () (push (tuatara.command::editor-frame tuatara.command:*editor*) seen)))
+                               (tuatara.command::remove-frame editor (tuatara.command::editor-frame editor)))))
+      (is equal (list (first frames)) seen)
+      (is equal (list (first frames)) (tuatara.command::editor-frames editor)))))

@@ -52,6 +52,19 @@ when FUNCTION took it away; returns what FUNCTION returns."
           (unwind-protect (funcall function)
             (select-frame editor (if (frame-deleted was) (first (editor-frames editor)) was)))))))
 
+(defun other-frames-deferred (editor)
+  "The next of what waits to be done after a command in another frame of
+EDITOR than the one worked in, which has nothing waiting (EDITOR-DEFERRED):
+taken from that frame's, as a function doing it with that frame the one worked
+in (CALL-IN-FRAME); NIL when nothing waits. Work handed on from the background
+for a frame runs so without waiting for a key typed there."
+  (let ((frames (editor-frames editor)))
+    (when (rest frames)
+      (let ((frame (find-if #'frame-deferred frames)))
+        (when frame
+          (let ((item (pop (frame-deferred frame))))
+            (lambda () (call-in-frame editor frame (lambda () (handle-event editor item))))))))))
+
 (defun add-frame (editor frontend)
   "Give EDITOR another frame, painted through FRONTEND, which is started, and
 return it: as large as FRONTEND says, with one window showing the buffer of
@@ -74,15 +87,18 @@ source EDITOR's frames share, each naming the frame returned
   "Take FRAME out of EDITOR's frames and stop its frontend; when it was the
 one worked in, the first of those left is made so. The last frame is never
 taken: that is refused, as an editor has a frame for as long as it runs. Its
-events still to come are dropped (TAKE-TO-ITS-FRAME), and what was still to
-be said in it is said in the frame worked in."
+events still to come are dropped (TAKE-TO-ITS-FRAME); what was still to be
+said in it is said in the frame worked in, and work handed on to be done in
+it (DEFER-ACTION) is done there."
   (let ((left (remove frame (editor-frames editor))))
     (unless left
       (refuse "The editor's only frame stays while the editor runs"))
     (when (eq frame (editor-frame editor))
       (select-frame editor (first left)))
     (setf (editor-frames editor) left
-          (frame-deleted frame) t)
+          (frame-deleted frame) t
+          (editor-deferred editor) (append (editor-deferred editor)
+                                           (remove-if-not #'functionp (shiftf (frame-deferred frame) '()))))
     (tuatara.runtime:ignoring-errors-reported ("closing a frame's display")
       (tuatara.frontend:frontend-stop (frame-frontend frame)))
     frame))
