@@ -132,7 +132,7 @@ its form says, as ORG-READ-RULE reads them; :HOUR, :MINUTE, :END-HOUR and
     tuatara.text:rope-find-octet tuatara.text:rope-line-start tuatara.text:rope-line-end
     ;; asking and waiting
     tuatara.command:read-string tuatara.command:finish-minibuffer tuatara.command:quit tuatara.command:completing-read tuatara.command:completing-read-value tuatara.command:make-candidate tuatara.command:yes-or-no-p* tuatara.command:y-or-n-p*
-    tuatara.command:complete-in-minibuffer
+    tuatara.command:complete-in-minibuffer tuatara.command:*question-variables* tuatara.command:*buffers-asked-about*
     read-date tuatara.dates:read-date-text
     read-path read-file-path read-directory-path read-native-path read-new-native-path read-whole-number tuatara.command:wait-interruptibly tuatara.command:wait-until-interruptibly
     tuatara.command:first-line tuatara.text:one-line

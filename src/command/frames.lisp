@@ -319,12 +319,13 @@ text, which the edits would move."
   '(*key-question* *minibuffer-hidden* *minibuffer-question-keymap* *minibuffer-finish* *minibuffer-history*
     *minibuffer-initial-selected* *read-key-replay* *keys-as-typed* *command-notes* *command-undo-since*
     *this-command-keys* *current-buffer* *dropped* *pasted* tuatara.buffer:*narrowing-in-force*
-    tuatara.runtime:*secret-at-hand* *buffers-asked-about*)
+    tuatara.runtime:*secret-at-hand* *background-work* *buffers-asked-about*)
   "The variables a command binds that belong to the question it asks, and so
 to the frame it asks in: what is done in another frame inside that question
 \(RUN-INSIDE-QUESTION) runs with each as it is outside every command, and
-the frame asking is painted meanwhile with its own (FRAME-HELD). Code that
-binds one more while it asks adds it here.")
+the frame asking is painted meanwhile with its own (FRAME-HELD). A package
+that binds a variable of its own while it asks, which its commands or its
+drawing read, adds it here: (pushnew '*my-question-state* *question-variables*).")
 
 (defun outside-question-values ()
   "The value each of *QUESTION-VARIABLES* has outside every command, in order."
