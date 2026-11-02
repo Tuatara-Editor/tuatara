@@ -107,8 +107,8 @@ runtime does, a closing sentence saying so is left to its text."
 (defun sentence-start (documentation)
   "The first sentence of DOCUMENTATION, its lines joined, up to the first full
 stop followed by a space or the end, or up to the first blank line; a command
-named for its key (\\[command]) is named, and a keymap summary or a keymap
-named (\\<map>, \\{map}) is left out."
+written in a docstring as a key reference is replaced by its name, and a keymap
+summary or a keymap name is left out."
   (let* ((paragraph (subseq documentation 0 (search (format nil "~%~%") documentation)))
          (joined (format nil "~{~a~^ ~}" (tuatara.text:split-words paragraph (list #\Newline #\Space))))
          (named (cl-ppcre:regex-replace-all "\\\\\\[([^]]*)\\]" joined "\\1"))
