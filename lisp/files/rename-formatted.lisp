@@ -139,8 +139,7 @@ Returns a sentence when it was not written, else NIL."
            (format nil "~a has changes not saved: its header was not written" name))
           ((> (if buffer
                   (tuatara.buffer:buffer-size buffer)
-                  (let ((stamp (tuatara.io:path-stamp path :failure nil)))
-                    (if stamp (tuatara.io:stamp-size stamp) 0)))
+                  (tuatara.io:path-size path))
               *formatted-header-limit*)
            (format nil "~a is larger than ~a (*formatted-header-limit*): its header was not written"
                    (escape-controls name) (octets-words *formatted-header-limit*)))

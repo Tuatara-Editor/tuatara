@@ -17,7 +17,7 @@ running programs, shut in a sandbox when they read files from elsewhere.")
    #:file-system-error #:file-system-error-operation #:file-system-error-path #:file-system-error-reason #:file-system-error-errno
    #:file-changed-on-disk #:file-changed-on-disk-path
    ;; what the system says about files
-   #:stamp #:stamp-p #:path-stamp #:fd-stamp #:stamp-kind #:make-stamp #:same-content-p
+   #:stamp #:stamp-p #:path-stamp #:path-size #:fd-stamp #:stamp-kind #:make-stamp #:same-content-p
    #:stamp-dev #:stamp-ino #:stamp-size #:stamp-mtime #:stamp-nlink #:stamp-mode #:stamp-uid #:stamp-gid #:stamp-ctime #:file-holes-p
    #:fd-file-system #:file-system-class #:free-bytes #:read-only-mount-p #:can-give-owner-p #:writable-p #:writing-refused #:host-writing-refusal #:writing-refusal #:writing-refused-anywhere-p #:check-writing #:check-tree-writing #:fd-real-path #:host-say-writing #:tell-writing
    #:take-read-lease #:lease-breaking-p #:release-lease

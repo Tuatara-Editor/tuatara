@@ -152,8 +152,7 @@ to the debug log (*SECRET-AT-HAND*)."
   (let* ((tuatara.runtime:*secret-at-hand* t)
          (program (or (gpg-path) (tuatara.io:program-missing "gpg" :why (outside-program-install-words :gpg))))
          (most (gpg-most-output (if input-path
-                                    (let ((stamp (tuatara.io:path-stamp input-path :failure nil)))
-                                      (if stamp (tuatara.io:stamp-size stamp) 0))
+                                    (tuatara.io:path-size input-path)
                                     (length input))))
          (pipe (and passphrase (multiple-value-list (sb-posix:pipe))))
          (second (and (or second-input second-path) (multiple-value-list (sb-posix:pipe))))

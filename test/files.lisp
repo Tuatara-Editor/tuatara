@@ -2060,3 +2060,10 @@ the old one put back after."
            (tuatara.io:*memory-read-limit* 1024))
       (fail (tuatara.io:scratch-file-text fd (length *lines-text*) "standard input"))
       (isnt equal path (ignore-errors (sb-posix:readlink (format nil "/proc/self/fd/~d" fd)))))))
+
+(define-test (visiting-and-saving size-of-a-path)
+  (with-test-directory (dir)
+    (let ((file (put-file (merge-pathnames "five.txt" dir) "12345")))
+      (is = 5 (tuatara.io:path-size file))
+      (is = 0 (tuatara.io:path-size (merge-pathnames "none.txt" dir)))
+      (is = 7 (tuatara.io:path-size (merge-pathnames "none.txt" dir) 7)))))

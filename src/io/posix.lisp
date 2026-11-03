@@ -522,6 +522,12 @@ there or it cannot be examined."
   (let ((stamp (path-stamp path :follow follow :failure nil)))
     (and stamp (stamp-kind stamp))))
 
+(defun path-size (path &optional (default 0))
+  "The size in octets of the file at PATH, or DEFAULT when there is no such
+file or it cannot be examined."
+  (let ((stamp (path-stamp path :failure nil)))
+    (if stamp (stamp-size stamp) default)))
+
 (defun fd-stamp (fd path)
   "The STAMP of the file open as file descriptor (FD) (PATH for messages)."
   (multiple-value-bind (stamp errno) (statx-stamp fd "" #x1000) ; AT_EMPTY_PATH

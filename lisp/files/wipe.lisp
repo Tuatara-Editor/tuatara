@@ -77,8 +77,7 @@ at PATH, a named pipe or a device, is refused without being opened."
 with SAME-AS, octets, the one path only once it is seen to hold them
 \(FILE-HOLDS-P), none wiped else, and SAME-AS overwritten with zeros after."
   (let ((total (* *wipe-passes* (loop for path in paths
-                                      sum (let ((stamp (tuatara.io:path-stamp path :failure nil)))
-                                            (if stamp (tuatara.io:stamp-size stamp) 0))))))
+                                      sum (tuatara.io:path-size path)))))
     (tuatara.runtime:start-job-thread
      (make-wipe-job (current-buffer) paths total)
      (let ((passes *wipe-passes*))
@@ -91,8 +90,7 @@ with SAME-AS, octets, the one path only once it is seen to hold them
                            (tuatara.io:native-file-name (first paths))))
              (let ((before 0))
                (dolist (path (wipe-job-paths job))
-                 (let ((size (* passes (let ((stamp (tuatara.io:path-stamp path :failure nil)))
-                                         (if stamp (tuatara.io:stamp-size stamp) 0)))))
+                 (let ((size (* passes (tuatara.io:path-size path))))
                    (when (eq :stopped (tuatara.io:wipe-file path :passes passes :cancel (tuatara.runtime:job-cancel job)
                                                                   :progress (lambda (n) (setf (wipe-job-done job) (+ before n)))))
                      (tuatara.runtime:job-check-stop))
