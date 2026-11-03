@@ -2160,3 +2160,29 @@ Shut in.
        (let ((tuatara.runtime:*secret-at-hand* t))
          (is string= "note.org:3" (tuatara.export::error-words nil '(:message "Undefined kiwi words"))))
     (sb-int:unencapsulate 'tuatara.export::error-place 'test-place)))
+
+(define-test (latex-export hyphenation-asked-shut-in)
+  ;; kpsewhich is asked for the hyphenation files shut in, and a stop of the job asking ends it
+  (let ((runs '()) (unconfined '())
+        (tuatara.runtime:*job* (tuatara.export::make-pdf-export nil nil :org nil nil "" nil)))
+    (sb-int:encapsulate 'tuatara.io:sandbox-run 'hyphenation-seen
+                        (lambda (function program arguments &rest keys)
+                          (declare (ignore function))
+                          (push (list program arguments keys) runs)
+                          (values (tuatara.text:string-octets
+                                   (format nil "/usr/share/texmf/tex/generic/hyph-utf8/loadhyph-de-1996.tex~%"))
+                                  :done "")))
+    (sb-int:encapsulate 'tuatara.io:program-output 'hyphenation-seen
+                        (lambda (function command &rest keys)
+                          (push command unconfined) (apply function command keys)))
+    (unwind-protect
+         (is equal '("de-1996")
+             (tuatara.export::hyphenation-files-found "/nonexistent/bin/kpsewhich" '("de-1996" "sv")))
+      (sb-int:unencapsulate 'tuatara.io:sandbox-run 'hyphenation-seen)
+      (sb-int:unencapsulate 'tuatara.io:program-output 'hyphenation-seen))
+    (is equal '() unconfined)
+    (is = 1 (length runs))
+    (destructuring-bind (program arguments keys) (first runs)
+      (is string= "/nonexistent/bin/kpsewhich" program)
+      (is equal '("loadhyph-de-1996.tex" "loadhyph-sv.tex") arguments)
+      (is eq (tuatara.runtime:job-cancel tuatara.runtime:*job*) (getf keys :cancel)))))

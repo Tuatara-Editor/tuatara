@@ -113,13 +113,21 @@ the one on the PATH; NIL when there is none."
 
 (defun hyphenation-files-found (kpsewhich patterns)
   "The names among PATTERNS, endings of hyphenation files (loadhyph-NAME.tex),
-that the TeX KPSEWHICH belongs to has, or :UNKNOWN when it cannot be asked."
-  (let ((said (and kpsewhich
-                   (tuatara.io:program-output
-                    (cons kpsewhich (mapcar (lambda (name) (format nil "loadhyph-~a.tex" name)) patterns))
-                    :seconds 10))))
-    (if said
-        (remove-if-not (lambda (name) (search (format nil "/loadhyph-~a.tex" name) said)) patterns)
+that the TeX KPSEWHICH belongs to has, or :UNKNOWN when it cannot be asked.
+KPSEWHICH is asked shut in by the sandbox, as the LaTeX programs are, shown
+TeX's own folders (TEX-TREES), for ten seconds at most, and ended at once when
+the job asking is stopped; where there is no sandbox it is not asked."
+  (multiple-value-bind (output outcome)
+      (if kpsewhich
+          (tuatara.io:sandbox-run kpsewhich (mapcar (lambda (name) (format nil "loadhyph-~a.tex" name)) patterns)
+                                  :seconds 10 :ended-well '(0 1)
+                                  :cancel (and tuatara.runtime:*job* (tuatara.runtime:job-cancel tuatara.runtime:*job*))
+                                  :directories (tex-trees kpsewhich)
+                                  :environment (latex-sandbox-environment kpsewhich))
+          (values nil :unavailable))
+    (if (eq outcome :done)
+        (let ((said (tuatara.text:lenient-string output)))
+          (remove-if-not (lambda (name) (search (format nil "/loadhyph-~a.tex" name) said)) patterns))
         :unknown)))
 
 (defun latex-language-patterns-note (engine code)
@@ -395,17 +403,17 @@ LaTeX file exported as it is when it stands in your own folders
               :writable (cons directory var-writable)
               :overlays overlays)))))
 
-(defun latex-sandbox-environment (path tex)
+(defun latex-sandbox-environment (path &optional tex)
   "What the LaTeX program at PATH, making a PDF of TEX, has in its
 environment, shut in, each (NAME VALUE): its own folder first on the PATH,
 for the programs it runs in turn (xdvipdfmx); your home folder, where TeX
-and the fonts find your own; TEX's folder searched for what it names; what it
-writes kept to where it runs; and *LATEX-PASSED-ENVIRONMENT* as the editor
-has it."
+and the fonts find your own; TEX's folder searched for what it names, when
+TEX is given; what it writes kept to where it runs; and
+*LATEX-PASSED-ENVIRONMENT* as the editor has it."
   (append (list (list "PATH" (format nil "~a:~a" (string-right-trim "/" (tuatara.io:parent-path path)) tuatara.io:*sandbox-path*))
-                (list "HOME" (latex-home))
-                (list "TEXINPUTS" (format nil "~a:" (tuatara.io:parent-path tex)))
-                (list "openout_any" "p"))
+                (list "HOME" (latex-home)))
+          (and tex (list (list "TEXINPUTS" (format nil "~a:" (tuatara.io:parent-path tex)))))
+          (list (list "openout_any" "p"))
           (loop for setting in (tuatara.io:program-environment)
                 for at = (position #\= setting)
                 for name = (and at (subseq setting 0 at))
