@@ -475,7 +475,7 @@ QUERY_FIXES = {
 # grammars whose repositories are archived with no source kept up in their
 # place: left out; a language of them keeps its mode, its files opened in it
 # with no colours or structure
-DROPPED = {'rust-format-args', 'djot', 'cpon', 'move', 'jinja'}
+DROPPED = {'rust-format-args', 'djot', 'cpon', 'move', 'jinja', 'cylc'}
 
 # rules Helix's no longer fit, its grammar's pin moved off a commit on no
 # branch or tag or to a maintained source: the grammar's own, Helix's newer

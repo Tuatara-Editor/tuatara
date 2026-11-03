@@ -672,10 +672,6 @@ concept Person {
   o String name
 }
 ")
-    (cylc "[scheduling]
-    [[graph]]
-        R1 = \"a => b\"
-")
     (dbml "Table users {
   id integer [primary key]
   name varchar

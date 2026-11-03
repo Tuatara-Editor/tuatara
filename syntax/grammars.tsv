@@ -192,7 +192,6 @@ circom	https://github.com/Decurity/tree-sitter-circom	02150524228b1e6afef96949f2
 clarity	https://github.com/xlittlerag/tree-sitter-clarity	1436da3946359fcd7ac2d81917aaa78ef1e01755	MIT
 ql	https://github.com/tree-sitter/tree-sitter-ql	1fd627a4e8bff8c24c11987474bd33112bead857	MIT
 concerto	https://github.com/accordproject/concerto-tree-sitter	920ba23ea93af56b19dfc38fcddf80b3ddc62685	Apache-2.0
-cylc	https://github.com/elliotfontaine/tree-sitter-cylc	6d1d81137112299324b526477ce1db989ab58fb8	MIT
 dbml	https://github.com/dynamotn/tree-sitter-dbml	2e2fa5640268c33c3d3f27f7e676f631a9c68fd9	MIT
 doxyfile	https://tangled.org/did:plc:i7tqil44pba6cqddxqijtyhb/tree-sitter-doxyfile	c529224ecc5cc9a76b26fd0f613dd75ef52169d9	MIT
 dtd	https://github.com/tree-sitter-grammars/tree-sitter-xml	5000ae8f22d11fbe93939b05c1e37cf21117162d	MIT	dtd
