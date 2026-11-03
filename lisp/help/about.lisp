@@ -217,6 +217,9 @@ version)."
            "selection and the cursor column")
     ("Eugene W. Myers's difference algorithm" "the gutter's changes since the file was saved or committed")
     ("Unicode's text segmentation (UAX #29)" "a letter and its accents, or an emoji, taken as one character")
+    ("Unicode's bidirectional algorithm (UAX #9)" "right-to-left text shown in the order it is read in, checked"
+                                                  "against Unicode's own BidiTest.txt, BidiCharacterTest.txt"
+                                                  "and BidiBrackets.txt")
     ("freedesktop.org's trash specification" "the trash Rimu puts files in and lists")
     ("freedesktop.org's desktop notifications" "notifications told on the desktop, the agenda's and"
                                                "packages', through libnotify's notify-send")

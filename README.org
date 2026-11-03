@@ -383,6 +383,10 @@ Tuatara says where its ideas come from:
   saved or committed, for the gutter (=lisp/editing/diff.lisp=).
 - Unicode's text segmentation (UAX #29) :: a letter and its accents, or an
   emoji and its modifiers, moved over and drawn as one character.
+- Unicode's bidirectional algorithm (UAX #9) :: right-to-left text shown in
+  the order it is read in (=src/display/bidi.lisp=), checked against Unicode's
+  own BidiTest.txt, BidiCharacterTest.txt and BidiBrackets.txt
+  (=tools/bidi-conformance.sh=; Unicode License v3).
 - freedesktop.org's trash specification :: the trash Rimu puts files in and
   lists, yours and each drive's.
 - freedesktop.org's desktop notifications :: notifications told on the
