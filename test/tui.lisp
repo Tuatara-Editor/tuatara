@@ -182,3 +182,22 @@
             (intersection libraries (needed system) :test #'string=)))))
   (dolist (file (directory (merge-pathnames "frontends/**/*.lisp" (asdf:system-source-directory :tuatara))))
     (false (search "cffi:" (uiop:read-file-string file)) "~a calls C through cffi" (enough-namestring file))))
+
+(define-test (tui lent-terminal-words-written-out)
+  ;; the words shown on the terminal lent to a program have their control characters written out
+  (let ((f (tuatara.frontend.tui:make-tui-frontend))
+        (said (make-string-output-stream)))
+    (setf (tuatara.frontend.tui::tui-window f) t)
+    (sb-int:encapsulate 'tuatara.frontend.tui::give-terminal-back 'lending-nothing
+                        (lambda (function f) (declare (ignore function f))))
+    (sb-int:encapsulate 'tuatara.frontend.tui::take-terminal-again 'lending-nothing
+                        (lambda (function &rest arguments) (declare (ignore function arguments))))
+    (unwind-protect
+         (let ((*standard-output* said))
+           (tuatara.frontend:frontend-lend-terminal
+            f (constantly t) :words (format nil "decrypting a~c]0;owned~c.gpg" #\Esc (code-char 7))))
+      (sb-int:unencapsulate 'tuatara.frontend.tui::give-terminal-back 'lending-nothing)
+      (sb-int:unencapsulate 'tuatara.frontend.tui::take-terminal-again 'lending-nothing))
+    (let ((text (get-output-stream-string said)))
+      (true (search "decrypting a^[]0;owned^G.gpg" text) "~s" text)
+      (false (find #\Esc text)))))

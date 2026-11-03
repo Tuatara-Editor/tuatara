@@ -1245,3 +1245,20 @@ after, as it does by itself."
                       (sb-sys:enable-interrupt sb-unix:sigterm #'sb-unix::sigterm-handler))
                     (client-ends runner)))))
         (setf tuatara-user:*auto-save* was)))))
+
+(define-test (daemon lent-terminal-words-without-controls)
+  ;; a file name with terminal escapes in the words shown is sent to the client without them
+  (multiple-value-bind (mine theirs) (tuatara.io:socket-pair)
+    (let* ((local (make-instance 'lending-fake-frontend))
+           (maker (progn (tuatara.frontend:frontend-start local)
+                         (sb-thread:make-thread
+                          (lambda () (tuatara.frontend:make-remote-client
+                                      theirs local :request (tuatara.frontend:make-request :terminal "/dev/pts/99"))))))
+           (remote (tuatara.frontend:make-remote-frontend mine))
+           (client (sb-thread:join-thread maker))
+           (runner (sb-thread:make-thread (lambda () (tuatara.frontend:run-remote-client client)))))
+      (tuatara.frontend:frontend-lend-terminal remote (constantly t)
+                                               :words (format nil "decrypting a~c]0;owned~c.gpg" #\Esc (code-char 7)))
+      (is equal '("decrypting a]0;owned.gpg") (lending-lent local))
+      (tuatara.frontend:frontend-stop remote)
+      (client-done runner))))

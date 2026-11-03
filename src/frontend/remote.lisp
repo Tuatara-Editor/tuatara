@@ -715,7 +715,7 @@ lent to a program before the program runs without it.")
 (defmethod frontend-lend-terminal ((f remote-frontend) function &key words)
   ;; the client gives its terminal back and shows WORDS there; told to take it again whatever it answered
   (if (frontend-terminal-device f)
-      (let ((lent (eql 1 (ask-client f :lend (or words "") *lend-seconds*))))
+      (let ((lent (eql 1 (ask-client f :lend (shown-words (or words "")) *lend-seconds*))))
         (unwind-protect (funcall function)
           (when lent (tuatara.runtime:debug-report :remote "a client's terminal lent and taken again"))
           (queue-message f :take-back (lambda (box) (declare (ignore box))))))

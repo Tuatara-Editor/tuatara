@@ -540,7 +540,7 @@ characters shown in the order sent, and the screen painted whole, as what was dr
       (let ((kitty *kitty-keyboard-on*) (mouse (tui-mouse f)))
         (give-terminal-back f)
         (when words
-          (format t "~%~a~%" words)
+          (format t "~%~a~%" (tuatara.command:escape-controls words))
           (finish-output))
         (unwind-protect (funcall function)
           (take-terminal-again f kitty mouse)))))
