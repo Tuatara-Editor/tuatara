@@ -99,6 +99,19 @@ each (CLIENT . SECTIONS), SECTIONS the lines of each frame's section
 taken up with it by a client that attaches with no files
 \(TAKE-UP-ENDED-FOLDER).")
 
+(defvar *evidence-waiting* '()
+  "The files opened safely (evidence) that the session of an editor running
+in the background lists and that were left closed as it started, each
+\(OWNER . ENTRIES): OWNER a client that ended, whose folder they wait in, or
+:EVERYONE for those no client had; ENTRIES as the session writes them. They
+are opened, safely, when a client takes the folder up (TAKE-UP-ENDED-FOLDER),
+and kept in the session until then.")
+
+(defun waiting-evidence (owner)
+  "The entries of the files opened safely that wait closed in the folder of
+OWNER, a client or :EVERYONE (*EVIDENCE-WAITING*), but for those opened since."
+  (remove-if #'session-entry-buffer (cdr (assoc owner *evidence-waiting*))))
+
 (defun remote-client-p (client)
   "True when CLIENT showed, or shows, an editor running in the background from
 a program of its own."
@@ -120,7 +133,9 @@ that no frame was opened for (*SESSION-SECTIONS-KEPT*). Then, in an editor
 running in the background, a section for each client that has buffers kept:
 a client line (its number, when it began and ended, its folder), the buffers
 of its own its frames do not show, and a frame section for each of its
-frames, or for those it had as it ended (*CLIENT-LAYOUTS*)."
+frames, or for those it had as it ended (*CLIENT-LAYOUTS*). The files opened
+safely that wait closed (*EVIDENCE-WAITING*) are kept with the buffers of
+their folder."
   (let* ((lines (list "tuatara session 1"))
          ;; the buffers, the one used longest ago first (those never shown before them), so that they come
          ;; back in the same order
@@ -134,6 +149,8 @@ frames, or for those it had as it ended (*CLIENT-LAYOUTS*)."
         (let ((entry (session-entry buffer)))
           (when (and entry (null (buffer-clients buffer)) (not (buffer-windows buffer editor)))
             (out "buffer ~a" (session-entry-words entry)))))
+      (dolist (entry (waiting-evidence :everyone))
+        (out "buffer ~a" (session-entry-words entry)))
       (dolist (frame own)
         (section (frame-layout-lines frame)))
       ;; the frames of the session read that were not opened, as they were, as many as there is room for
@@ -150,10 +167,12 @@ frames, or for those it had as it ended (*CLIENT-LAYOUTS*)."
                  (layouts (if frames
                               (mapcar #'frame-layout-lines frames)
                               (cdr (assoc client *client-layouts*))))
-                 (entries (loop for buffer in ordered
-                                for entry = (and (member client (buffer-clients buffer)) (not (member buffer shown))
-                                                 (session-entry buffer))
-                                when entry collect entry)))
+                 (entries (append (loop for buffer in ordered
+                                        for entry = (and (member client (buffer-clients buffer))
+                                                         (not (member buffer shown))
+                                                         (session-entry buffer))
+                                        when entry collect entry)
+                                  (waiting-evidence client))))
             (when (or entries (layout-shows-entry-p layouts))
               (out "client ~d ~d ~d ~a" (client-number client) (client-began client)
                    (or (client-ended client) (get-universal-time))
@@ -485,34 +504,48 @@ behind them instead (SESSION-BUFFERS-BEHIND)."
 file of its own: the buffers no client had, and for each client a folder of
 its own, as one that ended, with its buffers and those its frames showed, and
 its frames' layouts kept (*CLIENT-LAYOUTS*) for a client that attaches with
-no files to take up (TAKE-UP-ENDED-FOLDER). The clients are numbered from 1
-again, in the order they began."
+no files to take up (TAKE-UP-ENDED-FOLDER). The files opened safely
+(evidence) are not opened: they wait closed in their folder
+(*EVIDENCE-WAITING*), said by how many in *Messages* and the daemon's log.
+The clients are numbered from 1 again, in the order they began."
   (setf *session-opened* t)
   (multiple-value-bind (buffers tree others sections clients) (read-session)
     (declare (ignore tree others sections))
-    (let ((missing 0) (folders 0))
-      (dolist (entry buffers)
-        (unless (session-open entry) (incf missing)))
-      (loop for kept in (sort (copy-list clients) #'< :key (lambda (kept) (getf kept :began)))
-            for number from 1
-            do (let ((client (make-client :remote t :number number :directory (getf kept :directory)))
-                     (layouts (getf kept :layouts))
-                     (opened '()))
-                 (setf (client-began client) (getf kept :began)
-                       (editor-clients editor) (append (editor-clients editor) (list client)))
-                 (dolist (entry (remove-duplicates
-                                 (append (getf kept :entries)
-                                         (loop for lines in layouts
-                                               append (session-tree-entries (session-layout lines))))
-                                 :test (lambda (a b) (and (eq (first a) (first b)) (equal (third a) (third b))))))
-                   (let ((buffer (session-open entry)))
-                     (if buffer (push buffer opened) (incf missing))))
-                 (dolist (buffer opened) (join-client buffer client))
-                 (setf (client-ended client) (getf kept :ended))
-                 (when layouts (push (cons client layouts) *client-layouts*))
-                 (incf folders)))
+    (let ((missing 0) (folders 0) (waiting 0))
+      (flet ((open-or-wait (entries owner)
+               ;; the buffers opened; the evidence left closed, waiting in OWNER's folder
+               (let ((opened '()) (evidence '()))
+                 (dolist (entry (remove-duplicates entries :test (lambda (a b) (and (eq (first a) (first b))
+                                                                                   (equal (third a) (third b))))))
+                   (if (eq (first entry) :safe)
+                       (push entry evidence)
+                       (let ((buffer (session-open entry)))
+                         (if buffer (push buffer opened) (incf missing)))))
+                 (when evidence
+                   (push (cons owner (nreverse evidence)) *evidence-waiting*)
+                   (incf waiting (length evidence)))
+                 opened)))
+        (open-or-wait buffers :everyone)
+        (loop for kept in (stable-sort (copy-list clients) #'< :key (lambda (kept) (getf kept :began)))
+              for number from 1
+              do (let ((client (make-client :remote t :number number :directory (getf kept :directory)))
+                       (layouts (getf kept :layouts)))
+                   (setf (client-began client) (getf kept :began)
+                         (editor-clients editor) (append (editor-clients editor) (list client)))
+                   (dolist (buffer (open-or-wait (append (getf kept :entries)
+                                                         (loop for lines in layouts
+                                                               append (session-tree-entries (session-layout lines))))
+                                                 client))
+                     (join-client buffer client))
+                   (setf (client-ended client) (getf kept :ended))
+                   (when layouts (push (cons client layouts) *client-layouts*))
+                   (incf folders))))
       (message "Session opened again: ~d folder~:p of clients that ended~[~:;, ~:*~d file~:p no longer there~]"
-               folders missing))))
+               folders missing)
+      (when (plusp waiting)
+        (say-in-daemon-log "~d file~:p opened safely (evidence) wait~:[~;s~] closed in the folders of the session, ~
+                            opened only as a client takes a folder up"
+                           waiting (= waiting 1))))))
 
 (defun keep-client-layout (client)
   "Client end function (*CLIENT-END-FUNCTIONS*): with *KEEP-SESSION*, keep the
@@ -539,23 +572,41 @@ target, or NIL: none is opened for it."
 (defun take-up-ended-folder (editor client)
   "With *KEEP-SESSION*, have CLIENT, just attached to EDITOR with no files,
 take up the folder of the client that ended last whose frames' layouts are
-kept (*CLIENT-LAYOUTS*): its buffers become CLIENT's, its folder goes, and
-CLIENT's frame, and a frame more for each other it had, up to *MOST-FRAMES*,
-are laid out as its were, each window showing its buffer where that is still
-open. True when one was taken up."
-  (let ((latest (and *keep-session*
-                     (first (sort (remove-if-not (lambda (entry) (client-ended (car entry)))
-                                                 (copy-list *client-layouts*))
-                                  #'> :key (lambda (entry) (client-ended (car entry))))))))
-    (when latest
-      (let ((ended (car latest)))
+kept (*CLIENT-LAYOUTS*) or whose files opened safely wait closed
+\(*EVIDENCE-WAITING*): those files are opened, safely, and said by how many;
+its buffers become CLIENT's, its folder goes, and CLIENT's frame, and a frame
+more for each other it had, up to *MOST-FRAMES*, are laid out as its were,
+each window showing its buffer where that is still open. True when one was
+taken up."
+  (let ((ended (and *keep-session*
+                    (first (sort (remove-if-not #'client-ended
+                                                (remove-duplicates
+                                                 (append (mapcar #'car *client-layouts*)
+                                                         (remove :everyone (mapcar #'car *evidence-waiting*)))))
+                                 ;; the last to end; of those ending in the same second, the last begun
+                                 (lambda (a b) (or (> (client-ended a) (client-ended b))
+                                                   (and (= (client-ended a) (client-ended b))
+                                                        (> (client-number a) (client-number b))))))))))
+    (when ended
+      (let ((layouts (cdr (assoc ended *client-layouts*)))
+            (evidence (waiting-evidence ended))
+            (opened 0))
         (setf *client-layouts* (remove ended *client-layouts* :key #'car)
+              *evidence-waiting* (remove ended *evidence-waiting* :key #'car)
               (editor-clients editor) (remove ended (editor-clients editor)))
         (dolist (buffer tuatara.buffer:*buffers*)
           (let ((clients (buffer-clients buffer)))
             (when (member ended clients)
               (setf (tuatara.buffer:buffer-local buffer :clients) (adjoin client (remove ended clients))))))
-        (loop for lines in (cdr latest)
+        (dolist (entry evidence)
+          (let ((buffer (session-open entry)))
+            (when buffer
+              (join-client buffer client)
+              (incf opened))))
+        (when evidence
+          (message "~d file~:p of the folder taken up opened safely (evidence)~[~:;, ~:*~d no longer there~]"
+                   opened (- (length evidence) opened)))
+        (loop for lines in layouts
               for first = t then nil
               for frame = (cond (first (editor-frame editor))
                                 ((< (length (editor-frames editor)) *most-frames*) (open-frame editor :select nil)))
@@ -577,7 +628,7 @@ open. True when one was taken up."
   "Have the session kept (*KEEP-SESSION*): written as the editor stops and now
 and then, and opened again when it starts without files."
   (setf *session-opened* nil *session-layout* nil *session-looked* nil *session-sections-kept* '()
-        *session-sections-read* 0 *client-layouts* '())
+        *session-sections-read* 0 *client-layouts* '() *evidence-waiting* '())
   (pushnew 'session-tick *tick-functions*)
   (pushnew 'session-layout-tick *tick-functions*)
   (pushnew 'session-at-exit *exit-functions*))

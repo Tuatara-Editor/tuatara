@@ -1115,3 +1115,49 @@ after, as it does by itself."
                   ;; the save cut short in a real daemon goes on here: let it end before the folder goes
                   (wait-until (lambda () (null (tuatara.defaults::running-jobs))) 10)))
           (setf tuatara.defaults::*no-one-to-ask-save-seconds* was))))))
+
+(define-test (daemon evidence-waits-for-take-up)
+  ;; a file opened safely (evidence) in the kept session is not opened as the daemon starts again: it waits
+  ;; closed in its folder, said by how many, and is opened safely when a client takes the folder up; a plain
+  ;; file opens again at once
+  (with-test-directory (dir)
+    (let* ((evidence (namestring (put-file (merge-pathnames "disk.img" dir) "evidence text")))
+           (notes (namestring (put-file (merge-pathnames "notes.txt" dir) "notes text")))
+           (name (format nil "evidence~d" (incf *test-daemons*)))
+           (was tuatara.defaults::*keep-session*))
+      (setf tuatara.defaults::*keep-session* t)
+      (flet ((forget-buffers ()
+               ;; a daemon started again is a process of its own: none of the buffers of the one before
+               (dolist (file (list evidence notes))
+                 (let ((buffer (tuatara.defaults::buffer-visiting file)))
+                   (when buffer (tuatara.buffer:kill-buffer buffer))))))
+        (unwind-protect
+             (progn
+               (with-test-daemon (daemon-name thread daemon name)
+                 (multiple-value-bind (local runner) (attach-test-client daemon-name :directory dir :files (list notes))
+                   (true (shows local "notes text"))
+                   (type-keys local "C-x C-c")
+                   (client-ends runner))
+                 (multiple-value-bind (local runner)
+                     (attach-test-client daemon-name :directory dir :files (list evidence) :safe t)
+                   (true (shows local "evidence text"))
+                   (type-keys local "C-x C-c")
+                   (client-ends runner)))
+               (true (search (format nil "buffer safe 0 ~a" evidence) (file-text (daemon-session-path name))))
+               (forget-buffers)
+               (with-test-daemon (daemon-name thread daemon name)
+                 (false (in-daemon (lambda () (tuatara.defaults::buffer-visiting evidence))) "not opened at the start")
+                 (true (in-daemon (lambda () (tuatara.defaults::buffer-visiting notes))) "a plain file opened again")
+                 (true (search "1 file opened safely (evidence) waits closed"
+                               (tuatara.buffer:buffer-string (tuatara.buffer:find-buffer "*Messages*"))))
+                 (multiple-value-bind (local runner) (attach-test-client daemon-name :directory dir)
+                   (true (shows local "evidence text") "opened as the folder is taken up")
+                   (true (in-daemon (lambda () (tuatara.io:safe-visit-p (tuatara.defaults::buffer-visiting evidence))))
+                         "and safely")
+                   (true (search "1 file of the folder taken up opened safely"
+                                 (tuatara.buffer:buffer-string (tuatara.buffer:find-buffer "*Messages*"))))
+                   (type-keys local "C-x C-c")
+                   (client-ends runner))))
+          (setf tuatara.defaults::*keep-session* was)
+          (forget-buffers)
+          (ignore-errors (delete-file (daemon-session-path name))))))))
