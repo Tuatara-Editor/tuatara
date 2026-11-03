@@ -1274,3 +1274,20 @@ after, as it does by itself."
     (when fd
       (unwind-protect (is = (sb-posix:stat-rdev (sb-posix:stat "/dev/null")) (sb-posix:stat-rdev (sb-posix:fstat fd)))
         (sb-posix:close fd)))))
+
+(define-test (daemon lock-taken-as-core-takes-locks)
+  ;; the daemon's lock is made and taken by core's one way of doing it, never through a link
+  (let ((opened '()))
+    (sb-int:encapsulate 'tuatara.io:open-lock-file 'noting-locks
+                        (lambda (function path &rest keys) (push path opened) (apply function path keys)))
+    (unwind-protect (tuatara.defaults::close-daemon (tuatara.defaults::open-daemon "core-lock-test"))
+      (sb-int:unencapsulate 'tuatara.io:open-lock-file 'noting-locks))
+    (is equal (list (tuatara.defaults::daemon-path "core-lock-test" "lock")) opened))
+  ;; a link where the lock should be is refused, saying why
+  (let ((path (tuatara.defaults::daemon-path "link-lock-test" "lock")))
+    (sb-posix:symlink "/nonexistent/lock" path)
+    (unwind-protect
+         (let ((refused (handler-case (progn (tuatara.defaults::open-daemon "link-lock-test") nil)
+                          (tuatara.runtime:refusal (condition) (princ-to-string condition)))))
+           (true (search "cannot be opened" refused) "~a" refused))
+      (sb-posix:unlink path))))

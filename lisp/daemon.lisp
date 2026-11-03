@@ -126,13 +126,10 @@ a new one. Refused, saying why, when one of the name runs or the folder is
 not safe (DAEMON-FOLDER). Returns the DAEMON."
   (let* ((lock-path (daemon-path name "lock"))
          (socket (daemon-path name "socket"))
-         (fd (handler-case (sb-posix:open lock-path (logior sb-posix:o-rdwr sb-posix:o-creat tuatara.io::+o-nofollow+
-                                                             tuatara.io::+o-cloexec+)
-                                          #o600)
-               (sb-posix:syscall-error (e)
-                 (refuse "~a cannot be opened: ~a" lock-path (tuatara.io::errno-reason (sb-posix:syscall-errno e)))))))
-    (unless (tuatara.runtime:lock-fd fd)
-      (sb-posix:close fd)
+         (fd (handler-case (tuatara.io:open-lock-file lock-path)
+               (tuatara.io:file-system-error (e)
+                 (refuse "~a cannot be opened: ~a" lock-path (tuatara.io:file-system-error-reason e))))))
+    (unless fd
       (refuse "A daemon named ~a runs already: tuatara --client~:[=~a~;~*~] shows it"
               name (string= name *daemon-default-name*) name))
     (handler-case
