@@ -265,13 +265,15 @@ frame. NIL, the default, when FRONTEND shows one frame at a time, as a
 terminal does: the frames then take turns on FRONTEND itself.")
   (:method (frontend) (declare (ignore frontend)) nil))
 
-(defgeneric frontend-ask-another (frontend what)
+(defgeneric frontend-ask-another (frontend what windows)
   (:documentation "Ask FRONTEND's screen for another window of its own, a
 screen that comes later, as a new connection, for another frame of the
-editor FRONTEND paints for; WHAT is kept with the request and given back
-when the window comes. True when it was asked; NIL, the default, when
+editor FRONTEND paints for, its client showing WINDOWS windows now; WHAT is
+kept with the request and given back when the window comes. T when it was
+asked; words saying why when it was not, its client showing as many windows
+as it may or having as many asked for still to come; NIL, the default, when
 FRONTEND opens no window that way (FRONTEND-ANOTHER).")
-  (:method (frontend what) (declare (ignore frontend what)) nil))
+  (:method (frontend what windows) (declare (ignore frontend what windows)) nil))
 
 (defgeneric frontend-frame (frontend)
   (:documentation "The editor's frame FRONTEND paints, which it names in the events

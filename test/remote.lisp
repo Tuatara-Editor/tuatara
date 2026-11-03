@@ -1215,7 +1215,7 @@ what it sets is undone after."
   (let ((remote (make-instance 'tuatara.frontend:remote-frontend :fd -1)))
     (setf (tuatara.frontend::facts-window (tuatara.frontend::remote-facts remote)) t
           (tuatara.frontend:remote-pid remote) 4242)
-    (true (tuatara.frontend:frontend-ask-another remote :shown))
+    (true (tuatara.frontend:frontend-ask-another remote :shown 1))
     (let ((word (first (find remote tuatara.frontend::*windows-asked-for* :key #'second))))
       (false (tuatara.frontend:take-window-asked-for word 4243) "another process")
       (false (tuatara.frontend:take-window-asked-for "NOSUCHWORD" 4242) "another word")
@@ -1224,10 +1224,35 @@ what it sets is undone after."
         (is eq :shown what))
       (false (tuatara.frontend:take-window-asked-for word 4242) "taken once"))
     (let ((tuatara.frontend:*window-seconds* 0))
-      (true (tuatara.frontend:frontend-ask-another remote :late)))
+      (true (tuatara.frontend:frontend-ask-another remote :late 1)))
     (let ((word (first (find remote tuatara.frontend::*windows-asked-for* :key #'second))))
-      (is equal '(:late) (tuatara.frontend:windows-not-come))
+      ;; with any others of earlier sessions not come
+      (true (member :late (tuatara.frontend:windows-not-come)))
       (false (tuatara.frontend:take-window-asked-for word 4242) "too late"))
     ;; a terminal is asked for none
     (setf (tuatara.frontend::facts-window (tuatara.frontend::remote-facts remote)) nil)
-    (false (tuatara.frontend:frontend-ask-another remote :shown))))
+    (false (tuatara.frontend:frontend-ask-another remote :shown 1))))
+
+(define-test (remote windows-asked-for-held-to-their-most)
+  ;; a client is asked for no more windows than it may show, and for a few at a time: past either, the
+  ;; request says why, and nothing is asked
+  (let ((remote (make-instance 'tuatara.frontend:remote-frontend :fd -1)))
+    (setf (tuatara.frontend::facts-window (tuatara.frontend::remote-facts remote)) t)
+    (flet ((asked () (count remote tuatara.frontend::*windows-asked-for* :key #'second))
+           (forget () (setf tuatara.frontend::*windows-asked-for*
+                            (remove remote tuatara.frontend::*windows-asked-for* :key #'second))))
+      (unwind-protect
+           (progn
+             (dotimes (i tuatara.frontend::+most-windows-asked+)
+               (is eq t (tuatara.frontend:frontend-ask-another remote i 1)))
+             (let ((refused (tuatara.frontend:frontend-ask-another remote :one-more 1)))
+               (true (and (stringp refused) (search "still to come" refused)) "~s" refused))
+             (is = tuatara.frontend::+most-windows-asked+ (asked))
+             ;; two still to come, beside thirty windows shown: no more
+             (forget)
+             (tuatara.frontend:frontend-ask-another remote :a 30)
+             (tuatara.frontend:frontend-ask-another remote :b 30)
+             (let ((refused (tuatara.frontend:frontend-ask-another remote :c 30)))
+               (true (and (stringp refused) (search "32 windows" refused)) "~s" refused))
+             (is = 2 (asked)))
+        (forget)))))

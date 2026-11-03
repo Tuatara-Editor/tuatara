@@ -23,5 +23,6 @@
            #:request #:make-request #:request-p #:request-directory #:request-terminal #:request-environment
            #:request-files #:request-safe #:request-hex #:request-standard-input #:request-diff #:request-merge
            #:request-frames #:request-wait #:request-stop #:request-joins #:greet-editor #:take-window-asked-for
-           #:windows-not-come #:*window-seconds* #:remote-pid #:decline-window #:remote-client-painted
+           #:windows-not-come #:*window-seconds* #:+most-client-windows+ #:remote-pid #:decline-window
+           #:remote-client-painted
            #:null-frontend #:make-null-frontend))

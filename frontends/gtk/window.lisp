@@ -553,10 +553,6 @@ terminal shows it (LOG-STDERR-UNLESS-TERMINAL)."
 
 ;;; A client of an editor running elsewhere, in windows of its own
 
-(defconstant +most-client-windows+ 32
-  "The most windows one client of an editor running elsewhere shows at once:
-past it, another the editor asks for is not opened.")
-
 (defun run-window-client (fd greeted request &key standard-input connect)
   "Show the editor at the other end of the local socket FD, which has said
 hello (GREETED, as TUATARA.FRONTEND:GREET-EDITOR read it, its settings taken
@@ -600,14 +596,14 @@ painted (one that came too late) gives none."
                    (g-idle-add (callback on-editor-ended) (null-pointer))))
                (another (asking word)
                  ;; asked for by the editor: a connection of its own, attached with WORD, or word that it is not
-                 (let* ((room (< (sb-thread:with-mutex (lock) showing) +most-client-windows+))
+                 (let* ((room (< (sb-thread:with-mutex (lock) showing) tuatara.frontend:+most-client-windows+))
                         (fd (and room (funcall connect))))
                    (if (null fd)
                        (tuatara.frontend:decline-window
                         asking word (if room
                                         "the client could not connect again"
                                         (format nil "the client shows ~d windows, the most it opens"
-                                                +most-client-windows+)))
+                                                tuatara.frontend:+most-client-windows+)))
                        (progn
                          (sb-thread:with-mutex (lock) (incf showing))
                          (tuatara.runtime:make-guarded-thread

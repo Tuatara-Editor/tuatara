@@ -160,19 +160,23 @@ one frame at a time, as a terminal does, the new frame takes turns on it with
 the others (FRAME-TAKING-TURNS-P): with SELECT it is shown in their place.
 A client of an editor running in the background in a window of its own is
 asked for another window, and NIL returned at once: the frame opens when the
-window comes (OPEN-FRAME-ASKED-FOR), and the echo area says so meanwhile."
+window comes (OPEN-FRAME-ASKED-FOR), and the echo area says so meanwhile;
+one that shows as many windows as it may, or has as many still to come, is
+asked for none, and that is said."
   (let* ((here (editor-frontend editor))
          (another (tuatara.frontend:frontend-another here))
          (window (editor-window editor))
-         (shown (or buffer (tuatara.display:window-buffer window))))
-    (cond ((and (not another)
-                (tuatara.frontend:frontend-ask-another
-                 here (list (current-client editor) shown
-                            (and (eq shown (tuatara.display:window-buffer window))
-                                 (tuatara.display:window-point window))
-                            select)))
-           (message "Opening a window")
-           nil)
+         (shown (or buffer (tuatara.display:window-buffer window)))
+         (client (current-client editor))
+         (asked (and (not another)
+                     (tuatara.frontend:frontend-ask-another
+                      here (list client shown
+                                 (and (eq shown (tuatara.display:window-buffer window))
+                                      (tuatara.display:window-point window))
+                                 select)
+                      (length (client-frames editor client))))))
+    (cond ((stringp asked) (message "No other window was opened: ~a" asked) nil)
+          (asked (message "Opening a window") nil)
           (t (let* ((frontend (or another here))
                     (frame (add-frame editor frontend shown)))
                (when select

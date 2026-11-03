@@ -25,6 +25,15 @@ of its clipboard) before taking it as having none.")
   "The seconds a client asked for another window has to open it and attach it,
 before it is no longer waited for.")
 
+(defconstant +most-client-windows+ 32
+  "The most windows one client of an editor running elsewhere shows at once:
+past it, another is neither asked for by the editor nor opened by the
+client.")
+
+(defconstant +most-windows-asked+ 4
+  "The most windows asked of one client that may be still to come: past it,
+another is not asked for.")
+
 (defparameter *stall-seconds* 600
   "The seconds a client may take to take in what it was sent before it is let
 go. What waits for a client that takes nothing (one stopped, as by C-z) is
@@ -641,13 +650,20 @@ time past which it is no longer waited for.")
 (defvar *windows-asked-lock* (sb-thread:make-mutex :name "windows asked for")
   "Held while *WINDOWS-ASKED-FOR* changes.")
 
-(defmethod frontend-ask-another ((f remote-frontend) what)
-  ;; a client in a window opens another, a connection of its own attached with the word it is given
+(defmethod frontend-ask-another ((f remote-frontend) what windows)
+  ;; a client in a window opens another, a connection of its own attached with the word it is given; held to
+  ;; its most windows, and to a few asked for at once
   (when (and (facts-window (remote-facts f)) (not (remote-ended f)) (not (remote-closing f)))
     (let ((word (tuatara.io:random-name)))
-      (sb-thread:with-mutex (*windows-asked-lock*)
-        (push (list word f what (tuatara.runtime:deadline-in *window-seconds*)) *windows-asked-for*))
-      (queue-message f :another (lambda (box) (put-text box word 64))))))
+      (or (sb-thread:with-mutex (*windows-asked-lock*)
+            (let ((asked (count f *windows-asked-for* :key #'second)))
+              (cond ((>= (+ windows asked) +most-client-windows+)
+                     (format nil "the client shows ~d windows, the most it opens" +most-client-windows+))
+                    ((>= asked +most-windows-asked+)
+                     (format nil "~d windows asked for are still to come" asked))
+                    (t (push (list word f what (tuatara.runtime:deadline-in *window-seconds*)) *windows-asked-for*)
+                       nil))))
+          (queue-message f :another (lambda (box) (put-text box word 64)))))))
 
 (defun take-window-asked-for (word pid)
   "The remote frontend asked for the window WORD names (FRONTEND-ASK-ANOTHER)
