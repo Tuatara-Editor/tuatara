@@ -85,10 +85,17 @@ keeps (DAEMON-ENVIRONMENT)."
         (close out)
         (sb-ext:process-close process)))))
 
+(defun daemon-output (name)
+  "A descriptor open for writing where what the daemon NAME prints goes once
+it has said it is ready: its log (TUATARA.IO:SESSION-LOG), or /dev/null when
+the log cannot be made."
+  (or (tuatara.io:session-log (format nil "the daemon ~a" name) :name (daemon-log-name name))
+      (sb-posix:open "/dev/null" sb-posix:o-wronly)))
+
 (defun run-daemon (name arguments)
   "Be the daemon NAME, as tuatara --daemon started this program, ARGUMENTS
 its command line (-c naming its init file): listen, say ready on the
-standard output, from then on a log of its own, and run the editor until it
+standard output, from then on a log of its own (DAEMON-OUTPUT), and run the editor until it
 stops, SIGTERM ending it with no one asked (END-DAEMON-ON-TERMINATE). The
 exit code: 0 once it has stopped, 1 when it could not start, why said on the
 standard output."
@@ -102,13 +109,12 @@ standard output."
                      (format t "tuatara: ~a~%" condition)
                      (finish-output)
                      (return-from run-daemon 1)))))
-    (let ((log (tuatara.io:session-log (format nil "the daemon ~a" name) :name (daemon-log-name name))))
-      (when log (sb-posix:dup2 log 2))
+    (let ((log (daemon-output name)))
+      (sb-posix:dup2 log 2)
       (format t "ready~%")
       (finish-output)
-      (when log
-        (sb-posix:dup2 log 1)
-        (sb-posix:close log)))
+      (sb-posix:dup2 log 1)
+      (sb-posix:close log))
     ;; it holds no folder busy
     (tuatara.runtime:ignoring-errors-reported ("going to the home folder")
       (sb-posix:chdir (tuatara.io:native (user-homedir-pathname))))

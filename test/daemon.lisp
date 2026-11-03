@@ -1262,3 +1262,15 @@ after, as it does by itself."
       (is equal '("decrypting a]0;owned.gpg") (lending-lent local))
       (tuatara.frontend:frontend-stop remote)
       (client-done runner))))
+
+(define-test (daemon output-without-a-log-goes-nowhere)
+  ;; with no log to be had, what the daemon prints once ready goes to /dev/null, not the starter's closed pipe
+  (sb-int:encapsulate 'tuatara.io:session-log 'no-log (lambda (function &rest arguments)
+                                                        (declare (ignore function arguments))
+                                                        nil))
+  (let ((fd (unwind-protect (tuatara.terminal::daemon-output "test")
+              (sb-int:unencapsulate 'tuatara.io:session-log 'no-log))))
+    (true fd)
+    (when fd
+      (unwind-protect (is = (sb-posix:stat-rdev (sb-posix:stat "/dev/null")) (sb-posix:stat-rdev (sb-posix:fstat fd)))
+        (sb-posix:close fd)))))
