@@ -305,48 +305,51 @@ line the file has not is left out."
       (push (list* line line-start offset) found))
     (nreverse found)))
 
+(defun note-not-written (job path lines why)
+  "Keep among JOB's REFUSED that LINES, lines found each (NUMBER ...), were not written into the file at
+PATH, as listed, and WHY, a phrase; NIL."
+  (dolist (line lines)
+    (push (format nil "~a:~d not written: ~a" (abbreviated-path path) (first line) why)
+          (write-back-job-refused job))))
+
 (defun write-back-thread (job)
   "The work of JOB, on its thread: for each file, ask whether it may be written, find its lines on disk, hand
 it to the editor's tick (WRITE-BACK-TICK) and wait for it to be dealt with, looking at whether it was
 asked to stop between the files; at the end wait for the saves to end."
-  (flet ((refuse (path lines why)
-           (dolist (line lines)
-             (push (format nil "~a:~d not written: ~a" (abbreviated-path path) (first line) why)
-                   (write-back-job-refused job)))))
-    (loop while (write-back-job-files job)
-          do (tuatara.runtime:job-check-stop)
-             (destructuring-bind (given . lines) (pop (write-back-job-files job))
-               (let* ((path (or (ignoring-errors-reported ("following the links of ~a" given)
-                                       (tuatara.io:resolve-links given))
-                                     given))
-                      (why (path-write-refusal job path)))
-                 (if why
-                     (refuse given lines why)
-                     (let ((where (handler-case (reporting-errors ("finding the lines of ~a" path)
-                                                  (locate-lines path (mapcar #'first lines)))
-                                    (error (condition)
-                                      (refuse given lines (tuatara.runtime:failure-words condition :said t))
-                                      nil))))
-                       (when where
-                         (dolist (line (remove-if (lambda (line) (assoc (first line) where)) lines))
-                           (refuse given (list line) "the file has fewer lines now"))
-                         (setf (write-back-job-request job)
-                               (list given path (loop for line in lines
-                                                      for place = (assoc (first line) where)
-                                                      when place collect (list line (second place) (cddr place)))))
-                         (tuatara.runtime:job-wake-editor job)
-                         (loop until (sb-thread:wait-on-semaphore (write-back-job-answered job) :timeout 0.1)
-                               do (tuatara.runtime:job-check-stop))))))))
-    (loop with idle = nil
-          for open = (remove-if #'fourth (write-back-job-saving job))
-          while open
-          do (tuatara.runtime:job-check-stop)
-             (if (some (lambda (record) (tuatara.io:save-of (first record))) open)
-                 (setf idle nil)
-                 (setf idle (or idle (get-internal-real-time))))
-             (when (and idle (> (- (get-internal-real-time) idle) (* 3 internal-time-units-per-second)))
-               (return))
-             (sleep 0.05))))
+  (loop while (write-back-job-files job)
+        do (tuatara.runtime:job-check-stop)
+           (destructuring-bind (given . lines) (pop (write-back-job-files job))
+             (let* ((path (or (ignoring-errors-reported ("following the links of ~a" given)
+                                     (tuatara.io:resolve-links given))
+                                   given))
+                    (why (path-write-refusal job path)))
+               (if why
+                   (note-not-written job given lines why)
+                   (let ((where (handler-case (reporting-errors ("finding the lines of ~a" path)
+                                                (locate-lines path (mapcar #'first lines)))
+                                  (error (condition)
+                                    (note-not-written job given lines (tuatara.runtime:failure-words condition :said t))
+                                    nil))))
+                     (when where
+                       (dolist (line (remove-if (lambda (line) (assoc (first line) where)) lines))
+                         (note-not-written job given (list line) "the file has fewer lines now"))
+                       (setf (write-back-job-request job)
+                             (list given path (loop for line in lines
+                                                    for place = (assoc (first line) where)
+                                                    when place collect (list line (second place) (cddr place)))))
+                       (tuatara.runtime:job-wake-editor job)
+                       (loop until (sb-thread:wait-on-semaphore (write-back-job-answered job) :timeout 0.1)
+                             do (tuatara.runtime:job-check-stop))))))))
+  (loop with idle = nil
+        for open = (remove-if #'fourth (write-back-job-saving job))
+        while open
+        do (tuatara.runtime:job-check-stop)
+           (if (some (lambda (record) (tuatara.io:save-of (first record))) open)
+               (setf idle nil)
+               (setf idle (or idle (get-internal-real-time))))
+           (when (and idle (> (- (get-internal-real-time) idle) (* 3 internal-time-units-per-second)))
+             (return))
+           (sleep 0.05)))
 
 (defun write-back-tick (editor)
   "Tick function: deal with the file a job writing lines back has handed over, on the editor's thread,
@@ -409,17 +412,16 @@ with changes is edited at its own line of that number and left unsaved, said. A 
 holds as found is not written; what is not written, and why, is kept in JOB's REFUSED. The buffer is
 saved (*SEARCH-RESULTS-SAVE-FILES*), without a question: a save that would ask is refused, and the
 lines count as written once the save has ended."
-  (flet ((refuse (why &optional (lines (mapcar #'first located)))
-           (dolist (line lines)
-             (push (format nil "~a:~d not written: ~a" (abbreviated-path given) (first line) why)
-                   (write-back-job-refused job)))))
+  (let ((all (mapcar #'first located)))
     (multiple-value-bind (buffer existing)
         (handler-case (reporting-errors ("visiting ~a to write lines back" path)
                         (let ((tuatara.buffer:*find-file-functions* '())) (tuatara.io:visit-file path)))
-          (error (condition) (return-from write-back-file (refuse (tuatara.runtime:failure-words condition :said t)))))
+          (error (condition)
+            (return-from write-back-file
+              (note-not-written job given all (tuatara.runtime:failure-words condition :said t)))))
       (flet ((give-up (why)
                (unless existing (tuatara.buffer:kill-buffer buffer))
-               (return-from write-back-file (refuse why))))
+               (return-from write-back-file (note-not-written job given all why))))
         (let ((why (buffer-write-refusal buffer existing)))
           (when why (give-up why)))
         (let* ((kept-modified (and existing (tuatara.buffer:buffer-modified-p buffer)))
@@ -431,21 +433,23 @@ lines count as written once the save has ended."
             (destructuring-bind ((number entries . text) start end) place
               (declare (ignore number))
               (if (eq text :conflict)
-                  (refuse "the line is listed more than once and was changed to different text" (list (first place)))
+                  (note-not-written job given (list (first place))
+                                    "the line is listed more than once and was changed to different text")
                   (multiple-value-bind (edit why)
                       (if by-octets
                           (line-write-edit buffer (first entries) text start end)
                           (line-write-edit buffer (first entries) text))
                     (if edit
                         (progn (push edit edits) (push (first place) lines))
-                        (refuse why (list (first place))))))))
+                        (note-not-written job given (list (first place)) why))))))
           (when edits
             (setf edits (sort (coerce edits 'vector) #'< :key #'tuatara.text:edit-start))
             (handler-case (reporting-errors ("writing lines back to ~a" path)
                             (tuatara.buffer:with-narrowing-lifted (buffer) (tuatara.buffer:buffer-edit buffer edits)))
               (error (condition)
                 (unless existing (tuatara.buffer:kill-buffer buffer))
-                (return-from write-back-file (refuse (tuatara.runtime:failure-words condition :said t) lines))))
+                (return-from write-back-file
+                  (note-not-written job given lines (tuatara.runtime:failure-words condition :said t)))))
             (dolist (line lines)
               (dolist (entry (second line))
                 (setf (result-line-text entry) (cddr line))))

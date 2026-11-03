@@ -442,3 +442,11 @@ shown, by an ordinary change of the buffer."
                      :width 100)
         (sb-int:unencapsulate 'tuatara.defaults::save-buffer-with-care 'waiting))
       (is equal '(0) waits))))
+
+(define-test (search-results lines-not-written-said-alike)
+  ;; each line not written is kept as path:line not written: why
+  (let ((job (tuatara.defaults::make-write-back-job nil '())))
+    (tuatara.defaults::note-not-written job "/nonexistent/a.txt" '((3) (7)) "the file is not there")
+    (is equal '("/nonexistent/a.txt:7 not written: the file is not there"
+                "/nonexistent/a.txt:3 not written: the file is not there")
+        (tuatara.defaults::write-back-job-refused job))))
