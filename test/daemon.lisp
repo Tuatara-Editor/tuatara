@@ -859,3 +859,26 @@ ended have: the frames shown, the one with no screen left out."
         (dolist (window (car opened))
           (client-ends (second window)))))))
 
+(define-test (daemon window-for-a-killed-buffer-shows-another)
+  ;; the buffer a window was asked to show is killed before the window comes: it shows another of the
+  ;; client's buffers, never closed unasked
+  (with-test-directory (dir)
+    (let ((file (namestring (put-file (merge-pathnames "moa.txt" dir) "moa text"))))
+      (with-test-daemon (name)
+        (multiple-value-bind (open opened) (window-opener name :after 1)
+          (multiple-value-bind (local runner) (attach-test-client name :directory dir :files (list file) :window t
+                                                                       :another open)
+            (true (shows local "moa text"))
+            (type-keys local "C-x 5 2")
+            (true (shows local "Opening a window") "the window was not asked for")
+            (in-daemon (lambda () (tuatara.buffer:kill-buffer (tuatara.defaults::buffer-visiting file))))
+            (false (in-daemon (lambda () (tuatara.defaults::buffer-visiting file))) "the buffer stays")
+            (true (wait-until (lambda () (car opened)) 10))
+            (destructuring-bind (&optional second second-runner &rest client) (first (car opened))
+              (declare (ignore client))
+              (when second
+                (true (wait-until (lambda () (= 2 (live-client-frames))) 10) "the window was closed")
+                (true (shows second "scratch"))
+                (type-keys local "C-x C-c")
+                (is equal '(0 nil) (client-ends runner))
+                (client-ends second-runner)))))))))

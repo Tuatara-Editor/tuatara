@@ -188,15 +188,23 @@ asked for none, and that is said."
   "Open the frame of EDITOR on FRONTEND, the window a client opened as asked
 \(OPEN-FRAME): WHAT, as it was asked, (CLIENT BUFFER POINT SELECT), says the
 client it is for, the buffer it shows and where, and whether it is the one
-worked in then. A client that has ended meanwhile, or a buffer killed, has
-the window let go of instead."
+worked in then. A buffer killed meanwhile gives way to the one the client
+used before it (OTHER-BUFFER); a client that has ended meanwhile has the
+window let go of instead."
   (destructuring-bind (client buffer point select) what
-    (if (or (and client (client-ended client)) (not (live-buffer-p buffer)))
+    (if (and client (client-ended client))
         (tuatara.runtime:ignoring-errors-reported ("letting a window go")
           (tuatara.frontend:frontend-stop frontend))
-        (let ((frame (add-frame editor frontend buffer)))
+        (let* ((live (live-buffer-p buffer))
+               (shown (if live
+                          buffer
+                          (let ((there (first (client-frames editor client))))
+                            (if there
+                                (call-in-frame editor there (lambda () (other-buffer nil t)))
+                                (other-buffer nil t)))))
+               (frame (add-frame editor frontend shown)))
           (setf (frame-client frame) client)
-          (when point
+          (when (and live point)
             (setf (tuatara.display:window-point (frame-window frame)) (min point (tuatara.buffer:buffer-size buffer))))
           (when select
             (select-frame editor frame)
