@@ -74,15 +74,14 @@ asked by TUATARA_DESKTOP_ENTRIES naming FOLDER in its environment."
           do (tuatara.io:replace-file path (desktop-entry kind :program program :arguments arguments) :mode #o600)
           collect path)))
 
-(defun desktop-entries-refusal (folder arguments &key (self tuatara.io:*saved-program*)
-                                                     (appimage (uiop:getenv "APPIMAGE")))
+(defun desktop-entries-refusal (folder arguments &key (self tuatara.io:*saved-program*))
   "Why the request to write desktop entries into FOLDER for ARGUMENTS, the
 program they start and the words before the entries' own, is not taken, in
 words, or NIL when it is: FOLDER must be named from the root, the program be
-tuatara, this program SELF, the AppImage APPIMAGE it runs from, or the
-launcher tools/tuatara-tui.sh of the checkout SELF was built in, and every
-other word an option (--dark): so that no file named on the command line
-becomes a program the desktop runs."
+tuatara, or named from the root and be this program SELF (the AppImage's
+path when it runs from one) or the launcher tools/tuatara-tui.sh of the
+checkout SELF was built in, and every other word an option (--dark): so that
+no file named on the command line becomes a program the desktop runs."
   (flet ((real (path) (and path (tuatara.runtime:ignoring-errors-reported ("finding ~a" path)
                                   (tuatara.io:real-path path)))))
     (let* ((program (first arguments))
@@ -92,9 +91,10 @@ becomes a program the desktop runs."
                                        "tools/tuatara-tui.sh"))))
       (cond ((not (and folder (plusp (length folder)) (char= (char folder 0) #\/)))
              "the folder is not named from the root")
+            ((and program (string/= program "tuatara") (not (uiop:string-prefix-p "/" program)))
+             (format nil "~a is not named from the root" program))
             ((not (or (equal program "tuatara")
-                      (and real-program (member real-program (list (real self) (real appimage) (real launcher))
-                                                :test #'equal))))
+                      (and real-program (member real-program (list (real self) (real launcher)) :test #'equal))))
              (format nil "~a is not this program" (or program "no program")))
             ((notevery (lambda (word) (cl-ppcre:scan "^--?[a-z][a-z0-9-]*$" word)) (rest arguments))
              "a word after the program is not an option")))))

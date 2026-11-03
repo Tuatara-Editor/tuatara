@@ -103,19 +103,35 @@ or is not installed here; what it says as a second value."
         (is eql 0 (asked folder "tuatara" "--dark"))
         (true (search (format nil "~%Exec=tuatara --dark --gui %F~%")
                       (file-text (concatenate 'string folder "tuatara.desktop"))))))
-    ;; this program, the AppImage it runs from, or the launcher of the checkout it was built in
+    ;; this program (the AppImage's path when it runs from one), or the launcher of the checkout it was
+    ;; built in
     (let ((self (namestring (merge-pathnames "checkout/build/tuatara" directory)))
           (launcher (namestring (merge-pathnames "checkout/tools/tuatara-tui.sh" directory))))
       (dolist (file (list self launcher))
         (put-file (ensure-directories-exist file) ""))
-      (false (tuatara.terminal::desktop-entries-refusal "/a/" (list self) :self self :appimage nil))
-      (false (tuatara.terminal::desktop-entries-refusal "/a/" (list launcher) :self self :appimage nil))
-      (false (tuatara.terminal::desktop-entries-refusal "/a/" (list "/bin/sh" "--light")
-                                                        :self self :appimage "/bin/sh"))
-      (true (tuatara.terminal::desktop-entries-refusal "/a/" (list "/bin/sh") :self self :appimage nil))))
+      (false (tuatara.terminal::desktop-entries-refusal "/a/" (list self) :self self))
+      (false (tuatara.terminal::desktop-entries-refusal "/a/" (list launcher) :self self))
+      (false (tuatara.terminal::desktop-entries-refusal "/a/" (list "/bin/sh" "--light") :self "/bin/sh"))
+      (true (tuatara.terminal::desktop-entries-refusal "/a/" (list "/bin/sh") :self self))))
   ;; every word of the Exec line quoted as it needs
   (is string= "--dark" (tuatara.terminal::exec-argument "--dark" :plain t))
   (is string= "\"a b\"" (tuatara.terminal::exec-argument "a b" :plain t)))
+
+(define-test (tools desktop-entries-program-named-from-root)
+  ;; the program an entry starts is named from the root, never relative to where the request was made; an
+  ;; AppImage named by the environment alone is not taken for this program
+  (with-test-directory (directory)
+    (let ((self (namestring (merge-pathnames "checkout/build/tuatara" directory))))
+      (put-file (ensure-directories-exist self) "")
+      (uiop:with-current-directory ((merge-pathnames "checkout/" directory))
+        (let ((why (tuatara.terminal::desktop-entries-refusal "/a/" (list "build/tuatara") :self self)))
+          (true (and why (search "not named from the root" why)) "~a" why)))
+      (let ((before (sb-posix:getenv "APPIMAGE")))
+        (sb-posix:setenv "APPIMAGE" "/bin/sh" 1)
+        (unwind-protect
+             (true (tuatara.terminal::desktop-entries-refusal "/a/" (list "/bin/sh") :self self)
+                   "an inherited APPIMAGE taken")
+          (if before (sb-posix:setenv "APPIMAGE" before 1) (sb-posix:unsetenv "APPIMAGE")))))))
 
 (define-test (tools autostart-generated)
   ;; tuatara --generate-autostart writes the daemon's autostart entry and says where; never over a file
