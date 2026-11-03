@@ -296,7 +296,7 @@ while IFS=$'\t' read -r name url commit; do
     stops+=("$name: the pin ${commit:0:12} is on no branch or tag of $url")
   else
     pin=$(grammar_git -C "$dir" rev-parse "$commit^{commit}")
-    on=$(grammar_git -C "$dir" for-each-ref --contains "$pin" --format='%(refname:short)' refs/heads refs/tags | head -3 | paste -sd' ')
+    on=$(grammar_git -C "$dir" for-each-ref --count=3 --contains "$pin" --format='%(refname:short)' refs/heads refs/tags | paste -sd' ')
     if [ -z "$on" ]; then
       stops+=("$name: the pin ${commit:0:12} is on no branch or tag of $url")
     elif [ -z "$(grammar_git -C "$dir" for-each-ref --contains "$pin" --count=1 refs/heads)" ]; then
