@@ -11,7 +11,16 @@
 #     each as tools/lisp-archives.sha256 lists it. Quicklisp is then told to
 #     download nothing, so a library new since that list stops the build
 #     rather than being fetched unchecked.
-# Everything comes over HTTPS. Usage: tools/ci-setup.sh
+# Everything comes over HTTPS. Then bubblewrap (bwrap), which the grammars'
+# build shuts each grammar.js in with, from the machine's own Ubuntu archive,
+# checked by apt against its signed index; its version goes in the log. Ubuntu
+# 24.04 lets a program make a user namespace only when an AppArmor profile
+# allows it, so Ubuntu's own profile for bwrap (bwrap-userns-restrict, taken
+# out of its apparmor-profiles package, nothing else of it installed) is
+# loaded: bwrap alone may, the programs it starts may not, and the rule stays
+# as it is for everything else. bwrap is then tried once, and a bwrap that
+# cannot shut a program in stops it here.
+# Usage: tools/ci-setup.sh
 set -euo pipefail
 root="$(cd "$(dirname "$0")/.." && pwd)"
 work="$(mktemp -d)"
@@ -68,3 +77,17 @@ fetch "$ql_asdf_url" "$ql/asdf.lisp" "$ql_asdf_sha256"
 # anything Quicklisp would still download fails
 "$root/tools/lisp-archives.sh" lock "$ql"
 echo "Quicklisp $(cat "$ql/quicklisp/version.txt"), $(sed -n 's/^version: //p' "$dist/distinfo.txt"), $(grep -vc '^#' "$root/tools/lisp-archives.sha256") libraries"
+
+echo "== bubblewrap"
+sudo apt-get update -qq
+sudo DEBIAN_FRONTEND=noninteractive apt-get install -y -qq bubblewrap >/dev/null
+if [ "$(cat /proc/sys/kernel/apparmor_restrict_unprivileged_userns 2>/dev/null || echo 0)" = 1 ]; then
+  profile=usr/share/apparmor/extra-profiles/bwrap-userns-restrict
+  (cd "$work" && apt-get download -qq apparmor-profiles)
+  dpkg-deb --fsys-tarfile "$work"/apparmor-profiles_*.deb | tar -x -C "$work" "./$profile"
+  sudo apparmor_parser -r "$work/$profile"
+fi
+bwrap --unshare-all --die-with-parent --clearenv --proc /proc --dev /dev --ro-bind /usr /usr \
+  --symlink usr/lib64 /lib64 --symlink usr/lib /lib --symlink usr/bin /bin -- /usr/bin/true ||
+  { echo "bwrap cannot shut a program in on this machine" >&2; exit 1; }
+echo "bubblewrap $(dpkg-query -W -f='${Version}' bubblewrap)"
