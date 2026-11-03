@@ -233,16 +233,15 @@ do."
 
 (defun make-owned-folder (name)
   "A new folder of its own in NAME (ending in /, in the cache directory), its
-file owner.lock naming this machine and locked from now on while the session
-runs, so that no other session, whatever process numbers it sees, takes it
-for one left behind (FORGET-ABANDONED-FOLDERS). Returns the folder, a native
-name ending in /, and the descriptor of the lock, to close when the folder is
-deleted."
+file owner.lock locked from the moment it is made while the session runs, and
+then naming this machine, so that no other session, whatever process numbers
+it sees, takes it for one left behind (FORGET-ABANDONED-FOLDERS). Returns the
+folder, a native name ending in /, and the descriptor of the lock, to close
+when the folder is deleted."
   (let* ((folder (new-private-folder (private-cache-directory name)))
          (lock (tuatara.io:path-join folder "owner.lock"))
-         (fd (progn (tuatara.io:write-private-file lock (machine-instance))
-                    (sb-posix:open lock sb-posix:o-rdwr))))
-    (tuatara.runtime:lock-fd fd)
+         (fd (tuatara.io:open-lock-file lock)))
+    (tuatara.io:write-octets fd (tuatara.text:string-octets (machine-instance)) :path lock)
     (values folder fd)))
 
 (defun forget-abandoned-folders (name &optional own)

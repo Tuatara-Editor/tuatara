@@ -557,3 +557,23 @@ frontend, the editor, and the options read."
       (true (find (list :flag flag) pinned :key #'row-name :test #'equal) "~a is pinned" flag)
       (true (find (list :flag flag) (stable-surface) :key #'row-name :test #'equal) "~a is kept" flag))
     (true (member "--diff" tuatara.terminal:*options* :test #'string=))))
+
+(define-test (command-line owned-folder-locked-before-named)
+  ;; owner.lock is locked while still empty: no sweep finds it naming this machine and free
+  (let ((sizes '()))
+    (sb-int:encapsulate 'tuatara.runtime:lock-fd 'noting-sizes
+                        (lambda (function fd &rest keys)
+                          (push (sb-posix:stat-size (sb-posix:fstat fd)) sizes)
+                          (apply function fd keys)))
+    (multiple-value-bind (folder lock)
+        (unwind-protect (tuatara.defaults::make-owned-folder "bare-state/")
+          (sb-int:unencapsulate 'tuatara.runtime:lock-fd 'noting-sizes))
+      (unwind-protect
+           (let ((owner (concatenate 'string folder "owner.lock")))
+             (is equal '(0) sizes)
+             (is string= (machine-instance) (file-text owner))
+             (let ((other (sb-posix:open owner sb-posix:o-rdwr)))
+               (unwind-protect (false (tuatara.runtime:lock-fd other) "held by the session that made it")
+                 (sb-posix:close other))))
+        (sb-posix:close lock)
+        (ignore-errors (tuatara.io:delete-tree folder))))))

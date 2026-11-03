@@ -1870,6 +1870,20 @@ on; NIL when it cannot be opened or the system cannot tell."
                     (and hole (< hole (stamp-size stamp))))))
         (sb-posix:close fd)))))
 
+(defun open-lock-file (path &key (wait 0))
+  "Open the lock file at PATH, made readable and writable by you alone when it
+is not there, never through a link, and take its lock, held alone: the open
+file descriptor (FD), to close when the lock is to go, or NIL, nothing left
+open, when another holds it for more than WAIT seconds. What is written
+through FD once it is had is read by no one in the meantime who takes the
+lock. Signals FILE-SYSTEM-ERROR when it cannot be opened."
+  (let ((fd (handler-case (sb-posix:open (native path)
+                                         (logior sb-posix:o-rdwr sb-posix:o-creat +o-nofollow+ +o-cloexec+) #o600)
+              (sb-posix:syscall-error (e) (fail "open" path (sb-posix:syscall-errno e))))))
+    (if (tuatara.runtime:lock-fd fd :wait wait)
+        fd
+        (progn (sb-posix:close fd) nil))))
+
 (defun call-with-state-lock (path function &key (wait 0.1))
   "Call FUNCTION, of no arguments, holding the lock of the file at PATH, a
 file the sessions side by side keep together (the files visited lately, the
