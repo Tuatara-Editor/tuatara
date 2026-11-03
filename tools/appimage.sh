@@ -75,7 +75,8 @@ cp -a build/release/tuatara "$appdir/tuatara"
 rm -rf "$appdir/tuatara/man"
 
 # the libraries, from Ubuntu 24.04: those the program loads (libzstd, which the
-# program itself needs, too) and all they need in turn, but those on the exclude list
+# program itself needs, too) and all they need in turn, each once (a root the
+# others need too, as libzstd), but those on the exclude list
 pinned_container "$container" "$ubuntu_image" 'true'
 refresh_container "$container" 'sed -i "s/^Types: deb$/Types: deb deb-src/" /etc/apt/sources.list.d/ubuntu.sources &&
   DEBIAN_FRONTEND=noninteractive apt-get update -qq &&
@@ -93,7 +94,7 @@ podman exec "$container" bash -c '
     roots="$roots $(grep -m1 "^\s*$name " <<<"$known" | sed "s/.*=> //")"
   done
   wanted=""
-  for path in $roots $(ldd $roots | grep "=> /" | sed "s/.*=> //; s/ (.*//" | sort -u); do
+  for path in $(printf "%s\n" $roots $(ldd $roots | grep "=> /" | sed "s/.*=> //; s/ (.*//") | sort -u); do
     case "$excluded" in *" $(basename "$path") "*) continue ;; esac
     wanted="$wanted $path"
   done

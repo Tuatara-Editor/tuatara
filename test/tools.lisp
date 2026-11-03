@@ -1079,3 +1079,27 @@ printf 'Source: foo\\nChecksums-Sha256:\\n %s 4 foo_1.0.orig.tar.xz\\nFiles:\\n 
     (true (search "library_sources=\"$root/build/release/Tuatara-x86_64.AppImage.library-sources.tar.zst\"" appimage))
     (true (search "# Their sources, at exactly these versions: $(basename \"$library_sources\")" appimage))
     (true (search " build/release/Tuatara-x86_64.AppImage.library-sources.tar.zst dist/" workflow))))
+
+(define-test (tools bundled-libraries-each-once)
+  ;; the libraries the AppImage bundles are listed once each, a root library
+  ;; the others need too (libzstd) among them; a file name given twice stops
+  ;; tools/bundle-libraries.sh
+  (true (search "for path in $(printf \"%s\\n\" $roots $(ldd $roots | grep \"=> /\" | sed \"s/.*=> //; s/ (.*//\") | sort -u); do"
+                (uiop:read-file-string (tools-script "appimage.sh"))))
+  (with-test-directory (directory)
+    (sb-posix:chmod (uiop:native-namestring (write-test-file directory "bin/dpkg" (format nil "#!/bin/sh~%echo \"libfoo1:amd64: $1\"~%")))
+                    #o755)
+    (sb-posix:chmod (uiop:native-namestring (write-test-file directory "bin/dpkg-query" (format nil "#!/bin/sh~%printf 1~%")))
+                    #o755)
+    (write-test-file directory "docs/libfoo1/copyright" "License: MIT")
+    (let ((library (uiop:native-namestring (write-test-file directory "usr/lib/libfoo.so.1" "foo"))))
+      (multiple-value-bind (out error status)
+          (uiop:run-program
+           (list "bash" (tools-script "bundle-libraries.sh") (uiop:native-namestring (merge-pathnames "out/" directory))
+                 library library)
+           :output :string :error-output :string :ignore-error-status t
+           :environment (list (format nil "PATH=~a:/usr/bin:/bin" (uiop:native-namestring (merge-pathnames "bin/" directory)))
+                              (format nil "DOC_DIR=~a" (uiop:native-namestring (merge-pathnames "docs/" directory)))))
+        (declare (ignore out))
+        (isnt = 0 status)
+        (true (search "libfoo.so.1 is given twice" error))))))

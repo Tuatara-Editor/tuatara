@@ -5,7 +5,8 @@
 # given, in OUTDIR: lib/NAME (the file itself), copyright/PACKAGE.copyright
 # (the package's Debian copyright file, one for each package) and lib.tsv,
 # a line FILE<TAB>PACKAGE<TAB>VERSION<TAB>SHA-256 per library sorted by file.
-# A library no package owns, or whose package has no copyright file, stops it.
+# A library no package owns, whose package has no copyright file, or whose
+# file name is given twice, stops it.
 # DOC_DIR (default /usr/share/doc) is where the copyright files are, USR_ROOT
 # (default /usr) the folder dpkg's /lib and /bin are under.
 # Usage: tools/bundle-libraries.sh OUTDIR LIBRARY...
@@ -17,6 +18,8 @@ mkdir -p "$out/lib" "$out/copyright"
 : > "$out/lib.tsv.part"
 for path in "$@"; do
   name="$(basename "$path")"
+  ! awk -F'\t' -v name="$name" '$1 == name { found = 1 } END { exit !found }' "$out/lib.tsv.part" ||
+    { echo "$name is given twice" >&2; exit 1; }
   cp -L "$path" "$out/lib/$name"
   real="$(readlink -f "$path")"
   # dpkg lists a file under /lib where the library's real path is under /usr/lib
