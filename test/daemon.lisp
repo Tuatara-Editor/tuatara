@@ -1213,3 +1213,35 @@ after, as it does by itself."
                    (client-ends runner)))))
         (setf tuatara.defaults::*keep-session* was)
         (ignore-errors (delete-file (daemon-session-path name)))))))
+
+(define-test (daemon terminated-auto-saves-before-waiting)
+  ;; SIGTERM while a save runs: the other changes are auto-saved before the daemon waits for the save, so
+  ;; that a kill during the wait still leaves them
+  (with-test-directory (dir)
+    (let ((saving (namestring (put-file (merge-pathnames "saving.txt" dir) "saving")))
+          (other (namestring (put-file (merge-pathnames "other.txt" dir) "other")))
+          (was tuatara-user:*auto-save*))
+      (setf tuatara-user:*auto-save* t)
+      (unwind-protect
+           (call-with-slow-saves
+            4 (lambda ()
+                (with-test-daemon (name thread daemon)
+                  (multiple-value-bind (local runner)
+                      (attach-test-client name :directory dir :files (list saving other))
+                    (true (shows local "saving"))
+                    (in-daemon (lambda ()
+                                 (tuatara.buffer:buffer-insert (tuatara.defaults::buffer-visiting other) 0 "z")))
+                    (type-keys local "i x C-x C-s")
+                    (true (wait-until (lambda () (tuatara.defaults::running-jobs)) 10) "the save runs")
+                    (tuatara.defaults::end-daemon-on-terminate daemon)
+                    (unwind-protect
+                         (progn
+                           (sb-posix:kill (sb-posix:getpid) sb-unix:sigterm)
+                           (let ((copy (tuatara.defaults::auto-save-path other)))
+                             (true (wait-until (lambda () (probe-file copy)) 3) "no copy while the daemon waits")
+                             (true (sb-thread:thread-alive-p thread) "the daemon still waits for the save")
+                             (true (not (eq :late (sb-thread:join-thread thread :timeout 30 :default :late))))
+                             (ignore-errors (delete-file copy))))
+                      (sb-sys:enable-interrupt sb-unix:sigterm #'sb-unix::sigterm-handler))
+                    (client-ends runner)))))
+        (setf tuatara-user:*auto-save* was)))))

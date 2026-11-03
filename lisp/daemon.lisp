@@ -609,23 +609,24 @@ stopped instead."
   "Stop EDITOR, a daemon's, where no one can be asked: the changes not saved
 are written as auto-saved copies first (AUTO-SAVE-UNSAVED), as the
 auto-saving settings allow and never of an encrypted file's text or a file
-opened safely, once the saves running have ended, waited for at most
+opened safely, so that they are kept even if the process is killed while it
+waits; then the saves running are waited for, at most
 *NO-ONE-TO-ASK-SAVE-SECONDS* (those still running then said in the log);
-then every client but HERE is told WORDS and exits 1, HERE
-exiting 0 (STOP-DAEMON). Changes no copy would keep (UNSAVED-NOT-KEPT) are
-lost, said in the daemon's log (SAY-IN-DAEMON-LOG); with KEEP-CHANGES nothing is stopped while there are
-such changes, and why is returned in words (LOST-CHANGES-WORDS). NIL once
-stopped."
+then every client but HERE is told WORDS and exits 1, HERE exiting 0
+\(STOP-DAEMON). Changes no copy would keep (UNSAVED-NOT-KEPT) are lost, said
+in the daemon's log (SAY-IN-DAEMON-LOG); with KEEP-CHANGES nothing is
+stopped while there are such changes, and why is returned in words
+\(LOST-CHANGES-WORDS). NIL once stopped."
   (let ((lost (unsaved-not-kept)))
     (if (and lost keep-changes)
         (lost-changes-words lost)
-        (progn (unless (wait-for-saves-begun :seconds *no-one-to-ask-save-seconds*)
+        (progn (auto-save-unsaved)
+               (unless (wait-for-saves-begun :seconds *no-one-to-ask-save-seconds*)
                  (say-in-daemon-log "The daemon stopped with no one to ask while saves still ran, ~
                                      cut short: ~{~a~^, ~}"
                                     (loop for job in (running-jobs)
                                           when (eq :wait (tuatara.runtime:job-at-exit job))
                                             collect (tuatara.runtime:job-buffer-name job))))
-               (auto-save-unsaved)
                (when lost
                  (say-in-daemon-log "The daemon stopped with no one to ask, though ~a: they are lost"
                                     (lost-changes-count-words lost)))
