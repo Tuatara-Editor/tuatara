@@ -395,7 +395,11 @@ file of text; their native names, as two values."
                (is string= (format nil "~atuatara/state/" memory) (namestring (tuatara.io:state-directory)))
                (false (probe-file (merge-pathnames "drive/" dir)))
                (true (search "(*state-directory*) is not there: kept in memory"
-                             (first (tuatara.io:directories-in-memory-words)))))
+                             (first (tuatara.io:directories-in-memory-words))))
+               (true (tuatara.io:directory-in-memory-p 'tuatara-user:*state-directory*)))
+             ;; the setting changed, that folder is no longer kept in memory nor said to be
+             (false (tuatara.io:directory-in-memory-p 'tuatara-user:*state-directory*))
+             (false (tuatara.io:directories-in-memory-words))
              (let ((tuatara-user:*packages-directory* chosen))
                (is string= chosen (tuatara.packages:packages-directory)))
              ;; unset, the standard places

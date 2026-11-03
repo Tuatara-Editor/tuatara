@@ -1653,12 +1653,16 @@ is not there nothing is kept in its place.")
 
 (defvar *directories-in-memory* '()
   "The settings naming a folder that was not there when it was wanted
-\(CHOSEN-DIRECTORY), each with the folder in memory used in its place.")
+\(CHOSEN-DIRECTORY), each as (SETTING NAME IN-MEMORY VALUE): the folder's
+NAME, the folder in memory used in its place, and the setting's VALUE then.
+One whose setting has been changed since counts no more.")
 
 (defun directory-in-memory-p (setting)
   "True while the folder the setting SETTING (a symbol) names is kept in memory
-for want of its drive (CHOSEN-DIRECTORY)."
-  (and (assoc setting *directories-in-memory*) t))
+for want of its drive (CHOSEN-DIRECTORY): the setting has not been changed
+since."
+  (let ((entry (assoc setting *directories-in-memory*)))
+    (and entry (eq (fourth entry) (symbol-value setting)))))
 
 (defun chosen-directory (setting standard)
   "The folder the setting SETTING (a symbol) names, as a pathname, when it
@@ -1666,34 +1670,41 @@ names one, else STANDARD, made if needed, for you alone. A folder named must
 be there already: while it is not, its drive not mounted, one of the same
 name in memory ($XDG_RUNTIME_DIR/tuatara/, gone when the computer stops) is
 used in its place and noted in *DIRECTORIES-IN-MEMORY*, so that nothing kept
-for it lands on another drive. A FILE-SYSTEM-ERROR when there is no such
-memory either, or when the folder is one nothing may be written in
-\(WRITING-REFUSED)."
+for it lands on another drive; the note goes once the folder is there or the
+setting is changed. A FILE-SYSTEM-ERROR when there is no such memory either,
+or when the folder is one nothing may be written in (WRITING-REFUSED)."
   (let ((chosen (symbol-value setting)))
-    (if (null chosen)
-        (directory-pathname (ensure-private-directory standard))
-        (let ((name (directory-name chosen)))
-          (check-writing name (format nil "keep files (~(~a~)) in" setting))
-          (if (eq :directory (path-kind name))
-              (directory-pathname name)
-              (let ((memory (uiop:getenv-absolute-directory "XDG_RUNTIME_DIR")))
-                (unless memory
-                  (error 'file-system-error :operation "keep files in" :path name
-                                            :reason (format nil "it is not there (~(~a~)): make it, or mount its drive" setting)))
-                (let ((in-memory (ensure-private-directory
-                                  (merge-pathnames (format nil "tuatara/~(~a~)/" (first (uiop:split-string (string-trim "*" (symbol-name setting))
-                                                                                                        :separator "-")))
-                                                   memory))))
-                  (unless (assoc setting *directories-in-memory*)
-                    (push (list setting name in-memory) *directories-in-memory*))
-                  (directory-pathname in-memory))))))))
+    (flet ((forget-in-memory ()
+             (when (assoc setting *directories-in-memory*)
+               (setf *directories-in-memory* (remove setting *directories-in-memory* :key #'first)))))
+      (unless (directory-in-memory-p setting)
+        (forget-in-memory))
+      (if (null chosen)
+          (directory-pathname (ensure-private-directory standard))
+          (let ((name (directory-name chosen)))
+            (check-writing name (format nil "keep files (~(~a~)) in" setting))
+            (if (eq :directory (path-kind name))
+                (progn (forget-in-memory)
+                       (directory-pathname name))
+                (let ((memory (uiop:getenv-absolute-directory "XDG_RUNTIME_DIR")))
+                  (unless memory
+                    (error 'file-system-error
+                           :operation "keep files in" :path name
+                           :reason (format nil "it is not there (~(~a~)): make it, or mount its drive" setting)))
+                  (let* ((kind (first (uiop:split-string (string-trim "*" (symbol-name setting)) :separator "-")))
+                         (in-memory (ensure-private-directory
+                                     (merge-pathnames (format nil "tuatara/~(~a~)/" kind) memory))))
+                    (unless (assoc setting *directories-in-memory*)
+                      (push (list setting name in-memory chosen) *directories-in-memory*))
+                    (directory-pathname in-memory)))))))))
 
 (defun directories-in-memory-words ()
   "What is said once the init file is read of the folders it named that are
 not there (*DIRECTORIES-IN-MEMORY*), a sentence each; NIL when all are."
   (loop for (setting name in-memory) in (reverse *directories-in-memory*)
-        collect (format nil "~a (~(~a~)) is not there: kept in memory, ~a, until the computer stops"
-                        name setting in-memory)))
+        when (directory-in-memory-p setting)
+          collect (format nil "~a (~(~a~)) is not there: kept in memory, ~a, until the computer stops"
+                          name setting in-memory)))
 
 (defun cache-directory ()
   "The editor's cache directory, made if needed, for you alone: for scratch
