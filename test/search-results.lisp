@@ -443,6 +443,26 @@ shown, by an ordinary change of the buffer."
         (sb-int:unencapsulate 'tuatara.defaults::save-buffer-with-care 'waiting))
       (is equal '(0) waits))))
 
+(define-test (search-results stopped-job-writes-nothing-more)
+  ;; a file handed over just as the job was stopped is not written, its thread let go all the same
+  (let ((written '()))
+    (sb-int:encapsulate 'tuatara.defaults::write-back-file 'noting-files
+                        (lambda (function job given &rest arguments)
+                          (push given written) (apply function job given arguments)))
+    (unwind-protect
+         (run-keys (list (lambda ()
+                           (let ((job (tuatara.defaults::make-write-back-job nil '())))
+                             (setf (tuatara.defaults::write-back-job-request job)
+                                   (list "/nonexistent/a.txt" "/nonexistent/a.txt" '())
+                                   (car (tuatara.runtime:job-cancel job)) t)
+                             (push job tuatara.runtime:*jobs*)
+                             (unwind-protect (tuatara.defaults::write-back-tick nil)
+                               (setf tuatara.runtime:*jobs* (remove job tuatara.runtime:*jobs*)))
+                             (false (tuatara.defaults::write-back-job-request job))
+                             (true (sb-thread:try-semaphore (tuatara.defaults::write-back-job-answered job)))))))
+      (sb-int:unencapsulate 'tuatara.defaults::write-back-file 'noting-files))
+    (is equal '() written)))
+
 (define-test (search-results lines-not-written-said-alike)
   ;; each line not written is kept as path:line not written: why
   (let ((job (tuatara.defaults::make-write-back-job nil '())))
