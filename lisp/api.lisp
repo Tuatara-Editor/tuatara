@@ -111,7 +111,7 @@ its form says, as ORG-READ-RULE reads them; :HOUR, :MINUTE, :END-HOUR and
 
 (defparameter *api*
   '(;; defining commands, modes, keys, faces, settings and background work
-    tuatara.command:define-command tuatara.modes:define-major-mode define-language define-face tuatara.packages:define-package-setting
+    tuatara.command:define-command tuatara.modes:define-major-mode define-face tuatara.packages:define-package-setting
     tuatara.command:define-key tuatara.command:define-keys tuatara.command:label-keys tuatara.modes:mode-keymap
     tuatara.runtime:define-job-words tuatara.command:substitute-command-keys commands-for-mode buttons-in-mode
     tuatara.modes:fundamental-mode special-mode text-mode org-mode org-agenda-mode
@@ -156,7 +156,7 @@ its form says, as ORG-READ-RULE reads them; :HOUR, :MINUTE, :END-HOUR and
     tuatara.runtime:job-take-in tuatara.runtime:job-percent tuatara.runtime:job-state-words tuatara.runtime:job-status
     tuatara.runtime:job-program-started tuatara.runtime:running-job take-in-soon
     ;; failures nothing can be done about, kept in the debug log, and failures said
-    tuatara.runtime:ignoring-errors-reported tuatara.runtime:reporting-errors tuatara.runtime:*secret-at-hand*
+    tuatara.runtime:ignoring-errors-reported tuatara.runtime:*secret-at-hand*
     tuatara.runtime:failure-words
     ;; hooks, each a list a package adds its function to
     *post-self-insert-functions* tuatara.buffer:*kill-buffer-functions* *kill-buffer-query-functions* tuatara.command:*mode-line-functions*
@@ -171,7 +171,7 @@ its form says, as ORG-READ-RULE reads them; :HOUR, :MINUTE, :END-HOUR and
     tuatara.io:directory-entries walk-directory tuatara.io:call-with-file tuatara.io:file-head tuatara.io:binary-head-p tuatara.io:read-fd-start
     tuatara.io:read-fd-octets tuatara.io:write-octets tuatara.io:file-system-error tuatara.io:copy-regular-file tuatara.io:write-new-file tuatara.io:make-directory tuatara.io:remove-file tuatara.io:delete-tree
     ;; evidence, and the places nothing is written in
-    evidence-path-p tuatara.io:writing-refusal tuatara.io:writing-refused copy-file-checked
+    tuatara.io:writing-refusal tuatara.io:writing-refused copy-file-checked
     tuatara.io:percent-decoded-octets file-kind tuatara.io:octets-kind tuatara.io:kind-name-disagrees-p
     tuatara.io:+binary-sample+ tuatara.io:*compound-file-signature*
     ;; octets, text and dates
