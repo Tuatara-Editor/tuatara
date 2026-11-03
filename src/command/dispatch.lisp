@@ -179,10 +179,18 @@ recorded (EVENT-OF-NO-FRAME)."
 (defun record-event (recording event)
   "Add EVENT, a key or text pasted just read as typed, to RECORDING, the keys
 being recorded, the paste to be pasted again as it was, without the frame it
-happened in (EVENT-OF-NO-FRAME); the mouse is not recorded."
-  (unless (and (eq (tuatara.frontend:event-kind event) :key)
-               (tuatara.frontend:key-row (tuatara.frontend:event-key event)))
-    (vector-push-extend (event-of-no-frame event) (recording-events recording))))
+happened in (EVENT-OF-NO-FRAME); the mouse is not recorded. What is typed
+while a secret is asked for or at hand (a passphrase) is never recorded: one
+event of kind :SECRET stands in for all of it, where a play stops and leaves
+the question to you (PLAYED-EVENT)."
+  (let ((events (recording-events recording)))
+    (cond ((or *minibuffer-hidden* tuatara.runtime:*secret-at-hand*)
+           (unless (and (plusp (fill-pointer events))
+                        (eq (tuatara.frontend:event-kind (aref events (1- (fill-pointer events)))) :secret))
+             (vector-push-extend (tuatara.frontend:make-event :secret) events)))
+          ((not (and (eq (tuatara.frontend:event-kind event) :key)
+                     (tuatara.frontend:key-row (tuatara.frontend:event-key event))))
+           (vector-push-extend (event-of-no-frame event) events)))))
 
 (defun give-up-keys-recording ()
   "End the recording of keys going on in the frame you are in, with nothing
@@ -199,11 +207,19 @@ question that holds back what it was given while its candidates still come
 has a :TICK after at most TIMEOUT seconds (a twentieth at most), for up to
 *PLAYED-KEYS-WAIT* seconds, keys typed meanwhile kept for after the play and
 \\`C-g' stopping it; otherwise an error: the keys ended before what they were
-answering did."
+answering did. Where a secret was typed (RECORD-EVENT) the play stops: the
+rest of its keys are left unplayed, the plays after it too, and NIL comes
+back, the question asking then shown and answered by you."
   (let ((events (playing-events playing))
         (next (playing-next playing))
         (completion (editor-completion editor)))
     (cond ((eq (playing-failed playing) :quit) (keyboard-quit-signal))
+          ((and (< next (length events)) (eq (tuatara.frontend:event-kind (svref events next)) :secret))
+           (setf (playing-next playing) (length events)
+                 (playing-failed playing) "a secret was typed there, which is never recorded"
+                 (frame-keys-playing (editor-frame editor)) nil)
+           (redisplay-or-say editor)
+           nil)
           ((< next (length events))
            (setf (playing-next playing) (1+ next))
            (svref events next))

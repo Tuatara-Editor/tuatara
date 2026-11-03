@@ -107,10 +107,10 @@ terminal Tuatara runs in (TEXT, its lines ending in newlines), to go in as
 text and never as keys, :close when the window was asked to close, :focus when
 it was given the keyboard, :detached when the frame's screen went away (its
 client left), :said with TEXT, words for the echo area from the frontend
-itself, or :quit when the frontend can deliver nothing more. FRAME is the
-editor's frame the
-event happened in, where frames share one source of events; NIL for the
-frame being worked in."
+itself, or :quit when the frontend can deliver nothing more; :secret stands
+among recorded keys where a secret was typed, which is never recorded. FRAME
+is the editor's frame the event happened in, where frames share one source of
+events; NIL for the frame being worked in."
   (kind :key :type keyword :read-only t)
   (key nil :type (or null key) :read-only t)
   (width 0 :type fixnum :read-only t)
@@ -124,8 +124,8 @@ frame being worked in."
 (setf (documentation 'make-event 'function) "Return an EVENT of KIND with the given KEY, WIDTH, HEIGHT, FILES, COLUMN, ROW and TEXT."
       (documentation 'event-p 'function) "True when OBJECT is an EVENT."
       (documentation 'event-kind 'function)
-      "The kind of EVENT: :key, :resize, :drop, :paste, :close, :focus, :detached, :said, :quit, or :tick when a
-timed read found no key."
+      "The kind of EVENT: :key, :resize, :drop, :paste, :close, :focus, :detached, :said, :quit, :secret among
+recorded keys, or :tick when a timed read found no key."
       (documentation 'event-key 'function) "The KEY of a :key EVENT."
       (documentation 'event-width 'function) "Width in cells of a :resize EVENT."
       (documentation 'event-height 'function) "Height in cells of a :resize EVENT."

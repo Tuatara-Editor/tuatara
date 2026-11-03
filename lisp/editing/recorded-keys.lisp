@@ -30,12 +30,15 @@ has not been set since the last recording began.")
 
 (defun recorded-keys-text (events)
   "The keys of EVENTS, key events, written as key sequences are (C-a M-f
-C-k), text pasted among them as <pasted text>."
+C-k), text pasted among them as <pasted text>, and where a secret was typed,
+which is never recorded, <secret>."
   (format nil "~{~a~^ ~}"
           (map 'list (lambda (event)
-                       (if (eq (tuatara.frontend:event-kind event) :paste)
-                           "<pasted text>"
-                           (tuatara.frontend:key-description (tuatara.frontend:key-spec (tuatara.frontend:event-key event)))))
+                       (case (tuatara.frontend:event-kind event)
+                         (:paste "<pasted text>")
+                         (:secret "<secret>")
+                         (t (tuatara.frontend:key-description
+                             (tuatara.frontend:key-spec (tuatara.frontend:event-key event))))))
                events)))
 
 (define-command start-recording-keys ()
@@ -47,7 +50,8 @@ again and kills from where it found it. The mode line shows Rec meanwhile.
 The quit key, \\`C-g' as standard, gives the recording up (in INSERT state
 the first \\`C-g' only leaves INSERT), the keys recorded before kept as they
 were. Text pasted is recorded too, and pasted again as it was; the mouse is
-not recorded. The counter \\[insert-keys-counter]
+not recorded. A secret, such as a passphrase, is never recorded: a play stops
+where it was typed and leaves the question to you. The counter \\[insert-keys-counter]
 inserts starts again at 1, or at the number \\[set-keys-counter] set since
 the last recording began, however far plays took it meanwhile."
   (cond ((keys-playing-p) (refuse "Keys are not recorded while recorded keys play"))
@@ -252,7 +256,7 @@ and it is only inserted: putting it in the init file is left to you."
         (message "No keys have been recorded: \\[start-recording-keys] begins a recording")
         (let ((text (recorded-keys-text events)))
           (check-writable (current-buffer))
-          (if (or (find :paste events :key #'tuatara.frontend:event-kind)
+          (if (or (find-if (lambda (kind) (member kind '(:paste :secret))) events :key #'tuatara.frontend:event-kind)
                   (not (equal (map 'list (lambda (event) (tuatara.frontend:key-spec (tuatara.frontend:event-key event))) events)
                               (ignoring-errors-reported ("reading back the keys ~a" text)
                                 (tuatara.frontend:parse-key-sequence text)))))

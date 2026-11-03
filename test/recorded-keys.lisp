@@ -442,3 +442,31 @@ that keys played until one fails end in a test whatever the code does."
                                         "C-u 2 C-x e"
                                         "C-x ( M-x i n s e r t - k e y s - c o u n t e r RET C-x )")
                                   :text (format nil "~%~%~%~%"))))))
+
+(define-test (recorded-keys secret-never-recorded)
+  ;; a passphrase typed while recording is kept nowhere: <secret> stands in its place
+  (flet ((ask (f) (declare (ignore f)) (tuatara.command:read-password "Passphrase: ")))
+    (multiple-value-bind (f editor)
+        (recorded-keys-session "C-x ( C-c y s e c r e t RET C-d C-x )" :text "abc" :note #'ask)
+      (declare (ignore f))
+      (is string= "C-c y <secret> C-d"
+          (tuatara.defaults::recorded-keys-text tuatara.defaults::*last-recorded-keys*))
+      (false (search "s e c" (tuatara.buffer:buffer-string (tuatara.command:messages-buffer))))
+      (true (search "<secret>" (tuatara.buffer:buffer-string (tuatara.command:messages-buffer))))
+      (is string= "bc" (session-text editor)))
+    ;; nor can the keys be written for an init file
+    (multiple-value-bind (f editor)
+        (recorded-keys-session (format nil "C-x ( C-c y s e c r e t RET C-x ) M-x ~{~a~^ ~} RET"
+                                       (coerce "insert-recorded-keys-definition" 'list))
+                               :note #'ask)
+      (declare (ignore f))
+      (true (search "cannot all be written as text: C-c y <secret>" (session-message editor)))
+      (is string= "" (session-text editor)))
+    ;; a play stops at the question and leaves it to you, the keys after it unplayed
+    (multiple-value-bind (f editor)
+        (recorded-keys-session "C-x ( C-c y s e c r e t RET C-d C-x ) C-u 3 C-x e o t h e r RET" :text "abc"
+                               :note #'ask)
+      (declare (ignore f))
+      (is equal '("other" "secret") *plays-noted*)
+      (is string= "bc" (session-text editor))
+      (true (search "plays: a secret was typed there" (session-message editor))))))
