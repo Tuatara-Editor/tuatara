@@ -111,7 +111,14 @@ update and upgrade), so the libraries bundled are the current ones, and
 (inside the AppImage as =licenses/bundled-libraries.txt=, and a release file)
 lists the package, exact version and SHA-256 of each bundled library with the
 base image's digest and the hashes of appimagetool, its runtime and the exclude
-list, to check against security advisories.
+list, to check against security advisories. Beside it,
+=build/release/Tuatara-x86_64.AppImage.library-sources.tar.zst= holds the
+Ubuntu source package of every bundled library at exactly that version
+(=tools/library-sources.sh=, deb-src enabled in the container): apt checks each
+file against Ubuntu's signed index, and the script again against its =.dsc=,
+either stopping the build on a file that differs. It is a release file too,
+so that a release carries its libraries' sources itself, whatever Ubuntu's
+archive keeps.
 
 A release carries every grammar's licence (=grammars/licenses/=), and SBCL's
 and those of the Lisp libraries compiled into the program (=licenses/=); and

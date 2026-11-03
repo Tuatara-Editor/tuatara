@@ -183,7 +183,11 @@ The libraries the AppImage brings (GTK 4 and what it needs) are Ubuntu 24.04's
 at their newest versions on the day it was built. Each release has
 =Tuatara-x86_64.AppImage.libraries.txt=, also inside the AppImage as
 =licenses/bundled-libraries.txt=: every bundled library with its package, exact
-version and SHA-256, so it can be checked against security advisories.
+version and SHA-256, so it can be checked against security advisories. The
+libraries come with their sources, as many of their licences (the LGPL among
+them) ask: =Tuatara-x86_64.AppImage.library-sources.tar.zst=, a file of the
+same release, holds the Ubuntu source package of each, at exactly the version
+bundled.
 
 ** Building the files yourself
 

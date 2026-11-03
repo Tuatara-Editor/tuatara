@@ -1,11 +1,11 @@
 # Builds a release from a version tag, as tools/release.sh, tools/appimage.sh
 # and tools/distro-packages.sh build one anywhere, and makes a draft of it:
 # the AppImage, the Fedora, Ubuntu and Arch packages (each installed and run in
-# its own system first), the sources, and SHA256SUMS. The draft is published
-# by hand, once "What changed" is written; a 0.x version is marked a
-# pre-release. Run by hand (Actions, Release, Run workflow), it builds the
-# same files from the branch chosen and keeps them with the run, nothing
-# published.
+# its own system first), the sources, those of the libraries the AppImage
+# bundles, and SHA256SUMS. The draft is published by hand, once "What
+# changed" is written; a 0.x version is marked a pre-release. Run by hand
+# (Actions, Release, Run workflow), it builds the same files from the branch
+# chosen and keeps them with the run, nothing published.
 name: Release
 
 on:
@@ -67,7 +67,8 @@ jobs:
       - name: SHA256SUMS
         run: |
           mkdir dist
-          cp build/Tuatara-x86_64.AppImage build/Tuatara-x86_64.AppImage.libraries.txt build/packages/* build/release/tuatara-sources.tar.zst dist/
+          cp build/Tuatara-x86_64.AppImage build/Tuatara-x86_64.AppImage.libraries.txt build/packages/* \
+            build/release/tuatara-sources.tar.zst build/release/Tuatara-x86_64.AppImage.library-sources.tar.zst dist/
           cd dist
           sha256sum * > SHA256SUMS
           cat SHA256SUMS

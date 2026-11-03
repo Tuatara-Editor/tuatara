@@ -1021,3 +1021,61 @@ grep -qs host_secret src/parser.c && echo took-host || echo took-nothing" repo c
         (multiple-value-bind (status error) (run "usr/lib/libfoo.so.1")
           (isnt = 0 status)
           (true (search "has no copyright file" error)))))))
+
+(define-test (tools library-sources-fetched)
+  ;; one source package for the libraries of each package, at the version
+  ;; bundled, its files checked against its .dsc, a folder no longer wanted
+  ;; removed; a version not the one bundled, or a file that is not the one the
+  ;; .dsc names, stops it
+  (with-test-directory (directory)
+    (flet ((script (name text)
+             (sb-posix:chmod (uiop:native-namestring (write-test-file directory name text)) #o755))
+           (row (&rest fields) (format nil "~{~a~}~%" (rest (loop for field in fields collect #\Tab collect field)))))
+      (script "bin/dpkg-query" (format nil "#!/bin/sh~%printf '1.2-3\\tfoo\\t1:1.0-1'~%"))
+      (script "bin/apt-get"
+              (format nil "#!/bin/sh
+case \"$*\" in *\" foo=1:1.0-1\"*) ;; *) exit 1 ;; esac
+printf orig > foo_1.0.orig.tar.xz
+sum=$(printf orig | sha256sum | cut -c1-64)
+printf 'Source: foo\\nChecksums-Sha256:\\n %s 4 foo_1.0.orig.tar.xz\\nFiles:\\n x 4 foo_1.0.orig.tar.xz\\n' \"$sum\" > foo_1.0-1.dsc
+[ -z \"$TAMPER\" ] || printf other > foo_1.0.orig.tar.xz~%"))
+      (write-test-file directory "docs/libfoo1/copyright"
+                       (format nil "Format: x~%License: MIT~%~%License: LGPL-2.1+~%"))
+      (write-test-file directory "lib.tsv" (concatenate 'string (row "libfoo.so.1" "libfoo1" "1.2-3" "a")
+                                                        (row "libfoo-extra.so.1" "libfoo1" "1.2-3" "b")))
+      (write-test-file directory "out/gone/gone_1.dsc" "")
+      (write-test-file directory "out/foo/foo_0.9.orig.tar.xz" "old")
+      (flet ((run (&rest environment)
+               (multiple-value-bind (out error status)
+                   (uiop:run-program
+                    (list "bash" (tools-script "library-sources.sh") (uiop:native-namestring (merge-pathnames "out/" directory))
+                          (uiop:native-namestring (merge-pathnames "lib.tsv" directory)))
+                    :output :string :error-output :string :ignore-error-status t
+                    :environment (list* (format nil "PATH=~a:/usr/bin:/bin" (uiop:native-namestring (merge-pathnames "bin/" directory)))
+                                        (format nil "DOC_DIR=~a" (uiop:native-namestring (merge-pathnames "docs/" directory)))
+                                        environment))
+                 (declare (ignore out))
+                 (values status error))))
+        (is = 0 (run))
+        (is equal '("foo_1.0-1.dsc" "foo_1.0.orig.tar.xz")
+            (sort (mapcar #'file-namestring (directory (merge-pathnames "out/foo/*.*" directory))) #'string<))
+        (false (probe-file (merge-pathnames "out/gone/" directory)))
+        (let ((readme (uiop:read-file-string (merge-pathnames "out/README" directory))))
+          (true (search (row "libfoo.so.1" "libfoo1" "foo" "1:1.0-1" "LGPL-2.1+, MIT") readme))
+          (true (search (row "libfoo-extra.so.1" "libfoo1" "foo" "1:1.0-1" "LGPL-2.1+, MIT") readme)))
+        (multiple-value-bind (status error) (run "TAMPER=1")
+          (isnt = 0 status)
+          (true (search "differs from its .dsc" error)))
+        (write-test-file directory "lib.tsv" (row "libfoo.so.1" "libfoo1" "1.2-4" "a"))
+        (multiple-value-bind (status error) (run)
+          (isnt = 0 status)
+          (true (search "not 1.2-4 as bundled" error)))))))
+
+(define-test (tools library-sources-released)
+  ;; the AppImage's library sources are a release file: named in its manifest,
+  ;; attached to the draft and in SHA256SUMS
+  (let ((appimage (uiop:read-file-string (tools-script "appimage.sh")))
+        (workflow (uiop:read-file-string (asdf:system-relative-pathname :tuatara ".github/workflows/release.yml"))))
+    (true (search "library_sources=\"$root/build/release/Tuatara-x86_64.AppImage.library-sources.tar.zst\"" appimage))
+    (true (search "# Their sources, at exactly these versions: $(basename \"$library_sources\")" appimage))
+    (true (search " build/release/Tuatara-x86_64.AppImage.library-sources.tar.zst dist/" workflow))))

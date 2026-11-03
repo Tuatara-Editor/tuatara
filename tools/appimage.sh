@@ -24,7 +24,13 @@
 # hashes, are written to the manifest build/Tuatara-x86_64.AppImage.libraries.txt,
 # which is also inside the AppImage (tuatara/licenses/bundled-libraries.txt, with
 # each library package's copyright file in tuatara/licenses/libraries/) and
-# a release file, so that a library can be checked against advisories.
+# a release file, so that a library can be checked against advisories. The
+# source package of every library, at exactly the version bundled, is fetched
+# there too (tools/library-sources.sh, apt checking it against Ubuntu's signed
+# index and it against its .dsc) and packed, sorted and with fixed times and
+# owners, into build/release/Tuatara-x86_64.AppImage.library-sources.tar.zst,
+# the release file the manifest names, so that the release carries the
+# libraries' sources itself.
 # Usage: tools/appimage.sh
 set -euo pipefail
 root="$(cd "$(dirname "$0")/.." && pwd)"
@@ -35,6 +41,7 @@ tools_dir="$root/build/appimage-tools"
 appdir="$root/build/appimage/Tuatara.AppDir"
 out="$root/build/Tuatara-x86_64.AppImage"
 manifest="$out.libraries.txt"
+library_sources="$root/build/release/Tuatara-x86_64.AppImage.library-sources.tar.zst"
 container=tuatara-appimage-libs
 excludelist_url=https://raw.githubusercontent.com/AppImageCommunity/pkg2appimage/15a64c20dc23a0154622ba25829364323903b6b5/excludelist
 excludelist_sha256=50db0f894f34b169c47a5cbc0c17dbab61e9edebca5bc8269a1e6ac1bf4bdad9
@@ -70,7 +77,8 @@ rm -rf "$appdir/tuatara/man"
 # the libraries, from Ubuntu 24.04: those the program loads (libzstd, which the
 # program itself needs, too) and all they need in turn, but those on the exclude list
 pinned_container "$container" "$ubuntu_image" 'true'
-refresh_container "$container" 'DEBIAN_FRONTEND=noninteractive apt-get update -qq &&
+refresh_container "$container" 'sed -i "s/^Types: deb$/Types: deb deb-src/" /etc/apt/sources.list.d/ubuntu.sources &&
+  DEBIAN_FRONTEND=noninteractive apt-get update -qq &&
   DEBIAN_FRONTEND=noninteractive apt-get upgrade -y -qq >/dev/null &&
   DEBIAN_FRONTEND=noninteractive apt-get install -y -qq libgtk-4-1 libncursesw6 libssl3t64 libzstd1 >/dev/null'
 podman cp "$tools_dir/excludelist" "$container:/tmp/excludelist"
@@ -94,9 +102,18 @@ podman cp "$container:/tmp/bundle/lib/." "$appdir/lib/"
 podman cp "$container:/tmp/bundle/lib.tsv" "$tools_dir/lib.tsv"
 mkdir -p "$appdir/tuatara/licenses/libraries"
 podman cp "$container:/tmp/bundle/copyright/." "$appdir/tuatara/licenses/libraries/"
+# the source of each library, exactly as bundled, packed beside the release
+podman cp tools/library-sources.sh "$container:/tmp/library-sources.sh"
+podman exec "$container" bash /tmp/library-sources.sh /tmp/library-sources /tmp/bundle/lib.tsv
+sources_dir="$root/build/appimage/tuatara-library-sources"
+mkdir -p "$sources_dir"
+podman cp "$container:/tmp/library-sources/." "$sources_dir/"
+tar -C "$root/build/appimage" --sort=name --mtime="@$(git log -1 --format=%ct)" --owner=0 --group=0 --numeric-owner \
+    --mode=u+rw,go=rX -cf - tuatara-library-sources | zstd -T0 -q -f -o "$library_sources"
 {
   echo "# Native libraries bundled in Tuatara-x86_64.AppImage (lib/), for checking against advisories."
   echo "# Taken from the Ubuntu 24.04 package versions below, after apt-get upgrade at build time."
+  echo "# Their sources, at exactly these versions: $(basename "$library_sources"), a file of the release."
   echo "base-image	$ubuntu_image"
   echo "appimagetool	$appimagetool_url	$appimagetool_sha256"
   echo "runtime	$runtime_url	$runtime_sha256"
@@ -146,3 +163,4 @@ rm -f "$out"
 ARCH=x86_64 "$tools_dir/appimagetool-x86_64.AppImage" --appimage-extract-and-run --no-appstream --runtime-file "$tools_dir/runtime-x86_64" "$appdir" "$out" >/dev/null
 echo "$out"
 echo "$manifest"
+echo "$library_sources"
