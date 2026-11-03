@@ -28,6 +28,9 @@
 ;; Nor read or write the developer's configuration folder (their Word and LaTeX
 ;; templates): one of the run's own.
 (sb-posix:setenv "XDG_CONFIG_HOME" (namestring (merge-pathnames "config/" *test-state-directory*)) 1)
+;; Nor move the cache when a test makes a home of its own: it stays where it was
+;; for the whole run, and no .cache/ folder appears in that home.
+(sb-posix:setenv "XDG_CACHE_HOME" (namestring (uiop:xdg-cache-home)) 1)
 ;; Nor reach the developer's running daemons, or start one where they look: the
 ;; run's own folder of sockets, for the run alone as the system's is.
 (let ((runtime (merge-pathnames "runtime/" *test-state-directory*)))
