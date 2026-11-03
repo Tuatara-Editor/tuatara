@@ -1364,3 +1364,29 @@ windows side by side."
                      frame :columns 7 :rows 2 :font "Adwaita Mono 11")
                  (sb-int:unencapsulate 'tuatara.gtk:cairo-scale 'seen)))))
       (tuatara.display:apply-theme theme))))
+
+(defclass failing-fake-frontend (tuatara.frontend.fake:fake-frontend)
+  ((fails :initarg :fails :reader failing-fails
+          :documentation "Which of :START and :STOP signals an error."))
+  (:documentation "A fake window that fails to start or to stop, for the tests of a client's windows."))
+
+(defmethod tuatara.frontend:frontend-start ((f failing-fake-frontend))
+  (if (eq (failing-fails f) :start) (error "the window cannot start") (call-next-method)))
+
+(defmethod tuatara.frontend:frontend-stop ((f failing-fake-frontend))
+  (if (eq (failing-fails f) :stop) (error "the window cannot close") (call-next-method)))
+
+(define-test (gtk client-window-gone-whatever-fails)
+  ;; a window that fails to start or to close is still counted gone, its connection closed
+  (dolist (fails '(:start :stop))
+    (multiple-value-bind (mine theirs) (tuatara.io:socket-pair)
+      (let ((gone 0) (octets (make-array 16 :element-type '(unsigned-byte 8))))
+        ;; the editor at the other end says nothing: no client is made of the connection
+        (when (eq fails :stop) (tuatara.io:shut-socket theirs))
+        (ignore-errors
+         (tuatara.frontend.gtk::show-client-window (make-instance 'failing-fake-frontend :fails fails) mine nil
+                                                   (tuatara.frontend:make-request) nil
+                                                   :painted (constantly nil) :gone (lambda () (incf gone))))
+        (is = 1 gone "~(~a~) failing" fails)
+        (is = 0 (tuatara.io:read-fd-into theirs octets) "~(~a~) failing: the connection closed" fails)
+        (sb-posix:close theirs)))))
