@@ -917,3 +917,16 @@ cases/2026-0001/work/ (WORK), each bound to its native name ending in /."
                          (true (search "no way to tell" (tuatara.io:safe-visit-reason buffer))))
                (tuatara.buffer:kill-buffer buffer)))
         (sb-int:unencapsulate 'tuatara.defaults::visit-safely-reason 'failing)))))
+
+(define-test (evidence untrue-copy-named-whatever-its-name)
+  ;; a copy whose sum differs is refused naming it, a ~ in its name written as it is
+  (with-test-directory (dir)
+    (let* ((a (put-file (merge-pathnames "a.txt" dir) "kept as found"))
+           (copy (concatenate 'string (tuatara.io:native dir) "copy ~a ~b.txt"))
+           (words (handler-case (progn (tuatara.defaults::copy-file-checked (tuatara.io:native a) copy :sum "0000") nil)
+                    (error (e) (princ-to-string e)))))
+      (true (typep (nth-value 1 (ignore-errors (tuatara.defaults::copy-file-checked (tuatara.io:native a) copy
+                                                                                     :sum "0000")))
+                   'tuatara.runtime:refusal))
+      (is string= (format nil "the copy at ~a does not have its original's SHA-256: taken away" copy) words)
+      (false (probe-file copy) "the untrue copy is taken away"))))
