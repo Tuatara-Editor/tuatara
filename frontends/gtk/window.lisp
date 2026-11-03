@@ -35,11 +35,11 @@ columns changed."
             (setf (gtk-columns f) columns (gtk-rows f) rows (gtk-sized f) t)
             (sb-thread:condition-broadcast (gtk-changed f))
             (unless first
-              (queue-push (gtk-queue f) (tuatara.frontend:make-event :resize :width columns :height rows)))))))))
+              (push-event f :resize :width columns :height rows))))))))
 
 (define-callback on-resize :void ((area :pointer) (width :int) (height :int) (data :pointer))
-  (declare (ignore area data))
-  (let ((f *frontend*))
+  (declare (ignore area))
+  (let ((f (data-window data)))
     (when f (fit-grid f width height))))
 
 (defun measure-font (f)
@@ -59,8 +59,7 @@ the last, and set its cell size from them."
   (measure-font f))
 
 (define-callback on-rescale-font :boolean ((data :pointer))
-  (declare (ignore data))
-  (let ((f *frontend*))
+  (let ((f (data-window data)))
     (when (and f (gtk-area f))
       (let ((steps (sb-thread:with-mutex ((gtk-lock f))
                      (setf (gtk-settings-pending f) nil)
@@ -80,19 +79,49 @@ the last, and set its cell size from them."
 ;;; Main-loop work other threads ask for
 
 (define-callback on-draw-request :boolean ((data :pointer))
-  (declare (ignore data))
-  (let ((f *frontend*))
+  (let ((f (data-window data)))
     (when (and f (gtk-area f))
       (sb-thread:with-mutex ((gtk-lock f)) (setf (gtk-draw-pending f) nil))
       (redraw f)))
   nil)
 
 (define-callback on-close-window :boolean ((data :pointer))
-  (declare (ignore data))
-  (let ((f *frontend*))
+  (let ((f (data-window data)))
+    (when f
+      ;; what GTK says of the window as it goes finds it no more
+      (forget-window f)
+      (loop for (instance . number) in (shiftf (gtk-signals f) '())
+            do (g-signal-handler-disconnect instance number))
+      (when (gtk-window f)
+        (gtk-window-destroy (shiftf (gtk-window f) nil))
+        (setf (gtk-area f) nil))))
+  nil)
+
+(define-callback on-open-window :boolean ((data :pointer))
+  (let ((f (data-window data)))
+    (when f
+      (unwind-protect
+           (progn
+             (open-window f)
+             (gtk-widget-realize (gtk-window f))
+             (setf (gtk-drawn-by f) (window-renderer-name (gtk-window f))))
+        ;; not opened: the editor waiting for its size goes on, to say so (FRONTEND-START)
+        (unless (gtk-window f)
+          (forget-window f)
+          (sb-thread:with-mutex ((gtk-lock f))
+            (setf (gtk-sized f) t)
+            (sb-thread:condition-broadcast (gtk-changed f)))))))
+  nil)
+
+(define-callback on-raise :boolean ((data :pointer))
+  (let ((f (data-window data)))
     (when (and f (gtk-window f))
-      (gtk-window-destroy (shiftf (gtk-window f) nil))
-      (setf (gtk-area f) nil)))
+      (gtk-window-present (gtk-window f))))
+  nil)
+
+(define-callback on-editor-ended :boolean ((data :pointer))
+  ;; nothing to do: GTK's loop looks again whether it has anything left
+  (declare (ignore data))
   nil)
 
 (defun clipboard ()
@@ -100,8 +129,7 @@ the last, and set its cell size from them."
   (gdk-display-get-clipboard (gdk-display-get-default)))
 
 (define-callback on-set-clipboard :boolean ((data :pointer))
-  (declare (ignore data))
-  (let ((f *frontend*))
+  (let ((f (data-window data)))
     (when f
       (multiple-value-bind (text primary)
           (sb-thread:with-mutex ((gtk-lock f))
@@ -120,30 +148,27 @@ look alike."
   (tuatara.display:displayable (tuatara.command:escape-controls title nil :raw-bytes) :controls nil))
 
 (define-callback on-set-title :boolean ((data :pointer))
-  (declare (ignore data))
-  (let* ((f *frontend*)
+  (let* ((f (data-window data))
          (title (and f (sb-thread:with-mutex ((gtk-lock f)) (gtk-title f)))))
     (when (and title (gtk-window f))
       (gtk-window-set-title (gtk-window f) (shown-title title))))
   nil)
 
 (define-callback on-clipboard-read :void ((source :pointer) (result :pointer) (data :pointer))
-  (declare (ignore data))
-  (let* ((f *frontend*)
-         (pointer (gdk-clipboard-read-text-finish source result (cffi:null-pointer)))
-         (text (unless (cffi:null-pointer-p pointer)
-                 (prog1 (cffi:foreign-string-to-lisp pointer) (g-free pointer)))))
+  (let* ((f (data-window data))
+         (pointer (gdk-clipboard-read-text-finish source result (null-pointer)))
+         (text (unless (null-pointer-p pointer)
+                 (prog1 (sap-string pointer) (g-free pointer)))))
     (when f
       (sb-thread:with-mutex ((gtk-lock f))
         (setf (gtk-clipboard-in f) (or text :none))
         (sb-thread:condition-broadcast (gtk-changed f))))))
 
 (define-callback on-clipboard-kept :void ((source :pointer) (result :pointer) (data :pointer))
-  (declare (ignore data))
-  (let* ((f *frontend*)
-         (pointer (gdk-clipboard-read-text-finish source result (cffi:null-pointer)))
-         (text (unless (cffi:null-pointer-p pointer)
-                 (prog1 (cffi:foreign-string-to-lisp pointer) (g-free pointer)))))
+  (let* ((f (data-window data))
+         (pointer (gdk-clipboard-read-text-finish source result (null-pointer)))
+         (text (unless (null-pointer-p pointer)
+                 (prog1 (sap-string pointer) (g-free pointer)))))
     (when f
       (sb-thread:with-mutex ((gtk-lock f))
         (setf (gtk-clipboard-kept f) text
@@ -155,22 +180,20 @@ look alike."
 background, on GTK's thread, a paste meanwhile waiting for it."
   (sb-thread:with-mutex ((gtk-lock f))
     (setf (gtk-clipboard-reads f) (1+ (or (gtk-clipboard-reads f) 0))))
-  (gdk-clipboard-read-text-async (clipboard) (cffi:null-pointer) (cffi:callback on-clipboard-kept) (cffi:null-pointer)))
+  (gdk-clipboard-read-text-async (clipboard) (null-pointer) (callback on-clipboard-kept) (window-data f)))
 
 (define-callback on-clipboard-changed :void ((clipboard :pointer) (data :pointer))
-  (declare (ignore clipboard data))
-  (let ((f *frontend*))
+  (declare (ignore clipboard))
+  (let ((f (data-window data)))
     (when f (read-changed-clipboard f))))
 
 (define-callback on-read-clipboard :boolean ((data :pointer))
-  (declare (ignore data))
-  (gdk-clipboard-read-text-async (clipboard) (cffi:null-pointer) (cffi:callback on-clipboard-read) (cffi:null-pointer))
+  (gdk-clipboard-read-text-async (clipboard) (null-pointer) (callback on-clipboard-read) data)
   nil)
 
 (define-callback on-read-primary :boolean ((data :pointer))
-  (declare (ignore data))
   (gdk-clipboard-read-text-async (gdk-display-get-primary-clipboard (gdk-display-get-default))
-                                 (cffi:null-pointer) (cffi:callback on-clipboard-read) (cffi:null-pointer))
+                                 (null-pointer) (callback on-clipboard-read) data)
   nil)
 
 ;;; The window
@@ -182,7 +205,8 @@ dropped on it and the focus."
   (setf (gtk-fonts f) (make-fonts (font-name))
         (gtk-font-in-use f) (font-name))
   (measure-font f)
-  (let ((window (gtk-window-new))
+  (let ((data (window-data f))
+        (window (gtk-window-new))
         (area (gtk-drawing-area-new))
         (keys (gtk-event-controller-key-new))
         (command-keys (gtk-event-controller-key-new))
@@ -201,11 +225,10 @@ dropped on it and the focus."
                                    (+ (* 40 (cell-height f)) top bottom)))
     ;; the desktop's light or dark style, and word when it changes
     (setf (gtk-desktop-style f) (settings-desktop-style))
-    (g-signal-connect (gtk-settings-get-default) "notify::gtk-interface-color-scheme"
-                      (cffi:callback on-style-changed))
-    (g-signal-connect (gtk-settings-get-default) "notify::gtk-theme-name" (cffi:callback on-style-changed))
-    (g-signal-connect (gtk-settings-get-default) "notify::gtk-application-prefer-dark-theme"
-                      (cffi:callback on-style-changed))
+    (let ((settings (gtk-settings-get-default)))
+      (dolist (signal '("notify::gtk-interface-color-scheme" "notify::gtk-theme-name"
+                        "notify::gtk-application-prefer-dark-theme"))
+        (push (cons settings (g-signal-connect settings signal (callback on-style-changed) data)) (gtk-signals f))))
     ;; over the drawing area, which takes the keys and the pointer: the rows' pictures, and the cursor over them
     (let ((overlay (gtk-overlay-new)) (grid (gtk-fixed-new)) (pictures (gtk-fixed-new)) (above (gtk-fixed-new))
           (cursor (gtk-drawing-area-new)) (ground (gtk-picture-new)))
@@ -217,44 +240,45 @@ dropped on it and the focus."
       (gtk-picture-set-content-fit ground 0)
       (gtk-fixed-put grid ground 0d0 0d0)
       (gtk-fixed-put above cursor 0d0 0d0)
-      (gtk-drawing-area-set-draw-func cursor (cffi:callback on-draw-cursor) (cffi:null-pointer) (cffi:null-pointer))
+      (gtk-drawing-area-set-draw-func cursor (callback on-draw-cursor) data (null-pointer))
       (gtk-widget-set-visible grid nil)
       (gtk-widget-set-visible pictures nil)
       (gtk-widget-set-visible above nil)
       (setf (gtk-grid f) grid (gtk-pictures-layer f) pictures (gtk-above f) above (gtk-cursor-area f) cursor
             (gtk-ground f) ground)
       (gtk-window-set-child window overlay))
-    (gtk-drawing-area-set-draw-func area (cffi:callback on-draw) (cffi:null-pointer) (cffi:null-pointer))
-    (g-signal-connect area "resize" (cffi:callback on-resize))
+    (gtk-drawing-area-set-draw-func area (callback on-draw) data (null-pointer))
+    (g-signal-connect area "resize" (callback on-resize) data)
     (gtk-widget-set-focusable area t)
     (gtk-widget-set-cursor-from-name area "text")
     (gtk-im-context-set-client-widget im area)
     (gtk-event-controller-key-set-im-context keys im)
-    (g-signal-connect im "commit" (cffi:callback on-commit))
-    (g-signal-connect im "preedit-changed" (cffi:callback on-preedit-changed))
-    (g-signal-connect keys "key-pressed" (cffi:callback on-key-pressed))
+    (g-signal-connect im "commit" (callback on-commit) data)
+    (g-signal-connect im "preedit-changed" (callback on-preedit-changed) data)
+    (g-signal-connect keys "key-pressed" (callback on-key-pressed) data)
     (gtk-event-controller-set-propagation-phase command-keys 1)
-    (g-signal-connect command-keys "key-pressed" (cffi:callback on-command-key-pressed))
-    (g-signal-connect focus "enter" (cffi:callback on-focus-enter))
-    (g-signal-connect focus "leave" (cffi:callback on-focus-leave))
-    (g-signal-connect scroll "scroll" (cffi:callback on-scroll))
-    (g-signal-connect motion "motion" (cffi:callback on-motion))
-    (g-signal-connect motion "leave" (cffi:callback on-pointer-leave))
+    (g-signal-connect command-keys "key-pressed" (callback on-command-key-pressed) data)
+    (g-signal-connect focus "enter" (callback on-focus-enter) data)
+    (g-signal-connect focus "leave" (callback on-focus-leave) data)
+    (g-signal-connect scroll "scroll" (callback on-scroll) data)
+    (g-signal-connect motion "motion" (callback on-motion) data)
+    (g-signal-connect motion "leave" (callback on-pointer-leave) data)
     (gtk-gesture-single-set-button click 1)
     (gtk-gesture-single-set-button drag 1)
-    (g-signal-connect click "pressed" (cffi:callback on-pressed))
-    (g-signal-connect click "released" (cffi:callback on-released))
+    (g-signal-connect click "pressed" (callback on-pressed) data)
+    (g-signal-connect click "released" (callback on-released) data)
     (gtk-gesture-single-set-button middle 2)
-    (g-signal-connect middle "pressed" (cffi:callback on-middle-pressed))
-    (g-signal-connect drag "drag-begin" (cffi:callback on-drag-begin))
-    (g-signal-connect drag "drag-update" (cffi:callback on-drag-update))
-    (g-signal-connect drag "drag-end" (cffi:callback on-drag-end))
-    (g-signal-connect drop "drop" (cffi:callback on-drop))
+    (g-signal-connect middle "pressed" (callback on-middle-pressed) data)
+    (g-signal-connect drag "drag-begin" (callback on-drag-begin) data)
+    (g-signal-connect drag "drag-update" (callback on-drag-update) data)
+    (g-signal-connect drag "drag-end" (callback on-drag-end) data)
+    (g-signal-connect drop "drop" (callback on-drop) data)
     (dolist (controller (list command-keys keys focus scroll motion click middle drag drop))
       (gtk-widget-add-controller area controller))
-    (g-signal-connect window "close-request" (cffi:callback on-close-request))
+    (g-signal-connect window "close-request" (callback on-close-request) data)
     ;; the clipboard read each time it changes, and now, so that a paste takes it at once
-    (g-signal-connect (clipboard) "changed" (cffi:callback on-clipboard-changed))
+    (push (cons (clipboard) (g-signal-connect (clipboard) "changed" (callback on-clipboard-changed) data))
+          (gtk-signals f))
     (read-changed-clipboard f)
     (gtk-window-present window)
     (gtk-widget-grab-focus area)))
@@ -263,7 +287,7 @@ dropped on it and the focus."
   "When standard error goes to no terminal, as when the desktop starts the
 window, send it to stderr.log in the cache directory (TUATARA.IO:SESSION-LOG),
 so that what goes wrong is kept for reading afterwards."
-  (unless (ignore-errors (= 1 (sb-unix:unix-isatty 2)))
+  (unless (= 1 (sb-unix:unix-isatty 2))
     (let ((fd (tuatara.io:session-log "the window")))
       (when fd
         (sb-posix:dup2 fd 2)
@@ -280,32 +304,30 @@ then the source tree's data/icons/."
 as well as in the icon themes installed, and give the window that icon, called
 tuatara, as the desktop's launcher does (tools/install-desktop.sh)."
   (let ((display (gdk-display-get-default)))
-    (unless (cffi:null-pointer-p display)
+    (unless (null-pointer-p display)
       (let ((theme (gtk-icon-theme-get-for-display display)))
-        (unless (cffi:null-pointer-p theme)
+        (unless (null-pointer-p theme)
           (dolist (directory (icon-directories))
             (gtk-icon-theme-add-search-path theme (uiop:native-namestring directory)))))))
   (gtk-window-set-default-icon-name "tuatara"))
 
 (defun choose-renderer ()
-  "Before the window opens: have GTK draw it as *GUI-RENDERER* asks, or as
-the start before this one decided (FOLLOW-RENDERER-SETTING), unless
-GSK_RENDERER was set before Tuatara started."
+  "Before GTK starts, once: have it draw every window of this program as
+*GUI-RENDERER* asks, or as the start before this one decided
+\(FOLLOW-RENDERER-SETTING), unless GSK_RENDERER was set before Tuatara
+started. The GSK_RENDERER set here stays for as long as Tuatara runs, GTK
+reading it as each window opens; the programs Tuatara starts are not given
+it (TUATARA.IO:*OWN-VARIABLES*)."
   (cond ((uiop:getenv "TUATARA_RENDERER_CHOSEN")
+         (sb-posix:unsetenv "TUATARA_RENDERER_CHOSEN")
          (setf *window-renderer* (uiop:getenv "GSK_RENDERER")))
         ((uiop:getenv "GSK_RENDERER")
          (setf *window-renderer* :environment))
         (t
          (setf *window-renderer* (renderer-name *gui-renderer*))
-         (when *window-renderer* (sb-posix:setenv "GSK_RENDERER" *window-renderer* 1)))))
-
-(defun renderer-chosen ()
-  "Once the window has its renderer: GSK_RENDERER taken away again, unless it
-was set before Tuatara started, so that the programs Tuatara starts draw as
-they would."
-  (sb-posix:unsetenv "TUATARA_RENDERER_CHOSEN")
+         (when *window-renderer* (sb-posix:setenv "GSK_RENDERER" *window-renderer* 1))))
   (unless (eq *window-renderer* :environment)
-    (sb-posix:unsetenv "GSK_RENDERER")))
+    (pushnew "GSK_RENDERER" tuatara.io:*own-variables* :test #'string=)))
 
 (defun follow-renderer-setting (f)
   "When *GUI-RENDERER* asks for another way of drawing than F's window opened
@@ -322,18 +344,18 @@ the sources, which cannot be started again, it is taken from the next start."
                                       (case *gui-renderer* (:gl "with GL") (:vulkan "with Vulkan")
                                         (:cairo "by the processor") (t "as GTK chooses"))))
             (t
-             (sb-posix:setenv "TUATARA_RENDERER_CHOSEN" "1" 1)
-             (if wanted
-                 (sb-posix:setenv "GSK_RENDERER" wanted 1)
-                 (sb-posix:unsetenv "GSK_RENDERER"))
+             ;; started again in an environment of its own: this one, which GTK's thread reads, left as it is;
              ;; the heap this start has, decided again by no one
-             (sb-posix:setenv "TUATARA_HEAP_DECIDED" "1" 1)
              (tuatara.io:run-program-again
               (list* "--dynamic-space-size" (format nil "~dMB" (floor (sb-ext:dynamic-space-size) (* 1024 1024)))
-                     (rest sb-ext:*posix-argv*)))
-             ;; it could not be started again: from the next start
-             (sb-posix:unsetenv "TUATARA_RENDERER_CHOSEN")
-             (sb-posix:unsetenv "GSK_RENDERER")))))
+                     (rest sb-ext:*posix-argv*))
+              :environment (append (list "TUATARA_RENDERER_CHOSEN=1" "TUATARA_HEAP_DECIDED=1")
+                                   (and wanted (list (format nil "GSK_RENDERER=~a" wanted)))
+                                   (remove-if (lambda (setting)
+                                                (some (lambda (name) (uiop:string-prefix-p name setting))
+                                                      '("GSK_RENDERER=" "TUATARA_RENDERER_CHOSEN="
+                                                        "TUATARA_HEAP_DECIDED=")))
+                                              (sb-ext:posix-environ))))))))
   (setf (gtk-renderer-checked f) t))
 
 (defun measure-clock ()
@@ -368,17 +390,16 @@ milliseconds from a key to the painting of the frame that shows it."
             :slowest (and (plusp count) (nth (min (1- count) (floor (* 19 count) 20)) latencies))))))
 
 (define-callback on-frame-painted :void ((clock :pointer) (data :pointer))
-  (declare (ignore clock data))
-  (let ((f *frontend*))
+  (declare (ignore clock))
+  (let ((f (data-window data)))
     (when f
       (let ((measured (sb-thread:with-mutex ((gtk-lock f)) (gtk-measured f))))
         (when measured (vector-push-extend (measure-clock) (aref measured 2)))))))
 
 (define-callback on-measure-frames :boolean ((data :pointer))
-  (declare (ignore data))
-  (let ((f *frontend*))
+  (let ((f (data-window data)))
     (when (and f (gtk-window f))
-      (g-signal-connect (gtk-widget-get-frame-clock (gtk-window f)) "after-paint" (cffi:callback on-frame-painted))))
+      (g-signal-connect (gtk-widget-get-frame-clock (gtk-window f)) "after-paint" (callback on-frame-painted) data)))
   nil)
 
 (defun measure-drawing (f out)
@@ -401,7 +422,7 @@ when the measuring failed, said in the debug log."
 figures to the file OUT."
   (loop until (sb-thread:with-mutex ((gtk-lock f)) (gtk-shown f)) do (sleep 0.05))
   ;; each frame the window paints, as its frame clock says, on GTK's thread
-  (g-idle-add (cffi:callback on-measure-frames) (cffi:null-pointer))
+  (g-idle-add (callback on-measure-frames) (window-data f))
   ;; the file opened and the garbage of starting collected
   (sleep 2.5)
   (let ((measured (vector (make-array 0 :adjustable t :fill-pointer 0)
@@ -413,7 +434,7 @@ figures to the file OUT."
         (loop for wait = (/ (- (+ start (floor (* i 1000000) 60)) (measure-clock)) 1000000)
               while (plusp wait) do (sleep (min wait 0.002)))
         (sb-thread:with-mutex ((gtk-lock f)) (vector-push-extend (measure-clock) (aref measured 0)))
-        (queue-push (gtk-queue f) (tuatara.frontend:make-event :key :key (tuatara.frontend:make-key :down)))))
+        (push-key f (tuatara.frontend:make-key :down))))
     (sleep 1)
     (let ((figures (sb-thread:with-mutex ((gtk-lock f))
                      (setf (gtk-measured f) nil)
@@ -427,7 +448,7 @@ figures to the file OUT."
 node under /dev/dri); without one, GL and Vulkan are only done by the
 processor, as in many virtual machines."
   (some (lambda (path) (uiop:string-prefix-p "renderD" (file-namestring path)))
-        (ignore-errors (uiop:directory-files "/dev/dri/"))))
+        (tuatara.runtime:ignoring-errors-reported ("listing /dev/dri/") (uiop:directory-files "/dev/dri/"))))
 
 (defmethod tuatara.frontend:frontend-renderers ((f gtk-frontend))
   ;; with no graphics card, Cairo too: drawn by the processor, it may then be the faster
@@ -479,43 +500,149 @@ never one someone else made taken over."
                                                  (some (lambda (key) (uiop:string-prefix-p key pair))
                                                        '("GSK_RENDERER=" "TUATARA_" "XDG_STATE_HOME=" "XDG_CACHE_HOME=" "XDG_DATA_HOME=")))
                                                (sb-ext:posix-environ))))
-              (let ((figures (ignore-errors
-                              (with-open-file (in out)
-                                (with-standard-io-syntax
-                                  (let ((*read-eval* nil)) (read in)))))))
+              (let ((figures (tuatara.runtime:ignoring-errors-reported ("reading ~a" out)
+                               (with-open-file (in out)
+                                 (with-standard-io-syntax
+                                   (let ((*read-eval* nil)) (read in)))))))
                 (and (listp figures) (getf figures :median) figures)))
           (tuatara.io:delete-tree (uiop:native-namestring directory)))))))
 
-(defun run-in-window (files setup)
-  "Run the editor in a window of its own on FILES, calling SETUP with it as
-RUN-EDITOR does: GTK on this thread, which must be the main one, the editor on
-a thread of its own. Returns when the editor ends and the window has closed.
-Standard error goes to the cache directory's stderr.log when no terminal
-shows it (LOG-STDERR-UNLESS-TERMINAL)."
+(defun open-first-window ()
+  "Start GTK on this thread, the main one, and open the program's first
+window, drawn as *GUI-RENDERER* asks (CHOOSE-RENDERER): a frontend for it,
+not yet given its frame. Called within WITH-GTK-FLOAT-TRAPS, GTK's libraries
+loaded."
+  ;; the desktop matches the window to tuatara.desktop by this name
+  (g-set-prgname "tuatara")
+  (g-set-application-name "Tuatara")
+  (choose-renderer)
+  (gtk-init)
+  (use-program-icon)
+  (let ((f (make-gtk-frontend)))
+    (open-window f)
+    (gtk-widget-realize (gtk-window f))
+    (setf (gtk-drawn-by f) (window-renderer-name (gtk-window f)))
+    f))
+
+(defun run-in-window (files setup &key start)
+  "Run the editor in a window of its own on FILES, calling SETUP with it, and
+START once the files are shown, as RUN-EDITOR does: GTK on this thread, which
+must be the main one, the editor on a thread of its own, every frame it
+opens a window of its own. Returns when the editor ends and every window has
+closed. Standard error goes to the cache directory's stderr.log when no
+terminal shows it (LOG-STDERR-UNLESS-TERMINAL)."
   (log-stderr-unless-terminal)
   (load-gtk-libraries)
   (with-gtk-float-traps
-    ;; the desktop matches the window to tuatara.desktop by this name
-    (g-set-prgname "tuatara")
-    (g-set-application-name "Tuatara")
-    (choose-renderer)
-    (gtk-init)
-    (use-program-icon)
-    (let ((f (make-gtk-frontend)))
-      (setf *frontend* f)
-      (open-window f)
-      (gtk-widget-realize (gtk-window f))
-      (setf (gtk-drawn-by f) (window-renderer-name (gtk-window f)))
-      (renderer-chosen)
+    (let ((f (open-first-window))
+          (ended nil))
       (let ((editor (sb-thread:make-thread
                      (lambda ()
-                       (unwind-protect (tuatara.command:run-editor f :files files :setup setup)
-                         (unless (gtk-done f) (tuatara.frontend:frontend-stop f))))
+                       (unwind-protect (tuatara.command:run-editor f :files files :setup setup :start start)
+                         (setf ended t)
+                         (dolist (window (open-windows))
+                           (unless (gtk-done window) (tuatara.frontend:frontend-stop window)))
+                         (g-idle-add (callback on-editor-ended) (null-pointer))))
                      :name "editor")))
         (let ((out (uiop:getenv "TUATARA_MEASURE_DRAWING")))
           (when out (measure-drawing f out)))
-        (loop until (and (gtk-done f) (null (gtk-window f)))
-              do (g-main-context-iteration (cffi:null-pointer) t))
+        (loop until (and ended (null (open-windows)))
+              do (g-main-context-iteration (null-pointer) t))
         (sb-thread:join-thread editor :default nil)
-        (setf *frontend* nil)
         0))))
+
+;;; A client of an editor running elsewhere, in windows of its own
+
+(defun show-client-window (f fd greeted request input &key another painted gone)
+  "Show in F, a window, the editor at the other end of the local socket FD,
+which has said hello (GREETED, as TUATARA.FRONTEND:GREET-EDITOR read it),
+asking it for REQUEST, with INPUT, a descriptor, passed to be read, until the
+editor lets the window go or goes. PAINTED, a function of the exit code and
+the words the editor gave, is called when it painted the window; GONE, a
+function of no arguments, once the window has gone, whatever happened, a
+failure to close it too; ANOTHER opens another window when the editor asks
+for one (TUATARA.FRONTEND:MAKE-REMOTE-CLIENT). FD is closed here when no
+client could be made of it."
+  (let ((client nil))
+    (unwind-protect
+         (handler-case
+             (progn
+               ;; the window, started here or already open, takes its size before the editor is told it
+               (tuatara.frontend:frontend-start f)
+               (setf client (tuatara.frontend:make-remote-client fd f :request request :standard-input input
+                                                                       :greeted greeted :another another))
+               ;; its events stand for the editor's frame, as an editor's window's do
+               (setf (tuatara.frontend:frontend-frame f) client)
+               (multiple-value-bind (exit said) (tuatara.frontend:run-remote-client client)
+                 (when (tuatara.frontend:remote-client-painted client)
+                   (funcall painted exit said))))
+           (tuatara.frontend:remote-refused (condition)
+             (tuatara.runtime:debug-report :remote "a window refused: ~a"
+                                           (tuatara.frontend:remote-refused-words condition))))
+      (unless client (tuatara.frontend:shut-and-close fd))
+      (unwind-protect (tuatara.frontend:frontend-stop f)
+        (funcall gone)))))
+
+(defun run-window-client (fd greeted request &key standard-input connect)
+  "Show the editor at the other end of the local socket FD, which has said
+hello (GREETED, as TUATARA.FRONTEND:GREET-EDITOR read it, its settings taken
+here), in a window of its own, asking it for REQUEST, a TUATARA.FRONTEND:REQUEST,
+with STANDARD-INPUT, a descriptor, passed to be read: its events sent to the
+editor and what it paints shown. Each further window the editor asks for
+\(another frame) is a connection of its own, which CONNECT, a function of no
+arguments, makes: a socket, or NIL when none can be made. GTK runs on this
+thread, which must be the main one; each window is painted and read on a
+thread of its own; a window it will not open, it says so to the editor at
+once. Returns once every window has closed: the exit code the editor gave
+the window it painted that closed last, or NIL when the editor went without
+giving one, and what it said with it; a window let go of before it was
+painted (one that came too late) gives none."
+  (log-stderr-unless-terminal)
+  (load-gtk-libraries)
+  (with-gtk-float-traps
+    (let ((lock (sb-thread:make-mutex :name "window client"))
+          (showing 1) (code nil) (words nil))
+      (labels ((painted (exit said)
+                 (sb-thread:with-mutex (lock) (setf code exit words said)))
+               (gone ()
+                 (sb-thread:with-mutex (lock) (decf showing))
+                 (g-idle-add (callback on-editor-ended) (null-pointer)))
+               (show (f fd greeted request input)
+                 (show-client-window f fd greeted request input :another #'another :painted #'painted :gone #'gone))
+               (another (asking word)
+                 ;; asked for by the editor: a connection of its own, attached with WORD, or word that it is not
+                 (let* ((room (sb-thread:with-mutex (lock)
+                                (when (< showing tuatara.frontend:+most-client-windows+)
+                                  (incf showing))))
+                        (fd (and room (funcall connect))))
+                   (if (null fd)
+                       (progn
+                         (when room (sb-thread:with-mutex (lock) (decf showing)))
+                         (tuatara.frontend:decline-window
+                          asking word (if room
+                                          "the client could not connect again"
+                                          (format nil "the client shows ~d windows, the most it opens"
+                                                  tuatara.frontend:+most-client-windows+))))
+                       (tuatara.runtime:make-guarded-thread
+                        (lambda ()
+                          ;; the settings this client took as its first window opened stay as they are
+                          (let ((greeted (handler-case (tuatara.frontend:greet-editor fd :take nil)
+                                           (tuatara.frontend:remote-refused (condition)
+                                             (tuatara.frontend:decline-window
+                                              asking word (tuatara.frontend:remote-refused-words condition))
+                                             nil))))
+                            (if greeted
+                                (show (let ((f (make-gtk-frontend))) (setf (gtk-renderer-checked f) t) f) fd greeted
+                                      (tuatara.frontend:make-request
+                                       :directory (tuatara.frontend:request-directory request) :joins word)
+                                      nil)
+                                (progn (tuatara.frontend:shut-and-close fd)
+                                       (gone)))))
+                        :name "tuatara window client greeting" :niceness 0)))))
+        (let ((f (open-first-window)))
+          (setf (gtk-renderer-checked f) t)
+          (tuatara.runtime:make-guarded-thread (lambda () (show f fd greeted request standard-input))
+                                               :name "tuatara window client" :niceness 0))
+        (loop until (and (zerop (sb-thread:with-mutex (lock) showing)) (null (open-windows)))
+              do (g-main-context-iteration (null-pointer) t))
+        (values code words)))))

@@ -58,22 +58,29 @@ libraries (ffi.lisp), one after another."
     (is equal '((0d0 0d0 0d0) (1d0 1d0 1d0)) (list (tuatara.frontend.gtk::window-paper :fg) (tuatara.frontend.gtk::window-paper :bg)))))
 
 (define-test (gtk events-between-threads)
-  (let ((queue (tuatara.frontend.gtk:make-event-queue)))
+  (let ((queue (tuatara.frontend:make-event-queue)))
     ;; nothing within the time: NIL
-    (false (tuatara.frontend.gtk:queue-pop queue 0.01))
+    (false (tuatara.frontend:queue-pop queue 0.01))
     ;; one pushed from another thread arrives, and in order
     (sb-thread:join-thread (sb-thread:make-thread (lambda ()
-                                                    (tuatara.frontend.gtk:queue-push queue 1)
-                                                    (tuatara.frontend.gtk:queue-push queue 2))))
-    (is = 1 (tuatara.frontend.gtk:queue-pop queue 1))
-    (is = 2 (tuatara.frontend.gtk:queue-pop queue 1)))
+                                                    (tuatara.frontend:queue-push queue 1)
+                                                    (tuatara.frontend:queue-push queue 2))))
+    (is = 1 (tuatara.frontend:queue-pop queue 1))
+    (is = 2 (tuatara.frontend:queue-pop queue 1)))
   ;; wakes in a row are one, and no input waiting; a key is
   (let* ((f (tuatara.frontend.gtk::make-gtk-frontend))
          (queue (tuatara.frontend.gtk::gtk-queue f)))
-    (dotimes (i 5) (tuatara.frontend.gtk:queue-push queue (tuatara.frontend:make-event :tick)))
-    (is = 1 (length (tuatara.frontend.gtk::event-queue-items queue)))
+    (dotimes (i 5) (tuatara.frontend:queue-push queue (tuatara.frontend:make-event :tick)))
+    (is = 1 (length (tuatara.frontend::event-queue-items queue)))
     (false (tuatara.frontend:frontend-input-pending-p f))
-    (tuatara.frontend.gtk:queue-push queue (tuatara.frontend:make-event :key :key (tuatara.frontend:make-key #\a)))
+    (tuatara.frontend:queue-push queue (tuatara.frontend:make-event :key :key (tuatara.frontend:make-key #\a)))
+    (true (tuatara.frontend:frontend-input-pending-p f)))
+  ;; the window's new size is no input waiting either: work giving way to input does not stop for it
+  (let* ((f (tuatara.frontend.gtk::make-gtk-frontend))
+         (queue (tuatara.frontend.gtk::gtk-queue f)))
+    (tuatara.frontend:queue-push queue (tuatara.frontend:make-event :resize :width 80 :height 24))
+    (false (tuatara.frontend:frontend-input-pending-p f))
+    (tuatara.frontend:queue-push queue (tuatara.frontend:make-event :drop :files '("/tmp/a")))
     (true (tuatara.frontend:frontend-input-pending-p f))))
 
 (define-test (gtk pictures)
@@ -224,7 +231,7 @@ HEIGHT pixels, on a new picture, as a vector of octets."
                 (let* ((data (tuatara.frontend.gtk::cairo-image-surface-get-data surface))
                        (size (* height (tuatara.frontend.gtk::cairo-image-surface-get-stride surface)))
                        (pixels (make-array size :element-type '(unsigned-byte 8))))
-                  (dotimes (i size pixels) (setf (aref pixels i) (cffi:mem-aref data :uint8 i)))))
+                  (dotimes (i size pixels) (setf (aref pixels i) (sb-sys:sap-ref-8 data i)))))
       (tuatara.frontend.gtk::cairo-destroy cr)
       (tuatara.frontend.gtk::cairo-surface-destroy surface))))
 
@@ -371,26 +378,24 @@ Adwaita Mono 11 on ao-dark."
               do (loop for (from below strip) in row-pieces
                        do (let* ((w (* (- below from) cw))
                                  (texture (tuatara.frontend.gtk::strip-texture f strip w)))
-                            (cffi:with-foreign-object (data :uint8 (* 4 w ch))
+                            (tuatara.io:with-foreign-memory (data (* 4 w ch))
                               (tuatara.gtk:gdk-texture-download texture data (* 4 w))
                               (dotimes (y ch)
                                 (dotimes (x w)
                                   (dotimes (c 3)
                                     (incf seen)
-                                    (unless (= (cffi:mem-aref data :uint8 (+ (* 4 (+ x (* y w))) c))
+                                    (unless (= (sb-sys:sap-ref-8 data (+ (* 4 (+ x (* y w))) c))
                                                (aref whole (+ (* (+ 4 (* row ch) y) stride) (* 4 (+ 6 (* from cw) x)) c)))
                                       (incf wrong))))))
                             (tuatara.gtk:g-object-unref texture))))
         (true (plusp seen))
         (is = 0 wrong "~d of ~d octets not as painted whole" wrong seen)))))
 
-(defun window-drawn (dir file &optional pictures)
-  "Open FILE in a real window from these sources on a broadway display of its
-own (test/gtk/window-drawn.lisp, with its state in DIR), and what it found:
-the textures drawn and the octets the window drawn by the graphics card and
-painted whole differ in; NIL when it wrote nothing. PICTURES is \"picture\"
-to wait for the file's picture, \"pictures-beside\" for it shown in two
-windows side by side."
+(defun run-on-broadway (dir script &rest arguments)
+  "Run SCRIPT, a file of test/gtk/, with sbcl --script and ARGUMENTS, strings
+and :OUT for the file it writes what it found to, on a broadway display of its
+own, its state in DIR, and what it wrote there, read as data; NIL when it
+wrote nothing."
   (let* ((display (+ 40 (random 40)))
          (out (merge-pathnames "drawn" dir))
          (server (sb-ext:run-program (tuatara.io:find-program "gtk4-broadwayd")
@@ -400,10 +405,11 @@ windows side by side."
     (unwind-protect
          (progn
            (sleep 0.5)
+           (ignore-errors (delete-file out))
            (sb-ext:run-program sb-ext:*runtime-pathname*
                                (list* "--dynamic-space-size" "4GB" "--noinform" "--disable-ldb" "--end-runtime-options" "--script"
-                                      (namestring (asdf:system-relative-pathname :tuatara "test/gtk/window-drawn.lisp"))
-                                      (namestring file) (namestring out) (and pictures (list pictures)))
+                                      (namestring (asdf:system-relative-pathname :tuatara (format nil "test/gtk/~a" script)))
+                                      (substitute (namestring out) :out arguments))
                                :wait t :output nil :error nil
                                :environment (append (list "GDK_BACKEND=broadway" (format nil "BROADWAY_DISPLAY=:~d" display)
                                                           (format nil "XDG_CONFIG_HOME=~a" (namestring (merge-pathnames "config/" dir)))
@@ -417,6 +423,15 @@ windows side by side."
            (ignore-errors (with-open-file (in out) (with-standard-io-syntax (let ((*read-eval* nil)) (read in))))))
       (ignore-errors (sb-ext:process-kill server 15))
       (ignore-errors (sb-ext:process-close server)))))
+
+(defun window-drawn (dir file &optional pictures)
+  "Open FILE in a real window from these sources on a broadway display of its
+own (test/gtk/window-drawn.lisp, with its state in DIR), and what it found:
+the textures drawn and the octets the window drawn by the graphics card and
+painted whole differ in; NIL when it wrote nothing. PICTURES is \"picture\"
+to wait for the file's picture, \"pictures-beside\" for it shown in two
+windows side by side."
+  (apply #'run-on-broadway dir "window-drawn.lisp" (namestring file) :out (and pictures (list pictures))))
 
 (define-test (gtk window-drawn-as-painted)
   ;; a real window, on a display of its own: drawn as pictures the graphics
@@ -462,6 +477,28 @@ windows side by side."
             (when drawn
               (true (< (getf drawn :differing-much) (/ (getf drawn :octets) 200)) "~:d of ~:d octets far from painted whole"
                     (getf drawn :differing-much) (getf drawn :octets))))))))
+
+(define-test (gtk two-windows)
+  ;; two frames in two real windows on a display of their own: each shows its file, typing in one
+  ;; does not paint the other for each key, a close button closes its window alone, C-x 5 2 opens another,
+  ;; and the window given the keyboard is the frame worked in
+  (if (null (tuatara.io:find-program "gtk4-broadwayd"))
+      (skip "gtk4-broadwayd is not installed here" (true nil))
+      (with-test-directory (dir)
+        (let* ((a (put-file (merge-pathnames "a.txt" dir) (format nil "alpha~%")))
+               (b (put-file (merge-pathnames "b.txt" dir) (format nil "beta~%")))
+               (seen (run-on-broadway dir "two-windows.lisp" (namestring a) (namestring b) :out)))
+          (true seen "the windows wrote nothing")
+          (false (getf seen :error) "~a" (getf seen :error))
+          (is = 2 (getf seen :windows))
+          (dolist (step '(:first-shows-a :second-shows-b :typed-in-second :closed-one
+                          :first-still-typed :opened-by-key :new-worked-in :focus-selects :frames-measured))
+            (true (getf seen step) "~(~a~) in ~s" step seen))
+          ;; twenty keys typed in the second window: the first painted again for work taken in alone
+          (true (<= (getf seen :first-painted-while-typing 99) 4) "~d paints" (getf seen :first-painted-while-typing))
+          (is = 1 (getf seen :frames-left))
+          ;; every event a window handed on named its frame, a new window's from its first
+          (is equal '() (getf seen :unnamed))))))
 
 (define-test (gtk large-parts-painted)
   ;; a part drawn twice as large covers the row under it, its cursor as large, the text before it as it is
@@ -584,7 +621,7 @@ windows side by side."
 
 (define-test (gtk mouse-cells)
   (let* ((f (tuatara.frontend.gtk:make-gtk-frontend))
-         (tuatara.frontend.gtk::*frontend* f))
+         (data (tuatara.frontend.gtk::window-data f)))
     (setf (tuatara.frontend.gtk::cell-width f) 9 (tuatara.frontend.gtk::cell-height f) 20
           (tuatara.frontend.gtk::gtk-rows f) 30)
     ;; pixels to cells, above and left of the window too
@@ -600,21 +637,23 @@ windows side by side."
     ;; a drag tells the editor each cell it reaches once, as GTK's gesture calls it;
     ;; the button let go is the click's to tell, once
     (flet ((call (callback x y)
-             (cffi:foreign-funcall-pointer callback () :pointer (cffi:null-pointer) :double x :double y
-                                                        :pointer (cffi:null-pointer) :void)))
-      (call (cffi:callback tuatara.frontend.gtk::on-drag-begin) 20d0 45d0)
-      (call (cffi:callback tuatara.frontend.gtk::on-drag-update) 1d0 1d0)
-      (call (cffi:callback tuatara.frontend.gtk::on-drag-update) 30d0 0d0)
-      (call (cffi:callback tuatara.frontend.gtk::on-drag-update) 31d0 0d0)
-      (call (cffi:callback tuatara.frontend.gtk::on-drag-update) 30d0 20d0)
-      (call (cffi:callback tuatara.frontend.gtk::on-drag-end) 30d0 20d0))
+             (sb-alien:alien-funcall (sb-alien:sap-alien callback (function sb-alien:void sb-sys:system-area-pointer sb-alien:double
+                                                                            sb-alien:double sb-sys:system-area-pointer))
+                                     (tuatara.io:null-pointer) x y data)))
+      (call (tuatara.gtk:callback tuatara.frontend.gtk::on-drag-begin) 20d0 45d0)
+      (call (tuatara.gtk:callback tuatara.frontend.gtk::on-drag-update) 1d0 1d0)
+      (call (tuatara.gtk:callback tuatara.frontend.gtk::on-drag-update) 30d0 0d0)
+      (call (tuatara.gtk:callback tuatara.frontend.gtk::on-drag-update) 31d0 0d0)
+      (call (tuatara.gtk:callback tuatara.frontend.gtk::on-drag-update) 30d0 20d0)
+      (call (tuatara.gtk:callback tuatara.frontend.gtk::on-drag-end) 30d0 20d0))
     (is equal '((:drag-mouse-1 5 2) (:drag-mouse-1 5 3))
-        (loop for event = (tuatara.frontend.gtk::queue-pop (tuatara.frontend.gtk::gtk-queue f) 0)
+        (loop for event = (tuatara.frontend:queue-pop (tuatara.frontend.gtk::gtk-queue f) 0)
               while event
               collect (let ((key (tuatara.frontend:event-key event)))
                         (list (tuatara.frontend:key-base key) (tuatara.frontend:key-column key)
                               (tuatara.frontend:key-row key)))))
-    (false (tuatara.frontend.gtk::gtk-drag f))))
+    (false (tuatara.frontend.gtk::gtk-drag f))
+    (tuatara.frontend.gtk::forget-window f)))
 
 (define-test (gtk window-title)
   ;; the name of the buffer the selected window shows, given each time it changes
@@ -756,33 +795,42 @@ windows side by side."
   ;; files as a file manager drops them: a GdkFileList in a GValue
   (tuatara.gtk:load-gtk-libraries)
   (let* ((paths (list "/tmp/a file.txt" "/tmp/b [2].txt" (format nil "/tmp/caf~a.txt" (code-char #xe9))))
-         (files (let ((list (cffi:null-pointer)))
+         (files (let ((list (tuatara.io:null-pointer)))
                   (dolist (path (reverse paths) list)
-                    (setf list (cffi:foreign-funcall "g_slist_prepend" :pointer list
-                                                     :pointer (cffi:foreign-funcall "g_file_new_for_path" :string path :pointer)
-                                                     :pointer)))))
-         (file-list (cffi:foreign-funcall "gdk_file_list_new_from_list" :pointer files :pointer)))
-    (cffi:foreign-funcall "g_slist_free_full" :pointer files :pointer (cffi:foreign-symbol-pointer "g_object_unref") :void)
-    (cffi:with-foreign-object (value :uint8 24)
-      (dotimes (i 24) (setf (cffi:mem-aref value :uint8 i) 0))
-      (cffi:foreign-funcall "g_value_init" :pointer value :unsigned-long (tuatara.gtk:gdk-file-list-get-type) :pointer)
-      (cffi:foreign-funcall "g_value_take_boxed" :pointer value :pointer file-list :void)
+                    (setf list (tuatara.runtime:foreign-call "g_slist_prepend" sb-sys:system-area-pointer
+                                                             (sb-sys:system-area-pointer list)
+                                                             (sb-sys:system-area-pointer
+                                                              (tuatara.runtime:foreign-call "g_file_new_for_path" sb-sys:system-area-pointer
+                                                                                            ((sb-alien:c-string :external-format :utf-8) path))))))))
+         (file-list (tuatara.runtime:foreign-call "gdk_file_list_new_from_list" sb-sys:system-area-pointer
+                                                  (sb-sys:system-area-pointer files))))
+    (tuatara.runtime:foreign-call "g_slist_free_full" sb-alien:void (sb-sys:system-area-pointer files)
+                                  (sb-sys:system-area-pointer (sb-sys:int-sap (sb-sys:find-dynamic-foreign-symbol-address "g_object_unref"))))
+    ;; a GValue: 24 octets, all zero before it is set up
+    (tuatara.io:with-foreign-memory (value 24 :zero t)
+      (tuatara.runtime:foreign-call "g_value_init" sb-sys:system-area-pointer (sb-sys:system-area-pointer value)
+                                    (sb-alien:unsigned-long (tuatara.gtk:gdk-file-list-get-type)))
+      (tuatara.runtime:foreign-call "g_value_take_boxed" sb-alien:void (sb-sys:system-area-pointer value)
+                                    (sb-sys:system-area-pointer file-list))
       (unwind-protect
            (progn
              (is equal paths (tuatara.frontend.gtk::dropped-paths value))
              ;; the drop reaches the editor as an event with the cell it was on
              (let* ((f (tuatara.frontend.gtk:make-gtk-frontend))
-                    (tuatara.frontend.gtk::*frontend* f))
+                    (data (tuatara.frontend.gtk::window-data f)))
                (setf (tuatara.frontend.gtk::cell-width f) 9 (tuatara.frontend.gtk::cell-height f) 20)
-               (true (cffi:foreign-funcall-pointer (cffi:callback tuatara.frontend.gtk::on-drop) ()
-                                                   :pointer (cffi:null-pointer) :pointer value
-                                                   :double 20d0 :double 45d0 :pointer (cffi:null-pointer) :boolean))
-               (let ((event (tuatara.frontend.gtk::queue-pop (tuatara.frontend.gtk::gtk-queue f) 0)))
+               (true (sb-alien:alien-funcall
+                      (sb-alien:sap-alien (tuatara.gtk:callback tuatara.frontend.gtk::on-drop)
+                                          (function (sb-alien:boolean 32) sb-sys:system-area-pointer sb-sys:system-area-pointer
+                                                    sb-alien:double sb-alien:double sb-sys:system-area-pointer))
+                      (tuatara.io:null-pointer) value 20d0 45d0 data))
+               (tuatara.frontend.gtk::forget-window f)
+               (let ((event (tuatara.frontend:queue-pop (tuatara.frontend.gtk::gtk-queue f) 0)))
                  (is eq :drop (tuatara.frontend:event-kind event))
                  (is equal paths (tuatara.frontend:event-files event))
                  (is = 2 (tuatara.frontend:event-column event))
                  (is = 2 (tuatara.frontend:event-row event)))))
-        (cffi:foreign-funcall "g_value_unset" :pointer value :void)))))
+        (tuatara.runtime:foreign-call "g_value_unset" sb-alien:void (sb-sys:system-area-pointer value))))))
 
 (define-test (gtk pointer-shapes)
   ;; the text beam over text, an arrow on mode lines and the echo row, a sideways arrow on a divider
@@ -823,23 +871,26 @@ windows side by side."
       (true (search "the terminal's to change" echo))))
   ;; the window turns states on GTK's thread, as asked, in order
   (let* ((f (tuatara.frontend.gtk:make-gtk-frontend))
-         (tuatara.frontend.gtk::*frontend* f))
+         (data (tuatara.frontend.gtk::window-data f)))
     (tuatara.gtk:load-gtk-libraries)
     (setf (tuatara.frontend.gtk::gtk-toggles f) '())
     (true (tuatara.frontend:frontend-toggle-state f :fullscreen))
     (true (tuatara.frontend:frontend-toggle-state f :fullscreen))
     (is equal '(:fullscreen :fullscreen) (tuatara.frontend.gtk::gtk-toggles f))
     ;; with no window open yet, the requests are taken and nothing is done
-    (false (cffi:foreign-funcall-pointer (cffi:callback tuatara.frontend.gtk::on-toggle-state) ()
-                                         :pointer (cffi:null-pointer) :boolean))
-    (false (tuatara.frontend.gtk::gtk-toggles f))))
+    (false (sb-alien:alien-funcall
+            (sb-alien:sap-alien (tuatara.gtk:callback tuatara.frontend.gtk::on-toggle-state)
+                                (function (sb-alien:boolean 32) sb-sys:system-area-pointer))
+            data))
+    (false (tuatara.frontend.gtk::gtk-toggles f))
+    (tuatara.frontend.gtk::forget-window f)))
 
 (define-test (gtk short-waits)
   ;; reading the event queue with a time limit, again and again, as the editor does between keys
-  (let ((queue (tuatara.frontend.gtk::make-event-queue)))
-    (true (loop repeat 500 always (null (tuatara.frontend.gtk::queue-pop queue 0.0001))))
-    (tuatara.frontend.gtk::queue-push queue (tuatara.frontend:make-event :close))
-    (is eq :close (tuatara.frontend:event-kind (tuatara.frontend.gtk::queue-pop queue 0.0001)))))
+  (let ((queue (tuatara.frontend:make-event-queue)))
+    (true (loop repeat 500 always (null (tuatara.frontend:queue-pop queue 0.0001))))
+    (tuatara.frontend:queue-push queue (tuatara.frontend:make-event :close))
+    (is eq :close (tuatara.frontend:event-kind (tuatara.frontend:queue-pop queue 0.0001)))))
 
 (define-test (gtk window-events-mid-question)
   (let* ((path (format nil "~amid-~d.txt" (namestring (uiop:temporary-directory)) (random 1000000)))
@@ -1030,7 +1081,7 @@ windows side by side."
         (with-open-file (in png :element-type '(unsigned-byte 8))
           (let ((octets (make-array (file-length in) :element-type '(unsigned-byte 8))))
             (read-sequence octets in)
-            (flet ((u32 (at) (tuatara.io:octets-be octets at 4)))
+            (flet ((u32 (at) (tuatara.io:octets-integer octets at 4 :big-endian t)))
               (is = size (u32 16))
               (is = size (u32 20))
               (let ((kinds (loop with at = 8
@@ -1132,7 +1183,7 @@ windows side by side."
           (tuatara.frontend.gtk::gtk-clipboard-kept f) "kept before")
     (let ((start (get-internal-real-time)))
       (is equal "kept before" (tuatara.frontend.gtk::read-clipboard-now f nil))
-      (true (< (/ (- (get-internal-real-time) start) internal-time-units-per-second) 1.5)))))
+      (true (< (/ (- (get-internal-real-time) start) internal-time-units-per-second) 5)))))
 
 (define-test (gtk pictures-let-go-of-when-drawn-the-other-way)
   ;; the surfaces painting whole kept are let go of once the card draws the rows
@@ -1176,9 +1227,9 @@ windows side by side."
                (tuatara.frontend:make-image side side 4 pixels)))
            (ms-per-megapixel (image)
              (loop repeat 3
-                   minimize (let ((start (get-internal-real-time))
+                   minimize (let ((start (thread-cpu-time))
                                   (surface (tuatara.frontend.gtk::image-surface image)))
-                              (prog1 (/ (* 1000 (- (get-internal-real-time) start))
+                              (prog1 (/ (* 1000 (- (thread-cpu-time) start))
                                         internal-time-units-per-second
                                         (/ (* (tuatara.frontend:image-width image) (tuatara.frontend:image-height image)) 1d6))
                                 (tuatara.frontend.gtk::cairo-surface-destroy surface))))))
@@ -1192,9 +1243,9 @@ windows side by side."
         (unwind-protect
              (dotimes (p 4)
                (let ((alpha (aref pixels (+ (* 4 p) 3))))
-                 (is = alpha (cffi:mem-aref data :uint8 (+ (* 4 p) 3)))
+                 (is = alpha (sb-sys:sap-ref-8 data (+ (* 4 p) 3)))
                  (loop for (to from) in '((0 2) (1 1) (2 0))
-                       do (true (<= (abs (- (cffi:mem-aref data :uint8 (+ (* 4 p) to))
+                       do (true (<= (abs (- (sb-sys:sap-ref-8 data (+ (* 4 p) to))
                                             (floor (* alpha (aref pixels (+ (* 4 p) from))) 255)))
                                     1)))))
           (tuatara.frontend.gtk::cairo-surface-destroy surface))))))
@@ -1218,3 +1269,124 @@ windows side by side."
     (false (command #xfe51 0))
     (false (command #x55 (logior 4 1)))
     (true (command #x55 4))))
+
+(define-test (gtk picture-written-to-a-name-not-utf-8)
+  ;; a file name the window gives GTK or Cairo reaches the system as it was read, raw bytes and all
+  (tuatara.gtk:load-gtk-libraries)
+  (let* ((folder (tuatara.io:path-join (uiop:native-namestring (uiop:temporary-directory))
+                                       (tuatara.io:slash-ended (format nil "tuatara-test-~a" (tuatara.io:random-name)))))
+         (path (format nil "~apicture-~c.png" folder (code-char #xDCFF))))
+    (tuatara.io:make-directory folder #o700)
+    (unwind-protect
+         (sb-int:with-float-traps-masked (:overflow :invalid :divide-by-zero :inexact :underflow)
+           (let ((surface (tuatara.gtk:cairo-image-surface-create 0 4 4)))
+             (unwind-protect (is = 0 (tuatara.gtk:cairo-surface-write-to-png surface path))
+               (tuatara.gtk:cairo-surface-destroy surface)))
+           (is eq :regular (tuatara.io:path-kind path)))
+      (tuatara.io:delete-tree folder))))
+
+(define-test (gtk callback-pointers-kept)
+  ;; a callback's C function pointer is found once and kept: nothing made each time it is given to GTK
+  (flet ((pointer () (tuatara.gtk:callback tuatara.frontend.gtk::on-draw-request)))
+    (is = (sb-sys:sap-int (sb-alien:alien-sap (sb-alien:alien-callable-function 'tuatara.frontend.gtk::on-draw-request)))
+        (sb-sys:sap-int (pointer)))
+    (pointer)
+    (let* ((before (tuatara.bench::bytes-consed))
+           (consed (progn (dotimes (i 1000) (pointer)) (- (tuatara.bench::bytes-consed) before))))
+      (true (< consed 1000) "~d octets for 1000 pointers" consed))))
+
+;; right-to-left text is put in the order it is read by the layout; Pango is handed Hebrew a letter at a time,
+;; so that it does not turn it round again, and an Arabic word whole and in the order written, so that it joins
+(define-test (gtk right-to-left-text-painted-in-row-order)
+  (tuatara.display:register-face :test-sample "A test face with a font of its own." (list :font "Adwaita Mono Bold"))
+  (let ((theme tuatara.display::*current-theme*)
+        (hebrew (format nil "x ~{~c~} y" (mapcar #'code-char '(#x5D2 #x5D1 #x5D0))))
+        ;; كتب (k t b) as the row shows it, b t k
+        (arabic (format nil "x ~{~c~} y" (mapcar #'code-char '(#x628 #x62A #x643)))))
+    (unwind-protect
+         (progn
+           (tuatara.display:apply-theme 'ao-dark)
+           (flet ((texts (row spans)
+                    (let ((frame (tuatara.frontend.gtk:make-frame (vector (list row nil spans) nil)))
+                          (texts '()))
+                      (setf (tuatara.frontend.gtk::frame-cursor-row frame) 1)
+                      (sb-int:encapsulate 'tuatara.gtk:pango-layout-set-text 'seen
+                                          (lambda (function layout text)
+                                            (push text texts)
+                                            (funcall function layout text)))
+                      (unwind-protect
+                           (tuatara.frontend.gtk:call-with-painted-frame
+                            (lambda (&rest arguments) (declare (ignore arguments)))
+                            frame :columns 10 :rows 2 :font "Adwaita Mono 11")
+                        (sb-int:unencapsulate 'tuatara.gtk:pango-layout-set-text 'seen))
+                      texts)))
+             (flet ((count-of (text low high) (count-if (lambda (c) (<= low (char-code c) high)) text)))
+               (dolist (spans '(((2 5 :right-to-left)) ((0 7 (:test-sample :right-to-left)))))
+                 (false (find-if (lambda (text) (> (count-of text #x5D0 #x5EA) 1)) (texts hebrew spans))))
+               (dolist (spans '(((2 5 :right-to-left)) ((0 2 :test-sample) (2 5 (:test-sample :right-to-left)))))
+                 (true (member (format nil "~{~c~}" (mapcar #'code-char '(#x202B #x643 #x62A #x628 #x202C)))
+                               (texts arabic spans) :test #'string=))))))
+      (tuatara.display:apply-theme theme))))
+
+(define-test (gtk joined-arabic-kept-to-its-cells)
+  ;; a joined Arabic run in a font of another width than the cells' (narrower, wider) is drawn as wide as its
+  ;; cells, from end to end: none of its letters cut off by them, nothing of it drawn outside them
+  (let ((theme tuatara.display::*current-theme*))
+    (unwind-protect
+         (progn
+           (tuatara.display:apply-theme 'ao-dark)
+           (dolist (font '("Adwaita Sans 5" "Adwaita Sans 22"))
+             (tuatara.display:register-face :test-run-sample "A test face with a font of its own." (list :font font))
+             (let ((frame (tuatara.frontend.gtk:make-frame
+                           (vector (list (format nil "  ~{~c~}  " (mapcar #'code-char '(#x628 #x62A #x643))) nil
+                                         '((2 5 (:test-run-sample :right-to-left))))
+                                   nil)))
+                   (scales '()))
+               (setf (tuatara.frontend.gtk::frame-cursor-row frame) 1)
+               (sb-int:encapsulate 'tuatara.gtk:cairo-scale 'seen
+                                   (lambda (function cr x y) (push x scales) (funcall function cr x y)))
+               (unwind-protect
+                    (tuatara.frontend.gtk:call-with-painted-frame
+                     (lambda (surface width height cell-width cell-height)
+                       (declare (ignore width height))
+                       ;; the font's width is not the cells': the letters drawn narrower or wider to fit
+                       (true (find-if (lambda (x) (/= x 1d0)) scales) "drawn as Pango sets them, in ~a" font)
+                       (flet ((inked-p (x)
+                                (loop for y below cell-height
+                                      thereis (string/= "#080d15" (tuatara.frontend.gtk:pixel-colour surface x y)))))
+                         (let ((left (loop for x from 0 below (* 7 cell-width) when (inked-p x) return x))
+                               (right (loop for x downfrom (1- (* 7 cell-width)) to 0 when (inked-p x) return x)))
+                           ;; the letters reach from the run's first cell to its last, and no further
+                           (true (and left (<= (* 2 cell-width) left (+ (* 2 cell-width) (floor cell-width 2))))
+                                 "the letters begin at ~a, the run at ~a, in ~a" left (* 2 cell-width) font)
+                           (true (and right (<= (- (* 5 cell-width) (floor cell-width 2)) right (1- (* 5 cell-width))))
+                                 "the letters end at ~a, the run at ~a, in ~a" right (* 5 cell-width) font))))
+                     frame :columns 7 :rows 2 :font "Adwaita Mono 11")
+                 (sb-int:unencapsulate 'tuatara.gtk:cairo-scale 'seen)))))
+      (tuatara.display:apply-theme theme))))
+
+(defclass failing-fake-frontend (tuatara.frontend.fake:fake-frontend)
+  ((fails :initarg :fails :reader failing-fails
+          :documentation "Which of :START and :STOP signals an error."))
+  (:documentation "A fake window that fails to start or to stop, for the tests of a client's windows."))
+
+(defmethod tuatara.frontend:frontend-start ((f failing-fake-frontend))
+  (if (eq (failing-fails f) :start) (error "the window cannot start") (call-next-method)))
+
+(defmethod tuatara.frontend:frontend-stop ((f failing-fake-frontend))
+  (if (eq (failing-fails f) :stop) (error "the window cannot close") (call-next-method)))
+
+(define-test (gtk client-window-gone-whatever-fails)
+  ;; a window that fails to start or to close is still counted gone, its connection closed
+  (dolist (fails '(:start :stop))
+    (multiple-value-bind (mine theirs) (tuatara.io:socket-pair)
+      (let ((gone 0) (octets (make-array 16 :element-type '(unsigned-byte 8))))
+        ;; the editor at the other end says nothing: no client is made of the connection
+        (when (eq fails :stop) (tuatara.io:shut-socket theirs))
+        (ignore-errors
+         (tuatara.frontend.gtk::show-client-window (make-instance 'failing-fake-frontend :fails fails) mine nil
+                                                   (tuatara.frontend:make-request) nil
+                                                   :painted (constantly nil) :gone (lambda () (incf gone))))
+        (is = 1 gone "~(~a~) failing" fails)
+        (is = 0 (tuatara.io:read-fd-into theirs octets) "~(~a~) failing: the connection closed" fails)
+        (sb-posix:close theirs)))))

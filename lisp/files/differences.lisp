@@ -13,20 +13,24 @@
   "The most octets of differences shown (64 MB); when there are more, none
 are shown, and that is said.")
 
+(defun sandbox-seen-directory (path)
+  "The directory a program shut in the sandbox is shown to see the file or
+folder at PATH: the folder itself, else the one the file is in."
+  (let ((real (tuatara.io:real-place path)))
+    (if (eq :directory (tuatara.io:path-kind real)) real (tuatara.io:parent-path real))))
+
 (defun file-differences (old new &key cancel)
   "The differences between OLD and NEW, two files or two folders, as diff
 --unified writes them: the lines of OLD taken out after -, those of NEW put
 in after +, three lines around each change. Folders are compared with all in
-them, a file only one holds compared with none, links as links, never
+them, a file only one holds compared with none, /dev/null as an empty file, links as links, never
 followed; of files that are not text, only that they differ; a file and a
 folder, the file with the one of its name in the folder. Times are written
 in your time zone (SANDBOX-TIME-ZONE). An empty rope
 when they are the same. diff, shut in, sees only their folders, read only.
 Stopped when CANCEL's car turns true; an error saying why when they cannot be
 compared, or the differences are longer than *DIFFERENCES-LIMIT*."
-  (flet ((seen (path)
-           (let ((real (tuatara.io:real-place path)))
-             (if (eq :directory (tuatara.io:path-kind real)) real (tuatara.io:parent-path real)))))
+  (flet ((seen (path) (sandbox-seen-directory path)))
     (multiple-value-bind (output outcome said)
         (tuatara.io:sandbox-run "diff" (append (list "--unified" "--recursive" "--no-dereference")
                                                ;; a file missing on one side counts as empty only between two folders
@@ -36,9 +40,10 @@ compared, or the differences are longer than *DIFFERENCES-LIMIT*."
                                                (list "--" (tuatara.io:real-place old) (tuatara.io:real-place new)))
                                 :output-limit *differences-limit* :cancel cancel :ended-well '(0 1)
                                 :environment (sandbox-time-zone)
-                                :directories (remove-duplicates (list (seen old) (seen new)) :test #'string=))
+                                :directories (remove-duplicates (mapcar #'seen (remove "/dev/null" (list old new) :test #'equal))
+                                                                :test #'string=))
       (unless (eq outcome :done)
-        (error "~a" (tuatara.io:sandbox-outcome-words outcome said :label "diff")))
+        (refuse "~a" (sandbox-outcome-words outcome said :label "diff")))
       (tuatara.text:octets->rope (coerce output 'tuatara.text:octets)))))
 
 (defstruct (differences-job (:include tuatara.runtime:job) (:constructor make-differences-job (buffer old new))
@@ -79,7 +84,7 @@ two others of the same names is left as it is."
                                     'diff-mode
                                     (format nil "Comparing ~a with ~a...~%" (abbreviated-path old) (abbreviated-path new)))))
     (setf (tuatara.buffer:buffer-local buffer 'compared) (list old new)
-          (tuatara.buffer:buffer-local buffer :directory) (tuatara.io:parent-path new))
+          (buffer-given-directory buffer) (tuatara.io:parent-path new))
     (tuatara.runtime:start-job-thread
      (make-differences-job buffer old new)
      (lambda (job)

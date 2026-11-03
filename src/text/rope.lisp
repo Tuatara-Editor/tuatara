@@ -5,12 +5,13 @@
 ;;;; (LEAF) of at most +MAX-LEAF+ octets, or ranges of at most +SPAN-SIZE+
 ;;;; octets of a memory-mapped file that never enters the Lisp heap (SPAN).
 ;;;; Branches hold up to +MAX-FANOUT+ children of equal height.  Every node caches its byte,
-;;;; character, UTF-16 unit and newline counts; for spans of a freshly opened
+;;;; character, UTF-16 unit and line end counts; for spans of a freshly opened
 ;;;; file the counts are unknown (-1) until INDEX-ROPE has scanned the file, in
 ;;;; parallel, which is how a file of gigabytes opens at once.  Nodes are never
 ;;;; mutated after construction, so a snapshot is the root pointer and an edit
 ;;;; copies only the path to the leaves it touches.  A batch of sorted edits is
-;;;; applied in one descent (APPLY-EDITS).
+;;;; applied in one descent (APPLY-EDITS).  No two counted leaves part a carriage
+;;;; return from the newline after it, so that each counts its own line ends.
 
 (in-package #:tuatara.text)
 
@@ -41,13 +42,16 @@ becomes in-memory leaves of +TARGET-LEAF+.")
 
 (defstruct (node (:constructor nil) (:copier nil) (:predicate nil))
   "Summary slots shared by all nodes: the counts of the text below the node.
-BYTES is always known; CHARS, UTF16, LINES and INVALID (raw bytes) are -1 while
-unknown (unindexed spans)."
+BYTES is always known; CHARS, UTF16, LINES, INVALID (raw bytes), RETURNS
+\(carriage returns) and NEWLINES (newlines alone, as tree-sitter and git count
+lines) are -1 while unknown (unindexed spans)."
   (bytes 0 :type fixnum :read-only t)
   (chars -1 :type fixnum :read-only t)
   (utf16 -1 :type fixnum :read-only t)
   (lines -1 :type fixnum :read-only t)
-  (invalid -1 :type fixnum :read-only t))
+  (invalid -1 :type fixnum :read-only t)
+  (returns -1 :type fixnum :read-only t)
+  (newlines -1 :type fixnum :read-only t))
 
 (declaim (inline node-indexed-p))
 (defun node-indexed-p (node)
@@ -55,21 +59,21 @@ unknown (unindexed spans)."
   (>= (node-chars node) 0))
 
 (defstruct (leaf (:include node)
-                 (:constructor %make-leaf (octets start bytes chars utf16 lines invalid))
+                 (:constructor %make-leaf (octets start bytes chars utf16 lines invalid returns newlines))
                  (:copier nil))
   "An in-memory leaf: BYTES octets of the immutable vector OCTETS starting at START."
   (octets (make-octets 0) :type octets :read-only t)
   (start 0 :type fixnum :read-only t))
 
 (defstruct (span (:include node)
-                 (:constructor %make-span (mapping offset bytes chars utf16 lines invalid))
+                 (:constructor %make-span (mapping offset bytes chars utf16 lines invalid returns newlines))
                  (:copier nil))
   "A file-backed leaf: BYTES octets of MAPPING starting at OFFSET."
   (mapping nil :type mapping :read-only t)
   (offset 0 :type fixnum :read-only t))
 
 (defstruct (branch (:include node)
-                   (:constructor %make-branch (children height bytes chars utf16 lines invalid))
+                   (:constructor %make-branch (children height bytes chars utf16 lines invalid returns newlines))
                    (:copier nil))
   "A branch: an immutable vector of 1 to +MAX-FANOUT+ children, all of HEIGHT - 1."
   (children #() :type simple-vector :read-only t)
@@ -84,22 +88,22 @@ unknown (unindexed spans)."
   "Return a leaf viewing OCTETS from START below END, without copying. Counts
 are computed by one scan."
   (declare (type octets octets) (type fixnum start end))
-  (multiple-value-bind (chars utf16 lines invalid) (summarise octets start end)
-    (%make-leaf octets start (- end start) chars utf16 lines invalid)))
+  (multiple-value-bind (chars utf16 lines invalid returns newlines) (summarise octets start end)
+    (%make-leaf octets start (- end start) chars utf16 lines invalid returns newlines)))
 
 (defun make-branch (children)
   "Return a branch over CHILDREN, a simple-vector of nodes of equal height,
 summing their counts; unknown counts in any child make the branch's unknown."
   (declare (type simple-vector children))
-  (let ((bytes 0) (chars 0) (utf16 0) (lines 0) (invalid 0))
-    (declare (type fixnum bytes chars utf16 lines invalid))
+  (let ((bytes 0) (chars 0) (utf16 0) (lines 0) (invalid 0) (returns 0) (newlines 0))
+    (declare (type fixnum bytes chars utf16 lines invalid returns newlines))
     (loop for c across children
           do (incf bytes (node-bytes c))
              (if (and (>= chars 0) (node-indexed-p c))
                  (progn (incf chars (node-chars c)) (incf utf16 (node-utf16 c)) (incf lines (node-lines c))
-                        (incf invalid (node-invalid c)))
-                 (setf chars -1 utf16 -1 lines -1 invalid -1)))
-    (%make-branch children (1+ (node-height (aref children 0))) bytes chars utf16 lines invalid)))
+                        (incf invalid (node-invalid c)) (incf returns (node-returns c)) (incf newlines (node-newlines c)))
+                 (setf chars -1 utf16 -1 lines -1 invalid -1 returns -1 newlines -1)))
+    (%make-branch children (1+ (node-height (aref children 0))) bytes chars utf16 lines invalid returns newlines)))
 
 ;;; Piece access: the content of a leaf or span
 
@@ -161,25 +165,51 @@ words of eight ASCII octets passed at once."
 
 (defun piece-line-octets (node lines)
   "How many octets of NODE's content come before the start of its LINES-th
-line from 1, just after its LINES-th newline; NIL when it has fewer. Read in
-place, words of eight octets with fewer newlines than are left passed at once."
+line from 1, just after its LINES-th line end (LINE-END-OCTET-P); NIL when it
+has fewer. Read in place, words of eight octets with fewer line ends than are
+left passed at once."
   (declare (type fixnum lines) (optimize speed (safety 1)))
   (let ((n (node-bytes node)) (remaining lines))
     (declare (type fixnum n remaining))
     (with-piece-sap (sap base) node
-      (let ((i base) (end (+ base n)))
+      (let ((i base) (end (+ base n))
+            (returns (if (node-indexed-p node) (plusp (node-returns node)) (sap-holds-return-p sap base (+ base n)))))
         (declare (type fixnum i end))
-        (loop while (<= (+ i 8) end)
-              do (let ((count (word-newlines (sb-sys:sap-ref-64 sap i))))
-                   (declare (type fixnum count))
-                   (when (>= count remaining) (return))
-                   (decf remaining count)
-                   (incf i 8)))
-        (loop while (< i end)
-              do (when (= (sb-sys:sap-ref-8 sap i) 10)
-                   (decf remaining)
-                   (when (zerop remaining) (return (- (1+ i) base))))
-                 (incf i))))))
+        (if returns
+            (progn
+              (loop while (<= (+ i 8) end)
+                    do (let ((count (word-line-ends-form (sb-sys:sap-ref-64 sap i)
+                                                         (and (< (+ i 8) end) (sb-sys:sap-ref-8 sap (+ i 8))))))
+                         (declare (type fixnum count))
+                         (when (>= count remaining) (return))
+                         (decf remaining count)
+                         (incf i 8)))
+              (loop while (< i end)
+                    do (let ((b (sb-sys:sap-ref-8 sap i)))
+                         (when (and (or (= b 10) (= b 13))
+                                    (line-end-octet-p b (and (< (1+ i) end) (sb-sys:sap-ref-8 sap (1+ i)))))
+                           (decf remaining)
+                           (when (zerop remaining) (return (- (1+ i) base)))))
+                       (incf i)))
+            ;; no carriage return: newlines alone, two words at a time while fewer than are left
+            (progn
+              (loop while (<= (+ i 16) end)
+                    do (let ((count (logcount (logior (word-octets-of (sb-sys:sap-ref-64 sap i) +newlines+)
+                                                      (ash (word-octets-of (sb-sys:sap-ref-64 sap (+ i 8)) +newlines+) -1)))))
+                         (declare (type fixnum count))
+                         (when (>= count remaining) (return))
+                         (decf remaining count)
+                         (incf i 16)))
+              (loop while (<= (+ i 8) end)
+                    do (let ((count (logcount (word-octets-of (sb-sys:sap-ref-64 sap i) +newlines+))))
+                         (declare (type fixnum count))
+                         (when (>= count remaining) (return))
+                         (decf remaining count)
+                         (incf i 8)))
+              (loop while (< i end)
+                    do (when (and (= (sb-sys:sap-ref-8 sap i) 10) (zerop (decf remaining)))
+                         (return (- (1+ i) base)))
+                       (incf i))))))))
 
 (defun piece-summarise (node start end)
   "SUMMARISE octets START below END of NODE's content: characters, UTF-16 units,
@@ -192,19 +222,22 @@ newlines and raw bytes."
             (summarise-sap (mapping-sap mapping) (+ (span-offset node) start) (+ (span-offset node) end))))))
 
 (defun piece-newlines (node start end)
-  "The newline octets from START below END of NODE's content, counted where
-they lie, eight at a time (NEWLINES-SAP); a node counted already gives its
-count when the range is all of it."
+  "The line ends (LINE-END-OCTET-P) from START below END of NODE's content,
+counted where they lie, eight octets at a time (NEWLINES-SAP), a carriage
+return at END - 1 ending a line unless NODE's next octet is a newline; a node
+counted already gives its count when the range is all of it."
   (declare (type fixnum start end))
   (if (and (zerop start) (= end (node-bytes node)) (node-indexed-p node))
       (node-lines node)
       (etypecase node
-        (leaf (let ((octets (leaf-octets node)))
+        (leaf (let ((octets (leaf-octets node)) (base (leaf-start node)))
                 (sb-sys:with-pinned-objects (octets)
-                  (newlines-sap (sb-sys:vector-sap octets) (+ (leaf-start node) start) (+ (leaf-start node) end)))))
-        (span (let ((mapping (span-mapping node)))
+                  (newlines-sap (sb-sys:vector-sap octets) (+ base start) (+ base end) (+ base (node-bytes node))
+                                (if (node-indexed-p node) (plusp (node-returns node)) :look)))))
+        (span (let ((mapping (span-mapping node)) (base (span-offset node)))
                 (check-mapping mapping)
-                (newlines-sap (mapping-sap mapping) (+ (span-offset node) start) (+ (span-offset node) end)))))))
+                (newlines-sap (mapping-sap mapping) (+ base start) (+ base end) (+ base (node-bytes node))
+                              (if (node-indexed-p node) (plusp (node-returns node)) :look)))))))
 
 (defun piece-octet (node i)
   "Return octet I of NODE's content."
@@ -229,8 +262,9 @@ starting where a character starts. Complexity: O(END - START)."
               do (let ((cut (min end (+ start +target-leaf+))))
                    (declare (type fixnum cut))
                    (when (< cut end)
-                     ;; at most three steps back: no character is longer than four octets
-                     (loop while (and (> cut start) (not (octets-char-start-p octets cut text-start end)))
+                     ;; at most four steps back: no character is longer than four octets,
+                     ;; and a carriage return stays with the newline after it
+                     (loop while (and (> cut start) (not (octets-cut-p octets cut text-start end)))
                            do (decf cut)))
                    (vector-push-extend (make-leaf octets start cut) leaves)
                    (setf start cut))))
@@ -298,9 +332,9 @@ O(END - START)."
   (etypecase node
     (leaf (make-leaf (leaf-octets node) (+ (leaf-start node) start) (+ (leaf-start node) end)))
     (span (if (node-indexed-p node)
-              (multiple-value-bind (chars utf16 lines invalid) (piece-summarise node start end)
-                (%make-span (span-mapping node) (+ (span-offset node) start) (- end start) chars utf16 lines invalid))
-              (%make-span (span-mapping node) (+ (span-offset node) start) (- end start) -1 -1 -1 -1)))))
+              (multiple-value-bind (chars utf16 lines invalid returns newlines) (piece-summarise node start end)
+                (%make-span (span-mapping node) (+ (span-offset node) start) (- end start) chars utf16 lines invalid returns newlines))
+              (%make-span (span-mapping node) (+ (span-offset node) start) (- end start) -1 -1 -1 -1 -1 -1)))))
 
 (defun rope-pieces (rope start end)
   "The leaves and spans of ROPE holding octets START below END, in order, as a
@@ -335,17 +369,21 @@ END are character boundaries of ROPE with START <= END."
 
 (defun clean-junction-p (left right)
   "True unless the octets of LEFT, a leaf or span, end with the unfinished
-start of a sequence that the first octet of RIGHT continues."
+start of a sequence that the first octet of RIGHT continues, or with a
+carriage return that a newline beginning RIGHT follows."
   (or (zerop (node-bytes left)) (zerop (node-bytes right))
-      (not (continuation-byte-p (piece-octet right 0)))
-      (let* ((k (min 3 (node-bytes left))) (tail (make-octets k)))
-        (piece-copy left (- (node-bytes left) k) (node-bytes left) tail 0)
-        (zerop (octets-pending tail 0 k)))))
+      (let ((first (piece-octet right 0)))
+        (cond ((= first 10) (/= 13 (piece-octet left (1- (node-bytes left)))))
+              ((not (continuation-byte-p first)))
+              (t (let* ((k (min 3 (node-bytes left))) (tail (make-octets k)))
+                   (piece-copy left (- (node-bytes left) k) (node-bytes left) tail 0)
+                   (zerop (octets-pending tail 0 k))))))))
 
 (defun clean-junctions (nodes)
   "NODES, a list of leaves and spans in order, with every pair whose junction
-would split a character (possible only around raw bytes) remade as leaves
-cut where characters start."
+would split a character (possible only around raw bytes) or part a carriage
+return from the newline after it remade as leaves cut where they may be
+\(CHUNK-OCTETS)."
   (let ((out '()))
     (dolist (node nodes (nreverse out))
       (let ((left (first out)))
@@ -365,7 +403,7 @@ re-cuts them. Nothing is read from the file. Complexity: O(number of spans)."
   (let ((spans (make-array (ceiling (- end start) +span-size+))))
     (loop for i from 0 below (length spans)
           for s = (+ start (* i +span-size+))
-          do (setf (aref spans i) (%make-span mapping s (min +span-size+ (- end s)) -1 -1 -1 -1)))
+          do (setf (aref spans i) (%make-span mapping s (min +span-size+ (- end s)) -1 -1 -1 -1 -1 -1)))
     spans))
 
 (defun mapping-rope (mapping &optional (start 0) (end (mapping-length mapping)))
@@ -399,8 +437,14 @@ INDEX-ROPE first. Complexity: O(file size / +SPAN-SIZE+), nothing is read."
   "Number of raw bytes in ROPE: octets that are not part of well-formed UTF-8.
 O(1). Signals an error while ROPE is unindexed."
   (check-indexed rope) (node-invalid (rope-root rope)))
+(defun rope-holds-return-p (rope)
+  "True when ROPE may hold a carriage return: it does, or its counts are not
+known yet. O(1)."
+  (/= 0 (node-returns (rope-root rope))))
+
 (defun rope-lines (rope)
-  "Number of newline characters in ROPE; the number of lines is one more. O(1).
+  "Number of line ends in ROPE (LINE-END-OCTET-P: newlines, and carriage
+returns no newline follows); the number of lines is one more. O(1).
 Signals an error while ROPE is unindexed."
   (check-indexed rope) (node-lines (rope-root rope)))
 
@@ -429,17 +473,19 @@ leaves), :file-bytes (octets served from mapped files). For diagnostics and test
 
 ;;; Indexing: computing the counts of a mapped file in parallel
 
-(defun char-boundary-at (sap offset end)
-  "Return the first offset at or after OFFSET (but not past END) that starts a
-character of the mapped text at SAP, which ends at END: at most three octets on."
+(defun piece-boundary-at (sap offset end)
+  "Return the first offset at or after OFFSET, above 0 (but not past END),
+where the mapped text at SAP, which ends at END, may be cut into pieces
+\(SAP-CUT-P): at most four octets on."
   (declare (type sb-sys:system-area-pointer sap) (type fixnum offset end))
-  (loop while (and (< offset end) (not (sap-char-start-p sap offset 0 end)))
+  (loop while (and (< offset end) (not (sap-cut-p sap offset 0 end)))
         do (incf offset))
   offset)
 
 (defun index-range (mapping start end)
   "Cut MAPPING's octets from START below END into indexed spans of at most
-+SPAN-SIZE+, each starting where a character starts, and return them as a list.
++SPAN-SIZE+, each starting where a character starts and none parting a
+carriage return from the newline after it, and return them as a list.
 START and END must be character boundaries. Complexity: O(END - START)."
   (declare (type fixnum start end))
   (let ((sap (mapping-sap mapping)) (length (mapping-length mapping)) (spans '()))
@@ -447,10 +493,10 @@ START and END must be character boundaries. Complexity: O(END - START)."
           do (let ((cut (min end (+ start +span-size+))))
                (declare (type fixnum cut))
                (when (< cut end)
-                 (loop while (and (> cut start) (not (sap-char-start-p sap cut 0 length)))
+                 (loop while (and (> cut start) (not (sap-cut-p sap cut 0 length)))
                        do (decf cut)))
-               (multiple-value-bind (chars utf16 lines invalid) (summarise-sap sap start cut)
-                 (push (%make-span mapping start (- cut start) chars utf16 lines invalid) spans))
+               (multiple-value-bind (chars utf16 lines invalid returns newlines) (summarise-sap sap start cut)
+                 (push (%make-span mapping start (- cut start) chars utf16 lines invalid returns newlines) spans))
                (setf start cut)))
     (nreverse spans)))
 
@@ -574,7 +620,9 @@ at most one segment of the text."
                                     (+ (second last) (rope-count-newlines rope (first last) byte))
                                     (- (second last) (rope-count-newlines rope byte (first last))))
                                 (+ (aref (tally-cumulative tally) i) (rope-count-newlines rope start byte)))))
-                 (setf (tally-last tally) (list byte line))
+                 (if last
+                     (setf (first last) byte (second last) line)
+                     (setf (tally-last tally) (list byte line)))
                  line))))))
 
 (defun tally-line-start (tally rope line)
@@ -596,32 +644,45 @@ offset the count has reached."
   (values (tally-counted tally) (tally-reached tally)))
 
 (defun rope-count-newlines (rope start end)
-  "The newlines of ROPE from byte START below END: those of pieces counted
-already taken as they are, the rest counted where they lie (PIECE-NEWLINES),
-nothing copied. Complexity: O(log n + the octets of pieces not counted yet)."
+  "The line ends (LINE-END-OCTET-P) of ROPE from byte START below END, a
+carriage return at END - 1 ending a line unless a newline follows it in ROPE:
+those of pieces counted already taken as they are, the rest counted where
+they lie (PIECE-NEWLINES), nothing copied. Complexity: O(log n + the octets
+of pieces not counted yet)."
   (declare (type fixnum start end))
-  (let ((count 0))
+  (let ((count 0) (last-return nil))
     (declare (type fixnum count))
-    (map-leaf-pieces (lambda (node piece-start piece-end)
-                       (incf count (the fixnum (piece-newlines node piece-start piece-end))))
-                     rope :start start :end end)
+    ;; a carriage return ending one piece and a newline beginning the next end one line
+    (flet ((tally (node piece-start piece-end)
+             (declare (type fixnum piece-start piece-end))
+             (when (and last-return (= 10 (piece-octet node piece-start))) (decf count))
+             (incf count (the fixnum (piece-newlines node piece-start piece-end)))
+             (setf last-return (and (= piece-end (node-bytes node)) (= 13 (piece-octet node (1- piece-end)))))))
+      (declare (dynamic-extent #'tally))
+      (map-leaf-pieces #'tally rope :start start :end end))
+    (when (and last-return (< end (rope-bytes rope)) (= 10 (rope-octet rope end)))
+      (decf count))
     count))
 
 (defun rope-nth-newline (rope start end n)
-  "The offset of the Nth newline (from 1) of ROPE from byte START below END,
-found by reading 64 KB at a time; NIL when there are fewer."
+  "The offset of the Nth line end (from 1; LINE-END-OCTET-P) of ROPE from byte
+START below END, found by reading 64 KB at a time; NIL when there are fewer."
   (declare (type fixnum start end n))
-  (let ((block (make-octets (min 65536 (max 0 (- end start))))) (pos start) (left n))
-    (declare (type fixnum pos left))
+  (let* ((total (rope-bytes rope))
+         (block (make-octets (1+ (min 65536 (max 0 (- end start))))))
+         (pos start) (left n))
+    (declare (type fixnum total pos left))
     (loop while (< pos end)
-          do (let* ((stop (min end (+ pos 65536))) (length (- stop pos)))
-               (rope-copy-into rope pos stop block)
-               (let ((here (count 10 block :end length)))
-                 (if (< here left)
-                     (decf left here)
-                     (let ((at -1))
-                       (loop repeat left do (setf at (position 10 block :start (1+ at) :end length)))
-                       (return-from rope-nth-newline (+ pos at)))))
+          do (let* ((stop (min end (+ pos 65536)))
+                    (have (min total (1+ stop)))
+                    (avail (- have pos)))
+               (declare (type fixnum stop have avail))
+               (rope-copy-into rope pos have block)
+               (loop for i of-type fixnum from 0 below (- stop pos)
+                     do (let ((b (aref block i)))
+                          (when (and (or (= b 10) (= b 13)) (octets-line-end-p block i avail))
+                            (decf left)
+                            (when (zerop left) (return-from rope-nth-newline (+ pos i))))))
                (setf pos stop)))
     nil))
 
@@ -699,8 +760,8 @@ O(leaves + the octets of the pieces read)."
                                       (vector-push-extend (lambda ()
                                                             (if (and cancel (car cancel))
                                                                 :cancelled
-                                                                (let* ((from (if (= a start) a (min end (char-boundary-at sap a length))))
-                                                                       (to (if (= b end) b (min end (char-boundary-at sap b length))))
+                                                                (let* ((from (if (= a start) a (min end (piece-boundary-at sap a length))))
+                                                                       (to (if (= b end) b (min end (piece-boundary-at sap b length))))
                                                                        (spans (index-range mapping from to)))
                                                                   (when tally
                                                                     (tally-note tally segment (+ from base) (+ to base)
@@ -790,7 +851,7 @@ is one of the symbols BYTES, CHARS, UTF16 or LINES; DOC is the docstring."
 (define-locator locate-utf16 utf16 "Locate the leaf containing UTF-16 offset VALUE of ROPE (ROPE must be indexed).")
 
 (defun locate-newline (rope n)
-  "Locate the leaf containing the Nth newline of ROPE (1-based). Returns the leaf
+  "Locate the leaf containing the Nth line end of ROPE (1-based; LINE-END-OCTET-P). Returns the leaf
 and its starting byte and line counts. N must be between 1 and (rope-lines ROPE)."
   (declare (type fixnum n))
   (let ((node (rope-root rope)) (bytes 0) (lines 0))
@@ -862,7 +923,7 @@ surrogate pair maps to the start of that character."
 
 (defun line->byte (rope line)
   "Return the byte offset where 0-based LINE starts in ROPE. LINE may be at most
-the number of newlines, in which case the last line's start is returned."
+the number of line ends, in which case the last line's start is returned."
   (declare (type fixnum line))
   (check-indexed rope)
   (unless (<= 0 line (rope-lines rope))
@@ -872,6 +933,49 @@ the number of newlines, in which case the last line's start is returned."
       (multiple-value-bind (leaf lbytes llines) (locate-newline rope line)
         (+ lbytes (or (piece-line-octets leaf (- line llines))
                       (error "Newline ~a not found in its leaf; the rope is corrupt." line))))))
+
+(defun byte->row (rope byte)
+  "The row of byte offset BYTE in ROPE as newlines alone count rows, as
+tree-sitter and git do: how many newlines come before it, a carriage return
+ending no row. Complexity: O(log n + leaf size)."
+  (declare (type fixnum byte))
+  (check-indexed rope) (check-byte-offset rope byte)
+  (let ((node (rope-root rope)) (bytes 0) (rows 0))
+    (declare (type fixnum bytes rows))
+    (loop while (branch-p node)
+          do (let* ((children (branch-children node)) (last (1- (length children))))
+               (loop for i fixnum from 0 to last
+                     for child = (aref children i)
+                     do (when (or (= i last) (< byte (+ bytes (node-bytes child))))
+                          (setf node child)
+                          (return))
+                        (incf bytes (node-bytes child)) (incf rows (node-newlines child)))))
+    (with-piece-sap (sap base) node
+      (+ rows (newlines-sap sap base (+ base (- byte bytes)) (+ base (- byte bytes)) nil)))))
+
+(defun row->byte (rope row)
+  "The byte offset where ROW (from 0) of ROPE begins as newlines alone count
+rows (BYTE->ROW): after its ROW-th newline; the end of the text when it has
+fewer. Complexity: O(log n + leaf size)."
+  (declare (type fixnum row))
+  (check-indexed rope)
+  (if (or (<= row 0) (> row (node-newlines (rope-root rope))))
+      (if (<= row 0) 0 (rope-bytes rope))
+      (let ((node (rope-root rope)) (bytes 0) (rows 0))
+        (declare (type fixnum bytes rows))
+        (loop while (branch-p node)
+              do (let* ((children (branch-children node)) (last (1- (length children))))
+                   (loop for i fixnum from 0 to last
+                         for child = (aref children i)
+                         do (when (or (= i last) (<= row (+ rows (node-newlines child))))
+                              (setf node child)
+                              (return))
+                            (incf bytes (node-bytes child)) (incf rows (node-newlines child)))))
+        (with-piece-sap (sap base) node
+          (loop for i fixnum from base below (+ base (node-bytes node))
+                do (when (and (= 10 (sb-sys:sap-ref-8 sap i)) (= row (incf rows)))
+                     (return (+ bytes (- i base) 1)))
+                finally (return (+ bytes (node-bytes node))))))))
 
 (defmacro with-rope-window ((window base end) (rope from to size) &body body)
   "Run BODY with WINDOW holding ROPE's octets from FROM below TO, both clipped
@@ -1163,13 +1267,34 @@ well-formed sequence. Decodes at most four octets. Complexity: O(log n)."
          (rope-copy-into rope byte (+ byte 2) pair)
          (crlf-octets-p pair 0 2))))
 
+(defun rope-line-start-p (rope byte)
+  "True when a line of ROPE starts at BYTE: at the start of the text, or after
+an octet that ends a line (LINE-END-OCTET-P). Complexity: O(log n)."
+  (declare (type fixnum byte))
+  (or (<= byte 0)
+      (with-rope-window (window base end) (rope (1- byte) (1+ byte) 2)
+        (octets-line-end-p window 0 end))))
+
+(defun rope-line-text-ends-p (rope byte crlf)
+  "True when the text of a line of ROPE ends at BYTE: at the end of the text,
+or before an octet that ends a line or, with carriage return and line feed
+(CRLF), before a carriage return and a newline (LINE-TEXT-ENDS-P)."
+  (declare (type fixnum byte))
+  (or (>= byte (rope-bytes rope))
+      (with-rope-window (window base end) (rope byte (+ byte 2) 2)
+        (line-text-ends-p window 0 end crlf))))
+
 (defun rope-line-text-end (rope start end crlf)
-  "Where the text of a line of ROPE ends, the line ending at octet END (its
-newline, or the end of the text) and starting at START or before: with CRLF,
-at the carriage return just before END, when there is one after START; else
-at END. As LINE-TEXT-END has it for octets."
+  "Where the text of a line of ROPE ends, the line ending at octet END (the
+octet that ends it, LINE-END-OCTET-P, or the end of the text) and starting at
+START or before: with carriage return and line feed (CRLF), at the carriage
+return just before END when END is a newline and the carriage return is after
+START; else at END. As LINE-TEXT-END has it for octets."
   (declare (type fixnum start end))
-  (if (and crlf (> end start) (= 13 (rope-octet rope (1- end)))) (1- end) end))
+  (if (and crlf (> end start) (< end (rope-bytes rope))
+           (= 10 (rope-octet rope end)) (= 13 (rope-octet rope (1- end))))
+      (1- end)
+      end))
 
 (defun rope-find-octet (rope value &key (start 0) (end (rope-bytes rope)))
   "Return the byte offset of the first octet equal to VALUE in ROPE from START
@@ -1192,6 +1317,34 @@ below END, or NIL. Complexity: O(log n + distance scanned)."
                                       (declare (type sb-sys:system-area-pointer sap) (type fixnum base))
                                       (loop for i of-type fixnum from (+ base s) below (+ base e)
                                             when (= (sb-sys:sap-ref-8 sap i) value) return (- i base))))))))
+                 (when hit
+                   (return-from scan (+ pos (- hit s))))
+                 (incf pos (- e s)))))
+        (declare (dynamic-extent #'look))
+        (map-leaf-pieces #'look rope :start start :end end))
+      nil)))
+
+(defun rope-find-line-end (rope &key (start 0) (end (rope-bytes rope)))
+  "Return the byte offset of the first octet of ROPE from START below END
+that ends a line (LINE-END-OCTET-P: a newline, or a carriage return that no
+newline follows in ROPE), or NIL. Complexity: O(log n + distance scanned)."
+  (declare (type fixnum start end))
+  (let ((pos start) (total (rope-bytes rope)))
+    (declare (type fixnum pos total))
+    (block scan
+      ;; on the stack, as is POS: a search for the next line end makes nothing
+      (flet ((look (node s e)
+               (declare (type fixnum s e))
+               (let* ((size (node-bytes node))
+                      (hit (with-piece-sap (sap base) node
+                             (loop for i of-type fixnum from (+ base s) below (+ base e)
+                                   do (let ((b (sb-sys:sap-ref-8 sap i)))
+                                        (when (and (or (= b 10) (= b 13))
+                                                   (line-end-octet-p
+                                                    b (let ((at (+ pos (- i base s) 1)))
+                                                        (cond ((< (- i base) (1- size)) (sb-sys:sap-ref-8 sap (1+ i)))
+                                                              ((< at total) (rope-octet rope at))))))
+                                          (return (- i base))))))))
                  (when hit
                    (return-from scan (+ pos (- hit s))))
                  (incf pos (- e s)))))
@@ -1349,6 +1502,23 @@ below END, or NIL. Complexity: O(log n + distance scanned)."
       (when hit (return-from rope-find-octet-backward (+ low hit)))))
   nil)
 
+(defun rope-find-line-end-backward (rope &key (end (rope-bytes rope)) (start 0))
+  "Return the byte offset of the last octet of ROPE from START below END that
+ends a line (ROPE-FIND-LINE-END), or NIL. Complexity: O(log n + distance
+scanned)."
+  (declare (type fixnum start end))
+  (check-byte-offset rope start) (check-byte-offset rope end)
+  ;; the octet just after the window, for a carriage return at its end
+  (let ((after (and (< end (rope-bytes rope)) (rope-octet rope end))))
+    (do-rope-windows (block low high) (rope start end :from-end t)
+      (loop for i of-type fixnum from (- high low 1) downto 0
+            do (let ((b (aref block i)))
+                 (when (and (or (= b 10) (= b 13))
+                            (line-end-octet-p b (if (< (1+ i) (- high low)) (aref block (1+ i)) after)))
+                   (return-from rope-find-line-end-backward (+ low i)))))
+      (setf after (aref block 0))))
+  nil)
+
 (defun rope-find-any-octet (rope octets &key (start 0) (end (rope-bytes rope)) from-end)
   "The byte offset of the first octet of ROPE from START below END that is one
 of OCTETS (a list), or with FROM-END the last; NIL when there is none.
@@ -1411,25 +1581,26 @@ back to just after the last octet before it that is not one of them, or BOUND
 END), START being a line start: with the line's start, the byte offsets of its
 LEFT-th and RIGHT-th characters (its end, where it is shorter), the columns
 those stand at (the line's length in characters, where it is shorter), and the
-line's end: its newline, with CRLF the carriage return before one, or the
-text's end. With OCTETS, three more: the block of octets read, where in the
-text it starts and where it ends; a line shorter than a block is in it whole,
-its newline too. Columns count characters, as TUATARA.BUFFER:BUFFER-COLUMN
-does: a raw byte is one. With WIDTH, they are columns on the screen
-instead: a printable ASCII character takes one, any other what WIDTH says, a
-function of its code, the column it stands at and what it gave as its second
-value for the character before (that character's code for a printable ASCII
-one, 0 at the line's start) returning the columns and that second value, so
-that a tab can reach its stop and a grapheme cluster take the columns of its
-first character; a tab across LEFT or
-RIGHT is in the slice (its start or end column then outside them), another
-character across one out of it, and a character of no width (a combining
-mark) goes with the one before it. The text is read once, a block at a time:
-as large as the lines asked for, from 4 KB to a megabyte, never more than
-the text left, into BLOCK when given octets as large, else into one kept
+line's end: the octet that ends it (LINE-END-OCTET-P), with carriage return
+and line feed (CRLF) the carriage return before a newline, or the text's end.
+With OCTETS, three more: the block of octets read, where in the text it starts
+and where it ends; a line shorter than a block is in it whole, its line end
+too. Columns count characters, as TUATARA.BUFFER:BUFFER-COLUMN does: a raw
+byte is one. With WIDTH, they are columns on the screen instead: a printable
+ASCII character takes one, any other what WIDTH says, a function of its code,
+the column it stands at and what it gave as its second value for the character
+before (that character's code for a printable ASCII one, 0 at the line's
+start) returning the columns and that second value, so that a tab can reach
+its stop and a grapheme cluster take the columns of its first character; a tab
+across LEFT or RIGHT is in the slice (its start or end column then outside
+them), another character across one out of it, and a character of no width (a
+combining mark) goes with the one before it. The text is read once, a block at
+a time: as large as the lines asked for, from 4 KB to a megabyte, never more
+than the text left, into BLOCK when given octets as large, else into one kept
 for reading into (WITH-OCTET-BLOCK), so that nothing is made for it: FUNCTION
-must not keep the block. An ASCII octet is a character by itself, so most lines cost a look at
-each octet. Complexity: O(END - START + the length of the last line)."
+must not keep the block. An ASCII octet is a character by itself, so most
+lines cost a look at each octet. Complexity: O(END - START + the length of the
+last line)."
   (declare (type function function) (type fixnum start end left right)
            (optimize speed))
   (let* ((total (rope-bytes rope))
@@ -1445,11 +1616,23 @@ each octet. Complexity: O(END - START + the length of the last line)."
                            :crlf crlf :octets octets :width width :block kept))))
     (let ((block block))
       (declare (type octets block))
-      (flet ((fill-from (at)
-               (declare (type fixnum at))
-               (setf block-start at
-                     block-end (min total (+ at size)))
-               (rope-copy-into rope block-start block-end block)))
+      (labels ((fill-from (at)
+                 (declare (type fixnum at))
+                 (setf block-start at
+                       block-end (min total (+ at size)))
+                 (rope-copy-into rope block-start block-end block))
+               (ends-line-p (i avail stop-at-pair)
+                 ;; the octet at I of the block, a newline or a carriage return, ends the
+                 ;; line's text: as a line end, or with STOP-AT-PAIR before a newline
+                 (declare (type fixnum i avail))
+                 (or (= (aref block i) 10)
+                     stop-at-pair
+                     (let ((at (+ block-start i 1)))
+                       (declare (type fixnum at))
+                       (/= 10 (cond ((< (1+ i) avail) (aref block (1+ i)))
+                                    ((< at total) (rope-octet rope at))
+                                    (t 0)))))))
+        (declare (inline ends-line-p))
         (loop while (and (< pos end) (<= pos total))
               do ;; a slice takes at most four octets a character, and a line end two
                  (when (or (< pos block-start) (> (min total (+ pos (* 4 right) 5)) block-end))
@@ -1464,8 +1647,7 @@ each octet. Complexity: O(END - START + the length of the last line)."
                            (setf slice-start (+ block-start i) start-column column))
                          (when (or (= column right) (>= i avail)) (return))
                          (let ((b (aref block i)))
-                           (when (or (= b 10)
-                                     (and crlf (crlf-octets-p block i avail)))
+                           (when (and (or (= b 10) (= b 13)) (ends-line-p i avail crlf))
                              (return))
                            (if (< b 128)
                                (incf i)
@@ -1485,8 +1667,7 @@ each octet. Complexity: O(END - START + the length of the last line)."
                          (when (>= i avail) (return))
                          (let* ((b (aref block i))
                                 (tab (= b 9)))
-                           (when (or (= b 10)
-                                     (and crlf (crlf-octets-p block i avail)))
+                           (when (and (or (= b 10) (= b 13)) (ends-line-p i avail crlf))
                              (return))
                            (multiple-value-bind (w len next)
                                (if (< 31 b 127)
@@ -1512,8 +1693,11 @@ each octet. Complexity: O(END - START + the length of the last line)."
                      (let* ((newline (let ((from slice-end))
                                        (declare (type fixnum from))
                                        (loop
-                                         (let ((hit (position 10 block :start (- from block-start)
-                                                                       :end (- block-end block-start))))
+                                         (let ((hit (loop with avail of-type fixnum = (- block-end block-start)
+                                                          for k of-type fixnum from (- from block-start) below avail
+                                                          do (let ((b (aref block k)))
+                                                               (when (and (or (= b 10) (= b 13)) (ends-line-p k avail nil))
+                                                                 (return k))))))
                                            (when hit (return (+ block-start (the fixnum hit))))
                                            (when (>= block-end total) (return total))
                                            ;; read on from the line's start, so that a line shorter than a
@@ -1550,7 +1734,9 @@ scanned)."
     (do-rope-windows (block low high) (rope start top)
       (loop for i of-type fixnum from 0 below (- high low)
             for octet of-type (unsigned-byte 8) = (aref block i)
-            do (cond ((= octet 10)
+            do (cond ((and (or (= octet 10) (= octet 13))
+                           (line-end-octet-p octet (cond ((< (1+ i) (- high low)) (aref block (1+ i)))
+                                                         ((< high total) (rope-octet rope high)))))
                       (when (and blank empty) (return-from rope-line-downward line))
                       (setf line (+ low i 1) empty t))
                      ((blank-line-octet-p octet))
@@ -1569,45 +1755,48 @@ O(log n + distance scanned)."
   (declare (type fixnum start))
   (check-byte-offset rope start)
   (let* ((total (rope-bytes rope))
-         (own-end (or (rope-find-octet rope 10 :start start :end (min total (+ start limit)))
+         (own-end (or (rope-find-line-end rope :start start :end (min total (+ start limit)))
                       (if (< (+ start limit) total) (return-from rope-line-upward (values nil :limit)) total)))
          (wanted-empty (and blank t)))
     (declare (type fixnum total own-end))
     ;; the line at START first
     (when (eq (null (rope-find-any-octet rope *text-octets* :start start :end own-end)) wanted-empty)
       (return-from rope-line-upward start))
-    ;; then each line above, read backward from the newline that ends it
+    ;; then each line above, read backward from the line end that ends it
     (when (zerop start) (return-from rope-line-upward nil))
-    (let ((bottom (max 0 (- start limit))) (empty t))
+    (let ((bottom (max 0 (- start limit))) (empty t) (after (rope-octet rope (1- start))))
       (do-rope-windows (block low high) (rope bottom (1- start) :from-end t)
         (loop for i of-type fixnum from (- high low 1) downto 0
               for octet of-type (unsigned-byte 8) = (aref block i)
-              do (cond ((= octet 10)
+              do (cond ((and (or (= octet 10) (= octet 13))
+                             (line-end-octet-p octet (if (< (1+ i) (- high low)) (aref block (1+ i)) after)))
                         (when (eq empty wanted-empty) (return-from rope-line-upward (+ low i 1)))
                         (setf empty t))
                        ((blank-line-octet-p octet))
-                       (t (setf empty nil)))))
+                       (t (setf empty nil))))
+        (setf after (aref block 0)))
       (cond ((plusp bottom) (values nil :limit))
             ((eq empty wanted-empty) 0)
             (t nil)))))
 
 (defun rope-line-start (rope byte)
   "Return the byte offset of the start of the line containing byte offset BYTE:
-the position after the previous newline, or 0. Complexity: O(log n + the part
+the position after the line end before it (LINE-END-OCTET-P), or 0. Complexity: O(log n + the part
 of the line before BYTE), and once ROPE's line counts are made no more than
 64 KB of it, however long the line: a longer one is found by its number."
   (declare (type fixnum byte))
   (check-byte-offset rope byte)
   (let* ((near (max 0 (- byte 65536)))
-         (newline (or (rope-find-octet-backward rope 10 :start near :end byte)
+         (newline (or (rope-find-line-end-backward rope :start near :end byte)
                       (cond ((zerop near) nil)
                             ((rope-indexed-p rope) (1- (line->byte rope (byte->line rope byte))))
-                            (t (rope-find-octet-backward rope 10 :end near))))))
+                            (t (rope-find-line-end-backward rope :end near))))))
     (if newline (1+ newline) 0)))
 
 (defun rope-line-end (rope byte)
-  "Return the byte offset of the newline ending the line containing BYTE, or the
-text length when the last line has none. Complexity: O(log n + the part of the
+  "Return the byte offset of the octet ending the line containing BYTE (a
+newline, or a carriage return no newline follows), or the text length when
+the last line has none. Complexity: O(log n + the part of the
 line after BYTE), and once ROPE's line counts are made no more than 64 KB of
 it, however long the line: a longer one is found by its number."
   (declare (type fixnum byte))
@@ -1615,12 +1804,12 @@ it, however long the line: a longer one is found by its number."
   (let* ((total (rope-bytes rope))
          (near (min total (+ byte 65536))))
     (declare (type fixnum total near))
-    (or (rope-find-octet rope 10 :start byte :end near)
+    (or (rope-find-line-end rope :start byte :end near)
         (cond ((= near total) total)
               ((rope-indexed-p rope)
                (let ((line (byte->line rope byte)))
                  (if (< line (rope-lines rope)) (1- (line->byte rope (1+ line))) total)))
-              (t (or (rope-find-octet rope 10 :start near) total))))))
+              (t (or (rope-find-line-end rope :start near) total))))))
 
 ;;; Pieces of a text that end at line starts
 
@@ -1634,7 +1823,7 @@ line start, or at END: a list of (START END)."
           do (let* ((nominal (+ p size))
                     (cut (if (>= nominal end)
                              end
-                             (let ((newline (rope-find-octet rope 10 :start nominal :end end)))
+                             (let ((newline (rope-find-line-end rope :start nominal :end end)))
                                (if newline (1+ newline) end)))))
                (push (list p cut) pieces)
                (setf p cut)))
@@ -1645,7 +1834,8 @@ line start, or at END: a list of (START END)."
 (defun check-rope (rope)
   "Verify the structural invariants of ROPE and return T, or signal an error
 naming the first violation: uniform height, fanout bounds, leaf sizes, counts
-matching a rescan, and no indexed leaf starting inside a character."
+matching a rescan, no indexed leaf starting inside a character, and no two
+parting a carriage return from the newline after it."
   (labels ((check (node expected-height)
              (unless (= (node-height node) expected-height)
                (error "Node height ~a, expected ~a." (node-height node) expected-height))
@@ -1660,7 +1850,9 @@ matching a rescan, and no indexed leaf starting inside a character."
                      (if indexed
                          (unless (and (= (node-chars node) (reduce #'+ children :key #'node-chars))
                                       (= (node-utf16 node) (reduce #'+ children :key #'node-utf16))
-                                      (= (node-lines node) (reduce #'+ children :key #'node-lines)))
+                                      (= (node-lines node) (reduce #'+ children :key #'node-lines))
+                                      (= (node-returns node) (reduce #'+ children :key #'node-returns))
+                                      (= (node-newlines node) (reduce #'+ children :key #'node-newlines)))
                            (error "Branch counts disagree with its children."))
                          (when (node-indexed-p node)
                            (error "Branch claims counts but has an unindexed child.")))))
@@ -1669,17 +1861,25 @@ matching a rescan, and no indexed leaf starting inside a character."
                      (when (> (node-bytes node) most)
                        (error "Leaf of ~a octets exceeds ~a." (node-bytes node) most)))
                    (when (node-indexed-p node)
-                     (multiple-value-bind (c u l v) (piece-summarise node 0 (node-bytes node))
+                     (multiple-value-bind (c u l v r n) (piece-summarise node 0 (node-bytes node))
                        (unless (and (= (node-chars node) c) (= (node-utf16 node) u) (= (node-lines node) l)
-                                    (= (node-invalid node) v))
-                         (error "Leaf counts ~a/~a/~a/~a disagree with rescan ~a/~a/~a/~a."
-                                (node-chars node) (node-utf16 node) (node-lines node) (node-invalid node) c u l v))))))))
+                                    (= (node-invalid node) v) (= (node-returns node) r) (= (node-newlines node) n))
+                         (error "Leaf counts ~a/~a/~a/~a/~a/~a disagree with rescan ~a/~a/~a/~a/~a/~a."
+                                (node-chars node) (node-utf16 node) (node-lines node) (node-invalid node) (node-returns node)
+                                (node-newlines node) c u l v r n))))))))
     (check (rope-root rope) (node-height (rope-root rope)))
-    ;; every indexed leaf starts where a character of the whole text starts
-    (let ((at 0))
+    ;; every indexed leaf starts where a character of the whole text starts, and
+    ;; never with the newline of a carriage return that ends an indexed leaf before it
+    (let ((at 0) (previous nil))
       (map-leaves (lambda (node)
                     (when (and (node-indexed-p node) (plusp at) (not (char-boundary-p rope at)))
                       (error "An indexed leaf starts at ~a, inside a character." at))
+                    (when (and previous (node-indexed-p previous) (node-indexed-p node) (plusp (node-bytes node))
+                               (= 13 (piece-octet previous (1- (node-bytes previous))))
+                               (= 10 (piece-octet node 0)))
+                      (error "A leaf starts at ~a with the newline of a carriage return before it." at))
+                    ;; an empty leaf between them parts nothing
+                    (when (plusp (node-bytes node)) (setf previous node))
                     (incf at (node-bytes node)))
                   rope))
     t))

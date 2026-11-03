@@ -43,6 +43,6 @@ Open an issue with the **bug** label: what you did, what you expected and what h
 
 ## Sources and licences
 
-Tuatara is GPL-3.0-or-later. `tuatara-sources.tar.zst` holds the sources this release is built from: Tuatara, the Lisp libraries compiled into it, Ghostty's terminal library, and tree-sitter with every grammar at its pinned commit. The licences of SBCL, of those libraries and of every grammar go with every file of the release (`licenses/` and `grammars/licenses/`), and are in `/usr/share/licenses/tuatara/` once a package is installed.
+Tuatara is GPL-3.0-or-later. `tuatara-sources.tar.zst` holds the sources this release is built from: Tuatara, the Lisp libraries compiled into it, Ghostty's terminal library, and tree-sitter with every grammar at its pinned commit. The licences of SBCL, of those libraries and of every grammar go with every file of the release (`licenses/` and `grammars/licenses/`), and are in `/usr/share/licenses/tuatara/` once a package is installed. The AppImage bundles libraries of Ubuntu 24.04 (GTK 4, GLib, Cairo, Pango and what they need, many under the LGPL): `Tuatara-x86_64.AppImage.libraries.txt` lists each with its exact version, and `Tuatara-x86_64.AppImage.library-sources.tar.zst` holds the source of each at that version. Their licences are inside the AppImage, in `licenses/libraries/`.
 
 Built on GitHub from the tag `@VERSION@` (commit `@COMMIT@`).

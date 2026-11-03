@@ -3,11 +3,12 @@
 ;;;;
 ;;;; The stable surface is the package API (the names TUATARA exports, and
 ;;;; those of the libraries it lets packages use, with the arguments its
-;;;; functions and macros take), the settings an init file
-;;;; sets (the variables TUATARA-USER exports) and the names of the commands
-;;;; keys are bound to. test/api/stable-surface.sexp pins it as the last
-;;;; release had it; tools/pin-stable-surface.sh writes it again at each
-;;;; version bump. From 1.0.0 on, a name pinned that is gone, or a function
+;;;; functions and macros take), what an init file is written with (the
+;;;; settings, the variables TUATARA-USER exports; its functions and macros,
+;;;; with their arguments; the keywords load-package takes), the options of
+;;;; the command line and the names of the commands keys are bound to. test/api/stable-surface.sexp pins it as
+;;;; the last release had it; tools/pin-stable-surface.sh writes it again at
+;;;; each version bump. From 1.0.0 on, a name pinned that is gone, or a function
 ;;;; whose old calls no longer fit its arguments, fails the test unless the
 ;;;; major version went up since the pin: a breaking change waits for a major
 ;;;; release. Names added never fail it.
@@ -15,7 +16,7 @@
 (in-package #:tuatara.tests)
 
 (define-test stable-surface
-  :description "The package API, the init file's settings and the commands' names keep working within a major version from 1.0.0 on.")
+  :description "The package API, the init file's settings, functions, macros and load-package keywords, and the commands' names keep working within a major version from 1.0.0 on.")
 
 (defparameter *stable-surface-file* (asdf:system-relative-pathname :tuatara "test/api/stable-surface.sexp")
   "The pinned stable surface: the version it was written at, then a row for each name.")
@@ -62,43 +63,58 @@ it: UIOP:GETENV, CL-PPCRE:SCAN."
   (format nil "~a:~a" (if (eq symbol (find-symbol (symbol-name symbol) "UIOP")) "UIOP" (package-name (symbol-package symbol)))
           (symbol-name symbol)))
 
-(defun api-row (symbol &optional (name (symbol-name symbol)))
-  "The pinned row of SYMBOL, a name of the package API written NAME: its kind,
-and for a function or macro the shape of its arguments."
+(defun api-row (symbol &optional (name (symbol-name symbol)) (part :api))
+  "The pinned row of SYMBOL, a name of the package API (or of PART of the
+surface, :INIT for the init file's functions and macros) written NAME: its
+kind, and for a function or macro the shape of its arguments."
   (cond ((macro-function symbol)
-         (list :api name :macro (lambda-list-shape (sb-introspect:function-lambda-list (macro-function symbol)))))
+         (list part name :macro (lambda-list-shape (sb-introspect:function-lambda-list (macro-function symbol)))))
         ((fboundp symbol)
-         (list :api name :function (lambda-list-shape (sb-introspect:function-lambda-list (fdefinition symbol)))))
-        ((boundp symbol) (list :api name :variable))
-        (t (list :api name :name))))
+         (list part name :function (lambda-list-shape (sb-introspect:function-lambda-list (fdefinition symbol)))))
+        ((boundp symbol) (list part name :variable))
+        (t (list part name :name))))
+
+(defun row-name (row)
+  "What names the thing ROW of the stable surface pins: its first two parts,
+three for a command (its package too)."
+  (subseq row 0 (if (eq (first row) :command) 3 2)))
 
 (defun stable-surface ()
   "The stable surface as it is now, a row for each name: the package API's
-and the libraries' it lets packages use, the init file's settings, Tuatara's
-commands."
-  (let ((rows '()))
+and the libraries' it lets packages use, the init file's settings, functions
+and macros, the keywords load-package takes, the command line's options,
+Tuatara's commands."
+  (let ((rows (list* (list :keywords "LOAD-PACKAGE"
+                           (sort (mapcar #'symbol-name tuatara.packages::*load-package-keywords*) #'string<))
+                     (list :flag "+LINE")
+                     (mapcar (lambda (option) (list :flag option)) tuatara.terminal:*options*))))
     (do-external-symbols (symbol :tuatara) (push (api-row symbol) rows))
     (dolist (symbol tuatara.defaults::*api-from-libraries*) (push (api-row symbol (library-name symbol)) rows))
     (do-external-symbols (symbol :tuatara-user)
-      (when (boundp symbol) (push (list :setting (symbol-name symbol)) rows)))
+      (when (boundp symbol) (push (list :setting (symbol-name symbol)) rows))
+      (when (fboundp symbol) (push (api-row symbol (symbol-name symbol) :init) rows)))
     (loop for symbol being the hash-keys of tuatara.command::*commands*
           for home = (package-name (symbol-package symbol))
           when (and (uiop:string-prefix-p "TUATARA" home) (string/= home "TUATARA.TESTS"))
             do (push (list :command home (symbol-name symbol)) rows))
-    (sort rows #'string< :key (lambda (row) (format nil "~{~a~^ ~}" (subseq row 0 (if (eq (first row) :command) 3 2)))))))
+    (sort rows #'string< :key (lambda (row) (format nil "~{~a~^ ~}" (row-name row))))))
 
 (defun surface-breaks (pinned now)
   "The rows of PINNED, a stable surface, that NOW no longer keeps: a name gone
-or of another kind, a function or macro whose old calls do not fit it."
+or of another kind, a function or macro whose old calls do not fit it, a
+keyword no longer taken."
   (let ((table (make-hash-table :test 'equal)))
-    (dolist (row now) (setf (gethash (subseq row 0 (if (eq (first row) :command) 3 2)) table) row))
+    (dolist (row now) (setf (gethash (row-name row) table) row))
     (loop for row in pinned
-          for found = (gethash (subseq row 0 (if (eq (first row) :command) 3 2)) table)
+          for found = (gethash (row-name row) table)
           unless (and found
-                      (or (not (eq (first row) :api))
-                          (and (eq (third row) (third found))
-                               (or (not (member (third row) '(:function :macro)))
-                                   (lambda-list-takes-p (fourth row) (fourth found))))))
+                      (case (first row)
+                        ((:api :init)
+                         (and (eq (third row) (third found))
+                              (or (not (member (third row) '(:function :macro)))
+                                  (lambda-list-takes-p (fourth row) (fourth found)))))
+                        (:keywords (subsetp (third row) (third found) :test #'string=))
+                        (t t)))
             collect row)))
 
 (defun read-stable-surface (&optional (file *stable-surface-file*))
@@ -114,7 +130,9 @@ or of another kind, a function or macro whose old calls do not fit it."
   (with-open-file (out file :direction :output :if-exists :supersede)
     (let ((*print-case* :downcase) (*print-right-margin* 100000))
       (format out ";; The stable surface, pinned by tools/pin-stable-surface.sh at each version bump: (:api NAME KIND [ARGUMENTS]),~%~
-                   ;; ARGUMENTS (REQUIRED OPTIONAL KEYS REST OTHER-KEYS); (:setting NAME); (:command PACKAGE NAME).~%")
+                   ;; ARGUMENTS (REQUIRED OPTIONAL KEYS REST OTHER-KEYS); (:setting NAME); (:init NAME KIND ARGUMENTS), the init~%~
+                   ;; file's functions and macros; (:keywords LOAD-PACKAGE KEYWORDS); (:flag OPTION), the command line's~%~
+                   ;; options; (:command PACKAGE NAME).~%")
       (prin1 (list :version (asdf:component-version (asdf:find-system :tuatara))) out)
       (terpri out)
       (dolist (row (stable-surface)) (prin1 row out) (terpri out)))))
@@ -143,7 +161,35 @@ or of another kind, a function or macro whose old calls do not fit it."
         (now '((:api "KEPT" :function (1 ("C") () nil nil)) (:api "NARROWED" :function (1 () () nil nil))
                (:api "ADDED" :variable) (:setting "*KEPT*"))))
     (is equal '("GONE" "NARROWED" "*GONE*" "GONE-COMMAND")
-        (mapcar (lambda (row) (car (last (subseq row 0 (if (eq (first row) :command) 3 2))))) (surface-breaks pinned now)))))
+        (mapcar (lambda (row) (car (last (row-name row)))) (surface-breaks pinned now)))))
+
+(define-test (stable-surface init-file-kept)
+  ;; the init file's functions and macros, with their arguments, and load-package's keywords are
+  ;; pinned beside its settings: one gone, narrowed or turned into a macro breaks it, one added does not
+  (let ((now (stable-surface)))
+    (flet ((row (part name) (find (list part name) now :key #'row-name :test #'equal)))
+      (is eq :macro (third (row :init "LOAD-PACKAGE")))
+      (is eq :function (third (row :init "BIND-KEY")))
+      (true (row :init "PACKAGE-SOURCE"))
+      (true (row :init "SET-FACE"))
+      (true (row :init "LOAD-THEME"))
+      (true (row :setting "*BOOKMARKS-KEPT*"))
+      (is equal (sort (mapcar #'symbol-name tuatara.packages::*load-package-keywords*) #'string<)
+          (third (row :keywords "LOAD-PACKAGE")))))
+  (let ((pinned '((:init "BIND-KEY" :function (2 ("MAP") () nil nil)) (:init "GONE-FUNCTION" :function (0 () () nil nil))
+                  (:init "TURNED" :function (1 () () nil nil)) (:init "WIDENED" :macro (1 () () t nil))
+                  (:keywords "LOAD-PACKAGE" ("CONFIG" "SOURCE" "VERSION"))))
+        (now '((:init "BIND-KEY" :function (3 ("MAP") () nil nil)) (:init "TURNED" :macro (1 () () nil nil))
+               (:init "WIDENED" :macro (1 () ("MORE") t nil)) (:init "ADDED" :function (0 () () nil nil))
+               (:keywords "LOAD-PACKAGE" ("ADDED" "CONFIG" "SOURCE")))))
+    (is equal '("BIND-KEY" "GONE-FUNCTION" "TURNED" "LOAD-PACKAGE")
+        (mapcar #'second (surface-breaks pinned now))))
+  ;; the pin holds them
+  (multiple-value-bind (version pinned) (read-stable-surface)
+    (declare (ignore version))
+    (true (find '(:init "LOAD-PACKAGE") pinned :key #'row-name :test #'equal) "the pin holds load-package")
+    (true (find '(:init "BIND-KEY") pinned :key #'row-name :test #'equal) "the pin holds bind-key")
+    (true (find '(:keywords "LOAD-PACKAGE") pinned :key #'row-name :test #'equal) "the pin holds load-package's keywords")))
 
 (define-test (stable-surface kept-within-a-major-version)
   ;; from 1.0.0 on, the surface pinned at the last release is kept until the major version goes up

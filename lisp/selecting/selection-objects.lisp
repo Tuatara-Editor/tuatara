@@ -72,13 +72,13 @@ words (WORD-CHAR-P) read by their octets; refused past *TEXT-SCAN-LIMIT*."
   (let ((scan (max 0 (- position *text-scan-limit*))))
     (if (eq test #'word-char-p)
         (let ((p (word-run-start buffer position t scan)))
-          (when (and (= p scan) (plusp scan)) (error "No start of the word within ~a" (scan-limit-words)))
+          (when (and (= p scan) (plusp scan)) (refuse "No start of the word within ~a" (scan-limit-words)))
           p)
         (let ((p position))
           (loop while (and (> p scan) (funcall test (char-before-position buffer p)))
                 do (setf p (tuatara.buffer:buffer-forward-char buffer p -1)))
           (when (and (<= p scan) (plusp p) (funcall test (char-before-position buffer p)))
-            (error "No start of the symbol within ~a" (scan-limit-words)))
+            (refuse "No start of the symbol within ~a" (scan-limit-words)))
           p))))
 
 (defun object-end-at (buffer position test)
@@ -89,7 +89,7 @@ past *TEXT-SCAN-LIMIT*."
     (loop while (and (< p scan) (funcall test (tuatara.buffer:buffer-char-at buffer p)))
           do (setf p (tuatara.buffer:buffer-forward-char buffer p)))
     (when (and (>= p scan) (funcall test (tuatara.buffer:buffer-char-at buffer p)))
-      (error "No end of the symbol within ~a" (scan-limit-words)))
+      (refuse "No end of the symbol within ~a" (scan-limit-words)))
     p))
 
 (defun reach-object (buffer position test)
@@ -131,7 +131,7 @@ word. With a count, that many words; a negative count, words before."
     (if (selection-continuing-p)
         (activate-mark-at (words-forward b (tuatara.buffer:buffer-mark b) (max 1 n)))
         (let ((on (reach-object b (point) #'word-char-p)))
-          (unless on (error "No word at or before point"))
+          (unless on (refuse "No word at or before point"))
           (let ((start (object-start-at b on #'word-char-p)))
             (if (plusp n)
                 (select-bounds (current-buffer) start (words-forward b start n))
@@ -222,7 +222,7 @@ expression. With a count, that many."
         (activate-mark-at (symbols-forward b (tuatara.buffer:buffer-mark b) (max 1 n)))
         (let* ((test (lambda (c) (symbol-char-p c b)))
                (on (reach-object b (point) test)))
-          (unless on (error "No symbol at or before point"))
+          (unless on (refuse "No symbol at or before point"))
           (let* ((end (object-end-at b on test))
                  (start (let ((s (object-start-at b on test)))
                           ;; in Lisp, the quote or # before a symbol is part of it
@@ -248,7 +248,7 @@ gap between two, the one behind."
 
 (defun paragraph-too-far ()
   "Signal that no paragraph break was found within *TEXT-SCAN-LIMIT*."
-  (error "No paragraph break within ~a" (scan-limit-words)))
+  (refuse "No paragraph break within ~a" (scan-limit-words)))
 
 (defun paragraphs-forward (buffer position count &optional within)
   "Where COUNT paragraphs forward of POSITION end: past blank lines, then past
@@ -325,7 +325,7 @@ again at once, or after another object key, grow by one more paragraph."
           (let ((end (absorb-paragraph-blank b start (paragraphs-forward b start (max 1 n)))))
             (when (blank-range-p b start end)
               (goto origin)
-              (error "No paragraph at or before point"))
+              (refuse "No paragraph at or before point"))
             (select-bounds (current-buffer) start end))))
     (message "Paragraph marked")))
 
@@ -459,7 +459,7 @@ key, grow by one more sentence. With a count, that many sentences."
           (let ((end (sentences-forward b start n)))
             (when (or (>= start end) (blank-range-p b start end))
               (goto origin)
-              (error "No sentence at or before point"))
+              (refuse "No sentence at or before point"))
             (select-bounds (current-buffer) start end))))
     (message "Sentence marked")))
 
@@ -481,7 +481,7 @@ when point is on a delimiter, else the one whose half is typed."
                           (char (tuatara.frontend:key-base key)))
                      (when (quit-key-p key) (keyboard-quit-signal))
                      (or (and (characterp char) (pair-open-for char))
-                         (error "Unsupported delimiter `~a'; see *pair-delimiters*"
+                         (refuse "Unsupported delimiter `~a'; see *pair-delimiters*"
                                 (tuatara.frontend:key-description (tuatara.frontend:key-spec key))))))))
     (list open (cdr (assoc open (pair-delimiters))) (and on-opener (eql here open)))))
 
@@ -580,13 +580,15 @@ closes alike, each level one more of it on either side."
               do (let ((start (find-char buffer (car span) open :backward))
                        (end (let ((q (find-char buffer (cdr span) close :forward)))
                               (and q (tuatara.buffer:buffer-forward-char buffer q)))))
-                   (unless (and start end) (error "No enclosing `~a' beyond that level" open))
+                   (unless (and start end) (refuse "No enclosing `~a' beyond that level" open))
                    (setf span (cons start end))))
         (loop repeat (1- levels)
-              do (when (zerop (car span)) (error "No enclosing `~a' beyond that level" open))
-                 (setf span (handler-case (pair-around buffer (tuatara.buffer:buffer-forward-char buffer (car span) -1)
-                                                       open close nil)
-                              (error () (error "No enclosing `~a' beyond that level" open))))))
+              do (when (zerop (car span)) (refuse "No enclosing `~a' beyond that level" open))
+                 (setf span (handler-case (reporting-errors ("finding the pair around ~a" open)
+                                            (pair-around buffer
+                                                         (tuatara.buffer:buffer-forward-char buffer (car span) -1)
+                                                         open close nil))
+                              (error () (refuse "No enclosing `~a' beyond that level" open))))))
     span))
 
 (defun select-pair-around (inner)
@@ -602,7 +604,7 @@ closes alike, each level one more of it on either side."
              (start (if inner (tuatara.buffer:buffer-forward-char b (car span)) (car span)))
              (end (if inner (tuatara.buffer:buffer-forward-char b (cdr span) -1) (cdr span))))
         (when (>= start end)
-          (error "Empty selection between ~a and ~a" open close))
+          (refuse "Empty selection between ~a and ~a" open close))
         (select-bounds (current-buffer) start end)
         (setf (tuatara.buffer:buffer-local b 'select-pair-state) (list anchor open close on-opener level))
         (message (if inner "Selected content for '~a'" "Selected the pair '~a' and what it holds") open)))))

@@ -57,7 +57,7 @@ relative to the current one, and whether a wrapped row shows the wrap
 indicator."
   (declare (ignore editor rows))
   (let ((buffer (tuatara.display:window-buffer window)))
-    (list (tuatara.buffer:buffer-known-line-number buffer (tuatara.display:window-point window))
+    (list (tuatara.io:buffer-known-line-number buffer (tuatara.display:window-point window))
           (tuatara.buffer:buffer-indexed-p buffer)
           (eq (line-numbers-mode buffer) :relative)
           (and *soft-wrap-indicator* (soft-wrap-p buffer) t))))

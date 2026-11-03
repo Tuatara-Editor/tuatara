@@ -144,8 +144,8 @@ not have ends them, doing its own job."
 saying why."
   (multiple-value-bind (limit why) (place-limit *cursors-limit*)
     (if (eq why :memory)
-        (error "~:d cursors would be more than the memory has room for (~:d)" n limit)
-        (error "~:d cursors would pass *cursors-limit* (~:d)" n limit))))
+        (refuse "~:d cursors would be more than the memory has room for (~:d)" n limit)
+        (refuse "~:d cursors would pass *cursors-limit* (~:d)" n limit))))
 
 (defun cursors-in-sight-p (n)
   "True when only those in sight of N cursors are to be made, past the most
@@ -223,14 +223,13 @@ While the lines of a large file are still being counted, they are read here,
 and the reading stops once there are more than CAP: the count is then more
 than CAP, not exact."
   (let* ((rope (tuatara.buffer:buffer-text buffer))
-         (tail (if (and (> end start) (/= 10 (tuatara.text:rope-octet rope (1- end)))) 1 0)))
+         (tail (if (and (> end start) (not (tuatara.text:rope-line-start-p rope end))) 1 0)))
     (if (tuatara.text:rope-indexed-p rope)
         (values (+ (- (tuatara.text:byte->line rope end) (tuatara.text:byte->line rope start)) tail) t)
-        (let ((lines 0) (pos start) (block (make-array 65536 :element-type '(unsigned-byte 8))))
+        (let ((lines 0) (pos start))
           (loop while (and (< pos end) (<= lines cap))
                 do (let ((to (min end (+ pos 65536))))
-                     (tuatara.text:rope-copy-into rope pos to block 0)
-                     (incf lines (count 10 block :end (- to pos)))
+                     (incf lines (tuatara.text:rope-count-newlines rope pos to))
                      (setf pos to)))
           (values (+ lines tail) (>= pos end))))))
 
@@ -375,8 +374,8 @@ BUFFER's lines first, as goto-line does."
            (room (if above top (- final bottom))))
       (when (< room n)
         (if (plusp room)
-            (error "Only ~:d line~:p ~a" room (if above "above" "below"))
-            (error "No line ~a" (if above "above" "below"))))
+            (refuse "Only ~:d line~:p ~a" room (if above "above" "below"))
+            (refuse "No line ~a" (if above "above" "below"))))
       (let* ((from (if above (- top n) top))
              (to (if above bottom (+ bottom n)))
              (start (tuatara.buffer:buffer-goto-line buffer from))
@@ -465,7 +464,7 @@ what is done there on a line shorter than that column is done at its end."
          ;; a negative count moves the other way, in sight and out of it alike
          (n (prefix)))
     (unless (member command *virtual-cursor-motions*)
-      (error "~a does not move cursors past their limit"
+      (refuse "~a does not move cursors past their limit"
              (tuatara.frontend:key-sequence-description *this-command-keys*)))
     (if (eq command 'end-of-line)
         (cursors-line-end)
@@ -667,7 +666,8 @@ changes text: the cursor is left where COMMAND leaves it, its selection let go."
 none does: when it fails at one, all are put back, and an EDIT (a command
 that changes text) is taken back everywhere. The changes are one change for
 undo. A key the command asks for is asked once. Only the last cursor's
-messages are kept."
+messages are kept. Refused while a cursor is outside the part of the buffer
+shown, as when cursors were made before it was narrowed."
   (let* ((b (split-buffer split))
          (places (split-places split))
          (states (map 'list (lambda (place) (cursor-state b place)) places))
@@ -677,6 +677,8 @@ messages are kept."
          (this (editor-this-command *editor*))
          (done nil))
     (when edit (check-writable (split-buffer split)))
+    (when (some (lambda (place) (let ((p (cursor-position b place))) (/= p (tuatara.buffer:within-narrowing b p)))) places)
+      (refuse "Some cursors are outside the part of ~a shown: widen shows them again" (tuatara.buffer:buffer-name b)))
     (setf (split-repeat split) (list :run command arg edit))
     (unwind-protect
          (let ((*read-key-replay* replay))
@@ -720,7 +722,7 @@ motion or selection they are on, or in a mark run, the run's."
          (run (and (split-running split) (lookup-key *mark-run-keymap* keys)))
          (command (if (member run *cursor-run-replayed-commands*) run (lookup-key *tuatara-normal-keymap* keys))))
     (unless (and command (or (eq command run) (member command *cursor-replayed-commands*)))
-      (error "~a is not run at every cursor" (tuatara.frontend:key-sequence-description keys)))
+      (refuse "~a is not run at every cursor" (tuatara.frontend:key-sequence-description keys)))
     (run-at-cursors split command (prefix-argument))))
 
 ;;; What the cursors do
@@ -748,7 +750,8 @@ motion or selection they are on, or in a mark run, the run's."
           do (multiple-value-bind (start end) (cursor-line-bounds b place)
                (set-cursor b place (if (eq where :end) end start) nil nil nil)))
     (settle-cursors split)
-    (enter-split-edit split nil :start)))
+    (enter-split-edit split nil :start)
+    (setf (split-did split) (if (eq where :end) :line-ends :line-starts))))
 
 (define-command cursors-insert ()
   "Type before every cursor, or its selection: what is typed at one appears
@@ -773,7 +776,8 @@ cursor at its line's end types there."
                                  (min end (tuatara.buffer:buffer-forward-char b (cursor-position b place))))
                              nil nil nil))))
     (settle-cursors split)
-    (enter-split-edit split nil :start)))
+    (enter-split-edit split nil :start)
+    (setf (split-did split) :after)))
 
 (define-command cursors-insert-line ()
   "Type at the start of every cursor's line."
@@ -828,7 +832,7 @@ instead, and the key pressed again empties."
   "Refuse a negative count when SPLIT has cursors past their limit: those out
 of sight change only forward of their column, so the two would differ."
   (when (and (split-virtual split) (minusp (prefix)))
-    (error "A negative count does not reach the cursors out of sight: nothing changed")))
+    (refuse "A negative count does not reach the cursors out of sight: nothing changed")))
 
 (define-command cursors-delete ()
   "Delete every cursor's selection, a selected line with its newline, or the
@@ -994,7 +998,8 @@ the mode indents it, and type at them all; the opening is one change."
              (set-cursor b place (point) nil nil nil))
     (tuatara.buffer:merge-undo-groups b since)
     (settle-cursors split)
-    (enter-split-edit split nil :start)))
+    (enter-split-edit split nil :start)
+    (setf (split-did split) (if above :opened-above :opened-below))))
 
 (define-command cursors-open-below ()
   "Open a line below every cursor's line and type on all of them."
@@ -1104,7 +1109,8 @@ back and forward. The run's keys that would leave the line refuse."
                              do (multiple-value-bind (start end) (cursor-line-bounds b place)
                                   (set-cursor b place start end nil nil)))
                      (setf (split-last split) 'mark-run-adopt))
-              (handler-case (run-at-cursors split 'select-word nil)
+              (handler-case (reporting-errors ("selecting the words at the cursors")
+                              (run-at-cursors split 'select-word nil))
                 (error () (setf (split-last split) nil))))
           (setf (split-running split) t (split-history split) '() (split-redo split) '())
           (arm-cursors split *cursor-run-keymap*)

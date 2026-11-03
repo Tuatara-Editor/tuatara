@@ -98,9 +98,9 @@
                          (lines "| 1.5 | |" "#+TBLFM: $2=round($1,99999999)") (lines "| 1.5 | |" "#+TBLFM: $2=$1;f99999999")
                          ;; past what the machine's numbers hold
                          (lines "| 1000 | |" "#+TBLFM: $2=exp($1)") (lines (format nil "| ~a | |" (make-string 400 :initial-element #\9)) "#+TBLFM: $2=sqrt($1)")))
-      (let ((start (get-internal-real-time)))
+      (let ((start (thread-cpu-time)))
         (true (search "#ERROR" (org-text-after "C-c *" table)) "~s" table)
-        (true (< (- (get-internal-real-time) start) (* 2 internal-time-units-per-second)) "~s at once" table)))
+        (true (< (- (thread-cpu-time) start) (* 2 internal-time-units-per-second)) "~s at once" table)))
     ;; a formula nested past reason: refused in words, never the stack exhausted
     (let ((text (org-text-after "C-c *" (lines "| 1 | |" (format nil "#+TBLFM: $2=~a$1~a" (make-string 20000 :initial-element #\() (make-string 20000 :initial-element #\)))))))
       (false (search "| 1 | 1 |" text))))
@@ -108,10 +108,10 @@
   (let* ((rows (append (list (list "a" "b" "c") :rule)
                        (loop for i below 20000 collect (list (princ-to-string i) (princ-to-string (* 2 i)) ""))))
          (model (tuatara.defaults::make-org-table-model :rows rows :indent "" :row 0 :field 0 :offset 0))
-         (start (get-internal-real-time)))
+         (start (thread-cpu-time)))
     (tuatara.defaults::org-apply-formulas
      model (tuatara.defaults::org-runnable-formulas (list "$3=$1*$2+@-1$1" "@>$1=vsum(@I..@>>)")))
-    (true (< (- (get-internal-real-time) start) internal-time-units-per-second))
+    (true (< (- (thread-cpu-time) start) internal-time-units-per-second))
     (is string= "799940000" (third (car (last (tuatara.defaults::org-table-rows model)))))))
 
 (defparameter *org-tangled*
@@ -295,3 +295,14 @@ echo commented
            (let ((f (run-keys (format nil "C-x C-f C-a C-k ~a RET C-c C-v t y RET" (rimu-typed (namestring org))) :width 200 :height 20)))
              (true (tuatara.frontend.fake:fake-frame-showing f "Wrote 1 of 2 (" "x.sh); not written:" "x.sh.bak: refused for the test")))
         (sb-int:unencapsulate 'tuatara.defaults::tangle-write-code-file 'refuse-bak)))))
+
+(define-test (org formula-kept-across-a-change-elsewhere)
+  ;; text changed outside the table while its formula is asked for: the formula still goes in
+  (let ((text (session-text (nth-value 1 (run-keys (list "M-x o r g - m o d e RET C-c ="
+                                                         (lambda ()
+                                                           (tuatara.buffer:buffer-insert (tuatara.buffer:find-buffer "*scratch*")
+                                                                                         0 (format nil "Top~%")))
+                                                         "$ 1 ^ 2 RET")
+                                                   :text (format nil "| 2 |  |~%after~%") :width 80 :height 12)))))
+    (true (uiop:string-prefix-p (format nil "Top~%| 4 |") text) "~a" text)
+    (true (search "#+TBLFM: $1=$1^2" text) "~a" text)))

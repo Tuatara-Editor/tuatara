@@ -69,7 +69,8 @@ colon, as title: and tags:) or a line of dashes under them."
   "TEXT, a file of TYPE (an entry of *FORMATTED-FILE-TYPES*), with its header
 saying TITLE and KEYWORDS: the lines holding them written anew when it has a
 header, else the header a new file of TYPE has put before it. Lines ending in
-CR LF keep those ends; NIL for TEXT with lines of both ends, left as it is."
+carriage return and line feed (CR LF) keep those ends; NIL for TEXT with lines
+of both ends, left as it is."
   (let ((crlf (search (coerce '(#\Return #\Newline) 'string) text)))
     (cond ((null crlf) (%text-with-header text type title keywords identifier time))
           ;; every line ending in CR LF, or none: else which a new line takes is not known
@@ -138,7 +139,7 @@ Returns a sentence when it was not written, else NIL."
            (format nil "~a has changes not saved: its header was not written" name))
           ((> (if buffer
                   (tuatara.buffer:buffer-size buffer)
-                  (or (ignore-errors (tuatara.io:stamp-size (tuatara.io:path-stamp path))) 0))
+                  (tuatara.io:path-size path))
               *formatted-header-limit*)
            (format nil "~a is larger than ~a (*formatted-header-limit*): its header was not written"
                    (escape-controls name) (octets-words *formatted-header-limit*)))
@@ -148,12 +149,14 @@ Returns a sentence when it was not written, else NIL."
                             (text-with-header old type title keywords identifier time))))
              (cond ((null new) (format nil "~a is not all text, or its lines end two ways: its header was not written" name))
                    (t (unless (string= old new)
+                        (tuatara.buffer:widen-buffer buffer)
                         (tuatara.buffer:buffer-replace buffer 0 (tuatara.buffer:buffer-size buffer) new)
                         (tuatara.io:save-buffer-file buffer))
                       nil))))
           (t
            (let* ((octets (tuatara.io:file-octets path :limit *formatted-header-limit*))
-                  (old (ignore-errors (sb-ext:octets-to-string octets :external-format :utf-8)))
+                  (old (ignoring-errors-reported ("reading ~a as text" path)
+                         (sb-ext:octets-to-string octets :external-format :utf-8)))
                   (new (and old (text-octets-p old octets) (text-with-header old type title keywords identifier time))))
              (cond ((null new) (format nil "~a is not all text, or its lines end two ways: its header was not written" name))
                    (t (unless (string= old new)
@@ -174,7 +177,8 @@ Returns the new path, and as a second value a sentence of what was not done."
     (let ((to (tuatara.io:path-join (tuatara.io:parent-path path) name)))
       (unless (string= (tuatara.io:native path) to)
         (rename-path-following (tuatara.io:native path) to :tell nil))
-      (values to (handler-case (write-formatted-header to title keywords identifier)
+      (values to (handler-case (reporting-errors ("writing the header of ~a" to)
+                                 (write-formatted-header to title keywords identifier))
                    (error (e) (format nil "its header was not written: ~a" e)))))))
 
 (defun rename-formatted-targets ()
@@ -184,7 +188,7 @@ else the current buffer's file. Refused in a buffer opened safely, whose
 files stay as they are."
   (let ((buffer (current-buffer)))
     (when (tuatara.io:safe-visit-p buffer)
-      (error "~a is opened safely: its files are not renamed" (tuatara.buffer:buffer-name buffer)))
+      (refuse "~a is opened safely: its files are not renamed" (tuatara.buffer:buffer-name buffer)))
     (or (and (fboundp 'rimu-chosen-paths) (funcall 'rimu-chosen-paths buffer :files-only t :here-only t))
         (let ((file (tuatara.buffer:buffer-file buffer)))
           (and file (list (tuatara.io:native file)))))))
@@ -213,8 +217,9 @@ them read again."
     (dolist (path paths)
       (multiple-value-bind (title keywords) (funcall title-and-keywords path)
         (handler-case
-            (multiple-value-bind (to note) (rename-file-formatted path title keywords)
-              (incf done) (setf last (tuatara.io:native-file-name to)) (push note notes))
+            (reporting-errors ("renaming ~a" path)
+              (multiple-value-bind (to note) (rename-file-formatted path title keywords)
+                (incf done) (setf last (tuatara.io:native-file-name to)) (push note notes)))
           (error (e) (push (format nil "~a: ~a" (tuatara.io:native-file-name path) e) notes)))))
     (message "~:[~d files renamed~*~;Renamed to ~*~a~]~@[; ~{~a~^; ~}~]"
              (= done 1) done last (reverse (remove nil notes)))

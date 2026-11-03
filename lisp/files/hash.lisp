@@ -67,13 +67,13 @@ NIL when JOB is stopped first. SOURCE is a function that fills BUFFER with the
 next octets and returns how many, 0 at the end; each piece counts in JOB's DONE."
   (let ((ctx (foreign-call "EVP_MD_CTX_new" sb-sys:system-area-pointer))
         (null (sb-sys:int-sap 0)))
-    (when (sb-sys:sap= ctx null) (error "~a could not start a sum" *hash-library*))
+    (when (sb-sys:sap= ctx null) (refuse "~a could not start a sum" *hash-library*))
     (unwind-protect
          (progn
            (unless (= 1 (foreign-call "EVP_DigestInit_ex" sb-alien:int (sb-sys:system-area-pointer ctx)
                                      (sb-sys:system-area-pointer (foreign-call "EVP_sha256" sb-sys:system-area-pointer))
                                      (sb-sys:system-area-pointer null)))
-             (error "~a could not start a SHA-256 sum" *hash-library*))
+             (refuse "~a could not start a SHA-256 sum" *hash-library*))
            (loop for n = (if (car (hash-job-cancel job)) (return-from library-sum nil) (funcall source buffer))
                  while (plusp n)
                  do (sb-sys:with-pinned-objects (buffer)
@@ -92,7 +92,7 @@ next octets and returns how many, 0 at the end; each piece counts in JOB's DONE.
 written through a pipe to PROGRAM, which prints it; NIL when JOB is stopped
 first. Signals, with what the program said, when it prints no sum."
   (tuatara.io:call-with-program
-   (list (or (tuatara.io:find-program program) (error "There is no program ~a to take the sum with" program)))
+   (list (or (tuatara.io:find-program program) (refuse "There is no program ~a to take the sum with" program)))
    (lambda (process)
      (let ((fd (sb-sys:fd-stream-fd (sb-ext:process-input process))))
        (loop for n = (if (car (hash-job-cancel job)) 0 (funcall source buffer))
@@ -101,7 +101,7 @@ first. Signals, with what the program said, when it prints no sum."
                   ;; it ended without reading everything: what it printed says why
                   (tuatara.io:file-system-error () (return)))
                 (incf (car (hash-job-done job)) n)))
-     (ignore-errors (close (sb-ext:process-input process)))
+     (ignoring-errors-reported ("closing the input of ~a" program) (close (sb-ext:process-input process)))
      (sb-ext:process-wait process)
      (unless (car (hash-job-cancel job))
        (let* ((output (with-output-to-string (s)
@@ -111,14 +111,14 @@ first. Signals, with what the program said, when it prints no sum."
          (if (and (eql (sb-ext:process-exit-code process) 0) (>= (length said) 64)
                   (every (lambda (c) (digit-char-p c 16)) (subseq said 0 64)))
              (string-downcase (subseq said 0 64))
-             (error "~a failed~@[: ~a~]" program (and (plusp (length said)) said))))))
+             (refuse "~a failed~@[: ~a~]" program (and (plusp (length said)) said))))))
    :job job :input :stream :output :stream :error :output :external-format :default))
 
 (defun file-source (fd path)
-  "A source for LIBRARY-SUM of the octets of the open file FD (PATH for
-messages) to its end, read at explicit offsets while the system reads ahead;
-to the end found, not the size reported, which is 0 for the files the kernel
-makes up as they are read (/proc)."
+  "A source for LIBRARY-SUM of the octets of the file open as file descriptor
+(FD) (PATH for messages) to its end, read at explicit offsets while the
+system reads ahead; to the end found, not the size reported, which is 0 for
+the files the kernel makes up as they are read (/proc)."
   (let ((at 0))
     (lambda (buffer)
       (let ((n (tuatara.io:read-fd-at fd buffer at :path path)))
@@ -162,7 +162,7 @@ here. Returns the job."
                                             (program-sum job source buffer *hash-program*))))
                               (when (and sum finish) (funcall finish sum))
                               sum)
-                         (when finish (ignore-errors (funcall finish nil))))))
+                         (when finish (ignoring-errors-reported ("ending the sum") (funcall finish nil))))))
               (setf (hash-job-sum job) sum (hash-job-status job) (if sum :done :stopped)))))
      :name "tuatara sum" :details (format nil "~:d octets" total))))
 
@@ -183,10 +183,23 @@ said instead, except for the files the kernel makes up as they are read."
                                  (lambda (sum)
                                    (if sum
                                        (unless (or made-up (tuatara.io:same-content-p stamp (tuatara.io:fd-stamp fd path)))
-                                         (error "~a changed while being summed; sum it again" (abbreviated-path path)))
+                                         (refuse "~a changed while being summed; sum it again" (abbreviated-path path)))
                                        (sb-posix:close fd)))))))
       (unless started (sb-posix:close fd)))
     started))
+
+(defun fd-sha256 (fd path &key (cancel (list nil)) (done (list 0)) buffer)
+  "The SHA-256 sum, in hex, of the file open as file descriptor (FD) (PATH,
+for messages), read from its start at explicit offsets on the thread that
+asks, as FILE-SHA256 sums; NIL when it cannot be read or CANCEL's car turns
+true first."
+  (let* ((carrier (%make-hash-job :what path :cancel cancel :done done))
+         (buffer (or buffer (make-array *hash-piece* :element-type '(unsigned-byte 8))))
+         (source (file-source fd path)))
+    (ignoring-errors-reported ("summing ~a" path)
+      (if (hash-library-p)
+          (library-sum carrier source buffer)
+          (program-sum carrier source buffer *hash-program*)))))
 
 (defun file-sha256 (path &key (cancel (list nil)) (done (list 0)) buffer)
   "The SHA-256 sum, in hex, of the file at PATH as it is on disk, summed on the
@@ -194,17 +207,66 @@ thread that asks (as \\[sha256-sum] sums, read without changing its access time
 where the system allows), the car of DONE counting the octets summed; NIL when
 it cannot be read or CANCEL's car turns true first. BUFFER, octets to read
 into, is made when not given."
-  (let ((fd (ignore-errors (tuatara.io:open-for-reading path t))))
+  (let ((fd (ignoring-errors-reported ("opening ~a" path) (tuatara.io:open-for-reading path t))))
     (when fd
-      (unwind-protect
-           (let* ((carrier (%make-hash-job :what path :cancel cancel :done done))
-                  (buffer (or buffer (make-array *hash-piece* :element-type '(unsigned-byte 8))))
-                  (source (file-source fd path)))
-             (ignore-errors
-              (if (hash-library-p)
-                  (library-sum carrier source buffer)
-                  (program-sum carrier source buffer *hash-program*))))
-        (ignore-errors (sb-posix:close fd))))))
+      (unwind-protect (fd-sha256 fd path :cancel cancel :done done :buffer buffer)
+        (ignoring-errors-reported ("closing ~a" path) (sb-posix:close fd))))))
+
+(defun copy-file-checked (source target &key sum (cancel (list nil)))
+  "Copy the file SOURCE (where it leads, when it is a link) to TARGET, a new
+file, as TUATARA.IO:COPY-REGULAR-FILE copies (never over anything there,
+never in a place nothing may be written in, its mode and times kept), then
+check the copy's SHA-256 against the original's. The original is summed,
+when SUM is not given, and copied through the one descriptor opened on it,
+and found the same afterwards (its size and time of change), so that its
+sum is that of the octets copied. Returns the copy's sum and, as a second
+value, the original's; an error naming TARGET when the two differ (the copy
+taken away), or SOURCE when it cannot be summed or changed meanwhile. Stopped
+when CANCEL's car turns true: what was copied taken away, a job's work ended
+there (TUATARA.RUNTIME:JOB-CHECK-STOP), else NIL returned. Both are summed
+in one piece of memory, the file's size or *HASH-PIECE* octets when that is
+less."
+  (let ((in (tuatara.io:open-for-reading source t :accept '(:regular) :operation "copy")))
+    (unwind-protect
+         (let* ((before (tuatara.io:fd-stamp in source))
+                (buffer (make-array (max 4096 (min *hash-piece* (tuatara.io:stamp-size before))) :element-type '(unsigned-byte 8))))
+           (flet ((stopped ()
+                    (tuatara.runtime:job-check-stop)
+                    (return-from copy-file-checked nil))
+                  (wrong (control &rest arguments)
+                    (ignoring-errors-reported ("taking away ~a" target) (tuatara.io:remove-file target))
+                    (apply #'refuse control arguments)))
+             (let ((original (or sum (fd-sha256 in source :cancel cancel :buffer buffer))))
+               (unless original
+                 (when (car cancel) (stopped))
+                 (refuse "~a could not be summed: nothing copied" source))
+               (unless (tuatara.io:copy-open-file-to in source target :cancel cancel)
+                 (ignoring-errors-reported ("taking away ~a" target) (tuatara.io:remove-file target))
+                 (stopped))
+               (unless (tuatara.io:same-content-p before (tuatara.io:fd-stamp in source))
+                 (wrong "~a changed while it was copied: the copy at ~a taken away" source target))
+               (let ((copy (file-sha256 target :cancel cancel :buffer buffer)))
+                 (unless (equal original copy)
+                   (when (car cancel)
+                     (ignoring-errors-reported ("taking away ~a" target) (tuatara.io:remove-file target))
+                     (stopped))
+                   (wrong "the copy at ~a does not have its original's SHA-256: taken away" target))
+                 (values copy original)))))
+      (sb-posix:close in))))
+
+(defun octets-sha256 (octets)
+  "The SHA-256 sum, in hex, of OCTETS, summed as \\[sha256-sum] sums."
+  (let* ((carrier (%make-hash-job :what "octets" :cancel (list nil) :done (list 0)))
+         (buffer (make-array (max 1 (min *hash-piece* (length octets))) :element-type '(unsigned-byte 8)))
+         (at 0)
+         (source (lambda (buffer)
+                   (let ((n (min (length buffer) (- (length octets) at))))
+                     (replace buffer octets :start2 at :end2 (+ at n))
+                     (incf at n)
+                     n))))
+    (if (hash-library-p)
+        (library-sum carrier source buffer)
+        (program-sum carrier source buffer *hash-program*))))
 
 (defmethod tuatara.runtime:job-take-in ((job hash-job))
   "Say how JOB, which has ended, went: show its sum, which *Messages* keeps, and

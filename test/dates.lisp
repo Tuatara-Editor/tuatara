@@ -369,3 +369,19 @@
     (false (tuatara.dates:read-zone-rule bad) "~s" bad))
   ;; a zone of one offset
   (is = -18000 (tuatara.dates:zone-offset (tuatara.dates:fixed-time-zone -18000) (universal-of 2026 7 1 0 0))))
+
+(define-test (dates zoneinfo-unread-reported)
+  ;; a zone file not there is no zone, quietly; any other failure to read one is
+  ;; no zone either, and debug mode keeps it in its log
+  (drain-debug-reports)
+  (unwind-protect
+       (progn
+         (tuatara.runtime:set-debug t)
+         (false (tuatara.dates::zoneinfo-file-octets "/nonexistent-tuatara-zones/Pacific/Nowhere"))
+         (false (tuatara.dates:zone-named "Pacific/Nowhere_Atoll"))
+         (true (sb-concurrency:queue-empty-p tuatara.runtime:*debug-reports*))
+         (false (tuatara.dates::zoneinfo-file-octets 42))
+         (let ((texts (loop for report = (sb-concurrency:dequeue tuatara.runtime:*debug-reports*)
+                            while report collect (princ-to-string (fourth report)))))
+           (true (find-if (lambda (text) (search "reading the zoneinfo file 42 failed" text)) texts) "~s" texts)))
+    (drain-debug-reports)))

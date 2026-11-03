@@ -130,7 +130,7 @@ read so: a category, a syntax class not listed, a backslash at the end."
                    (t (emit (string c))))
                  (setf start next-start))))
     (let ((translated (get-output-stream-string out)))
-      (and (ignore-errors (tuatara.syntax:compile-pattern translated))
+      (and (ignoring-errors-reported ("reading the pattern ~a" translated) (tuatara.syntax:compile-pattern translated))
            translated))))
 
 (defun formatted-block-scanner (params key denote)
@@ -146,9 +146,10 @@ not text (a list)."
            :bad)
           (t (let ((translated (if denote (org-regexp-to-ppcre regex) regex)))
                (or (and translated
-                        (ignore-errors (if denote
-                                           (tuatara.syntax:compile-pattern translated :case-fold t)
-                                           (tuatara.syntax:compile-pattern translated))))
+                        (ignoring-errors-reported ("reading the pattern ~a" translated)
+                          (if denote
+                              (tuatara.syntax:compile-pattern translated :case-fold t)
+                              (tuatara.syntax:compile-pattern translated))))
                    (progn (message "The block's ~(~s~) ~s is no regular expression" key regex)
                           :bad)))))))
 
@@ -352,7 +353,7 @@ order round, but for random."
                                                          (t (string< one two)))))))
                                  ((equal component "last-modified")
                                   (flet ((modified (file)
-                                           (let ((stamp (ignore-errors (tuatara.io:path-stamp (car file)))))
+                                           (let ((stamp (tuatara.io:path-stamp (car file) :failure nil)))
                                              (if stamp (tuatara.io:stamp-mtime stamp) 0))))
                                     (stable-sort (copy-list files) #'> :key #'modified)))
                                  (t (copy-list files)))))
@@ -424,7 +425,7 @@ of the note IDENTIFIER (IDENTIFIER::#CUSTOM-ID), in order."
 
 (defun formatted-own-custom-id ()
   "The CUSTOM_ID of the headline the block being made is under, or NIL."
-  (let* ((tree (first *dblock-own*))
+  (let* ((tree (and *dblock-own* (org-parse-tree *dblock-own*)))
          (headline (and tree *dblock-position* (org-current-headline tree *dblock-position*))))
     (and headline (org-headline-property headline "CUSTOM_ID"))))
 
@@ -625,7 +626,7 @@ be made: the block is then left as it is."
            (concatenate 'string (formatted-block-name-line params) (formatted-link-lines files id-only include-date))))
         ((string= kind "missing-links")
          (let* ((all (files))
-                (linked (formatted-linked-identifiers *org-current-text* :org))
+                (linked (formatted-linked-identifiers (org-parse-text *dblock-own*) :org))
                 (missing (remove-if (lambda (file) (gethash (formatted-identifier file) linked)) all)))
            ;; under its denote- name, a note that links to none of them is given none
            (when (and denote (zerop (hash-table-count linked)))

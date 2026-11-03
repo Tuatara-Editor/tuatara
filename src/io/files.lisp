@@ -33,7 +33,10 @@
 ;;;; rename the file system refuses, and the pseudo file systems are written in
 ;;;; place instead, after a backup copy that is kept if the write fails. A save
 ;;;; never overwrites a file changed since it was read without being told to.
-;;;; Large buffers are saved in the background.
+;;;; Large buffers are saved in the background. With *SAVE-IN-PLACE*, on a
+;;;; file system that cannot share blocks, a large file the buffer reads where
+;;;; it is has only its changes written, in place, after a journal of what they
+;;;; overwrite, when that writes less (in-place.lisp).
 ;;;;
 ;;;; Copying octets that come from the file (the unchanged parts of a large
 ;;;; buffer) is left to the kernel (copy_file_range), which shares blocks
@@ -90,16 +93,12 @@ text can no longer be trusted (the buffer is read-only until reverted)."
 (defstruct (snapshot (:include tuatara.runtime:job) (:constructor %make-snapshot) (:copier nil))
   "A copy of a mapped file being made in the background, a job
 \(TUATARA.RUNTIME:JOB) of no buffer: of SOURCE, a descriptor of its own for
-the file behind MAPPING, PATH, which was at STAMP; FD is the copy. SERVED is
-the buffer whose text it keeps, or NIL; CHANGED is true when the file changed
-while it was copied, the copy then of no use."
+the file behind MAPPING, PATH, which was at STAMP; file descriptor (FD) is the
+copy. SERVED is the buffer whose text it keeps, or NIL; CHANGED is true when
+the file changed while it was copied, the copy then of no use."
   mapping source path stamp served fd changed)
 
 (setf (documentation 'snapshot-p 'function) "True when OBJECT is a SNAPSHOT.")
-
-(defvar *on-file-news* nil
-  "A function of no arguments the watcher calls, on its own thread, when it has
-news for TAKE-FILE-LOOKS: the editor sets it to wake its command loop.")
 
 (tuatara.runtime:define-job-words snapshot
   :doing "Copying"
@@ -115,21 +114,28 @@ news for TAKE-FILE-LOOKS: the editor sets it to wake its command loop.")
 reads the file where it is."
   (let ((buffer (snapshot-served job))
         (taken (and (eq (snapshot-status job) :done) (not (snapshot-changed job))
-                    (ignore-errors (tuatara.text:retarget-mapping (snapshot-mapping job) (snapshot-fd job))))))
+                    (tuatara.runtime:ignoring-errors-reported ("reading ~a from its copy" (snapshot-path job))
+                      (tuatara.text:retarget-mapping (snapshot-mapping job) (snapshot-fd job))))))
     (unless taken
-      (when (snapshot-fd job) (ignore-errors (sb-posix:close (snapshot-fd job)))))
+      (when (snapshot-fd job)
+        (tuatara.runtime:ignoring-errors-reported ("closing the copy of ~a" (snapshot-path job))
+          (sb-posix:close (snapshot-fd job)))))
     (when (and buffer (eq (file-isolation buffer) :pending))
       (setf (tuatara.buffer:buffer-local buffer :file-isolation) (if taken :snapshot :direct)))))
 
 (defun start-snapshot (mapping fd path stamp directory)
-  "Start copying the file PATH, open as FD and mapped as MAPPING, into an unnamed
-file in DIRECTORY in the background, a job, where its file system has room.
-The copy reads through a descriptor of its own. Returns the snapshot, or NIL."
+  "Start copying the file PATH, open as file descriptor (FD) and mapped as
+MAPPING, into an unnamed file in DIRECTORY in the background, a job, where
+its file system has room. The copy reads through a descriptor of its own.
+Returns the snapshot, or NIL."
   (let ((free (free-bytes directory)))
     (when (and free (> free (+ (stamp-size stamp) *snapshot-free-margin*)))
       (let* ((source (sb-posix:dup fd))
              (snapshot (%make-snapshot :mapping mapping :source source :path path :stamp stamp)))
-        (handler-bind ((error (lambda (e) (declare (ignore e)) (ignore-errors (sb-posix:close source)))))
+        (handler-bind ((error (lambda (e)
+                                (declare (ignore e))
+                                (tuatara.runtime:ignoring-errors-reported ("closing ~a" path)
+                                  (sb-posix:close source)))))
           (tuatara.runtime:start-job-thread
            snapshot
            (lambda (snapshot)
@@ -139,9 +145,10 @@ The copy reads through a descriptor of its own. Returns the snapshot, or NIL."
                     (if (copy-fd-contents source copy (stamp-size stamp) :path path :cancel (snapshot-cancel snapshot))
                         ;; a copy is only good if the file did not change while it was made
                         (setf (snapshot-changed snapshot)
-                              (not (same-content-p stamp (ignore-errors (fd-stamp source path)))))
+                              (not (same-content-p stamp (tuatara.runtime:ignoring-errors-reported ("examining ~a" path)
+                                                           (fd-stamp source path)))))
                         (setf (snapshot-status snapshot) :stopped)))
-               (ignore-errors (sb-posix:close source))))
+               (tuatara.runtime:ignoring-errors-reported ("closing ~a" path) (sb-posix:close source))))
            :name "tuatara snapshot"))
         snapshot))))
 
@@ -163,14 +170,15 @@ The copy reads through a descriptor of its own. Returns the snapshot, or NIL."
 ;;; Leases: reading the file itself until someone is about to write it
 
 (defstruct (lease (:constructor %make-lease) (:copier nil))
-  "A read lease on a visited file: FD, open on the file at PATH as it was at
-STAMP, is what MAPPING reads while STATUS is :HELD. When a program is about to
-write the file, the keeper copies it into PLACE, a directory (COPIED-BY :CLONE
-or :SNAPSHOT), moves MAPPING onto the copy and lets the writer go: :MOVING,
-then :MOVED. :LOST when the copy could not be made, or not in time; :RELEASED
-when given up. BUFFER is the buffer it serves: NIL once that buffer is killed
-with its text kept elsewhere, MAPPING being then a weak pointer to the mapping
-(LEASE-TARGET), and the lease given up when nothing reads the mapping any more."
+  "A read lease on a visited file: file descriptor (FD), open on the file at
+PATH as it was at STAMP, is what MAPPING reads while STATUS is :HELD. When
+a program is about to write the file, the keeper copies it into PLACE, a
+directory (COPIED-BY :CLONE or :SNAPSHOT), moves MAPPING onto the copy and
+lets the writer go: :MOVING, then :MOVED. :LOST when the copy could not be
+made, or not in time; :RELEASED when given up. BUFFER is the buffer it
+serves: NIL once that buffer is killed with its text kept elsewhere,
+MAPPING being then a weak pointer to the mapping (LEASE-TARGET), and the
+lease given up when nothing reads the mapping any more."
   mapping fd path stamp buffer place (status :held) copied-by)
 
 (defun lease-target (lease)
@@ -200,16 +208,26 @@ this is for the rare signal that does not come.")
 go, so that reads begun on the file itself have finished.")
 
 (defun copy-for-lease (lease)
-  "A descriptor for a copy of LEASE's file in its place, and how it was made: a
-clone where the file system shares blocks (:CLONE), else a full copy (:SNAPSHOT)."
+  "A descriptor for a copy of what LEASE's mapping reads in its place, and how
+it was made: a clone where the file system shares blocks (:CLONE), else a full
+copy (:SNAPSHOT). A mapping that reads some of its octets from elsewhere (a
+save's journal) has each copied from where it reads it."
   (let* ((fd (lease-fd lease))
          (path (lease-path lease))
+         (mapping (lease-target lease))
          (copy (open-scratch-file (lease-place lease))))
-    (handler-bind ((error (lambda (e) (declare (ignore e)) (ignore-errors (sb-posix:close copy)))))
-      (if (clone-fd fd copy)
-          (values copy :clone)
-          (progn (copy-fd-contents fd copy (stamp-size (lease-stamp lease)) :path path)
-                 (values copy :snapshot))))))
+    (handler-bind ((error (lambda (e)
+                            (declare (ignore e))
+                            (tuatara.runtime:ignoring-errors-reported ("closing the copy of ~a" path)
+                              (sb-posix:close copy)))))
+      (cond ((and mapping (rest (tuatara.text:mapping-sources mapping)))
+             (loop for (start end source delta) in (tuatara.text:mapping-sources mapping)
+                   do (sb-posix:lseek copy start sb-posix:seek-set)
+                      (copy-fd-contents source copy (- end start) :from (+ start delta) :path path))
+             (values copy :snapshot))
+            ((clone-fd fd copy) (values copy :clone))
+            (t (copy-fd-contents fd copy (stamp-size (lease-stamp lease)) :path path)
+               (values copy :snapshot))))))
 
 (defun move-leased (lease)
   "A program is about to write LEASE's file: copy it, move the mapping onto the
@@ -218,19 +236,21 @@ system broke the lease before it was, the lease is :LOST, and a change to the
 file will show the buffer stale. LEASE is :MOVING already (LEASE-KEEPER-LOOP)."
   (let ((copy nil))
     (handler-case
-        (multiple-value-bind (fd how) (copy-for-lease lease)
-          (setf copy fd)
-          (if (and (lease-target lease)
-                   (same-content-p (lease-stamp lease) (fd-stamp (lease-fd lease) (lease-path lease)))
-                   (tuatara.text:retarget-mapping (lease-target lease) copy))
-              (progn
-                (setf copy nil)
-                (sleep *lease-grace*)
-                (setf (lease-copied-by lease) how
-                      (lease-status lease) :moved))
-              (setf (lease-status lease) :lost)))
+        (tuatara.runtime:reporting-errors ("copying ~a before a program writes it" (lease-path lease))
+          (multiple-value-bind (fd how) (copy-for-lease lease)
+            (setf copy fd)
+            (if (and (lease-target lease)
+                     (same-content-p (lease-stamp lease) (fd-stamp (lease-fd lease) (lease-path lease)))
+                     (tuatara.text:retarget-mapping (lease-target lease) copy))
+                (progn
+                  (setf copy nil)
+                  (sleep *lease-grace*)
+                  (setf (lease-copied-by lease) how
+                        (lease-status lease) :moved))
+                (setf (lease-status lease) :lost))))
       (error () (setf (lease-status lease) :lost)))
-    (when copy (ignore-errors (sb-posix:close copy)))
+    (when copy (tuatara.runtime:ignoring-errors-reported ("closing the copy of ~a" (lease-path lease))
+                 (sb-posix:close copy)))
     (release-lease (lease-fd lease))))
 
 (defun lease-keeper-loop ()
@@ -262,22 +282,60 @@ kept from a killed buffer, which the collection may have freed."
 
 (pushnew 'wake-lease-keeper-after-gc sb-ext:*after-gc-hooks*)
 
+(defun keep-leases-watched ()
+  "Start the keeper thread that watches the leases, unless it runs; called
+with *LEASE-LOCK* held, after a lease is held."
+  (unless *lease-keeper*
+    (setf *lease-keeper* (tuatara.runtime:make-guarded-thread
+                          (lambda ()
+                            (unwind-protect (lease-keeper-loop)
+                              ;; ended by trouble: another started when a lease is next held
+                              (sb-thread:with-mutex (*lease-lock*)
+                                (when (eq *lease-keeper* sb-thread:*current-thread*)
+                                  (setf *lease-keeper* nil)))))
+                          :name "tuatara lease keeper"))))
+
 (defun hold-lease (mapping fd path stamp place)
-  "Keep the lease just taken on FD, which MAPPING reads, and see that it is
-watched; a copy, if one is needed, goes into the directory PLACE. Returns the lease."
+  "Keep the lease just taken on file descriptor (FD), which MAPPING reads, and
+see that it is watched; a copy, if one is needed, goes into the directory
+PLACE. Returns the lease."
   (let ((lease (%make-lease :mapping mapping :fd fd :path path :stamp stamp :place place)))
     (sb-thread:with-mutex (*lease-lock*)
       (push lease *leases*)
-      (unless *lease-keeper*
-        (setf *lease-keeper* (tuatara.runtime:make-guarded-thread
-                              (lambda ()
-                                (unwind-protect (lease-keeper-loop)
-                                  ;; ended by trouble: another started when a lease is next held
-                                  (sb-thread:with-mutex (*lease-lock*)
-                                    (when (eq *lease-keeper* sb-thread:*current-thread*)
-                                      (setf *lease-keeper* nil)))))
-                              :name "tuatara lease keeper"))))
+      (keep-leases-watched))
     lease))
+
+(defun step-aside-leases (mappings)
+  "Have the held leases on what MAPPINGS read stand aside while the editor
+writes their file itself: given up for the time being, so that its own
+writing does not wait on them, and neither copied nor ended (:SAVING).
+Returns them, for TAKE-BACK-LEASES, and true as a second value when a lease
+on what MAPPINGS read was not held or was breaking: another program is about
+to write their file, or has."
+  (sb-thread:with-mutex (*lease-lock*)
+    (let ((stood '()) (broken nil))
+      (dolist (lease *leases*)
+        (when (member (lease-target lease) mappings)
+          (case (lease-status lease)
+            (:held (when (lease-breaking-p (lease-fd lease)) (setf broken t))
+             (setf (lease-status lease) :saving)
+             (release-lease (lease-fd lease))
+             (push lease stood))
+            ((:moving :moved :lost) (setf broken t)))))
+      (values (nreverse stood) broken))))
+
+(defun take-back-leases (leases)
+  "Take again LEASES, which stood aside while the editor wrote their file
+\(STEP-ASIDE-LEASES), for the file as it is now; a lease the system will not
+give again is :LOST, and the buffer it served is watched for changes."
+  (when leases
+    (sb-thread:with-mutex (*lease-lock*)
+      (dolist (lease leases)
+        (let ((stamp (tuatara.runtime:ignoring-errors-reported ("examining ~a" (lease-path lease))
+                       (fd-stamp (lease-fd lease) (lease-path lease)))))
+          (setf (lease-stamp lease) (or stamp (lease-stamp lease))
+                (lease-status lease) (if (and stamp (take-read-lease (lease-fd lease))) :held :lost))))
+      (keep-leases-watched))))
 
 (defun give-up-leases (predicate)
   "Give up the held leases PREDICATE is true of, letting any writer go."
@@ -292,7 +350,8 @@ watched; a copy, if one is needed, goes into the directory PLACE. Returns the le
 file was copied reads a clone or snapshot now; one whose copy failed reads the
 file directly, watched for changes like any other."
   (let ((ended (sb-thread:with-mutex (*lease-lock*)
-                 (let ((ended (remove-if (lambda (lease) (member (lease-status lease) '(:held :moving))) *leases*)))
+                 (let ((ended (remove-if (lambda (lease) (member (lease-status lease) '(:held :moving :saving)))
+                                         *leases*)))
                    (setf *leases* (set-difference *leases* ended))
                    ended))))
     (dolist (lease ended)
@@ -346,8 +405,9 @@ before, or NIL) has counted where the text is still the same: PROGRESS is a
 cons of the octets read and those to read; RESULT the counted rope once done.
 TALLY is what is counted so far, from the start of the text: the line
 numbers there are known before the whole text is counted
-\(COUNTED-LINE-NUMBER, COUNTED-LINE-START)."
-  rope donor (progress (cons 0 0)) result (tally (tuatara.text:make-tally)))
+\(COUNTED-LINE-NUMBER, COUNTED-LINE-START); CARRIED, that tally carried from
+the version counted through the edits made since (TUATARA.TEXT:CARRY-TALLY)."
+  rope donor (progress (cons 0 0)) result (tally (tuatara.text:make-tally)) carried)
 
 (setf (documentation 'index-job-p 'function) "True when OBJECT is an INDEX-JOB."
       (documentation 'index-job-status 'function)
@@ -380,7 +440,8 @@ counted again, and one stopped too, so that it is not started again by itself."
         (:done
          (setf (tuatara.buffer:buffer-local buffer :index-donor) (index-job-result job))
          (when (eq (tuatara.buffer:buffer-text buffer) (index-job-rope job))
-           (tuatara.buffer:buffer-adopt-text buffer (index-job-result job))))))))
+           (tuatara.buffer:buffer-adopt-text buffer (index-job-result job))
+           (setf (tuatara.buffer:buffer-local buffer :counted-so-far) nil)))))))
 
 (defvar *index-job-hook* nil
   "A function each counting calls before it begins, or NIL. Tests use it to keep
@@ -398,31 +459,48 @@ one running long enough to act while it runs.")
   "How much of JOB's counting is done, from 0 to 100."
   (tuatara.runtime:part-percent (index-job-progress job)))
 
-(defun counting-tally (buffer)
-  "The tally of the counting of BUFFER's lines, while it runs over the text the
-buffer has now; else NIL."
-  (let ((job (index-job-of buffer)))
-    (and job (eq (index-job-status job) :running)
-         (eq (tuatara.buffer:buffer-text buffer) (index-job-rope job))
-         (index-job-tally job))))
+(defun counted-so-far (buffer)
+  "The count of BUFFER's lines made in the background, running or ended,
+carried through the edits made since (TUATARA.TEXT:CARRY-TALLY), while its
+text is not counted itself; NIL once it is. One that can no longer be carried
+gives way to the count running, when there is one."
+  (let ((carried (tuatara.buffer:buffer-local buffer :counted-so-far))
+        (job (index-job-of buffer)))
+    (cond ((null carried) nil)
+          ((tuatara.buffer:buffer-indexed-p buffer) (setf (tuatara.buffer:buffer-local buffer :counted-so-far) nil))
+          ((and job (index-job-carried job) (not (eq carried (index-job-carried job)))
+                (tuatara.text:carried-lost-p carried (tuatara.buffer:buffer-version buffer)))
+           (setf (tuatara.buffer:buffer-local buffer :counted-so-far) (index-job-carried job)))
+          (t carried))))
 
 (defun counted-line-number (buffer byte)
   "While BUFFER's lines are being counted: the line, from 0, holding offset
-BYTE, when the count has passed it from the start; else NIL."
-  (let ((tally (counting-tally buffer)))
-    (and tally (tuatara.text:tally-line-number tally (tuatara.buffer:buffer-text buffer) byte))))
+BYTE, when the count has passed it from the start, edits made meanwhile
+included; else NIL."
+  (let ((carried (counted-so-far buffer)))
+    (and carried (tuatara.text:carried-line-number carried (tuatara.buffer:buffer-version buffer) byte))))
+
+(defun buffer-known-line-number (buffer byte)
+  "The line number, from 0, of BYTE in BUFFER when it is known without waiting:
+always once the lines are counted; while they are, where the count has passed
+\(COUNTED-LINE-NUMBER); else NIL."
+  (if (tuatara.buffer:buffer-indexed-p buffer)
+      (tuatara.buffer:buffer-line-number buffer byte)
+      (counted-line-number buffer byte)))
 
 (defun counted-line-start (buffer line)
   "While BUFFER's lines are being counted: where line LINE, from 0, starts,
-when the count has passed it from the start; else NIL."
-  (let ((tally (counting-tally buffer)))
-    (and tally (tuatara.text:tally-line-start tally (tuatara.buffer:buffer-text buffer) line))))
+when the count has passed it from the start, edits made meanwhile included;
+else NIL."
+  (let ((carried (counted-so-far buffer)))
+    (and carried (tuatara.text:carried-line-start carried (tuatara.buffer:buffer-version buffer) line))))
 
 (defun counted-lines (buffer)
   "While BUFFER's lines are being counted: two values, the newlines counted from
-the start of its text so far and the offset the count has reached; else NIL."
-  (let ((tally (counting-tally buffer)))
-    (and tally (tuatara.text:tally-counted-lines tally))))
+the start of its text so far and the offset the count has reached, edits made
+meanwhile included; else NIL."
+  (let ((carried (counted-so-far buffer)))
+    (and carried (tuatara.text:carried-counted-lines carried (tuatara.buffer:buffer-version buffer)))))
 
 (defun start-indexing (buffer)
   "Start counting the lines of BUFFER's text in the background, a job, unless
@@ -432,9 +510,18 @@ where it is the same. Returns the job, or NIL."
   (or (index-job-of buffer)
       (unless (or (tuatara.buffer:buffer-indexed-p buffer)
                   (eq (tuatara.buffer:buffer-local buffer :index-failed) (tuatara.buffer:buffer-text buffer)))
-        (let ((hook *index-job-hook*))
+        (let ((hook *index-job-hook*)
+              (job (%make-index-job buffer (tuatara.buffer:buffer-text buffer)
+                                    (tuatara.buffer:buffer-local buffer :index-donor)))
+              (kept (counted-so-far buffer))
+              (version (tuatara.buffer:buffer-version buffer)))
+          (setf (index-job-carried job) (tuatara.text:carry-tally (index-job-tally job) version))
+          ;; a whole count carried to the text now serves until this one is done
+          (unless (and kept (eql (nth-value 1 (tuatara.text:carried-counted-lines kept version))
+                                 (tuatara.buffer:buffer-size buffer)))
+            (setf (tuatara.buffer:buffer-local buffer :counted-so-far) (index-job-carried job)))
           (tuatara.runtime:start-job-thread
-           (%make-index-job buffer (tuatara.buffer:buffer-text buffer) (tuatara.buffer:buffer-local buffer :index-donor))
+           job
            (lambda (job)
              (when hook (funcall hook))
              (let ((result (tuatara.text:index-rope (index-job-rope job) :donor (index-job-donor job)
@@ -501,13 +588,15 @@ file kept mapped for it (BUFFER-LENT-P)."
       (tuatara.runtime:forget-job job))))
 
 (defun try-clone (fd path)
-  "A descriptor for an unnamed clone of the open file FD made in its own
-directory, sharing its blocks, or NIL where the file system cannot. One that
-shares no blocks (SHARES-BLOCKS-P) is not tried, and so not written to."
+  "A descriptor for an unnamed clone of the file open as file descriptor (FD)
+made in its own directory, sharing its blocks, or NIL where the file system
+cannot. One that shares no blocks (SHARES-BLOCKS-P) is not tried, and so
+not written to."
   (when *clone-large-files*
     (let ((directory (parent-path path)))
       (when (and (writable-p directory) (shares-blocks-p directory))
-        (let ((clone (ignore-errors (open-scratch-file directory))))
+        (let ((clone (tuatara.runtime:ignoring-errors-reported ("making a clone of ~a" path)
+                       (open-scratch-file directory))))
           (when clone
             (if (clone-fd fd clone)
                 clone
@@ -542,6 +631,17 @@ NIL, for a buffer without a file."
   (let ((directory (and path (directory-pathname (parent-path path)))))
     (copies-directory directory (and directory (eq (directory-class directory) :local)) room)))
 
+(defun buffer-plaintext-p (buffer)
+  "True when BUFFER's text, decrypted, is kept from the disk and from other
+programs: auto-save, the session, scratch files, the git gutter, the
+clipboard, exports and code files leave it alone."
+  (tuatara.buffer:buffer-local buffer :plaintext))
+
+(defun (setf buffer-plaintext-p) (value buffer)
+  "Keep BUFFER's text from the disk and other programs when VALUE is true
+\(BUFFER-PLAINTEXT-P)."
+  (setf (tuatara.buffer:buffer-local buffer :plaintext) value))
+
 (defun buffer-scratch-directory (buffer)
   "Where the scratch files of work on BUFFER's text go (the runs of a sort,
 rewritten text): as SCRATCH-DIRECTORY has it for its file and a text of its
@@ -549,7 +649,7 @@ size, except for a file visited safely, whose file system stays as it was even
 once editing is allowed: its scratch files go to the cache directory; and NIL
 for an encrypted file's text, which never goes to a scratch file (its work
 done in memory, or refused)."
-  (cond ((tuatara.buffer:buffer-local buffer :plaintext) nil)
+  (cond ((buffer-plaintext-p buffer) nil)
         ((safe-visit-p buffer) (cache-directory))
         (t (scratch-directory (tuatara.buffer:buffer-file buffer) :room (tuatara.buffer:buffer-size buffer)))))
 
@@ -561,9 +661,12 @@ CLASS (FILE-SYSTEM-CLASS): see COPIES-DIRECTORY."
 
 (defun copy-to-cache (fd size path)
   "A descriptor for an unnamed copy, made now in the cache directory, of the
-first SIZE octets of the open file FD, which is PATH."
+first SIZE octets of the file open as file descriptor (FD), which is PATH."
   (let ((copy (open-scratch-file (cache-directory))))
-    (handler-bind ((error (lambda (e) (declare (ignore e)) (ignore-errors (sb-posix:close copy)))))
+    (handler-bind ((error (lambda (e)
+                            (declare (ignore e))
+                            (tuatara.runtime:ignoring-errors-reported ("closing the copy of ~a" path)
+                              (sb-posix:close copy)))))
       (copy-fd-contents fd copy size :path path))
     copy))
 
@@ -598,7 +701,8 @@ the system allows (your own files). PATH names it in messages."
                         ;; no /proc: the name opened again, and what it opens checked to be what was examined
                         (multiple-value-bind (fd errno) (openat-octets dirfd octets (logior flags nofollow))
                           (cond ((null fd) (values nil errno))
-                                ((let ((now (ignore-errors (fd-stamp fd path))))
+                                ((let ((now (tuatara.runtime:ignoring-errors-reported ("examining ~a" path)
+                                              (fd-stamp fd path))))
                                    (and now (= (stamp-dev now) (stamp-dev stamp)) (= (stamp-ino now) (stamp-ino stamp))))
                                  fd)
                                 (t (sb-posix:close fd)
@@ -621,6 +725,32 @@ own files)."
   (open-examined +at-fdcwd+ (tuatara.text:string-octets (native path)) (logior sb-posix:o-rdonly sb-posix:o-nonblock) path
                  :accept accept :safe safe :operation operation :wanted wanted))
 
+(defun clear-noatime (fd)
+  "Let reading from the file open as file descriptor (FD) change its access
+time again."
+  (let ((flags (sb-posix:fcntl fd sb-posix:f-getfl)))
+    (when (logtest flags +o-noatime+)
+      (sb-posix:fcntl fd sb-posix:f-setfl (logandc2 flags +o-noatime+)))))
+
+(defgeneric host-visit-safely-reason (host path &optional stamp)
+  (:documentation "Why the file at PATH, about to be visited and not asked to be visited safely,
+is to be all the same, a phrase, or NIL; STAMP, when given, is its stamp, by
+which another name it has may be told.")
+  (:method ((host tuatara.runtime:host) path &optional stamp)
+    (declare (ignore path stamp))
+    nil))
+
+(defun decision-on-file (fd path stamp)
+  "Why the file open as file descriptor (FD) is to open safely, by where it
+really is and its STAMP (HOST-VISIT-SAFELY-REASON), or NIL; a check that fails
+is answered by a phrase saying so, so that the file opens safely, and is told
+in the debug log."
+  (handler-case (host-visit-safely-reason tuatara.runtime:*host* (or (fd-real-path fd) path) stamp)
+    (error (condition)
+      (tuatara.runtime:debug-report :file "whether ~a opens safely could not be told, so it does: ~a"
+                                    (native path) (tuatara.runtime:condition-words condition))
+      (format nil "the check whether it opens safely failed (~a)" (tuatara.runtime:condition-words condition)))))
+
 (defun open-file-text (path &key safe)
   "The text of the file at PATH, as six values: a rope, the mapping it reads
 (or NIL), the file's STAMP, how the text is kept from other programs' changes
@@ -631,11 +761,23 @@ it, so that a named pipe or a device is never waited on or woken. See this
 file's header for which file gets which.
 SAFE keeps the file system the file is on exactly as it was: no clone and
 no copy is made beside the file (copies go to the cache directory), and its
-access time is left alone where the system allows."
-  (let ((fd (open-for-reading path safe :accept '(:regular) :wanted "a file of text"))
-        (keep-fd nil))
+access time is left alone where the system allows. Unless SAFE, whether the
+file is to open safely all the same is asked (HOST-VISIT-SAFELY-REASON) with
+where it really is (links followed, as the descriptor says) and its stamp,
+and a phrase answered makes the file opened SAFE, its access time never
+changed: a seventh value, that phrase or NIL.
+What is opened is what is decided on, however a link is changed meanwhile."
+  (let ((fd (open-for-reading path t :accept '(:regular) :wanted "a file of text"))
+        (keep-fd nil) (why nil))
     (unwind-protect
-         (let ((stamp (fd-stamp fd path)))
+         (multiple-value-call (lambda (&rest values) (values-list (append values (list why))))
+          (let* ((stamp (fd-stamp fd path))
+                 (why (setf why (and (not safe) (decision-on-file fd path stamp))))
+                 (safe (or safe (and why t)))
+                 ;; a save in place cut short is put right before anything reads the file
+                 (stamp (if (recover-cut-short-save fd path :safe safe) (fd-stamp fd path) stamp)))
+            ;; a file with another name may be evidence under it: its access time is never given back
+            (unless (or safe (> (stamp-nlink stamp) 1)) (clear-noatime fd))
            (let ((class (file-system-class (fd-file-system fd)))
                  (size (stamp-size stamp)))
              (if (or (eq class :pseudo) (<= size *memory-read-limit*))
@@ -648,7 +790,8 @@ access time is left alone where the system allows."
                                                                *memory-read-limit*)))
                    (values (tuatara.text:octets->rope octets) nil stamp :memory nil class))
                  (let* ((lease (and *lease-large-files* (eq class :local) (take-read-lease fd)
-                                    (let ((mapping (ignore-errors (tuatara.text:map-fd fd size path))))
+                                    (let ((mapping (tuatara.runtime:ignoring-errors-reported ("mapping ~a" path)
+                                                     (tuatara.text:map-fd fd size path))))
                                       (if mapping
                                           (progn (setf keep-fd t) ; the mapping owns it now
                                                  (hold-lease mapping fd path stamp
@@ -662,7 +805,8 @@ access time is left alone where the system allows."
                        (let ((mapping (tuatara.text:map-fd clone size path)))
                          (values (rope-over mapping) mapping stamp :clone nil class)))
                      (t
-                       (let ((mapping (ignore-errors (tuatara.text:map-fd fd size path))))
+                       (let ((mapping (tuatara.runtime:ignoring-errors-reported ("mapping ~a" path)
+                                        (tuatara.text:map-fd fd size path))))
                          (if (null mapping)
                              ;; a file system that cannot map this file: map a copy instead
                              (let ((copy (copy-to-cache fd size path)))
@@ -672,24 +816,23 @@ access time is left alone where the system allows."
                                (setf keep-fd t) ; the mapping owns it now
                                (let ((snapshot (and *snapshot-large-files* (not (read-only-mount-p fd))
                                                     ;; no snapshot is no reason not to show the file
-                                                    (ignore-errors
-                                                     (start-snapshot mapping fd path stamp
-                                                                     (if safe (cache-directory) (snapshot-directory path class :room size)))))))
+                                                    (tuatara.runtime:ignoring-errors-reported ("starting a copy of ~a" path)
+                                                      (start-snapshot mapping fd path stamp
+                                                                      (if safe
+                                                                          (cache-directory)
+                                                                          (snapshot-directory path class
+                                                                                              :room size)))))))
                                  (values (rope-over mapping) mapping stamp (if snapshot :pending :direct)
-                                         snapshot class)))))))))))
+                                         snapshot class))))))))))))
       (unless keep-fd (sb-posix:close fd)))))
-
-(defvar *visit-safely-function* nil
-  "A function of the path of a file about to be visited, not asked to be
-visited safely, that returns why it should be all the same, a phrase, or NIL.")
 
 (defconstant +binary-sample+ 65536
   "The octets at the start of a file looked at to tell whether it is binary.")
 
 (defun binary-head-p (octets &optional (end (length octets)))
   "True when OCTETS below END, the first octets of a file (FILE-HEAD), say it
-is binary: a NUL octet among the first 64 KB of them (+BINARY-SAMPLE+), as
-executables, archives and disk images have and text has not; NIL for no
+is binary: a null (NUL) octet among the first 64 KB of them (+BINARY-SAMPLE+),
+as executables, archives and disk images have and text has not; NIL for no
 octets. Opening a file, previewing it, searching files and keeping
 directories read tell binary files alike by it."
   (and octets (find 0 octets :end (min end +binary-sample+)) t))
@@ -700,10 +843,10 @@ files read so far, each (PATH LIMIT SIZE OCTETS), in the car, so that each is
 read once; NIL otherwise.")
 
 (defun read-fd-start (fd path size limit &key past-size)
-  "The first LIMIT octets, or all when there are fewer, of the open file FD
-(PATH for messages) of SIZE octets, as the system says; with PAST-SIZE, SIZE
-and one more, at least 8 KB, at most LIMIT, so that a file larger than the
-system says (one in /proc) is seen to be."
+  "The first LIMIT octets, or all when there are fewer, of the file open as
+file descriptor (FD) (PATH for messages) of SIZE octets, as the system
+says; with PAST-SIZE, SIZE and one more, at least 8 KB, at most LIMIT, so
+that a file larger than the system says (one in /proc) is seen to be."
   (let* ((octets (make-array (min limit (if past-size (max 8192 (1+ size)) size)) :element-type '(unsigned-byte 8)))
          (got (read-fd-at fd octets 0 :path path)))
     (if (= got (length octets)) octets (subseq octets 0 got))))
@@ -712,8 +855,10 @@ system says (one in /proc) is seen to be."
   "The first octets of the regular file at PATH, at most LIMIT (READ-FD-START),
 and its size as a second value; opened as CALL-WITH-FILE opens it. NIL when it
 is no regular file or cannot be read."
-  (handler-case (call-with-file path (lambda (fd path size) (values (read-fd-start fd path size limit :past-size t) size)))
-    (error () nil)))
+  (tuatara.runtime:ignoring-errors-reported ("reading the start of ~a" path)
+    (handler-case (call-with-file path (lambda (fd path size)
+                                         (values (read-fd-start fd path size limit :past-size t) size)))
+      (file-system-error () nil))))
 
 (defun file-head (path &optional (limit +binary-sample+))
   "The first octets of the regular file at PATH, at most LIMIT (64 KB as
@@ -793,8 +938,9 @@ cannot be read."
         (nreverse entries))
     (file-system-error (e) (values nil (file-system-error-reason e)))))
 
-(defun directory-entries (directory &key stamps)
-  "The entries of DIRECTORY, hidden ones included, sorted by name: lists of the
+(defun directory-entries (directory &key stamps (order #'string<))
+  "The entries of DIRECTORY, hidden ones included, sorted by name with ORDER
+\(a predicate of two names, STRING< as standard): lists of the
 name (an octet that is no UTF-8 as its raw byte's character), the kind (as
 STAMP-KIND gives it, following symbolic links; :SYMLINK for one that leads
 nowhere), the size in octets and the entry's own kind (:SYMLINK for a link,
@@ -813,7 +959,7 @@ cannot be read."
                                (fields (list (listed-name entry) (if stamp (stamp-kind stamp) :other)
                                              (and stamp (stamp-size stamp)) (if own (stamp-kind own) :other))))
                           (if stamps (append fields (list stamp)) fields)))
-        #'string< :key #'first))
+        order :key #'first))
 
 (defun call-with-entry (directory octets function)
   "Call FUNCTION with a descriptor open on the file whose name is OCTETS in
@@ -840,10 +986,11 @@ allows, and what is not a regular file refused unopened (a FILE-SYSTEM-ERROR)."
       (sb-posix:close fd))))
 
 (defun fd-octets (fd path size &optional limit too-large)
-  "The octets of the file open as FD, PATH's, of SIZE octets, read whole from
-its start. With LIMIT, a FILE-SYSTEM-ERROR when it has more than LIMIT
-octets, as SIZE says or as it turns out when read, no more than that read;
-with TOO-LARGE, a function of that size, what it returns instead."
+  "The octets of the file open as file descriptor (FD), PATH's, of SIZE
+octets, read whole from its start. With LIMIT, a FILE-SYSTEM-ERROR when it
+has more than LIMIT octets, as SIZE says or as it turns out when read, no
+more than that read; with TOO-LARGE, a function of that size, what it
+returns instead."
   (flet ((too-large (size)
            (return-from fd-octets
              (if too-large
@@ -928,6 +1075,95 @@ once it is let go, so that what was read is left only in the vector given."
         (when spare (fill spare 0)))
       (values octets too-large cancelled))))
 
+(defun copy-descriptor-to-scratch (input &key (path "standard input"))
+  "Copy everything the open descriptor INPUT gives, to its end, into a new file
+with no name in the cache directory (OPEN-SCRATCH-FILE), so that its size is
+bounded by the disk and not by memory. Returns the descriptor of that file
+and the octets it holds, as two values. Waits: call it from a thread doing
+work in the background; in a job, asking it to stop ends the copy, however
+long INPUT waits to give more (a pipe that never ends)."
+  (let ((fd (open-scratch-file (cache-directory)))
+        (block (make-array (* 1024 1024) :element-type '(unsigned-byte 8)))
+        (size 0)
+        (done nil))
+    (unwind-protect
+         (progn
+           (loop (loop until (plusp (poll-fd input 1 1000))     ; POLLIN
+                       do (tuatara.runtime:job-check-stop))
+                 (let ((got (read-fd-into input block :path path)))
+                   (when (zerop got) (return))
+                   (write-octets fd block :end got :path path)
+                   (incf size got)))
+           (setf done t)
+           (values fd size))
+      (unless done (tuatara.runtime:ignoring-errors-reported ("closing the copy of ~a" path) (sb-posix:close fd))))))
+
+(defun scratch-file-text (fd size path)
+  "The text of the file open as file descriptor (FD) of SIZE octets
+(COPY-DESCRIPTOR-TO-SCRATCH), as two values: a rope, and the mapping it
+reads, or NIL. One of at most *MEMORY-READ-LIMIT* octets is read into
+memory and FD closed; a larger one is mapped, as a large file is, and the
+mapping owns FD from then on. FD is closed when it cannot be read or mapped."
+  (if (<= size *memory-read-limit*)
+      (unwind-protect
+           (progn (sb-posix:lseek fd 0 sb-posix:seek-set)
+                  (values (tuatara.text:octets->rope (read-fd-octets fd :path path :size-hint size)) nil))
+        (tuatara.runtime:ignoring-errors-reported ("closing the copy of ~a" path) (sb-posix:close fd)))
+      (let ((mapping nil))
+        (unwind-protect (setf mapping (tuatara.text:map-fd fd size path))
+          (unless mapping
+            (tuatara.runtime:ignoring-errors-reported ("closing the copy of ~a" path) (sb-posix:close fd))))
+        (values (rope-over mapping) mapping))))
+
+(defun buffer-file-stamp (buffer)
+  "The stamp (PATH-STAMP) BUFFER's file had when it was last read or saved, by
+which a change on disk and the same file under another name are known; NIL
+for a buffer whose file was not there."
+  (tuatara.buffer:buffer-local buffer :file-stamp))
+
+(defun (setf buffer-file-stamp) (stamp buffer)
+  "Note STAMP as that of BUFFER's file as just read or saved (BUFFER-FILE-STAMP)."
+  (setf (tuatara.buffer:buffer-local buffer :file-stamp) stamp))
+
+(defun same-stamped-file-p (stamp other)
+  "True when the STAMP OTHER, a file's, names the same file as STAMP: the same device and inode."
+  (and stamp other (= (stamp-dev stamp) (stamp-dev other)) (= (stamp-ino stamp) (stamp-ino other))))
+
+(defun buffer-for-file (path &key except safe)
+  "The buffer visiting the file at PATH, other than EXCEPT, found by the file
+itself and not by the name: x, ./x and a/../x are one file and have one
+buffer. NIL when there is none. A file with two names (a link) shares a
+buffer between them only as far as that is safe: a buffer opened safely
+\(evidence, a safe folder, or asked) is the one for both names, but a buffer
+that is not is never given to a name asked SAFE, nor to one that
+HOST-VISIT-SAFELY-REASON says is to be visited safely, which gets a buffer of
+its own. One stat of PATH, none of the buffers (their STAMP is kept)."
+  (let ((path (visited-path path)))
+    (or (find-if (lambda (buffer) (and (not (eq buffer except)) (equal (tuatara.buffer:buffer-file buffer) path)))
+                 tuatara.buffer:*buffers*)
+        (let ((stamp (path-stamp path :failure nil)))
+          (when stamp
+            (let ((same (remove-if-not
+                         (lambda (buffer)
+                           (and (not (eq buffer except)) (tuatara.buffer:buffer-file buffer)
+                                (same-stamped-file-p stamp (buffer-file-stamp buffer))))
+                         tuatara.buffer:*buffers*)))
+              (or (find-if #'safe-visit-p same)
+                  (and same
+                       (not (or safe
+                                (tuatara.runtime:ignoring-errors-reported ("asking whether to visit ~a safely" path)
+                                  (host-visit-safely-reason tuatara.runtime:*host* path))))
+                       (first same)))))))))
+
+(defun visited-path (path)
+  "PATH as a file is visited under: expanded, and, when it has a .. in it, as
+the file system leads (REAL-PATH-SO-FAR), so that it is named as the file
+is, not as a link made the way back look."
+  (let ((path (expand-path path)))
+    (if (find-if (lambda (part) (member part '(:up :back ".."))) (pathname-directory path))
+        (expand-path (real-path-so-far (native path)))
+        path)))
+
 (defun visit-file (path &key safe)
   "The buffer visiting the file at PATH, made if no live buffer does: its text
 kept safe from other programs (OPEN-FILE-TEXT); for a file not there yet, an
@@ -937,40 +1173,41 @@ then the buffer is read-only, no mode and no hook sees it, and the file
 system the file is on is left as it was. The buffer is read-only too when this
 user may not write the file, or, for a file not there yet, make it in its
 directory (\\[read-only-mode] makes it editable). A file not asked to be
-visited SAFE is all the same when *VISIT-SAFELY-FUNCTION* gives a reason, kept
+visited SAFE is all the same when HOST-VISIT-SAFELY-REASON gives one, kept
 for SAFE-VISIT-REASON. Returns the buffer, and true as a second value when a
 buffer visited the file already (it comes as it is)."
-  (let* ((path (expand-path path))
-         (existing (find path tuatara.buffer:*buffers* :key #'tuatara.buffer:buffer-file :test #'equal)))
+  (let* ((path (visited-path path))
+         (existing (buffer-for-file path :safe safe)))
     (if existing
         (values existing t)
         (let* ((name (tuatara.buffer:unique-buffer-name (native-file-name path)))
                (buffer nil)
-               (why (and (not safe) *visit-safely-function* (path-stamp path)
-                         (ignore-errors (funcall *visit-safely-function* path))))
-               (safe (or safe (and why t))))
+               (why nil))
           (when (and safe (null (path-stamp path)))
             (error 'file-system-error :operation "open" :path path :reason "there is no such file"))
           (if (path-stamp path)
-              (multiple-value-bind (rope mapping stamp isolation guard class) (open-file-text path :safe safe)
-                (setf buffer (tuatara.buffer:make-buffer name :text rope :file path)
+              (multiple-value-bind (rope mapping stamp isolation guard class reason)
+                  (open-file-text path :safe safe)
+                (setf why reason
+                      safe (or safe (and why t))
+                      buffer (tuatara.buffer:make-buffer name :text rope :file path)
                       (tuatara.buffer:buffer-mapping buffer) mapping
-                      (tuatara.buffer:buffer-local buffer :file-stamp) stamp
+                      (buffer-file-stamp buffer) stamp
                       (tuatara.buffer:buffer-local buffer :file-isolation) isolation
                       (tuatara.buffer:buffer-local buffer :file-class) class
-                      (tuatara.buffer:buffer-local buffer :line-ending) (tuatara.buffer:detect-line-ending rope))
+                      (tuatara.buffer:buffer-line-ending buffer) (tuatara.buffer:detect-line-ending rope))
                 (note-file-tail buffer rope)
                 (attend guard buffer))
               (setf buffer (tuatara.buffer:make-buffer name :file path)))
           (if safe
-              (setf (tuatara.buffer:buffer-local buffer :read-only) t
-                    (tuatara.buffer:buffer-local buffer :safe-visit) (or why t))
+              (setf (tuatara.buffer:buffer-read-only-p buffer) t
+                    (safe-visit-p buffer) (or why t))
               (progn
                 (unless (if (path-stamp path)
                             (writable-p path)
                             (writable-p (parent-path path)))
-                  (setf (tuatara.buffer:buffer-local buffer :read-only) t))
-                (dolist (f tuatara.buffer:*find-file-functions*) (funcall f buffer))))
+                  (setf (tuatara.buffer:buffer-read-only-p buffer) t))
+                (tuatara.runtime:run-hook tuatara.buffer:*find-file-functions* buffer)))
           (values buffer nil)))))
 
 (defconstant +tail-sample+ 4096
@@ -987,9 +1224,15 @@ later as the same file grown by appending (APPEND-FROM-DISK).")
   "True when BUFFER visits its file safely (VISIT-FILE's SAFE)."
   (and (tuatara.buffer:buffer-local buffer :safe-visit) t))
 
+(defun (setf safe-visit-p) (value buffer)
+  "Have BUFFER visit its file safely (SAFE-VISIT-P) when VALUE is true: T, or a
+phrase saying why when that was not asked for (SAFE-VISIT-REASON); as usual
+when it is NIL."
+  (setf (tuatara.buffer:buffer-local buffer :safe-visit) value))
+
 (defun safe-visit-reason (buffer)
   "Why BUFFER visits its file safely although that was not asked for, a phrase
-(*VISIT-SAFELY-FUNCTION*), or NIL."
+\(HOST-VISIT-SAFELY-REASON), or NIL."
   (let ((safe (tuatara.buffer:buffer-local buffer :safe-visit)))
     (and (stringp safe) safe)))
 
@@ -999,8 +1242,8 @@ later as the same file grown by appending (APPEND-FROM-DISK).")
 file not there, make it in its directory. Its text stays as it was read, kept
 from other programs' changes as before. Returns BUFFER."
   (let ((path (tuatara.buffer:buffer-file buffer)))
-    (setf (tuatara.buffer:buffer-local buffer :safe-visit) nil
-          (tuatara.buffer:buffer-local buffer :read-only)
+    (setf (safe-visit-p buffer) nil
+          (tuatara.buffer:buffer-read-only-p buffer)
           (and path
                (not (if (path-stamp path)
                         (writable-p path)
@@ -1044,8 +1287,8 @@ saved (see DISK-STATUS); :UNKNOWN when the system will not say (a directory
 made unreadable); NIL for a buffer without a file."
   (let ((path (tuatara.buffer:buffer-file buffer)))
     (when path
-      (disk-status buffer (tuatara.buffer:buffer-local buffer :file-stamp)
-                   (handler-case (path-stamp path)
+      (disk-status buffer (buffer-file-stamp buffer)
+                   (handler-case (tuatara.runtime:reporting-errors ("examining ~a" path) (path-stamp path))
                      (error () (return-from file-status :unknown)))))))
 
 (defun note-disk-status (buffer status)
@@ -1061,8 +1304,8 @@ Returns the state, and as a second value true when it changed."
       (setf (tuatara.buffer:buffer-local buffer :disk-state) new)
       (when (eq new :stale)
         (setf (tuatara.buffer:buffer-local buffer :read-only-before-stale)
-              (tuatara.buffer:buffer-local buffer :read-only)
-              (tuatara.buffer:buffer-local buffer :read-only) t)))
+              (tuatara.buffer:buffer-read-only-p buffer)
+              (tuatara.buffer:buffer-read-only-p buffer) t)))
     (values new (not (eq new old)))))
 
 (defun check-file (buffer)
@@ -1151,14 +1394,16 @@ native name of its directory and its own name in octets."
 (defun watch-keys (path)
   "The keys (WATCH-KEY) of PATH and, when symbolic links lead elsewhere, of the file they lead to."
   (let ((own (watch-key path))
-        (real (ignore-errors (watch-key (resolve-links path)))))
+        (real (tuatara.runtime:ignoring-errors-reported ("following the links of ~a" path)
+                (watch-key (resolve-links path)))))
     (if (and real (not (and (string= (car real) (car own)) (equalp (cdr real) (cdr own)))))
         (list own real)
         (list own))))
 
 (defun look-at (buffer path stamp)
   "What the watcher reports of the file at PATH for BUFFER, which read or saved it at STAMP."
-  (list buffer path stamp (handler-case (path-stamp path) (error () :unknown))))
+  (list buffer path stamp (handler-case (tuatara.runtime:reporting-errors ("examining ~a" path) (path-stamp path))
+                            (error () :unknown))))
 
 (defun seconds-units (seconds)
   "SECONDS in internal time units."
@@ -1207,7 +1452,7 @@ for is looked at every *POLL-INTERVAL* seconds."
                   (dolist (watch watches table) (setf (gethash (directory-watch-directory watch) table) watch))))
          (new (mapcar (lambda (directory)
                         (or (gethash directory known)
-                            (make-directory-watch directory (ignore-errors (path-stamp directory)))))
+                            (make-directory-watch directory (path-stamp directory :failure nil))))
                       wanted)))
     (sync-inotify-watches inotify directories wds
                           (unique-strings (append wanted (loop for item in items
@@ -1274,7 +1519,7 @@ in INOTIFY, which goes on watching a directory moved)."
                (when names
                  (if (logtest mask +in-directory-gone+)
                      (progn (remhash wd wds)
-                            (when inotify (ignore-errors (inotify-unwatch inotify wd)))
+                            (when inotify (inotify-unwatch inotify wd))
                             (dolist (directory names) (remhash directory directories))
                             (dolist (item items)
                               (when (find-if (lambda (key) (member (car key) names :test #'string=)) (watch-item-keys item))
@@ -1317,7 +1562,7 @@ told of by inotify, and a polled one when its stamp is not as last seen."
   (loop for watch in watches
         for due = (directory-watch-due watch)
         when (and due (>= now due))
-          nconc (let ((stamp (ignore-errors (path-stamp (directory-watch-directory watch))))
+          nconc (let ((stamp (path-stamp (directory-watch-directory watch) :failure nil))
                       (told (directory-watch-first watch)))
                   (setf (directory-watch-first watch) nil
                         (directory-watch-due watch) (and (directory-watch-polled watch) (+ now (seconds-units *poll-interval*))))
@@ -1352,9 +1597,10 @@ reported."
                       (list result))))))
 
 (defun tell-editor ()
-  "Call *ON-FILE-NEWS*, if set, for the editor to take in what the watcher found."
-  (let ((function *on-file-news*))
-    (when function (ignore-errors (funcall function)))))
+  "Wake the editor (HOST-WAKE), on the watcher's thread, to take in what the
+watcher found (TAKE-FILE-LOOKS)."
+  (tuatara.runtime:ignoring-errors-reported ("taking in what the file watcher found")
+    (tuatara.runtime:host-wake tuatara.runtime:*host*)))
 
 (defun soonest-due (items)
   "The soonest time any of ITEMS is due to be looked at, or NIL when none is."
@@ -1416,7 +1662,7 @@ not watched: they change as they are read."
   (flet ((watched-p (buffer)
            (and (tuatara.buffer:buffer-file buffer) (not (eq (tuatara.buffer:buffer-local buffer :file-class) :pseudo))))
          (item (buffer)
-           (list buffer (tuatara.buffer:buffer-file buffer) (tuatara.buffer:buffer-local buffer :file-stamp)
+           (list buffer (tuatara.buffer:buffer-file buffer) (buffer-file-stamp buffer)
                  (tuatara.buffer:buffer-local buffer :file-class))))
     (unless (let ((watched *watched*))
               (and (loop for buffer in buffers
@@ -1424,7 +1670,7 @@ not watched: they change as they are read."
                                     (and watched
                                          (destructuring-bind (was-buffer path stamp class) (pop watched)
                                            (and (eq was-buffer buffer) (equal path (tuatara.buffer:buffer-file buffer))
-                                                (eq stamp (tuatara.buffer:buffer-local buffer :file-stamp))
+                                                (eq stamp (buffer-file-stamp buffer))
                                                 (eq class (tuatara.buffer:buffer-local buffer :file-class)))))))
                    (null watched)))
       (setf *watched* (loop for buffer in buffers when (watched-p buffer) collect (item buffer)))
@@ -1462,7 +1708,7 @@ file that goes on growing)."
         (destructuring-bind (buffer path stamp now) result
           (when (and (tuatara.buffer:live-buffer-p buffer)
                      (equal path (tuatara.buffer:buffer-file buffer))
-                     (eq stamp (tuatara.buffer:buffer-local buffer :file-stamp))
+                     (eq stamp (buffer-file-stamp buffer))
                      (not (eq now :unknown))
                      (not (saving-p buffer)))
             (multiple-value-bind (state new) (note-disk-status buffer (disk-status buffer stamp now))
@@ -1485,7 +1731,7 @@ file that goes on growing)."
 yet, so that saving writes that file and the link stays a link."
   (let ((path (expand-path path)))
     (loop repeat 40
-          do (let ((stamp (ignore-errors (path-stamp path :follow nil))))
+          do (let ((stamp (path-stamp path :follow nil :failure nil)))
                (unless (and stamp (eq (stamp-kind stamp) :symlink))
                  (return))
                (let ((target (sb-posix:readlink (native path))))
@@ -1506,17 +1752,22 @@ same place within a block in both files can share them.")
 and waits for the ones before: the most a save leaves in memory not yet on
 disk, and so how far its progress can be ahead of the device.")
 
-(defun write-rope (fd rope &key (path "a file") cancel progress)
-  "Write ROPE's octets to the open file FD, from offset 0 on: what comes from
-mapped files is copied by the kernel where it can, the rest written. Where a
-stretch from a file sits at the same place within a block as where it goes (after
-edits that kept the length, or none), it is copied up to the next block boundary
-first, so that file systems that share blocks share all the whole ones after it.
-The octets go out to the device as they are written, *WRITE-OUT-WINDOW* at a
-time, and leave memory once there, so that a slow device (a USB drive) holds a
-large save back as it goes rather than all at the end, and memory does not fill
-with what waits for it. PROGRESS is called with the octets on the device and
-the total. Returns true, or NIL when CANCEL's car turned true first."
+(defun write-rope (fd rope &key (path "a file") cancel progress kept)
+  "Write ROPE's octets to the file open as file descriptor (FD), from offset 0
+on: what comes from mapped files is copied by the kernel where it can, the
+rest written. Where a stretch from a file sits at the same place within a
+block as where it goes (after edits that kept the length, or none), it is
+copied up to the next block boundary first, so that file systems that share
+blocks share all the whole ones after it. The octets go out to the device
+as they are written, *WRITE-OUT-WINDOW* at a time, and leave memory once
+there, so that a slow device (a USB drive) holds a large save back as it
+goes rather than all at the end, and memory does not fill with what waits
+for it. PROGRESS is called with the octets on the device and the total.
+KEPT, for a file that holds much of ROPE already, is a function of a
+stretch from a mapped file (its MAPPING, the OFFSET in it, its LENGTH and the
+POSITION it goes to) giving whether the file holds its first octets already
+where they go, and how many from there are alike: those it holds are passed
+over, not written. Returns true, or NIL when CANCEL's car turned true first."
   (let ((done 0) (total (tuatara.text:rope-bytes rope))
         (written-out 0)                 ; below this, on the device
         (going-out 0)                   ; below this, on its way there
@@ -1541,22 +1792,30 @@ the total. Returns true, or NIL when CANCEL's car turned true first."
              (:file (let ((mapping a) (offset b) (length c))
                       (loop while (plusp length)
                             do (when (and cancel (car cancel)) (return-from write nil))
-                               (let* ((misaligned (mod offset +block-size+))
-                                      (n (if (and (plusp misaligned) (= misaligned (mod done +block-size+)))
-                                             (min length (- +block-size+ misaligned))
-                                             (min length *write-out-window*))))
-                                 (let ((copied (copy-fd-range (tuatara.text:mapping-fd mapping) offset fd n)))
-                                   (when (< copied n)
-                                     (write-sap fd (sb-sys:sap+ (tuatara.text:mapping-sap mapping) (+ offset copied))
-                                                (- n copied) :path path)))
-                                 (incf offset n) (decf length n) (incf done n)
-                                 (move-on))))))
+                               (multiple-value-bind (in-place alike)
+                                   (if kept (funcall kept mapping offset length done) (values nil length))
+                                 (if in-place
+                                     (progn (incf offset alike) (decf length alike) (incf done alike)
+                                            (sb-posix:lseek fd done sb-posix:seek-set))
+                                     (multiple-value-bind (source at end) (tuatara.text:mapping-source mapping offset)
+                                       (let* ((misaligned (mod at +block-size+))
+                                              (n (min (- end offset) alike
+                                                      (if (and (plusp misaligned) (= misaligned (mod done +block-size+)))
+                                                          (min length (- +block-size+ misaligned))
+                                                          (min length *write-out-window*))))
+                                              (copied (copy-fd-range source at fd n)))
+                                         (when (< copied n)
+                                           (write-sap fd (sb-sys:sap+ (tuatara.text:mapping-sap mapping) (+ offset copied))
+                                                      (- n copied) :path path))
+                                         (incf offset n) (decf length n) (incf done n)))))
+                               (move-on)))))
            (move-on))
          rope)
         t))))
 
 (defun flush-fd (fd path)
-  "Ask the system to put the open file FD on disk; file systems that cannot are let be."
+  "Ask the system to put the file open as file descriptor (FD) on disk; file
+systems that cannot are let be."
   (handler-case (sb-posix:fsync fd)
     (sb-posix:syscall-error (e)
       (unless (member (sb-posix:syscall-errno e) (list sb-posix:einval sb-posix:erofs sb-posix:enosys))
@@ -1575,11 +1834,19 @@ refuses the rename or the naming, for the caller to write in place."
          (temp nil))
     (unless fd
       (setf temp (scratch-name directory "save")
-            fd (handler-case (sb-posix:open temp (logior sb-posix:o-wronly sb-posix:o-creat sb-posix:o-excl) made-mode)
-                 (sb-posix:syscall-error (e) (fail "create a file in" directory (sb-posix:syscall-errno e))))))
+            fd (call-with-folder directory
+                                 (lambda (dirfd)
+                                   (multiple-value-bind (fd errno)
+                                       (openat-octets dirfd (tuatara.text:string-octets (native-file-name temp))
+                                                      (logior sb-posix:o-wronly sb-posix:o-creat sb-posix:o-excl +o-nofollow+ +o-cloexec+)
+                                                      made-mode)
+                                     (or fd (fail "create a file in" directory errno))))
+                                 "save in")))
     (flet ((abandon ()
-             (when fd (ignore-errors (sb-posix:close fd)) (setf fd nil))
-             (when temp (ignore-errors (sb-posix:unlink temp)))))
+             (when fd
+               (tuatara.runtime:ignoring-errors-reported ("closing the new file for ~a" target) (sb-posix:close fd))
+               (setf fd nil))
+             (when temp (tuatara.runtime:ignoring-errors-reported ("taking away ~a" temp) (sb-posix:unlink temp)))))
       (handler-bind ((error (lambda (e) (declare (ignore e)) (abandon))))
         (unless (write-rope fd rope :path target :cancel cancel :progress progress)
           (abandon)
@@ -1588,11 +1855,18 @@ refuses the rename or the naming, for the caller to write in place."
         (when progress (funcall progress (tuatara.text:rope-bytes rope) (tuatara.text:rope-bytes rope)))
         (when existing
           ;; the owner first: changing it may clear set-id bits the mode then restores
-          (ignore-errors (sb-posix:fchown fd (stamp-uid existing) (stamp-gid existing)))
-          (ignore-errors (sb-posix:fchmod fd (logand (stamp-mode existing) #o7777)))
-          (let ((source (ignore-errors (open-examined +at-fdcwd+ (tuatara.text:string-octets (native target))
-                                                      (logior sb-posix:o-rdonly sb-posix:o-nonblock (if nofollow +o-nofollow+ 0))
-                                                      target))))
+          (handler-case (sb-posix:fchown fd (stamp-uid existing) (stamp-gid existing)) (sb-posix:syscall-error () nil))
+          ;; never yours in its place without a word: someone else's file is not taken over
+          (let ((now (fd-stamp fd target)))
+            (unless (and (= (stamp-uid now) (stamp-uid existing)) (= (stamp-gid now) (stamp-gid existing)))
+              (error 'file-system-error :operation "save" :path target
+                                        :reason (format nil "it belongs to user ~d and group ~d, and the file of its own it would be saved as could not be given to them"
+                                                        (stamp-uid existing) (stamp-gid existing)))))
+          (handler-case (sb-posix:fchmod fd (logand (stamp-mode existing) #o7777)) (sb-posix:syscall-error () nil))
+          (let ((source (tuatara.runtime:ignoring-errors-reported ("opening ~a to copy its extended attributes" target)
+                          (open-examined +at-fdcwd+ (tuatara.text:string-octets (native target))
+                                         (logior sb-posix:o-rdonly sb-posix:o-nonblock (if nofollow +o-nofollow+ 0))
+                                         target))))
             (when source
               (unwind-protect (copy-xattrs source fd) (sb-posix:close source)))))
         (when mode
@@ -1609,13 +1883,19 @@ refuses the rename or the naming, for the caller to write in place."
             (when (and now (not (eq (stamp-kind now) :regular)))
               (error 'file-system-error :operation "save to" :path target
                                         :reason (format nil "it is ~a now" (kind-words (stamp-kind now)))))))
-        (handler-case (sb-posix:rename temp (native target))
-          (sb-posix:syscall-error (e)
-            (if (member (sb-posix:syscall-errno e)
-                        (list sb-posix:exdev sb-posix:eperm sb-posix:eacces sb-posix:ebusy sb-posix:eopnotsupp
-                              sb-posix:etxtbsy))
-                (progn (abandon) (return-from write-by-rename :refused))
-                (fail "rename a new copy over" target (sb-posix:syscall-errno e)))))
+        ;; renamed within the folder held open, looked at again where it really is
+        (call-with-parent
+         target
+         (lambda (dirfd own)
+           (with-octets-sap (old (terminated-octets (tuatara.text:string-octets (native-file-name temp))))
+             (with-octets-sap (new (terminated-octets own))
+               (multiple-value-bind (result errno) (rename-entry dirfd old dirfd new 0)
+                 (unless (zerop result)
+                   (if (member errno (list sb-posix:exdev sb-posix:eperm sb-posix:eacces sb-posix:ebusy sb-posix:eopnotsupp
+                                           sb-posix:etxtbsy))
+                       (progn (abandon) (return-from write-by-rename :refused))
+                       (fail "rename a new copy over" target errno)))))))
+         :writing "save")
         (sync-directory directory)
         :done))))
 
@@ -1647,8 +1927,8 @@ descriptor and path, or NIL when CANCEL's car turned true first."
                   (setf done t))
              (sb-posix:close source)))
       (unless done
-        (ignore-errors (sb-posix:close fd))
-        (ignore-errors (sb-posix:unlink path))))
+        (tuatara.runtime:ignoring-errors-reported ("closing the backup of ~a" target) (sb-posix:close fd))
+        (tuatara.runtime:ignoring-errors-reported ("taking away the backup ~a" path) (sb-posix:unlink path))))
     (and done (values fd path))))
 
 (defun write-in-place (rope target existing &key mappings (backup t) (sync t) whole cancel progress nofollow mode)
@@ -1672,8 +1952,9 @@ the file itself is touched. Returns :DONE, or :STOPPED."
       (return-from write-in-place :stopped))
     (flet ((drop-backup ()
              (when backup-fd
-               (ignore-errors (sb-posix:close backup-fd))
-               (ignore-errors (sb-posix:unlink backup-path))
+               (tuatara.runtime:ignoring-errors-reported ("closing the backup of ~a" target) (sb-posix:close backup-fd))
+               (tuatara.runtime:ignoring-errors-reported ("taking away the backup ~a" backup-path)
+                 (sb-posix:unlink backup-path))
                (setf backup-fd nil))))
       ;; the last moment a stop leaves the file as it was
       (when (and cancel (car cancel))
@@ -1686,7 +1967,7 @@ the file itself is touched. Returns :DONE, or :STOPPED."
               (sb-posix:close fd))))
         ;; they read the backup now: a lease on the file would only hold up this write
         (give-up-leases (lambda (lease) (member (lease-target lease) mappings))))
-      (let ((fd (handler-case (sb-posix:open (native target)
+      (let* ((fd (handler-case (sb-posix:open (native target)
                                              (logior (cond ((not existing) (logior sb-posix:o-wronly sb-posix:o-creat sb-posix:o-excl))
                                                            (backup sb-posix:o-wronly)
                                                            (t (logior sb-posix:o-wronly sb-posix:o-trunc)))
@@ -1695,23 +1976,38 @@ the file itself is touched. Returns :DONE, or :STOPPED."
                   (sb-posix:syscall-error (e)
                     ;; nothing was written: the backup is not needed
                     (drop-backup)
-                    (fail "open for writing" target (sb-posix:syscall-errno e))))))
+                    (fail "open for writing" target (sb-posix:syscall-errno e)))))
+             (made (and (not existing) (tuatara.runtime:ignoring-errors-reported ("examining ~a" target)
+                                         (fd-stamp fd target)))))
         (handler-case
-            (unwind-protect
-                 (progn
-                   (if whole
-                       (write-octets fd (tuatara.text:rope-octets rope) :path target)
-                       (write-rope fd rope :path target :progress progress))
-                   (when (and existing backup)
-                     (handler-case (sb-posix:ftruncate fd (tuatara.text:rope-bytes rope))
-                       (sb-posix:syscall-error (e) (fail "shorten" target (sb-posix:syscall-errno e)))))
-                   (when mode
-                     (sb-posix:fchmod fd (funcall mode (logand (stamp-mode (fd-stamp fd target)) #o7777))))
-                   (when sync (flush-fd fd target))
-                   (when progress (funcall progress (tuatara.text:rope-bytes rope) (tuatara.text:rope-bytes rope))))
-              (sb-posix:close fd))
+            (tuatara.runtime:reporting-errors ("writing ~a" target)
+              (unwind-protect
+                   (progn
+                     ;; where the file opened really is, whatever names led to it meanwhile
+                     (check-writing target "write" :fd fd)
+                     (if whole
+                         (write-octets fd (tuatara.text:rope-octets rope) :path target)
+                         (write-rope fd rope :path target :progress progress))
+                     (when (and existing backup)
+                       (handler-case (sb-posix:ftruncate fd (tuatara.text:rope-bytes rope))
+                         (sb-posix:syscall-error (e) (fail "shorten" target (sb-posix:syscall-errno e)))))
+                     (when mode
+                       (sb-posix:fchmod fd (funcall mode (logand (stamp-mode (fd-stamp fd target)) #o7777))))
+                     (when sync (flush-fd fd target))
+                     (when progress (funcall progress (tuatara.text:rope-bytes rope) (tuatara.text:rope-bytes rope))))
+                (sb-posix:close fd)))
+          (writing-refused (e)
+            (drop-backup)
+            ;; the file made here for this write, empty, is not left behind: that very file alone
+            (unless existing
+              (let ((there (path-stamp target :follow nil :failure nil)))
+                (when (and made there (= (stamp-dev made) (stamp-dev there)) (= (stamp-ino made) (stamp-ino there)))
+                  (tuatara.runtime:ignoring-errors-reported ("taking away ~a" target)
+                    (sb-posix:unlink (native target))))))
+            (error e))
           (error (e)
-            (when backup-fd (ignore-errors (sb-posix:close backup-fd)))
+            (when backup-fd (tuatara.runtime:ignoring-errors-reported ("closing the backup of ~a" target)
+                              (sb-posix:close backup-fd)))
             (error 'file-system-error :operation "write" :path target
                                       :reason (format nil "~a~@[; the old content is kept in ~a~]"
                                                       (if (typep e 'file-system-error) (file-system-error-reason e) e)
@@ -1723,17 +2019,29 @@ the file itself is touched. Returns :DONE, or :STOPPED."
   "Save ROPE as the file at PATH (this file's header). EXPECTED is the STAMP the
 buffer last read or wrote, NIL for a file that was not there, or :ANY to skip
 the check; a file changed since signals FILE-CHANGED-ON-DISK (one deleted since
-is simply written again). MAPPINGS are those still reading PATH's octets, moved
+is simply written again), after a save in place of it cut short is put right
+\(RECOVER-BEFORE-SAVING). MAPPINGS are those still reading PATH's octets, moved
 to a copy before any write in place. With FOLLOW-LINKS NIL, PATH itself is
 written: a symbolic link there, found first or put there while the file is
 written, is refused, never followed. MODE, a function of the permissions the
 file would have (a number, as #o644), gives those it gets instead. Returns the
-new stamp and the file written (a symlink's target), or :STOPPED when CANCEL
-stopped it with the file untouched."
+new stamp, the file written (a symlink's target), and true when only the
+changes were written, in place (WRITE-CHANGES-IN-PLACE), MAPPINGS still
+reading the file where it is unchanged; or :STOPPED when CANCEL stopped it
+with the file untouched. Refused (WRITING-REFUSED) where nothing
+may be written, looked at again on the file opened when it is written in
+place. While some place is refused (WRITING-REFUSED-ANYWHERE-P), a file with
+other names is never written in place, for one of them may be in such a
+place: it is saved as a file of its own, its other names keeping what they
+held, and that is told (TELL-WRITING)."
   (let* ((target (if follow-links (resolve-links path) (expand-path path)))
-         (existing (path-stamp target :follow follow-links))
+         (existing (let ((stamp (progn (check-writing target "save")
+                                       (path-stamp target :follow follow-links))))
+                     ;; a save in place cut short is put right first, so that the file is the one last read
+                     (or (recover-before-saving target stamp) stamp)))
          (directory (parent-path target))
-         (class (directory-class directory)))
+         (class (directory-class directory))
+         (in-place nil))
     ;; a pseudo file changes as it is read: there is nothing to guard
     (unless (or (eq expected :any) (eq class :pseudo) (null existing)
                 (and expected (same-content-p expected existing)))
@@ -1743,41 +2051,63 @@ stopped it with the file untouched."
                                 :reason (format nil "it is ~a" (kind-words (stamp-kind existing)))))
     (unless (path-stamp directory)
       (error 'file-system-error :operation "save" :path target :reason "its directory does not exist"))
-    (let ((result
-            (cond ((eq class :pseudo)
-                   (write-in-place rope target existing :backup nil :sync nil :whole t
-                                                        :nofollow (not follow-links) :mode mode))
-                  ((or (and existing (> (stamp-nlink existing) 1))
-                       (and existing (not (can-give-owner-p existing)))
-                       (not (writable-p directory)))
-                   (write-in-place rope target existing :mappings mappings :cancel cancel :progress progress
-                                                        :nofollow (not follow-links) :mode mode))
-                  (t (let ((r (write-by-rename rope target existing :cancel cancel :progress progress
-                                                                    :nofollow (not follow-links) :mode mode)))
-                       (if (eq r :refused)
-                           (write-in-place rope target existing :mappings mappings :cancel cancel :progress progress
-                                                                :nofollow (not follow-links) :mode mode)
-                           r))))))
+    (let* ((names (and existing (stamp-nlink existing)))
+           ;; another name of it may be evidence: written as a file of its own, never in place
+           (apart (and names (> names 1) (not (eq class :pseudo)) (writing-refused-anywhere-p)))
+           (result
+             (cond ((eq class :pseudo)
+                    (write-in-place rope target existing :backup nil :sync nil :whole t
+                                                         :nofollow (not follow-links) :mode mode))
+                   ((and (not apart)
+                         (or (and existing (> (stamp-nlink existing) 1))
+                             (and existing (not (can-give-owner-p existing)))
+                             (not (writable-p directory))))
+                    (write-in-place rope target existing :mappings mappings :cancel cancel :progress progress
+                                                         :nofollow (not follow-links) :mode mode))
+                   (t (when (and apart (not (writable-p directory)))
+                        (error 'file-system-error :operation "save" :path target
+                                                  :reason (format nil "it has ~d names, so it is saved as a file of its own beside them, and ~a may not be written in"
+                                                                  names (native directory))))
+                      (let* ((plan (and *save-in-place* mappings existing (not apart) (not mode) (eq class :local)
+                                        (not (shares-blocks-p directory))
+                                        (in-place-plan rope existing mappings)))
+                             (r (or (and plan
+                                         (setf in-place (write-changes-in-place rope target existing plan
+                                                                                :mappings mappings :cancel cancel
+                                                                                :progress progress)))
+                                    (write-by-rename rope target existing :cancel cancel :progress progress
+                                                                          :nofollow (not follow-links) :mode mode))))
+                        (cond ((and (eq r :refused) apart)
+                               (error 'writing-refused :operation "save" :path target
+                                                       :reason (format nil "it has ~d names, one may be in an evidence folder, and it cannot be saved as a file of its own here" names)))
+                              ((eq r :refused)
+                               (write-in-place rope target existing :mappings mappings :cancel cancel :progress progress
+                                                                    :nofollow (not follow-links) :mode mode))
+                              (t (when (and apart (eq r :done))
+                                   (tell-writing (format nil "~a had ~d names: saved as a file of its own, the others keep what they held, as one of them may be evidence"
+                                                         target names)))
+                                 r)))))))
       (if (eq result :stopped)
           :stopped
-          (values (path-stamp target :follow follow-links) target)))))
+          (values (path-stamp target :follow follow-links) target (eq in-place :done))))))
 
 (defun protected-mappings (buffer)
   "The mappings of BUFFER that read its file's own octets, which a write in place must move first."
   (let ((mapping (tuatara.buffer:buffer-mapping buffer)))
     (and mapping (member (file-isolation buffer) '(:direct :pending :leased)) (list mapping))))
 
-(defun record-save (buffer path stamp content rope)
+(defun record-save (buffer path stamp content rope &optional in-place)
   "Note that BUFFER's text of content number CONTENT, ROPE, is saved as PATH,
 now at STAMP. A buffer that read its old file directly no longer does (the old
 file has no name now, or the buffer reads the backup), so it counts as a
-snapshot."
+snapshot; unless only the changes were written, IN-PLACE: it then reads the
+file where nothing changed, kept as before."
   (setf (tuatara.buffer:buffer-file buffer) path
-        (tuatara.buffer:buffer-local buffer :file-stamp) stamp
+        (buffer-file-stamp buffer) stamp
         (tuatara.buffer:buffer-local buffer :disk-state) nil)
   (note-file-tail buffer rope)
   (tuatara.buffer:buffer-mark-saved buffer content)
-  (when (member (file-isolation buffer) '(:direct :pending :leased))
+  (when (and (not in-place) (member (file-isolation buffer) '(:direct :pending :leased)))
     (stop-snapshots-of buffer)
     (give-up-leases (lambda (lease) (eq (lease-buffer lease) buffer)))
     (setf (tuatara.buffer:buffer-local buffer :file-isolation) :snapshot)))
@@ -1785,9 +2115,9 @@ snapshot."
 (defun check-savable (buffer path)
   "Signal an error unless BUFFER can be saved as PATH: it has a file or PATH,
 and its text is still what was read (not stale)."
-  (unless path (error "Buffer ~a has no file to save to." (tuatara.buffer:buffer-name buffer)))
+  (unless path (refuse "Buffer ~a has no file to save to." (tuatara.buffer:buffer-name buffer)))
   (when (eq (file-disk-state buffer) :stale)
-    (error "Buffer ~a cannot be saved: its file was rewritten on disk while the buffer was shown from it, ~
+    (refuse "Buffer ~a cannot be saved: its file was rewritten on disk while the buffer was shown from it, ~
 so its text is no longer what was read. Revert it to read the file again."
            (tuatara.buffer:buffer-name buffer))))
 
@@ -1796,19 +2126,17 @@ so its text is no longer what was read. Revert it to read the file again."
 buffer read or wrote, or :ANY when FORCE or when PATH is another file."
   (if (or force (not (equal path (tuatara.buffer:buffer-file buffer))))
       :any
-      (tuatara.buffer:buffer-local buffer :file-stamp)))
+      (buffer-file-stamp buffer)))
 
-(defvar *save-transform-function* nil
-  "A function of a buffer and the path it is being saved as, called on the
-editor's thread as the save begins, returning NIL to write its text as it is,
-or a function of its text (a rope) returning what is written instead (octets
-or a rope), called on the thread that writes: an encrypted file's text
-encrypted before anything touches the disk. It may signal an error to refuse
-the save.")
-
-(defun save-transform (buffer path)
-  "The transform of BUFFER's text for its save as PATH (*SAVE-TRANSFORM-FUNCTION*), or NIL."
-  (and *save-transform-function* (funcall *save-transform-function* buffer path)))
+(defgeneric host-save-transform (host buffer path)
+  (:documentation "The transform of BUFFER's text for its save as PATH, asked on the editor's
+thread as the save begins: NIL to write its text as it is, or a function of its
+text (a rope) returning what is written instead (octets or a rope), called on
+the thread that writes: an encrypted file's text encrypted before anything
+touches the disk. It may signal an error to refuse the save.")
+  (:method ((host tuatara.runtime:host) buffer path)
+    (declare (ignore buffer path))
+    nil))
 
 (defun transformed-text (transform rope)
   "ROPE as TRANSFORM has it written, a rope; ROPE itself without TRANSFORM."
@@ -1825,10 +2153,11 @@ unless FORCE. Returns the file written."
   (let* ((path (expand-path path))
          (version (tuatara.buffer:buffer-version buffer))
          (content (tuatara.buffer:buffer-content-number buffer))
-         (written (transformed-text (save-transform buffer path) (tuatara.text:version-rope version))))
-    (multiple-value-bind (stamp target)
+         (written (transformed-text (host-save-transform tuatara.runtime:*host* buffer path)
+                                    (tuatara.text:version-rope version))))
+    (multiple-value-bind (stamp target in-place)
         (write-text-file written path :expected (save-expected buffer path force) :mappings (protected-mappings buffer))
-      (record-save buffer path stamp content written)
+      (record-save buffer path stamp content written in-place)
       target)))
 
 ;;; Saving in the background
@@ -1837,8 +2166,9 @@ unless FORCE. Returns the file written."
 (defstruct (save-job (:include tuatara.runtime:job) (:constructor %make-save-job) (:copier nil))
   "A save of BUFFER's text at VERSION (of content number CONTENT) as PATH
 running in the background, a job (TUATARA.RUNTIME:JOB): DONE of TOTAL octets
-written; STAMP and TARGET, the file written, once done."
-  path version content (done 0) (total 0) stamp target written)
+written; STAMP and TARGET, the file written, once done, and IN-PLACE when
+only the changes were written."
+  path version content (done 0) (total 0) stamp target written in-place)
 
 (setf (documentation 'save-job-p 'function) "True when OBJECT is a SAVE-JOB."
       (documentation 'save-job-buffer 'function) "The buffer a save job saves."
@@ -1895,7 +2225,8 @@ file on disk is then the editor's own doing."
   "A save done marks its buffer saved as of the text it wrote."
   (when (eq (save-job-status job) :done)
     (record-save (save-job-buffer job) (save-job-path job) (save-job-stamp job) (save-job-content job)
-                 (or (save-job-written job) (tuatara.text:version-rope (save-job-version job))))))
+                 (or (save-job-written job) (tuatara.text:version-rope (save-job-version job)))
+                 (save-job-in-place job))))
 
 (defun start-save (buffer &key (path (tuatara.buffer:buffer-file buffer)) force)
   "Save BUFFER as PATH in the background: its text as it is now is written while
@@ -1903,15 +2234,16 @@ the buffer stays usable, edits included. Checks the file on disk first as
 SAVE-BUFFER-FILE does. Returns the job; FINISH-SAVES takes it in."
   (check-savable buffer path)
   (when (save-of buffer)
-    (error "Buffer ~a is already being saved." (tuatara.buffer:buffer-name buffer)))
+    (refuse "Buffer ~a is already being saved." (tuatara.buffer:buffer-name buffer)))
   (let* ((path (expand-path path))
          (expected (save-expected buffer path force)))
     (unless (or (eq expected :any) (eq (tuatara.buffer:buffer-local buffer :file-class) :pseudo))
-      (let ((existing (ignore-errors (path-stamp (resolve-links path)))))
+      (let ((existing (tuatara.runtime:ignoring-errors-reported ("examining ~a" path)
+                        (path-stamp (resolve-links path)))))
         (unless (or (null existing) (and expected (same-content-p expected existing)))
           (error 'file-changed-on-disk :path path))))
     (let* ((version (tuatara.buffer:buffer-version buffer))
-           (transform (save-transform buffer path))
+           (transform (host-save-transform tuatara.runtime:*host* buffer path))
            (job (%make-save-job :buffer buffer :path path :version version
                                 :content (tuatara.buffer:buffer-content-number buffer)
                                 :total (tuatara.text:rope-bytes (tuatara.text:version-rope version))))
@@ -1919,14 +2251,15 @@ SAVE-BUFFER-FILE does. Returns the job; FINISH-SAVES takes it in."
       (tuatara.runtime:start-job-thread
        job (lambda (job)
              (setf (save-job-written job) (transformed-text transform (tuatara.text:version-rope version)))
-             (multiple-value-bind (stamp target)
+             (multiple-value-bind (stamp target in-place)
                  (write-text-file (save-job-written job) path :expected :any :mappings mappings
                                   :cancel (save-job-cancel job)
                                   :progress (lambda (done total) (declare (ignore total))
                                               (setf (save-job-done job) done)))
                (if (eq stamp :stopped)
                    (setf (save-job-status job) :stopped)
-                   (setf (save-job-stamp job) stamp (save-job-target job) target (save-job-status job) :done))))
+                   (setf (save-job-stamp job) stamp (save-job-target job) target (save-job-in-place job) in-place
+                         (save-job-status job) :done))))
        :name "tuatara save")
       job)))
 
@@ -1988,24 +2321,31 @@ BUFFER-SWAP-TEXT maps positions with, forward and back; by default a position
 stays, cut to the new text's size. *BEFORE-EDIT-FUNCTIONS* see the whole text
 changed before the file is read, and may refuse it. A buffer whose text is
 not its file's octets (an encrypted file's, decrypted) is read again by its
-own :REREAD function instead. Returns BUFFER."
+own :REREAD function instead. A narrowed buffer is widened first. Returns
+BUFFER."
+  ;; the file's text comes back whole, shown whole
+  (tuatara.buffer:widen-buffer buffer)
   (let ((reread (tuatara.buffer:buffer-local buffer :reread)))
     (when reread
       (funcall reread buffer)
       (return-from revert-buffer-file buffer)))
   (let* ((path (or (tuatara.buffer:buffer-file buffer)
-                   (error "Buffer ~a visits no file." (tuatara.buffer:buffer-name buffer))))
+                   (refuse "Buffer ~a visits no file." (tuatara.buffer:buffer-name buffer))))
          (stale (eq (file-disk-state buffer) :stale))
          (safe (safe-visit-p buffer))
          (read-only (if stale
                         (tuatara.buffer:buffer-local buffer :read-only-before-stale)
-                        (tuatara.buffer:buffer-local buffer :read-only)))
+                        (tuatara.buffer:buffer-read-only-p buffer)))
          (old-size (tuatara.buffer:buffer-size buffer)))
     (when (save-of buffer)
-      (error "Buffer ~a is being saved; revert it once the save is done." (tuatara.buffer:buffer-name buffer)))
+      (refuse "Buffer ~a is being saved; revert it once the save is done." (tuatara.buffer:buffer-name buffer)))
     (tuatara.buffer:run-before-edit buffer :all)
     (stop-snapshots-of buffer)
-    (multiple-value-bind (rope mapping stamp isolation guard class) (open-file-text path :safe safe)
+    (multiple-value-bind (rope mapping stamp isolation guard class reason)
+        (open-file-text path :safe safe)
+      (when reason
+        (setf safe t
+              (safe-visit-p buffer) reason))
       (let ((new-size (tuatara.text:rope-bytes rope)) (done nil))
         ;; the file's own text coming back: a read-only buffer takes it too
         (tuatara.buffer:with-read-only-lifted (buffer :after (if done (or safe read-only) (or stale read-only)))
@@ -2020,10 +2360,10 @@ own :REREAD function instead. Returns BUFFER."
         (when stale
           (setf (tuatara.buffer:buffer-undo-stack buffer) '() (tuatara.buffer:buffer-redo-stack buffer) '()))
         (setf (tuatara.buffer:buffer-mapping buffer) mapping
-              (tuatara.buffer:buffer-local buffer :file-stamp) stamp
+              (buffer-file-stamp buffer) stamp
               (tuatara.buffer:buffer-local buffer :file-isolation) isolation
               (tuatara.buffer:buffer-local buffer :file-class) class
-              (tuatara.buffer:buffer-local buffer :line-ending) (tuatara.buffer:detect-line-ending rope)
+              (tuatara.buffer:buffer-line-ending buffer) (tuatara.buffer:detect-line-ending rope)
               (tuatara.buffer:buffer-local buffer :disk-state) nil)
         (note-file-tail buffer rope)
         (tuatara.buffer:buffer-mark-saved buffer)
@@ -2042,7 +2382,9 @@ one after another with nothing done between undo together."
          (at-end (= (tuatara.buffer:buffer-point buffer) size))
          (unmodified (not (tuatara.buffer:buffer-modified-p buffer)))
          (stale (eq (file-disk-state buffer) :stale))
-         (read-only (tuatara.buffer:buffer-local buffer (if stale :read-only-before-stale :read-only)))
+         (read-only (if stale
+                        (tuatara.buffer:buffer-local buffer :read-only-before-stale)
+                        (tuatara.buffer:buffer-read-only-p buffer)))
          (group (eql (tuatara.buffer:buffer-content-number buffer) (tuatara.buffer:buffer-local buffer :appended))))
     (tuatara.buffer:with-read-only-lifted (buffer :after read-only)
       (tuatara.buffer:buffer-insert buffer size added :group group))
@@ -2050,7 +2392,7 @@ one after another with nothing done between undo together."
       (setf (tuatara.buffer:buffer-point buffer) (tuatara.buffer:buffer-size buffer)))
     (when unmodified (tuatara.buffer:buffer-mark-saved buffer))
     (setf (tuatara.buffer:buffer-local buffer :appended) (tuatara.buffer:buffer-content-number buffer)
-          (tuatara.buffer:buffer-local buffer :file-stamp) stamp
+          (buffer-file-stamp buffer) stamp
           (tuatara.buffer:buffer-local buffer :disk-state) nil
           (tuatara.buffer:buffer-local buffer :file-tail)
           (if (>= (length added) +tail-sample+)
@@ -2068,7 +2410,7 @@ buffer stays unmodified, and a buffer the growth made stale is itself again.
 Returns how many octets were added, or NIL, nothing done, when the file
 changed otherwise or grew by more than *MEMORY-READ-LIMIT* octets."
   (let ((path (tuatara.buffer:buffer-file buffer))
-        (recorded (tuatara.buffer:buffer-local buffer :file-stamp))
+        (recorded (buffer-file-stamp buffer))
         (tail (tuatara.buffer:buffer-local buffer :file-tail)))
     (when (and path recorded tail (not (saving-p buffer)) (not (tuatara.buffer:buffer-local buffer :reread)))
       (let ((fd (handler-case (open-for-reading path (safe-visit-p buffer) :accept '(:regular)) (file-system-error () nil))))

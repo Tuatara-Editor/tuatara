@@ -111,7 +111,7 @@ the editor TUATARA.COMMAND:*EDITOR* is bound to."
                   (loop for (what name) in (docstring-references doc)
                         do (unless (ecase what
                                      (:command (tuatara.command:command-symbol name))
-                                     (:keymap (tuatara.command:keymap-called name))
+                                     (:keymap (tuatara.command:host-keymap-named tuatara.runtime:*host* name))
                                      (:keys (tuatara.command:valid-key-text-p name)))
                              (push (format nil "~s names ~(~a~) ~s" symbol what name) bad)))))))))
       ;; and the faces' documentation
@@ -121,7 +121,7 @@ the editor TUATARA.COMMAND:*EDITOR* is bound to."
                      (loop for (what reference) in (docstring-references doc)
                            do (unless (ecase what
                                         (:command (tuatara.command:command-symbol reference))
-                                        (:keymap (tuatara.command:keymap-called reference))
+                                        (:keymap (tuatara.command:host-keymap-named tuatara.runtime:*host* reference))
                                         (:keys (tuatara.command:valid-key-text-p reference)))
                                 (push (format nil "face ~s names ~(~a~) ~s" name what reference) bad))))))
                tuatara.display:*faces*)
@@ -168,7 +168,7 @@ the editor TUATARA.COMMAND:*EDITOR* is bound to."
            (keys (mapcar (lambda (span) (tuatara.text:octets-string octets :start (car span) :end (cdr span))) spans))
            (names (cl-ppcre:all-matches-as-strings "\\\\\\[[a-z-]+\\]" tuatara.defaults::*tuatara-tutor-text*)))
       (dolist (name (remove-duplicates names :test #'string=))
-        (let* ((command (find-symbol (string-upcase (subseq name 2 (1- (length name)))) :tuatara.defaults))
+        (let* ((command (tuatara.command:command-symbol (subseq name 2 (1- (length name)))))
                (key (tuatara.command:command-key command (list tuatara.defaults:*tuatara-normal-keymap*))))
           (when key
             (true (member key keys :test #'string=) "~a" name)))))))
@@ -240,3 +240,13 @@ the editor TUATARA.COMMAND:*EDITOR* is bound to."
     (let ((table (tuatara.command::where-is-table (list map))))
       (tuatara.command:make-keymap :name "another")
       (is eq table (tuatara.command::where-is-table (list map))))))
+
+(define-test (keys-in-text recorded-keys-help-names-the-quit-key)
+  ;; the help of recording and playing keys names the key that really gives them up, never a
+  ;; command no key runs
+  (with-editor-session (editor)
+    (dolist (command '(tuatara.defaults::start-recording-keys tuatara.defaults::play-recorded-keys))
+      (let ((help (tuatara.command:substitute-command-keys (documentation command 'function))))
+        (false (search "M-x keyboard-quit" help) "~(~a~)" command)
+        (true (search "the quit key" help :test #'char-equal) "~(~a~)" command)
+        (true (search "C-g" help) "~(~a~)" command)))))

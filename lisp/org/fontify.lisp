@@ -1,13 +1,15 @@
 ;;;; lisp/org/fontify.lisp --- Org's colours: a buffer's parse kept up, its shown part coloured.
 ;;;; Copyright (C) 2026 Michael A Jones.  GPL-3.0-or-later; see LICENSE.
 ;;;;
-;;;; An Org buffer is parsed (syntax.lisp) again after each change, at once
-;;;; while it is small and in the background when it is large, the parse
-;;;; before kept meanwhile; what the window shows is coloured from it as
-;;;; Emacs's Org colours it: headlines by level, TODO keywords, priorities and
-;;;; tags, the keyword lines, blocks, drawers, planning, tables, lists'
-;;;; checkboxes and terms, and in text, emphasis, code, links, timestamps,
-;;;; footnotes, macros and the rest.
+;;;; What the window shows of an Org buffer is coloured from the parses of
+;;;; its parts in sight (parts.lisp), each parsed again after a change within
+;;;; it, at once while it is small and in the background when it is large;
+;;;; commands that work on the whole buffer take its whole parse, made of
+;;;; the parts' parses when they ask for it. The colours are those Emacs's
+;;;; Org gives: headlines by level, TODO keywords, priorities and tags, the
+;;;; keyword lines, blocks, drawers, planning, tables, lists' checkboxes and
+;;;; terms, and in text, emphasis, code, links, timestamps, footnotes,
+;;;; macros and the rest.
 
 (in-package #:tuatara.defaults)
 
@@ -45,19 +47,19 @@ Complexity: O(the octets read)."
                      for octet = (aref window i)
                      do (ecase state
                           (:start (case octet
-                                    ((10 32 9))
+                                    ((10 13 32 9))
                                     (35 (setf state :keyword matched 1))
                                     (t (setf state :skip))))
-                          (:keyword (cond ((= octet 10) (setf state :start))
+                          (:keyword (cond ((member octet '(10 13)) (setf state :start))
                                           ((char-equal (code-char octet) (char keyword matched))
                                            (when (= (incf matched) (length keyword))
                                              (setf state :value
                                                    value (make-array 16 :element-type '(unsigned-byte 8) :adjustable t :fill-pointer 0))))
                                           (t (setf state :skip))))
-                          (:value (if (= octet 10)
+                          (:value (if (member octet '(10 13))
                                       (progn (take) (setf state :start))
                                       (vector-push-extend octet value)))
-                          (:skip (when (= octet 10) (setf state :start))))))
+                          (:skip (when (member octet '(10 13)) (setf state :start))))))
       (when (eq state :value) (take)))
     words))
 
@@ -125,41 +127,14 @@ planning line and properties, outside any drawer.")
   "What Org notes when a task that repeats is done: :TIME the change of state
 and LAST_REPEAT with the time; NIL nothing.")
 
-(defvar *org-current-text* ""
-  "The text of the Org buffer a command works on, as parsed.")
-
 ;;; The parse of a buffer, kept up
-
-(defparameter *org-parse-at-once* (* 8 1024)
-  "The characters an Org buffer may have to be parsed again at once, after a
-change, before its colours are shown; a larger one is parsed in the
-background, waited for at most *ORG-PARSE-WAIT*, the parse before kept
-meanwhile.")
-
-(defparameter *org-parse-wait* 1/50
-  "The seconds the colouring of an Org buffer larger than *ORG-PARSE-AT-ONCE*
-waits at most, once after each change, for its parse in the background, so
-that what is typed rarely shows in the colours of the parse before.")
-
-(defstruct (org-state (:constructor make-org-state ()) (:copier nil))
-  "What an Org buffer's parse is: TREE, the parse of TEXT, the buffer's text
-at VERSION; RESULT, the latest parse a worker made, (TREE TEXT VERSION), put
-there in one step; WORKER, the thread parsing in the background, one at a
-time, and WANTED, the (VERSION TEXT . CRLF) it parses next, the latest asked for,
-guarded by LOCK, DONE woken as each parse is put in RESULT, WAITED the last
-version colouring waited for; and HEADLINES, where its headlines begin in octets and their
-levels, a vector of (BEGIN . LEVEL) in order, made of the parse
-HEADLINES-TREE. RETURNS, where TEXT, the buffer's text with the carriage
-returns before its newlines left out, lost one (ORG-STRIP-RETURNS).
-PARSE-SECONDS, how long the worker's last parse took."
-  (version -1) tree text returns result worker wanted (lock (sb-thread:make-mutex :name "org parse"))
-  (done (sb-thread:make-waitqueue)) waited headlines headlines-tree parse-seconds)
 
 (defun org-strip-returns (string)
   "STRING with the carriage return before each newline left out, as a note
-whose lines end with CR LF is read, and where: two values, the text and the
-places in it of the newlines that lost one (a vector in order), or NIL when
-none did."
+whose lines end with carriage return and line feed (CR LF) is read, and each
+carriage return that ends a line alone read as a newline: two values, the text
+and the places in it of the newlines that lost one (a vector in order), or NIL
+when none did."
   (if (not (find #\Return string))
       (values string nil)
       (let ((out (make-string (length string)))
@@ -167,17 +142,38 @@ none did."
             (j 0) (n (length string)))
         (dotimes (i n)
           (let ((c (char string i)))
-            (if (and (char= c #\Return) (< (1+ i) n) (char= (char string (1+ i)) #\Newline))
-                (vector-push-extend j returns)
-                (progn (setf (char out j) c) (incf j)))))
+            (cond ((and (char= c #\Return) (< (1+ i) n) (char= (char string (1+ i)) #\Newline))
+                   (vector-push-extend j returns))
+                  ((char= c #\Return) (setf (char out j) #\Newline) (incf j))
+                  (t (setf (char out j) c) (incf j)))))
         (values (subseq out 0 j)
                 (and (plusp (length returns)) (coerce returns '(simple-array fixnum (*))))))))
+
+(defun lone-returns-as-newlines (string)
+  "STRING with each carriage return that no newline follows, which ends a
+line, made a newline: as long as STRING, every character where it was."
+  (if (not (find #\Return string))
+      string
+      (let ((out (copy-seq string)))
+        (dotimes (i (length out) out)
+          (when (and (char= (char out i) #\Return)
+                     (not (and (< (1+ i) (length out)) (char= (char out (1+ i)) #\Newline))))
+            (setf (char out i) #\Newline))))))
+
+(defun org-text-as-read (raw crlf)
+  "RAW, text of an Org buffer, as Org reads it, two values: the text and where
+it lost a carriage return before a newline (ORG-STRIP-RETURNS), for carriage
+return and line feed (CRLF) true, a buffer whose lines end with both; else a
+carriage return that ends a line alone read as a newline
+(LONE-RETURNS-AS-NEWLINES)."
+  (if crlf (org-strip-returns raw) (values (lone-returns-as-newlines raw) nil)))
 
 (defun org-buffer-text (buffer &key (start 0) (end (tuatara.buffer:buffer-size buffer)))
   "The text Org reads of BUFFER from octet START below END, all of it unless
 they are given: in a buffer whose lines end with a carriage return and a
-newline, each return before a newline left out."
-  (let ((string (tuatara.buffer:buffer-string buffer :start start :end end)))
+newline, each return before a newline left out; a carriage return that ends
+a line alone read as a newline."
+  (let ((string (lone-returns-as-newlines (tuatara.buffer:buffer-string buffer :start start :end end))))
     (if (buffer-crlf-p buffer) (lf-newlines string) string)))
 
 (defun org-line-head (buffer position &optional (octets 512))
@@ -197,15 +193,16 @@ a million characters whole."
 checkbox: - [ ], 1. [X], + [-]."
   (and (cl-ppcre:scan "^(?:[ \\t]*(?:[-+]|[0-9]+[.)])|[ \\t]+\\*)[ \\t]+\\[[ X-]\\]" line) t))
 
-(defun org-returns-in-rope (rope)
-  "Where the text Org reads of ROPE, the carriage returns before its newlines
-left out, lost one: as ORG-STRIP-RETURNS gives them, found in one pass over
-the octets, no copy of the text made; NIL when none did."
+(defun org-returns-in-rope (rope &key (start 0) (end (tuatara.text:rope-bytes rope)))
+  "Where the text Org reads of ROPE from the octet START below END (all of it
+unless they are given), the carriage returns before its newlines left out,
+lost one: as ORG-STRIP-RETURNS gives them, found in one pass over the
+octets, no copy of the text made; NIL when none did."
   (let ((returns (make-array 64 :element-type 'fixnum :adjustable t :fill-pointer 0))
-        (chars 0) (bytes (tuatara.text:rope-bytes rope))
+        (chars 0)
         (pending nil))                  ; a carriage return ending a chunk, its newline yet to come
-    (loop for chunk from 0 below bytes by 1048576
-          do (let ((octets (tuatara.text:rope-octets rope :start chunk :end (min bytes (+ chunk 1048576)))))
+    (loop for chunk from start below end by 1048576
+          do (let ((octets (tuatara.text:rope-octets rope :start chunk :end (min end (+ chunk 1048576)))))
                (declare (type (simple-array (unsigned-byte 8) (*)) octets))
                (loop for octet across octets
                      for i from 0
@@ -223,8 +220,8 @@ the octets, no copy of the text made; NIL when none did."
 (defun org-returns-of (buffer)
   "Where the text Org reads of BUFFER lost a carriage return before a newline
 (ORG-STRIP-RETURNS): its parse's, while that is of the text as it is now,
-else worked out again for the text now, once for each change; NIL for a
-buffer whose lines end with a newline alone."
+else put together from its parts' (ORG-PARTS-RETURNS), once for each
+change; NIL for a buffer whose lines end with a newline alone."
   (let ((state (org-buffer-state buffer))
         (version (tuatara.buffer:buffer-version buffer)))
     (cond ((not (buffer-crlf-p buffer)) nil)
@@ -232,7 +229,7 @@ buffer whose lines end with a newline alone."
           (t (let ((kept (tuatara.buffer:buffer-local buffer 'org-fresh-returns)))
                (if (and kept (eql (car kept) version))
                    (cdr kept)
-                   (let ((returns (org-returns-in-rope (tuatara.buffer:buffer-text buffer))))
+                   (let ((returns (org-parts-returns buffer)))
                      (setf (tuatara.buffer:buffer-local buffer 'org-fresh-returns) (cons version returns))
                      returns)))))))
 
@@ -242,18 +239,21 @@ buffer whose lines end with a newline alone."
     (setf lo (tuatara.runtime:bisect (mid lo hi) (< (aref returns mid) position)) hi lo)
     lo))
 
-(defun org-char->byte (buffer position &optional (returns (org-returns-of buffer)))
+(defun org-char->byte (buffer position returns &optional (base 0))
   "The octet of BUFFER where the character POSITION of the text Org reads of
 it is: the carriage returns it left out (RETURNS) counted back in, a position
-at a line's end standing before its CR LF."
+at a line's end standing before its carriage return and line feed (CR LF). For
+a text read from a part of BUFFER, BASE is the character of BUFFER the part
+begins at, RETURNS those the part's text left out."
   (tuatara.text:char->byte (tuatara.buffer:buffer-text buffer)
-                           (if returns (+ position (org-returns-before returns position)) position)))
+                           (+ base (if returns (+ position (org-returns-before returns position)) position))))
 
-(defun org-byte->char (buffer byte &optional (returns (org-returns-of buffer)))
+(defun org-byte->char (buffer byte returns &optional (base 0))
   "The character of the text Org reads of BUFFER at its octet BYTE: the
 carriage returns before it (RETURNS) left out, one itself taken as its
-newline."
-  (let ((char (tuatara.text:byte->char (tuatara.buffer:buffer-text buffer) byte)))
+newline. For a text read from a part of BUFFER, BASE is the character of
+BUFFER the part begins at, RETURNS those the part's text left out."
+  (let ((char (- (tuatara.text:byte->char (tuatara.buffer:buffer-text buffer) byte) base)))
     (if (null returns)
         char
         ;; the Ith return left out stood at the character (+ (aref returns i) i) of the buffer
@@ -261,30 +261,69 @@ newline."
           (setf lo (tuatara.runtime:bisect (mid lo hi) (< (+ (aref returns mid) mid) char)) hi lo)
           (- char lo)))))
 
-(setf (documentation 'org-state-p 'function) "True when OBJECT is an ORG-STATE.")
-
 (defun org-buffer-state (buffer)
   "BUFFER's ORG-STATE, made the first time."
   (or (tuatara.buffer:buffer-local buffer 'org-state)
       (setf (tuatara.buffer:buffer-local buffer 'org-state) (make-org-state))))
 
-(defun org-parse-worker (state frontend)
+(defun org-job-text (job)
+  "The text JOB, as ORG-WANT-PARSE asks for it, has parsed, as Org reads it:
+two values, the text and where it lost a carriage return before a newline
+\(ORG-STRIP-RETURNS)."
+  (destructuring-bind (version source crlf keywords &optional secret) job
+    (declare (ignore version keywords secret))
+    (if (org-snapshot-p source)
+        (org-snapshot-text source)
+        (let ((raw (if (stringp source)
+                       source
+                       (destructuring-bind (rope start end) source
+                         (tuatara.text:rope-string rope :start start :end end)))))
+          (org-text-as-read raw crlf)))))
+
+(defun org-unparsed (text returns)
+  "What stands for the parse of TEXT, which lost RETURNS (ORG-STRIP-RETURNS),
+when the parser cannot read it, as ORG-WORKER-PARSE gives a parse: TEXT read
+as holding nothing Org shows (ORG-EMPTY-TREE)."
+  (list (org-empty-tree (length text)) text returns nil))
+
+(defun org-worker-parse (job)
+  "Parse what JOB, as ORG-WANT-PARSE asks for it, holds: (TREE TEXT RETURNS
+PLACES), PLACES where the parts are in a whole buffer's parse (ORG-ASSEMBLE).
+For a text the parser cannot read, the text read as holding nothing
+\(ORG-UNPARSED), what went wrong said in the debug log and given as a
+second value; NIL for a text that cannot be read at all. The text of a
+buffer kept secret (its fifth, true) leaves only the kind of failure said."
+  (let ((source (second job))
+        (tuatara.runtime:*secret-at-hand* (or tuatara.runtime:*secret-at-hand* (fifth job))))
+    (handler-case
+        (if (org-snapshot-p source)
+            (multiple-value-list (org-assemble source))
+            (multiple-value-bind (text returns) (org-job-text job)
+              (list (org-parse text :todo-keywords (fourth job)) text returns nil)))
+      (error (condition)
+        (let ((failed (tuatara.runtime:failure-words condition)))
+          (tuatara.runtime:debug-report :parse "the Org text at version ~a was not parsed, shown plain until it changes: ~a"
+                                        (org-version-number (first job)) failed)
+          (values (ignoring-errors-reported ("reading the Org text to show it plain")
+                    (multiple-value-call #'org-unparsed (org-job-text job)))
+                  failed))))))
+
+(defun org-parse-worker (state editor)
   "Parse in the background what STATE wants, the latest asked for, again as
 long as something newer is asked for meanwhile; each parse put in STATE's
-RESULT in one step, the editor woken through FRONTEND."
+RESULT in one step, EDITOR, when given, woken for it."
   (unwind-protect
        (loop
          (let* ((job (sb-thread:with-mutex ((org-state-lock state)) (org-state-wanted state)))
-                (source (second job))
-                (raw (if (stringp source) source (ignore-errors (tuatara.text:rope-string source))))
-                (text raw) (returns nil)
-                (start (get-internal-real-time))
-                (tree (and raw (progn (when (cddr job) (multiple-value-setq (text returns) (org-strip-returns raw)))
-                                      (ignore-errors (org-parse text))))))
-           (setf (org-state-parse-seconds state) (tuatara.runtime:seconds-since start))
-           ;; the result put in whatever came of it: a text the parser cannot read is not asked for again and again
-           (setf (org-state-result state) (list tree text (car job) returns (and tree (org-src-language-names tree))))
-           (when (and tree frontend) (ignore-errors (tuatara.frontend:frontend-wake frontend)))
+                (start (get-internal-real-time)))
+           (multiple-value-bind (parse failed) (org-worker-parse job)
+             (setf (org-state-parse-seconds state) (tuatara.runtime:seconds-since start))
+             ;; the result put in whatever came of it: a text the parser cannot read is not asked for again and again
+             (destructuring-bind (&optional tree text returns places) parse
+               (setf (org-state-result state)
+                     (list tree text (first job) returns (and tree (org-src-language-names tree))
+                           (and places (cons (second job) places)) failed))
+               (when editor (wake-editor editor))))
            (sb-thread:with-mutex ((org-state-lock state))
              (sb-thread:condition-broadcast (org-state-done state))
              (when (eq job (org-state-wanted state))
@@ -296,24 +335,33 @@ RESULT in one step, the editor woken through FRONTEND."
       (when (eq (org-state-worker state) sb-thread:*current-thread*)
         (setf (org-state-worker state) nil)))))
 
-(defun org-want-parse (buffer state version)
-  "Have BUFFER's text at VERSION parsed in the background: the worker running
-takes it next, or one is started. A buffer of a file mapped from disk gives
-the worker a copy of its text, made when a worker starts, since its mapping
-may go with the buffer; another gives its text as it is, which never changes."
+(defun org-want-parse (buffer state version source &key todo-keywords)
+  "Have BUFFER's text at VERSION parsed in the background into STATE: SOURCE,
+a function of no arguments called when the job is made, gives what is
+parsed, an ORG-SNAPSHOT of its parts for the whole buffer (ORG-ASSEMBLE) or
+the octets (START . END) of a part, parsed with TODO-KEYWORDS. The worker
+running takes it next, or one is started. A buffer of a file mapped from
+disk gives the worker a copy of a part's text, made when a worker starts,
+since its mapping may go with the buffer; another gives its text as it is,
+which never changes."
   (let ((mapped (tuatara.buffer:buffer-mapping buffer)))
-    (sb-thread:with-mutex ((org-state-lock state))
-      (unless (eql (car (org-state-wanted state)) version)
-        (cond ((let ((worker (org-state-worker state))) (and worker (sb-thread:thread-alive-p worker)))
-               (unless mapped
-                 (setf (org-state-wanted state) (list* version (tuatara.buffer:buffer-text buffer) (buffer-crlf-p buffer)))))
-              (t
-               (setf (org-state-wanted state)
-                     (list* version (if mapped (tuatara.buffer:buffer-string buffer) (tuatara.buffer:buffer-text buffer))
-                            (buffer-crlf-p buffer))
-                     (org-state-worker state)
-                     (let ((frontend (and *editor* (editor-frontend *editor*))))
-                       (tuatara.runtime:make-guarded-thread (lambda () (org-parse-worker state frontend)) :name "tuatara org parse")))))))))
+    (flet ((job ()
+             (let ((what (funcall source)))
+               (list version
+                     (cond ((org-snapshot-p what) what)
+                           (mapped (tuatara.buffer:buffer-string buffer :start (car what) :end (cdr what)))
+                           (t (list (tuatara.buffer:buffer-text buffer) (car what) (cdr what))))
+                     (buffer-crlf-p buffer) todo-keywords (tuatara.runtime:secret-buffer-p buffer)))))
+      (sb-thread:with-mutex ((org-state-lock state))
+        (unless (eql (car (org-state-wanted state)) version)
+          (cond ((let ((worker (org-state-worker state))) (and worker (sb-thread:thread-alive-p worker)))
+                 (unless mapped
+                   (setf (org-state-wanted state) (job))))
+                (t
+                 (setf (org-state-wanted state) (job)
+                       (org-state-worker state)
+                       (let ((editor *editor*))
+                         (tuatara.runtime:make-guarded-thread (lambda () (org-parse-worker state editor)) :name "tuatara org parse"))))))))))
 
 (defun org-src-language-names (tree)
   "The languages the source blocks of TREE name, each once, as written."
@@ -328,7 +376,7 @@ may go with the buffer; another gives its text as it is, which never changes."
 as written) compiled in the background, those not compiled yet: each block's
 code is coloured as soon as it is shown, the note redrawn as each is ready."
   (dolist (name names)
-    (let ((language (ignore-errors (org-src-language name))))
+    (let ((language (ignoring-errors-reported ("finding the language ~a" name) (org-src-language name))))
       (when (and language (not (rules-ready-p language)))
         (warm-rules language)))))
 
@@ -340,11 +388,16 @@ code is coloured as soon as it is shown, the note redrawn as each is ready."
   "Take into STATE the parse its worker finished last, when it is newer than STATE's own."
   (let ((result (org-state-result state)))
     (when (and result (> (org-version-number (third result)) (org-version-number (org-state-version state))))
-      (destructuring-bind (tree text parsed returns names) result
+      (destructuring-bind (tree text parsed returns names made failed) result
         (setf (org-state-tree state) tree
               (org-state-text state) text
               (org-state-returns state) returns
-              (org-state-version state) parsed)
+              (org-state-version state) parsed
+              (org-state-failed state) failed)
+        (when made
+          (org-keep-whole-places (car made) tree (cdr made))
+          ;; the parts are let go of with it, once taken
+          (setf (nth 5 result) nil))
         (org-warm-src-languages names)))))
 
 (defun org-await-parse (state version)
@@ -364,35 +417,173 @@ colours coming with the parse."
                    (tuatara.runtime:wait-on (org-state-done state) (org-state-lock state) left))
               finally (return t))))))
 
-(defun org-buffer-tree (buffer)
-  "BUFFER's parse, as two values: the tree and the text it is of (characters,
-as the tree's positions count them, the carriage returns before newlines
-left out: ORG-CHAR->BYTE and ORG-BYTE->CHAR go between them and the
-buffer). Parsed again when BUFFER changed: at once while it is small
-(*ORG-PARSE-AT-ONCE*), else in the background, one parse at a time, the
-latest text first, waited for a moment (*ORG-PARSE-WAIT*) and the parse
-before returned until that one is done; NIL while there has been none."
+(defun org-buffer-parse (buffer)
+  "BUFFER's ORG-PARSE, of its text as it is now or a little before. Made of
+the parses of BUFFER's parts (ORG-ASSEMBLE), each part parsed again only
+after a change within it, when BUFFER changed: at once while it is small
+\(*ORG-PARSE-AT-ONCE*), else in the background, the latest text first,
+waited for a moment (*ORG-PARSE-WAIT*) and the parse before returned until
+that one is done; NIL while there has been none. A text the parser cannot
+read is read as holding nothing (ORG-UNPARSED) until it changes, what went
+wrong kept in the ORG-STATE's FAILED and said in the debug log. ORG-PARSE-NOW
+gives the parse of the text as it is now."
   (let ((state (org-buffer-state buffer))
         (version (tuatara.buffer:buffer-version buffer)))
     (org-take-parse state)
     (unless (eql version (org-state-version state))
-      (if (<= (tuatara.buffer:buffer-size buffer) *org-parse-at-once*)
-          (multiple-value-bind (text returns) (let ((string (tuatara.buffer:buffer-string buffer)))
-                                                (if (buffer-crlf-p buffer) (org-strip-returns string) string))
-            (setf (org-state-tree state) (org-parse text)
-                  (org-state-text state) text
-                  (org-state-returns state) returns
-                  (org-state-version state) version)
-            (org-warm-src-languages (org-src-language-names (org-state-tree state))))
-          (progn
-            (org-want-parse buffer state version)
-            (when (org-await-parse state version)
-              (org-take-parse state)))))
-    (values (org-state-tree state) (org-state-text state))))
+      (let ((parts (org-buffer-parts buffer)))
+        (if (<= (tuatara.buffer:buffer-size buffer) *org-parse-at-once*)
+            (let ((snapshot (org-parts-snapshot buffer parts)))
+              (multiple-value-bind (parse failed)
+                  (org-worker-parse (list version snapshot (buffer-crlf-p buffer) nil
+                                          (tuatara.runtime:secret-buffer-p buffer)))
+                (destructuring-bind (&optional tree text returns places) parse
+                  (setf (org-state-tree state) tree
+                        (org-state-text state) text
+                        (org-state-returns state) returns
+                        (org-state-version state) version
+                        (org-state-failed state) failed)
+                  (when tree
+                    (org-keep-whole-places snapshot tree places)
+                    (org-warm-src-languages (org-src-language-names tree))))))
+            (progn
+              (org-want-parse buffer state version (lambda () (org-parts-snapshot buffer parts)))
+              (when (org-await-parse state version)
+                (org-take-parse state))))))
+    (when (and (org-state-failed state) (null (org-state-tree state)))
+      ;; not even its text could be read where it was parsed: read as holding nothing, as it is now
+      (destructuring-bind (tree text returns places)
+          (multiple-value-call #'org-unparsed
+            (let ((raw (tuatara.buffer:buffer-string buffer)))
+              (org-text-as-read raw (buffer-crlf-p buffer))))
+        (declare (ignore places))
+        (setf (org-state-tree state) tree
+              (org-state-text state) text
+              (org-state-returns state) returns
+              (org-state-version state) version)))
+    (org-state-parse-of buffer state)))
 
 (defun org-parse-current-p (buffer)
   "True when BUFFER's parse is of its text as it is now."
   (eql (org-state-version (org-buffer-state buffer)) (tuatara.buffer:buffer-version buffer)))
+
+(defun org-parse-now (buffer)
+  "BUFFER's ORG-PARSE of its text as it is now, NIL when it has no Org
+structure: a small buffer parsed at once (*ORG-PARSE-AT-ONCE*); a large one
+whose parse is behind its text waited for while it is parsed in the
+background, the editor reading keys meanwhile (\\`C-g' gives the command up)."
+  (let ((state (org-buffer-state buffer))
+        (version (tuatara.buffer:buffer-version buffer)))
+    (if (or (<= (tuatara.buffer:buffer-size buffer) *org-parse-at-once*)
+            (org-parse-current-p buffer)
+            (null *editor*))
+        (let ((*org-parse-at-once* most-positive-fixnum))
+          (org-buffer-parse buffer))
+        (progn
+          ;; asked for: the worker parses it, the parse before taken meanwhile
+          (org-buffer-parse buffer)
+          (flet ((ready-p ()
+                   (let ((result (org-state-result state)))
+                     (and result (>= (org-version-number (third result)) (org-version-number version))))))
+            (unless (or (ready-p) (wait-until-interruptibly #'ready-p :message "Reading the file..."))
+              (keyboard-quit-signal)))
+          (org-buffer-parse buffer)))))
+
+;;; A parse and the buffer it is of
+
+(defstruct (org-parse (:constructor make-org-parse (buffer version root text returns)) (:copier nil) (:predicate nil))
+  "The parse of an Org buffer, as ORG-BUFFER-PARSE and ORG-PARSE-NOW give it:
+its tree of elements and objects (ORG-PARSE-TREE), whose positions are
+characters of TEXT, the text BUFFER had at VERSION as Org reads it. A position
+of the parse goes to an octet of BUFFER by ORG-PARSE-OCTET and back by
+ORG-PARSE-CHAR, RETURNS theirs to use. While BUFFER is at VERSION they count
+by the parse's own text; once it has changed, by the text it has now, so that
+a position given after an edit is one of the text after it. A command that
+asks something keeps its places across the answer by ORG-ASK-KEEPING-PLACES.
+ORG-TEXT-NOW makes one with no tree, of the text alone."
+  buffer version root text returns)
+
+(defun org-parse-tree (parse)
+  "The tree of PARSE, its root an ORG-NODE of type ORG-DATA over all of its
+text. A parse of the text alone (ORG-TEXT-NOW) has none, and is refused."
+  (or (org-parse-root parse)
+      (error "The text of ~a was read, not parsed: it has no tree"
+             (tuatara.buffer:buffer-name (org-parse-buffer parse)))))
+
+(defun org-state-parse-of (buffer state)
+  "The ORG-PARSE of STATE, BUFFER's whole parse, made once for each tree; NIL
+while it has none."
+  (let ((tree (org-state-tree state))
+        (kept (org-state-parse state)))
+    (cond ((null tree) nil)
+          ((and kept (eq (org-parse-root kept) tree) (eql (org-parse-version kept) (org-state-version state))) kept)
+          (t (setf (org-state-parse state)
+                   (make-org-parse buffer (org-state-version state) tree
+                                   (org-state-text state) (org-state-returns state)))))))
+
+(defun org-text-now (buffer)
+  "BUFFER's text as Org reads it now (ORG-BUFFER-TEXT), as an ORG-PARSE with
+no tree, for a command that reads the text without parsing it: its
+positions go to the buffer's octets as a parse's do, and ORG-PARSE-TREE
+refuses it."
+  (make-org-parse buffer (tuatara.buffer:buffer-version buffer) nil (org-buffer-text buffer) (org-returns-of buffer)))
+
+(defun org-parse-returns-now (parse)
+  "Where the text Org reads of PARSE's buffer, as it is now, lost a carriage
+return before a newline: PARSE's own while the buffer is as it was parsed."
+  (let ((buffer (org-parse-buffer parse)))
+    (if (eql (org-parse-version parse) (tuatara.buffer:buffer-version buffer))
+        (org-parse-returns parse)
+        (org-returns-of buffer))))
+
+(defun org-parse-octet (parse position)
+  "The octet of PARSE's buffer, as it is now, where the character POSITION of
+PARSE's text is; a position at a line's end stands before its carriage
+return and line feed. After an edit, POSITION is a character of the text
+after it."
+  (org-char->byte (org-parse-buffer parse) position (org-parse-returns-now parse)))
+
+(defun org-parse-char (parse octet)
+  "The character of PARSE's text at OCTET of its buffer, as it is now: a
+carriage return before a newline taken as that newline."
+  (org-byte->char (org-parse-buffer parse) octet (org-parse-returns-now parse)))
+
+(defun org-parse-point (parse)
+  "The point of PARSE's buffer as a character of PARSE's text."
+  (let ((buffer (org-parse-buffer parse)))
+    (org-parse-char parse (tuatara.buffer:buffer-point buffer))))
+
+(defun org-ask-keeping-places (parse places ask)
+  "Ask by calling ASK, a function of no arguments that waits for an answer (a
+prompt, a key), PARSE's buffer free to change meanwhile, as a job's result
+taken in or another window's typing changes it. PLACES are what the command
+found before asking, each the characters (FROM . TO) of PARSE that hold it: a
+headline's line, a link, a table. Three values: the answer; PARSE itself while
+the buffer is as it was, else the buffer's parse as it is after (ORG-PARSE-NOW);
+and for each place, where it begins in that parse, or NIL when its text is not
+there as it was (taken away or changed meanwhile). A command finds what it
+asked about again at these places, and refuses where one is NIL."
+  (let* ((buffer (org-parse-buffer parse))
+         (text (org-parse-text parse))
+         (version (tuatara.buffer:buffer-version buffer))
+         (anchors (mapcar (lambda (place)
+                            (cons (tuatara.text:make-anchor version (org-parse-octet parse (car place)) :bias :after)
+                                  (tuatara.text:make-anchor version (org-parse-octet parse (cdr place)) :bias :before)))
+                          places))
+         (answer (funcall ask))
+         (now (tuatara.buffer:buffer-version buffer)))
+    (if (and (eql now version) (eql now (org-parse-version parse)))
+        (values answer parse (mapcar #'car places))
+        (let* ((after (org-parse-now buffer))
+               (after-text (org-parse-text after)))
+          (values answer after
+                  (loop for (from-anchor . to-anchor) in anchors
+                        for (old-from . old-to) in places
+                        collect (let ((from (org-parse-char after (tuatara.text:anchor-position from-anchor now)))
+                                      (to (org-parse-char after (tuatara.text:anchor-position to-anchor now))))
+                                  (and (= (- to from) (- old-to old-from))
+                                       (string= after-text text :start1 from :end1 to :start2 old-from :end2 old-to)
+                                       from))))))))
 
 ;;; Colouring
 
@@ -408,19 +599,15 @@ eighth the first again."
 (defvar *org-ranges* '()
   "The colours being collected for the rows shown, each (START END FACE) in octets, the latest last.")
 
-(defvar *org-returns* nil
-  "Where the text of the buffer being coloured lost a carriage return before
-a newline (ORG-STRIP-RETURNS), as its parse found.")
-
-(defvar *org-rope* nil
-  "The text of the buffer being coloured, for turning characters into octets.")
+(defvar *org-view* nil
+  "What is known of the part of the buffer being coloured, an ORG-VIEW.")
 
 (defvar *org-shown* '(0 . 0)
   "The characters being coloured, (START . END).")
 
 (defvar *org-src-blocks* '()
   "The source blocks among the rows being coloured, each (LANGUAGE FROM TO),
-FROM and TO the characters of their code.")
+FROM and TO the octets of their code.")
 
 (defvar *org-src-languages*
   '(("emacs-lisp" . "elisp") ("C++" . "cpp") ("sqlite" . "sql") ("spec" . "rpmspec")
@@ -474,7 +661,7 @@ every style."
 the style Org is coloured in has FACE (ORG-FACE-COLOURED-P)."
   (let ((from (max from (car *org-shown*))) (to (min to (cdr *org-shown*))))
     (when (and (< from to) (org-face-coloured-p face))
-      (push (list (org-char->byte *org-buffer* from *org-returns*) (org-char->byte *org-buffer* to *org-returns*) face)
+      (push (list (org-view-byte *org-buffer* *org-view* from) (org-view-byte *org-buffer* *org-view* to) face)
             *org-ranges*))))
 
 (defparameter *org-element-types*
@@ -601,7 +788,10 @@ faces, any other in :org-meta-line."
              (from (min (length *org-text*) (1+ (string-line-end *org-text* start))))
              (to (org-line-start (max start (1- (org-content-end node))))))
         (when (< from to)
-          (push (list language from to) *org-src-blocks*))))))
+          (push (list language
+                      (org-view-byte *org-buffer* *org-view* from)
+                      (org-view-byte *org-buffer* *org-view* to))
+                *org-src-blocks*))))))
 
 (defun org-src-language (name)
   "The language of a source block given NAME, as *ORG-SRC-LANGUAGES* says, or NIL."
@@ -616,23 +806,32 @@ faces, any other in :org-meta-line."
   "The colours of the code of BLOCKS (as *ORG-SRC-BLOCKS* has them) in their
 languages, from octet FIRST below LAST of ROPE, each language in its own
 colouring style; a block's code is read as far as *INJECTION-REACH* around
-what is shown."
-  (loop for (name from-char to-char) in blocks
-        for language = (org-src-language name)
-        for from = (org-char->byte buffer from-char *org-returns*)
-        for to = (org-char->byte buffer to-char *org-returns*)
-        for start = (max first from)
-        for end = (min last to)
-        when (and language (< start end))
-          append (multiple-value-bind (style level) (language-colouring language)
-                   (unless (eq style :none)
-                     (let* ((reach tuatara.syntax:*injection-reach*)
-                            (window-from (tuatara.syntax:injection-cut rope (max from (- start reach))))
-                            (window-to (tuatara.text:rope-char-start rope (min to (+ end reach)))))
-                       (when (< window-from window-to)
-                         (tuatara.syntax:language-highlights (injection-resolver style level)
-                                                             (symbol-name (language-name language))
-                                                             (list (cons window-from window-to)) rope start end)))))))
+what is shown. As a second value, NIL when a block was left plain because
+the program parsing BUFFER's text was not running yet: it is started in the
+background, and the editor redrawn once it is."
+  (let ((whole t))
+    (values
+     (loop for (name from to) in blocks
+           for language = (org-src-language name)
+           for start = (max first from)
+           for end = (min last to)
+           when (and language (< start end))
+             append (multiple-value-bind (style level) (language-colouring language)
+                      (unless (eq style :none)
+                        (let* ((reach tuatara.syntax:*injection-reach*)
+                               (window-from (tuatara.syntax:injection-cut rope (max from (- start reach))))
+                               (window-to (tuatara.text:rope-char-start rope (min to (+ end reach)))))
+                          (when (< window-from window-to)
+                            ;; parsed by the program parsing this buffer's text, as its own
+                            (let ((helper (tuatara.syntax:buffer-helper-soon buffer)))
+                              (unless helper (setf whole nil))
+                              (let ((tuatara.syntax:*helper* (or helper :none))
+                                    (tuatara.syntax:*parsing-buffer* buffer))
+                                (tuatara.syntax:language-highlights (injection-resolver style level)
+                                                                    (symbol-name (language-name language))
+                                                                    (list (cons window-from window-to))
+                                                                    rope start end))))))))
+     whole)))
 
 (defun org-fontify-drawer (node)
   "A drawer: its first and last lines in :org-drawer; in an :EXPORT: drawer each
@@ -743,46 +942,55 @@ log keeps it: - State \"DONE\" from \"TODO\" [2026-10-01 Thu 18:00]."
   "Org mode's colouring is its own, made from its parse."
   'org-mode)
 
+(defun org-view-colours (buffer view first last style-level)
+  "The colours of the Org text of BUFFER from octet FIRST below LAST, within
+the part VIEW (an ORG-VIEW) knows, in the style STYLE-LEVEL (NIL rich, else
+the sparse style's level): (START END FACE) in octets, in order, code in its
+language's colours after them when the parse is of the text as it is now."
+  (let* ((rope (tuatara.buffer:buffer-text buffer))
+         (text (org-view-text view))
+         (from (max first (org-view-from view)))
+         (to (min last (tuatara.text:rope-bytes rope) (org-view-to view)))
+         (*org-buffer* buffer)
+         (*org-colouring-level* style-level)
+         (*org-text* text)
+         (*org-view* view)
+         (*org-ranges* '())
+         (*org-src-blocks* '())
+         ;; a parse of the text before a change, kept while the new one is made, is not past its end
+         (*org-shown* (cons (min (length text) (org-view-char buffer view from))
+                            (min (length text) (org-view-char buffer view to)))))
+    (org-fontify (org-view-tree view))
+    (let ((ranges (nreverse *org-ranges*)))
+      (if (and *org-src-blocks* (not (eql style-level 0)) (org-view-current view))
+          (append ranges (org-src-cached-highlights buffer rope from to))
+          ranges))))
+
 (defmethod mode-syntax-highlights ((mode org-mode) buffer rows)
-  "The colours of the Org text of BUFFER in ROWS, the rows shown, from its parse."
+  "The colours of the Org text of BUFFER in ROWS, the rows shown, from the
+parses of the parts of it they show (ORG-VIEWS)."
   (let ((rope (tuatara.buffer:buffer-text buffer))
         (style-level (multiple-value-bind (style level) (mode-colouring mode)
                        (case style (:rich nil) (:none 0) (t level)))))
     (when (and (plusp (length rows)) (tuatara.text:rope-indexed-p rope))
-      (multiple-value-bind (tree text) (org-buffer-tree buffer)
-        (when tree
-          ;; only the text the rows show: what a fold or a search filter hides between them is not looked at
-          (let ((chars (tuatara.text:rope-chars rope))
-                (bytes (tuatara.text:rope-bytes rope))
-                (shown (tuatara.display:shown-ranges rows :buffer buffer))
-                (*org-rope* rope)
-                (*org-buffer* buffer)
-                (*org-returns* (org-state-returns (org-buffer-state buffer)))
-                (*org-text* text)
-                (*org-colouring-level* style-level))
-            (loop for (first . last) in shown
-                  nconc (let ((*org-ranges* '())
-                              (*org-src-blocks* '())
-                              ;; a parse of the text before a change, kept while the new one is made, is not past its end
-                              (*org-shown* (cons (min chars (org-byte->char buffer first *org-returns*))
-                                                 (min chars (length text) (org-byte->char buffer (min last bytes) *org-returns*)))))
-                          (org-fontify tree)
-                          (let ((ranges (nreverse *org-ranges*)))
-                            ;; code in its language's colours, only when the parse is of the text as it is now
-                            (if (and *org-src-blocks* (not (eql style-level 0)) (org-parse-current-p buffer))
-                                (append ranges (org-src-cached-highlights buffer rope first last))
-                                ranges))))))))))
+      ;; only the text the rows show: what a fold or a search filter hides between them is not looked at
+      (loop with bytes = (tuatara.text:rope-bytes rope)
+            for (first . last) in (tuatara.display:shown-ranges rows :buffer buffer)
+            nconc (loop for view in (org-views buffer first (min last bytes))
+                        nconc (org-view-colours buffer view first last style-level))))))
 
 (defun org-src-cached-highlights (buffer rope first last)
   "ORG-SRC-HIGHLIGHTS for *ORG-SRC-BLOCKS* of BUFFER from octet FIRST below
 LAST, kept and given again while the text, the range, the blocks and the
-rules compiled are as they were; the last eight ranges asked for are kept."
+rules compiled are as they were; the last eight ranges asked for are kept,
+but not those made before the program parsing the code was running."
   (let* ((key (list (tuatara.buffer:buffer-version buffer) first last *org-src-blocks* (car tuatara.syntax:*rules-generation*)))
          (cache (tuatara.buffer:buffer-local buffer 'org-src-colours))
          (hit (assoc key cache :test #'equal)))
     (if hit
         (cdr hit)
-        (let ((ranges (org-src-highlights buffer rope *org-src-blocks* first last)))
-          (setf (tuatara.buffer:buffer-local buffer 'org-src-colours)
-                (cons (cons key ranges) (subseq cache 0 (min 7 (length cache)))))
+        (multiple-value-bind (ranges whole) (org-src-highlights buffer rope *org-src-blocks* first last)
+          (when whole
+            (setf (tuatara.buffer:buffer-local buffer 'org-src-colours)
+                  (cons (cons key ranges) (subseq cache 0 (min 7 (length cache))))))
           ranges))))

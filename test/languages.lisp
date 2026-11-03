@@ -271,7 +271,6 @@ end
  * @param {number} x The value.
  */")
     (luap "^%d+%s*$")
-    (rust-format-args "{} {name:>8} {0:?}")
     (rust-format-args-macro "fn main() { println!(\"{}\", 1); }
 ")
     (go-format-string "%d items, %-8s")
@@ -495,10 +494,6 @@ Some *text*.
 
 Some *text*.
 ")
-    (djot "# Title
-
-Some _text_.
-")
     (mermaid "flowchart TD
     A --> B
 ")
@@ -582,8 +577,6 @@ flask==3.0.0
     (caddyfile "example.com {
 	reverse_proxy localhost:8080
 }
-")
-    (jinja "{% if x %}{{ x }}{% endif %}
 ")
     (twig "{% if x %}{{ x }}{% endif %}
 ")
@@ -678,10 +671,6 @@ select f
 concept Person {
   o String name
 }
-")
-    (cylc "[scheduling]
-    [[graph]]
-        R1 = \"a => b\"
 ")
     (dbml "Table users {
   id integer [primary key]
@@ -844,13 +833,9 @@ Hello.
 Hi
 {% /callout %}
 ")
-    (mojo "fn main():
+    (mojo "def main():
     var x = 1
     print(x)
-")
-    (move "module 0x1::m {
-    fun f(): u64 { 1 }
-}
 ")
     (nearley "main -> \"a\" | \"b\"
 ")
@@ -1043,8 +1028,6 @@ System.print(x)
     (bass "(def x 1)
 [:a 1 :b 2]
 ")
-    (cpon "<\"foo\":\"bar\", 1:<2:\"baz\">\"baz\">1
-")
     (lpf "SYSCONFIG CONFIG_IOVOLTAGE=1.2;
 ")
     (ripple "component Button(props: { text: string }) {
@@ -1140,6 +1123,16 @@ coloured.")
                    (release-parse tree parser))
                  (true (rich-ranges grammar text (tuatara.defaults::language-rules language))
                        "~(~a~)'s sample is coloured" name))))))
+
+(define-test (languages luau-documentation-comments)
+  ;; a comment of three dashes, or of two before an @, documents; one of two
+  ;; dashes alone is a comment
+  (let* ((text (format nil "--- doc~%-- @param x~%--@return y~%-- plain~%local a = 1~%"))
+         (ranges (ranges-text text (rich-ranges "luau" text (tuatara.defaults::language-rules
+                                                              (tuatara.defaults::find-language 'luau))))))
+    (dolist (comment '("--- doc" "-- @param x" "--@return y"))
+      (is eq :comment.documentation (second (assoc comment ranges :test #'string=)) "~a" comment))
+    (is eq :comment (second (assoc "-- plain" ranges :test #'string=)))))
 
 (define-test (languages files-find-their-modes)
   (loop for (file mode first-line) in '(("/src/app.py" python-mode) ("/src/app.js" js-mode) ("/src/app.tsx" tsx-mode)

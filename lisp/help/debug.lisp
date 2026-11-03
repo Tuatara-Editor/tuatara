@@ -25,15 +25,17 @@ what the editor's parts do is reported in *Debug*. Set it in the init file.")
 *Messages* is."
   (find-or-make-buffer "*Debug*" :mode 'special-mode
                                  :made (lambda (b)
-                                         (setf (tuatara.buffer:buffer-local b :read-only) t
-                                               (tuatara.buffer:buffer-local b :kind) :messages))))
+                                         (setf (buffer-read-only-p b) t
+                                               (buffer-kind b) :messages))))
 
 (defun show-debug-reports (editor)
   "Tick function: put the reports made since it was last called at the end of
 *Debug*, keeping *DEBUG-LOG-MAX* lines; a window showing the end of *Debug*
-goes on showing it."
+goes on showing it. While a waiting question is about *Debug*, the reports
+wait (BUFFER-HELD-BY-QUESTION-P)."
   (declare (ignore editor))
-  (let ((first (sb-concurrency:dequeue tuatara.runtime:*debug-reports*)))
+  (let ((first (and (not (buffer-held-by-question-p (debug-buffer)))
+                    (sb-concurrency:dequeue tuatara.runtime:*debug-reports*))))
     (when first
       (add-to-log (debug-buffer) *debug-log-max*
                   (lambda (buffer)
@@ -86,19 +88,12 @@ file starts the editor with it on."
 shown, its end in sight."
   (display-buffer (debug-buffer) :at :end))
 
-(defun install-debug (editor)
+(defun install-debug ()
   "Bind \\[view-debug-buffer] to \\`C-h E', show the reports of debug mode as they
-come, say Debug in the mode line while it is on, count the reports' times from
-now, and have a report made in another thread wake EDITOR to show it. The
-debug log's place, in the cache folder, is set once the init file is read,
-which may choose that folder (*cache-directory*)."
+come, say Debug in the mode line while it is on, and count the reports' times
+from now. The debug log's place, in the cache folder, is set once the init
+file is read, which may choose that folder (*cache-directory*)."
   (define-key *global-keymap* "C-h E" 'view-debug-buffer)
   (pushnew 'show-debug-reports *tick-functions*)
   (pushnew 'debug-mode-line *mode-line-functions*)
-  (setf tuatara.runtime:*debug-start* (get-internal-real-time))
-  (let ((frontend (editor-frontend editor))
-        (thread sb-thread:*current-thread*))
-    (setf tuatara.runtime:*debug-wake-function*
-          (lambda ()
-            (unless (eq sb-thread:*current-thread* thread)
-              (tuatara.frontend:frontend-wake frontend))))))
+  (setf tuatara.runtime:*debug-start* (get-internal-real-time)))

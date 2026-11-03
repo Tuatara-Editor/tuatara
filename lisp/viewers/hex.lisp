@@ -130,7 +130,7 @@ octets as raw bytes' characters, which encode back to the same octets."
   "The offset TEXT gives: hexadecimal after 0x, else decimal with digits grouped as the mode line shows them; NIL when it is neither."
   (let ((text (string-trim " " text)))
     (cond ((and (> (length text) 2) (string-equal "0x" text :end2 2))
-           (ignore-errors (parse-integer text :start 2 :radix 16)))
+           (whole-number text :start 2 :radix 16))
           (t (parse-line-number text)))))
 
 (defvar *hex-view-functions* '()
@@ -149,13 +149,17 @@ one given in hex; hex-search-forward and hex-search-backward find octets. Only
 the rows shown are made, so a file of any size shows at once. In a PDF shown
 as its pages, the PDF's own octets, opened safely in the window. While the
 hex view is on, nothing else changes the buffer's size: the keys that would
-insert or delete text say so and do nothing."
+insert or delete text say so and do nothing. A narrowed buffer is not shown
+in hex, every octet of it being shown there: \\[widen] first."
   (let* ((b (current-buffer)) (on (not (tuatara.display:hex-view-p b))))
-    (when (some (lambda (function) (funcall function b)) *hex-view-functions*)
+    (when (and on (tuatara.buffer:buffer-narrowed-p b))
+      (message "~a is narrowed, and the hex view shows every octet: \\[widen] first" (tuatara.buffer:buffer-name b))
+      (return-from hex-mode nil))
+    (when (run-hook-until-done *hex-view-functions* b)
       (return-from hex-mode nil))
     (if on
         (hex-view-on b (point))
-        (setf (tuatara.buffer:buffer-local b :hex-view) nil))
+        (setf (tuatara.display:hex-view-p b) nil))
     (message "Hex view ~:[off~;on~]" on)))
 
 (define-command hex-set-byte ()
@@ -196,7 +200,7 @@ after it that holds them, or with BACKWARD the last before it."
                   (tuatara.syntax:search-forward rope needle :start (min (1+ p) (tuatara.text:rope-bytes rope))
                                                              :case-fold nil :stop stop))
             (cond ((eq end :stopped) (message "Search stopped"))
-                  (hit (setf (tuatara.buffer:buffer-local b :hex-view) t
+                  (hit (setf (tuatara.display:hex-view-p b) t
                              (tuatara.display:hex-point b) hit)
                        (message "Found at 0x~(~x~) (~:d)" hit hit))
                   (t (message "Not found"))))))))

@@ -10,7 +10,7 @@
 ;;;; switch only moves the branch on (fast-forward); a forced push is asked
 ;;;; first.
 
-(in-package #:tuatara.defaults)
+(in-package #:tuatara.git)
 
 (defun ssh-askpass-window-p ()
   "True when ssh can ask for a passphrase in a window: a desktop is running
@@ -204,14 +204,81 @@ hooks. \\`C-h' there lists every action."
 
 ;;; Any git command
 
+(defvar *git-built-in-commands* nil
+  "The commands built into git, as git --list-cmds=builtins lists them, read
+the first time they are wanted.")
+
+(defun git-built-in-commands ()
+  "The commands built into git (*GIT-BUILT-IN-COMMANDS*): those it runs
+itself, never a program or an alias of a repository's or yours."
+  (or *git-built-in-commands*
+      (setf *git-built-in-commands*
+            (let ((git (tuatara.io:find-program "git")))
+              (and git (uiop:split-string (string-trim '(#\Newline)
+                                                       (or (ignoring-errors-reported ("asking ~a for its own commands" git)
+                                                             (uiop:run-program (list git "--list-cmds=builtins")
+                                                                               :output :string))
+                                                           ""))
+                                          :separator '(#\Newline)))))))
+
+(defparameter *git-config-reading-options*
+  '("--get" "--get-all" "--get-regexp" "--get-urlmatch" "--get-color" "--get-colorbool" "--list" "-l")
+  "The options of git config that only read its settings.")
+
+(defparameter *git-config-writing-words*
+  '("--add" "--unset" "--unset-all" "--replace-all" "--rename-section" "--remove-section" "--edit" "-e"
+    "set" "unset" "edit" "rename-section" "remove-section")
+  "The words that have git config change its settings.")
+
+(defun git-config-reading-p (more)
+  "True when git config with the words MORE after it only reads: its first
+word get or list, or its first option one of *GIT-CONFIG-READING-OPTIONS*,
+no word of *GIT-CONFIG-WRITING-WORDS* among them, and no more names and
+values than reading takes (a name and a pattern with --get, --get-all,
+--get-regexp and the others asking of one setting; none with --list), as
+git takes config NAME VALUE --get as setting NAME."
+  (let ((first-option (find-if (lambda (word) (uiop:string-prefix-p "-" word)) more))
+        (plain (count-if-not (lambda (word) (uiop:string-prefix-p "-" word)) more)))
+    (and (notany (lambda (word) (member word *git-config-writing-words* :test #'string=)) more)
+         (or (member (first more) '("get" "list") :test #'equal)
+             (and first-option
+                  (member first-option *git-config-reading-options* :test #'string=)
+                  (uiop:string-prefix-p "-" (first more))
+                  (<= plain (if (member first-option '("--list" "-l") :test #'string=) 0 2)))))))
+
+(defun git-command-refusal (words)
+  "Why git is not run with WORDS, typed for \\[git-run-command], in words; NIL
+when it may be. While evidence folders are named (*EVIDENCE-FOLDERS*): no
+option before the command but *GIT-LINE-OPTIONS-ALLOWED* (-c, --config-env,
+--exec-path and the like could name a program for git to run or point it
+elsewhere); no command but those built into git (an alias or a program of
+git's family runs what a repository or a setting names); and git config
+only reading, never setting what a later command would run (hooks,
+filters, programs)."
+  (when (tuatara.io:writing-refused-anywhere-p)
+    (let* ((rest (git-command-words words))
+           (command (first rest))
+           (leading (remove-if (lambda (word) (member word *git-line-options-allowed* :test #'string=))
+                               (ldiff words rest))))
+      (cond (leading
+             (format nil "while evidence folders are named, git is given no option before its command here but ~{~a~^, ~} (not ~a)"
+                     *git-line-options-allowed* (first leading)))
+            ((and command (not (member command (git-built-in-commands) :test #'string=)))
+             (format nil "while evidence folders are named, only git's own commands run here, not ~a (an alias, or a program of its family)" command))
+            ((and (equal command "config") (not (git-config-reading-p (rest rest))))
+             "while evidence folders are named, git config only reads here (--get, --list): a setting it writes could have git run a program")))))
+
 (define-command git-run-command ()
   "Run git with the words asked for (log --oneline -5, say; quotes group
 words as in a shell) in the repository at hand, no shell between, and show
-what it printed; for what the menus have no action for."
+what it printed; for what the menus have no action for. While evidence
+folders are named, only git's own commands, with no setting given on the
+line (GIT-COMMAND-REFUSAL)."
   (with-git-repository (top)
     (multiple-value-bind (words ok) (tuatara.io:command-words (read-string "Run git: "))
       (cond ((not ok) (message "A quote is left open: nothing run"))
             ((null words) (message "Nothing to run"))
+            ((git-command-refusal words) (message "Nothing run: ~a" (git-command-refusal words)))
             (t (git-show-output (format nil "Running git ~a" (first words)) top words "*git output*"
                                 :mode 'special-mode :empty (format nil "git ~a printed nothing" (first words))
                                 :environment (git-network-environment)

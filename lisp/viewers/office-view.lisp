@@ -90,9 +90,9 @@ words, never the file's."
 
 (defun office-pdf-copy (fd ending &key cancel)
   "The PDF LibreOffice makes, shut in (SANDBOX-PDF), of the Office document
-open at FD, given to it as a file ending in ENDING (OFFICE-ENDING), as a
-sealed file in memory; an error saying why when it makes none. CANCEL, a
-cons, stops it when its car turns true."
+open at file descriptor (FD), given to it as a file ending in ENDING
+(OFFICE-ENDING), as a sealed file in memory; an error saying why when it makes
+none. CANCEL, a cons, stops it when its car turns true."
   (sandbox-pdf "sh" (list "-c" (concatenate 'string "cat > \"/tmp/in.$2\" && \"$1\" --headless --norestore --nolockcheck"
                                             " -env:UserInstallation=file:///tmp/profile --convert-to pdf --outdir /tmp"
                                             " \"/tmp/in.$2\" >&2; exec cat /tmp/in.pdf")
@@ -137,28 +137,31 @@ drawing PDFs in it."
 
 (defun office-preview (fd path size office &key pixels cancel)
   "The preview of the Office document of the kind OFFICE (*OFFICE-FORMATS*) open as
-FD, PATH's, of SIZE octets, as three values: the document read as text by
-its kind's reader, or NIL for a kind shown only as its pages; notes for the
-line over it, each (TEXT . FACE): how many pages, or why they were not
-drawn; and with PIXELS, the most width and height in pixels, its first page
-drawn as large as fits there by LibreOffice shut in by the sandbox, when it
-is installed and *OFFICE-VIEW-PAGES* is true, or NIL. CANCEL, a cons, stops
-it when its car turns true. Waits for the programs: call it from a thread
-working in the background."
+file descriptor (FD), PATH's, of SIZE octets, as three values: the document
+read as text by its kind's reader, or NIL for a kind shown only as its pages;
+notes for the line over it, each (TEXT . FACE): how many pages, or why they
+were not drawn; and with PIXELS, the most width and height in pixels, its
+first page drawn as large as fits there by LibreOffice shut in by the sandbox,
+when it is installed and *OFFICE-VIEW-PAGES* is true, or NIL. CANCEL, a cons,
+stops it when its car turns true. Waits for the programs: call it from a
+thread working in the background."
   (let ((text (let ((read (getf office :read)))
                 (and read (funcall read path :octets (fd-octets fd path size (symbol-value '*docx-largest-file*)) :cancel cancel))))
         (notes '()) (image nil))
     (when (and pixels *office-view-pages* (not (car cancel))
                (tuatara.io:sandbox-find-program *office-page-program*) (find-pdf-decoder))
       (handler-case
-          (let ((pdf (office-pdf-copy fd (office-ending office (tuatara.io:native-file-name path)) :cancel cancel)))
-            (unwind-protect
-                 (multiple-value-bind (pdf-text pdf-notes pdf-image) (decode-pdf pdf :cancel cancel :pixels pixels :limit 4096)
-                   (declare (ignore pdf-text))
-                   ;; its pages counted; what the PDF's text was is not this text's
-                   (setf notes (remove-if-not (lambda (note) (cl-ppcre:scan "^, [0-9,]+ pages?$" (car note))) pdf-notes)
-                         image pdf-image))
-              (ignore-errors (sb-posix:close pdf))))
+          (reporting-errors ("drawing the pages of ~a" path)
+            (let ((pdf (office-pdf-copy fd (office-ending office (tuatara.io:native-file-name path)) :cancel cancel)))
+              (unwind-protect
+                   (multiple-value-bind (pdf-text pdf-notes pdf-image)
+                       (decode-pdf pdf :cancel cancel :pixels pixels :limit 4096)
+                     (declare (ignore pdf-text))
+                     ;; its pages counted; what the PDF's text was is not this text's
+                     (setf notes (remove-if-not (lambda (note) (cl-ppcre:scan "^, [0-9,]+ pages?$" (car note)))
+                                                pdf-notes)
+                           image pdf-image))
+                (ignoring-errors-reported ("closing the PDF made of ~a" path) (sb-posix:close pdf)))))
         (error () (push (cons ", its pages not drawn (the debug log says why)" :comment) notes))))
     (values text notes image)))
 
@@ -192,7 +195,7 @@ any."
                     (lambda (buffer)
                       (setf (tuatara.buffer:buffer-local buffer 'office-reading) native
                             (tuatara.buffer:buffer-local buffer 'office-pages) pages)
-                      (when pages (setf (tuatara.buffer:buffer-local buffer :override-keymap) *office-reading-keymap*))
+                      (when pages (setf (buffer-override-keymap buffer) *office-reading-keymap*))
                       (tuatara.runtime:start-job-thread
                        (make-office-read-job buffer native office)
                        (lambda (job) (setf (office-read-job-text job) (funcall (getf (office-read-job-office job) :read) (office-read-job-path job))))

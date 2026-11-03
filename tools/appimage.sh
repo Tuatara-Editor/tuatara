@@ -18,15 +18,30 @@
 # runs first when the AppImage is started) and the exclude list are fetched
 # once into build/appimage-tools/, each a pinned version checked against its
 # SHA-256 before it is used; the
-# container is made from the Ubuntu image pinned in tools/containers.sh.
+# container is made from the Ubuntu image pinned in tools/containers.sh and
+# brought up to date with apt-get upgrade at every build; the package and exact
+# version of every library taken, with the image's digest and the build tools'
+# hashes, are written to the manifest build/Tuatara-x86_64.AppImage.libraries.txt,
+# which is also inside the AppImage (tuatara/licenses/bundled-libraries.txt, with
+# each library package's copyright file in tuatara/licenses/libraries/) and
+# a release file, so that a library can be checked against advisories. The
+# source package of every library, at exactly the version bundled, is fetched
+# there too (tools/library-sources.sh, apt checking it against Ubuntu's signed
+# index and it against its .dsc) and packed, sorted and with fixed times and
+# owners, into build/release/Tuatara-x86_64.AppImage.library-sources.tar.zst,
+# the release file the manifest names, so that the release carries the
+# libraries' sources itself.
 # Usage: tools/appimage.sh
 set -euo pipefail
 root="$(cd "$(dirname "$0")/.." && pwd)"
 cd "$root"
 . tools/containers.sh
+. tools/inside.sh
 tools_dir="$root/build/appimage-tools"
 appdir="$root/build/appimage/Tuatara.AppDir"
 out="$root/build/Tuatara-x86_64.AppImage"
+manifest="$out.libraries.txt"
+library_sources="$root/build/release/Tuatara-x86_64.AppImage.library-sources.tar.zst"
 container=tuatara-appimage-libs
 excludelist_url=https://raw.githubusercontent.com/AppImageCommunity/pkg2appimage/15a64c20dc23a0154622ba25829364323903b6b5/excludelist
 excludelist_sha256=50db0f894f34b169c47a5cbc0c17dbab61e9edebca5bc8269a1e6ac1bf4bdad9
@@ -56,27 +71,59 @@ tools/release.sh >/dev/null
 rm -rf "$root/build/appimage"
 mkdir -p "$appdir/lib"
 cp -a build/release/tuatara "$appdir/tuatara"
+# no man path to install the pages on: --help and the handbooks say what they do
+rm -rf "$appdir/tuatara/man"
 
 # the libraries, from Ubuntu 24.04: those the program loads (libzstd, which the
-# program itself needs, too) and all they need in turn, but those on the exclude list
-pinned_container "$container" "$ubuntu_image" 'DEBIAN_FRONTEND=noninteractive apt-get update -qq &&
+# program itself needs, too) and all they need in turn, each once (a root the
+# others need too, as libzstd), but those on the exclude list
+pinned_container "$container" "$ubuntu_image" 'true'
+refresh_container "$container" 'sed -i "s/^Types: deb$/Types: deb deb-src/" /etc/apt/sources.list.d/ubuntu.sources &&
+  DEBIAN_FRONTEND=noninteractive apt-get update -qq &&
+  DEBIAN_FRONTEND=noninteractive apt-get upgrade -y -qq >/dev/null &&
   DEBIAN_FRONTEND=noninteractive apt-get install -y -qq libgtk-4-1 libncursesw6 libssl3t64 libzstd1 >/dev/null'
 podman cp "$tools_dir/excludelist" "$container:/tmp/excludelist"
+podman cp tools/bundle-libraries.sh "$container:/tmp/bundle-libraries.sh"
 podman exec "$container" bash -c '
   set -euo pipefail
-  rm -rf /tmp/lib && mkdir -p /tmp/lib
+  rm -rf /tmp/bundle && mkdir -p /tmp/bundle
   excluded=" $(grep -v "^#" /tmp/excludelist | sed "s/[ #].*//" | grep . | tr "\n" " ") "
   roots=""
   known=$(ldconfig -p)
   for name in libgtk-4.so.1 libncursesw.so.6 libcrypto.so.3 libzstd.so.1; do
     roots="$roots $(grep -m1 "^\s*$name " <<<"$known" | sed "s/.*=> //")"
   done
-  for path in $roots $(ldd $roots | grep "=> /" | sed "s/.*=> //; s/ (.*//" | sort -u); do
-    name=$(basename "$path")
-    case "$excluded" in *" $name "*) continue ;; esac
-    cp -L "$path" "/tmp/lib/$name"
-  done'
-podman cp "$container:/tmp/lib/." "$appdir/lib/"
+  wanted=""
+  for path in $(printf "%s\n" $roots $(ldd $roots | grep "=> /" | sed "s/.*=> //; s/ (.*//") | sort -u); do
+    case "$excluded" in *" $(basename "$path") "*) continue ;; esac
+    wanted="$wanted $path"
+  done
+  bash /tmp/bundle-libraries.sh /tmp/bundle $wanted'
+podman cp "$container:/tmp/bundle/lib/." "$appdir/lib/"
+podman cp "$container:/tmp/bundle/lib.tsv" "$tools_dir/lib.tsv"
+mkdir -p "$appdir/tuatara/licenses/libraries"
+podman cp "$container:/tmp/bundle/copyright/." "$appdir/tuatara/licenses/libraries/"
+# the source of each library, exactly as bundled, packed beside the release
+podman cp tools/library-sources.sh "$container:/tmp/library-sources.sh"
+podman exec "$container" bash /tmp/library-sources.sh /tmp/library-sources /tmp/bundle/lib.tsv
+sources_dir="$root/build/appimage/tuatara-library-sources"
+mkdir -p "$sources_dir"
+podman cp "$container:/tmp/library-sources/." "$sources_dir/"
+tar -C "$root/build/appimage" --sort=name --mtime="@$(git log -1 --format=%ct)" --owner=0 --group=0 --numeric-owner \
+    --mode=u+rw,go=rX -cf - tuatara-library-sources | zstd -T0 -q -f -o "$library_sources"
+{
+  echo "# Native libraries bundled in Tuatara-x86_64.AppImage (lib/), for checking against advisories."
+  echo "# Taken from the Ubuntu 24.04 package versions below, after apt-get upgrade at build time."
+  echo "# Their sources, at exactly these versions: $(basename "$library_sources"), a file of the release."
+  echo "base-image	$ubuntu_image"
+  echo "appimagetool	$appimagetool_url	$appimagetool_sha256"
+  echo "runtime	$runtime_url	$runtime_sha256"
+  echo "excludelist	$excludelist_url	$excludelist_sha256"
+  echo "# file	package	version	sha256 of the file"
+  cat "$tools_dir/lib.tsv"
+} > "$manifest"
+mkdir -p "$appdir/tuatara/licenses"
+cp "$manifest" "$appdir/tuatara/licenses/bundled-libraries.txt"
 
 # how it starts: the libraries it brings first, the environment as it was given
 # back to the programs it starts (LEAVE-APPIMAGE-ENVIRONMENT); --dark or --light
@@ -103,10 +150,18 @@ exec "$here/tuatara/tuatara" "$@"
 APPRUN
 chmod +x "$appdir/AppRun"
 cp tools/install-desktop.sh "$appdir/install-desktop.sh"
-sed "s|@EXEC@|tuatara|" data/tuatara.desktop.in > "$appdir/tuatara.desktop"
+# the application's entry, the one an AppImage holds, written by the program as
+# it writes it for --install-desktop (which writes the client's beside it too)
+entries="$root/build/appimage/entries"
+inside env TUATARA_DESKTOP_ENTRIES="$entries" build/release/tuatara/tuatara tuatara >/dev/null
+cp "$entries/tuatara.desktop" "$appdir/tuatara.desktop"
+chmod 644 "$appdir/tuatara.desktop"
+rm -rf "$entries"
 cp data/icons/hicolor/256x256/apps/tuatara.png "$appdir/tuatara.png"
 ln -s tuatara.png "$appdir/.DirIcon"
 
 rm -f "$out"
 ARCH=x86_64 "$tools_dir/appimagetool-x86_64.AppImage" --appimage-extract-and-run --no-appstream --runtime-file "$tools_dir/runtime-x86_64" "$appdir" "$out" >/dev/null
 echo "$out"
+echo "$manifest"
+echo "$library_sources"

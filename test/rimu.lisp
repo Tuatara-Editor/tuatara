@@ -378,7 +378,7 @@ shown at the end of a row after a space."
   (with-rimu-tree (dir)
     (flet ((previews () (mapcar #'tuatara.buffer:buffer-name
                                 (remove-if-not (lambda (b) (search "(preview" (tuatara.buffer:buffer-name b))) tuatara.buffer:*buffers*))))
-      (multiple-value-bind (f editor) (rimu-session dir "g f t e x t . t x t RET C-x / s z q z q RET" :preview t)
+      (multiple-value-bind (f editor) (rimu-session-then dir "g f t e x t . t x t RET" "C-x / s z q z q RET")
         (declare (ignore editor))
         (true (tuatara.frontend.fake:fake-frame-showing f "text.txt (preview)"))
         (false (member "text.txt (preview)" (previews) :test #'string=))
@@ -546,7 +546,7 @@ shown at the end of a row after a space."
             (true (tuatara.frontend.fake:fake-frame-showing f "Quick edit: q goes back to the preview")))
           ;; C-c C-c after a change asks; y saves, and the preview follows the list again
           (fresh)
-          (multiple-value-bind (f editor) (rimu-session dir "g f t e x t . t x t RET o i X C-g C-c C-c y RET" :preview t)
+          (multiple-value-bind (f editor) (rimu-session dir "g f t e x t . t x t RET o i X C-g C-c C-c y" :preview t)
             (is string= name (current-name editor))
             (is string= (format nil "Xhello~%") (file))
             (is eq nil (visiting))
@@ -554,7 +554,7 @@ shown at the end of a row after a space."
             (true (tuatara.frontend.fake:fake-frame-showing f "Xhello")))
           ;; n lets the change go
           (fresh)
-          (multiple-value-bind (f editor) (rimu-session dir "g f t e x t . t x t RET o i Y C-g C-c C-c n RET" :preview t)
+          (multiple-value-bind (f editor) (rimu-session dir "g f t e x t . t x t RET o i Y C-g C-c C-c n" :preview t)
             (declare (ignore f))
             (is string= name (current-name editor))
             (is string= (format nil "Xhello~%") (file))
@@ -582,7 +582,7 @@ shown at the end of a row after a space."
             (is eq (visiting) (tuatara.display:window-buffer (tuatara.command:editor-window editor)))
             (is string= (format nil "qXhello~%") (session-text editor)))
           (fresh)
-          (multiple-value-bind (f editor) (rimu-session dir "g f t e x t . t x t RET o i Q C-g q n RET" :preview t)
+          (multiple-value-bind (f editor) (rimu-session dir "g f t e x t . t x t RET o i Q C-g q n" :preview t)
             (declare (ignore f))
             (is string= name (current-name editor))
             (is string= (format nil "Xhello~%") (file))
@@ -595,7 +595,7 @@ shown at the end of a row after a space."
             (is eq nil (visiting))
             (is equal '("text.txt (preview)") (mapcar #'tuatara.buffer:buffer-name (previews))))
           (fresh)
-          (multiple-value-bind (f editor) (rimu-session dir "g f t e x t . t x t RET o i Q C-g C-x o y RET" :preview t)
+          (multiple-value-bind (f editor) (rimu-session dir "g f t e x t . t x t RET o i Q C-g C-x o y" :preview t)
             (declare (ignore f))
             (is string= name (current-name editor))
             (is string= (format nil "QXhello~%") (file))
@@ -615,7 +615,7 @@ shown at the end of a row after a space."
               (true (search "forward-word" (tuatara.buffer:buffer-string help)))))
           ;; a buffer open before keeps its changes when they are let go, and stays
           (fresh)
-          (multiple-value-bind (f editor) (rimu-session dir "C-x C-j o i W C-g C-c C-c n RET" :preview t
+          (multiple-value-bind (f editor) (rimu-session dir "C-x C-j o i W C-g C-c C-c n" :preview t
                                                                                          :file (namestring path))
             (true (tuatara.frontend.fake:fake-frame-showing f "keeps its changes, not saved"))
             (is string= name (current-name editor))
@@ -1436,7 +1436,7 @@ and the editor."
           (let ((row (position-if (lambda (r) (search "Docs added" r)) screen)))
             (true (find :list-note (aref spans row) :key #'third))))))
     ;; outside a repository: nothing, and no complaint
-    (is eq nil (tuatara.defaults::rimu-git-commits "/" '("tmp")))))
+    (is eq nil (tuatara.git::rimu-git-commits "/" '("tmp")))))
 
 (define-test (rimu git-column-in-odd-directories)
   ;; the git column of a directory whose name holds [ ] and *, characters, not patterns
@@ -1453,7 +1453,7 @@ and the editor."
       (true (funcall git "init" "-q"))
       (true (funcall git "add" "a.txt"))
       (true (funcall git "commit" "-q" "-m" "The first file"))
-      (let ((commits (tuatara.defaults::rimu-git-commits directory '("a.txt"))))
+      (let ((commits (tuatara.git::rimu-git-commits directory '("a.txt"))))
         (true commits)
         (true (and commits (search "The first file" (format nil "~a" (gethash "a.txt" commits)))))))))
 
@@ -1634,9 +1634,9 @@ and the editor."
         (run-keys (list (format nil "M-x f i n d - f i l e - s a f e l y RET C-a C-k ~a C-j C-s i n s i d e RET"
                                 (rimu-typed (namestring dir)))
                         (lambda ()
-                          (dolist (command '(tuatara.defaults::wipe-file tuatara.defaults::git-stage-file
-                                             tuatara.defaults::git-delete-file tuatara.defaults::git-rename-file
-                                             tuatara.defaults::git-reset-file))
+                          (dolist (command '(tuatara.defaults::wipe-file tuatara.git::git-stage-file
+                                             tuatara.git::git-delete-file tuatara.git::git-rename-file
+                                             tuatara.git::git-reset-file))
                             (push (tuatara.defaults::mode-command-refusal command) refusals))))
                   :width 120 :height 20)
         (is = 5 (length refusals))
@@ -1712,7 +1712,7 @@ and the editor."
   (with-test-directory (dir)
     (scratch-repository dir)
     ;; the columns as a session has them
-    (tuatara.defaults::install-rimu-git)
+    (tuatara.git::install-rimu-git)
     (tuatara.defaults::install-rimu-sizes)
     (let* ((directory (namestring dir))
            (columns (mapcar (lambda (name) (find name tuatara.defaults::*rimu-columns* :key #'tuatara.defaults::rimu-column-name))
@@ -1724,7 +1724,7 @@ and the editor."
             (map 'vector (lambda (entry) (tuatara.io:listed-name entry)) (tuatara.defaults::rimu-listing-entries old))
             (gethash :sizes (tuatara.defaults::rimu-listing-cells old))
             (map 'vector (lambda (entry) (declare (ignore entry)) "old") (tuatara.defaults::rimu-listing-entries old)))
-      (sb-int:encapsulate 'tuatara.defaults::run-git-program 'count-runs
+      (sb-int:encapsulate 'tuatara.git:run-git-program 'count-runs
                           (lambda (function &rest arguments) (incf runs) (apply function arguments)))
       (unwind-protect
            (let ((again (tuatara.defaults::rimu-carry-cells old (tuatara.defaults::rimu-read directory) view)))
@@ -1737,7 +1737,7 @@ and the editor."
              (git-output dir "commit" "-q" "-m" "Second")
              (let ((later (tuatara.defaults::rimu-carry-cells again (tuatara.defaults::rimu-read directory) view)))
                (false (gethash :git (tuatara.defaults::rimu-listing-cells later)))))
-        (sb-int:unencapsulate 'tuatara.defaults::run-git-program 'count-runs)))))
+        (sb-int:unencapsulate 'tuatara.git:run-git-program 'count-runs)))))
 
 (define-test (rimu marks-found-without-garbage)
   ;; the mark of each entry shown is found by a key made once for the entry, not again at each
@@ -1760,3 +1760,29 @@ and the editor."
                                          (loop for entry across entries do (tuatara.defaults::rimu-entry-mark buffer entry marks)))
                                        (- (sb-ext:get-bytes-consed) before)))))
           (true (< consed (* 100000 (length entries) 8)) "~:d octets for ~:d looks" consed (* 100000 (length entries))))))))
+
+(define-test (rimu column-failure-reported)
+  ;; a column whose function fails shows nothing; debug mode keeps why in its log
+  (with-test-directory (dir)
+    (put-file (merge-pathnames "one.txt" dir) "one")
+    (let* ((column (tuatara.defaults::make-rimu-column :broken (lambda (directory entries)
+                                                                  (declare (ignore directory entries))
+                                                                  (error "the column broke"))
+                                                       :after :left (constantly t) "Fails."))
+           (listing (tuatara.defaults::rimu-read (tuatara.io:native dir)))
+           (again (tuatara.defaults::rimu-read (tuatara.io:native dir))))
+      (drain-debug-reports)
+      (unwind-protect
+           (let ((cells (tuatara.defaults::rimu-cells listing column)))
+             (is = (length (tuatara.defaults::rimu-listing-entries listing)) (length cells))
+             (true (every #'null cells))
+             (true (sb-concurrency:queue-empty-p tuatara.runtime:*debug-reports*))
+             (tuatara.runtime:set-debug t)
+             (true (every #'null (tuatara.defaults::rimu-cells again column)))
+             (let ((texts (loop for report = (sb-concurrency:dequeue tuatara.runtime:*debug-reports*)
+                                while report collect (princ-to-string (fourth report)))))
+               (true (find-if (lambda (text) (and (search "finding the column broken of" text)
+                                                  (search "the column broke" text)))
+                              texts)
+                     "~s" texts)))
+        (drain-debug-reports)))))

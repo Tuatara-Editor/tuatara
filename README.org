@@ -92,6 +92,32 @@ rope up to the init file.
    =tuatara --gui= in a window of its own; it is also among your desktop's
    applications, as /Tuatara/.
 
+   =tuatara +120:8 main.lisp= opens the file with the cursor on line 120,
+   column 8 (columns count from 1, while the =C= of the mode line counts from 0; the line alone, =+120=, is enough; a file with fewer lines opens
+   at its last, and that is said); each file may have its own, as in
+   =tuatara +3 a.txt +40 b.txt=. =tuatara --diff OLD NEW= shows what differs
+   between two files, or two folders, and ends when you quit it; for git, run
+   =git config --global difftool.tuatara.cmd 'tuatara --diff "$LOCAL" "$REMOTE"'=
+   once, then =git difftool --tool=tuatara=.
+
+   =tuatara --merge LOCAL BASE REMOTE MERGED= merges the three into MERGED,
+   the conflicts marked there to resolve (=C-c ^ n= goes to the next, =C-c ^ u=
+   and =C-c ^ l= keep a side), then save; it ends with 0 when MERGED is saved
+   with no conflict left, else 1, so that git can trust it: =git config
+   --global mergetool.tuatara.cmd 'tuatara --merge "$LOCAL" "$BASE" "$REMOTE"
+   "$MERGED"'= and =git config --global mergetool.tuatara.trustExitCode true=,
+   then =git mergetool --tool=tuatara=.
+
+   =tuatara --safe FILE= (or =-R=) opens files safely, read only and acted on by
+   nothing, as the files of an evidence folder open; =tuatara --hex FILE= opens
+   them in the hex view; =... | tuatara -= reads standard input into a buffer
+   opened safely, the terminal staying the keyboard; =tuatara --tutor= starts in
+   the tutor; =tuatara -Q= (=--no-init=) starts without the init file and
+   packages, what Tuatara keeps between sessions kept apart for that session
+   and the real one neither read nor changed. After =--= every argument is a
+   file's name. Options may stand anywhere before =--=, =--safe= and =--hex= holding for every
+   file of the call. =tuatara --help= lists the rest.
+
 5. *First steps.* =M-x tuatara-tutor= teaches the keys by editing a text with
    them (=M-x= is Alt and x). =M-x check-health= says which of the programs
    in /What to install beside it/ are found. Your settings are in
@@ -130,12 +156,18 @@ it runs on Linux with glibc 2.39 or later (Ubuntu 24.04, Debian 13, Fedora
 chmod +x Tuatara-x86_64.AppImage
 ./Tuatara-x86_64.AppImage FILE          # in this terminal
 ./Tuatara-x86_64.AppImage --gui FILE    # in a window of its own
+./Tuatara-x86_64.AppImage +120 FILE     # with the cursor on line 120
+./Tuatara-x86_64.AppImage --diff OLD NEW
 ./Tuatara-x86_64.AppImage --install-desktop
 #+end_example
 
 =--install-desktop= copies it to =~/.local/bin/tuatara= and puts Tuatara in
-the desktop's applications, with its icon and in "Open With" for text files;
-=tuatara --remove-desktop= takes them away again.
+the desktop's applications, with its icon and in "Open With" for text files,
+and beside it "Tuatara (client)", which opens the files in a window of the
+daemon (=tuatara --daemon=), or of an editor of its own when none runs;
+=tuatara --remove-desktop= takes them away again. =tuatara
+--generate-autostart= has the desktop start the daemon as you log in; nothing
+starts it unless you do.
 
 The window's title bar is in GTK's light style unless asked otherwise: =--dark=
 before the rest shows it dark (=./Tuatara-x86_64.AppImage --dark --gui FILE=),
@@ -146,6 +178,16 @@ its theme's (M-x load-theme).
 Installed from a package instead, Tuatara is in =/usr/lib/tuatara/= and uses
 the system's own GTK and libraries; the AppImage's =--dark= and =--light= are
 not there, and =GTK_THEME=Adwaita:dark tuatara --gui= does what =--dark= does.
+
+The libraries the AppImage brings (GTK 4 and what it needs) are Ubuntu 24.04's
+at their newest versions on the day it was built. Each release has
+=Tuatara-x86_64.AppImage.libraries.txt=, also inside the AppImage as
+=licenses/bundled-libraries.txt=: every bundled library with its package, exact
+version and SHA-256, so it can be checked against security advisories. The
+libraries come with their sources, as many of their licences (the LGPL among
+them) ask: =Tuatara-x86_64.AppImage.library-sources.tar.zst=, a file of the
+same release, holds the Ubuntu source package of each, at exactly the version
+bundled.
 
 ** Building the files yourself
 
@@ -243,7 +285,7 @@ redefine any of it.
 
 * Status
 
-Version 0.90.13, a pre-release: in daily use by its author, its parts tested
+Version 0.90.14, a pre-release: in daily use by its author, its parts tested
 (=tools/test.sh=, about 225,000 checks), its interfaces still changing until
 1.0.0, the first stable release.
 
@@ -274,6 +316,13 @@ Tuatara says where its ideas come from:
   (=lisp/lsp/usual-tools.lisp=, made from its languages.toml).
 - tree-sitter and the authors of its grammars :: parsing. Each grammar's licence
   is named in =syntax/grammars.tsv=, and its text goes with every release.
+  Three of them (hare, gas and blueprint) are under the GNU GPL 3.0 only; they
+  run only in =tuatara-syntax-helper=, which loads the grammars and is spoken
+  to over a local socket, so that program is distributed under the GPL 3.0.
+- tree-sitter-prolog, by Stefano Volpe and Shane Brewer :: parsing Prolog.
+  It is under the GNU Affero General Public License 3.0 or later, Shane
+  Brewer's first part of it under the ISC licence; it is the only part of the
+  release under the Affero GPL.
 - Org mode :: the Org format and how Org files behave: the parse as
   org-element makes it, folding and the indented view, links, tables and their
   formulas (worked out as Calc works them out), the agenda, clocking and
@@ -301,6 +350,10 @@ Tuatara says where its ideas come from:
   the Language Server Protocol, whose snippet syntax Tuatara's snippets share.
 - Magit :: the state of a git repository (=C-x g=): its files staged,
   unstaged and not tracked, their changes, commits, the log.
+- compile and smerge-mode :: running a build or the tests and going from one
+  place in its messages to the next (=M-x compile=, =M-g n=, =M-g p=); the
+  conflicts a merge left in a file, shown and put right (=C-c ^=,
+  =lisp/editing/conflicts.lisp=).
 - EasyPG :: the GnuPG commands: files and regions encrypted, decrypted, signed
   and verified, keys listed and managed, =.gpg= files opened and saved.
 - jinx, by Daniel Mendler :: the way of checking spelling: only the words
@@ -333,6 +386,10 @@ Tuatara says where its ideas come from:
   saved or committed, for the gutter (=lisp/editing/diff.lisp=).
 - Unicode's text segmentation (UAX #29) :: a letter and its accents, or an
   emoji and its modifiers, moved over and drawn as one character.
+- Unicode's bidirectional algorithm (UAX #9) :: right-to-left text shown in
+  the order it is read in (=src/display/bidi.lisp=), checked against Unicode's
+  own BidiTest.txt, BidiCharacterTest.txt and BidiBrackets.txt
+  (=tools/bidi-conformance.sh=; Unicode License v3).
 - freedesktop.org's trash specification :: the trash Rimu puts files in and
   lists, yours and each drive's.
 - freedesktop.org's desktop notifications :: notifications told on the
@@ -340,6 +397,9 @@ Tuatara says where its ideas come from:
   (=lisp/help/notifications.lisp=).
 - The file program :: a file's kind told by its first octets, never by its
   name (=src/io/kinds.lisp=).
+- PDF (ISO 32000) :: the structure of a PDF read by =M-x file-metadata=: its
+  objects, cross-reference tables, streams and filters, and page content
+  (=lisp/viewers/pdf-reader.lisp=).
 - RFC 1345 :: the digraphs, as Emacs's rfc1345 input method has them.
 - RFC 3339 :: dates and times as the named date patterns read and compare them
   (=src/syntax/named-patterns.lisp=).
@@ -348,11 +408,21 @@ Tuatara says where its ideas come from:
 - Ghostty, by Mitchell Hashimoto and its contributors :: the terminal library
   (libghostty-vt, MIT) that =M-x terminal= keeps its screen with, built from the
   commit =lisp/terminal/library.pin= names; its licence goes with it.
+- simdutf, Highway, Wuffs and uucode :: the libraries the terminal library is
+  built with: Unicode text checked and converted (simdutf, by Daniel Lemire and
+  its contributors), many characters worked on at once (Highway, by Google),
+  pictures' pixels (Wuffs, by Google) and the Unicode character properties
+  (uucode, by Jacob Sandlund); each one's licence goes with every release.
+- Zig and LLVM's libc++ :: the compiler the terminal library is built with,
+  whose standard library and C++ library are compiled into it; their licences
+  go with every release.
+- The Unicode Character Database :: the characters' properties the terminal
+  library knows them by, through uucode; its licence goes with every release.
 - kitty, by Kovid Goyal :: the graphics and keyboard protocols, and the table of
   marks for pictures in text.
 - Ao :: the colour theme, by the same author (github.com/YardQuit/ao).
 - SBCL :: the Common Lisp Tuatara is written in and runs on.
-- alexandria, babel, CFFI, cl-ppcre, trivial-features, ASDF and Quicklisp :: the
-  Common Lisp libraries Tuatara is built with, compiled into its program; each
-  one's licence goes with every release.
+- alexandria, cl-ppcre, ASDF and Quicklisp :: the Common Lisp libraries Tuatara
+  is built with, compiled into its program; each one's licence goes with every
+  release.
 

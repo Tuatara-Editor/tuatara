@@ -8,7 +8,7 @@
 ;;;; stage it, unstage it, its hunk at point, its changes, its log, its lines'
 ;;;; commits, its history, put it back, rename or delete it.
 
-(in-package #:tuatara.defaults)
+(in-package #:tuatara.git)
 
 ;;; Who changed each line
 
@@ -128,7 +128,7 @@ one); the rename is staged, and the buffers visiting the file follow it."
                                                   (tuatara.io:path-join (tuatara.io:slash-ended there) (tuatara.io:native-file-name from))
                                                   there)))
                                   (handler-case
-                                      (progn
+                                      (reporting-errors ("renaming ~a" path)
                                         (check-not-saving (list from))
                                         (git-run "Renaming a file" top (list "mv" "--" path to)
                                                  (format nil "Renamed ~a to ~a" (escape-controls path) (escape-controls to))

@@ -118,6 +118,19 @@ file of test/org/, the same nodes, positions and properties as tools/org-oracle.
     (tuatara.defaults::org-parse text)
     (true (< (- (get-internal-real-time) start) internal-time-units-per-second))))
 
+(define-test (org list-items-parsed-in-time-with-their-number)
+  ;; a long plain list is parsed in time growing with its items alone: each item was looked for through
+  ;; all of them, 45 s for a list of 10 MB
+  (flet ((seconds (items)
+           (let ((text (with-output-to-string (out)
+                         (dotimes (i items) (format out "- item ~d with *bold* text~%" i)))))
+             (loop repeat 2
+                   minimize (let ((start (get-internal-real-time)))
+                              (tuatara.defaults::org-parse text)
+                              (/ (- (get-internal-real-time) start) internal-time-units-per-second))))))
+    (let ((per-thousand (/ (- (seconds 16000) (seconds 4000)) 12)))
+      (true (< per-thousand 6/100) "~,1f ms for each thousand items more" (* 1000 per-thousand)))))
+
 (defun org-row-faces (f row)
   "The faces of ROW of the frontend F's last frame, as (TEXT FACE) for each span."
   (let ((line (tuatara.frontend.fake:fake-screen-line f row)))
@@ -145,9 +158,17 @@ file of test/org/, the same nodes, positions and properties as tools/org-oracle.
     (true (org-faces-include f 3 "CLOSED:" :org-special-keyword))))
 
 (define-test (org coloured-as-org-colours)
-  (let ((f (let ((tuatara-user:*org-bullets* nil) (tuatara-user:*org-checkbox-signs* nil) (tuatara-user:*org-list-bullets* nil)
-                 (tuatara-user:*org-startup-indented* nil))
-             (run-keys "M-x o r g - m o d e RET" :text *org-coloured* :width 80 :height 16))))
+  ;; drawn again once the rules of the block's language are compiled, which the first time is done in
+  ;; the background (source-blocks-coloured-when-ready)
+  (let* ((lisp (tuatara.defaults::org-src-language "lisp"))
+         (f (let ((tuatara-user:*org-bullets* nil) (tuatara-user:*org-checkbox-signs* nil) (tuatara-user:*org-list-bullets* nil)
+                  (tuatara-user:*org-startup-indented* nil))
+              (run-keys (list "M-x o r g - m o d e RET"
+                              (lambda ()
+                                (loop repeat 1000 until (tuatara.defaults::rules-ready-p lisp) do (sleep 0.02)))
+                              :tick)
+                        :text *org-coloured* :width 80 :height 16))))
+    (true (tuatara.defaults::rules-ready-p lisp))
     (true (org-faces-include f 0 "#+title:" :org-document-info-keyword))
     (true (org-faces-include f 0 " Notes" :org-document-title))
     (true (org-faces-include f 1 "TODO" :org-todo))
@@ -226,6 +247,21 @@ signs, not indented, drawers open."
                                (member :org-block (second span)) (not (eq (first (second span)) :org-block))))
            (org-row-faces f row)))
 
+(defun org-code-parser-awaited ()
+  "An action for a test session (QUEUE-TEST-KEYS) that waits until the program
+parsing the code of *scratch* runs, queued again in its turn for at most 20
+seconds; the editor draws after it as it does when woken."
+  (let ((start (get-internal-real-time)))
+    (labels ((wait ()
+               (let ((own (tuatara.buffer:buffer-local (tuatara.buffer:find-buffer "*scratch*") :syntax-helper)))
+                 (unless (or (and own (tuatara.syntax:helper-alive own))
+                             (> (- (get-internal-real-time) start) (* 20 internal-time-units-per-second)))
+                   (sleep 0.02)
+                   (tuatara.frontend.fake:fake-queue-action
+                    (tuatara.command::frame-frontend (tuatara.command::editor-frame tuatara.command:*editor*))
+                    #'wait)))))
+      #'wait)))
+
 (defun org-row-org-faces (f row)
   "The faces of Org's own (and :comment) on ROW of the frontend F's last frame."
   (loop for (nil face) in (org-row-faces f row)
@@ -288,8 +324,9 @@ signs, not indented, drawers open."
         (setf tuatara.defaults::*colouring-rules* rules)))))
 
 (define-test (org source-blocks-coloured)
-  ;; each block in its language, Org's names for them too (emacs-lisp, sh); text and unknown ones plain
-  (let ((f (run-keys "M-x o r g - m o d e RET"
+  ;; each block in its language, Org's names for them too (emacs-lisp, sh); text and unknown ones plain,
+  ;; once the program parsing the code runs
+  (let ((f (run-keys (list "M-x o r g - m o d e RET" (org-code-parser-awaited))
                      :text (format nil "#+begin_src emacs-lisp~%(defun x () 1)~%#+end_src~%#+begin_src sh~%echo $HOME~%#+end_src~%#+begin_src text~%(defun y () 1)~%#+end_src~%#+begin_src nosuchlanguage~%(defun z () 1)~%#+end_src~%#+begin_src python~%def f(): return 1~%#+end_src~%")
                      :width 80 :height 20)))
     (true (org-row-coloured-p f 1 "defun"))
@@ -328,6 +365,44 @@ signs, not indented, drawers open."
       (tuatara.command:run-editor f :setup #'tuatara.defaults:install-defaults :buffer (tuatara.buffer:find-buffer "*scratch*")))
     (true (tuatara.defaults::rules-ready-p language))
     (true (org-row-coloured-p f 3 "def"))))
+
+(define-test (org source-blocks-coloured-when-helper-starts)
+  ;; the program parsing a note's code not started yet when the note is first drawn, another start
+  ;; holding it up: its blocks plain then, coloured once it is, without moving into them
+  (let ((scratch (tuatara.buffer:find-buffer "*scratch*")))
+    (when scratch (tuatara.buffer:kill-buffer scratch)))
+  (let* ((f (tuatara.frontend.fake:make-fake-frontend :width 80 :height 12))
+         (text (format nil "* Notes~%#+begin_src python~%def f(): return 1~%#+end_src~%"))
+         (buffer (tuatara.buffer:make-buffer "*scratch*" :text text))
+         (holding (sb-thread:make-semaphore))
+         (letting-go (sb-thread:make-semaphore))
+         (plain-at-first nil)
+         (start (get-internal-real-time)))
+    (true (tuatara.defaults::rules-at-hand (tuatara.defaults::org-src-language "python") :wait 60))
+    (let ((holder (sb-thread:make-thread (lambda ()
+                                           (sb-thread:with-mutex (tuatara.syntax::**room-lock**)
+                                             (sb-thread:signal-semaphore holding)
+                                             (sb-thread:wait-on-semaphore letting-go :timeout 30))))))
+      (sb-thread:wait-on-semaphore holding)
+      (unwind-protect
+           (labels ((drawn-p ()
+                      (org-faces-include f 2 "def f(): return 1" :org-block))
+                    (wait-drawn ()
+                      (if (and (not (drawn-p))
+                               (< (- (get-internal-real-time) start) (* 20 internal-time-units-per-second)))
+                          (progn (sleep 0.02) (tuatara.frontend.fake:fake-queue-action f #'wait-drawn))
+                          (progn (setf plain-at-first (and (drawn-p) (not (org-row-coloured-p f 2 "def"))))
+                                 (sb-thread:signal-semaphore letting-go)
+                                 ;; nothing typed after
+                                 (tuatara.frontend.fake:fake-queue-action f (org-code-parser-awaited))))))
+             (tuatara.frontend.fake:fake-queue-keys f "M-x o r g - m o d e RET")
+             (tuatara.frontend.fake:fake-queue-action f #'wait-drawn)
+             (without-grammar-questions
+               (tuatara.command:run-editor f :setup #'tuatara.defaults:install-defaults :buffer buffer)))
+        (sb-thread:signal-semaphore letting-go)
+        (sb-thread:join-thread holder :default nil)))
+    (true plain-at-first)
+    (true (org-row-coloured-p f 2 "def"))))
 
 (defparameter *org-folding*
   (format nil "* One~%Text of one.~%** One A~%Text of one A.~%** One B~%Text of one B.~%* Two~%Text of two.~%")
@@ -376,13 +451,15 @@ signs, not indented, drawers open."
       (tuatara.buffer:kill-buffer b))))
 
 (define-test (org one-parse-at-a-time)
-  ;; a large Org buffer is parsed in the background by one thread at a time, whatever is typed, the
-  ;; latest text parsed last; the buffer's text is not copied on every key
+  ;; a large part of an Org buffer (a headline with a long text under it) is parsed in the background by
+  ;; one thread at a time, whatever is typed, the latest text parsed last; the buffer's text is not
+  ;; copied on every key
   (let ((tuatara.defaults::*org-parse-at-once* 1000)
         (f (tuatara.frontend.fake:make-fake-frontend :width 80 :height 12))
         (most 0)
         (text (with-output-to-string (out)
-                (dotimes (i 20000) (format out "* Heading ~d with [[https://x.org][a link]]~%Some body text ~d.~%" i i)))))
+                (format out "* Heading~%")
+                (dotimes (i 20000) (format out "Some body text ~d with [[https://x.org][a link]].~%" i)))))
     (flet ((parsers () (count "tuatara org parse" (sb-thread:list-all-threads) :key #'sb-thread:thread-name :test #'equal)))
       (dotimes (i 12)
         (tuatara.frontend.fake:fake-queue-keys f (if (zerop i) "i x" "x"))
@@ -393,9 +470,10 @@ signs, not indented, drawers open."
         (tuatara.command:run-editor f :setup #'tuatara.defaults:install-defaults :buffer buffer)
         (is >= 1 most)
         ;; the last text typed is parsed in the end
-        (loop repeat 300 until (zerop (parsers)) do (sleep 0.05))
-        (tuatara.defaults::org-buffer-tree buffer)
-        (is eql (tuatara.buffer:buffer-version buffer) (tuatara.defaults::org-state-version (tuatara.defaults::org-buffer-state buffer)))
+        ;; parsed again once typing has paused
+        (true (loop repeat 300
+                    thereis (tuatara.defaults::org-view-current (tuatara.defaults::org-view-at buffer 0))
+                    do (sleep 0.05)))
         (tuatara.buffer:buffer-mark-saved buffer)
         (tuatara.buffer:kill-buffer buffer)))))
 
@@ -494,7 +572,7 @@ signs, not indented, drawers open."
 (define-test (org wrapping-in-a-macro)
   ;; C-c m: the selection or the word at point wrapped in a macro chosen from a list: R, P, those the note declares
   (flet ((after (keys text)
-           (let ((tuatara.defaults::*org-last-macro* "R"))
+           (let ((tuatara.export::*org-last-macro* "R"))
              (multiple-value-bind (f editor) (run-keys (format nil "M-x o r g - m o d e RET ~a" keys) :text text :width 100 :height 8)
                (declare (ignore f))
                (session-text editor)))))
@@ -523,7 +601,7 @@ signs, not indented, drawers open."
 (define-test (org keys-wait-for-no-parse-on-plain-lines)
   ;; RET and TAB on a line that can hold no link, table or checkbox: the file is not parsed for them
   (let ((calls 0))
-    (sb-int:encapsulate 'tuatara.defaults::org-tree-now 'count
+    (sb-int:encapsulate 'tuatara.defaults::org-parse-now 'count
                         (lambda (function &rest arguments) (incf calls) (apply function arguments)))
     (unwind-protect
          (flet ((parses (keys text)
@@ -537,7 +615,7 @@ signs, not indented, drawers open."
              (true (< (parses "" link) (parses "RET" link))))
            (let ((table (format nil "| a | b |~%| c | d |~%")))
              (true (< (parses "" table) (parses "TAB" table)))))
-      (sb-int:unencapsulate 'tuatara.defaults::org-tree-now 'count))))
+      (sb-int:unencapsulate 'tuatara.defaults::org-parse-now 'count))))
 
 (define-test (org largest-file-opens-as-text)
   ;; an Org file larger than Org's readers take opens in text mode: no whole-buffer parse of gigabytes
@@ -550,3 +628,58 @@ signs, not indented, drawers open."
         (with-visited (buffer path)
           (tuatara.modes:set-auto-mode buffer)
           (is eq 'tuatara.defaults::text-mode (type-of (tuatara.modes:buffer-major-mode buffer))))))))
+
+(define-test (org places-kept-while-asking)
+  ;; text taken in while a command asks (a job's result, here put in at the top): what the command
+  ;; was asked for is found again where it went, the change kept
+  (let ((tuatara.defaults::*org-now* (encode-universal-time 0 0 9 2 10 2026))
+        (text (format nil "* One~%one~%* Two~%two~%")))
+    (flet ((after (keys answer)
+             (session-text
+              (nth-value 1 (run-keys (list (format nil "M-x o r g - m o d e RET j j ~a" keys)
+                                           (lambda ()
+                                             (tuatara.buffer:buffer-insert (tuatara.buffer:find-buffer "*scratch*") 0
+                                                                           (format nil "* Zero~%taken in~%")))
+                                           answer)
+                                     :text text :width 60 :height 12)))))
+      ;; a note: under Two, as asked
+      (let ((note (after "C-c C-z" "h i RET")))
+        (true (search (format nil "* Zero~%taken in~%* One~%one~%* Two~%") note) "~a" note)
+        (true (search "hi" note :start2 (search "* Two" note)) "~a" note))
+      ;; tags: on Two's line
+      (let ((tagged (after "C-c C-q" "w o r k RET")))
+        (true (search (format nil "* Zero~%taken in~%* One~%one~%* Two :work:~%two~%") tagged) "~a" tagged)))))
+
+(define-test (org last-heading-at-the-very-end)
+  ;; point at the very end of a note is under its last heading: a link stored there leads to it
+  (with-test-directory (dir)
+    (let ((org (merge-pathnames "end.org" dir))
+          (tuatara.defaults::*org-stored-links* '()))
+      (alexandria:write-string-into-file (format nil "* First~%Text~%* Last~%body") org)
+      (run-keys (format nil "C-x C-f C-a C-k ~a RET M-> M-x o r g - s t o r e - l i n k RET"
+                        (rimu-typed (namestring org)))
+                :width 120 :height 20)
+      (true (search "::*Last" (first (first tuatara.defaults::*org-stored-links*)))
+            "~a" tuatara.defaults::*org-stored-links*)
+      (let ((b (tuatara.buffer:find-buffer "end.org")))
+        (when b (tuatara.buffer:buffer-mark-saved b) (tuatara.buffer:kill-buffer b))))))
+
+(define-test (org asked-for-gone-while-asking)
+  ;; what a command asked about taken away while it asks: refused, nothing else touched in its place
+  (flet ((after (text keys gone answer)
+           (multiple-value-bind (f editor)
+               (run-keys (list (format nil "M-x o r g - m o d e RET ~a" keys)
+                               (lambda ()
+                                 (let ((at (search gone text)))
+                                   (tuatara.buffer:buffer-delete (tuatara.buffer:find-buffer "*scratch*") at (+ at (length gone)))))
+                               answer)
+                         :text text :width 80 :height 12)
+             (values (session-text editor) f))))
+    ;; the headline whose tags are asked for
+    (multiple-value-bind (text f) (after (format nil "* A~%a~%* B~%b~%") "C-c C-q" (format nil "* A~%a~%") "w o r k RET")
+      (is string= (format nil "* B~%b~%") text)
+      (true (tuatara.frontend.fake:fake-frame-showing f "The headline is no longer there")))
+    ;; the link being edited, another right after it
+    (multiple-value-bind (text f) (after (format nil "[[x][y]][[z][w]]~%") "C-c C-l" "[[x][y]]" "RET RET")
+      (is string= (format nil "[[z][w]]~%") text)
+      (true (tuatara.frontend.fake:fake-frame-showing f "The link is no longer there")))))

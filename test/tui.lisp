@@ -33,6 +33,26 @@
     (false (window t t ":0"))
     (false (window nil nil nil))))
 
+(define-test (tui first-line-of-a-closed-file)
+  ;; a file not there and one that may not be read both give no line; only the second is
+  ;; kept in the debug log, as a failure
+  (let ((path (namestring (merge-pathnames "first-line" *test-state-directory*))))
+    (with-open-file (out path :direction :output :if-exists :supersede) (format out "max~%"))
+    (drain-debug-reports)
+    (unwind-protect
+         (progn
+           (is string= "max" (tuatara.terminal::file-first-line path))
+           (sb-posix:chmod path 0)
+           (tuatara.runtime:set-debug t)
+           (false (tuatara.terminal::file-first-line (format nil "~a.missing" path)))
+           (true (sb-concurrency:queue-empty-p tuatara.runtime:*debug-reports*))
+           (false (tuatara.terminal::file-first-line path))
+           (let ((texts (loop for report = (sb-concurrency:dequeue tuatara.runtime:*debug-reports*)
+                              while report collect (princ-to-string (fourth report)))))
+             (true (find-if (lambda (text) (search (format nil "reading ~a failed" path) text)) texts) "~s" texts)))
+      (drain-debug-reports)
+      (delete-file path))))
+
 (define-test (tui input-pending-counts-what-is-kept)
   ;; with nothing on the terminal's input, a resize kept to hand over and keys handed
   ;; back to ncurses are input waiting all the same
@@ -79,7 +99,8 @@
 
 (define-test (tui terminal-given-back-alike)
   ;; stopping and lending the terminal give it back the same way, and a lent terminal is taken
-  ;; again as the editor had it: the kitty keyboard, the mouse, pastes, the screen painted whole
+  ;; again as the editor had it: the kitty keyboard, the mouse, pastes, rows shown in the order sent, the
+  ;; screen painted whole
   (let ((calls '()))
     (with-functions-replaced ((tuatara.frontend.tui::%endwin (lambda () (push :endwin calls)))
                               (tuatara.frontend.tui::%clearok (lambda (window on) (declare (ignore window on)) (push :clearok calls)))
@@ -100,7 +121,7 @@
                          tuatara.frontend.tui::*shown-cursor-shape*))))
         (let* ((esc (string #\Escape))
                (given-back (concatenate 'string esc "[0 q" esc "]112" (string (code-char 7)) esc "[<u"
-                                        esc "[?1002l" esc "[?1006l" esc "[?2004l")))
+                                        esc "[?1002l" esc "[?1006l" esc "[?2004l" esc "[8h")))
           (multiple-value-bind (out calls kitty shape) (sent #'tuatara.frontend:frontend-stop)
             (is string= given-back out)
             (is equal '((:forget t) :endwin) calls)
@@ -108,7 +129,7 @@
             (false shape))
           (multiple-value-bind (out calls kitty shape)
               (sent (lambda (f) (tuatara.frontend:frontend-lend-terminal f (lambda () (write-string "program")))))
-            (is string= (concatenate 'string given-back "program" esc "[>5u" esc "[?1002h" esc "[?1006h" esc "[?2004h") out)
+            (is string= (concatenate 'string given-back "program" esc "[>5u" esc "[?1002h" esc "[?1006h" esc "[?2004h" esc "[8l") out)
             (is equal '((:forget t) :endwin :clearok :refresh) calls)
             (true kitty)
             (false shape)))))))
@@ -128,7 +149,7 @@
                               (tuatara.display:combine-faces (lambda (face base) (declare (ignore base)) face))
                               (tuatara.frontend.tui::%waddstr-octets
                                (lambda (window octets) (declare (ignore window))
-                                 (when recording (write-string (cffi:foreign-string-to-lisp octets :encoding :utf-8) written))
+                                 (when recording (write-string (tuatara.io:sap-string octets) written))
                                  0)))
       (let ((f (tuatara.frontend.tui:make-tui-frontend))
             (text (make-string 200 :initial-element #\x)))
@@ -145,3 +166,38 @@
           (setf recording nil)
           (let ((few (consed 2)) (many (consed 40)))
             (true (< (/ (- many few) 38) 48) "~d octets of garbage for a row of 40 spans, ~d for one of 2" many few)))))))
+
+(define-test (tui frontends-call-c-one-way)
+  ;; the terminal and the window call their C libraries as the rest of the editor
+  ;; does, through SBCL's own foreign calls: no library of their own to do it
+  (let ((libraries '("cffi" "babel" "trivial-features")))
+    (labels ((needed (name)
+               (let ((system (asdf:find-system name nil)))
+                 (when system
+                   (cons (asdf:primary-system-name system)
+                         (loop for dependency in (asdf:system-depends-on system)
+                               when (stringp dependency) append (needed dependency)))))))
+      (dolist (system '("tuatara/terminal" "tuatara/frontend-tui" "tuatara/frontend-gtk"))
+        (is equal '() (intersection libraries (needed system) :test #'string=) "~a needs ~a" system
+            (intersection libraries (needed system) :test #'string=)))))
+  (dolist (file (directory (merge-pathnames "frontends/**/*.lisp" (asdf:system-source-directory :tuatara))))
+    (false (search "cffi:" (uiop:read-file-string file)) "~a calls C through cffi" (enough-namestring file))))
+
+(define-test (tui lent-terminal-words-written-out)
+  ;; the words shown on the terminal lent to a program have their control characters written out
+  (let ((f (tuatara.frontend.tui:make-tui-frontend))
+        (said (make-string-output-stream)))
+    (setf (tuatara.frontend.tui::tui-window f) t)
+    (sb-int:encapsulate 'tuatara.frontend.tui::give-terminal-back 'lending-nothing
+                        (lambda (function f) (declare (ignore function f))))
+    (sb-int:encapsulate 'tuatara.frontend.tui::take-terminal-again 'lending-nothing
+                        (lambda (function &rest arguments) (declare (ignore function arguments))))
+    (unwind-protect
+         (let ((*standard-output* said))
+           (tuatara.frontend:frontend-lend-terminal
+            f (constantly t) :words (format nil "decrypting a~c]0;owned~c.gpg" #\Esc (code-char 7))))
+      (sb-int:unencapsulate 'tuatara.frontend.tui::give-terminal-back 'lending-nothing)
+      (sb-int:unencapsulate 'tuatara.frontend.tui::take-terminal-again 'lending-nothing))
+    (let ((text (get-output-stream-string said)))
+      (true (search "decrypting a^[]0;owned^G.gpg" text) "~s" text)
+      (false (find #\Esc text)))))

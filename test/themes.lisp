@@ -249,7 +249,7 @@ every editor session applies the startup theme, so tests about faces start clean
   (is equal '(16 "*tui-colours* 16") (multiple-value-list (tuatara.frontend.tui::colours-used 16 256 nil)))
   (is = 8 (tuatara.frontend.tui::colours-used 16 8 nil))
   ;; the colours of an installed terminal description, none for one not installed
-  (cffi:use-foreign-library tuatara.frontend.tui::ncursesw)
+  (tuatara.frontend.tui::load-ncurses)
   (is = 256 (tuatara.frontend.tui::terminfo-colours "xterm-256color"))
   (false (tuatara.frontend.tui::terminfo-colours "no-such-terminal"))
   (let ((tuatara.frontend.tui::*direct-colour* t) (tuatara.frontend.tui::*terminal-colours* #x1000000))
@@ -418,7 +418,7 @@ its own colours, flags, inheritance, font and height, and what it resolves to."
            (is eq :list-marked (tuatara.defaults::buffer-name-face read-only :marked)))
       (tuatara.buffer:kill-buffer special)
       (tuatara.buffer:kill-buffer read-only)))
-  (is eq :list-dim (tuatara.defaults::package-name-face nil "kept"))
+  (is eq :list-dim (tuatara.packages::package-name-face nil "kept"))
   (is eq :list-directory (tuatara.defaults::bookmark-name-face nil "folder"))
   (is eq :list-dim (tuatara.defaults::bookmark-name-face nil "gone"))
   (is equal '("✓" :list-good) (multiple-value-list (tuatara.defaults::status-cell :good)))

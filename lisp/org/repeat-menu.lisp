@@ -408,6 +408,7 @@ the menu from its next day."
   "While a date prompt that takes repeats is open, a list (ASKED TEXT DAY)
 that ORG-DATE-REPEAT-MENU fills: true, what was typed, and the calendar's
 day, so that the prompt opens the repeat menu from them.")
+(pushnew '*org-date-repeat-asked* *question-variables*)
 
 (define-command org-date-repeat-menu ()
   "At the date prompt of \\[org-schedule], \\[org-deadline] and \\[org-time-stamp]: leave

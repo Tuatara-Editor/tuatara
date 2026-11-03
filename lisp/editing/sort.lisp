@@ -97,25 +97,22 @@ COMMAND was not run. Refused when search filters hide any of those lines
 
 ;;; Lines of octets
 
-(defun count-newlines (octets start end)
-  "How many newline octets OCTETS holds from START below END."
-  (declare (type tuatara.text:octets octets) (type fixnum start end) (optimize speed))
-  (loop for i of-type fixnum from start below end count (= (aref octets i) 10)))
-
 (defun scan-lines (octets crlf)
   "The lines of OCTETS, which hold whole lines: three fixnum vectors of each
-line's start, the end of its text (before its newline, and in a CRLF buffer
-before a carriage return ahead of that) and the start of the line after."
+line's start, the end of its text (before the octet that ends it, and in a
+carriage return and line feed (CRLF) buffer before a carriage return ahead of
+a newline) and the start of the line after."
   (declare (type tuatara.text:octets octets))
   (let* ((size (length octets))
-         (n (+ (count-newlines octets 0 size) (if (and (plusp size) (/= (aref octets (1- size)) 10)) 1 0)))
+         (n (+ (tuatara.text:octets-line-ends octets 0 size)
+               (if (and (plusp size) (not (tuatara.text:octets-line-end-p octets (1- size) size))) 1 0)))
          (starts (make-array n :element-type 'fixnum))
          (ends (make-array n :element-type 'fixnum))
          (nexts (make-array n :element-type 'fixnum))
          (p 0) (k 0))
     (declare (type fixnum size p k))
     (loop while (< p size)
-          do (let* ((newline (or (loop for i of-type fixnum from p below size when (= (aref octets i) 10) return i) size))
+          do (let* ((newline (or (tuatara.text:octets-line-end-position octets p size) size))
                     (text-end (if (< newline size) (tuatara.text:line-text-end octets p newline crlf) newline))
                     (next (min size (1+ newline))))
                (declare (type fixnum newline text-end next))
@@ -126,7 +123,8 @@ before a carriage return ahead of that) and the start of the line after."
 
 (defun rope-line-before (rope at crlf)
   "The text of ROPE's line that ends just before AT, a line's start, as octets,
-without its line end (a carriage return too with CRLF)."
+without its line end (a carriage return too with carriage return and line feed
+(CRLF))."
   (let* ((end (tuatara.text:rope-line-text-end rope 0 (1- at) crlf))
          (start (tuatara.text:rope-line-start rope (max 0 end))))
     (tuatara.text:rope-octets rope :start start :end end)))
@@ -237,7 +235,7 @@ numbers sort as the numbers they are."
         (cond ((zerop digits) 0d0)
               ;; past what a double holds: the largest there is, of the sign
               (t (handler-case (coerce (* sign value) 'double-float)
-                   (error () (if (minusp sign) most-negative-double-float most-positive-double-float)))))))))
+                   (arithmetic-error () (if (minusp sign) most-negative-double-float most-positive-double-float)))))))))
 
 (defun column-bounds (octets start end from to &optional (tab-width 8))
   "Where the text in display columns FROM below TO of the line from START below
@@ -272,7 +270,8 @@ vector of the numbers. A line with too few fields stops the sort, naming it."
           ((:field :numeric)
            (multiple-value-bind (fs fe) (field-bounds octets s e (second key))
              (unless fs
-               (error "A line has too few fields for field ~d: ~a" (second key) (line-preview octets s e)))
+               (refuse "A line has too few fields for field ~d~@[: ~a~]"
+                       (second key) (and (not *secret-at-hand*) (line-preview octets s e))))
              (setf (aref key-starts i) fs (aref key-ends i) fe)
              (when numbers (setf (aref numbers i) (field-number octets fs fe)))))
           (:columns
@@ -422,14 +421,14 @@ after its last; blank lines between them are not in any."
 
 (defun page-records (octets)
   "The pages of OCTETS: a list of (START END), each starting after the
-newlines that begin it and ending just after the form feed at the start of a
+line ends that begin it and ending just after the form feed at the start of a
 line that ends it, or at the end."
   (let ((records '()) (p 0) (size (length octets)))
     (loop while (< p size)
-          do (loop while (and (< p size) (= (aref octets p) 10)) do (incf p))
+          do (loop while (and (< p size) (tuatara.text:octets-line-end-p octets p size)) do (incf p))
              (when (< p size)
                (let ((end (loop for i from p below size
-                                when (and (= (aref octets i) 12) (or (= i 0) (= (aref octets (1- i)) 10)) (> i p))
+                                when (and (= (aref octets i) 12) (or (= i 0) (tuatara.text:octets-line-end-p octets (1- i) size)) (> i p))
                                   return (1+ i)
                                 finally (return size))))
                  (push (list p end) records)
@@ -516,9 +515,9 @@ new text and the number of records."
 ;;; Writing files a piece at a time
 
 (defun file-rope (fd length)
-  "A rope over the first LENGTH octets of the open unnamed file FD, which it
-takes: mapped, its lines counted later with the rest of the result, all at once
-(START-SORT)."
+  "A rope over the first LENGTH octets of the unnamed file open as file
+descriptor (FD), which it takes: mapped, its lines counted later with the
+rest of the result, all at once (START-SORT)."
   (if (zerop length)
       (progn (sb-posix:close fd) (tuatara.text:make-rope))
       (tuatara.text:mapping-rope (tuatara.text:map-fd fd length "a sorted region"))))
@@ -536,7 +535,7 @@ meanwhile; CHANGED turns true when one touches it, which abandons the result.
 BASE is the text the job began on (JOB-BEGINS-WHERE-GIVEN), the region
 BASE-START below BASE-END in it, and SINCE the buffer's undo stack there: the
 result stands in the undo history there, before the changes made meanwhile
-\(TUATARA.BUFFER:BUFFER-CHANGE-WHERE-BEGUN)."
+\(TUATARA.BUFFER:BUFFER-TAKE-IN-JOB-RESULT)."
   words what (progress (list 0)) (total 1) (counting nil) result message
   (region-start 0) (region-end 0) changed change-function
   base (base-start 0) (base-end 0) since)
@@ -544,11 +543,11 @@ result stands in the undo history there, before the changes made meanwhile
 (setf (documentation 'sort-job-p 'function) "True when OBJECT is a SORT-JOB.")
 
 (defstruct (run (:constructor make-run (fd length lines ends)) (:copier nil))
-  "A piece of a region sorted into an unnamed file FD of LENGTH octets: its
-LINES as records in their sorted order, each a header (the line's index in the
-piece, where its key starts and ends in its text, the text's length, and a
-number as two halves) and the line's text; and ENDS, the length of each line's
-line end in the lines' first order."
+  "A piece of a region sorted into an unnamed file open as file descriptor
+(FD) of LENGTH octets: its LINES as records in their sorted order, each a
+header (the line's index in the piece, where its key starts and ends in its
+text, the text's length, and a number as two halves) and the line's text;
+and ENDS, the length of each line's line end in the lines' first order."
   fd length lines ends mapping)
 
 (setf (documentation 'make-run 'function) "A run of LINES records in the file FD of LENGTH octets."
@@ -557,19 +556,21 @@ line end in the lines' first order."
 (defconstant +record-header+ 24 "Octets of a run record's header.")
 
 (defmacro with-scratch-file ((fd directory) &body body)
-  "Run BODY with FD a new unnamed file in DIRECTORY (OPEN-SCRATCH-FILE), closed,
-its octets freed, unless BODY returns a result: when it is stopped, fails (the
-disk full) or returns NIL. Otherwise what it returns holds the file open."
+  "Run BODY with file descriptor (FD) a new unnamed file in DIRECTORY
+(OPEN-SCRATCH-FILE), closed, its octets freed, unless BODY returns a
+result: when it is stopped, fails (the disk full) or returns NIL. Otherwise
+what it returns holds the file open."
   (let ((result (gensym "RESULT")))
     `(let ((,fd (tuatara.io:open-scratch-file ,directory)) (,result nil))
        (unwind-protect (setf ,result (multiple-value-list (progn ,@body)))
-         (unless (first ,result) (ignore-errors (sb-posix:close ,fd))))
+         (unless (first ,result) (ignoring-errors-reported ("closing a file of sorted lines") (sb-posix:close ,fd))))
        (values-list ,result))))
 
 (defun discard-run (run)
-  "Let go of RUN's file, a run or a piece's output (FD ...)."
+  "Let go of RUN's file, a run or a piece's output, closing its file
+descriptor (FD)."
   (let ((fd (if (consp run) (first run) (run-fd run))))
-    (when fd (ignore-errors (sb-posix:close fd)))))
+    (when fd (ignoring-errors-reported ("closing a file of sorted lines") (sb-posix:close fd)))))
 
 (defun sort-piece (job rope piece key reverse crlf fold directory)
   "Sort the lines of PIECE, (START END) of ROPE, into an unnamed run file in
@@ -586,9 +587,7 @@ DIRECTORY and return the RUN; NIL when JOB was stopped first."
             (with-scratch-file (fd directory)
               (let ((writer (tuatara.io:make-writer fd))
                     (header (tuatara.text:make-octets +record-header+))
-                    (line-ends (make-array (length starts) :element-type '(unsigned-byte 2))))
-                (dotimes (i (length starts))
-                  (setf (aref line-ends i) (- (aref nexts i) (aref ends i))))
+                    (line-ends (line-end-codes octets ends nexts)))
                 (loop for r across order
                       do (let* ((s (aref starts r)) (e (aref ends r))
                                 (number (if numbers (aref numbers r) 0d0)))
@@ -682,18 +681,38 @@ stopped. The runs' files are mapped for the merge and let go after."
                                 (progn (setf (aref heap 0) (aref heap (1- size))) (decf size) (down 0)))))))
           (dolist (run runs)
             (when (run-mapping run) (tuatara.text:close-mapping (run-mapping run)))
-            (when (run-fd run) (ignore-errors (sb-posix:close (run-fd run))))))))))
+            (when (run-fd run)
+              (ignoring-errors-reported ("closing a file of sorted lines") (sb-posix:close (run-fd run))))))))))
+
+(defun line-end-code (octets end next)
+  "The code of the end of a line of OCTETS whose text ends at END, the next
+line starting at NEXT (SCAN-LINES), for WRITE-KEPT-LINE-END: 0 for none, 1
+for a newline, 2 for a carriage return and a newline, 3 for a carriage
+return alone."
+  (declare (type tuatara.text:octets octets) (type fixnum end next))
+  (case (- next end)
+    (0 0)
+    (1 (if (= 13 (aref octets end)) 3 1))
+    (t 2)))
+
+(defun line-end-codes (octets ends nexts)
+  "The LINE-END-CODE of each line of OCTETS, whose texts end at ENDS and the
+lines after start at NEXTS (SCAN-LINES), as a vector of 2-bit codes."
+  (let ((codes (make-array (length ends) :element-type '(unsigned-byte 2))))
+    (dotimes (i (length ends) codes)
+      (setf (aref codes i) (line-end-code octets (aref ends i) (aref nexts i))))))
 
 (defun write-kept-line-end (writer code crlf)
-  "Write to WRITER the end a line had, by CODE, the octets between its text's
-end and the next line's start (SCAN-LINES): none for 0, a newline for 1, and
-for 2 a carriage return and a newline when CRLF is true, else a newline."
+  "Write to WRITER the end a line had, by CODE (LINE-END-CODE): none for 0, a
+newline for 1, for 2 a carriage return and a newline when carriage return and
+line feed (CRLF) is true, else a newline, and a carriage return for 3."
   (let ((newline (if crlf
                      (load-time-value (coerce #(13 10) 'tuatara.text:octets) t)
                      (load-time-value (coerce #(10) 'tuatara.text:octets) t))))
     (case code
       (0 nil)
       (1 (tuatara.io:writer-octets writer newline (1- (length newline)) (length newline)))
+      (3 (tuatara.io:writer-octets writer (load-time-value (coerce #(13) 'tuatara.text:octets) t) 0 1))
       (t (tuatara.io:writer-octets writer newline 0 (length newline))))))
 
 (defun sort-on-disk (job rope start end key reverse crlf fold directory)
@@ -834,7 +853,7 @@ when JOB was stopped."
                    (let ((octets (tuatara.text:rope-octets rope :start (first piece) :end (second piece))))
                      (multiple-value-bind (starts line-ends nexts) (scan-lines octets crlf)
                        (declare (ignore starts))
-                       (push (map '(vector (unsigned-byte 2)) #'- nexts line-ends) all))))))
+                       (push (line-end-codes octets line-ends nexts) all))))))
          (slot 0))
     (with-scratch-file (fd directory)
       (let ((writer (tuatara.io:make-writer fd)))
@@ -851,10 +870,6 @@ when JOB was stopped."
         (values (file-rope fd (tuatara.io:writer-length writer)) (length ends))))))
 
 ;;; Jobs
-
-(defun sort-job-of (buffer)
-  "The sort or filter running in BUFFER, or NIL."
-  (tuatara.runtime:running-job buffer 'sort-job))
 
 (defun sort-progress (job)
   "How much of JOB is done, from 0 to 99 while it runs."
@@ -982,11 +997,12 @@ unless the region changed meanwhile or the buffer may no longer take it
                         ;; standing where the job began, before the changes made meanwhile elsewhere
                         (multiple-value-bind (final final-forward final-backward)
                             (spliced (tuatara.buffer:buffer-text buffer) start end)
-                          (unless (multiple-value-call #'tuatara.buffer:buffer-change-where-begun
-                                    buffer (sort-job-since job) (sort-job-base job)
-                                    (spliced (sort-job-base job) (sort-job-base-start job) (sort-job-base-end job))
-                                    final final-forward final-backward)
-                            (tuatara.buffer:buffer-swap-text buffer final final-forward final-backward))))))))
+                          (multiple-value-bind (done forward backward)
+                              (spliced (sort-job-base job) (sort-job-base-start job) (sort-job-base-end job))
+                            (tuatara.buffer:buffer-take-in-job-result
+                             buffer final final-forward final-backward
+                             :since (sort-job-since job)
+                             :begun (tuatara.text:make-swap (sort-job-base job) done forward backward)))))))))
                (when (<= start point end)
                  (setf (tuatara.buffer:buffer-point buffer) start))
                (setf (tuatara.buffer:buffer-mark-active-p buffer) nil)
@@ -1520,12 +1536,13 @@ records' header (LIST-HEADER-P), or NIL."
 matches, or with KEEP those it does not, in the background when large; what
 of a line the pattern is tried on is asked first in a file of records cut
 into fields (READ-LINE-FILTER, WORDS heading the question). With WHOLE,
-every line when nothing is selected. COMMAND names the command in messages,
+every line when nothing is selected (of the part shown, in a narrowed
+buffer). COMMAND names the command in messages,
 NOUN what a line is called in them."
   (let ((b (current-buffer)))
     (multiple-value-bind (start end) (selected-lines b)
       (when (and (null start) whole)
-        (setf start 0 end (tuatara.text:rope-bytes (tuatara.buffer:buffer-text b))))
+        (multiple-value-setq (start end) (tuatara.buffer:buffer-bounds b)))
       (if (null start)
           (message "No selection: ~(~a~) was not run" command)
           (multiple-value-bind (pattern regex matcher what first) (read-line-filter b words start end)
@@ -1604,7 +1621,7 @@ gives up the result."
   "Job highlight function: the region a sort or filter running in WINDOW's
 buffer is changing, in ROWS only (SORT-SHADING)."
   (declare (ignore editor))
-  (let ((job (sort-job-of (tuatara.display:window-buffer window))))
+  (let ((job (tuatara.runtime:running-job (tuatara.display:window-buffer window) 'sort-job)))
     (when (and job (plusp (length rows)))
       (sort-shading job (tuatara.display:row-start (aref rows 0))
                     (tuatara.display:row-end (aref rows (1- (length rows))))))))

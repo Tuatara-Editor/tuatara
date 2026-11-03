@@ -272,7 +272,7 @@ BELOW-HOME, never the home directory (by any of its names), one above it or /."
                                (when (eq names :unread)
                                  (setf names (mapcar #'first (tuatara.io:directory-entries dir))))
                                (some (lambda (name) (glob-match marker name)) names))
-                             (ignore-errors (tuatara.io:path-stamp (concatenate 'string dir marker) :follow nil))))
+                             (tuatara.io:path-stamp (concatenate 'string dir marker) :follow nil :failure nil)))
                        markers))
             return dir)))
 
@@ -281,7 +281,7 @@ BELOW-HOME, never the home directory (by any of its names), one above it or /."
 in a repository, those of your excludes file (GIT-EXCLUDES-FILE), of the
 repository's .git/info/exclude and of the .gitignore files of the directories
 from the repository's top down to ROOT's parent, the outer ones first."
-  (let ((top (repository-top root)) (root (directory-name root)))
+  (let ((top (tuatara.git:repository-top root)) (root (directory-name root)))
     (when top
       (let ((global (git-excludes-file))
             (above '()))
@@ -315,14 +315,15 @@ that cannot be read); an entry of only (NAME KIND) counts as no link. CANCEL,
 a cons, ends the walk when its car turns true, looked at as each folder is
 entered; LIMIT ends it once that many folders were entered. True when every
 folder wanted was gone through, NIL when CANCEL or LIMIT ended it."
-  (let ((device (and same-device (let ((stamp (ignore-errors (tuatara.io:path-stamp root))))
+  (let ((device (and same-device (let ((stamp (tuatara.io:path-stamp root :failure nil)))
                                    (and stamp (tuatara.io:stamp-dev stamp)))))
         (entered 0)
         (waiting '()) (last nil))
     (labels ((entries (directory)
                (if list
                    (funcall list directory)
-                   (ignore-errors (tuatara.io:directory-entries directory :stamps t))))
+                   (ignoring-errors-reported ("listing ~a" directory)
+                     (tuatara.io:directory-entries directory :stamps t))))
              (enter (directory relative depth)
                (when (or (and cancel (car cancel)) (and limit (>= entered limit)))
                  (return-from walk-directory nil))

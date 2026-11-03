@@ -151,7 +151,7 @@ megabytes, as a minified script has, is cut short.")
   "Where the line beginning at LINE-START in ROPE ends, or where it is cut
 short, *OUTLINE-LINE-LIMIT* octets on, at the start of a character."
   (let ((limit (min (tuatara.text:rope-bytes rope) (+ line-start *outline-line-limit*))))
-    (or (tuatara.text:rope-find-octet rope 10 :start line-start :end limit)
+    (or (tuatara.text:rope-find-line-end rope :start line-start :end limit)
         (loop for end downfrom limit above line-start
               when (tuatara.text:char-boundary-p rope end) return end
               finally (return line-start)))))
@@ -240,26 +240,26 @@ the search does not end at once then, BUFFER's file stays mapped for it
 \(BUFFER-LENT-P) while it ends on its own."
   (let* ((halted nil) (result nil) (failure nil)
          (copy (and tree (tuatara.syntax:copy-tree-pointer tree)))
-         (thread (ignore-errors
-                  (tuatara.runtime:make-guarded-thread
-                   (lambda ()
-                     (let ((halt (lambda () halted)))
-                       (unwind-protect
-                            (handler-case
-                                (tuatara.runtime:reporting-errors ("finding the headings")
-                                  (setf result
-                                        (outline-entries
-                                         (funcall finder rope copy halt) rope tab-width
-                                         (and colours copy
-                                              (lambda (start end)
-                                                (tuatara.syntax:rich-highlights colours copy rope start end faces)))
-                                         halt)))
-                              (error (e) (setf failure e)))
-                         (when copy (tuatara.syntax:delete-tree copy)))))
-                   :name "tuatara outline"))))
+         (thread (ignoring-errors-reported ("starting the search for headings")
+                   (tuatara.runtime:make-guarded-thread
+                    (lambda ()
+                      (let ((halt (lambda () halted)))
+                        (unwind-protect
+                             (handler-case
+                                 (tuatara.runtime:reporting-errors ("finding the headings")
+                                   (setf result
+                                         (outline-entries
+                                          (funcall finder rope copy halt) rope tab-width
+                                          (and colours copy
+                                               (lambda (start end)
+                                                 (tuatara.syntax:rich-highlights colours copy rope start end faces)))
+                                          halt)))
+                               (error (e) (setf failure e)))
+                          (when copy (tuatara.syntax:delete-tree copy)))))
+                    :name "tuatara outline"))))
     (cond ((null thread)
            (when copy (tuatara.syntax:delete-tree copy))
-           (error "There is no thread to find the headings in"))
+           (refuse "There is no thread to find the headings in"))
           ((multiple-value-bind (done state)
                    (wait-interruptibly thread :message "Finding the headings..."
                                               :stop (lambda (thread) (declare (ignore thread)) (setf halted t)))
@@ -267,7 +267,7 @@ the search does not end at once then, BUFFER's file stays mapped for it
                (setf (tuatara.buffer:buffer-lent-p buffer) t))
              (not done))
            (keyboard-quit-signal))
-          (failure (error "The headings could not be found: ~a" failure))
+          (failure (refuse "The headings could not be found: ~a" (tuatara.runtime:failure-words failure :said t)))
           (t result))))
 
 ;;; Choosing one
@@ -275,6 +275,7 @@ the search does not end at once then, BUFFER's file stays mapped for it
 (defvar *outline-shown* nil
   "While \\[buffer-outline] shows a heading: the window it shows it in and the
 octet the heading begins at, as a cons.")
+(pushnew '*outline-shown* *question-variables*)
 
 (defun outline-shown-range (editor window rows)
   "The line of the heading \\[buffer-outline] shows in WINDOW, as a list of one
@@ -382,7 +383,8 @@ order of the text. Typing narrows the
 list, and a digit and a space typed first (2 SPC) keep only the headings that
 many levels deep or less, as a prefix argument does. Moving in the list shows
 each heading in the window; \\<minibuffer>\\[minibuffer-done] goes there, leaving the mark where
-point was, and \\[minibuffer-abort] goes back. The list opens on the heading point is under."
+point was, and \\[minibuffer-abort] goes back. The list opens on the heading point is under.
+In a narrowed buffer, the headings of the part shown."
   (let* ((buffer (current-buffer))
          (mode (buffer-major-mode buffer))
          (finder (mode-outline mode buffer))
@@ -393,10 +395,13 @@ point was, and \\[minibuffer-abort] goes back. The list opens on the heading poi
          (colours (and tree language (not (eq (language-colouring language mode) :none))
                        (rules-at-hand language) (language-compiled-query language :colouring)))
          (faces (and colours (multiple-value-call #'query-faces colours (language-colouring language mode))))
-         (entries (outline-collect finder rope tree colours faces (tuatara.display:tab-width-of buffer) buffer)))
+         (entries (multiple-value-bind (low high) (tuatara.buffer:buffer-bounds buffer)
+                    ;; of a narrowed buffer, the headings of the part shown
+                    (remove-if-not (lambda (entry) (and (<= low (first entry)) (< (first entry) high)))
+                                   (outline-collect finder rope tree colours faces (tuatara.display:tab-width-of buffer) buffer)))))
     (if entries
         (outline-choose buffer (current-window) entries)
-        (message "No headings"))))
+        (message "No headings~:[~; in the part shown~]" (tuatara.buffer:buffer-narrowed-p buffer)))))
 
 (defun install-outline ()
   "Bind \\[buffer-outline] to \\`M-g o', and light the line of the

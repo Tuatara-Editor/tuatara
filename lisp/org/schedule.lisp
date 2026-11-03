@@ -41,6 +41,7 @@ the date then written at the prompt; NIL to ask without it.")
 
 (defvar *org-date-calendar* nil
   "While Org's date prompt shows the calendar: its buffer; NIL otherwise.")
+(pushnew '*org-date-calendar* *question-variables*)
 
 (defun org-date-calendar-show (day)
   "Show the calendar below the window the date prompt was asked from, point on
@@ -89,6 +90,7 @@ PROMPT, the question asked; KEYMAP, its keys once it is answered at the prompt."
 (defvar *org-date-choosing* nil
   "While Org's date question is answered in the calendar, nothing typed at the
 prompt yet (*ORG-READ-DATE-IN-CALENDAR*): its ORG-DATE-CHOICE; NIL otherwise.")
+(pushnew '*org-date-choosing* *question-variables*)
 
 (defparameter *org-date-choose-keys*
   '(("h" org-calendar-backward-day) ("<left>" org-calendar-backward-day)
@@ -541,7 +543,7 @@ where it has none of its own."
 \"DEADLINE\") with the ORG-TS NEW, or take it away when NEW is NIL, logging the
 date it had as their settings say. A date by rule is not replaced by one
 date that does not repeat, which would end its repeats: that is said."
-  (with-org-structure (buffer tree text position)
+  (with-org-structure (parse buffer tree text position)
     (let ((headline (org-current-headline tree position)))
       (if (null headline)
           (message "Not under a headline")
@@ -581,7 +583,7 @@ date that does not repeat, which would end its repeats: that is said."
                    (message (substitute-command-keys
                              "~a repeats by rule, ~a: one date would end its repeats. Type a repeat (every weekday 9:00) or C-r at the date prompt for the repeat menu; t at the question moves one time; \\<org-mode>\\[universal-argument] \\[org-schedule] takes it away")
                             (org-property headline :raw-value) old))
-                  (t (org-replace-chars buffer begin end new-entry
+                  (t (org-replace-chars parse begin end new-entry
                                         :point (cond ((<= position line-end) position)
                                                      ((>= position end) (+ position (- (length new-entry) (- end begin))))
                                                      (t begin)))
@@ -633,11 +635,11 @@ one after another (*ORG-READ-DATE-IN-CALENDAR*)."
       ((null ts) (org-no-date))
       ((stringp ts)
        (if active
-           (with-org-structure (buffer tree text position)
-             (org-replace-chars buffer position position ts :point (+ position (length ts))))
+           (with-org-structure (parse buffer tree text position)
+             (org-replace-chars parse position position ts :point (+ position (length ts))))
            (message "~a" (substitute-command-keys "A date by rule is an active timestamp only: \\[org-time-stamp] writes it"))))
       (t
-        (with-org-structure (buffer tree text position)
+        (with-org-structure (parse buffer tree text position)
           (multiple-value-bind (from to) (org-timestamp-around text position)
             (let* ((old (and from (org-read-ts (subseq text from to))))
                    (new (progn (setf (org-ts-active ts) active)
@@ -646,7 +648,7 @@ one after another (*ORG-READ-DATE-IN-CALENDAR*)."
                                        (org-ts-end-hour ts) (org-ts-end-hour old) (org-ts-end-minute ts) (org-ts-end-minute old)))
                                (org-ts-text (org-ts-keep-cycle ts old))))
                    (from (or from position)))
-              (org-replace-chars buffer from (or to position) new :point (+ from (length new)))))))))
+              (org-replace-chars parse from (or to position) new :point (+ from (length new)))))))))
     :several active))
 
 (define-command org-time-stamp ()

@@ -101,7 +101,7 @@ encrypted when saved, their text never written as it is; a name ending in
 (set-formatted-file-header :org (format nil \"#+title: {title}~%#+date: {date}~2%\"))."
   (let ((type (assoc kind *formatted-file-types*)))
     (unless type
-      (error "~s is no kind of file; use one of ~{~(~s~)~^ ~}." kind (mapcar #'first *formatted-file-types*)))
+      (refuse "~s is no kind of file; use one of ~{~(~s~)~^ ~}." kind (mapcar #'first *formatted-file-types*)))
     (setf (fourth type) header)
     kind))
 
@@ -133,7 +133,8 @@ as (\"blank\" . \"\"), then each file in NOTE-TEMPLATES-DIRECTORY as (NAME
 its own text, or its file's with %date% today's date and %author% your name."
   (let ((value (cdr template)))
     (if (and (consp value) (eq (first value) :file))
-        (let* ((text (handler-case (read-file-text (second value))
+        (let* ((text (handler-case (reporting-errors ("reading the template ~a" (first template))
+                                     (read-file-text (second value)))
                        (error (e) (message "The template ~a could not be read: ~a" (first template) e) "")))
                (text (cl-ppcre:regex-replace-all "%date%" text (format-time "%Y-%m-%d" (get-universal-time)))))
           (cl-ppcre:regex-replace-all "%author%" text (lambda (match) (declare (ignore match)) (user-full-name)) :simple-calls t))
@@ -179,12 +180,11 @@ repeats dropped, sorted when *FORMATTED-FILE-SORT-KEYWORDS* says so."
 (defun identifier-time (identifier)
   "The universal time the IDENTIFIER of a formatted name (20260927T213446)
 says, in local time; NIL when it says no time there is."
-  (ignore-errors
-   (flet ((part (start end) (parse-integer identifier :start start :end end)))
-     (let ((year (part 0 4)) (month (part 4 6)) (day (part 6 8))
-           (hour (part 9 11)) (minute (part 11 13)) (second (part 13 15)))
-       (and (valid-date-p year month day) (<= 0 hour 23) (<= 0 minute 59) (<= 0 second 59)
-            (day-universal-time (day-number year month day) hour minute second))))))
+  (flet ((part (start end) (whole-number identifier :start start :end end)))
+    (let ((year (part 0 4)) (month (part 4 6)) (day (part 6 8))
+          (hour (part 9 11)) (minute (part 11 13)) (second (part 13 15)))
+      (and (valid-date-p year month day) hour minute second (<= 0 hour 23) (<= 0 minute 59) (<= 0 second 59)
+           (day-universal-time (day-number year month day) hour minute second)))))
 
 (defun formatted-file-name (identifier title keywords extension)
   "The formatted name of a file: IDENTIFIER, then -- and TITLE's slug, then __
@@ -442,10 +442,10 @@ which TAKE-GATHERED takes what was found, on the editor's thread; the editor
 is woken as things are found, every twentieth of a second at most, and when
 the work ends."
   (let ((gathering (make-gathering))
-        (frontend (and *editor* (editor-frontend *editor*))))
+        (editor *editor*))
     (flet ((wake ()
              (setf (gathering-woken gathering) (get-internal-real-time))
-             (when frontend (ignore-errors (tuatara.frontend:frontend-wake frontend)))))
+             (when editor (wake-editor editor))))
       (tuatara.runtime:make-guarded-thread
        (lambda ()
          (unwind-protect
@@ -551,7 +551,8 @@ thread."
                                                (when (and (identifier-at-start-p (tuatara.io:native-file-name path))
                                                           (funcall keep relative))
                                                  (funcall give (funcall entry relative
-                                                                        (lambda () (ignore-errors (tuatara.io:path-stamp path)))
+                                                                        (lambda ()
+                                                                          (tuatara.io:path-stamp path :failure nil))
                                                                         now))))))))))))
 
 (defun call-with-formatted-files (function &key (root (directory-name *formatted-file-directory*))
@@ -730,7 +731,7 @@ It begins with the header for its kind (*FORMATTED-FILE-TYPES*). A name is
 an identifier from the time, -- and the title in lower case with hyphens, __
 and the keywords joined by _. Nothing
 is written until the file is saved."
-  (multiple-value-bind (path new) (read-file-path "Find or create file: " :new-file t)
+  (multiple-value-bind (path new) (read-file-path "Find or create file: " :new-file t :note nil)
     (cond
       (new
        ;; the directory typed: a new file there, all of its name asked
@@ -742,7 +743,7 @@ is written until the file is saved."
        (let ((full (tuatara.io:native (tuatara.io:expand-path path))))
          (if (or (tuatara.io:path-stamp full)
                  (buffer-visiting full))
-             (visit-path full)
+             (note-visited-path full (visit-path full))
              (multiple-value-bind (directory name) (tuatara.io:path-folder-and-name full)
                (if (unencryptable-name-p name)
                    (message "~a is not made: only .gpg files can be encrypted" name)
@@ -752,6 +753,7 @@ is written until the file is saved."
                                          (name-extension name)
                                          (read-formatted-extension)))
                           (keywords (read-keywords "New file KEYWORDS: ")))
+                     (note-chosen-path full)
                      (make-formatted-file directory title keywords extension))))))))))
 
 (defvar *formatted-file-subdirectory-history* '()
@@ -825,7 +827,7 @@ nothing in it acted on; an error says so when it is larger than
   (tuatara.io:file-text path :limit *insert-file-limit*
                              :too-large (lambda (name size)
                                           (declare (ignore size))
-                                          (error "~a is larger than ~a (*insert-file-limit*): not read"
+                                          (refuse "~a is larger than ~a (*insert-file-limit*): not read"
                                                  (tuatara.io:native-file-name name) (octets-words *insert-file-limit*)))))
 
 (define-command insert-note-template ()
@@ -852,7 +854,7 @@ text already, asked first."
            (what (if path (tuatara.io:native-file-name path) chosen)))
       (cond ((zerop (length text)) (message "~a is empty: nothing inserted" what))
             ((and (plusp (tuatara.buffer:buffer-size buffer))
-                  (not (yes-or-no-p* (format nil "~a has text already: insert ~a at point anyway?" (tuatara.buffer:buffer-name buffer) what))))
+                  (not (y-or-n-p* (format nil "~a has text already: insert ~a at point anyway?" (tuatara.buffer:buffer-name buffer) what))))
              (message "Nothing inserted"))
             (t (let ((at (point)))
                  (tuatara.buffer:buffer-insert buffer at (text-for-buffer text buffer))

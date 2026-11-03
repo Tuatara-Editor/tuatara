@@ -9,22 +9,51 @@ never into the file; a save deletes the copy, quitting without one keeps it, the
 so and M-x recover-file takes it back as one edit; nothing opened safely is copied; a name too
 long is kept beside its copy.")
 
-(defun auto-save-session (steps &key (width 100) (height 20))
+(defvar *session-messages-start* 0
+  "Where in *Messages* what was said since the step before the one
+AUTO-SAVE-SESSION waits on now began starts: a message said as a step's work
+went on is there for the step after, however soon another followed it.")
+
+(defvar *until-bound* 10
+  "The most seconds a step (:until FUNCTION) of AUTO-SAVE-SESSION waits when
+it names none: a bound on a wait that never ends, never what a test waits for.")
+
+(defun auto-save-session (steps &key (width 100) (height 20) pending)
   "Run an editor session on STEPS, each a string of keys, (:wait SECONDS), or
-\(:until FUNCTION) waiting (ten seconds at most) until FUNCTION of no
-arguments is true. Returns the frontend and the editor."
-  (let ((f (tuatara.frontend.fake:make-fake-frontend :width width :height height)))
+\(:until FUNCTION [SECONDS]) waiting until FUNCTION of no arguments is true:
+for that, never for a time, SECONDS (*UNTIL-BOUND* when not given) only a
+bound on a wait that never ends, the test failing past it. As a step begins,
+*SESSION-MESSAGES-START* is where the step before it began. With PENDING,
+what is queued counts as typed meanwhile, as keys pressed while the editor
+waits are. Returns the frontend and the editor."
+  (let* ((tuatara.command:*message-log-max* most-positive-fixnum)
+         (f (tuatara.frontend.fake:make-fake-frontend :width width :height height))
+         (log (lambda () (tuatara.buffer:buffer-size (tuatara.command::messages-buffer))))
+         (begun nil)
+         (step-start (funcall log)))
+    (when pending
+      (setf (tuatara.frontend.fake:fake-pending f) (lambda (f) (tuatara.frontend.fake::fake-events f))))
+    (setf *session-messages-start* step-start)
     (labels ((take (steps start)
                (let ((step (first steps)))
+                 (unless (eq steps begun)
+                   (setf begun steps
+                         *session-messages-start* step-start
+                         step-start (funcall log)))
                  (cond ((null steps))
                        ((and (consp step) (eq (first step) :wait))
                         (if (> (- (get-internal-real-time) start) (* (second step) internal-time-units-per-second))
                             (take (rest steps) (get-internal-real-time))
                             (progn (sleep 0.02) (tuatara.frontend.fake:fake-queue-action f (lambda () (take steps start))))))
                        ((and (consp step) (eq (first step) :until))
-                        (if (or (funcall (second step)) (> (- (get-internal-real-time) start) (* 10 internal-time-units-per-second)))
-                            (take (rest steps) (get-internal-real-time))
-                            (progn (sleep 0.02) (tuatara.frontend.fake:fake-queue-action f (lambda () (take steps start))))))
+                        (let ((bound (or (third step) *until-bound*)))
+                          (cond ((funcall (second step))
+                                 (take (rest steps) (get-internal-real-time)))
+                                ((> (- (get-internal-real-time) start) (* bound internal-time-units-per-second))
+                                 (waited-in-vain (second step) bound)
+                                 (take (rest steps) (get-internal-real-time)))
+                                (t
+                                 (sleep 0.02) (tuatara.frontend.fake:fake-queue-action f (lambda () (take steps start)))))))
                        (t (queue-test-keys f (list step))
                           (tuatara.frontend.fake:fake-queue-action f (lambda () (take (rest steps) (get-internal-real-time)))))))))
       (tuatara.frontend.fake:fake-queue-action f (lambda () (take steps (get-internal-real-time))))
@@ -67,7 +96,7 @@ arguments is true. Returns the frontend and the editor."
         ;; visited again: said; recovered as one edit, which undo takes back; a save deletes the copy
         (multiple-value-bind (f editor)
             (auto-save-session (list (format nil "C-x C-f C-a C-k ~a RET" (rimu-typed file))
-                                     (format nil "M-x ~{~a~^ ~} RET y RET" (map 'list #'string "recover-file"))))
+                                     (format nil "M-x ~{~a~^ ~} RET y" (map 'list #'string "recover-file"))))
           (declare (ignore editor))
           (true (tuatara.frontend.fake:fake-frame-showing f "has changes auto-saved"))
           (true (tuatara.frontend.fake:fake-frame-showing f "notes.txt recovered"))
@@ -76,7 +105,7 @@ arguments is true. Returns the frontend and the editor."
             (true (tuatara.buffer:buffer-modified-p buffer))
             (tuatara.buffer:kill-buffer buffer)))
         (auto-save-session (list (format nil "C-x C-f C-a C-k ~a RET" (rimu-typed file))
-                                 (format nil "M-x ~{~a~^ ~} RET y RET" (map 'list #'string "recover-file"))
+                                 (format nil "M-x ~{~a~^ ~} RET y" (map 'list #'string "recover-file"))
                                  "C-x C-s" (list :until (lambda () (null (copy))))))
         (is string= "first line kea" (alexandria:read-file-into-string file))
         (false (copy))
@@ -99,7 +128,7 @@ arguments is true. Returns the frontend and the editor."
         (false (tuatara.command:lookup-key tuatara.defaults::*auto-saves-keymap* (tuatara.frontend:parse-key-sequence "R")))
         (auto-save-session (list (format nil "C-x C-f C-a C-k ~a RET" (rimu-typed file)) "M-> SPC b i r d" (list :until (lambda () (copy)))))
         (tuatara.buffer:kill-buffer (tuatara.buffer:find-buffer "notes.txt"))
-        (auto-save-session (list (format nil "M-x ~{~a~^ ~} RET" (map 'list #'string "list-auto-saves")) "RET y RET"))
+        (auto-save-session (list (format nil "M-x ~{~a~^ ~} RET" (map 'list #'string "list-auto-saves")) "RET y"))
         (let ((buffer (tuatara.buffer:find-buffer "notes.txt")))
           (true buffer)
           (when buffer

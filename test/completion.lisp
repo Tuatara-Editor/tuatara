@@ -449,11 +449,11 @@
   ;; laying out key hints costs the same for each hint however many there are
   (flet ((seconds-per-hint (n)
            (let ((entries (loop for i below n collect (cons (format nil "k~d" i) (format nil "command-~d" i))))
-                 (start (get-internal-real-time))
+                 (start (thread-cpu-time))
                  (calls 0))
              (loop do (tuatara.command::key-hint-rows entries 200 n) (incf calls)
-                   until (> (- (get-internal-real-time) start) (* 1/5 internal-time-units-per-second)))
-             (/ (- (get-internal-real-time) start) internal-time-units-per-second calls n))))
+                   until (> (- (thread-cpu-time) start) (* 1/5 internal-time-units-per-second)))
+             (/ (- (thread-cpu-time) start) internal-time-units-per-second calls n))))
     (let ((small (seconds-per-hint 500))
           (large (seconds-per-hint 10000)))
       (true (< large (* 3 small)) "~,3e against ~,3e s per hint" large small))))
@@ -514,3 +514,43 @@
       (let ((filter (fastest (lambda () (tuatara.command:filter-candidates "kmpz" candidates))))
             (search (fastest (lambda () (dolist (c candidates) (search "kmpz" (tuatara.command:candidate-string c) :test #'char-equal))))))
         (true (< filter search) "filtering took ~,2f ms, searching ~,2f ms" (* 1000 filter) (* 1000 search))))))
+
+(define-test (completion filtering-makes-no-garbage-for-each-candidate)
+  ;; filtering and sorting many candidates makes only the vector of those matching:
+  ;; octets for each candidate more, as the difference between two sizes
+  (flet ((made (count input &rest keys)
+           (let ((candidates (loop for i below count collect (tuatara.command:make-candidate (format nil "file-~d.txt" i)))))
+             (apply #'tuatara.command:filter-candidates input candidates keys)
+             (let ((before (sb-ext:get-bytes-consed)))
+               (apply #'tuatara.command:filter-candidates input candidates keys)
+               (- (sb-ext:get-bytes-consed) before)))))
+    (made 40000 "f")
+    (dolist (case '(("f") ("le 1") ("" :keep-order :until-typed)))
+      (let ((each (/ (- (apply #'made 40000 case) (apply #'made 20000 case)) 20000.0)))
+        ;; 8 octets for each, for the vector returned
+        (true (< each 16) "~s: ~,1f octets for each candidate" case each)))))
+
+(define-test (completion sorted-alike-with-many-candidates)
+  ;; the order is the one documented, however many there are
+  (let* ((names (loop for i below 5000 collect (format nil "~:[note~;Note~]-~d" (evenp i) (mod (* i 7919) 5000))))
+         (sorted (map 'list #'tuatara.command:candidate-string
+                      (tuatara.command:filter-candidates "note" (mapcar #'tuatara.command:make-candidate names)))))
+    (is = 5000 (length sorted))
+    ;; all match at a word's start alike: shorter first, then by characters' codes
+    (true (loop for (a b) on sorted while b
+                always (or (< (length a) (length b)) (and (= (length a) (length b)) (string<= a b)))))))
+
+(define-test (completion exact-buffer-name-wins-over-longer-names)
+  ;; a buffer's name typed whole and RET switches to that buffer, though other names hold it
+  (flet ((switched-to (current keys)
+           (let ((made (mapcar (lambda (name) (tuatara.buffer:make-buffer name :text name))
+                               '("a.txt" "*Conflict: a.txt*" "*Diff: a.txt*" "b.txt"))))
+             (unwind-protect
+                  (multiple-value-bind (f editor) (run-keys (format nil "C-x b ~a RET ~a" (key-string current) keys) :text "")
+                    (declare (ignore f))
+                    (tuatara.buffer:buffer-name (session-buffer editor)))
+               (mapc #'tuatara.buffer:kill-buffer made)))))
+    (is string= "a.txt" (switched-to "*Diff: a.txt*" "C-x b a . t x t RET"))
+    (is string= "a.txt" (switched-to "b.txt" "C-x b a . t x t RET"))
+    ;; the buffer shown already is no candidate: the name typed is taken as typed
+    (is string= "a.txt" (switched-to "a.txt" "C-x b a . t x t RET"))))

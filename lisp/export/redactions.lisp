@@ -8,7 +8,7 @@
 ;;;; enhanced export and latex-compile-pdf look first, and ask before making a
 ;;;; PDF that would give a hidden text away.
 
-(in-package #:tuatara.defaults)
+(in-package #:tuatara.export)
 
 (defvar *latex-redaction-commands* '("R" "D" "redact")
   "The LaTeX commands that hide their argument in your LaTeX files, \\\\R{John
@@ -237,14 +237,17 @@ may write its files of TYPES (endings, pdf or docx): when its
 in it (links followed), or in your templates, logos or trusted folders
 \(*EXPORT-KEPT-FOLDERS*, *EXPORT-TRUSTED-FOLDERS*), only when you say to go
 on. A note opened from an encrypted file is exported only when you say so:
-what the export writes is not encrypted."
-  (unless (or (not (tuatara.buffer:buffer-local buffer :plaintext))
+what the export writes is not encrypted. Never into an evidence folder
+\(*EVIDENCE-FOLDERS*): NIL then, and as a second value the words saying why
+\(EVIDENCE-REFUSAL)."
+  (unless (or (not (tuatara.io:buffer-plaintext-p buffer))
               (yes-or-no-p* (format nil "~a is encrypted, but its export and what is made for it are not; export it all the same?"
                                     (tuatara.buffer:buffer-name buffer))))
     (return-from export-target-allowed-p nil))
   (let* ((file (tuatara.io:native (tuatara.io:expand-path (tuatara.buffer:buffer-file buffer))))
          (named (and (eq (export-kind buffer) :org)
-                     (ignore-errors (org-export-file-name (or text (tuatara.buffer:buffer-string buffer)) file))))
+                     (ignoring-errors-reported ("naming the export of ~a" file)
+                       (org-export-file-name (or text (tuatara.buffer:buffer-string buffer)) file))))
          (kept (append (mapcar #'funcall *export-kept-folders*) *export-trusted-folders*))
          ;; links followed: a folder in the note's that is a link to elsewhere is elsewhere
          (outside (and named (notevery (lambda (type)
@@ -254,7 +257,10 @@ what the export writes is not encrypted."
                                        types)))
          (existing (and outside
                         (find-if (lambda (path) (tuatara.io:path-stamp path))
-                                 (mapcar (lambda (type) (replaced-type named type)) types)))))
+                                 (mapcar (lambda (type) (replaced-type named type)) types))))
+         (refusal (some (lambda (type) (evidence-refusal "export to" (replaced-type (or named file) type))) types)))
+    (when refusal
+      (return-from export-target-allowed-p (values nil refusal)))
     (or (not outside)
         (yes-or-no-p* (if existing
                           (format nil "#+EXPORT_FILE_NAME writes over ~a, outside the note's folder or in one of your own; go on?"

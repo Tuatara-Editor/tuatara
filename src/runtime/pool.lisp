@@ -54,7 +54,9 @@ told."
         (cond ((and allowed (plusp allowed)) allowed)
               ((plusp online) online)
               (t 4)))
-    (error () 4)))
+    (error (e)
+      (when *debug-on* (report-error "counting the processors" '() e))
+      4)))
 
 (defun worker-count ()
   "How many worker threads the pool runs: nine in ten of the processors,
@@ -142,6 +144,10 @@ the calling thread does (STOPPABLE-WORK): a stoppable call of theirs is cut
 short when it is stopped, on every thread, the tasks not yet begun are passed
 over, and the calling thread then leaves that work here."
   (let* ((n (length tasks))
+         (tasks (if *secret-at-hand*
+                    ;; the workers hold the secret too
+                    (map 'simple-vector (lambda (task) (lambda () (let ((*secret-at-hand* t)) (funcall task)))) tasks)
+                    tasks))
          (cells *stop-cells*)
          (cut (list nil))
          (batch (make-batch (if cells
@@ -172,7 +178,8 @@ over, and the calling thread then leaves that work here."
     (let ((e (find-if #'identity (batch-errors batch))))
       (when e
         (when discard
-          (loop for result across (batch-results batch) when result do (ignore-errors (funcall discard result))))
+          (loop for result across (batch-results batch)
+                when result do (ignoring-errors-reported ("letting go of what a task made") (funcall discard result))))
         (error e)))
     (when (car cut) (check-stopped))
     (batch-results batch)))

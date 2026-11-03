@@ -92,7 +92,8 @@ checkpoints, so that a small text exercises all of the job's machinery."
       (with-background ()
         (run-keys (list "r r % \\ D / k RET"
                         (lambda ()
-                          (let ((job (tuatara.defaults::rewrite-of (tuatara.command:current-buffer))))
+                          (let ((job (tuatara.runtime:running-job (tuatara.command:current-buffer)
+                                                                  'tuatara.defaults::rewrite)))
                             (setf pieces (length (tuatara.defaults::rewrite-pieces job)))
                             (tuatara.runtime:job-stop job))))
                   :text text :width 100 :height 8))
@@ -377,7 +378,7 @@ FACE)) in a job's face, as (ROW START END FACE)."
       (run-keys (list "r r % \\ d / x RET"
                       (lambda ()
                         (let* ((b (tuatara.command:current-buffer))
-                               (job (tuatara.defaults::rewrite-of b)))
+                               (job (tuatara.runtime:running-job b 'tuatara.defaults::rewrite)))
                           (flet ((lighting ()
                                    (let ((start (get-internal-real-time)))
                                      (dotimes (i 20) (tuatara.defaults::job-shading job 0 4000))
@@ -407,7 +408,7 @@ FACE)) in a job's face, as (ROW START END FACE)."
                          (lambda () (setf spent (get-internal-real-time)))
                          "C-x / s ^ ( 5 | 1 9 9 9 9 5 ) , RET" :tick :tick
                          (lambda () (setf spent (- (get-internal-real-time) spent)
-                                          running (and (tuatara.defaults::rewrite-of b) t))
+                                          running (and (tuatara.runtime:running-job b 'tuatara.defaults::rewrite) t))
                                     (dolist (j (tuatara.runtime:jobs-of b :running t)) (tuatara.runtime:job-stop j))))
                    :file path :width 100 :height 20)
       (kill-records b path))

@@ -134,14 +134,14 @@ to.")
 (define-command mark-run-step-back ()
   "Put the mark run back where its last press found it;
 \\<*mark-run-keymap*>\\[mark-run-step-forward] puts it forward again."
-  (unless *mark-run-history* (error "No earlier step in this run"))
+  (unless *mark-run-history* (refuse "No earlier step in this run"))
   (push (selection-shape) *mark-run-redo*)
   (restore-selection-shape (pop *mark-run-history*)))
 
 (define-command mark-run-step-forward ()
   "Put the mark run forward where
 \\<*mark-run-keymap*>\\[mark-run-step-back] stepped it back from."
-  (unless *mark-run-redo* (error "No later step in this run"))
+  (unless *mark-run-redo* (refuse "No later step in this run"))
   (push (selection-shape) *mark-run-history*)
   (restore-selection-shape (pop *mark-run-redo*)))
 
@@ -238,7 +238,7 @@ object keys' Word marked and the like, though not over a complaint."
 (define-command mark-run-adopt ()
   "Take the selection into a mark run: its keys then grow it from where it is."
   (multiple-value-bind (start end) (selection-range :widen t)
-    (unless (and start (< start end)) (error "No selection to adopt"))
+    (unless (and start (< start end)) (refuse "No selection to adopt"))
     (select-bounds (current-buffer) start end)
     (mark-run-enter)))
 
@@ -280,11 +280,12 @@ run goes on."
             (setf (tuatara.buffer:buffer-mark-active-p b) nil)
             (let ((last (editor-last-command *editor*)))
               (setf (editor-last-command *editor*) nil)
-              (handler-case (progn (let ((argument (prefix-argument)))
-                                     (setf (editor-prefix-argument *editor*) nil)
-                                     (unwind-protect (select-word)
-                                       (setf (editor-prefix-argument *editor*) argument)))
-                                   (setf (editor-this-command *editor*) 'select-word))
+              (handler-case (reporting-errors ("selecting the word at point")
+                              (let ((argument (prefix-argument)))
+                                (setf (editor-prefix-argument *editor*) nil)
+                                (unwind-protect (select-word)
+                                  (setf (editor-prefix-argument *editor*) argument)))
+                              (setf (editor-this-command *editor*) 'select-word))
                 (error () (setf (editor-last-command *editor*) last))))
             (mark-run-enter))))))
 

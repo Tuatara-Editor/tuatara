@@ -36,6 +36,7 @@ is replaced too, its fold kept folded and what replaces it hidden with it
 
 (defvar *asked-match* nil
   "While a replacement asks at a match, the match as (BUFFER START END).")
+(pushnew '*asked-match* *question-variables*)
 
 (defun asked-match-highlights (editor window rows)
   "Highlight function: the match a replacement asks at (*ASKED-MATCH*) in

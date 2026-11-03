@@ -214,3 +214,330 @@ Returns the frontend and the editor."
                  (false image)
                  (true notes)))
           (tuatara.io:sandbox-status :again t))))))
+
+(defun j2k-octets (width height &key (components 3) (tile-width width) (tile-height height) (precision 8))
+  "The start of a JPEG 2000 codestream for a picture WIDTH by HEIGHT: its
+start marker and size marker, with COMPONENTS of PRECISION bits, cut in tiles
+TILE-WIDTH by TILE-HEIGHT, and nothing after them."
+  (flet ((be (n k) (loop for i from (1- k) downto 0 collect (ldb (byte 8 (* 8 i)) n))))
+    (kind-octets (list #xFF #x4F #xFF #x51) (be (+ 38 (* 3 components)) 2) (be 0 2)
+                 (be width 4) (be height 4) (be 0 4) (be 0 4) (be tile-width 4) (be tile-height 4) (be 0 4) (be 0 4)
+                 (be components 2)
+                 (loop repeat components append (list (1- precision) 1 1)))))
+
+(defun picture-box (type octets &key long)
+  "OCTETS in a box of TYPE, as JPEG 2000 and JPEG XL files keep their parts;
+LONG writes its size in the long form (size 1, then eight octets)."
+  (if long
+      (let ((size (+ 16 (length octets))))
+        (kind-octets (list 0 0 0 1) type (loop for i from 7 downto 0 collect (ldb (byte 8 (* 8 i)) size)) (coerce octets 'list)))
+      (let ((size (+ 8 (length octets))))
+        (kind-octets (loop for i from 3 downto 0 collect (ldb (byte 8 (* 8 i)) size)) type (coerce octets 'list)))))
+
+(defun jp2-octets (codestream &key (before #()))
+  "CODESTREAM kept in a JP2 file: its signature, its file type box, BEFORE
+\(octets of boxes) and the codestream's box."
+  (concatenate '(vector (unsigned-byte 8))
+               (kind-octets tuatara.io::*jp2-signature*) (picture-box "ftyp" (kind-octets "jp2 " (list 0 0 0 0) "jp2 "))
+               before (picture-box "jp2c" codestream)))
+
+(defun jxl-octets (width height)
+  "The start of a bare JPEG XL codestream for a picture WIDTH by HEIGHT (each
+at most 2^30), its size written in its longest form, all else as standard,
+and nothing after."
+  (let ((bits '()))
+    (flet ((put (value count) (dotimes (k count) (push (ldb (byte 1 k) value) bits))))
+      (put 0 1) (put 3 2) (put (1- height) 30) (put 0 3) (put 3 2) (put (1- width) 30) (put 1 1))
+    (setf bits (reverse bits))
+    (kind-octets (list #xFF #x0A)
+                 (loop for rest on bits by (lambda (l) (nthcdr 8 l))
+                       collect (loop for k below 8 for b in rest sum (ash b k))))))
+
+(defun jxl-boxed (codestream &key parts long (before #()))
+  "CODESTREAM kept in a JPEG XL file of boxes: its signature, its file type
+box, BEFORE (octets of boxes) and a jxlc box, or with PARTS, in that many
+jxlp boxes, their sizes in the long form with LONG."
+  (concatenate '(vector (unsigned-byte 8))
+               (kind-octets tuatara.io::*jxl-signature*) (picture-box "ftyp" (kind-octets "jxl " (list 0 0 0 0) "jxl "))
+               before
+               (if parts
+                   (let ((step (ceiling (length codestream) parts)))
+                     (apply #'concatenate '(vector (unsigned-byte 8))
+                            (loop for i below parts
+                                  for start = (* i step)
+                                  collect (picture-box "jxlp" (concatenate '(vector (unsigned-byte 8))
+                                                                           (vector (if (= i (1- parts)) #x80 0) 0 0 i)
+                                                                           (subseq codestream (min start (length codestream))
+                                                                                   (min (+ start step) (length codestream))))
+                                                       :long long))))
+                   (picture-box "jxlc" codestream))))
+
+(define-test (image-view jpeg-2000-and-xl-told)
+  ;; JPEG 2000 files and codestreams, JPEG XL codestreams and files of boxes: what they are, and their size
+  (flet ((kind (octets) (multiple-value-list (tuatara.io:octets-kind octets))))
+    (is equal '("JPEG 2000 codestream, 640 × 480" :j2k) (kind (j2k-octets 640 480)))
+    (is equal '("JPEG 2000 image, 640 × 480" :jp2) (kind (jp2-octets (j2k-octets 640 480))))
+    (is equal '(640 480) (multiple-value-list (tuatara.io:octets-picture-size (jp2-octets (j2k-octets 640 480)))))
+    (is equal '("JPEG 2000 image" :jp2) (kind (kind-octets tuatara.io::*jp2-signature*)))
+    (is equal '("JPEG XL image, 5000 × 3000" :jxl) (kind (jxl-octets 5000 3000)))
+    (is equal '("JPEG XL image, 5000 × 3000" :jxl) (kind (jxl-boxed (jxl-octets 5000 3000))))
+    (is equal '("JPEG XL image, 5000 × 3000" :jxl) (kind (jxl-boxed (jxl-octets 5000 3000) :parts 2)))
+    (is equal '(:width 300 :height 200 :components 4 :precision 16 :tiles 247)
+        (tuatara.io:j2k-header (j2k-octets 300 200 :components 4 :precision 16 :tile-width 16 :tile-height 16)))
+    (false (tuatara.io:kind-name-disagrees-p :jp2 "scan.jpx"))
+    (false (tuatara.io:kind-name-disagrees-p :j2k "scan.j2c"))
+    (true (tuatara.io:kind-name-disagrees-p :jxl "photo.txt"))))
+
+(defun coded-picture-files (dir)
+  "Pictures made in DIR by ImageMagick, each 64 by 48 pixels of #336699, as
+a list of (NAME KIND OCTETS): a JP2 file, a JPEG 2000 codestream, a JPEG XL
+codestream, the same kept in boxes, a JP2 file and a JPEG XL one of 16 bits,
+and a JP2 file with alpha at half."
+  (let ((png (namestring (merge-pathnames "flat.png" dir)))
+        (png16 (namestring (merge-pathnames "flat16.png" dir)))
+        (alpha (namestring (merge-pathnames "alpha.png" dir))))
+    (uiop:run-program (list "magick" "-size" "64x48" "xc:#336699" png))
+    (uiop:run-program (list "magick" "-size" "64x48" "xc:#336699" "-depth" "16" png16))
+    (uiop:run-program (list "magick" "-size" "64x48" "xc:#336699" "-alpha" "set" "-channel" "A" "-evaluate" "set" "50%" alpha))
+    (flet ((made (from name &rest options)
+             (let ((path (namestring (merge-pathnames name dir))))
+               (uiop:run-program (append (list "magick" from) options (list path)))
+               (alexandria:read-file-into-byte-vector path))))
+      (let ((jxl (made png "flat.jxl" "-quality" "100")))
+        (list (list "flat.jp2" :jp2 (made png "flat.jp2" "-depth" "8"))
+              (list "flat.j2k" :j2k (made png "flat.j2k" "-depth" "8"))
+              (list "flat.jxl" :jxl jxl)
+              (list "boxed.jxl" :jxl (jxl-boxed jxl))
+              (list "parts.jxl" :jxl (jxl-boxed jxl :parts 3))
+              (list "flat16.jp2" :jp2 (made png16 "flat16.jp2" "-depth" "16"))
+              (list "flat16.jxl" :jxl (made png16 "flat16.jxl" "-depth" "16" "-quality" "100"))
+              (list "alpha.jp2" :jp2 (made alpha "alpha.jp2" "-depth" "8")))))))
+
+(define-test (image-view jpeg-2000-and-xl-decoded)
+  ;; each turned into pixels in the sandbox, as a package calls for them, and shown when visited
+  (with-test-directory (dir)
+    (let ((files (coded-picture-files dir)))
+      (loop for (name kind octets) in files
+            do (is eq kind (nth-value 1 (tuatara.io:octets-kind octets)) "~a told" name)
+               (multiple-value-bind (image notes) (tuatara:decode-picture octets kind 64 48)
+                 (true image "~a decoded: ~s" name notes)
+                 (when image
+                   (is = 64 (tuatara:image-width image))
+                   (is = 48 (tuatara:image-height image))
+                   (let ((pixels (tuatara:image-pixels image)) (at (* 100 (tuatara:image-channels image))))
+                     (true (<= 48 (aref pixels at) 54) "~a red ~d" name (aref pixels at))
+                     (true (<= 99 (aref pixels (+ at 1)) 105) "~a green ~d" name (aref pixels (+ at 1)))
+                     (true (<= 150 (aref pixels (+ at 2)) 156) "~a blue ~d" name (aref pixels (+ at 2)))
+                     (when (= 4 (tuatara:image-channels image))
+                       (if (search "alpha" name)
+                           (true (<= 120 (aref pixels (+ at 3)) 135) "~a alpha ~d" name (aref pixels (+ at 3)))
+                           (is = 255 (aref pixels (+ at 3)))))))))
+      ;; a PDF's /JPXDecode picture may be either: :jp2 and :j2k each read both
+      (let ((jp2 (third (assoc "flat.jp2" files :test #'string=)))
+            (j2k (third (assoc "flat.j2k" files :test #'string=))))
+        (true (tuatara:decode-picture j2k :jp2 64 48))
+        (true (tuatara:decode-picture jp2 :j2k 64 48)))
+      ;; visited: its picture, with what it is over it
+      (let ((file (merge-pathnames "flat.jp2" dir)))
+        (image-forget)
+        (multiple-value-bind (f editor) (image-session file nil :cell-pixels '(10 20))
+          (true (tuatara.frontend.fake:fake-images f))
+          (true (tuatara.frontend.fake:fake-frame-showing f "JPEG 2000 image, 64 × 48"))
+          (tuatara.buffer:kill-buffer (tuatara.display:window-buffer (tuatara.command:editor-window editor))))
+        (image-forget)))))
+
+(define-test (image-view huge-declared-picture-refused)
+  ;; a small file declaring a huge picture is refused from its header, the decoding program never run
+  ;; (here one that would say it gave no picture)
+  (let ((tuatara.defaults::*image-decoders* '((:name "stand-in" :program ("true")))))
+    (flet ((refusal (octets kind)
+             (multiple-value-bind (image notes) (tuatara:decode-picture octets kind 640 480)
+               (false image)
+               (let ((said (format nil "~{~a~}" (mapcar #'car notes))))
+                 (false (search "gave no picture" said) "~a" said)
+                 said))))
+      (let ((garbage (make-array 4096 :element-type '(unsigned-byte 8) :initial-element #x5A)))
+        (dolist (case (list (list (concatenate '(vector (unsigned-byte 8)) (j2k-octets 100000 100000) garbage) :j2k)
+                            (list (jp2-octets (concatenate '(vector (unsigned-byte 8)) (j2k-octets 100000 100000) garbage)) :jp2)
+                            ;; its codestream past the first 64 KB, after a long box of XML
+                            (list (jp2-octets (concatenate '(vector (unsigned-byte 8)) (j2k-octets 100000 100000) garbage)
+                                              :before (picture-box "xml " (make-array 70000 :element-type '(unsigned-byte 8)
+                                                                                            :initial-element 32)))
+                                  :jp2)
+                            (list (concatenate '(vector (unsigned-byte 8)) (jxl-octets 1000000000 1000000000) garbage) :jxl)
+                            (list (jxl-boxed (concatenate '(vector (unsigned-byte 8)) (jxl-octets 200000 200000) garbage)) :jxl)))
+          (true (cl-ppcre:scan "not shown: [0-9,.]+ megapixels would take .* more than \\*picture-memory\\* allows"
+                               (refusal (first case) (second case)))
+                "~a" (second case))))
+      ;; no size in its header, or one no JPEG 2000 picture has
+      (true (search "its header gives no size" (refusal (kind-octets tuatara.io::*jp2-signature*) :jp2)))
+      (true (search "its header gives no size" (refusal (kind-octets (list #xFF #x0A)) :jxl)))
+      (true (search "more than JPEG 2000 allows"
+                    (refusal (j2k-octets 100000 100000 :tile-width 1 :tile-height 1 :components 1) :j2k))))))
+
+(define-test (image-view corrupt-coded-picture-fails-cleanly)
+  ;; a damaged codestream fails in the sandbox and says so, never an error here
+  (with-test-directory (dir)
+    (loop for (name kind octets) in (coded-picture-files dir)
+          when (member name '("flat.jp2" "flat.j2k" "flat.jxl") :test #'string=)
+            do (let ((damaged (copy-seq octets))
+                     (start (get-internal-real-time)))
+                 ;; the header kept, the coded pixels after it made noise, then cut short
+                 (loop for i from (min (length damaged) (if (eq kind :jxl) 12 140)) below (length damaged)
+                       do (setf (aref damaged i) (logxor (aref damaged i) (logand (* i 37) 255))))
+                 (setf damaged (subseq damaged 0 (min (length damaged) (max 40 (floor (* 3 (length damaged)) 4)))))
+                 (multiple-value-bind (image notes) (tuatara:decode-picture damaged kind 64 48)
+                   (let ((said (format nil "~{~a~}" (mapcar #'car notes))))
+                     (false image "~a drawn" name)
+                     (true (search "not shown: " said) "~a: ~s" name said)))
+                 (true (< (- (get-internal-real-time) start) (* 10 internal-time-units-per-second)))))))
+
+(define-test (image-view format-reader-missing-said)
+  ;; a decoding program built without a format's reader: said plainly, the library named
+  (let ((tuatara.defaults::*image-decoders*
+          '((:name "stand-in"
+             :program ("sh" "-c" "echo \"magick: no decode delegate for this image format \\`JP2' @ error/constitute.c/ReadImage/746.\" >&2; exit 1")))))
+    (multiple-value-bind (image notes)
+        (tuatara:decode-picture (jp2-octets (concatenate '(vector (unsigned-byte 8)) (j2k-octets 64 48) (make-array 64 :element-type '(unsigned-byte 8))))
+                                :jp2 64 48)
+      (false image)
+      (is equal ", not shown: sh here cannot read JP2 pictures: it was built or installed without OpenJPEG" (car (first notes))))))
+
+(define-test (image-view coded-picture-given-time)
+  ;; a large JPEG 2000 or JPEG XL picture is given time for its size, as far as *picture-memory* lets
+  ;; one be drawn, and says plainly when that was not enough (a stand-in decoder taking two seconds, then printing one pixel)
+  (let ((tuatara.defaults::*image-decoders*
+          '((:name "stand-in"
+             :program ("sh" "-c" "sleep 2; printf 'P7\\nWIDTH 1\\nHEIGHT 1\\nDEPTH 3\\nMAXVAL 255\\nTUPLTYPE RGB\\nENDHDR\\n\\001\\002\\003'"))))
+        (tuatara-user:*sandbox-seconds* 1)
+        (octets (concatenate '(vector (unsigned-byte 8)) (j2k-octets 5472 3648) (make-array 64 :element-type '(unsigned-byte 8)))))
+    (is = 31 (tuatara.defaults::picture-seconds (* 5472 3648)))
+    (multiple-value-bind (image notes) (tuatara:decode-picture octets :j2k 64 48)
+      (true image "~s" notes)
+      (when image (is equalp #(1 2 3) (tuatara:image-pixels image))))
+    (let ((tuatara.defaults::*picture-seconds-per-megapixel* 0))
+      (multiple-value-bind (image notes) (tuatara:decode-picture octets :j2k 64 48)
+        (false image)
+        (is equal ", not shown: sh was stopped after 1 second, all a picture of 20.0 megapixels is given (*sandbox-seconds* and more for each megapixel)"
+            (car (first notes)))))))
+
+(define-test (image-view imagemagick-6-driven)
+  ;; where ImageMagick 6 is all there is (convert-im6.q16, as Ubuntu 24.04 has it): driven as magick
+  ;; is, with the same arguments and the same policy of its own
+  (let ((seven (find "magick" tuatara.defaults::*image-decoders* :key (lambda (d) (first (getf d :program))) :test #'string=)))
+    (dolist (name '("convert-im6.q16" "convert-im6.q16hdri"))
+      (let ((six (find name tuatara.defaults::*image-decoders* :key (lambda (d) (first (getf d :program))) :test #'string=)))
+        (true six "~a" name)
+        (when six
+          (is equal (rest (getf seven :program)) (rest (getf six :program)))
+          (is equal (getf seven :jpeg-hint) (getf six :jpeg-hint))
+          (is eq 'tuatara.defaults::magick-sandbox (getf six :sandbox))
+          ;; after magick, before GraphicsMagick
+          (true (< (position seven tuatara.defaults::*image-decoders*) (position six tuatara.defaults::*image-decoders*)
+                   (position "gm" tuatara.defaults::*image-decoders* :key (lambda (d) (first (getf d :program))) :test #'string=))))))))
+
+(define-test (image-view readers-missing-said)
+  ;; M-x check-health names the kinds of picture the program here has no reader for, and the library
+  (let ((tuatara.defaults::*image-decoders*
+          (list (list :name "stand-in"
+                      :program (list "sh" "-c" (format nil "for f in ~{~a~^ ~}; do echo \"   $f* $f rw-  a format\"; done"
+                                                       (remove "JXL" (mapcar #'cdr tuatara.defaults::*image-formats*) :test #'string=)))))))
+    (is equal "pictures by sh (stand-in), without readers for JXL (libjxl)" (tuatara.defaults::image-decoder-words)))
+  ;; the program here, when it reads every kind, has nothing said
+  (let ((words (tuatara.defaults::image-decoder-words)))
+    (when (search "magick (ImageMagick)" words)
+      (false (search "without readers" words) "~a" words))))
+
+(define-test (image-view jpeg-never-decoded-larger)
+  ;; a JPEG smaller than the room it is shown in is decoded at its own size, never more (ImageMagick 6
+  ;; enlarges it to the size it is told); a larger one at no more than the room
+  (with-test-directory (dir)
+    (let ((small (namestring (merge-pathnames "small.jpg" dir)))
+          (large (namestring (merge-pathnames "large.jpg" dir)))
+          (tuatara.defaults::*image-decoders*
+            '((:name "stand-in" :program ("sh" "-c" "echo \"$*\" >&2; exit 1" "sh" :jpeg-hint :input)
+               :jpeg-hint ("-define" "jpeg:size=~dx~d")))))
+      (uiop:run-program (list "magick" "-size" "40x30" "xc:#336699" small))
+      (uiop:run-program (list "magick" "-size" "400x300" "xc:#336699" large))
+      (flet ((told (path)
+               (car (first (nth-value 1 (tuatara:decode-picture (alexandria:read-file-into-byte-vector path) :jpeg 64 48))))))
+        (true (search "-define jpeg:size=40x30 JPEG:-[0]" (told small)) "~a" (told small))
+        (true (search "-define jpeg:size=64x48 JPEG:-[0]" (told large)) "~a" (told large))))))
+
+(define-test (image-view magick-policy-in-place-of-others)
+  ;; ImageMagick reads every policy file on its path: each one the program here lists besides
+  ;; Tuatara's is given Tuatara's policy in its place, shut in; one that cannot be is refused
+  (clrhash tuatara.defaults::*magick-checked*)
+  (let ((octets (concatenate '(vector (unsigned-byte 8)) (j2k-octets 64 48) (make-array 64 :element-type '(unsigned-byte 8))))
+        (pixel "printf 'P7\\nWIDTH 1\\nHEIGHT 1\\nDEPTH 3\\nMAXVAL 255\\nTUPLTYPE RGB\\nENDHDR\\n\\001\\002\\003'"))
+    ;; a stand-in listing the policy files it finds, with "pattern: PAM" for Tuatara's; drawing only
+    ;; when the other one, /etc/ld.so.cache here, holds Tuatara's policy
+    (let ((tuatara.defaults::*image-decoders*
+            (list (list :name "stand-in" :sandbox 'tuatara.defaults::magick-sandbox
+                        :program (list "sh" "-c"
+                                       (format nil "if [ \"$1\" = -list ]; then
+  for f in /etc/tuatara/ImageMagick/policy.xml /etc/ld.so.cache; do
+    [ -f \"$f\" ] || continue; echo \"Path: $f\"; grep -q 'pattern=\"PAM\"' \"$f\" && echo '  pattern: PAM'
+  done; exit 0
+else grep -q 'pattern=\"PAM\"' /etc/ld.so.cache && ~a; fi" pixel)
+                                       "sh" :input)))))
+      (multiple-value-bind (image notes) (tuatara:decode-picture octets :j2k 64 48)
+        (true image "~s" notes)
+        (when image (is equalp #(1 2 3) (tuatara:image-pixels image))))
+      (is equal '("/etc/ld.so.cache") (tuatara.defaults::magick-policy-overlays (first tuatara.defaults::*image-decoders*))))
+    ;; a policy file that still holds another policy, Tuatara's given in its place: not run
+    (let ((tuatara.defaults::*image-decoders*
+            (list (list :name "stand-in" :sandbox 'tuatara.defaults::magick-sandbox
+                        :program (list "sh" "-c"
+                                       (format nil "if [ \"$1\" = -list ]; then
+  printf 'Path: /etc/tuatara/ImageMagick/policy.xml\\n  pattern: PAM\\nPath: /etc/ld.so.cache\\n  pattern: *\\n'
+else ~a; fi" pixel)
+                                       "sh" :input)))))
+      (multiple-value-bind (image notes) (tuatara:decode-picture octets :j2k 64 48)
+        (false image)
+        (is equal ", not shown: sh: it reads a policy that cannot be replaced (/etc/ld.so.cache)" (car (first notes))))))
+  ;; the policy holds ImageMagick to the memory the sandbox gives it
+  (let ((policy (tuatara.defaults::magick-policy (* 1536 1024 1024))))
+    (true (search "name=\"memory\" value=\"1536MiB\"" policy))
+    (true (search "name=\"map\" value=\"1536MiB\"" policy))
+    (true (search "name=\"disk\" value=\"1536MiB\"" policy)))
+  (clrhash tuatara.defaults::*magick-checked*))
+
+(define-test (image-view jpeg-xl-boxes-read-wherever)
+  ;; a JPEG XL kept in boxes is read wherever its codestream begins: past the first 64 KB (after a
+  ;; long box of XML, as a large Exif or C2PA box puts it), and in parts whose sizes are in the long
+  ;; form; two octets FF 0A alone are no JPEG XL
+  (with-test-directory (dir)
+    (let* ((png (namestring (merge-pathnames "flat.png" dir)))
+           (jxl (namestring (merge-pathnames "flat.jxl" dir)))
+           (codestream (progn (uiop:run-program (list "magick" "-size" "64x48" "xc:#336699" png))
+                              (uiop:run-program (list "magick" png "-quality" "100" jxl))
+                              (alexandria:read-file-into-byte-vector jxl)))
+           (far (jxl-boxed codestream :before (picture-box "xml " (make-array 70000 :element-type '(unsigned-byte 8)
+                                                                                    :initial-element 32)))))
+      (is eq :jxl (nth-value 1 (tuatara.io:octets-kind far)))
+      (multiple-value-bind (image notes) (tuatara:decode-picture far :jxl 64 48)
+        (true image "~s" notes)
+        (when image (is = 64 (tuatara:image-width image))))
+      (let ((long (jxl-boxed codestream :parts 3 :long t)))
+        (is equal '("JPEG XL image, 64 × 48" :jxl) (multiple-value-list (tuatara.io:octets-kind long)))
+        (true (tuatara:decode-picture long :jxl 64 48)))))
+  (is equal '("JPEG XL image, 5000 × 3000" :jxl)
+      (multiple-value-list (tuatara.io:octets-kind (jxl-boxed (jxl-octets 5000 3000) :parts 2 :long t))))
+  (false (eq :jxl (nth-value 1 (tuatara.io:octets-kind (kind-octets (list #xFF #x0A 0))))))
+  (is eq :jxl (nth-value 1 (tuatara.io:octets-kind (jxl-octets 64 48)))))
+
+(define-test (image-view decoder-said-escaped)
+  ;; what a decoding program says is shown with its control and direction characters written out:
+  ;; a damaged file cannot have it clear the screen or turn text around
+  (let ((octets (concatenate '(vector (unsigned-byte 8)) (j2k-octets 64 48) (make-array 64 :element-type '(unsigned-byte 8)))))
+    (flet ((said (script)
+             (let ((tuatara.defaults::*image-decoders* (list (list :name "stand-in" :program (list "sh" "-c" script "sh" :input)))))
+               (format nil "~{~a~}" (mapcar #'car (nth-value 1 (tuatara:decode-picture octets :j2k 64 48)))))))
+      (let ((failed (said "printf 'bad \\033[2J\\342\\200\\256evil\\n' >&2; exit 1")))
+        (false (find (code-char 27) failed) "~s" failed)
+        (false (find (code-char #x202E) failed) "~s" failed)
+        (true (search "bad ^[[2J<202E>evil" failed) "~s" failed))
+      (let ((damaged (said "printf 'corrupt \\033[31mdata\\n' >&2; printf 'P7\\nWIDTH 1\\nHEIGHT 1\\nDEPTH 3\\nMAXVAL 255\\nTUPLTYPE RGB\\nENDHDR\\n\\001\\002\\003'")))
+        (false (find (code-char 27) damaged) "~s" damaged)
+        (true (search "damaged: corrupt ^[[31mdata" damaged) "~s" damaged)))))

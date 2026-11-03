@@ -48,7 +48,9 @@ whole number from 1 to 64, 4 when the setting is none."
 BUFFER, NIL when they put spaces in (see *INDENT-TABS-MODE*)."
   (and (buffer-setting buffer :indent-tabs-mode *mode-indent-tabs* *indent-tabs-mode*) t))
 
-(setf tuatara.display:*tab-width-function* 'buffer-tab-width)
+(defmethod tuatara.display:host-tab-width ((host defaults-host) buffer)
+  "The columns from one tab stop to the next in BUFFER (BUFFER-TAB-WIDTH)."
+  (buffer-tab-width buffer))
 
 (defvar *tab-columns* nil
   "The columns from one tab stop to the next in the text being measured, when
@@ -99,7 +101,7 @@ org-mode. Signals an error when there is none."
   (let ((modes (mode-names)))
     (or (find (symbol-name name) modes :key #'symbol-name :test #'string=)
         (find (concatenate 'string (symbol-name name) "-MODE") modes :key #'symbol-name :test #'string=)
-        (error "No major mode called ~(~a~); there are ~{~(~a~)~^, ~}." name modes))))
+        (refuse "No major mode called ~(~a~); there are ~{~(~a~)~^, ~}." name modes))))
 
 (defun tuatara-user:set-tab-width (mode columns)
   "Put the tab stops COLUMNS columns apart (1 to 64) in buffers of major mode
@@ -110,7 +112,7 @@ mode's name, with or without -mode. For example, in the init file:
 language."
   (let ((found (mode-named mode)))
     (unless (tuatara.display:sensible-tab-width columns nil)
-      (error "The columns must be a whole number from 1 to 64, not ~s." columns))
+      (refuse "The columns must be a whole number from 1 to 64, not ~s." columns))
     (setf (gethash found *mode-tab-widths*) columns)))
 
 (defun tuatara-user:set-indent-tabs-mode (mode tabs)
@@ -185,7 +187,7 @@ which are text. Without a selection it says so and does nothing."
           (let ((changed (indent-lines b start end)))
             (setf (tuatara.buffer:buffer-mark-active-p b) nil)
             (case changed
-              (:none (message "No indentation rules for ~a" (tuatara.buffer:buffer-local b :mode-name "this buffer")))
+              (:none (message "No indentation rules for ~a" (or (buffer-mode-name b) "this buffer")))
               (:too-large)
               (t (message "Indented ~d line~:p" (or changed 0))))))
         (message "No selection: indent-region was not run"))))

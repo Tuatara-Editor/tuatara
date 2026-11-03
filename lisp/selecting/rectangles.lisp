@@ -20,8 +20,8 @@ first, or a RECTANGLE-SOURCE for one over more text than *REWRITE-THRESHOLD*.")
   "A rectangle kept by where it is: in ROPE, the text as it was then (a text
 never changes), the lines from the one starting at TOP to the one starting at
 BOTTOM, between the columns LEFT and RIGHT on the screen, a tab TAB-WIDTH
-columns at most; CRLF when a carriage return before a newline ends its lines;
-ROWS how many lines it has."
+columns at most; carriage return and line feed (CRLF) when a carriage return
+before a newline ends its lines; ROWS how many lines it has."
   rope (top 0 :type fixnum) (bottom 0 :type fixnum) (left 0 :type fixnum) (right 0 :type fixnum)
   crlf (rows 0 :type fixnum) (tab-width 8 :type fixnum))
 
@@ -388,10 +388,12 @@ any is read."
   "Put the rows TEXTS into BUFFER one above another: the first at POSITION,
 each other at POSITION's column on the screen on the line below the last (a
 short line padded out to it with spaces, a tab across it made spaces), new
-lines made at the end as needed. One change, joining the newest with GROUP.
+lines made at the end as needed; refused when that would be past the part
+shown of a narrowed buffer. One change, joining the newest with GROUP.
 Returns the byte offset after the last row."
   (let* ((column (tuatara.display:buffer-screen-column buffer position))
-         (size (tuatara.buffer:buffer-size buffer))
+         ;; the end of the text, or of the part shown of a narrowed buffer
+         (size (tuatara.buffer:buffer-end buffer))
          (newline (tuatara.buffer:buffer-newline buffer))
          (line (tuatara.buffer:buffer-line-start buffer position))
          (edits '())                    ; (start end text after), bottom first
@@ -408,8 +410,14 @@ Returns the byte offset after the last row."
                          (end (tuatara.buffer:buffer-line-end buffer line)))
                      (push (list s e (concatenate 'string (spaces (- column sc)) text (spaces tail))) edits)
                      (setf last-tail tail
-                           line (if (>= end size) nil (tuatara.buffer:buffer-forward-char buffer end)))))
+                           line (let ((next (and (< end size) (tuatara.buffer:buffer-forward-char buffer end))))
+                                  ;; the line after the part shown is not one of its own
+                                  (and next (not (and (= next size) (< size (tuatara.buffer:buffer-size buffer))))
+                                       next)))))
                  (progn
+                   ;; new lines are made at the end of the text, never at the edge of a part shown
+                   (when (< size (tuatara.buffer:buffer-size buffer))
+                     (tuatara.buffer:refuse-outside-narrowing buffer))
                    (push (list size size (concatenate 'string newline (spaces column) text)) edits)
                    (setf last-tail 0))))
     ;; the rows made at the end go in with the last line's, as one insertion
@@ -496,7 +504,7 @@ goes to the rectangle store alone."
 point taken as its rectangle; the selection is let go afterwards."
   (let ((b (current-buffer)))
     (unless (tuatara.buffer:buffer-mark b)
-      (error "The mark is not set now, so there is no region"))
+      (refuse "The mark is not set now, so there is no region"))
     (unless (rectangle-live-p b)
       (end-rectangle b)
       (setf (tuatara.buffer:buffer-local b :rectangle) t
@@ -538,7 +546,7 @@ column on each line. Point goes after the text on the last line. The text
 given last time is offered. A rectangle over more text than
 *REWRITE-THRESHOLD* is rewritten in the background."
   (unless (tuatara.buffer:buffer-mark (current-buffer))
-    (error "The mark is not set now, so there is no region"))
+    (refuse "The mark is not set now, so there is no region"))
   (let ((text (read-string "String rectangle: " :initial *last-rectangle-string* :select-initial t)))
     (setf *last-rectangle-string* text)
     (call-on-region-rectangle
@@ -590,58 +598,20 @@ block's left column on its line. A rectangle over more text than
            (progn (rows-change-now b :clear)
                   (goto (tuatara.display:buffer-move-to-screen-column b (tuatara.buffer:buffer-goto-line b line) left))))))))
 
-(defun number-formatter (control)
-  "A function of a number giving the text CONTROL makes of it: CONTROL's
-characters as they are, %d (or %s) standing for the number, with - before
-the width to put it on the left, 0 to pad with zeros and a width (%3d, %-3d,
-%03d), and %% for a percent sign. An error for any other %."
-  (let ((parts '()) (i 0) (n (length control)))
-    (loop while (< i n)
-          do (let ((c (char control i)))
-               (if (char/= c #\%)
-                   (progn (push (string c) parts) (incf i))
-                   (let ((j (1+ i)) (left nil) (zeros nil))
-                     (loop while (and (< j n) (find (char control j) "-0"))
-                           do (if (char= (char control j) #\-) (setf left t) (setf zeros t))
-                              (incf j))
-                     (let ((width-end (or (position-if-not #'digit-char-p control :start j) n)))
-                       (cond ((and (= j (1+ i)) (< j n) (char= (char control j) #\%))
-                              (push "%" parts) (setf i (1+ j)))
-                             ((and (< width-end n) (find (char control width-end) "ds"))
-                              (push (list (if (> width-end j) (parse-integer control :start j :end width-end) 0) left zeros)
-                                    parts)
-                              (setf i (1+ width-end)))
-                             (t (error "Format string: ~a is not understood; %d stands for the number"
-                                       (subseq control i (min n (1+ width-end)))))))))))
-    (setf parts (nreverse parts))
-    (lambda (number)
-      (with-output-to-string (out)
-        (dolist (part parts)
-          (if (stringp part)
-              (write-string part out)
-              (destructuring-bind (width left zeros) part
-                (let* ((digits (princ-to-string number))
-                       (pad (max 0 (- width (length digits)))))
-                  (cond (left (write-string digits out) (write-string (spaces pad) out))
-                        (zeros (when (minusp number) (write-char #\- out) (setf digits (subseq digits 1)))
-                               (write-string (make-string pad :initial-element #\0) out)
-                               (write-string digits out))
-                        (t (write-string (spaces pad) out) (write-string digits out)))))))))))
-
 (defun number-rectangle (replace)
   "Number the lines of the rectangle between the mark and point, as
 \\[number-rectangle-lines] (REPLACE false) or \\[number-rectangle-lines-replace]
 (REPLACE true) do, a format and a number to count from asked for with
 \\[universal-argument]."
   (unless (tuatara.buffer:buffer-mark (current-buffer))
-    (error "The mark is not set now, so there is no region"))
+    (refuse "The mark is not set now, so there is no region"))
   (let* ((b (current-buffer))
          (rows (nth-value 4 (rectangle-lines b)))
          (ask (prefix-argument))
          (first (if ask
                     (let ((text (read-string "Number to count from: " :initial "1" :select-initial t)))
-                      (or (ignore-errors (parse-integer text))
-                          (error "Not a whole number: ~a" text)))
+                      (or (whole-number text)
+                          (refuse "Not a whole number: ~a" text)))
                     1))
          (default (format nil "%~dd~:[ ~;~]" (length (princ-to-string (+ first (max 0 (1- rows))))) replace))
          (formatter (number-formatter (if ask (read-string "Format string: " :initial default) default))))
@@ -727,28 +697,29 @@ around, when it stands around every row in sight."
   "What a background job over a rectangle's rows changes: in ROPE, the lines
 from the one starting at TOP (line number TOP-LINE) to the one starting at
 BOTTOM, the job's text ending at HIGH and the whole text at TOTAL, between the
-columns LEFT and RIGHT, CRLF when a carriage return before a newline ends the
-lines. The columns are on the screen, a tab TAB-WIDTH columns at most, a tab
-across an edge made spaces outside it as its row changes; with TAB-WIDTH NIL,
-they count characters. KIND says what changes: :CUT and :DELETE empty each row; :CHANGE puts TEXT (octets)
-in its place, a row short of the block padded out to it with spaces unless PAD
-is false (with LEFT = RIGHT, TEXT goes in at that column, or at the end of a
-shorter line); :APPEND puts TEXT at the end of each line; :WRAP puts OPEN before
-and CLOSE after it, and :UNWRAP takes them off where they stand just outside
-it (WRAPPED-MATCH); :PASTE puts SOURCE's rows, each REPEAT times across, in
-place of its rows, or with LEFT = RIGHT in at that column, the rows past the
-text's end on new lines (NEWLINE) at its end; :CLEAR blanks each row, a line
-ending inside the block cut at its left column and one shorter than the block
-left alone; :NUMBER puts in place of each row what NUMBERING, a function of the row's
-index from 0, gives (octets), a short row padded out to the block, and
-:NUMBER-IN puts it in at the block's left column, replacing nothing; :TYPE writes what was typed at a
-cursor on each row (TYPED-ROW): TEXT in place of the columns, or at the line's
-end with AT-END, the BACK characters before them and the FORWARD after them
-deleted too. The rows starting at the offsets SKIP holds (a hash table) are
-left as they are; REFUSED counts, in its car, the rows :TYPE could not change.
-FOLDS are the folds of the text as the job began (FOLDS-NOW): a row whose
-change would take part of the text one hides, but not all of it, is left as
-it is, and counted in the car of HIDDEN."
+columns LEFT and RIGHT, carriage return and line feed (CRLF) when a carriage
+return before a newline ends the lines. The columns are on the screen, a tab
+TAB-WIDTH columns at most, a tab across an edge made spaces outside it as its
+row changes; with TAB-WIDTH NIL, they count characters. KIND says what
+changes: :CUT and :DELETE empty each row; :CHANGE puts TEXT (octets) in its
+place, a row short of the block padded out to it with spaces unless PAD is
+false (with LEFT = RIGHT, TEXT goes in at that column, or at the end of a
+shorter line); :APPEND puts TEXT at the end of each line; :WRAP puts OPEN
+before and CLOSE after it, and :UNWRAP takes them off where they stand just
+outside it (WRAPPED-MATCH); :PASTE puts SOURCE's rows, each REPEAT times
+across, in place of its rows, or with LEFT = RIGHT in at that column, the rows
+past the text's end on new lines (NEWLINE) at its end; :CLEAR blanks each row,
+a line ending inside the block cut at its left column and one shorter than the
+block left alone; :NUMBER puts in place of each row what NUMBERING, a function
+of the row's index from 0, gives (octets), a short row padded out to the
+block, and :NUMBER-IN puts it in at the block's left column, replacing
+nothing; :TYPE writes what was typed at a cursor on each row (TYPED-ROW): TEXT
+in place of the columns, or at the line's end with AT-END, the BACK characters
+before them and the FORWARD after them deleted too. The rows starting at the
+offsets SKIP holds (a hash table) are left as they are; REFUSED counts, in its
+car, the rows :TYPE could not change. FOLDS are the folds of the text as the
+job began (FOLDS-NOW): a row whose change would take part of the text one
+hides, but not all of it, is left as it is, and counted in the car of HIDDEN."
   rope (top 0 :type fixnum) (bottom 0 :type fixnum) (top-line 0 :type fixnum) (high 0 :type fixnum)
   (total 0 :type fixnum) (left 0 :type fixnum) (right 0 :type fixnum) crlf kind text open close source
   (repeat 1 :type fixnum) newline (pad t) skip at-end (back 0 :type fixnum) (forward 0 :type fixnum)

@@ -189,7 +189,7 @@ is then on disk where it can be read (made for you alone). To read it, visit
 the encrypted file instead: its text stays in memory."
   (let* ((path (shown-file-argument "Decrypt file: "))
          (offered (decrypted-name path))
-         (target (read-native-path "Decrypt to: " :initial (abbreviated-path offered) :kind :any)))
+         (target (read-native-path "Decrypt to: " :initial (abbreviated-path offered) :kind :any :writing t)))
     (when (and target (gpg-target-free-p target)
                (yes-or-no-p* (format nil "This writes the text of ~a to disk, where it can be read; go on?" (tuatara.io:native-file-name path))))
       (decrypt-file-to path target))))
@@ -236,7 +236,7 @@ far the key is trusted, or why the signature does not hold."
       (cond ((gpg-status-p statuses "GOODSIG")
              (format nil "Good signature by ~a (key ~a)~@[, made ~a~], by ~a"
                      (field "GOODSIG" 2) (second (uiop:split-string (gpg-status-p statuses "GOODSIG") :separator '(#\Space)))
-                     (and valid (let ((n (ignore-errors (parse-integer (third (uiop:split-string valid :separator '(#\Space)))))))
+                     (and valid (let ((n (whole-number (third (uiop:split-string valid :separator '(#\Space))))))
                                   (and n (time-words (+ n +unix-epoch+))))) trust))
             ((gpg-status-p statuses "BADSIG")
              (format nil "BAD signature by ~a: the file was changed after it was signed, or the signature is not for it" (field "BADSIG" 2)))
@@ -258,7 +258,7 @@ is trusted. Neither file's access time changes."
   (let* ((data (gpg-stripped-name path '(".sig" ".asc")))
          (detached (and data (tuatara.io:path-stamp data)
                         (not (search "-----BEGIN PGP SIGNED MESSAGE-----"
-                                     (tuatara.text:lenient-string (or (ignore-errors (tuatara.io:file-head path 200)) #())))))))
+                                     (tuatara.text:lenient-string (or (tuatara.io:file-head path 200) #())))))))
     (run-gpg-work (format nil "verifying ~a" (tuatara.io:native-file-name path))
                   (if detached (list "--verify" "--" :second-input "-") (list "--verify" "--" "-"))
                   (lambda (output statuses ok said)
@@ -271,7 +271,7 @@ is trusted. Neither file's access time changes."
 (defun region-or-error (buffer)
   "BUFFER's selection (SELECTED-REGION), as two values, its start and end; an
 error when no text is selected."
-  (values-list (or (selected-region buffer) (error "Select the text first"))))
+  (values-list (or (selected-region buffer) (refuse "Select the text first"))))
 
 (defun replace-region-when-unchanged (buffer start end version text words)
   "Replace BUFFER's text from START below END with TEXT (octets) as one edit, when
@@ -445,7 +445,7 @@ inserts and \\[list-delete-marked] deletes those marked."
   (let ((from (current-buffer))
         (buffer (buffer-in-mode "*GnuPG keys*" 'gpg-keys-mode)))
     (unless (eq from buffer) (setf (tuatara.buffer:buffer-local buffer 'gpg-keys-from) from))
-    (setf (tuatara.buffer:buffer-local buffer :override-keymap) *gpg-keys-keymap*)
+    (setf (buffer-override-keymap buffer) *gpg-keys-keymap*)
     (gpg-keys-show buffer 2)
     (show-buffer buffer)))
 
@@ -500,7 +500,7 @@ each line written as the editor shows them (ESCAPE-CONTROLS)."
   "What an import did, as words, from gpg's STATUSES."
   (let ((result (gpg-status-p statuses "IMPORT_RES")))
     (if result
-        (let ((n (mapcar (lambda (w) (or (ignore-errors (parse-integer w)) 0)) (rest (uiop:split-string result :separator '(#\Space))))))
+        (let ((n (mapcar (lambda (w) (or (whole-number w) 0)) (rest (uiop:split-string result :separator '(#\Space))))))
           ;; IMPORT_RES count no-user-id imported imported-rsa unchanged uids subkeys signatures revocations
           ;; secrets-read secrets-imported ...
           (format nil "Keys imported: ~d new, ~d unchanged~@[, ~d secret~]" (nth 2 n) (nth 4 n)
@@ -523,7 +523,7 @@ each line written as the editor shows them (ESCAPE-CONTROLS)."
   (let ((keys (gpg-keys-chosen)))
     (if (null keys)
         (message "No key on this line")
-        (let ((path (read-native-path "Export the keys to: " :kind :any)))
+        (let ((path (read-native-path "Export the keys to: " :kind :any :writing t)))
           (when (and path (gpg-target-free-p path))
             (with-exported-keys keys
               (lambda (octets)

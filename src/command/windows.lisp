@@ -14,11 +14,14 @@
     (and window (tuatara.display:area-windows (tuatara.display:area-root window)))))
 
 (defun buffer-windows (buffer &optional (editor *editor*))
-  "The windows of EDITOR showing BUFFER, from the top left."
-  (remove buffer (editor-windows editor) :key #'tuatara.display:window-buffer :test-not #'eq))
+  "The windows showing BUFFER in every frame of EDITOR (FRAMES-WINDOWS), those
+of the frame worked in first, each frame's from the top left: the windows
+whose point and start keep their place as BUFFER changes."
+  (remove buffer (frames-windows editor) :key #'tuatara.display:window-buffer :test-not #'eq))
 
 (defun buffer-window (buffer &optional (editor *editor*))
-  "The first window of EDITOR, from the top left, showing BUFFER, or NIL."
+  "The first window of the frame EDITOR works in, from the top left, showing
+BUFFER, or NIL."
   (find buffer (editor-windows editor) :key #'tuatara.display:window-buffer))
 
 (defun one-window-p (&optional (editor *editor*))
@@ -41,22 +44,31 @@ cover."
           (tuatara.display:trim-area-bottom root (- base rows))
           rows))))
 
+(defun keep-window-point (window)
+  "Have WINDOW, which commands no longer act on, keep its point of its own,
+where its buffer's point is now."
+  (let ((buffer (tuatara.display:window-buffer window)))
+    (setf (tuatara.display:window-point-anchor window)
+          (tuatara.text:make-anchor (tuatara.buffer:buffer-version buffer)
+                                    (tuatara.buffer:buffer-point buffer) :bias :after))))
+
+(defun give-window-buffer-point (window)
+  "Have WINDOW, which commands act on now, move its buffer's point: to where
+WINDOW's own point was kept, which it gives up."
+  (let ((anchor (tuatara.display:window-point-anchor window))
+        (buffer (tuatara.display:window-buffer window)))
+    (when anchor
+      (setf (tuatara.buffer:buffer-point buffer)
+            (tuatara.text:anchor-position anchor (tuatara.buffer:buffer-version buffer))
+            (tuatara.display:window-point-anchor window) nil))))
+
 (defun select-window (window &optional (editor *editor*))
   "Make WINDOW the selected window, the one commands act on. The window left
 keeps its point; WINDOW's point becomes its buffer's point. Returns WINDOW."
   (let ((old (editor-window editor)))
     (unless (eq old window)
-      (when old
-        (let ((buffer (tuatara.display:window-buffer old)))
-          (setf (tuatara.display:window-point-anchor old)
-                (tuatara.text:make-anchor (tuatara.buffer:buffer-version buffer)
-                                          (tuatara.buffer:buffer-point buffer) :bias :after))))
-      (let ((anchor (tuatara.display:window-point-anchor window))
-            (buffer (tuatara.display:window-buffer window)))
-        (when anchor
-          (setf (tuatara.buffer:buffer-point buffer)
-                (tuatara.text:anchor-position anchor (tuatara.buffer:buffer-version buffer))
-                (tuatara.display:window-point-anchor window) nil)))
+      (when old (keep-window-point old))
+      (give-window-buffer-point window)
       (setf (editor-window editor) window))
     (setf (tuatara.display:window-use-time window) (incf (editor-selections editor)))
     window))
@@ -178,21 +190,10 @@ line goes on from, the end of what the window shows when the cell is below it."
          (c (if (< r (length rows)) (floor c (tuatara.display:row-scale (aref rows r))) c)))
     (if (zerop (length rows))
         (tuatara.display:window-start window)
-        (let* ((shown (aref rows (min r (1- (length rows)))))
-               (bytes (tuatara.display:row-bytes shown))
-               (columns (tuatara.display:row-columns shown)))
-          (flet ((mapped (from to step)
-                   ;; the first column from FROM towards TO showing a character (hex rows have gaps)
-                   (loop for i = from then (+ i step)
-                         while (if (plusp step) (< i to) (> i to))
-                         when (>= (aref bytes i) 0) return (aref bytes i))))
-            (cond ((>= r (length rows)) (tuatara.display:row-shown-end shown))
-                  ((< c columns) (or (mapped c -1 -1) (mapped c columns 1) (tuatara.display:row-start shown)))
-                  ((and (plusp columns)
-                        (or (tuatara.display:row-truncated-p shown)
-                            (and (< (1+ r) (length rows)) (tuatara.display:row-continuation-p (aref rows (1+ r))))))
-                   (or (mapped (1- columns) -1 -1) (tuatara.display:row-shown-end shown)))
-                  (t (tuatara.display:row-shown-end shown))))))))
+        (let ((shown (aref rows (min r (1- (length rows))))))
+          (if (>= r (length rows))
+              (tuatara.display:row-shown-end shown)
+              (tuatara.display:row-position-at shown c))))))
 
 (defun window-towards (direction &optional (window (editor-window *editor*)))
   "The window next to WINDOW in DIRECTION (:left, :right, :above or :below),
@@ -272,11 +273,11 @@ to the window.
   (let ((which (if (listp which) which (list which))))
     (dolist (item which)
       (unless (or (stringp item) (symbolp item))
-        (error "~s names no buffers: use a name, a kind such as :help, or a major mode." item)))
+        (refuse "~s names no buffers: use a name, a kind such as :help, or a major mode." item)))
     (unless (member place *places*)
-      (error "~s is no place; use one of ~{~(~s~)~^ ~}." place *places*))
+      (refuse "~s is no place; use one of ~{~(~s~)~^ ~}." place *places*))
     (unless (or (null size) (eq size :fit) (and (realp size) (plusp size)))
-      (error "~s is no size; use a fraction such as 0.3, a number of rows or columns, or :fit." size))
+      (refuse "~s is no size; use a fraction such as 0.3, a number of rows or columns, or :fit." size))
     (let ((rule (make-buffer-place which place size keep select)))
       (setf *buffer-places* (cons rule (remove which *buffer-places* :key #'buffer-place-which :test #'equal)))
       rule)))
@@ -289,11 +290,20 @@ package) or one made from it."
          (some (lambda (class) (string= (symbol-name (class-name class)) (symbol-name name)))
                (sb-mop:class-precedence-list (class-of mode))))))
 
+(defun buffer-kind (buffer)
+  "The kind of buffer BUFFER is, a keyword a rule of where buffers are shown
+may name (:MESSAGES, :HELP, :BACKTRACE), or NIL."
+  (tuatara.buffer:buffer-local buffer :kind))
+
+(defun (setf buffer-kind) (kind buffer)
+  "Make BUFFER a buffer of KIND, a keyword (BUFFER-KIND)."
+  (setf (tuatara.buffer:buffer-local buffer :kind) kind))
+
 (defun buffer-place-fits-p (rule buffer)
   "True when RULE is for BUFFER."
   (some (lambda (item)
           (cond ((stringp item) (string= item (tuatara.buffer:buffer-name buffer)))
-                ((keywordp item) (eq item (tuatara.buffer:buffer-local buffer :kind)))
+                ((keywordp item) (eq item (buffer-kind buffer)))
                 (t (buffer-mode-named-p buffer item))))
         (buffer-place-which rule)))
 
@@ -306,20 +316,24 @@ package) or one made from it."
 first: what OTHER-BUFFER goes by.")
 
 (defun note-selected-buffer (buffer)
-  "Put BUFFER first in *BUFFER-ORDER*, the buffer in use now."
+  "Put BUFFER first in *BUFFER-ORDER*, the buffer in use now, and make it the
+buffer of the client who works in the frame worked in too (JOIN-CLIENT)."
+  (join-client buffer (current-client))
   (unless (eq buffer (first *buffer-order*))
     (setf *buffer-order* (cons buffer (delete buffer *buffer-order*)))))
 
-(defvar *new-buffer-function* nil
-  "A function of one argument, a buffer being killed or NIL, making the buffer
-to show when there is no other: a scratch buffer as the editor starts with
-(the one being killed may have its name). NIL for an empty *scratch*.")
+(defgeneric host-new-buffer (host dying)
+  (:documentation "The buffer made to show when there is no other, DYING the one being killed or
+NIL: a scratch buffer as the editor starts with (the one being killed may have
+its name). NIL, as on the core's own host, for an empty *scratch*.")
+  (:method ((host tuatara.runtime:host) dying)
+    (declare (ignore dying))
+    nil))
 
 (defun new-buffer (&optional dying)
-  "The buffer made to show when there is no other (*NEW-BUFFER-FUNCTION*),
-DYING the one being killed, if any."
-  (if *new-buffer-function*
-      (funcall *new-buffer-function* dying)
+  "The buffer made to show when there is no other (HOST-NEW-BUFFER), DYING the
+one being killed, if any."
+  (or (host-new-buffer tuatara.runtime:*host* dying)
       (tuatara.buffer:make-buffer
        (loop for n from 1
              for name = (if (= n 1) "*scratch*" (format nil "*scratch*<~d>" n))
@@ -339,11 +353,12 @@ Complexity: O(buffers)."
                   unless (gethash b seen) collect b))))
 
 (defun other-buffer (&optional (buffer (current-buffer)) visible-ok)
-  "The buffer used most recently other than BUFFER: one no window shows before
-one that some window shows, unless VISIBLE-OK; then any other buffer; never
-one whose name begins with a space; a new one (NEW-BUFFER) when there is none."
+  "The buffer used most recently other than BUFFER, of those offered to the
+client working in the frame (CLIENT-BUFFERS): one no window shows before one
+that some window shows, unless VISIBLE-OK; then any other buffer; never one
+whose name begins with a space; a new one (NEW-BUFFER) when there is none."
   (let ((shown (mapcar #'tuatara.display:window-buffer (editor-windows)))
-        (order (buffers-in-use-order)))
+        (order (client-buffers (buffers-in-use-order))))
     (flet ((usable (b) (let ((name (tuatara.buffer:buffer-name b)))
                          (and (not (eq b buffer))
                               (not (and (plusp (length name)) (char= #\Space (char name 0))))))))
@@ -398,11 +413,14 @@ NIL when no window may be split."
             (twice-height (* 2 tuatara.display:*window-min-height*))
             (twice-width (* 2 tuatara.display:*window-min-width*)))
         (let ((new (or (and (>= height (max *split-height-threshold* twice-height))
-                            (ignore-errors (split-window window :below :buffer buffer)))
+                            (tuatara.runtime:ignoring-errors-reported ("splitting a window below")
+                              (split-window window :below :buffer buffer)))
                        (and (>= width (max *split-width-threshold* twice-width))
-                            (ignore-errors (split-window window :right :buffer buffer)))
+                            (tuatara.runtime:ignoring-errors-reported ("splitting a window beside")
+                              (split-window window :right :buffer buffer)))
                        (and (null (tuatara.display:area-parent window)) (>= height twice-height)
-                            (ignore-errors (split-window window :below :buffer buffer))))))
+                            (tuatara.runtime:ignoring-errors-reported ("splitting a lone window below")
+                              (split-window window :below :buffer buffer))))))
           (when new (return new)))))))
 
 (defun new-window-for (buffer place rule)
@@ -413,9 +431,9 @@ window, made the only one and showing BUFFER."
          (root (tuatara.display:area-root selected))
          (size (and rule (buffer-place-size rule))))
     (flet ((make (area side)
-             (ignore-errors
-              (split-window area side :buffer buffer
-                                      :size (place-size size area (tuatara.display:arrangement-of side) buffer)))))
+             (tuatara.runtime:ignoring-errors-reported ("splitting a window ~(~a~)" side)
+               (split-window area side :buffer buffer
+                                       :size (place-size size area (tuatara.display:arrangement-of side) buffer)))))
       (case place
         (:below (make selected :below))
         (:beside (make selected :right))
@@ -447,7 +465,7 @@ will do. AT :START shows it from its start, point there; AT :END with point at
 its end. The window is selected only when the rule says so. A buffer that has
 been killed is not shown: that is an error."
   (unless (live-buffer-p buffer)
-    (error "~a has been killed" (tuatara.buffer:buffer-name buffer)))
+    (refuse "~a has been killed" (tuatara.buffer:buffer-name buffer)))
   (let* ((editor *editor*)
          (rule (buffer-place-for buffer))
          (place (if rule (buffer-place-place rule) :other))
@@ -500,9 +518,9 @@ rules take it (half of what is split when not given), which quitting closes;
 shown already in a window, that one. Returns the window, or NIL when there
 is no room for a new one."
   (unless (live-buffer-p buffer)
-    (error "~a has been killed" (tuatara.buffer:buffer-name buffer)))
+    (refuse "~a has been killed" (tuatara.buffer:buffer-name buffer)))
   (unless (member place '(:here :bottom :top :left :right))
-    (error "~s is no place for it; use :here, :bottom, :top, :left or :right." place))
+    (refuse "~s is no place for it; use :here, :bottom, :top, :left or :right." place))
   (let ((editor *editor*))
     (fit-windows editor)
     (let ((window (cond ((eq place :here) (show-in-window (editor-window editor) buffer nil))
@@ -541,22 +559,28 @@ buffer it showed before."
 (defun replace-buffer-in-windows (buffer)
   "BUFFER is being killed: close the windows made or kept for it (all but the
 last), show another buffer in the other windows showing it, and forget it in
-every window's history. Runs from the kill-buffer functions."
+every window's history, in every frame. Runs from the kill-buffer functions."
   (setf *buffer-order* (delete buffer *buffer-order*))
   (let ((editor *editor*))
     (when (and editor (editor-window editor))
-      (dolist (window (editor-windows editor))
-        (tuatara.display:forget-window-buffer window buffer)
-        (when (eq (tuatara.display:window-quit-restore window) buffer)
-          (setf (tuatara.display:window-quit-restore window) nil)))
-      (dolist (window (editor-windows editor))
-        (when (eq (tuatara.display:window-buffer window) buffer)
-          (if (and (tuatara.display:area-parent window)
-                   (or (tuatara.display:window-kept window) (eq (tuatara.display:window-quit-restore window) :delete)))
-              (remove-window window)
-              (progn
-                (setf (tuatara.display:window-kept window) nil
-                      (tuatara.display:window-quit-restore window) nil)
-                (tuatara.display:set-window-buffer window (replacement-buffer window buffer) :remember nil))))))))
+      (dolist (frame (editor-frames editor))
+        (call-in-frame
+         editor frame
+         (lambda ()
+           (dolist (window (editor-windows editor))
+             (tuatara.display:forget-window-buffer window buffer)
+             (when (eq (tuatara.display:window-quit-restore window) buffer)
+               (setf (tuatara.display:window-quit-restore window) nil)))
+           (dolist (window (editor-windows editor))
+             (when (eq (tuatara.display:window-buffer window) buffer)
+               (if (and (tuatara.display:area-parent window)
+                        (or (tuatara.display:window-kept window)
+                            (eq (tuatara.display:window-quit-restore window) :delete)))
+                   (remove-window window)
+                   (progn
+                     (setf (tuatara.display:window-kept window) nil
+                           (tuatara.display:window-quit-restore window) nil)
+                     (tuatara.display:set-window-buffer window (replacement-buffer window buffer)
+                                                        :remember nil)))))))))))
 
 (pushnew 'replace-buffer-in-windows tuatara.buffer:*kill-buffer-functions*)

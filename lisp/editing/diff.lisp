@@ -11,15 +11,18 @@
 
 (in-package #:tuatara.defaults)
 
-(defun hash-lines-into (octets end hash open hashes)
-  "Go on hashing lines (FNV-1a, the newline left out) through OCTETS below END
-from HASH, pushing the hash of each line ended on HASHES. Returns the hash and
-whether a line is open, to go on with in the next octets."
-  (declare (type (simple-array (unsigned-byte 8) (*)) octets) (type fixnum end)
+(defun hash-lines-into (octets end hash open hashes &optional (avail end))
+  "Go on hashing lines (FNV-1a, with the octets that end each:
+TUATARA.TEXT:LINE-END-OCTET-P, so that a line ended by a carriage return
+alone is another than the same line ended by a newline) through OCTETS below
+END from HASH, pushing the hash of each line ended on HASHES; the text goes on to AVAIL, so that a
+carriage return at END - 1 ends a line unless the octet at END is a newline.
+Returns the hash and whether a line is open, to go on with in the next octets."
+  (declare (type (simple-array (unsigned-byte 8) (*)) octets) (type fixnum end avail)
            (type (unsigned-byte 64) hash))
   (loop with start of-type fixnum = 0
-        for newline = (position 10 octets :start start :end end)
-        do (setf hash (tuatara.text:octets-hash octets :start start :end (or newline end) :hash hash))
+        for newline = (tuatara.text:octets-line-end-position octets start end avail)
+        do (setf hash (tuatara.text:octets-hash octets :start start :end (if newline (1+ newline) end) :hash hash))
            (unless newline
              (return (values hash (or open (< start end)))))
            (vector-push-extend (ldb (byte 62 0) hash) hashes)
@@ -32,8 +35,8 @@ away at the end is a line changed."
   (ldb (byte 62 0) (logxor hash #x2545F4914F6CDD1D)))
 
 (defun line-hashes (octets)
-  "A hash of each line of OCTETS (FNV-1a over its octets, its newline left out),
-as a fixnum vector; a last line without a newline counts."
+  "A hash of each line of OCTETS (FNV-1a over its octets and those that end
+it), as a fixnum vector; a last line without a line end counts."
   (declare (type tuatara.text:octets octets))
   (let ((hashes (make-array 1024 :element-type 'fixnum :adjustable t :fill-pointer 0)))
     (multiple-value-bind (hash open) (hash-lines-into octets (length octets) +fnv-offset+ nil hashes)
@@ -46,9 +49,11 @@ as a fixnum vector; a last line without a newline counts."
         (chunk (make-array (* 1024 1024) :element-type '(unsigned-byte 8)))
         (size (tuatara.text:rope-bytes rope))
         (hash +fnv-offset+) (open nil))
-    (loop for at from 0 below size by (length chunk)
-          do (let ((n (tuatara.text:rope-copy-into rope at (min size (+ at (length chunk))) chunk)))
-               (multiple-value-setq (hash open) (hash-lines-into chunk n hash open hashes))))
+    ;; an octet more than is hashed, read for a carriage return at a chunk's end
+    (loop for at from 0 below size by (1- (length chunk))
+          do (let* ((n (min (- size at) (1- (length chunk))))
+                    (avail (tuatara.text:rope-copy-into rope at (min size (+ at n 1)) chunk)))
+               (multiple-value-setq (hash open) (hash-lines-into chunk n hash open hashes avail))))
     (when open (vector-push-extend (unended-line-hash hash) hashes))
     (coerce hashes '(simple-array fixnum (*)))))
 
@@ -133,6 +138,49 @@ removed and added."
     (loop for (old-start old-count new-start new-count) in hunks
           append (loop for i from (1- old-start) repeat old-count collect (list :removed (svref old i)))
           append (loop for i from (1- new-start) repeat new-count collect (list :added (svref new i))))))
+
+(defun unified-diff (old new &key (old-name "old") (new-name "new") (context 3) (limit 2000))
+  "The differences between OLD and NEW, lists of lines (strings without their
+newlines), written as diff --unified and git write them: a --- line naming
+OLD-NAME and a +++ line naming NEW-NAME, then each hunk, its @@ line, the
+lines only OLD has after -, those only NEW has after +, and CONTEXT lines
+both have around them after a space, hunks whose context would meet made
+one. Empty when they are the same. LIMIT is as for DIFF-HUNKS."
+  (let* ((old (coerce old 'simple-vector)) (new (coerce new 'simple-vector))
+         (n (length old))
+         ;; each hunk as 0-based (OLD-FROM OLD-TO NEW-FROM NEW-TO)
+         (hunks (loop for (os oc ns nc) in (diff-hunks (map '(simple-array fixnum (*)) #'tuatara.text:string-hash old)
+                                                         (map '(simple-array fixnum (*)) #'tuatara.text:string-hash new)
+                                                         :limit limit)
+                      for o = (if (zerop oc) os (1- os))
+                      for s = (if (zerop nc) ns (1- ns))
+                      collect (list o (+ o oc) s (+ s nc))))
+         (groups '()))
+    ;; hunks whose context meets, together
+    (dolist (hunk hunks)
+      (if (and groups (<= (- (first hunk) (second (first (first groups)))) (* 2 context)))
+          (push hunk (first groups))
+          (push (list hunk) groups)))
+    (if (null hunks)
+        ""
+        (with-output-to-string (out)
+          (format out "--- ~a~%+++ ~a~%" old-name new-name)
+          (dolist (group (nreverse (mapcar #'reverse groups)))
+            (let* ((first (first group)) (last (car (last group)))
+                   (old-from (max 0 (- (first first) context)))
+                   (old-to (min n (+ (second last) context)))
+                   (new-from (- (third first) (- (first first) old-from)))
+                   (new-to (+ (fourth last) (- old-to (second last)))))
+              (flet ((range (from to) (format nil "~d,~d" (if (= from to) from (1+ from)) (- to from))))
+                (format out "@@ -~a +~a @@~%" (range old-from old-to) (range new-from new-to)))
+              (let ((at old-from))
+                (dolist (hunk group)
+                  (destructuring-bind (o0 o1 n0 n1) hunk
+                    (loop for i from at below o0 do (format out " ~a~%" (svref old i)))
+                    (loop for i from o0 below o1 do (format out "-~a~%" (svref old i)))
+                    (loop for i from n0 below n1 do (format out "+~a~%" (svref new i)))
+                    (setf at o1)))
+                (loop for i from at below old-to do (format out " ~a~%" (svref old i))))))))))
 
 (defun map-line (hunks line)
   "The line of the new text that 0-based LINE of the old one becomes through

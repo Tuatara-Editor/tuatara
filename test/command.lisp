@@ -28,6 +28,36 @@ candidates found in the background (a completing read's SOURCE)."
   (loop while (tuatara.command::take-in-source tuatara.command:*editor*)
         do (sleep 0.01)))
 
+(defvar *buffers-before-test* '()
+  "The buffers there were when the test running began: those it did not make.")
+
+(defun test-buffers ()
+  "The buffers the test running made, the newest first."
+  (remove-if (lambda (b) (member b *buffers-before-test*)) tuatara.buffer:*buffers*))
+
+(defparameter *buffers-kept-between-tests* '("*Messages*" "*scratch*")
+  "The buffers a test may leave for the next: made again when missing, never
+looked for as made by a test.")
+
+(defmethod parachute:eval-in-context :around ((report parachute:report) (test parachute:test))
+  "Run TEST, then kill every buffer it made and left (but those of
+*BUFFERS-KEPT-BETWEEN-TESTS*): a test starts with the buffers there were
+before the test before it, and finds its own (TEST-BUFFERS)."
+  (let ((*buffers-before-test* (copy-list tuatara.buffer:*buffers*)))
+    (unwind-protect (call-next-method)
+      (dolist (buffer (copy-list tuatara.buffer:*buffers*))
+        (unless (or (member buffer *buffers-before-test*)
+                    (member (tuatara.buffer:buffer-name buffer) *buffers-kept-between-tests* :test #'string=))
+          (ignore-errors (tuatara.buffer:kill-buffer buffer)))))))
+
+(defun waited-in-vain (until seconds)
+  "Fail the test running: a session waited SECONDS for UNTIL, a function, to
+be true, and it never was. What the editor asked and said then is told."
+  (let ((editor tuatara.command:*editor*))
+    (true nil "Waited ~a s in vain for ~a; asking ~s, saying ~s" seconds until
+          (and editor (tuatara.command:editor-minibuffer-active editor) (tuatara.command:editor-minibuffer-prompt editor))
+          (and editor (tuatara.command:editor-message editor)))))
+
 (defun queue-test-keys (f keys)
   "Queue KEYS on the fake frontend F: a key sequence as a string, or a list of
 them, :WAIT among them for WAIT-FOR-MINIBUFFER-SOURCE at that point, :TICK
@@ -42,6 +72,36 @@ for the editor woken there once, a function called there."
                  (tuatara.frontend.fake:fake-queue-keys f part)))))
       (tuatara.frontend.fake:fake-queue-keys f keys)))
 
+(defmacro with-messages-said ((said) &body body)
+  "Run BODY with *Messages* keeping every line said, and SAID, a function of
+none, giving the text said since BODY began; a log that keeps only its last
+lines would move the text under an offset taken before."
+  (let ((log (gensym "LOG")) (start (gensym "START")))
+    `(let* ((tuatara.command:*message-log-max* most-positive-fixnum)
+            (,log (tuatara.command::messages-buffer))
+            (,start (tuatara.buffer:buffer-size ,log)))
+       (flet ((,said () (tuatara.buffer:buffer-string ,log :start (min ,start (tuatara.buffer:buffer-size ,log)))))
+         ,@body))))
+
+(defvar *grammar-questions-wanted* nil
+  "True while a test looks at the question whether to turn a grammar on
+\(WITH-GRAMMAR-ANSWERS-FORGOTTEN); otherwise a session asks none, as a key typed
+meanwhile would answer it.")
+
+(defun call-without-grammar-questions (function)
+  "Call FUNCTION, a session in it asked no grammar question (every language
+given up for this session), unless a test wants it asked."
+  (if *grammar-questions-wanted*
+      (funcall function)
+      (let ((tuatara.defaults::*grammars-not-now*
+              (mapcar (lambda (language) (string-downcase (symbol-name (tuatara.defaults::language-name language))))
+                      tuatara.defaults::*languages*)))
+        (funcall function))))
+
+(defmacro without-grammar-questions (&body body)
+  "Run BODY with no grammar question asked in it (CALL-WITHOUT-GRAMMAR-QUESTIONS)."
+  `(call-without-grammar-questions (lambda () ,@body)))
+
 (defun run-keys (keys &key (text "") (width 40) (height 8) file cell-pixels)
   "Run an editor session on a scratch buffer holding TEXT (or FILE) with KEYS
 typed (a string, or a list of strings and :WAIT, QUEUE-TEST-KEYS); return the
@@ -55,10 +115,56 @@ a list, has the frontend show pictures."
     (setf tuatara.defaults::*command-history* '() tuatara.defaults::*pattern-history* '()
           tuatara.defaults::*search-lit* nil tuatara.defaults::*search-lit-shown* nil)
     (queue-test-keys f keys)
-    (let ((editor (tuatara.command:run-editor f :files (and file (list file))
+    (let ((editor (without-grammar-questions
+                    (tuatara.command:run-editor f :files (and file (list file))
                                                   :setup #'tuatara.defaults:install-defaults
-                                                  :buffer (tuatara.buffer:find-buffer "*scratch*"))))
+                                                  :buffer (tuatara.buffer:find-buffer "*scratch*")))))
       (values f editor))))
+
+(defparameter *colouring-functions* '(tuatara.command::window-highlights-for tuatara.display:apply-highlights)
+  "The functions that work out and paint the colours of a window's text.")
+
+(defun typing-garbage-per-key (text type height measured &key less)
+  "The octets the functions named in MEASURED make, less those the functions
+named in LESS make, for each key typed in a window HEIGHT rows tall on a file
+of TYPE holding TEXT, its colours worked out afresh after each key; and how
+many times its colours were worked out while those keys were typed, as a
+second value."
+  (let ((path (records-file text :type type))
+        (keys "a b c d DEL DEL DEL DEL a b c d DEL DEL DEL DEL")
+        (counting nil) (octets 0) (worked-out 0) (buffer nil))
+    (flet ((count-octets (names sign)
+             (dolist (name names)
+               (sb-int:encapsulate name 'garbage-per-key
+                                   (lambda (function &rest arguments)
+                                     (if counting
+                                         (let ((before (tuatara.bench::bytes-consed)))
+                                           (multiple-value-prog1 (apply function arguments)
+                                             (incf octets (* sign (- (tuatara.bench::bytes-consed) before)))))
+                                         (apply function arguments)))))))
+      (count-octets measured 1)
+      (count-octets less -1))
+    (sb-int:encapsulate 'tuatara.syntax:rich-highlights 'garbage-per-key
+                        (lambda (function &rest arguments)
+                          (when counting (incf worked-out))
+                          (apply function arguments)))
+    (unwind-protect
+         ;; each key's colours from the text parsed after it
+         (let ((tuatara.syntax:*syntax-wait* 30) (tuatara.defaults::*rules-wait* 30))
+           (run-keys (list (lambda ()
+                             (setf buffer (tuatara.command:current-buffer))
+                             ;; its grammar loaded first, as it is a moment after a start
+                             (loop repeat 600
+                                   for language = (tuatara.buffer:buffer-local buffer :syntax-pending)
+                                   until (or (null language) (tuatara.syntax:buffer-syntax buffer))
+                                   do (tuatara.defaults::start-parsing buffer language)
+                                      (sleep 0.05)))
+                           "C-v i" (lambda () (setf counting t)) keys (lambda () (setf counting nil)))
+                     :file path :width 100 :height height))
+      (dolist (name (list* 'tuatara.syntax:rich-highlights (append measured less)))
+        (sb-int:unencapsulate name 'garbage-per-key))
+      (kill-records buffer path))
+    (values (/ octets (1+ (count #\Space keys))) worked-out)))
 
 (defmacro with-functions-replaced ((&rest bindings) &body body)
   "Run BODY with each (NAME FUNCTION) of BINDINGS standing in for the global
@@ -69,6 +175,52 @@ function NAME, which is put back afterwards."
             (progn ,@(loop for (name function) in bindings collect `(setf (fdefinition ',name) ,function))
                    ,@body)
          ,@(loop for (name) in bindings for s in saved collect `(setf (fdefinition ',name) ,s))))))
+
+(defclass answering-host (tuatara.defaults::defaults-host)
+  ((answers :initarg :answers :reader answering-host-answers))
+  (:documentation "The defaults' host with some of its answers given by a test: a plist of a
+question's name, a HOST-... generic function, and the function answering it in
+its place, given the question's arguments after the host."))
+
+(defmacro define-test-answer (question &rest parameters)
+  "Have an ANSWERING-HOST answer QUESTION, of PARAMETERS after the host (a
+method's lambda list), with the function the test gave for it, else as the
+defaults do."
+  (let ((call (loop with keys = nil
+                    for parameter in parameters
+                    do (when (member parameter '(&optional &key)) (setf keys (eq parameter '&key)))
+                    unless (member parameter lambda-list-keywords)
+                      append (if keys (list (intern (symbol-name parameter) :keyword) parameter) (list parameter)))))
+    `(defmethod ,question ((host answering-host) ,@parameters)
+       (let ((answer (getf (answering-host-answers host) ',question)))
+         (if answer (funcall answer ,@call) (call-next-method))))))
+
+(define-test-answer tuatara.runtime:host-wake)
+(define-test-answer tuatara.runtime:host-say-hook-failure text)
+(define-test-answer tuatara.runtime:host-secret-buffer-p buffer)
+(define-test-answer tuatara.io:host-writing-refusal path &key dirfd fd)
+(define-test-answer tuatara.io:host-say-writing words)
+(define-test-answer tuatara.io:host-save-transform buffer path)
+(define-test-answer tuatara.display:host-tab-width buffer)
+(define-test-answer tuatara.syntax:host-trusted-text-p buffer)
+(define-test-answer tuatara.syntax:host-say-helper-refused trusted)
+(define-test-answer tuatara.syntax:host-say-helper-ended helper)
+(define-test-answer tuatara.syntax:host-must-not-wait-p)
+(define-test-answer tuatara.syntax:host-buffer-shown-p buffer)
+(define-test-answer tuatara.syntax:host-say-syntax-fault syntax)
+(define-test-answer tuatara.syntax:host-say-syntax-slow syntax)
+
+(defun make-answering-host (&rest answers)
+  "A host answering each question of ANSWERS, a HOST-... generic function's
+name followed by the function answering it in its place (DEFINE-TEST-ANSWER),
+and the others as the defaults do: bound to TUATARA.RUNTIME:*HOST* for a test."
+  (make-instance 'answering-host :answers answers))
+
+(defun this-thread-only ()
+  "A function of no arguments true on the thread that made it only, as the
+editor's thread is for a test that has no editor running."
+  (let ((thread sb-thread:*current-thread*))
+    (lambda () (eq sb-thread:*current-thread* thread))))
 
 (defun processing-shown (frontend &rest texts)
   "True when some frame FRONTEND painted had a row holding every string in
@@ -89,6 +241,10 @@ TEXTS with the mode line's sign of work, P, lit in :mode-line-sign."
 (defun session-point (editor)
   "Point of the editor's current buffer."
   (tuatara.buffer:buffer-point (tuatara.display:window-buffer (tuatara.command:editor-window editor))))
+
+(defun session-buffer (editor)
+  "The buffer of the editor's selected window."
+  (tuatara.display:window-buffer (tuatara.command:editor-window editor)))
 
 (define-test (command insert-and-normal)
   (multiple-value-bind (f editor) (run-keys "i h i SPC t h e r e C-g h h d")
@@ -298,8 +454,8 @@ TEXTS with the mode line's sign of work, P, lit in :mode-line-sign."
                             (lambda (function &rest arguments) (incf said) (apply function arguments)))
         (unwind-protect (setf offered (tuatara.defaults::command-candidates))
           (sb-int:unencapsulate 'tuatara.defaults::mode-command-refusal 'counted))
-        (true (tuatara.defaults::mode-command-refusal 'tuatara.defaults::git-stage))
-        (false (find 'tuatara.defaults::git-stage offered :key #'tuatara.command:candidate-result))
+        (true (tuatara.defaults::mode-command-refusal 'tuatara.git::git-stage))
+        (false (find 'tuatara.git::git-stage offered :key #'tuatara.command:candidate-result))
         (true (find 'tuatara.defaults::find-file offered :key #'tuatara.command:candidate-result))))
     (is = 0 said)))
 
@@ -316,30 +472,34 @@ TEXTS with the mode line's sign of work, P, lit in :mode-line-sign."
   ;; the questions before exiting change nothing: what they stop is stopped only once the exit is certain
   (let* ((job (tuatara.defaults::%make-hash-job :what "a sum"))
          (tuatara.runtime:*jobs* (list job)))
-    (sb-int:encapsulate 'tuatara.command:yes-or-no-p* 'test (lambda (f prompt) (declare (ignore f prompt)) t))
+    (sb-int:encapsulate 'tuatara.command:y-or-n-p* 'test (lambda (f prompt &rest how) (declare (ignore f prompt how)) t))
     (unwind-protect
          (let ((answer (tuatara.defaults::jobs-quit-query)))
            (true (functionp answer))
            (false (car (tuatara.runtime:job-cancel job)))
            (funcall answer)
            (true (car (tuatara.runtime:job-cancel job))))
-      (sb-int:unencapsulate 'tuatara.command:yes-or-no-p* 'test))))
+      (sb-int:unencapsulate 'tuatara.command:y-or-n-p* 'test))))
 
 (defvar *yes-or-no-answer* :none
   "What the question of the yes-or-no test answered.")
 
 (define-test (command yes-or-no-answers)
-  ;; y or yes, in any case and with spaces around, is yes; anything else, an empty answer too, is no
+  ;; y or yes, in any case and with spaces around, is yes; n or no is no; anything else, an
+  ;; empty answer too, says which answers it takes and asks again
   (let ((ask (key-string "(setf tuatara.tests::*yes-or-no-answer* (tuatara.command:yes-or-no-p* \"Go on?\"))")))
-    (dolist (case '(("y" t) ("SPC Y e s SPC" t) ("n" nil) ("" nil) ("y i k e s" nil) ("SPC N o SPC" nil)))
+    (dolist (case '(("y" t) ("SPC Y e s SPC" t) ("n" nil) ("SPC N o SPC" nil)
+                    ("RET n" nil) ("y i k e s RET y" t) ("y y RET n o" nil)))
       (setf *yes-or-no-answer* :none)
-      (let ((f (run-keys (format nil "M-: ~a RET ~@[~a ~]RET" ask (and (plusp (length (first case))) (first case))) :width 120)))
+      (let ((f (run-keys (format nil "M-: ~a RET ~a RET" ask (first case)) :width 120)))
         (is eq (second case) *yes-or-no-answer* "~s" (first case))
-        (false (tuatara.frontend.fake:fake-frame-showing f "Please answer"))))))
+        (is eq (and (search "RET " (first case)) t)
+            (and (tuatara.frontend.fake:fake-frame-showing f "Answer y or n. Go on?") t)
+            "~s" (first case))))))
 
 (define-test (command kill-ring-bounded)
   ;; the kills together held to *kill-ring-max-size*: the oldest forgotten, the latest always kept
-  (let ((tuatara-user:*kill-ring-max-size* 10))
+  (let ((tuatara.defaults::*kill-ring-max-size* 10))
     (multiple-value-bind (f editor) (run-keys "M-x k i l l - l i n e RET M-x k i l l - l i n e RET M-x k i l l - l i n e RET"
                                               :text (format nil "abcdef~%ghijkl~%") :width 80)
       (declare (ignore f))
@@ -694,7 +854,7 @@ TEXTS with the mode line's sign of work, P, lit in :mode-line-sign."
                (tuatara.command:message "said on a thread of its own")
                (setf handed (copy-list tuatara.command::*messages-from-threads*)))))))
       (tuatara.command:run-editor f :setup #'tuatara.defaults:install-defaults)
-      (is equal '("said on a thread of its own") handed)
+      (is equal '((nil . "said on a thread of its own")) handed)
       (true (tuatara.frontend.fake:fake-frame-showing f "said on a thread of its own"))
       (true (search "said on a thread of its own"
                     (tuatara.buffer:buffer-string (tuatara.buffer:find-buffer "*Messages*"))))
@@ -713,7 +873,7 @@ TEXTS with the mode line's sign of work, P, lit in :mode-line-sign."
       (declare (ignore editor))
       (true (> calls 1))
       (true (search "one" (tuatara.frontend.fake:fake-screen-line f 0)))
-      (true (search "failed and is left out of the screen: broken on purpose"
+      (true (search "failed and was left out: broken on purpose"
                     (tuatara.buffer:buffer-string (tuatara.buffer:find-buffer "*Messages*"))))
       (is = 1 (count-matches "broken on purpose" (tuatara.buffer:buffer-string (tuatara.buffer:find-buffer "*Messages*")))))))
 
@@ -747,12 +907,44 @@ TEXTS with the mode line's sign of work, P, lit in :mode-line-sign."
     (multiple-value-bind (f editor) (run-keys "i C-q ESC C-g" :text "" :width 60 :height 8)
       (declare (ignore f))
       (is string= (string (code-char 27)) (session-text editor))))
-  ;; as standard, Escape is itself: INSERT state kept, the text typed after it typed
+  ;; as standard, Escape is a key of its own: it neither stops work nor ends a question one key answers
   (let ((tuatara-user:*escape-quits* nil))
     (true (tuatara.command:quit-key-p (tuatara.frontend:make-key #\g :ctrl t)))
     (false (tuatara.command:quit-key-p (tuatara.frontend:make-key :escape)))
     (let ((tuatara-user:*escape-quits* t))
       (true (tuatara.command:quit-key-p (tuatara.frontend:make-key :escape))))))
+
+(define-test (command escape-where-nothing-binds-it)
+  ;; as standard, Escape bound nowhere does what C-g does there: INSERT state left, never "ESC is undefined"
+  (let ((tuatara-user:*escape-quits* nil))
+    (multiple-value-bind (f editor) (run-keys "i a b ESC h c" :text "" :width 60 :height 8)
+      (is string= (run-keys-text "i a b C-g h c") (session-text editor))
+      (false (tuatara.frontend.fake:fake-frame-showing f "ESC is undefined")))
+    (let ((editor (nth-value 1 (run-keys "i a b ESC" :text "" :width 60 :height 8))))
+      (is eq :normal (tuatara.defaults:modal-state (session-buffer editor))))
+    ;; in NORMAL state too, as C-g: the selection dropped
+    (multiple-value-bind (f editor) (run-keys "v l ESC" :text (format nil "ab~%cd") :width 60 :height 8)
+      (false (tuatara.frontend.fake:fake-frame-showing f "ESC is undefined"))
+      (false (tuatara.buffer:buffer-mark-active-p (session-buffer editor))))
+    ;; where Escape is bound it does its own: the minibuffer's question closed, nothing run
+    (multiple-value-bind (f editor) (run-keys "M-x e n d - o f - b u f ESC" :text (format nil "a~%b") :width 60 :height 8)
+      (declare (ignore f))
+      (is = 0 (session-point editor)))
+    ;; and after a prefix key it is no key of the sequence's
+    (true (tuatara.frontend.fake:fake-frame-showing (run-keys "C-x ESC" :text "" :width 60 :height 8)
+                                                    "C-x ESC is undefined"))))
+
+(define-test (command escape-alone-or-as-meta-from-a-terminal)
+  ;; in a terminal, ESC alone is Escape; ESC with a key sent at once is that key with Meta
+  ;; (Alt and the key, or ESC x typed as M-x); with the rest coming later, Escape alone
+  (flet ((spec (script &optional kitty)
+           (tuatara.frontend:key-spec (tuatara.frontend:event-key (scripted-terminal-events script :kitty kitty)))))
+    (is equal '(:escape) (spec '()))
+    (is equal '(:meta #\x) (spec '(#\x)))
+    (is equal '(:escape) (spec '(:gap #\x)))
+    ;; with kitty's keyboard on, Escape alone too, and Alt and a key still Meta
+    (is equal '(:escape) (spec '() t))
+    (is equal '(:meta #\x) (spec '(#\x) t))))
 
 (defun run-keys-text (keys)
   "The text an empty scratch buffer holds after KEYS."
@@ -868,11 +1060,11 @@ TEXTS with the mode line's sign of work, P, lit in :mode-line-sign."
   "What the stand-in terminal gives next: characters, and :GAP where the
 rest comes only after a wait.")
 
-(defun scripted-terminal-events (script)
+(defun scripted-terminal-events (script &key kitty)
   "The event the TUI makes of an ESC followed by SCRIPT (see *TERMINAL-SCRIPT*),
-the terminal's reads and waits stood in for, with kitty's keyboard off."
+the terminal's reads and waits stood in for, with kitty's keyboard on when KITTY."
   (let ((*terminal-script* script)
-        (tuatara.frontend.tui::*kitty-keyboard-on* nil))
+        (tuatara.frontend.tui::*kitty-keyboard-on* kitty))
     (sb-int:encapsulate 'tuatara.frontend.tui::read-wide-char 'scripted
                         (lambda (original window)
                           (declare (ignore original window))
@@ -962,6 +1154,41 @@ the terminal's reads and waits stood in for, with kitty's keyboard off."
       (true (tuatara.frontend.fake:fake-frame-showing f "Trust /tmp/a-long-folder-name/that-matters/?"))
       (true (tuatara.frontend.fake:fake-frame-showing f "(y or n)"))
       (is string= "y" answer))))
+
+(define-test (command long-key-question-read-whole)
+  ;; a question of one key wider than its row shows its start on rows above while it
+  ;; waits, as the minibuffer's does, the cursor after its end
+  (let ((answer nil) (screen nil))
+    (run-keys (list (lambda ()
+                      (setf answer (tuatara.command:read-key
+                                    "Compile and load the package pkg from /tmp/a-long-folder-name/that-matters/? (y, n, or v to view its source) ")))
+                    (lambda ()
+                      (let ((f (tuatara.command::frame-frontend (tuatara.command::editor-frame tuatara.command:*editor*))))
+                        (setf screen (loop for row below 12 collect (tuatara.frontend.fake:fake-screen-line f row)))))
+                    "y")
+              :text "" :width 60 :height 12)
+    ;; the rows it is broken into, between words, read as one
+    (true (search "Compile and load the package pkg from /tmp/a-long-folder-name/that-matters/? (y, n, or v to view its source)"
+                  (format nil "~{~a~^ ~}" (mapcar (lambda (line) (string-trim " " line)) screen))))
+    (is equal '(#\y) (tuatara.frontend:key-spec answer))))
+
+(define-test (command long-key-question-keys-coloured)
+  ;; the keys named in the start of a long question of one key, on the rows above the
+  ;; echo row, are coloured as on the echo row
+  (let ((faces nil))
+    (run-keys (list (lambda ()
+                      (tuatara.command:read-key
+                       (tuatara.command:substitute-command-keys
+                        "\\`C-g' leaves the package pkg from /tmp/a-long-folder-name/that-matters/ alone; load it? (y or n) "
+                        :marks t)))
+                    (lambda ()
+                      (let ((f (tuatara.command::frame-frontend (tuatara.command::editor-frame tuatara.command:*editor*))))
+                        (setf faces (loop for row below 12
+                                          when (search "C-g leaves" (tuatara.frontend.fake:fake-screen-line f row))
+                                            append (mapcar #'third (aref (tuatara.frontend.fake:fake-spans f) row))))))
+                    "y")
+              :text "" :width 60 :height 12)
+    (true (member :help-key-binding faces))))
 
 (define-test (command moving-by-clusters)
   ;; a letter with its accent and an emoji with its skin tone are one character to move
@@ -1323,3 +1550,12 @@ TUATARA: what a job of its own would take from a buffer before it starts.")
     (fail (tuatara.command:set-key-label map "C-c q r" "no"))
     (tuatara.command:define-key map "C-c q r" 'tuatara.defaults::end-of-buffer)
     (true (tuatara.command:keymap-p (tuatara.command:lookup-key map (tuatara.frontend:parse-key-sequence "C-c q"))))))
+
+(define-test (command a-test-leaves-a-buffer)
+  ;; with BUFFERS-OF-A-TEST-KILLED: a buffer a test made, not killed by it
+  (true (tuatara.buffer:make-buffer "left by a test")))
+
+(define-test (command buffers-of-a-test-killed)
+  :depends-on (a-test-leaves-a-buffer)
+  ;; the buffer the test before made and left is gone
+  (false (tuatara.buffer:find-buffer "left by a test")))

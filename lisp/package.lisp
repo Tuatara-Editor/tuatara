@@ -6,17 +6,22 @@
   (:use #:cl #:tuatara.command #:tuatara.modes #:tuatara.dates #:tuatara-user)
   ;; commands of these names here, kept apart from the functions of the init file's
   (:shadow #:count-words #:find-file #:point #:forward-char #:backward-char #:load-theme
-           #:switch-to-buffer #:insert)
+           #:switch-to-buffer #:insert #:widen #:narrow-to-region)
   (:shadowing-import-from #:tuatara.display #:define-theme)
   (:import-from #:tuatara.display #:define-face #:set-face-attributes)
   (:import-from #:tuatara.io #:octets-integer #:octets-signed #:octets-words #:directory-name)
   (:import-from #:tuatara.io #:fd-octets #:crc32 #:zip-octets #:zip-entries #:zip-entry-octets #:inflate #:zip-error
                 #:*zip-largest-entry* #:*zip-largest-ratio*)
-  (:import-from #:tuatara.buffer #:buffer-crlf-p)
-  (:import-from #:tuatara.runtime #:foreign-library-p #:foreign-call #:jobs-of)
+  (:import-from #:tuatara.buffer #:buffer-read-only-p)
+  (:import-from #:tuatara.buffer #:buffer-crlf-p #:lf-newlines #:crlf-newlines #:cr-newlines #:text-for-buffer)
+  (:import-from #:tuatara.runtime #:foreign-library-p #:foreign-call #:jobs-of
+                #:reporting-errors #:ignoring-errors-reported #:refusal #:refuse #:*secret-at-hand*
+                #:run-hook #:run-hook-until-success #:run-hook-until-done #:call-hook-function
+                #:hook-function-name)
   (:import-from #:tuatara.display #:next-tab-stop)
-  (:import-from #:tuatara.text #:word-char-p #:name-char-p)
-  (:import-from #:tuatara.text #:string-line-start #:string-line-end #:xml-entity #:xml-tag-end #:xml-text-value #:utf-16-text #:parse-decimal #:+fnv-offset+
+  (:import-from #:tuatara.text #:word-char-p #:name-char-p #:number-formatter)
+  (:import-from #:tuatara.text #:string-line-start #:string-line-end #:xml-entity #:xml-tag-end #:xml-text-value
+                #:utf-16-text #:parse-decimal #:whole-number #:+fnv-offset+
                 #:xml-name #:xml-attribute #:xml-children #:xml-child #:xml-root #:xml-local-name #:xml-local-children #:xml-find-all #:xml-all-text)
   (:import-from #:tuatara.text #:xml-first-text #:xml-parse #:*xml-deepest* #:*xml-most-elements* #:xml-escape
                 #:xml-elements #:xml-element #:xml-top-elements #:xml-element-inner #:xml-element-inside #:xml-replace-elements #:xml-value)

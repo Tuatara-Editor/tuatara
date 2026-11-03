@@ -247,3 +247,93 @@ reports not yet shown."
       (tuatara.runtime:note-editor-busy nil)
       (sb-thread:join-thread watch :default nil :timeout 5)
       (sb-thread:join-thread rest :default nil :timeout 5))))
+
+(define-test (debug-reports failures-at-one-place-kept-few)
+  ;; failures at one place: the calls under way the first time, one line after, a few a second,
+  ;; those left out counted once their second has passed; a C-g is no failure
+  (drain-debug-reports)
+  (clrhash tuatara.runtime::*error-report-places*)
+  (unwind-protect
+       (flet ((reports ()
+                (loop for report = (sb-concurrency:dequeue tuatara.runtime:*debug-reports*)
+                      while report collect (princ-to-string (fourth report)))))
+         (tuatara.runtime:set-debug t)
+         (dotimes (i 50)
+           (tuatara.runtime:ignoring-errors-reported ("failing in a test ~d" i) (error "boom")))
+         (let ((texts (reports)))
+           (true (<= 1 (length texts) (* 2 tuatara.runtime::*error-reports-per-second*)) "~s" texts)
+           (true (search (format nil "~%    ") (first texts)) "the calls the first time: ~s" (first texts))
+           (true (every (lambda (text) (not (find #\Newline text))) (rest texts)) "~s" texts))
+         ;; the count of those left out is said once the second has passed, with no report to carry it
+         (sleep 1.5)
+         (let ((texts (reports)))
+           (true (find-if (lambda (text) (and (search "more times" text) (search "left out" text))) texts) "~s" texts))
+         (tuatara.runtime:ignoring-errors-reported ("quitting in a test") (error 'tuatara.runtime:quit))
+         (is equal '() (reports)))
+    (drain-debug-reports)))
+
+(define-test (debug-reports new-kind-of-failure-gets-its-calls)
+  ;; a place's routine failures do not hide a different one there: a type error after many file
+  ;; errors gets its calls; a failure while a secret was at hand leaves the calls still to be given
+  (drain-debug-reports)
+  (clrhash tuatara.runtime::*error-report-places*)
+  (unwind-protect
+       (flet ((reports ()
+                (loop for report = (sb-concurrency:dequeue tuatara.runtime:*debug-reports*)
+                      while report collect (princ-to-string (fourth report))))
+              (calls-p (text) (search (format nil "~%    ") text)))
+         (tuatara.runtime:set-debug t)
+         (dotimes (i 3)
+           (tuatara.runtime:ignoring-errors-reported ("reading in a test")
+             (error 'file-error :pathname "/nowhere")))
+         (reports)
+         (tuatara.runtime:ignoring-errors-reported ("reading in a test")
+           (error 'type-error :datum 1 :expected-type 'string))
+         (let ((texts (reports)))
+           (is = 1 (length texts))
+           (true (calls-p (first texts)) "~s" texts))
+         (let ((tuatara.runtime:*secret-at-hand* t))
+           (tuatara.runtime:ignoring-errors-reported ("opening in a test") (error "secret words")))
+         (let ((texts (reports)))
+           (false (calls-p (first texts)) "~s" texts)
+           (false (search "secret words" (first texts)) "~s" texts))
+         (tuatara.runtime:ignoring-errors-reported ("opening in a test") (error "plain words"))
+         (let ((texts (reports)))
+           (true (calls-p (first texts)) "~s" texts)))
+    (drain-debug-reports)))
+
+(define-test (debug-reports failing-report-keeps-the-error)
+  ;; a report that cannot be made never takes the place of the error being reported
+  (drain-debug-reports)
+  (unwind-protect
+       (progn
+         (tuatara.runtime:set-debug t)
+         (let ((condition (make-condition 'simple-error :format-control "~a" :format-arguments '())))
+           (is eq condition
+               (nth-value 1 (tuatara.runtime:ignoring-errors-reported ("failing in a test")
+                              (error condition))))))
+    (drain-debug-reports)))
+
+(define-test (debug-reports refusals-said-whole-under-a-secret)
+  ;; under a secret, the editor's own refusals keep their words for the person, any other error
+  ;; says its kind alone; a character among the arguments of what was being done still prints
+  (let ((tuatara.runtime:*secret-at-hand* t))
+    (is string= "nothing chosen to encrypt it to"
+        (tuatara.runtime:failure-words (nth-value 1 (ignore-errors (tuatara.runtime:refuse "nothing chosen to encrypt it to")))
+                                       :said t))
+    (is string= "a simple-error"
+        (tuatara.runtime:failure-words (nth-value 1 (ignore-errors (error "plain kiwi words"))) :said t))
+    (is string= "a type-error"
+        (tuatara.runtime:failure-words (make-condition 'type-error :datum "plain kiwi words" :expected-type 'integer))))
+  (drain-debug-reports)
+  (clrhash tuatara.runtime::*error-report-places*)
+  (unwind-protect
+       (progn
+         (tuatara.runtime:set-debug t)
+         (let ((tuatara.runtime:*secret-at-hand* t))
+           (tuatara.runtime:ignoring-errors-reported ("typing ~c in a test" #\k) (error "plain kiwi words")))
+         (let ((texts (loop for report = (sb-concurrency:dequeue tuatara.runtime:*debug-reports*)
+                            while report collect (princ-to-string (fourth report)))))
+           (true (find "typing ? in a test failed: a simple-error" texts :test #'search) "~s" texts)
+           (false (find "kiwi" texts :test #'search) "~s" texts)))
+    (drain-debug-reports)))

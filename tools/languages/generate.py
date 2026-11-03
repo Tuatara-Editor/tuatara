@@ -429,8 +429,68 @@ QUERY_FIXES = {
          '((word) @punctuation.special.separator\n  (#eq? @punctuation.special.separator "&"))',
          'the ampersand between the columns of a table has a meaning of its own, and themes leave delimiters plain; the sparse style colours it too'),
     ],
+    ('nix', 'highlights'): [
+        ('(doc_comment) @comment.documentation', '',
+         'the grammar of nix-community, kept up, has no node of its own for a comment of documentation: such a comment is a comment'),
+    ],
+    ('vue', 'highlights'): [
+        ('(directive_argument) @constant', '(directive_value) @constant', 'the grammar of tree-sitter-grammars, kept up, names the argument of a directive (:class, @click) its value, after a mark of its own'),
+        ("""(directive_attribute
+  (directive_name) @attribute
+  (directive_argument)? @attribute
+  (directive_modifiers)? @attribute
+  [(attribute_value) (quoted_attribute_value)]? @string) """, """(directive_attribute
+  [(directive_name) (directive_value) (dynamic_directive_value) (directive_modifiers) ":" "." "@" "#"] @attribute)
+
+(directive_attribute
+  [(attribute_value) (quoted_attribute_value)] @string)""", 'the grammar of tree-sitter-grammars, kept up, names the argument of a directive (:class, @click) its value, after a mark of its own'),
+    ],
+    ('vue', 'injections'): [
+        ("""(directive_attribute
+  (directive_name) @keyword
+  (quoted_attribute_value""", """(directive_attribute
+  (quoted_attribute_value""", 'the grammar of tree-sitter-grammars, kept up, names the argument of a directive (:class, @click) its value, after a mark of its own: the value of every directive is JavaScript, written with its name or with a mark alone'),
+    ],
+    ('xml', 'indents'): [('(end_tag) @outdent', '(ETag) @outdent', 'the grammar of tree-sitter-grammars, kept up, names the parts of a document as the XML standard does')],
+    ('xml', 'textobjects'): [
+        ('(element (start_tag) (_)* @xml-element.inside (end_tag))', '(element (STag) (_)* @xml-element.inside (ETag))', 'the grammar of tree-sitter-grammars, kept up, names the parts of a document as the XML standard does'),
+        ('(comment) @comment.around', '(Comment) @comment.around', 'the grammar of tree-sitter-grammars, kept up, names the parts of a document as the XML standard does'),
+    ],
+    ('xml', 'injections'): [('((comment) @injection.content', '((Comment) @injection.content', 'the grammar of tree-sitter-grammars, kept up, names the parts of a document as the XML standard does')],
+    ('dtd', 'injections'): [('((comment) @injection.content', '((Comment) @injection.content', 'the grammar of tree-sitter-grammars, kept up, names the parts of a document as the XML standard does')],
+    ('protobuf', 'indents'): [
+        ('  (oneof_body)\n  (service_body)\n  (rpc_body)', '  (oneof)\n  (service)\n  (rpc)', 'the grammar of coder3101, kept up, has no node for the braces of a oneof, a service or a method'),
+    ],
+    ('protobuf', 'textobjects'): [
+        ('(service (service_body) @class.inside) @class.around', '(service (service_name) (_)* @class.inside) @class.around', 'the grammar of coder3101, kept up, has no node for the braces of a oneof, a service or a method'),
+    ],
+    ('protobuf', 'tags'): [
+        ('(enum_variant_name (identifier) @definition.constant)', '(enum_field (identifier) @definition.constant)', 'the grammar of coder3101, kept up, has no node for the name of a field or of an enumeration value'),
+        ('(field_name (identifier) @definition.constant)', '(field (identifier) @definition.constant)', 'the grammar of coder3101, kept up, has no node for the name of a field or of an enumeration value'),
+    ],
     ('sway', 'textobjects'): [RUST_TEST],
     ('cairo', 'textobjects'): [RUST_TEST],
+}
+
+# grammars whose repositories are archived with no source kept up in their
+# place: left out; a language of them keeps its mode, its files opened in it
+# with no colours or structure
+DROPPED = {'rust-format-args', 'djot', 'cpon', 'move', 'jinja', 'cylc'}
+
+# rules Helix's no longer fit, its grammar's pin moved off a commit on no
+# branch or tag or to a maintained source: the grammar's own, Helix's newer
+# ones, or Helix's with the maintained grammar's node names; kept as they are
+OWN_QUERIES = {
+    'mojo': {'highlights', 'textobjects', 'locals'},
+    'lean': {'highlights', 'injections'},
+    'git-attributes': {'highlights'},
+    'ink': {'highlights', 'indents', 'locals', 'textobjects'},
+    'xml': {'highlights'},
+    'dtd': {'highlights'},
+    'svelte': {'highlights', 'indents', 'textobjects', 'injections', 'locals', 'tags'},
+    'luau': {'highlights', 'indents', 'textobjects', 'injections', 'locals'},
+    'protobuf': {'highlights'},
+    'slisp': {'highlights', 'tags'},
 }
 
 def copy_queries(name, done):
@@ -439,6 +499,9 @@ def copy_queries(name, done):
     done[name] = set()
     qdir = os.path.join(HELIX, 'runtime', 'queries', name)
     for kind, directory, what in KINDS:
+        if kind in OWN_QUERIES.get(name, ()):
+            if os.path.exists(os.path.join(ROOT, 'syntax', directory, name + '.scm')): done[name].add(kind)
+            continue
         src = os.path.join(qdir, kind + '.scm')
         if not os.path.exists(src): continue
         text = open(src, encoding='utf-8').read()
@@ -517,10 +580,11 @@ def main():
     for name, mode, lighter, parent, doc in TABLE:
         l = LANGS[name]
         grammar = l['grammar']
-        if grammar not in pinned:
+        dropped = name in DROPPED
+        if grammar not in pinned and not dropped:
             pinned.add(grammar)
             rows.append('\t'.join([grammar, l['git'], l['rev'], 'unknown'] + ([l['subpath']] if l['subpath'] else [])))
-        kinds = copy_queries(name, done)
+        kinds = set() if dropped else copy_queries(name, done)
         exts, names, patterns = [], [], []
         override = OVERRIDES.get(name, {})
         types = [t for t in l['file_types'] if t not in override.get('drop', [])] + override.get('add', [])
@@ -574,6 +638,7 @@ def main():
             interpreters = list(dict.fromkeys(i.split()[0] for i in l['shebangs'] if i.split()))
             if interpreters: opts.append(f':interpreters {lisp_list(interpreters)}')
             forms[family(name)].append(f'(define-major-mode {mode} {parent}\n  {lisp_string(doc)}\n  ' + '\n  '.join(opts) + ')')
+        if dropped: continue
         lang_opts = [f':grammar {lisp_string(grammar)}', f':modes ({mode or ""})'.replace('()', 'nil'), f':indent {indent}',
                      f':queries {lisp_string(name)}']
         if injection: lang_opts.append(f':injection-names {lisp_string(injection)}')

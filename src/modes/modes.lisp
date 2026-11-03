@@ -66,7 +66,7 @@ expression compiled once.")
 (defun mode-keymap (name)
   "The keymap of major mode NAME."
   (let ((info (find-mode name)))
-    (unless info (error "No major mode named ~(~a~)." name))
+    (unless info (refuse "No major mode named ~(~a~)." name))
     (mode-info-keymap info)))
 
 (defun mode-lighter (name)
@@ -187,7 +187,9 @@ installed and before its hooks run. Methods should call CALL-NEXT-METHOD.")
 
 (defgeneric mode-syntax-highlights (mode buffer rows)
   (:documentation "Syntax colours for the text laid out in ROWS of BUFFER, as a list of
-(START END FACE) byte ranges; NIL when MODE colours nothing.")
+(START END FACE) byte ranges; NIL when MODE colours nothing. The list may be one
+MODE keeps, lent until the text changes or is parsed again: read, never
+changed or kept.")
   (:method (mode buffer rows) (declare (ignore mode buffer rows)) nil))
 
 (defgeneric mode-marks-point-p (mode)
@@ -323,12 +325,12 @@ defined again."
 keymap and name, call MODE-ENTER, then run the hooks of NAME and its ancestors,
 the root's first. Returns the new mode instance."
   (let ((old (tuatara.buffer:buffer-local buffer :major-mode))
-        (info (or (find-mode name) (error "No major mode named ~(~a~)." name))))
+        (info (or (find-mode name) (refuse "No major mode named ~(~a~)." name))))
     (when old (mode-exit old buffer))
     (let ((mode (make-instance name)))
       (setf (tuatara.buffer:buffer-local buffer :major-mode) mode
             (tuatara.buffer:buffer-local buffer :keymap) (mode-info-keymap info)
-            (tuatara.buffer:buffer-local buffer :mode-name) (mode-info-lighter info))
+            (tuatara.command:buffer-mode-name buffer) (mode-info-lighter info))
       (mode-enter mode buffer)
       (dolist (ancestor (reverse (mode-precedence mode)))
         (dolist (hook (reverse (mode-info-hooks (find-mode ancestor))))
@@ -411,7 +413,8 @@ saying so."
                             (let ((octets (tuatara.text:rope-octets rope :start 0 :end end)))
                               ;; a Windows file's first line ends with a carriage return too
                               (string-right-trim '(#\Return)
-                                                 (tuatara.text:lenient-string octets :end (or (position 10 octets) (length octets)))))))))
+                                                 (tuatara.text:lenient-string octets :end (or (tuatara.text:octets-line-end-position octets 0 (length octets))
+                                                                              (length octets)))))))))
     (let* ((wanted (if path (mode-for-file path first-line) 'fundamental-mode))
            (mode (mode-for-size wanted (tuatara.text:rope-bytes rope))))
       (unless (eq mode wanted)

@@ -457,7 +457,7 @@ and hidden with none left, the time grid's lines going with their date."
   (find-or-make-buffer "*Org Agenda*" :mode 'org-agenda-mode
                                       :made (lambda (buffer)
                                               (choose-display buffer 'line-numbers nil)
-                                              (setf (tuatara.buffer:buffer-local buffer :read-only) t
+                                              (setf (buffer-read-only-p buffer) t
                                                     (tuatara.buffer:buffer-local buffer :tuatara-support-keymap)
                                                     *tuatara-list-keymap*)
                                               (set-search-filtering buffer :heading #'org-agenda-date-line-p :empty-headings nil
@@ -497,7 +497,8 @@ BUFFER, drawn from the agenda files as SOURCES (ORG-AGENDA-SOURCES-KEY) found
 them, narrowed again by the search filters on it (SHOW-LIST-TEXT). POINT
 :keep keeps it on its line, :today puts it on today's date (or the first
 date), :first on the first entry; a number puts it on that line."
-  (let ((old-line (ignore-errors (tuatara.buffer:buffer-line-number buffer (tuatara.buffer:buffer-point buffer)))))
+  (let ((old-line (ignoring-errors-reported ("finding the line of point in ~a" (tuatara.buffer:buffer-name buffer))
+                    (tuatara.buffer:buffer-line-number buffer (tuatara.buffer:buffer-point buffer)))))
     (show-list-text buffer text spans '() :entries whats :key sources :refill 'org-agenda-refill)
     (setf (tuatara.buffer:buffer-local buffer 'org-agenda-drawn-view) view
           (tuatara.buffer:buffer-local buffer 'org-agenda-drawn-at) (org-now))
@@ -697,7 +698,8 @@ setting changes."
     (if (and kept (equal (car kept) files))
         (cdr kept)
         (let ((folders (loop for file in files
-                             for path = (ignore-errors (tuatara.io:native (tuatara.io:expand-path file)))
+                             for path = (ignoring-errors-reported ("naming the agenda file ~a" file)
+                                          (tuatara.io:native (tuatara.io:expand-path file)))
                              when path
                                collect (multiple-value-bind (parent name) (tuatara.io:path-folder-and-name path)
                                          (if (and (string/= name "") (not (find-if (lambda (c) (find c "*?")) name))
@@ -742,9 +744,11 @@ itself (ORG-AGENDA-NEXT-REDRAW), worked out again only when DRAWN or
 (defun org-agenda-refresh-tick (editor)
   "Tick function: draw the agenda a window of EDITOR shows again once its
 time comes (ORG-AGENDA-REDRAW-DUE), as when an agenda file changes
-\(ORG-AGENDA-FOLLOW). Wants a tick at that time; none with no agenda shown."
+\(ORG-AGENDA-FOLLOW), but not while a waiting question is about it
+\(BUFFER-HELD-BY-QUESTION-P). Wants a tick at that time; none with no agenda
+shown."
   (multiple-value-bind (buffer window) (org-agenda-shown-window editor)
-    (when (and buffer (org-agenda-view buffer))
+    (when (and buffer (org-agenda-view buffer) (not (buffer-held-by-question-p buffer)))
       (let* ((now (org-now))
              (drawn (or (tuatara.buffer:buffer-local buffer 'org-agenda-drawn-at) now)))
         (when (>= now (org-agenda-redraw-due buffer drawn))
@@ -1083,9 +1087,11 @@ runs there as usual; in any other buffer it is said where it works."
                  ((null start)
                   (message "That entry is no longer in its file as it was: \\<org-agenda-mode>\\[revert-buffer] draws the agenda again, nothing changed"))
                  (t (let ((before (first (tuatara.buffer:buffer-undo-stack buffer))))
+                      ;; the entry may be outside the part of its file shown
                       (let ((*current-buffer* buffer))
-                        (setf (tuatara.buffer:buffer-point buffer) start)
-                        (funcall command))
+                        (tuatara.buffer:with-narrowing-lifted (buffer)
+                          (setf (tuatara.buffer:buffer-point buffer) start)
+                          (funcall command)))
                       ;; the change remembered for undo from the agenda
                       (let ((group (first (tuatara.buffer:buffer-undo-stack buffer))))
                         (when (and group (not (eq group before)))
@@ -1215,26 +1221,27 @@ so that the mode line shows the clock from the start. NIL: not again."
                                     (defer-action (lambda () (org-clock-take-up found))))))))
   nil)
 
-(defun save-org-buffers-where (test)
+(defun save-org-buffers-where (test words)
   "Save each Org buffer visiting a file with changes not saved that TEST, a
-function of the buffer, is true of; how many were saved."
-  (save-buffers-where (lambda (buffer) (and (typep (buffer-major-mode buffer) 'org-mode) (funcall test buffer)))))
+function of the buffer, is true of, and say WORDS of them once they are
+saved (SAVE-BUFFERS-WHERE); how many are saved or being saved."
+  (save-buffers-where (lambda (buffer) (and (typep (buffer-major-mode buffer) 'org-mode) (funcall test buffer)))
+                      words))
 
 (define-command org-save-all-org-buffers ()
   "Save every Org buffer with changes not saved:
 those the agenda changed among them, and any other. \\<org-agenda-mode>\\[org-agenda-save-all-buffers]
 saves only the agenda files."
-  (message "~[No Org buffer to save~;Saved 1 Org buffer~:;Saved ~:*~d Org buffers~]"
-           (save-org-buffers-where (constantly t))))
+  (save-org-buffers-where (constantly t) "~[No Org buffer to save~;Saved 1 Org buffer~:;Saved ~:*~d Org buffers~]"))
 
 (define-command org-agenda-save-all-buffers ()
   "Save the buffers of the agenda files (*org-agenda-files*, and those added to them) with changes not
 saved, those the agenda changed among them; other Org buffers are left as they
 are (\\[org-save-all-org-buffers] saves them all)."
   (let ((paths (org-agenda-file-paths)))
-    (message "~[No agenda file to save~;Saved 1 agenda file~:;Saved ~:*~d agenda files~]"
-             (save-org-buffers-where
-              (lambda (buffer) (member (tuatara.io:native (tuatara.buffer:buffer-file buffer)) paths :test #'equal))))))
+    (save-org-buffers-where (lambda (buffer)
+                              (member (tuatara.io:native (tuatara.buffer:buffer-file buffer)) paths :test #'equal))
+                            "~[No agenda file to save~;Saved 1 agenda file~:;Saved ~:*~d agenda files~]")))
 
 ;;; The calendar and the agenda
 
@@ -1266,8 +1273,7 @@ that day."
          (whats (tuatara.buffer:buffer-local buffer 'list-entries #()))
          (index (position-if (lambda (what) (and (org-agenda-date-line-p what) (= (second what) day))) whats)))
     (when index
-      (setf (tuatara.buffer:buffer-point buffer)
-            (tuatara.buffer:buffer-goto-line buffer (+ index (tuatara.buffer:buffer-local buffer 'list-first-line 0)))))))
+      (goto-shown buffer (tuatara.buffer:buffer-goto-line buffer (+ index (tuatara.buffer:buffer-local buffer 'list-first-line 0)))))))
 
 (define-command org-agenda-goto-calendar ()
   "Show the calendar on the day of the agenda line at point."

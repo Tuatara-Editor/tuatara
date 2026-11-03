@@ -124,11 +124,11 @@ a divider, it moves that instead, sizing the windows on either side."
   "Insert where the middle button was pressed the text selected last in any
 program (the desktop's primary selection); the mark at its start."
   (let ((text (tuatara.frontend:frontend-primary-selection (editor-frontend *editor*))))
-    (unless (and text (plusp (length text))) (error "Nothing is selected anywhere"))
+    (unless (and text (plusp (length text))) (refuse "Nothing is selected anywhere"))
     (mouse-set-point)
     (let ((p (point)))
       (push-mark)
-      (goto (tuatara.buffer:buffer-insert (current-buffer) p (text-for-buffer text (current-buffer)))))))
+      (goto (tuatara.buffer:buffer-insert (current-buffer) p (text-for-buffer text (current-buffer) p))))))
 
 (defun send-to-primary-selection ()
   "Make the text selected in the current buffer the desktop's primary
@@ -136,7 +136,7 @@ selection, as *USE-SYSTEM-CLIPBOARD* says: when there is some, no more than
 *CLIPBOARD-MAX-SIZE* octets, and none of an encrypted file's text."
   (let ((b (current-buffer)))
     (when (and *use-system-clipboard* (tuatara.buffer:buffer-mark-active-p b)
-               (not (tuatara.buffer:buffer-local b :plaintext)))
+               (not (tuatara.io:buffer-plaintext-p b)))
       (let ((start (min (point) (tuatara.buffer:buffer-mark b)))
             (end (max (point) (tuatara.buffer:buffer-mark b))))
         (when (< 0 (- end start) *clipboard-max-size*)
@@ -223,12 +223,18 @@ beside them. For a window that files from sources not trusted are dropped on.")
   "Visit PATH, a file dropped on the window, as \\[find-file] does (safely
 when *OPEN-DROPPED-FILES-SAFELY*), with VISIT-PATH, without showing it: a PDF
 or a picture as such, a binary file in the hex view, why a file opened safely
-said. Its buffer, or NIL and why not."
+said. Its buffer, or NIL and why not. A name that is empty or holds a
+control character (a NUL, a newline) is no file's that can be opened, and is
+refused (TUATARA.FRONTEND:DROPPED-NAME-P)."
+  (unless (tuatara.frontend:dropped-name-p path)
+    (return-from visit-dropped
+      (values nil "A file dropped whose name is empty or holds a control character was not opened")))
   (handler-case
-      (multiple-value-bind (buffer existing) (visit-path path :safe *open-dropped-files-safely* :show #'identity)
-        (if (and *open-dropped-files-safely* existing (not (tuatara.io:safe-visit-p buffer)))
-            (values buffer (format nil "~a is open already, with its mode" (tuatara.buffer:buffer-name buffer)))
-            buffer))
+      (reporting-errors ("opening ~a, dropped on the window" path)
+        (multiple-value-bind (buffer existing) (visit-path path :safe *open-dropped-files-safely* :show #'identity)
+          (if (and *open-dropped-files-safely* existing (not (tuatara.io:safe-visit-p buffer)))
+              (values buffer (format nil "~a is open already, with its mode" (tuatara.buffer:buffer-name buffer)))
+              buffer)))
     (error (e) (values nil (princ-to-string e)))))
 
 (define-command open-dropped-files ()

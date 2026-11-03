@@ -173,7 +173,7 @@ no WHAT (a Word document) otherwise."
   (let ((tree (docx-reading-part (docx-main-part usual))))
     (if (and tree (equal (xml-local-name (xml-root tree)) root))
         tree
-        (error "~a holds no ~a" (tuatara.io:native-file-name path) what))))
+        (refuse "~a holds no ~a" (tuatara.io:native-file-name path) what))))
 
 (defun docx-entry (name)
   "The zip entry of the part NAME of the document being read: of that name,
@@ -252,7 +252,7 @@ when it has none; an error when they would take the document's parts past
   (let ((entry (docx-entry name)))
     (when entry
       (when (> (incf (docx-reading-unpacked *docx-reading*) (getf entry :size)) *docx-largest-unpacked*)
-        (error "The document's parts unpacked take more than ~:d octets together" *docx-largest-unpacked*))
+        (refuse "The document's parts unpacked take more than ~:d octets together" *docx-largest-unpacked*))
       (zip-entry-octets (docx-reading-octets *docx-reading*) entry))))
 
 (defun docx-reading-text (name)
@@ -260,7 +260,7 @@ when it has none; an error when they would take the document's parts past
 or NIL; an error when it is larger than *DOCX-LARGEST-XML*."
   (let ((entry (docx-entry name)))
     (when (and entry (> (getf entry :size) *docx-largest-xml*))
-      (error "The document's part ~a takes ~:d octets unpacked, more than ~:d" name (getf entry :size) *docx-largest-xml*)))
+      (refuse "The document's part ~a takes ~:d octets unpacked, more than ~:d" name (getf entry :size) *docx-largest-xml*)))
   (let ((octets (docx-reading-octets-of name)))
     (and octets (tuatara.text:lenient-string octets))))
 
@@ -270,7 +270,8 @@ or NIL; an error when it is larger than *DOCX-LARGEST-XML*."
     (let ((styles (docx-reading-part "word/styles.xml")))
       (dolist (style (and styles (xml-find-all styles "w:style")))
         (let* ((name (let ((n (xml-child style "w:name"))) (and n (xml-attribute n "w:val"))))
-               (outline (let ((o (xml-find-all style "w:outlineLvl"))) (and o (ignore-errors (parse-integer (xml-attribute (first o) "w:val")))))))
+               (outline (let ((o (xml-find-all style "w:outlineLvl")))
+                          (and o (whole-number (xml-attribute (first o) "w:val"))))))
           (setf (gethash (xml-attribute style "w:styleId") (docx-reading-styles r)) (list name outline)))))
     (let ((numbering (docx-reading-part "word/numbering.xml")))
       (when numbering
@@ -278,7 +279,7 @@ or NIL; an error when it is larger than *DOCX-LARGEST-XML*."
           (dolist (a (xml-find-all numbering "w:abstractNum"))
             (setf (gethash (xml-attribute a "w:abstractNumId") abstracts)
                   (loop for lvl in (xml-find-all a "w:lvl")
-                        collect (cons (ignore-errors (parse-integer (xml-attribute lvl "w:ilvl")))
+                        collect (cons (whole-number (xml-attribute lvl "w:ilvl"))
                                       (let ((f (xml-child lvl "w:numFmt"))) (and f (xml-attribute f "w:val")))))))
           (dolist (num (xml-find-all numbering "w:num"))
             (let ((abstract (xml-child num "w:abstractNumId")))
@@ -531,12 +532,15 @@ a level below 0 or past 8 none."
          (style (let ((s (and ppr (xml-child ppr "w:pStyle")))) (and s (xml-attribute s "w:val"))))
          (known (and style (gethash style (docx-reading-styles *docx-reading*))))
          (heading (docx-read-heading-level
-                   style (let ((o (and ppr (xml-child ppr "w:outlineLvl")))) (and o (ignore-errors (parse-integer (xml-attribute o "w:val")))))))
+                   style (let ((o (and ppr (xml-child ppr "w:outlineLvl"))))
+                           (and o (whole-number (xml-attribute o "w:val"))))))
          (numpr (and ppr (xml-child ppr "w:numPr"))))
     (cond (heading (list :heading heading))
           ((and style (cl-ppcre:scan "(?i)^title$" (or (first known) style))) (list :title))
           (numpr (let* ((id (let ((e (xml-child numpr "w:numId"))) (and e (xml-attribute e "w:val"))))
-                        (level (max 0 (min 8 (or (let ((e (xml-child numpr "w:ilvl"))) (and e (ignore-errors (parse-integer (xml-attribute e "w:val"))))) 0))))
+                        (level (max 0 (min 8 (or (let ((e (xml-child numpr "w:ilvl")))
+                                                   (and e (whole-number (xml-attribute e "w:val"))))
+                                                 0))))
                         (format (cdr (assoc level (gethash id (docx-reading-numbering *docx-reading*))))))
                    (and id (not (equal id "0"))
                         (list :item level (and format (not (member format '("bullet" "none") :test #'string=))))))))))
@@ -551,7 +555,12 @@ a level below 0 or past 8 none."
                                                        (xml-find-all cell "w:p")))))
                              ;; a cell spanning columns, empty ones after it, so that the columns line up;
                              ;; each cell takes room in the note, an empty one too
-                             (let ((span (max 1 (min 63 (or (ignore-errors (parse-integer (xml-attribute (first (xml-find-all (xml-child cell "w:tcPr") "w:gridSpan")) "w:val"))) 1)))))
+                             (let ((span (max 1 (min 63 (or (whole-number
+                                                             (xml-attribute
+                                                              (first (xml-find-all (xml-child cell "w:tcPr")
+                                                                                    "w:gridSpan"))
+                                                              "w:val"))
+                                                            1)))))
                                (office-spend (+ (length text) span))
                                (cons text (make-list (1- span) :initial-element "")))))
                          (remove-if-not (lambda (n) (equal (xml-name n) "w:tc")) (xml-children row))))
@@ -615,7 +624,7 @@ a level below 0 or past 8 none."
 
 (defun docx-read-number (element attribute)
   "ELEMENT's ATTRIBUTE as an integer, or NIL."
-  (and element (ignore-errors (parse-integer (xml-attribute element attribute)))))
+  (and element (whole-number (xml-attribute element attribute))))
 
 (defun docx-read-theme-fonts ()
   "The document's theme's fonts: its headings' and its text's, two values, or NIL."

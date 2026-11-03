@@ -44,10 +44,12 @@ last changed.")
   "While a question other than a search's asks for a pattern (READ-PATTERN,
 \\[search-in-files]): a function of no arguments that switches it between a
 regular expression and literal text, for \\[search-toggle-regex].")
+(pushnew '*toggle-pattern-kind* *question-variables*)
 
 (defvar *pattern-done* nil
   "While READ-PATTERN asks: a function of no arguments that ends its question
 when what is typed can be used, and otherwise says why in the prompt.")
+(pushnew '*pattern-done* *question-variables*)
 
 (defvar *pattern-keymap* (make-keymap :name "pattern")
   "The keys of every question that takes a pattern, before the minibuffer's:
@@ -193,7 +195,7 @@ of a function of a buffer (COMMANDS-FOR-BUFFERS), true for BUFFER."
 
 (apply #'commands-for-buffers 'menu-open-p "an open menu"
        (mapcar (lambda (name) (find-symbol name '#:tuatara.command))
-               '("MENU-TOGGLE-SWITCH" "MENU-SET-OPTION" "MENU-ENTRY-LEFT-OUT" "MENU-DESCRIBE")))
+               '("MENU-TOGGLE-SWITCH" "MENU-SET-OPTION" "MENU-ENTRY-LEFT-OUT" "MENU-ENTRY-REFUSED" "MENU-DESCRIBE")))
 
 (defvar *file-changing-commands* '()
   "Commands that change files, refused in a buffer opened safely (a rimu list
@@ -210,13 +212,20 @@ files as they are now.")
 for buffers of another major mode, or for other buffers
 \(COMMANDS-FOR-BUFFERS); :SAFE when it changes files (*FILE-CHANGING-COMMANDS*)
 and the buffer is opened safely; else what one of *COMMAND-REFUSAL-FUNCTIONS*
-says. NIL when it may run."
+says, the first that fails refusing it too, saying it could not be checked.
+NIL when it may run."
   (when *editor*
     (let ((entries (gethash command *mode-commands*))
           (buffer (current-buffer)))
       (cond ((and entries (notany (lambda (entry) (command-place-p (car entry) buffer)) entries)) :elsewhere)
             ((and (member command *file-changing-commands*) (tuatara.io:safe-visit-p buffer)) :safe)
-            (t (some (lambda (function) (funcall function command buffer)) *command-refusal-functions*))))))
+            (t (let ((tuatara.runtime:*hook-failures-said* nil))
+                 (dolist (function *command-refusal-functions*)
+                   (multiple-value-bind (refusal failure) (call-hook-function function command buffer)
+                     (cond ((typep failure 'error)
+                            (return (format nil "~(~a~) could not be checked (~a): not run"
+                                            command (tuatara.runtime:failure-words failure :said t))))
+                           (refusal (return refusal)))))))))))
 
 (defun mode-command-refusal (command)
   "What to say instead of running COMMAND, made for buffers of another major mode
@@ -234,6 +243,11 @@ it names written in (SUBSTITUTE-COMMAND-KEYS), or one that changes files
        (format nil "~(~a~) changes files, and ~a is opened safely" command
                (tuatara.buffer:buffer-name (current-buffer))))
       (t reason))))
+
+(defmethod host-command-refusal ((host defaults-host) command)
+  "Refuse a command made for one kind of buffer anywhere else, or one that
+changes files in a buffer opened safely (MODE-COMMAND-REFUSAL)."
+  (mode-command-refusal command))
 
 (defun command-candidates (&key everywhere)
   "Completion candidates for every command that can run here (not those made
@@ -254,8 +268,8 @@ its docstring at the right."
   (:documentation "What completing at POSITION of BUFFER in MODE offers, as six values: the
 start and end of the word there, the candidates for it (a list of CANDIDATE),
 and the functions giving what is said beside a candidate, its documentation,
-and whether a character can be part of a word (see COMPLETE-IN-TEXT); NIL when
-MODE completes nothing.")
+whether a character can be part of a word (see COMPLETE-IN-TEXT), and true for the
+candidates to be kept in the order given; NIL when MODE completes nothing.")
   (:method (mode buffer position) (declare (ignore mode buffer position)) nil))
 
 (define-command completion-at-point ()
@@ -267,20 +281,28 @@ beside it and the chosen one's parameters and documentation beside the list.
 Typing narrows the list, words in any order;
 \\<popup>\\[popup-next] and \\[popup-previous] choose, \\[popup-insert] or
 \\`TAB' put the chosen one in, \\[popup-quit] closes it. When one name alone
-fits, it goes in at once."
+fits, it goes in at once. Where the mode offers nothing, the words of the
+buffers that start with the text before point, as \\[complete-word] lists them."
   (let ((b (current-buffer)))
     (cond ((hex-view-here-p) (message "Nothing to complete in the hex view"))
-          ((tuatara.buffer:buffer-local b :read-only) (message "Buffer is read-only: ~a" (tuatara.buffer:buffer-name b)))
-          (t (complete-at-point-in b)))))
+          ((buffer-read-only-p b) (message "Buffer is read-only: ~a" (tuatara.buffer:buffer-name b)))
+          (t (complete-at-point-in b :words t)))))
 
-(defun complete-at-point-in (b &key quiet)
+(defun complete-at-point-in (b &key quiet words)
   "Complete the word at point of B as its major mode offers (MODE-COMPLETION-AT-POINT);
-where it offers nothing, say so, unless QUIET."
-  (multiple-value-bind (start end candidates annotate document constituent)
-      (mode-completion-at-point (buffer-major-mode b) b (point))
+where it offers nothing, with WORDS the words of the buffers (WORD-COMPLETION-AT-POINT),
+or with WORDS :ONLY those alone; where nothing is offered, say so, unless QUIET."
+  (multiple-value-bind (start end candidates annotate document constituent keep-order)
+      (if (eq words :only)
+          (word-completion-at-point b (point))
+          (multiple-value-bind (start end candidates annotate document constituent keep-order)
+              (mode-completion-at-point (buffer-major-mode b) b (point))
+            (if (or start (not words))
+                (values start end candidates annotate document constituent keep-order)
+                (word-completion-at-point b (point)))))
     (if (null start)
         (unless quiet (message "Nothing to complete here"))
-        (complete-in-text b start end candidates :annotate annotate :document document
+        (complete-in-text b start end candidates :annotate annotate :document document :keep-order keep-order
                                                  :constituent (or constituent #'graphic-char-p)))))
 
 (define-command execute-extended-command ()
@@ -295,7 +317,7 @@ candidates show each command's keys and the first line of its documentation."
         (setf (editor-repeatable *editor*) (list* chosen (prefix-argument) (editor-this-key *editor*))))
       (tuatara.runtime:debug-report :command "~(~a~) (M-x)" chosen)
       ;; a command made for another place says so, as it does from its keys
-      (let ((refusal (and *command-refusal-function* (funcall *command-refusal-function* chosen))))
+      (let ((refusal (mode-command-refusal chosen)))
         (if refusal
             (message "~a" refusal)
             (funcall (find-command chosen)))))))

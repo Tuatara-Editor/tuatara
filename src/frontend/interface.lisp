@@ -41,6 +41,11 @@ the order :ctrl :meta :shift followed by the base."
           (and (key-shift key) '(:shift))
           (list (key-base key))))
 
+(defun spec-key (spec)
+  "The KEY that SPEC, a key spec as KEY-SPEC gives one, stands for."
+  (make-key (car (last spec)) :ctrl (and (member :ctrl spec) t) :meta (and (member :meta spec) t)
+                              :shift (and (member :shift spec) t)))
+
 (defparameter *key-names*
   '(("RET" . :enter) ("SPC" . #\Space) ("TAB" . :tab) ("DEL" . :backspace) ("ESC" . :escape)
     ("<up>" . :up) ("<down>" . :down) ("<left>" . :left) ("<right>" . :right)
@@ -94,13 +99,18 @@ KEY-DESCRIPTION writes it, with a space between (C-x C-f)."
 
 ;;; Events
 
-(defstruct (event (:constructor make-event (kind &key key width height files column row text)) (:copier nil))
+(defstruct (event (:constructor make-event (kind &key key width height files column row text frame)) (:copier nil))
   "Something the frontend reports: KIND is :key (with KEY), :resize (with WIDTH
 and HEIGHT in cells), :drop when files were dropped on the window (FILES,
 their paths, on the cell COLUMN, ROW), :paste when text was pasted into the
 terminal Tuatara runs in (TEXT, its lines ending in newlines), to go in as
-text and never as keys, :close when the window was asked to close, or :quit
-when the frontend can deliver nothing more."
+text and never as keys, :close when the window was asked to close, :focus when
+it was given the keyboard, :detached when the frame's screen went away (its
+client left), :said with TEXT, words for the echo area from the frontend
+itself, or :quit when the frontend can deliver nothing more; :secret stands
+among recorded keys where a secret was typed, which is never recorded. FRAME
+is the editor's frame the event happened in, where frames share one source of
+events; NIL for the frame being worked in."
   (kind :key :type keyword :read-only t)
   (key nil :type (or null key) :read-only t)
   (width 0 :type fixnum :read-only t)
@@ -108,18 +118,115 @@ when the frontend can deliver nothing more."
   (files '() :type list :read-only t)
   (column nil :read-only t)
   (row nil :read-only t)
-  (text nil :type (or null string) :read-only t))
+  (text nil :type (or null string) :read-only t)
+  (frame nil :read-only t))
 
 (setf (documentation 'make-event 'function) "Return an EVENT of KIND with the given KEY, WIDTH, HEIGHT, FILES, COLUMN, ROW and TEXT."
       (documentation 'event-p 'function) "True when OBJECT is an EVENT."
-      (documentation 'event-kind 'function) "The kind of EVENT: :key, :resize, :drop, :paste, :close, :quit, or :tick when a timed read found no key."
+      (documentation 'event-kind 'function)
+      "The kind of EVENT: :key, :resize, :drop, :paste, :close, :focus, :detached, :said, :quit, :secret among
+recorded keys, or :tick when a timed read found no key."
       (documentation 'event-key 'function) "The KEY of a :key EVENT."
       (documentation 'event-width 'function) "Width in cells of a :resize EVENT."
       (documentation 'event-height 'function) "Height in cells of a :resize EVENT."
       (documentation 'event-files 'function) "The paths of the files of a :drop EVENT."
       (documentation 'event-column 'function) "The column of the cell a :drop EVENT happened on."
       (documentation 'event-row 'function) "The row of the cell a :drop EVENT happened on."
-      (documentation 'event-text 'function) "The text of a :paste EVENT.")
+      (documentation 'event-text 'function) "The text of a :paste EVENT."
+      (documentation 'event-frame 'function) "The frame EVENT happened in, or NIL for the frame being worked in.")
+
+(defun dropped-name-p (name)
+  "True when NAME, the path of a file dropped on a window, may be opened: a
+string, not empty, with no control character in it (a NUL, a newline, an
+escape), which no file name typed or shown would hold."
+  (and (stringp name) (plusp (length name))
+       (notany (lambda (c) (tuatara.text:control-code-p (char-code c))) name)))
+
+(defun input-event-p (item)
+  "True when ITEM, an event a frontend has queued, is something you did and
+wait to see answered: a key or a mouse button, text pasted, files dropped, the
+window asked to close; not a wake, nor a change of the window's size."
+  (and (event-p item) (member (event-kind item) '(:key :paste :drop :close)) t))
+
+;;; A queue of events, for frontends that deliver them from threads of their
+;;; own; the frames that share a source of events share one
+
+(defstruct (event-queue (:constructor make-event-queue ()) (:copier nil))
+  "Events on their way to the editor from the threads that read them, oldest
+first, with how many wait of each frame."
+  (items '()) (tail '())
+  (counts (make-hash-table :test 'eq))
+  (lock (sb-thread:make-mutex :name "events"))
+  (waiting (sb-thread:make-waitqueue :name "events"))
+  (taken (sb-thread:make-waitqueue :name "events taken")))
+
+(setf (documentation 'make-event-queue 'function) "An empty EVENT-QUEUE."
+      (documentation 'event-queue-p 'function) "True when OBJECT is an EVENT-QUEUE."
+      (documentation 'event-queue-items 'function) "The events in QUEUE, oldest first."
+      (documentation 'event-queue-tail 'function) "The last cons of QUEUE's items."
+      (documentation 'event-queue-lock 'function) "The mutex guarding QUEUE."
+      (documentation 'event-queue-waiting 'function) "Where the editor waits for QUEUE's next event."
+      (documentation 'event-queue-counts 'function) "How many events wait in QUEUE, by the frame they name."
+      (documentation 'event-queue-taken 'function) "Where a thread waits for the editor to take events from QUEUE.")
+
+(defun tick-p (event)
+  "True when EVENT is a :TICK, a wake with nothing done by you."
+  (and (event-p event) (eq (event-kind event) :tick)))
+
+(defgeneric events-held (frame)
+  (:documentation "How many events of FRAME the editor has taken from their queue and holds
+still to be handled (keys typed in a frame while another asks a question). The default
+holds none.")
+  (:method (frame) (declare (ignore frame)) 0))
+
+(defun queue-push (queue event &key most stop)
+  "Add EVENT to QUEUE from any thread, waking the editor if it waits; a :TICK
+after another waiting is one wake, not two. With MOST, first wait while
+MOST events or more of EVENT's frame wait to be handled, in QUEUE or held
+by the editor (EVENTS-HELD), until STOP, a function of no arguments asked
+every half second, is true: a thread reading events from elsewhere so reads
+no faster than the editor handles them."
+  (sb-thread:with-mutex ((event-queue-lock queue))
+    (let ((counts (event-queue-counts queue)) (frame (and (event-p event) (event-frame event))))
+      (when most
+        (loop while (and (>= (+ (gethash frame counts 0) (if frame (events-held frame) 0)) most)
+                         (not (funcall stop)))
+              do (tuatara.runtime:wait-on (event-queue-taken queue) (event-queue-lock queue) 0.5)))
+      (unless (and (tick-p event)
+                   (event-queue-items queue)
+                   (tick-p (first (event-queue-tail queue))))
+        (let ((cell (list event)))
+          (if (event-queue-items queue)
+              (setf (cdr (event-queue-tail queue)) cell)
+              (setf (event-queue-items queue) cell))
+          (setf (event-queue-tail queue) cell)
+          (incf (gethash frame counts 0)))))
+    (sb-thread:condition-notify (event-queue-waiting queue))))
+
+(defun queue-empty-p (queue)
+  "True when QUEUE holds no events."
+  (sb-thread:with-mutex ((event-queue-lock queue))
+    (null (event-queue-items queue))))
+
+(defun queue-input-p (queue)
+  "True when QUEUE holds something you did (INPUT-EVENT-P): the wakes of work
+in the background, and a window's new size, are no input."
+  (sb-thread:with-mutex ((event-queue-lock queue))
+    (and (find-if #'input-event-p (event-queue-items queue)) t)))
+
+(defun queue-pop (queue seconds)
+  "The oldest event in QUEUE, waiting up to SECONDS for one (NIL: as long as it
+takes); NIL when none came."
+  (sb-thread:with-mutex ((event-queue-lock queue))
+    (tuatara.runtime:wait-on-until (event-queue-waiting queue) (event-queue-lock queue)
+                                   (lambda () (event-queue-items queue)) seconds)
+    (let ((event (pop (event-queue-items queue))))
+      (when event
+        (let* ((counts (event-queue-counts queue)) (frame (and (event-p event) (event-frame event)))
+               (left (1- (gethash frame counts 1))))
+          (if (plusp left) (setf (gethash frame counts) left) (remhash frame counts)))
+        (sb-thread:condition-broadcast (event-queue-taken queue)))
+      event)))
 
 ;;; The painter interface
 
@@ -149,6 +256,46 @@ editor takes in news from other threads (a file changed on disk) without
 looking for it at intervals. Any thread may call it. The default does nothing.")
   (:method (frontend) (declare (ignore frontend)) nil))
 
+(defgeneric frontend-another (frontend)
+  (:documentation "A new frontend for another frame of the editor FRONTEND paints
+for, showing it beside FRONTEND's (a window of its own), shown only once it
+is started (FRONTEND-START), after it is given its frame (FRONTEND-FRAME): it
+delivers its events into the source FRONTEND's come from, each naming that
+frame. NIL, the default, when FRONTEND shows one frame at a time, as a
+terminal does: the frames then take turns on FRONTEND itself.")
+  (:method (frontend) (declare (ignore frontend)) nil))
+
+(defgeneric frontend-ask-another (frontend what windows)
+  (:documentation "Ask FRONTEND's screen for another window of its own, a
+screen that comes later, as a new connection, for another frame of the
+editor FRONTEND paints for, its client showing WINDOWS windows now; WHAT is
+kept with the request and given back when the window comes. T when it was
+asked; words saying why when it was not, its client showing as many windows
+as it may or having as many asked for still to come; NIL, the default, when
+FRONTEND opens no window that way (FRONTEND-ANOTHER).")
+  (:method (frontend what windows) (declare (ignore frontend what windows)) nil))
+
+(defgeneric frontend-frame (frontend)
+  (:documentation "The editor's frame FRONTEND paints, which it names in the events
+it delivers (EVENT-FRAME) once the editor has several; NIL while it paints the
+only one. The default keeps none.")
+  (:method (frontend) (declare (ignore frontend)) nil))
+
+(defgeneric (setf frontend-frame) (frame frontend)
+  (:documentation "Have FRONTEND name FRAME in the events it delivers (FRONTEND-FRAME).")
+  (:method (frame frontend) (declare (ignore frontend)) frame))
+
+(defgeneric frontend-raise (frontend)
+  (:documentation "Bring FRONTEND's window before the others on the desktop, to be
+typed in. The default does nothing: a terminal is where it is.")
+  (:method (frontend) (declare (ignore frontend)) nil))
+
+(defgeneric frontend-scales-rows-p (frontend)
+  (:documentation "True when FRONTEND draws a row of more than one row's height where
+a face asks for it (a window of its own, not a terminal): the rows of its frames
+are laid out so (TUATARA.DISPLAY:*ROW-SCALING*). The default answers NIL.")
+  (:method (frontend) (declare (ignore frontend)) nil))
+
 (defgeneric frontend-input-pending-p (frontend)
   (:documentation "True when input is waiting to be read, so that long work on the
 editor thread, such as a search through a file of many gigabytes, can give way
@@ -157,8 +304,8 @@ to the next key. Must not block. The default answers NIL.")
 
 (defgeneric frontend-colour-count (frontend)
   (:documentation "How many colours FRONTEND can show: 0 for none (a monochrome terminal),
-8, 16 or 256 for terminals, 16777216 for a GUI. The defaults choose the
-colourless theme below 8.")
+8, 16 or 256 for terminals, 16777216 for a graphical user interface (GUI). The
+defaults choose the colourless theme below 8.")
   (:method (frontend) (declare (ignore frontend)) 16777216))
 
 (defgeneric frontend-description (frontend)
@@ -195,13 +342,14 @@ thread of its own.")
 a frontend that is no terminal.")
   (:method (frontend) (declare (ignore frontend)) nil))
 
-(defgeneric frontend-lend-terminal (frontend function)
+(defgeneric frontend-lend-terminal (frontend function &key words)
   (:documentation "Call FUNCTION with the terminal FRONTEND shows the editor
-in given back to it as the terminal was before the editor took it, so that a
-program FUNCTION runs (gpg-agent's pinentry asking for a passphrase) can use
-it; then take it again and paint it whole. Returns what FUNCTION returns. A
-frontend that is no terminal just calls FUNCTION.")
-  (:method (frontend function) (declare (ignore frontend)) (funcall function)))
+in given back to it as the terminal was before the editor took it, WORDS
+shown on it first, so that a program FUNCTION runs (gpg-agent's pinentry
+asking for a passphrase) can use it; then take it again and paint it whole.
+Returns what FUNCTION returns. A frontend that is no terminal just calls
+FUNCTION.")
+  (:method (frontend function &key words) (declare (ignore frontend words)) (funcall function)))
 
 (defgeneric frontend-set-clipboard (frontend text)
   (:documentation "Put TEXT on the system clipboard, where other programs paste it
@@ -368,6 +516,12 @@ PIXELS, row after row from the top left, with an ID of its own."
 (defgeneric frontend-images-p (frontend)
   (:documentation "True when FRONTEND can show pictures (FRONTEND-PUT-IMAGE). The
 default answers NIL: a window showing a picture then shows its buffer's text.")
+  (:method (frontend) (declare (ignore frontend)) nil))
+
+(defgeneric frontend-reorders-text-p (frontend)
+  (:documentation "True when FRONTEND turns right-to-left text round itself, whatever it
+is asked (a terminal that does and cannot be told not to): the text is then
+best sent in the order it is stored. The default answers NIL.")
   (:method (frontend) (declare (ignore frontend)) nil))
 
 (defgeneric frontend-cell-pixels (frontend)

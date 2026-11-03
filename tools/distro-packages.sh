@@ -6,12 +6,13 @@
 # manager, which also fetches the libraries Tuatara needs (GTK 4, ncurses,
 # OpenSSL's crypto, zstd, the C++ runtime) and offers the programs some of its
 # features run, recommended (enchant for spelling, bubblewrap, ImageMagick,
-# poppler's tools, git, libnotify) or suggested (GnuPG, xdg-utils, LibreOffice,
+# poppler's tools, git, man-db with groff, libnotify) or suggested (GnuPG, xdg-utils, LibreOffice,
 # TeX Live): the packages *outside-programs* names (lisp/files/external.lisp),
 # which a test holds the lists here to. All three hold Tuatara as
 # tools/release.sh lays it out, in
-# /usr/lib/tuatara/, with the command tuatara in /usr/bin, the desktop entry
-# and the icons; each is made by its system's own tools (rpmbuild, dpkg-deb,
+# /usr/lib/tuatara/, with the command tuatara in /usr/bin, the desktop entries
+# (Tuatara, and Tuatara (client), which opens files in a window of the daemon),
+# written by the program itself, and the icons; each is made by its system's own tools (rpmbuild, dpkg-deb,
 # makepkg) in a container of the system's image pinned in tools/containers.sh,
 # kept between runs. They are for Fedora 40, Ubuntu 24.04 and later, and Arch
 # as it is.
@@ -22,7 +23,8 @@
 #
 # --check installs each package made in a new container of its system, with
 # nothing else installed first, checks that every library Tuatara loads came
-# with it, and runs tuatara --version there and then Tuatara itself in a
+# with it, and that both desktop entries are in place, the client's starting
+# a client, and runs tuatara --version there and then Tuatara itself in a
 # terminal on a Rust file, which must show the file's mode line and colour
 # its code; the container is removed after.
 # Usage: tools/distro-packages.sh [--check] [fedora] [ubuntu] [arch]
@@ -31,6 +33,7 @@ set -euo pipefail
 root="$(cd "$(dirname "$0")/.." && pwd)"
 cd "$root"
 . tools/containers.sh
+. tools/inside.sh
 
 check=""
 systems=()
@@ -65,24 +68,37 @@ description="Tuatara edits text in the terminal and in a window of its own: Org
 files, code with tree-sitter colours and language servers, CSV files of many
 gigabytes, mail folders and folders of files, with DONKEY's modal keys or
 plain ones."
-# Tuatara's licence, Ghostty's (the terminal library) and each grammar's
+# Tuatara's licence, Ghostty's (the terminal library), those of what the
+# terminal library compiles in and each grammar's, a grammar's expression
+# taken term by term, a choice of licences kept in parentheses
 licences="GPL-3.0-or-later AND MIT"
 while IFS= read -r licence; do
   case " AND $licences AND " in *" AND $licence AND "*) ;; *) licences="$licences AND $licence" ;; esac
-done < <(grep -v '^#' syntax/grammars.tsv | cut -f4 | sort -u)
+done < <({ cut -f2 build/terminal/licenses/licenses.tsv; grep -v '^#' syntax/grammars.tsv | cut -f4; } |
+         sed 's/ AND /\n/g' | sed '/ OR /{/^(/!s/.*/(&)/}' | sort -u)
 # the libraries the program loads, by the names it asks for
 libraries="libgtk-4.so.1 libcairo.so.2 libncursesw.so.6 libcrypto.so.3 libzstd.so.1 libstdc++.so.6"
 
 tools/release.sh >/dev/null
 rm -rf "$stage"
 mkdir -p "$stage/usr/lib" "$stage/usr/bin" "$stage/usr/share/applications" \
-         "$stage/usr/share/licenses/tuatara"
+         "$stage/usr/share/licenses/tuatara" "$stage/usr/share/man/man1" "$stage/usr/share/man/man5"
 cp -a build/release/tuatara "$stage/usr/lib/tuatara"
+# the manual pages go where man looks, gzipped as each system's packages have them
+rm -rf "$stage/usr/lib/tuatara/man"
+gzip -9n -c build/release/tuatara/man/tuatara.1 > "$stage/usr/share/man/man1/tuatara.1.gz"
+gzip -9n -c build/release/tuatara/man/tuatara-init.5 > "$stage/usr/share/man/man5/tuatara-init.5.gz"
 ln -s ../lib/tuatara/tuatara "$stage/usr/bin/tuatara"
-sed "s|@EXEC@|tuatara|" data/tuatara.desktop.in > "$stage/usr/share/applications/tuatara.desktop"
+# the desktop entries, written by the program as it writes them for --install-desktop
+inside env TUATARA_DESKTOP_ENTRIES="$stage/usr/share/applications" build/release/tuatara/tuatara tuatara >/dev/null
+if command -v desktop-file-validate >/dev/null; then
+  desktop-file-validate "$stage/usr/share/applications/tuatara.desktop" \
+                        "$stage/usr/share/applications/tuatara-client.desktop"
+fi
 cp -r data/icons "$stage/usr/share/icons"
 cp LICENSE "$stage/usr/share/licenses/tuatara/LICENSE"
 cp build/release/tuatara/terminal/LICENSE-ghostty "$stage/usr/share/licenses/tuatara/LICENSE-ghostty"
+cp -r build/release/tuatara/terminal/licenses "$stage/usr/share/licenses/tuatara/terminal"
 cp syntax/grammars.tsv "$stage/usr/share/licenses/tuatara/grammars.tsv"
 cp -r build/release/tuatara/grammars/licenses "$stage/usr/share/licenses/tuatara/grammars"
 cp -r build/release/tuatara/licenses/lisp build/release/tuatara/licenses/sbcl "$stage/usr/share/licenses/tuatara/"
@@ -98,6 +114,7 @@ put_stage() {
 fedora() {
   local container=tuatara-package-fedora
   pinned_container "$container" "$fedora_image" 'dnf -y -q install rpm-build >/dev/null'
+  refresh_container "$container" 'dnf -y -q upgrade --refresh >/dev/null'
   put_stage "$container" /tmp/package
   podman exec -i "$container" sh -c 'cat > /tmp/package/tuatara.spec' <<EOF
 %global debug_package %{nil}
@@ -112,7 +129,7 @@ Packager: $packager
 ExclusiveArch: x86_64
 AutoProv: no
 Requires: gtk4 ncurses-libs openssl-libs libzstd libstdc++
-Recommends: enchant2 bubblewrap ImageMagick poppler-utils git-core libnotify
+Recommends: enchant2 bubblewrap ImageMagick poppler-utils git-core man-db groff-base libnotify
 Suggests: gnupg2 xdg-utils libreoffice-writer libreoffice-calc libreoffice-impress texlive-xetex texlive-luatex
 
 %description
@@ -125,7 +142,10 @@ cp -a /tmp/package/root/. %{buildroot}/
 /usr/lib/tuatara
 /usr/bin/tuatara
 /usr/share/applications/tuatara.desktop
+/usr/share/applications/tuatara-client.desktop
 /usr/share/icons/hicolor/*/apps/tuatara.*
+/usr/share/man/man1/tuatara.1*
+/usr/share/man/man5/tuatara-init.5*
 %license /usr/share/licenses/tuatara
 
 %changelog
@@ -140,9 +160,10 @@ EOF
 ubuntu() {
   local container=tuatara-package-ubuntu deb=/tmp/package/root
   pinned_container "$container" "$ubuntu_image" 'true'
+  refresh_container "$container" 'apt-get update -qq && DEBIAN_FRONTEND=noninteractive apt-get upgrade -y -qq >/dev/null'
   put_stage "$container" /tmp/package
   podman exec "$container" sh -c "mkdir -p $deb/DEBIAN $deb/usr/share/doc/tuatara &&
-    { cat $deb/usr/share/licenses/tuatara/LICENSE; printf '\n%s\n' 'The licences of SBCL (sbcl/), of the Lisp libraries compiled into the program (lisp/NAME/), of the terminal library (LICENSE-ghostty) and of each grammar (grammars/NAME/, grammars.tsv) are in /usr/share/licenses/tuatara/.'; } > $deb/usr/share/doc/tuatara/copyright"
+    { cat $deb/usr/share/licenses/tuatara/LICENSE; printf '\n%s\n' 'The licences of SBCL (sbcl/), of the Lisp libraries compiled into the program (lisp/NAME/), of the terminal library (LICENSE-ghostty) and of what it compiles in (terminal/NAME/, terminal/licenses.tsv) and of each grammar (grammars/NAME/, grammars.tsv) are in /usr/share/licenses/tuatara/.'; } > $deb/usr/share/doc/tuatara/copyright"
   podman exec -i "$container" sh -c "cat > $deb/DEBIAN/control" <<EOF
 Package: tuatara
 Version: $deb_version
@@ -150,7 +171,7 @@ Architecture: amd64
 Maintainer: $packager
 Installed-Size: $(du -sk "$stage" | cut -f1)
 Depends: libc6 (>= 2.39), libgtk-4-1, libncursesw6, libssl3t64 | libssl3, libzstd1, libstdc++6
-Recommends: libenchant-2-2, bubblewrap, imagemagick, poppler-utils, git, libnotify-bin
+Recommends: libenchant-2-2, bubblewrap, imagemagick, poppler-utils, git, man-db, groff-base, libnotify-bin
 Suggests: gnupg, xdg-utils, libreoffice-writer, libreoffice-calc, libreoffice-impress, texlive-xetex, texlive-luatex
 Section: editors
 Priority: optional
@@ -166,6 +187,7 @@ arch() {
   local container=tuatara-package-arch
   pinned_container "$container" "$arch_image" 'pacman -Syu --noconfirm --needed -q fakeroot >/dev/null &&
     useradd --create-home packager'
+  refresh_container "$container" 'pacman -Syu --noconfirm -q >/dev/null'
   put_stage "$container" /tmp/package
   podman exec -i "$container" sh -c 'cat > /tmp/package/PKGBUILD' <<EOF
 pkgname=tuatara
@@ -176,10 +198,20 @@ arch=(x86_64)
 license=('${licences// AND /' '}')
 depends=(glibc gcc-libs gtk4 cairo ncurses openssl zstd)
 optdepends=('enchant: spelling'
-            'bubblewrap: pictures and programs run shut in'
+            'bubblewrap: pictures, programs and grammars run shut in'
             'imagemagick: pictures'
+            'libjpeg-turbo: pictures'
+            'libtiff: pictures'
+            'libwebp: pictures'
+            'libheif: pictures'
+            'librsvg: pictures'
+            'libraw: pictures'
+            'openjpeg2: pictures'
+            'libjxl: pictures'
             'poppler: PDF files'
             'git: the git interface'
+            'man-db: manual pages'
+            'groff: manual pages'
             'libnotify: notifications told on the desktop'
             'gnupg: encrypted files'
             'xdg-utils: files opened in the desktop programs'
@@ -202,12 +234,13 @@ EOF
 # $1 a system, $2 its image, $3 the command that installs its package
 # /tmp/package/FILE there (and script, which gives Tuatara a terminal):
 # installed in a new container, then run; the container is removed whether it
-# passes or not
+# passes or not. The container is made with podman's masks over /proc lifted
+# and no SELinux label, /sys still masked and seccomp kept (HACKING.org).
 check_package() {
   local container="tuatara-check-$1" file status=0
   file=$(package_file "$1")
   podman rm -f -t 0 "$container" >/dev/null 2>&1 || true
-  podman run -d --name "$container" "$2" sleep infinity >/dev/null
+  podman run -d --name "$container" --security-opt unmask=/proc/* --security-opt label=disable "$2" sleep infinity >/dev/null
   podman exec "$container" mkdir -p /tmp/package &&
   podman cp "$out/$file" "$container:/tmp/package/$file" &&
   podman exec "$container" sh -c "$3" >/dev/null &&
@@ -218,6 +251,11 @@ check_package() {
       echo "$known" | grep -q "^\s*$name " || { echo "$name is not installed" >&2; exit 1; }
     done
     tuatara --version
+    for entry in tuatara tuatara-client; do
+      [ -f /usr/share/applications/$entry.desktop ] || { echo "$entry.desktop is not installed" >&2; exit 1; }
+    done
+    grep -q "^Exec=tuatara --gui --client --fallback %F$" /usr/share/applications/tuatara-client.desktop ||
+      { echo "tuatara-client.desktop does not start a client" >&2; exit 1; }
     cd /tmp
     printf "fn main() {}\n" > probe.rs
     TERM=xterm-256color timeout 10 script -qfc "stty rows 24 cols 80; tuatara probe.rs" screen >/dev/null 2>&1 || true

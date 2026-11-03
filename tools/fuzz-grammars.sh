@@ -13,17 +13,44 @@
 # tools/grammars.sh compiles it (tools/grammar-build.sh, a scanner in C++ too),
 # its assertions kept to find more.
 # A grammar's pin is moved only after this passes for it.
+#
+# With --hostile, each grammar with a scanner (or each named) is compiled as
+# it is built, its patches applied, but with AddressSanitizer and
+# UndefinedBehaviorSanitizer, as are tree-sitter and tools/grammar-hostile.c,
+# which parses texts made to be hard on a scanner (ROUNDS of them, 300 by
+# default: random octets, text not UTF-8, nesting thousands deep, a line of a
+# megabyte, the samples and the corpus cut and spliced), each edited and
+# parsed again. The first fault a sanitizer sees fails the grammar, the log
+# saying where (an empty copy from a null pointer and an unaligned number
+# aside, which this processor does safely). Each run is held to 30 minutes of the processor, 4 GB of
+# memory as the sanitizer counts it, an hour in all, at a low priority.
+# Each grammar is first put back to its pinned commit, checked against
+# syntax/grammar-inputs.sha256 and patched, as tools/grammars.sh does; its
+# code runs in bubblewrap, with no network, the sources to read and nothing
+# but a scratch folder to write. The hostile texts are made from SEED (the
+# time unless given, or $FUZZ_SEED), said with each result, so that a failure
+# is made again with --seed.
 # Usage: tools/fuzz-grammars.sh [-n ITERATIONS] [NAME...]
+#        tools/fuzz-grammars.sh --hostile [-n ROUNDS] [--seed SEED] [NAME...]
 set -euo pipefail
 cd "$(dirname "$0")/.."
 . tools/inside.sh
-iterations=200
+iterations=200 hostile="" seed="${FUZZ_SEED:-$(date +%s)}"
+if [ "${1:-}" = "--hostile" ]; then hostile=1; iterations=300; shift; fi
 if [ "${1:-}" = "-n" ]; then iterations=$2; shift 2; fi
+if [ "${1:-}" = "--seed" ]; then seed=$2; shift 2; fi
 tools/grammars.sh
 mkdir -p build/fuzz/cases build/tools/fuzz-lib
 names=("$@")
 if [ ${#names[@]} -eq 0 ]; then
   mapfile -t names < <(awk -F'\t' '!/^#/ && NF >= 4 && $1 != "tree-sitter" && $1 != "tree-sitter-cli" && $1 !~ /\// { print $1 }' syntax/grammars.tsv)
+  # hostile texts are for the scanners, the code of a grammar's own
+  if [ -n "$hostile" ]; then
+    mapfile -t names < <(for name in "${names[@]}"; do
+      subpath=$(awk -F'\t' -v n="$name" '$1 == n { print $5 }' syntax/grammars.tsv)
+      ls "build/grammar-sources/$name${subpath:+/$subpath}"/src/scanner.c* >/dev/null 2>&1 && echo "$name"
+    done)
+  fi
 fi
 # the samples of test/languages.lisp, by grammar: build/fuzz/samples/GRAMMAR/LANGUAGE.txt
 rm -rf build/fuzz/samples
@@ -63,6 +90,62 @@ while True:
             f.write(''.join(out))
 EOF
 failed=0
+if [ -n "$hostile" ]; then
+  work="$PWD/build/fuzz/hostile"
+  mkdir -p "$work"
+  sanitize=(-g -O1 -fno-omit-frame-pointer -fsanitize=address,undefined -fno-sanitize-recover=undefined)
+  inside bash -euo pipefail -c '
+    ts=$1; out=$2; shift 2
+    cc "$@" -std=c11 -D_POSIX_C_SOURCE=200112L -D_DEFAULT_SOURCE -I"$ts/lib/include" -I"$ts/lib/src" \
+       "$ts/lib/src/lib.c" tools/grammar-hostile.c -ldl -o "$out/grammar-hostile"
+  ' hostile "$PWD/build/grammar-sources/tree-sitter" "$work" "${sanitize[@]}"
+  for name in "${names[@]}"; do
+    subpath=$(awk -F'\t' -v n="$name" '$1 == n { print $5 }' syntax/grammars.tsv)
+    src="$PWD/build/grammar-sources/$name${subpath:+/$subpath}/src"
+    log="build/fuzz/$name.hostile.log"
+    start=$(date +%s)
+    # the texts the grammar is tried on besides the made ones: its samples and corpus
+    texts=()
+    for text in "$PWD"/build/fuzz/samples/"$name"/*.txt "$src"/../test/corpus/*.txt "$src"/../corpus/*.txt; do
+      [ -f "$text" ] && texts+=("$text")
+    done
+    if inside bash -euo pipefail -c '
+         src=$1; lib=$2; name=$3; rounds=$4; harness=$5; root=$6; gname=$7; subpath=$8; seed=$9; shift 9
+         . "$root/tools/grammar-build.sh"
+         # from its pinned commit as recorded, patched as the build patches it
+         prepare_grammar "$root" "$gname" "$subpath" "$root/build/tools/tree-sitter" || exit 3
+         # an empty copy from no memory (memcpy of 0 octets from NULL) and a
+         # number stored unaligned are left unreported: x86-64 does both
+         # safely, and many scanners do them, which would end the run before
+         # anything else is found
+         flags=(-g -O1 -fno-omit-frame-pointer -fsanitize=address,undefined -fno-sanitize=nonnull-attribute,alignment
+                -fno-sanitize-recover=undefined -fPIC -fno-strict-aliasing)
+         if [ -f "$src/scanner.cc" ]; then
+           cc "${flags[@]}" -std=c11 -I"$src" -c "$src/parser.c" -o "$lib.parser.o"
+           c++ "${flags[@]}" -fvisibility=hidden -I"$src" -c "$src/scanner.cc" -o "$lib.scanner.o"
+           c++ -shared -fsanitize=address,undefined "$lib.parser.o" "$lib.scanner.o" -o "$lib"
+         else
+           files=("$src/parser.c"); [ -f "$src/scanner.c" ] && files+=("$src/scanner.c")
+           cc "${flags[@]}" -shared -std=c11 -include "$root/syntax/safe-ctype.h" -include "$root/syntax/counted-memory.h" \
+              -I"$src" "${files[@]}" -o "$lib"
+         fi
+         ulimit -t 1800
+         export ASAN_OPTIONS=hard_rss_limit_mb=4096:allocator_may_return_null=1:detect_leaks=0:handle_abort=1
+         export UBSAN_OPTIONS=halt_on_error=1:print_stacktrace=1
+         exec nice -n 10 timeout 3600 bash -c ". \"\$0\"; run_shut_in \"\$@\"" "$root/tools/grammar-build.sh" \
+           "$root" "$root/build/fuzz/scratch" "$harness" "$lib" "$name" "$rounds" "$seed" "$@"
+       ' hostile "$src" "$work/$name.so" "${name//-/_}" "$iterations" "$work/grammar-hostile" "$PWD" "$name" "$subpath" "$seed" \
+       ${texts[@]+"${texts[@]}"} > "$log" 2>&1; then
+      echo "$name: passed, seed $seed, $(tail -1 "$log" | sed "s/^[^:]*: //") ($(( $(date +%s) - start )) s)"
+    else
+      status=$?
+      why=$(grep -a -m1 -E "ERROR: AddressSanitizer|runtime error:|SUMMARY:" "$log" || true)
+      echo "$name: FAILED with seed $seed ($([ "$status" -eq 124 ] && echo "no end in an hour" || echo "exit $status")${why:+: $why}), see $log"
+      failed=1
+    fi
+  done
+  exit $failed
+fi
 for name in "${names[@]}"; do
   # a grammar in a directory of its repository (the manifest's fifth column)
   subpath=$(awk -F'\t' -v n="$name" '$1 == n { print $5 }' syntax/grammars.tsv)
@@ -93,6 +176,8 @@ for name in "${names[@]}"; do
   if inside bash -euo pipefail -c '
        src=$1; lib=$2
        . "$3"
+       # from its pinned commit as recorded, patched as the build patches it
+       prepare_grammar "$9" "${10}" "${11}" "$5" || exit 3
        compile_grammar "$src" "$lib" --assertions
        # the samples as cases, each expecting the tree the grammar gives it; the
        # text of a case ends before the line end ahead of its divider, so one
@@ -101,7 +186,7 @@ for name in "${names[@]}"; do
          bar=$(printf "%080d" 0 | tr 0 =) dashes=$(printf "%080d" 0 | tr 0 -)
          for sample in "$8"/*.txt; do
            sample_name=$(basename "$sample" .txt)
-           tree=$("$5" parse --no-ranges --lib-path "$lib" --lang-name "$6" "$sample" 2>/dev/null || true)
+           tree=$(run_shut_in "$9" "$4" "$5" parse --no-ranges --lib-path "$lib" --lang-name "$6" "$sample" 2>/dev/null || true)
            { printf "%s\n%s\n%s\n" "$bar" "$sample_name" "$bar"; cat "$sample"; printf "\n%s\n\n%s\n" "$dashes" "$tree"; } \
              > "$4/test/corpus/sample-$sample_name.txt"
          done
@@ -109,9 +194,10 @@ for name in "${names[@]}"; do
        # a grammar gone wrong can build without end: 8 GB at most, then it
        # fails; and at a low priority, the editor and its tests going first
        ulimit -v 8000000
-       cd "$4" && exec nice -n 10 timeout 3600 "$5" fuzz --lib-path "$lib" --lang-name "$6" --iterations "$7" --edits 3
+       nice -n 10 timeout 3600 bash -c ". \"\$0\"; run_shut_in \"\$@\"" "$3" "$9" "$4" \
+         "$5" fuzz --lib-path "$lib" --lang-name "$6" --iterations "$7" --edits 3
      ' fuzz "$PWD/$dir/src" "$lib" "$PWD/tools/grammar-build.sh" "$cases" "$PWD/build/tools/tree-sitter" "${name//-/_}" "$iterations" \
-       "$samples" > "$log" 2>&1; then
+       "$samples" "$PWD" "$name" "$subpath" > "$log" 2>&1; then
     status=0
   else
     status=$?

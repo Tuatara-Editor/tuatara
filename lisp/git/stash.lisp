@@ -7,7 +7,7 @@
 ;;;; it, d drops it, b makes a branch of it, v shows it. A status lists the
 ;;;; stashes; on one, RET shows it and the menu's actions take it first.
 
-(in-package #:tuatara.defaults)
+(in-package #:tuatara.git)
 
 (defun git-stash-at-point ()
   "The stash on point's line of a status, or NIL."

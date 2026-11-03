@@ -35,16 +35,18 @@ files of others (PDFs of Org and LaTeX), as sentences; TOOLS, for each
 language, its formatter and servers as LANGUAGE-TOOLS-WORDS says them;
 DRAWING, for each way the window can be drawn, (RENDERER . FIGURES) as
 TUATARA.FRONTEND:FRONTEND-MEASURE-DRAWING gives them, and RENDERER the
-way the settings ask for (*GUI-RENDERER*)."
+way the settings ask for (*GUI-RENDERER*); EVIDENCE, what is said of the
+evidence folders (EVIDENCE-HEALTH-LINES)."
   (languages '() :read-only t)
-  (grammars '() :read-only t)
+  (grammars '())
   (results '())
   (sandbox '())
   (decoders '())
   (exporters '())
   (tools '())
   (drawing '())
-  (renderer nil))
+  (renderer nil)
+  (evidence '()))
 
 (setf (documentation 'health-check-p 'function) "True when OBJECT is a HEALTH-CHECK.")
 
@@ -87,39 +89,53 @@ away: what the editor uses stays as it is."
         collect (cons kind
                       (cond ((null source) :none)
                             ((null grammar) :unchecked)
-                            (t (handler-case (progn (tuatara.syntax:compile-query grammar source
-                                                                                  (format nil "~(~a~) (health check)" kind))
-                                                    :good)
+                            (t (handler-case (reporting-errors ("compiling the ~(~a~) rules of ~(~a~)"
+                                                                kind (language-name language))
+                                               (tuatara.syntax:compile-query grammar source
+                                                                             (format nil "~(~a~) (health check)" kind))
+                                               :good)
                                  (error (e) (cons :bad (substitute #\Space #\Newline (princ-to-string e))))))))))
 
+(defun health-grammar (name)
+  "The grammar NAME as the health check finds it (TUATARA.SYNTAX:FIND-GRAMMAR),
+asked for again, up to three times, while it is there but could not be had
+yet: the program loading grammars had ended and is started anew."
+  (loop repeat 3
+        for grammar = (tuatara.syntax:find-grammar name)
+        when (or grammar (not (tuatara.syntax:grammar-pending-p name))) return grammar))
+
 (defun start-health-check ()
-  "Start checking every language's rules in the background, a job, their
-grammars found first here, on the editor's thread, which keeps the table of
-them, and in a window, how it draws each way it can (DRAWING-WORDS). Returns
-the check."
+  "Start checking every language's grammar and rules in the background, a
+job, the grammars found there too, which may wait for the program loading
+them to start, and in a window, how it draws each way it can
+\(DRAWING-WORDS). Returns the check."
   (let* ((languages (sort (copy-list *languages*) #'string< :key (lambda (l) (symbol-name (language-name l)))))
-         (grammars (mapcar (lambda (l) (tuatara.syntax:find-grammar (language-grammar l))) languages))
          (frontend (and *editor* (editor-frontend *editor*))))
     (multiple-value-bind (renderers in-use) (and frontend (tuatara.frontend:frontend-renderers frontend))
     (tuatara.runtime:start-job-thread
-     (make-health-check languages grammars)
+     (make-health-check languages '())
      (lambda (check)
-       (setf (health-check-sandbox check)
+       (setf (health-check-grammars check)
+             (mapcar (lambda (l) (health-grammar (language-grammar l))) languages)
+             (health-check-sandbox check)
              (multiple-value-list (tuatara.io:sandbox-status :again t))
              (health-check-decoders check)
-             (append (list (pdf-decoder-words) (office-page-words) (image-decoder-words) (external-program-words) (notify-health-words) (encrypted-health-words) (git-health-words))
-                     (remove nil (mapcar (lambda (f) (ignore-errors (funcall f))) *health-decoder-functions*)))
+             (append (list (pdf-decoder-words) (office-page-words) (image-decoder-words) (external-program-words) (notify-health-words) (encrypted-health-words) (git-health-words) (man-health-words))
+                     (remove nil (mapcar #'call-hook-function *health-decoder-functions*)))
              (health-check-exporters check)
-             (list (latex-export-words))
+             (remove nil (list (tuatara.export:latex-export-words) (tuatara.export:latex-language-words)))
              (health-check-tools check)
-             (mapcar (lambda (language) (multiple-value-list (language-tools-words language))) languages)
+             (mapcar (lambda (language) (multiple-value-list (tuatara.lsp:language-tools-words language))) languages)
              (health-check-results check)
-             (mapcar #'check-language-rules languages grammars)
+             (mapcar #'check-language-rules languages (health-check-grammars check))
              (health-check-drawing check)
              (loop for renderer in renderers
-                   collect (cons renderer (ignore-errors (tuatara.frontend:frontend-measure-drawing frontend renderer))))
+                   collect (cons renderer (ignoring-errors-reported ("measuring drawing with ~(~a~)" renderer)
+                                            (tuatara.frontend:frontend-measure-drawing frontend renderer))))
              (health-check-renderer check)
-             in-use))
+             in-use
+             (health-check-evidence check)
+             (evidence-health-lines)))
      :name "tuatara health"))))
 
 ;;; The report's text
@@ -166,6 +182,7 @@ COLUMN (TUATARA.DISPLAY:FILL-WORDS)."
   (cond ((eq status :good) (values "✓" :list-good))
         ((eq status :none) (values "–" :list-dim))
         ((eq status :unchecked) (values "?" :list-dim))
+        ((eq status :off) (values "off" :list-dim))
         (t (values "✘" :list-bad))))
 
 (defun lisp-language-p (language)
@@ -218,16 +235,16 @@ editor's own buffers, never a file's."
     (destructuring-bind (&optional status detail &rest rest) sandbox
       (declare (ignore rest))
       (case status
-        (:missing (push (format nil "No sandbox: ~a. Install bubblewrap for images and PDFs to be decoded safely." detail) problems))
+        (:missing (push (format nil "No sandbox: ~a. Install bubblewrap for images and PDFs to be decoded safely, and for text to be coloured and parsed." detail) problems))
         (:broken (push (format nil "No sandbox: ~a." detail) problems))))
-    (unless (tuatara.syntax:syntax-library-p)
-      (push (format nil "The tree-sitter library, libtuatara-syntax.so, is in none of ~a: no language has a grammar."
+    (unless (tuatara.syntax:syntax-helper-program)
+      (push (format nil "The program that runs the grammars, tuatara-syntax-helper, is in none of ~a: no language has a grammar."
                     (directory-words (tuatara.syntax:grammar-directories)))
             problems))
     (loop for language in languages
           for grammar in grammars
           for statuses in results
-          do (when (and (null grammar) (tuatara.syntax:syntax-library-p))
+          do (when (and (null grammar) (tuatara.syntax:syntax-helper-program))
                (push (format nil "~(~a~): no grammar ~a.so in ~a, so no colours or structure." (language-name language)
                              (language-grammar language) (directory-words (tuatara.syntax:grammar-directories)))
                      problems))
@@ -240,7 +257,8 @@ editor's own buffers, never a file's."
 
 (defun report-width ()
   "The columns of the window the report is made from, or 100 without one."
-  (or (and *editor* (ignore-errors (tuatara.display:window-width (current-window)))) 100))
+  (or (and *editor* (ignoring-errors-reported ("measuring the window") (tuatara.display:window-width (current-window))))
+      100))
 
 (defun write-health-report (check)
   "Write the report of CHECK, which is done, into *HEALTH-PIECES*."
@@ -261,9 +279,18 @@ editor's own buffers, never a file's."
                                         ((eq outcome :none) "none there")
                                         ((consp outcome) (format nil "stopped at an error: ~a" (cdr outcome)))
                                         (t "not read")))))
-      (fact "Grammars" (format nil "~a: ~:[no tree-sitter library~;the tree-sitter library and ~d of ~d grammars~]"
+      (fact "Grammars" (format nil "~a: ~:[no program to run them~;the program that runs them and ~d of ~d grammars~]"
                                (directory-words (tuatara.syntax:grammar-directories))
-                               (tuatara.syntax:syntax-library-p) (count-if-not #'null grammars) (length grammars)))
+                               (tuatara.syntax:syntax-helper-program) (count-if-not #'null grammars) (length grammars)))
+      (fact "" (substitute-command-keys
+                (format nil "~d of them on (*grammars-on*); a file in a language whose grammar is off asks to turn it on, \\[turn-on-grammar] and \\[turn-off-grammar] change it"
+                        (loop for language in languages for grammar in grammars count (and grammar (grammar-on-p language))))))
+      (fact "Parsing" (cond ((eq :ready (first (health-check-sandbox check)))
+                             (format nil "grammars run shut in, in a program for the projects you trust and one for each other file or buffer, ~:[each held to its memory in its own address space only (no systemd-run scope here)~;each held to its memory with all it starts (a systemd-run scope)~]"
+                                     (tuatara.io:sandbox-memory-scope-p)))
+                            (*syntax-helper-unconfined*
+                             "no sandbox (see above): grammars run, not shut in, for the projects you trust only; nothing else is parsed")
+                            (t "no sandbox (see above): no text is parsed or coloured")))
       (loop for (label . text) in (and frontend (tuatara.frontend:frontend-health frontend))
             do (fact label text))
       (loop for words in (drawing-words (health-check-drawing check) (health-check-renderer check))
@@ -283,6 +310,9 @@ editor's own buffers, never a file's."
       (loop for words in (health-check-exporters check)
             for label = "Export" then ""
             do (fact label words)))
+    (dolist (line (health-check-evidence check))
+      (health-put line)
+      (health-put (format nil "~%")))
     ;; the languages
     (health-heading "Languages")
     (let ((widths (list* 14 7 (append (loop for (kind heading) in *health-rules*
@@ -298,7 +328,9 @@ editor's own buffers, never a file's."
             for statuses in results
             for (formatter servers) in tools
             do (health-cell (string-downcase (language-name language)) (first widths))
-               (multiple-value-bind (text face) (status-cell (if grammar :good :missing))
+               (multiple-value-bind (text face) (status-cell (cond ((null grammar) :missing)
+                                                                    ((grammar-on-p language) :good)
+                                                                    (t :off)))
                  (health-cell text (second widths) face))
                (loop for (kind . status) in statuses
                      for width in (cddr widths)
@@ -307,7 +339,8 @@ editor's own buffers, never a file's."
                (health-cell (or formatter "–") 15 (if (and formatter (search "✓" formatter)) nil :list-dim))
                (health-put (or servers "–") (if (and servers (search "✓" servers)) nil :list-dim))
                (health-put (format nil "~%"))))
-    (health-put (substitute-command-keys (format nil "~%✓ there and working, ✘ failing (see below), – none, ? not checked without the grammar.
+    (health-put (substitute-command-keys (format nil "~%✓ there and working, ✘ failing (see below), – none, ? not checked without the grammar,
+off: the grammar is there but off (*grammars-on*, \\[turn-on-grammar]).
 Indent Lisp: by Lisp mode's own rules. Defuns brackets: \\[beginning-of-defun] and \\[end-of-defun] go by opening
 brackets at the start of a line. Formatter and Server: each language's usual programs, or *language-formatters* and
 *language-servers*; ✓ after one installed, the others not used until they are.~%")

@@ -101,7 +101,7 @@ NIL, is the buffer's undo stack as a change made before the job left it (the
 typing at a split's places in sight): the job's change joins that one for undo.
 SINCE is the buffer's undo stack as the job began (JOINS when given): its
 change stands there in the undo history, before the changes made meanwhile
-\(TUATARA.BUFFER:BUFFER-CHANGE-WHERE-BEGUN); unless SESSION, for a job that
+\(TUATARA.BUFFER:BUFFER-TAKE-IN-JOB-RESULT); unless SESSION, for a job that
 writes out of sight what typing at places in sight still goes on writing (a
 split's, a block's rows): its change joins that typing on top, one change for
 undo with it. PREPARE, when not NIL, a function of the job,
@@ -140,10 +140,6 @@ COUNT is a number, or a job (REWRITE) whose HIDDEN-LEFT counts them."
                  ((and (rewrite-p count) (rewrite-hidden-left count)) (car (rewrite-hidden-left count)))
                  (t 0))))
     (if (plusp n) (format nil "; ~:d hidden in folds left alone" n) "")))
-
-(defun rewrite-of (buffer)
-  "The replacement or count running in BUFFER, or NIL."
-  (tuatara.runtime:running-job buffer 'rewrite))
 
 (defun rewrite-progress (job)
   "How much of JOB's scope, its pieces, is done, from 0 to 100."
@@ -240,7 +236,8 @@ so files a process may have open."
 (defun discard-piece-files (files)
   "Close every file of FILES, what was written to them let go."
   (loop for (nil . writer) in (shiftf (piece-files-writers files) '())
-        do (ignore-errors (sb-posix:close (tuatara.io:writer-fd writer)))))
+        do (ignoring-errors-reported ("closing a file of rewritten text")
+             (sb-posix:close (tuatara.io:writer-fd writer)))))
 
 (defun piece-files-ropes (files outputs)
   "A rope for each of OUTPUTS, lists beginning (WRITER START END): the octets
@@ -303,9 +300,9 @@ WRITER (none for a count) and that the whole piece is done."
 (declaim (inline slice-next-line))
 (defun slice-next-line (rope total crlf line-end block block-start block-end)
   "Where the line after the one ending at LINE-END of ROPE starts: past its
-newline, and past the carriage return before it when CRLF; TOTAL, ROPE's
-length, after the last line. BLOCK holds ROPE's octets from BLOCK-START below
-BLOCK-END."
+newline, and past the carriage return before it when carriage return and line
+feed (CRLF); TOTAL, ROPE's length, after the last line. BLOCK holds ROPE's
+octets from BLOCK-START below BLOCK-END."
   (declare (type fixnum total line-end))
   (cond ((>= line-end total) total)
         ((and crlf (= 13 (block-octet rope block block-start block-end line-end)))
@@ -368,8 +365,8 @@ output written a megabyte at a time."
                      (incf lines)
                      ;; the line's end from the text read when it holds it, else looked up
                      (setf line-end (let ((hit (and (<= window-start s) (< s window-end)
-                                                    (position 10 window :start (- s window-start)
-                                                                        :end (- window-end window-start)))))
+                                                    (tuatara.text:octets-line-end-position window (- s window-start)
+                                                                                           (- window-end window-start) nil))))
                                       (if hit (+ window-start hit) (tuatara.text:rope-line-end rope s)))))
                    (unless all (setf allowed (next-line-start-after rope e s))))
                  (setf (rewrite-piece-done piece) e)
@@ -442,7 +439,7 @@ ends, the files not mapped by then are closed."
                       (if counted
                           (setf (rewrite-result job) counted (rewrite-status job) :done)
                           (setf (rewrite-status job) :stopped)))))))
-    (when (rewrite-files job) (ignore-errors (discard-piece-files (rewrite-files job))))))
+    (when (rewrite-files job) (discard-piece-files (rewrite-files job)))))
 
 ;;; Mapping offsets between the text read and the text written
 
@@ -655,7 +652,7 @@ began on to its result with those stretches left as they were."
 (defun result-as-begun (job regions)
   "JOB's result with the stretches of REGIONS (REWRITE-REGIONS), those edited
 while it ran, left as they were when it began, for the edits made meanwhile
-to be made again on (TUATARA.BUFFER:BUFFER-CHANGE-WHERE-BEGUN)."
+to be made again on (TUATARA.BUFFER:BUFFER-TAKE-IN-JOB-RESULT)."
   (let ((base (rewrite-rope job)))
     (if (zerop (length regions))
         (rewrite-result job)
@@ -733,18 +730,16 @@ edited meanwhile as they are now, unless the buffer may no longer take it
                   (buffer-windows buffer)
                   (lambda ()
                     ;; the change stands where the job began, before the edits made meanwhile, which
-                    ;; are made again on the result with the stretches they touched as they are now
-                    (multiple-value-bind (begun-forward begun-backward) (rewrite-maps job (regions-as-begun regions))
-                      (unless (and (not (rewrite-session job))
-                                   (tuatara.buffer:buffer-change-where-begun
-                                    buffer (rewrite-since job) (rewrite-rope job) (result-as-begun job regions)
-                                    begun-forward begun-backward final forward backward
-                                    :join (rewrite-joins job)))
-                        ;; on top: a session's typing joins it; a whole-text change made meanwhile cannot be carried over
-                        (tuatara.buffer:buffer-swap-text buffer final forward backward)
-                        (let ((joins (rewrite-joins job)))
-                          (when (and joins (eq (cdr (tuatara.buffer:buffer-undo-stack buffer)) joins))
-                            (tuatara.buffer:merge-undo-groups buffer (cdr joins))))))
+                    ;; are made again on the result with the stretches they touched as they are now;
+                    ;; a session's change goes on top, joining its typing
+                    (tuatara.buffer:buffer-take-in-job-result
+                     buffer final forward backward
+                     :since (rewrite-since job) :join (rewrite-joins job)
+                     :begun (unless (rewrite-session job)
+                              (multiple-value-bind (begun-forward begun-backward)
+                                  (rewrite-maps job (regions-as-begun regions))
+                                (tuatara.text:make-swap (rewrite-rope job) (result-as-begun job regions)
+                                                        begun-forward begun-backward))))
                     forward))
                  (when unmoved
                    (setf (tuatara.buffer:buffer-point buffer)
@@ -892,7 +887,7 @@ changing, in ROWS only, :JOB-QUEUED, only what the rows show looked at
 gigabytes). A count changes nothing, and is not shown."
   (declare (ignore editor))
   (let* ((buffer (tuatara.display:window-buffer window))
-         (job (rewrite-of buffer)))
+         (job (tuatara.runtime:running-job buffer 'rewrite)))
     (when (and job (not (rewrite-count-only job)) (plusp (length rows)))
       (loop for (from . to) in (tuatara.display:shown-ranges rows :buffer buffer)
             nconc (funcall (or (rewrite-shade job) #'job-shading) job from to)))))
@@ -1041,9 +1036,10 @@ the editor answering keys meanwhile."
 
 (defun line-piece-run (job piece per-line crlf)
   "Rewrite PIECE of JOB, a job over lines (START-LINE-JOB), into an unnamed
-file: the text PER-LINE makes of each line (CRLF when a carriage return before
-a newline ends them), read a block at a time and written a megabyte at a time,
-so that no line looks anything up in the text."
+file: the text PER-LINE makes of each line (carriage return and line feed
+(CRLF) when a carriage return before a newline ends them), read a block at a
+time and written a megabyte at a time, so that no line looks anything up in
+the text."
   (let* ((rope (rewrite-rope job))
          (total (tuatara.text:rope-bytes rope))
          (start (rewrite-piece-start piece))
@@ -1092,10 +1088,11 @@ when it holds it, else the text read now."
 
 (defun map-piece-lines (function rope start end crlf &optional halt)
   "Call FUNCTION with (LINE LINE-END ROPE BLOCK BLOCK-START BLOCK-END) for each
-line of ROPE starting from START below END, read a block at a time (CRLF when
-a carriage return before a newline ends them), the block one of a megabyte
-kept for reading into (TUATARA.TEXT:WITH-OCTET-BLOCK), which FUNCTION must not
-keep; stop when HALT, checked now and then, answers true."
+line of ROPE starting from START below END, read a block at a time (carriage
+return and line feed (CRLF) when a carriage return before a newline ends
+them), the block one of a megabyte kept for reading into
+(TUATARA.TEXT:WITH-OCTET-BLOCK), which FUNCTION must not keep; stop when HALT,
+checked now and then, answers true."
   (let ((n 0))
     (declare (type fixnum n))
     (tuatara.text:with-octet-block (reused (* 1024 1024))
@@ -1112,18 +1109,19 @@ keep; stop when HALT, checked now and then, answers true."
 at TO, in the background on all but two cores, as PER-LINE says, a line at a
 time: a function of (FUNCTION LINE LINE-END NEXT ROPE BLOCK BLOCK-START
 BLOCK-END) called for each line, its start, its end (before the line's end:
-its newline, or with CRLF the carriage return), the next line's start, and the
-text with the octets read around the line (BLOCK-OCTET reads them), which
-calls FUNCTION with (START END NIL OCTETS) for each change it makes, in order,
-within the line and its line end. DOING names the work in a word, WHAT in
-full, for the list of jobs; VERB as a verb, for when it fails, and LEAVES what
-stopping it leaves (REWRITE); REPORT says how it ended; ANNOUNCE, the work in
-words, is said to go on in the background as it starts (SAY-IN-BACKGROUND);
-PREPARE, when given, runs first on the job's thread (REWRITE); GOAL, when
-given, a function of FROM as the job starts, gives the job's GOAL (REWRITE).
-One change for undo, edits made meanwhile kept, \\[stop-job] stops it. Returns
-the job, or :QUEUED when another job runs or waits in BUFFER, or its lines are
-still being counted: it then waits its turn, FROM and TO followed meanwhile."
+its newline, or with carriage return and line feed (CRLF) the carriage
+return), the next line's start, and the text with the octets read around the
+line (BLOCK-OCTET reads them), which calls FUNCTION with (START END NIL
+OCTETS) for each change it makes, in order, within the line and its line end.
+DOING names the work in a word, WHAT in full, for the list of jobs; VERB as a
+verb, for when it fails, and LEAVES what stopping it leaves (REWRITE); REPORT
+says how it ended; ANNOUNCE, the work in words, is said to go on in the
+background as it starts (SAY-IN-BACKGROUND); PREPARE, when given, runs first
+on the job's thread (REWRITE); GOAL, when given, a function of FROM as the job
+starts, gives the job's GOAL (REWRITE). One change for undo, edits made
+meanwhile kept, \\[stop-job] stops it. Returns the job, or :QUEUED when
+another job runs or waits in BUFFER, or its lines are still being counted: it
+then waits its turn, FROM and TO followed meanwhile."
   (when (queue-if-busy buffer what (list (cons from :before) (cons to :after))
                        (lambda (from to) (start-line-job buffer from to per-line :doing doing :what what
                                                                                     :verb verb :leaves leaves

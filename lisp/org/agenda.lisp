@@ -64,10 +64,7 @@ else asked again."
              (< (- now (second kept)) (* *org-agenda-files-added-seconds* internal-time-units-per-second)))
         (cddr kept)
         (let ((files (loop for function in *org-agenda-file-functions*
-                           append (handler-case (copy-list (funcall function))
-                                    (error (e)
-                                      (tuatara.runtime:debug-report :error "Agenda files from ~a not had: ~a" function e)
-                                      nil)))))
+                           append (copy-list (call-hook-function function)))))
           (setf *org-agenda-files-added* (list* (copy-list *org-agenda-file-functions*) now files))
           files))))
 
@@ -172,8 +169,10 @@ number: 2000 for [#A], 1000 for B and none, 0 for C), TITLE, TAGS (inherited
 first) and LOCAL-TAGS (its own, on its headline), CATEGORY, its planning's SCHEDULED, DEADLINE and CLOSED timestamps
 (texts), HEADING, its line after the stars, its PROPERTIES (an alist), its
 plain active STAMPS (texts), its RANGES of days ((FROM TO) texts) and its LOGS
-((KIND TIMESTAMP DURATION END) of its CLOSED: and CLOCK: lines, END the time a
-clock stopped), and the FACTS
+\((:CLOSED TIMESTAMP NIL NIL), (:CLOCK FROM DURATION STOPPED OPEN), STOPPED
+the time of day a clock stopped and OPEN true while it has no end, and
+\(:DONE-NOTE TIMESTAMP NIL NIL TICKED), TICKED (DONE . TOTAL) of its
+checkboxes or NIL), and the FACTS
 of its dates the agenda works with, read once (ORG-ENTRY-FACTS). Its KIND is
 :HEADLINE, or :CHECKBOX for a list item with a checkbox kept as a task (an open
 box TODO, a ticked one DONE); SKIP, the stretches of its text that are its
@@ -188,13 +187,13 @@ agenda keeps them (ORG-AGENDA-ENTRIES), never opened for it."
   (let ((tags '()))
     (dolist (buffer buffers)
       (when buffer
-        (multiple-value-bind (tree text) (org-tree-now buffer)
-          (when tree
-            (dolist (tag (org-file-tags text)) (pushnew tag tags :test #'string=))
-            (dolist (headline (org-headlines tree))
+        (let ((parse (org-parse-now buffer)))
+          (when parse
+            (dolist (tag (org-file-tags (org-parse-text parse))) (pushnew tag tags :test #'string=))
+            (dolist (headline (org-headlines (org-parse-tree parse)))
               (dolist (tag (org-property headline :tags)) (pushnew tag tags :test #'string=)))))))
-    (dolist (path (ignore-errors (org-agenda-file-paths)))
-      (dolist (entry (ignore-errors (org-agenda-entries path)))
+    (dolist (path (ignoring-errors-reported ("listing the agenda files") (org-agenda-file-paths)))
+      (dolist (entry (ignoring-errors-reported ("reading the tags of ~a" path) (org-agenda-entries path)))
         (dolist (tag (agenda-entry-tags entry)) (pushnew tag tags :test #'string=))))
     (nreverse tags)))
 
@@ -386,7 +385,8 @@ thread: the buffers visiting an Org file, or a file the agenda reads
 \(ORG-AGENDA-FILES-IN-FORCE).
 Nothing on disk is looked at."
   (let ((named (loop for file in (org-agenda-files-in-force)
-                     for path = (ignore-errors (tuatara.io:native (tuatara.io:expand-path file)))
+                     for path = (ignoring-errors-reported ("naming the agenda file ~a" file)
+                                  (tuatara.io:native (tuatara.io:expand-path file)))
                      when path collect path)))
     (org-agenda-snapshot
      (loop for buffer in tuatara.buffer:*buffers*
@@ -424,14 +424,13 @@ a larger one is left out, and said to be.")
 a descriptor that waits on no pipe or device, a regular file of at most
 *ORG-FILE-READ-LIMIT* octets, an octet that is not UTF-8 read as a
 replacement character; NIL when it cannot be read so, said when too large."
-  (handler-case
-      (tuatara.io:file-text path :limit *org-file-read-limit* :replacement (code-char #xFFFD)
-                                 :too-large (lambda (name size)
-                                              (declare (ignore name size))
-                                              (message "~a is not read: larger than ~a" (abbreviated-path path)
-                                                       (octets-words *org-file-read-limit*))
-                                              nil))
-    (error () nil)))
+  (ignoring-errors-reported ("reading ~a for the agenda" path)
+    (tuatara.io:file-text path :limit *org-file-read-limit* :replacement (code-char #xFFFD)
+                               :too-large (lambda (name size)
+                                            (declare (ignore name size))
+                                            (message "~a is not read: larger than ~a" (abbreviated-path path)
+                                                     (octets-words *org-file-read-limit*))
+                                            nil))))
 
 (defun org-agenda-source-text (path source)
   "The text of the agenda file at PATH read from SOURCE (ORG-AGENDA-FILE-SOURCE
@@ -441,7 +440,8 @@ UTF-8 read as a replacement character; NIL when it cannot be read."
                     ((eq source :disk) (org-read-file-text path))
                     ((stringp source) source)
                     ((typep source 'tuatara.buffer:buffer) (tuatara.buffer:buffer-string source))
-                    (t (ignore-errors (tuatara.text:rope-string source))))))
+                    (t (ignoring-errors-reported ("reading ~a for the agenda" path)
+                         (tuatara.text:rope-string source))))))
     (and text (lf-newlines text))))
 
 (defun org-agenda-file-source (path)
@@ -461,7 +461,7 @@ agenda is worked out elsewhere, as *ORG-AGENDA-SNAPSHOT* has it."
   "Where the agenda file at PATH is read from on disk, as two values: :DISK
 and what tells whether it changed (the file's time and size); NIL when it is
 no regular file there (a pipe or a device is never waited on)."
-  (let ((stamp (ignore-errors (tuatara.io:path-stamp path))))
+  (let ((stamp (tuatara.io:path-stamp path :failure nil)))
     (and stamp (eq (tuatara.io:stamp-kind stamp) :regular)
          (values :disk (list :file (tuatara.io:stamp-mtime stamp) (tuatara.io:stamp-size stamp))))))
 
@@ -479,8 +479,8 @@ file. In a job in the background asked to stop, it ends the job instead
             (let ((text (org-agenda-source-text path source)))
               (when text
                 (let ((entries (handler-bind ((error (lambda (condition)
-                                                       (error "~a could not be read: ~a" (file-namestring path)
-                                                              (tuatara.runtime:condition-words condition)))))
+                                                       (refuse "~a could not be read: ~a" (file-namestring path)
+                                                               (tuatara.runtime:failure-words condition)))))
                                  (org-agenda-file-entries path text))))
                   (setf (gethash path *org-agenda-file-cache*) (cons key entries))
                   entries))))))))
@@ -511,12 +511,13 @@ folder as the .org files in it, a pattern (* ?) as the files it matches, each
 in order of name, every file once. The folders are listed again only when
 one of them changed (*ORG-AGENDA-PATHS-KEPT*)."
   (let* ((stamps (loop for file in files
-                       for path = (ignore-errors (tuatara.io:native (tuatara.io:expand-path file)))
+                       for path = (ignoring-errors-reported ("naming the agenda file ~a" file)
+                                    (tuatara.io:native (tuatara.io:expand-path file)))
                        for (parent name) = (and path (multiple-value-list (tuatara.io:path-folder-and-name path)))
                        for folder = (and path (cond ((find-if (lambda (c) (find c "*?")) name) parent)
                                                     ((eq :directory (tuatara.io:path-kind path)) path)
                                                     (t nil)))
-                       collect (and folder (let ((stamp (ignore-errors (tuatara.io:path-stamp folder))))
+                       collect (and folder (let ((stamp (tuatara.io:path-stamp folder :failure nil)))
                                              (and stamp (tuatara.io:stamp-mtime stamp))))))
          (kept *org-agenda-paths-kept*))
     (if (and kept (equal (first kept) files) (equal (second kept) stamps))
@@ -568,7 +569,7 @@ lines and the line of now."))
 compiled."
   (dolist (type types)
     (unless (member type *org-agenda-item-types* :test #'equal)
-      (error "~s is no kind of agenda line: ~{~a~^, ~}" type *org-agenda-item-types*)))
+      (refuse "~s is no kind of agenda line: ~{~a~^, ~}" type *org-agenda-item-types*)))
   `(member (org-item-type ,item) ',types :test #'string=))
 
 (defstruct (org-agenda-item (:conc-name org-item-))
@@ -1073,21 +1074,26 @@ read before."
 (defun org-match-scanner (regex)
   "REGEX, of a match's {regex}, made ready to match as a search reads it, case
 ignored; NIL when it is no regular expression."
-  (ignore-errors (tuatara.syntax:compile-pattern regex :case-fold t)))
+  (ignoring-errors-reported ("reading the pattern ~a" regex)
+    (handler-case (tuatara.syntax:compile-pattern regex :case-fold t)
+      ((or tuatara.syntax:pattern-refused cl-ppcre:ppcre-syntax-error) () nil))))
 
 (defun org-match-compare (op left right)
   "LEFT OP RIGHT, as a match compares them: numbers as numbers, else texts, a {regex} by matching."
   (cond ((null left) (string= op "<>"))
         ((and (> (length right) 1) (char= (char right 0) #\{))
-         (let ((found (ignore-errors (cl-ppcre:scan (org-match-scanner (subseq right 1 (1- (length right)))) left))))
+         (let ((found (let ((scanner (org-match-scanner (subseq right 1 (1- (length right))))))
+                        (and scanner (cl-ppcre:scan scanner left)))))
            (if (string= op "<>") (not found) found)))
         ((and (> (length right) 1) (char= (char right 0) #\"))
          (let ((r (subseq right 1 (1- (length right)))))
            (cond ((string= op "=") (string= left r)) ((string= op "<>") (string/= left r))
                  ((string= op "<") (string< left r)) ((string= op ">") (string> left r))
                  ((string= op "<=") (string<= left r)) ((string= op ">=") (string>= left r)))))
-        (t (let ((l (let ((n (ignore-errors (org-calc-read-number left)))) (and n (org-calc-value n))))
-                 (r (let ((n (ignore-errors (org-calc-read-number right)))) (and n (org-calc-value n)))))
+        (t (let ((l (let ((n (handler-case (org-calc-read-number left) (org-formula-error () nil))))
+                      (and n (org-calc-value n))))
+                 (r (let ((n (handler-case (org-calc-read-number right) (org-formula-error () nil))))
+                      (and n (org-calc-value n)))))
              (and (realp l) (realp r)
                   (cond ((string= op "=") (= l r)) ((string= op "<>") (/= l r))
                         ((string= op "<") (< l r)) ((string= op ">") (> l r))

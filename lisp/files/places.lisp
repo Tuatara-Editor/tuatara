@@ -22,10 +22,11 @@ The places are the file places in $XDG_STATE_HOME/tuatara/
 
 (defun parse-saved-place-line (line)
   "The entry of the places LINE writes, (PATH . OFFSET): the octet point was
-at, then the file's path (ESCAPE-PATH); NIL for a line that makes no sense."
+at, then the file's path (STATE-LINE-PATH); NIL for a line that makes no
+sense."
   (let ((space (position #\Space line)))
     (when (and space (< 0 space 19) (every #'digit-char-p (subseq line 0 space)))
-      (let ((path (unescape-path (subseq line (1+ space)))))
+      (let ((path (state-line-path line (1+ space))))
         (and (plusp (length path)) (cons path (parse-integer line :end space)))))))
 
 (defun saved-place-line (entry)
@@ -35,7 +36,7 @@ at, then the file's path (ESCAPE-PATH); NIL for a line that makes no sense."
 (define-state-list *saved-places* "places" 'parse-saved-place-line 'saved-place-line '*save-place-limit*
   :header (format nil "# Where point was in the files Tuatara visited, the latest first: the octet,~%~
                        # then the file's path (\\\\, \\n and \\r stand for \\, a newline and a return).~%")
-  :path-of #'car)
+  :path-of #'car :line-key (spaced-line-key 1 #'digits-word-p))
 
 (defun read-saved-places ()
   "The places: a list of (PATH . OFFSET), the latest first, OFFSET the octet

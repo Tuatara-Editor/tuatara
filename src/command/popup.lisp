@@ -101,8 +101,10 @@ word put in it."
         (let ((window (editor-window editor)))
           (when (and window (eq (tuatara.display:window-buffer window) target))
             (let* ((version (tuatara.buffer:buffer-version target))
-                   (start (ignore-errors (tuatara.text:anchor-position (popup-start popup) version)))
-                   (end (ignore-errors (tuatara.text:anchor-position (popup-end popup) version)))
+                   (start (tuatara.runtime:ignoring-errors-reported ("finding where the completed word begins")
+                            (tuatara.text:anchor-position (popup-start popup) version)))
+                   (end (tuatara.runtime:ignoring-errors-reported ("finding where the completed word ends")
+                          (tuatara.text:anchor-position (popup-end popup) version)))
                    (point (tuatara.buffer:buffer-point target)))
               (when (and start end (<= start point end) (<= (- end start) (* 4 *popup-reach*)))
                 (let ((word (tuatara.buffer:buffer-string target :start start :end end)))
@@ -203,8 +205,7 @@ it, and close the list, whether the text could go in or not; then call
                  (let ((after (tuatara.buffer:buffer-replace target start end text)))
                    (setf (tuatara.buffer:buffer-point target) after)
                    (close-popup *editor*)
-                   (dolist (f *popup-insert-functions*)
-                     (funcall f target candidate start after)))))))
+                   (tuatara.runtime:run-hook *popup-insert-functions* target candidate start after))))))
     (close-popup *editor*)))
 
 ;;; Keys
@@ -281,7 +282,9 @@ typed on either side match in any order, as the minibuffer matches them."
 (defun popup-annotation (popup candidate)
   "What POPUP says beside CANDIDATE: its annotation, as a string, or an empty one."
   (or (candidate-annotation-text candidate)
-      (and (popup-annotate popup) (ignore-errors (funcall (popup-annotate popup) candidate)))
+      (and (popup-annotate popup)
+           (tuatara.runtime:ignoring-errors-reported ("annotating a candidate")
+             (funcall (popup-annotate popup) candidate)))
       ""))
 
 (defun candidate-annotation-text (candidate)
@@ -418,7 +421,8 @@ server, and is asked again then)."
   (let ((shown (popup-shown popup)))
     (if (and shown (eq (first shown) candidate) (= (second shown) width))
         (values (third shown) (fourth shown))
-        (let ((text (ignore-errors (funcall (popup-document popup) candidate))))
+        (let ((text (tuatara.runtime:ignoring-errors-reported ("documenting a candidate")
+                      (funcall (popup-document popup) candidate))))
           (when (and text (plusp (length (string-trim '(#\Space #\Newline) text))))
             (multiple-value-bind (lines box-width)
                 (boxed-lines (list (list (string-trim '(#\Newline) text))) width *popup-documentation-limits*)

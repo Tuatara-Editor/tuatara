@@ -46,10 +46,11 @@ or narrow it; KIND :added, :changed or :deleted."
 process (RUN-GIT) that reads nothing of it; NIL when git has no such file,
 and no process at all outside a repository."
   (multiple-value-bind (octets ok)
-      (run-git (tuatara.io:parent-path path) (list "rev-parse" "--verify" "--quiet" (git-object-name "HEAD" (committed-name path)))
-               :cancel cancel :seconds *git-look-seconds*)
+      (tuatara.git:run-git (tuatara.io:parent-path path)
+                           (list "rev-parse" "--verify" "--quiet" (tuatara.git:git-object-name "HEAD" (committed-name path)))
+                           :cancel cancel :seconds tuatara.git:*git-look-seconds*)
     (let ((id (and ok octets (string-trim '(#\Newline) (tuatara.text:lenient-string octets)))))
-      (and (git-hash-p id) id))))
+      (and (tuatara.git:git-hash-p id) id))))
 
 (defun committed-text (path &key cancel id)
   "The text of the file at PATH as git has it in HEAD, or the text whose id
@@ -57,8 +58,8 @@ is ID, as octets, by one git process (GIT-BLOB-OCTETS); NIL when git has no
 such file, and no process at all outside a repository. A text larger than
 *VC-GUTTER-MAX-BYTES* is not read: NIL, and true as a second value."
   (multiple-value-bind (octets ok too-large)
-      (git-blob-octets (tuatara.io:parent-path path) (or id "HEAD") (and (not id) (committed-name path))
-                       :cancel cancel :seconds *git-look-seconds* :limit *vc-gutter-max-bytes*)
+      (tuatara.git:git-blob-octets (tuatara.io:parent-path path) (or id "HEAD") (and (not id) (committed-name path))
+                                   :cancel cancel :seconds tuatara.git:*git-look-seconds* :limit *vc-gutter-max-bytes*)
     (values (and ok octets) too-large)))
 
 (sb-ext:defglobal **committed-lines** (make-hash-table :test 'equal :synchronized t)
@@ -90,8 +91,9 @@ as a second value for a text larger than *VC-GUTTER-MAX-BYTES*."
   "True when git has the file at PATH in HEAD, asked by one git process
 \(RUN-GIT) that reads nothing of it; NIL with no process at all outside a
 repository."
-  (nth-value 1 (run-git (tuatara.io:parent-path path) (list "cat-file" "-e" (git-object-name "HEAD" (committed-name path)))
-                        :cancel cancel :seconds *git-look-seconds*)))
+  (nth-value 1 (tuatara.git:run-git (tuatara.io:parent-path path)
+                                    (list "cat-file" "-e" (tuatara.git:git-object-name "HEAD" (committed-name path)))
+                                    :cancel cancel :seconds tuatara.git:*git-look-seconds*)))
 
 (defun line-mark (buffer first last kind)
   "A mark of KIND over the lines FIRST to LAST (from 0) of BUFFER's text as it is now."
@@ -120,26 +122,16 @@ keeps it."
               (setf taken last))))))
     (and marks (coerce (nreverse marks) 'simple-vector))))
 
-(defstruct (vc-job (:include tuatara.runtime:job) (:constructor make-vc-job (buffer version)) (:copier nil))
+(defstruct (vc-job (:include shown-text-job) (:constructor make-vc-job (buffer version)) (:copier nil))
   "The version-control marks of BUFFER's file worked out in the background
-from its text at VERSION, a job; RESULT, once done, (TRACKED
-HUNKS) as VC-START-REFRESH says."
-  version result)
+from its text at VERSION, a look at a file shown (SHOWN-TEXT-JOB); RESULT,
+once done, (TRACKED HUNKS) as VC-START-REFRESH says.")
 
 (setf (documentation 'vc-job-p 'function) "True when OBJECT is a VC-JOB.")
 
 (tuatara.runtime:define-job-words vc-job
   :doing "Comparing with git"
-  :left-words "the marks are as they were"
-  :at-exit :quiet)
-
-(defmethod tuatara.runtime:job-holds-queue-p ((job vc-job))
-  "False: other work on the buffer need not wait for its comparison with git."
-  nil)
-
-(defmethod tuatara.runtime:job-shows-processing-p ((job vc-job))
-  "False: comparing a file with git is not shown as work under way in the mode line."
-  nil)
+  :left-words "the marks are as they were")
 
 (defun vc-start-refresh (buffer)
   "Work out in the background whether BUFFER's file is in git and its marks,
@@ -147,46 +139,37 @@ a job (VC-JOB): git asked for the committed text's lines (COMMITTED-LINE-HASHES,
 or GIT-TRACKED-P for a file too large to compare) and the texts compared on a thread of their own, from
 the buffer's text as it is now, which never changes, so that nothing waits
 for it; the result put in as the job is taken in. A refresh started before
-for BUFFER is stopped. The text of a file mapped from disk is read as a
-slice (BUFFER-SLICE), which keeps the mapping while the job reads it."
+for BUFFER is stopped (START-SHOWN-TEXT-JOB). The text of a file mapped from
+disk and compared is read as a slice (BUFFER-SLICE), which keeps the mapping
+while the job reads it."
   (let* ((path (tuatara.buffer:buffer-file buffer))
-         (version (tuatara.buffer:buffer-version buffer))
-         (compare (and (ignore-errors (tuatara.io:path-stamp path))
-                       (<= (tuatara.buffer:buffer-size buffer) *vc-gutter-max-bytes*)))
-         (rope (if (and compare (tuatara.buffer:buffer-mapping buffer))
-                   (tuatara.buffer:buffer-slice buffer 0 (tuatara.buffer:buffer-size buffer))
-                   (tuatara.buffer:buffer-text buffer)))
-         (before (tuatara.buffer:buffer-local buffer 'vc-refresh)))
-    (when before (tuatara.runtime:job-stop before))
+         (compare (and (tuatara.io:path-stamp path :failure nil)
+                       (<= (tuatara.buffer:buffer-size buffer) *vc-gutter-max-bytes*))))
     (setf (tuatara.buffer:buffer-local buffer 'vc-edited) nil)
-    (setf (tuatara.buffer:buffer-local buffer 'vc-refresh)
-          (tuatara.runtime:start-job-thread
-           (make-vc-job buffer version)
-           (lambda (job)
-             (let ((cancel (tuatara.runtime:job-cancel job)))
-               (setf (vc-job-result job)
-                     (if compare
-                         (multiple-value-bind (committed too-large) (committed-line-hashes path :cancel cancel)
-                           (list (and (or committed too-large) t)
-                                 (and committed (diff-hunks committed (rope-line-hashes rope)))))
-                         (list (git-tracked-p path :cancel cancel) nil)))))
-           :name "tuatara version control"))))
+    (start-shown-text-job
+     (make-vc-job buffer nil) 'vc-refresh
+     (lambda (job)
+       (let ((cancel (tuatara.runtime:job-cancel job)))
+         (if compare
+             (multiple-value-bind (committed too-large) (committed-line-hashes path :cancel cancel)
+               (list (and (or committed too-large) t)
+                     (and committed (diff-hunks committed (rope-line-hashes (vc-job-rope job))))))
+             (list (git-tracked-p path :cancel cancel) nil))))
+     :name "tuatara version control" :slice compare)))
 
 (defmethod tuatara.runtime:job-take-in ((job vc-job))
   "Put in the marks worked out in the background when the buffer's text is
 still the one compared, else start again; a file git could not be asked
 about is left without marks."
   (let ((buffer (vc-job-buffer job)))
-    (when (and (live-buffer-p buffer) (eq (tuatara.buffer:buffer-local buffer 'vc-refresh) job))
-      (setf (tuatara.buffer:buffer-local buffer 'vc-refresh) nil)
-      (unless (eq (vc-job-status job) :stopped)
-        (destructuring-bind (&optional tracked hunks) (vc-job-result job)
-          (setf (tuatara.buffer:buffer-local buffer 'vc-tracked) (and tracked *vc-gutter-enabled* t))
-          (when (tuatara.buffer:buffer-local buffer 'vc-tracked)
-            (pushnew #'vc-note-edit (tuatara.buffer:buffer-change-functions buffer))
-            (if (eq (vc-job-version job) (tuatara.buffer:buffer-version buffer))
-                (setf (tuatara.buffer:buffer-local buffer 'vc-marks) (hunk-marks buffer hunks))
-                (vc-start-refresh buffer))))))))
+    (when (shown-text-job-taken-p job 'vc-refresh)
+      (destructuring-bind (&optional tracked hunks) (vc-job-result job)
+        (setf (tuatara.buffer:buffer-local buffer 'vc-tracked) (and tracked *vc-gutter-enabled* t))
+        (when (tuatara.buffer:buffer-local buffer 'vc-tracked)
+          (pushnew #'vc-note-edit (tuatara.buffer:buffer-change-functions buffer))
+          (if (eq (vc-job-version job) (tuatara.buffer:buffer-version buffer))
+              (setf (tuatara.buffer:buffer-local buffer 'vc-marks) (hunk-marks buffer hunks))
+              (vc-start-refresh buffer)))))))
 
 (defun touched-lines (buffer batch)
   "The lines of BUFFER's text, as it is after BATCH, that BATCH's edits
@@ -335,22 +318,18 @@ on when it is positive, off when it is zero or less."
 
 (defun vc-attach-shown (editor)
   "After each command: attach the version-control gutter to the buffers EDITOR's
-windows show that have a file, once each; never to a file opened safely, whose
-repository's settings git would read, nor to one whose text no program may see.
-A tracked buffer edited and brought back to its saved text (by undo) has its
-marks worked out again, so that the lines put back are marked no more."
-  (dolist (window (editor-windows editor))
-    (let ((b (tuatara.display:window-buffer window)))
-      (when (and *vc-gutter-enabled* (tuatara.buffer:buffer-file b)
-                 (not (tuatara.io:safe-visit-p b))
-                 (not (tuatara.buffer:buffer-local b :plaintext)))
-        (cond ((null (tuatara.buffer:buffer-local b 'vc-checked))
-               (setf (tuatara.buffer:buffer-local b 'vc-checked) t)
-               (vc-attach b))
-              ((and (tuatara.buffer:buffer-local b 'vc-edited)
-                    (tuatara.buffer:buffer-local b 'vc-tracked)
-                    (not (tuatara.buffer:buffer-modified-p b)))
-               (vc-start-refresh b)))))))
+windows show that have a file, once each (LOOK-AT-SHOWN-FILES); never to a
+file opened safely, whose repository's settings git would read, nor to one
+whose text no program may see. A tracked buffer edited and brought back to
+its saved text (by undo) has its marks worked out again, so that the lines
+put back are marked no more."
+  (when *vc-gutter-enabled*
+    (look-at-shown-files editor 'vc-checked #'vc-attach
+                         :again (lambda (b)
+                                  (when (and (tuatara.buffer:buffer-local b 'vc-edited)
+                                             (tuatara.buffer:buffer-local b 'vc-tracked)
+                                             (not (tuatara.buffer:buffer-modified-p b)))
+                                    (vc-start-refresh b))))))
 
 (defun install-vc-gutter (editor)
   "Register the version-control gutter provider and the refresh after saves,

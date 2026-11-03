@@ -1,7 +1,7 @@
 ;;;; src/display/hex.lisp --- The hex view: a buffer's octets as a hex dump, laid out as shown.
 ;;;; Copyright (C) 2026 Michael A Jones.  GPL-3.0-or-later; see LICENSE.
 ;;;;
-;;;; A buffer whose :HEX-VIEW local is true is shown as a hex dump: each row the
+;;;; A buffer for which HEX-VIEW-P is true is shown as a hex dump: each row the
 ;;;; offset, sixteen octets in hex in two groups of eight, and the text they make
 ;;;; with a dot for an octet that is no printable ASCII character. Only the rows
 ;;;; in the window are made, from the rope as it is, so a file of any size shows
@@ -12,10 +12,6 @@
 (in-package #:tuatara.display)
 
 (defconstant +hex-row+ 16 "Octets in a row of the hex view.")
-
-(defun hex-view-p (buffer)
-  "True when BUFFER is shown as a hex dump (its :HEX-VIEW local)."
-  (and (tuatara.buffer:buffer-local buffer :hex-view) t))
 
 (defun hex-point (buffer)
   "The octet the hex view's cursor is on in BUFFER, as a byte offset: any octet,

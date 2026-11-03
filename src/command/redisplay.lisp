@@ -27,7 +27,7 @@ says, else *CURSOR-SHAPE* and *CURSOR-COLOUR*; a colour of
   (multiple-value-bind (shape colour typing)
       (and (editor-cursor-shape-function editor) (funcall (editor-cursor-shape-function editor) editor))
     (values (or shape *cursor-shape* :block)
-            (or (some (lambda (function) (funcall function editor)) *cursor-colour-functions*) colour *cursor-colour*)
+            (or (tuatara.runtime:run-hook-until-success *cursor-colour-functions* editor) colour *cursor-colour*)
             typing)))
 
 (defvar *gutter-providers* '()
@@ -38,7 +38,14 @@ PREPARE-FN, once a frame, with (EDITOR WINDOW ROWS), the rows shown, and
 returns what its cells are worked out from; CELL-FN with (EDITOR WINDOW ROW
 LINE), and that as a fifth argument when it has a PREPARE-FN, where LINE is
 the 0-based line number of ROW's start, or NIL for a continuation row, and
-returns two values, the text for that row (padded to the width) and its face.")
+returns two values, the text for that row (padded to the width) and its face.
+A function that fails is said once (TUATARA.RUNTIME:CALL-HOOK-FUNCTION): its
+provider shows nothing, the rest of the gutter and the screen drawn.")
+
+(defun gutter-width (editor window provider)
+  "The columns PROVIDER, one of *GUTTER-PROVIDERS*, wants in WINDOW: 0 when
+its width function fails."
+  (or (tuatara.runtime:call-hook-function (getf provider :width) editor window) 0))
 
 (defun window-margin-for (editor window)
   "The margin WINDOW needs: the widths of the gutter providers plus one
@@ -46,7 +53,7 @@ separating column when any is visible; none in the hex view, whose offsets
 stand where line numbers would."
   (if (tuatara.display:hex-view-p (tuatara.display:window-buffer window))
       0
-      (let ((total (loop for p in *gutter-providers* sum (funcall (getf p :width) editor window))))
+      (let ((total (loop for p in *gutter-providers* sum (gutter-width editor window p))))
         (if (plusp total) (1+ total) 0))))
 
 (defparameter *gutter-count-reach* 65536
@@ -58,13 +65,14 @@ fold hiding more is looked past.")
   "For each row of ROWS, a list of (STRING . FACE) gutter pieces, in provider order."
   (when *gutter-providers*
     (let* ((buffer (tuatara.display:window-buffer window))
-           (widths (mapcar (lambda (p) (funcall (getf p :width) editor window)) *gutter-providers*))
+           (widths (mapcar (lambda (p) (gutter-width editor window p)) *gutter-providers*))
            (prepared (loop for p in *gutter-providers*
                            for width in widths
-                           collect (and (plusp width) (getf p :prepare) (funcall (getf p :prepare) editor window rows))))
+                           collect (and (plusp width) (getf p :prepare)
+                                       (tuatara.runtime:call-hook-function (getf p :prepare) editor window rows))))
            ;; not waited for while the lines are counted: known where the count has passed
            (line (and (plusp (length rows))
-                      (tuatara.buffer:buffer-known-line-number buffer (tuatara.display:row-start (aref rows 0))))))
+                      (tuatara.io:buffer-known-line-number buffer (tuatara.display:row-start (aref rows 0))))))
       (loop for row across rows
             for index from 0
             collect (let ((row-line (if (tuatara.display:row-continuation-p row) nil line)))
@@ -73,9 +81,14 @@ fold hiding more is looked past.")
                                    for ready in prepared
                                    when (plusp width)
                                      collect (multiple-value-bind (text face)
-                                                 (if (getf p :prepare)
-                                                     (funcall (getf p :cell) editor window row row-line ready)
-                                                     (funcall (getf p :cell) editor window row row-line))
+                                                 (let ((cell (getf p :cell)))
+                                                   (if (getf p :prepare)
+                                                       (tuatara.runtime:call-hook-function
+                                                        cell editor window row row-line ready)
+                                                       (tuatara.runtime:call-hook-function
+                                                        cell editor window row row-line)))
+                                               ;; a cell that failed gives its error in the face's place
+                                               (when (typep face 'error) (setf face nil))
                                                (cons (let ((s (or text "")))
                                                        (if (< (length s) width)
                                                            (concatenate 'string (make-string (- width (length s)) :initial-element #\Space) s)
@@ -91,7 +104,7 @@ fold hiding more is looked past.")
                             (setf line (if (and (tuatara.buffer:buffer-indexed-p buffer)
                                                 (<= 0 (- to from) *gutter-count-reach*))
                                            (+ line (tuatara.text:rope-count-newlines (tuatara.buffer:buffer-text buffer) from to))
-                                           (or (tuatara.buffer:buffer-known-line-number buffer to)
+                                           (or (tuatara.io:buffer-known-line-number buffer to)
                                                (1+ line))))))))))))
 
 (defvar *syntax-highlight-functions* '()
@@ -115,7 +128,8 @@ included: the line point is on (hl-line-mode).")
 FACE) byte ranges for the text in ROWS, painted over the syntax colours,
 SYNTAX, the ranges those are painted in, in the same form: what tells
 apart the kinds of text, a comment from code, is taken from them (the words
-spelt wrong).")
+spelt wrong). SYNTAX is lent for the frame: a function keeping it for later
+keeps a copy.")
 
 (defvar *highlight-functions* '()
   "Functions of (EDITOR WINDOW ROWS) returning lists of (START END FACE) byte
@@ -186,68 +200,63 @@ POINT, when that is past the end of its line. The text is read once
   (rectangle-rows buffer (tuatara.buffer:buffer-point buffer) (tuatara.buffer:buffer-mark buffer)
                   :from from :to to :point-column (rectangle-point-column buffer)))
 
-(defvar *failed-highlights* (make-hash-table :test 'eq :synchronized t)
-  "The highlight functions that have failed, each said once.")
-
-(defun highlights-of (function &rest arguments)
-  "What the highlight FUNCTION gives for ARGUMENTS, a copy; NIL when it fails,
-which is said once (in the echo area and the debug log), so that one way of
-marking text that goes wrong leaves the rest of the screen drawn."
-  (handler-case (copy-list (apply function arguments))
-    (error (e)
-      (unless (gethash function *failed-highlights*)
-        (setf (gethash function *failed-highlights*) t)
-        (tuatara.runtime:debug-report :redisplay "~(~a~) failed and is left out: ~a" function e)
-        (message "~(~a~) failed and is left out of the screen: ~a" function e))
-      nil)))
-
 (defun window-syntax (editor window rows)
   "The ranges the text in ROWS of WINDOW is coloured in by its syntax,
-(START END FACE): *SYNTAX-HIGHLIGHT-FUNCTIONS*, one that fails left out
-\(HIGHLIGHTS-OF)."
-  (loop for f in *syntax-highlight-functions*
-        nconc (highlights-of f editor window rows)))
+\(START END FACE): *SYNTAX-HIGHLIGHT-FUNCTIONS*, one that fails left out
+\(TUATARA.RUNTIME:CALL-HOOK-FUNCTION says so once). The list may be the one
+a function keeps for the next frame, so it is read, never changed."
+  (let ((lists (loop for f in *syntax-highlight-functions*
+                     for ranges = (tuatara.runtime:call-hook-function f editor window rows)
+                     when ranges collect ranges)))
+    (if (rest lists)
+        (apply #'append lists)
+        (first lists))))
 
 (defun window-highlights-for (editor window rows)
-  "The highlight ranges for the text in ROWS of WINDOW, lowest priority first:
+  "The highlight ranges for the text in ROWS of WINDOW, as the lists of them
+TUATARA.DISPLAY:APPLY-HIGHLIGHTS paints, lowest priority first:
 *LINE-HIGHLIGHT-FUNCTIONS*, syntax, *TEXT-HIGHLIGHT-FUNCTIONS*, then
-*JOB-HIGHLIGHT-FUNCTIONS*, then *HIGHLIGHT-FUNCTIONS*, then the active region,
-which only the selected window shows."
+*JOB-HIGHLIGHT-FUNCTIONS*, then *HIGHLIGHT-FUNCTIONS*, then the active
+region, which only the selected window shows. A way of marking text that
+fails is left out and said once (TUATARA.RUNTIME:CALL-HOOK-FUNCTION), so
+that the rest of the screen is drawn. The lists may be the ones the
+functions keep for the next frame, so they are read, never changed."
   (let* ((buffer (tuatara.display:window-buffer window))
-         (ranges (list nil))
-         (tail ranges))
-    (flet ((add (list)
-             (setf (cdr tail) list
-                   tail (last tail))))
+         (layers (list nil))
+         (tail layers))
+    (flet ((add (ranges)
+             (when ranges
+               (setf (cdr tail) (list ranges)
+                     tail (cdr tail)))))
       ;; a mode's colours, and the line point is on, are for text, not for the hex view's digits
       (unless (tuatara.display:hex-view-p buffer)
         (dolist (f *line-highlight-functions*)
-          (add (highlights-of f editor window rows)))
+          (add (tuatara.runtime:call-hook-function f editor window rows)))
         (let ((syntax (window-syntax editor window rows)))
-          (add (copy-list syntax))
+          (add syntax)
           (dolist (f *text-highlight-functions*)
-            (add (highlights-of f editor window rows syntax)))))
+            (add (tuatara.runtime:call-hook-function f editor window rows syntax)))))
       ;; the hex view's octet at its cursor, in its hex digits and its character both
       (when (tuatara.display:hex-view-p buffer)
         (let ((p (tuatara.display:hex-point buffer)))
           (when (< p (tuatara.buffer:buffer-size buffer))
             (add (list (list p (1+ p) :hex-mirror))))))
       (dolist (f *job-highlight-functions*)
-        (add (highlights-of f editor window rows)))
+        (add (tuatara.runtime:call-hook-function f editor window rows)))
       (dolist (f *highlight-functions*)
-        (add (highlights-of f editor window rows)))
+        (add (tuatara.runtime:call-hook-function f editor window rows)))
       (when (and (eq window (editor-window editor)) (tuatara.buffer:buffer-mark-active-p buffer))
         (if (and (tuatara.buffer:buffer-local buffer :rectangle) (plusp (length rows)))
             ;; a rectangle: its columns on each line shown, and only those
-            (loop for (from . to) in (tuatara.display:shown-ranges rows :buffer buffer)
-                  ;; the line a range ends at the start of is not in it
-                  do (loop for (start end) in (region-rectangle-rows buffer :from from :to (max from (1- to)))
-                           when (< start end)
-                             do (add (list (list start end :region)))))
+            (add (loop for (from . to) in (tuatara.display:shown-ranges rows :buffer buffer)
+                       ;; the line a range ends at the start of is not in it
+                       nconc (loop for (start end) in (region-rectangle-rows buffer :from from :to (max from (1- to)))
+                                   when (< start end)
+                                     collect (list start end :region))))
             (multiple-value-bind (start end) (tuatara.buffer:buffer-region buffer)
               (when (and start (< start end))
                 (add (list (list start end :region)))))))
-      (rest ranges))))
+      (rest layers))))
 
 (defvar *mode-line-functions* '()
   "Functions of (EDITOR BUFFER) returning what to add to the mode line: a string,
@@ -268,7 +277,7 @@ safely).")
 (defun modified-indicator (buffer)
   "BUFFER's state as the mode line shows it: [%] when it is read-only, else
 [*] when it has changes not saved, else [-]."
-  (cond ((tuatara.buffer:buffer-local buffer :read-only) "[%]")
+  (cond ((tuatara.buffer:buffer-read-only-p buffer) "[%]")
         ((tuatara.buffer:buffer-modified-p buffer) "[*]")
         (t "[-]")))
 
@@ -283,11 +292,22 @@ it, whichever name of the home directory it is by
             ((and (> (length name) (length home)) (string= home name :end2 (length home)))
              (return (concatenate 'string "~/" (subseq name (length home)))))))))
 
+(defun buffer-given-directory (buffer)
+  "The directory BUFFER was given to stand in, whatever file it visits: the
+one a list of a directory lists (\\[rimu]), where a compile or a terminal's
+program runs; NIL for a buffer that stands in its file's (BUFFER-DIRECTORY)."
+  (tuatara.buffer:buffer-local buffer :directory))
+
+(defun (setf buffer-given-directory) (directory buffer)
+  "Have BUFFER stand in DIRECTORY, a native name (BUFFER-GIVEN-DIRECTORY); NIL
+for its file's."
+  (setf (tuatara.buffer:buffer-local buffer :directory) directory))
+
 (defun buffer-directory (buffer)
   "The native name, ending in /, of the directory BUFFER stands in: the one it
 lists, for a list of a directory (\\[rimu]); else that of its file; else the one
 *DEFAULT-DIRECTORY* names. Files asked for from BUFFER are looked for there."
-  (let ((listed (tuatara.buffer:buffer-local buffer :directory))
+  (let ((listed (buffer-given-directory buffer))
         (file (tuatara.buffer:buffer-file buffer)))
     (cond (listed)
           (file (tuatara.io:parent-path file))
@@ -316,7 +336,7 @@ file system."
 (defun buffer-directory-name (buffer)
   "The directory BUFFER stands in (BUFFER-DIRECTORY) as the mode line shows
 it: the home directory written ~, a / at the end."
-  (if (or (tuatara.buffer:buffer-local buffer :directory) (tuatara.buffer:buffer-file buffer))
+  (if (or (buffer-given-directory buffer) (tuatara.buffer:buffer-file buffer))
       (abbreviated-path (buffer-directory buffer))
       (shown-default-directory)))
 
@@ -336,23 +356,35 @@ columns."
         name
         (values (tuatara.display:fit-columns name '() limit :middle t :width #'panel-char-columns)))))
 
+(defun buffer-mode-name (buffer)
+  "The name of BUFFER's major mode as its mode line shows it (Org, Terminal),
+or NIL before it has one."
+  (tuatara.buffer:buffer-local buffer :mode-name))
+
+(defun (setf buffer-mode-name) (name buffer)
+  "Have BUFFER's mode line call its major mode NAME (BUFFER-MODE-NAME)."
+  (setf (tuatara.buffer:buffer-local buffer :mode-name) name))
+
 (defun default-mode-line (editor &optional (window (editor-window editor)))
   "The mode line of WINDOW, the selected window by default: [-], [*] or [%] as
 the buffer is saved, changed or read-only (MODIFIED-INDICATOR), the buffer's
-name (cut in its middle when long, MODE-LINE-NAME), the line and column of the
-window's point, digits grouped with commas (L100,000,001) so large numbers read
-at a glance, the major mode's name when the buffer has one (the :mode-name
-local), what *MODE-LINE-FUNCTIONS* add, and last the buffer's directory in the
-:mode-line-directory face; what *MODE-LINE-LEAD-FUNCTIONS* give goes first,
-before [-], and what *MODE-LINE-NAME-FUNCTIONS* give just before the name. Returns the text and, as a second value, the spans of it in faces
-of their own, each (START END FACE)."
+name (cut in its middle when long, MODE-LINE-NAME), the name of the frame
+before it while frames take turns on one display (F2, FRAME-TAKING-TURNS-P),
+the line and column of the window's point, digits grouped with commas
+\(L100,000,001) so large numbers read at a glance, the major mode's name when
+the buffer has one (BUFFER-MODE-NAME), what *MODE-LINE-FUNCTIONS* add, and
+last the buffer's directory in the :mode-line-directory face; what
+*MODE-LINE-LEAD-FUNCTIONS* give goes first, before [-], and what
+*MODE-LINE-NAME-FUNCTIONS* give just before the name. Returns the text and,
+as a second value, the spans of it in faces of their own, each (START END
+FACE)."
   (let* ((buffer (tuatara.display:window-buffer window))
          (point (tuatara.display:window-point window))
          (spans '())
          (before (with-output-to-string (out)
                    (flet ((parts (functions)
                             (loop for f in functions
-                                  for lead = (funcall f editor buffer)
+                                  for lead = (tuatara.runtime:call-hook-function f editor buffer)
                                   ;; one part, or several written together
                                   for pieces = (cond ((stringp lead) (list (list lead nil)))
                                                      ((and (consp lead) (consp (first lead))) lead)
@@ -366,17 +398,20 @@ of their own, each (START END FACE)."
                      (write-char #\Space out)
                      (parts *mode-line-lead-functions*)
                      (format out "~a " (modified-indicator buffer))
+                     (let ((frame (editor-frame editor)))
+                       (when (frame-taking-turns-p editor frame)
+                         (format out "~a " (frame-name frame))))
                      (parts *mode-line-name-functions*))))
          (after (format nil "  L~:[…~;~:*~:d~] C~:[…~;~:*~:d~]~@[  ~a~]"
                         ;; not waited for: while a large file's lines are counted, the line
                         ;; where the count has passed it, else L…
-                        (let ((line (tuatara.buffer:buffer-known-line-number buffer point)))
+                        (let ((line (tuatara.io:buffer-known-line-number buffer point)))
                           (and line (1+ line)))
                         ;; on a line too long to read back over while its lines are counted, C…
                         (tuatara.buffer:buffer-column buffer point :most tuatara.display:*screen-column-reach*)
-                        (tuatara.buffer:buffer-local buffer :mode-name)))
+                        (buffer-mode-name buffer)))
          (extras (loop for f in *mode-line-functions*
-                       for extra = (funcall f editor buffer)
+                       for extra = (tuatara.runtime:call-hook-function f editor buffer)
                        when (stringp extra) collect (list extra nil)
                        when (consp extra) collect (list (first extra) (second extra))))
          (text (concatenate 'string before
@@ -501,7 +536,7 @@ selected or not.")
 (defun point-marked-p (buffer)
   "True when BUFFER shows where point is in a look of its own
 \(*POINT-MARKED-FUNCTIONS*), so that no cursor is drawn over it."
-  (some (lambda (function) (funcall function buffer)) *point-marked-functions*))
+  (tuatara.runtime:run-hook-until-success *point-marked-functions* buffer))
 
 (defun row-at (rows position)
   "The index of the row of ROWS showing POSITION, or at whose end it stands;
@@ -551,7 +586,7 @@ point in its own way (*POINT-MARKED-FUNCTIONS*)."
                                    (not (assoc r ends)))
                               (push (cons r face) ends))))))))
           (dolist (f *other-cursor-functions*)
-            (dolist (p (funcall f editor window rows))
+            (dolist (p (tuatara.runtime:call-hook-function f editor window rows))
               (place p split-face)))
           (when point (place point :cursor-inactive)))
         (values (nreverse ranges) ends)))))
@@ -626,6 +661,154 @@ picture is shown or on its way: its text is not there to put a cursor in."
            (not (tuatara.buffer:buffer-local buffer :image-hidden))
            (tuatara.buffer:buffer-local buffer :picture-view))))
 
+(defun lay-out-window (editor window)
+  "Lay WINDOW out with its point visible, its gutter's width worked out
+again: the rows it shows. Point is kept visible in the rows the window has
+under a panel of one row, so that a taller panel, while it lasts, only
+hides rows."
+  (setf (tuatara.display:window-margin window) (window-margin-for editor window))
+  (let ((shown (tuatara.display:window-height window)))
+    (setf (tuatara.display:window-height window)
+          (or (tuatara.display:window-full-height window) shown))
+    (unwind-protect (tuatara.display:window-ensure-point-visible window)
+      (setf (tuatara.display:window-height window) shown))))
+
+(defun lay-out-windows (editor)
+  "Lay out every window of EDITOR's frame as a frame drawn now would, its
+point visible, painting nothing: for commands that work from what a window
+shows (scrolling, moving to a row of it) while nothing is drawn."
+  (fit-windows editor (length (panel-rows editor)))
+  (dolist (window (editor-windows editor))
+    (when (plusp (tuatara.display:area-height window))
+      (lay-out-window editor window))))
+
+(defun text-row-piece (row pieces margin left width cursor rulers shift)
+  "The piece of a screen row (see PUT-SCREEN-ROW) showing ROW of a window LEFT
+columns from the screen's edge and WIDTH wide: its gutter of MARGIN columns
+from PIECES, each (STRING . FACE), its text in its faces, CURSOR (the face of
+another cursor after the end of its line, or NIL), the columns RULERS marks,
+each (AT FACE), and SHIFT, how far rows drawn large above move it down."
+  (let* ((gutter (if (plusp margin)
+                     (concatenate 'string (apply #'concatenate 'string (mapcar #'car pieces)) " ")
+                     ""))
+         ;; the gutter's colours only where it is shown (not in the hex view, whose offsets stand there)
+         (spans (append (and (plusp margin)
+                             (let ((pos 0))
+                               (loop for (text . face) in pieces
+                                     collect (prog1 (list pos (+ pos (length text)) face) (incf pos (length text))))))
+                        (mapcar (lambda (span)
+                                  (list (+ (first span) (length gutter)) (+ (second span) (length gutter)) (third span)))
+                                (tuatara.display:row-spans row))))
+         (text (concatenate 'string gutter (tuatara.display:row-string row)))
+         (cursor-cell (and (< (+ (length gutter) (tuatara.display:row-columns row)) width) cursor))
+         (extend (tuatara.display:row-extend row))
+         ;; a face carried past the line's end fills the row to the window's edge
+         (fill (if extend
+                   (max 0 (- width (length gutter) (tuatara.display:row-columns row) (if cursor-cell 1 0)))
+                   0)))
+    ;; another cursor after the end of the line's text
+    (when cursor-cell
+      (setf spans (append spans (list (list (length text) (1+ (length text)) cursor-cell)))
+            text (concatenate 'string text " ")))
+    (when (plusp fill)
+      (let ((last (car (last spans))) (end (+ (length text) fill)))
+        (setf spans (if (and last (= (second last) (length text)) (equal (third last) extend))
+                        (append (butlast spans) (list (list (first last) end extend)))
+                        (append spans (list (list (length text) end extend))))
+              text (concatenate 'string text (make-string fill :initial-element #\Space)))))
+    (multiple-value-bind (text spans) (ruler-cells text (remove nil spans :key #'third) rulers)
+      ;; a row drawn large, from after its gutter, or moved down by those above
+      (let ((scale (tuatara.display:row-scale row)))
+        (list left width text spans nil
+              (and (or (/= scale 1) (plusp shift)) (list (length gutter) scale shift))
+              (tuatara.display:string-columns gutter))))))
+
+(defstruct (drawn-row (:constructor make-drawn-row ()) (:copier nil))
+  "What a window's screen row was last drawn from, and the PIECE made of it
+\(ROW-PIECE): the TEXT of the row of the buffer it showed and the FACES of its
+characters (copies), its EXTEND, COLUMNS and SCALE, the GUTTER pieces, the
+CURSOR, the RULERS, the LEFT, WIDTH and MARGIN of the window and the SHIFT of
+the rows above. TEXT is NIL for a row past the buffer's text."
+  (text nil) (faces nil) (extend nil) (columns 0) (scale 1) (gutter nil) (cursor nil) (rulers nil)
+  (left 0) (width 0) (margin 0) (shift 0) (piece nil))
+
+(setf (documentation 'drawn-row-p 'function) "True when OBJECT is a DRAWN-ROW."
+      (documentation 'make-drawn-row 'function) "A DRAWN-ROW of nothing drawn yet."
+      (documentation 'drawn-row-text 'function) "The text of the buffer's row drawn, or NIL past the text."
+      (documentation 'drawn-row-faces 'function) "The faces of the row's characters drawn."
+      (documentation 'drawn-row-extend 'function) "The face carried past the end of the row's line."
+      (documentation 'drawn-row-columns 'function) "The columns the row's text took."
+      (documentation 'drawn-row-scale 'function) "How large the row was drawn."
+      (documentation 'drawn-row-gutter 'function) "The gutter's pieces beside the row."
+      (documentation 'drawn-row-cursor 'function) "The face of another cursor after the row's line, or NIL."
+      (documentation 'drawn-row-rulers 'function) "The columns marked down the window."
+      (documentation 'drawn-row-left 'function) "The window's left column."
+      (documentation 'drawn-row-width 'function) "The window's width."
+      (documentation 'drawn-row-margin 'function) "The width of the window's gutter."
+      (documentation 'drawn-row-shift 'function) "How far rows drawn large above moved the row down."
+      (documentation 'drawn-row-piece 'function) "The piece of the screen row made, or NIL before.")
+
+(defvar *drawn-rows* (make-hash-table :test 'eq :weakness :key :synchronized t)
+  "For each window, a vector of the DRAWN-ROW of each of its screen rows.")
+
+(defun drawn-row (window r)
+  "The DRAWN-ROW of WINDOW's screen row R."
+  (let ((rows (gethash window *drawn-rows*)))
+    (when (<= (length rows) r)
+      (setf rows (setf (gethash window *drawn-rows*)
+                       (let ((more (make-array (max (1+ r) (* 2 (length rows))))))
+                         (replace more rows)
+                         (loop for i from (length rows) below (length more)
+                               do (setf (svref more i) (make-drawn-row)))
+                         more))))
+    (svref rows r)))
+
+(defun drawn-as-before-p (drawn row pieces margin left width cursor rulers shift)
+  "True when DRAWN, a DRAWN-ROW, was drawn from what the screen row is to be
+drawn from now: ROW of the buffer (NIL past its text), with PIECES, MARGIN,
+LEFT, WIDTH, CURSOR, RULERS and SHIFT as ROW-PIECE takes them."
+  (and (drawn-row-piece drawn)
+       (if row
+           (let ((text (drawn-row-text drawn)) (faces (drawn-row-faces drawn))
+                 (now (tuatara.display:row-faces row)))
+             (and text (string= text (tuatara.display:row-string row))
+                  (= (length faces) (length now))
+                  (loop for i from 0 below (length faces) always (equal (svref faces i) (aref now i)))
+                  (equal (drawn-row-extend drawn) (tuatara.display:row-extend row))
+                  (= (drawn-row-columns drawn) (tuatara.display:row-columns row))
+                  (eql (drawn-row-scale drawn) (tuatara.display:row-scale row))
+                  (equal (drawn-row-gutter drawn) pieces)
+                  (equal (drawn-row-cursor drawn) cursor)))
+           (null (drawn-row-text drawn)))
+       (equal (drawn-row-rulers drawn) rulers)
+       (= (drawn-row-left drawn) left) (= (drawn-row-width drawn) width)
+       (= (drawn-row-margin drawn) margin) (= (drawn-row-shift drawn) shift)))
+
+(defun row-piece (window r row pieces margin left width cursor rulers shift)
+  "The piece of WINDOW's screen row R (see PUT-SCREEN-ROW): ROW of its buffer
+as TEXT-ROW-PIECE makes it from PIECES, MARGIN, LEFT, WIDTH, CURSOR, RULERS
+and SHIFT, or with no ROW a row past the text. The piece made the last time
+the row was drawn is given again while it is drawn from the same: a row is
+made only when something it shows has changed."
+  (let ((drawn (drawn-row window r)))
+    (if (drawn-as-before-p drawn row pieces margin left width cursor rulers shift)
+        (drawn-row-piece drawn)
+        (progn
+          (setf (drawn-row-text drawn) (and row (copy-seq (tuatara.display:row-string row)))
+                (drawn-row-faces drawn) (and row (coerce (copy-seq (tuatara.display:row-faces row)) 'simple-vector))
+                (drawn-row-extend drawn) (and row (tuatara.display:row-extend row))
+                (drawn-row-columns drawn) (if row (tuatara.display:row-columns row) 0)
+                (drawn-row-scale drawn) (and row (tuatara.display:row-scale row))
+                (drawn-row-gutter drawn) pieces (drawn-row-cursor drawn) cursor (drawn-row-rulers drawn) rulers
+                (drawn-row-left drawn) left (drawn-row-width drawn) width (drawn-row-margin drawn) margin
+                (drawn-row-shift drawn) shift)
+          (setf (drawn-row-piece drawn)
+                (if row
+                    (text-row-piece row pieces margin left width cursor rulers shift)
+                    (multiple-value-bind (text spans) (ruler-cells "" '() rulers)
+                      ;; below rows moved down: left to them
+                      (list left width text spans nil (and (plusp shift) (list 0 0 0))))))))))
+
 (defun window-pieces (editor window selected screen)
   "Lay WINDOW out with its point visible and add what it shows to SCREEN, a
 vector of the pieces of each screen row (PUT-SCREEN-ROW): its buffer's header
@@ -646,28 +829,28 @@ cells, a terminal's) are noted too, its text shown as it is."
         (width (tuatara.display:window-width window))
         (height (tuatara.display:window-height window)))
     (when (plusp (tuatara.display:area-height window))
-      (setf (tuatara.display:window-margin window) (window-margin-for editor window))
-      (let* ((rows (let ((shown (tuatara.display:window-height window)))
-                     (setf (tuatara.display:window-height window)
-                           (or (tuatara.display:window-full-height window) shown))
-                     (unwind-protect (tuatara.display:window-ensure-point-visible window)
-                       (setf (tuatara.display:window-height window) shown))))
+      (let* ((rows (lay-out-window editor window))
              (cursor-ends (multiple-value-bind (ranges ends) (other-cursors-in editor window rows)
                             ;; other cursors last, over everything else
-                            (tuatara.display:apply-highlights rows (append (window-highlights-for editor window rows) ranges))
+                            (apply #'tuatara.display:apply-highlights rows
+                                   (nconc (window-highlights-for editor window rows) (list ranges)))
                             ends))
              (margin (tuatara.display:window-margin window))
-             (cells (gutter-cells editor window rows))
+             ;; a gutter's cells only where it is shown
+             (cells (and (plusp margin) (gutter-cells editor window rows)))
              ;; the screen columns marked down the window
              (rulers (let ((shift (if (tuatara.display:window-wraps-p window) 0 (tuatara.display:window-hscroll window))))
-                       (loop for (column face) in (loop for f in *ruler-functions* append (funcall f window))
+                       (loop for (column face) in (loop for f in *ruler-functions* append (tuatara.runtime:call-hook-function f window))
                              for at = (+ margin (- column shift))
                              when (and (<= margin at) (< at width)) collect (list at face)))))
         (when (plusp (tuatara.display:window-header-rows window))
           (let ((header-top (tuatara.display:area-top window)))
             (multiple-value-bind (text spans)
-                (ignore-errors (funcall (tuatara.buffer:buffer-local (tuatara.display:window-buffer window) :header-line) window))
-              (push (list left width (or text "") (remove nil spans :key #'third) :header-line) (aref screen header-top)))
+                (tuatara.runtime:ignoring-errors-reported ("drawing a header line")
+                  (funcall (tuatara.display:buffer-header-line (tuatara.display:window-buffer window)) window))
+              (push (list left width (if (stringp text) text "") (and (listp spans) (remove nil spans :key #'third))
+                          :header-line)
+                    (aref screen header-top)))
             (when (tuatara.display:window-divider window)
               (push (list (+ left width) 1 *window-divider* '((0 1 :vertical-border)) nil) (aref screen header-top)))))
         (let ((image (picture-in-place (editor-frontend editor) (tuatara.display:window-buffer window))))
@@ -697,46 +880,11 @@ cells, a terminal's) are noted too, its text shown as it is."
         (let ((shift 0) (drawn (min (length rows) (tuatara.display:window-rows-drawn window))))
          (dotimes (r height)
           (push (if (< r drawn)
-                    (let* ((row (aref rows r))
-                           (pieces (pop cells))
-                           (gutter (if (plusp margin)
-                                       (concatenate 'string (apply #'concatenate 'string (mapcar #'car pieces)) " ")
-                                       ""))
-                           ;; the gutter's colours only where it is shown (not in the hex view, whose offsets stand there)
-                           (spans (append (and (plusp margin)
-                                               (let ((pos 0))
-                                                 (loop for (text . face) in pieces
-                                                       collect (prog1 (list pos (+ pos (length text)) face) (incf pos (length text))))))
-                                          (mapcar (lambda (span) (list (+ (first span) (length gutter)) (+ (second span) (length gutter)) (third span)))
-                                                  (tuatara.display:row-spans row))))
-                           (text (concatenate 'string gutter (tuatara.display:row-string row)))
-                           (cursor-cell (and (< (+ (length gutter) (tuatara.display:row-columns row)) width)
-                                             (cdr (assoc r cursor-ends))))
-                           (extend (tuatara.display:row-extend row))
-                           ;; a face carried past the line's end fills the row to the window's edge
-                           (fill (if extend
-                                     (max 0 (- width (length gutter) (tuatara.display:row-columns row) (if cursor-cell 1 0)))
-                                     0)))
-                      ;; another cursor after the end of the line's text
-                      (when cursor-cell
-                        (setf spans (append spans (list (list (length text) (1+ (length text)) cursor-cell)))
-                              text (concatenate 'string text " ")))
-                      (when (plusp fill)
-                        (let ((last (car (last spans))) (end (+ (length text) fill)))
-                          (setf spans (if (and last (= (second last) (length text)) (equal (third last) extend))
-                                          (append (butlast spans) (list (list (first last) end extend)))
-                                          (append spans (list (list (length text) end extend))))
-                                text (concatenate 'string text (make-string fill :initial-element #\Space)))))
-                      (multiple-value-bind (text spans) (ruler-cells text (remove nil spans :key #'third) rulers)
-                        ;; a row drawn large, from after its gutter, or moved down by those above
-                        (let ((scale (tuatara.display:row-scale row)))
-                          (prog1 (list left width text spans nil
-                                       (and (or (/= scale 1) (plusp shift)) (list (length gutter) scale shift))
-                                       (tuatara.display:string-columns gutter))
-                            (incf shift (1- scale))))))
-                    (multiple-value-bind (text spans) (ruler-cells "" '() rulers)
-                      ;; below rows moved down: left to them
-                      (list left width text spans nil (and (plusp shift) (list 0 0 0)))))
+                    (let ((row (aref rows r)))
+                      (prog1 (row-piece window r row (pop cells) margin left width (cdr (assoc r cursor-ends))
+                                        rulers shift)
+                        (incf shift (1- (tuatara.display:row-scale row)))))
+                    (row-piece window r nil nil margin left width nil rulers shift))
                 (aref screen (+ top r)))
           (when (tuatara.display:window-divider window)
             (push (list (+ left width) 1 *window-divider* '((0 1 :vertical-border)) nil) (aref screen (+ top r))))))
@@ -810,6 +958,30 @@ match."
                         collect (list (aref moved (min start (length text))) (aref moved (min end (length text))) face))))
         (values text spans))))
 
+(defun sandbox-outcome-words (outcome said &key (label "the program")
+                                                   (seconds-setting 'tuatara-user:*sandbox-seconds*))
+  "Why a program run shut in (SANDBOX-RUN) gave nothing, as a sentence
+beginning with LABEL, from how it went, OUTCOME, and what it SAID, as
+SANDBOX-RUN gives them: there is no sandbox here, and why; it was stopped
+after the seconds SECONDS-SETTING (a setting's symbol) holds, or by you; it
+printed more than it may; or it failed, with the first line of what it said.
+NIL when OUTCOME is :DONE."
+  (case outcome
+    (:done nil)
+    (:unavailable (format nil "~a runs only shut in the sandbox, and there is none here: ~a" label said))
+    (:timeout (format nil "~a was stopped after ~d seconds (~(~a~))"
+                      label (symbol-value seconds-setting) seconds-setting))
+    (:cancelled (format nil "~a was stopped" label))
+    (:too-much (format nil "~a printed more than it may" label))
+    (t (let ((line (string-trim " " (or (first (uiop:split-string (or said "") :separator '(#\Newline))) ""))))
+         (format nil "~a failed~@[: ~a~]" label
+                 (and (plusp (length line))
+                      (escape-controls (subseq line 0 (min 300 (length line))))))))))
+
+(defmethod tuatara.runtime:host-say-hook-failure ((host editor-host) text)
+  "Say TEXT in the echo area and *Messages*, its controls written out."
+  (message "~a" (escape-controls text)))
+
 (defun shown-name (text)
   "TEXT, a name from elsewhere, as a list, a menu or the window's title shows
 it: its control and invisible characters written out (ESCAPE-CONTROLS), and
@@ -822,13 +994,29 @@ what *TITLE-FUNCTIONS* add before it, when that has changed since it was last
 given; control and direction characters in it are written out, and octets
 that are not UTF-8 as \\xNN, as the mode line writes them (ESCAPE-CONTROLS)."
   (let* ((name (tuatara.buffer:buffer-name buffer))
-         (extra (format nil "~{~a ~}" (remove nil (mapcar (lambda (f) (ignore-errors (funcall f editor))) *title-functions*))))
+         (extra (format nil "~{~a ~}" (remove nil (mapcar (lambda (f) (tuatara.runtime:call-hook-function f editor)) *title-functions*))))
          (shown (editor-title-shown editor)))
     (unless (and shown (eq name (first shown)) (eq *gui-title* (second shown)) (equal extra (third shown)))
       (setf (editor-title-shown editor) (list name *gui-title* extra))
       (tuatara.frontend:frontend-set-title
        (editor-frontend editor)
-       (shown-name (concatenate 'string extra (or (ignore-errors (format nil *gui-title* name)) name)))))))
+       (shown-name (concatenate 'string extra
+                                (or (tuatara.runtime:ignoring-errors-reported ("making the title of ~a" name)
+                                      (format nil *gui-title* name))
+                                    name)))))))
+
+(defun frame-secret-p (editor)
+  "True when a window of EDITOR shows a buffer whose text is secret
+\(TUATARA.RUNTIME:SECRET-BUFFER-P), or the buffer commands act on is one:
+drawing the frame counts then as having a secret at hand. Looks at each
+window once, making nothing."
+  (labels ((secret-in (area)
+             (if (typep area 'tuatara.display:window)
+                 (tuatara.runtime:secret-buffer-p (tuatara.display:window-buffer area))
+                 (some #'secret-in (tuatara.display:split-children area)))))
+    (let ((window (editor-window editor)))
+      (or (tuatara.runtime:secret-buffer-p *current-buffer*)
+          (and window (secret-in (tuatara.display:area-root window)))))))
 
 (defun redisplay (editor)
   "Lay out every window with its point visible and paint a frame: each
@@ -836,63 +1024,72 @@ window's text rows and its mode line, the selected window's in :mode-line and
 the others' in :mode-line-inactive, a divider between windows side by side,
 the bottom panel (echo area, or the minibuffer with its candidates, or the key
 hints), and the cursor. Nothing here waits for a large file's lines to be
-counted: what needs them shows without them meanwhile."
-  (update-candidates editor)
-  (preview-selection editor)
-  (popup-follow editor)
-  (multiple-value-bind (panel minibuffer-row) (panel-rows editor)
-    (let* ((frontend (editor-frontend editor))
-           (tree-rows (fit-windows editor (length panel)))
-           (selected (editor-window editor))
-           (screen (make-array tree-rows :initial-element '()))
-           (width (editor-width editor))
-           (*frame-images* '()))
-      (dolist (window (editor-windows editor))
-        (window-pieces editor window (eq window selected) screen))
-      (let ((boxes (popup-boxes editor tree-rows minibuffer-row)))
-        (tuatara.frontend:frontend-begin-frame frontend)
-        (dotimes (r tree-rows)
-          (put-screen-row frontend r (or (aref screen r) (list (list 0 width "" nil nil))) width boxes))
-        (loop for (string face spans) in panel
-              for r from tree-rows
-              do (multiple-value-bind (string spans) (escape-controls string spans :raw-bytes)
-                   (multiple-value-bind (string spans face) (lay-boxes-over string spans face r boxes width)
-                     (tuatara.frontend:frontend-put-row frontend r string :face face :spans spans))))
-        ;; a picture a completion list lies over is left out while it is there: the list stays readable;
-        ;; one in a window with no room for it, too
-        (loop for (image row column columns rows offset) in *frame-images*
-              unless (or (not (plusp rows)) (not (plusp columns))
-                         (some (lambda (box) (box-over-area-p box row column columns rows)) boxes))
-                do (tuatara.frontend:frontend-put-image frontend image row column columns rows offset)))
-      (cond
-        ((editor-minibuffer-active editor)
-         ;; the minibuffer's cursor: the look for all, *CURSOR-SHAPE* and *CURSOR-COLOUR*
-         (tuatara.frontend:frontend-set-cursor
-          frontend (+ tree-rows minibuffer-row)
-          (minibuffer-column editor (editor-minibuffer-point editor))
-          (or *cursor-shape* :block) *cursor-colour*))
-        ((echo-question-p editor)
-         ;; a question in the echo area: the cursor after it, as the minibuffer's
-         (tuatara.frontend:frontend-set-cursor
-          frontend (+ tree-rows minibuffer-row) (echo-cursor-column editor)
-          (or *cursor-shape* :block) *cursor-colour*))
-        (t
-         (multiple-value-bind (row column) (tuatara.display:window-point-position selected)
-           (multiple-value-bind (shape colour) (cursor-look editor)
-             (if (and row (< row (tuatara.display:window-rows-drawn selected)))
-                 (tuatara.frontend:frontend-set-cursor
-                  frontend
-                  (+ (tuatara.display:window-text-top selected) row)
-                  (+ (tuatara.display:area-left selected) (tuatara.display:window-margin selected)
-                     (cursor-column-past-line selected column (tuatara.display:row-scale (aref (tuatara.display:window-rows selected) row))))
-                  ;; no cursor over a picture shown in place of the text, nor while one is on its
-                  ;; way, nor where the buffer marks point itself (the calendar's day)
-                  (let ((buffer (tuatara.display:window-buffer selected)))
-                    (if (or (shown-as-picture-p frontend buffer) (point-marked-p buffer)) :hidden shape))
-                  colour)
-                 ;; point is under the panel for now: the cursor waits after the echo row's text
-                 (tuatara.frontend:frontend-set-cursor
-                  frontend (+ tree-rows minibuffer-row)
-                  (min (panel-columns (first (nth minibuffer-row panel))) (1- (editor-width editor))) shape colour))))))
-      (tuatara.frontend:frontend-end-frame frontend)
-      (show-title editor (tuatara.display:window-buffer selected)))))
+counted: what needs them shows without them meanwhile. While recorded keys
+play, only the candidates of a question are brought up to date: nothing is
+drawn. While a window shows a secret buffer (FRAME-SECRET-P), a failure in
+drawing is reported without its text."
+  ;; what fails while a secret buffer is shown is reported without its text
+  (let ((tuatara.runtime:*secret-at-hand* (or tuatara.runtime:*secret-at-hand* (frame-secret-p editor))))
+    (update-candidates editor)
+    (when (editor-keys-playing editor) (return-from redisplay nil))
+    (preview-selection editor)
+    (popup-follow editor)
+    (multiple-value-bind (panel minibuffer-row) (panel-rows editor)
+      (let* ((frame (editor-frame editor))
+             (frontend (frame-frontend frame))
+             (tree-rows (fit-windows editor (length panel)))
+             (selected (frame-window frame))
+             (screen (make-array tree-rows :initial-element '()))
+             (width (frame-width frame))
+             (*frame-images* '()))
+        (dolist (window (editor-windows editor))
+          (window-pieces editor window (eq window selected) screen))
+        (let ((boxes (popup-boxes editor tree-rows minibuffer-row)))
+          (tuatara.frontend:frontend-begin-frame frontend)
+          (dotimes (r tree-rows)
+            (put-screen-row frontend r (or (aref screen r) (list (list 0 width "" nil nil))) width boxes))
+          (loop for (string face spans) in panel
+                for r from tree-rows
+                do (multiple-value-bind (string spans) (escape-controls string spans :raw-bytes)
+                     (multiple-value-bind (string spans face) (lay-boxes-over string spans face r boxes width)
+                       (tuatara.frontend:frontend-put-row frontend r string :face face :spans spans))))
+          ;; a picture a completion list lies over is left out while it is there: the list stays readable;
+          ;; one in a window with no room for it, too
+          (loop for (image row column columns rows offset) in *frame-images*
+                unless (or (not (plusp rows)) (not (plusp columns))
+                           (some (lambda (box) (box-over-area-p box row column columns rows)) boxes))
+                  do (tuatara.frontend:frontend-put-image frontend image row column columns rows offset)))
+        (cond
+          ((editor-minibuffer-active editor)
+           ;; the minibuffer's cursor: the look for all, *CURSOR-SHAPE* and *CURSOR-COLOUR*
+           (tuatara.frontend:frontend-set-cursor
+            frontend (+ tree-rows minibuffer-row)
+            (minibuffer-column editor (editor-minibuffer-point editor))
+            (or *cursor-shape* :block) *cursor-colour*))
+          ((echo-question-p editor)
+           ;; a question in the echo area: the cursor after it, as the minibuffer's
+           (tuatara.frontend:frontend-set-cursor
+            frontend (+ tree-rows minibuffer-row) (echo-cursor-column editor)
+            (or *cursor-shape* :block) *cursor-colour*))
+          (t
+           (multiple-value-bind (row column) (tuatara.display:window-point-position selected)
+             (multiple-value-bind (shape colour) (cursor-look editor)
+               (if (and row (< row (tuatara.display:window-rows-drawn selected)))
+                   (tuatara.frontend:frontend-set-cursor
+                    frontend
+                    (+ (tuatara.display:window-text-top selected) row)
+                    (+ (tuatara.display:area-left selected) (tuatara.display:window-margin selected)
+                       (cursor-column-past-line selected column
+                                                (tuatara.display:row-scale (aref (tuatara.display:window-rows selected) row))))
+                    ;; no cursor over a picture shown in place of the text, nor while one is on its
+                    ;; way, nor where the buffer marks point itself (the calendar's day)
+                    (let ((buffer (tuatara.display:window-buffer selected)))
+                      (if (or (shown-as-picture-p frontend buffer) (point-marked-p buffer)) :hidden shape))
+                    colour)
+                   ;; point is under the panel for now: the cursor waits after the echo row's text
+                   (tuatara.frontend:frontend-set-cursor
+                    frontend (+ tree-rows minibuffer-row)
+                    (min (panel-columns (first (nth minibuffer-row panel))) (1- (editor-width editor)))
+                    shape colour))))))
+        (tuatara.frontend:frontend-end-frame frontend)
+        (show-title editor (tuatara.display:window-buffer selected))))))

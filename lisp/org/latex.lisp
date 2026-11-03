@@ -16,8 +16,9 @@
 
 (defvar *org-macro-limit* (* 16 1024 1024)
   "The most characters a note may grow to as its macro calls are put in place
-for an export, a whole number; 16 MB when not set. The calls past it are left
-as they are written, and that is said.")
+for an export, 16 M: calls that would make a note of a few lines gigabytes
+long are past it. The calls past it are left as they are written, and that
+is said.")
 
 (defstruct (org-latex (:constructor make-org-latex (text directory file)) (:copier nil))
   "What writing one Org document as LaTeX knows: TEXT, the document as
@@ -67,6 +68,9 @@ ARGUMENTS, once however often it comes; NIL."
   (when *org-latex*
     (pushnew (apply #'format nil format arguments) (org-latex-notes *org-latex*) :test #'string=))
   nil)
+
+(defvar *org-latex-template* ""
+  "The text of the template the document being written is laid out by.")
 
 (defvar *org-latex-text* ""
   "The text whose nodes are being written as LaTeX: the document's, or a keyword's value.")
@@ -124,7 +128,7 @@ file at PATH (native), it standing where exports take files from
 \(ORG-EXPORT-FOLDER-P). When it may not, the export says so (ORG-LATEX-NOTES)
 and NIL is returned; a file that does not exist may be named, there being
 nothing to take in."
-  (or (null (ignore-errors (tuatara.io:path-stamp path))) ; nothing there to take in
+  (or (null (tuatara.io:path-stamp path :failure nil)) ; nothing there to take in
       (org-export-folder-p path)
       (export-note "~a: outside the note's folder, so left out of the export (*export-trusted-folders* names the folders it may also come from)"
                    (abbreviated-path path))))
@@ -174,7 +178,7 @@ directory as a second value; NIL for one on the network, not readable, or
 outside the folders an export may take files from (ORG-EXPORT-FILE-ALLOWED-P)."
   (let ((name (string-trim "\" " value)))
     (unless (or (zerop (length name)) (search "://" name))
-      (let ((path (ignore-errors (org-export-path name directory))))
+      (let ((path (ignoring-errors-reported ("finding the setup file ~a" name) (org-export-path name directory))))
         (when (and path (eq :regular (tuatara.io:path-kind path))
                    (org-export-file-allowed-p path))
           (let ((text (org-latex-setup-text path)))
@@ -188,13 +192,14 @@ being exported: NIL when it cannot be read, or when it is larger than
     (multiple-value-bind (text known) (if setups (gethash path setups) (values nil nil))
       (if known
           text
-          (let ((text (ignore-errors
-                       (tuatara.io:file-text path :limit *org-file-read-limit*
-                                                  :too-large (lambda (name size)
-                                                               (declare (ignore name size))
-                                                               (export-note "~a: a setup file larger than ~a, so not read"
-                                                                            (abbreviated-path path) (octets-words *org-file-read-limit*))
-                                                               nil)))))
+          (let ((text (ignoring-errors-reported ("reading the setup file ~a" path)
+                        (tuatara.io:file-text path :limit *org-file-read-limit*
+                                                   :too-large (lambda (name size)
+                                                                (declare (ignore name size))
+                                                                (export-note "~a: a setup file larger than ~a, so not read"
+                                                                             (abbreviated-path path)
+                                                                             (octets-words *org-file-read-limit*))
+                                                                nil)))))
             (when (and text *org-latex* (export-trusted-path-p path))
               (push text (org-latex-trusted *org-latex*)))
             (when setups (setf (gethash path setups) text))
@@ -286,7 +291,7 @@ is an error, never its text printed."
               ((or (eq value :too-long) (> growth room))
                (when *org-latex*
                  (setf (org-latex-macro-room *org-latex*) -1)
-                 (export-note "Macro calls would make the note longer than ~:d characters, so those past that are left as written (*org-macro-limit*)"
+                 (export-note "Macro calls would make the note longer than ~:d characters, so those past that are left as written"
                               *org-macro-limit*))
                nil)
               (t (when *org-latex* (decf (org-latex-macro-room *org-latex*) growth))
@@ -318,7 +323,7 @@ its arguments in."
             (t
              (let ((definition (assoc key (org-macro-definitions) :test #'string-equal)))
                (when (and (null definition) (org-hiding-kind key))
-                 (error "{{{~a(...)}}} hides text only in the enhanced export (M-x org-export-latex-pdf-enhanced), ~
+                 (refuse "{{{~a(...)}}} hides text only in the enhanced export (M-x org-export-latex-pdf-enhanced), ~
                          or with a #+macro: ~a line of your own" key key))
                (when definition
                  (let ((body (cdr definition)))
@@ -465,17 +470,76 @@ written: the start of the call when it is inside what a call stood for."
 
 ;;; Text
 
-(defun latex-escape (string &key (special-strings t) (newlines nil))
+(defvar *latex-text-before* nil
+  "While the text between a paragraph's objects is written: the character
+before it in the note, :OBJECT when an object ends there, NIL at the start of
+the text.")
+
+(defvar *latex-text-after* nil
+  "While the text between a paragraph's objects is written: the character
+after it in the note, :OBJECT when an object begins there, NIL at the end.")
+
+(defun latex-quote-boundary-p (c)
+  "True when C, the character beside a quote mark, is a place a quotation
+begins or ends: nothing, a space, a bracket or a dash, or another quote mark."
+  (or (null c)
+      (and (characterp c)
+           (or (member c '(#\Space #\Tab #\Newline #\No-break_space))
+               (find c "([{<)]}>-–—/*_+\"'“‘”’")))))
+
+(defparameter *quote-elisions* '("tis" "twas" "twere" "em" "n")
+  "The words a single quote may begin as an apostrophe, as in 'tis, 'twas and
+rock 'n' roll, not as an opening mark.")
+
+(defun latex-smart-quote (string i)
+  "The typographic mark for the straight quote at I in STRING (\" or ') in the
+style of the note's language (*EXPORT-QUOTE-MARKS*): opening where a word
+begins, closing everywhere else, and an apostrophe inside a word. A single
+quote before a digit ('90s) or before one of *QUOTE-ELISIONS* is an
+apostrophe too, so a quoted word that begins like one of them, 'em or 'tis
+meant as a quotation, is misread. The characters beside STRING are
+*LATEX-TEXT-BEFORE* and *LATEX-TEXT-AFTER* (:OBJECT where an object stands)."
+  (destructuring-bind (open-double close-double open-single close-single) (export-quote-marks)
+    (let* ((n (length string))
+           (c (char string i))
+           (before (if (plusp i) (char string (1- i)) *latex-text-before*))
+           (after (if (< (1+ i) n) (char string (1+ i)) *latex-text-after*))
+           (opening (and (latex-quote-boundary-p before)
+                         (not (and (characterp before) (find before ")]}>")))
+                         (not (latex-quote-boundary-p after))
+                         (not (and (char= c #\')
+                                   (characterp after)
+                                   (or (digit-char-p after)
+                                       (let ((end (or (position-if-not #'alpha-char-p string :start (1+ i)) n)))
+                                         (member (subseq string (1+ i) end) *quote-elisions* :test #'string-equal))))))))
+      (string (if (char= c #\")
+                  (if opening open-double close-double)
+                  (if opening open-single close-single))))))
+
+(defun export-smart-quotes (string)
+  "STRING with each straight quote written as the mark for it (LATEX-SMART-QUOTE)."
+  (if (find-if (lambda (c) (find c "\"'")) string)
+      (with-output-to-string (out)
+        (dotimes (i (length string))
+          (let ((c (char string i)))
+            (if (find c "\"'") (write-string (latex-smart-quote string i) out) (write-char c out)))))
+      string))
+
+(defun latex-escape (string &key (special-strings t) (newlines nil) (quotes nil))
   "STRING with the characters LaTeX gives meanings to written so they print
 as themselves; with SPECIAL-STRINGS, ... as an ellipsis, \\- as a place to
 hyphenate, and the words LaTeX and TeX as their logos; with NEWLINES, each
-line break kept as one. A zero-width space, which in a note only keeps the
-text beside it from being read as markup, is left out."
+line break kept as one; with QUOTES, each straight quote as the opening or
+closing mark of the note's language (LATEX-SMART-QUOTE). A zero-width space,
+which in a note only keeps the text beside it from being read as markup, is
+left out."
   (with-output-to-string (out)
     (loop with n = (length string)
           for i from 0 below n
           for c = (char string i)
-          do (cond ((and special-strings (char= c #\\) (< (1+ i) n) (char= (char string (1+ i)) #\-))
+          do (cond ((and quotes (find c "\"'"))
+                    (write-string (latex-smart-quote string i) out))
+                   ((and special-strings (char= c #\\) (< (1+ i) n) (char= (char string (1+ i)) #\-))
                     (write-string "\\-" out) (incf i))
                    ((and special-strings (char= c #\L) (<= (+ i 5) n) (string= "LaTeX" string :start2 i :end2 (+ i 5)))
                     (write-string "\\LaTeX{}" out) (incf i 4))
@@ -543,7 +607,7 @@ arrow is drawn but not copied: text copied from the PDF has none."
       (format nil "\\texttt{~a}" (latex-escape string :special-strings nil))))
 
 (defun latex-url (url)
-  "URL written for \\href and \\url."
+  "Uniform resource locator (URL) written for \\href and \\url."
   (with-output-to-string (out)
     (loop for c across url
           do (if (find c "%#") (progn (write-char #\\ out) (write-char c out)) (write-char c out)))))
@@ -689,9 +753,12 @@ when its :EXPORT: drawer says contents: no."
 (defun latex-verbatim-escape (string &key (tab-width 8))
   "STRING for a Verbatim environment that reads commands (commandchars \\, {
 and }): those three as the characters they are, tabs as spaces to the next
-stop of TAB-WIDTH, the rest as it is."
+stop of TAB-WIDTH, and a place the line may break after every
+*LATEX-CODE-RUN-LIMIT* characters with no space or mark of punctuation
+\(a break the Verbatim environment makes of its own) among them, the rest as
+it is."
   (with-output-to-string (out)
-    (let ((column 0))
+    (let ((column 0) (run 0))
       (loop for c across string
             do (case c
                  (#\\ (write-string "\\char92{}" out) (incf column))
@@ -701,7 +768,12 @@ stop of TAB-WIDTH, the rest as it is."
                           (dotimes (i spaces) (write-char #\Space out))
                           (incf column spaces)))
                  (#\Newline (write-char c out) (setf column 0))
-                 (t (write-char c out) (incf column)))))))
+                 (t (write-char c out) (incf column)))
+               (if (or (find c '(#\Space #\Tab #\Newline)) (find c *latex-code-break-after*))
+                   (setf run 0)
+                   (when (>= (incf run) *latex-code-run-limit*)
+                     (write-string "\\discretionary{}{}{}" out)
+                     (setf run 0)))))))
 
 (defun org-latex-code-faces (code name)
   "The face of each character of CODE read as the language NAME is (as a
@@ -718,10 +790,10 @@ NIL where no face is; NIL when the language is not known or not coloured."
                    (bytes (tuatara.text:rope-bytes rope))
                    (faces (make-array (length code) :initial-element nil)))
               ;; outer ranges first: the innermost face of a character is its last
-              (loop for (start end face) in (ignore-errors
-                                             (tuatara.syntax:language-highlights (injection-resolver style level)
-                                                                                 (symbol-name (language-name language))
-                                                                                 (list (cons 0 bytes)) rope 0 bytes))
+              (loop for (start end face) in (ignoring-errors-reported ("colouring the code of a ~a block" name)
+                                              (tuatara.syntax:language-highlights (injection-resolver style level)
+                                                                                  (symbol-name (language-name language))
+                                                                                  (list (cons 0 bytes)) rope 0 bytes))
                     do (loop for i from (tuatara.text:byte->char rope start) below (min (length code) (tuatara.text:byte->char rope end))
                              do (setf (aref faces i) face)))
               faces)))))))
@@ -775,16 +847,17 @@ stays where its lines can be broken anywhere."
 (defun org-latex-verbatim (value out &key caption node plain)
   "Write VALUE as it is, in a verbatim environment, to OUT, in a figure with
 CAPTION when there is one; nothing when VALUE is blank. In the enhanced
-export its long lines are broken where they meet the margin (at a space, or
-after / - . , ; : =, a mark where they break that text copied from the PDF
-leaves out), the code of a
-source block NODE coloured as Tuatara colours its language
+export its long lines are broken where they meet the margin (at a space,
+or after / - . , ; : =, or in a run with none, as a long digest, after every
+*LATEX-CODE-RUN-LIMIT* characters; the rest of the line is indented one em,
+with a mark where it breaks that text copied from the PDF leaves out), the
+code of a source block NODE coloured as Tuatara colours its language
 \(ORG-LATEX-CODE-FACES), and NODE's #+ATTR_LATEX :columns N sets it in N
 columns, :font in that type (\\small); with PLAIN, those two are not read."
   (let* ((value (string-right-trim '(#\Newline) value))
          (enhanced (org-latex-enhanced *org-latex*))
          (attributes (and node enhanced (not plain) (org-latex-attributes node "latex")))
-         (columns (let ((c (getf attributes :columns))) (and c (ignore-errors (parse-integer c)))))
+         (columns (let ((c (getf attributes :columns))) (and c (whole-number c))))
          (font (let ((f (getf attributes :font))) (and f (plusp (length f)) f))))
     (when (or (and columns (> columns 1)) font)
       (let ((inner (with-output-to-string (s) (org-latex-verbatim value s :caption caption :node node :plain t))))
@@ -792,7 +865,7 @@ columns, :font in that type (\\small); with PLAIN, those two are not read."
                 font (and columns (> columns 1)) columns inner font)
         (return-from org-latex-verbatim)))
     (let ((block (cond (enhanced
-                        (format nil "\\begin{Verbatim}[breaklines,breakafter=/-.\\,;:=,commandchars=\\\\\\{\\}]~%~a~%\\end{Verbatim}~%"
+                        (format nil "\\begin{Verbatim}[breaklines,breakautoindent=false,breakindent=1em,breakafter=/-.\\,;:=,commandchars=\\\\\\{\\}]~%~a~%\\end{Verbatim}~%"
                                 (org-latex-code-lines value (and node (eq (org-node-type node) 'src-block)
                                                                  (org-latex-code-faces value (org-property node :language))))))
                        (t (format nil "\\begin{verbatim}~%~a~%\\end{verbatim}~%" value)))))
@@ -963,7 +1036,7 @@ its name in a box instead when it cannot be shown, is not there (which the
 export then says), or is outside the folders an export may take files from
 \(ORG-EXPORT-FILE-ALLOWED-P)."
   (let* ((path (org-property node :path))
-         (full (or (ignore-errors (org-export-path path))
+         (full (or (ignoring-errors-reported ("finding ~a" path) (org-export-path path))
                    path))
          (width (getf attributes :width))
          (height (getf attributes :height))
@@ -1176,9 +1249,9 @@ between the places LATEX-CODE-BREAK-P allows."
 (defun org-latex-least-width (piece)
   "How many characters of text a table column is at least as wide as, its
 longest part that cannot go on to the next line PIECE characters long: a
-character of code is a fifth wider than one of text, and a cell has room on
+character of code is a third wider than one of text, and a cell has room on
 each side."
-  (+ (ceiling (* 6 piece) 5) 2))
+  (+ (ceiling (* 4 piece) 3) 2))
 
 (defun org-latex-table-columns (node columns lengths widest wraps longest fitted table-width special standard cookies lines
                                 &optional (characters *org-latex-text-characters*))
@@ -1293,7 +1366,26 @@ again at the top of each page, under CAPTION continued when it has one."
                           (format out "~a~%" (funcall rule-across :middle))))))
       (when (member :bottom lines) (format out "~a~%" (funcall rule-across :bottom))))))
 
-(defun org-latex-fitted-table (node out rows special standard columns cookies)
+(defun org-latex-table-run-limit (columns special standard)
+  "The most characters of code in a cell of the table with COLUMNS columns
+\(SPECIAL and STANDARD as ORG-EXPORT-TABLE-SHAPE found them) the enhanced
+export keeps together (*LATEX-CODE-RUN-LIMIT*): the usual, or fewer, the
+first that lets the table, in the smallest type it is set in, go across the
+text; the fewest when none does. A second value is the measure of the
+columns at that limit (EXPORT-TABLE-MEASURE), as a list."
+  (let ((limits (list *latex-code-run-limit* 10 6)))
+    (loop for (limit . more) on limits
+          do (let* ((*latex-code-run-limit* limit)
+                    (measure (multiple-value-list (export-table-measure columns special standard))))
+               (destructuring-bind (lengths widest wraps longest) measure
+                 (declare (ignore lengths))
+                 (when (or (null more)
+                           (<= (+ (loop for w in widest for wrap in wraps unless wrap sum w) (* 2 (1- columns))
+                                  (loop for wrap in wraps for piece in longest when wrap sum (max 12 (org-latex-least-width piece))))
+                               (* 1.25 *org-latex-text-characters*)))
+                   (return (values limit measure))))))))
+
+(defun org-latex-fitted-table (node out rows special standard columns cookies &optional measure)
   "Write the table NODE to OUT in the enhanced export, laid out to fit: as
 wide as it is when that fits across the text, else as wide as the text, the
 columns with words in them wrapping and sharing what the others leave, in
@@ -1304,8 +1396,10 @@ width and alignment, the table's width (full: margin to margin, its columns
 sharing it as their text does), its position (left, centre or right),
 whether the header repeats, and the lines printed (TABLE-LINES)
 \(ORG-LATEX-SETTING). ROWS, SPECIAL, STANDARD, COLUMNS and COOKIES are as
-ORG-LATEX-TABLE found them."
-  (multiple-value-bind (lengths widest wraps longest) (export-table-measure columns special standard)
+ORG-LATEX-TABLE found them, MEASURE the columns' EXPORT-TABLE-MEASURE as a
+list when it has been made."
+  (multiple-value-bind (lengths widest wraps longest)
+      (values-list (or measure (multiple-value-list (export-table-measure columns special standard))))
     (let* ((natural (+ (reduce #'+ widest) (* 2 (1- columns))))
            ;; the least it can be: the columns with words to wrap no narrower than their longest part kept whole
            (fixed (+ (loop for w in widest for wrap in wraps unless wrap sum w) (* 2 (1- columns))
@@ -1404,7 +1498,9 @@ out to fit (ORG-LATEX-FITTED-TABLE)."
                (sized (member environment '("tabularx" "tabulary") :test #'string=))
                (table (format nil "\\begin{~a}~:[~*~;{~a}~]{~a}~%~a\\end{~a}~%"
                               environment sized (or width "\\textwidth") align body environment)))
-          (cond (fit (org-latex-fitted-table node out rows special standard columns cookies))
+          (cond (fit (multiple-value-bind (limit measure) (org-latex-table-run-limit columns special standard)
+                       (let ((*latex-code-run-limit* limit))
+                         (org-latex-fitted-table node out rows special standard columns cookies measure))))
                 ((string= environment "longtable")
                  (format out "~@[~a~%~]\\begin{longtable}{~a}~%~@[\\caption{~a}~a\\\\~%~]~a\\end{longtable}~%"
                          font align caption (if caption (org-latex-name-label node) "") body))
@@ -1421,21 +1517,31 @@ out to fit (ORG-LATEX-FITTED-TABLE)."
 it: the text between them as TEXT, a function of a string, gives it, each
 object by OBJECT, a function of it and OUT, and the spaces after one as
 BLANK, a function of how many, gives them."
-  (let ((p begin))
+  (let ((p begin) (blanks 0))
     (dolist (o objects)
-      (write-string (funcall text (subseq *org-latex-text* p (org-node-begin o))) out)
+      (let ((*latex-text-before* (cond ((and (> p begin) (plusp blanks)) #\Space)
+                                       ((> p begin) :object)
+                                       ((plusp p) (char *org-latex-text* (1- p)))))
+            (*latex-text-after* :object))
+        (write-string (funcall text (subseq *org-latex-text* p (org-node-begin o))) out))
       (funcall object o out)
       (when (plusp (org-node-post-blank o))
         (write-string (funcall blank (org-node-post-blank o)) out))
-      (setf p (org-node-end o)))
+      (setf blanks (org-node-post-blank o)
+            p (org-node-end o)))
     (when (and p end (< p end))
-      (write-string (funcall text (subseq *org-latex-text* p end)) out))))
+      (let ((*latex-text-before* (cond ((and (> p begin) (plusp blanks)) #\Space)
+                                       ((> p begin) :object)
+                                       ((plusp p) (char *org-latex-text* (1- p)))))
+            (*latex-text-after* (and (< end (length *org-latex-text*)) (char *org-latex-text* end))))
+        (write-string (funcall text (subseq *org-latex-text* p end)) out)))))
 
 (defun org-latex-objects-between (objects begin end out &key newlines)
   "Write the text from BEGIN below END to OUT, OBJECTS, the objects in it, as LaTeX and the rest escaped."
   (let ((special (org-latex-option "-" t)))
     (org-export-objects-between objects begin end out
-                                :text (lambda (s) (latex-escape s :newlines newlines :special-strings special))
+                                :text (lambda (s) (latex-escape s :newlines newlines :special-strings special
+                                                     :quotes (and *org-latex* (org-latex-enhanced *org-latex*))))
                                 :object #'org-latex-object
                                 :blank (lambda (n) (make-string n :initial-element #\Space)))))
 
@@ -1675,7 +1781,7 @@ from the PDF as they are written."
           ((string= name "latex_class") (or (org-latex-keyword "LATEX_CLASS") "article"))
           ((string= name "latex_class_options") (or (org-latex-keyword "LATEX_CLASS_OPTIONS") "[11pt]"))
           ((string= name "packages")
-           (concatenate 'string (org-latex-packages engine)
+           (concatenate 'string (org-latex-packages engine) (org-latex-language-setup engine)
                         (if (org-latex-enhanced *org-latex*)
                             (format nil "\\usepackage{booktabs}~%\\usepackage{xltabular}~%\\usepackage{multicol}~%\\usepackage{float}~%~
                                          \\usepackage{xcolor}~%\\usepackage{fvextra}~%\\usepackage{pict2e}~%~a~
@@ -1727,7 +1833,7 @@ from the PDF as they are written."
 as written (:RAW or :PATH) and one holds a name to hide: printed as written,
 the call hides nothing."
   (when (and (member way '(:raw :path)) (some #'org-latex-hidden-call-p values))
-    (error "#+~(~a~): holds {{{redact(...)}}} or {{{protect(...)}}}, which the template prints as written, ~
+    (refuse "#+~(~a~): holds {{{redact(...)}}} or {{{protect(...)}}}, which the template prints as written, ~
             its text with it: not exported" name)))
 
 (defun org-latex-hidden-call-p (string)
@@ -1761,7 +1867,7 @@ alone)."
             (let* ((position (org-latex-original-position at))
                    (line (1+ (count #\Newline original :end (min position (length original)))))
                    (line (if lines (aref lines (min (1- (length lines)) (1- line))) line)))
-              (error "{{{~a(...)}}} on line ~d is where Org reads no macros (a code or example block, a link's address, ~
+              (refuse "{{{~a(...)}}} on line ~d is where Org reads no macros (a code or example block, a link's address, ~
                       raw LaTeX): its text would be printed, not hidden; not exported" kind line)))
           (setf start (1+ at)))))))
 
@@ -1810,7 +1916,9 @@ as a sixth the texts of its template and setup files that are your own
 with the files your own template asks the note for by its {{{NAME:path}}}
 places (a logo); and as a seventh the files its own pictures are drawn
 from (ORG-LATEX-IMAGE), the only ones of the note's folder a LaTeX program
-is shown when that folder may not be shown whole.
+is shown when that folder may not be shown whole; as an eighth the code
+of the language the note's #+LANGUAGE sets (sv), or NIL, for the
+hyphenation patterns it needs to be looked for (LATEX-LANGUAGE-PATTERNS-NOTE).
 LINES, for a part of a file exported alone, is the file's line of each line
 of TEXT, for the lines an error names."
   (let* ((directory (and file (tuatara.io:parent-path file)))
@@ -1842,15 +1950,21 @@ of TEXT, for the lines an error names."
                             (find-latex-template "article"))
                            (t (find-latex-template "org"))))
            ;; a template setting the note's text in columns: its tables kept whole
-           (body (let ((*org-latex-in-columns* (latex-template-body-in-columns-p template)))
-                   (with-output-to-string (s) (org-latex-element tree s))))
+           ;; source blocks coloured by a program of the export's own, as a file's text is
+           (body (let ((*org-latex-in-columns* (latex-template-body-in-columns-p template))
+                       (*org-latex-text-characters* (or (latex-template-text-characters template) *org-latex-text-characters*)))
+                   (tuatara.syntax:with-own-helper ()
+                     ;; what goes wrong counted against the note, however often exported
+                     (let ((tuatara.syntax:*parsing-buffer* (tuatara.syntax:text-key :file file :text original)))
+                       (with-output-to-string (s) (org-latex-element tree s))))))
            (missing '()))
       (when enhanced
         (multiple-value-setq (body missing) (org-latex-font-plan body (search "{{{fonts}}}" template))))
       (multiple-value-bind (latex map)
           (progn
             (setf (org-latex-refused *org-latex*) (template-refused-pictures template))
-            (org-latex-unmark (fill-latex-template template (org-latex-field body))))
+            (let ((*org-latex-template* template))
+              (org-latex-unmark (fill-latex-template template (org-latex-field body)))))
         (values latex (org-latex-output-name) map
                 ;; each character no font here has, with the line of the LaTeX it is first on
                 (let ((start (or (search "\\begin{document}" latex) 0)))
@@ -1861,7 +1975,9 @@ of TEXT, for the lines an error names."
                 (if (or (null template-path) (export-trusted-path-p template-path))
                     (list* template (append (org-latex-paths *org-latex*) (org-latex-trusted *org-latex*)))
                     (org-latex-trusted *org-latex*))
-                (reverse (org-latex-pictures *org-latex*)))))))
+                (reverse (org-latex-pictures *org-latex*))
+                (let ((row (org-latex-language-row)))
+                  (and row (not (latex-loads-language-p template)) (first row))))))))
 
 (defun org-latex-header-fonts ()
   "The fonts the document's #+LATEX_HEADER lines set with fontspec, (PART .

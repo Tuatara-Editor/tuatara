@@ -5,7 +5,8 @@
 
 (defparameter *global-bindings*
   '(("C-x C-f" find-file) ("C-x C-s" save-buffer) ("C-x s" save-some-buffers) ("C-x C-w" write-file) ("C-x C-c" save-buffers-kill-editor) ("C-x C-q" read-only-mode)
-    ("C-x C-r" find-recent-file) ("C-x x b" switch-other-buffer) ("C-x j" list-jobs) ("C-x J" stop-job)
+    ("C-x C-r" find-recent-file) ("C-x x b" switch-other-buffer)
+    ("C-x x n" narrow-to-region) ("C-x x s" narrow-to-section) ("C-x x w" widen) ("C-x j" list-jobs) ("C-x J" stop-job)
     ;; windows swapped, rotated and turned, beside the C-x 0 1 2 3 o ^ { } + - keys
     ("C-x w h" swap-window-left) ("C-x w j" swap-window-below) ("C-x w k" swap-window-above) ("C-x w l" swap-window-right)
     ("C-x w x" window-swap-states) ("C-x w r" rotate-windows) ("C-x w R" rotate-windows-back) ("C-x w t" transpose-window-layout)
@@ -22,6 +23,8 @@
     ("C-x T o" centred-text-mode) ("C-x T i" invisible-characters-mode) ("C-x T s" toggle-search-highlight) ("C-x T t" toggle-mode-line-tuatara)
     ;; characters and input methods
     ("C-x 8 &" insert-digraph) ("C-x 8 ." digraph-input-mode) ("C-x 8 -" input-method-off) ("C-\\" toggle-input-method)
+    ;; keys recorded and played back
+    ("C-x (" start-recording-keys) ("C-x )" stop-recording-keys) ("C-x e" play-recorded-keys)
     ("C-x b" switch-to-buffer) ("C-x k" kill-buffer) ("C-x u" undo) ("M-(" insert-pair) ("C-x C-;" comment-line) ("M-;" comment-dwim)
     ("M-x" execute-extended-command) ("M-:" eval-expression) ("M-g g" goto-line) ("M-g M-g" goto-line)
     ("C-f" forward-char) ("C-b" backward-char) ("C-n" next-line) ("C-p" previous-line)
@@ -38,11 +41,13 @@
     ("C-x SPC" rectangle-mark-mode) ("C-x r k" kill-rectangle) ("C-x r M-w" copy-rectangle-as-kill)
     ("C-x r d" delete-rectangle) ("C-x r y" yank-rectangle) ("C-x r t" string-rectangle)
     ("C-x r c" clear-rectangle) ("C-x r N" number-rectangle-lines)
+    ("C-x r s" copy-to-register) ("C-x r p" point-to-register) ("C-x r n" number-to-register)
+    ("C-x r +" add-to-register) ("C-x r i" insert-register) ("C-x r j" jump-to-register) ("C-x r l" list-registers)
     ("C-/" undo) ("C-_" undo) ("M-_" redo) ("C-?" redo) ("C-M-_" redo) ("C-g" keyboard-quit) ("C-u" universal-argument)
     ("M-^" delete-indentation) ("M-\\" delete-horizontal-space) ("M-SPC" cycle-spacing) ("C-o" open-line)
     ("M-m" back-to-indentation) ("C-x C-o" delete-blank-lines)
     ("C-t" transpose-chars) ("M-t" transpose-words) ("C-x C-t" transpose-lines) ("C-M-t" transpose-sexps)
-    ("C-S-<backspace>" kill-whole-line) ("M-z" zap-up-to-char) ("M-=" count-words-region)
+    ("C-S-<backspace>" kill-whole-line) ("M-z" zap-up-to-char) ("M-/" expand-word) ("C-M-/" complete-word) ("M-=" count-words-region)
     ("C-M-f" forward-sexp) ("C-M-b" backward-sexp) ("C-x h" mark-whole-buffer)
     ("C-M-n" forward-list) ("C-M-p" backward-list) ("C-M-u" backward-up-list) ("C-M-d" down-list)
     ("C-M-a" beginning-of-defun) ("C-M-e" end-of-defun) ("C-M-SPC" mark-sexp) ("C-M-@" mark-sexp)
@@ -99,7 +104,12 @@ in order: the global keymap, then the NORMAL state's keymap (its leader under
 first (\\=\\<buffers-mode>), as they work only in its buffers."
   (list *global-keymap* *tuatara-normal-keymap*))
 
-(defun keymap-for-keys (name)
+(defmethod host-key-keymaps ((host defaults-host))
+  "The keymaps a command's keys are named from (KEYMAPS-FOR-KEYS), once the
+defaults are installed in an editor; before, as the core has them."
+  (if *global-keymap* (keymaps-for-keys) (call-next-method)))
+
+(defmethod host-keymap-named ((host defaults-host) name)
   "The keymap called NAME in help and messages: one bind-key names (normal,
 leader, minibuffer, popup: KEYMAP-REGISTRY), a variable of the editor's
 holding one (*tuatara-normal-keymap*), else a major mode's (buffers-mode); NIL
@@ -116,14 +126,14 @@ when there is none."
   "Call FUNCTION, a step of starting the editor that follows the init file's
 settings; when it fails, say in *Messages* that WHAT failed and why, and go
 on, so that a setting written wrong never stops the editor starting."
-  (handler-case (funcall function)
+  (handler-case (reporting-errors ("~a" what) (funcall function))
     (error (e)
       (message "~a failed (check the init file's settings): ~a" what e)
       nil)))
 
 (defparameter *global-prefix-labels*
   '(("C-x n" "notes") ("C-x a" "agenda") ("C-x T" "toggles") ("C-x w" "windows") ("C-x x" "buffers") ("C-x 8" "characters")
-    ("C-x r" "rectangles") ("C-x m" "bookmarks") ("C-x p" "project") ("C-x 4" "other window") ("C-x RET" "input method") ("C-x /" "filters"))
+    ("C-x r" "rectangles and registers") ("C-x m" "bookmarks") ("C-x p" "project") ("C-x 4" "other window") ("C-x 5" "other frame") ("C-x RET" "input method") ("C-x /" "filters"))
   "What the key hints call the prefixes of the standard keys.")
 
 ;;; C-c in every mode
@@ -131,7 +141,7 @@ on, so that a setting written wrong never stops the editor starting."
 (defparameter *context-keys-left-free* '("x" "s" "t")
   "The keys after \\`C-c' never given a mode's command, left for your own (C-c x).")
 
-(defparameter *context-keys-kept-from* '(terminal-mode)
+(defparameter *context-keys-kept-from* '(tuatara.terminal-emulator:terminal-mode)
   "The modes whose keys are not put under \\`C-c': the terminal, where C-c goes to the program.")
 
 (defun leave-context-key-to-program (name)
@@ -176,10 +186,7 @@ so that \\`C-c' shows, and runs, what the buffer at hand can do in every mode
 (defun install-defaults (editor)
   "Install the standard bindings and the modal editing into EDITOR. Pass as :SETUP to RUN-EDITOR."
   (let ((global (editor-global-keymap editor)))
-    (setf *global-keymap* global
-          ;; help and messages name the keys bound now
-          *key-keymaps-function* 'keymaps-for-keys
-          *keymap-named-function* 'keymap-for-keys)
+    (setf *global-keymap* global)
     (define-keys global *global-bindings*)
     (label-keys global *global-prefix-labels*)
     (setf (editor-self-insert-command editor) 'self-insert-command)
@@ -187,42 +194,36 @@ so that \\`C-c' shows, and runs, what the buffer at hand can do in every mode
     (install-input-methods editor)
     (install-characters editor)
     (install-search-keys)
+    (install-recorded-keys)
     (install-search-filters)
     (install-rewrites)
     (install-jobs)
     (install-files)
+    (install-narrowing)
     (install-recent-files)
     (install-auto-save)
     (install-session)
     (install-encrypted)
-    (install-format)
-    (install-lsp editor)
-    (install-lsp-features editor)
-    (install-git)
-    (install-git-commits)
-    (install-git-stash)
-    (install-git-branches)
-    (install-git-log)
-    (install-git-remote)
-    (install-git-history)
-    (install-git-references)
-    (install-git-files)
-    (install-git-rewind)
-    (install-git-repository)
-    (install-git-patches)
+    (tuatara.lsp:install-lsp editor)
+    (tuatara.git:install-git)
+    (install-conflicts editor)
     (install-gpg-commands)
     (install-places)
     (install-bookmarks)
-    (install-packages)
+    (install-registers)
+    (tuatara.packages:install-packages)
     (install-file-local-variables)
     (install-snippets editor)
     (install-paths-in-text editor)
+    (install-next-place)
+    (tuatara.compile:install-compile)
+    (install-search-results)
     (install-state-lists)
     (install-indexes)
     (install-sorting)
     (install-hex)
     (install-modes)
-    (install-colouring editor)
+    (install-colouring)
     (install-lisp-mode editor)
     (install-show-paren)
     (install-xref)
@@ -230,42 +231,42 @@ so that \\`C-c' shows, and runs, what the buffer at hand can do in every mode
     (install-ielm)
     (install-macroexpand)
     (install-csv)
-    ;; commands made for one kind of buffer run there only
-    (setf *command-refusal-function* 'mode-command-refusal)
     (install-special-buffers)
     (install-entry-previews editor)
     (install-help)
     (install-faces-help)
     (install-about)
     (install-char-help)
-    (install-debug editor)
+    (install-debug)
     (install-notifications)
+    (install-man)
     (install-outline)
     (install-buffers)
     (install-rimu editor)
     (install-pdf-view)
-    (install-terminal)
+    (tuatara.terminal-emulator:install-terminal)
     (install-office-view)
     (install-metadata)
     (install-open-externally)
     (install-image-view)
     (install-org-folding editor)
+    (install-org-parts)
     (install-org-editing)
     (install-org-links editor) (install-markdown-links) (install-org-linking) (install-org-clock) (install-org-schedule)
     (install-org-items) (install-org-tables) (install-org-formulas) (install-code-files) (install-org-agenda-view editor) (install-org-notify)
     (install-display-toggles)
     (install-hl-line)
     (install-cursor-column)
-    (install-spellcheck editor)
+    (install-spellcheck)
     (install-soft-wrap)
     (install-centred-text)
     (install-visual-line)
     (install-windows)
-    (install-latex-export)
-    (install-redactions)
+    (install-frames)
+    (tuatara.export:install-latex-export)
     ;; after the windows' standard rules, which it adds to
     (install-calendar)
-    (install-diagnostics-place)
+    (tuatara.lsp:install-diagnostics-place)
     (install-journal)
     (install-font)
     (install-font-list)
@@ -275,17 +276,18 @@ so that \\`C-c' shows, and runs, what the buffer at hand can do in every mode
     ;; every mode's keys of one character under C-c too, once all are bound
     (mirror-context-keys)
     (tuatara.display:apply-theme *startup-theme*)
-    (setf *startup-buffer-function* 'session-startup-buffer
-          *new-buffer-function* 'remade-scratch-buffer)
     (setf *theme-chosen* nil *style-followed* nil)
     (load-user-config)
     ;; the logs in the cache folder the init file chose
     (after-init-step "Moving the logs to *cache-directory*"
                      (lambda ()
                        ;; each folder the init file named looked at now, so that one not there is said at once
-                       (when *cache-directory* (ignore-errors (tuatara.io:cache-directory)))
-                       (when *state-directory* (ignore-errors (tuatara.io:state-directory)))
-                       (when *packages-directory* (ignore-errors (packages-directory)))
+                       (when *cache-directory*
+                         (ignoring-errors-reported ("making the cache directory") (tuatara.io:cache-directory)))
+                       (when *state-directory*
+                         (ignoring-errors-reported ("making the state directory") (tuatara.io:state-directory)))
+                       (when *packages-directory*
+                         (ignoring-errors-reported ("making the packages directory") (tuatara.packages:packages-directory)))
                        (let ((words (tuatara.io:directories-in-memory-words)))
                          (when words (message "~{~a~^; ~}" words)))
                        (tuatara.io:move-session-log)

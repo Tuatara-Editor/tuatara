@@ -178,6 +178,9 @@ version)."
              "outlines (under the MPL 2.0), the keys that select by the syntax,"
              "the health report, and each language's servers and formatters")
     ("tree-sitter and the authors of its grammars" "parsing; each grammar's licence goes with every release")
+    ("tree-sitter-prolog, by Stefano Volpe and Shane Brewer" "parsing Prolog; under the GNU Affero GPL 3.0 or later, Shane"
+                                                            "Brewer's first part under the ISC licence: the only part of"
+                                                            "the release under the Affero GPL")
     ("Org mode" "the Org format and how Org files behave: folding, links,"
                 "tables, the agenda, clocking, source blocks, dynamic blocks,"
                 "and Org documents written as LaTeX for a PDF")
@@ -192,6 +195,8 @@ version)."
     ("eglot, Flymake and ElDoc" "how language servers look and feel: problems marked and"
                                 "shown under the cursor, a call's parameters in the echo area")
     ("Magit" "the state of a git repository, staging, commits and the log")
+    ("compile and smerge-mode" "running a build or the tests and going from place to place in its"
+                               "messages; the conflicts a merge left in a file, shown and put right")
     ("EasyPG" "the GnuPG commands, and .gpg files opened and saved")
     ("jinx, by Daniel Mendler" "checking the spelling of only the words shown, with enchant"
                                "called directly")
@@ -212,20 +217,35 @@ version)."
            "selection and the cursor column")
     ("Eugene W. Myers's difference algorithm" "the gutter's changes since the file was saved or committed")
     ("Unicode's text segmentation (UAX #29)" "a letter and its accents, or an emoji, taken as one character")
+    ("Unicode's bidirectional algorithm (UAX #9)" "right-to-left text shown in the order it is read in, checked"
+                                                  "against Unicode's own BidiTest.txt, BidiCharacterTest.txt"
+                                                  "and BidiBrackets.txt")
     ("freedesktop.org's trash specification" "the trash Rimu puts files in and lists")
     ("freedesktop.org's desktop notifications" "notifications told on the desktop, the agenda's and"
                                                "packages', through libnotify's notify-send")
     ("The file program" "a file's kind told by its first octets, never by its name")
+    ("PDF (ISO 32000)" "the structure of a PDF read by file-metadata: its objects, cross-reference"
+                       "tables, streams and filters, and page content")
     ("RFC 1345" "the digraphs, as Emacs's rfc1345 input method has them")
     ("RFC 3339" "dates and times as the named date patterns read and compare them")
     ("NO_COLOR (no-color.org)" "no colours in the terminal where NO_COLOR is set")
     ("Ghostty, by Mitchell Hashimoto and its contributors" "the terminal library M-x terminal keeps its screen with"
                                                            "(libghostty-vt)")
+    ("simdutf, Highway, Wuffs and uucode" "the libraries the terminal library is built with: Unicode"
+                                          "text checked and converted (simdutf), many characters worked"
+                                          "on at once (Highway), pictures' pixels (Wuffs) and the Unicode"
+                                          "character properties (uucode); each one's licence goes with"
+                                          "every release")
+    ("Zig and LLVM's libc++" "the compiler the terminal library is built with, whose standard"
+                             "library and C++ library are compiled into it; their licences go"
+                             "with every release")
+    ("The Unicode Character Database" "the characters' properties the terminal library knows them by,"
+                                      "through uucode; its licence goes with every release")
     ("kitty, by Kovid Goyal" "the graphics and keyboard protocols")
     ("Ao" "the colour theme, by the same author (github.com/YardQuit/ao)")
     ("SBCL" "the Common Lisp Tuatara is written in and runs on")
-    ("alexandria, babel, CFFI, cl-ppcre, trivial-features, ASDF and Quicklisp" "the Common Lisp libraries Tuatara is built with; each one's"
-                                                                               "licence goes with every release"))
+    ("alexandria, cl-ppcre, ASDF and Quicklisp" "the Common Lisp libraries Tuatara is built with; each one's"
+                                                 "licence goes with every release"))
   "Where Tuatara's ideas come from, as \\[credits] shows them: each a name and
 the lines saying what came from it.")
 

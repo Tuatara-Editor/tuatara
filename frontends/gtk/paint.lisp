@@ -95,7 +95,8 @@ of FACE (the editor's own for NIL)."
   "The font the window is written in: *GUI-FONT*, or the desktop's monospace
 font, or Monospace 11."
   (or *gui-font*
-      (ignore-errors (g-settings-string "org.gnome.desktop.interface" "monospace-font-name"))
+      (tuatara.runtime:ignoring-errors-reported ("asking the desktop for its font")
+        (g-settings-string "org.gnome.desktop.interface" "monospace-font-name"))
       "Monospace 11"))
 
 (defun make-fonts (name &optional (scale 1))
@@ -117,7 +118,7 @@ bold, italic, bold italic. A NAME without a size is taken at 11 points."
     (unwind-protect
          (progn
            (pango-layout-set-font-description layout (aref (gtk-fonts f) 0))
-           (pango-layout-set-text layout "M" -1)
+           (pango-layout-set-text layout "M")
            (multiple-value-bind (width height) (pango-layout-get-pixel-size layout)
              (sb-thread:with-mutex ((gtk-lock f))
                (setf (cell-width f) (max 1 width)
@@ -222,7 +223,7 @@ let go of when those change (FORGET-LAYOUTS)."
             (remhash key (aref layouts 1))
             (setf (gethash key (aref layouts 0)) old)))
         (let ((layout (font-layout f cr font index)))
-          (pango-layout-set-text layout text -1)
+          (pango-layout-set-text layout text)
           (setf (gethash key (aref layouts 0)) layout)))))
 
 (defun draw-text (f cr layouts text column y flags &optional font shape)
@@ -298,8 +299,11 @@ stand otherwise than the same letters split among colours."
                (and (< (char-code (char string i)) 128)
                     (= (tuatara.text:string-cluster-end string i end) (1+ i)))))
         (cond
-          ((and font (not each))
-           ;; a face's own font: the run in one piece, as that font spaces it
+          ((and font (not each)
+                (loop for i from start below end
+                      never (tuatara.display:right-to-left-code-p (char-code (char string i)))))
+           ;; a face's own font: the run in one piece, as that font spaces it (right-to-left text, in the order it
+           ;; is read already, a letter at a time below, so that it is not turned round again)
            (draw-text f cr layouts (subseq string start end) column y flags font))
           (t
            (let ((at column) (i start))
@@ -320,6 +324,78 @@ stand otherwise than the same letters split among colours."
       (when (member :underline flags)
         (draw-underline f cr column columns y flags underline))
       (+ column columns))))
+
+(defun logical-text (string start end)
+  "The characters of STRING from START below END, a run of right-to-left text
+in the order it is read, in the order they are written: its grapheme
+clusters turned round, each bracket given back its own shape."
+  (let ((clusters '()) (i start))
+    (loop while (< i end)
+          do (let ((next (tuatara.text:string-cluster-end string i end)))
+               (push (if (= next (1+ i))
+                         (string (tuatara.display:mirrored-char (char string i)))
+                         (subseq string i next))
+                     clusters)
+               (setf i next)))
+    (apply #'concatenate 'string clusters)))
+
+(defun joined-runs (string spans)
+  "The runs of STRING, a row as drawn, of right-to-left text holding Arabic
+letters, which join: each (START . END), from the SPANS whose face holds
+:right-to-left, neighbouring ones together; NIL for none."
+  (let ((runs '()))
+    (loop for (start end face) in spans
+          when (tuatara.display:right-to-left-face-p face)
+            do (if (and runs (= (cdr (first runs)) start))
+                   (setf (cdr (first runs)) end)
+                   (push (cons start end) runs)))
+    (remove-if-not (lambda (run)
+                     (loop for i from (car run) below (min (cdr run) (length string))
+                           thereis (tuatara.display:arabic-joining (char-code (char string i)))))
+                   (nreverse runs))))
+
+(defun paint-joined-run (f cr layouts string faces face start end column y)
+  "Paint the characters of STRING from START below END, a run of right-to-left
+text holding Arabic letters, from COLUMN on the row whose top is at Y: the
+run handed to Pango in the order it is written, so that its letters are
+joined as they are written, drawn as wide as its cells, its ends on theirs;
+each stretch of one face of FACES (FACE where none) in its own colours, kept
+to its cells. Returns the column after them."
+  (let* ((cw (cell-width f)) (ch (cell-height f))
+         (columns (tuatara.display:string-columns string :start start :end end))
+         ;; in an embedding of its own, so that Pango lays it out from right to left whatever the run's first letter
+         (text (concatenate 'string (string (code-char #x202B)) (logical-text string start end)
+                            (string (code-char #x202C))))
+         (i start) (at column))
+    (loop while (< i end)
+          do (let* ((spec (or (aref faces i) face))
+                    (j (loop for j from (1+ i) below end
+                             unless (equal (or (aref faces j) face) spec) return j
+                             finally (return end)))
+                    (wide (tuatara.display:string-columns string :start i :end j)))
+               (multiple-value-bind (fg bg flags font) (face-colours spec)
+                 (when spec
+                   (set-colour cr bg)
+                   (cairo-rectangle cr (float (* at cw) 1d0) (float y 1d0) (float (* wide cw) 1d0) (float ch 1d0))
+                   (cairo-fill cr))
+                 (cairo-save cr)
+                 (cairo-rectangle cr (float (* at cw) 1d0) (float y 1d0) (float (* wide cw) 1d0) (float ch 1d0))
+                 (cairo-clip cr)
+                 (set-colour cr fg)
+                 (let* ((layout (kept-layout f cr layouts text font (font-index flags)))
+                        (natural (max 1 (pango-layout-get-pixel-size layout))))
+                   ;; the joined letters drawn as wide as the run's cells, so that both ends meet the grid's and
+                   ;; none is cut off
+                   (cairo-translate cr (float (* column cw) 1d0)
+                                    (float (+ y (- (cell-baseline f)
+                                                   (round (pango-layout-get-baseline layout) +pango-scale+)))
+                                           1d0))
+                   (cairo-scale cr (/ (float (* columns cw) 1d0) natural) 1d0)
+                   (cairo-move-to cr 0d0 0d0)
+                   (pango-cairo-show-layout cr layout))
+                 (cairo-restore cr))
+               (setf i j at (+ at wide))))
+    (+ column columns)))
 
 (defun char-index-at (string column)
   "The index of the character of STRING at COLUMN, the first of its grapheme
@@ -352,25 +428,36 @@ the first on top."
     (let* ((string (tuatara.display:displayable string))
            (n (length string))
            (faces (make-array n :initial-element nil))
+           (joined (joined-runs string spans))
            (cw (cell-width f)) (ch (cell-height f)))
       (loop for (start end span-face) in spans
             do (loop with combined = (tuatara.display:combine-faces span-face face)
                      for i from (max 0 start) below (min n end)
                      do (setf (aref faces i) combined)))
-      (labels ((paint-chars (string faces face start below column y &optional each (layouts layouts))
+      (labels ((paint-chars (string faces face start below column y &optional each (layouts layouts) joined)
+                 ;; JOINED, runs of right-to-left text whose Arabic letters Pango joins (JOINED-RUNS)
                  (let ((i start))
                    ;; no further than the columns asked for
                    (loop while (and (< i below) (< column to))
-                         do (let* ((spec (or (aref faces i) face))
-                                   ;; a mark or a joined emoji goes with the letter it is drawn on, whatever its own face
-                                   (j (tuatara.text:string-cluster-end string i below)))
-                              (loop while (and (< j below) (equal (or (aref faces j) face) spec))
-                                    do (setf j (tuatara.text:string-cluster-end string j below)))
-                              (setf column (if (or (>= column to)
-                                                   (<= (+ column (tuatara.display:string-columns string :start i :end j)) from))
-                                               (+ column (tuatara.display:string-columns string :start i :end j))
-                                               (paint-run f cr layouts string i j column y spec :each each)))
-                              (setf i j))))))
+                         do (let ((run (assoc i joined)))
+                              (if run
+                                  (let ((j (min below (cdr run))))
+                                    (setf column (paint-joined-run f cr layouts string faces face i j column y)
+                                          i j))
+                                  (let* ((spec (or (aref faces i) face))
+                                         ;; a mark or a joined emoji goes with the letter it is drawn on, whatever its
+                                         ;; own face
+                                         (j (tuatara.text:string-cluster-end string i below))
+                                         (stop (loop for (from) in joined
+                                                     when (> from i) minimize from into low
+                                                     finally (return (if (plusp low) (min low below) below)))))
+                                    (loop while (and (< j stop) (equal (or (aref faces j) face) spec))
+                                          do (setf j (tuatara.text:string-cluster-end string j below)))
+                                    (let ((columns (tuatara.display:string-columns string :start i :end j)))
+                                      (setf column (if (or (>= column to) (<= (+ column columns) from))
+                                                       (+ column columns)
+                                                       (paint-run f cr layouts string i j column y spec :each each))))
+                                    (setf i j))))))))
         (ecase pass
           (:grid
            ;; the row's face covers the whole row, past the text too
@@ -382,7 +469,7 @@ the first on top."
                                                (list (list n n)))
                    do (when (< i from)
                         (paint-chars string faces face i from
-                                     (tuatara.display:string-columns string :end i) y))
+                                     (tuatara.display:string-columns string :end i) y nil layouts joined))
                       (setf i (max i below)))))
           (:large
            (loop for (start end scale shift height) in scales
@@ -880,7 +967,7 @@ place. The texture, in the screen's own pixels, fills the picture's size."
     (loop for i from slot below (length pictures)
           for entry = (aref pictures i)
           when (fourth entry)
-            do (gtk-picture-set-paintable (first entry) (cffi:null-pointer))
+            do (gtk-picture-set-paintable (first entry) (null-pointer))
                (gtk-widget-set-visible (first entry) nil)
                (setf (fourth entry) nil))))
 
@@ -889,13 +976,13 @@ place. The texture, in the screen's own pixels, fills the picture's size."
 the rows: a picture of one pixel, stretched to that size."
   (let ((colour (nth-value 1 (face-colours nil))) (ground (gtk-ground f)))
     (unless (equal colour (gtk-ground-colour f))
-      (cffi:with-foreign-object (pixel :uint8 4)
+      (sb-alien:with-alien ((pixel (array (sb-alien:unsigned 8) 4)))
         (destructuring-bind (r g b) colour
-          (setf (cffi:mem-aref pixel :uint8 0) (round (* 255 b))
-                (cffi:mem-aref pixel :uint8 1) (round (* 255 g))
-                (cffi:mem-aref pixel :uint8 2) (round (* 255 r))
-                (cffi:mem-aref pixel :uint8 3) 255))
-        (let* ((bytes (g-bytes-new pixel 4))
+          (setf (sb-alien:deref pixel 0) (round (* 255 b))
+                (sb-alien:deref pixel 1) (round (* 255 g))
+                (sb-alien:deref pixel 2) (round (* 255 r))
+                (sb-alien:deref pixel 3) 255))
+        (let* ((bytes (g-bytes-new (sb-alien:alien-sap pixel) 4))
                (texture (gdk-memory-texture-new 1 1 29 bytes 4)))
           (g-bytes-unref bytes)
           (gtk-picture-set-paintable ground texture)
@@ -910,7 +997,7 @@ red, green and blue, with alpha when it has four channels."
          (channels (tuatara.frontend:image-channels image))
          (pixels (tuatara.frontend:image-pixels image))
          (stride (* width channels)))
-    (cffi:with-pointer-to-vector-data (data pixels)
+    (tuatara.io:with-octets-sap (data pixels)
       (let* ((bytes (g-bytes-new data (length pixels)))
              ;; 5: R8G8B8A8, 7: R8G8B8 (GdkMemoryFormat)
              (texture (gdk-memory-texture-new width (tuatara.frontend:image-height image)
@@ -984,8 +1071,8 @@ TOP, and have it painted again; tell the input method where it is."
       (gtk-im-context-set-cursor-location (gtk-im f) (round (+ left x)) (round (+ top y)) (round w) (round h)))))
 
 (define-callback on-draw-cursor :void ((area :pointer) (cr :pointer) (width :int) (height :int) (data :pointer))
-  (declare (ignore area width height data))
-  (let* ((f *frontend*)
+  (declare (ignore area width height))
+  (let* ((f (data-window data))
          (frame (and f (sb-thread:with-mutex ((gtk-lock f)) (gtk-shown f)))))
     (when frame
       (let ((layouts (frame-layouts f)) (at (gtk-cursor-at f)))
@@ -1058,8 +1145,8 @@ other way are let go of (LET-GO-OF-PICTURES)."
   (unless (eq on (gtk-on-card f))
     (setf (gtk-on-card f) on)
     (let-go-of-pictures f on)
-    (gtk-drawing-area-set-draw-func (gtk-area f) (if on (cffi:null-pointer) (cffi:callback on-draw))
-                                    (cffi:null-pointer) (cffi:null-pointer))
+    (gtk-drawing-area-set-draw-func (gtk-area f) (if on (null-pointer) (callback on-draw))
+                                    (window-data f) (null-pointer))
     (gtk-widget-set-visible (gtk-grid f) on)
     (gtk-widget-set-visible (gtk-pictures-layer f) on)
     (gtk-widget-set-visible (gtk-above f) on)))
@@ -1077,7 +1164,7 @@ from an offset, cut to its cells, painted whole by the drawing area."
                (notany #'sixth (frame-images frame)))
           (progn
             (drawn-on-card f t)
-            (handler-case (place-pieces f frame)
+            (handler-case (tuatara.runtime:reporting-errors ("showing the rows") (place-pieces f frame))
               (error (e) (format *error-output* "~&Tuatara could not show the rows: ~a~%" e))))
           (progn
             (drawn-on-card f nil)
@@ -1114,12 +1201,12 @@ pictures, what the input method is composing, the cursor."
                 (paint-cursor f cr layouts frame focused))))))))
 
 (define-callback on-draw :void ((area :pointer) (cr :pointer) (width :int) (height :int) (data :pointer))
-  (declare (ignore data))
-  (let ((f *frontend*))
+  (let ((f (data-window data)))
     (when f
       (follow-display-scale f area)
       (let ((frame (sb-thread:with-mutex ((gtk-lock f)) (gtk-shown f))))
-        (handler-case (paint-frame f cr width height frame (gtk-focused f))
+        (handler-case (tuatara.runtime:reporting-errors ("painting the window")
+                        (paint-frame f cr width height frame (gtk-focused f)))
           (error (e) (format *error-output* "~&Tuatara could not paint: ~a~%" e)))
         ;; where the cursor is, for the input method's window
         (when frame
@@ -1161,8 +1248,8 @@ height in pixels, and the width and height of a cell; its value is returned."
          (offset (+ (* y (cairo-image-surface-get-stride surface)) (* 4 x))))
     ;; 32 bits a pixel, blue first in memory on this machine
     (tuatara.display:colour-hex
-     (list (cffi:mem-aref data :uint8 (+ offset 2)) (cffi:mem-aref data :uint8 (+ offset 1))
-           (cffi:mem-aref data :uint8 offset)))))
+     (list (sb-sys:sap-ref-8 data (+ offset 2)) (sb-sys:sap-ref-8 data (+ offset 1))
+           (sb-sys:sap-ref-8 data offset)))))
 
 (defun paint-frame-to-png (frame path &rest options)
   "Paint FRAME as the window would into a PNG file at PATH, without a display;

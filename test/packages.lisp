@@ -41,23 +41,29 @@ alpha later, then a commit no tag names, \"newest\"."
   "Forget the packages from DIR: what was remembered of them, what was kept of
 them and compiled, the session's lists of them and their versions' setting."
   (let ((where (format nil "file://~a" (string-right-trim "/" (namestring dir)))))
-    (tuatara.defaults::state-list-drop tuatara.defaults::*fetched-packages*
+    (tuatara.defaults::state-list-drop tuatara.packages::*fetched-packages*
                                        (remove-if-not (lambda (key) (search (namestring dir) key))
-                                                      (mapcar #'first (tuatara.defaults::state-list-entries tuatara.defaults::*fetched-packages*))))
-    (let ((kept (format nil "~a~a/" (tuatara.defaults::packages-directory) (tuatara.io:percent-encoded where :safe "._-"))))
-      (dolist (folder (list kept (directory-namestring (tuatara.defaults::package-fasl (merge-pathnames "x" kept)))))
+                                                      (mapcar #'first (tuatara.defaults::state-list-entries tuatara.packages::*fetched-packages*))))
+    (let ((kept (format nil "~a~a/" (tuatara.packages:packages-directory) (tuatara.io:percent-encoded where :safe "._-"))))
+      (dolist (folder (list kept (directory-namestring (tuatara.packages::package-fasl (merge-pathnames "x" kept)))))
         (when (probe-file folder)
           (uiop:delete-directory-tree (pathname folder) :validate (lambda (p) (search "/tuatara/packages/" (namestring p)))))))
-    (let ((fasls (directory-namestring (tuatara.defaults::package-fasl (merge-pathnames "x" dir)))))
+    (let ((fasls (directory-namestring (tuatara.packages::package-fasl (merge-pathnames "x" dir)))))
       (when (probe-file fasls)
         (uiop:delete-directory-tree (pathname fasls) :validate (lambda (p) (search "/tuatara/packages/" (namestring p)))))))
-  (setf tuatara.defaults::*declared-packages* '()
-        tuatara.defaults::*loaded-packages* '()
-        tuatara.defaults::*package-failures* '()
-        tuatara.defaults::*refused-packages* '())
+  (setf tuatara.packages::*declared-packages* '()
+        tuatara.packages::*loaded-packages* '()
+        tuatara.packages::*package-failures* '()
+        tuatara.packages::*refused-packages* '())
   (makunbound 'tuatara-user::*package-test-version*)
   (makunbound 'tuatara-user::*package-test-two*)
   (makunbound 'tuatara-user::*package-test-config*))
+
+(defparameter *package-until-bound* 120
+  "The bound on a wait of the package tests: loading a package fetches,
+checks and compiles it apart in the background, and the first one compiled
+makes the core it is compiled from; each test waits for that to happen, this
+only ends a wait that never would.")
 
 (defmacro with-package-repository ((dir where) &body body)
   "Run BODY with DIR a new repository of packages (PACKAGE-REPOSITORY) and
@@ -65,13 +71,19 @@ WHERE its file:// address, all of it forgotten afterwards."
   `(with-test-directory (,dir)
      (package-repository ,dir)
      (let ((,where (format nil "file://~a" (string-right-trim "/" (namestring ,dir))))
-           (tuatara.defaults::*package-sources* '()))
+           (tuatara.defaults::*package-sources* '())
+           (*until-bound* *package-until-bound*))
        (unwind-protect (progn ,@body)
          (forget-test-packages ,dir)))))
 
 (defun package-test-version ()
   "The version of pkgone loaded, or NIL."
   (and (boundp 'tuatara-user::*package-test-version*) (symbol-value 'tuatara-user::*package-test-version*)))
+
+(defun package-question-shown ()
+  "True while the question whether to compile and load a package waits for its key."
+  (and tuatara.command::*key-question*
+       (search "Compile and load the package" (or (tuatara.command:editor-message tuatara.command:*editor*) ""))))
 
 (define-test (packages newest-tag-by-date)
   ;; no version asked for: the tag made last, though its name sorts first; only its folder kept
@@ -83,14 +95,14 @@ WHERE its file:// address, all of it forgotten afterwards."
                                                                                   (setf tuatara-user::*package-test-config* (list tuatara-user::*package-test-version*)))
                                               t))
                                (list :until (lambda () (package-test-version)))
-                               (list :until (lambda () (setf folder (nth-value 1 (tuatara.defaults::package-state "pkgone" "test" nil)))))))
+                               (list :until (lambda () (setf folder (nth-value 1 (tuatara.packages::package-state "pkgone" "test" nil)))))))
       (is equal "alpha" (package-test-version))
       ;; its :config ran once it had loaded, in the background
       (is equal '("alpha") (symbol-value 'tuatara-user::*package-test-config*))
       (true (search "/pkgone/" folder))
       (true (probe-file (merge-pathnames "pkgone.lisp" folder)))
       (false (probe-file (merge-pathnames "../pkgtwo/" folder)))
-      (is equal "alpha" (third (tuatara.defaults::package-state "pkgone" "test" nil)))
+      (is equal "alpha" (third (tuatara.packages::package-state "pkgone" "test" nil)))
       ;; the next start: loaded at once from what was kept, nothing fetched
       (makunbound 'tuatara-user::*package-test-version*)
       (true (tuatara-user:load-package "pkgone" :source "test"))
@@ -138,19 +150,19 @@ WHERE its file:// address, all of it forgotten afterwards."
     (let ((tuatara-user:*package-ask-before-loading* t))
       (let ((f (auto-save-session
                 (list (list :until (lambda () (tuatara-user:load-package "pkgone" :source where) t))
-                      (list :until (lambda () (tuatara.command::editor-minibuffer-active tuatara.command:*editor*)))
-                      "n RET" (list :wait 0.2))
+                      (list :until #'package-question-shown)
+                      "n" (list :wait 0.2))
                 :width 160)))
-        (true (tuatara.frontend.fake:fake-frame-showing f "Compile and load the package pkgone from"))
+        (true (tuatara.frontend.fake:fake-frame-showing-across-rows f "Compile and load the package pkgone from"))
         (true (tuatara.frontend.fake:fake-frame-showing f "The package pkgone is not loaded"))
         (false (package-test-version))
-        (false (fourth (tuatara.defaults::package-state "pkgone" where nil)))
+        (false (fourth (tuatara.packages::package-state "pkgone" where nil)))
         (auto-save-session
          (list (list :until (lambda () (tuatara-user:load-package "pkgone" :source where) t))
-               (list :until (lambda () (tuatara.command::editor-minibuffer-active tuatara.command:*editor*)))
-               "y RET" (list :until (lambda () (package-test-version)))))
+               (list :until #'package-question-shown)
+               "y" (list :until (lambda () (package-test-version)))))
         (is equal "alpha" (package-test-version))
-        (true (fourth (tuatara.defaults::package-state "pkgone" where nil)))))))
+        (true (fourth (tuatara.packages::package-state "pkgone" where nil)))))))
 
 (define-test (packages up-to-date-and-managed)
   ;; two packages of one commit each kept apart; package-update finds the same tag; the
@@ -166,7 +178,7 @@ WHERE its file:// address, all of it forgotten afterwards."
                         (list :until (lambda () (tuatara-user:load-package "pkgtwo" :source where) t))
                         (list :until (lambda () (and (package-test-version) (boundp 'tuatara-user::*package-test-two*))))
                         "M-x p a c k a g e - u p d a t e RET"
-                        (list :until (lambda () (null tuatara.defaults::*fetching-packages*)))
+                        (list :until (lambda () (null tuatara.packages::*fetching-packages*)))
                         "M-x p a c k a g e - m a n a g e r RET" (list :wait 0.2)
                         (list :until (lambda () (screen (tuatara.command:editor-frontend tuatara.command:*editor*)) t))
                         "C-n" (list :wait 0.2)
@@ -194,15 +206,15 @@ WHERE its file:// address, all of it forgotten afterwards."
             (true (search "Reads alpha." first))
             (true (search "has no README" second)))
           (is equal "alpha" (symbol-value 'tuatara-user::*package-test-two*))
-          (false (probe-file (tuatara.defaults::package-kept-folder where "pkgone")))
-          (true (probe-file (tuatara.defaults::package-kept-folder where "pkgtwo")))
-          (false (tuatara.defaults::package-state "pkgone" where nil)))))))
+          (false (probe-file (tuatara.packages::package-kept-folder where "pkgone")))
+          (true (probe-file (tuatara.packages::package-kept-folder where "pkgtwo")))
+          (false (tuatara.packages::package-state "pkgone" where nil)))))))
 
 (define-test (packages compile-failure-said)
   ;; a file that cannot be read says why, not only that it could not be compiled
   (with-test-directory (dir)
     (alexandria:write-string-into-file (format nil "(defun broken ()~%  (list 1 2~%") (merge-pathnames "broken.lisp" dir))
-    (let* ((tuatara.defaults::*package-folder* (pathname dir))
+    (let* ((tuatara.packages::*package-folder* (pathname dir))
            (said (handler-case (progn (tuatara-user:load-package-file "broken.lisp") nil)
                    (error (e) (princ-to-string e)))))
       (true (search "could not be compiled: " said))
@@ -220,26 +232,327 @@ WHERE its file:// address, all of it forgotten afterwards."
              (let ((f (auto-save-session
               (list (list :until (lambda () (tuatara-user:package-source "mine" (namestring dir)) t))
                     (list :until (lambda () (tuatara-user:load-package "mypkg" :source "mine" :file "start.lisp") t))
-                    (list :until (lambda () (tuatara.command::editor-minibuffer-active tuatara.command:*editor*)))
-                    "v RET" (list :until (lambda () (search "is shown" (or (tuatara.command:editor-message tuatara.command:*editor*) "")))))
+                    (list :until #'package-question-shown)
+                    "v" (list :until (lambda () (search "is shown" (or (tuatara.command:editor-message tuatara.command:*editor*) "")))))
                        :width 120)))
                (true (tuatara.frontend.fake:fake-frame-showing f "start.lisp")))
              (false (package-test-version))
              (auto-save-session
               (list (list :until (lambda () (tuatara-user:load-package "mypkg" :source "mine" :file "start.lisp") t))
-                    (list :until (lambda () (tuatara.command::editor-minibuffer-active tuatara.command:*editor*)))
-                    "y RET" (list :until (lambda () (package-test-version)))))
+                    (list :until #'package-question-shown)
+                    "y" (list :until (lambda () (package-test-version)))))
              (is equal "mine" (package-test-version))
              (makunbound 'tuatara-user::*package-test-version*)
              (true (tuatara-user:load-package "mypkg" :source "mine" :file "start.lisp"))
              (is equal "mine" (package-test-version))
              ;; deleted: its files compiled go too, the folder of yours stays as it is
-             (let ((fasl (tuatara.defaults::package-fasl (merge-pathnames "start.lisp" dir))))
+             (let ((fasl (tuatara.packages::package-fasl (merge-pathnames "start.lisp" dir))))
                (true (probe-file fasl))
-               (tuatara.defaults::forget-package "mypkg" "mine" nil)
+               (tuatara.packages::forget-package "mypkg" "mine" nil)
                (false (probe-file fasl))
                (true (probe-file (merge-pathnames "start.lisp" dir)))))
         (forget-test-packages dir)))))
+
+(defmacro with-folder-package ((dir name text) &body body)
+  "Run BODY with DIR a new folder holding the package NAME, its NAME.lisp
+TEXT, as the source \"mine\"; all of it forgotten afterwards."
+  `(with-test-directory (,dir)
+     (alexandria:write-string-into-file ,text (merge-pathnames (format nil "~a.lisp" ,name) ,dir))
+     (let ((tuatara.defaults::*package-sources* '())
+           (*until-bound* *package-until-bound*))
+       (unwind-protect (progn (tuatara-user:package-source "mine" (namestring ,dir)) ,@body)
+         (forget-test-packages ,dir)))))
+
+(define-test (packages question-answered-by-one-key)
+  ;; y alone answers, no minibuffer opened; another key says which keys answer and asks
+  ;; again; C-g is not now, nothing loaded
+  (with-folder-package (dir "onekey" "(defparameter *package-test-version* \"one key\")")
+    (let ((tuatara-user:*package-ask-before-loading* t) (minibuffer :unseen))
+      (let ((f (auto-save-session
+                (list (list :until (lambda () (tuatara-user:load-package "onekey" :source "mine") t))
+                      (list :until #'package-question-shown)
+                      (list :until (lambda () (setf minibuffer (tuatara.command::editor-minibuffer-active tuatara.command:*editor*)) t))
+                      "x" (list :until (lambda () (search "Answer y, n or v. Compile and load the package onekey"
+                                                          (or (tuatara.command:editor-message tuatara.command:*editor*) ""))))
+                      "y" (list :until (lambda () (package-test-version))))
+                :width 160)))
+        (false minibuffer)
+        (true (tuatara.frontend.fake:fake-frame-showing f "Answer y, n or v. Compile and load the package onekey"))
+        (is equal "one key" (package-test-version))))
+    ;; forgotten, so that it is asked about again
+    (forget-test-packages dir)
+    (let ((tuatara-user:*package-ask-before-loading* t))
+      (let ((f (auto-save-session
+                (list (list :until (lambda () (tuatara-user:load-package "onekey" :source "mine") t))
+                      (list :until #'package-question-shown)
+                      "C-g" (list :until (lambda () (search "is not loaded now" (or (tuatara.command:editor-message tuatara.command:*editor*) "")))))
+                :width 160)))
+        (true (tuatara.frontend.fake:fake-frame-showing f "The package onekey is not loaded now"))
+        (false (package-test-version))))))
+
+(define-test (packages question-not-answered-by-keys-typed-ahead)
+  ;; keys typed before the question shows never answer it, wake-ups among them or not,
+  ;; nor keys left unread: the n pressed after it does
+  (with-folder-package (dir "ahead" "(defparameter *package-test-version* \"ahead\")")
+    (let ((tuatara-user:*package-ask-before-loading* t)
+          (f (tuatara.frontend.fake:make-fake-frontend :width 160 :height 8))
+          (waiting t))
+      (setf (tuatara.frontend.fake:fake-pending f) (lambda (f) (and waiting (tuatara.frontend.fake::fake-events f))))
+      (queue-test-keys f (list (lambda ()
+                                 (tuatara-user:load-package "ahead" :source "mine")
+                                 ;; a key a command left unread, as a wait for work keeps one
+                                 (setf (tuatara.command:editor-unread tuatara.command:*editor*)
+                                       (list (tuatara.frontend:make-event :key :key (tuatara.frontend:spec-key '(#\y))))))
+                               :tick "y RET" :tick "y" (lambda () (setf waiting nil)) "n"))
+      (tuatara.command:run-editor f :setup #'tuatara.defaults:install-defaults)
+      (true (tuatara.frontend.fake:fake-frame-showing f "The package ahead is not loaded"))
+      (false (tuatara.frontend.fake:fake-frame-showing f "is not loaded now"))
+      (false (package-test-version)))))
+
+(define-test (packages compiled-while-the-editor-goes-on)
+  ;; a package taking a second and a half to compile: the command loading it returns at
+  ;; once, the editor answers all the while, and the package is loaded once, said
+  (with-folder-package (dir "slowpkg" (format nil "(eval-when (:compile-toplevel) (sleep 1.5))~%~
+                                                   (defvar *package-test-loads* 0)~%~
+                                                   (incf *package-test-loads*)~%~
+                                                   (defparameter *package-test-version* \"slow\")~%"))
+    (let ((tuatara-user:*package-ask-before-loading* nil)
+          (call 0) (last nil) (longest 0) (polled 0))
+      (unwind-protect
+           (let ((f (auto-save-session
+                     (list (list :until (lambda ()
+                                          (let ((start (get-internal-real-time)))
+                                            (tuatara-user:load-package "slowpkg" :source "mine")
+                                            (setf call (tuatara.runtime:milliseconds-since start)
+                                                  last (get-internal-real-time)))
+                                          t))
+                           ;; looked at on the editor's thread every 20 ms until it has loaded
+                           (list :until (lambda ()
+                                          (setf longest (max longest (tuatara.runtime:milliseconds-since last))
+                                                last (get-internal-real-time))
+                                          (incf polled)
+                                          (package-test-version))))
+                     :width 160)))
+             (is equal "slow" (package-test-version))
+             (is = 1 (symbol-value 'tuatara-user::*package-test-loads*) "loaded once")
+             (true (< call 200) "the command returned in ~d ms" call)
+             (true (< longest 500) "the editor answered every ~d ms at most" longest)
+             (true (> polled 20) "looked at ~d times while it compiled" polled)
+             (true (tuatara.frontend.fake:fake-frame-showing f "Compiling the package slowpkg in the background"))
+             (true (tuatara.frontend.fake:fake-frame-showing f "The package slowpkg is compiled and loaded")))
+        (makunbound 'tuatara-user::*package-test-loads*)))))
+
+(define-test (packages never-half-loaded-to-commands)
+  ;; an entry loading a second file slow to compile: no command runs while the entry is
+  ;; part loaded, and the package's compile-time code runs in another process
+  (with-test-directory (dir)
+    (alexandria:write-string-into-file
+     (format nil "(defparameter *package-test-half-a* t)~%(load-package-file \"b.lisp\")~%(defparameter *package-test-version* \"half\")~%")
+     (merge-pathnames "halfpkg.lisp" dir))
+    (alexandria:write-string-into-file
+     (format nil "(eval-when (:compile-toplevel)~%  (sleep 1.5)~%  (with-open-file (o ~s :direction :output :if-exists :supersede) (print (sb-posix:getpid) o)))~%(defvar *package-test-half-b* t)~%"
+             (namestring (merge-pathnames "compiled-by" dir)))
+     (merge-pathnames "b.lisp" dir))
+    (let ((tuatara.defaults::*package-sources* '()) (tuatara-user:*package-ask-before-loading* nil) (seen-half 0) (polled 0)
+          (*until-bound* *package-until-bound*))
+      (unwind-protect
+           (progn (tuatara-user:package-source "mine" (namestring dir))
+                  (auto-save-session
+                   (list (list :until (lambda () (tuatara-user:load-package "halfpkg" :source "mine") t))
+                         (list :until (lambda ()
+                                        (incf polled)
+                                        (when (and (boundp 'tuatara-user::*package-test-half-a*)
+                                                   (not (package-test-version)))
+                                          (incf seen-half))
+                                        (package-test-version))))
+                   :width 160)
+                  (is equal "half" (package-test-version))
+                  (is = 0 seen-half "commands ran ~d times with the package part loaded" seen-half)
+                  (true (> polled 20) "the editor went on while it compiled: ~d" polled)
+                  (let ((pid (with-open-file (i (merge-pathnames "compiled-by" dir)) (read i))))
+                    (true (integerp pid))
+                    (isnt = (sb-posix:getpid) pid "compiled in the editor's own process")))
+        (makunbound 'tuatara-user::*package-test-half-a*)
+        (makunbound 'tuatara-user::*package-test-half-b*)
+        (forget-test-packages dir)))))
+
+(define-test (packages stopped-while-compiling)
+  ;; stopping the loading while the package compiles ends the compiling at once, and
+  ;; nothing is loaded
+  (with-folder-package (dir "stopped" (format nil "(eval-when (:compile-toplevel) (sleep 8))~%(defparameter *package-test-version* \"stopped\")~%"))
+    (let ((tuatara-user:*package-ask-before-loading* nil) (began nil) (took nil))
+      (let ((f (auto-save-session
+                (list (list :until (lambda () (tuatara-user:load-package "stopped" :source "mine") t))
+                      (list :until (lambda () (search "Compiling the package stopped" (or (tuatara.command:editor-message tuatara.command:*editor*) ""))))
+                      (list :until (lambda ()
+                                     (setf began (get-internal-real-time))
+                                     (dolist (job tuatara.runtime:*jobs*)
+                                       (when (tuatara.packages::package-fetch-p job) (tuatara.runtime:job-stop job)))
+                                     t))
+                      (list :until (lambda ()
+                                     (when (search "it was stopped" (or (tuatara.command:editor-message tuatara.command:*editor*) ""))
+                                       (setf took (tuatara.runtime:milliseconds-since began))))))
+                :width 160)))
+        (true (tuatara.frontend.fake:fake-frame-showing f "Loading package stopped...failed: it was stopped"))
+        (true (and took (< took 3000)) "ended ~a ms after it was stopped" took)
+        (false (package-test-version))))))
+
+(define-test (packages long-load-said)
+  ;; a load that holds the editor longer than it should is said, and then loads
+  (with-folder-package (dir "longload" (format nil "(sleep 2)~%(defparameter *package-test-version* \"long\")~%"))
+    (let ((tuatara-user:*package-ask-before-loading* nil) (tuatara.command::*editor-held-seconds* 1))
+      (let ((f (auto-save-session
+                (list (list :until (lambda () (tuatara-user:load-package "longload" :source "mine") t))
+                      (list :until (lambda () (package-test-version))))
+                :width 160)))
+        (is equal "long" (package-test-version))
+        (true (tuatara.frontend.fake:fake-frame-showing f "Loading the package longload is taking long"))))))
+
+(define-test (packages question-out-of-recorded-keys)
+  ;; keys being recorded are no part of the question: C-g there leaves the recording going,
+  ;; and neither the question nor its answer is recorded
+  (with-folder-package (dir "recorded" "(defparameter *package-test-version* \"recorded\")")
+    (let ((tuatara-user:*package-ask-before-loading* t))
+      (recorded-keys-session (list "C-x (" (lambda () (tuatara-user:load-package "recorded" :source "mine"))
+                                   "C-g" "C-f" "C-x )")
+                             :text "abc")
+      (false (package-test-version))
+      (true tuatara.defaults::*last-recorded-keys* "the recording went on after C-g")
+      (is equal '("C-f") (map 'list (lambda (event) (tuatara.frontend:key-description (tuatara.frontend:key-spec (tuatara.frontend:event-key event))))
+                              tuatara.defaults::*last-recorded-keys*)))))
+
+(defun compile-child-with (request token)
+  "What COMPILE-PACKAGE-CHILD answers with REQUEST and TOKEN in the
+environment as the editor gives them (NIL leaves one out), the folder of
+compiled packages named as the editor names it; the environment as before
+after."
+  (let ((names '("TUATARA_COMPILE_PACKAGE" "TUATARA_COMPILE_TOKEN" "TUATARA_COMPILE_CACHE")))
+    (unwind-protect
+         (progn (loop for name in names
+                      for value in (list request token (tuatara.packages::package-cache))
+                      do (if value (sb-posix:setenv name value 1) (sb-posix:unsetenv name)))
+                (let ((*standard-output* (make-broadcast-stream))) (tuatara.packages:compile-package-child)))
+      (dolist (name names) (sb-posix:unsetenv name)))))
+
+(define-test (packages compiling-apart-never-from-file-names)
+  ;; files named --compile-package and a in a folder, as `tuatara *' there passes them: they
+  ;; are files to open, and nothing they name is ever compiled or loaded; only a request the
+  ;; editor wrote in its folder of compiled packages, its own and private, with the token
+  ;; it gave in the environment, is taken
+  (with-test-directory (dir)
+    (let* ((marker (merge-pathnames "ran" dir))
+           (evil (ensure-directories-exist (merge-pathnames "evil/" dir)))
+           (plist (lambda (token)
+                    (with-standard-io-syntax
+                      (prin1-to-string (list :token token :name "evil" :folder (namestring evil) :file nil :prelude '()
+                                             :cache (tuatara.io:native (tuatara.io:cache-directory))
+                                             :packages (tuatara.packages:packages-directory)
+                                             :identity (tuatara.packages::tuatara-identity))))))
+           (in-cache (format nil "~acompile-test-~a.request" (tuatara.packages::package-cache) (tuatara.io:random-name))))
+      (alexandria:write-string-into-file (format nil "(with-open-file (o ~s :direction :output :if-exists :supersede) (print :ran o))~%"
+                                                 (namestring marker))
+                                         (merge-pathnames "evil.lisp" evil))
+      (alexandria:write-string-into-file "" (merge-pathnames "--compile-package" dir))
+      (alexandria:write-string-into-file (funcall plist "guessed") (merge-pathnames "a" dir))
+      (unwind-protect
+           (progn
+             ;; the command line names files, never the mode
+             (is equal '("--compile-package" "a")
+                 (getf (tuatara.terminal::read-options '("--" "--compile-package" "a") :directory (namestring dir)) :files))
+             ;; no request in the environment, as when started by hand
+             (is = 2 (compile-child-with nil nil))
+             ;; a request outside the folder of compiled packages, its token right or not
+             (is = 2 (compile-child-with (namestring (merge-pathnames "a" dir)) "guessed"))
+             ;; in that folder, but readable by others
+             (tuatara.io:ensure-private-directory (tuatara.packages::package-cache))
+             (tuatara.io:write-private-file in-cache (funcall plist "right"))
+             (sb-posix:chmod in-cache #o644)
+             (is = 2 (compile-child-with in-cache "right"))
+             ;; private, but another token
+             (sb-posix:chmod in-cache #o600)
+             (is = 2 (compile-child-with in-cache "wrong"))
+             ;; a link to a private request
+             (let ((link (format nil "~acompile-link-~a.request" (tuatara.packages::package-cache) (tuatara.io:random-name))))
+               (sb-posix:symlink in-cache link)
+               (unwind-protect (is = 2 (compile-child-with link "right"))
+                 (ignore-errors (sb-posix:unlink link))))
+             (false (probe-file marker) "nothing of the folder was loaded"))
+        (ignore-errors (delete-file in-cache))))))
+
+(define-test (packages stopped-between-files-while-held)
+  ;; C-g once a held load takes long stops it before its next file, the editor waiting
+  ;; until then; what of it loaded is taken out, and it is said to be half loaded
+  (with-test-directory (dir)
+    ;; a Lisp package of its own, as a package has
+    (alexandria:write-string-into-file (format nil "(defpackage #:stopper (:use #:cl #:tuatara))~%(load-package-file \"one.lisp\")~%(load-package-file \"two.lisp\")~%")
+                                       (merge-pathnames "stopper.lisp" dir))
+    (alexandria:write-string-into-file (format nil "(in-package #:stopper)~%(define-command stopper-hello () \"Say hello.\" nil)~%(sleep 2)~%")
+                                       (merge-pathnames "one.lisp" dir))
+    (alexandria:write-string-into-file (format nil "(defparameter *package-test-version* \"stopper\")~%") (merge-pathnames "two.lisp" dir))
+    (let ((tuatara.defaults::*package-sources* '()) (tuatara-user:*package-ask-before-loading* nil)
+          (tuatara.command::*editor-held-seconds* 1) (*until-bound* *package-until-bound*))
+      (unwind-protect
+           (let ((f (auto-save-session
+                     (list (list :until (lambda () (tuatara-user:package-source "mine" (namestring dir))
+                                          (tuatara-user:load-package "stopper" :source "mine") t))
+                           (list :until (lambda () (search "is taking long" (or (tuatara.command:editor-message tuatara.command:*editor*) ""))) 60)
+                           "C-g"
+                           (list :until (lambda () (search "half loaded" (or (tuatara.command:editor-message tuatara.command:*editor*) ""))) 60))
+                     :width 200 :pending t)))
+             (true (tuatara.frontend.fake:fake-frame-showing f "Loading the package stopper: stopping where it safely can"))
+             (true (tuatara.frontend.fake:fake-frame-showing f "The package stopper is half loaded; restart Tuatara before using it"))
+             (false (package-test-version) "its second file never loaded")
+             (false (tuatara.command:find-command "stopper-hello") "its command taken out")
+             (false (tuatara.packages::package-loaded-p "stopper")))
+        (forget-test-packages dir)))))
+
+(define-test (packages compiled-files-written-whole)
+  ;; a compiled file is renamed into place whole: another inode once compiled again, and
+  ;; nothing left beside it
+  (with-test-directory (dir)
+    (let ((file (merge-pathnames "whole.lisp" dir)))
+      (alexandria:write-string-into-file "(defparameter *package-test-whole* 1)" file)
+      (let* ((fasl (tuatara.packages::package-fasl file)))
+        (tuatara.io:ensure-private-directory (directory-namestring fasl))
+        (tuatara.packages::compile-package-file file fasl)
+        (let ((first (sb-posix:stat-ino (sb-posix:stat fasl))))
+          (tuatara.packages::compile-package-file file fasl)
+          (isnt = first (sb-posix:stat-ino (sb-posix:stat fasl)) "written in place"))
+        (is equal '() (remove-if-not (lambda (p) (search ".new" (namestring p)))
+                                     (uiop:directory-files (directory-namestring fasl))))
+        (uiop:delete-directory-tree (pathname (directory-namestring fasl)) :validate (lambda (p) (search "/tuatara/packages/" (namestring p))))))))
+
+(define-test (packages private-folders-kept-private)
+  ;; a folder of yours there already, open to others, is made yours alone; one not yours
+  ;; is refused, never used
+  (with-test-directory (dir)
+    (let ((open (namestring (merge-pathnames "open/" dir))))
+      (ensure-directories-exist open)
+      (sb-posix:chmod open #o777)
+      (tuatara.io:ensure-private-directory open)
+      (is = #o700 (logand (sb-posix:stat-mode (sb-posix:stat open)) #o777))))
+  (fail (tuatara.io:ensure-private-directory "/usr/") 'tuatara.io:file-system-error))
+
+(define-test (packages compiled-apart-from-one-core)
+  ;; run from the sources, a package is compiled apart by SBCL started from one core
+  ;; saved for these sources, made once and used by every compiling after
+  (unless tuatara.io:*saved-program*
+    (with-folder-package (dir "corea" "(defparameter *package-test-version* \"a\")")
+      (alexandria:write-string-into-file "(defparameter *package-test-two* \"b\")" (merge-pathnames "coreb.lisp" dir))
+      (let ((tuatara-user:*package-ask-before-loading* nil) (cores '()))
+        (flet ((note () (let ((core (tuatara.packages::compiler-core)))
+                          (push (and core (sb-posix:stat-ino (sb-posix:stat core))) cores))))
+          (auto-save-session
+           (list (list :until (lambda () (tuatara-user:load-package "corea" :source "mine") t))
+                 (list :until (lambda () (package-test-version)))
+                 (list :until (lambda () (note) t))
+                 (list :until (lambda () (tuatara-user:load-package "coreb" :source "mine") t))
+                 (list :until (lambda () (boundp 'tuatara-user::*package-test-two*)))
+                 (list :until (lambda () (note) t)))))
+        (is equal "a" (package-test-version))
+        (true (first cores) "a core was made")
+        (is equal (first cores) (second cores) "and kept")
+        (true (member "--core" (tuatara.packages::package-compiler-command) :test #'equal))))))
 
 (define-test (packages scanned-from-the-init-file)
   ;; package-scan: each load-package with :source loaded by itself, one left inside another
@@ -256,7 +569,7 @@ WHERE its file:// address, all of it forgotten afterwards."
                (namestring dir) (namestring dir) (namestring dir))
        init)
       (unwind-protect
-           (multiple-value-bind (results stopped) (tuatara.defaults::scan-init-file-packages init)
+           (multiple-value-bind (results stopped) (tuatara.packages::scan-init-file-packages init)
              ;; pkga swallowed pkgb: pkga refused saying so, pkgb found inside it and loaded by itself
              (is equal '("pkga" "pkgb") (mapcar #'first results))
              (true (search "pkgb\" is inside this one" (fourth (first results))))
@@ -266,7 +579,7 @@ WHERE its file:// address, all of it forgotten afterwards."
              (false (boundp 'tuatara-user::*package-test-config*))
              ;; the stray ) stops the reading: pkgc, after it, is not seen
              (is = 9 (car stopped))
-             (false (tuatara.defaults::declared-package "pkgc")))
+             (false (tuatara.packages::declared-package "pkgc")))
         (forget-test-packages dir))
       ;; what decides whether a load-package runs is kept to: a guarded one, or one a group loads, is not looked at
       (alexandria:write-string-into-file
@@ -274,7 +587,7 @@ WHERE its file:// address, all of it forgotten afterwards."
                (namestring dir) (namestring dir))
        init :if-exists :supersede)
       (unwind-protect
-           (is equal '() (tuatara.defaults::scan-init-file-packages init))
+           (is equal '() (tuatara.packages::scan-init-file-packages init))
         (forget-test-packages dir)
         (makunbound 'tuatara-user::*package-test-pkga*)
         (makunbound 'tuatara-user::*package-test-pkgb*)))))
@@ -305,7 +618,7 @@ WHERE its file:// address, all of it forgotten afterwards."
                      :width 200)))
              (true (tuatara.frontend.fake:fake-frame-showing f "takes more than 1.0 kB: the package was not fetched"))
              (false (package-test-version))
-             (false (directory (merge-pathnames ".fetching-*/" (tuatara.defaults::packages-directory)))))
+             (false (directory (merge-pathnames ".fetching-*/" (tuatara.packages:packages-directory)))))
         (setf tuatara.defaults::*package-most-octets* most)))))
 
 (define-test (packages arguments-checked)
@@ -316,7 +629,7 @@ WHERE its file:// address, all of it forgotten afterwards."
   (fail (tuatara-user:load-package "pkgone" :source "/tmp/" :version "a b"))
   (fail (tuatara-user:load-package "../pkgone" :source "/tmp/"))
   ;; a parenthesis left open: the load-packages after it are no values of :file, said, never dropped
-  (flet ((why (options) (handler-case (progn (tuatara.defaults::load-package-options options) nil)
+  (flet ((why (options) (handler-case (progn (tuatara.packages::load-package-options options) nil)
                           (error (e) (princ-to-string e)))))
     (true (search "load-package \"kitty\" is inside this one, after :file: a parenthesis is left open"
                   (why '(:source "/tmp/" :file "a.lisp" (tuatara-user:load-package "kitty" :source "/tmp/")))))
@@ -359,7 +672,7 @@ WHERE its file:// address, all of it forgotten afterwards."
     (let ((tuatara-user:*package-ask-before-loading* nil) folder)
       (auto-save-session (list (list :until (lambda () (tuatara-user:load-package "second" :source where :folder "pkgtwo") t))
                                (list :until (lambda () (boundp 'tuatara-user::*package-test-two*)))
-                               (list :until (lambda () (setf folder (nth-value 1 (tuatara.defaults::package-state "second" where nil)))))))
+                               (list :until (lambda () (setf folder (nth-value 1 (tuatara.packages::package-state "second" where nil)))))))
       (is equal "alpha" (symbol-value 'tuatara-user::*package-test-two*))
       (true (search "/pkgtwo/" folder))
       (fail (tuatara-user:load-package "second" :source where :folder "../pkgtwo")))))
@@ -376,10 +689,11 @@ holding TEXT, for a source that is a folder of the disk."
 loading, and what the packages left forgotten afterwards."
   `(with-test-directory (,dir)
      (let ((tuatara-user:*package-ask-before-loading* nil)
-           (tuatara.defaults::*package-sources* '()))
+           (tuatara.defaults::*package-sources* '())
+           (*until-bound* *package-until-bound*))
        (unwind-protect (progn ,@body)
          (forget-test-packages ,dir)
-         (setf tuatara.defaults::*deferred-packages* '() tuatara.defaults::*packages-waiting* '())
+         (setf tuatara.packages::*deferred-packages* '() tuatara.packages::*packages-waiting* '())
          (dolist (symbol '(tuatara-user::*package-test-order* tuatara-user::*package-test-said*))
            (makunbound symbol))))))
 
@@ -398,7 +712,7 @@ loading, and what the packages left forgotten afterwards."
       (is equal '(:saw :early) (symbol-value 'tuatara-user::*package-test-said*))
       (tuatara-user:load-package "second" :source where :after "first")
       (is equal '() (symbol-value 'tuatara-user::*package-test-order*))
-      (true (find "second" tuatara.defaults::*packages-waiting* :key #'second :test #'string=))
+      (true (find "second" tuatara.packages::*packages-waiting* :key #'second :test #'string=))
       (tuatara-user:load-package "first" :source where)
       (is equal '(:second :first) (symbol-value 'tuatara-user::*package-test-order*))
       ;; a group waits for a package, and for another group, as a package does
@@ -413,8 +727,8 @@ loading, and what the packages left forgotten afterwards."
       (tuatara-user:load-package "third" :source where)
       (is equal '(:writing :third :late-group :early-group) (symbol-value 'tuatara-user::*package-test-order*))
       (false (tuatara-user:load-package "broken" :source where))
-      (false (tuatara.defaults::package-loaded-p "broken"))
-      (true (assoc "broken" tuatara.defaults::*package-failures* :test #'string=))
+      (false (tuatara.packages::package-loaded-p "broken"))
+      (true (assoc "broken" tuatara.packages::*package-failures* :test #'string=))
       (tuatara-user:load-package "tuatara" :config (error "one bad line") (setf tuatara-user::*package-test-config* :went-on))
       (is eq :went-on (symbol-value 'tuatara-user::*package-test-config*))
       (fail (macroexpand '(tuatara-user:load-package "x" :no-such-keyword 1))))))
@@ -443,7 +757,7 @@ loading, and what the packages left forgotten afterwards."
              (list :until (lambda () (member :bymode (symbol-value 'tuatara-user::*package-test-order*))))))
       (is equal '() at-once)
       (is equal '(:bymode :hello :lazy) (symbol-value 'tuatara-user::*package-test-order*))
-      (true (tuatara.defaults::package-loaded-p "bycommand"))
+      (true (tuatara.packages::package-loaded-p "bycommand"))
       ;; the command's name once in M-x, though the package's and the stub's are two
       (is = 1 (count "package-test-hello" (tuatara.command:command-names) :test #'string=)))))
 
@@ -465,7 +779,7 @@ loading, and what the packages left forgotten afterwards."
             (true (cl-ppcre:scan "Loading package quick from .*\\.\\.\\.done \\(\\d+ ms\\)" messages))
             (true (cl-ppcre:scan "Loading package second from .*\\.\\.\\.done \\(\\d+ ms\\)" messages))
             (true (cl-ppcre:scan "Packages: 2 loaded in \\d+ ms" messages)))
-          (true (probe-file (tuatara.defaults::package-fasl (merge-pathnames "second/second.lisp" dir))))
+          (true (probe-file (tuatara.packages::package-fasl (merge-pathnames "second/second.lisp" dir))))
           (true (tuatara.frontend.fake:fake-frame-showing f "second")))))))
 
 (define-test (packages folder-in-rimu)
@@ -492,16 +806,16 @@ loading, and what the packages left forgotten afterwards."
               (true (tuatara.defaults::rimu-previewing-p folder))
               (is equal (tuatara.buffer:buffer-local folder 'tuatara.defaults::rimu-directory)
                   (tuatara.buffer:buffer-local folder 'tuatara.defaults::rimu-root))
-              (true (typep (tuatara.defaults::buffer-major-mode back) 'tuatara.defaults::packages-mode)))))))))
+              (true (typep (tuatara.defaults::buffer-major-mode back) 'tuatara.packages::packages-mode)))))))))
 
 (define-test (packages compiled-for-one-tuatara)
   ;; compiled packages are kept for the Tuatara that compiled them: another one's are deleted
   (let* ((other (format nil "~aother-tuatara-~36r/"
-                       (directory-namestring (string-right-trim "/" (tuatara.defaults::package-cache))) (random (expt 36 6))))
-         (tuatara.defaults::*tuatara-identity* (format nil "test-~36r" (random (expt 36 8) (make-random-state t)))))
+                       (directory-namestring (string-right-trim "/" (tuatara.packages::package-cache))) (random (expt 36 6))))
+         (tuatara.packages::*tuatara-identity* (format nil "test-~36r" (random (expt 36 8) (make-random-state t)))))
     (alexandria:write-string-into-file "x" (ensure-directories-exist (merge-pathnames "kept.fasl" other)))
-    (let ((here (tuatara.defaults::package-cache)))
-      (true (search tuatara.defaults::*tuatara-identity* here))
+    (let ((here (tuatara.packages::package-cache)))
+      (true (search tuatara.packages::*tuatara-identity* here))
       (false (probe-file other)))))
 
 (define-test (packages readme-below-a-narrow-list)
@@ -513,7 +827,7 @@ loading, and what the packages left forgotten afterwards."
                                     (let* ((window (tuatara.command:editor-window tuatara.command:*editor*))
                                            (preview (tuatara.defaults::make-side-preview
                                                      window (tuatara.defaults::table-columns-width
-                                                             tuatara.defaults::*packages-columns* tuatara.defaults::*packages-source-width*))))
+                                                             tuatara.packages::*packages-columns* tuatara.packages::*packages-source-width*))))
                                       (tuatara.defaults::side-preview-show preview readme nil)
                                       (setf seen (tuatara.display:window-width window)))))
                             :width width :height 30)
@@ -532,13 +846,13 @@ file dated a minute ago, so that what is kept of it later is newer."
 
 (defun package-failure (name)
   "Why the package NAME was not loaded this session, or NIL."
-  (cdr (assoc name tuatara.defaults::*package-failures* :test #'string=)))
+  (cdr (assoc name tuatara.packages::*package-failures* :test #'string=)))
 
 (defun forget-failure (name)
   "Forget that the package NAME failed or was refused this session, as package-scan does
 before loading it again."
-  (setf tuatara.defaults::*package-failures* (remove name tuatara.defaults::*package-failures* :key #'car :test #'string=)
-        tuatara.defaults::*refused-packages* (remove name tuatara.defaults::*refused-packages* :test #'string=)))
+  (setf tuatara.packages::*package-failures* (remove name tuatara.packages::*package-failures* :key #'car :test #'string=)
+        tuatara.packages::*refused-packages* (remove name tuatara.packages::*refused-packages* :test #'string=)))
 
 (define-test (packages names-tuatara-lacks-refused)
   ;; a package calling functions Tuatara lacks is refused before its file runs, naming them,
@@ -559,10 +873,10 @@ before loading it again."
            (true (find-if (lambda (report) (search "lacker refused, its code using names this Tuatara lacks: tuatara-user::no-such-function"
                                                    (fourth report)))
                           (sb-concurrency:list-queue-contents tuatara.runtime:*debug-reports*)))
-           (false (tuatara.defaults::package-loaded-p "lacker"))
+           (false (tuatara.packages::package-loaded-p "lacker"))
            (is string= "lacker needs names this Tuatara lacks: tuatara-user::no-such-function, tuatara.defaults::no-such-thing; update the package (M-x package-update) or Tuatara"
                (package-failure "lacker"))
-           (is equal "refused" (tuatara.defaults::package-condition "lacker" nil))
+           (is equal "refused" (tuatara.packages::package-condition "lacker" nil))
            (false (symbol-value 'tuatara-user::*package-test-said*))
            (false (find-package "LACKER"))
            (false (tuatara.command:find-command "lacker-run")))
@@ -608,9 +922,9 @@ before loading it again."
         (folder-packages dir (list "renamer" (concatenate 'string text "
 (defun docx-file-octets (path) path)")))
         (true (tuatara-user:load-package "renamer" :source (namestring dir)))
-        (true (tuatara.defaults::package-loaded-p "renamer"))
+        (true (tuatara.packages::package-loaded-p "renamer"))
         (is equal '(:ran :ran) (symbol-value 'tuatara-user::*package-test-order*))
-        (tuatara.defaults::forget-package-code (list (find-package "RENAMER")))
+        (tuatara.packages::forget-package-code (list (find-package "RENAMER")))
         (false (left-p))))))
 
 (define-test (packages variable-lacking-refused)
@@ -652,14 +966,14 @@ before loading it again."
     (unwind-protect
          (progn
            (true (tuatara-user:load-package "apiuser" :source (namestring dir)))
-           (true (tuatara.defaults::package-loaded-p "apiuser"))
+           (true (tuatara.packages::package-loaded-p "apiuser"))
            (false (package-failure "apiuser"))
            (true (tuatara.command:find-command "apiuser-run"))
            (is equal '(:ran) (symbol-value 'tuatara-user::*package-test-order*))
            (flet ((unload ()
-                    (setf tuatara.defaults::*loaded-packages* (remove "apiuser" tuatara.defaults::*loaded-packages* :test #'string=))
-                    (tuatara.defaults::forget-package-code (list (find-package "APIUSER")))))
-             (let ((fasl (tuatara.defaults::package-fasl (merge-pathnames "apiuser/apiuser.lisp" dir)))
+                    (setf tuatara.packages::*loaded-packages* (remove "apiuser" tuatara.packages::*loaded-packages* :test #'string=))
+                    (tuatara.packages::forget-package-code (list (find-package "APIUSER")))))
+             (let ((fasl (tuatara.packages::package-fasl (merge-pathnames "apiuser/apiuser.lisp" dir)))
                    (then (- (sb-posix:time) 30)))
                ;; loaded again from what was compiled, not compiled again
                (sb-posix:utimes fasl then then)
@@ -673,7 +987,7 @@ before loading it again."
            (is equal '(:ran :ran) (symbol-value 'tuatara-user::*package-test-order*))
            (true (search "tuatara-user::*apiuser-test-value*" (package-failure "apiuser"))))
       (when (find-package "APIUSER")
-        (tuatara.defaults::forget-package-code (list (find-package "APIUSER"))))
+        (tuatara.packages::forget-package-code (list (find-package "APIUSER"))))
       (makunbound 'tuatara-user::*apiuser-test-value*))))
 
 (define-test (packages probe-size-bounded)
@@ -683,21 +997,21 @@ before loading it again."
     (let ((most tuatara.defaults::*package-most-octets*)
           (folders '()))
       (setf tuatara.defaults::*package-most-octets* 1)
-      (sb-int:encapsulate 'tuatara.defaults::package-git 'probe-size-bounded
+      (sb-int:encapsulate 'tuatara.packages::package-git 'probe-size-bounded
                           (lambda (function directory &rest arguments)
                             (push directory folders)
                             (apply function directory arguments)))
       (unwind-protect
-           (fail (tuatara.defaults::fetch-package "pkgone" where nil) 'tuatara.defaults::package-too-large)
-        (sb-int:unencapsulate 'tuatara.defaults::package-git 'probe-size-bounded)
+           (fail (tuatara.packages::fetch-package "pkgone" where nil) 'tuatara.packages::package-too-large)
+        (sb-int:unencapsulate 'tuatara.packages::package-git 'probe-size-bounded)
         (setf tuatara.defaults::*package-most-octets* most))
       (true (find-if (lambda (folder) (search "/probe/" folder)) folders))
       (false (find-if-not (lambda (folder) (search "/probe/" folder)) folders))
-      (false (directory (merge-pathnames ".fetching-*/" (tuatara.defaults::packages-directory)))))))
+      (false (directory (merge-pathnames ".fetching-*/" (tuatara.packages:packages-directory)))))))
 
 (define-test (packages manager-help-shows-the-marks-shown)
   ;; the package manager's help gives the signs its list shows for a mark
-  (let ((help (documentation 'tuatara.defaults::package-manager 'function)))
+  (let ((help (documentation 'tuatara.packages::package-manager 'function)))
     (true (search (format nil "(~a marked, ~a marked for deletion)"
                           (tuatara.defaults::list-mark-sign :marked) (tuatara.defaults::list-mark-sign :deletion))
                   help))))
@@ -723,7 +1037,7 @@ before loading it again."
            (is equal '("A,B C" "" 0)
                (funcall (find-symbol "FILTERUSER-RUN" "FILTERUSER") "tr 'a-z,' \"A-Z,\"" "a,b c")))
       (when (find-package "FILTERUSER")
-        (tuatara.defaults::forget-package-code (list (find-package "FILTERUSER")))))))
+        (tuatara.packages::forget-package-code (list (find-package "FILTERUSER")))))))
 
 (define-test (packages api-names-used)
   ;; informative: the names of the API no package of ours uses, said in the test's output, so
@@ -747,3 +1061,177 @@ before loading it again."
           (format t "~&~d of the API's ~d names are used by no package of ours:~%~{  ~a~%~}"
                   (length unused) (length tuatara.defaults::*api*) unused)
           (true (listp unused))))))
+
+(define-test (packages unused-sources-removed)
+  ;; package-remove-unused, in a packages folder of the test's own: a source nothing names goes,
+  ;; asked once with sizes; a package named, one left out (:disabled), a fetch's scratch folder
+  ;; and what a link points to stay; n deletes nothing
+  (with-test-directory (dir)
+    (let* ((top (namestring (ensure-directories-exist (merge-pathnames "packages/" dir))))
+           (outside (ensure-directories-exist (merge-pathnames "outside/" dir)))
+           (tuatara-user:*packages-directory* top)
+           (tuatara.packages::*declared-packages* (list (list "used" "https://example.org/used" nil nil nil)))
+           (tuatara.packages::*left-out-packages* '())
+           (tuatara.defaults::*package-sources* '())
+           (commit "0123456789abcdef0123456789abcdef01234567"))
+      (flet ((kept (where name)
+               (let ((file (merge-pathnames (format nil "~a/~a/~a/~a.lisp" (tuatara.io:path-file-name where) name commit name) top)))
+                 (alexandria:write-string-into-file (make-string 2000 :initial-element #\;) (ensure-directories-exist file))
+                 file)))
+        (let ((gone (kept "https://example.org/gone" "gone"))
+              (used (kept "https://example.org/used" "used"))
+              (other (kept "https://example.org/used" "other"))
+              (off (kept "https://example.org/off" "off"))
+              (scratch (ensure-directories-exist (merge-pathnames ".fetching-abc/probe/" top))))
+          (alexandria:write-string-into-file "theirs" (merge-pathnames "keep.txt" outside))
+          (sb-posix:symlink (string-right-trim "/" (namestring outside)) (concatenate 'string top "https%3A%2F%2Fexample.org%2Flink"))
+          (tuatara-user:load-package "off" :source "https://example.org/off" :disabled t)
+          ;; n: nothing deleted
+          (let ((f (auto-save-session
+                    (list "M-x p a c k a g e - r e m o v e - u n u s e d RET"
+                          (list :until (lambda () (tuatara.command::editor-minibuffer-active tuatara.command:*editor*)))
+                          "n RET" (list :until (lambda () (echo-says "Nothing deleted"))))
+                    :width 160 :height 30)))
+            (true (tuatara.frontend.fake:fake-frame-showing f "https://example.org/gone, all of it"))
+            (true (tuatara.frontend.fake:fake-frame-showing f "other from https://example.org/used"))
+            (true (tuatara.frontend.fake:fake-frame-showing f "Delete 2 package sources no longer named"))
+            (false (tuatara.frontend.fake:fake-frame-showing f "example.org/off"))
+            (false (tuatara.frontend.fake:fake-frame-showing f "example.org/link")))
+          (true (probe-file gone))
+          (true (probe-file other))
+          ;; yes: those two go, the rest stays
+          (let ((pushed (push "used" tuatara.packages::*fetching-packages*)))
+            (declare (ignore pushed))
+            (unwind-protect
+                 (auto-save-session
+                  (list "M-x p a c k a g e - r e m o v e - u n u s e d RET"
+                        (list :until (lambda () (tuatara.command::editor-minibuffer-active tuatara.command:*editor*)))
+                        "y RET" (list :until (lambda () (echo-says "freed")))))
+              (setf tuatara.packages::*fetching-packages* (remove "used" tuatara.packages::*fetching-packages* :test #'string=))))
+          (false (probe-file gone))
+          (true (probe-file used))
+          (true (probe-file off))
+          (true (probe-file scratch))
+          (true (probe-file (merge-pathnames "keep.txt" outside)))
+          ;; "other" sat beside a package being fetched: left alone while it ran
+          (true (probe-file other)))))))
+
+(define-test (packages unused-sources-none)
+  ;; nothing unused: said, nothing asked
+  (with-test-directory (dir)
+    (let ((tuatara-user:*packages-directory* (namestring (ensure-directories-exist (merge-pathnames "packages/" dir))))
+          (tuatara.packages::*declared-packages* '())
+          (tuatara.defaults::*package-sources* '()))
+      (let* ((said nil)
+             (f (auto-save-session
+                 (list "M-x p a c k a g e - r e m o v e - u n u s e d RET"
+                       (list :until (lambda () (setf said (echo-says "No package source kept is unused")))))
+                 :width 160)))
+        (true said)
+        (false (tuatara.frontend.fake:fake-frame-showing f "no longer named,"))))))
+
+(defmacro with-unused-source ((top gone) &body body)
+  "Run BODY with TOP a packages folder of a test directory's own and GONE the
+entry file of a package of a source nothing names, kept in it."
+  (let ((dir (gensym "DIR")))
+    `(with-test-directory (,dir)
+       (let* ((,top (namestring (ensure-directories-exist (merge-pathnames "packages/" ,dir))))
+              (tuatara-user:*packages-directory* ,top)
+              (tuatara.packages::*declared-packages* '())
+              (tuatara.packages::*left-out-packages* '())
+              (tuatara.defaults::*package-sources* '())
+              (,gone (merge-pathnames (format nil "~a/gone/0123456789abcdef0123456789abcdef01234567/gone.lisp"
+                                              (tuatara.io:path-file-name "https://example.org/gone"))
+                                      ,top)))
+         (alexandria:write-string-into-file "(defvar *gone* t)" (ensure-directories-exist ,gone))
+         ,@body))))
+
+(define-test (packages unused-sources-looked-at-again)
+  ;; a source named while the question waits is not deleted: each is looked at again, as things are then
+  (with-unused-source (top gone)
+    (auto-save-session
+     (list "M-x p a c k a g e - r e m o v e - u n u s e d RET"
+           (list :until (lambda () (tuatara.command::editor-minibuffer-active tuatara.command:*editor*)))
+           (list :until (lambda () (push (list "gone" "https://example.org/gone" nil nil nil) tuatara.packages::*declared-packages*)))
+           "y RET" (list :until (lambda () (echo-says "no longer named deleted: 0")))))
+    (true (probe-file gone))))
+
+(define-test (packages unused-sources-init-file-read-through)
+  ;; an init file not read to its end: nothing looked for, nothing deleted, said why
+  (with-unused-source (top gone)
+    (let ((tuatara.defaults::*init-file-stop* (cons 12 "end of file")) (said nil))
+      (auto-save-session
+       (list "M-x p a c k a g e - r e m o v e - u n u s e d RET"
+             (list :until (lambda () (setf said (echo-says "The init file was not read to its end (12: end of file); nothing is deleted until it is")))))
+       :width 200)
+      (true said)
+      (true (probe-file gone)))))
+
+(define-test (packages unused-sources-failure-said)
+  ;; looking failing is said, in plain words
+  (with-unused-source (top gone)
+    (let ((said nil))
+      (sb-int:encapsulate 'tuatara.packages::unused-package-folders 'unused-sources-failure-said
+                          (lambda (function) (declare (ignore function)) (error "the folder could not be read")))
+      (unwind-protect
+           (auto-save-session
+            (list "M-x p a c k a g e - r e m o v e - u n u s e d RET"
+                  (list :until (lambda () (setf said (echo-says "Looking for package sources no longer named failed")))))
+            :width 200)
+        (sb-int:unencapsulate 'tuatara.packages::unused-package-folders 'unused-sources-failure-said))
+      (true said)
+      (true (probe-file gone)))))
+
+(define-test (packages unused-sources-parent-link-left)
+  ;; a source's folder swapped for a link before the deleting: what the link leads to stays
+  (with-test-directory (dir)
+    (let* ((top (namestring (ensure-directories-exist (merge-pathnames "packages/" dir))))
+           (outside (namestring (ensure-directories-exist (merge-pathnames "outside/" dir))))
+           (tuatara-user:*packages-directory* top)
+           (tuatara.packages::*declared-packages* (list (list "used" "https://example.org/mixed" nil nil nil)))
+           (tuatara.packages::*left-out-packages* '())
+           (tuatara.defaults::*package-sources* '())
+           (source (concatenate 'string top (tuatara.io:path-file-name "https://example.org/mixed")))
+           (theirs (merge-pathnames "other/c0ffee0123456789abcdef0123456789abcdef01/other.lisp" outside)))
+      (alexandria:write-string-into-file "x" (ensure-directories-exist (format nil "~a/other/c0ffee0123456789abcdef0123456789abcdef01/other.lisp" source)))
+      (alexandria:write-string-into-file "theirs" (ensure-directories-exist theirs))
+      (auto-save-session
+       (list "M-x p a c k a g e - r e m o v e - u n u s e d RET"
+             (list :until (lambda () (tuatara.command::editor-minibuffer-active tuatara.command:*editor*)))
+             (list :until (lambda ()
+                            (uiop:delete-directory-tree (pathname (format nil "~a/" source)) :validate t)
+                            (sb-posix:symlink (string-right-trim "/" outside) source)
+                            t))
+             "y RET" (list :until (lambda () (echo-says "no longer named deleted")))))
+      (true (probe-file theirs)))))
+
+(define-test (packages start-waits-quietly)
+  ;; a load at the start, or by a command or mode, of a package in hand waits without a word
+  (let ((tuatara.packages::*packages-in-hand* (list (cons "pkgq" :deciding)))
+        (tuatara.packages::*declared-packages* '())
+        (tuatara.defaults::*package-sources* '()))
+    (let ((f (auto-save-session
+              (list (list :until (lambda () (tuatara-user:load-package "pkgq" :source "https://example.org/pkgq") t))
+                    (list :wait 0.2))
+              :width 200)))
+      (false (tuatara.frontend.fake:fake-frame-showing f "already running")))))
+
+(define-test (packages kept-list-unreadable-reported)
+  ;; a kept list that cannot be read is none, as before; debug mode keeps why in its log
+  (with-test-directory (dir)
+    (let ((good (tuatara.io:native (merge-pathnames "good.needs" dir)))
+          (broken (tuatara.io:native (put-file (merge-pathnames "broken.needs" dir) "(:needs ("))))
+      (tuatara.packages::write-kept-list good '(:needs ()))
+      (drain-debug-reports)
+      (unwind-protect
+           (progn
+             (is equal '((:needs ()) t) (multiple-value-list (tuatara.packages::read-kept-list good)))
+             (is equal '(nil) (multiple-value-list (tuatara.packages::read-kept-list broken)))
+             (true (sb-concurrency:queue-empty-p tuatara.runtime:*debug-reports*))
+             (tuatara.runtime:set-debug t)
+             (is equal '(nil) (multiple-value-list (tuatara.packages::read-kept-list broken)))
+             (let ((texts (loop for report = (sb-concurrency:dequeue tuatara.runtime:*debug-reports*)
+                                while report collect (princ-to-string (fourth report)))))
+               (true (find-if (lambda (text) (search (format nil "reading ~a failed" broken) text)) texts)
+                     "~s" texts)))
+        (drain-debug-reports)))))

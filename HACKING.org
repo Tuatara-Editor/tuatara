@@ -5,11 +5,24 @@
 - SBCL 2.6 or later, with threads (the Fedora and Debian packages are). The core
   uses SBCL's threads, foreign calls and compiler, so other Lisps will not build it.
 - Quicklisp, in =~/quicklisp/= (its default), =~/.local/share/quicklisp/=, or
-  where =QUICKLISP_SETUP= names its =setup.lisp=. The Lisp libraries (CFFI,
-  cl-ppcre, Parachute and the rest) are fetched by it on the first build.
+  where =QUICKLISP_SETUP= names its =setup.lisp=. The Lisp libraries the
+  program is built with are listed, each archive by its SHA-256, in
+  =tools/lisp-archives.sha256=. After installing Quicklisp, run
+  =tools/lisp-archives.sh index=, =fetch= and =lock=: they download that
+  Quicklisp set's index and the listed archives over HTTPS, checked against
+  their hashes, and tell Quicklisp to download nothing more. Every build
+  (=tools/build-image.sh=, =tools/release.sh=) checks the archives first and
+  stops on one that is missing or changed; a release is compiled from a copy
+  of your Quicklisp holding only the listed libraries, unpacked from those
+  archives. Libraries only the tests use (Parachute and the rest) are not
+  listed: install them once, before =lock=, or add them as below.
 - A C and C++ compiler, git and make, for the tree-sitter grammars.
-- Zig, the version =lisp/terminal/library.pin= names, for the terminal library
-  (from ziglang.org; one directory, no installation).
+- Zig 0.17.0, the version =lisp/terminal/library.pin= names, for the terminal
+  library: =https://ziglang.org/download/0.17.0/zig-x86_64-linux-0.17.0.tar.xz=,
+  unpacked anywhere (one directory, no installation) and put first on =PATH=.
+  Its SHA-256 is in =tools/ci-setup.sh=, which checks it before using it for a
+  release; check yours the same way (=sha256sum=). A distribution's Zig of
+  another version is refused.
 - At run time: GTK 4 for the window, ncurses for the terminal; bubblewrap,
   ImageMagick and poppler's tools for pictures and PDFs; enchant and hunspell
   for spelling.
@@ -22,10 +35,53 @@ scripts below run their Lisp and C work in it by themselves when it is there
 =tools/check-updates.sh= reports which pinned dependencies have newer
 versions upstream (tree-sitter and the grammars, Ghostty and Zig, Quicklisp,
 SBCL, and what the AppImage is made with) in =build/bumpcheck.org=, and
-changes nothing; it asks the network for names and versions only.
+changes nothing; it asks the network for names and versions only. Its first
+section, "Ghostty security advisories the pin does not fix", lists those
+published since the pinned commit whose fix the pin does not hold, or could
+not be checked, read from GitHub's API with =gh= when it is logged in, else
+with =curl= and no token (sixty questions an hour); it needs =jq=.
 =--install= runs it once a week from a systemd user timer, with a notice on
 the desktop when the list changes (=tools/toolbox-setup.sh= asks whether to,
 and does not unless you say yes), and =--remove= stops it.
+
+Before a grammar's pin in =syntax/grammars.tsv= moves, and at each
+period-check, =tools/check-grammar-sources.sh [NAME...]= checks where each
+grammar comes from, changing nothing: it stops on a repository renamed or
+moved to another owner (judge the new home first) and on a pin on no branch
+or tag; it reports archived repositories and those with no commit for two
+years; and for each pin moved since the last commit it writes what changed
+in what is compiled to =build/grammar-check/NAME.diff=, the scanner read by
+hand before the bump goes in. =tools/grammars.sh= compiles a grammar only from
+a checkout of its commit with nothing changed, and only when what it compiles
+hashes as =syntax/grammar-inputs.sha256= records; once the difference is read,
+=tools/grammars.sh --record NAME= records the new hash. A grammar whose parser
+is generated again runs its =grammar.js= in bubblewrap, with no network.
+The manifest's fourth column is the SPDX expression of what the grammar's
+licence files grant (=MIT OR Apache-2.0=, =AGPL-3.0-or-later AND ISC=), and
+=tools/grammars.sh= stops on one that names other licences than the files
+hold, as =tools/licence-names.sh= reads them; a package.json or Cargo.toml
+that says otherwise does not count. Every licence named must go with its
+text: a repository whose files only name theirs (an SPDX-License-Identifier
+line, a notice) has the official text in =syntax/licenses/NAME.txt=, carried
+beside its own files, with where it was taken from at its top.
+
+=tools/fuzz-grammars.sh [NAME...]= fuzzes grammars with tree-sitter's fuzzer
+on their own test corpus and Tuatara's samples, the pin of a grammar moved
+only once it passes. =tools/fuzz-grammars.sh --hostile [-n ROUNDS] [NAME...]=
+builds each grammar with a scanner (or those named) with AddressSanitizer and
+UndefinedBehaviorSanitizer, its patches applied, and parses texts made to be
+hard on a scanner (=tools/grammar-hostile.c=); it needs the compilers'
+sanitizer libraries (=libasan=, =libubsan=). Its logs are in =build/fuzz/=.
+=tools/fuzz-helper.sh [-n ROUNDS] [--seed SEED]= builds the syntax helper
+with the same sanitizers and sends it requests of every kind, well made and
+spoilt (=tools/fuzz-helper.py=); it fails on the first sanitizer report or
+the helper ending, the last requests sent in =build/fuzz/helper.log.last=;
+over one connection, then over two, the second using what the first uses.
+=tools/fuzz-pdf.sh [-n ROUNDS] [--seed SEED] [--deadline SECONDS]= spoils PDFs
+it makes itself (=tools/fuzz-pdf.lisp=) and reads each with every reader of
+=lisp/viewers/pdf-reader.lisp= and file-metadata's PDF part; it fails on an
+error escaping a reader, a reader running past the deadline on one file or
+too much memory kept, the file that did it kept in =build/fuzz/=.
 
 * Building and running
 
@@ -45,7 +101,24 @@ was built on (it refuses one that names the home folder or the account);
 it (it takes its libraries from Ubuntu 24.04, in a podman container), and
 =tools/distro-packages.sh= Fedora, Ubuntu and Arch packages (each made by its
 system's own tools in a podman container; =--check= installs each in a new
-container and runs it). The images are pinned in =tools/containers.sh=.
+container and runs it: Tuatara colours code only where its sandbox runs, and
+bwrap cannot mount a =/proc= of its own under podman's masks over =/proc= or
+its SELinux label, so the check's container is made without those, =/sys=
+still masked and seccomp kept). The images are pinned by digest in =tools/containers.sh=;
+each build also brings its container's packages up to date (the system's
+update and upgrade), so the libraries bundled are the current ones, and
+=tools/appimage.sh= records them: =build/Tuatara-x86_64.AppImage.libraries.txt=
+(inside the AppImage as =licenses/bundled-libraries.txt=, and a release file)
+lists the package, exact version and SHA-256 of each bundled library with the
+base image's digest and the hashes of appimagetool, its runtime and the exclude
+list, to check against security advisories. Beside it,
+=build/release/Tuatara-x86_64.AppImage.library-sources.tar.zst= holds the
+Ubuntu source package of every bundled library at exactly that version
+(=tools/library-sources.sh=, deb-src enabled in the container): apt checks each
+file against Ubuntu's signed index, and the script again against its =.dsc=,
+either stopping the build on a file that differs. It is a release file too,
+so that a release carries its libraries' sources itself, whatever Ubuntu's
+archive keeps.
 
 A release carries every grammar's licence (=grammars/licenses/=), and SBCL's
 and those of the Lisp libraries compiled into the program (=licenses/=); and
@@ -65,9 +138,17 @@ and checked), installs and runs each package, and makes a draft release with
 =SHA256SUMS= and the notes of =.github/release-notes.md=; "What changed" is
 written there before it is published. Run by hand from the Actions tab, it
 builds the files of a branch without releasing them. The Lisp libraries are
-checked against =tools/lisp-archives.sha256=: when your Quicklisp's set
-changes, make it again from your own archives, as its first lines say, and
-the Quicklisp set =tools/ci-setup.sh= names with it.
+checked against =tools/lisp-archives.sha256= by =tools/lisp-archives.sh=,
+the same check every local build makes. To use a library new to Tuatara, run
+=tools/lisp-archives.sh add LIBRARY= (a Quicklisp project name): it downloads
+the archive over HTTPS from the Quicklisp set =tools/lisp-archives.sh= names,
+checks it against the size and MD5 of the index, and appends its line to
+=tools/lisp-archives.sha256=. That line is then reviewed with the library
+(licence, owner, what it loads; CONTRIBUTING.md, Dependencies) and committed
+with the change that uses it. Its own dependencies are added the same way, one
+at a time, as the build reports each missing. To move to another Quicklisp
+set, change =dist_url= in =tools/lisp-archives.sh= and each line of the list
+together.
 
 * Testing
 
@@ -86,6 +167,15 @@ Full compiler warnings fail the suite. Build once with an empty cache too
 that defines it is loaded warns only then. A test that changes a file works on files
 it made itself, in a directory of its own.
 
+=tools/bidi-conformance.sh= runs the order right-to-left text is shown in
+(=src/display/bidi.lisp=) against Unicode's own conformance files for the
+version of the character data SBCL carries: =BidiTest.txt=,
+=BidiCharacterTest.txt= and =BidiBrackets.txt=, downloaded into
+=build/bidi-conformance/= and checked against their SHA-256 (they are under the
+Unicode License and not kept here). It prints how many cases of each pass;
+every one should. Run it when that file changes, or when SBCL's Unicode
+version does (then with the new version's files and hashes).
+
 ** The stable surface
 
 =test/api/stable-surface.sexp= pins what packages and init files are written
@@ -94,6 +184,29 @@ settings, the commands' names. From 1.0.0 the =stable-surface= tests fail on
 a change that breaks it within a major version (CONTRIBUTING.md, "Keeping what
 others build on"). =tools/pin-stable-surface.sh= writes it again; it is run
 at each version bump, its =git diff= read first.
+
+=test/api/kept-files.sexp= pins the files Tuatara keeps in your folders: each
+list kept between sessions (=define-state-list=, =lisp/editing/state.lisp=)
+with its class (=:kept= or =:remembered=) and the version of its format (a
+list of trust with =:trust t= and its =:fields=, which may not change within
+a major version), and
+the other files with theirs. =test/kept-files/VERSION/= holds each list's file
+as that release wrote it; the =kept-files= tests read them all with today's
+code. A new list needs its class, a row in the pin, sample entries in
+=*kept-file-entries*= (=test/kept-files.lisp=) and a sample file:
+=tools/pin-kept-files.sh= writes the pin and the samples of the version in
+=tuatara.asd=, never over a file there. A list's format changes only by
+adding (a field at the end of a line, after every field of today written
+even when empty; or a line of a new kind) with its =:version= raised; old
+samples are never edited. A line of a new kind begins with =@=, which no
+list reads as an entry and no =:line-key= takes; each list's =:line-key=
+(=field-line-key=, =spaced-line-key=) gives NIL for a line not of its
+entries' shape. On a list of trust (=:trust t=) an older release always
+fails closed on a later field: adding one raises =:version=, and an older
+release reads no line of a later version with more than =:fields= fields,
+so it asks again. A version-1 line with extra fields is read (only a hand
+edit or a release breaking this rule writes one). A later field may only add
+information; a narrowing of a trust is a line of a new kind.
 
 * Working in a running editor
 
@@ -118,6 +231,12 @@ Lisp, =M-x ielm= is a REPL, and =M-.= goes to the source of anything.
   indent and select (from Helix, MPL 2.0).
 - =test/= :: the tests (Parachute), one file per part; =tools/= the scripts.
 
+C libraries (GTK, ncurses, tree-sitter, the terminal library) are called
+through SBCL's own foreign calls (=sb-alien=), loaded when first needed by
+=foreign-library-p=: a function by =define-c-function= or =foreign-call=,
+text given to C by =with-c-string= and read back by =sap-string=
+(=src/io/posix.lisp=, =src/runtime/resources.lisp=).
+
 Tuatara carries no packages of its own: a package is loaded on asking from a
 git repository or a folder, =(load-package "NAME" :source ...)= in the init
 file, and is written, tested and kept where it lives ("Writing a package").
@@ -136,6 +255,26 @@ project's own packages each in =Tuatara-Editor/tuatara-NAME=. Its entry,
 
 =:folder= naming the folder within the repository when the package is not
 at its top.
+
+The entry's header says the oldest Tuatara the package works with, in a
+line of its own among the comments at the top:
+
+#+begin_src lisp
+;;;; garamond.lisp --- The spaces between sentences, kept by the document itself.
+;;;; Copyright (C) 2026 Your Name.  GPL-3.0-or-later; see LICENSE.
+;;;; Needs: Tuatara 0.91.0
+#+end_src
+
+It is read without running anything. A Tuatara older than that never takes
+the version: it takes the newest older one that fits (the tag before it,
+or for =:version "latest"= the commit before the line changed), or keeps
+the one it has. A package that says nothing loads in any Tuatara, the names
+it uses checked as it loads. Sign the commits or tags you publish (=git tag
+-s=, =git commit -S=, with a GPG or an SSH key): the key that signed the
+first version someone takes is remembered, and a later version signed by
+another, or not signed, is refused for them until they trust it again
+(=M-x package-trust-again=). Unsigned packages are taken too, and shown as
+unsigned.
 
 It has a Lisp package of its own that uses Tuatara's API, the names the
 package =tuatara= exports (=lisp/api.lisp=), and nothing else of Tuatara's:
@@ -181,6 +320,14 @@ package most often needs:
   made with =write-new-file=: read-only (0400) from the moment it is
   created, never written over a file or a link already there.
   =write-private-copy= makes a private copy of a file in the cache.
+  =copy-file-checked= copies a file and checks the copy's SHA-256
+  against the original's.
+- Evidence :: =evidence-path-p= says whether a file is in an evidence
+  folder (=*evidence-folders*=) and by which entry; =writing-refusal=
+  gives, in Tuatara's words, why nothing may be written in a folder, or
+  NIL. Tuatara's own writes refuse such folders by themselves
+  (=writing-refused=, a =file-system-error=); a package asks first only
+  to say so before it begins.
 - Paths :: =native=, =expand-path=, =parent-path=, =path-join=,
   =slash-ended=, =path-within-p= (inside a folder, =..= taken into
   account), =native-file-name=, =native-file-stem=, =native-file-type=.
@@ -273,6 +420,20 @@ says what it is for.
   theme in force.
 - Nothing in a file is ever run: pictures, PDFs and Office documents are drawn in
   the sandbox, links are followed only when asked.
+- Pictures (=lisp/viewers/decode.lisp=): OpenJPEG and libjxl make every pixel
+  of a JPEG 2000 or JPEG XL picture before ImageMagick can count them, so
+  their size is read from the header in the editor first and the picture
+  refused before anything runs when it needs more than =*picture-memory*=.
+  Their time grows with that size: a lossless JPEG 2000 of noise, the
+  slowest honest kind, took 0.7 processor seconds a megapixel (5 MP 3.5 s,
+  20 MP 13.8 s, 40 MP 27.3 s, on a 2025 laptop), a lossless JPEG XL of noise
+  0.5; =*picture-seconds-per-megapixel*= is twice the slowest, for slower
+  machines. ImageMagick reads every =policy.xml= on its configure path and
+  merges them, so each one it lists besides Tuatara's is given Tuatara's
+  policy in its place, or the program is not run. ImageMagick 6 enlarges a
+  JPEG to the =jpeg:size= it is told, so that hint is never larger than the
+  JPEG; ImageMagick's =jp2:reduce-factor= gives a crop of the reduced picture
+  (7.1.2-32), so JPEG 2000 is decoded whole.
 - Each source file starts with its name, a one-line description, and the
   copyright and license line.
 - A new setting: its name in =tuatara-user='s export list (=src/package.lisp=),

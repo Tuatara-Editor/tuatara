@@ -63,8 +63,9 @@ the first, the rest left blank below it."
     (when (plusp extra)
       ;; the blank lines go after the cursor, which stays where it is
       (let ((p (point)))
-        (tuatara.buffer:buffer-insert b p (with-output-to-string (out)
-                                            (dotimes (i extra) (write-string (tuatara.buffer:buffer-newline b) out)))
+        (tuatara.buffer:buffer-insert b p (tuatara.buffer:unjoined-line-ends
+                                           b p (with-output-to-string (out)
+                                                 (dotimes (i extra) (write-string (tuatara.buffer:buffer-newline b) out))))
                                       :group t)
         (goto p)))
     (tuatara-insert)))
@@ -82,10 +83,11 @@ blank above it."
     (char-motion -1)
     (indent-typed-line b :group t)
     (when (plusp extra)
-      (tuatara.buffer:buffer-insert b (tuatara.buffer:buffer-line-start b (point))
-                                    (with-output-to-string (out)
-                                      (dotimes (i extra) (write-string (tuatara.buffer:buffer-newline b) out)))
-                                    :group t)
+      (let ((at (tuatara.buffer:buffer-line-start b (point))))
+        (tuatara.buffer:buffer-insert b at (tuatara.buffer:unjoined-line-ends
+                                            b at (with-output-to-string (out)
+                                                   (dotimes (i extra) (write-string (tuatara.buffer:buffer-newline b) out))))
+                                      :group t))
       (move-to-line-end))
     (tuatara-insert)))
 
@@ -110,7 +112,7 @@ the first that did something returns true (Org follows a link).")
 always in the hex view, nothing, so that it changes no text."
   (let ((buffer (current-buffer)))
     (unless (hex-view-here-p)
-      (some (lambda (function) (funcall function buffer)) *enter-dwim-functions*))))
+      (run-hook-until-done *enter-dwim-functions* buffer))))
 
 (define-command tuatara-normal-inert ()
   "Do nothing: NORMAL state keeps BACKSPACE and DELETE inert in editing buffers."
@@ -375,7 +377,7 @@ leader key in the mode's NORMAL and support keys."
         (link-mode-layers)
         map)))
 
-(defun mode-state-keys (buffer state-keymap)
+(defmethod host-state-keymaps ((host defaults-host) buffer state-keymap)
   "The keys bound for BUFFER's major mode, or the nearest it is made from, in
 the state whose keys are STATE-KEYMAP: a list of one keymap, or none."
   (when (plusp (hash-table-count *mode-layers*))
@@ -411,7 +413,6 @@ binds it to, when it binds one."
                                            ("n" calendar-journal-entry)))
   (copy-normal-keys '("%" "y") *tuatara-calendar-keymap*)
   (put-leader-on *leader-key*)
-  (setf tuatara.command:*state-keys-function* 'mode-state-keys)
   (define-keys *tuatara-leader-keymap* *tuatara-leader-bindings*)
   (label-keys *tuatara-leader-keymap* *tuatara-leader-labels*)
   (tuatara-normal-claim-wrap-keys))
@@ -426,7 +427,8 @@ while modal editing is on (MODAL-SYNC)."
 (defun install-tuatara-modal (editor)
   "Install Tuatara's modal editing into EDITOR: keys, mode line, cursor shape, the state sync and
 position tracking after every command, the state sync after work from the background too, and
-a file read again while typing kept a step of its own to undo."
+a file read again while typing kept a step of its own to undo, and a file open already, visited
+from another buffer, shown in NORMAL state."
   (install-tuatara-modal-keys)
   (setf (editor-mode-line-function editor) #'modal-mode-line
         (editor-cursor-shape-function editor) #'modal-cursor-shape)
@@ -441,6 +443,7 @@ a file read again while typing kept a step of its own to undo."
   (pushnew 'modal-sync-after-background *after-tick-functions*)
   (pushnew 'insert-undo-break *before-reload-functions*)
   (pushnew 'insert-undo-restart *after-reload-functions*)
+  (pushnew 'end-insert-state *shown-again-functions*)
   (pushnew 'track-position (editor-post-command-functions editor))
   (define-key (editor-global-keymap editor) "C-g" 'tuatara-quit)
   (modal-sync editor))

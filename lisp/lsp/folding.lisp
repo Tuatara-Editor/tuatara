@@ -8,7 +8,7 @@
 ;;;; outermost block, or shows all again. Where a file has no syntax tree,
 ;;;; M-x expand-selection grows the selection as its server sees the code.
 
-(in-package #:tuatara.defaults)
+(in-package #:tuatara.lsp)
 
 (defun lsp-folding-ranges (buffer)
   "The blocks BUFFER's server knows, each (START END) of the octets a fold of

@@ -68,7 +68,7 @@ as DECODE-IMAGE gives them."
   "What the file at NATIVE is by its octets, as two values, a keyword and
 words, when it is an image this view draws (one of *IMAGE-FORMATS*, not
 SVG); else NIL."
-  (multiple-value-bind (words kind) (ignore-errors (file-kind native))
+  (multiple-value-bind (words kind) (ignoring-errors-reported ("finding what ~a is" native) (file-kind native))
     (and kind (not (eq kind :svg)) (assoc kind *image-formats*)
          (values kind words))))
 
@@ -117,7 +117,7 @@ nothing to draw it with, which is said)."
                                                 (tuatara.io:native-file-name native) words))
                                        "its picture"))
         (view (make-image-view native kind words)))
-    (setf (tuatara.buffer:buffer-local buffer :header-line)
+    (setf (tuatara.display:buffer-header-line buffer)
           (let ((text (format nil " ~a" words))) (lambda (window) (declare (ignore window)) (values text nil)))
           (tuatara.buffer:buffer-local buffer 'image-view) view)
     (push buffer *image-views*)
@@ -129,7 +129,7 @@ nothing to draw it with, which is said)."
 header and its text why there is none."
   (destructuring-bind (image . notes) result
     (let ((text (format nil " ~a~{~a~}" (image-view-words view) (mapcar #'car notes))))
-      (setf (tuatara.buffer:buffer-local buffer :header-line)
+      (setf (tuatara.display:buffer-header-line buffer)
             (lambda (window) (declare (ignore window)) (values text nil))))
     (if image
         (setf (tuatara.buffer:buffer-local buffer :image) image)

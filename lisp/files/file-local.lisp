@@ -152,7 +152,9 @@ a mode that runs what is typed (the Lisp prompt, *scratch*'s Lisp)."
 when it is one Tuatara takes and VALUE suits it; true when it was taken."
   (flet ((whole (low high) (and (integerp value) (<= low value high))))
     (cond ((string= name "mode")
-           (let ((mode (and (stringp value) (ignore-errors (mode-named (make-symbol (string-upcase value)))))))
+           (let ((mode (and (stringp value)
+                            (ignoring-errors-reported ("finding the mode ~a" value)
+                              (mode-named (make-symbol (string-upcase value)))))))
              (when (and mode (file-mode-p mode))
                (set-major-mode buffer mode)
                t)))
@@ -188,11 +190,11 @@ mode first, and say which of them are left alone; then call
                             (remove "mode" settings :key #'car :test #'string=)))
            (left (loop for (name . value) in ordered
                        if (or (apply-file-local-setting buffer name value)
-                              (some (lambda (f) (funcall f buffer name value)) *file-local-setting-functions*))
+                              (run-hook-until-success *file-local-setting-functions* buffer name value))
                          do (note-file-declares buffer name value)
                        else unless (member name '("coding" "lexical-binding") :test #'string=)
                               collect name)))
-      (dolist (f *file-local-taken-functions*) (funcall f buffer))
+      (run-hook *file-local-taken-functions* buffer)
       (when left
         (message "~a names settings for itself that are left alone: ~{~a~^, ~}"
                  (tuatara.buffer:buffer-name buffer) (remove-duplicates left :test #'string=))))))

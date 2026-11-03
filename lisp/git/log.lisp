@@ -9,7 +9,7 @@
 ;;;; showing it. d opens the diff menu: every change not committed, what is
 ;;;; staged, what is not, against a revision, between two, or a commit.
 
-(in-package #:tuatara.defaults)
+(in-package #:tuatara.git)
 
 ;;; Tables of what git printed
 

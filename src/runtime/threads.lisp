@@ -33,7 +33,7 @@ lack of memory too, ends that work and is reported in the debug log, never
 ending the editor with it. NIL then, else what BODY returns."
   `(handler-case (progn ,@body)
      (serious-condition (e)
-       (ignore-errors (debug-report :thread "~a stopped: ~a" ,name e))
+       (ignore-errors (debug-report :thread "~a stopped: ~a" ,name (failure-words e)))
        nil)))
 
 (defparameter *background-niceness* 5
@@ -48,14 +48,16 @@ low, as a process takes the standing of the thread that starts it.")
 \(where the editor runs, or the window), for the processor (setpriority for this thread alone, 19 at
 most), whichever thread started it; nothing where that cannot be done, as a
 thread may not stand higher than the one that started it without leave."
-  (ignore-errors
-   (let* ((tid (sb-alien:alien-funcall (sb-alien:extern-alien "gettid" (function sb-alien:int))))
-          (getpriority (sb-alien:extern-alien "getpriority" (function sb-alien:int sb-alien:int sb-alien:unsigned-int)))
-          (setpriority (sb-alien:extern-alien "setpriority" (function sb-alien:int sb-alien:int sb-alien:unsigned-int sb-alien:int)))
-          ;; PRIO_PROCESS by a thread id: that thread alone; the process's own id is its first thread's
-          (wanted (min 19 (+ (sb-alien:alien-funcall getpriority 0 (sb-posix:getpid)) niceness))))
-     (unless (= wanted (sb-alien:alien-funcall getpriority 0 tid))
-       (sb-alien:alien-funcall setpriority 0 tid wanted)))))
+  (ignoring-errors-reported ("standing ~d below the editor" niceness)
+    (let* ((tid (sb-alien:alien-funcall (sb-alien:extern-alien "gettid" (function sb-alien:int))))
+           (getpriority (sb-alien:extern-alien "getpriority"
+                                               (function sb-alien:int sb-alien:int sb-alien:unsigned-int)))
+           (setpriority (sb-alien:extern-alien "setpriority"
+                                               (function sb-alien:int sb-alien:int sb-alien:unsigned-int sb-alien:int)))
+           ;; PRIO_PROCESS by a thread id: that thread alone; the process's own id is its first thread's
+           (wanted (min 19 (+ (sb-alien:alien-funcall getpriority 0 (sb-posix:getpid)) niceness))))
+      (unless (= wanted (sb-alien:alien-funcall getpriority 0 tid))
+        (sb-alien:alien-funcall setpriority 0 tid wanted)))))
 
 (defun make-guarded-thread (function &rest keys &key name (niceness *background-niceness*) &allow-other-keys)
   "A thread running FUNCTION as SB-THREAD:MAKE-THREAD runs it, with KEYS (its
@@ -63,14 +65,18 @@ thread may not stand higher than the one that started it without leave."
 ending its work alone (WITH-THREAD-GUARD), never the editor. It stands
 NICENESS below the editor's thread for the processor, whichever thread makes
 it (*BACKGROUND-NICENESS*, STAND-BELOW-EDITOR): 0 for a thread whose work is
-looked at as it comes, as a terminal's output is."
+looked at as it comes, as a terminal's output is. A secret at hand where it
+is made (*SECRET-AT-HAND*) is at hand in it."
   (let ((keys (loop for (key value) on keys by #'cddr
-                    unless (eq key :niceness) append (list key value))))
+                    unless (eq key :niceness) append (list key value)))
+        (secret *secret-at-hand*))
     (apply #'sb-thread:make-thread
            (lambda (&rest arguments)
-             (stand-below-editor niceness)
-             (with-thread-guard ((or name "a thread"))
-               (apply function arguments)))
+             ;; a secret at hand where the thread is made is at hand in it
+             (let ((*secret-at-hand* secret))
+               (stand-below-editor niceness)
+               (with-thread-guard ((or name "a thread"))
+                 (apply function arguments))))
            keys)))
 
 (defun carry-settings (settings function)

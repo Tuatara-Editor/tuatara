@@ -172,11 +172,11 @@ for major modes, and the settings made for modes before it put back afterwards."
                  (is = wanted (tuatara.defaults::buffer-tab-width b) "buffer ~s" width)
                  (is = wanted (tuatara.defaults::tab-columns) "columns ~s" width))))
            ;; the screen's 8 when nothing sensible is said
-           (let ((tuatara.display:*tab-width-function* (constantly 0)))
+           (let ((tuatara.runtime:*host* (make-answering-host 'tuatara.display:host-tab-width (constantly 0))))
              (is = 8 (tuatara.display:tab-width-of b)))
-           (let ((tuatara.display:*tab-width-function* (constantly 5)))
+           (let ((tuatara.runtime:*host* (make-answering-host 'tuatara.display:host-tab-width (constantly 5))))
              (is = 5 (tuatara.display:tab-width-of b)))
-           (let ((tuatara.display:*tab-width-function* nil))
+           (let ((tuatara.runtime:*host* (make-instance 'tuatara.runtime:host)))
              (is = 8 (tuatara.display:tab-width-of b))))
       (tuatara.buffer:kill-buffer b))))
 

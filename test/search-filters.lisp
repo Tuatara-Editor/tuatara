@@ -180,6 +180,26 @@ the list."
       (true (tuatara.defaults::entry-matches-p filtering (tuatara.defaults::make-search-filter "green" :where :colour) "x" "x"))
       (tuatara.buffer:kill-buffer buffer))))
 
+(define-test (search-filters failing-text-reported)
+  ;; an entry whose more text fails is not matched, and debug mode keeps the failure in its log
+  (let* ((buffer (tuatara.buffer:make-buffer (tuatara.buffer:unique-buffer-name "filter failing")))
+         (filtering (tuatara.defaults::list-filtering-made buffer))
+         (filter (tuatara.defaults::make-search-filter "an" :where :colour)))
+    (setf (tuatara.defaults::list-filtering-text filtering)
+          (lambda (entry where) (declare (ignore where)) (error "no text for ~a" entry)))
+    (drain-debug-reports)
+    (unwind-protect
+         (progn
+           (false (tuatara.defaults::entry-matches-p filtering filter "banana" "banana"))
+           (true (sb-concurrency:queue-empty-p tuatara.runtime:*debug-reports*))
+           (tuatara.runtime:set-debug t)
+           (false (tuatara.defaults::entry-matches-p filtering filter "banana" "banana"))
+           (let ((texts (loop for report = (sb-concurrency:dequeue tuatara.runtime:*debug-reports*)
+                              while report collect (princ-to-string (fourth report)))))
+             (true (find-if (lambda (text) (search "filter it failed: no text for banana" text)) texts) "~s" texts)))
+      (drain-debug-reports)
+      (tuatara.buffer:kill-buffer buffer))))
+
 (define-test (search-filters searches-narrow)
   ;; a list that asks for it is narrowed by C-s itself
   (multiple-value-bind (f editor list) (filtered-session "C-s c h RET" :searches t)
@@ -659,10 +679,11 @@ with y hidden between them and after the last.")
       (wait-for-filter-jobs))))
 
 (define-test (search-filters csv-after-typing-pauses)
-  ;; a file past *typing-pause-octets*: the window's lines at each key, the job only once typing
+  ;; a file too large to filter at each key: the window's lines at each key, the job only once typing
   ;; pauses, or at once on RET
   (let ((tuatara.defaults::*search-filter-quick-characters* 100)
-        (tuatara.defaults::*typing-pause-octets* 0)
+        (tuatara.defaults::*count-at-once-seconds* 0)
+        (tuatara.defaults::*count-at-once-least* 0)
         (tuatara.defaults::*typing-pause* 1000)
         (job :unset) (due nil) (partial nil))
     (with-records (f buffer path)
@@ -752,8 +773,8 @@ with y hidden between them and after the last.")
                          (line-start-of 6) "m v j l" :tick
                          (lambda ()
                            (let* ((e tuatara.command:*editor*) (w (tuatara.command:editor-window e)))
-                             (setf lit (remove :region (tuatara.command::window-highlights-for
-                                                        e w (tuatara.display:window-rows w))
+                             (setf lit (remove :region (apply #'append (tuatara.command::window-highlights-for
+                                                                        e w (tuatara.display:window-rows w)))
                                                :key #'third :test-not #'eq)))))
                    :file path :width 60 :height 10)
       (kill-records b path))
@@ -953,6 +974,15 @@ tiny pieces, a few lines each, so that a small text exercises it."
   ;; a .gitignore has no columns: the whole line, asked at once
   (is string= (format nil "build/~%") (list-records-after "C-x / k b u i l d RET" (format nil "build/~%*.o~%") :mode "gitignore-mode")))
 
+(define-test (search-filters columns-asked-before-any-grammar-question)
+  ;; the first file of a language whose grammar is off asks whether to turn it on in a session
+  ;; typing its own keys; the keys of these sessions must reach the column question
+  (dolist (mode '("todotxt-mode" "hosts-generic-mode" "pip-requirements-mode"))
+    (setf tuatara.defaults::*grammars-not-now* '()
+          tuatara.defaults::*grammar-answers-read* nil)
+    (is string= (format nil "keep~%")
+        (list-records-after "C-x / k RET k e e p RET" (format nil "keep~%drop~%") :mode mode))))
+
 (define-test (search-filters header-lock-in-a-log)
   (let ((log (format nil "time level message~%~{10:~2,'0d INFO line ~:*~d~%~}" (loop for i below 40 collect i))))
     ;; no header yet: said, nothing kept
@@ -1014,7 +1044,7 @@ tiny pieces, a few lines each, so that a small text exercises it."
       (dolist (b made) (when (tuatara.buffer:live-buffer-p b) (tuatara.buffer:kill-buffer b)))
       (forget-list))))
   ;; the package manager: by its State column
-  (let ((tuatara.defaults::*declared-packages* '(("kea" "https://example.nz/kea" nil) ("tui" "https://example.nz/tui" nil))))
+  (let ((tuatara.packages::*declared-packages* '(("kea" "https://example.nz/kea" nil) ("tui" "https://example.nz/tui" nil))))
     (multiple-value-bind (f editor) (run-keys "M-x p a c k a g e - m a n a g e r RET C-x / h N a m e RET k e a RET" :width 160 :height 20)
       (declare (ignore f editor))
       (let ((list (find-if (lambda (b) (search "ackage" (tuatara.buffer:buffer-name b))) tuatara.buffer:*buffers*)))
@@ -1203,9 +1233,9 @@ for, anchors, empty matches, line ends, and matches running over them.")
 (defun least-seconds (function)
   "The least of three runs' seconds of FUNCTION, called with none."
   (loop repeat 3
-        minimize (let ((start (get-internal-real-time)))
+        minimize (let ((start (thread-cpu-time)))
                    (funcall function)
-                   (/ (- (get-internal-real-time) start) internal-time-units-per-second))))
+                   (/ (- (thread-cpu-time) start) internal-time-units-per-second))))
 
 (define-test (search-filters filters-at-search-speed)
   ;; a filter of a large log finds its lines as fast as a search finds its matches, not

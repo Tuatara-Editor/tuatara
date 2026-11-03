@@ -373,7 +373,8 @@ away for a copy, a move or an archive, what is extracted so far kept."
   (call-next-method)
   (let ((thread (rimu-operation-thread job)))
     (when (and thread (not (eq thread sb-thread:*current-thread*)))
-      (ignore-errors (sb-thread:join-thread thread :timeout 5 :default nil)))))
+      (ignoring-errors-reported ("waiting for ~a to stop" (sb-thread:thread-name thread))
+        (sb-thread:join-thread thread :timeout 5 :default nil)))))
 
 (defun rimu-work (verb pair cancel)
   "Do VERB to PAIR, (FROM . TO), stopping between files when CANCEL's car
@@ -387,12 +388,12 @@ away, so that no file is left with part of what it should hold."
           ;; a copy stopped or failed half-way leaves nothing under its name (COPY-PATH-TREE)
           (:copy (let ((whole (tuatara.io:copy-path-tree from to :cancel cancel :skipped #'skip)))
                    (cond ((and (not whole) (car cancel))
-                          (error "stopped; what was copied of it taken away"))
+                          (refuse "stopped; what was copied of it taken away"))
                          ((not whole)
-                          (error "not all copied~@[, left out: ~{~a~^, ~}~]" (reverse skipped))))))
+                          (refuse "not all copied~@[, left out: ~{~a~^, ~}~]" (reverse skipped))))))
           (:move (handler-case (tuatara.io:move-path from to :cancel cancel :skipped #'skip)
                    (tuatara.io:file-system-error (e)
-                     (if skipped (error "~a; left out: ~{~a~^, ~}" e (reverse skipped)) (error e)))))
+                     (if skipped (refuse "~a; left out: ~{~a~^, ~}" e (reverse skipped)) (error e)))))
           (:symlink (tuatara.io:make-symbolic-link (string-right-trim "/" from) to))
           (:hardlink (tuatara.io:make-hard-link (string-right-trim "/" from) to))
           (:extract (extract-archive from to :cancel cancel))
@@ -410,7 +411,7 @@ that leads to B: put in B's place, it would lose what it leads to."
                   (eql (tuatara.io:stamp-ino one) (tuatara.io:stamp-ino other)))))
       (and other
            (or (same-p (tuatara.io:path-stamp a :follow nil))
-               (same-p (ignore-errors (tuatara.io:path-stamp a))))))))
+               (same-p (tuatara.io:path-stamp a :failure nil)))))))
 
 (defun rimu-archive-work (operation pairs replace)
   "Pack the FROMs of PAIRS, all of one TO, into that archive for OPERATION
@@ -418,11 +419,12 @@ that leads to B: put in B's place, it would lose what it leads to."
 them in one step, or none."
   (let ((archive (cdr (first pairs))))
     (handler-case
-        (let ((there (tuatara.io:path-stamp archive :follow nil)))
-          (write-archive (mapcar #'car pairs) archive :cancel (rimu-operation-cancel operation) :replace replace)
-          (when (and replace there) (incf (rimu-operation-replaced operation)))
-          (setf (rimu-operation-done-pairs operation) (reverse pairs)
-                (rimu-operation-done operation) (length pairs)))
+        (reporting-errors ("packing ~a" archive)
+          (let ((there (tuatara.io:path-stamp archive :follow nil)))
+            (write-archive (mapcar #'car pairs) archive :cancel (rimu-operation-cancel operation) :replace replace)
+            (when (and replace there) (incf (rimu-operation-replaced operation)))
+            (setf (rimu-operation-done-pairs operation) (reverse pairs)
+                  (rimu-operation-done operation) (length pairs))))
       (serious-condition (e)
         (push (format nil "~a: ~a" (tuatara.io:native-file-name archive) e) (rimu-operation-failed operation))
         (setf (rimu-operation-done operation) 1)))))
@@ -434,7 +436,16 @@ at once (RIMU-ARCHIVE-WORK); with REPLACE, the names
 there first moved to the trash. ALONG, a function of a pair's FROM, gives a
 file to delete with it once it is done, or NIL (a thing's .trashinfo in the
 trash), not counted apart. LEFT, what was left alone, is said when it is
-over; THEN, a function of no arguments, is called then."
+over; THEN, a function of no arguments, is called then. Nothing is begun
+when one of them would write in an evidence folder (*EVIDENCE-FOLDERS*):
+that is said, and NIL returned."
+  (let ((refusal (loop for (from . to) in pairs
+                       thereis (or (and (member verb '(:move :trash :delete :hardlink))
+                                        (evidence-refusal (rimu-verb-words verb :verb) from))
+                                   (and to (evidence-refusal (rimu-verb-words verb :verb) to))))))
+    (when refusal
+      (message "~a: nothing done" refusal)
+      (return-from rimu-start-operation nil)))
   (when (member verb '(:move :trash :delete))
     (check-not-saving (mapcar #'car pairs)))
   (let ((operation (make-rimu-operation verb pairs list left then)))
@@ -445,9 +456,9 @@ over; THEN, a function of no arguments, is called then."
                      (dolist (pair pairs)
                        (when (car (rimu-operation-cancel operation)) (return))
                        (handler-case
-                           (progn
+                           (reporting-errors ("~(~a~) ~a" verb (car pair))
                              (when (and (cdr pair) (rimu-same-file-p (car pair) (cdr pair)))
-                               (error "it is there already, the very same file"))
+                               (refuse "it is there already, the very same file"))
                              (when (and replace (cdr pair) (tuatara.io:path-stamp (cdr pair) :follow nil))
                                (tuatara.io:trash-path (cdr pair))
                                (incf (rimu-operation-replaced operation)))
@@ -460,7 +471,7 @@ over; THEN, a function of no arguments, is called then."
                                                       (rimu-operation-failed operation))))
                        (incf (rimu-operation-done operation))
                        (let ((wake (rimu-operation-wake operation)))
-                         (when wake (ignore-errors (funcall wake)))))))
+                         (when wake (ignoring-errors-reported ("waking the editor") (funcall wake)))))))
      :name "tuatara rimu operation" :details (format nil "~:d file~:p" (length pairs)))
     (message "~a ~d...~@[ (~a)~]" (rimu-operation-words operation) (length pairs) (rimu-target verb pairs))
     operation))
@@ -474,7 +485,7 @@ PATHS is in."
       (setf (gethash (tuatara.io:parent-path path) directories) t
             (gethash (concatenate 'string (string-right-trim "/" path) "/") directories) t))
     (dolist (buffer (copy-list tuatara.buffer:*buffers*))
-      (when (and (rimu-list-p buffer) (not (rimu-rewound-p buffer))
+      (when (and (rimu-list-p buffer) (not (rimu-source buffer))
                  (let ((directory (tuatara.buffer:buffer-local buffer 'rimu-directory)))
                    (if (rimu-found-p buffer)
                        (some (lambda (path) (tuatara.io:path-within-p path directory)) paths)
@@ -556,7 +567,7 @@ entries to a place asked for."
                             here))
                (target (read-native-path (format nil "~a "
                                                  (rimu-question (rimu-verb-words verb :ask) paths :here here :after "to:"))
-                                         :initial (abbreviated-path offered))))
+                                         :initial (abbreviated-path offered) :writing t)))
           (cond ((null target) (message "Nowhere given: nothing done"))
                 ((and (eq verb :move) (not (eq :directory (tuatara.io:path-kind target))))
                  (message "~a is no directory: nothing moved (\\<rimu-mode>\\[rimu-rename] renames)" (abbreviated-path target)))
@@ -688,7 +699,7 @@ replaced only when you say so, the old going to the trash."
                               (if (rest paths) (string-right-trim "/" (paths-common-directory paths)) (first paths)))))
                (target (read-native-path (format nil "~a " (rimu-question "Archive" paths :here here :after "as:"))
                                          :initial (abbreviated-path (or (rimu-other-directory buffer) here))
-                                         :kind :any))
+                                         :kind :any :writing t))
                (target (if (and target (eq :directory (tuatara.io:path-kind target)))
                            (tuatara.io:path-join target (if (string= name ".tar.gz") "archive.tar.gz" name))
                            target)))
@@ -739,7 +750,7 @@ those of a name there already left as they are. tar does it in the
 background, shut in the sandbox."
   (let* ((buffer (current-buffer))
          (paths (or (rimu-chosen-paths buffer :files-only t)
-                    (error "~a" (rimu-nothing-words buffer "extract" :files-only t
+                    (refuse "~a" (rimu-nothing-words buffer "extract" :files-only t
                                                     :none "No file here: mark archives, or put the cursor on one"))))
          (here (tuatara.buffer:buffer-local buffer 'rimu-directory))
          (offered (if (rest paths)
@@ -747,7 +758,7 @@ background, shut in the sandbox."
                       (tuatara.io:slash-ended (tuatara.io:path-join (tuatara.io:parent-path (first paths))
                                                                     (archive-stem (first paths))))))
          (target (read-native-path (format nil "~a " (rimu-question "Extract" paths :here here :after "into:"))
-                                   :initial (abbreviated-path offered))))
+                                   :initial (abbreviated-path offered) :writing t)))
     (cond ((null target) (message "Nowhere given: nothing extracted"))
           ((and (tuatara.io:path-kind target :follow nil) (not (eq :directory (tuatara.io:path-kind target))))
            (message "~a is no directory: nothing extracted" (abbreviated-path target)))
@@ -783,7 +794,7 @@ is refused. Buffers visiting it follow it. \\<rimu-mode>\\[rimu-edit-names] rena
                              (escape-controls new)))
                    ((tuatara.io:path-stamp to :follow nil) (message "~a is there already" new))
                    (t (handler-case
-                          (progn
+                          (reporting-errors ("renaming ~a" from)
                             (rename-path-following from to)
                             (remhash (tuatara.io:native from) (rimu-marks buffer))
                             (rimu-update buffer :reread t :point-on (tuatara.text:string-octets new))
@@ -799,13 +810,16 @@ second, plain yes."
            (when (and (yes-or-no-p* (format nil "~a for good?" (rimu-question "Delete" paths :here here)))
                       (yes-or-no-p* (format nil "~a for good? It cannot be put back." (rimu-question "Really delete" paths :here here))))
              (rimu-start-operation :delete (mapcar #'list paths) buffer)))
-          ((yes-or-no-p* (format nil "~a?" (rimu-question "Move" paths :here here :after "to the trash")))
+          ((y-or-n-p* (format nil "~a?" (rimu-question "Move" paths :here here :after "to the trash")))
            ;; whether a trash can be had is the same for every file of one directory
            (let ((trash-p (make-hash-table :test 'equal)) (to-trash '()) (no-trash '()))
              (dolist (path paths)
                (let ((directory (tuatara.io:parent-path path)))
                  (multiple-value-bind (known found) (gethash directory trash-p)
-                   (if (if found known (setf (gethash directory trash-p) (and (ignore-errors (tuatara.io:trash-for path)) t)))
+                   (if (if found known (setf (gethash directory trash-p)
+                                             (and (ignoring-errors-reported ("finding a trash for ~a" path)
+                                                    (tuatara.io:trash-for path))
+                                                  t)))
                        (push path to-trash)
                        (push path no-trash)))))
              (setf to-trash (nreverse to-trash) no-trash (nreverse no-trash))
@@ -835,12 +849,12 @@ always does."
 elsewhere, with those above it that are not there; the list shows it."
   (let* ((buffer (current-buffer))
          (here (tuatara.buffer:buffer-local buffer 'rimu-directory))
-         (native (read-native-path "Make directory: " :initial (abbreviated-path here)))
+         (native (read-native-path "Make directory: " :initial (abbreviated-path here) :writing t))
          (path (and native (string-right-trim "/" native))))
     (cond ((or (null path) (string= (concatenate 'string path "/") here)) (message "No directory named"))
           ((tuatara.io:path-stamp path :follow nil) (message "~a is there already" (abbreviated-path path)))
           (t (handler-case
-                 (progn
+                 (reporting-errors ("making the directory ~a" path)
                    ;; those above it too, where they are not there
                    (tuatara.io:ensure-directories (tuatara.io:slash-ended path))
                    (rimu-refresh-lists (list path))
@@ -902,8 +916,8 @@ While search filters narrow the list, only the names it shows are edited."
                   (coerce (loop for line below (length entries)
                                 collect (tuatara.text:make-anchor version (tuatara.buffer:buffer-goto-line buffer line)))
                           'vector))
-                (tuatara.buffer:buffer-local buffer :directory) (tuatara.buffer:buffer-local list 'rimu-directory)
-                (tuatara.buffer:buffer-local buffer :header-line)
+                (buffer-given-directory buffer) (tuatara.buffer:buffer-local list 'rimu-directory)
+                (tuatara.display:buffer-header-line buffer)
                 (let ((text (substitute-command-keys
                              (format nil " Rename: \\<rimu-names-mode>\\[rimu-names-apply] renames the lines changed, \\[rimu-names-abort] leaves them~[~:;; ~:*~d name~:p with a control or invisible character left out (\\<rimu-mode>\\[rimu-rename] renames one)~]"
                                      left-out))))
@@ -968,7 +982,7 @@ when a line does not do, none, and why is said."
          (list (tuatara.buffer:buffer-local buffer 'rimu-names-list))
          (entries (tuatara.buffer:buffer-local buffer 'rimu-names-entries))
          ;; the directory the names were taken from, wherever the list has gone since
-         (directory (tuatara.buffer:buffer-local buffer :directory))
+         (directory (buffer-given-directory buffer))
          (lines (rimu-names-lines buffer)))
     (block apply
       (flet ((refuse (control &rest arguments)
@@ -986,7 +1000,9 @@ when a line does not do, none, and why is said."
             (return-from apply nil))
           (let ((why (rimu-names-refusal directory names finals changes)))
             (when why (refuse "~a" why)))
-          (handler-case (check-not-saving (mapcar (lambda (change) (tuatara.io:path-join directory (car change))) changes))
+          (handler-case (reporting-errors ("renaming in ~a" directory)
+                          (check-not-saving (mapcar (lambda (change) (tuatara.io:path-join directory (car change)))
+                                            changes)))
             (error (e) (refuse "~a" e)))
           ;; two steps, so that names can be swapped: each to a name of its own, then to its new name
           (let* ((temporary (loop for change in changes
@@ -996,19 +1012,27 @@ when a line does not do, none, and why is said."
             ;; the first step: one that fails puts back those gone before it, and nothing is renamed
             (loop for (old . nil) in changes
                   for temp in temporary
-                  do (handler-case (progn (tuatara.io:rename-path (tuatara.io:path-join directory old) temp)
-                                          (push (cons temp old) moved))
+                  do (handler-case (reporting-errors ("renaming ~a" old)
+                                     (tuatara.io:rename-path (tuatara.io:path-join directory old) temp)
+                                     (push (cons temp old) moved))
                        (error (e)
                          (let ((stuck (loop for (temp . old) in moved
-                                            unless (ignore-errors (tuatara.io:rename-path temp (tuatara.io:path-join directory old)) t)
+                                            unless (ignoring-errors-reported ("putting back ~a" old)
+                                                     (tuatara.io:rename-path temp (tuatara.io:path-join directory old))
+                                                     t)
                                               collect (format nil "~a is left as ~a" old (tuatara.io:native-file-name temp)))))
                            (refuse "~a: ~a~@[; ~{~a~^; ~}~]" old e stuck)))))
             (loop for (old . new) in changes
                   for temp in temporary
-                  do (handler-case (progn (tuatara.io:rename-path temp (tuatara.io:path-join directory new))
-                                          (push (cons (tuatara.io:path-join directory old) (tuatara.io:path-join directory new)) done))
+                  do (handler-case (reporting-errors ("renaming ~a" old)
+                                     (tuatara.io:rename-path temp (tuatara.io:path-join directory new))
+                                     (push (cons (tuatara.io:path-join directory old)
+                                           (tuatara.io:path-join directory new))
+                                     done))
                        (error (e)
-                         (push (if (ignore-errors (tuatara.io:rename-path temp (tuatara.io:path-join directory old)) t)
+                         (push (if (ignoring-errors-reported ("putting back ~a" old)
+                                     (tuatara.io:rename-path temp (tuatara.io:path-join directory old))
+                                     t)
                                    (format nil "~a: ~a" old e)
                                    ;; its old name taken meanwhile by another's new one: where it is, said
                                    (format nil "~a: ~a; it is left as ~a" old e (tuatara.io:native-file-name temp)))
@@ -1044,7 +1068,7 @@ one on the line. A name with a / or a control character in it is refused."
          (path (tuatara.io:path-join here name)))
     (flet ((touch (paths)
              (handler-case
-                 (progn
+                 (reporting-errors ("touching ~a" (first paths))
                    (dolist (path paths) (tuatara.io:touch-path path))
                    (rimu-refresh-lists paths)
                    (message "Touched ~:[~a~;~*~d entries~]" (rest paths)
@@ -1056,7 +1080,7 @@ one on the line. A name with a / or a control character in it is refused."
              (message "~a is no name of a file in ~a" (escape-controls name) (abbreviated-path here)))
             ((tuatara.io:path-stamp path :follow nil) (touch (list path)))
             (t (handler-case
-                   (progn
+                   (reporting-errors ("making the file ~a" path)
                      (tuatara.io:write-new-file path "" :mode #o666)
                      (rimu-show-made buffer path))
                  (error (e) (message "~a" e))))))))
@@ -1079,17 +1103,18 @@ list shows it, point on it."
     (multiple-value-bind (asked title keywords type template) (ask-formatted-file-answers :skip '(:subdirectory))
       (declare (ignore asked))
       (handler-case
-          (let ((made (make-formatted-file directory title keywords (second type) :template template :write t)))
-            (cond ((stringp made) (rimu-show-made list made))
-                  (made (message "~a is made when saved, encrypted: ~a"
-                                 (tuatara.buffer:buffer-name made) (substitute-command-keys "\\[save-buffer]")))))
+          (reporting-errors ("making a formatted file in ~a" directory)
+            (let ((made (make-formatted-file directory title keywords (second type) :template template :write t)))
+              (cond ((stringp made) (rimu-show-made list made))
+                    (made (message "~a is made when saved, encrypted: ~a"
+                                   (tuatara.buffer:buffer-name made) (substitute-command-keys "\\[save-buffer]"))))))
         (error (e) (message "~a" e))))))
 
 (define-command rimu-wipe-files ()
   "Wipe the files marked (or the one on the line) as \\[wipe-file] does, asked once: overwritten, then deleted."
   (let* ((buffer (current-buffer))
          (paths (or (rimu-chosen-paths buffer :files-only t)
-                    (error "~a" (rimu-nothing-words buffer "wipe" :files-only t :none "No file here: mark files, or put the cursor on one")))))
+                    (refuse "~a" (rimu-nothing-words buffer "wipe" :files-only t :none "No file here: mark files, or put the cursor on one")))))
     (when (confirm-wipe paths (rimu-question nil paths :here (tuatara.buffer:buffer-local buffer 'rimu-directory)))
       (start-wiping paths))))
 

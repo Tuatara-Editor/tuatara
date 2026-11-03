@@ -119,9 +119,9 @@ cons, stops it when its car turns true."
 
 (defstruct (pdf-copy (:constructor make-pdf-copy (fd stamp)) (:copier nil))
   "A PDF's octets in memory, sealed (TUATARA.IO:SEALED-COPY), for its view's
-programs to read: FD, the copy; STAMP, the file's when it was made; USERS,
-how many are reading it; DROPPED once the view needs it no more, closed when
-the last user is done."
+programs to read: file descriptor (FD), the copy; STAMP, the file's when it
+was made; USERS, how many are reading it; DROPPED once the view needs it no
+more, closed when the last user is done."
   fd stamp (users 0) dropped)
 
 (setf (documentation 'pdf-copy-p 'function) "True when OBJECT is a PDF-COPY.")
@@ -131,7 +131,8 @@ the last user is done."
   (sb-thread:with-mutex ((pdf-view-lock view))
     (decf (pdf-copy-users copy))
     (when (and (pdf-copy-dropped copy) (zerop (pdf-copy-users copy)))
-      (ignore-errors (sb-posix:close (pdf-copy-fd copy))))))
+      (ignoring-errors-reported ("closing the copy of ~a" (pdf-view-path view))
+        (sb-posix:close (pdf-copy-fd copy))))))
 
 (defun pdf-copy-drop (view)
   "VIEW needs its copy no more: closed now, or by its last user."
@@ -140,7 +141,8 @@ the last user is done."
       (when (pdf-copy-p copy)
         (setf (pdf-copy-dropped copy) t)
         (when (zerop (pdf-copy-users copy))
-          (ignore-errors (sb-posix:close (pdf-copy-fd copy)))))
+          (ignoring-errors-reported ("closing the copy of ~a" (pdf-view-path view))
+            (sb-posix:close (pdf-copy-fd copy)))))
       ;; work started after (an embedded file saved) makes a copy of its own, closed when done
       (setf (pdf-view-copy view) :dropped))))
 
@@ -168,7 +170,9 @@ file is copied once for all the pages drawn, not for each."
                                   ;; the file changed (or no copy yet): the old one closed once its users are done
                                   (when copy
                                     (setf (pdf-copy-dropped copy) t)
-                                    (when (zerop (pdf-copy-users copy)) (ignore-errors (sb-posix:close (pdf-copy-fd copy)))))
+                                    (when (zerop (pdf-copy-users copy))
+                                      (ignoring-errors-reported ("closing the copy of ~a" (pdf-view-path view))
+                                        (sb-posix:close (pdf-copy-fd copy)))))
                                   (setf copy (make-pdf-copy made stamp)
                                         (pdf-view-copy view) copy)))
                            (incf (pdf-copy-users copy))
@@ -183,7 +187,7 @@ JOB's RESULT, and JOB is DONE after; the editor is woken then. Returns JOB.
 The pages and the text are not jobs of the job runner: many pages are drawn
 and given up as you turn them, the view's tick taking in each, and the mode
 line says the page, P left unlit."
-  (let ((frontend (and *editor* (editor-frontend *editor*))))
+  (let ((editor *editor*))
     (setf (pdf-view-job-thread job)
           (tuatara.runtime:make-guarded-thread
            (tuatara.runtime:carry-settings
@@ -195,7 +199,7 @@ line says the page, P left unlit."
                            (call-with-pdf-copy view work)))
                 ;; however it ends, the job is over, the editor told
                 (setf (pdf-view-job-done job) t)
-                (when frontend (ignore-errors (tuatara.frontend:frontend-wake frontend))))))
+                (when editor (wake-editor editor)))))
            :name "tuatara pdf view"))
     job))
 
@@ -401,13 +405,13 @@ there is when there is no text."
   (let ((text (pdf-view-job-text job))
         (info (or (pdf-view-job-info job) "")))
     (setf (pdf-view-info view) info
-          (pdf-view-pages view) (ignore-errors (parse-integer (info-field info "Pages")))
+          (pdf-view-pages view) (whole-number (info-field info "Pages"))
           (pdf-view-page-starts view) (or (pdf-view-job-result job) (make-array 0)))
     (set-made-text buffer (or text (format nil "~a has no text~{~a~}.~%" (tuatara.io:native-file-name (pdf-view-path view))
                                             (mapcar #'car (pdf-view-job-notes job)))))
     (setf (tuatara.buffer:buffer-point buffer) 0
           (pdf-view-page view) (max 1 (min (pdf-view-page view) (or (pdf-view-pages view) (pdf-view-page view))))
-          (tuatara.buffer:buffer-local buffer :header-line)
+          (tuatara.display:buffer-header-line buffer)
           (let* ((kind (format nil " ~a" (or (pdf-view-words view) "PDF document")))
                  (words (format nil "~a~{~a~}" kind (mapcar #'car (pdf-view-job-notes job))))
                  (spans (loop with at = (length kind)
@@ -428,10 +432,13 @@ then those around it (PDF-VIEW-WANTED-PAGES), as wide as its window and zoom
 ask, some at once; let go of those past *PDF-VIEW-MEMORY*; keep the page and
 zoom of those changed a while ago. T while a page or a text is being made,
 and once more after the text is taken in: its header line takes a row of
-the window, so the page is fitted again to the rows left."
+the window, so the page is fitted again to the rows left. A PDF a waiting
+question is about is left as it is until the question is answered
+\(BUFFER-HELD-BY-QUESTION-P)."
   (declare (ignore editor))
   (let ((working nil))
-    (dolist (buffer (copy-list *pdf-views*))
+    ;; what was drawn and taken out for a PDF a waiting question is about waits for the answer
+    (dolist (buffer (remove-if #'buffer-held-by-question-p *pdf-views*))
       (let ((view (pdf-view-of buffer)))
         (if (null view)
             (setf *pdf-views* (remove buffer *pdf-views*))
@@ -443,7 +450,7 @@ the window, so the page is fitted again to the rows left."
               ;; what pdfinfo said, while the text is still being taken out: enough to draw the pages
               (when (and text (not (pdf-view-job-done text)) (pdf-view-job-info text) (string= "" (pdf-view-info view)))
                 (setf (pdf-view-info view) (pdf-view-job-info text)
-                      (pdf-view-pages view) (ignore-errors (parse-integer (info-field (pdf-view-info view) "Pages")))))
+                      (pdf-view-pages view) (whole-number (info-field (pdf-view-info view) "Pages"))))
               ;; the pages drawn, taken in
               (dolist (job (reverse (pdf-view-job view)))
                 (when (pdf-view-job-done job)
@@ -533,16 +540,17 @@ page and zoom for the next time."
 
 (defun parse-pdf-place-line (line)
   "The entry of the PDFs' places LINE writes, (PATH PAGE ZOOM FACTOR): the
-page, page or width, the zoom factor and the PDF's path (ESCAPE-PATH); NIL
-for a line that makes no sense."
+page, page or width, the zoom factor and the PDF's path (STATE-LINE-PATH);
+NIL for a line that makes no sense."
   (let* ((first (position #\Space line))
          (second (and first (position #\Space line :start (1+ first))))
          (third (and second (position #\Space line :start (1+ second)))))
-    (when (and third (< (1+ third) (length line)))
-      (list (unescape-path (subseq line (1+ third)))
-            (max 1 (or (ignore-errors (parse-integer line :end first)) 1))
-            (if (string= (subseq line (1+ first) second) "width") :width :page)
-            (let ((n (parse-decimal (subseq line (1+ second) third))))
+    (when (and third (< (1+ third) (length line)) (< 0 first 19) (every #'digit-char-p (subseq line 0 first))
+               (member (subseq line (1+ first) second) '("page" "width") :test #'string=))
+      (let ((n (parse-decimal (subseq line (1+ second) third))))
+        (list (state-line-path line (1+ third))
+              (max 1 (parse-integer line :end first))
+              (if (string= (subseq line (1+ first) second) "width") :width :page)
               (if (and n (< 0.05 n 20)) (float n) 1))))))
 
 (defun pdf-place-line (entry)
@@ -551,7 +559,7 @@ for a line that makes no sense."
     (format nil "~d ~(~a~) ~,3f ~a" page zoom (float factor) (escape-path path))))
 
 (define-state-list *pdf-places* "pdf-places" 'parse-pdf-place-line 'pdf-place-line '*pdf-view-places-kept*
-  :path-of #'first)
+  :path-of #'first :line-key (spaced-line-key 3 #'digits-word-p))
 
 (defun read-pdf-places ()
   "The PDFs' places as kept: a list of (PATH PAGE ZOOM FACTOR), the latest
@@ -605,7 +613,7 @@ made of it."
     (when place
       (destructuring-bind (page zoom factor) (rest place)
         (setf (pdf-view-page view) page (pdf-view-zoom view) zoom (pdf-view-factor view) factor)))
-    (setf (tuatara.buffer:buffer-local buffer :override-keymap) *pdf-view-override-keymap*
+    (setf (buffer-override-keymap buffer) *pdf-view-override-keymap*
           (tuatara.buffer:buffer-local buffer :refill) (lambda (buffer)
                                                          (pdf-view-reload buffer)
                                                          (message "Read ~a again" (tuatara.buffer:buffer-name buffer)))
@@ -769,7 +777,7 @@ the pages, and which in the text does what KEYS do in any text (PDF-VIEW-USUAL).
   "Turn to a page of the PDF by its number, asked for; in its text, go to where it begins."
   (let* ((last (pdf-view-pages view))
          (typed (read-string (format nil "Go to page~@[ (1-~d)~]: " last)))
-         (page (ignore-errors (parse-integer typed))))
+         (page (whole-number typed)))
     (if page
         (pdf-view-go page)
         (message "No page number: ~a" typed))))
@@ -947,7 +955,9 @@ size first. The PDF's words may be false: they are what it says."
                    (lambda (facts)
                      (show-help (format nil "What ~a says of itself, read in the sandbox~%~%File:           ~a~%File size:      ~:d octets~%~%~a"
                                         (tuatara.io:native-file-name path)
-                                        path (ignore-errors (tuatara.io:stamp-size (tuatara.io:path-stamp path)))
+                                        path
+                                        (let ((stamp (tuatara.io:path-stamp path :failure nil)))
+                                          (and stamp (tuatara.io:stamp-size stamp)))
                                         (or facts "Nothing could be read."))))
                    :quiet t)
     (message "Reading what ~a says of itself..." (tuatara.io:native-file-name path))))
@@ -974,7 +984,7 @@ a line of its own in it goes on with that line, never taken for another file."
   (let ((names '()))
     (dolist (line (uiop:split-string listing :separator '(#\Newline)) (nreverse names))
       (let* ((colon (position #\: line))
-             (number (and colon (ignore-errors (parse-integer line :end colon)))))
+             (number (and colon (whole-number line :end colon))))
         (cond ((and number (= number (1+ (length names))))
                (push (list number (string-trim " " (subseq line (1+ colon)))) names))
               ((and names (plusp (length line)))
@@ -1006,7 +1016,7 @@ reads them in the sandbox; there, \\<pdf-attachments-mode>\\[pdf-attachment-save
                                                           names)
                                              :entries names :point :start)
                               (setf (tuatara.buffer:buffer-local list :sandboxed) t
-                                    (tuatara.buffer:buffer-local list :directory)
+                                    (buffer-given-directory list)
                                     (tuatara.io:parent-path path)
                                     (tuatara.buffer:buffer-local list 'pdf-attachments-view) view)
                               (display-buffer list :other t)
@@ -1030,12 +1040,12 @@ by search filters, the file on the line among those they leave."
               (let* ((suggested (attachment-file-name name (format nil "attachment-~d" number)))
                      (shown (escape-controls name))
                      ;; nothing written beside evidence: from a folder kept safe, your Downloads offered instead
-                     (folder (if (safe-directory-of (pdf-view-path view))
+                     (folder (if (or (safe-directory-of (pdf-view-path view)) (evidence-path-p (pdf-view-path view)))
                                  (let ((downloads (tuatara.io:native (tuatara.io:expand-path "~/Downloads/"))))
                                    (if (tuatara.io:path-stamp downloads) downloads (tuatara.io:native (tuatara.io:expand-path "~/"))))
                                  (buffer-directory list)))
                      (typed (read-native-path (format nil "Save ~a to: " suggested) :kind :any
-                                              :initial (concatenate 'string (abbreviated-path folder) suggested)))
+                                              :initial (concatenate 'string (abbreviated-path folder) suggested) :writing t))
                      ;; a folder chosen: the file goes in it under the name suggested
                      (target (and typed
                                   (if (eq (tuatara.io:path-kind typed) :directory)
@@ -1053,11 +1063,12 @@ by search filters, the file on the line among those they leave."
                                         :input fd :output-limit (* 64 1024 1024))
                                      (if (eq outcome :done)
                                          (handler-case
-                                             (progn (tuatara.io:replace-file target output)
-                                                    (format nil "Saved ~a (~:d octets), not opened" target (length output)))
+                                             (reporting-errors ("saving ~a" target)
+                                               (tuatara.io:replace-file target output)
+                                               (format nil "Saved ~a (~:d octets), not opened" target (length output)))
                                            (error (e) (format nil "~a could not be saved: ~a" shown e)))
                                          (format nil "~a could not be taken out: ~a" shown
-                                                 (tuatara.io:sandbox-outcome-words outcome said :label "pdfdetach")))))
+                                                 (sandbox-outcome-words outcome said :label "pdfdetach")))))
                                  (lambda (said) (message "~a" (or said (format nil "~a could not be taken out" shown)))))
                   (message "Taking ~a out..." shown)))))))))
 

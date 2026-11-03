@@ -44,12 +44,6 @@ PLACE is where in BUFFER's undo history it was given
   "While a job whose turn has come is started, its buffer's undo stack where it
 was given (QUEUED-JOB-PLACE), else NIL.")
 
-(defun editor-job-waker ()
-  "A function waking the editor, for the thread of a job made now to call when
-it has something new to show; NIL without an editor (TUATARA.RUNTIME:*JOB-WAKER*)."
-  (let ((frontend (and *editor* (editor-frontend *editor*))))
-    (and frontend (lambda () (ignore-errors (tuatara.frontend:frontend-wake frontend))))))
-
 (defun running-jobs ()
   "The jobs running in the background, of every buffer, the oldest first."
   (remove-if-not #'tuatara.runtime:job-running-p tuatara.runtime:*jobs*))
@@ -104,7 +98,7 @@ those and the places named, if any.")
   "The word of *JOB-VERBS* for KIND in FORM, :DOING (Cutting), :DONE (Cut) or
 :VERB (cut); with WORDS, the places named, followed by them, after the kind's
 preposition when it has one: Writing at the other lines."
-  (destructuring-bind (doing done verb preposition) (rest (or (assoc kind *job-verbs*) (error "No words for ~s" kind)))
+  (destructuring-bind (doing done verb preposition) (rest (or (assoc kind *job-verbs*) (refuse "No words for ~s" kind)))
     (let ((word (ecase form (:doing doing) (:done done) (:verb verb))))
       (if words (format nil "~a~@[ ~a~] ~a" word preposition words) word))))
 
@@ -145,13 +139,26 @@ change made meanwhile, for a job that waits its turn."
                                                     (tuatara.text:anchor-position (cdr anchors) now)))
              held)))))
 
+(defvar *give-way-after* 1/20
+  "Seconds work just started is waited for (TAKE-IN-SOON) before a key you
+typed meanwhile is answered first, the work going on behind it: work quicker
+than this is done before the key, as if it had taken no time.")
+
 (defun take-in-soon (job seconds &optional words then)
-  "Wait up to SECONDS for JOB, just started, to end: when it has, take it in
-now, with the other jobs of its kind that have ended, so that quick work looks
-done at once; else, with WORDS, say that it goes on in the background, and
-THEN after it when given (SAY-IN-BACKGROUND)."
-  (when (plusp seconds)
-    (sb-thread:join-thread (tuatara.runtime:job-thread job) :timeout seconds :default nil))
+  "Wait up to SECONDS for JOB, just started, to end, or, after
+*GIVE-WAY-AFTER*, until a key is pressed, whichever comes first: when it has
+ended, take it in now, with the other jobs of its kind that have ended, so
+that quick work looks done at once; else, with WORDS, say that it goes on in
+the background, and THEN after it when given (SAY-IN-BACKGROUND). A key
+pressed meanwhile is answered then, the work going on behind it; keys played
+from a recording never are, so that what they do is the same however fast
+the work."
+  (let ((deadline (tuatara.runtime:deadline-in seconds))
+        (patient (tuatara.runtime:deadline-in (min seconds *give-way-after*))))
+    (loop for left = (tuatara.runtime:seconds-left deadline)
+          while (and (plusp left) (tuatara.runtime:job-running-p job)
+                     (not (and (tuatara.runtime:deadline-passed-p patient) (not (keys-playing-p)) (key-waiting-p))))
+          do (sb-thread:join-thread (tuatara.runtime:job-thread job) :timeout (min left 1/100) :default nil)))
   (if (tuatara.runtime:job-running-p job)
       (when words (say-in-background words then))
       (let ((kind (type-of job)))
@@ -165,7 +172,7 @@ result would change its size by CHANGE octets, where octets are only typed
 over (TUATARA.BUFFER:HEX-VIEW-REFUSES-P). Every job that puts its result in
 a buffer asks this before it does, so that the result is left out calmly,
 said in one way, rather than refused with an error."
-  (let ((why (cond ((tuatara.buffer:buffer-local buffer :read-only) "became read-only")
+  (let ((why (cond ((buffer-read-only-p buffer) "became read-only")
                    ((tuatara.buffer:hex-view-refuses-p buffer change)
                     "turned to the hex view, which only types over octets,"))))
     (when why
@@ -312,7 +319,7 @@ line shows it as a job of the buffer, the list of jobs (\\[list-jobs]) what it i
 (defun outside-work (&optional (buffer nil buffer-p))
   "The work *OUTSIDE-WORK-FUNCTIONS* give for BUFFER, or with none given all of it."
   (loop for f in *outside-work-functions*
-        append (if buffer-p (funcall f buffer) (funcall f))))
+        append (if buffer-p (call-hook-function f buffer) (call-hook-function f))))
 
 (defvar *processing-indicator* "P"
   "What the mode line shows first, before [-] and the signs of directories
@@ -375,7 +382,7 @@ queued; stop them, then exit? True to go on."
   (let ((waits (find :wait running :key #'tuatara.runtime:job-at-exit))
         (stops (or (find :stop running :key #'tuatara.runtime:job-at-exit) (plusp waiting)))
         (many (> (+ (length running) waiting) 1)))
-    (yes-or-no-p* (format nil "In the background: ~a; ~:[stop ~:[it~;them~]~*~;~*~:[wait for the saving~;wait for the saving, stop the rest~]~], then ~a?"
+    (y-or-n-p* (format nil "In the background: ~a; ~:[stop ~:[it~;them~]~*~;~*~:[wait for the saving~;wait for the saving, stop the rest~]~], then ~a?"
                           (jobs-question-words running waiting) waits many (and stops t) then))))
 
 (defun wait-for-saving (running)
@@ -442,7 +449,7 @@ asked to stop, and ending, is not asked about again."
                              (jobs-of (current-buffer) :running t)))
          (job (or (find-if #'tuatara.runtime:job-holds-queue-p running) (first running))))
     (cond ((null job) (message "Nothing is running in this buffer"))
-          ((yes-or-no-p* (tuatara.runtime:job-stop-question job))
+          ((y-or-n-p* (tuatara.runtime:job-stop-question job))
            (tuatara.runtime:job-stop job)
            (message "Stopping")))))
 
@@ -469,15 +476,15 @@ spoil it. O(jobs of BUFFER) when none of them guards text."
                                           (tuatara.runtime:guard-touched guards start end))))))
         (when job
           (when (getf (car notes) :spoiling-edits-refused)
-            (error "~a" (tuatara.runtime:job-guard-refusal job)))
+            (refuse "~a" (tuatara.runtime:job-guard-refusal job)))
           (let ((version (tuatara.buffer:buffer-version buffer)))
             (if (let ((*edit-asked-about* buffer))
-                  (yes-or-no-p* (tuatara.runtime:job-guard-question job)))
+                  (y-or-n-p* (tuatara.runtime:job-guard-question job) :fresh t))
                 (tuatara.runtime:job-stop job)
                 (progn (setf (getf (car notes) :spoiling-edits-refused) t)
-                       (error "~a" (tuatara.runtime:job-guard-refusal job))))
+                       (refuse "~a" (tuatara.runtime:job-guard-refusal job))))
             (unless (eq version (tuatara.buffer:buffer-version buffer))
-              (error "Not changed: the text changed meanwhile; do it again"))))))))
+              (refuse "Not changed: the text changed meanwhile; do it again"))))))))
 
 ;;; The list of jobs
 
@@ -517,8 +524,9 @@ the buffer, the state, shaded as the job's text is, and what the job does.")
   "Fill LIST, a *Jobs* buffer, with a line for each job (JOBS-ENTRIES), marks
 kept on the jobs still there, point on the same job or line, at its start, or
 with POINT :keep at its column."
-  (let ((entries (jobs-entries))
-        (place (make-hash-table :test 'eq)))
+  (let* ((key (jobs-key list))
+         (entries (jobs-entries))
+         (place (make-hash-table :test 'eq)))
     (render-table-list
      list *jobs-columns* entries
      (lambda (entry mark section)
@@ -539,7 +547,7 @@ with POINT :keep at its column."
                                                    (list "  " who (cons (if percent (format nil "~d%" percent) "working") :job-queued)
                                                          words)))
                     (and (null entries) (null (outside-work)) (list (format nil "~%   No jobs in the background~%"))))
-     :point point :first-line *jobs-title-lines*
+     :point point :first-line *jobs-title-lines* :key key
      :refill (lambda (list) (jobs-render list :keep)))))
 
 (defun jobs-key (list)
@@ -581,7 +589,7 @@ after one stopped move up."
   (declare (ignore mark))
   (let ((waiting (remove-if-not #'queued-job-p jobs))
         (running (remove-if #'queued-job-p jobs)))
-    (when (yes-or-no-p* (format nil "~@[Drop ~d waiting job~:p~]~:[~; and ~]~@[stop ~d running~]?"
+    (when (y-or-n-p* (format nil "~@[Drop ~d waiting job~:p~]~:[~; and ~]~@[stop ~d running~]?"
                                 (and waiting (length waiting)) (and waiting running) (and running (length running))))
       (mapc #'drop-queued-job waiting)
       (mapc #'tuatara.runtime:job-stop running)
@@ -590,15 +598,14 @@ after one stopped move up."
                (and waiting (length waiting)) (and waiting running) (and running (length running))))))
 
 (defun install-jobs ()
-  "Have the jobs in the background wake the editor and be taken in as they
-end, the jobs waiting their turn start as each buffer's job ends, their text
-painted, and the jobs running or waiting asked about before their buffer is
-killed or the editor left, and stopped when their buffer is killed; and an
-edit by a command that would spoil the work of a job running over the text it
-touches asked about first (GUARD-JOB-EDITS). The mode line's sign of the work
+  "Have the jobs in the background be taken in as they end, the jobs waiting
+their turn start as each buffer's job ends, their text painted, and the jobs
+running or waiting asked about before their buffer is killed or the editor
+left, and stopped when their buffer is killed; and an edit by a command that
+would spoil the work of a job running over the text it touches asked about
+first (GUARD-JOB-EDITS). The mode line's sign of the work
 \(PROCESSING-MODE-LINE) is shown with those of directories kept read
 \(MODE-LINE-SIGNS)."
-  (setf tuatara.runtime:*job-waker* 'editor-job-waker)
   (pushnew 'job-queue-tick *tick-functions*)
   (pushnew 'jobs-tick *tick-functions*)
   (pushnew 'queue-highlights *job-highlight-functions*)

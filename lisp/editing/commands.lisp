@@ -24,9 +24,9 @@ would take the editor away for too long.")
   "The count of a command that inserts that many: the prefix argument, or 1;
 an error when it is negative or more than *INSERT-COUNT-LIMIT*."
   (let ((n (prefix)))
-    (cond ((minusp n) (error "Repetition argument has to be non-negative"))
+    (cond ((minusp n) (refuse "Repetition argument has to be non-negative"))
           ((> n *insert-count-limit*)
-           (error "~:d is more than can be inserted at once (at most ~:d)" n *insert-count-limit*))
+           (refuse "~:d is more than can be inserted at once (at most ~:d)" n *insert-count-limit*))
           (t n))))
 
 ;;; Point kept out of folds
@@ -56,9 +56,23 @@ fold, else to its start (TUATARA.DISPLAY:POINT-OUT-OF-FOLDS)."
     (when (tuatara.display:buffer-hides-p buffer)
       (tuatara.display:point-out-of-folds buffer before))))
 
+(defun widen-to-show (buffer byte)
+  "Widen BUFFER when the octet BYTE is outside the part of it shown, saying
+so, for a jump there: one never lands at the edge instead. Made while
+BUFFER's narrowing is lifted for a change, the jump has it stay widened."
+  (when (or (/= byte (tuatara.buffer:within-narrowing buffer byte))
+            (tuatara.buffer:lifted-narrowing-outside-p buffer byte))
+    (tuatara.buffer:widen-buffer buffer)
+    (tuatara.buffer:let-go-of-lifted-narrowing buffer)
+    (let ((line (tuatara.io:buffer-known-line-number buffer byte)))
+      ;; seen whatever the command says after it
+      (say-with-command-messages "Widened ~a to show line ~:[…~;~:*~:d~]" (tuatara.buffer:buffer-name buffer) (and line (1+ line))))))
+
 (defun goto-shown (buffer byte &key (open byte))
   "Put BUFFER's point at the octet BYTE, the fold that hides OPEN (BYTE unless
-given) opened first, so that point is never inside what is hidden."
+given) opened first, so that point is never inside what is hidden; BUFFER
+widened first, and that said, when BYTE is outside the part of it shown."
+  (widen-to-show buffer byte)
   (let ((fold (tuatara.display:fold-at buffer open)))
     (when fold (tuatara.display:unfold-region buffer (car fold) (cdr fold))))
   (setf (tuatara.buffer:buffer-point buffer) byte))
@@ -114,21 +128,66 @@ in the hex view, COUNT octets."
   (unless (hex-motion :octet count)
     (goto (cluster-forward (current-buffer) (point) count))))
 
+(defun edge-words (forward narrowed)
+  "What is said of a motion or a change that found nowhere to go: \"End of
+buffer\" when FORWARD, else \"Beginning of buffer\"; \"End of the part
+shown\" and \"Beginning of the part shown\" when NARROWED."
+  (if narrowed
+      (if forward "End of the part shown" "Beginning of the part shown")
+      (if forward "End of buffer" "Beginning of buffer")))
+
+(defun fail-play-at-edge (forward)
+  "While recorded keys play, fail the play (NOTE-COMMAND-FAILED): a motion
+found nowhere to go at the end of the current buffer when FORWARD, else at its
+start (of the part shown, when it is narrowed), which the echo area says
+\(EDGE-WORDS). Outside a play, nothing is said."
+  (when (keys-playing-p)
+    (message "~a" (edge-words forward (tuatara.buffer:buffer-narrowed-p (current-buffer))))
+    (note-command-failed)))
+
+(defun motion-place (by-line)
+  "Where the cursor is, as a motion compares it before and after: in the hex
+view, its octet; with BY-LINE, the start of its line, or of its row where long
+lines wrap at a word's edge; else point."
+  (let ((b (current-buffer)))
+    (cond ((hex-view-here-p) (tuatara.display:hex-point b))
+          ((not by-line) (point))
+          ((and (buffer-soft-wrap b) (not (rectangle-live-p b)))
+           (tuatara.display:window-row-start (current-window) (point)))
+          (t (tuatara.buffer:buffer-line-start b (point))))))
+
+(declaim (inline call-failing-play-at-edge))
+(defun call-failing-play-at-edge (count by-line motion)
+  "Call MOTION, a function moving the cursor COUNT characters, or lines with
+BY-LINE (back when COUNT is negative). While recorded keys play, a motion that
+leaves the cursor where it was, or on the same line, has met the buffer's start
+or end and fails the play (FAIL-PLAY-AT-EDGE)."
+  (if (or (zerop count) (not (keys-playing-p)))
+      (funcall motion)
+      (let ((before (motion-place by-line)))
+        (funcall motion)
+        (when (= before (motion-place by-line))
+          (fail-play-at-edge (plusp count))))))
+
 (define-command forward-char ()
   "Move point forward one character (or the prefix argument's worth); in the
 hex view, one octet. In a rectangle, the corner at point moves on past the end
-of the line rather than on to the next."
-  (if (rectangle-live-p (current-buffer))
-      (rectangle-char-motion (prefix))
-      (char-motion (prefix))))
+of the line rather than on to the next. While recorded keys play, moving at
+the end of the buffer fails the play."
+  (let ((n (prefix)))
+    (if (rectangle-live-p (current-buffer))
+        (rectangle-char-motion n)
+        (call-failing-play-at-edge n nil (lambda () (char-motion n))))))
 
 (define-command backward-char ()
   "Move point backward one character (or the prefix argument's worth); in the
 hex view, one octet. In a rectangle, the corner at point stops at the start of
-the line."
-  (if (rectangle-live-p (current-buffer))
-      (rectangle-char-motion (- (prefix)))
-      (char-motion (- (prefix)))))
+the line. While recorded keys play, moving at the start of the buffer fails
+the play."
+  (let ((n (- (prefix))))
+    (if (rectangle-live-p (current-buffer))
+        (rectangle-char-motion n)
+        (call-failing-play-at-edge n nil (lambda () (char-motion n))))))
 
 (defun move-to-line-start ()
   "Move point to the start of its line; in the hex view, of its row of octets."
@@ -144,7 +203,7 @@ its row of octets."
 (defun soft-wrap-row (buffer)
   "The row of the selected window that point is on, where BUFFER's long lines
 wrap at a word's edge (\\[soft-wrap-mode]) and no rectangle is live; else NIL."
-  (when (and (tuatara.display:soft-wrap-of buffer) (not (rectangle-live-p buffer)))
+  (when (and (buffer-soft-wrap buffer) (not (rectangle-live-p buffer)))
     (let ((window (current-window)))
       (aref (tuatara.display:window-layout-rows window (tuatara.display:window-row-start window (point)) 1) 0))))
 
@@ -163,7 +222,7 @@ lines wrap at a word's edge (\\[soft-wrap-mode]), of the screen row it is
 on; in the hex view, of the row of octets."
   (let ((row (soft-wrap-row (current-buffer))))
     (if row
-        (goto (row-position row most-positive-fixnum))
+        (goto (tuatara.display:row-position-at row most-positive-fixnum))
         (move-to-line-end))))
 
 (defun push-mark-before-jump ()
@@ -173,14 +232,16 @@ unless the region is active or a count was given."
     (push-mark)))
 
 (define-command beginning-of-buffer ()
-  "Move point to the start of the buffer. The mark is left where point was
+  "Move point to the start of the buffer. In a narrowed buffer, to the start of
+the part shown (\\[narrow-to-region]). The mark is left where point was
 \(the mark before on the mark ring), unless the region is active."
   (unless (hex-motion :start)
     (push-mark-before-jump)
     (goto 0)))
 
 (define-command end-of-buffer ()
-  "Move point to the end of the buffer. The mark is left where point was
+  "Move point to the end of the buffer. In a narrowed buffer, to the end of
+the part shown (\\[narrow-to-region]). The mark is left where point was
 \(the mark before on the mark ring), unless the region is active."
   (unless (hex-motion :end)
     (push-mark-before-jump)
@@ -262,7 +323,7 @@ the lines search filters hide are passed over."
 consecutive vertical motions; in the hex view, LINES rows of octets. The corner
 of a rectangle keeps its column on a shorter line, standing past its end."
   (when (hex-motion :row lines) (return-from vertical-motion nil))
-  (when (and (tuatara.display:soft-wrap-of (current-buffer)) (not (rectangle-live-p (current-buffer))))
+  (when (and (buffer-soft-wrap (current-buffer)) (not (rectangle-live-p (current-buffer))))
     (return-from vertical-motion (row-motion (current-window) (current-buffer) lines)))
   (let* ((b (current-buffer)) (w (current-window))
          (vertical-p (member (editor-last-command *editor*) *vertical-motion-commands*))
@@ -275,19 +336,6 @@ of a rectangle keeps its column on a shorter line, standing past its end."
     (goto (tuatara.display:buffer-move-to-screen-column b line goal))
     (keep-rectangle-column b goal)))
 
-(defun row-position (row column)
-  "The position COLUMN columns into ROW, or where ROW's text ends when it is
-shorter: its line's end, or on a row that goes on in the next, its last
-character. A column of what is shown before the row's text (Org's indented
-view), standing for no character, is the text's first."
-  (let ((n (tuatara.display:row-columns row)) (bytes (tuatara.display:row-bytes row)))
-    (cond ((and (< column n) (minusp (aref bytes column)))
-           (or (find-if-not #'minusp bytes :start column) (tuatara.display:row-shown-end row)))
-          ((< column n) (aref bytes column))
-          ((and (plusp n) (not (tuatara.display:row-last-p row))
-                (= (tuatara.display:row-shown-end row) (tuatara.display:row-end row)))
-           (aref bytes (1- n)))
-          (t (tuatara.display:row-shown-end row)))))
 
 (defun row-motion (window buffer lines)
   "Move point LINES rows of WINDOW down (up when negative), where BUFFER's long
@@ -307,17 +355,21 @@ motions one after another."
                             window (tuatara.display:rows-back window point (- lines)) 1)
                            0))))
     (setf (tuatara.display:window-goal-column window) goal)
-    (goto (row-position target goal))))
+    (goto (tuatara.display:row-position-at target goal))))
 
 (define-command next-line ()
   "Move point down one line (or the prefix argument's worth), keeping the column when possible;
-where long lines wrap at a word's edge (\\[soft-wrap-mode]), one row."
-  (vertical-motion (prefix)))
+where long lines wrap at a word's edge (\\[soft-wrap-mode]), one row. While
+recorded keys play, moving down on the last line fails the play."
+  (let ((n (prefix)))
+    (call-failing-play-at-edge n t (lambda () (vertical-motion n)))))
 
 (define-command previous-line ()
   "Move point up one line (or the prefix argument's worth), keeping the column when possible;
-where long lines wrap at a word's edge (\\[soft-wrap-mode]), one row."
-  (vertical-motion (- (prefix))))
+where long lines wrap at a word's edge (\\[soft-wrap-mode]), one row. While
+recorded keys play, moving up on the first line fails the play."
+  (let ((n (- (prefix))))
+    (call-failing-play-at-edge n t (lambda () (vertical-motion n)))))
 
 (define-command forward-word ()
   "Move point to the end of the next word (or the prefix argument's worth,
@@ -343,7 +395,8 @@ use to group digits (100,000,000); NIL when there is none."
 the mark left where it was unless the region is active. Digits may be grouped as the mode line shows them: 100,000,000. In the hex view,
 go to an offset instead (0x for hex). While a large file's lines are still
 being counted, a line in its first 64 MB is found at once; one further in
-waits until the count has passed it, not for the whole file."
+waits until the count has passed it, not for the whole file. A line outside
+the part shown of a narrowed buffer widens it, and that is said."
   (if (hex-view-here-p)
       (hex-goto-offset)
       (let ((n (parse-line-number (read-string "Go to line: ")))
@@ -351,10 +404,10 @@ waits until the count has passed it, not for the whole file."
         (if n
             (progn
               (unless (region-active-p b) (push-mark))
-              (goto (or (and (not (tuatara.buffer:buffer-indexed-p b))
-                           (or (tuatara.buffer:buffer-scan-line b (max 0 (1- n)))
-                               (wait-for-counting b (max 0 (1- n)))))
-                      (tuatara.buffer:buffer-goto-line b (max 0 (1- n))))))
+              (goto-shown b (or (and (not (tuatara.buffer:buffer-indexed-p b))
+                                     (or (tuatara.buffer:buffer-scan-line b (max 0 (1- n)))
+                                         (wait-for-counting b (max 0 (1- n)))))
+                                (tuatara.buffer:buffer-goto-line b (max 0 (1- n))))))
             (message "Not a number")))))
 
 (defun scroll-by-count (window direction)
@@ -427,7 +480,7 @@ comes first."
                     (tuatara.text:rope-find-any-octet rope *sexp-boundary-octets* :start position :end scan))))
     (cond (found (if backward (1+ found) found))
           ((= scan (if backward 0 size)) scan)
-          (t (error "No ~:[end~;start~] of the expression within ~a" backward (scan-limit-words))))))
+          (t (refuse "No ~:[end~;start~] of the expression within ~a" backward (scan-limit-words))))))
 
 ;;; Words, read by their octets
 
@@ -475,30 +528,32 @@ ASCII ones, are passed over a window at a time."
                      (setf p start)
                      (return (1+ q))))))))))
 
-(defun words-forward (buffer position count &optional (limit (tuatara.buffer:buffer-size buffer)))
+(defun words-forward (buffer position count &optional (limit (tuatara.buffer:buffer-end buffer)))
   "Where COUNT words forward of POSITION end in BUFFER, as forward-word goes:
-past what is not a word, then past the word; no further than LIMIT, where it
-stops at once whatever the count. Refused when *TEXT-SCAN-LIMIT* comes first."
+past what is not a word, then past the word; no further than LIMIT (the end
+of the text, or of the part shown of a narrowed buffer), where it stops at
+once whatever the count. Refused when *TEXT-SCAN-LIMIT* comes first."
   (let* ((scan (min limit (+ position *text-scan-limit*))) (p position))
     (loop repeat count
           until (>= p limit)
           do (setf p (word-run-end buffer p nil scan))
-             (when (and (= p scan) (< scan limit)) (error "No word within ~a" (scan-limit-words)))
+             (when (and (= p scan) (< scan limit)) (refuse "No word within ~a" (scan-limit-words)))
              (setf p (word-run-end buffer p t scan))
-             (when (and (= p scan) (< scan limit)) (error "No end of the word within ~a" (scan-limit-words))))
+             (when (and (= p scan) (< scan limit)) (refuse "No end of the word within ~a" (scan-limit-words))))
     p))
 
-(defun words-backward (buffer position count &optional (limit 0))
+(defun words-backward (buffer position count &optional (limit (tuatara.buffer:buffer-start buffer)))
   "Where COUNT words back from POSITION begin in BUFFER, as backward-word goes;
-no further back than LIMIT, where it stops at once whatever the count.
+no further back than LIMIT (the start of the text, or of the part shown of a
+narrowed buffer), where it stops at once whatever the count.
 Refused when *TEXT-SCAN-LIMIT* comes first."
   (let* ((scan (max limit (- position *text-scan-limit*))) (p position))
     (loop repeat count
           until (<= p limit)
           do (setf p (word-run-start buffer p nil scan))
-             (when (and (= p scan) (> scan limit)) (error "No word within ~a before point" (scan-limit-words)))
+             (when (and (= p scan) (> scan limit)) (refuse "No word within ~a before point" (scan-limit-words)))
              (setf p (word-run-start buffer p t scan))
-             (when (and (= p scan) (> scan limit)) (error "No start of the word within ~a" (scan-limit-words))))
+             (when (and (= p scan) (> scan limit)) (refuse "No start of the word within ~a" (scan-limit-words))))
     p))
 
 (defun sexp-end-after (buffer position)
@@ -665,16 +720,14 @@ Consecutively typed characters form one undo group. With an input method on
           ((and method (not (hex-view-here-p)))
            ;; through the buffer's input method; what it takes as typed goes on as typing does
            (when (input-method-type (current-buffer) method (tuatara.frontend:key-base key))
-             (dolist (f *post-self-insert-functions*)
-               (funcall f (current-buffer) (tuatara.frontend:key-base key)))))
+             (run-hook *post-self-insert-functions* (current-buffer) (tuatara.frontend:key-base key))))
           ((hex-view-here-p)
            ;; the hex view types over octets: hex digits, or characters in its text
            (hex-type string))
           (t
            (goto (tuatara.buffer:buffer-insert (current-buffer) (point) string :group (typing-goes-on-p)))
            (unless (prefix-argument)
-             (dolist (f *post-self-insert-functions*)
-               (funcall f (current-buffer) (tuatara.frontend:key-base key))))))))))
+             (run-hook *post-self-insert-functions* (current-buffer) (tuatara.frontend:key-base key)))))))))
 
 ;;; Indenting lines
 
@@ -784,9 +837,10 @@ comments (see *INDENT-NEW-LINES*)."
           (tuatara.buffer:buffer-delete b start p)
           (goto start)
           (setf trimmed t))))
-    (goto (tuatara.buffer:buffer-insert b (point) (let ((line-end (tuatara.buffer:buffer-newline b)))
-                                                    (with-output-to-string (out)
-                                                      (loop repeat n do (write-string line-end out))))
+    (goto (tuatara.buffer:buffer-insert b (point) (tuatara.buffer:unjoined-line-ends
+                                                   b (point) (let ((line-end (tuatara.buffer:buffer-newline b)))
+                                                               (with-output-to-string (out)
+                                                                 (loop repeat n do (write-string line-end out)))))
                                         :group trimmed))
     (indent-typed-line b :group t)))
 
@@ -809,7 +863,7 @@ so that this one's change joins its undo step."
   "Show what FOLD of BUFFER, (START . END), hides, and refuse the command
 with MESSAGE."
   (tuatara.display:unfold-region buffer (car fold) (cdr fold))
-  (error "~a" message))
+  (refuse "~a" message))
 
 (defun refuse-hidden-deletion (buffer start end)
   "Refuse to delete the text of BUFFER from START below END when that would
@@ -822,7 +876,10 @@ goes ahead. Only the folds in that stretch are looked at."
 (defun kill-span (buffer start end &key prepend)
   "Kill the text of BUFFER from START below END (kill-text, PREPEND as it
 takes it) and delete it, unless that would take part of the text a fold
-hides (REFUSE-HIDDEN-DELETION). Returns START."
+hides (REFUSE-HIDDEN-DELETION); a carriage return and the newline after it
+that an edge would part go together (TUATARA.BUFFER:WHOLE-LINE-ENDS).
+Returns START."
+  (multiple-value-setq (start end) (tuatara.buffer:whole-line-ends buffer start end))
   (refuse-hidden-deletion buffer start end)
   (kill-text (region-text buffer start end) :prepend prepend)
   (tuatara.buffer:buffer-delete buffer start end)
@@ -855,12 +912,12 @@ filters hide is refused outright, whole or not (REFUSE-HIDDEN-LINES)."
                    (push fold cut) (setf start (cdr fold))))
         (when cut
           (tuatara.display:unfold-ranges buffer (coerce (nreverse cut) 'simple-vector))
-          (error "That would delete hidden text, shown now: the same key again deletes it"))))))
+          (refuse "That would delete hidden text, shown now: the same key again deletes it"))))))
 
 (defun refuse-hidden-lines ()
   "Refuse a command that would change the lines search filters hide: they
 are never changed by an edit of the lines shown."
-  (error "~a" (substitute-command-keys
+  (refuse "~a" (substitute-command-keys
                "That would change lines the search filters hide: \\[remove-search-filters] shows them")))
 
 (defun check-hidden-lines (buffer start end)
@@ -877,8 +934,8 @@ the newline it ends at."
 
 (defun check-writable (buffer)
   "Signal an error when BUFFER is read-only."
-  (when (tuatara.buffer:buffer-local buffer :read-only)
-    (error "Buffer is read-only: ~a" (tuatara.buffer:buffer-name buffer))))
+  (when (buffer-read-only-p buffer)
+    (refuse "Buffer is read-only: ~a" (tuatara.buffer:buffer-name buffer))))
 
 (defun delete-spans (buffer spans &key replacements folds-checked before group)
   "Delete SPANS of BUFFER, each (START . END) or (START END ...), in order and
@@ -935,25 +992,27 @@ spans."
 (define-command delete-char ()
   "Delete the character after point (with a count, that many; a negative one,
 before point), a letter with its accents or an emoji with its skin tone
-whole (CLUSTER-FORWARD). Typing and deleting one after another undo together.
+whole (CLUSTER-FORWARD), a carriage return and a newline both
+\(TUATARA.BUFFER:WHOLE-LINE-ENDS). Typing and deleting one after another undo together.
 Text a fold hides is not deleted unseen: the fold is shown instead, and the
 key pressed again deletes."
-  (let* ((b (current-buffer)) (p (point)) (other (cluster-forward b p (prefix)))
-         (start (min p other)) (end (max p other)))
+  (let* ((b (current-buffer)) (p (point)) (other (cluster-forward b p (prefix))))
+    (multiple-value-bind (start end) (tuatara.buffer:whole-line-ends b (min p other) (max p other))
     ;; with a negative count, the characters before point
-    (when (< start end)
-      (refuse-hidden-deletion b start end)
-      (tuatara.buffer:buffer-delete b start end :group (typing-goes-on-p)))))
+      (when (< start end)
+        (refuse-hidden-deletion b start end)
+        (tuatara.buffer:buffer-delete b start end :group (typing-goes-on-p))))))
 
 (define-command delete-backward-char ()
   "Delete the character before point (with a count, that many): of a letter
-with accents, the last accent alone, of an emoji with a skin tone, the tone.
-Typing and deleting one after another undo together. Text a fold hides is
-not deleted unseen: the fold is shown instead, and the key pressed again
-deletes."
-  (let* ((b (current-buffer)) (p (point)) (start (tuatara.buffer:buffer-forward-char b p (- (prefix)))))
+with accents, the last accent alone, of an emoji with a skin tone, the tone;
+of a carriage return and a newline, both, which end one line. Typing and
+deleting one after another undo together. Text a fold hides is not deleted
+unseen: the fold is shown instead, and the key pressed again deletes."
+  (let* ((b (current-buffer)) (p (point))
+         (start (tuatara.buffer:whole-line-ends b (tuatara.buffer:buffer-forward-char b p (- (prefix))) p)))
     (unless (and (null (prefix-argument))
-                 (some (lambda (f) (funcall f b)) *delete-backward-functions*))
+                 (run-hook-until-done *delete-backward-functions* b))
       (when (< start p)
         (refuse-hidden-deletion b start p)
         (tuatara.buffer:buffer-delete b start p :group (typing-goes-on-p)) (goto start)))))
@@ -977,8 +1036,8 @@ since; NIL keeps killed text to the editor.")
 
 (defvar *kill-ring-max-size* (* 64 1024 1024)
   "The most characters (octets, for a kill kept where it is) the kills on the
-kill ring may hold together: past it the oldest are forgotten, the latest
-always kept; NIL for no such limit.")
+kill ring may hold together, 64 M: past it the oldest are forgotten, the
+latest always kept, however large.")
 
 (defun push-kill (text)
   "Put TEXT first on the kill ring, forgetting the kills past *KILL-RING-MAX*,
@@ -1002,7 +1061,7 @@ another program copied from what is there already.")
 kept as a rope (too large for it) is not, nor one from an encrypted file's
 text, which \\[copy-to-clipboard] puts there on request."
   (when (and *use-system-clipboard* *editor* (stringp text) (<= (length text) *clipboard-max-size*)
-             (not (tuatara.buffer:buffer-local (current-buffer) :plaintext))
+             (not (tuatara.io:buffer-plaintext-p (current-buffer)))
              (tuatara.frontend:frontend-set-clipboard (editor-frontend *editor*) text))
     (setf *clipboard-sent* text)))
 
@@ -1074,32 +1133,44 @@ made a string."
              (if (oddp n) (kill-join twice kill) twice)))))
 
 (defun kill-ends-line-p (kill)
-  "True when KILL ends with a newline."
+  "True when KILL ends with a line end: a newline, or a carriage return."
   (if (stringp kill)
-      (and (plusp (length kill)) (char= (char kill (1- (length kill))) #\Newline))
+      (and (plusp (length kill)) (member (char kill (1- (length kill))) '(#\Newline #\Return)))
       (and (plusp (tuatara.text:rope-bytes kill))
-           (= 10 (tuatara.text:rope-octet kill (1- (tuatara.text:rope-bytes kill)))))))
+           (member (tuatara.text:rope-octet kill (1- (tuatara.text:rope-bytes kill))) '(10 13)))))
+
+(defvar *plaintext-kills* (make-hash-table :test 'eq :weakness :key)
+  "The kills taken from a decrypted file's text (TUATARA.IO:BUFFER-PLAINTEXT-P),
+each with the buffers it came from: they leave the kill ring with any of
+those buffers (FORGET-PLAINTEXT-COPIES).")
 
 (defun kill-text (text &key (append (kill-command-p (editor-last-command *editor*))) (prepend nil))
   "Put TEXT on the kill ring, a string, or a rope for a kill too large for the
 system clipboard (REGION-TEXT); appending or prepending to the last kill when
 the previous command was a kill too, and on the system clipboard
-(SEND-TO-CLIPBOARD)."
-  (let ((ring (editor-kill-ring *editor*)))
+(SEND-TO-CLIPBOARD). A kill from a decrypted file's text is noted with its
+buffer, to leave the ring with it (*PLAINTEXT-KILLS*)."
+  (let* ((ring (editor-kill-ring *editor*))
+         (sources (and append ring (gethash (first ring) *plaintext-kills*))))
     (cond ((and append ring)
            (setf (first ring) (if prepend (kill-join text (first ring)) (kill-join (first ring) text))))
           (t (push-kill text)))
+    (when (tuatara.io:buffer-plaintext-p (current-buffer))
+      (pushnew (current-buffer) sources))
+    (when sources
+      (setf (gethash (first (editor-kill-ring *editor*)) *plaintext-kills*) sources))
     (send-to-clipboard (first (editor-kill-ring *editor*)))))
 
 (define-command kill-line ()
   "Kill the rest of the current line; at the end of a line, kill the newline.
 On a line whose end a fold hides (a folded headline), nothing is killed: the
-fold is shown instead, and the key pressed again kills what can then be seen."
-  (let* ((b (current-buffer)) (p (point)) (end (tuatara.buffer:buffer-line-end b p)))
+fold is shown instead, and the key pressed again kills what can then be seen.
+In a narrowed buffer, no further than the end of the part shown."
+  (let* ((b (current-buffer)) (p (point)) (end (tuatara.buffer:within-narrowing b (tuatara.buffer:buffer-line-end b p))))
     (let ((fold (tuatara.display:fold-hiding b end nil)))
       (when fold
         (show-fold-and-refuse b fold "The rest of this line is hidden, shown now: the same key again kills to its end")))
-    (when (= end p) (setf end (tuatara.buffer:buffer-forward-char b p)))
+    (when (= end p) (setf end (tuatara.buffer:within-narrowing b (tuatara.buffer:buffer-forward-char b p))))
     (when (> end p) (kill-span b p end))))
 
 (defvar *kill-parts* nil
@@ -1175,42 +1246,18 @@ hide were left out of it (LEFT-OUT-NOTE)."
           (message "Copied ~a, kept where it is (too large for the system clipboard)~a"
                    (octets-words (kill-size kill)) (left-out-note left-out))))))
 
-(defun lf-newlines (text)
-  "TEXT with each carriage return that comes before a newline taken away."
-  (if (not (find #\Return text))
-      text
-      (with-output-to-string (out)
-        (loop for i from 0 below (length text)
-              for c = (char text i)
-              unless (and (char= c #\Return) (< (1+ i) (length text)) (char= (char text (1+ i)) #\Newline))
-                do (write-char c out)))))
-
 (defun search-count (needle text &key (end (length text)))
   "How many times NEEDLE stands in TEXT below END, none overlapping."
   (loop with start = 0
         for at = (search needle text :start2 start :end2 end)
         while at count t do (setf start (+ at (length needle)))))
 
-(defun crlf-newlines (text)
-  "TEXT with a carriage return put before each newline that has none."
-  (if (not (find #\Newline text))
-      text
-      (with-output-to-string (out)
-        (loop for i from 0 below (length text)
-              for c = (char text i)
-              do (when (and (char= c #\Newline) (not (and (plusp i) (char= (char text (1- i)) #\Return))))
-                   (write-char #\Return out))
-                 (write-char c out)))))
-
-(defun text-for-buffer (kill buffer)
-  "KILL, text to put into BUFFER (from the kill ring, a template, a file),
-with BUFFER's line ends: where BUFFER's lines end with a carriage return and
-a newline, a newline alone given a carriage return before it; elsewhere, the
-carriage return before a newline taken away. A kill kept as a rope, too
-large for the system clipboard, goes in as it is."
-  (cond ((not (stringp kill)) kill)
-        ((buffer-crlf-p buffer) (crlf-newlines kill))
-        (t (lf-newlines kill))))
+(defun insert-with-mark-before (text)
+  "Put TEXT, ready for the buffer (TEXT-FOR-BUFFER), in at point, point after
+it and the mark at its start, the mark before on the mark ring."
+  (let ((p (point)))
+    (push-mark)
+    (goto (tuatara.buffer:buffer-insert (current-buffer) p text))))
 
 (define-command yank ()
   "Insert the most recently killed text at point, or what another program
@@ -1219,13 +1266,10 @@ rectangle killed or copied with \\[kill-region] or \\[kill-ring-save] goes in
 as a block. The mark is left at its start, the mark before on the mark ring."
   (take-in-clipboard)
   (let* ((kill (first (editor-kill-ring *editor*)))
-         (text (and kill (text-for-buffer kill (current-buffer)))))
+         (text (and kill (text-for-buffer kill (current-buffer) (point)))))
     (cond ((eq (nth-value 1 (kill-parts kill)) :block)
            (funcall 'paste-rows-at-point (kill-parts kill)))
-          (text
-           (let ((p (point)))
-             (push-mark)
-             (goto (tuatara.buffer:buffer-insert (current-buffer) p text))))
+          (text (insert-with-mark-before text))
           (t (message "The kill ring is empty")))))
 
 ;;; Mark
@@ -1272,10 +1316,8 @@ is a keyboard macro's work."
 ;;; The mark ring
 
 (defvar *mark-ring-max* 16
-  "How many marks each buffer's mark ring keeps; past that the oldest goes.")
-
-(defvar *global-mark-ring-max* 16
-  "How many marks the global mark ring keeps; past that the oldest goes.")
+  "How many marks each buffer's mark ring keeps, and the global mark ring
+across buffers; past that the oldest goes.")
 
 (defvar *set-mark-command-repeat-pop* nil
   "True for \\[set-mark-command] pressed again right after
@@ -1292,15 +1334,15 @@ back to the mark before; NIL, as standard, for it to set the mark.")
 
 (defun anchor-in (buffer anchor)
   "Where ANCHOR, made in BUFFER, stands in it now; NIL when it no longer can."
-  (let ((position (ignore-errors (tuatara.text:anchor-position anchor (tuatara.buffer:buffer-version buffer)))))
+  (let ((position (ignoring-errors-reported ("finding a mark in ~a" (tuatara.buffer:buffer-name buffer))
+                    (tuatara.text:anchor-position anchor (tuatara.buffer:buffer-version buffer)))))
     (and position (<= 0 position (tuatara.buffer:buffer-size buffer)) position)))
 
 (defun push-mark (&key (position (point)) quiet activate (buffer (current-buffer)))
   "Set BUFFER's mark at POSITION (point by default), the mark it had put on
-its mark ring (*MARK-RING-MAX* kept); when the newest
-mark of the global mark ring is another buffer's, this one goes there too
-\(*GLOBAL-MARK-RING-MAX* kept). Says Mark set unless QUIET; ACTIVATE makes the
-region active."
+its mark ring; when the newest mark of the global mark ring is another
+buffer's, this one goes there too (*MARK-RING-MAX* kept in each). Says Mark
+set unless QUIET; ACTIVATE makes the region active."
   (let ((old (tuatara.buffer:buffer-mark buffer))
         (version (tuatara.buffer:buffer-version buffer)))
     (when old
@@ -1310,8 +1352,8 @@ region active."
     (setf (tuatara.buffer:buffer-mark buffer) position)
     (unless (and *global-mark-ring* (eq (car (first *global-mark-ring*)) buffer))
       (push (cons buffer (tuatara.text:make-anchor version position)) *global-mark-ring*)
-      (when (> (length *global-mark-ring*) *global-mark-ring-max*)
-        (setf *global-mark-ring* (subseq *global-mark-ring* 0 *global-mark-ring-max*))))
+      (when (> (length *global-mark-ring*) *mark-ring-max*)
+        (setf *global-mark-ring* (subseq *global-mark-ring* 0 *mark-ring-max*))))
     (unless quiet (message "Mark set"))
     (when activate (setf (tuatara.buffer:buffer-mark-active-p buffer) t))
     nil))
@@ -1401,7 +1443,7 @@ back through the buffers where marks were set, and round."
           (unless (eq buffer (current-buffer))
             (show-buffer buffer))
           (when position
-            (setf (tuatara.buffer:buffer-point buffer) position))))))
+            (goto-shown buffer position))))))
 
 (define-command exchange-point-and-mark ()
   "Swap point and mark."
@@ -1418,14 +1460,27 @@ shown until then lets go (a search's matches lit after it ended).")
   "Abandon the current operation and deactivate the region; what stays shown
 until then goes, such as the matches of the last search."
   (setf (tuatara.buffer:buffer-mark-active-p (current-buffer)) nil)
-  (mapc #'funcall *keyboard-quit-functions*)
+  (run-hook *keyboard-quit-functions*)
   (keyboard-quit-signal))
+
+(defun quit-key-text ()
+  "The key that gives up what is going on, as messages name it, between the
+marks of a key (MARK-KEY): the one bound to keyboard-quit, else the one bound
+to tuatara-quit, which gives up so outside INSERT state; M-x keyboard-quit
+when neither has a key."
+  (let ((keymaps (keymaps-for-keys)))
+    (mark-key (or (command-key 'keyboard-quit keymaps)
+                  (command-key 'tuatara-quit keymaps)
+                  "M-x keyboard-quit"))))
 
 ;;; Undo
 
 (define-command undo ()
-  "Undo the last change."
-  (unless (tuatara.buffer:buffer-undo (current-buffer)) (message "Nothing to undo")))
+  "Undo the last change. In a narrowed buffer a change outside the part shown
+is undone too, and that is said."
+  (multiple-value-bind (group outside) (tuatara.buffer:buffer-undo (current-buffer))
+    (cond ((null group) (message "Nothing to undo"))
+          (outside (message "Undid a change outside the part shown")))))
 
 (define-command redo ()
   "Redo the last undone change: the cursor goes after what it makes again, but
@@ -1478,20 +1533,21 @@ picture, PDF or document it shows; NIL for none."
   (or (tuatara.buffer:buffer-file buffer) (tuatara.buffer:buffer-local buffer :viewed-file)))
 
 (defun buffer-candidates ()
-  "Completion candidates for the live buffers other than the current one, each
-with its size, its major mode and its file (BUFFER-LISTED-FILE) beside it, the
+  "Completion candidates for the live buffers other than the current one, of
+those offered to the client working in the frame (CLIENT-BUFFERS), each with
+its size, its major mode and its file (BUFFER-LISTED-FILE) beside it, the
 modes in a column as wide as the longest, and a + when it has changes not
 saved."
-  (let* ((buffers (remove (current-buffer) tuatara.buffer:*buffers*))
+  (let* ((buffers (remove (current-buffer) (client-buffers)))
          (mode-width (loop for b in buffers
-                           maximize (length (or (tuatara.buffer:buffer-local b :mode-name) "")) into widest
+                           maximize (length (or (buffer-mode-name b) "")) into widest
                            finally (return (max 12 widest)))))
     (mapcar (lambda (b)
               (let ((file (buffer-listed-file b)))
                 (make-candidate (tuatara.buffer:buffer-name b)
                                 :annotation (list (list (if (tuatara.buffer:buffer-modified-p b) "+" "") :completion-modified 1)
                                                   (list (octets-words (tuatara.buffer:buffer-size b)) :list-size -8)
-                                                  (list (or (tuatara.buffer:buffer-local b :mode-name) "") :completion-major-mode mode-width)
+                                                  (list (or (buffer-mode-name b) "") :completion-major-mode mode-width)
                                                   (list (if file (abbreviated-path file) "") :completion-annotation 2/5 :middle)))))
             buffers)))
 
@@ -1499,8 +1555,9 @@ saved."
   "The names of the buffers used before the current one, the latest first:
 the history that puts them first among the candidates, so that
 \\<minibuffer>\\[minibuffer-done] alone goes back to the buffer used last."
-  (loop for b in *buffer-order*
-        unless (or (eq b (current-buffer)) (not (live-buffer-p b)))
+  (loop with client = (current-client)
+        for b in *buffer-order*
+        unless (or (eq b (current-buffer)) (not (live-buffer-p b)) (not (client-sees-buffer-p client b)))
           collect (tuatara.buffer:buffer-name b)))
 
 (defun split-choices (text)
@@ -1551,6 +1608,7 @@ current one (BUFFER-CANDIDATES), the ones used lately first, so that
 *PREVIEW-BUFFERS*, the buffer selected is shown meanwhile in the window you
 are in, what it showed coming back when the question ends. With
 REQUIRE-MATCH, one of them must be chosen; else a new name is taken as typed.
+The current buffer's name typed whole is taken, though it is not offered.
 Returns the name."
   (call-with-window-preview
    (lambda (candidate made)
@@ -1559,6 +1617,7 @@ Returns the name."
        (and buffer (live-buffer-p buffer) buffer)))
    (lambda (show)
      (completing-read prompt (buffer-candidates) :history (recent-buffer-names) :require-match require-match
+                                                 :taken (and (not require-match) (list (tuatara.buffer:buffer-name (current-buffer))))
                                                  :preview (and *preview-buffers* show)))))
 
 (define-command switch-to-buffer ()
@@ -1585,9 +1644,23 @@ to stay, true to go ahead, or a function of no arguments to call once the
 exit is certain (stopping its work), so that staying after all changes
 nothing.")
 
+(defun query-answer (function going &rest arguments)
+  "What FUNCTION, one of a hook's questions before GOING (\"kill\",
+\"exit\"), answers when called with ARGUMENTS. When it fails, you are asked
+whether to go ahead all the same, with its failure said, so that a broken
+question neither lets work go unasked nor keeps you from going: T then, or
+NIL to stay."
+  (multiple-value-bind (answer failure)
+      (let ((tuatara.runtime:*hook-failures-said* nil)) (apply #'call-hook-function function arguments))
+    (if (typep failure 'error)
+        (yes-or-no-p* (format nil "~a failed (~a); ~a anyway?" (hook-function-name function)
+                              (tuatara.runtime:failure-words failure :said t) going))
+        answer)))
+
 (defun kill-buffer-allowed-p (buffer)
-  "True when every one of *KILL-BUFFER-QUERY-FUNCTIONS* lets BUFFER be killed."
-  (every (lambda (f) (funcall f buffer)) *kill-buffer-query-functions*))
+  "True when every one of *KILL-BUFFER-QUERY-FUNCTIONS* lets BUFFER be killed
+\(QUERY-ANSWER)."
+  (every (lambda (function) (query-answer function "kill" buffer)) *kill-buffer-query-functions*))
 
 (defun kill-buffer-asking (buffer &key before)
   "Kill BUFFER, asking first when it has changes not saved, once every one of
@@ -1621,37 +1694,59 @@ about: one visiting a file, or one made by \\[new-empty-buffer], modified."
   (and (or (tuatara.buffer:buffer-file buffer) (tuatara.buffer:buffer-local buffer 'unsaved-asked))
        (tuatara.buffer:buffer-modified-p buffer)))
 
-(defun save-buffers-where (test)
+(defun save-buffers-saying (buffers words)
+  "Save each of BUFFERS as \\[save-buffer] does (SAVE-BUFFER-WITH-CARE) and, once
+those saved are all on disk, say WORDS, a format string given how many: at
+once when none is, else when the last save in the background is done. Returns
+how many are saved or being saved."
+  (let ((started 0) (done 0) (all nil))
+    (flet ((say () (when (and all words (= done started)) (message words started))))
+      (dolist (buffer buffers)
+        (when (save-buffer-with-care buffer :then (lambda (buffer) (declare (ignore buffer)) (incf done) (say)))
+          (incf started)))
+      (setf all t)
+      (say)
+      started)))
+
+(defun save-buffers-where (test words)
   "Save each buffer visiting a file with changes not saved that TEST, a
-function of the buffer, is true of; how many were saved."
-  (let ((saved 0))
-    (dolist (buffer (copy-list tuatara.buffer:*buffers*) saved)
-      (when (and (tuatara.buffer:buffer-file buffer) (tuatara.buffer:buffer-modified-p buffer) (funcall test buffer))
-        (let ((*current-buffer* buffer))
-          (save-buffer))
-        (unless (tuatara.buffer:buffer-modified-p buffer) (incf saved))))))
+function of the buffer, is true of, and say WORDS of them as
+SAVE-BUFFERS-SAYING does; how many are saved or being saved."
+  (save-buffers-saying (remove-if-not (lambda (buffer) (and (tuatara.buffer:buffer-file buffer)
+                                                            (tuatara.buffer:buffer-modified-p buffer)
+                                                            (funcall test buffer)))
+                                      tuatara.buffer:*buffers*)
+                       words))
 
 (define-command save-some-buffers ()
   "Save every buffer visiting a file with changes not saved, after asking once,
-the files named: the files a rename across a project changed, say."
+the files named: the files a rename across a project changed, say. In a
+client of an editor running in the background, the client's own buffers."
   (let ((changed (remove-if-not (lambda (b) (and (tuatara.buffer:buffer-file b) (tuatara.buffer:buffer-modified-p b)))
-                                tuatara.buffer:*buffers*)))
+                                (client-buffers))))
     (cond ((null changed) (message "(No files need saving)"))
-          ((yes-or-no-p* (format nil "Save ~d changed file~:p: ~{~a~^, ~}?" (length changed) (mapcar #'tuatara.buffer:buffer-name changed)))
-           (message "Saved ~d file~:p" (save-buffers-where (lambda (b) (member b changed)))))
+          ((let ((*buffers-asked-about* changed))
+             (y-or-n-p* (format nil "Save ~d changed file~:p: ~{~a~^, ~}?"
+                                (length changed) (mapcar #'tuatara.buffer:buffer-name changed))))
+           (save-buffers-where (lambda (b) (member b changed)) "Saved ~d file~:p"))
           (t (message "Nothing saved")))))
 
 (define-command save-buffers-kill-editor ()
   "Exit the editor, asking first if a buffer visiting a file, or one made by
 \\[new-empty-buffer], has unsaved changes. Other buffers without a file, such as the
-scratch buffers, are not asked about."
+scratch buffers, are not asked about. In a client of an editor running in the
+background, close that client alone, asking nothing but about its encrypted
+buffers, which close with it (CLOSE-CLIENT); its other buffers stay in the
+editor, for another client to take up, and the editor goes on."
+  (when (client-remote (current-client))
+    (return-from save-buffers-kill-editor (close-client)))
   (let ((answers (loop for query in *quit-query-functions*
-                       for answer = (funcall query)
+                       for answer = (query-answer query "exit")
                        unless answer return :stay
                        collect answer)))
     (when (and (not (eq answers :stay))
                (or (notany #'unsaved-p tuatara.buffer:*buffers*)
                    (yes-or-no-p* "Modified buffers exist; exit anyway?")))
       ;; what the questions said to stop, now that the exit is certain
-      (dolist (answer answers) (when (functionp answer) (funcall answer)))
+      (dolist (answer answers) (when (functionp answer) (call-hook-function answer)))
       (setf (editor-running *editor*) nil))))

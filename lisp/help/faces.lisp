@@ -48,7 +48,10 @@ for; none when there are none."
                     collect (format nil "~(~s~) ~a" key
                                     (if (and theme (tuatara.display:role-p value))
                                         (format nil "~(~a~) (~a)" value
-                                                (or (ignore-errors (tuatara.display:theme-role-colour theme value)) "no colour"))
+                                                (or (ignoring-errors-reported ("finding the colour ~(~a~)" value)
+                                                      (handler-case (tuatara.display:theme-role-colour theme value)
+                                                        (simple-error () nil)))
+                                                    "no colour"))
                                         (string-downcase (prin1-to-string value))))))))
 
 (defun theme-face-settings (theme name)

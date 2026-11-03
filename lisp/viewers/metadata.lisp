@@ -37,8 +37,9 @@ rest is left out, and that is said.")
 
 (defvar *file-metadata-functions* '()
   "Functions of a file's PATH, its kind (TUATARA.IO:OCTETS-KIND's keyword), the
-open descriptor FD and its SIZE, each returning a section of an Org note of
-what the file says of itself, or NIL: the readers M-x file-metadata asks.")
+open file descriptor (FD) and its SIZE, each returning a section of an Org
+note of what the file says of itself, or NIL: the readers M-x file-metadata
+asks.")
 
 ;;; The note's sections
 
@@ -56,8 +57,8 @@ those with no value left out; an empty string when none has one."
 ;;; Reading octets safely
 
 (defun file-octets-for-metadata (fd size)
-  "The octets of the file open as FD, of SIZE octets, read to find what it
-says of itself: all of it, or its first and last halves of
+  "The octets of the file open as file descriptor (FD), of SIZE octets, read
+to find what it says of itself: all of it, or its first and last halves of
 *METADATA-LARGEST-READ* octets when it is larger (two values: the octets, and
 true when they are cut so)."
   (let ((limit *metadata-largest-read*))
@@ -440,12 +441,16 @@ the text of edits and of who made the file as programs keep it."
         (end-mark (map '(vector (unsigned-byte 8)) #'char-code "</x:xmpmeta>"))
         (sections '()) (at 0))
     (loop repeat 4
-          for start = (search start-mark octets :start2 at)
-          for end = (and start (search end-mark octets :start2 start))
+          for start = (tuatara.io:octets-search start-mark octets :start at)
+          for end = (and start (tuatara.io:octets-search end-mark octets :start start))
           while end
-          do (let ((tree (ignore-errors (xml-parse (octets-text octets start (+ end (length end-mark)))))))
+          do (let ((tree (ignoring-errors-reported ("reading an XMP packet")
+                           (xml-parse (octets-text octets start (+ end (length end-mark)))))))
                (when tree
-                 (push (metadata-section (format nil "XMP~@[ (packet ~d)~]" (and (or sections (search start-mark octets :start2 (1+ end))) (1+ (length sections))))
+                 (push (metadata-section (format nil "XMP~@[ (packet ~d)~]"
+                                                 (and (or sections
+                                                          (tuatara.io:octets-search start-mark octets :start (1+ end)))
+                                                      (1+ (length sections))))
                                          (xmp-fields tree))
                        sections)))
              (setf at (1+ end)))
@@ -467,30 +472,39 @@ great many it does not have is read in a bounded time."
   "The sections of PDF-METADATA's note for the PDF in OCTETS."
   (let* ((version (let ((header (tuatara.io:pdf-header-at octets)))
                     (and header (octets-text octets (+ header 5) (min (length octets) (+ header 8))))))
-         (saves (loop with mark = (map '(vector (unsigned-byte 8)) #'char-code "%%EOF")
-                      for at = (search mark octets) then (search mark octets :start2 (1+ at))
-                      while at count t))
-         (info-mark (map '(vector (unsigned-byte 8)) #'char-code "/Info"))
-         (info-at (search info-mark octets :from-end t))
-         (info (and info-at (pdf-resolve octets (pdf-object-at octets (+ info-at (length info-mark))))))
-         (encrypted (search (map '(vector (unsigned-byte 8)) #'char-code "/Encrypt") octets))
+         (saves (length (pdf-eof-lines octets)))
+         (trailer (pdf-trailer octets))
+         (info (if trailer
+                   (pdf-resolve octets (pdf-get trailer "/Info"))
+                   (let ((at (tuatara.io:octets-search (load-time-value (tuatara.text:string-octets "/Info")) octets
+                                                       :from-end t)))
+                     (setf (gethash :scanned *pdf-objects-found*) t)
+                     (and at (pdf-resolve octets (pdf-object-at octets (+ at 5)))))))
+         (fields (loop for (key . value) in (and (pdf-dictionary-p info) info)
+                       for v = (pdf-resolve octets value)
+                       collect (cons (subseq key 1)
+                                     (cond ((and (stringp v) (member key '("/CreationDate" "/ModDate") :test #'string=))
+                                            (pdf-date-words v))
+                                           ((stringp v) v)
+                                           (t (princ-to-string v))))))
+         (encrypted (tuatara.io:octets-search (tuatara.text:string-octets "/Encrypt") octets))
          (acts (loop for (mark . words) in '(("/JavaScript" . "JavaScript") ("/JS" . "JavaScript") ("/OpenAction" . "an action on opening")
                                               ("/AA" . "actions on events") ("/Launch" . "an action starting a program")
                                               ("/EmbeddedFile" . "files kept inside it") ("/RichMedia" . "media")
                                               ("/XFA" . "an XFA form") ("/SubmitForm" . "a form sent somewhere"))
-                     when (search (map '(vector (unsigned-byte 8)) #'char-code mark) octets)
+                     when (tuatara.io:octets-search (tuatara.text:string-octets mark) octets)
                        collect words)))
     (list (metadata-section
            "What the PDF says of itself"
            (append (list (cons "PDF version" version)
                          (cons "Saved" (and (plusp saves) (format nil "~d time~:p~:[~; (changed after it was made: each later save is kept beside the first)~]" saves (> saves 1))))
                          (cons "Encrypted" (and encrypted "yes: what it says of itself may be scrambled")))
-                   (loop for (key . value) in (and (pdf-dictionary-p info) info)
-                         for v = (pdf-resolve octets value)
-                         collect (cons (subseq key 1)
-                                       (cond ((and (stringp v) (member key '("/CreationDate" "/ModDate") :test #'string=)) (pdf-date-words v))
-                                             ((stringp v) v)
-                                             (t (princ-to-string v)))))
+                   fields
+                   (list (cons "Information found" (and fields (gethash :scanned *pdf-objects-found*)
+                                                        "by scanning the file, not from the cross-reference"))
+                         (cons "Cross-reference" (and (gethash :too-many *pdf-objects-found*)
+                                                      (format nil "lists more than ~:d objects: the rest were not read"
+                                                              *pdf-most-entries*))))
                    (list (cons "Holds" (and acts (format nil "~{~a~^, ~} (none run here)" (remove-duplicates acts :test #'string= :from-end t))))))))))
 
 ;;; Sound: MP3's ID3 tags, FLAC's comments
@@ -512,7 +526,7 @@ great many it does not have is read in a bounded time."
 
 (defun id3-split (octets start end encoding)
   "Where the first string of ENCODING in OCTETS from START below END ends,
-and where the next begins, past its NUL (two octets wide in UTF-16)."
+and where the next begins, past its null (NUL) (two octets wide in UTF-16)."
   (if (member encoding '(1 2))
       (loop for i from start below (1- end) by 2
             when (and (zerop (aref octets i)) (zerop (aref octets (1+ i)))) return (values i (+ i 2))
@@ -607,7 +621,8 @@ of KIND, says of itself: the first section of the note its reader makes."
   (let* ((office (office-preview-format kind (tuatara.io:native-file-name path)))
          (read (and office (getf office :read))))
     (when read
-      (let* ((note (handler-case (funcall read path) (error (e) (format nil "* About this file~%It could not be read: ~a~%" e))))
+      (let* ((note (handler-case (reporting-errors ("reading what ~a says of itself" path) (funcall read path))
+                     (error (e) (format nil "* About this file~%It could not be read: ~a~%" e))))
              (start (search (format nil "~%* About this") note))
              (start (if start (1+ start) (and (uiop:string-prefix-p "* About this" note) 0)))
              (end (and start (search (format nil "~%* ") note :start2 (1+ start)))))
@@ -623,7 +638,7 @@ of KIND, says of itself: the first section of the note its reader makes."
   "The section of the note giving what the system knows of the file at PATH:
 its STAMP, KIND and WORDS (by its contents) and its SHA-256 SUM."
   (let* ((name (tuatara.io:native-file-name path))
-         (link (ignore-errors (sb-posix:readlink (tuatara.io:native path))))
+         (link (handler-case (sb-posix:readlink (tuatara.io:native path)) (sb-posix:syscall-error () nil)))
          (times (tuatara.io:path-times path))
          (owner (tuatara.io:owner-name (tuatara.io:stamp-uid stamp)))
          (group (tuatara.io:owner-group-name (tuatara.io:stamp-gid stamp))))
@@ -648,15 +663,16 @@ its STAMP, KIND and WORDS (by its contents) and its SHA-256 SUM."
 
 (defun xattr-section (fd)
   "The section of the note giving the extended attributes of the file open as
-FD (where a browser keeps the address it was downloaded from, the SELinux
-label, ACLs)."
+file descriptor (FD) (where a browser keeps the address it was downloaded
+from, the SELinux label, ACLs)."
   (metadata-section
    "Extended attributes"
    (loop for name in (tuatara.io:fd-xattr-names fd)
          for value = (tuatara.io:fd-xattr-value fd name)
          collect (cons name (cond ((null value) "(cannot be read)")
                                   ((and (every (lambda (o) (or (>= o 32) (member o '(0 9 10 13)))) value)
-                                        (ignore-errors (sb-ext:octets-to-string value :external-format :utf-8)))
+                                        (handler-case (sb-ext:octets-to-string value :external-format :utf-8)
+                                          (sb-int:character-decoding-error () nil)))
                                    (string-right-trim (string (code-char 0)) (sb-ext:octets-to-string value :external-format :utf-8)))
                                   (t (format nil "~a (~:d octets)" (tuatara.text:octets-hex value :end (min 64 (length value)) :upper-case t) (length value))))))))
 
@@ -853,14 +869,15 @@ packets, nothing decrypted."
 (defmacro metadata-part (&body body)
   "The sections BODY gives, or, when it fails (a file made to break what reads
 it, say), one saying what could not be read, so that the rest is still shown."
-  `(handler-case (progn ,@body)
+  `(handler-case (reporting-errors ("reading what a file says of itself") ,@body)
      (error (e) (list (format nil "* Not read~%Some of what it says of itself could not be read: ~a~%~%"
                               (metadata-value (princ-to-string e)))))))
 
 (defun built-in-metadata (path kind fd size)
-  "The sections of the note giving what the file at PATH, of KIND, open as FD,
-of SIZE octets, says of itself, by the readers of this file: its pictures',
-PDF's, sound's and video's own fields, and XMP wherever it is kept."
+  "The sections of the note giving what the file at PATH, of KIND, open as
+file descriptor (FD), of SIZE octets, says of itself, by the readers of
+this file: its pictures', PDF's, sound's and video's own fields, and XMP
+wherever it is kept."
   (declare (ignore path))
   (multiple-value-bind (octets cut) (file-octets-for-metadata fd size)
     (append (metadata-part
@@ -885,7 +902,8 @@ PDF's, sound's and video's own fields, and XMP wherever it is kept."
             (metadata-part (xmp-sections octets)))))
 
 (defun office-metadata-function (path kind fd size)
-  "What the Office or OpenDocument file at PATH, of KIND, says of itself (OFFICE-METADATA); FD and SIZE unused."
+  "What the Office or OpenDocument file at PATH, of KIND, says of itself
+(OFFICE-METADATA); file descriptor (FD) and SIZE unused."
   (declare (ignore fd size))
   (office-metadata path kind))
 
@@ -943,7 +961,7 @@ it says :ask, only of a file encrypted to keys it names."
             (and head
                  (eq (nth-value 1 (tuatara.io:octets-kind head)) :openpgp)
                  (openpgp-key-ids head)
-                 (yes-or-no-p* "It is encrypted to keys: look up whose in your keyring (runs gpg --list-keys)?"))))
+                 (y-or-n-p* "It is encrypted to keys: look up whose in your keyring (runs gpg --list-keys)?"))))
     (t t)))
 
 (define-command file-metadata ()
@@ -966,8 +984,8 @@ alone; gpg, when it looks up keys, is given your keyring alone, not the file."
           ((not (eq (tuatara.io:stamp-kind stamp) :regular)) (message "~a is not a regular file: no metadata read" (abbreviated-path path)))
           (t (let ((look-up-keys (look-up-key-owners-p path))
                    (buffer (buffer-in-mode (format nil "*Metadata: ~a*" (tuatara.io:native-file-name path)) 'org-mode)))
-               (setf (tuatara.buffer:buffer-local buffer :read-only) t
-                     (tuatara.buffer:buffer-local buffer :directory) (tuatara.io:parent-path path))
+               (setf (buffer-read-only-p buffer) t
+                     (buffer-given-directory buffer) (tuatara.io:parent-path path))
                (view-made-text buffer)
                (set-made-text buffer (format nil "Reading the metadata of ~a...~%" (abbreviated-path path)))
                (show-buffer buffer)

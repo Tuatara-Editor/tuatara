@@ -463,11 +463,11 @@ window draws them with (set-face :org-level-1 :height 2)."
                                    (tuatara.display:unfold-all b)
                                    (loop repeat 4 do (funcall cycle) collect (tuatara.display:buffer-folds b))))
                             (let ((parsed (steps (lambda ()
-                                                   (multiple-value-bind (tree text) (tuatara.defaults::org-tree-now b)
-                                                     (let ((tuatara.defaults::*org-current-text* text))
-                                                       (tuatara.defaults::org-cycle-headline
-                                                        b (tuatara.defaults::org-headline-on-line tree text (tuatara.defaults::org-byte->char b line))
-                                                        text))))))
+                                                   (let* ((parse (tuatara.defaults::org-parse-now b))
+                                                          (headline (tuatara.defaults::org-headline-on-line
+                                                                     (tuatara.defaults::org-parse-tree parse) (tuatara.defaults::org-parse-text parse)
+                                                                     (tuatara.defaults::org-parse-char parse line))))
+                                                     (tuatara.defaults::org-cycle-headline parse headline)))))
                                   (read (steps (lambda () (tuatara.defaults::org-cycle-headline-at b line)))))
                               (when (some #'identity parsed) (incf compared))
                               (unless (equal parsed read) (push (list line parsed read) differences))))))))
@@ -560,7 +560,8 @@ window draws them with (set-face :org-level-1 :height 2)."
 
 (define-test (org todo-return)
   ;; RET in NORMAL state on a headline with a keyword: the next keyword, round to the first, never none
-  (let ((tuatara-user:*org-log-done* nil))
+  (let ((tuatara-user:*org-log-done* nil)
+        (tuatara.defaults::*org-now* (encode-universal-time 0 0 12 28 10 2026)))
     (flet ((after (keys text) (session-text (nth-value 1 (org-screen keys :text text)))))
       (is string= (format nil "* WAIT Mow the lawn~%") (after "RET" (format nil "* TODO Mow the lawn~%")))
       (is string= (format nil "* DONE Mow the lawn~%") (after "RET RET" (format nil "* TODO Mow the lawn~%")))
@@ -831,8 +832,9 @@ window draws them with (set-face :org-level-1 :height 2)."
                          (lambda ()
                            (loop repeat 200 until (tuatara.defaults::org-parse-current-p b) do (sleep 0.05))
                            (let* ((e tuatara.command:*editor*) (w (tuatara.command:editor-window e)))
-                             (setf lit (length (tuatara.command::window-highlights-for
-                                                e w (tuatara.display:window-rows w)))))))
+                             (setf lit (reduce #'+ (tuatara.command::window-highlights-for
+                                                    e w (tuatara.display:window-rows w))
+                                               :key #'length)))))
                    :file path :width 60 :height 10)
       (kill-records b path))
     (true (< 0 lit 30) "~d ranges lit" lit)))

@@ -98,22 +98,29 @@ line before it leaving nothing open (HALF-TYPED-P)."
            (half-typed-p (subseq text (tuatara.text:string-line-start text index) index)))))
 
 (defun org-buffer-laid-out-ranges (buffer tree text)
-  "ORG-LAID-OUT-RANGES of TREE, BUFFER's parse of TEXT, worked out once for
-each parse of BUFFER."
-  (let ((kept (tuatara.buffer:buffer-local buffer 'org-laid-out-ranges)))
-    (if (eq (car kept) tree)
-        (cdr kept)
+  "ORG-LAID-OUT-RANGES of TREE, the parse of TEXT, BUFFER's text or a part of
+it, worked out once for each parse: the last two asked for kept, so that
+the whole parse (PROSE-TEST) and a part's (ORG-PROSE-P) do not put each
+other out."
+  (let* ((kept (tuatara.buffer:buffer-local buffer 'org-laid-out-ranges))
+         (hit (assoc tree kept :test #'eq)))
+    (if hit
+        (cdr hit)
         (let ((ranges (org-laid-out-ranges tree text)))
-          (setf (tuatara.buffer:buffer-local buffer 'org-laid-out-ranges) (cons tree ranges))
+          (setf (tuatara.buffer:buffer-local buffer 'org-laid-out-ranges)
+                (list (cons tree ranges) (first kept)))
           ranges))))
 
 (defun org-prose-p (buffer position)
-  "True when POSITION of BUFFER, an Org buffer, is in prose, as the buffer's
-parse tells when it is of the text as it is now, else the parse of the
-section around POSITION (ORG-SECTION-AROUND)."
-  (multiple-value-bind (tree text) (org-buffer-tree buffer)
-    (if (and tree (org-parse-current-p buffer))
-        (org-text-prose-p (org-buffer-laid-out-ranges buffer tree text) text (org-byte->char buffer position))
+  "True when POSITION of BUFFER, an Org buffer, is in prose, as the parse of
+the part of it POSITION is in tells (ORG-VIEW-AT) when it is of the text as
+it is now, else the parse of the section around POSITION (ORG-SECTION-AROUND)."
+  (let ((view (org-view-at buffer position)))
+    (if (and view (org-view-current view))
+        (let ((text (org-view-text view)))
+          ;; a part read from the whole parse: the whole parse's ranges, shared with PROSE-TEST
+          (org-text-prose-p (org-buffer-laid-out-ranges buffer (or (org-view-root view) (org-view-tree view)) text) text
+                            (min (length text) (org-view-char buffer view position))))
         (multiple-value-bind (text index) (org-section-around buffer position)
           (org-text-prose-p (org-laid-out-ranges (org-parse text) text) text index)))))
 
@@ -162,10 +169,11 @@ and is not ready (PROSE-READY-P)."
 in prose, for positions asked in order from the first: an Org buffer's parse
 read once for all of them."
   (if (typep (buffer-major-mode buffer) 'org-mode)
-      (multiple-value-bind (tree text) (org-tree-now buffer)
-        (let ((ranges (org-buffer-laid-out-ranges buffer tree text)))
-          (lambda (position)
-            (let ((at (org-byte->char buffer position)))
-              (loop while (and ranges (<= (cdar ranges) at)) do (pop ranges))
-              (org-text-prose-p ranges text at)))))
+      (let* ((parse (org-parse-now buffer))
+             (text (and parse (org-parse-text parse)))
+             (ranges (org-buffer-laid-out-ranges buffer (and parse (org-parse-tree parse)) text)))
+        (lambda (position)
+          (let ((at (org-parse-char parse position)))
+            (loop while (and ranges (<= (cdar ranges) at)) do (pop ranges))
+            (org-text-prose-p ranges text at))))
       (lambda (position) (prose-p buffer position))))

@@ -35,16 +35,14 @@
   (is string= "1 1" (split-text "f 1 RET i DEL C-g" "a1 a1")))
 
 (define-test (split escape-in-a-split)
-  ;; Escape does in a split what it does in INSERT state elsewhere: with
-  ;; *escape-quits* it ends the split as C-g does, while typing or waiting for a verb
-  (let ((tuatara-user:*escape-quits* t))
-    (is string= "N bar N" (split-text "f f o o RET c N ESC" "foo bar foo"))
-    (true (search "Split: changed 2 places" (split-echo "f f o o RET c N ESC" "foo bar foo")))
-    (true (search "Split ended: 2 places left alone" (split-echo "f f o o RET ESC" "foo bar foo"))))
-  ;; as standard Escape is itself there as in INSERT state anywhere: the typing goes on
-  (let ((tuatara-user:*escape-quits* nil))
-    (is string= "NM bar NM" (split-text "f f o o RET c N ESC M C-g" "foo bar foo"))
-    (is string= (run-keys-text "i N ESC M C-g") (run-keys-text "i N M C-g"))))
+  ;; Escape does in a split what it does in INSERT state elsewhere: it ends the split as C-g
+  ;; does, while typing or waiting for a verb, with *escape-quits* or without
+  (dolist (quits '(t nil))
+    (let ((tuatara-user:*escape-quits* quits))
+      (is string= "N bar N" (split-text "f f o o RET c N ESC" "foo bar foo"))
+      (true (search "Split: changed 2 places" (split-echo "f f o o RET c N ESC" "foo bar foo")))
+      (true (search "Split ended: 2 places left alone" (split-echo "f f o o RET ESC" "foo bar foo")))
+      (is string= (run-keys-text "i N C-g M") (run-keys-text "i N ESC M")))))
 
 (define-test (split deletions-beside-places)
   ;; a deletion past a place's edge is made at the others only where the very
@@ -555,10 +553,10 @@ end its lines with a carriage return and a newline."
                                                       "Split: 2 cursors of 4")))
     ;; asked, not held in sight only: y makes every cursor
     (let ((tuatara-user:*split-limit-ask* t))
-      (is string= (format nil "aXbc~%aXbc~%aX~%aXbc~%") (every-line-text '("l v j j j t y RET i X C-g") text))
-      (is string= (format nil "aXbc~%aXbc~%aX~%aXbc~%") (every-line-text '("l v j j j t n RET i X C-g") text))
-      (is string= (format nil "aXbc~%aXbc~%aX~%aXbc~%") (every-line-text '("l C-u 3 t y RET i X C-g") text))
-      (is string= (format nil "aXbc~%aXbc~%aX~%aXbc~%") (every-line-text '("l C-u 3 t n RET i X C-g") text)))))
+      (is string= (format nil "aXbc~%aXbc~%aX~%aXbc~%") (every-line-text '("l v j j j t y i X C-g") text))
+      (is string= (format nil "aXbc~%aXbc~%aX~%aXbc~%") (every-line-text '("l v j j j t n i X C-g") text))
+      (is string= (format nil "aXbc~%aXbc~%aX~%aXbc~%") (every-line-text '("l C-u 3 t y i X C-g") text))
+      (is string= (format nil "aXbc~%aXbc~%aX~%aXbc~%") (every-line-text '("l C-u 3 t n i X C-g") text)))))
 
 (define-test (split split-thorough)
   ;; f misses a match that needs text more than 4 KB past where the scan looks;
@@ -714,3 +712,14 @@ end its lines with a carriage return and a newline."
     (is string= (format nil "a~%b~%Xc~%Xd~%e") (typed "j j C-u - 1 T i X C-g"))
     ;; more added below the last and above the first
     (is string= (format nil "Xa~%Xb~%Xc~%Xd~%Xe") (typed "j j t t T T i X C-g"))))
+
+(define-test (split cursor-typing-said-where)
+  ;; as the cursors end, the echo row says where the text went
+  (let ((three (format nil "abc~%abc~%abc")))
+    (flet ((said (keys) (string-trim " " (split-echo keys three))))
+      (is string= "Split: typed before 3 cursors" (said "l t t i X C-g C-g"))
+      (is string= "Split: typed after 3 cursors" (said "l t t a X C-g C-g"))
+      (is string= "Split: typed at the line starts of 3 cursors" (said "l t t I X C-g C-g"))
+      (is string= "Split: typed at the line ends of 3 cursors" (said "l t t A X C-g C-g"))
+      (is string= "Split: typed on new lines below 3 cursors" (said "t t o X C-g C-g"))
+      (is string= "Split: typed on new lines above 3 cursors" (said "t t O X C-g C-g")))))

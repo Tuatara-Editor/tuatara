@@ -55,16 +55,16 @@ record's other lines, and the record after it, are known at once."
 
 (defun record-text-end (rope text-end crlf)
   "TEXT-END, where a record's last line of ROPE ends, before the carriage
-return there when its lines end in CRLF."
+return there when its lines end in carriage return and line feed (CRLF)."
   (tuatara.text:rope-line-text-end rope 0 text-end crlf))
 
 (defun record-verdict (memo rope start text-end crlf limit holder decide)
   "What DECIDE, a function of a string and how many of its first characters
 are the text, says of the record of ROPE from START, the text of its last
-line ending at TEXT-END (its line ends CRLF when CRLF is true): its text
-read up to LIMIT octets and decoded into the string in HOLDER's car
-\(DECODE-INTO), true or NIL. Decided once a record: MEMO, LINE-RECORD's for
-that record, keeps it for its other lines."
+line ending at TEXT-END (its line ends carriage return and line feed (CRLF)
+when CRLF is true): its text read up to LIMIT octets and decoded into the
+string in HOLDER's car \(DECODE-INTO), true or NIL. Decided once a record:
+MEMO, LINE-RECORD's for that record, keeps it for its other lines."
   (if (eq (svref memo 4) :unknown)
       (setf (svref memo 4)
             (let ((octets (tuatara.text:rope-octets rope :start start :end (min (record-text-end rope text-end crlf) (+ start limit)))))
@@ -131,7 +131,7 @@ record\" or $*); :UNKNOWN for anything else."
           ((second (find answer offered :key #'first :test #'equal)))
           ((second (find answer offered :key #'first :test (lambda (a b) (and b (string-equal a b))))))
           (keyed answer)
-          (t (let ((number (ignore-errors (parse-integer (string-left-trim "$" answer)))))
+          (t (let ((number (whole-number (string-left-trim "$" answer))))
                (if (and number (>= number 0)) number :unknown))))))
 
 (defun read-offered-field (offered keyed prompt &key (words (lambda (field) (if (integerp field) (format nil "$~d" field) field))))
@@ -150,7 +150,8 @@ record. An error for no such field."
          (answer (completing-read prompt candidates :keep-order t))
          (field (answered-field answer offered keyed)))
     (when (eq field :unknown)
-      (error "No such column: ~a (~:[~;a name, or ~]a number from 0)" (string-trim " " answer) (some #'first offered)))
+      (refuse "No such column~@[: ~a~] (~:[~;a name, or ~]a number from 0)"
+              (and (not *secret-at-hand*) (string-trim " " answer)) (some #'first offered)))
     (values field (and field (funcall words field)))))
 
 (defun read-record-field (buffer fields prompt)

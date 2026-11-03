@@ -8,10 +8,11 @@
 ;;;; the cursor as it rests on one (*LSP-DIAGNOSTICS-DISPLAY*), and listed by
 ;;;; M-x lsp-diagnostics across the bottom, with what servers find in files not
 ;;;; open; M-x lsp-next-diagnostic and
-;;;; M-x lsp-previous-diagnostic go from one to the next. Each moves with the
+;;;; M-x lsp-previous-diagnostic go from one to the next, and so do M-g n and
+;;;; M-g p once they have (the list of places in force). Each moves with the
 ;;;; text typed before the server has looked again.
 
-(in-package #:tuatara.defaults)
+(in-package #:tuatara.lsp)
 
 (defvar *lsp-diagnostics-display* :box
   "How what a language server found where the cursor rests is said: :box, in a
@@ -118,8 +119,9 @@ name: each a list of (SERVER . DIAGNOSTICS), DIAGNOSTICS as the server sent
 them.")
 
 (defun keep-file-diagnostics (server uri items)
-  "Keep ITEMS, what SERVER found wrong in the file URI names, not open, when
-the file is in its project; the list of them shown again."
+  "Keep ITEMS, what SERVER found wrong in the file uniform resource identifier
+(URI) names, not open, when the file is in its project; the list of them
+shown again."
   (let ((path (uri-path uri)))
     (when (and path (tuatara.io:really-within-p path (lsp-server-root server)))
       (let ((others (remove server (gethash path *lsp-file-diagnostics*) :key #'car)))
@@ -147,13 +149,16 @@ the file is in its project; the list of them shown again."
          (version (tuatara.text:json-integer params "version")))
     (when (and uri (null doc) (lsp-feature-allowed-p server "diagnostics"))
       (keep-file-diagnostics server uri (tuatara.text:json-items params "diagnostics")))
-    ;; found in a text older than the one last sent: the newer is on its way
-    (when (and doc (member server (lsp-doc-servers doc)) (lsp-feature-allowed-p server "diagnostics")
-               (or (null version) (= version (lsp-doc-version doc))))
-      (keep-diagnostics buffer (cons doc server) (diagnostic-entries doc server (tuatara.text:json-items params "diagnostics")))
-      ;; the server has looked at the text: its hints too, when none came before
-      (unless (tuatara.buffer:buffer-local buffer 'lsp-hints)
-        (lsp-ask-hints doc)))))
+    ;; in place of all it said of the file before, found in the text of VERSION (that last sent
+    ;; when it names none), and moved on with what was typed since it was sent
+    (when (and doc (member server (lsp-doc-servers doc)) (lsp-feature-allowed-p server "diagnostics"))
+      (let ((found-in (doc-as-sent doc version)))
+        (when found-in
+          (keep-diagnostics buffer (cons doc server) (diagnostic-entries found-in server (tuatara.text:json-items params "diagnostics")))
+          (note-heard doc server version)
+          ;; the server has looked at the text: its hints too, when none came before
+          (unless (tuatara.buffer:buffer-local buffer 'lsp-hints)
+            (lsp-ask-hints doc)))))))
 
 (defun diagnostic-entries (doc server items)
   "ITEMS, a vector of the Diagnostics SERVER gave for DOC, as DIAGNOSTICs;
@@ -321,16 +326,46 @@ nothing else is said there. True when something was said."
 
 ;;; Moving and listing
 
+(defstruct (diagnostic-places (:constructor make-diagnostic-places (buffer)) (:copier nil))
+  "What the language servers found wrong in BUFFER, as a list of places
+\(STEP-PLACE): \\[next-place] and \\[previous-place] go from one to the next."
+  (buffer nil :read-only t))
+
+(setf (documentation 'diagnostic-places-p 'function) "True when OBJECT is a DIAGNOSTIC-PLACES."
+      (documentation 'diagnostic-places-buffer 'function) "The buffer whose diagnostics a DIAGNOSTIC-PLACES goes through.")
+
+(defmethod places-buffer ((places diagnostic-places))
+  "The buffer whose diagnostics PLACES goes through."
+  (diagnostic-places-buffer places))
+
+(defmethod places-name ((places diagnostic-places))
+  "What the language servers found wrong in its buffer: the diagnostics of notes.rs."
+  (format nil "the diagnostics of ~a" (tuatara.buffer:buffer-name (diagnostic-places-buffer places))))
+
+(defmethod step-place ((places diagnostic-places) direction)
+  "Go to the next place after point the servers found something wrong in the
+buffer (DIRECTION 1), or before it (-1), that buffer shown here, and say what."
+  (let ((buffer (diagnostic-places-buffer places)))
+    (if (live-buffer-p buffer)
+        (progn (unless (eq buffer (current-buffer)) (show-buffer buffer))
+               (goto-diagnostic (plusp direction)))
+        (message "~a has been killed" (tuatara.buffer:buffer-name buffer)))))
+
 (defun goto-diagnostic (forward)
-  "Go to the next of what the servers found after point, FORWARD, else before it, and say it."
+  "Go to the next of what the servers found after point, FORWARD, else before
+it, and say it; what they found in this buffer is the list of places in force
+then (USE-PLACES)."
+  (unless (let ((places *places-in-force*))
+            (and (diagnostic-places-p places) (eq (diagnostic-places-buffer places) (current-buffer))))
+    (use-places (make-diagnostic-places (current-buffer))))
   (let* ((all (buffer-diagnostics (current-buffer)))
          (here (point))
          (d (if forward
                 (find-if (lambda (d) (> (diagnostic-start d) here)) all)
                 (find-if (lambda (d) (< (diagnostic-start d) here)) all :from-end t))))
     (cond ((null all) (message "Nothing found wrong here~@[ (no language server)~]" (null (buffer-servers (current-buffer)))))
-          ((null d) (message "Nothing more ~:[before~;after~] this" forward))
-          (t (goto (diagnostic-start d))
+          ((null d) (say-places-end *places-in-force* (if forward 1 -1)))
+          (t (goto-shown (current-buffer) (diagnostic-start d))
              (unless (diagnostic-say *editor*)
                (message "~a" (diagnostic-words d)))))))
 
@@ -407,10 +442,11 @@ window always."
              (if (null buffer)
                  (message "~a cannot be opened" (abbreviated-path path))
                  (progn (pop-to-buffer buffer :other t)
-                        (goto at))))))
+                        (goto-shown buffer at))))))
         ((live-buffer-p (car entry))
+         (use-places (make-diagnostic-places (car entry)))
          (pop-to-buffer (car entry) :other t)
-         (goto (min (diagnostic-start (cdr entry)) (tuatara.buffer:buffer-size (car entry))))
+         (goto-shown (car entry) (min (diagnostic-start (cdr entry)) (tuatara.buffer:buffer-size (car entry))))
          (message "~a" (diagnostic-words (cdr entry))))
         (t (message "~a has been killed" (tuatara.buffer:buffer-name (car entry))))))
 
@@ -428,9 +464,12 @@ bottom, 30% of the height, kept for it and selected."
   (place-buffers 'diagnostics-mode :bottom :size 0.3 :keep t :select t))
 
 (defun install-lsp (editor)
-  "Have files opened in their projects' language servers, kept in step, what
-the servers find shown, and the servers ended as the editor stops."
-  (declare (ignore editor))
+  "Have buffers formatted before they are saved, as *FORMAT-ON-SAVE* says;
+files opened in their projects' language servers, kept in step, what the
+servers find shown, and the servers ended as the editor stops; and what the
+servers know of where the cursor rests shown in EDITOR, with code's keys
+under \\`C-c'."
+  (install-format)
   (pushnew 'lsp-tick *tick-functions*)
   (setf tuatara.buffer:*find-file-functions* (append (remove 'lsp-visit tuatara.buffer:*find-file-functions*) (list 'lsp-visit)))
   (pushnew 'lsp-killed tuatara.buffer:*kill-buffer-functions*)
@@ -441,4 +480,5 @@ the servers find shown, and the servers ended as the editor stops."
   (install-semantic-tokens)
   (install-lsp-watching)
   (pushnew 'lsp-selection-ranges *selection-ranges-functions*)
-  (install-org-blocks))
+  (install-org-blocks)
+  (install-lsp-features editor))

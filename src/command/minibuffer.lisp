@@ -3,11 +3,6 @@
 
 (in-package #:tuatara.command)
 
-(defvar *background-work* nil
-  "True when a tick function said at the last tick that work of its own runs
-in the background. A frontend for tests ends its session only once nothing
-runs.")
-
 (defun read-password (prompt &key confirm)
   "Read a secret, a passphrase, with PROMPT in the minibuffer, what is typed
 shown as stars and kept nowhere else (no history, no debug log); with CONFIRM
@@ -15,6 +10,7 @@ asked twice, an error when the two differ. Returns the string, which the
 caller should wipe (WIPE-STRING) once it has handed it on. Every copy not
 returned is wiped, the question given up (\\[keyboard-quit]) too."
   (let* ((*minibuffer-hidden* t)
+         (tuatara.runtime:*secret-at-hand* t)
          (first (read-string prompt))
          (returned nil))
     (if (not confirm)
@@ -24,7 +20,7 @@ returned is wiped, the question given up (\\[keyboard-quit]) too."
                (unwind-protect
                     (if (string= first second)
                         (setf returned first)
-                        (error "The two passphrases differ: nothing done"))
+                        (refuse "The two passphrases differ: nothing done"))
                  (wipe-string second)))
           (unless returned (wipe-string first))))))
 
@@ -63,7 +59,7 @@ them; NIL otherwise.")
 For the commands of a question's own keys (READ-STRING's KEYMAP) that end it."
   (if *minibuffer-finish*
       (funcall *minibuffer-finish*)
-      (error "The minibuffer is not reading.")))
+      (refuse "The minibuffer is not reading.")))
 
 (defun read-string (prompt &key (initial "") complete select-initial changed update keymap history)
   "Read a line of text with PROMPT in the echo area. Returns the
@@ -104,7 +100,7 @@ HISTORY, a list of earlier answers, newest first, is gone back through with
         (*minibuffer-initial-selected* (and select-initial (plusp (length initial))))
         (*minibuffer-question-keymap* keymap)
         (*minibuffer-history* (and history (list history -1 nil))))
-    (when (editor-minibuffer-active editor) (error "The minibuffer is already in use."))
+    (when (editor-minibuffer-active editor) (refuse "The minibuffer is already in use."))
     ;; a list of completions in a buffer closes when the minibuffer asks something
     (close-popup editor)
     (setf (editor-minibuffer-prompt editor) prompt
@@ -124,6 +120,10 @@ HISTORY, a list of earlier answers, newest first, is gone back through with
                              (update-candidates editor)
                              (let ((completion (editor-completion editor)))
                                (cond ((null completion) (return-from reading (editor-minibuffer-text editor)))
+                                     ;; a name taken though not offered, typed whole
+                                     ((and (not (completion-moved completion))
+                                           (member (editor-minibuffer-text editor) (completion-taken completion) :test #'string=))
+                                      (return-from reading (editor-minibuffer-text editor)))
                                      ;; nothing typed: the default, at once
                                      ((and (completion-default completion) (zerop (length (editor-minibuffer-text editor)))
                                            (not (completion-moved completion)))
@@ -155,10 +155,10 @@ HISTORY, a list of earlier answers, newest first, is gone back through with
                                ;; what came in the background; a choice held back is made once all has come
                                (take-in-source editor)
                                (when (and (completion-done-pending completion) (not (completion-working completion)))
-                                 (setf (completion-done-pending completion) nil
-                                       ;; the keys typed while it waited: handled after it, as typed
-                                       (editor-unread editor) (append held (editor-unread editor))
-                                       held '())
+                                 (setf (completion-done-pending completion) nil)
+                                 ;; the keys typed while it waited: handled after it, as typed
+                                 (put-back-events editor held)
+                                 (setf held '())
                                  (choose))))
                         ;; what was asked for while the candidates were worked out may have started
                         ;; work: whether more is coming, asked again before waiting; all come, shown so first
@@ -304,7 +304,7 @@ value, :RUNNING when it had not. Work told to stop that does not end in the
 two seconds is left to end on its own, the echo area saying so, and THREAD,
 when given, the debug log. With no editor showing, it simply waits."
   (let* ((editor *editor*)
-         (frontend (and editor (editor-frontend editor)))
+         (frontend (and editor (frame-frontend (editor-frame editor))))
          (shown nil)
          (next 0))
     (unless frontend
@@ -318,27 +318,20 @@ when given, the debug log. With no editor showing, it simply waits."
                (unless (equal text shown)
                  (setf shown text)
                  (echo "~a" text)
-                 (ignore-errors (redisplay editor))))))
+                 (tuatara.runtime:ignoring-errors-reported ("drawing while waiting") (redisplay editor))))))
       (when (running-p grace)
         (show)
         (loop
           (unless (running-p 1/20) (return))
           (when (and (functionp message) (>= (get-internal-real-time) next)) (show))
-          (when (tuatara.frontend:frontend-input-pending-p frontend)
-            (let ((event (tuatara.frontend:frontend-read-event-timeout frontend 1/100)))
-              (case (tuatara.frontend:event-kind event)
-                (:key (if (quit-key-p (tuatara.frontend:event-key event))
-                          (cond ((null stop) (return-from wait-while-interruptibly (values nil :running)))
-                                ((progn (funcall stop) (running-p 2))
-                                 (when thread (tuatara.runtime:left-running thread "Work stopped with C-g"))
-                                 (message "Stopped; what was under way did not end at once and ends on its own")
-                                 (return-from wait-while-interruptibly (values nil :running)))
-                                (t (return-from wait-while-interruptibly nil)))
-                          (setf (editor-unread editor) (append (editor-unread editor) (list event)))))
-                (:resize (resize editor (tuatara.frontend:event-width event) (tuatara.frontend:event-height event))
-                         (ignore-errors (redisplay editor)))
-                ((:close :drop :paste) (setf (editor-deferred editor) (append (editor-deferred editor) (list event))))
-                (t nil)))))))
+          (when (and (tuatara.frontend:frontend-input-pending-p frontend)
+                     (keep-or-quit-event editor (tuatara.frontend:frontend-read-event-timeout frontend 1/100)))
+            (cond ((null stop) (return-from wait-while-interruptibly (values nil :running)))
+                  ((progn (funcall stop) (running-p 2))
+                   (when thread (tuatara.runtime:left-running thread "Work stopped with C-g"))
+                   (message "Stopped; what was under way did not end at once and ends on its own")
+                   (return-from wait-while-interruptibly (values nil :running)))
+                  (t (return-from wait-while-interruptibly nil)))))))
     t))
 
 (defvar *read-key-replay* nil
@@ -346,25 +339,92 @@ when given, the debug log. With no editor showing, it simply waits."
 gives before reading any, and those read so far, newest first. So a key the
 command asks for is asked once and given at every place.")
 
-(defun read-key (prompt)
+(defun discard-typed-ahead (editor)
+  "Throw away the keys typed to EDITOR and not read yet, so that a question
+asked now is answered only by a key pressed once it is shown: those waiting
+in its frontend, wake-ups among them or not, and those a command left
+unread; those of another frame wait there for their turn. What is not a key
+is kept to be dealt with: a wake-up (a tick), a window resized or closed,
+files dropped, text pasted."
+  (let ((frontend (editor-frontend editor)) (kept '()))
+    (loop while (tuatara.frontend:frontend-input-pending-p frontend)
+          do (let ((event (tuatara.frontend:frontend-read-event-timeout frontend 0)))
+               (case (and event (take-to-its-frame editor event nil) (tuatara.frontend:event-kind event))
+                 ((nil) (unless event (return)))
+                 (:key)
+                 (t (push event kept)))))
+    (setf (editor-unread editor)
+          (append (remove :key (editor-unread editor) :key #'tuatara.frontend:event-kind)
+                  (nreverse kept)))))
+
+(defun read-key (prompt &key fresh)
   "Show PROMPT in the echo area, redisplay, and return the next key pressed,
-the cursor standing after PROMPT meanwhile (*KEY-QUESTION*). Signals QUIT
-when the frontend has nothing more to deliver."
+the cursor standing after PROMPT meanwhile (*KEY-QUESTION*). With FRESH, the
+keys typed until PROMPT is shown are thrown away (DISCARD-TYPED-AHEAD), and
+the question is out of any recording of keys: keys being played do not
+answer it, the key pressed is not recorded, and \\`C-g' there leaves the
+recording going: for a question no key typed ahead may answer, asked by
+Tuatara of itself. Signals QUIT when the frontend has nothing more to
+deliver."
   (let ((replay *read-key-replay*))
-    (if (and replay (car replay))
+    (if (and replay (car replay) (not fresh))
         (pop (car replay))
         (let ((editor *editor*) (*key-question* t))
           (echo "~a" prompt)
-          (redisplay-or-say editor)
-          (let* ((event (read-event editor))
-                 (key (case (tuatara.frontend:event-kind event)
-                        (:quit (keyboard-quit-signal))
-                        (t (tuatara.frontend:event-key event)))))
-            (when replay (push key (cdr replay)))
-            key)))))
+          (let* ((frame (editor-frame editor))
+                 (playing (frame-keys-playing frame))
+                 (recording (frame-keys-recording frame)))
+            (when fresh
+              (setf (frame-keys-playing frame) nil (frame-keys-recording frame) nil))
+            (unwind-protect
+                 (progn
+                   (redisplay-or-say editor)
+                   (when fresh (discard-typed-ahead editor))
+                   (let* ((event (read-event editor))
+                          (key (case (tuatara.frontend:event-kind event)
+                                 (:quit (if fresh (error 'quit) (keyboard-quit-signal)))
+                                 (t (tuatara.frontend:event-key event)))))
+                     (when (and replay (not fresh)) (push key (cdr replay)))
+                     key))
+              (when fresh
+                (setf (frame-keys-playing frame) playing (frame-keys-recording frame) recording))))))))
+
+(defun answer-keys-words (answers)
+  "The keys ANSWERS, a list of characters, in words: y, n or v."
+  (format nil "~{~a~#[~; or ~:;, ~]~}" answers))
+
+(defun read-answer-key (prompt answers &key fresh)
+  "Ask PROMPT in the echo area, answered by one key: one of ANSWERS, a list
+of characters such as (#\\y #\\n). Returns the character, in lower case,
+whatever the case typed. Any other key says which keys answer and asks
+again; \\`C-g' signals QUIT. With FRESH, for a question Tuatara asks of
+itself rather than one a command you gave asks, the key is one pressed once
+the question is shown (READ-KEY with FRESH): keys typed before are thrown
+away, keys being recorded or played have no part in it, and \\`C-g' leaves
+a recording of keys going on."
+  (let ((asked prompt))
+    (loop
+      (let* ((key (read-key asked :fresh fresh))
+             (base (tuatara.frontend:key-base key))
+             (char (and (not (tuatara.frontend:key-ctrl key)) (not (tuatara.frontend:key-meta key))
+                        (characterp base) (char-downcase base))))
+        (cond ((quit-key-p key) (if fresh (error 'quit) (keyboard-quit-signal)))
+              ((and char (member char answers)) (return char))
+              (t (setf asked (format nil "Answer ~a. ~a" (answer-keys-words answers) prompt))))))))
+
+(defun y-or-n-p* (prompt &key fresh)
+  "Ask PROMPT, a question whose answer is easily undone, answered by one
+key, y or n, no RET (READ-ANSWER-KEY): true for y, false for n; any other
+key says which keys answer and asks again; \\`C-g' signals QUIT. With
+FRESH, for a question that comes without a command of yours asking it (a
+language server's, one while you type), only a key pressed once it is shown
+answers it (READ-ANSWER-KEY's FRESH). A question whose yes destroys or
+writes over what cannot be had back asks for a typed answer instead
+\(YES-OR-NO-P*)."
+  (eql #\y (read-answer-key (concatenate 'string prompt " (y or n) ") '(#\y #\n) :fresh fresh)))
 
 (defun completing-read (prompt table &key annotate require-match history (initial "") (separator #\/) (filter t)
-                                         select reselect preview source default keep-order none keymap)
+                                         select reselect preview source default keep-order none taken keymap)
   "Read with completion: PROMPT is shown (a string, or a function of no
 arguments giving it, for a question whose words change while it is open), TABLE is a list of candidates
 (CANDIDATE objects or strings) or a function of the input returning one, and
@@ -390,7 +450,10 @@ before anything can be chosen, more coming, chooses once it has come.
 DEFAULT, when given, is what \\[minibuffer-done] takes while nothing is
 typed: its candidate comes first then, selected, and the prompt names it,
 Describe function (default car): . With KEEP-ORDER, the candidates that
-match stay in the order TABLE gives them, not sorted best first.
+match stay in the order TABLE gives them, not sorted best first; with
+KEEP-ORDER :UNTIL-TYPED, only while nothing is typed to match them.
+TAKEN, a list of names not among the candidates, are taken when typed
+whole and \\[minibuffer-done] is pressed with no candidate chosen by hand.
 KEYMAP holds the question's own keys, as READ-STRING takes it.
 Signals QUIT on abort."
   (let* ((editor *editor*)
@@ -401,7 +464,7 @@ Signals QUIT on abort."
     (let ((completion (make-completion table :annotate annotate :require-match require-match :history history
                                              :separator separator :filter filter :select select :reselect reselect
                                              :preview preview :source source :default default :keep-order keep-order
-                                             :none none :prompt prompt)))
+                                             :none none :taken taken :prompt prompt)))
       (setf (editor-completion editor) completion)
       (if source
           (take-in-source editor)
@@ -599,8 +662,16 @@ letter or a digit, then over the letters and digits before it."
   (define-key keymap "M-RET" 'minibuffer-submit-input))
 
 (defun yes-or-no-p* (prompt)
-  "Ask PROMPT in the minibuffer: true for the answer y or yes, in any case and
-with spaces around; false for any other answer, n, no, none at all (\`RET')
-or anything else, never asked again."
-  (let ((answer (string-trim '(#\Space #\Tab) (read-string (concatenate 'string prompt " (y or n) ")))))
-    (and (member answer '("y" "yes") :test #'string-equal) t)))
+  "Ask PROMPT in the minibuffer, an answer typed and ended with \`RET': for a
+question whose yes destroys or writes over what cannot be had back (a file
+deleted or written over, changes thrown away). The prompt ends with (y or n,
+then RET). True for the answer y or yes, false for n or no, in any case and
+with spaces around; any other answer, none at all too, says which answers it
+takes and asks again; \\`C-g' signals QUIT. A question whose answer is easily
+undone is answered by one key instead (Y-OR-N-P*)."
+  (let ((question (format nil "~a (y or n, then ~a) " prompt
+                          (substitute-command-keys "\\<minibuffer>\\[minibuffer-done]"))))
+    (loop for asking = question then (format nil "Answer ~a. ~a" (answer-keys-words '(#\y #\n)) question)
+          do (let ((answer (string-trim '(#\Space #\Tab) (read-string asking))))
+               (cond ((member answer '("y" "yes") :test #'string-equal) (return t))
+                     ((member answer '("n" "no") :test #'string-equal) (return nil)))))))

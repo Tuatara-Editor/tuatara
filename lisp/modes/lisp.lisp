@@ -64,7 +64,7 @@ the octets below END are read."
             do (let ((b (at i)))
                  (cond
                    ((member b '(32 9 10 12 13)) (incf i))
-                   ((= b 59) (setf i (or (position 10 octets :start i :end n) n)))              ; ;
+                   ((= b 59) (setf i (or (tuatara.text:octets-line-end-position octets i n) n)))              ; ;
                    ((and (= b 35) (= (at (1+ i)) 124))                                   ; #| |#
                     (setf i (nested-comment-end #'at i n)))
                    ((= b 40) (push (or prefix i) opens) (setf prefix nil) (incf i))    ; (
@@ -154,7 +154,8 @@ none: nothing is made, as reading would."
 case, or NIL when it names no function, macro or special operator whose
 parameters are known."
   (when (and symbol (fboundp symbol))
-    (multiple-value-bind (parameters known) (ignore-errors (values (sb-introspect:function-lambda-list symbol) t))
+    (multiple-value-bind (parameters known) (ignoring-errors-reported ("finding the parameters of ~s" symbol)
+                                              (values (sb-introspect:function-lambda-list symbol) t))
       (when known
         (labels ((show (x)
                    ;; a parameter by its name, whatever package it was written in
@@ -220,7 +221,9 @@ to say, show the parameters of the function or macro whose call point is in."
              (seen (tuatara.buffer:buffer-local buffer 'lisp-eldoc-seen))
              (name (if (and seen (eq (first seen) version) (eql (second seen) point))
                        (third seen)
-                       (let ((name (ignore-errors (operator-at buffer point))))
+                       (let ((name (ignoring-errors-reported ("finding the call around point in ~a"
+                                                              (tuatara.buffer:buffer-name buffer))
+                                     (operator-at buffer point))))
                          (setf (tuatara.buffer:buffer-local buffer 'lisp-eldoc-seen) (list version point name))
                          name)))
              (signature (and name (lisp-signature (lisp-symbol-named name (lisp-package buffer))))))
@@ -260,13 +263,34 @@ typed at \\[eval-expression].")
 
 (defun definition-form-name (form)
   "The name FORM defines when it is a definition, (def... name ...) or
-(define-... name ...): the symbol, (setf name)'s too; else NIL."
+(define-... name ...): the symbol, (setf name)'s too, or a quoted one
+\(define-recorded-keys 'name ...); else NIL."
   (when (and (consp form) (symbolp (first form)) (consp (rest form)))
     (let ((head (symbol-name (first form)))
           (name (second form)))
       (when (definition-head-p head)
         (cond ((and name (symbolp name) (not (keywordp name))) name)
-              ((and (consp name) (eq (first name) 'setf) (symbolp (second name))) (second name)))))))
+              ((and (consp name) (member (first name) '(setf quote)) (symbolp (second name))) (second name)))))))
+
+(defvar *init-file-definitions* (make-hash-table :test 'eq :synchronized t)
+  "For each name a function, command or recorded keys were defined for in the
+init file, (FILE LINE HEAD FUNCTION): where, the name of the defining form
+\(define-command), and the function it was given then.")
+
+(defun note-init-file-definition (form file line)
+  "Remember that FORM, read from the init file FILE at LINE, defined the
+function its name now has, when it is a definition of one."
+  (let ((name (and (not (and (consp (second form)) (eq (first (second form)) 'setf)))
+                   (definition-form-name form))))
+    (when (and name (fboundp name))
+      (setf (gethash name *init-file-definitions*) (list file line (first form) (fdefinition name))))))
+
+(defun init-file-definition (symbol)
+  "Where the init file defined SYMBOL's function, as (FILE LINE HEAD), HEAD
+the defining form's name, while it is still the one the init file gave it; NIL
+otherwise."
+  (destructuring-bind (&optional file line head function) (gethash symbol *init-file-definitions*)
+    (and file (fboundp symbol) (eq function (fdefinition symbol)) (list file line head))))
 
 (defun note-evaluated-definition (form)
   "Remember that FORM, when it is a definition, was evaluated from *EVALUATING-BUFFER*."
@@ -294,7 +318,7 @@ forms there were."
           (with-input-from-string (in text)
             (loop for form = (handler-case (read in nil eof)
                                (end-of-file ()
-                                 (error "The text ends inside a form: a bracket or a string is not closed.")))
+                                 (refuse "The text ends inside a form: a bracket or a string is not closed.")))
                   until (eq form eof)
                   do (evaluate form)))))
     (values values count)))
@@ -365,9 +389,10 @@ working buffer; else the one shown in the selected window."
             :name "tuatara evaluation")))
     (unless (wait-interruptibly thread :message "Evaluating..." :grace *evaluation-grace*
                                        :stop (lambda (thread)
-                                               (ignore-errors
-                                                (sb-thread:interrupt-thread
-                                                 thread (lambda () (throw 'stop-evaluation :stopped))))))
+                                               (handler-case
+                                                   (sb-thread:interrupt-thread
+                                                    thread (lambda () (throw 'stop-evaluation :stopped)))
+                                                 (sb-thread:interrupt-thread-error () nil))))
       (unless result
         (setf result (list :outcome :stopped :output "" :warnings 0 :package (car box)))))
     result))
@@ -375,8 +400,8 @@ working buffer; else the one shown in the selected window."
 (defun printed-value (value)
   "VALUE printed readably, or #<a value that cannot be printed: WHY> when
 printing it fails."
-  (handler-case (prin1-to-string value)
-    (error (e) (format nil "#<a value that cannot be printed: ~a>" (tuatara.runtime:condition-words e)))))
+  (handler-case (reporting-errors ("printing a value") (prin1-to-string value))
+    (error (e) (format nil "#<a value that cannot be printed: ~a>" (tuatara.runtime:failure-words e :said t)))))
 
 (defun write-output-and-values (out output values)
   "Write to OUT what an evaluation printed, OUTPUT, the blanks at its end
@@ -437,9 +462,9 @@ value is said after what was evaluated, on one line: (setf x 1) => 1."
     (setf (tuatara.buffer:buffer-local buffer :lisp-package) (package-name (getf result :package)))
     (cond ((eq outcome :stopped) (message "Evaluation stopped~@[~a~]" note))
           ((eq (first outcome) :error)
-           (message "Error: ~a~@[~a~]" (tuatara.runtime:condition-words (second outcome)) note)
-           (when (and (getf result :backtrace) *backtrace-function*)
-             (funcall *backtrace-function* (second outcome) (getf result :backtrace))))
+           (message "Error: ~a~@[~a~]" (tuatara.runtime:failure-words (second outcome) :said t) note)
+           (when (getf result :backtrace)
+             (show-backtrace (second outcome) (getf result :backtrace))))
           (t (destructuring-bind (values count) (rest outcome)
                (let ((*package* (getf result :package)))
                  (cond (printing
@@ -485,8 +510,9 @@ goes to *Messages*."
   "TEXT, a form of BUFFER, as \\[eval-top-level-form] evaluates it: a DEFVAR
 with a value as a DEFPARAMETER, so that the variable takes the value again
 when it has one already, as a list of that form; else TEXT itself."
-  (let ((form (ignore-errors (let ((*package* (lisp-package buffer)) (*read-eval* nil))
-                               (read-from-string text)))))
+  (let ((form (ignoring-errors-reported ("reading a form of ~a" (tuatara.buffer:buffer-name buffer))
+                (let ((*package* (lisp-package buffer)) (*read-eval* nil))
+                  (read-from-string text)))))
     (if (and (consp form) (eq (first form) 'defvar) (consp (cdr form)) (consp (cddr form)))
         (list (list* 'defparameter (rest form)))
         text)))
@@ -514,13 +540,24 @@ octets."
             ((too-large-here-p start end "Evaluating"))
             (t (evaluate-and-report b (tuatara.buffer:buffer-string b :start start :end end)))))))
 
+(defun init-file-buffer-p (buffer)
+  "True when BUFFER visits the init file (CONFIG-FILE)."
+  (let ((file (tuatara.buffer:buffer-file buffer)))
+    (and file (equal (tuatara.io:real-path-or-parent file)
+                     (tuatara.io:real-path-or-parent (tuatara.io:native (config-file)))))))
+
 (define-command eval-buffer ()
   "Evaluate every Lisp form in the current buffer one after another, as a
 file's are, and show the last one's value; not a buffer of more than
-*REWRITE-THRESHOLD* octets."
+*REWRITE-THRESHOLD* octets. In the init file, the packages it loads are
+loaded as at the start, each before the forms after it are evaluated
+\(CALL-WITH-START-PACKAGES)."
   (let ((b (current-buffer)))
     (unless (too-large-here-p 0 (tuatara.buffer:buffer-size b) "Evaluating")
-      (evaluate-and-report b (tuatara.buffer:buffer-string b)))))
+      (flet ((evaluate () (evaluate-and-report b (tuatara.buffer:buffer-string b))))
+        (if (init-file-buffer-p b)
+            (tuatara.packages:call-with-start-packages #'evaluate)
+            (evaluate))))))
 
 (define-command eval-expression ()
   "Read a Lisp expression in the minibuffer and evaluate it in the running

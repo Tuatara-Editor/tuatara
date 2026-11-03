@@ -11,7 +11,7 @@
 ;;;; says of a line (3 references, Run test), are shown so at the line's end
 ;;;; when M-x lsp-code-lenses-mode is on, M-x lsp-code-lens running one.
 
-(in-package #:tuatara.defaults)
+(in-package #:tuatara.lsp)
 
 (defvar *lsp-inlay-hints* t
   "True for language servers' inlay hints to be shown within the code: the
@@ -36,10 +36,11 @@ to be shown once they come while its buffer's text is still as asked of."
         (buffer (lsp-doc-buffer doc)))
     (when server
       (let ((version (lsp-doc-version doc))
-            (rope (tuatara.buffer:buffer-text buffer)))
+            ;; all of the text as the server has it, changes not yet sent left out
+            (shown (lsp-doc-shown-rope doc)))
         (lsp-request server "textDocument/inlayHint"
                      (tuatara.text:json-object "textDocument" (doc-identifier doc)
-                                               "range" (doc-range doc server 0 (tuatara.text:rope-bytes rope)))
+                                               "range" (lsp-range server shown 0 (tuatara.text:rope-bytes shown)))
                      (lambda (result error)
                        (when (and (null error) (doc-unchanged-p doc version))
                          (let ((hints (loop for hint across (tuatara.text:json-items result)
@@ -74,12 +75,12 @@ in order of place. Complexity: O(log hints + those there)."
 
 (defun show-hints-in (buffer)
   "Have BUFFER's display show its inlay hints, beside what its mode shows
-otherwise (its :display-replacements-function, kept)."
+otherwise (TUATARA.DISPLAY:BUFFER-REPLACEMENTS-FUNCTION, kept)."
   (unless (tuatara.buffer:buffer-local buffer 'lsp-hints-shown)
-    (let ((before (tuatara.buffer:buffer-local buffer :display-replacements-function)))
+    (let ((before (tuatara.display:buffer-replacements-function buffer)))
       (setf (tuatara.buffer:buffer-local buffer 'lsp-hints-shown) t
             (tuatara.buffer:buffer-local buffer 'lsp-replacements-before) before
-            (tuatara.buffer:buffer-local buffer :display-replacements-function)
+            (tuatara.display:buffer-replacements-function buffer)
             (if before
                 (lambda (b start end)
                   (merge 'list (copy-list (funcall before b start end)) (hint-replacements b start end) #'< :key #'car))
@@ -95,7 +96,7 @@ its display as its mode has it once none are left."
   (setf (tuatara.buffer:buffer-local buffer 'lsp-hints)
         (and doc (remove doc (tuatara.buffer:buffer-local buffer 'lsp-hints) :key #'hints-doc)))
   (when (and (tuatara.buffer:buffer-local buffer 'lsp-hints-shown) (null (tuatara.buffer:buffer-local buffer 'lsp-hints)))
-    (setf (tuatara.buffer:buffer-local buffer :display-replacements-function)
+    (setf (tuatara.display:buffer-replacements-function buffer)
           (tuatara.buffer:buffer-local buffer 'lsp-replacements-before)
           (tuatara.buffer:buffer-local buffer 'lsp-hints-shown) nil)))
 

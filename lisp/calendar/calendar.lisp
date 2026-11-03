@@ -398,7 +398,7 @@ a date asked for reads (READ-DATE-TEXT: fri, +3d, oct 3); NIL for none."
     (multiple-value-bind (y m d at) (written-date-at text 0 end :iso)
       (cond ((eql at end) (day-number y m d))
             (month (and (<= 1 month 12) (day-number (fixed-digits text 0 4 end) month 1)))
-            (t (values (ignore-errors (read-date-text text (org-today)))))))))
+            (t (values (ignoring-errors-reported ("reading the date ~a" text) (read-date-text text (org-today)))))))))
 
 (define-command calendar-goto-date ()
   "Move point to a date asked for: 2026-12-24, 2026-12, or as any date asked
@@ -528,7 +528,7 @@ before are given up."
              (plusp (length (calendar-days-of buffer))))
     (multiple-value-bind (first last) (calendar-shown-range buffer)
       (let* ((works (loop for f in *calendar-mark-functions*
-                          for work = (ignore-errors (funcall f first last))
+                          for work = (call-hook-function f first last)
                           when work collect work))
              (job (make-calendar-marks buffer works))
              (before (tuatara.buffer:buffer-local buffer 'calendar-marks-job)))

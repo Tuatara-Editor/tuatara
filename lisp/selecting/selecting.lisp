@@ -134,14 +134,17 @@ the text's end. END at the start of a line past START belongs to the line
 before it (RANGE-LAST-PLACE), unless COLUMNS, when that line is taken too.
 With VISIBLE, lines are those a window shows: a line whose end a fold hides
 is whole with all the fold hides, as a folded headline with its body; a line
-shown is whole without the lines search filters hide after it."
+shown is whole without the lines search filters hide after it. Of a
+narrowed buffer, the lines of the part shown, cut at its edges."
   (let* ((low (min start end)) (high (max start end))
          (last (if columns high (range-last-place buffer low high))))
-    (if visible
-        (values (tuatara.display:visible-line-start buffer low :hidden nil) (line-after buffer last))
-        (let* ((rope (tuatara.buffer:buffer-text buffer))
-               (newline (tuatara.text:rope-find-octet rope 10 :start last)))
-          (values (tuatara.text:rope-line-start rope low) (if newline (1+ newline) (tuatara.text:rope-bytes rope)))))))
+    (multiple-value-bind (from to)
+        (if visible
+            (values (tuatara.display:visible-line-start buffer low :hidden nil) (line-after buffer last))
+            (let* ((rope (tuatara.buffer:buffer-text buffer))
+                   (newline (tuatara.text:rope-find-line-end rope :start last)))
+              (values (tuatara.text:rope-line-start rope low) (if newline (1+ newline) (tuatara.text:rope-bytes rope)))))
+      (values (tuatara.buffer:within-narrowing buffer from) (tuatara.buffer:within-narrowing buffer to)))))
 
 (defun whole-lines-span (buffer start end)
   "The whole lines a window shows from START to END of BUFFER (WHOLE-LINES,
@@ -232,6 +235,7 @@ fold hides, but not all of it, is not deleted: the fold is shown instead."
         (progn (setf (tuatara.buffer:buffer-mark (current-buffer)) start) (goto end)
                (kill-region) (line-selection-clear))
         (multiple-value-bind (s e) (char-span (prefix))
+          (when s (multiple-value-setq (s e) (tuatara.buffer:whole-line-ends (current-buffer) s e)))
           (when (and s (< s e))
             (refuse-hidden-deletion (current-buffer) s e)
             (tuatara.buffer:buffer-delete (current-buffer) s e) (goto s))))))
@@ -269,7 +273,7 @@ a rectangle too: only the lines shown are copied."
              (copy-region-text b start end)
              ;; whole lines, the last with no line end: copied with one, to be pasted as lines
              (when (and lines (= end (tuatara.buffer:buffer-size b))
-                        (/= 10 (tuatara.text:rope-octet (tuatara.buffer:buffer-text b) (1- end))))
+                        (not (tuatara.text:rope-line-start-p (tuatara.buffer:buffer-text b) end)))
                (kill-text (string #\Newline) :append t))
              (setf (tuatara.buffer:buffer-mark-active-p b) nil)
              (line-selection-clear))
@@ -319,7 +323,9 @@ instead, and the key pressed again pastes."
                        (setf (tuatara.buffer:buffer-mark-active-p b) nil)
                        (line-selection-clear)
                        (goto (if after (aref after 0) start)))))
-                  (t (goto (tuatara.buffer:buffer-insert b (point) copies)))))))))
+                  (t (goto (tuatara.buffer:buffer-insert b (point) (if (stringp copies)
+                                                                         (tuatara.buffer:unjoined-line-ends b (point) copies)
+                                                                         copies))))))))))
 
 ;;; Lines
 
@@ -545,7 +551,7 @@ language's mode indents them. The selection ends."
       (let ((done (indent-lines b start end)))
         (setf (tuatara.buffer:buffer-mark-active-p b) nil)
         (when (eq done :none)
-          (message "No indentation rules for ~a" (tuatara.buffer:buffer-local b :mode-name "this buffer")))))))
+          (message "No indentation rules for ~a" (or (buffer-mode-name b) "this buffer")))))))
 
 ;;; Repeating a change with its selection
 

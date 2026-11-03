@@ -1,0 +1,10 @@
+tuatara session 1
+buffer file 12 /notes/b\tc.org
+buffer safe 0 /evidence/disk.img
+buffer directory 0 /notes/
+buffer scratch 5 *scratch*
+frame
+split side-by-side 2 0.500000 0.500000
+window 1 0 file 34 /notes/a b.org
+window 0 0 none 0 -
+end

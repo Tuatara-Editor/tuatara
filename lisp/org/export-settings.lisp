@@ -87,7 +87,7 @@ lines are looked at where they are read."
            (unless (or (assoc value *org-latex-font-sizes* :test #'string-equal) (char= (char value 0) #\\))
              (format nil "font: ~a is none of ~{~a~^, ~}; left out" value (mapcar #'car *org-latex-font-sizes*))))
           ((string= name "columns")
-           (unless (let ((n (ignore-errors (parse-integer value)))) (and n (plusp n)))
+           (unless (let ((n (whole-number value))) (and n (plusp n)))
              (format nil "columns: ~a is no number of columns; left out" value))))))
 
 (defun org-export-drawer-p (node)
@@ -234,7 +234,7 @@ between lines (1 single, 1.5, 2 double); NIL for none, or what is no number."
   "How many columns NODE's columns setting sets its text in, two or more;
 NIL for one."
   (let* ((value (org-latex-setting node "columns"))
-         (n (and value (ignore-errors (parse-integer value)))))
+         (n (and value (whole-number value))))
     (and n (> n 1) n)))
 
 (defun export-setting-no-p (node name)
@@ -416,6 +416,47 @@ pages turned already, as they are."
          (> (search-count "\\begin{multicols}" template :end at)
             (search-count "\\end{multicols}" template :end at)))))
 
+(defparameter *latex-paper-widths*
+  '(("a3paper" . 297) ("a4paper" . 210) ("a5paper" . 148) ("a6paper" . 105) ("b5paper" . 176)
+    ("letterpaper" . 2159/10) ("legalpaper" . 2159/10) ("executivepaper" . 18415/100))
+  "The width in millimetres of each paper size a geometry option names.")
+
+(defun latex-length-millimetres (value)
+  "VALUE, a length as written in a template (28mm, 1.5cm, 1in, 12pt), in
+millimetres; NIL for anything else."
+  (multiple-value-bind (n unit) (setting-length value)
+    (and n (case unit
+             (:mm n) (:cm (* 10 n)) (:in (* 254/10 n)) (:pt (* 3515/10000 n))))))
+
+(defun latex-template-text-characters (template)
+  "About how many characters of the normal size go across the text of the
+page the LaTeX TEMPLATE sets with its geometry package (a paper size or
+paperwidth, and the margins left and right, margin or hmargin, or
+textwidth), as the enhanced export's own A4 page, 154 mm across, has
+*ORG-LATEX-TEXT-CHARACTERS*; NIL when the template says too little to know."
+  (let ((options (nth-value 1 (cl-ppcre:scan-to-strings "\\\\usepackage\\[([^\\]]*)\\]\\{geometry\\}" template))))
+    (when options
+      (let ((given '()))
+        (dolist (option (cl-ppcre:split "\\s*,\\s*" (string-trim '(#\Space #\Newline) (aref options 0))))
+          (let ((at (position #\= option)))
+            (push (if at
+                      (cons (string-trim " " (subseq option 0 at)) (string-trim " {}" (subseq option (1+ at))))
+                      (cons (string-trim " " option) t))
+                  given)))
+        (flet ((value (&rest keys)
+                 (loop for key in keys
+                       for found = (cdr (assoc key given :test #'string=))
+                       when (stringp found) return found)))
+          (let* ((paper (or (let ((w (value "paperwidth"))) (and w (latex-length-millimetres w)))
+                            (loop for (name . width) in *latex-paper-widths*
+                                  when (assoc name given :test #'string=) return width)))
+                 (text (let ((w (value "textwidth" "width"))) (and w (latex-length-millimetres w))))
+                 (left (let ((m (value "left" "lmargin" "inner" "margin" "hmargin"))) (and m (latex-length-millimetres m))))
+                 (right (let ((m (value "right" "rmargin" "outer" "margin" "hmargin"))) (and m (latex-length-millimetres m))))
+                 (width (or text (and paper left right (- paper left right)))))
+            (and width (plusp width)
+                 (max 30 (round (* *org-latex-text-characters* width) 154)))))))))
+
 (defun latex-line-stretch (spacing)
   "The stretch LaTeX's \\linespread takes for the SPACING between lines a word
 processor counts (1 single, 1.5, 2 double), as setspace's one and a half
@@ -537,40 +578,46 @@ or else for the heading it is under, holding the settings that fit it, each
 auto to change (\\[describe-export-settings] says what each takes). The note's
 #+options: get d:(not \"EXPORT\" \"LOGBOOK\") when they say nothing of drawers,
 so that other programs exporting the note as Org leave the drawers out too."
-  (let ((buffer (current-buffer)))
-    (multiple-value-bind (tree text) (org-tree-now buffer)
-      (let ((*org-current-text* text))
-        (multiple-value-bind (node kind) (and tree (org-latex-settings-target tree (org-point-char buffer)))
-          (if (null node)
-              (message "Nothing here an :EXPORT: drawer sets: a heading, a table, a list, a block or a picture")
-              (let* ((names (loop for (name kinds) in *org-latex-settings* when (member kind kinds) collect name))
-                     (drawer (format nil ":EXPORT:~%~{~a: auto~%~}:END:~%" names))
-                     (at (if (eq kind :heading)
-                             ;; under the heading, after its planning and properties
-                             (let* ((section (find 'section (org-node-children node) :key #'org-node-type))
-                                    (leading (and section (remove-if-not (lambda (n) (member (org-node-type n) '(planning property-drawer)))
-                                                                         (org-node-children section)))))
-                               (if leading
-                                   (org-node-end (car (last leading)))
-                                   (min (length text) (1+ (or (position #\Newline text :start (org-node-begin node)) (1- (length text)))))))
-                             (org-node-begin node))))
-                (org-replace-chars buffer at at drawer :point (+ at (length ":EXPORT:") 1))
-                (let ((said (org-latex-hide-drawers-option buffer)))
-                  (message "An :EXPORT: drawer for this ~(~a~): change auto to what you want (M-x describe-export-settings)~@[; ~a~]"
-                           kind said)))))))))
+  (let* ((buffer (current-buffer))
+         (parse (org-parse-now buffer))
+         (text (and parse (org-parse-text parse))))
+    (multiple-value-bind (node kind)
+        (and parse (org-latex-settings-target (org-parse-tree parse) (org-parse-point parse)))
+      (if (null node)
+          (message "Nothing here an :EXPORT: drawer sets: a heading, a table, a list, a block or a picture")
+          (let* ((names (loop for (name kinds) in *org-latex-settings* when (member kind kinds) collect name))
+                 (drawer (format nil ":EXPORT:~%~{~a: auto~%~}:END:~%" names))
+                 (at (if (eq kind :heading)
+                         ;; under the heading, after its planning and properties
+                         (let* ((section (find 'section (org-node-children node) :key #'org-node-type))
+                                (leading (and section
+                                              (remove-if-not (lambda (n) (member (org-node-type n) '(planning property-drawer)))
+                                                             (org-node-children section)))))
+                           (if leading
+                               (org-node-end (car (last leading)))
+                               (min (length text)
+                                    (1+ (or (position #\Newline text :start (org-node-begin node)) (1- (length text)))))))
+                         (org-node-begin node))))
+            (org-replace-chars parse at at drawer :point (+ at (length ":EXPORT:") 1))
+            (let ((said (org-latex-hide-drawers-option buffer)))
+              (message "An :EXPORT: drawer for this ~(~a~): change auto to what you want ~
+                        (M-x describe-export-settings)~@[; ~a~]"
+                       kind said)))))))
 
 (defun org-latex-hide-drawers-option (buffer)
   "Have BUFFER's #+options: leave :EXPORT: drawers out when other programs export it
 \(*ORG-LATEX-HIDDEN-DRAWERS-OPTION*), unless they say something of drawers
 already; a sentence saying what was done, or NIL."
-  (let* ((text (org-buffer-text buffer)))
+  (let* ((parse (org-text-now buffer))
+         (text (org-parse-text parse)))
     (cond ((cl-ppcre:scan "(?im)^[ \\t]*#\\+options:.*(?:^|\\s)d:" text) nil)
           (t (multiple-value-bind (start end) (cl-ppcre:scan "(?im)^[ \\t]*#\\+options:[^\\n]*" text)
                (if start
                    (progn
-                     (org-replace-chars buffer end end (format nil " ~a" *org-latex-hidden-drawers-option*))
+                     (org-replace-chars parse end end (format nil " ~a" *org-latex-hidden-drawers-option*))
                      "#+options: gained d:(not \"EXPORT\" \"LOGBOOK\") for other programs' exports")
                    ;; after the keyword lines at the top, else at the very top
                    (let ((after (or (nth-value 1 (cl-ppcre:scan "^(?:[ \\t]*#\\+[^\\n]*\\n)+" text)) 0)))
-                     (org-replace-chars buffer after after (format nil "#+options: ~a~%" *org-latex-hidden-drawers-option*))
+                     (org-replace-chars parse after after
+                                        (format nil "#+options: ~a~%" *org-latex-hidden-drawers-option*))
                      "a #+options: line keeps them out of other programs' exports")))))))

@@ -32,8 +32,10 @@ where \\[xref-go-back] goes back to; the newest *HISTORY-KEPT* of them.")
   "Show MARKER's buffer in the selected window, point where MARKER's anchor is now."
   (destructuring-bind (b . anchor) marker
     (show-buffer b)
-    (goto (min (tuatara.buffer:buffer-size b)
-               (or (ignore-errors (tuatara.text:anchor-position anchor (tuatara.buffer:buffer-version b))) 0)))))
+    (goto-shown b (min (tuatara.buffer:buffer-size b)
+                       (or (ignoring-errors-reported ("finding a place in ~a" (tuatara.buffer:buffer-name b))
+                             (tuatara.text:anchor-position anchor (tuatara.buffer:buffer-version b)))
+                           0)))))
 
 (defun live-marker-p (marker)
   "True when MARKER's buffer is still alive."
@@ -101,7 +103,7 @@ for \\[xref-find-definitions] to ask with; NIL for none.")
 why it cannot be reached."
   (multiple-value-bind (b position) (funcall (definition-locate definition))
     (if (typep b 'tuatara.buffer:buffer)
-        (progn (if other (pop-to-buffer b :other t) (show-buffer b)) (goto position))
+        (progn (if other (pop-to-buffer b :other t) (show-buffer b)) (goto-shown b position))
         (message "~a" position))))
 
 (define-command xref-find-definitions ()
@@ -193,7 +195,7 @@ there finds them again; else as the definitions of NAME."
   (let ((list (buffer-in-mode "*xref*" 'xref-mode))
         (window (current-window))
         (source (current-buffer)))
-    (setf (tuatara.buffer:buffer-local list :kind) :xref
+    (setf (buffer-kind list) :xref
           (tuatara.buffer:buffer-local list 'xref-window) window
           (tuatara.buffer:buffer-local list 'xref-source) source
           (tuatara.buffer:buffer-local list 'xref-again) again)
@@ -214,7 +216,7 @@ select that window when SELECT; in another window when that one is gone."
               (let ((here (current-window)))
                 (select-window target)
                 (show-buffer b)
-                (goto position)
+                (goto-shown b position)
                 (unless select (select-window here)))))))))
 
 (defmethod list-entry-noun ((mode xref-mode))
@@ -244,8 +246,9 @@ window; the list stays."
 (defun definition-pattern (symbol)
   "A regular expression finding the start of a definition of SYMBOL in Lisp
 text: an open bracket, a word that defines (DEFINITION-HEAD-P), and SYMBOL's
-name, (setf name)'s too, in any case."
-  (format nil "(?i)\\((?:[^\\s():]+::?)?(?:~{~a|~}define-[a-z0-9-]+)\\s+(?:\\(setf\\s+)?(?:[^\\s():]+::?)?~a(?=[\\s()])"
+name, (setf name)'s too, or the name quoted ('name, as recorded keys are
+named), in any case."
+  (format nil "(?i)\\((?:[^\\s():]+::?)?(?:~{~a|~}define-[a-z0-9-]+)\\s+'?(?:\\(setf\\s+)?(?:[^\\s():]+::?)?~a(?=[\\s()])"
           (mapcar #'cl-ppcre:quote-meta-chars *definition-head-names*)
           (cl-ppcre:quote-meta-chars (symbol-name symbol))))
 
@@ -317,17 +320,31 @@ were evaluated from in this session."
                                                             (tuatara.text:anchor-position anchor (tuatara.buffer:buffer-version b))))
                                              (values nil (format nil "~a, where it was defined, has been killed" name))))))
                     out))))))
+    ;; defined by the init file, in place of the source records, which may name only the
+    ;; file of what made the function (recorded keys)
+    (let ((init (init-file-definition symbol)))
+      (when init
+        (destructuring-bind (file line head) init
+          (declare (ignore line))
+          (push (make-definition (format nil "(~(~a~) ~a)" head (lisp-name-text symbol))
+                                 file
+                                 (lambda () (locate-in-file file symbol nil nil)))
+                out))))
     ;; recorded by the compiler
     (loop for (type . head) in *definition-heads*
           ;; a generic function or a macro is no plain function
-          unless (and (eq type :function) (fboundp symbol)
-                      (or (macro-function symbol) (typep (fdefinition symbol) 'generic-function)))
-          do (dolist (source (ignore-errors (sb-introspect:find-definition-sources-by-name symbol type)))
+          unless (or (and (eq type :function) (fboundp symbol)
+                          (or (macro-function symbol) (typep (fdefinition symbol) 'generic-function)))
+                     (and (eq type :function) (init-file-definition symbol)))
+          do (dolist (source (ignoring-errors-reported ("finding where ~s is defined" symbol)
+                               (sb-introspect:find-definition-sources-by-name symbol type)))
                (let* ((path (sb-introspect:definition-source-pathname source))
                       (offset (sb-introspect:definition-source-character-offset source))
                       (form-path (sb-introspect:definition-source-form-path source))
-                      (file (and path (ignore-errors (namestring (translate-logical-pathname path)))))
-                      (description (ignore-errors (sb-introspect::definition-source-description source)))
+                      (file (and path (ignoring-errors-reported ("naming the file of ~s" symbol)
+                                        (namestring (translate-logical-pathname path)))))
+                      (description (ignoring-errors-reported ("describing a definition of ~s" symbol)
+                                     (sb-introspect::definition-source-description source)))
                       (key (list file offset form-path description)))
                  (when (and file (not (gethash key seen)))
                    (setf (gethash key seen) t)
@@ -347,7 +364,7 @@ were evaluated from in this session."
 (defmethod mode-name-at-point ((mode lisp-mode) buffer position)
   "The Lisp name at point in BUFFER."
   (declare (ignore position))
-  (ignore-errors (symbol-at-point buffer)))
+  (ignoring-errors-reported ("reading the name at point") (symbol-at-point buffer)))
 
 (defmethod mode-find-definitions ((mode lisp-mode) buffer name)
   "Where NAME, read in BUFFER's package, is defined."

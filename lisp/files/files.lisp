@@ -52,27 +52,50 @@ what reading again says.")
   "Background saves that give their buffer a new file, whose buffer takes the
 file's name when they are done.")
 
+(defvar *save-continuations* '()
+  "The saves under way whose command goes on once they are done, each (JOB .
+THEN): THEN, a function of the buffer, runs as the next command once JOB has
+saved it (SAVE-BUFFER-WITH-CARE's THEN).")
+
 (defmethod tuatara.runtime:job-take-in :after ((job tuatara.io:save-job))
   "Say how the background save JOB ended; after a save, give a buffer saved as
 another file that file's name, and the major mode that name calls for when it
 calls for one (a scratch buffer saved as notes.org is in Org mode then; a
-buffer opened safely keeps showing its text as it is), and run
-*AFTER-SAVE-FUNCTIONS*."
+buffer opened safely keeps showing its text as it is), run
+*AFTER-SAVE-FUNCTIONS*, and go on with what was to follow the save
+\(*SAVE-CONTINUATIONS*)."
   (let ((buffer (tuatara.io:save-job-buffer job))
-        (seconds (tuatara.runtime:seconds-since (tuatara.io:save-job-started job))))
+        (seconds (tuatara.runtime:seconds-since (tuatara.io:save-job-started job)))
+        (then (cdr (assoc job *save-continuations*))))
+    (setf *save-continuations* (remove job *save-continuations* :key #'car))
+    (when (and then (eq (tuatara.io:save-job-status job) :done) (live-buffer-p buffer))
+      (defer-action (lambda () (funcall then buffer))))
     (ecase (tuatara.io:save-job-status job)
       (:done
        (when (and (member job *saves-as*) (live-buffer-p buffer))
          (let ((name (tuatara.io:native-file-name (tuatara.buffer:buffer-file buffer))))
            (unless (string= name (tuatara.buffer:buffer-name buffer))
              (setf (tuatara.buffer:buffer-name buffer) (tuatara.buffer:unique-buffer-name name)))
+           (saved-out-of-evidence buffer)
            (take-mode-of-name buffer)))
        (message "Wrote ~a~:[~*~; (~a in ~,1f s)~]" (escape-controls (abbreviated-path (tuatara.io:save-job-target job)))
                 (> seconds *save-wait*) (octets-words (tuatara.io:save-job-total job)) seconds)
        (when (live-buffer-p buffer)
-         (dolist (f *after-save-functions*) (funcall f buffer))))
+         (run-hook *after-save-functions* buffer)))
       ((:stopped :failed) (message "~a" (tuatara.runtime:job-ending-words job))))
     (setf *saves-as* (remove job *saves-as*))))
+
+(defun saved-out-of-evidence (buffer)
+  "When BUFFER, opened safely for being evidence, has just been saved as a
+file outside every evidence folder: it stays opened safely, what it holds
+being the evidence's still, but may be changed now when you may write the
+new file; \\[end-safe-visit] opens it as usual. Said so."
+  (when (shiftf (tuatara.buffer:buffer-local buffer :saved-from-evidence) nil)
+    (when (and (tuatara.io:safe-visit-p buffer) (null (buffer-evidence buffer)))
+      (setf (buffer-read-only-p buffer)
+            (not (tuatara.io:writable-p (tuatara.buffer:buffer-file buffer))))
+      (message "~a is a copy out of evidence: still opened safely, and may be changed; \\[end-safe-visit] opens it as usual"
+               (tuatara.buffer:buffer-name buffer)))))
 
 (defun take-mode-of-name (buffer)
   "Give BUFFER the major mode the name of its file calls for, but for a name
@@ -99,7 +122,17 @@ the buffer's own file."
   "The file the save being made writes, when it is saved as another: for
 *BEFORE-SAVE-FUNCTIONS* that make it again later.")
 
-(defun save-buffer-with-care (buffer &key path)
+(defvar *save-then* nil
+  "What is to follow the save being made, a function of the buffer, or NIL:
+for *BEFORE-SAVE-FUNCTIONS* that make it again later (SAVE-BUFFER-WITH-CARE's
+THEN).")
+
+(defun save-question (quiet function prompt)
+  "Ask PROMPT with FUNCTION (YES-OR-NO-P*, Y-OR-N-P*) unless QUIET, when it
+is not asked and counts as answered no."
+  (and (not quiet) (funcall function prompt)))
+
+(defun save-buffer-with-care (buffer &key path then quiet)
   "Save BUFFER to its file, or to PATH (save as), as \\[save-buffer] does: ask
 before overwriting a file changed on disk since it was read, a write-protected
 file, or another existing file; then save on a thread of its own, waiting up to
@@ -112,7 +145,12 @@ would be there to read. Nor is a buffer that work still writes into
 another buffer visits, that buffer is killed after asking, or the save is
 refused when it has changes not saved. A function of
 *BEFORE-SAVE-FUNCTIONS* that returns :LATER (formatting first) has the save
-wait: it saves the buffer itself once ready."
+wait: it saves the buffer itself once ready. THEN, a function of the buffer,
+runs once the buffer is saved, as the next command when the save went on in
+the background, or at once when nothing needed saving; never when it was not
+saved. True when BUFFER is saved, or being saved; NIL when it was not. With
+QUIET nothing is asked, each question counting as answered no (the file
+changed on disk, write-protected, another file's name): the save is refused."
   (let* ((file (save-target buffer path))
          (name (tuatara.buffer:buffer-name buffer))
          (as (and path (not (equal file (tuatara.buffer:buffer-file buffer)))))
@@ -130,43 +168,51 @@ wait: it saves the buffer itself once ready."
                 name))
       ((and (not as) existing (not (tuatara.buffer:buffer-modified-p buffer))
             (null (tuatara.io:check-file buffer)))
-       (message "(No changes need to be saved)"))
+       (message "(No changes need to be saved)")
+       (when then (funcall then buffer))
+       (return-from save-buffer-with-care t))
       ((and other (tuatara.buffer:buffer-modified-p other))
        (message "~a is open in ~a with changes not saved: not saved" called (tuatara.buffer:buffer-name other)))
       ((and other (not (and (kill-buffer-allowed-p other)
-                            (yes-or-no-p* (format nil "~a is open in ~a; write over it and kill that buffer?"
+                            (save-question quiet #'yes-or-no-p* (format nil "~a is open in ~a; write over it and kill that buffer?"
                                                   called (tuatara.buffer:buffer-name other))))))
        (message "Not saved"))
-      ((and as existing (not other) (not (yes-or-no-p* (format nil "~a exists; overwrite it?" called))))
+      ((and as existing (not other) (not (save-question quiet #'yes-or-no-p* (format nil "~a exists; overwrite it?" called))))
        (message "Not saved"))
       ((and (null existing) (unencryptable-name-p (tuatara.io:native-file-name file)))
        (message "~a is not saved: only .gpg files can be encrypted, and its text would be there to read" called))
       ((and existing (not (tuatara.io:writable-p target))
-            (not (yes-or-no-p* (format nil "File ~a is write-protected; try to save anyway?"
+            (not (save-question quiet #'yes-or-no-p* (format nil "File ~a is write-protected; try to save anyway?"
                                        (tuatara.io:native-file-name target)))))
        (message "Attempt to save to a file that you aren't allowed to write"))
       ((and (null existing) (null (tuatara.io:path-stamp (tuatara.io:parent-path target)))
-            (not (yes-or-no-p* (format nil "The folder ~a is not there; make it?"
+            (not (save-question quiet #'y-or-n-p* (format nil "The folder ~a is not there; make it?"
                                        (escape-controls (abbreviated-path (tuatara.io:parent-path target)))))))
        (message "Not saved"))
       (t
        (unless (tuatara.io:path-stamp (tuatara.io:parent-path target))
          (tuatara.io:ensure-directories (tuatara.io:parent-path target)))
        (when other (tuatara.buffer:kill-buffer other))
-       (when (let ((*save-path* path))
+       (when (let ((*save-path* path) (*save-then* then))
                (loop for function in *before-save-functions*
-                     thereis (eq :later (handler-case (funcall function buffer)
-                                          (error (e) (tuatara.runtime:debug-report :error "before saving ~a, ~a: ~a" name function e) nil)))))
-         (return-from save-buffer-with-care nil))
+                     thereis (eq :later (call-hook-function function buffer))))
+         (return-from save-buffer-with-care t))
+       ;; saved as a file out of evidence, it may be changed once written (SAVED-OUT-OF-EVIDENCE)
+       (when as
+         (setf (tuatara.buffer:buffer-local buffer :saved-from-evidence)
+               (and (tuatara.io:safe-visit-p buffer) (buffer-evidence buffer) t)))
        (let ((job (handler-case (tuatara.io:start-save buffer :path file :force as)
                     (tuatara.io:file-changed-on-disk ()
-                      (if (yes-or-no-p* (format nil "~a changed on disk since it was read; overwrite it with this buffer?"
+                      (if (save-question quiet #'yes-or-no-p* (format nil "~a changed on disk since it was read; overwrite it with this buffer?"
                                                 called))
                           (tuatara.io:start-save buffer :path file :force t)
                           (progn (message "Not saved") nil))))))
          (when job
            (when as (push job *saves-as*))
-           (take-in-soon job *save-wait* (format nil "Saving ~a" name))))))))
+           (when then (push (cons job then) *save-continuations*))
+           (take-in-soon job *save-wait* (format nil "Saving ~a" name))
+           (return-from save-buffer-with-care t)))))
+    nil))
 
 (defun following-p (buffer)
   "True when BUFFER keeps up with its file on disk by itself: as
@@ -179,8 +225,9 @@ wait: it saves the buffer itself once ready."
 first line of each window showing it staying on the same text (TEXT-MAPPING), once
 *BEFORE-RELOAD-FUNCTIONS* have run; then *AFTER-RELOAD-FUNCTIONS*. Returns BUFFER, and what those functions
 said they did, joined in one string, or NIL."
-  (let* ((said (format nil "~{~a~^; ~}" (remove-if-not #'stringp (mapcar (lambda (function) (funcall function buffer))
-                                                                          *before-reload-functions*))))
+  (let* ((said (format nil "~{~a~^; ~}"
+                       (remove-if-not #'stringp (mapcar (lambda (function) (call-hook-function function buffer))
+                                                        *before-reload-functions*))))
          (forward nil))
     (tuatara.display:call-keeping-window-starts
      (buffer-windows buffer)
@@ -190,7 +237,7 @@ said they did, joined in one string, or NIL."
                                                       (setf forward f)
                                                       (values f b))))
        forward))
-    (dolist (function *after-reload-functions*) (funcall function buffer))
+    (run-hook *after-reload-functions* buffer)
     (values buffer (and (plusp (length said)) said))))
 
 (defun catch-up (buffer)
@@ -203,7 +250,7 @@ left as it is (it has changes of its own, or the file is gone)."
                (not (member (tuatara.io:file-disk-state buffer) '(:changed :stale))))
            nil)
           ((tuatara.io:append-from-disk buffer) :appended)
-          ((or (tuatara.buffer:buffer-modified-p buffer) (null (ignore-errors (tuatara.io:path-stamp file)))) nil)
+          ((or (tuatara.buffer:buffer-modified-p buffer) (null (tuatara.io:path-stamp file :failure nil))) nil)
           (t (handler-case (progn (reload-buffer buffer) (setf (tuatara.buffer:buffer-local buffer :disk-state-said) nil)
                                   :reloaded)
                (tuatara.io:file-system-error () nil))))))
@@ -269,11 +316,18 @@ said: a log followed would say it every second."
           (:stale (message "~a was rewritten on disk while shown from it; read-only now, \\[revert-buffer] reads it again"
                            name)))))))
 
+(defvar *disk-news-put-off* '()
+  "Buffers whose files changed on disk while a question waiting in a frame was
+about them (BUFFER-HELD-BY-QUESTION-P): what the change brings is taken in
+once it is answered.")
+
 (defun files-tick (editor)
   "Tick function: take in the countings of lines, saves and snapshots that have
 ended (a large file's lines are counted in the background after it opens),
 keep the watcher told of the files visited, take in what it found
-(REACT-TO-DISK), and say what has become of the shown buffer's file. Asks to
+(REACT-TO-DISK), but for buffers a waiting question is about, put off until
+it is answered (*DISK-NEWS-PUT-OFF*), and say what has become of the shown
+buffer's file. Asks to
 be called soon while work runs; otherwise the watcher wakes the editor when it
 has news."
   (let ((shown (tuatara.display:window-buffer (editor-window editor)))
@@ -288,11 +342,14 @@ has news."
                                       (loop for b in changed
                                             collect (tuatara.buffer:buffer-name b) collect (tuatara.io:file-disk-state b))
                                       (and changed again) (mapcar #'tuatara.buffer:buffer-name again)))
-      (let ((news (append changed (remove-if-not #'following-p again))))
-        (when news (react-to-disk news))))
+      (let* ((news (remove-duplicates (append (shiftf *disk-news-put-off* '())
+                                              changed (remove-if-not #'following-p again))))
+             (now (remove-if #'buffer-held-by-question-p news)))
+        (setf *disk-news-put-off* (remove-if-not #'buffer-held-by-question-p news))
+        (when now (react-to-disk now))))
     (say-disk-state shown)
     (and (or counting (tuatara.io:saves-running) (tuatara.io:snapshots)
-             (tuatara.io:leases-moving-p))
+             (tuatara.io:leases-moving-p) *disk-news-put-off*)
          t)))
 
 (defun safe-mode-line (editor buffer)
@@ -302,20 +359,22 @@ safely."
   (and (tuatara.io:safe-visit-p buffer) "Safe"))
 
 (defun files-mode-line (editor buffer)
-  "Mode line function: CRLF for a buffer whose lines end as Windows ends them, Counting lines while a large file's lines
-are counted, the saves running (this buffer's first), and what has become of
-this buffer's file on disk."
+  "Mode line function: carriage return and line feed (CRLF) for a buffer whose
+lines end as Windows ends them, carriage return (CR) for one whose lines
+end with a carriage return alone, Counting lines while a large file's lines
+are counted, the saves running (this buffer's first), and what has become
+of this buffer's file on disk."
   (declare (ignore editor))
   (let ((saves (sort (copy-list (tuatara.io:saves-running)) #'<
                      :key (lambda (job) (if (eq (tuatara.io:save-job-buffer job) buffer) 0 1))))
         (state (case (tuatara.io:file-disk-state buffer)
                  (:changed "Changed on disk") (:deleted "Deleted on disk") (:stale "Stale, read-only")))
-        (crlf (buffer-crlf-p buffer))
+        (ending (case (tuatara.buffer:buffer-line-ending buffer) (:crlf "CRLF") (:cr "CR")))
         (following (eq (tuatara.buffer:buffer-local buffer :follow-file) :on))
         (counting (tuatara.io:index-job-of buffer)))
-    (when (or saves state crlf following counting)
+    (when (or saves state ending following counting)
       (format nil "~{~a~^  ~}"
-              (append (and crlf (list "CRLF"))
+              (append (and ending (list ending))
                       (and following (list "Following"))
                       (and counting (list (format nil "Counting lines ~d%" (tuatara.io:index-progress counting))))
                       (mapcar (lambda (job)
@@ -326,17 +385,21 @@ this buffer's file on disk."
                               saves)
                       (and state (list state)))))))
 
-(defun wait-for-saves (jobs)
+(defun wait-for-saves (jobs &key seconds)
   "Wait for the background saves JOBS to end, saying so meanwhile, the editor
 reading keys all the while, and take them in: true when they all ended; NIL
 when \\[keyboard-quit] stopped the waiting (a save on a file system that does not
-answer), the saves going on in the background."
-  (prog1 (loop for job in jobs
-               always (wait-interruptibly (tuatara.runtime:job-thread job)
-                                          :message (format nil "Waiting for ~a to be saved"
-                                                           (tuatara.buffer:buffer-name (tuatara.runtime:job-buffer job)))
-                                          :grace 1/20))
-    (take-in-saves)))
+answer), or SECONDS in all went by when given, the saves going on in the
+background."
+  (let ((deadline (and seconds (tuatara.runtime:deadline-in seconds))))
+    (prog1 (loop for job in jobs
+                 always (wait-interruptibly (tuatara.runtime:job-thread job)
+                                            :message (format nil "Waiting for ~a to be saved"
+                                                             (tuatara.buffer:buffer-name
+                                                              (tuatara.runtime:job-buffer job)))
+                                            :grace 1/20
+                                            :seconds (and deadline (tuatara.runtime:seconds-left deadline))))
+      (take-in-saves))))
 
 (define-command revert-buffer ()
   "Read the current buffer's file again, replacing its text: one step that undo
@@ -344,13 +407,16 @@ takes back, unless the text could no longer be trusted (then the history goes
 too). Point and the window stay on the same text. A file that only grew has
 just what it grew by added. Asks first when the buffer has changes not saved.
 In a buffer a command made (a list, help, a report), make it again from what
-it shows, point staying on its entry or its line: \\`r' and \\`g r' there."
+it shows, point staying on its entry or its line: \\`r' and \\`g r' there.
+A narrowed buffer is widened: all of it is read again. A grammar that went
+wrong on its text before is tried on it again, the text parsed afresh."
   (let* ((buffer (current-buffer))
          (file (tuatara.buffer:buffer-file buffer))
          (refill (tuatara.buffer:buffer-local buffer :refill)))
-    (cond ((and refill (null file)) (funcall refill buffer))
+    (cond ((and refill (null file)) (funcall refill buffer) (parse-afresh buffer))
           ;; a list or report not made again from anything, or a buffer of your own
-          ((null file) (message (if (tuatara.buffer:buffer-local buffer :read-only)
+          ((null file) (parse-afresh buffer)
+                       (message (if (buffer-read-only-p buffer)
                                     "~a shows what was said or made then: nothing to read again"
                                     "~a visits no file: nothing to read again")
                                 (tuatara.buffer:buffer-name buffer)))
@@ -361,10 +427,12 @@ it shows, point staying on its entry or its line: \\`r' and \\`g r' there."
                 (not (yes-or-no-p* (format nil "Discard the changes to ~a and read it again?"
                                            (tuatara.buffer:buffer-name buffer)))))
            (message "Not reverted"))
-          (t (let* ((added (and (not (tuatara.buffer:buffer-modified-p buffer))
+          (t (tuatara.buffer:widen-buffer buffer)
+             (let* ((added (and (not (tuatara.buffer:buffer-modified-p buffer))
                                 (tuatara.io:append-from-disk buffer)))
                     (said (and (not added) (nth-value 1 (reload-buffer buffer)))))
                (setf (tuatara.buffer:buffer-local buffer :disk-state-said) nil)
+               (parse-afresh buffer)
                (if added
                    (message "Read what ~a grew by on disk (~a)" (tuatara.buffer:buffer-name buffer) (octets-words added))
                    (message "Read ~a again~@[; ~a~]" (tuatara.buffer:buffer-name buffer) said)))))))
@@ -404,7 +472,7 @@ a command loop the lines are counted there and then (NIL with LINE)."
           (let ((start (and line (tuatara.io:counted-line-start buffer line))))
             (when start (return start)))
           (when (eq (tuatara.buffer:buffer-local buffer :index-failed) (tuatara.buffer:buffer-text buffer))
-            (error "The lines of ~a could not be counted: ~a" (tuatara.buffer:buffer-name buffer)
+            (refuse "The lines of ~a could not be counted: ~a" (tuatara.buffer:buffer-name buffer)
                    (tuatara.buffer:buffer-local buffer :index-error)))
           (let ((job (or (tuatara.io:index-job-of buffer) (tuatara.io:start-indexing buffer))))
             (unless job (return nil))
@@ -420,6 +488,16 @@ a command loop the lines are counted there and then (NIL with LINE)."
                                             (tuatara.buffer:buffer-name buffer) (tuatara.io:index-progress job)))))
               (keyboard-quit-signal)))))))
 
+(defmethod tuatara.buffer:host-wait-for-index ((host defaults-host) buffer)
+  "Wait for BUFFER's lines to be counted in the background (WAIT-FOR-COUNTING)."
+  (wait-for-counting buffer))
+
+(defmethod tuatara.runtime:host-wait-for-job ((host defaults-host) job words)
+  "Wait for JOB to end, the echo area showing WORDS while it takes a while;
+\\`C-g' gives up what waited, JOB going on."
+  (unless (wait-interruptibly (tuatara.runtime:job-thread job) :message words)
+    (keyboard-quit-signal)))
+
 (defvar *safe-directories* '()
   "Directories whose files always open safely, as \\[find-file-safely] opens a
 file: read-only, with no major mode, hooks or version control, and nothing
@@ -429,8 +507,9 @@ line. \\[end-safe-visit] opens one as usual after all.")
 
 (defvar *open-binary-files-safely* t
   "True to open safely, as \\[find-file-safely] does, a file that looks binary:
-one with a NUL octet in its first 64 KB, as executables, archives and disk
-images have and text has not. \\[end-safe-visit] opens one as usual after all.")
+one with a null (NUL) octet in its first 64 KB, as executables, archives and
+disk images have and text has not. \\[end-safe-visit] opens one as usual after
+all.")
 
 
 (defun paths-common-directory (paths)
@@ -445,10 +524,10 @@ images have and text has not. \\[end-safe-visit] opens one as usual after all.")
   (concatenate 'string "file://" (tuatara.io:url-path (tuatara.io:native path))))
 
 (defun uri-path (uri &key (hosts '("localhost")))
-  "The native path of the file: address URI, its . and .. taken as they lead;
-NIL for another kind of address, one holding a NUL, and one not from the
-root or of a computer other than those HOSTS name (in any case): only
-file:///PATH and file://HOST/PATH are taken."
+  "The native path of the file: address uniform resource identifier (URI), its
+. and .. taken as they lead; NIL for another kind of address, one holding a
+null (NUL), and one not from the root or of a computer other than those
+HOSTS name (in any case): only file:///PATH and file://HOST/PATH are taken."
   (when (and (stringp uri) (> (length uri) 7) (string-equal "file://" uri :end2 7))
     (let* ((rest (subseq uri 7))
            (slash (position #\/ rest)))
@@ -471,34 +550,54 @@ tail, counts every directory it names."
 
 (defun safe-directory-of (path)
   "The directory of *SAFE-DIRECTORIES* that the file or directory at PATH is,
-or is in or below, by the names as given or by where their links lead
-\(PATH-WITHIN-P, REALLY-WITHIN-P), or NIL; T when *SAFE-DIRECTORIES* cannot be
-read, every file then counting as in one."
-  (let ((path (or (ignore-errors (tuatara.io:native (tuatara.io:expand-path path))) path)))
-    (handler-case (find-if (lambda (directory)
-                             (let ((directory (tuatara.io:native (tuatara.io:expand-path directory))))
-                               (or (tuatara.io:path-within-p path directory)
-                                   (tuatara.io:really-within-p path directory))))
-                           (safe-directories))
-      (error () t))))
+or is in or below, by the names as given, by the file a link leads to, or by
+where their links lead (PATH-WITHIN-P, REALLY-WITHIN-P), or NIL; T when
+*SAFE-DIRECTORIES* cannot be read, every file then counting as in one.
+Where a link leads is looked for only when there are directories."
+  (handler-case
+      (reporting-errors ("looking for ~a in the safe directories" path)
+        (let ((directories (safe-directories)))
+          (when directories
+            (let* ((path (or (ignoring-errors-reported ("expanding ~a" path)
+                               (tuatara.io:native (tuatara.io:expand-path path)))
+                             path))
+                   (leads-to (or (ignoring-errors-reported ("following the links of ~a" path)
+                                   (tuatara.io:real-path-so-far path))
+                                 path)))
+              (find-if (lambda (directory)
+                         (let ((directory (tuatara.io:native (tuatara.io:expand-path directory))))
+                           (or (tuatara.io:path-within-p path directory)
+                               (tuatara.io:path-within-p leads-to directory)
+                               (tuatara.io:really-within-p path directory))))
+                       directories)))))
+    (error () t)))
 
-(defun visit-safely-reason (path)
-  "Why the file at PATH opens safely although that was not asked for: it is in
-one of *SAFE-DIRECTORIES*, or it looks binary while *OPEN-BINARY-FILES-SAFELY*
-is true; NIL for neither. When *SAFE-DIRECTORIES* cannot be read, every file
-opens safely, and the reason says so."
+(defun visit-safely-reason (path &optional stamp)
+  "Why the file at PATH opens safely although that was not asked for: it is
+evidence (*EVIDENCE-FOLDERS*), it is in one of *SAFE-DIRECTORIES*, or it looks
+binary while *OPEN-BINARY-FILES-SAFELY* is true, by its own name, by the
+file a link leads to, or, given its STAMP, by another name it has; NIL for none. When
+*SAFE-DIRECTORIES* cannot be read, every file opens safely, and the reason
+says so."
   (let ((directory (safe-directory-of path)))
-    (cond ((eq directory t) "*safe-directories* could not be read")
+    (cond ((evidence-visit-reason path))
+          ((and stamp (evidence-inode-p stamp))
+           "it has more than one name, and one may be in an evidence folder (*evidence-folders*)")
+          ((eq directory t) "*safe-directories* could not be read")
           (directory (format nil "it is in ~a (*safe-directories*)" directory))
           ((and *open-binary-files-safely* (tuatara.io:binary-head-p (tuatara.io:file-head path)))
            "it looks binary (*open-binary-files-safely*)"))))
+
+(defmethod tuatara.io:host-visit-safely-reason ((host defaults-host) path &optional stamp)
+  "Why the file at PATH opens safely although not asked to (VISIT-SAFELY-REASON)."
+  (visit-safely-reason path stamp))
 
 (defun say-why-safe (buffer &optional also)
   "Say why BUFFER's file opened safely, when that was not asked for, and ALSO,
 what else there is to say of how it opened (why it is not shown as a picture)."
   (let ((why (tuatara.io:safe-visit-reason buffer)))
     (when why
-      (message "~a opened safely: ~a~@[; ~a~]; \\[end-safe-visit] opens it as usual" (tuatara.buffer:buffer-name buffer) why also))))
+      (message "~a opened safely: ~a~@[; ~a~]; ~a" (tuatara.buffer:buffer-name buffer) why also (end-safe-visit-words buffer)))))
 
 (defgeneric mode-file-name-at-point (mode buffer)
   (:documentation "The full name of the file BUFFER's point is on, for a mode
@@ -540,7 +639,7 @@ the same object as before, or alike, costs nothing to compare: a directory
 kept read has tens of thousands), and tell each part of those found changed."
   (declare (ignore editor))
   (let ((wanted (loop for (want) in *directory-followers*
-                      collect (ignore-errors (funcall want)))))
+                      collect (ignoring-errors-reported ("asking which directories to follow") (funcall want)))))
     (unless (and (= (length wanted) (length *directories-followed*))
                  (every (lambda (new old) (or (eq new old) (equal new old))) wanted *directories-followed*))
       (setf *directories-followed* wanted)
@@ -548,7 +647,7 @@ kept read has tens of thousands), and tell each part of those found changed."
     (let ((changed (tuatara.io:take-directory-news)))
       (when changed
         (loop for (nil . told) in *directory-followers*
-              do (ignore-errors (funcall told changed))))))
+              do (ignoring-errors-reported ("telling of directories changed") (funcall told changed))))))
   nil)
 
 (defun follow-directories-for (wanted changed)
@@ -559,22 +658,15 @@ those found changed (see *DIRECTORY-FOLLOWERS*)."
 
 (defun install-files ()
   "Let saves, snapshots, countings of lines and the watcher of files on disk
-tick, the watcher wake the editor when it has news, what they find show in the
-mode line, a command that needs a large file's lines wait for them to be
-counted, the files the editor is started with be visited as C-x C-f visits
-them, a buffer's private folder be deleted when it is killed
-\(FORGET-PRIVATE-FOLDER) and kept fresh while it lives (KEEP-PRIVATE-FOLDERS-FRESH), and \\[wipe-file] be refused in a buffer opened safely."
+tick, what they find show in the mode line, a buffer's private folder be
+deleted when it is killed (FORGET-PRIVATE-FOLDER) and kept fresh while it
+lives (KEEP-PRIVATE-FOLDERS-FRESH), \\[wipe-file] be refused in a buffer opened
+safely, and the evidence folders be marked (INSTALL-EVIDENCE)."
   (pushnew 'wipe-file *file-changing-commands*)
-  (setf tuatara.command:*visit-file-function* (lambda (path) (nth-value 0 (visit-path path :show #'identity)))
-        tuatara.buffer:*index-wait-function* 'wait-for-counting
-        tuatara.buffer:*counted-line-function* 'tuatara.io:counted-line-number
-        tuatara.io:*visit-safely-function* 'visit-safely-reason)
-  (when *editor*
-    (setf tuatara.io:*on-file-news* (let ((frontend (editor-frontend *editor*)))
-                                      (lambda () (tuatara.frontend:frontend-wake frontend)))))
   (pushnew 'files-tick *tick-functions*)
   (pushnew 'follow-directories *tick-functions*)
   (pushnew 'keep-private-folders-fresh *tick-functions*)
   (pushnew 'forget-private-folder tuatara.buffer:*kill-buffer-functions*)
   (pushnew 'files-mode-line *mode-line-functions*)
-  (pushnew 'safe-mode-line *mode-line-name-functions*))
+  (pushnew 'safe-mode-line *mode-line-name-functions*)
+  (install-evidence))

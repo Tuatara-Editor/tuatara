@@ -30,8 +30,9 @@ octets, or when it is NIL a quarter of the heap free now (HEAP-FREE)."
 
 (defparameter *nursery-octets* (* 256 1024 1024)
   "How many octets of new data are made between two collections of garbage:
-more than SBCL's standard, so that collections come seldom; each takes as
-long as what is still in use takes to copy, not as long as this.")
+more than Steel Bank Common Lisp (SBCL)'s standard, so that collections come
+seldom; each takes as long as what is still in use takes to copy, not as long
+as this.")
 
 (defun set-collection-policy ()
   "Have garbage collected as Tuatara wants it (*NURSERY-OCTETS*), as the
@@ -50,12 +51,14 @@ editor starts."
   "Between commands, once a session: in the first second nothing is typed
 after the editor starts, collect at once the garbage starting it made (the
 init file read, packages compiled), so that this longer pause comes while
-nothing is typed rather than later, between keys."
+nothing is typed rather than later, between keys; never while a key waits
+to be answered."
   (declare (ignore editor))
   (unless *start-up-garbage-collected*
     (let ((now (get-internal-real-time)))
       (cond ((and *start-up-tick-time*
-                  (>= (- now *start-up-tick-time*) (* 9/10 internal-time-units-per-second)))
+                  (>= (- now *start-up-tick-time*) (* 9/10 internal-time-units-per-second))
+                  (not (key-waiting-p)))
              (setf *start-up-garbage-collected* t)
              (sb-ext:gc :full t)
              nil)
@@ -80,20 +83,20 @@ last collected.")
   "Between commands: when you have left the editor alone for
 *IDLE-COLLECTION-SECONDS* and half a nursery of new data (*NURSERY-OCTETS*)
 waits to be collected, collect it now; while it waits and you are still
-about, look again when that time is up."
+about, or a key waits to be answered, look again when that time is up."
   (declare (ignore editor))
   (when (and *idle-collection-seconds* (>= (consed-since-gc) (floor *nursery-octets* 2)))
     (let ((idle (/ (- (get-internal-real-time) tuatara.command:*last-input-time*) internal-time-units-per-second)))
-      (if (>= idle *idle-collection-seconds*)
-          (progn (sb-ext:gc) nil)
-          (- *idle-collection-seconds* idle)))))
+      (cond ((key-waiting-p) *idle-collection-seconds*)
+            ((>= idle *idle-collection-seconds*) (sb-ext:gc) nil)
+            (t (- *idle-collection-seconds* idle))))))
 
 ;;; How long each collection stood still
 
 (defvar *gc-time-seen* 0
-  "SBCL's time stood still for collections (SB-EXT:*GC-REAL-TIME*) as it was
-after the last collection, in internal time units: what the last one took is
-the difference.")
+  "Steel Bank Common Lisp (SBCL)'s time stood still for collections
+(SB-EXT:*GC-REAL-TIME*) as it was after the last collection, in internal
+time units: what the last one took is the difference.")
 
 (defun report-gc ()
   "After each collection of garbage: note what it took and the data made so
@@ -109,10 +112,10 @@ stood still for it and how much of the heap is in use."
                                       (generation-megabytes))))))
 
 (defun generation-megabytes ()
-  "How many megabytes each of SBCL's generations 0 to 5 holds now, the
-youngest first: data that lives on is moved from one to the next, and a
-collection of one copies what lives in it and every younger one, so that a
-long pause shows as an older generation that has shrunk."
+  "How many megabytes each of Steel Bank Common Lisp (SBCL)'s generations 0 to
+5 holds now, the youngest first: data that lives on is moved from one to
+the next, and a collection of one copies what lives in it and every younger
+one, so that a long pause shows as an older generation that has shrunk."
   (loop for generation from 0 to 5
         collect (/ (sb-ext:generation-bytes-allocated generation) 1048576.0)))
 

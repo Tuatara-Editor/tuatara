@@ -54,7 +54,7 @@ special-mode, read as special-mode's buffers are in modal editing (moving,
 selecting, copying, nothing that edits), coloured as its mode colours it,
 \\`q' closing it (*MADE-TEXT-KEYMAP*). Returns BUFFER."
   (setf (tuatara.buffer:buffer-local buffer :modal-class) :support
-        (tuatara.buffer:buffer-local buffer :override-keymap) *made-text-keymap*)
+        (buffer-override-keymap buffer) *made-text-keymap*)
   buffer)
 
 (defun span-ends (spans)
@@ -82,8 +82,9 @@ by special-mode's highlight method (MADE-SPANS-BETWEEN); BUTTONS, each (START
 END ACTION), are its buttons (\\[push-button]); KEY is what the list was made
 from, for KEEP-SHOWN-CURRENT, worked out by its kind's key function when not
 given; REFILL, when given, is how BUFFER is made again (its :REFILL local,
-which \\[revert-buffer] calls with BUFFER). Point is left where the change
-leaves it. O(size of TEXT + number of SPANS)."
+which \\[revert-buffer] calls with BUFFER). A narrowed BUFFER is widened
+first. Point is left where the change leaves it. O(size of TEXT + number of SPANS)."
+  (tuatara.buffer:widen-buffer buffer)
   (tuatara.buffer:with-read-only-lifted (buffer :after t)
     (tuatara.buffer:buffer-replace buffer 0 (tuatara.buffer:buffer-size buffer) text))
   (let ((spans (coerce spans 'simple-vector)))
@@ -164,11 +165,16 @@ face. O(size of the text)."
 (defun list-entry-at (&optional (buffer (current-buffer)) (position (tuatara.buffer:buffer-point buffer)))
   "The entry RENDER-PIECES was given for the line of BUFFER (the current
 buffer when not given) holding POSITION (point when not given), or NIL on a
-line that shows none (titles, a summary)."
-  (let ((entries (tuatara.buffer:buffer-local buffer 'list-entries))
-        (index (- (tuatara.buffer:buffer-line-number buffer position)
-                  (tuatara.buffer:buffer-local buffer 'list-first-line 0))))
-    (and (< -1 index (length entries)) (elt entries index))))
+line that shows none (titles, a summary). A buffer whose text grows as it
+comes, a compile's output, finds its entries itself: its :ENTRY-AT local, a
+function of the buffer and the position, gives the entry there."
+  (let ((finder (tuatara.buffer:buffer-local buffer :entry-at)))
+    (if finder
+        (funcall finder buffer position)
+        (let ((entries (tuatara.buffer:buffer-local buffer 'list-entries))
+              (index (- (tuatara.buffer:buffer-line-number buffer position)
+                        (tuatara.buffer:buffer-local buffer 'list-first-line 0))))
+          (and (< -1 index (length entries)) (elt entries index))))))
 
 (defun render-pieces (buffer pieces &key (point :keep) (entries nil entries-p) (first-line 0) keys (key nil key-p) refill
                                          redraw mark-key)
@@ -214,7 +220,9 @@ CAPTURE is NIL, when it is that whole list being narrowed again. Returns BUFFER.
          (old-first (tuatara.buffer:buffer-local buffer 'list-first-line 0))
          (windows (and *editor* (buffer-windows buffer)))
          (own-points (remove-if-not #'tuatara.display:window-point-anchor windows)))
-    (labels ((line-of (position) (ignore-errors (tuatara.buffer:buffer-line-number buffer position)))
+    (labels ((line-of (position)
+               (ignoring-errors-reported ("finding the line of ~d in ~a" position (tuatara.buffer:buffer-name buffer))
+                 (tuatara.buffer:buffer-line-number buffer position)))
              (place (position)
                ;; where POSITION is: its line, its column, and the index among ENTRIES of its entry
                (let ((line (line-of position)))
@@ -943,11 +951,12 @@ one), when given, else as \\[revert-buffer] makes it (its :REFILL)."
 (defun keep-shown-lists-current (editor)
   "Tick function: make again each list kept current (KEEP-SHOWN-CURRENT) that a
 window of EDITOR shows and whose key has changed since it was filled; a list
-whose key is the same is left as it is. Wants no tick of its own."
+whose key is the same is left as it is, as is one a waiting question is about
+\(BUFFER-HELD-BY-QUESTION-P). Wants no tick of its own."
   (let ((seen '()))
-    (dolist (window (cons (editor-window editor) (editor-windows editor)))
+    (do-frames-windows (window editor)
       (let ((buffer (and window (tuatara.display:window-buffer window))))
-        (when (and buffer (not (member buffer seen)))
+        (when (and buffer (not (member buffer seen)) (not (buffer-held-by-question-p buffer)))
           (push buffer seen)
           (let ((kind (shown-list-kind buffer)))
             (when (and kind (not (equal (funcall (second kind) buffer)

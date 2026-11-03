@@ -48,6 +48,7 @@ colours show until a theme sets them.")
 (define-face :key-hint-prefix "Prefix keys (further keymaps) in the key-hint panel." :fg :blue)
 (define-face :menu-argument-on "An argument a menu has on (a switch, an option given a value): what its actions are given." :inherit :key-hint-key)
 (define-face :menu-argument-off "An argument a menu has off: shown, not given." :dim t)
+(define-face :key-hint-unavailable "A key in the key hints or a menu whose command cannot run here, such as one that would change a git repository looked at only: dimmed, and pressing it says why." :dim t)
 (define-face :header-line "Header lines of lists and tables, such as the column titles of *Health*." :bold t :underline t)
 ;;; Lists: one face for each kind of thing a list shows, the same in every
 ;;; list that shows it, so that a theme sets each once
@@ -149,7 +150,8 @@ text added, on a ground of its own."
 (define-face :string "String and character literals." :fg :green)
 (define-face :escape "Escape sequences inside strings." :fg :cyan :bold t)
 (define-face :raw-byte "Octets that are not UTF-8, each shown as \\xNN." :fg :red :bold t)
-(define-face :invisible-character "A character that draws nothing, shown as its code, <FEFF> for the byte-order mark, while its buffer shows such characters (\\[invisible-characters-mode]): as escape sequences are, unless set apart." :inherit :escape)
+(define-face :invisible-character "A character that draws nothing, shown as its code, <FEFF> for the byte-order mark, while its buffer shows such characters (\\[invisible-characters-mode]), and a character that sets the direction text is drawn in, shown as ? otherwise: as escape sequences are, unless set apart." :inherit :escape)
+(define-face :right-to-left "Text written from right to left, shown in the order it is read: nothing of its own unless set apart; the frontends find the runs whose letters they join by it.")
 (define-face :hex-offset "The offsets at the start of the hex view's rows." :dim t)
 (define-face :hex-mirror "The octet at the hex view's cursor, marked in both its hex digits and its character, the cursor on the one typing goes to." :inherit :paren-match)
 (define-face :hex-unprintable "The dots the hex view's text column shows for octets that are not printable." :dim t)
@@ -221,10 +223,32 @@ text added, on a ground of its own."
 (define-face :git-status-deleted "A file deleted and staged, under Staged changes in a git status: in the theme's colour for lines taken away." :inherit :diff.minus)
 (define-face :git-status-branch "The branch you are on, at the top of a git status: lit up, to be seen at once." :inherit :heading)
 (define-face :git-status-commit "The latest commits at the end of a git status, and the stashes: a colour of their own." :fg :red)
+(define-face :conflict-marker "The marker lines of a conflict a merge left in a file (\\[conflict-markers-mode]): <<<<<<<, ||||||| and >>>>>>> with the names after them, and =======, out to the window's edge." :bold t :extend t)
+(define-face :conflict-first "The first side of a conflict a merge left in a file, the lines after its <<<<<<< line: as the lines a difference takes away unless set." :inherit :diff.minus :extend t)
+(define-face :conflict-base "The base of a conflict a merge left in a file, the lines after its ||||||| line, as they were before either side changed them." :fg :yellow :extend t)
+(define-face :conflict-second "The second side of a conflict a merge left in a file, the lines after its ======= line: as the lines a difference adds unless set." :inherit :diff.plus :extend t)
 (define-face :error "Errors marked in text, such as the error lines of a log." :fg :red :bold t)
 (define-face :warning "Warnings marked in text, such as the warning lines of a log." :fg :yellow :bold t)
+(define-face :stored-order "Right-to-left letters shown in the order they are stored, in a stretch of a line too long, or too far past an embedding or override, for the order they are read in to be worked out." :inherit :warning)
 (define-face :mode-line-rewind "Rewind and the commit shown, in the mode line of a file or folder shown as a commit left it (\\[git-rewind]): lit up in the theme's warning colour, so that it is seen at once that this is not the file as it is now." :inherit :warning :reverse t)
+(define-face :mode-line-narrowed "Narrow, in the mode line of a buffer narrowed to a part of it
+\(\\[narrow-to-region], \\[narrow-to-section]): lit up in the theme's warning
+colour, so that it is seen at once that the rest of the buffer is out of
+sight and out of reach until \\[widen]."
+  :inherit :warning :reverse t)
+(define-face :mode-line-evidence "Evidence, in the mode line of a file in an
+evidence folder (*EVIDENCE-FOLDERS*): lit up in the theme's error colour, so
+that it is seen at once that the file opened safely and nothing is written
+where it is."
+  :inherit :error :reverse t)
+(define-face :mode-line-look-only "Look only, in the mode line of every git buffer of a repository
+looked at only (not trusted, or holding evidence): lit up in the theme's
+warning colour, so that it is never taken for a repository you work in."
+  :inherit :warning :reverse t)
+(define-face :git-look-only "The line at the top of a git status of a repository looked at only,
+saying why and that git only reads it." :inherit :warning)
 (define-face :mode-line-sign "The mode line's signs before [-] while their work goes on: P while a job of the buffer runs or waits its turn (*processing-indicator*), U while a directory of *indexed-directories* is being read (*indexing-indicator*), S while one is searched (*searching-indicator*); in the theme's warning colour, to stand out." :inherit :warning)
+(define-face :mode-line-recording "Rec in the mode line while keys are recorded (\\[start-recording-keys]), and how many plays are done while recorded keys play over and over (\\[play-recorded-keys]); as the signs of work, in the theme's warning colour." :inherit :mode-line-sign)
 (define-face :terminal-bold "Text a program in a terminal set in bold." :bold t)
 (define-face :terminal-italic "Text a program in a terminal set in italics." :italic t)
 (define-face :terminal-underline "Text a program in a terminal underlined." :underline t)
@@ -245,17 +269,20 @@ text added, on a ground of its own."
 (define-face :symbol-highlight "The name the cursor rests on, and its other uses the language server finds in the window: bold." :bold t)
 (define-face :inlay-hint "What a language server shows within the code, no text of it (a type, a parameter's name): faint." :dim t :italic t)
 (define-face :hint "Hints and debugging marked in text, such as the debug lines of a log." :fg :bright-black)
+(define-face :compile-error "The lines of a compile's output (\\[compile]) that say an error, and the line saying the command failed: as errors are marked in text." :inherit :error)
+(define-face :compile-warning "The lines of a compile's output (\\[compile]) that say a warning: as warnings are marked in text." :inherit :warning)
+(define-face :compile-note "The lines of a compile's output (\\[compile]) that say a note or give help: as information is marked in text." :inherit :info)
 
 ;;; CSV and other delimited data: one colour per column, cycling
 
-(define-face :csv-column-0 "Delimited data: columns 1, 9, 17 ...")
-(define-face :csv-column-1 "Delimited data: columns 2, 10, 18 ..." :fg :red)
-(define-face :csv-column-2 "Delimited data: columns 3, 11, 19 ..." :fg :green)
-(define-face :csv-column-3 "Delimited data: columns 4, 12, 20 ..." :fg :yellow)
-(define-face :csv-column-4 "Delimited data: columns 5, 13, 21 ..." :fg :blue)
-(define-face :csv-column-5 "Delimited data: columns 6, 14, 22 ..." :fg :magenta)
-(define-face :csv-column-6 "Delimited data: columns 7, 15, 23 ..." :fg :cyan)
-(define-face :csv-column-7 "Delimited data: columns 8, 16, 24 ..." :fg :bright-black)
+(define-face :csv-column-0 "Delimited data: columns 0, 8, 16 ...")
+(define-face :csv-column-1 "Delimited data: columns 1, 9, 17 ..." :fg :red)
+(define-face :csv-column-2 "Delimited data: columns 2, 10, 18 ..." :fg :green)
+(define-face :csv-column-3 "Delimited data: columns 3, 11, 19 ..." :fg :yellow)
+(define-face :csv-column-4 "Delimited data: columns 4, 12, 20 ..." :fg :blue)
+(define-face :csv-column-5 "Delimited data: columns 5, 13, 21 ..." :fg :magenta)
+(define-face :csv-column-6 "Delimited data: columns 6, 14, 22 ..." :fg :cyan)
+(define-face :csv-column-7 "Delimited data: columns 7, 15, 23 ..." :fg :bright-black)
 (define-face :csv-separator "Delimited data coloured sparsely (set-colouring): the separators between fields." :fg :cyan)
 
 ;;; Folds
@@ -386,6 +413,7 @@ reports no colours."
   (:diagnostic-info-ground :underline t) (:diagnostic-hint-ground :dim t)
   (:job-waiting :italic t)
   (:diff.plus :bold t) (:diff.minus :dim t) (:completion-modified :bold t)
+  (:conflict-marker :reverse t) (:conflict-base :italic t)
   (:replace-going :dim t :underline t) (:replace-coming :reverse t :bold t)
   (:org-date :underline t) (:org-time-grid :dim t) (:org-agenda-done :dim t) (:org-wait :italic t)
   (:org-scheduled-previously :bold t) (:org-upcoming-deadline :bold t) (:org-imminent-deadline :bold t :reverse t)
@@ -435,7 +463,9 @@ steel-blue mode line. From the Ao theme by the same author."
   (:mode-line :reverse nil :fg mode-line-text :bg mode-line-ground)
   (:mode-line-inactive :reverse nil :dim nil :fg mode-line-text :bg mode-line-inactive-ground)
   (:vertical-border :dim nil :fg divider)
-  (:mode-line-directory :fg mode-line-directory)
+  (:mode-line-directory :fg mode-line-directory) (:mode-line-narrowed :reverse nil :bold t :fg ground :bg yellow)
+  (:mode-line-evidence :reverse nil :bold t :fg ground :bg red)
+  (:mode-line-look-only :reverse nil :bold t :fg ground :bg orange) (:git-look-only :bold t :fg orange)
   (:minibuffer-prompt :bold nil :fg blue-warmer)
   (:completion-selected :reverse nil :bold t :bg completion-ground)
   (:completion-annotation :dim nil :fg text-dim)
@@ -451,7 +481,7 @@ steel-blue mode line. From the Ao theme by the same author."
   (:popup :fg text :bg ground-dim) (:popup-current :fg nil :bg completion-ground :bold t)
   (:popup-annotation :fg blue-warmer) (:popup-bar :bg text-dim)
   (:key-hint-key :bold t :fg magenta) (:help-key-binding :bold t :fg magenta)
-  (:key-hint-command :fg text) (:menu-argument-off :dim nil :fg text-dim)
+  (:key-hint-command :fg text) (:menu-argument-off :dim nil :fg text-dim) (:key-hint-unavailable :dim nil :fg text-dim)
   (:key-hint-prefix :fg magenta)
   (:header-line :underline nil :fg text :bg ground-dim)
   (:list-marked-other :bold t :fg blue-warmer :underline t)
@@ -500,6 +530,8 @@ steel-blue mode line. From the Ao theme by the same author."
   (:markup.link.label :fg blue-cooler) (:markup.link.text :fg blue-cooler)
   (:markup.quote :fg quote-text) (:markup.raw :fg quote-text) (:markup.raw.block :fg text)
   (:diff.plus :fg added) (:diff.minus :fg removed) (:diff.delta :fg changed) (:git-status-commit :fg blue)
+  (:conflict-marker :fg text-alt :bg active-ground) (:conflict-first :inherit nil :bg removed-ground)
+  (:conflict-base :fg nil :bg yellow-subtle) (:conflict-second :inherit nil :bg added-ground)
   (:replace-going :fg removed :bg removed-ground) (:replace-coming :fg added :bg added-ground :bold t)
   (:error :fg red) (:warning :fg yellow) (:info :fg blue) (:hint :fg brown) (:spellcheck :underline-colour yellow)
   (:diagnostic-error :underline-colour red) (:diagnostic-warning :underline-colour yellow)
@@ -660,4 +692,6 @@ without one of these roles leaves that colour to the terminal's palette.")
 of a terminal (*TERMINAL-PALETTE-ROLES*); NIL when it gives none."
   (let ((theme (and tuatara.display:*current-theme* (tuatara.display:find-theme tuatara.display:*current-theme*))))
     (and theme (< -1 index 16)
-         (ignore-errors (tuatara.display:theme-role-colour theme (aref *terminal-palette-roles* index))))))
+         (ignoring-errors-reported ("finding the terminal colour ~d" index)
+           (handler-case (tuatara.display:theme-role-colour theme (aref *terminal-palette-roles* index))
+             (simple-error () nil))))))

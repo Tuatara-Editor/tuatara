@@ -35,11 +35,11 @@ be looked at just then, on a drive not answering, is kept.")
 
 (defun parse-recent-file-line (line)
   "The entry of the list of recent files LINE writes, (PATH . SAFE): file,
-or safe for a file visited safely, then its path (ESCAPE-PATH); NIL for a
-line that makes no sense."
+or safe for a file visited safely, then its path (STATE-LINE-PATH); NIL for
+a line that makes no sense."
   (let ((space (position #\Space line)))
     (when (and space (member (subseq line 0 space) '("file" "safe") :test #'string=))
-      (let ((path (unescape-path (subseq line (1+ space)))))
+      (let ((path (state-line-path line (1+ space))))
         (and (plusp (length path)) (cons path (string= "safe" line :end2 space)))))))
 
 (defun recent-file-line (entry)
@@ -49,7 +49,7 @@ line that makes no sense."
 (define-state-list *recent-files* "recent-files" 'parse-recent-file-line 'recent-file-line '*recent-files-max*
   :header (format nil "# The files Tuatara visited lately, the latest first: file, or safe for one~%~
                        # opened safely, then its path (\\\\, \\n and \\r stand for \\, a newline and a return).~%")
-  :path-of #'car :key #'identity)
+  :path-of #'car :key #'identity :line-key (spaced-line-key 1 (lambda (word) (member word '("file" "safe") :test #'string=))))
 
 (defun read-recent-files ()
   "The list of recent files: a list of (PATH . SAFE), the latest first, SAFE
@@ -71,7 +71,7 @@ what sessions side by side put there meanwhile (STATE-LIST-PUT)."
   "Put the file BUFFER visits first in the list of recent files, when there is
 one on disk: after a visit, and after a save (a new file, or saving as)."
   (let ((file (tuatara.buffer:buffer-file buffer)))
-    (when (and file (ignore-errors (tuatara.io:path-stamp file)))
+    (when (and file (tuatara.io:path-stamp file :failure nil))
       (remember-file file :safe (tuatara.io:safe-visit-p buffer)))))
 
 (defun recent-file-fields (entry stamps now)
@@ -82,7 +82,7 @@ each is examined once."
   (let ((path (car entry)))
     (multiple-value-bind (stamp known) (gethash path stamps)
       (unless known
-        (setf stamp (ignore-errors (tuatara.io:path-stamp path))
+        (setf stamp (tuatara.io:path-stamp path :failure nil)
               (gethash path stamps) stamp))
       (if stamp
           (stamp-fields stamp now)
@@ -97,7 +97,8 @@ can be chosen. The file of the current buffer is left out, so that
 file selected is shown meanwhile, opened safely."
   (let* ((current (let ((file (tuatara.buffer:buffer-file (current-buffer))))
                     (and file (tuatara.io:native file))))
-         (entries (remove current (ignore-errors (read-recent-files)) :key #'car :test #'equal)))
+         (entries (remove current (ignoring-errors-reported ("reading the recent files") (read-recent-files))
+                          :key #'car :test #'equal)))
     (if (null entries)
         (message "No recent files")
         (let* ((stamps (make-hash-table :test 'equal))
@@ -135,7 +136,7 @@ just renamed, visited safely or not as it was."
   "The paths of ENTRIES, (PATH . SAFE) of the list of recent files, that name
 no file any more. One that cannot be looked at is not counted gone."
   (remove-duplicates (loop for (path) in entries
-                           when (ignore-errors (null (tuatara.io:path-stamp path)))
+                           when (ignoring-errors-reported ("examining ~a" path) (null (tuatara.io:path-stamp path)))
                              collect path)
                      :test #'string=))
 
@@ -150,15 +151,16 @@ the list then loses (RECENT-FILES-TICK), so that a drive not answering cannot
 hold the editor up. How many went is said, and kept in *Messages*."
   (when (and *remember-recent-files* *recent-files-auto-cleanup* (not *recent-files-cleaned*))
     (setf *recent-files-cleaned* t)
-    (let ((entries (ignore-errors (read-recent-files)))
-          (frontend (editor-frontend editor)))
+    (let ((entries (ignoring-errors-reported ("reading the recent files") (read-recent-files))))
       (if (null entries)
           (say-recent-files-cleaned 0)
           (setf *recent-files-cleaner*
                 (tuatara.runtime:make-guarded-thread
                  (lambda ()
-                   (setf *recent-files-gone* (handler-case (gone-recent-files entries) (error () :failed)))
-                   (ignore-errors (tuatara.frontend:frontend-wake frontend)))
+                   (setf *recent-files-gone* (handler-case (reporting-errors ("looking for recent files gone")
+                                                             (gone-recent-files entries))
+                                               (error () :failed)))
+                   (wake-editor editor))
                  :name "tuatara recent files"))))))
 
 (defun recent-files-tick (editor)

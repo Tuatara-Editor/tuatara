@@ -8,13 +8,13 @@
 
 (defun terminal-session (steps &key (width 80) (height 12) (program '("bash" "--norc" "--noprofile" "-i")) (place :full) cell-pixels)
   "Run an editor session on STEPS, each a string of keys typed, (:until
-FUNCTION) waiting (ten seconds at most) until FUNCTION, of the current
-buffer, is true, (:do FUNCTION) calling FUNCTION of the current buffer, or
-\(:mouse BASE COLUMN ROW . MODIFIERS) a mouse key at that cell of the screen
-\(MODIFIERS :ctrl t, say), the terminal's program PROGRAM, shown at PLACE. Every
-terminal still running is ended afterwards, its buffer killed. CELL-PIXELS,
-a cell's width and height in pixels as a list, has the frontend show
-pictures. Returns the frontend and the editor."
+FUNCTION) waiting (ten seconds at most, failing the test past them) until
+FUNCTION, of the current buffer, is true, (:do FUNCTION) calling FUNCTION of
+the current buffer, or (:mouse BASE COLUMN ROW . MODIFIERS) a mouse key at
+that cell of the screen (MODIFIERS :ctrl t, say), the terminal's program
+PROGRAM, shown at PLACE. Every terminal still running is ended afterwards,
+its buffer killed. CELL-PIXELS, a cell's width and height in pixels as a
+list, has the frontend show pictures. Returns the frontend and the editor."
   (let ((f (tuatara.frontend.fake:make-fake-frontend :width width :height height :cell-pixels cell-pixels))
         (tuatara-user:*terminal-program* program)
         (tuatara-user:*terminal-place* place)
@@ -33,24 +33,26 @@ pictures. Returns the frontend and the editor."
                         (funcall (second step) (buffer))
                         (take (rest steps) (get-internal-real-time)))
                        ((and (consp step) (eq (first step) :until))
-                        (if (or (funcall (second step) (buffer))
-                                (> (- (get-internal-real-time) start) (* 10 internal-time-units-per-second)))
-                            (take (rest steps) (get-internal-real-time))
-                            (progn (sleep 0.02)
-                                   (tuatara.frontend.fake:fake-queue-action f (lambda () (take steps start))))))
+                        (cond ((funcall (second step) (buffer))
+                               (take (rest steps) (get-internal-real-time)))
+                              ((> (- (get-internal-real-time) start) (* 10 internal-time-units-per-second))
+                               (waited-in-vain (second step) 10)
+                               (take (rest steps) (get-internal-real-time)))
+                              (t (sleep 0.02)
+                                 (tuatara.frontend.fake:fake-queue-action f (lambda () (take steps start))))))
                        (t (queue-test-keys f (list step))
                           (tuatara.frontend.fake:fake-queue-action
                            f (lambda () (take (rest steps) (get-internal-real-time)))))))))
       (tuatara.frontend.fake:fake-queue-action f (lambda () (take steps (get-internal-real-time))))
       (unwind-protect
            (values f (tuatara.command:run-editor f :setup #'tuatara.defaults:install-defaults))
-        (loop for emulator being the hash-values of tuatara.defaults::*emulators*
-              do (tuatara.defaults::stop-emulator emulator))
+        (loop for emulator being the hash-values of tuatara.terminal-emulator::*emulators*
+              do (tuatara.terminal-emulator::stop-emulator emulator))
         ;; and their buffers, so that the next session's first terminal is *terminal* again
         (dolist (buffer (copy-list tuatara.buffer:*buffers*))
           (when (uiop:string-prefix-p "*terminal*" (tuatara.buffer:buffer-name buffer))
             (tuatara.buffer:kill-buffer buffer)))
-        (setf tuatara.defaults::*terminal-buffers* '())))))
+        (setf tuatara.terminal-emulator::*terminal-buffers* '())))))
 
 (defun buffer-holding (text)
   "A function of a buffer: true when its text holds TEXT."
@@ -114,23 +116,28 @@ pictures. Returns the frontend and the editor."
     (unwind-protect
          (progn
            (tuatara.display:apply-theme 'tuatara.defaults::ao-dark)
-           (let ((face (tuatara.defaults::terminal-colour-face :fg 1)))
+           (let ((face (tuatara.terminal-emulator::terminal-colour-face :fg 1)))
              (is equal (tuatara.display:theme-role-colour (tuatara.display:find-theme 'tuatara.defaults::ao-dark) 'tuatara.defaults::red)
                  (tuatara.display:face-attribute face :fg))
              ;; another theme put in force: bare, then coloured again for it
              (tuatara.display:apply-theme 'tuatara.defaults::ao-light)
-             (tuatara.defaults::recolour-terminal-faces)
+             (tuatara.terminal-emulator::recolour-terminal-faces)
              (is equal (tuatara.display:theme-role-colour (tuatara.display:find-theme 'tuatara.defaults::ao-light) 'tuatara.defaults::red)
                  (tuatara.display:face-attribute face :fg))
              (tuatara.display:apply-theme nil)
-             (tuatara.defaults::recolour-terminal-faces)
+             (tuatara.terminal-emulator::recolour-terminal-faces)
              (is eql 1 (tuatara.display:face-attribute face :fg))
              ;; a colour beyond the sixteen, and one of 24 bits, as the program chose them
-             (is eql 202 (tuatara.display:face-attribute (tuatara.defaults::terminal-colour-face :fg 202) :fg))
+             (is eql 202 (tuatara.display:face-attribute (tuatara.terminal-emulator::terminal-colour-face :fg 202) :fg))
              (tuatara.display:apply-theme 'tuatara.defaults::ao-dark)
-             (is equal "#ff0000" (tuatara.display:face-attribute (tuatara.defaults::terminal-colour-face :bg "#ff0000") :bg))))
+             (is equal "#ff0000" (tuatara.display:face-attribute (tuatara.terminal-emulator::terminal-colour-face :bg "#ff0000") :bg))
+             ;; a colour of 24 bits taken to the nearest of 4,096: shades close together share a face
+             (is eq (tuatara.terminal-emulator::terminal-colour-face :fg "#123457")
+                 (tuatara.terminal-emulator::terminal-colour-face :fg "#113355"))
+             (isnt eq (tuatara.terminal-emulator::terminal-colour-face :fg "#123457")
+                   (tuatara.terminal-emulator::terminal-colour-face :fg "#223457"))))
       (tuatara.display:apply-theme theme)
-      (tuatara.defaults::recolour-terminal-faces))))
+      (tuatara.terminal-emulator::recolour-terminal-faces))))
 
 (define-test (terminal normal-state-as-text)
   ;; C-\ stops typing: the screen stands still as text, keys move point there
@@ -141,7 +148,7 @@ pictures. Returns the frontend and the editor."
     (declare (ignore f))
     (let ((buffer (session-buffer editor)))
       (is eq :support (tuatara.defaults::buffer-modal-class buffer))
-      (true (tuatara.buffer:buffer-local buffer 'tuatara.defaults::terminal-history-view))
+      (true (tuatara.buffer:buffer-local buffer 'tuatara.terminal-emulator::terminal-history-view))
       (false (search "kk" (tuatara.buffer:buffer-string buffer))))))
 
 (define-test (terminal history-in-normal-state)
@@ -193,7 +200,7 @@ pictures. Returns the frontend and the editor."
                                                t))))
       (true (tuatara.frontend.fake:fake-frame-showing f "Terminal history"))
       (let ((buffer (session-buffer editor)))
-        (false (tuatara.buffer:buffer-local buffer 'tuatara.defaults::terminal-history-view))
+        (false (tuatara.buffer:buffer-local buffer 'tuatara.terminal-emulator::terminal-history-view))
         (true (search "history-42" copied))))))
 
 (define-test (terminal c-g-stops-typing)
@@ -201,7 +208,7 @@ pictures. Returns the frontend and the editor."
   (multiple-value-bind (f editor)
       (terminal-session (list "M-x t e r m i n a l RET" (list :until (buffer-holding "$")) "C-g"))
     (declare (ignore f))
-    (true (tuatara.buffer:buffer-local (session-buffer editor) 'tuatara.defaults::terminal-history-view))))
+    (true (tuatara.buffer:buffer-local (session-buffer editor) 'tuatara.terminal-emulator::terminal-history-view))))
 
 (define-test (terminal c-g-to-the-program-when-not-kept)
   ;; C-g left out of the kept keys goes to the program, C-\ still stopping typing
@@ -221,7 +228,7 @@ pictures. Returns the frontend and the editor."
     (multiple-value-bind (f editor)
         (terminal-session (list "M-x t e r m i n a l RET" (list :until (buffer-holding "$")) "ESC"))
       (declare (ignore f))
-      (true (tuatara.buffer:buffer-local (session-buffer editor) 'tuatara.defaults::terminal-history-view))))
+      (true (tuatara.buffer:buffer-local (session-buffer editor) 'tuatara.terminal-emulator::terminal-history-view))))
   (let ((tuatara-user:*escape-quits* nil))
     (multiple-value-bind (f editor)
         (terminal-session (list "M-x t e r m i n a l RET" (list :until (buffer-holding "$")) "ESC"))
@@ -267,7 +274,7 @@ pictures. Returns the frontend and the editor."
                                    (list :until (lambda (b) (not (uiop:string-prefix-p "*terminal*" (tuatara.buffer:buffer-name b)))))))))
     (true (tuatara.frontend.fake:fake-frame-showing f "*terminal* ended (exit 3)"))
     (false (tuatara.buffer:find-buffer "*terminal*"))
-    (is = 0 (hash-table-count tuatara.defaults::*emulators*))))
+    (is = 0 (hash-table-count tuatara.terminal-emulator::*emulators*))))
 
 (defun terminal-windows (editor)
   "EDITOR's windows showing a terminal."
@@ -340,7 +347,7 @@ pictures. Returns the frontend and the editor."
         (terminal-session (list "M-x t e r m i n a l - t o g g l e RET" (list :until (buffer-holding "$"))
                                 "e c h o SPC k e p t - $ ( ( 4 0 + 2 ) ) RET" (list :until (buffer-holding "kept-42"))
                                 (list :until (lambda (b) (declare (ignore b))
-                                               (push (copy-list (alexandria:hash-table-values tuatara.defaults::*emulators*)) emulators)
+                                               (push (copy-list (alexandria:hash-table-values tuatara.terminal-emulator::*emulators*)) emulators)
                                                t))
                                 "M-x t e r m i n a l - t o g g l e RET"
                                 (list :until (lambda (b) (declare (ignore b))
@@ -348,7 +355,7 @@ pictures. Returns the frontend and the editor."
                                                t))
                                 "M-x t e r m i n a l - t o g g l e RET" (list :until (buffer-holding "kept-42"))
                                 (list :until (lambda (b) (declare (ignore b))
-                                               (push (copy-list (alexandria:hash-table-values tuatara.defaults::*emulators*)) emulators)
+                                               (push (copy-list (alexandria:hash-table-values tuatara.terminal-emulator::*emulators*)) emulators)
                                                t)))
                           :place :bottom :height 30)
       (declare (ignore f))
@@ -421,7 +428,7 @@ pictures. Returns the frontend and the editor."
     (declare (ignore f))
     (let ((buffer (session-buffer editor)))
       (true (search (format nil "~%from-history") (tuatara.buffer:buffer-string buffer)))
-      (true (tuatara.defaults::terminal-typing-p buffer)))))
+      (true (tuatara.terminal-emulator::terminal-typing-p buffer)))))
 
 (define-test (terminal follows-directory-and-title)
   ;; the program's cd and its title, in the buffer's directory and the mode line
@@ -460,14 +467,14 @@ pictures. Returns the frontend and the editor."
   (multiple-value-bind (f editor)
       (terminal-session (list "M-x t e r m i n a l RET" (list :until (buffer-holding "$"))
                               '(:mouse :wheel-up 3 2)
-                              (list :until (lambda (buffer) (not (tuatara.defaults::terminal-typing-p buffer))))))
+                              (list :until (lambda (buffer) (not (tuatara.terminal-emulator::terminal-typing-p buffer))))))
     (declare (ignore f))
-    (false (tuatara.defaults::terminal-typing-p (session-buffer editor)))))
+    (false (tuatara.terminal-emulator::terminal-typing-p (session-buffer editor)))))
 
 (define-test (terminal addresses-found)
   (is equal '("https://example.org/a_(b)" "http://x.y/z" "file:///tmp/f")
       (mapcar (lambda (text) (apply #'subseq "see https://example.org/a_(b). and (http://x.y/z), file:///tmp/f'" text))
-              (tuatara.defaults::text-urls "see https://example.org/a_(b). and (http://x.y/z), file:///tmp/f'"))))
+              (tuatara.terminal-emulator::text-urls "see https://example.org/a_(b). and (http://x.y/z), file:///tmp/f'"))))
 
 (define-test (terminal links-underlined-and-opened)
   ;; a link a program wrote (OSC 8) and an address written: underlined; C-click on the
@@ -480,21 +487,21 @@ pictures. Returns the frontend and the editor."
                                   (list :do (lambda (buffer)
                                               (let ((emulator (tuatara.buffer:buffer-local buffer :emulator)))
                                                 (is equal (format nil "file://~a" file)
-                                                    (tuatara.defaults::terminal-link-at buffer emulator 1 0))
+                                                    (tuatara.terminal-emulator::terminal-link-at buffer emulator 1 0))
                                                 (is equal "https://example.org/x"
-                                                    (tuatara.defaults::terminal-link-at buffer emulator 12 1))
-                                                (false (tuatara.defaults::terminal-link-at buffer emulator 3 1))
+                                                    (tuatara.terminal-emulator::terminal-link-at buffer emulator 12 1))
+                                                (false (tuatara.terminal-emulator::terminal-link-at buffer emulator 3 1))
                                                 ;; underlined: the link's text, at the start, and the address on the next row
                                                 (multiple-value-bind (octets spans)
-                                                    (tuatara.defaults::terminal-shown-text (tuatara.buffer:buffer-local buffer 'tuatara.defaults::terminal-rows)
-                                                                                           (tuatara.buffer:buffer-local buffer 'tuatara.defaults::terminal-looks) nil 0)
+                                                    (tuatara.terminal-emulator::terminal-shown-text (tuatara.buffer:buffer-local buffer 'tuatara.terminal-emulator::terminal-rows)
+                                                                                           (tuatara.buffer:buffer-local buffer 'tuatara.terminal-emulator::terminal-looks) nil 0)
                                                   (let ((text (tuatara.text:octets-string octets)))
                                                   (let ((links (remove-if-not (lambda (span) (member :link (third span))) spans)))
                                                     (true (find 0 links :key #'first))
                                                     (true (find (search "https://example.org/x" text) links :key #'first))))))))
                                   '(:mouse :down-mouse-1 1 0 :ctrl t)
                                   ;; asked first, the file it leads to named
-                                  (list :until #'question-asked) "y RET"
+                                  (list :until #'question-asked) "y"
                                   (list :until (lambda (buffer) (equal "linked.txt" (tuatara.buffer:buffer-name buffer)))))
                             :width 250
                             :program (list "sh" "-c" (format nil "printf '\\033]8;;file://~a\\033\\\\name\\033]8;;\\033\\\\\\nsee: https://example.org/x.\\nready\\n'; exec cat" file)))
@@ -502,9 +509,11 @@ pictures. Returns the frontend and the editor."
         (is equal "linked.txt" (tuatara.buffer:buffer-name (session-buffer editor)))))))
 
 (defun question-asked (buffer)
-  "A function for TERMINAL-SESSION's :until: true once the minibuffer asks something."
+  "A function for TERMINAL-SESSION's :until: true once something is asked, in
+the minibuffer or by a key in the echo area (Y-OR-N-P*)."
   (declare (ignore buffer))
-  (tuatara.command:editor-minibuffer-active tuatara.command:*editor*))
+  (or (tuatara.command:editor-minibuffer-active tuatara.command:*editor*)
+      tuatara.command::*key-question*))
 
 (defun file-link-program (file)
   "A program for TERMINAL-SESSION writing a link (OSC 8) to FILE that shows a
@@ -527,7 +536,7 @@ web address, then ready, and reading what is typed."
       (multiple-value-bind (f editor)
           (terminal-session (list "M-x t e r m i n a l RET" (list :until (buffer-holding "ready"))
                                   '(:mouse :down-mouse-1 1 0 :ctrl t)
-                                  (list :until #'question-asked) "n RET"
+                                  (list :until #'question-asked) "n"
                                   (list :until (lambda (buffer) (declare (ignore buffer)) (not (question-asked nil)))))
                             :width 250 :program (file-link-program file))
         (true (tuatara.frontend.fake:fake-frame-showing f (format nil "Open ~a in Tuatara?" file)))
@@ -542,7 +551,7 @@ web address, then ready, and reading what is typed."
       (multiple-value-bind (f editor)
           (terminal-session (list "M-x t e r m i n a l RET" (list :until (buffer-holding "ready"))
                                   '(:mouse :down-mouse-1 1 0 :ctrl t)
-                                  (list :until #'question-asked) "y RET"
+                                  (list :until #'question-asked) "y"
                                   (list :until (lambda (buffer) (equal "other.txt" (tuatara.buffer:buffer-name buffer)))))
                             :width 250 :program (file-link-program file))
         (declare (ignore f))
@@ -603,10 +612,10 @@ web address, then ready, and reading what is typed."
   (multiple-value-bind (f editor)
       (terminal-session (list "M-x t e r m i n a l RET" (list :until (buffer-holding "last-line"))
                               "C-s" "i"
-                              (list :until #'tuatara.defaults::terminal-typing-p)
+                              (list :until #'tuatara.terminal-emulator::terminal-typing-p)
                               "C-g"
                               (list :until (lambda (buffer)
-                                             (and (not (tuatara.defaults::terminal-typing-p buffer))
+                                             (and (not (tuatara.terminal-emulator::terminal-typing-p buffer))
                                                   ;; the history in, not the screen alone
                                                   (> (tuatara.buffer:buffer-line-count buffer) 1000))))
                               ;; a few ticks more, in which a search left over would begin
@@ -614,7 +623,7 @@ web address, then ready, and reading what is typed."
                         :program '("sh" "-c" "seq 1 300000; echo last-line; exec cat"))
     (declare (ignore f))
     (false (tuatara.command:editor-minibuffer-active editor))
-    (false (tuatara.defaults::terminal-typing-p (session-buffer editor)))))
+    (false (tuatara.terminal-emulator::terminal-typing-p (session-buffer editor)))))
 
 (define-test (terminal refused-place-leaves-no-buffer)
   ;; a size that cannot be: refused, and no terminal buffer left behind
@@ -623,16 +632,16 @@ web address, then ready, and reading what is typed."
                                                     "is no size")))
   (false (find-if (lambda (buffer) (uiop:string-prefix-p "*terminal*" (tuatara.buffer:buffer-name buffer)))
                   tuatara.buffer:*buffers*))
-  (is = 0 (hash-table-count tuatara.defaults::*emulators*)))
+  (is = 0 (hash-table-count tuatara.terminal-emulator::*emulators*)))
 
 (define-test (terminal link-found-in-the-history)
   (multiple-value-bind (f editor)
       (terminal-session (list "M-x t e r m i n a l RET" (list :until (buffer-holding "ready"))
-                              "C-g" (list :until (lambda (buffer) (not (tuatara.defaults::terminal-typing-p buffer))))
+                              "C-g" (list :until (lambda (buffer) (not (tuatara.terminal-emulator::terminal-typing-p buffer))))
                               (list :do (lambda (buffer)
                                           (let ((emulator (tuatara.buffer:buffer-local buffer :emulator)))
                                             (is equal "https://example.org/y"
-                                                (tuatara.defaults::terminal-link-at buffer emulator 8 1 :history t))))))
+                                                (tuatara.terminal-emulator::terminal-link-at buffer emulator 8 1 :history t))))))
                         :program '("sh" "-c" "printf 'a line\\nsee at https://example.org/y\\nready\\n'; exec cat"))
     (declare (ignore f editor))))
 
@@ -760,7 +769,7 @@ be shown 4 columns by 2 rows, then prints ready and waits."
                         :program '("sh" "-c" "echo first; echo the-wanted-one; echo other; echo last-line; exec cat"))
     (declare (ignore f))
     (let* ((buffer (session-buffer editor)) (point (tuatara.buffer:buffer-point buffer)))
-      (false (tuatara.defaults::terminal-typing-p buffer))
+      (false (tuatara.terminal-emulator::terminal-typing-p buffer))
       (true (search "the-wanted-one" (tuatara.buffer:buffer-string buffer
                                                                    :start (tuatara.buffer:buffer-line-start buffer point)
                                                                    :end (tuatara.buffer:buffer-line-end buffer point)))))))
@@ -768,19 +777,19 @@ be shown 4 columns by 2 rows, then prints ready and waits."
 (define-test (terminal killed-ends-the-shell)
   (terminal-session (list "M-x t e r m i n a l RET" (list :until (buffer-holding "$"))
                           (list :until (lambda (b) (declare (ignore b))
-                                         (= 1 (hash-table-count tuatara.defaults::*emulators*))))
+                                         (= 1 (hash-table-count tuatara.terminal-emulator::*emulators*))))
                           "C-x k RET"))
-  (is = 0 (hash-table-count tuatara.defaults::*emulators*)))
+  (is = 0 (hash-table-count tuatara.terminal-emulator::*emulators*)))
 
 (define-test (terminal title-cut-to-columns)
   ;; a title of wide characters is cut to the columns it may take, not to as many characters
   (let ((b (tuatara.buffer:make-buffer "*terminal title test*")))
     (unwind-protect
          (let ((tuatara-user:*terminal-title-max* 5))
-           (setf (tuatara.buffer:buffer-local b 'tuatara.defaults::terminal-title) "漢字漢字")
-           (is string= "漢字…" (tuatara.defaults::terminal-mode-line-title nil b))
-           (setf (tuatara.buffer:buffer-local b 'tuatara.defaults::terminal-title) "short")
-           (is string= "short" (tuatara.defaults::terminal-mode-line-title nil b)))
+           (setf (tuatara.buffer:buffer-local b 'tuatara.terminal-emulator::terminal-title) "漢字漢字")
+           (is string= "漢字…" (tuatara.terminal-emulator::terminal-mode-line-title nil b))
+           (setf (tuatara.buffer:buffer-local b 'tuatara.terminal-emulator::terminal-title) "short")
+           (is string= "short" (tuatara.terminal-emulator::terminal-mode-line-title nil b)))
       (tuatara.buffer:kill-buffer b))))
 
 (define-test (terminal font-size-repeat-keys)
@@ -807,11 +816,11 @@ be shown 4 columns by 2 rows, then prints ready and waits."
              (dotimes (k prompts)
                (format out "~c]133;A~c\\$ ls~%a.txt  b.txt~%" #\Escape #\Escape))))
          (seconds (text)
-           (let ((start (get-internal-real-time)))
-             (tuatara.defaults::ansi-pieces text)
-             (/ (- (get-internal-real-time) start) internal-time-units-per-second))))
-    (is equal (list (format nil "$ ls~%a.txt  b.txt~%")) (tuatara.defaults::ansi-pieces (history 1)))
-    (is equal (list (format nil "a~%b")) (tuatara.defaults::ansi-pieces (format nil "a~c]0;title~c~%b" #\Escape (code-char 7))))
+           (let ((start (thread-cpu-time)))
+             (tuatara.terminal-emulator:ansi-pieces text)
+             (/ (- (thread-cpu-time) start) internal-time-units-per-second))))
+    (is equal (list (format nil "$ ls~%a.txt  b.txt~%")) (tuatara.terminal-emulator:ansi-pieces (history 1)))
+    (is equal (list (format nil "a~%b")) (tuatara.terminal-emulator:ansi-pieces (format nil "a~c]0;title~c~%b" #\Escape (code-char 7))))
     ;; about 0.2 µs a prompt; 50 µs when each mark's end was looked for to the end of the history
     (let* ((small (history 8000)) (large (history 32000))
            (each (/ (- (seconds large) (seconds small)) 24000)))
@@ -822,15 +831,15 @@ be shown 4 columns by 2 rows, then prints ready and waits."
   (let ((rows (vector "a   " "bb  " "c   " " x  " "y   " "    "))
         (looks (make-array 6 :initial-element '())))
     (is string= (format nil "a~%bb~%c~% x~%y~%")
-        (tuatara.text:octets-string (tuatara.defaults::terminal-shown-text rows looks nil 0)))
+        (tuatara.text:octets-string (tuatara.terminal-emulator::terminal-shown-text rows looks nil 0)))
     ;; the spaces before the cursor kept
     (is string= (format nil "a~%bb~%c~% x~%y~%  ")
-        (tuatara.text:octets-string (tuatara.defaults::terminal-shown-text rows looks 5 2)))))
+        (tuatara.text:octets-string (tuatara.terminal-emulator::terminal-shown-text rows looks 5 2)))))
 
 (define-test (terminal refresh-makes-changed-rows-only)
   ;; a screen of 200 by 50 in colours with addresses, one row changing: the other rows' text,
   ;; addresses and faces are not made again, as they were for every refresh
-  (true (tuatara.defaults::terminal-library-p))
+  (true (tuatara.terminal-emulator::terminal-library-p))
   (with-test-directory (dir)
     (let ((file (namestring (merge-pathnames "screen.txt" dir))))
       (with-open-file (out file :direction :output :if-exists :supersede)
@@ -838,27 +847,74 @@ be shown 4 columns by 2 rows, then prints ready and waits."
           (dotimes (word 12)
             (format out "~c[38;5;~dmword~2,'0d~c[0m " #\Escape (+ row word) word #\Escape))
           (format out "see https://example.org/~d and more text to the row's end~%" row)))
-      (let ((e (tuatara.defaults::start-emulator "sh" (list "-c" (format nil "cat '~a'; exec cat" file)) :columns 200 :rows 50))
+      (let ((e (tuatara.terminal-emulator::start-emulator "sh" (list "-c" (format nil "cat '~a'; exec cat" file)) :columns 200 :rows 50))
             (buffer (tuatara.buffer:make-buffer "*terminal refresh test*")))
         (unwind-protect
              (let ((deadline (tuatara.runtime:deadline-in 10)))
                (loop until (or (search "example.org/48" (tuatara.buffer:buffer-string buffer))
                                (<= (tuatara.runtime:seconds-left deadline) 0))
-                     do (tuatara.defaults::terminal-refresh buffer e :all t)
+                     do (tuatara.terminal-emulator::terminal-refresh buffer e :all t)
                         (sleep 1/50))
                (true (search "example.org/48" (tuatara.buffer:buffer-string buffer)))
                (flet ((typed (all)
                         ;; a character typed, echoed on the cursor's row, then the screen refreshed
-                        (tuatara.defaults::emulator-input e "x")
+                        (tuatara.terminal-emulator::emulator-input e "x")
                         (let ((deadline (tuatara.runtime:deadline-in 5)))
-                          (loop until (or (tuatara.defaults::emulator-changed e) (<= (tuatara.runtime:seconds-left deadline) 0))
+                          (loop until (or (tuatara.terminal-emulator::emulator-changed e) (<= (tuatara.runtime:seconds-left deadline) 0))
                                 do (sleep 1/100)))
                         (let ((before (sb-ext:get-bytes-consed)))
-                          (tuatara.defaults::terminal-refresh buffer e :all all)
+                          (tuatara.terminal-emulator::terminal-refresh buffer e :all all)
                           (- (sb-ext:get-bytes-consed) before))))
                  (let ((every (loop repeat 3 minimize (typed t)))
                        (one (loop repeat 3 minimize (typed nil))))
                    (true (< (* 4 one) every) "~:d octets for one row changed, ~:d for the whole screen" one every)
                    (true (search "xxxxxx" (tuatara.buffer:buffer-string buffer))))))
-          (tuatara.defaults::stop-emulator e)
+          (tuatara.terminal-emulator::stop-emulator e)
           (tuatara.buffer:kill-buffer buffer))))))
+
+(define-test (terminal unknown-key-reported)
+  ;; a key written wrongly in a list of keys matches nothing, the others still do; debug mode keeps why in its log
+  (let ((key (tuatara.frontend:make-key #\x :ctrl t)))
+    (drain-debug-reports)
+    (unwind-protect
+         (progn
+           (true (tuatara.terminal-emulator::key-among-p key '("C-<nokey>" "C-x")))
+           (false (tuatara.terminal-emulator::key-among-p key '("C-<nokey>")))
+           (true (sb-concurrency:queue-empty-p tuatara.runtime:*debug-reports*))
+           (tuatara.runtime:set-debug t)
+           (false (tuatara.terminal-emulator::key-among-p key '("C-<nokey>")))
+           (let ((texts (loop for report = (sb-concurrency:dequeue tuatara.runtime:*debug-reports*)
+                              while report collect (princ-to-string (fourth report)))))
+             (true (find-if (lambda (text) (search "reading the keys \"C-<nokey>\" failed" text)) texts)
+                   "~s" texts)))
+      (drain-debug-reports))))
+
+(define-test (terminal screen-waits-for-a-question-about-it)
+  ;; while a question waiting in a frame is about a terminal, what its program prints stays in
+  ;; the terminal, not shown in the buffer; once the question is answered, it is shown
+  (let ((during nil))
+    (unwind-protect
+         (multiple-value-bind (f editor)
+             (terminal-session
+              (list "M-x t e r m i n a l RET" (list :until (buffer-holding "$"))
+                    (list :do (lambda (buffer)
+                                (setf tuatara.command::*taking-in-inside-question* t
+                                      tuatara.command::*buffers-held-by-questions*
+                                      (list (cons buffer (tuatara.command:editor-frame tuatara.command:*editor*))))))
+                    "e c h o SPC k e a - $ ( ( 6 * 7 ) ) RET"
+                    ;; a second for the program to print, the editor going round meanwhile
+                    (list :until (let ((end nil))
+                                   (lambda (buffer)
+                                     (declare (ignore buffer))
+                                     (> (get-internal-real-time)
+                                        (or end (setf end (+ (get-internal-real-time) internal-time-units-per-second)))))))
+                    (list :do (lambda (buffer)
+                                (setf during (tuatara.buffer:buffer-string buffer)
+                                      tuatara.command::*taking-in-inside-question* nil
+                                      tuatara.command::*buffers-held-by-questions* '())))
+                    (list :until (buffer-holding "kea-42"))))
+           (declare (ignore f))
+           (false (search "kea-42" during))
+           (true (search "kea-42" (tuatara.buffer:buffer-string (session-buffer editor)))))
+      (setf tuatara.command::*taking-in-inside-question* nil
+            tuatara.command::*buffers-held-by-questions* '()))))

@@ -17,10 +17,187 @@
 (define-test (tools desktop-entry-exec-line)
   ;; a path with characters a desktop entry's Exec= line treats specially: each
   ;; escaped as a quoted argument wants it after the line is read as a string
-  (let ((line (bash-output (format nil "eval \"$(sed -n '/^exec_argument() {/,/^}/p' '~a')\"
-printf 'Exec=@EXEC@ %%F\\n' | sed \"s|@EXEC@|$(exec_argument \"$1\")|\"" (tools-script "install-desktop.sh"))
-                           "/opt/50%/a\\b\"c`d$e f|g&h/tuatara")))
-    (is string= (format nil "Exec=\"/opt/50%%/a\\\\\\\\b\\\\\"c\\\\`d\\\\$e f|g&h/tuatara\" %F~%") line)))
+  (let* ((entry (tuatara.terminal::desktop-entry :application :program "/opt/50%/a\\b\"c`d$e f|g&h/tuatara"))
+         (line (find-if (lambda (line) (uiop:string-prefix-p "Exec=" line))
+                        (uiop:split-string entry :separator '(#\Newline)))))
+    (is string= "Exec=\"/opt/50%%/a\\\\\\\\b\\\\\"c\\\\`d\\\\$e f|g&h/tuatara\" --gui %F" line))
+  ;; no word with a control character in it, which would end the line
+  (fail (tuatara.terminal::exec-argument (format nil "/opt/a~%Exec=evil")) 'tuatara.runtime:refusal))
+
+(defun template-with-exec (name exec)
+  "The template NAME of data/ as the scripts filled it before the program did,
+its @EXEC@ replaced by EXEC."
+  (let* ((text (uiop:read-file-string (asdf:system-relative-pathname :tuatara (format nil "data/~a" name))))
+         (at (search "@EXEC@" text)))
+    (concatenate 'string (subseq text 0 at) exec (subseq text (+ at 6)))))
+
+(define-test (tools application-entries-as-before)
+  ;; the application entry the program writes is, byte for byte, the one the scripts wrote: the packages'
+  ;; and the AppImage's (tuatara), the AppImage installed (its path, a style), the project's own
+  (is string= (template-with-exec "tuatara.desktop.in" "tuatara") (tuatara.terminal::desktop-entry :application))
+  (is string= (template-with-exec "tuatara.desktop.in"
+                                  "\"/home/k a/50%%/x\\\\\\\\y\\\\\"z\\\\`\\\\$w|q&r/tuatara\" --dark")
+      (tuatara.terminal::desktop-entry :application :program "/home/k a/50%/x\\y\"z`$w|q&r/tuatara"
+                                                    :arguments '("--dark")))
+  (is string= (template-with-exec "tuatara.desktop.in" "\"/opt/my tools/tuatara-tui.sh\"")
+      (tuatara.terminal::desktop-entry :application :program "/opt/my tools/tuatara-tui.sh")))
+
+(defun desktop-entry-valid-p (path)
+  "True when desktop-file-validate finds nothing wrong in the entry at PATH,
+or is not installed here; what it says as a second value."
+  (if (tuatara.io:find-program "desktop-file-validate")
+      (multiple-value-bind (out error code)
+          (uiop:run-program (list "desktop-file-validate" path) :output :string :error-output :output
+                                                                :ignore-error-status t)
+        (declare (ignore error))
+        (values (and (zerop code) (zerop (length (string-trim '(#\Newline #\Space) out)))) out))
+      (values t "")))
+
+(define-test (tools application-entries-written)
+  ;; both application entries, Tuatara's and the client's, written where asked, each valid, the client's
+  ;; starting a client that falls back to an editor of its own
+  (with-test-directory (directory)
+    (let* ((folder (namestring (merge-pathnames "applications/" directory)))
+           (paths (tuatara.terminal::write-application-entries folder "/opt/tuatara 1/tuatara" "--light")))
+      (is equal (list (concatenate 'string folder "tuatara.desktop")
+                      (concatenate 'string folder "tuatara-client.desktop"))
+          paths)
+      (dolist (path paths)
+        (multiple-value-bind (valid said) (desktop-entry-valid-p path)
+          (true valid "~a: ~a" path said)))
+      (let ((client (file-text (second paths))))
+        (true (search (format nil "~%Name=Tuatara (client)~%") client))
+        (true (search (format nil "~%Exec=\"/opt/tuatara 1/tuatara\" --light --gui --client --fallback %F~%") client)))
+      ;; asked by the environment, as the scripts ask: the folder there, the program and its words as arguments
+      (let ((again (namestring (merge-pathnames "again/" directory))))
+        (sb-posix:setenv "TUATARA_DESKTOP_ENTRIES" again 1)
+        (let ((out (with-output-to-string (*standard-output*)
+                     (is = 0 (tuatara.terminal::desktop-entries-child '("tuatara"))))))
+          (true (search "tuatara-client.desktop" out)))
+        (false (sb-posix:getenv "TUATARA_DESKTOP_ENTRIES") "the request goes with its answer")
+        (is string= (tuatara.terminal::desktop-entry :client)
+            (file-text (concatenate 'string again "tuatara-client.desktop")))))))
+
+(define-test (tools desktop-entries-request-checked)
+  ;; the request to write desktop entries is taken only for this program and option words, into a folder
+  ;; named from the root: a file named on the command line with the variable left set never becomes a
+  ;; program the desktop runs, and the program starts as it would
+  (with-test-directory (directory)
+    (let* ((folder (namestring (merge-pathnames "applications/" directory)))
+           (evidence (namestring (put-file (merge-pathnames "attachment.exe" directory) "MZ"))))
+      (flet ((asked (folder &rest arguments)
+               (sb-posix:setenv "TUATARA_DESKTOP_ENTRIES" folder 1)
+               (let* ((code :none)
+                      (said (with-output-to-string (*error-output*)
+                              (let ((*standard-output* (make-broadcast-stream)))
+                                (setf code (tuatara.terminal::desktop-entries-child arguments))))))
+                 (false (sb-posix:getenv "TUATARA_DESKTOP_ENTRIES") "the request goes, taken or not")
+                 (values code said))))
+        (dolist (refused (list (list folder evidence) (list "applications/" "tuatara")
+                               (list folder "tuatara" evidence) (list folder "tuatara" "--dark" "~/x.exe")
+                               (list folder)))
+          (multiple-value-bind (code said) (apply #'asked refused)
+            (false code "~s taken" refused)
+            (true (search "TUATARA_DESKTOP_ENTRIES left alone" said))
+            (false (probe-file (concatenate 'string folder "tuatara.desktop")))))
+        (is eql 0 (asked folder "tuatara" "--dark"))
+        (true (search (format nil "~%Exec=tuatara --dark --gui %F~%")
+                      (file-text (concatenate 'string folder "tuatara.desktop"))))))
+    ;; this program (the AppImage's path when it runs from one), or the launcher of the checkout it was
+    ;; built in
+    (let ((self (namestring (merge-pathnames "checkout/build/tuatara" directory)))
+          (launcher (namestring (merge-pathnames "checkout/tools/tuatara-tui.sh" directory))))
+      (dolist (file (list self launcher))
+        (put-file (ensure-directories-exist file) ""))
+      (false (tuatara.terminal::desktop-entries-refusal "/a/" (list self) :self self))
+      (false (tuatara.terminal::desktop-entries-refusal "/a/" (list launcher) :self self))
+      (false (tuatara.terminal::desktop-entries-refusal "/a/" (list "/bin/sh" "--light") :self "/bin/sh"))
+      (true (tuatara.terminal::desktop-entries-refusal "/a/" (list "/bin/sh") :self self))))
+  ;; every word of the Exec line quoted as it needs
+  (is string= "--dark" (tuatara.terminal::exec-argument "--dark" :plain t))
+  (is string= "\"a b\"" (tuatara.terminal::exec-argument "a b" :plain t)))
+
+(define-test (tools desktop-entries-program-named-from-root)
+  ;; the program an entry starts is named from the root, never relative to where the request was made; an
+  ;; AppImage named by the environment alone is not taken for this program
+  (with-test-directory (directory)
+    (let ((self (namestring (merge-pathnames "checkout/build/tuatara" directory))))
+      (put-file (ensure-directories-exist self) "")
+      (uiop:with-current-directory ((merge-pathnames "checkout/" directory))
+        (let ((why (tuatara.terminal::desktop-entries-refusal "/a/" (list "build/tuatara") :self self)))
+          (true (and why (search "not named from the root" why)) "~a" why)))
+      (let ((before (sb-posix:getenv "APPIMAGE")))
+        (sb-posix:setenv "APPIMAGE" "/bin/sh" 1)
+        (unwind-protect
+             (true (tuatara.terminal::desktop-entries-refusal "/a/" (list "/bin/sh") :self self)
+                   "an inherited APPIMAGE taken")
+          (if before (sb-posix:setenv "APPIMAGE" before 1) (sb-posix:unsetenv "APPIMAGE")))))))
+
+(define-test (tools autostart-generated)
+  ;; tuatara --generate-autostart writes the daemon's autostart entry and says where; never over a file
+  ;; there, a link neither; --daemon=NAME writes the named daemon's
+  (let* ((folder (namestring (uiop:xdg-config-home "autostart/")))
+         (path (concatenate 'string folder "tuatara-daemon.desktop"))
+         (named (concatenate 'string folder "tuatara-daemon-work.desktop")))
+    (true (search "/config/" folder) "the tests' own configuration folder")
+    (unwind-protect
+         (progn
+           (let ((out (with-output-to-string (*standard-output*)
+                        (is = 0 (tuatara.terminal:main '("--generate-autostart"))))))
+             (true (search (format nil "Wrote ~a" path) out)))
+           (let ((text (file-text path)))
+             (true (search (format nil "~%Exec=") text))
+             (true (search (format nil " --daemon~%") text))
+             (true (search (format nil "~%Name=Tuatara daemon~%") text))
+             (true (search (format nil "~%NoDisplay=true~%") text)))
+           (multiple-value-bind (valid said) (desktop-entry-valid-p path)
+             (true valid "~a" said))
+           (alexandria:write-string-into-file "mine" path :if-exists :supersede)
+           (let ((said (with-output-to-string (*error-output*)
+                         (is = 1 (tuatara.terminal:main '("--generate-autostart"))))))
+             (true (search "move it away" said)))
+           (is string= "mine" (file-text path) "a file there is left as it is")
+           (let ((out (with-output-to-string (*standard-output*)
+                        (is = 0 (tuatara.terminal:main '("--generate-autostart" "--daemon=work"))))))
+             (true (search named out)))
+           (let ((text (file-text named)))
+             (true (search (format nil " --daemon=work~%") text))
+             (true (search (format nil "~%Name=Tuatara daemon (work)~%") text)))
+           ;; a link where the entry goes is not written through
+           (delete-file named)
+           (let ((target (concatenate 'string folder "target")))
+             (tuatara.io:make-symbolic-link target named)
+             (is = 1 (tuatara.terminal:main '("--generate-autostart" "--daemon=work")))
+             (false (probe-file target) "nothing written through the link")))
+      (dolist (file (list path named))
+        (ignore-errors (tuatara.io:remove-file file)))))
+  ;; the program named as the PATH finds it when it is this one, else by its own path
+  (is string= "tuatara" (tuatara.terminal::autostart-program :self "/bin/sh" :found "/bin/sh"))
+  (is string= "/bin/sh" (tuatara.terminal::autostart-program :self "/bin/sh" :found "/bin/ls"))
+  (is string= "/bin/sh" (tuatara.terminal::autostart-program :self "/bin/sh" :found nil)))
+
+(define-test (tools remove-desktop-takes-both)
+  ;; tools/install-desktop.sh --remove takes away both application entries and the icon, and no program but
+  ;; the AppImage it put there
+  (with-test-directory (directory)
+    (let* ((home (merge-pathnames "home/" directory))
+           (applications (merge-pathnames ".local/share/applications/" home))
+           (bin (merge-pathnames ".local/bin/tuatara" home)))
+      (ensure-directories-exist applications)
+      (ensure-directories-exist bin)
+      (dolist (name '("tuatara.desktop" "tuatara-client.desktop" "other.desktop"))
+        (put-file (merge-pathnames name applications) "[Desktop Entry]"))
+      (put-file bin "#!/bin/sh")
+      (uiop:run-program (list "bash" (tools-script "install-desktop.sh") "--remove")
+                        :output nil :error-output nil
+                        :environment (list (format nil "HOME=~a" (uiop:native-namestring home))
+                                           (format nil "XDG_DATA_HOME=~a"
+                                                   (uiop:native-namestring (merge-pathnames ".local/share/" home)))
+                                           "PATH=/usr/bin:/bin"))
+      (false (probe-file (merge-pathnames "tuatara.desktop" applications)))
+      (false (probe-file (merge-pathnames "tuatara-client.desktop" applications)))
+      (true (probe-file (merge-pathnames "other.desktop" applications)))
+      (true (probe-file bin) "not an AppImage: left"))))
 
 (define-test (tools weekly-check-asked-first)
   ;; setting up the container starts no weekly network job unless asked, and
@@ -176,18 +353,178 @@ names_this_machine \"$1\" 2>/dev/null && echo yes || echo no" (tools-script "ins
              (let ((path (merge-pathnames name directory)))
                (ensure-directories-exist path)
                (with-open-file (o path :direction :output :if-exists :supersede) (write-string text o)))))
-      (file "syntax/grammars.tsv" (format nil "said	https://example.org/said	0	unknown~%unsaid	https://example.org/unsaid	0	unknown~%plain	https://example.org/plain	0	unknown"))
+      (file "syntax/grammars.tsv" (format nil "said	https://example.org/said	0	unknown~%unsaid	https://example.org/unsaid	0	unknown~%plain	https://example.org/plain	0	unknown~%handed	https://example.org/handed	0	unknown~%bare	https://example.org/bare	0	unknown"))
       (dolist (name '("said" "unsaid"))
         (file (format nil "build/grammar-sources/~a/COPYING" name)
               "GNU GENERAL PUBLIC LICENSE Version 3, 29 June 2007 ... either version 3 of the License, or (at your option) any later version."))
       (file "build/grammar-sources/said/package.json" "{\"license\": \"GPL-3.0-or-later\"}")
       (file "build/grammar-sources/unsaid/package.json" "{\"license\": \"GPL-3.0\"}")
       (file "build/grammar-sources/plain/LICENSE" "Permission is hereby granted, free of charge, to any person")
+      ;; a grammar taken over under the Affero GPL, the first author's
+      ;; licence kept below it in the same file
+      (file "build/grammar-sources/handed/LICENSE"
+            (format nil "GNU AFFERO GENERAL PUBLIC LICENSE~%Version 3, 19 November 2007~%...~%~
+                         Copyright (c) 2021 A. Kaikoura~%~%Permission to use, copy, modify, and/or distribute this software~%~
+                         for any purpose with or without fee is hereby granted, provided~%~
+                         that the above copyright notice and this permission notice~%appear in all copies.~%"))
+      (file "build/grammar-sources/handed/package.json" "{\"license\": \"AGPL-3.0-or-later\"}")
+      (file "build/grammar-sources/bare/LICENSE"
+            (format nil "Permission to use, copy, modify, and/or distribute this software for~%~
+                         any purpose with or without fee is hereby granted.~%~%THE SOFTWARE IS PROVIDED \"AS IS\" ..."))
       (uiop:run-program (list "python3" "-I" (tools-script "languages/licenses.py"))
                         :directory directory :output nil :error-output nil)
-      (is equal '("GPL-3.0-or-later" "unknown" "MIT")
+      (is equal '("GPL-3.0-or-later" "unknown" "MIT" "AGPL-3.0-or-later AND ISC" "0BSD")
           (mapcar (lambda (line) (fourth (uiop:split-string line :separator '(#\Tab))))
                   (uiop:read-file-lines (merge-pathnames "syntax/grammars.tsv" directory)))))))
+
+(defun licence-names-of (&rest arguments)
+  "The exit status of tools/licence-names.sh run with ARGUMENTS, and what it
+printed, the error output after the output."
+  (multiple-value-bind (out error status)
+      (uiop:run-program (list* "bash" (tools-script "licence-names.sh") arguments)
+                        :output :string :error-output :string :ignore-error-status t)
+    (values status (concatenate 'string out error))))
+
+(define-test (tools licence-names-read-from-the-text)
+  ;; each licence a file holds is named, two in one file both; a label agrees
+  ;; with the files only when it names what they hold, all of it, a GNU
+  ;; licence whatever it says of later versions; a LICENSES/ folder may hold
+  ;; more than the label names
+  (with-test-directory (directory)
+    (let ((handed (write-test-file directory "handed/LICENSE"
+                                   (format nil "GNU AFFERO GENERAL PUBLIC LICENSE~%Version 3, 19 November 2007~%...~%~
+                                                Copyright (c) 2021 A. Kaikoura~%~%Permission to use, copy, modify, and/or distribute this software~%~
+                                                for any purpose with or without fee is hereby granted, provided~%~
+                                                that the above copyright notice and this permission notice~%appear in all copies.~%")))
+          (bare (write-test-file directory "bare/LICENSE"
+                                 (format nil "Permission to use, copy, modify, and/or distribute this software for~%~
+                                              any purpose with or without fee is hereby granted.~%~%THE SOFTWARE IS PROVIDED \"AS IS\" ...")))
+          (gpl (write-test-file directory "gpl/COPYING"
+                                (format nil "                    GNU GENERAL PUBLIC LICENSE~%                       Version 3, 29 June 2007~%~
+                                             ... the GNU Affero General Public License ...")))
+          (mit (write-test-file directory "dual/LICENSE-MIT" "Permission is hereby granted, free of charge, to any person obtaining a copy"))
+          (apache (write-test-file directory "dual/LICENSE-APACHE"
+                                   (format nil "                              Apache License~%                        Version 2.0, January 2004~%")))
+          (named (write-test-file directory "named/LICENSE" (format nil "SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception~%")))
+          (reuse (write-test-file directory "reuse/LICENSES/CC0-1.0.txt" "Creative Commons Legal Code CC0 1.0 Universal"))
+          (mpl (write-test-file directory "reuse/LICENSE.txt" "Mozilla Public License Version 2.0"))
+          (none (write-test-file directory "none/LICENSE" "All rights reserved.")))
+      (flet ((names (&rest files)
+               (multiple-value-bind (status out) (apply #'licence-names-of (mapcar #'uiop:native-namestring files))
+                 (is = 0 status)
+                 (uiop:split-string (string-right-trim '(#\Newline) out) :separator '(#\Newline))))
+             (agrees (label &rest files)
+               (multiple-value-bind (status out) (apply #'licence-names-of "--agrees" label (mapcar #'uiop:native-namestring files))
+                 (values (zerop status) out))))
+        (is equal '("AGPL-3.0" "ISC") (names handed))
+        (is equal '("0BSD") (names bare))
+        (is equal '("GPL-3.0") (names gpl))
+        (is equal '("Apache-2.0" "LLVM-exception") (names named))
+        (false (agrees "0BSD" handed))
+        (multiple-value-bind (agreed out) (agrees "0BSD" handed)
+          (declare (ignore agreed))
+          (true (search "not in the label: AGPL-3.0 ISC" out) "~a" out)
+          (true (search "in no file: 0BSD" out) "~a" out))
+        (false (agrees "AGPL-3.0-or-later" handed))
+        (true (agrees "AGPL-3.0-or-later AND ISC" handed))
+        (false (agrees "ISC" bare))
+        (true (agrees "0BSD" bare))
+        (true (agrees "GPL-3.0-only" gpl))
+        (true (agrees "GPL-3.0-or-later" gpl))
+        (false (agrees "Apache-2.0" mit apache))
+        (true (agrees "MIT OR Apache-2.0" mit apache))
+        (false (agrees "(MIT OR Apache-2.0) AND W3C-20150513" mit apache))
+        (true (agrees "Apache-2.0 WITH LLVM-exception" named))
+        (true (agrees "MPL-2.0" mpl reuse))
+        (false (agrees "MPL-2.0 AND MIT" mpl reuse))
+        (false (agrees "MIT" none))
+        ;; a licence named by an identifier or a notice, without its text
+        (multiple-value-bind (status out) (licence-names-of "--untexted" (uiop:native-namestring named))
+          (is = 0 status)
+          (is string= (format nil "Apache-2.0~%LLVM-exception~%") out))
+        (let ((notice (write-test-file directory "notice/LICENSE.md"
+                                       (format nil "This program is free software: you can redistribute it and/or modify~%~
+                                                    it under the terms of the GNU General Public License as published by~%~
+                                                    the Free Software Foundation, either version 3 of the License, or~%~
+                                                    (at your option) any later version.~%"))))
+          (is equal '("GPL-3.0") (names notice))
+          (is string= (format nil "GPL-3.0~%") (nth-value 1 (licence-names-of "--untexted" (uiop:native-namestring notice))))
+          (is string= "" (nth-value 1 (licence-names-of "--untexted" (uiop:native-namestring notice) (uiop:native-namestring gpl)))))
+        (is string= "" (nth-value 1 (licence-names-of "--untexted" (uiop:native-namestring handed))))))))
+
+(defun grammar-origin (directory name licence)
+  "A git repository NAME under DIRECTORY with one commit, a LICENSE file of the
+text LICENCE: its address and its commit."
+  (let ((origin (merge-pathnames (format nil "~a/" name) directory)))
+    (write-test-file origin "LICENSE" licence)
+    (values (format nil "file://~a" (uiop:native-namestring origin))
+            (string-trim '(#\Newline)
+                         (bash-output "set -e; cd \"$1\"; git init -q
+git add LICENSE; git -c user.name=t -c user.email=t@example.invalid commit -q -m one
+git rev-parse HEAD" (uiop:native-namestring origin))))))
+
+(defun run-grammars-script (directory manifest)
+  "Run a copy of tools/grammars.sh in DIRECTORY with MANIFEST as its
+syntax/grammars.tsv: its exit status, and its output and error output."
+  (let ((tools (merge-pathnames "tools/" directory)))
+    (ensure-directories-exist tools)
+    (dolist (script '("grammars.sh" "grammar-build.sh" "inside.sh" "licence-names.sh"))
+      (uiop:copy-file (tools-script script) (merge-pathnames script tools)))
+    ;; what the script reads to tell whether it has anything to do
+    (dolist (file '("syntax/grammar-inputs.sha256" "syntax/syntax.c" "syntax/helper.c" "syntax/safe-ctype.h"
+                    "syntax/counted-memory.h" "syntax/patches/other.patch" "syntax/licenses/other.txt"))
+      (write-test-file directory file ""))
+    (write-test-file directory "syntax/grammars.tsv" manifest)
+    (multiple-value-bind (out error status)
+        (uiop:run-program (list "env" "TUATARA_CONTAINER=tuatara-none-such"
+                                "bash" (uiop:native-namestring (merge-pathnames "grammars.sh" tools)))
+                          :output :string :error-output :string :ignore-error-status t)
+      (values status (concatenate 'string out error)))))
+
+(define-test (tools grammars-stop-on-a-misnamed-licence)
+  ;; tools/grammars.sh compiles nothing of a grammar whose licence the manifest
+  ;; names otherwise than its licence files
+  (with-test-directory (directory)
+    (multiple-value-bind (url commit)
+        (grammar-origin directory "origin" (format nil "GNU AFFERO GENERAL PUBLIC LICENSE~%Version 3, 19 November 2007~%"))
+      (flet ((build (label)
+               (run-grammars-script directory (format nil "g	~a	~a	~a~%" url commit label))))
+        (multiple-value-bind (status out) (build "0BSD")
+          (is = 1 status)
+          (true (search "names the licence of g otherwise" out) "~a" out)
+          (true (search "g: the label says 0BSD, the licence files hold AGPL-3.0" out) "~a" out))
+        ;; named as its file names it, it goes on to be checked and compiled
+        (multiple-value-bind (status out) (build "AGPL-3.0-or-later")
+          (declare (ignore status))
+          (false (search "otherwise than its licence files" out) "~a" out)
+          (true (probe-file (merge-pathnames "build/grammars/licenses/g/LICENSE" directory)) "~a" out))
+        ;; a text of syntax/licenses/ for a grammar whose own files hold it stops it
+        (write-test-file directory "syntax/licenses/g.txt" (format nil "GNU AFFERO GENERAL PUBLIC LICENSE~%Version 3~%"))
+        (multiple-value-bind (status out) (build "AGPL-3.0-or-later")
+          (is = 1 status)
+          (true (search "has a text for g, whose own licence files hold" out) "~a" out))))))
+
+(define-test (tools grammars-carry-the-text-of-a-licence-only-named)
+  ;; a grammar whose licence file only names its licence has the text of
+  ;; syntax/licenses/NAME.txt carried beside it; without that text it stops
+  (with-test-directory (directory)
+    (multiple-value-bind (url commit)
+        (grammar-origin directory "origin" (format nil "SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception~%"))
+      (let ((manifest (format nil "w	~a	~a	Apache-2.0 WITH LLVM-exception~%" url commit)))
+        (multiple-value-bind (status out) (run-grammars-script directory manifest)
+          (is = 1 status)
+          (true (search "w: its files name Apache-2.0 LLVM-exception without the text" out) "~a" out)
+          (true (search "name a licence without its text" out) "~a" out))
+        (write-test-file directory "syntax/licenses/w.txt"
+                         (format nil "                                 Apache License~%                           Version 2.0, January 2004~%...~%~
+                                      ---- LLVM Exceptions to the Apache 2.0 License ----~%"))
+        (multiple-value-bind (status out) (run-grammars-script directory manifest)
+          (declare (ignore status))
+          (false (search "without its text" out) "~a" out)
+          (false (search "otherwise than its licence files" out) "~a" out)
+          (true (probe-file (merge-pathnames "build/grammars/licenses/w/LICENSE" directory)) "~a" out)
+          (true (search "Version 2.0, January 2004"
+                        (uiop:read-file-string (merge-pathnames "build/grammars/licenses/w/LICENSE-TEXT" directory)))))))))
 
 (define-test (tools language-generators-share-their-helpers)
   ;; the generators of tools/languages/ write Lisp strings one way, from common.py
@@ -201,3 +538,568 @@ names_this_machine \"$1\" 2>/dev/null && echo yes || echo no" (tools-script "ins
       (true (search "from common import" text) script)
       (false (search "def lisp_string" text) script)
       (false (search "HELIX = " text) script))))
+
+(defun archive-check-tree (directory)
+  "In DIRECTORY, a copy of the archive script with a list of two made-up
+libraries and a Quicklisp holding their archives; returns the script's path
+and the Quicklisp folder."
+  (let* ((tools (merge-pathnames "tools/" directory))
+         (quicklisp (merge-pathnames "ql/" directory))
+         (archives (merge-pathnames "dists/quicklisp/archives/" quicklisp)))
+    (ensure-directories-exist tools)
+    (ensure-directories-exist archives)
+    (uiop:copy-file (tools-script "lisp-archives.sh") (merge-pathnames "lisp-archives.sh" tools))
+    (flet ((archive (name text)
+             (with-open-file (o (merge-pathnames name archives) :direction :output :if-exists :supersede)
+               (write-string text o))))
+      (archive "one-1.tgz" "first")
+      (archive "two-1.tgz" "second")
+      (archive "stray-1.tgz" "not listed"))
+    (with-open-file (o (merge-pathnames "lisp-archives.sha256" tools) :direction :output :if-exists :supersede)
+      (format o "# made up~%")
+      (dolist (name '("one-1.tgz" "two-1.tgz"))
+        (write-string (string-right-trim '(#\Newline)
+                                         (uiop:run-program (list "bash" "-c" "cd \"$1\" && sha256sum \"$2\"" "_"
+                                                                 (uiop:native-namestring archives) name)
+                                                           :output :string))
+                      o)
+        (terpri o)))
+    (values (uiop:native-namestring (merge-pathnames "lisp-archives.sh" tools))
+            (string-right-trim "/" (uiop:native-namestring quicklisp)))))
+
+(define-test (tools lisp-archive-changed-is-refused)
+  ;; the archives are as the list has them or the check stops, saying which
+  (with-test-directory (directory)
+    (multiple-value-bind (script quicklisp) (archive-check-tree directory)
+      (flet ((run (&rest arguments)
+               (multiple-value-bind (out error code)
+                   (uiop:run-program (list* "bash" script arguments) :output :string :error-output :string
+                                                                    :ignore-error-status t)
+                 (declare (ignore out))
+                 (values code error))))
+        (is = 0 (run "check" quicklisp))
+        (with-open-file (o (format nil "~a/dists/quicklisp/archives/two-1.tgz" quicklisp)
+                           :direction :output :if-exists :append)
+          (write-string "changed" o))
+        (multiple-value-bind (code error) (run "check" quicklisp)
+          (is = 1 code)
+          (true (search "two-1.tgz is not the archive" error))
+          (false (search "one-1.tgz" error)))
+        (delete-file (format nil "~a/dists/quicklisp/archives/one-1.tgz" quicklisp))
+        (multiple-value-bind (code error) (run "check" quicklisp)
+          (is = 1 code)
+          (true (search "one-1.tgz is not in" error)))
+        (is = 1 (run "no-such-command"))))))
+
+(define-test (tools lisp-archives-prepared-for-a-release)
+  ;; a copy a release is compiled from keeps the listed archives only, nothing
+  ;; unpacked or of local-projects, and downloads nothing more; a changed
+  ;; archive stops it before anything is removed
+  (with-test-directory (directory)
+    (multiple-value-bind (script quicklisp) (archive-check-tree directory)
+      (flet ((path (name) (format nil "~a/~a" quicklisp name))
+             (run (&rest arguments)
+               (nth-value 2 (uiop:run-program (list* "bash" script arguments) :output nil :error-output nil
+                                                                              :ignore-error-status t))))
+        (ensure-directories-exist (path "dists/quicklisp/software/one-1/"))
+        (ensure-directories-exist (path "local-projects/shadow/"))
+        (with-open-file (o (path "dists/quicklisp/archives/one-1.tgz") :direction :output :if-exists :append)
+          (write-string "changed" o))
+        (is = 1 (run "prepare" quicklisp))
+        (true (probe-file (path "dists/quicklisp/software/one-1/")))
+        (true (probe-file (path "dists/quicklisp/archives/stray-1.tgz")))
+        (with-open-file (o (path "dists/quicklisp/archives/one-1.tgz") :direction :output :if-exists :supersede)
+          (write-string "first" o))
+        (is = 0 (run "prepare" quicklisp))
+        (false (probe-file (path "dists/quicklisp/software/one-1/")))
+        (false (probe-file (path "local-projects/shadow/")))
+        (false (probe-file (path "dists/quicklisp/archives/stray-1.tgz")))
+        (true (probe-file (path "dists/quicklisp/archives/two-1.tgz")))
+        (true (search "127.0.0.1" (uiop:read-file-string (path "config/proxy-url.txt"))))))))
+
+(define-test (tools builds-check-the-archives-first)
+  ;; every path that compiles the libraries checks their archives before it does
+  (let ((release (uiop:read-file-string (tools-script "release.sh")))
+        (image (uiop:read-file-string (tools-script "build-image.sh")))
+        (setup (uiop:read-file-string (tools-script "ci-setup.sh"))))
+    (let ((prepare (search "tools/lisp-archives.sh prepare \"$work/quicklisp\"" release)))
+      (true prepare)
+      (true (< (search "cp -a \"$quicklisp\" \"$work/quicklisp\"" release) prepare
+               (search "\"$work/src/tools/build-image.sh\"" release))))
+    (true (search "tools/lisp-archives.sh tools/lisp-archives.sha256" release))
+    (true (< (search "tools/lisp-archives.sh check" image) (search "build-image.lisp" image :from-end t)))
+    (dolist (word '("index" "fetch" "check" "lock"))
+      (true (search (format nil "tools/lisp-archives.sh\" ~a \"$ql\"" word) setup) word))))
+
+(defun manifest-rows ()
+  "The rows of syntax/grammars.tsv, each a list of its fields."
+  (loop for line in (uiop:read-file-lines (asdf:system-relative-pathname :tuatara "syntax/grammars.tsv"))
+        unless (or (zerop (length line)) (char= (char line 0) #\#))
+          collect (uiop:split-string line :separator '(#\Tab))))
+
+(define-test (tools grammars-fetched-from-where-they-are)
+  ;; no grammar is fetched by an address its repository has left (an owner
+  ;; renamed, a repository moved to another owner: the old name may be taken
+  ;; by anyone), nor pinned to a commit on no branch or tag of its repository
+  (let ((rows (manifest-rows)))
+    (dolist (old '("kepet19/tree-sitter-ldif" "jbellerb/tree-sitter-dhall" "markdoc-extra/tree-sitter-markdoc"
+                   "wgsl-tooling-wg/tree-sitter-wesl" "the-mikedavis/tree-sitter-diff" "sogaiu/tree-sitter-clojure"
+                   "ckafi/tree-sitter-elvish" "theHamsta/tree-sitter-glsl" "santhoshtr/tree-sitter-wikitext"
+                   "amaanq/tree-sitter-kdl" "eonpatapon/tree-sitter-cue" "erasin/tree-sitter-po"
+                   "MaeBrooks/tree-sitter-gren" "rhizoome/tree-sitter-ink" "jzelinskie/tree-sitter-spicedb"
+                   "Philipp-M/tree-sitter-yuck"
+                   ;; copies of a grammar kept on elsewhere: taken from where it is kept
+                   "ikatyang/tree-sitter-yaml" "Giorbo/tree-sitter-sml"
+                   "mtoohey31/tree-sitter-gitattributes" "numtide/tree-sitter-nix"
+                   "RenjiSann/tree-sitter-xml" "KMikeeU/tree-sitter-dtd"
+                   "ikatyang/tree-sitter-vue"
+                   "themixednuts/tree-sitter-htmlx"
+                   "polychromatist/tree-sitter-luau"
+                   "sdoerner/tree-sitter-proto"
+                   "xenogenics/tree-sitter-slisp"
+                   "varpeti/tree-sitter-jinja2"
+                   ;; its pin on a tag alone, the history rewritten: the grammar Helix takes in its place
+                   "rhizoome/tree-sitter-ink2"))
+      (false (find (format nil "https://github.com/~a" old) rows :key #'second :test #'string-equal)
+             "~a has moved" old))
+    ;; archived, their development carried on elsewhere
+    (dolist (old '("https://github.com/poliorcetics/tree-sitter-just" "https://github.com/inko-lang/tree-sitter-inko"
+                   "https://codeberg.org/maribu/tree-sitter-gnuplot" "https://codeberg.org/maribu/tree-sitter-proverif"
+                   "https://github.com/tingerrr/tree-sitter-doxyfile/"))
+      (false (find old rows :key #'second :test #'string-equal) "~a is archived" old))
+    (dolist (orphan '("3d7c53b8038f9ebbb57cd2e61296180aa5c1cf64" "29f9c6707ce9dfc2fc915d175ec720b207f179f3"
+                      "d98426109258b266e1e92358c5f11716d2e8f638"))
+      (false (find orphan rows :key #'third :test #'string=) "~a is on no branch or tag" orphan))))
+
+(defun grammar-build-output (script directory)
+  "What bash prints running SCRIPT in DIRECTORY with tools/grammar-build.sh sourced, standard error with it."
+  (uiop:run-program (list "bash" "-c" (format nil ". '~a'~%~a" (tools-script "grammar-build.sh") script))
+                    :directory directory :output :string :error-output :output :ignore-error-status t))
+
+(defun write-test-file (directory name text)
+  "Write TEXT to NAME under DIRECTORY, its folders made."
+  (let ((path (merge-pathnames name directory)))
+    (ensure-directories-exist path)
+    (with-open-file (o path :direction :output :if-exists :supersede) (write-string text o))
+    path))
+
+(define-test (tools grammar-inputs-are-what-is-compiled)
+  ;; what compiling a grammar reads: its parser and scanner and the headers
+  ;; they include from its repository (a relative path too), not the
+  ;; system's; a header changed, or one added where an include finds it,
+  ;; changes the hash
+  (with-test-directory (directory)
+    (write-test-file directory "src/parser.c" (format nil "#include \"tree_sitter/parser.h\"~%"))
+    (write-test-file directory "src/scanner.c" (format nil "#include <stdio.h>~%#include \"../common/scan.h\"~%"))
+    (write-test-file directory "src/tree_sitter/parser.h" (format nil "int a;~%"))
+    (write-test-file directory "common/scan.h" (format nil "int b;~%"))
+    (write-test-file directory "README" "not compiled")
+    (is equal '("common/scan.h" "src/parser.c" "src/scanner.c" "src/tree_sitter/parser.h")
+        (uiop:split-string (string-trim '(#\Newline) (grammar-build-output "grammar_inputs \"$PWD\" \"$PWD/src\"" directory))
+                           :separator '(#\Newline)))
+    (flet ((hash () (string-trim '(#\Newline) (grammar-build-output "grammar_inputs_hash \"$PWD\" \"$PWD/src\"" directory))))
+      (let ((first (hash)))
+        (is = 64 (length first))
+        (write-test-file directory "README" "still not compiled")
+        (is string= first (hash) "a file not compiled leaves it")
+        (write-test-file directory "common/scan.h" (format nil "int c;~%"))
+        (isnt string= first (hash) "a header changed changes it")))))
+
+(define-test (tools grammar-checkout-fetched-once-and-checked)
+  ;; a grammar pinned by a tag object is fetched once, not again on each build;
+  ;; a checkout changed, or with a file added, is refused, and so is one whose
+  ;; inputs hash otherwise than recorded
+  (with-test-directory (directory)
+    (let* ((repo (merge-pathnames "repo/" directory))
+           (out (grammar-build-output
+                 (format nil "set -e
+git init -q '~a'; cd '~:*~a'
+git -c user.name=t -c user.email=t@example.invalid commit -q --allow-empty -m one
+git -c user.name=t -c user.email=t@example.invalid tag -a -m v1 v1
+tag=$(git rev-parse v1)
+cd '~a'
+fetch_grammar \"$PWD/g\" 'file://~a' \"$tag\"
+touch g/.git/fetched-once
+fetch_grammar \"$PWD/g\" 'file://~a' \"$tag\"
+[ -f g/.git/fetched-once ] && echo kept
+echo 'x  g' > recorded
+grammar_checked g \"$PWD/g\" \"$PWD/recorded\" x && echo clean
+touch g/added
+grammar_checked g \"$PWD/g\" \"$PWD/recorded\" x || echo refused-added
+rm g/added
+grammar_checked g \"$PWD/g\" \"$PWD/recorded\" y || echo refused-hash"
+                         (uiop:native-namestring repo) (uiop:native-namestring directory)
+                         (uiop:native-namestring repo) (uiop:native-namestring repo))
+                 directory)))
+      (true (search "kept" out) "~a" out)
+      (true (search "clean" out))
+      (true (search "refused-added" out))
+      (true (search "refused-hash" out)))))
+
+(define-test (tools grammar-source-check-stops-on-a-pin-off-branches)
+  ;; the check before a bump stops on a pin on no branch or tag of its
+  ;; repository, and passes one on a branch
+  (with-test-directory (directory)
+    (let ((repo (uiop:native-namestring (merge-pathnames "repo/" directory)))
+          (tools (merge-pathnames "tools/" directory)))
+      (ensure-directories-exist tools)
+      (uiop:copy-file (tools-script "check-grammar-sources.sh") (merge-pathnames "check-grammar-sources.sh" tools))
+      (uiop:copy-file (tools-script "grammar-build.sh") (merge-pathnames "grammar-build.sh" tools))
+      (let ((commits (uiop:split-string
+                      (string-trim '(#\Newline)
+                                   (bash-output (format nil "set -e
+git init -q '~a'; cd '~:*~a'
+c() { git -c user.name=t -c user.email=t@example.invalid commit -q --allow-empty -m \"$1\"; }
+c one; git rev-parse HEAD
+git checkout -q -b gone; c lost; git rev-parse HEAD
+git checkout -q main; git checkout -q -b tagged; c kept; git rev-parse HEAD; git tag kept
+git checkout -q main; git branch -q -D gone tagged" repo)))
+                      :separator '(#\Newline))))
+        (flet ((check (commit)
+                 (write-test-file directory "syntax/grammars.tsv" (format nil "g	file://~a	~a	MIT~%" repo commit))
+                 (multiple-value-bind (out error status)
+                     (uiop:run-program (list "bash" (uiop:native-namestring (merge-pathnames "check-grammar-sources.sh" tools)))
+                                       :output :string :error-output nil :ignore-error-status t)
+                   (declare (ignore error))
+                   (values status out))))
+          (multiple-value-bind (status out) (check (first commits))
+            (is = 0 status "~a" out))
+          (multiple-value-bind (status out) (check (second commits))
+            (is = 1 status)
+            (true (search "on no branch or tag" out)))
+          ;; on a tag alone: watched, not stopped on
+          (multiple-value-bind (status out) (check (third commits))
+            (is = 0 status "~a" out)
+            (true (search "only on a tag" out)))
+          ;; a history that cannot be fetched stops it, whatever was fetched before
+          (setf repo (uiop:native-namestring (merge-pathnames "moved-away/" directory)))
+          (multiple-value-bind (status out) (check (first commits))
+            (is = 1 status)
+            (true (search "could not be fetched" out))))))))
+
+(define-test (tools grammar-source-check-asks-tangled-who-keeps-it)
+  ;; a grammar on tangled.org is named by its owner's did:plc: DID, and the
+  ;; check asks the owner's records where the repository is: one declared by
+  ;; another owner, one gone, an owner named by a domain (a handle, a
+  ;; did:web:), git sent to another server than the records name, or answers
+  ;; that cannot be had, stop it; the owner's own passes, and a change to a
+  ;; DID after the day of the grammar's review is to be watched
+  (with-test-directory (directory)
+    (let* ((repo (uiop:native-namestring (merge-pathnames "repo/" directory)))
+           (tools (merge-pathnames "tools/" directory))
+           (bin (merge-pathnames "bin/" directory))
+           (answers (merge-pathnames "answers/" directory))
+           (url "https://tangled.org/did:plc:owner/g")
+           (commit (string-trim '(#\Newline)
+                                (bash-output (format nil "set -e
+git init -q '~a'; cd '~:*~a'
+git -c user.name=t -c user.email=t@example.invalid commit -q --allow-empty -m one; git rev-parse HEAD" repo)))))
+      (ensure-directories-exist tools)
+      (ensure-directories-exist answers)
+      (dolist (script '("check-grammar-sources.sh" "grammar-build.sh"))
+        (uiop:copy-file (tools-script script) (merge-pathnames script tools)))
+      (write-test-file directory "syntax/grammar-reviews.tsv" (format nil "g	2026-10-01~%"))
+      ;; curl answers from answers/, a file named after the address asked, and
+      ;; fails as with no network for any other
+      (write-test-file bin "curl" (format nil "#!/bin/bash
+for word; do case \"$word\" in http*) url=\"$word\" ;; esac; done
+file='~a'\"$(printf %s \"$url\" | tr -c 'A-Za-z0-9' _)\"
+[ -f \"$file\" ] || exit 6
+cat \"$file\"~%" (uiop:native-namestring answers)))
+      (bash-output "chmod +x \"$1\"" (uiop:native-namestring (merge-pathnames "curl" bin)))
+      (flet ((answer (address text)
+               (write-test-file answers (map 'string (lambda (c) (if (alphanumericp c) c #\_)) address) text))
+             (check (address)
+               (write-test-file directory "syntax/grammars.tsv" (format nil "g	~a	~a	MIT~%" address commit))
+               (multiple-value-bind (out error status)
+                   (uiop:run-program (list* "env" (format nil "PATH=~a:~a" (uiop:native-namestring bin) (uiop:getenv "PATH"))
+                                            "GIT_CONFIG_COUNT=3"
+                                            (append
+                                             (loop for from in (list url "https://tangled.org/owner.example/g"
+                                                                     "https://tangled.org/did:web:owner.example/g")
+                                                   for i from 0
+                                                   collect (format nil "GIT_CONFIG_KEY_~d=url.file://~a.insteadOf" i repo)
+                                                   collect (format nil "GIT_CONFIG_VALUE_~d=~a" i from))
+                                             (list "bash" (uiop:native-namestring (merge-pathnames "check-grammar-sources.sh" tools)))))
+                                     :output :string :error-output nil :ignore-error-status t)
+                 (declare (ignore error))
+                 (values status out))))
+        (answer "https://plc.directory/did:plc:owner"
+                "{\"id\":\"did:plc:owner\",\"service\":[{\"id\":\"#atproto_pds\",\"serviceEndpoint\":\"https://pds.example\"}]}")
+        (answer "https://plc.directory/did:plc:repo"
+                "{\"id\":\"did:plc:repo\",\"service\":[{\"id\":\"#atproto_pds\",\"serviceEndpoint\":\"https://knot.example\"}]}")
+        (answer "https://plc.directory/did:plc:owner/log/audit" "[{\"createdAt\":\"2026-09-01T10:00:00Z\"}]")
+        (answer "https://plc.directory/did:plc:repo/log/audit" "[{\"createdAt\":\"2026-09-02T10:00:00Z\"}]")
+        (answer "https://pds.example/xrpc/com.atproto.repo.getRecord?repo=did:plc:owner&collection=sh.tangled.repo&rkey=g"
+                "{\"value\":{\"knot\":\"knot.example\",\"repoDid\":\"did:plc:repo\"}}")
+        (answer "https://tangled.org/did:plc:owner/g/info/refs?service=git-upload-pack"
+                "https://knot.example/did:plc:repo/info/refs?service=git-upload-pack")
+        (flet ((declared (owner)
+                 (answer "https://knot.example/xrpc/com.atproto.repo.getRecord?repo=did:plc:repo&collection=org.tangled.repo.manifest&rkey=self"
+                         (format nil "{\"value\":{\"declaration\":{\"name\":\"g\",\"owner\":\"~a\"}}}" owner))))
+          (declared "did:plc:owner")
+          (multiple-value-bind (status out) (check url)
+            (is = 0 status "~a" out)
+            (false (search "WATCH" out) "~a" out))
+          ;; the repository's DID changed after the review: watched
+          (answer "https://plc.directory/did:plc:repo/log/audit"
+                  "[{\"createdAt\":\"2026-09-02T10:00:00Z\"},{\"createdAt\":\"2026-10-20T10:00:00Z\"}]")
+          (multiple-value-bind (status out) (check url)
+            (is = 0 status "~a" out)
+            (true (search "did:plc:repo was changed on 2026-10-20" out) "~a" out))
+          ;; git sent to another server than the records name
+          (answer "https://tangled.org/did:plc:owner/g/info/refs?service=git-upload-pack"
+                  "https://elsewhere.example/did:plc:repo/info/refs?service=git-upload-pack")
+          (multiple-value-bind (status out) (check url)
+            (is = 1 status)
+            (true (search "sends git to https://elsewhere.example" out) "~a" out))
+          (answer "https://tangled.org/did:plc:owner/g/info/refs?service=git-upload-pack"
+                  "https://knot.example/did:plc:repo/info/refs?service=git-upload-pack")
+          ;; declared by another owner: moved
+          (declared "did:plc:other")
+          (multiple-value-bind (status out) (check url)
+            (is = 1 status)
+            (true (search "is now did:plc:other/g" out) "~a" out)))
+        ;; an owner named by a domain, which can change hands
+        (dolist (owner '("owner.example" "did:web:owner.example"))
+          (multiple-value-bind (status out) (check (format nil "https://tangled.org/~a/g" owner))
+            (is = 1 status)
+            (true (search (format nil "~a names a domain" owner) out) "~a" out)))
+        ;; no record keyed g, and the owner's records cannot be listed
+        (answer "https://pds.example/xrpc/com.atproto.repo.getRecord?repo=did:plc:owner&collection=sh.tangled.repo&rkey=g"
+                "{\"error\":\"RecordNotFound\",\"message\":\"Could not locate record\"}")
+        (multiple-value-bind (status out) (check url)
+          (is = 1 status)
+          (true (search "no record of did:plc:owner's is keyed g" out) "~a" out))
+        ;; none of them named g either: gone
+        (answer "https://pds.example/xrpc/com.atproto.repo.listRecords?repo=did:plc:owner&collection=sh.tangled.repo&limit=100"
+                "{\"records\":[{\"value\":{\"name\":\"h\",\"knot\":\"knot.example\"}}]}")
+        (multiple-value-bind (status out) (check url)
+          (is = 1 status)
+          (true (search "is gone" out) "~a" out))
+        ;; a record named g, kept under another key, is the repository's
+        (answer "https://pds.example/xrpc/com.atproto.repo.listRecords?repo=did:plc:owner&collection=sh.tangled.repo&limit=100"
+                "{\"records\":[{\"value\":{\"name\":\"g\",\"knot\":\"knot.example\",\"repoDid\":\"did:plc:repo\"}}]}")
+        (answer "https://knot.example/xrpc/com.atproto.repo.getRecord?repo=did:plc:repo&collection=org.tangled.repo.manifest&rkey=self"
+                "{\"value\":{\"declaration\":{\"name\":\"g\",\"owner\":\"did:plc:owner\"}}}")
+        (multiple-value-bind (status out) (check url)
+          (is = 0 status "~a" out))
+        ;; a DID document for another DID than the one asked about
+        (answer "https://plc.directory/did:plc:owner"
+                "{\"id\":\"did:plc:someone\",\"service\":[{\"id\":\"#atproto_pds\",\"serviceEndpoint\":\"https://pds.example\"}]}")
+        (multiple-value-bind (status out) (check url)
+          (is = 1 status)
+          (true (search "cannot be told" out) "~a" out))
+        ;; no answer from the directory of DIDs
+        (uiop:delete-file-if-exists (merge-pathnames "https___plc_directory_did_plc_owner" answers))
+        (multiple-value-bind (status out) (check url)
+          (is = 1 status)
+          (true (search "cannot be told" out) "~a" out))))))
+
+(define-test (tools archived-grammars-left-out)
+  ;; a grammar whose repository is archived, with no source kept up in its
+  ;; place, is left out; the mode of its files stays, with no language
+  (let ((rows (manifest-rows)))
+    (loop for (grammar mode) in '(("rust-format-args" nil) ("djot" tuatara.defaults::djot-mode)
+                                  ("cpon" tuatara.defaults::cpon-mode) ("move" tuatara.defaults::move-mode)
+                                  ("jinja" tuatara.defaults::jinja2-mode)
+                                  ("cylc" tuatara.defaults::cylc-mode))
+          do (false (find grammar rows :key #'first :test #'string=) "~a is left out" grammar)
+             (false (find grammar tuatara.defaults::*languages* :key #'tuatara.defaults::language-grammar :test #'string=))
+             (when mode
+               (true (tuatara.modes:find-mode mode) "~(~a~) stays" mode)
+               (false (tuatara.defaults::mode-language (make-instance mode)))))))
+
+(define-test (tools grammar-js-cannot-reach-git)
+  ;; the program generating a parser runs a grammar's grammar.js: whatever it
+  ;; writes to a .git (a file monitor, a hook git would run later) never
+  ;; reaches the checkout's, and only the parser comes back
+  (with-test-directory (directory)
+    (let* ((repo (uiop:native-namestring (merge-pathnames "g/" directory)))
+           (cli (uiop:native-namestring (merge-pathnames "fake-tree-sitter" directory))))
+      (write-test-file directory "fake-tree-sitter"
+                       (format nil "#!/bin/bash~%mkdir -p .git src~%printf '[core]\\n\\tfsmonitor = touch /tmp/never\\n' >> .git/config~%echo 'int parser;' > src/parser.c~%"))
+      (sb-posix:chmod cli #o755)
+      (let ((out (grammar-build-output
+                  (format nil "set -e
+git init -q '~a'; cd '~:*~a'; echo 'module.exports = {}' > grammar.js; mkdir -p src
+before=$(sha256sum .git/config)
+generate_parser '~:*~a' '~a'
+[ \"$before\" = \"$(sha256sum .git/config)\" ] && echo git-untouched
+grep -q 'int parser' src/parser.c && echo parser-back" repo cli)
+                  directory)))
+        (true (search "git-untouched" out) "~a" out)
+        (true (search "parser-back" out) "~a" out)))))
+
+(define-test (tools grammar-hashes-recorded-only-as-named)
+  ;; recording what grammars compile asks which: none named records nothing,
+  ;; and a name not in the manifest stops it before anything is written
+  (flet ((record (&rest arguments)
+           (multiple-value-bind (out error status)
+               (uiop:run-program (list* "bash" (tools-script "grammars.sh") "--record" arguments)
+                                 :output :string :error-output :string :ignore-error-status t)
+             (declare (ignore out))
+             (values status error))))
+    (multiple-value-bind (status error) (record)
+      (is = 1 status)
+      (true (search "--all" error)))
+    (multiple-value-bind (status error) (record "rust" "no-such-grammar")
+      (is = 1 status)
+      (true (search "no grammar called no-such-grammar" error)))))
+
+(define-test (tools fuzzed-grammars-shut-in)
+  ;; what fuzzing runs of a grammar's code reads its sources and writes only
+  ;; its scratch folder, with no environment of the caller's
+  (with-test-directory (directory)
+    (let ((out (grammar-build-output
+                (format nil "mkdir -p '~a/sources' '~:*~a/scratch'
+SECRET=caller run_shut_in '~:*~a/sources' '~:*~a/scratch' bash -c 'touch ../sources/x 2>/dev/null && echo wrote-sources
+touch y && echo wrote-scratch; echo \"secret=${SECRET:-none}\"'"
+                        (string-right-trim "/" (uiop:native-namestring directory)))
+                directory)))
+      (false (search "wrote-sources" out) "~a" out)
+      (true (search "wrote-scratch" out) "~a" out)
+      (true (search "secret=none" out) "~a" out))))
+
+(define-test (tools generated-parser-taken-through-no-link)
+  ;; what generating a parser leaves in the copy is taken back only as plain
+  ;; files within it: a link the program made, to a folder or a file of the
+  ;; host, brings nothing back
+  (with-test-directory (directory)
+    (let* ((repo (uiop:native-namestring (merge-pathnames "g/" directory)))
+           (host (uiop:native-namestring (merge-pathnames "host/" directory)))
+           (cli (uiop:native-namestring (merge-pathnames "fake-tree-sitter" directory))))
+      (write-test-file directory "host/parser.c" "int host_secret;")
+      (write-test-file directory "fake-tree-sitter"
+                       (format nil "#!/bin/bash~%rm -rf src~%ln -s '~a' src~%" (string-right-trim "/" host)))
+      (sb-posix:chmod cli #o755)
+      (let ((out (grammar-build-output
+                  (format nil "git init -q '~a'; cd '~:*~a'; mkdir -p src
+( generate_parser '~:*~a' '~a' ) 2>/dev/null
+grep -qs host_secret src/parser.c && echo took-host || echo took-nothing" repo cli)
+                  directory)))
+        (true (search "took-nothing" out) "~a" out)))))
+
+(define-test (tools bundled-libraries-recorded)
+  ;; each library copied with its package, version and hash and the package's
+  ;; copyright file; dpkg knows a file under /lib where its real path is under
+  ;; /usr/lib; a library of no package, or a package without a copyright file,
+  ;; stops it
+  (with-test-directory (directory)
+    (flet ((script (name text)
+             (sb-posix:chmod (uiop:native-namestring (write-test-file directory name text)) #o755)))
+      (script "bin/dpkg"
+              (format nil "#!/bin/sh~%for file in \"$@\"; do [ \"$file\" = /lib/libfoo.so.1.0 ] && echo \"libfoo1:amd64: $file\" && exit 0; done~%exit 1~%"))
+      (script "bin/dpkg-query" (format nil "#!/bin/sh~%printf 1.2-3~%"))
+      (write-test-file directory "usr/lib/libfoo.so.1.0" "foo")
+      (write-test-file directory "usr/lib/libbar.so.2" "bar")
+      (write-test-file directory "docs/libfoo1/copyright" "License: LGPL-2.1+")
+      (uiop:run-program (list "ln" "-s" "libfoo.so.1.0" (uiop:native-namestring (merge-pathnames "usr/lib/libfoo.so.1" directory))))
+      (flet ((run (library)
+               (multiple-value-bind (out error status)
+                   (uiop:run-program
+                    (list "bash" (tools-script "bundle-libraries.sh") (uiop:native-namestring (merge-pathnames "out/" directory))
+                          (uiop:native-namestring (merge-pathnames library directory)))
+                    :output :string :error-output :string :ignore-error-status t
+                    :environment (list (format nil "PATH=~a:/usr/bin:/bin" (uiop:native-namestring (merge-pathnames "bin/" directory)))
+                                       (format nil "DOC_DIR=~a" (uiop:native-namestring (merge-pathnames "docs/" directory)))
+                                       (format nil "USR_ROOT=~a" (string-right-trim "/" (uiop:native-namestring (merge-pathnames "usr/" directory))))))
+                 (declare (ignore out))
+                 (values status error))))
+        (is = 0 (run "usr/lib/libfoo.so.1"))
+        (is equal (list (format nil "libfoo.so.1~Alibfoo1~A1.2-3" #\Tab #\Tab))
+            (mapcar (lambda (line) (subseq line 0 (position #\Tab line :from-end t)))
+                    (uiop:read-file-lines (merge-pathnames "out/lib.tsv" directory))))
+        (is = 64 (length (subseq (first (uiop:read-file-lines (merge-pathnames "out/lib.tsv" directory)))
+                                 (1+ (position #\Tab (first (uiop:read-file-lines (merge-pathnames "out/lib.tsv" directory))) :from-end t)))))
+        (true (probe-file (merge-pathnames "out/copyright/libfoo1.copyright" directory)))
+        (true (probe-file (merge-pathnames "out/lib/libfoo.so.1" directory)))
+        (multiple-value-bind (status error) (run "usr/lib/libbar.so.2")
+          (isnt = 0 status)
+          (true (search "belongs to no package" error)))
+        (delete-file (merge-pathnames "docs/libfoo1/copyright" directory))
+        (multiple-value-bind (status error) (run "usr/lib/libfoo.so.1")
+          (isnt = 0 status)
+          (true (search "has no copyright file" error)))))))
+
+(define-test (tools library-sources-fetched)
+  ;; one source package for the libraries of each package, at the version
+  ;; bundled, its files checked against its .dsc, a folder no longer wanted
+  ;; removed; a version not the one bundled, or a file that is not the one the
+  ;; .dsc names, stops it
+  (with-test-directory (directory)
+    (flet ((script (name text)
+             (sb-posix:chmod (uiop:native-namestring (write-test-file directory name text)) #o755))
+           (row (&rest fields) (format nil "~{~a~}~%" (rest (loop for field in fields collect #\Tab collect field)))))
+      (script "bin/dpkg-query" (format nil "#!/bin/sh~%printf '1.2-3\\tfoo\\t1:1.0-1'~%"))
+      (script "bin/apt-get"
+              (format nil "#!/bin/sh
+case \"$*\" in *\" foo=1:1.0-1\"*) ;; *) exit 1 ;; esac
+printf orig > foo_1.0.orig.tar.xz
+sum=$(printf orig | sha256sum | cut -c1-64)
+printf 'Source: foo\\nChecksums-Sha256:\\n %s 4 foo_1.0.orig.tar.xz\\nFiles:\\n x 4 foo_1.0.orig.tar.xz\\n' \"$sum\" > foo_1.0-1.dsc
+[ -z \"$TAMPER\" ] || printf other > foo_1.0.orig.tar.xz~%"))
+      (write-test-file directory "docs/libfoo1/copyright"
+                       (format nil "Format: x~%License: MIT~%~%License: LGPL-2.1+~%"))
+      (write-test-file directory "lib.tsv" (concatenate 'string (row "libfoo.so.1" "libfoo1" "1.2-3" "a")
+                                                        (row "libfoo-extra.so.1" "libfoo1" "1.2-3" "b")))
+      (write-test-file directory "out/gone/gone_1.dsc" "")
+      (write-test-file directory "out/foo/foo_0.9.orig.tar.xz" "old")
+      (flet ((run (&rest environment)
+               (multiple-value-bind (out error status)
+                   (uiop:run-program
+                    (list "bash" (tools-script "library-sources.sh") (uiop:native-namestring (merge-pathnames "out/" directory))
+                          (uiop:native-namestring (merge-pathnames "lib.tsv" directory)))
+                    :output :string :error-output :string :ignore-error-status t
+                    :environment (list* (format nil "PATH=~a:/usr/bin:/bin" (uiop:native-namestring (merge-pathnames "bin/" directory)))
+                                        (format nil "DOC_DIR=~a" (uiop:native-namestring (merge-pathnames "docs/" directory)))
+                                        environment))
+                 (declare (ignore out))
+                 (values status error))))
+        (is = 0 (run))
+        (is equal '("foo_1.0-1.dsc" "foo_1.0.orig.tar.xz")
+            (sort (mapcar #'file-namestring (directory (merge-pathnames "out/foo/*.*" directory))) #'string<))
+        (false (probe-file (merge-pathnames "out/gone/" directory)))
+        (let ((readme (uiop:read-file-string (merge-pathnames "out/README" directory))))
+          (true (search (row "libfoo.so.1" "libfoo1" "foo" "1:1.0-1" "LGPL-2.1+, MIT") readme))
+          (true (search (row "libfoo-extra.so.1" "libfoo1" "foo" "1:1.0-1" "LGPL-2.1+, MIT") readme)))
+        (multiple-value-bind (status error) (run "TAMPER=1")
+          (isnt = 0 status)
+          (true (search "differs from its .dsc" error)))
+        (write-test-file directory "lib.tsv" (row "libfoo.so.1" "libfoo1" "1.2-4" "a"))
+        (multiple-value-bind (status error) (run)
+          (isnt = 0 status)
+          (true (search "not 1.2-4 as bundled" error)))))))
+
+(define-test (tools library-sources-released)
+  ;; the AppImage's library sources are a release file: named in its manifest,
+  ;; attached to the draft and in SHA256SUMS
+  (let ((appimage (uiop:read-file-string (tools-script "appimage.sh")))
+        (workflow (uiop:read-file-string (asdf:system-relative-pathname :tuatara ".github/workflows/release.yml"))))
+    (true (search "library_sources=\"$root/build/release/Tuatara-x86_64.AppImage.library-sources.tar.zst\"" appimage))
+    (true (search "# Their sources, at exactly these versions: $(basename \"$library_sources\")" appimage))
+    (true (search " build/release/Tuatara-x86_64.AppImage.library-sources.tar.zst dist/" workflow))))
+
+(define-test (tools bundled-libraries-each-once)
+  ;; the libraries the AppImage bundles are listed once each, a root library
+  ;; the others need too (libzstd) among them; a file name given twice stops
+  ;; tools/bundle-libraries.sh
+  (true (search "for path in $(printf \"%s\\n\" $roots $(ldd $roots | grep \"=> /\" | sed \"s/.*=> //; s/ (.*//\") | sort -u); do"
+                (uiop:read-file-string (tools-script "appimage.sh"))))
+  (with-test-directory (directory)
+    (sb-posix:chmod (uiop:native-namestring (write-test-file directory "bin/dpkg" (format nil "#!/bin/sh~%echo \"libfoo1:amd64: $1\"~%")))
+                    #o755)
+    (sb-posix:chmod (uiop:native-namestring (write-test-file directory "bin/dpkg-query" (format nil "#!/bin/sh~%printf 1~%")))
+                    #o755)
+    (write-test-file directory "docs/libfoo1/copyright" "License: MIT")
+    (let ((library (uiop:native-namestring (write-test-file directory "usr/lib/libfoo.so.1" "foo"))))
+      (multiple-value-bind (out error status)
+          (uiop:run-program
+           (list "bash" (tools-script "bundle-libraries.sh") (uiop:native-namestring (merge-pathnames "out/" directory))
+                 library library)
+           :output :string :error-output :string :ignore-error-status t
+           :environment (list (format nil "PATH=~a:/usr/bin:/bin" (uiop:native-namestring (merge-pathnames "bin/" directory)))
+                              (format nil "DOC_DIR=~a" (uiop:native-namestring (merge-pathnames "docs/" directory)))))
+        (declare (ignore out))
+        (isnt = 0 status)
+        (true (search "libfoo.so.1 is given twice" error))))))

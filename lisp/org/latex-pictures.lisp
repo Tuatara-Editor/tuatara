@@ -86,10 +86,10 @@ alone: latex/pictures/ in the cache directory. Those not used for a day are dele
 (defun png-sixteen-bit-p (path)
   "True when the file at PATH, a PNG, has 16 bits for each colour (its
 header's bit depth), which not every PDF reader draws once in a PDF."
-  (let ((head (ignore-errors
-               (tuatara.io:call-with-file path (lambda (fd name size)
-                                                 (declare (ignore size))
-                                                 (tuatara.io:read-fd-octets fd :path name :size-hint 32 :most 32))))))
+  (let ((head (ignoring-errors-reported ("reading the head of ~a" path)
+                (tuatara.io:call-with-file path (lambda (fd name size)
+                                                  (declare (ignore size))
+                                                  (tuatara.io:read-fd-octets fd :path name :size-hint 32 :most 32))))))
     (and head (>= (length head) 25) (= 16 (aref head 24)))))
 
 (defun latex-picture (path)

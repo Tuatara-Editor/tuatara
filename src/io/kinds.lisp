@@ -25,16 +25,6 @@ first unless BIG-ENDIAN; NIL when they are not all there."
   "VALUE, an unsigned integer of BITS bits, as the signed one it stands for; NIL for NIL."
   (and value (if (logbitp (1- bits) value) (- value (ash 1 bits)) value)))
 
-(defun octets-le (octets start count)
-  "The unsigned number in COUNT octets of OCTETS from START, least significant
-first; NIL past their end (OCTETS-INTEGER)."
-  (octets-integer octets start count))
-
-(defun octets-be (octets start count)
-  "The unsigned number in COUNT octets of OCTETS from START, most significant
-first; NIL past their end (OCTETS-INTEGER)."
-  (octets-integer octets start count :big-endian t))
-
 (declaim (inline octets-put-integer))
 (defun octets-put-integer (octets value count &key at big-endian)
   "Write the unsigned integer VALUE as COUNT octets, least significant first
@@ -111,9 +101,41 @@ character standing for each; NIL when START is past their end."
   (let ((end (min end (length octets))))
     (and (< start end) (tuatara.text:octets-latin-1 octets :start start :end end))))
 
+(defun octets-search (needle octets &key (start 0) (end (length octets)) from-end)
+  "Where NEEDLE, a vector of octets, first stands in OCTETS from START below
+END (with FROM-END, the last place it stands), or NIL. START below 0 counts
+as 0 and END past the octets as their end; when END is then before START,
+or too near it for NEEDLE, the answer is NIL, never an error. An empty
+NEEDLE stands at START (at END, with FROM-END). Quick on simple vectors of
+octets, as files are read, so that a file of hundreds of megabytes is
+searched in well under a second."
+  (let* ((end (min end (length octets))) (start (max 0 start)))
+    (cond ((< end start) nil)
+          ((zerop (length needle)) (if from-end end start))
+          ((> (+ start (length needle)) end) nil)
+          ((and (typep needle 'tuatara.text:octets) (typep octets 'tuatara.text:octets))
+           (octets-search-simple needle octets start end from-end))
+          (t (search needle octets :start2 start :end2 end :from-end from-end)))))
+
+(defun octets-search-simple (needle octets start end from-end)
+  "OCTETS-SEARCH's work on simple vectors of octets, NEEDLE not empty and
+fitting between START and END."
+  (declare (type tuatara.text:octets needle octets) (type fixnum start end) (optimize speed (safety 0)))
+  (let ((n (length needle)) (first (aref needle 0)))
+    (declare (type fixnum n))
+    (flet ((match-p (i)
+             (declare (type fixnum i))
+             (loop for k of-type fixnum from 1 below n always (= (aref octets (+ i k)) (aref needle k)))))
+      (declare (inline match-p))
+      (if from-end
+          (loop for i of-type fixnum from (- end n) downto start
+                when (and (= (aref octets i) first) (match-p i)) return i)
+          (loop for i of-type fixnum from start to (- end n)
+                when (and (= (aref octets i) first) (match-p i)) return i)))))
+
 (defun octets-find (octets needle &key (start 0) (end (length octets)))
   "Where the ASCII string NEEDLE first stands in OCTETS from START below END, or NIL."
-  (search (map 'vector #'char-code needle) octets :start2 start :end2 (min end (length octets))))
+  (octets-search (tuatara.text:string-octets needle) octets :start start :end end))
 
 (defun pdf-header-at (octets)
   "Where %PDF- followed by a digit begins among the first 1,024 octets of
@@ -140,8 +162,8 @@ header); NIL when it is not there."
   "The width and height of the PNG image whose first octets are O, as two
 values, from the image header that comes straight after the signature; NIL
 when that header is not there, is cut short or holds values no PNG has."
-  (let ((width (octets-be o 16 4)) (height (octets-be o 20 4)))
-    (if (and (eql (octets-be o 8 4) 13) (octets-at-p o "IHDR" 12)
+  (let ((width (octets-integer o 16 4 :big-endian t)) (height (octets-integer o 20 4 :big-endian t)))
+    (if (and (eql (octets-integer o 8 4 :big-endian t) 13) (octets-at-p o "IHDR" 12)
              width height (plusp width) (plusp height)
              (member (octet-at o 24) '(1 2 4 8 16)) (member (octet-at o 25) '(0 2 3 4 6)))
         (values width height)
@@ -171,7 +193,7 @@ markers are looked at."
                (cond ((= marker #xFF) (incf at))
                      ((or (<= #xD0 marker #xD7) (= marker #x01)) (incf at 2))
                      ((member marker '(#xDA #xD9)) (return nil))
-                     (t (let ((length (octets-be octets (+ at 2) 2)))
+                     (t (let ((length (octets-integer octets (+ at 2) 2 :big-endian t)))
                           (unless (and length (>= length 2)) (return nil))
                           (let ((result (funcall function marker (+ at 4) (min (length octets) (+ at 2 length)))))
                             (when result (return result)))
@@ -183,7 +205,8 @@ values, from its first frame header; NIL when that is not among O."
   (let ((size (jpeg-segments o (lambda (marker start end)
                                  (and (member marker '(#xC0 #xC1 #xC2 #xC3 #xC5 #xC6 #xC7 #xC9 #xCA #xCB #xCD #xCE #xCF))
                                       (<= (+ start 5) end)
-                                      (list (octets-be o (+ start 3) 2) (octets-be o (+ start 1) 2)))))))
+                                      (list (octets-integer o (+ start 3) 2 :big-endian t)
+                                            (octets-integer o (+ start 1) 2 :big-endian t)))))))
     (values (first size) (second size))))
 
 (defun jpeg-words (o)
@@ -193,16 +216,202 @@ values, from its first frame header; NIL when that is not among O."
 
 (defun gif-size (o)
   "The width and height of the GIF image whose first octets are O, as two values."
-  (values (octets-le o 6 2) (octets-le o 8 2)))
+  (values (octets-integer o 6 2) (octets-integer o 8 2)))
 
 (defun bmp-size (o)
   "The width and height of the BMP image whose first octets are O, as two
 values (a height written negative, for rows kept top first, made positive)."
-  (values (octets-le o 18 4) (let ((h (octets-signed (octets-le o 22 4) 32))) (and h (abs h)))))
+  (values (octets-integer o 18 4) (let ((h (octets-signed (octets-integer o 22 4) 32))) (and h (abs h)))))
 
 (defun psd-size (o)
   "The width and height of the Photoshop image whose first octets are O, as two values."
-  (values (octets-be o 18 4) (octets-be o 14 4)))
+  (values (octets-integer o 18 4 :big-endian t) (octets-integer o 14 4 :big-endian t)))
+
+(defparameter *jp2-signature* '(0 0 0 12 #x6A #x50 #x20 #x20 13 10 #x87 10)
+  "The twelve octets a JPEG 2000 file (JP2, JPX, JPM or Motion JPEG 2000) starts
+with, its signature box.")
+
+(defparameter *jxl-signature* '(0 0 0 12 #x4A #x58 #x4C #x20 13 10 #x87 10)
+  "The twelve octets a JPEG XL file kept in boxes starts with, its signature
+box; a bare JPEG XL codestream starts with FF 0A instead.")
+
+(defun octets-reader (octets)
+  "A function of where and how many octets giving that many of OCTETS from
+there, fewer at their end, NIL past it: how the readers of files kept in
+boxes read octets in hand (BOX-CONTENTS-START)."
+  (lambda (at count)
+    (let ((end (min (length octets) (+ at count))))
+      (and (<= 0 at) (< at end) (subseq octets at end)))))
+
+(defun box-header-at (read at)
+  "The box of a file kept in boxes (JPEG 2000, JPEG XL) whose header is at AT,
+read with READ (OCTETS-READER), as three values: its type, where its contents
+begin and where it ends (NIL for one running to the end of the file), its
+size read in the long form too; NIL when no header is there or its size is
+shorter than its header."
+  (let ((header (funcall read at 16)))
+    (when (and header (>= (length header) 8))
+      (let ((size (octets-integer header 0 4 :big-endian t))
+            (type (octets-ascii header 4 8)))
+        (case size
+          (0 (values type (+ at 8) nil))
+          (1 (let ((large (octets-integer header 8 8 :big-endian t)))
+               (and large (>= large 16) (values type (+ at 16) (+ at large)))))
+          (t (and (>= size 8) (values type (+ at 8) (+ at size)))))))))
+
+(defun box-contents-start (octets types &key (read (octets-reader octets)))
+  "Where the contents of the first box at the top level of a file kept in
+boxes (JPEG 2000, JPEG XL) whose type is one of TYPES begin, and as second
+and third values its type and where it ends (NIL: the end of the file); NIL
+when none is found among its first 1,000 boxes. The boxes are read with
+READ, a function of where in the file and how many octets giving them,
+fewer at its end (OCTETS-READER), from OCTETS, the file's first octets,
+unless given: the box found may begin past them."
+  (let ((at 0))
+    (loop repeat 1000
+          do (multiple-value-bind (type start end) (box-header-at read at)
+               (cond ((null type) (return nil))
+                     ((member type types :test #'equal) (return (values start type end)))
+                     ((null end) (return nil))
+                     (t (setf at end)))))))
+
+(defun j2k-header (o &optional (at 0))
+  "What the JPEG 2000 codestream at AT in O says of its picture in its main
+header, as a list of :WIDTH and :HEIGHT, :COMPONENTS (colours and the
+like, alpha too), :PRECISION (the most bits of any one, NIL when not all are
+among O) and :TILES (how many pieces the picture is cut in); NIL when its
+size marker is not there or holds values no codestream has."
+  (flet ((n (offset count) (octets-integer o (+ at offset) count :big-endian t)))
+    (let ((x (n 8 4)) (y (n 12 4)) (xo (n 16 4)) (yo (n 20 4))
+          (xt (n 24 4)) (yt (n 28 4)) (xto (n 32 4)) (yto (n 36 4))
+          (count (n 40 2)))
+      (when (and (octets-at-p o '(#xFF #x4F #xFF #x51) at) count
+                 (< xo x) (< yo y) (plusp xt) (plusp yt) (<= xto xo) (<= yto yo)
+                 (< xo (+ xto xt)) (< yo (+ yto yt)) (<= 1 count 16384)
+                 (eql (n 4 2) (+ 38 (* 3 count))))
+        (list :width (- x xo) :height (- y yo) :components count
+              :precision (and (<= (+ at 42 (* 3 count)) (length o))
+                              (loop for i below count maximize (1+ (logand (aref o (+ at 42 (* 3 i))) #x7F))))
+              :tiles (* (ceiling (- x xto) xt) (ceiling (- y yto) yt)))))))
+
+(defun j2k-size (o)
+  "The width and height of the picture of the JPEG 2000 codestream whose
+first octets are O, as two values (J2K-HEADER); NIL when they are not there."
+  (let ((header (j2k-header o)))
+    (values (getf header :width) (getf header :height))))
+
+(defun jp2-header (o)
+  "What the codestream of the JPEG 2000 file whose first octets are O says of
+its picture (J2K-HEADER), when its codestream box begins among them; NIL
+otherwise."
+  (let ((start (box-contents-start o '("jp2c"))))
+    (and start (j2k-header o start))))
+
+(defun jp2-size (o)
+  "The width and height of the picture of the JPEG 2000 file whose first
+octets are O, as two values, as its codestream says (JP2-HEADER); NIL when
+that is not among O."
+  (let ((header (jp2-header o)))
+    (values (getf header :width) (getf header :height))))
+
+(defun jp2-words (o)
+  "A file starting with the JPEG 2000 signature box described by the brand
+its file type box names, and its keyword: a JPEG 2000 image (JP2, or JPX read
+as one) with its size, a compound document (JPM), a Motion JPEG 2000 video."
+  (let ((brand (and (octets-at-p o "ftyp" 16) (octets-ascii o 20 24))))
+    (cond ((equal brand "jpm ") (values "JPEG 2000 compound document (JPM)" :jpm))
+          ((equal brand "mjp2") (values "Motion JPEG 2000 video" :mj2))
+          (t (values (joined-words (if (equal brand "jpx ") "JPEG 2000 image (JPX)" "JPEG 2000 image")
+                                   (multiple-value-call #'size-words (jp2-size o)))
+                     :jp2)))))
+
+(defun jxl-header (o &optional (at 0))
+  "What the JPEG XL codestream at AT in O (starting FF 0A) says of its
+picture in its first fields, as a list of :WIDTH and :HEIGHT,
+:EXTRA-CHANNELS (alpha and the like, beside the colours), :BITS (a sample's
+bits), :FLOAT (true when samples are floating point) and :ANIMATED; NIL when
+those fields are not all among O."
+  (when (octets-at-p o '(#xFF #x0A) at)
+    (let ((bit (* 8 (+ at 2))))
+      (labels ((bits (count)
+                 (let ((value 0))
+                   (dotimes (k count value)
+                     (let ((octet (octet-at o (floor bit 8))))
+                       (unless octet (return-from jxl-header nil))
+                       (setf value (logior value (ash (ldb (byte 1 (mod bit 8)) octet) k)))
+                       (incf bit)))))
+               (flag () (= 1 (bits 1)))
+               (choice (&rest choices)
+                 ;; two bits choose among CHOICES: a number, or (BITS . OFFSET), so many bits more and that added
+                 (let ((choice (nth (bits 2) choices)))
+                   (if (consp choice) (+ (bits (car choice)) (cdr choice)) choice)))
+               (size ()
+                 (let* ((small (flag))
+                        (height (if small (* 8 (1+ (bits 5))) (choice '(9 . 1) '(13 . 1) '(18 . 1) '(30 . 1))))
+                        (ratio (bits 3)))
+                   (values (if (zerop ratio)
+                               (if small (* 8 (1+ (bits 5))) (choice '(9 . 1) '(13 . 1) '(18 . 1) '(30 . 1)))
+                               (destructuring-bind (across down) (nth (1- ratio) '((1 1) (12 10) (4 3) (3 2) (16 9) (5 4) (2 1)))
+                                 (floor (* height across) down)))
+                           height)))
+               (preview-size ()
+                 (let ((eighths (flag)))
+                   (flet ((side () (if eighths
+                                       (choice 16 32 '(5 . 1) '(9 . 33))
+                                       (choice '(6 . 1) '(8 . 65) '(10 . 321) '(12 . 1345)))))
+                     (side)
+                     (when (zerop (bits 3)) (side))))))
+        (multiple-value-bind (width height) (size)
+          (let ((depth 8) (float nil) (extra 0) (animated nil))
+            (unless (flag)
+              (when (flag)
+                (bits 3)
+                (when (flag) (size))
+                (when (flag) (preview-size))
+                (when (flag)
+                  (setf animated t)
+                  (choice 100 1000 '(10 . 1) '(30 . 1))
+                  (choice 1 1001 '(8 . 1) '(10 . 1))
+                  (choice 0 '(3 . 0) '(16 . 0) '(32 . 0))
+                  (flag)))
+              (setf float (flag)
+                    depth (if float (prog1 (choice 32 16 24 '(6 . 1)) (bits 4)) (choice 8 10 12 '(6 . 1))))
+              (flag)
+              (setf extra (choice 0 1 '(4 . 2) '(12 . 1))))
+            (list :width width :height height :extra-channels extra :bits depth :float float :animated animated)))))))
+
+(defun jxl-file-header (o &key (read (octets-reader o)))
+  "What the JPEG XL file whose first octets are O says of its picture
+\(JXL-HEADER), a bare codestream or one kept in boxes, in a jxlc box or in
+jxlp parts, joined; NIL when its first fields cannot be read. A file kept in
+boxes is read with READ (BOX-CONTENTS-START), its codestream perhaps past O."
+  (if (octets-at-p o *jxl-signature*)
+      (multiple-value-bind (start type end) (box-contents-start o '("jxlc" "jxlp") :read read)
+        (cond ((null start) nil)
+              ((equal type "jxlc")
+               (let ((codestream (funcall read start (if end (min 1024 (- end start)) 1024))))
+                 (and codestream (jxl-header codestream))))
+              ;; a codestream in parts, each after an index of four octets: its first fields may span two
+              (t (let ((joined (make-array 0 :element-type '(unsigned-byte 8) :adjustable t :fill-pointer 0)))
+                   (loop repeat 64
+                         while (and type (equal type "jxlp") end (< (length joined) 1024))
+                         do (let ((part (and (< (+ start 4) end) (funcall read (+ start 4) (min 1024 (- end start 4))))))
+                              (loop for octet across (or part #()) do (vector-push-extend octet joined))
+                              (multiple-value-setq (type start end) (box-header-at read end))))
+                   (jxl-header joined)))))
+      (jxl-header o)))
+
+(defun jxl-size (o)
+  "The width and height of the JPEG XL picture whose file's first octets are
+O, as two values (JXL-FILE-HEADER); NIL when they are not among O."
+  (let ((header (jxl-file-header o)))
+    (values (getf header :width) (getf header :height))))
+
+(defun jxl-words (o)
+  "A JPEG XL image described: its size, and whether it moves."
+  (let ((header (jxl-file-header o)))
+    (joined-words "JPEG XL image" (size-words (getf header :width) (getf header :height))
+                  (and (getf header :animated) "animated"))))
 
 (defun tiff-octets-p (octets)
   "True when OCTETS begin as a TIFF-shaped file does: II*0, its numbers least
@@ -219,7 +428,7 @@ LITTLE-endian (as standard, when the structure begins II) or not. As a second
 value a function of an offset from START and a length reading a number that
 way, and as a third the offset of the next directory. NIL when the directory
 is not among OCTETS."
-  (let* ((int (lambda (at n) (if little (octets-le octets (+ start at) n) (octets-be octets (+ start at) n))))
+  (let* ((int (lambda (at n) (octets-integer octets (+ start at) n :big-endian (not little))))
          (ifd (or ifd (funcall int 4 4)))
          (count (and ifd (funcall int ifd 2))))
     (values (and count
@@ -281,13 +490,13 @@ ORF, Panasonic or Leica RW2, Minolta MRW; NIL otherwise."
 (defun webp-size (o)
   "The width and height of the WebP image whose first octets are O, as two
 values, from whichever of its three headers it has; NIL when none is among O."
-  (cond ((and (octets-at-p o "VP8X" 12) (octets-le o 27 3))
-         (values (1+ (octets-le o 24 3)) (1+ (octets-le o 27 3))))
-        ((and (octets-at-p o "VP8L" 12) (octets-le o 21 4))
-         (let ((bits (octets-le o 21 4)))
+  (cond ((and (octets-at-p o "VP8X" 12) (octets-integer o 27 3))
+         (values (1+ (octets-integer o 24 3)) (1+ (octets-integer o 27 3))))
+        ((and (octets-at-p o "VP8L" 12) (octets-integer o 21 4))
+         (let ((bits (octets-integer o 21 4)))
            (values (1+ (logand bits #x3FFF)) (1+ (logand (ash bits -14) #x3FFF)))))
-        ((and (octets-at-p o "VP8 " 12) (octets-le o 28 2))
-         (values (logand (octets-le o 26 2) #x3FFF) (logand (octets-le o 28 2) #x3FFF)))
+        ((and (octets-at-p o "VP8 " 12) (octets-integer o 28 2))
+         (values (logand (octets-integer o 26 2) #x3FFF) (logand (octets-integer o 28 2) #x3FFF)))
         (t (values nil nil))))
 
 (defun webp-words (o)
@@ -295,9 +504,10 @@ values, from whichever of its three headers it has; NIL when none is among O."
   (joined-words "WebP image" (multiple-value-call #'size-words (webp-size o))))
 
 (defun elf-words (o)
-  "An ELF file described: its width, what it is, the processor it is for."
+  "An executable and linkable format (ELF) file described: its width, what it
+is, the processor it is for."
   (let ((class (octet-at o 4)) (le (eql (octet-at o 5) 1)))
-    (flet ((field (start count) (if le (octets-le o start count) (octets-be o start count))))
+    (flet ((field (start count) (octets-integer o start count :big-endian (not le))))
       (joined-words (format nil "ELF ~a-bit ~a" (case class (1 32) (2 64) (t "?"))
                      (case (field 16 2) (1 "relocatable object") (2 "executable") (3 "shared object or executable")
                        (4 "core dump") (t "file")))
@@ -307,11 +517,11 @@ values, from whichever of its three headers it has; NIL when none is among O."
 
 (defun pe-words (o)
   "A Windows program described: executable or DLL, its format and processor."
-  (let ((pe (octets-le o #x3C 4)))
+  (let ((pe (octets-integer o #x3C 4)))
     (if (and pe (octets-at-p o (list 80 69 0 0) pe))
-        (let ((machine (octets-le o (+ pe 4) 2))
-              (characteristics (octets-le o (+ pe 22) 2))
-              (magic (octets-le o (+ pe 24) 2)))
+        (let ((machine (octets-integer o (+ pe 4) 2))
+              (characteristics (octets-integer o (+ pe 22) 2))
+              (magic (octets-integer o (+ pe 24) 2)))
           (joined-words (format nil "Windows ~:[program~;DLL~]~@[ (~a)~]"
                          (and characteristics (logtest characteristics #x2000))
                          (case magic (#x10B "PE32") (#x20B "PE32+") (t nil)))
@@ -324,11 +534,11 @@ DATA-END), as MP4, QuickTime and HEIF files keep their parts; at most 10,000,
 one whose size does not fit ending the list."
   (let ((boxes '()) (at start))
     (loop while (and (<= (+ at 8) end) (< (length boxes) 10000))
-          do (let ((size (octets-be octets at 4))
+          do (let ((size (octets-integer octets at 4 :big-endian t))
                    (type (octets-ascii octets (+ at 4) (+ at 8)))
                    (header 8))
                (case size
-                 (1 (setf size (octets-be octets (+ at 8) 8) header 16))
+                 (1 (setf size (octets-integer octets (+ at 8) 8 :big-endian t) header 16))
                  (0 (setf size (- end at))))
                (when (or (null size) (< size header) (> (+ at size) end)) (return))
                (push (list type (+ at header) (+ at size)) boxes)
@@ -357,7 +567,8 @@ when none is among O."
     (when ipco
       (loop for (type start end) in (box-children o (second ipco) (third ipco))
             when (and (equal type "ispe") (<= (+ start 12) end))
-              do (let ((width (octets-be o (+ start 4) 4)) (height (octets-be o (+ start 8) 4)))
+              do (let ((width (octets-integer o (+ start 4) 4 :big-endian t))
+                       (height (octets-integer o (+ start 8) 4 :big-endian t)))
                    (when (or (null best) (> (* width height) (* (first best) (second best))))
                      (setf best (list width height))))))
     (values (first best) (second best))))
@@ -390,10 +601,10 @@ than MOST of them."
   (let ((names '()) (at 0) (n (length o)))
     (loop repeat most
           while (and (<= (+ at 30) n) (octets-at-p o (list 80 75 3 4) at))
-          do (let* ((flags (octets-le o (+ at 6) 2))
-                    (packed (octets-le o (+ at 18) 4))
-                    (name-length (octets-le o (+ at 26) 2))
-                    (data (+ at 30 name-length (octets-le o (+ at 28) 2))))
+          do (let* ((flags (octets-integer o (+ at 6) 2))
+                    (packed (octets-integer o (+ at 18) 4))
+                    (name-length (octets-integer o (+ at 26) 2))
+                    (data (+ at 30 name-length (octets-integer o (+ at 28) 2))))
                (when (> (+ at 30 name-length) n) (return))
                (push (octets-ascii o (+ at 30) (+ at 30 name-length)) names)
                ;; sizes written after the data: the next entry is the next header found
@@ -454,7 +665,8 @@ plain text, and as a second value its kind."
     (:tiff "tif" "tiff") (:raw "dng" "nef" "nrw" "cr2" "cr3" "crw" "arw" "orf" "rw2" "rwl" "pef" "srw" "raf" "mrw"
                                 "3fr" "fff" "iiq" "mos" "mef" "erf" "kdc" "dcr" "x3f")
     (:ico "ico" "cur") (:heif "heic" "heif")
-    (:avif "avif") (:psd "psd" "psb") (:xcf "xcf") (:svg "svg") (:pdf "pdf") (:postscript "ps" "eps" "ai")
+    (:avif "avif") (:jp2 "jp2" "jpx" "jpf" "jph") (:j2k "j2k" "j2c" "jpc" "jhc") (:jxl "jxl")
+    (:psd "psd" "psb") (:xcf "xcf") (:svg "svg") (:pdf "pdf") (:postscript "ps" "eps" "ai")
     (:rtf "rtf") (:ole "doc" "xls" "ppt" "msg" "msi" "vsd" "pub" "dot" "xlt" "pot" "pps")
     (:docx "docx" "docm" "dotx" "dotm") (:xlsx "xlsx" "xlsm" "xltx" "xltm") (:pptx "pptx" "pptm" "potx" "potm" "ppsx" "ppsm")
     (:odt "odt" "ott") (:ods "ods" "ots") (:odp "odp" "otp") (:epub "epub") (:apk "apk") (:jar "jar" "war" "ear")
@@ -485,13 +697,14 @@ parts, as data packets have it); NIL when no packet header is there."
                   ((< l 192) (values (logand b #x3F) (+ at 2) l))
                   ((< l 224) (let ((l2 (octet-at octets (+ at 2))))
                                (and l2 (values (logand b #x3F) (+ at 3) (+ (ash (- l 192) 8) l2 192)))))
-                  ((= l 255) (let ((n (octets-be octets (+ at 2) 4))) (and n (values (logand b #x3F) (+ at 6) n))))
+                  ((= l 255) (let ((n (octets-integer octets (+ at 2) 4 :big-endian t)))
+                               (and n (values (logand b #x3F) (+ at 6) n))))
                   (t (values (logand b #x3F) (+ at 2) nil))))
           (let ((tag (ldb (byte 4 2) b)))
             (case (logand b 3)
               (0 (let ((n (octet-at octets (+ at 1)))) (and n (values tag (+ at 2) n))))
-              (1 (let ((n (octets-be octets (+ at 1) 2))) (and n (values tag (+ at 3) n))))
-              (2 (let ((n (octets-be octets (+ at 1) 4))) (and n (values tag (+ at 5) n))))
+              (1 (let ((n (octets-integer octets (+ at 1) 2 :big-endian t))) (and n (values tag (+ at 3) n))))
+              (2 (let ((n (octets-integer octets (+ at 1) 4 :big-endian t))) (and n (values tag (+ at 5) n))))
               (t (values tag (+ at 1) nil))))))))
 
 (defparameter *openpgp-packet-versions* '((1 3 6) (3 4 5 6) (18 1 2) (20 1))
@@ -531,9 +744,13 @@ octets, up to 64 KB, the more kinds are told (a disc image's mark is 32 KB in)."
         ;; images
         ((is (list #x89 80 78 71 13 10 26 10)) (values (png-words o) :png))
         ((is (list #xFF #xD8 #xFF)) (values (jpeg-words o) :jpeg))
+        ((is *jp2-signature*) (jp2-words o))
+        ((is (list #xFF #x4F #xFF #x51))
+         (values (joined-words "JPEG 2000 codestream" (multiple-value-call #'size-words (j2k-size o))) :j2k))
+        ((or (is *jxl-signature*) (and (is (list #xFF #x0A)) (jxl-header o))) (values (jxl-words o) :jxl))
         ((or (is "GIF87a") (is "GIF89a")) (values (joined-words "GIF image" (multiple-value-call #'size-words (gif-size o))) :gif))
         ((and (is "RIFF") (is "WEBP" 8)) (values (webp-words o) :webp))
-        ((and (is "BM") (member (octets-le o 14 4) '(12 40 52 56 64 108 124)))
+        ((and (is "BM") (member (octets-integer o 14 4) '(12 40 52 56 64 108 124)))
          (values (joined-words "BMP image" (multiple-value-call #'size-words (bmp-size o))) :bmp))
         ((raw-words o) (values (format nil "Camera raw, ~a" (raw-words o)) :raw))
         ((tiff-octets-p o)
@@ -541,8 +758,8 @@ octets, up to 64 KB, the more kinds are told (a disc image's mark is 32 KB in)."
            (if raw
                (values (format nil "Camera raw, ~a" raw) :raw)
                (values (joined-words "TIFF image" (multiple-value-call #'size-words (tiff-size o))) :tiff))))
-        ((and (is (list 0 0 1 0)) (octets-le o 4 2) (< 0 (octets-le o 4 2) 256))
-         (values (format nil "Windows icon, ~d image~:p" (octets-le o 4 2)) :ico))
+        ((and (is (list 0 0 1 0)) (octets-integer o 4 2) (< 0 (octets-integer o 4 2) 256))
+         (values (format nil "Windows icon, ~d image~:p" (octets-integer o 4 2)) :ico))
         ((is "8BPS") (values (joined-words "Photoshop image" (multiple-value-call #'size-words (psd-size o))) :psd))
         ((is "gimp xcf") (values "GIMP image" :xcf))
         ;; documents
@@ -580,7 +797,7 @@ octets, up to 64 KB, the more kinds are told (a disc image's mark is 32 KB in)."
              (is (list #xCE #xFA #xED #xFE)) (is (list #xCF #xFA #xED #xFE)))
          (values "Mach-O program (macOS)" :mach-o))
         ((is (list #xCA #xFE #xBA #xBE))
-         (let ((major (octets-be o 6 2)))
+         (let ((major (octets-integer o 6 2 :big-endian t)))
            (if (and major (<= 45 major 99))
                (values (format nil "Java class, version ~d" major) :java-class)
                (values "Mach-O universal program (macOS)" :mach-o))))
@@ -630,7 +847,8 @@ octets, up to 64 KB, the more kinds are told (a disc image's mark is 32 KB in)."
 
 (defparameter *picture-size-functions*
   '((:png . png-size) (:jpeg . jpeg-size) (:gif . gif-size) (:webp . webp-size) (:bmp . bmp-size)
-    (:tiff . tiff-size) (:heif . ispe-size) (:avif . ispe-size) (:psd . psd-size))
+    (:tiff . tiff-size) (:heif . ispe-size) (:avif . ispe-size) (:psd . psd-size)
+    (:jp2 . jp2-size) (:j2k . j2k-size) (:jxl . jxl-size))
   "For each kind of picture OCTETS-KIND gives the size of, the function of its
 first octets giving its width and height.")
 

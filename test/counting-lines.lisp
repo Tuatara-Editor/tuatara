@@ -438,15 +438,205 @@ and the editor."
         (is = (tuatara.text:line->byte counted lines) (tuatara.text:tally-line-start partial rope lines))
         (false (tuatara.text:tally-line-start partial rope (1+ lines)))
         ;; a buffer whose counting has got that far knows its line numbers there
-        (let* ((b (tuatara.buffer:make-buffer "*counted-so-far*" :text rope))
-               (job (tuatara.io::%make-index-job b rope nil)))
-          (setf (tuatara.io::index-job-tally job) partial)
-          (push job tuatara.runtime:*jobs*)
+        (let ((b (tuatara.buffer:make-buffer "*counted-so-far*" :text rope)))
+          (setf (tuatara.buffer:buffer-local b :counted-so-far)
+                (tuatara.text:carry-tally partial (tuatara.buffer:buffer-version b)))
           (unwind-protect
                (progn
                  (is = 3 (tuatara.io:counted-line-number b (tuatara.text:line->byte counted 3)))
                  (false (tuatara.io:counted-line-number b (+ reached 1000)))
                  (is = (tuatara.text:line->byte counted 7) (tuatara.io:counted-line-start b 7))
                  (is = lines (tuatara.io:counted-lines b)))
-            (tuatara.runtime:forget-job job)
             (tuatara.buffer:kill-buffer b)))))))
+
+(defun mixed-line-ends (n)
+  "N lines of plain text ending in a newline, a carriage return and newline, or
+a carriage return alone, in turn."
+  (with-output-to-string (out)
+    (dotimes (i n)
+      (format out "line ~d~a" i (case (mod i 3) (0 (string #\Newline)) (1 (format nil "~c~c" #\Return #\Newline))
+                                   (t (string #\Return)))))))
+
+(define-test (counting-lines carried-through-edits)
+  ;; a count of the text as opened gives the line numbers of the text as edited since, exactly,
+  ;; line ends typed, deleted, split and joined (a carriage return meeting a newline) included
+  (with-test-directory (dir)
+    (let* ((path (put-file (merge-pathnames "t.txt" dir) (mixed-line-ends 3000)))
+           (rope (tuatara.text:open-file-rope (namestring path)))
+           (b (tuatara.buffer:make-buffer "*carried*" :text rope))
+           (tally (tuatara.text:make-tally))
+           (state (sb-ext:seed-random-state 1919))
+           (pieces (list "x" (string #\Newline) (string #\Return) (format nil "~c~c" #\Return #\Newline)
+                         (format nil "ab~%cd") "")))
+      (tuatara.text:index-rope rope :threads 1 :chunk 4096 :tally tally)
+      (unwind-protect
+           (let ((carried (tuatara.text:carry-tally tally (tuatara.buffer:buffer-version b))))
+             (dotimes (round 40)
+               ;; a few edits, mostly near one another as typing is, now and then far off
+               (dotimes (i (1+ (random 4 state)))
+                 (let* ((size (tuatara.buffer:buffer-size b))
+                        (start (if (zerop (random 5 state)) (random size state) (min size (+ 20000 (random 40 state)))))
+                        (end (min size (+ start (random 3 state)))))
+                   (tuatara.buffer:buffer-replace b start end (elt pieces (random (length pieces) state)))))
+               (let* ((version (tuatara.buffer:buffer-version b))
+                      (counted (tuatara.text:index-rope (tuatara.buffer:buffer-text b)))
+                      (size (tuatara.text:rope-bytes counted)))
+                 (dotimes (i 25)
+                   (let ((byte (if (evenp i) (random (1+ size) state) (min size (+ 19990 (random 80 state))))))
+                     (is = (tuatara.text:byte->line counted byte)
+                         (tuatara.text:carried-line-number carried version byte)
+                         "line at ~d after round ~d" byte round)))
+                 (dotimes (i 25)
+                   (let ((line (if (evenp i)
+                                   (random (1+ (tuatara.text:rope-lines counted)) state)
+                                   (+ (tuatara.text:byte->line counted 19990) (random 8 state)))))
+                     (is = (tuatara.text:line->byte counted line) (tuatara.text:carried-line-start carried version line)
+                         "start of line ~d after round ~d" line round)))
+                 (is equal (list (tuatara.text:rope-lines counted) size)
+                     (multiple-value-list (tuatara.text:carried-counted-lines carried version))))))
+        (tuatara.buffer:kill-buffer b)))))
+
+(defun counted-carried (text)
+  "A buffer holding TEXT as a file opened, and a whole count of its lines ready
+to be carried (TUATARA.TEXT:CARRY-TALLY), as two values."
+  (let* ((dir (ensure-directories-exist
+               (merge-pathnames (format nil "carried-~36r/" (random (expt 36 8) (make-random-state t)))
+                                (tuatara.io:cache-directory))))
+         (path (put-file (merge-pathnames "t.txt" dir) text))
+         (rope (tuatara.text:open-file-rope (namestring path)))
+         (tally (tuatara.text:make-tally)))
+    (tuatara.text:index-rope rope :threads 1 :chunk 4096 :tally tally)
+    (let ((b (tuatara.buffer:make-buffer (format nil "*carried-~a*" (namestring dir)) :text rope)))
+      (setf (tuatara.buffer:buffer-local b 'scratch-folder) dir)
+      (values b (tuatara.text:carry-tally tally (tuatara.buffer:buffer-version b))))))
+
+(defun forget-counted-carried (buffer)
+  "Kill BUFFER, made by COUNTED-CARRIED, and remove its folder."
+  (let ((dir (tuatara.buffer:buffer-local buffer 'scratch-folder)))
+    (tuatara.buffer:kill-buffer buffer)
+    (uiop:delete-directory-tree dir :validate (lambda (p) (search "/carried-" (namestring p))))))
+
+(define-test (counting-lines carried-count-lost)
+  ;; a count that cannot be carried gives no line numbers rather than wrong ones: more changed than
+  ;; *carried-count-octets*, the whole text swapped, a version not after the one it was carried to
+  (multiple-value-bind (b carried) (counted-carried (mixed-line-ends 3000))
+    (unwind-protect
+         (let ((tuatara.text:*carried-count-octets* 4096))
+           (tuatara.buffer:buffer-replace b 100 105 "x")
+           (is = (tuatara.text:byte->line (tuatara.text:index-rope (tuatara.buffer:buffer-text b)) 20000)
+               (tuatara.text:carried-line-number carried (tuatara.buffer:buffer-version b) 20000))
+           (tuatara.buffer:buffer-replace b 1000 9000 (make-string 10 :initial-element #\y))
+           (true (tuatara.text:carried-lost-p carried (tuatara.buffer:buffer-version b)))
+           (false (tuatara.text:carried-line-number carried (tuatara.buffer:buffer-version b) 20000))
+           (false (tuatara.text:carried-line-start carried (tuatara.buffer:buffer-version b) 10))
+           (false (tuatara.text:carried-counted-lines carried (tuatara.buffer:buffer-version b))))
+      (forget-counted-carried b)))
+  (multiple-value-bind (b carried) (counted-carried (mixed-line-ends 3000))
+    (unwind-protect
+         (progn
+           (tuatara.buffer:buffer-swap-text b (tuatara.text:string->rope "swapped")
+                                            (lambda (position bias) (declare (ignore bias)) (min position 7))
+                                            (lambda (position bias) (declare (ignore bias)) position))
+           (true (tuatara.text:carried-lost-p carried (tuatara.buffer:buffer-version b)))
+           (false (tuatara.text:carried-line-number carried (tuatara.buffer:buffer-version b) 3)))
+      (forget-counted-carried b)))
+  (multiple-value-bind (b carried) (counted-carried (mixed-line-ends 300))
+    (unwind-protect
+         (let ((other (tuatara.buffer:make-buffer "*not-after*" :text "a
+b")))
+           (unwind-protect
+                (progn (true (tuatara.text:carried-lost-p carried (tuatara.buffer:buffer-version other)))
+                       (false (tuatara.text:carried-line-number carried (tuatara.buffer:buffer-version b) 3)))
+             (tuatara.buffer:kill-buffer other)))
+      (forget-counted-carried b))))
+
+(define-test (counting-lines carried-count-reads-only-what-changed)
+  ;; after many changes far apart (a replacement through the file), a key typed at one of them
+  ;; reads that one again, not all of them
+  (multiple-value-bind (b carried) (counted-carried (mixed-line-ends 30000))
+    (unwind-protect
+         (let ((read 0)
+               (count (fdefinition 'tuatara.text:rope-count-newlines)))
+           (loop with piece = (format nil "~{~a~}" (loop repeat 30 collect (format nil "replaced~%")))
+                 for at from 300000 above 1000 by 1500
+                 do (tuatara.buffer:buffer-replace b at (+ at 300) piece))
+           (tuatara.text:carried-line-number carried (tuatara.buffer:buffer-version b) 5000)
+           (true (> (length (tuatara.text::carried-tally-windows carried)) 150))
+           (tuatara.buffer:buffer-insert b 2500 "q")
+           (with-functions-replaced ((tuatara.text:rope-count-newlines
+                                      (lambda (rope start end)
+                                        (incf read (- end start))
+                                        (funcall count rope start end))))
+             (is = (tuatara.text:byte->line (tuatara.text:index-rope (tuatara.buffer:buffer-text b)) 320000)
+                 (tuatara.text:carried-line-number carried (tuatara.buffer:buffer-version b) 320000)))
+           ;; the window typed in, and a segment of the count: not the hundred thousand octets of them all
+           (true (< read 6000) "~d octets read again" read))
+      (forget-counted-carried b))))
+
+(define-test (counting-lines carried-count-holds-no-old-text)
+  ;; a count carried to a version does not keep that version's text once the buffer has moved on
+  (multiple-value-bind (b carried) (counted-carried (mixed-line-ends 3000))
+    (unwind-protect
+         (progn
+           (tuatara.buffer:buffer-insert b 10 "a")
+           (let ((pointer (sb-ext:make-weak-pointer (tuatara.buffer:buffer-version b))))
+             (tuatara.text:carried-line-number carried (tuatara.buffer:buffer-version b) 20)
+             (dotimes (i 3) (tuatara.buffer:buffer-insert b 10 "b"))
+             (sb-ext:gc :full t)
+             (false (sb-ext:weak-pointer-value pointer))
+             (is = (tuatara.text:byte->line (tuatara.text:index-rope (tuatara.buffer:buffer-text b)) 500)
+                 (tuatara.text:carried-line-number carried (tuatara.buffer:buffer-version b) 500))))
+      (forget-counted-carried b))))
+
+(define-test (counting-lines new-count-serves-when-the-kept-one-is-lost)
+  ;; a whole count kept while a new one runs, lost (the text swapped), gives way to the new one
+  (multiple-value-bind (b carried) (counted-carried (mixed-line-ends 3000))
+    (unwind-protect
+         (multiple-value-bind (other running) (counted-carried (mixed-line-ends 3000))
+           (let ((job (tuatara.io::%make-index-job b (tuatara.buffer:buffer-text b) nil)))
+             (setf (tuatara.io::index-job-carried job)
+                   (tuatara.text:carry-tally (tuatara.text::carried-tally-tally running)
+                                             (tuatara.buffer:buffer-version b))
+                   (tuatara.buffer:buffer-local b :counted-so-far) carried)
+             (push job tuatara.runtime:*jobs*)
+             (unwind-protect
+                  (progn
+                    ;; lost: carried to a version of another text
+                    (setf (tuatara.text::carried-tally-lost carried) :lost)
+                    (is = (tuatara.text:byte->line (tuatara.text:index-rope (tuatara.buffer:buffer-text b)) 700)
+                        (tuatara.io:counted-line-number b 700))
+                    (is eq (tuatara.io::index-job-carried job) (tuatara.buffer:buffer-local b :counted-so-far)))
+               (tuatara.runtime:forget-job job)
+               (forget-counted-carried other))))
+      (forget-counted-carried b))))
+
+(define-test (counting-lines line-number-shown-while-typed-and-counted)
+  ;; typed in while its lines are counted, a large file keeps its line number in the mode line
+  ;; once the count has passed point, and it is right; nothing waits for the count to be made again
+  (with-test-directory (dir)
+    (let ((path (namestring (put-file (merge-pathnames "big.txt" dir) (sample-lines 5000))))
+          (rows nil))
+      (unwind-protect
+           (with-lines-counted-slowly ()
+             (let ((tuatara.io::*index-again-octets* 0)
+                   (tuatara.io::*index-again-pause* 3))
+               (multiple-value-bind (f editor)
+                   (run-keys (list "i X RET Y"
+                                   (lambda ()
+                                     (loop for job = (tuatara.io:index-job-of (tuatara.command:current-buffer))
+                                           while (and job (eq :running (tuatara.io:index-job-status job)))
+                                           do (sleep 0.02)))
+                                   "Z"
+                                   (lambda ()
+                                     (let ((f (tuatara.command:editor-frontend tuatara.command::*editor*)))
+                                       (setf rows (loop for row below 12
+                                                        collect (tuatara.frontend.fake:fake-screen-line f row))))))
+                             :file path :width 100 :height 12)
+                 (declare (ignore f))
+                 (let ((b (tuatara.display:window-buffer (tuatara.command:editor-window editor))))
+                   (true (some (lambda (row) (search "L2 C2" row)) rows) "~{~a~%~}" rows)
+                   (false (some (lambda (row) (search "L…" row)) rows))
+                   (true (counted-in-time b))
+                   (is = 1 (tuatara.buffer:buffer-line-number b (tuatara.buffer:buffer-point b)))
+                   (tuatara.buffer:kill-buffer b)))))
+        (kill-buffers-visiting dir)))))

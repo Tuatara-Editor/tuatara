@@ -167,7 +167,7 @@ of the line after its last character that is not blank (not before FLOOR)."
 Alnum, a letter or digit of any script; Alpha, a letter."
   (cond ((string= name "Alnum") #'alphanumericp)
         ((string= name "Alpha") #'alpha-char-p)
-        (t (error "No such character property in Org's patterns: ~a" name))))
+        (t (refuse "No such character property in Org's patterns: ~a" name))))
 
 (defvar *org-parse-scanners* nil
   "While a text is parsed, the scanners ORG-RE gave it, by the pattern
@@ -284,8 +284,8 @@ are found once a parse, whatever names it holds."
 (defun org-headline-lines ()
   "The starts of the headlines of the text being parsed and their numbers of
 stars, as two vectors in a cons."
-  (let ((starts (make-array 64 :adjustable t :fill-pointer 0))
-        (stars (make-array 64 :adjustable t :fill-pointer 0)))
+  (let ((starts (make-array 8 :adjustable t :fill-pointer 0))
+        (stars (make-array 8 :adjustable t :fill-pointer 0)))
     (cl-ppcre:do-matches (s e (load-time-value (cl-ppcre:create-scanner "(?m)^\\*+ ")) *org-text*)
       (vector-push-extend s starts)
       (vector-push-extend (- e s 1) stars))
@@ -451,8 +451,10 @@ already uses one by that name, else NIL."
 
 ;;; Parsing a document
 
-(defvar *org-list-structures* '()
-  "The list structures of the plain lists being parsed, for their items.")
+(defvar *org-list-items* nil
+  "While a text is parsed, a table from where each item of its plain lists
+begins to what its list's structure says of it (ORG-LIST-STRUCTURE), the
+list read last for an item in more than one; NIL before the first list.")
 
 (defun org-todo-keywords-of (text)
   "The TODO keywords TEXT's #+TODO:, #+SEQ_TODO: and #+TYP_TODO: lines set, as
@@ -515,17 +517,24 @@ parent. NIL when there is none."
   "True when the character POSITION is before the blank lines or spaces after NODE."
   (< position (- (org-node-end node) (org-node-post-blank node))))
 
-(defun org-parse (text)
-  "TEXT, an Org document, parsed: its tree, an ORG-NODE of type ORG-DATA."
+(defun org-parse (text &key todo-keywords)
+  "TEXT, an Org document, parsed: its tree, an ORG-NODE of type ORG-DATA.
+TODO-KEYWORDS, (NOT-DONE . DONE), are the keywords that make a headline a
+task, given for TEXT that is a part of a document whose #+TODO: lines may be
+elsewhere; those TEXT's own lines set when not given (ORG-TODO-KEYWORDS-OF)."
   (let* ((text (coerce text 'simple-string))
          (*org-text* text)
-         (*org-todo-keywords* (org-todo-keywords-of text))
-         (*org-list-structures* '())
-         (*org-line-misses* (cons text (make-hash-table :test 'equal)))
-         (*org-parse-scanners* (make-hash-table :test 'eq))
-         (root (make-org-node 'org-data :begin 0 :end (length text) :contents-begin 0 :contents-end (length text)
-                                        :post-affiliated 0)))
+         (*org-todo-keywords* (or todo-keywords (org-todo-keywords-of text)))
+         (*org-list-items* nil)
+         (*org-line-misses* (cons text (make-hash-table :test 'equal :size 8)))
+         (*org-parse-scanners* (make-hash-table :test 'eq :size 8))
+         (root (org-empty-tree (length text))))
     (org-adopt root (org-parse-elements 0 (length text) :first-section))))
+
+(defun org-empty-tree (length)
+  "The root of a parse of an Org text of LENGTH characters, with nothing in
+it yet: an ORG-NODE of type ORG-DATA over all of the text."
+  (make-org-node 'org-data :begin 0 :end length :contents-begin 0 :contents-end length :post-affiliated 0))
 
 (defparameter *org-standard-objects*
   '(bold code entity export-snippet footnote-reference inline-babel-call inline-src-block italic
@@ -539,8 +548,8 @@ words: its objects alone, in a paragraph node, never a list, heading or table
 whatever it begins with (A. Writer stays A. Writer)."
   (let* ((text (coerce text 'simple-string))
          (*org-text* text)
-         (*org-list-structures* '())
-         (*org-parse-scanners* (make-hash-table :test 'eq))
+         (*org-list-items* nil)
+         (*org-parse-scanners* (make-hash-table :test 'eq :size 8))
          (paragraph (make-org-node 'paragraph :begin 0 :end (length text) :contents-begin 0 :contents-end (length text)
                                               :post-affiliated 0)))
     (org-adopt paragraph (org-parse-objects 0 (length text) *org-standard-objects*))))
@@ -1091,13 +1100,13 @@ are never closed."
                      (t 'unordered)))
          (node (make-org-node 'plain-list :contents-begin start :contents-end contents-end
                                           :properties (list :type type))))
-    (push structure *org-list-structures*)
+    (let ((items (or *org-list-items* (setf *org-list-items* (make-hash-table)))))
+      (dolist (item structure) (setf (gethash (first item) items) item)))
     (org-finish (org-element-with-affiliated node position start affiliated) contents-end limit)))
 
 (defun org-item-parser (position limit)
   "The item at POSITION, in the list structure of its plain list."
-  (let* ((list (org-node-of-structure position))
-         (item (find position list :key #'first))
+  (let* ((item (gethash position *org-list-items*))
          (end (or (seventh item) limit)))
     (destructuring-bind (begin indent bullet counter checkbox tag item-end) item
       (declare (ignore indent item-end))
@@ -1117,14 +1126,11 @@ are never closed."
                                         :properties (append (list :bullet bullet)
                                                             (and checkbox
                                                                  (list :checkbox (case (char checkbox 1) (#\X 'on) (#\- 'trans) (t 'off))))
-                                                            (and counter (list :counter (or (ignore-errors (parse-integer counter)) counter)))
+                                                            (and counter (list :counter (or (whole-number counter)
+                                                                                            counter)))
                                                             (and tag (list :tag tag))))))
         (setf (org-node-post-blank node) (org-count-lines (or contents-end begin) end))
         node))))
-
-(defun org-node-of-structure (position)
-  "The structure of the plain list an item at POSITION belongs to."
-  (find-if (lambda (structure) (find position structure :key #'first)) *org-list-structures*))
 
 ;;; Tables
 

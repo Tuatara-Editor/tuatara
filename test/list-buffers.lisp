@@ -16,7 +16,8 @@ is filled again only when the jobs have changed.")
 
 (defun list-key-binding (mode keys)
   "What KEYS run in the buffers of major mode MODE, by its keymap and those of the modes it is made from."
-  (tuatara.command:lookup-key (tuatara.modes:mode-keymap (find-symbol (symbol-name mode) :tuatara.defaults))
+  (tuatara.command:lookup-key (tuatara.modes:mode-keymap (find (symbol-name mode) (tuatara.modes:mode-names)
+                                                                :key #'symbol-name :test #'string=))
                               (tuatara.frontend:parse-key-sequence keys)))
 
 (defun list-line (editor name)
@@ -38,8 +39,7 @@ is filled again only when the jobs have changed.")
   (dolist (gone '("BUFFERS-QUIT" "JOBS-QUIT" "HELP-QUIT" "ORG-AGENDA-QUIT" "CALENDAR-EXIT" "RIMU-QUIT"
                   "BUFFERS-REFRESH" "JOBS-REFRESH" "FONT-LIST-REFRESH" "RIMU-REFRESH" "RIMU-TRASH-REFRESH"
                   "ORG-AGENDA-REFRESH"))
-    (let ((symbol (find-symbol gone :tuatara.defaults)))
-      (false (and symbol (gethash symbol tuatara.command:*commands*)) "~(~a~) is no command" gone))))
+    (false (tuatara.command:command-symbol gone) "~(~a~) is no command" gone)))
 
 (define-test (list-buffers spans-found-by-halves)
   ;; the faces shown between two places are those a look at every span finds, overlapping ones too
@@ -185,8 +185,7 @@ is filled again only when the jobs have changed.")
           (run-keys (list "r r % a / b RET r r % b / c RET M-x l i s t - j o b s RET"
                           (lambda () (setf seen (search "Replacing" (session-text tuatara.command:*editor*))))
                           (lambda () (loop repeat 400
-                                           while (or tuatara.defaults::*job-queue*
-                                                     (find-if #'tuatara.runtime:job-running-p tuatara.runtime:*jobs*))
+                                           until (search "No jobs in the background" (session-text tuatara.command:*editor*))
                                            do (tuatara.command::run-tick-functions tuatara.command:*editor*)
                                               (sleep 0.05)))
                           :tick "j")
@@ -194,6 +193,26 @@ is filled again only when the jobs have changed.")
         (declare (ignore f))
         (true seen)
         (true (search "No jobs in the background" (session-text editor)))))))
+
+(define-test (list-buffers job-ending-while-listed)
+  ;; a job that ends just as *Jobs* is filled does not stay listed: the list is made again
+  (let* ((job (tuatara.defaults::%make-hash-job :what "a sum"))
+         (tuatara.runtime:*jobs* (list job))
+         (ended nil))
+    (sb-int:encapsulate 'tuatara.defaults::jobs-entries 'ends-the-job
+                        (lambda (function)
+                          (prog1 (funcall function)
+                            (unless ended
+                              (setf ended t
+                                    (tuatara.runtime:job-status job) :done)))))
+    (unwind-protect
+         (multiple-value-bind (f editor)
+             (run-keys (list "M-x l i s t - j o b s RET" :tick :tick) :text "x" :width 100 :height 12)
+           (declare (ignore f))
+           (is string= "*Jobs*" (current-name editor))
+           (true (search "No jobs in the background" (session-text editor))))
+      (sb-int:unencapsulate 'tuatara.defaults::jobs-entries 'ends-the-job)
+      (tuatara.runtime:forget-job job))))
 
 (defvar *list-test-value* 1
   "A value the help shown in a test describes, changed while it is shown.")

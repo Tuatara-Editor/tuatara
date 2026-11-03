@@ -27,12 +27,20 @@
     v))
 
 (defun string-utf16 (string) "UTF-16 code units STRING occupies." (aref (utf16-offsets string) (length string)))
-(defun string-lines (string) "Number of newlines in STRING." (count #\Newline string))
+(defun string-line-end-p (string i)
+  "True when character I of STRING ends a line: a newline, or a carriage return no newline follows."
+  (let ((c (char string i)))
+    (or (char= c #\Newline)
+        (and (char= c #\Return) (not (and (< (1+ i) (length string)) (char= (char string (1+ i)) #\Newline)))))))
+(defun string-lines (string &key (end (length string)))
+  "Number of line ends in STRING before index END, as the whole of STRING has them."
+  (loop for i from 0 below end count (string-line-end-p string i)))
 (defun to-octets (string) "STRING as UTF-8 octets." (sb-ext:string-to-octets string :external-format :utf-8))
 
 (defparameter *alphabet*
-  (vector "a" "b" "c" "d" " " "x" "é" "ö" "€" "中" "😀" "🎉" (string #\Newline) (string #\Newline))
-  "Pieces random texts are built from: 1-, 2-, 3- and 4-octet characters and newlines.")
+  (vector "a" "b" "c" "d" " " "x" "é" "ö" "€" "中" "😀" "🎉" (string #\Newline) (string #\Newline) (string #\Return))
+  "Pieces random texts are built from: 1-, 2-, 3- and 4-octet characters, newlines
+and carriage returns, alone and before newlines.")
 
 (defun random-text (max-chars)
   "A random string of up to MAX-CHARS pieces from *ALPHABET*."
@@ -99,14 +107,14 @@ them, and the fixnum vector of byte positions APPLY-EDITS should return."
            (offsets (byte-offsets s))
            (u16 (utf16-offsets s))
            (line-starts (cons 0 (loop for i from 0 below (length s)
-                                      when (char= (char s i) #\Newline) collect (aref offsets (1+ i))))))
+                                      when (string-line-end-p s i) collect (aref offsets (1+ i))))))
       (loop repeat 60
             for c = (random (1+ (length s)))
             do (is = (aref offsets c) (tuatara.text:char->byte rope c))
                (is = c (tuatara.text:byte->char rope (aref offsets c)))
                (is = (aref u16 c) (tuatara.text:byte->utf16 rope (aref offsets c)))
                (is = (aref offsets c) (tuatara.text:utf16->byte rope (aref u16 c)))
-               (is = (count #\Newline s :end c) (tuatara.text:byte->line rope (aref offsets c)))
+               (is = (string-lines s :end c) (tuatara.text:byte->line rope (aref offsets c)))
                (true (tuatara.text:char-boundary-p rope (aref offsets c))))
       ;; inner bytes of multi-octet characters are not boundaries
       (loop for c from 0 below (length s)
@@ -536,6 +544,27 @@ cd")
   (is string= "Description" (tuatara.text:xml-unprefixed "rdf:Description"))
   (is string= "title" (tuatara.text:xml-unprefixed "title"))
   (false (tuatara.text:xml-local-name "text")))
+
+(define-test (rope whole-numbers-read-as-parse-integer)
+  ;; whatever parse-integer reads, whole-number reads the same; whatever it refuses, NIL
+  (let ((state (sb-ext:seed-random-state 20261101))
+        (alphabet (format nil " ~c~c+-0123456789afZ~c" #\Tab #\Newline (code-char #x663))))
+    (dotimes (i 4000)
+      (let* ((text (coerce (loop repeat (random 7 state) collect (char alphabet (random (length alphabet) state))) 'string))
+             (start (random (+ 2 (length text)) state))
+             (end (and (plusp (random 3 state)) (random (+ 2 (length text)) state)))
+             (radix (if (zerop (random 4 state)) 16 10)))
+        (is eql (ignore-errors (parse-integer text :start start :end end :radix radix))
+            (tuatara.text:whole-number text :start start :end end :radix radix)
+            "~s from ~d to ~s in radix ~d" text start end radix))))
+  (is eql -42 (tuatara.text:whole-number " -42 "))
+  (is eql 255 (tuatara.text:whole-number "ff" :radix 16))
+  (is eql 12 (tuatara.text:whole-number "x12y" :start 1 :end 3))
+  (dolist (refused (list nil "" "   " "+" "4 2" "42x" 42 :forty))
+    (false (tuatara.text:whole-number refused) "~s" refused))
+  (false (tuatara.text:whole-number "12" :start 3))
+  (false (tuatara.text:whole-number "12" :end 5))
+  (false (tuatara.text:whole-number "12" :start 2 :end 1)))
 
 (define-test (rope shared-character-sets)
   ;; the sets of octets every part of the editor goes by, each written once

@@ -1,0 +1,180 @@
+.\" tuatara-init(5): the parts between @ signs are made by frontends/tui/man-pages.lisp.
+.TH TUATARA-INIT 5 "" "Tuatara @VERSION@" "File Formats"
+.ad l
+.SH NAME
+tuatara\-init \- the init file of tuatara and the folders it keeps
+.SH DESCRIPTION
+Tuatara reads one file of Lisp when it starts, after its defaults are
+installed: the init file.
+It is the place for settings, keys of your own and the packages to load.
+An error in it is shown on the echo row and the editor starts anyway; the
+forms read before the error are kept.
+.SS Where it is
+.I ~/.config/tuatara/init.lisp
+or, when
+.B XDG_CONFIG_HOME
+is set,
+.IR $XDG_CONFIG_HOME/tuatara/init.lisp .
+.B tuatara \-c
+.I FILE
+reads another;
+.B tuatara \-Q
+reads none, and no package is loaded.
+.PP
+The first time tuatara starts without an init file it writes a starter there,
+and never writes the file again: it is yours.
+.B tuatara \-\-generate\-config
+writes the same starter to
+.I generated\-init.lisp
+beside it, to compare with or to take new settings from.
+The starter lists every setting, each commented out with a paragraph saying
+what it does and, after
+.BR "Not set:" ,
+what it is when it is not set; take away the leading
+.B ;;
+to use one.
+The tabs some languages' own tools require are set there, uncommented.
+.SS How it is read
+The forms are read in order, in the package
+.BR tuatara\-user ,
+so that the names below need no prefix.
+Every form is run as written; the file is code, so only you should write it.
+.SS A setting
+A setting is a variable named in asterisks, set with
+.BR setf :
+.PP
+.RS
+.nf
+(setf *tab\-width* 4)
+(setf *dark\-theme* \(aqterminal)
+.fi
+.RE
+.PP
+The settings are listed below, each with the first sentence of its
+documentation.
+In the editor,
+.B C\-h v
+shows all of it, and what the setting is now.
+Settings are kept together by what they are for, in a block of
+.BR load\-package ,
+after its
+.BR :config ,
+as the starter does.
+.SS Keys
+.TP
+.BI "(bind\-key " "KEYS COMMAND " ":map " "MAP " :mode " MODE)"
+Bind
+.I KEYS
+(\(aqC\-c t\(aq) to
+.IR COMMAND ,
+in every buffer, or only where
+.B :map
+or
+.B :mode
+say.
+.B :map :leader
+binds in the leader's map, the keys after the leader key in the modal
+layer.
+.TP
+.BI "(unbind\-key " KEYS ")"
+Take a key you or the defaults bound away.
+.SS Packages
+.TP
+.BI "(load\-package " "NAME " :source " SOURCE " :version " VERSION" ...)
+Load a package, or set up a part of Tuatara (a group of settings and keys
+under a name), the settings and keys after
+.BR :config .
+It takes
+.BR :source ,
+.BR :version ,
+.BR :file ,
+.BR :folder ,
+.BR :signers ,
+.BR :plain ,
+.BR :disabled ,
+.BR :if ,
+.BR :defer ,
+.BR :after ,
+.BR :commands ,
+.BR :modes ,
+.B :init
+and
+.BR :config .
+A package named by a source is fetched in the background the first time,
+from a git repository, verified by who signed it and asked about before it is
+compiled and loaded.
+.TP
+.BI "(package\-source " "NAME ADDRESS " :signers " KEYS)"
+Name a source of packages: a git repository or a folder of your disk.
+.PP
+The starter shows each keyword with an example.
+.SS Safe defaults
+Nothing in the starter changes what tuatara does: every setting is commented
+out, so a start with the starter and one without an init file are the same.
+A project's language servers and tools run only when you answered that you
+trust the project, and a package is compiled and loaded only after you
+answered the question about it (\fB*package\-ask\-before\-loading*\fR).
+The setting \fB*safe\-directories*\fR names folders whose files are always
+opened safely: read only, no mode or hook acting on them.
+.B \-Q
+starts without the init file and so without any of that, with what is kept
+between sessions kept apart for that session.
+.SH FOLDERS
+Four folders, each named
+.IR tuatara/ ,
+and where the XDG variable is not set:
+.TP
+.I ~/.config/tuatara/
+.RB ( XDG_CONFIG_HOME )
+What you wrote.
+.TP
+.I ~/.local/state/tuatara/
+.RB ( XDG_STATE_HOME )
+What tuatara remembers of what you did.
+.TP
+.I ~/.local/share/tuatara/
+.RB ( XDG_DATA_HOME )
+What you added to it, and what it fetched.
+.TP
+.I ~/.cache/tuatara/
+.RB ( XDG_CACHE_HOME )
+What it makes again when it is gone.
+.PP
+The settings
+.B *state\-directory*
+and
+.B *cache\-directory*
+put the last two elsewhere; a folder named that is not there (a drive not
+mounted) is replaced in memory for the session, so that nothing lands on
+another drive.
+.SH FILES KEPT
+A release reads every file an earlier release of its major version wrote, with
+the same result.
+The files fall in three classes.
+.TP
+.B Kept
+Made by you.
+Never lost to a later release.
+.TP
+.B Remembered
+What you did.
+Read by every later release; a line it does not understand is never an error,
+and for the lists of trust it means the question is asked again, never a
+yes.
+.TP
+.B Rebuilt
+May be deleted at any time; tuatara makes it again.
+.PP
+Every list kept between sessions begins with the line
+.BI "# tuatara " "NAME VERSION"
+and changes only by adding fields at the end of a line.
+@KEPT-FILES@
+.PP
+The settings, key functions and command line options stay as they are in the
+major version; they change only in the next one.
+.SH SETTINGS
+Each setting, by the part of the starter init file that sets it, with the
+first sentence of its documentation.
+@SETTINGS@
+.SH SEE ALSO
+.BR tuatara (1)

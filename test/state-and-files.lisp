@@ -17,9 +17,11 @@ what is still being written to it written first."
     `(with-test-directory (,state)
        (let ((,old (sb-posix:getenv "XDG_STATE_HOME")))
          (sb-posix:setenv "XDG_STATE_HOME" (namestring ,state) 1)
+         (tuatara.defaults::forget-state-paths)
          (unwind-protect (progn ,@body)
            (tuatara.defaults::finish-state-writes)
-           (if ,old (sb-posix:setenv "XDG_STATE_HOME" ,old 1) (sb-posix:unsetenv "XDG_STATE_HOME")))))))
+           (if ,old (sb-posix:setenv "XDG_STATE_HOME" ,old 1) (sb-posix:unsetenv "XDG_STATE_HOME"))
+           (tuatara.defaults::forget-state-paths))))))
 
 (defun another-session (list)
   "A copy of the state list LIST as another session has it: the same file,
@@ -30,7 +32,12 @@ nothing read yet."
                                      (tuatara.defaults::state-list-limit-variable list)
                                      :header (tuatara.defaults::state-list-header list)
                                      :path-of (tuatara.defaults::state-list-path-of list)
-                                     :key (tuatara.defaults::state-list-key list)))
+                                     :key (tuatara.defaults::state-list-key list)
+                                     :version (tuatara.defaults::state-list-version list)
+                                     :class (tuatara.defaults::state-list-class list)
+                                     :fields (tuatara.defaults::state-list-fields list)
+                                     :trust (tuatara.defaults::state-list-trust list)
+                                     :line-key (tuatara.defaults::state-list-line-key list)))
 
 (defparameter *state-list-samples*
   '((tuatara.defaults::*recent-files* ("/other/one.txt" . nil) ("/mine/two.txt" . t))
@@ -72,9 +79,9 @@ nothing read yet."
   (true (tuatara.defaults::glob-match "[a-c]*.PDF" "B-report.pdf" :test #'char-equal))
   (false (tuatara.defaults::glob-match "[a-c]*.pdf" "B-report.pdf"))
   ;; classes keep the name's glob linear: a pattern that would take for ever as a regular expression ends at once
-  (let ((start (get-internal-real-time)))
+  (let ((start (thread-cpu-time)))
     (false (tuatara.defaults::glob-match (format nil "~30@{*[ab]~}c" nil) (make-string 2000 :initial-element #\b)))
-    (true (< (- (get-internal-real-time) start) internal-time-units-per-second))))
+    (true (< (- (thread-cpu-time) start) internal-time-units-per-second))))
 
 (define-test (state-and-files sessions-merged)
   ;; every list: what another session wrote meanwhile kept, what is put here first, on
@@ -109,7 +116,7 @@ nothing read yet."
       (tuatara.defaults::state-list-drop list '("/other/one/"))
       (is equal '("/mine/two.txt") (tuatara.defaults::state-list-entries list))
       (tuatara.defaults::finish-state-writes)
-      (is string= (format nil "/mine/two.txt~%") (file-text (tuatara.defaults::state-list-path list))))
+      (is string= (format nil "# tuatara chosen-paths 1~%/mine/two.txt~%") (file-text (tuatara.defaults::state-list-path list))))
     ;; a PDF whose path has spaces keeps its place
     (tuatara.defaults::state-list-put tuatara.defaults::*pdf-places* (list (list "/a b/c d.pdf" 7 :width 1.5)))
     (tuatara.defaults::finish-state-writes)
@@ -135,16 +142,17 @@ nothing read yet."
       (is equal '(("/a/b c.txt" . 12) ("/x\\y" . 0)) (tuatara.defaults::read-saved-places))
       (is equal '(("/a/doc.pdf" 3 :width 1.25) ("/b/other doc.pdf" 1 :page 1.0)) (tuatara.defaults::read-pdf-places))
       (is equal '("/a/b c.txt" "/a/") (tuatara.defaults::chosen-paths))
-      ;; a change written leaves the rest as it was
+      ;; a change written leaves the rest as it was, under the line saying the version
       (tuatara.defaults::drop-recent-files '("/nowhere"))
       (tuatara.defaults::state-list-drop tuatara.defaults::*saved-places* '("/nowhere"))
       (tuatara.defaults::state-list-drop tuatara.defaults::*pdf-places* '("/nowhere"))
       (tuatara.defaults::state-list-drop tuatara.defaults::*chosen-paths* '("/nowhere"))
       (tuatara.defaults::finish-state-writes)
-      (is string= recent (file-text (tuatara.defaults::state-list-path tuatara.defaults::*recent-files*)))
-      (is string= places (file-text (tuatara.defaults::state-list-path tuatara.defaults::*saved-places*)))
-      (is string= pdf (file-text (tuatara.defaults::state-list-path tuatara.defaults::*pdf-places*)))
-      (is string= chosen (file-text (tuatara.defaults::chosen-paths-file))))))
+      (flet ((versioned (name text) (format nil "# tuatara ~a 1~%~a" name text)))
+        (is string= (versioned "recent-files" recent) (file-text (tuatara.defaults::state-list-path tuatara.defaults::*recent-files*)))
+        (is string= (versioned "places" places) (file-text (tuatara.defaults::state-list-path tuatara.defaults::*saved-places*)))
+        (is string= (versioned "pdf-places" pdf) (file-text (tuatara.defaults::state-list-path tuatara.defaults::*pdf-places*)))
+        (is string= (versioned "chosen-paths" chosen) (file-text (tuatara.defaults::chosen-paths-file)))))))
 
 (defun binary-and-text (dir)
   "Make in DIR a file binary by a zero octet 10 KB in, named as text, and a
@@ -254,14 +262,14 @@ file of text; their native names, as two values."
     (unwind-protect
          (let* ((native (tuatara.io:native dir))
                 (file (tuatara.io:native (put-file (merge-pathnames "data.txt" dir) "data"))))
-           (if (tuatara.defaults::repository-top native)
+           (if (tuatara.git:repository-top native)
                (skip "the temporary directory is in a repository" (true t))
                (is = 0 (count-git-processes
                         (lambda ()
-                          (false (tuatara.defaults::run-git native '("status")))
+                          (false (tuatara.git:run-git native '("status")))
                           (false (tuatara.defaults::committed-text file))
                           (false (tuatara.defaults::git-tracked-p file))
-                          (false (tuatara.defaults::rimu-git-commits native '("data.txt"))))))))
+                          (false (tuatara.git::rimu-git-commits native '("data.txt"))))))))
       (uiop:delete-directory-tree dir :validate t :if-does-not-exist :ignore))))
 
 (define-test (state-and-files git-once-a-visit)
@@ -275,9 +283,11 @@ file of text; their native names, as two values."
       (git dir "config" "commit.gpgsign" "false")
       (put-file file (format nil "one~%two~%"))
       (git dir "add" "data.txt") (git dir "commit" "-q" "-m" "base")
+      ;; trusted: a repository not trusted is read through a shadow, made by a git process of its own
+      (trust-test-repository dir)
       (put-file file (format nil "one~%two~%three~%"))
       (let ((threads '()))
-        (sb-int:encapsulate 'tuatara.defaults::run-git 'note-thread
+        (sb-int:encapsulate 'tuatara.git:run-git 'note-thread
                             (lambda (function &rest arguments)
                               (push sb-thread:*current-thread* threads)
                               (apply function arguments)))
@@ -292,7 +302,7 @@ file of text; their native names, as two values."
                (clrhash tuatara.defaults::**committed-lines**)
                (is = 2 (visit))
                (is = 1 (visit)))
-          (sb-int:unencapsulate 'tuatara.defaults::run-git 'note-thread))
+          (sb-int:unencapsulate 'tuatara.git:run-git 'note-thread))
         (false (member sb-thread:*current-thread* threads))))))
 
 (define-test (state-and-files logs-rotated-alike)
@@ -356,10 +366,10 @@ file of text; their native names, as two values."
       (ensure-directories-exist (sb-ext:parse-native-namestring (concatenate 'string deep "x")))
       (put-file (sb-ext:parse-native-namestring (concatenate 'string project ".project")) "")
       (is string= project (tuatara.defaults::project-root deep))
-      (unless (tuatara.defaults::repository-top root)
-        (false (tuatara.defaults::repository-top deep)))
+      (unless (tuatara.git:repository-top root)
+        (false (tuatara.git:repository-top deep)))
       (sb-posix:mkdir (concatenate 'string project ".git") #o700)
-      (is string= project (tuatara.defaults::repository-top deep))
+      (is string= project (tuatara.git:repository-top deep))
       (is string= project (tuatara.defaults::marked-directory deep '(".git")))
       ;; the home directory and / are never a project's root
       (false (tuatara.defaults::project-root (tuatara.io:home-directory)))
@@ -385,9 +395,13 @@ file of text; their native names, as two values."
                (is string= (format nil "~atuatara/state/" memory) (namestring (tuatara.io:state-directory)))
                (false (probe-file (merge-pathnames "drive/" dir)))
                (true (search "(*state-directory*) is not there: kept in memory"
-                             (first (tuatara.io:directories-in-memory-words)))))
+                             (first (tuatara.io:directories-in-memory-words))))
+               (true (tuatara.io:directory-in-memory-p 'tuatara-user:*state-directory*)))
+             ;; the setting changed, that folder is no longer kept in memory nor said to be
+             (false (tuatara.io:directory-in-memory-p 'tuatara-user:*state-directory*))
+             (false (tuatara.io:directories-in-memory-words))
              (let ((tuatara-user:*packages-directory* chosen))
-               (is string= chosen (tuatara.defaults::packages-directory)))
+               (is string= chosen (tuatara.packages:packages-directory)))
              ;; unset, the standard places
              (true (search "tuatara/" (namestring (tuatara.io:state-directory)))))
         (if old-memory (sb-posix:setenv "XDG_RUNTIME_DIR" old-memory 1) (sb-posix:unsetenv "XDG_RUNTIME_DIR"))))))
@@ -497,8 +511,8 @@ file of text; their native names, as two values."
         (is equal '() (entered :cancel (list t)))
         (false (tuatara.defaults::walk-directory root (constantly t) :limit 2)))
       ;; the language servers' watch: nearest folders first, hidden ones left out, as many as allowed
-      (let ((tuatara.defaults::*lsp-watched-most* 3))
-        (multiple-value-bind (folders stamps) (tuatara.defaults::project-folders root)
+      (let ((tuatara.lsp::*lsp-watched-most* 3))
+        (multiple-value-bind (folders stamps) (tuatara.lsp::project-folders root)
           (is equal (list root (concatenate 'string root "a/") (concatenate 'string root "b/")) folders)
           (is eq :directory (gethash "deep" (gethash (concatenate 'string root "a/") stamps)))
           (true (gethash ".h" (gethash root stamps)))))
@@ -514,9 +528,9 @@ file of text; their native names, as two values."
   (let ((rules (list (cons (tuatara.defaults::gitignore-rule "*a*a*a*a*a*a*a*a*c*b") "/top/")
                      (cons (tuatara.defaults::gitignore-rule "/**a**a**a**a**a**a**a**a**c**b") "/top/")))
         (name (format nil "~a~a" (make-string 60 :initial-element #\a) "b"))
-        (start (get-internal-real-time)))
+        (start (thread-cpu-time)))
     (false (tuatara.defaults::gitignored-p rules name (concatenate 'string "/top/" name) nil))
-    (true (< (- (get-internal-real-time) start) (/ internal-time-units-per-second 4))))
+    (true (< (- (thread-cpu-time) start) (/ internal-time-units-per-second 4))))
   ;; git's stars: * and ? within a folder's name, ** across folders, **/ none too
   (dolist (case '(("**/x" "x" t) ("**/x" "a/b/x" t) ("a/**/b" "a/b" t) ("a/**/b" "a/x/y/b" t) ("a/*" "a/b/c" nil)
                   ("a/*" "a/b" t) ("a/**" "a/b/c" t) ("a?b" "a/b" nil) ("*.o" "lib/x.o" nil) ("**.o" "lib/x.o" t)))
@@ -559,3 +573,83 @@ file of text; their native names, as two values."
     (is eql 1 (fourth entry))
     (false (find-symbol name :tuatara.tests))
     (is eql 1 (fourth (tuatara.defaults::parse-pdf-place-line "2 page #.(error\"run\") /tmp/b.pdf")))))
+
+(define-test (state-and-files unchanged-lists-looked-at-cheaply)
+  ;; a list kept between sessions that nothing changed is looked at again
+  ;; (as each edit asks whether its file's project is trusted) with its file
+  ;; looked at only for a change, its name and folder not worked out again
+  (let ((list tuatara.defaults::*lsp-trusted*))
+    (tuatara.defaults::state-list-entries list)
+    (let ((octets (nth-value 2 (tuatara.bench::measuring
+                                 (dotimes (i 100) (tuatara.defaults::state-list-entries list))))))
+      (true (< (/ octets 100) 1024) "~,1f octets each time" (/ octets 100)))))
+
+(define-test (state-and-files lists-read-from-memory-look-for-their-drive)
+  ;; while the state directory set is kept in memory for want of its drive,
+  ;; a list's file is looked for each time it is read, to be read from the
+  ;; drive once that is there
+  (let ((list tuatara.defaults::*lsp-trusted*) (looks 0))
+    (sb-int:encapsulate 'tuatara.io:state-directory 'counting
+                        (lambda (function &rest arguments) (incf looks) (apply function arguments)))
+    (unwind-protect
+         (let ((tuatara.io::*directories-in-memory*
+                 (list (list 'tuatara-user:*state-directory* "/nowhere/" (tuatara.io:state-directory)))))
+           (setf looks 0)
+           (tuatara.defaults::state-list-path list :known t)
+           (tuatara.defaults::state-list-path list :known t)
+           (is = 2 looks))
+      (sb-int:unencapsulate 'tuatara.io:state-directory 'counting))))
+
+(define-test (state-and-files state-list-path-made-once)
+  ;; the file of a list asked for again, as an edit may each key, is the one worked out
+  ;; before: nothing is made and no environment string read
+  (with-fresh-state
+    (let* ((list tuatara.defaults::*recent-files*)
+           (path (tuatara.defaults::state-list-path list :known t)))
+      (is string= path (tuatara.defaults::state-list-path list :known t))
+      (is = 0 (let ((before (tuatara.bench::bytes-consed)))
+                (dotimes (i 1000) (tuatara.defaults::state-list-path list :known t))
+                (- (tuatara.bench::bytes-consed) before)))
+      ;; the environment changed: worked out anew
+      (with-test-directory (other)
+        (sb-posix:setenv "XDG_STATE_HOME" (namestring other) 1)
+        (tuatara.defaults::forget-state-paths)
+        (false (string= path (tuatara.defaults::state-list-path list :known t)))))))
+
+(define-test (state-and-files trust-asked-without-looking-at-files)
+  ;; asking again whether a buffer is in a project you trust looks at no file and makes
+  ;; nothing; a project trusted meanwhile, here or by another session, is noticed
+  (with-fresh-state
+    (with-test-directory (project)
+      (ensure-directories-exist (merge-pathnames ".git/" project))
+      (let* ((file (namestring (put-file (merge-pathnames "a.rs" project) "fn f() {}")))
+             (buffer (tuatara.buffer:make-buffer "*trust asked*" :text ""))
+             (stamps 0)
+             (list tuatara.defaults::*lsp-trusted*)
+             (real (tuatara.defaults::real-folder (tuatara.defaults::project-root (namestring project)))))
+        (unwind-protect
+             (progn
+               (setf (tuatara.buffer:buffer-file buffer) file)
+               (false (tuatara.defaults::buffer-in-trusted-project-p buffer))
+               (sb-int:encapsulate 'tuatara.io:path-stamp 'trust-counted
+                                   (lambda (function &rest arguments) (incf stamps) (apply function arguments)))
+               (unwind-protect
+                    (is = 0 (let ((before (tuatara.bench::bytes-consed)))
+                              (dotimes (i 1000) (tuatara.defaults::buffer-in-trusted-project-p buffer))
+                              (- (tuatara.bench::bytes-consed) before)))
+                 (sb-int:unencapsulate 'tuatara.io:path-stamp 'trust-counted))
+               (true (< stamps 4) "~d files looked at" stamps)
+               ;; trusted here: at once
+               (tuatara.defaults::state-list-put list (list real))
+               (true (tuatara.defaults::buffer-in-trusted-project-p buffer))
+               (tuatara.defaults::state-list-drop list (list real))
+               (false (tuatara.defaults::buffer-in-trusted-project-p buffer))
+               (tuatara.defaults::finish-state-writes)
+               ;; trusted by another session: within a second or two
+               (let ((other (another-session list)))
+                 (tuatara.defaults::state-list-put other (list real))
+                 (tuatara.defaults::write-state-list other))
+               (true (loop repeat 40
+                           thereis (tuatara.defaults::buffer-in-trusted-project-p buffer)
+                           do (sleep 0.1))))
+          (tuatara.buffer:kill-buffer buffer))))))

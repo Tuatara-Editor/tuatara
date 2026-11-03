@@ -88,7 +88,10 @@ any of; HIDDEN counts those it left alone, for what it says."
       (documentation 'split-primary 'function) "The place of SPLIT point is in, whose text the others follow."
       (documentation 'split-text 'function) "What SPLIT's primary place held when last looked at."
       (documentation 'split-phase 'function) "SPLIT's phase: :SELECT while a verb is awaited, :EDIT while typing."
-      (documentation 'split-did 'function) "What SPLIT's verb did, for the report as it ends."
+      (documentation 'split-did 'function) "What SPLIT's verb did, for the report as it ends:
+:BEFORE, :AFTER, :LINE-STARTS, :LINE-ENDS, :OPENED-BELOW, :OPENED-ABOVE (typed
+there), :CHANGED, :DELETED, :WRAPPED, :UNWRAPPED, :PASTED, :EDITED, or NIL for
+nothing."
       (documentation 'split-scope 'function) "What SPLIT searched, named for the reminder."
       (documentation 'split-agree 'function) "True when every place of SPLIT held the same text."
       (documentation 'split-tick 'function) "The content number of SPLIT's buffer as the split was made."
@@ -119,7 +122,8 @@ SPLIT's cursors."
   "A rectangle's rows as a split searches them, read as they come rather than
 gathered first: the lines starting from TOP below HIGH, between the columns
 LEFT and RIGHT on the screen (a tab TAB-WIDTH columns at most), or with WIDE
-their whole lines; CRLF when lines end with a carriage return and a newline."
+their whole lines; carriage return and line feed (CRLF) when lines end with a
+carriage return and a newline."
   (top 0) (high 0) (left 0) (right 0) wide crlf (tab-width 8))
 
 (defstruct (virtual (:constructor make-virtual) (:copier nil))
@@ -277,6 +281,10 @@ how many matches it left alone because a fold hides them."
                 (case (split-did split)
                   (:before (format nil "Split: typed before ~a" places))
                   (:after (format nil "Split: typed after ~a" places))
+                  (:line-starts (format nil "Split: typed at the line starts of ~a" places))
+                  (:line-ends (format nil "Split: typed at the line ends of ~a" places))
+                  (:opened-below (format nil "Split: typed on new lines below ~a" places))
+                  (:opened-above (format nil "Split: typed on new lines above ~a" places))
                   (:changed (format nil "Split: changed ~a" places))
                   (:deleted (format nil "Split: deleted ~a" places))
                   (:wrapped (format nil "Split: wrapped ~a" places))
@@ -377,11 +385,13 @@ NIL when it may."
 
 (defun split-ranges (whole wide)
   "The stretches of the current buffer a split searches, (START . END) in
-order, and what they are called: the whole buffer with WHOLE; else what is
-selected (SELECTED-RANGES, WIDE as it takes it), or the line at point."
+order, and what they are called: the whole buffer with WHOLE (the part shown
+of a narrowed one); else what is selected (SELECTED-RANGES, WIDE as it takes
+it), or the line at point."
   (let ((b (current-buffer)))
     (if whole
-        (values (list (cons 0 (tuatara.buffer:buffer-size b))) "the buffer")
+        (values (list (multiple-value-call #'cons (tuatara.buffer:buffer-bounds b)))
+                (if (tuatara.buffer:buffer-narrowed-p b) "the part shown" "the buffer"))
         (multiple-value-bind (ranges words) (selected-ranges wide)
           (if ranges
               (values ranges words)
@@ -429,7 +439,7 @@ nothing is."
                (values (tuatara.text:merge-ranges
                         (sort (append (mapcar (lambda (span)
                                                 (cons (car span)
-                                                      (if (eql (char-before-position b (cdr span)) #\Newline)
+                                                      (if (member (char-before-position b (cdr span)) '(#\Newline #\Return))
                                                           (tuatara.buffer:buffer-forward-char b (cdr span) -1)
                                                           (cdr span))))
                                               banked)
@@ -490,7 +500,7 @@ it is answered yes; else :IN-SIGHT."
   (multiple-value-bind (limit why memory) (place-limit setting)
     (if (or (<= n limit)
             (and (eq why :setting) *split-limit-ask* exact (<= n memory)
-                 (yes-or-no-p* (format nil "Hold all ~:d ~a, with every key slow at that many (else those in sight)? " n noun))))
+                 (y-or-n-p* (format nil "Hold all ~:d ~a, with every key slow at that many (else those in sight)?" n noun))))
         :all
         :in-sight)))
 
@@ -732,7 +742,7 @@ megabyte."
                (read-pattern "split on"
                              :count (lambda (text regex)
                                       (multiple-value-bind (whole regexp) (split-input text regex)
-                                        (let ((scope (if whole (list (cons 0 (tuatara.buffer:buffer-size b))) selected)))
+                                        (let ((scope (if whole (list (multiple-value-call #'cons (tuatara.buffer:buffer-bounds b))) selected)))
                                           ;; a rectangle's block is searched row by row as the split comes to it
                                           (if (block-scope-p scope)
                                               (stretch-pattern-count counter b '() "" t)
@@ -822,7 +832,7 @@ always for a block's rows (BLOCK), whose parts of lines are matched as text.
 Signals why when it does not compile."
   (multiple-value-bind (matcher problem)
       (make-pattern-matcher regexp :regex t :compiled block :crlf (buffer-crlf-p buffer))
-    (or matcher (error "Regexp ~a: ~a" regexp problem))))
+    (or matcher (refuse "Regexp ~a: ~a" regexp problem))))
 
 (defun piece-matches (function rope matcher scope groups from to halt &key texts)
   "Call FUNCTION as STRETCH-MATCHES does for each match of MATCHER in the
@@ -1424,7 +1434,7 @@ rows."
 
 (defun live-split ()
   "The split in force in this buffer; signals when there is none."
-  (unless (split-here-p) (error "No split here"))
+  (unless (split-here-p) (refuse "No split here"))
   *split*)
 
 (define-command split-insert ()
@@ -1697,7 +1707,7 @@ out), and around point."
   (let* ((size (tuatara.buffer:buffer-size buffer))
          (point (tuatara.buffer:buffer-point buffer))
          (ranges (list (cons (max 0 (- point *split-sight-octets*)) (min size (+ point *split-sight-octets*))))))
-    (dolist (window (editor-windows *editor*) ranges)
+    (dolist (window (frames-windows *editor*) ranges)
       (when (eq (tuatara.display:window-buffer window) buffer)
         (let ((start (min size (tuatara.display:window-start window)))
               (rows (tuatara.display:window-rows window)))

@@ -12,7 +12,7 @@
 ;;;; screen stands still as text to move through, select and copy, the
 ;;;; program going on meanwhile; i or a types into it again.
 
-(in-package #:tuatara.defaults)
+(in-package #:tuatara.terminal-emulator)
 
 (defvar tuatara-user:*terminal-editor-keys* '("C-x" "M-x" "C-g" "C-\\" "C-q" "C-s")
   "Keys that stay the editor's while you type into a terminal (\\[terminal]).
@@ -178,20 +178,18 @@ cursor's move, a shell's marks) left out."
       (loop while (< i n)
             do (let ((c (char text i)))
                  (cond
-                   ((and (char= c #\Escape) (< (1+ i) n) (char= (char text (1+ i)) #\[))
-                    ;; CSI: its parameters, then its final character
-                    (let* ((end (or (position-if (lambda (ch) (<= #x40 (char-code ch) #x7e)) text :start (+ i 2)) (1- n)))
-                           (final (char text end)))
-                      (when (char= final #\m)
+                   ((char= c #\Escape)
+                    (multiple-value-bind (stop final from end) (tuatara.text:escape-sequence-end text i)
+                      (when (eql final #\m)
                         (flush)
                         ;; each parameter a code, its parts after colons its own (4:3 a curly
                         ;; underline, 58:2::R:G:B an underline's colour); 38 and 48 take theirs
                         ;; either way: 38;2;R;G;B or 38:2::R:G:B
                         (let ((codes (mapcar (lambda (p)
-                                               (let ((parts (mapcar (lambda (x) (or (ignore-errors (parse-integer x)) 0))
+                                               (let ((parts (mapcar (lambda (x) (or (whole-number x) 0))
                                                                     (uiop:split-string p :separator ":"))))
                                                  (if (rest parts) parts (first parts))))
-                                             (uiop:split-string (subseq text (+ i 2) end) :separator ";"))))
+                                             (uiop:split-string (subseq text from end) :separator ";"))))
                           (loop while codes
                                 do (let ((code (pop codes)))
                                      (when (consp code)
@@ -215,16 +213,7 @@ cursor's move, a shell's marks) left out."
                                                 ((<= 40 code 47) (setf bg (palette-code (- code 40))))
                                                 ((<= 90 code 97) (setf fg (palette-code (+ 8 (- code 90)))))
                                                 ((<= 100 code 107) (setf bg (palette-code (+ 8 (- code 100))))))))))))
-                      (setf i (1+ end))))
-                   ((and (char= c #\Escape) (< (1+ i) n) (char= (char text (1+ i)) #\]))
-                    ;; OSC: up to its BEL or ST (ESC \)
-                    (let ((end (loop for j from (+ i 2) below n
-                                     for ch = (char text j)
-                                     when (char= ch (code-char 7)) return (1+ j)
-                                     when (and (char= ch #\Escape) (< (1+ j) n) (char= (char text (1+ j)) #\\))
-                                       return (+ j 2))))
-                      (setf i (or end n))))
-                   ((char= c #\Escape) (incf i 2))
+                      (setf i stop)))
                    ((char= c #\Return) (incf i))
                    ((and (< (char-code c) 32) (not (member c '(#\Newline #\Tab)))) (incf i))
                    (t (write-char c out) (incf i)))))
@@ -235,7 +224,10 @@ cursor's move, a shell's marks) left out."
   "True when KEY is one of KEYS, each written as keys are written for
 bind-key (\"C-x\", \"S-<insert>\")."
   (let ((spec (tuatara.frontend:key-spec key)))
-    (some (lambda (keys) (equal spec (first (ignore-errors (tuatara.frontend:parse-key-sequence keys))))) keys)))
+    (some (lambda (keys)
+            (equal spec (first (ignoring-errors-reported ("reading the keys ~s" keys)
+                                 (tuatara.frontend:parse-key-sequence keys)))))
+          keys)))
 
 (defun terminal-editor-key-p (key)
   "True when KEY stays the editor's in a terminal: one of
@@ -254,7 +246,7 @@ forgetting a search asked for while its history was being read
 \(TERMINAL-SEARCH): the mode line says which; with modal editing on, the history read in SUPPORT
 state and typed into in INSERT state, as a modal layer has them."
   (setf (tuatara.buffer:buffer-local buffer 'terminal-history-view) on
-        (tuatara.buffer:buffer-local buffer :mode-name) (if on "Terminal history" "Terminal"))
+        (buffer-mode-name buffer) (if on "Terminal history" "Terminal"))
   ;; typing again: a search asked for before the history was in is asked no more
   (unless on (setf (tuatara.buffer:buffer-local buffer 'terminal-search-wanted) nil))
   (setf (tuatara.buffer:buffer-local buffer :modal-class) (if on :support :editing))
@@ -371,7 +363,7 @@ desktop's program after asking (OPEN-ADDRESS)."
            (let ((path (uri-path address :hosts (list "localhost" (machine-instance)))))
              (cond ((null path)
                     (message "~a is no file of this computer" (escape-controls address)))
-                   ((not (yes-or-no-p* (format nil "Open ~a in Tuatara?" (escape-controls path))))
+                   ((not (y-or-n-p* (format nil "Open ~a in Tuatara?" (escape-controls path))))
                     (message "Not opened"))
                    (t (visit-path path :safe (and (safe-directory-of path) t)
                                        :show (lambda (buffer)
@@ -489,8 +481,8 @@ in many) the mode line shows; NIL shows none.")
 that \\[find-file] and the rest start there and the mode line says it, and keep
 the title the program gave its terminal for the mode line."
   (let ((directory (emulator-directory emulator)))
-    (when (and directory (not (equal directory (tuatara.buffer:buffer-local buffer :directory))))
-      (setf (tuatara.buffer:buffer-local buffer :directory) directory)))
+    (when (and directory (not (equal directory (buffer-given-directory buffer))))
+      (setf (buffer-given-directory buffer) directory)))
   (let ((title (emulator-title emulator)))
     (unless (eq title :busy)
       (setf (tuatara.buffer:buffer-local buffer 'terminal-title) title))))
@@ -587,7 +579,9 @@ force, fit each terminal shown to its window, and show what its program
 changed while it is typed into; a terminal whose program has ended is
 killed, saying how it ended. Waits for the next wake, which a program's
 output brings, but for a terminal whose library was held (a picture being
-drawn), looked at again a moment later."
+drawn), looked at again a moment later. A terminal a waiting question is
+about is left as it is until the question is answered, what its program does
+meanwhile kept by its emulator (BUFFER-HELD-BY-QUESTION-P)."
   (unless (eql *terminal-face-generation* tuatara.display:*face-generation*)
     (recolour-terminal-faces)
     (setf *terminal-face-generation* tuatara.display:*face-generation*))
@@ -597,6 +591,8 @@ drawn), looked at again a moment later."
           (window (buffer-window buffer editor)))
       (cond ((or (null emulator) (not (live-buffer-p buffer)))
              (setf *terminal-buffers* (remove buffer *terminal-buffers*)))
+            ;; its program's changes stay in the emulator while a waiting question is about it
+            ((buffer-held-by-question-p buffer))
             (t
              (let ((all nil))
                (when window
@@ -635,7 +631,7 @@ drawn), looked at again a moment later."
 window selected and kept for them (PLACE-BUFFERS)."
   (let ((place tuatara-user:*terminal-place*))
     (unless (member place '(:bottom :top :left :right :full))
-      (error "*terminal-place* is ~s: use :bottom, :top, :left, :right or :full" place))
+      (refuse "*terminal-place* is ~s: use :bottom, :top, :left, :right or :full" place))
     (place-buffers 'terminal-mode (if (eq place :full) :here place)
                    :size (terminal-place-size place) :keep t :select t)))
 
@@ -686,7 +682,7 @@ says, as \\[terminal] opens one; quitting it brings back what the window showed.
   "Open a terminal in a buffer of its own, where *TERMINAL-PLACE* says or, with
 PLACE, in a new window there (SHOW-TERMINAL), in the current buffer's directory
 \(in your home directory instead when that buffer was opened safely or its
-directory is in one of *SAFE-DIRECTORIES*, so that your shell's prompt and
+directory is in one of *SAFE-DIRECTORIES* or *EVIDENCE-FOLDERS*, so that your shell's prompt and
 its helpers read nothing a folder of evidence holds, such as its .git or
 .envrc; the echo area says so): your shell (or *TERMINAL-PROGRAM*) on a
 screen as large as the window, which follows the window's size. Everything typed there goes to the program, Escape
@@ -699,30 +695,31 @@ program, and the program ending (exit) kills the buffer; a terminal that
 cannot be shown or started leaves no buffer behind. The sixteen basic
 colours a program picks are the theme's (*TERMINAL-PALETTE-ROLES*)."
   (unless (terminal-library-p)
-    (error "The terminal library is not there (tools/terminal-library.sh builds it)"))
+    (refuse "The terminal library is not there (tools/terminal-library.sh builds it)"))
   (let* ((editor *editor*)
          (here (tuatara.io:native (buffer-directory (current-buffer))))
          (careful (cond ((tuatara.io:safe-visit-p (current-buffer))
                          (format nil "~a is opened safely" (tuatara.buffer:buffer-name (current-buffer))))
-                        ((safe-directory-of here) (format nil "~a is in *safe-directories*" here))))
+                        ((safe-directory-of here) (format nil "~a is in *safe-directories*" here))
+                        ((evidence-path-p here) (evidence-visit-reason here))))
          (directory (if careful (tuatara.io:home-directory) here))
          (program (or tuatara-user:*terminal-program*
-                      (list (or (uiop:getenv "SHELL") "/bin/sh"))))
+                      (list (tuatara.io:user-shell))))
          (buffer (tuatara.buffer:make-buffer (tuatara.buffer:unique-buffer-name "*terminal*"))))
     (set-major-mode buffer 'terminal-mode)
     (setf (tuatara.buffer:buffer-local buffer :modal-class) :editing
           (tuatara.buffer:buffer-local buffer :keys-as-typed) 'terminal-typing-p
           (tuatara.buffer:buffer-local buffer :key-handler) 'terminal-key-handler
           (tuatara.buffer:buffer-local buffer :paste-handler) 'terminal-paste-handler
-          (tuatara.buffer:buffer-local buffer :directory) directory)
-    (dolist (toggle '(line-numbers hl-line cursor-column soft-wrap spellcheck visual-line centred-text))
-      (ignore-errors (choose-display buffer toggle nil)))
+          (buffer-given-directory buffer) directory)
+    (dolist (toggle '(line-numbers hl-line cursor-column soft-wrap spellcheck visual-line centred-text text-direction))
+      (ignoring-errors-reported ("turning ~(~a~) off" toggle) (choose-display buffer toggle nil)))
     ;; shown where *terminal-place* says, and its program started, or the buffer killed again
     (let ((started nil))
       (unwind-protect
            (progn
              (unless (show-terminal buffer place)
-               (error "There is no room for a terminal there"))
+               (refuse "There is no room for a terminal there"))
              (multiple-value-bind (columns rows) (terminal-window-size (editor-window editor))
                (setf (tuatara.buffer:buffer-local buffer :emulator)
                      (multiple-value-bind (cell-width cell-height) (terminal-cell-pixels)
@@ -789,7 +786,7 @@ paste."
          (emulator (live-emulator buffer)))
     (take-in-clipboard)
     (let ((kill (first (editor-kill-ring *editor*))))
-      (unless kill (error "Nothing has been copied"))
+      (unless kill (refuse "Nothing has been copied"))
       (paste-into-terminal buffer emulator (if (stringp kill) kill (tuatara.text:rope-string kill))))))
 
 (define-command terminal-paste-primary ()
@@ -808,7 +805,7 @@ terminal, was shown, into BUFFER's program (PASTE-INTO-TERMINAL)."
 saying no program runs there."
   (let ((emulator (tuatara.buffer:buffer-local buffer :emulator)))
     (unless (and emulator (emulator-alive-p emulator))
-      (error "No program runs in this buffer"))
+      (refuse "No program runs in this buffer"))
     emulator))
 
 (defun paste-into-terminal (buffer emulator text)

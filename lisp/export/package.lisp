@@ -1,0 +1,33 @@
+;;;; lisp/export/package.lisp --- Package definition for tuatara.export.
+;;;; Copyright (C) 2026 Michael A Jones.  GPL-3.0-or-later; see LICENSE.
+
+;; UIOP's define-package, as the names taken from the defaults may be defined
+;; in files loaded after this one: each is made in TUATARA.DEFAULTS here, the
+;; symbol that file then defines
+(uiop:define-package #:tuatara.export
+  (:use #:cl #:tuatara.command #:tuatara.modes #:tuatara.dates #:tuatara-user)
+  (:import-from #:tuatara.runtime #:jobs-of #:ignoring-errors-reported #:refusal #:refuse #:*secret-at-hand*)
+  (:import-from #:tuatara.text #:word-char-p)
+  (:import-from #:tuatara.defaults
+                #:*built-in-latex-templates* #:*export-languages* #:*org-hiding-call-re* #:*org-macro-call-re*
+                #:*pdf-views*
+                #:buffer-in-mode #:commands-for-mode #:copy-chosen-own-file #:docx-import #:docx-templates-directory
+                #:drop-selection #:end-safe-visit-words #:entry-lines #:entry-list-keys #:evidence-refusal
+                #:export-language #:export-trusted-path-p #:file-kind #:file-sha256 #:forget-old-copies
+                #:formatted-template-text #:goto-shown #:latex-import #:latex-mode #:latex-templates-directory
+                #:logos-directory #:new-empty-buffer #:note-templates-directory #:office-file-format #:office-reading
+                #:open-externally-file #:org-buffer-parse #:org-current-headline #:org-docx-document
+                #:org-export-file-name #:org-headline-property #:org-hidden-kinds #:org-hiding-kind
+                #:org-insert-export-drawer #:org-latex-document #:org-macro-definitions #:org-mode #:org-node-begin
+                #:org-node-end #:org-node-post-blank #:org-node-type #:org-parse-char #:org-parse-point
+                #:org-parse-text #:org-parse-tree #:org-path-beside-p #:org-property #:org-text-lines
+                #:org-walk-tree #:outside-program-install-words #:path-in-folders-p #:pdf-view-maker #:pdf-view-of
+                #:pdf-view-path #:pdf-view-reload #:pdf-view-visit #:private-cache-directory #:read-native-path
+                #:region-active-p #:render-pieces #:replaced-type #:save-buffer-with-care #:selection-range
+                #:set-search-filtering #:special-mode #:title-slug #:visit-entry #:visit-path
+                #:with-org-note-keywords)
+  (:documentation "Org notes and LaTeX files made into PDFs and Word documents in the
+background, with the templates, the redactions checked and the macros that
+mark them. The rest of the editor installs it and asks, for the health
+report, what the LaTeX engines and languages are here.")
+  (:export #:install-latex-export #:latex-export-words #:latex-language-words))

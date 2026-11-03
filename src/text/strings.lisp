@@ -10,15 +10,16 @@ character of its code, as ASCII and ISO 8859-1 read it."
 
 (defun utf-16-text (octets &key (start 0) (end (length octets)) big-endian)
   "OCTETS from START below END as UTF-16 text, least significant octet first
-unless BIG-ENDIAN or a byte-order mark says otherwise; the mark, a NUL at its
-end and what follows left out."
+unless BIG-ENDIAN or a byte-order mark says otherwise; the mark, a null (NUL)
+at its end and what follows left out."
   (let* ((end (- end (mod (- end start) 2)))
          (big (cond ((and (< (1+ start) end) (= (aref octets start) #xFE) (= (aref octets (1+ start)) #xFF)) (incf start 2) t)
                     ((and (< (1+ start) end) (= (aref octets start) #xFF) (= (aref octets (1+ start)) #xFE)) (incf start 2) nil)
                     (t big-endian)))
-         (text (or (ignore-errors (sb-ext:octets-to-string (coerce octets '(simple-array (unsigned-byte 8) (*)))
-                                                          :start start :end end
-                                                          :external-format (list (if big :utf-16be :utf-16le) :replacement #\?)))
+         (text (or (tuatara.runtime:ignoring-errors-reported ("reading ~d octets as UTF-16" (- end start))
+                     (sb-ext:octets-to-string (coerce octets '(simple-array (unsigned-byte 8) (*)))
+                                              :start start :end end
+                                              :external-format (list (if big :utf-16be :utf-16le) :replacement #\?)))
                    "")))
     (subseq text 0 (or (position (code-char 0) text) (length text)))))
 
@@ -40,7 +41,8 @@ decodes; NIL for UTF-8 or a charset not known."
            (alias (assoc name *charset-aliases* :test #'string=))
            (encoding (if alias (cdr alias) (find-symbol (string-upcase name) :keyword))))
       (and encoding (not (eq encoding :utf-8))
-           (ignore-errors (sb-ext:octets-to-string (make-array 0 :element-type '(unsigned-byte 8)) :external-format encoding))
+           (tuatara.runtime:ignoring-errors-reported ("reading the charset ~a" charset)
+             (sb-ext:octets-to-string (make-array 0 :element-type '(unsigned-byte 8)) :external-format encoding))
            encoding))))
 
 (defun charset-text (octets charset &key (start 0) (end (length octets)))
@@ -51,8 +53,9 @@ not UTF-8 kept as its raw byte."
   (let ((octets (coerce octets '(simple-array (unsigned-byte 8) (*))))
         (encoding (charset-encoding charset)))
     (or (and encoding
-             (ignore-errors (sb-ext:octets-to-string octets :start start :end end
-                                                            :external-format (list encoding :replacement (code-char #xFFFD)))))
+             (tuatara.runtime:ignoring-errors-reported ("reading text in the charset ~a" charset)
+               (sb-ext:octets-to-string octets :start start :end end
+                                               :external-format (list encoding :replacement (code-char #xFFFD)))))
         (octets-string octets :start start :end end))))
 
 (defun word-char-p (char)
@@ -68,6 +71,27 @@ letters, digits and _."
   "The parts of STRING between SEPARATORS (characters, or a string of them),
 the empty ones left out; NIL for NIL."
   (and string (remove "" (uiop:split-string string :separator separators) :test #'string=)))
+
+(defun whole-number (text &key (start 0) end (radix 10))
+  "TEXT, a string, or its part from START to END, read as a whole number in
+RADIX: digits, a + or - right before them, and spaces, tabs or line breaks
+around, as CL:PARSE-INTEGER reads them (\" -42\" is -42, \"ff\" in radix 16
+is 255). NIL when TEXT is not a string, when START or END are not within it,
+and when the part is anything else: empty, blanks alone, a sign alone, a
+stray character anywhere."
+  (when (stringp text)
+    (let ((end (or end (length text))))
+      (when (and (integerp start) (integerp end) (<= 0 start end (length text)))
+        (flet ((blank-p (char) (member char '(#\Space #\Tab #\Newline #\Return #\Page))))
+          (let ((at start))
+            (loop while (and (< at end) (blank-p (char text at))) do (incf at))
+            (when (and (< at end) (member (char text at) '(#\+ #\-))) (incf at))
+            (let ((digits at))
+              (loop while (and (< at end) (digit-char-p (char text at) radix)) do (incf at))
+              (when (> at digits)
+                (loop while (and (< at end) (blank-p (char text at))) do (incf at))
+                (when (= at end)
+                  (parse-integer text :start start :end end :radix radix))))))))))
 
 (defun parse-decimal (text &key (most-digits 12))
   "TEXT, digits with perhaps a point and more digits after (as 595.276), as
@@ -174,3 +198,85 @@ too, one ending where the next starts. RANGES itself is left as it was."
                           (< (car range) (cdr (first merged)))))
           (setf (cdr (first merged)) (max (cdr (first merged)) (cdr range)))
           (push (cons (car range) (cdr range)) merged)))))
+
+(defparameter *number-width-most* 1000
+  "The widest a number may be padded to by NUMBER-FORMATTER's %d.")
+
+(defun number-formatter (control)
+  "A function of a number giving the text CONTROL makes of it: CONTROL's
+characters as they are, %d (or %s) standing for the number, with - before
+the width to put it on the left, 0 to pad with zeros and a width (%3d, %-3d,
+%03d), and %% for a percent sign. An error for any other %, and for a width
+over *NUMBER-WIDTH-MOST*."
+  (let ((parts '()) (i 0) (n (length control)))
+    (loop while (< i n)
+          do (let ((c (char control i)))
+               (if (char/= c #\%)
+                   (progn (push (string c) parts) (incf i))
+                   (let ((j (1+ i)) (left nil) (zeros nil))
+                     (loop while (and (< j n) (find (char control j) "-0"))
+                           do (if (char= (char control j) #\-) (setf left t) (setf zeros t))
+                              (incf j))
+                     (let ((width-end (or (position-if-not #'digit-char-p control :start j) n)))
+                       (cond ((and (= j (1+ i)) (< j n) (char= (char control j) #\%))
+                              (push "%" parts) (setf i (1+ j)))
+                             ((and (< width-end n) (find (char control width-end) "ds") (> width-end j)
+                                   (or (> (- width-end j) 4)
+                                       (> (parse-integer control :start j :end width-end) *number-width-most*)))
+                              (error "Format string: a width of more than ~:d is not taken" *number-width-most*))
+                             ((and (< width-end n) (find (char control width-end) "ds"))
+                              (push (list (if (> width-end j) (parse-integer control :start j :end width-end) 0) left zeros)
+                                    parts)
+                              (setf i (1+ width-end)))
+                             (t (error "Format string: ~a is not understood; %d stands for the number"
+                                       (subseq control i (min n (1+ width-end)))))))))))
+    (setf parts (nreverse parts))
+    (lambda (number)
+      (with-output-to-string (out)
+        (dolist (part parts)
+          (if (stringp part)
+              (write-string part out)
+              (destructuring-bind (width left zeros) part
+                (let* ((digits (princ-to-string number))
+                       (pad (max 0 (- width (length digits)))))
+                  (cond (left (write-string digits out) (write-string (make-string pad :initial-element #\Space) out))
+                        (zeros (when (minusp number) (write-char #\- out) (setf digits (subseq digits 1)))
+                               (write-string (make-string pad :initial-element #\0) out)
+                               (write-string digits out))
+                        (t (write-string (make-string pad :initial-element #\Space) out) (write-string digits out)))))))))))
+
+(defun natural-string-lessp (a b)
+  "True when the string A comes before B in the order people sort names in:
+letters alphabetically whatever their case, and a run of digits by the number
+it writes: file2 before file10, Notes before notes.txt; two
+names alike but for case, or for zeros before a number, in the order their
+characters' codes give. Complexity: O(length of the shorter), nothing made."
+  (declare (type string a b) (optimize speed))
+  (let ((la (length a)) (lb (length b)) (i 0) (j 0))
+    (declare (type fixnum la lb i j))
+    (flet ((digit-p (c) (char<= #\0 c #\9)))
+      (declare (inline digit-p))
+      (loop
+        (cond ((>= i la) (return (if (< j lb) t (and (string< a b) t))))
+              ((>= j lb) (return nil)))
+        (let ((x (char a i)) (y (char b j)))
+          (if (and (digit-p x) (digit-p y))
+              ;; a number each: the one with fewer digits, its leading zeros left out, the smaller
+              (let ((sa i) (sb j) (ea i) (eb j))
+                (declare (type fixnum sa sb ea eb))
+                (loop while (and (< sa la) (char= #\0 (char a sa))) do (incf sa))
+                (loop while (and (< sb lb) (char= #\0 (char b sb))) do (incf sb))
+                (setf ea sa eb sb)
+                (loop while (and (< ea la) (digit-p (char a ea))) do (incf ea))
+                (loop while (and (< eb lb) (digit-p (char b eb))) do (incf eb))
+                (unless (= (- ea sa) (- eb sb))
+                  (return (< (- ea sa) (- eb sb))))
+                (loop for p of-type fixnum from sa below ea
+                      for q of-type fixnum from sb
+                      do (let ((d (char a p)) (e (char b q)))
+                           (unless (char= d e) (return-from natural-string-lessp (char< d e)))))
+                (setf i ea j eb))
+              (let ((fx (char-downcase x)) (fy (char-downcase y)))
+                (cond ((char< fx fy) (return t))
+                      ((char> fx fy) (return nil))
+                      (t (incf i) (incf j))))))))))

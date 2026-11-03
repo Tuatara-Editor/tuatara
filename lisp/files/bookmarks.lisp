@@ -12,22 +12,21 @@
 (in-package #:tuatara.defaults)
 
 (defvar *bookmarks-kept* 1000
-  "How many bookmarks are kept, the latest set or gone to first.")
-
-(defparameter *bookmark-context-length* 32
-  "How many characters after a bookmark's place it keeps, to find the place
-again once the text before it has changed.")
+  "How many bookmarks you may have before setting another says you have more.
+Every bookmark is kept whatever their number: none is ever dropped for it.")
 
 (defun parse-bookmark-line (line)
   "The bookmark LINE writes, (NAME PATH OFFSET CONTEXT CATEGORIES SAFE), or NIL
 for a line that makes no sense. A tab ends each field, and each is escaped
 \(ESCAPE-PATH). In order: the octet, the name, the path and the text after
 the place; then, when there are any, the categories with a comma between
-them, and the word safe for a file opened safely."
-  (let ((fields (uiop:split-string line :separator '(#\Tab))))
-    (when (and (<= 4 (length fields) 6) (plusp (length (first fields))) (every #'digit-char-p (first fields))
+them, and the word safe for a file opened safely. Fields after those are
+passed over (STATE-LINE-FIELDS)."
+  (let ((fields (state-line-fields line)))
+    (when (and (<= 4 (length fields)) (plusp (length (first fields))) (every #'digit-char-p (first fields))
                (< (length (first fields)) 19))
-      (destructuring-bind (offset name path context &optional (categories "") (safe "")) fields
+      (destructuring-bind (offset name path context &optional (categories "") (safe "") &rest later) fields
+        (declare (ignore later))
         (let ((name (unescape-path name)) (path (unescape-path path)))
           (and (plusp (length name)) (plusp (length path))
                (list name path (parse-integer offset) (unescape-path context)
@@ -56,7 +55,8 @@ CATEGORIES SAFE): the categories and safe last, when it has them."
                        # categories with a comma between them, and safe for a file opened safely~%~
                        # (\\\\, \\n and \\r stand for \\, a newline and a return).~%")
   ;; a bookmark is known by its name
-  :path-of #'first)
+  :path-of #'first :class :kept :fields 6
+  :line-key (field-line-key 4 1 #'digits-word-p))
 
 (defun bookmark-names ()
   "The names of the bookmarks, the latest first."
@@ -65,50 +65,6 @@ CATEGORIES SAFE): the categories and safe last, when it has them."
 (defun find-bookmark (name)
   "The bookmark called NAME, or NIL."
   (state-list-find *bookmarks* name))
-
-(defun bookmark-target (buffer)
-  "What a bookmark of BUFFER keeps a place in: its file, or the folder a
-directory list shows; NIL for a buffer of neither."
-  (let ((file (tuatara.buffer:buffer-file buffer)))
-    (cond (file (tuatara.io:native file))
-          ((buffer-mode-named-p buffer 'rimu-mode) (buffer-directory buffer)))))
-
-(defun character-start (buffer octet)
-  "OCTET of BUFFER, or the start of the character it falls inside, as far as
-the text goes."
-  (tuatara.text:rope-char-start (tuatara.buffer:buffer-text buffer) (min octet (tuatara.buffer:buffer-size buffer))))
-
-(defun bookmark-context (buffer position)
-  "The text after POSITION of BUFFER a bookmark keeps: *BOOKMARK-CONTEXT-LENGTH*
-characters at most, up to a tab."
-  (let* ((start (character-start buffer position))
-         (text (tuatara.buffer:buffer-string buffer :start start
-                                                    :end (character-start buffer (+ start (* 4 *bookmark-context-length*)))))
-         (text (subseq text 0 (min (length text) *bookmark-context-length*))))
-    (subseq text 0 (or (position #\Tab text) (length text)))))
-
-(defun bookmark-place (buffer offset context)
-  "Where in BUFFER a bookmark of OFFSET and CONTEXT is now: OFFSET (or the start
-of the character it falls inside) when the text there still begins with
-CONTEXT, else the nearest place within a megabyte that does, else OFFSET
-\(within the text)."
-  (let* ((size (tuatara.buffer:buffer-size buffer))
-         (offset (character-start buffer offset))
-         (here (tuatara.buffer:buffer-string buffer :start offset :end (character-start buffer (+ offset (* 4 (length context)))))))
-    (if (or (zerop (length context)) (uiop:string-prefix-p context here))
-        offset
-        (let* ((from (character-start buffer (max 0 (- offset (* 1024 1024)))))
-               (to (character-start buffer (min size (+ offset (* 1024 1024)))))
-               (text (tuatara.buffer:buffer-string buffer :start from :end to))
-               (best nil))
-          (loop with byte = from and counted = 0
-                for at = (search context text) then (search context text :start2 (1+ at))
-                while at
-                do (incf byte (tuatara.text:string-octet-length text :start counted :end at))
-                   (setf counted at)
-                   (when (or (null best) (< (abs (- byte offset)) (abs (- best offset))))
-                     (setf best byte)))
-          (or best offset)))))
 
 (defvar *bookmark-set-asks-categories* t
   "True for \\[bookmark-set] to ask, after the name, which categories the
@@ -136,8 +92,8 @@ in later sessions too, and \\[bookmark-manager] lists it under each of its
 categories. A name already given is moved here, its categories kept when none
 are chosen."
   (let* ((buffer (current-buffer))
-         (target (bookmark-target buffer)))
-    (if (null target)
+         (place (file-place-here buffer)))
+    (if (null place)
         (message "~a has no file to keep a place in" (tuatara.buffer:buffer-name buffer))
         (let ((name (string-trim " " (substitute #\Space #\Tab
                                                  (let ((offered (tuatara.buffer:buffer-name buffer)))
@@ -145,41 +101,24 @@ are chosen."
                                                                     :default offered))))))
           (if (zerop (length name))
               (message "No name: no bookmark set")
-              (let* ((had (bookmark-categories (find-bookmark name)))
+              (let* ((old (find-bookmark name))
+                     (had (bookmark-categories old))
                      (categories (or (and *bookmark-set-asks-categories*
                                           (read-bookmark-categories (format nil "Categories of ~a: " name)))
-                                     had)))
-                (state-list-put *bookmarks* (list (list name target (point) (bookmark-context buffer (point)) categories
-                                                        (tuatara.io:safe-visit-p buffer))))
-                (message "Bookmark ~a set~@[ in ~{~a~^, ~}~]" name categories)))))))
-
-(defun bookmark-kind (bookmark)
-  "What BOOKMARK keeps a place in, as the bookmark manager says it: \"file\",
-\"folder\" (a directory list's), or \"gone\" when it is no longer there."
-  (let ((kind (ignore-errors (tuatara.io:path-kind (second bookmark)))))
-    (case kind
-      ((nil) "gone")
-      (:directory "folder")
-      (t "file"))))
+                                     had))
+                     (count (state-list-past-limit *bookmarks* (if old 0 1))))
+                (state-list-put *bookmarks* (list (list name (file-place-path place) (file-place-offset place)
+                                                        (file-place-context place) categories (file-place-safe place))))
+                (message "Bookmark ~a set~@[ in ~{~a~^, ~}~]~@[; ~d bookmarks, more than *bookmarks-kept* (~d)~]"
+                         name categories count *bookmarks-kept*)))))))
 
 (defun go-to-bookmark (bookmark &key other)
-  "Visit BOOKMARK's file (in another window with OTHER), safely when it was
-set in a file opened safely, and go to its place, found again where the text
-has moved it; a folder's in a rimu list of its project there is, moved there
-\(*RIMU-REUSE-LISTS*), else in one of its own. It becomes the latest. A file or folder no longer there is
-said so, nothing made in its place."
+  "Go to BOOKMARK's place (GO-TO-FILE-PLACE), in another window with OTHER.
+It becomes the latest."
   (destructuring-bind (name path offset context &optional categories safe) bookmark
     (declare (ignore categories))
-    (let* ((kind (bookmark-kind bookmark))
-           (buffer (or (buffer-visiting path)
-                       (and (string= kind "folder") (rimu-show-in-project path :show #'identity))
-                       (and (string/= kind "gone")
-                            (visit-path path :safe safe :show #'identity)))))
-      (if (not (typep buffer 'tuatara.buffer:buffer))
-          (message "~a: ~a is no longer there" name (abbreviated-path path))
-          (progn (if other (pop-to-buffer buffer :other t) (show-buffer buffer))
-                 (goto (bookmark-place buffer offset context))
-                 (state-list-put *bookmarks* (list bookmark)))))))
+    (when (go-to-file-place name (make-file-place path offset context safe) :other other)
+      (state-list-put *bookmarks* (list bookmark)))))
 
 (defun read-bookmark (prompt)
   "A bookmark chosen with PROMPT, each listed with its file; NIL with none kept."
@@ -290,7 +229,7 @@ those still there, a mark kept by the bookmark's name and its section."
     (flet ((kind (bookmark)
              ;; each file looked at once
              (or (gethash (second bookmark) kinds)
-                 (setf (gethash (second bookmark) kinds) (bookmark-kind bookmark)))))
+                 (setf (gethash (second bookmark) kinds) (file-place-kind (second bookmark))))))
       (render-table-list
        list *bookmarks-columns* (bookmark-sections)
        (lambda (bookmark mark section) (declare (ignore section)) (bookmark-cells bookmark mark #'kind))

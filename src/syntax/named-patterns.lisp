@@ -85,11 +85,11 @@ with a hyphen nor longer than 63."
 
 (defun url-pattern ()
   "A web or FTP address, http, https, ftp or ftps (in any case), :// and the
-characters RFC 3986 lets a URI hold; its end not a dot, comma, semicolon,
-colon, mark, quote or bracket, which close a sentence rather than the address
-\(RFC 3986, appendix C), but for a closing bracket whose opening one it holds:
-https://en.wikipedia.org/wiki/Kea_(bird) whole, (see https://x.nz/a) without
-the last bracket."
+characters RFC 3986 lets a uniform resource identifier (URI) hold; its end not
+a dot, comma, semicolon, colon, mark, quote or bracket, which close a sentence
+rather than the address \(RFC 3986, appendix C), but for a closing bracket
+whose opening one it holds: https://en.wikipedia.org/wiki/Kea_(bird) whole,
+(see https://x.nz/a) without the last bracket."
   (let* ((inside "[A-Za-z0-9._~:/?#\\[\\]@!$&'*+,;=%-]")
          (last "[A-Za-z0-9_~/#@$&*+=%-]")
          (brackets (format nil "\\(~a*\\)" inside)))
@@ -97,8 +97,9 @@ the last bracket."
             inside brackets last brackets)))
 
 (defun uuid-pattern ()
-  "A UUID as RFC 9562 writes one: 8-4-4-4-12 hex digits, its version (1 to 8)
-and variant (8, 9, a or b) where they stand; or the nil or max UUID."
+  "A universally unique identifier (UUID) as RFC 9562 writes one: 8-4-4-4-12
+hex digits, its version (1 to 8) and variant (8, 9, a or b) where they
+stand; or the nil or max UUID."
   (let ((h "[0-9A-Fa-f]"))
     (format nil "(?<![0-9A-Fa-f])(?:~a{8}-~a{4}-[1-8]~a{3}-[89ABab]~a{3}-~a{12}|0{8}-0{4}-0{4}-0{4}-0{12}|[Ff]{8}-[Ff]{4}-[Ff]{4}-[Ff]{4}-[Ff]{12})(?![0-9A-Fa-f])"
             h h h h h)))
@@ -1032,7 +1033,8 @@ the filter it names (*PATTERN-FILTERS*)."
          (let* ((name (subseq (second tree) (length *filter-mark*)))
                 (dash (position #\- name))
                 (maker (cdr (assoc (subseq name 0 dash) *pattern-filters* :test #'string=))))
-           (list :filter (or (and maker (ignore-errors (if dash (funcall maker (subseq name (1+ dash))) (funcall maker))))
+           (list :filter (or (and maker (tuatara.runtime:ignoring-errors-reported ("making the filter ~a" name)
+                                          (if dash (funcall maker (subseq name (1+ dash))) (funcall maker))))
                              (refuse-pattern "invalid: a group may not be named ~a…" *filter-mark*)))))
         ((consp tree) (mapcar #'filter-tree tree))
         (t tree)))

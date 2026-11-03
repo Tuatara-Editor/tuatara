@@ -7,7 +7,7 @@
 ;;;; show a new note begun from the note template; M-x insert-note-template
 ;;;; begins each one after.
 
-(in-package #:tuatara.defaults)
+(in-package #:tuatara.export)
 
 (defstruct (template-import-job (:include tuatara.runtime:job) (:constructor make-template-import-job (buffer path name make)) (:copier nil))
   "A document at PATH being made the template NAME and its note template by

@@ -6,7 +6,7 @@
 ;;;;
 ;;;; Written by tools/languages/tools.py: change that, not this file.
 
-(in-package #:tuatara.defaults)
+(in-package #:tuatara.lsp)
 
 (defparameter *usual-language-servers*
   '(("actions-language-server" ("actions-languageserver" "--stdio") :options "{\"actions-language-server\":{\"sessionToken\":\"\"}}")

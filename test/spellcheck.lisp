@@ -230,11 +230,13 @@ each of them and at the end, the editor woken to redraw."
         (let ((file (namestring (merge-pathnames "note.org" dir)))
               (tuatara.defaults::*spellcheck-languages* '("en_US")))
           (alexandria:write-string-into-file (format nil "* Head~%Some teh text.~%~%** Sub~%  More wrnog here.~%~%") file)
-          (multiple-value-bind (f editor) (run-keys (spellcheck-keys "g e" "k" "g g") :file file :width 70 :height 8)
-            (declare (ignore editor))
-            (true (search "  Some teh" (tuatara.frontend.fake:fake-screen-line f 1)) "shown indented")
-            (is equal '("teh" "wrnog") (spelt-wrong f))
-            (false (search "could not be drawn" (tuatara.buffer:buffer-string (tuatara.buffer:find-buffer "*Messages*")))))
+          (with-messages-said (said)
+            (multiple-value-bind (f editor) (run-keys (spellcheck-keys "g e" "k" "g g") :file file :width 70 :height 8)
+              (declare (ignore editor))
+              (true (search "  Some teh" (tuatara.frontend.fake:fake-screen-line f 1)) "shown indented")
+              (is equal '("teh" "wrnog") (spelt-wrong f))
+              ;; nothing failed to draw in this session, whatever sessions before it said
+              (false (search "could not be drawn" (said)))))
           ;; the window's first row an empty line under a headline, as after g e in a longer note
           (multiple-value-bind (f editor)
               (run-keys (list (lambda ()
@@ -254,7 +256,6 @@ each of them and at the end, the editor woken to redraw."
   ;; a lot of words the speller fails on: taken as right, the next lot answered, spelling still on
   (let ((tuatara.defaults::*spelling-wanted* '())
         (tuatara.defaults::*spelling-draining* t)
-        (tuatara.defaults::*spelling-wake-function* nil)
         (table (make-hash-table :test 'equal)))
     (setf (gethash "boom" table) :asked (gethash "fine" table) :asked)
     (sb-int:encapsulate 'tuatara.defaults::spelling-of 'test-failing
@@ -262,7 +263,7 @@ each of them and at the end, the editor woken to redraw."
                           (if (string= word "boom") (error "the speller failed") (funcall function languages word))))
     (unwind-protect
          (progn
-           (setf tuatara.defaults::*spelling-wanted* (list (list* '() table '("boom")) (list* '() table '("fine"))))
+           (setf tuatara.defaults::*spelling-wanted* (list (list* '() table nil '("boom")) (list* '() table nil '("fine"))))
            (tuatara.defaults::spelling-drain)
            (is eq :right (gethash "boom" table))
            (is eq :right (gethash "fine" table))
@@ -285,8 +286,7 @@ each of them and at the end, the editor woken to redraw."
       (tuatara.buffer:kill-buffer b)))
   ;; a word added to one language's list is right where that language is asked, not in another's
   (let ((tuatara.defaults::*spelling-answers* (make-hash-table :test 'equal :synchronized t))
-        (tuatara.defaults::*speller* (cons sb-thread:*current-thread* (sb-concurrency:make-mailbox)))
-        (tuatara.defaults::*spelling-wake-function* nil))
+        (tuatara.defaults::*speller* (cons sb-thread:*current-thread* (sb-concurrency:make-mailbox))))
     (setf (gethash "kia" (tuatara.defaults::spelling-table '("en_NZ"))) :wrong
           (gethash "kia" (tuatara.defaults::spelling-table '("de_DE"))) :wrong)
     (tuatara.defaults::spelling-add '("en_NZ") "kia" "en_NZ")
@@ -374,3 +374,26 @@ each of them and at the end, the editor woken to redraw."
            (true (plusp calls)))
       (sb-int:unencapsulate 'tuatara.defaults::spelling-words 'counted)
       (remhash "xx_KEPT" tuatara.defaults::*spelling-answers*))))
+
+(define-test (spellcheck secret-lot-failing-told-by-its-kind)
+  ;; a lot of words of a secret text the speller fails on: the debug log says the kind of failure only
+  (let ((tuatara.defaults::*spelling-wanted* '())
+        (tuatara.defaults::*spelling-draining* t)
+        (table (make-hash-table :test 'equal)))
+    (setf (gethash "kiwi" table) :asked)
+    (drain-debug-reports)
+    (sb-int:encapsulate 'tuatara.defaults::spelling-of 'test-failing
+                        (lambda (function languages word)
+                          (declare (ignore function languages))
+                          (error "the speller failed on ~a words" word)))
+    (unwind-protect
+         (progn
+           (tuatara.runtime:set-debug t)
+           (setf tuatara.defaults::*spelling-wanted* (list (list* '() table t '("kiwi"))))
+           (tuatara.defaults::spelling-drain)
+           (let ((texts (loop for report = (sb-concurrency:dequeue tuatara.runtime:*debug-reports*)
+                              while report collect (princ-to-string (fourth report)))))
+             (true (find "a simple-error" texts :test #'search) "~s" texts)
+             (false (find "kiwi" texts :test #'search) "~s" texts)))
+      (sb-int:unencapsulate 'tuatara.defaults::spelling-of 'test-failing)
+      (drain-debug-reports))))

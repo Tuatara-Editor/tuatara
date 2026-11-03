@@ -69,6 +69,8 @@ says how it was read."
     (:search . ,*search-keymap*)
     (:pattern . ,*pattern-keymap*)
     (:pattern-answer . ,*pattern-answer-keymap*)
+    (:search-files . ,*search-files-keymap*)
+    (:path-question . ,*path-question-keymap*)
     (:popup . ,*popup-keymap*)
     ,@(when *editor* `((:minibuffer . ,(editor-minibuffer-keymap *editor*))))))
 
@@ -77,7 +79,7 @@ says how it was read."
 KEYMAP-REGISTRY."
   (cond ((keymap-p map) map)
         ((cdr (assoc map (keymap-registry))))
-        (t (error "Unknown keymap ~s; use a major mode's name or one of ~{~s~^ ~}." map (mapcar #'car (keymap-registry))))))
+        (t (refuse "Unknown keymap ~s; use a major mode's name or one of ~{~s~^ ~}." map (mapcar #'car (keymap-registry))))))
 
 (defun mode-keymaps (map mode)
   "The keymaps bind-key's MAP and MODE stand for: MAP's (KEYMAP-NAMED) without
@@ -90,11 +92,11 @@ mode's own keys, as with MAP :global and MODE that mode."
          (mode-keymaps :global map))
         ((null mode) (list (keymap-named map)))
         (t (loop for given in (if (listp mode) mode (list mode))
-                 for name = (if (and given (symbolp given)) (mode-named given) (error "No major mode called ~s." given))
+                 for name = (if (and given (symbolp given)) (mode-named given) (refuse "No major mode called ~s." given))
                  collect (case map
                            (:global (mode-keymap name))
                            ((:normal :insert :support :leader) (mode-layer name map))
-                           (t (error "With :mode, :map is :global, :normal, :insert, :support or :leader, not ~s." map)))))))
+                           (t (refuse "With :mode, :map is :global, :normal, :insert, :support or :leader, not ~s." map)))))))
 
 (defun tuatara-user:bind-key (keys command &key (map :global) mode label)
   "Bind KEYS (keys apart by spaces, C- for Control, M- for Meta and S- for
@@ -123,7 +125,7 @@ binding left as it is: (bind-key \"t\" nil :map :leader :label \"toggle\") shows
   (let* ((label (or label (and (consp command) (car command))))
          (command (if (consp command) (cdr command) command))
          (symbol (and (or command (null label))
-                      (or (command-symbol command) (error "No command named ~(~a~)." command)))))
+                      (or (command-symbol command) (refuse "No command named ~(~a~)." command)))))
     (dolist (keymap (mode-keymaps map mode))
       (cond ((and (null command) label) (set-key-label keymap keys label))
             (t (define-key keymap keys symbol)
@@ -185,12 +187,39 @@ a line away.")
 there already, or a link, is never touched. True when written; NIL when
 not, and why as a second value when it could not be."
   (handler-case
-      (unless (tuatara.io:path-kind path :follow nil)
-        (ensure-directories-exist path)
-        ;; made new or not at all: a link there, even one leading nowhere, is never written through
-        (tuatara.io:write-new-file path *starter-config* :mode #o600)
-        t)
+      (reporting-errors ("writing the starter init file ~a" path)
+        (unless (tuatara.io:path-kind path :follow nil)
+          (ensure-directories-exist path)
+          ;; made new or not at all: a link there, even one leading nowhere, is never written through
+          (tuatara.io:write-new-file path *starter-config* :mode #o600)
+          t))
     (error (e) (values nil (princ-to-string e)))))
+
+(defvar *init-file-stop* nil
+  "Where the init file was last read up to when its reading went wrong,
+\(LINE . WHY), or NIL when it was read to its end: a form that failed, or
+text that could not be read on.")
+
+(defun start-bare ()
+  "Have the editor start without the init file, so without packages, and with
+a state folder of its own, new and empty, in bare-state/ in the cache folder,
+held by this session (MAKE-OWNED-FOLDER) and deleted when the editor ends, once
+the last of what is kept has been written (FINISH-STATE-WRITES): what the
+editor keeps between sessions (the files visited lately, the session,
+auto-saved text, bookmarks) is neither read nor written, so that nothing of the
+real state is changed or lost. Those of earlier bare starts left behind by
+sessions that ended are deleted (FORGET-ABANDONED-FOLDERS). The configuration
+folder (snippets, templates) is read as always. Call it before the editor
+starts."
+  (forget-abandoned-folders "bare-state/")
+  (multiple-value-bind (folder lock) (make-owned-folder "bare-state/")
+    (setf *config-file* (merge-pathnames "no-init-file.lisp" folder)
+          tuatara-user:*state-directory* folder
+          *bare-state-folder* (cons folder lock))))
+
+(defun say-started-bare ()
+  "Say that the editor started without its init file and packages, with state of its own."
+  (message "Started with -Q: no init file, no packages, and what is kept between sessions kept apart"))
 
 (defun load-user-config ()
   "Load the init file if it exists, in the TUATARA-USER package, form by form
@@ -205,8 +234,9 @@ is written there first (WRITE-STARTER-CONFIG) and said."
               (why (message "No starter init file written at ~a: ~a" (abbreviated-path file) why)))))
     (if (probe-file file)
         (let ((*package* (find-package :tuatara-user)))
-          (setf *init-file-outcome* :read)
-          (call-with-start-packages (lambda () (read-init-file file)))
+          (setf *init-file-outcome* :read
+                *init-file-stop* nil)
+          (tuatara.packages:call-with-start-packages (lambda () (read-init-file file)))
           (eq *init-file-outcome* :read))
         (progn (setf *init-file-outcome* :none) nil))))
 
@@ -237,7 +267,8 @@ from 1. NIL when the whole of TEXT was read; else where reading stopped, as
         (incf line (count #\Newline text :start counted :end start))
         (setf counted start))
       (multiple-value-bind (form next)
-          (handler-case (read-from-string text nil text :start at)
+          (handler-case (reporting-errors ("reading the form on line ~d" line)
+                          (read-from-string text nil text :start at))
             (error (e) (return (cons line e))))
         (when (eq form text) (return nil))
         (funcall function form line)
@@ -247,15 +278,21 @@ from 1. NIL when the whole of TEXT was read; else where reading stopped, as
   "Read and evaluate the forms of the init file FILE one by one, in the package
 it is read in (MAP-TEXT-FORMS): one that fails is said, with its line and why,
 the first such kept in *INIT-FILE-OUTCOME*, and the forms after it are read
-all the same; text that cannot be read at all ends the reading, said so."
+all the same; text that cannot be read at all ends the reading, said so.
+The functions, commands and recorded keys its forms define are noted as
+defined in FILE (NOTE-INIT-FILE-DEFINITION), where help shows them."
   (let ((text (tuatara.io:file-text file))
         (*load-truename* (truename file))
         (*load-pathname* (pathname file)))
     (flet ((fail (line e)
              (when (eq *init-file-outcome* :read)
-               (setf *init-file-outcome* (cons :error (princ-to-string e))))
+               (setf *init-file-outcome* (cons :error (princ-to-string e))
+                     *init-file-stop* (cons line (tuatara.text:one-line (princ-to-string e)))))
              (message "Error in ~a, line ~d: ~a" (namestring file) line e)))
-      (let ((stopped (map-text-forms text (lambda (form line)
-                                            (handler-case (eval form)
-                                              (error (e) (fail line e)))))))
+      (let* ((path (namestring (truename file)))
+             (stopped (map-text-forms text (lambda (form line)
+                                             (handler-case (reporting-errors ("the init file's line ~d" line)
+                                                             (eval form)
+                                                             (note-init-file-definition form path line))
+                                               (error (e) (fail line e)))))))
         (when stopped (fail (car stopped) (cdr stopped)))))))

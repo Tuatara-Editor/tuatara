@@ -160,10 +160,6 @@
   :block-comment ("{%" "%}")
   :extensions ("dj" "djot"))
 
-(define-language djot
-  "Djot documents, parsed with tree-sitter-djot."
-  :grammar "djot" :modes (djot-mode) :indent 2 :queries "djot" :injection-names "dj|djot")
-
 (define-major-mode mermaid-mode prog-mode
   "Mermaid diagrams."
   :lighter "Mermaid"
@@ -198,10 +194,6 @@
   :lighter "Jinja2"
   :block-comment ("{#" "#}")
   :extensions ("jinja" "jinja2" "j2"))
-
-(define-language jinja
-  "Jinja templates, parsed with tree-sitter-jinja2."
-  :grammar "jinja2" :modes (jinja2-mode) :indent 2 :queries "jinja" :injection-names "jinja")
 
 (define-major-mode twig-mode prog-mode
   "Twig templates."

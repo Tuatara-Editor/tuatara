@@ -466,3 +466,180 @@ scratch file, given to the clipboard unasked, nor exported unasked; no core dump
                                            (true (plusp (length output))))
                                          (- (sb-ext:get-bytes-consed) before)))))
             (true (< consed (/ size 4)) "~:d octets made for a file of ~:d" consed size))))))
+
+(define-test (encrypted secrets-kept-from-the-debug-log)
+  ;; an error inside a decrypt with a passphrase: the debug log says that it failed, never the
+  ;; passphrase or the text, in its words or in the calls under way; nor does a job on such a text
+  (if (null (tuatara.defaults::gpg-path))
+      (skip "gpg is not installed here" (true nil))
+      (with-test-directory (dir)
+        (let* ((file (gpg-test-file (merge-pathnames "secret.txt.gpg" dir) "plain kiwi words" :passphrase "kea secret pass"))
+               (tuatara-user:*gpg-passphrase-from* :minibuffer)
+               (octets (alexandria:read-file-into-byte-vector file)))
+          (flet ((reported ()
+                   (loop for report = (sb-concurrency:dequeue tuatara.runtime:*debug-reports*)
+                         while report collect (princ-to-string (fourth report)))))
+            (drain-debug-reports)
+            (tuatara.runtime:set-debug t)
+            (sb-int:encapsulate 'tuatara.defaults::gpg-status-p 'test-failing
+                                (lambda (function &rest arguments)
+                                  (declare (ignore function arguments))
+                                  (error 'type-error :datum "kea secret pass plain kiwi words" :expected-type 'integer)))
+            (unwind-protect
+                 (progn
+                   (false (ignore-errors
+                           (tuatara.runtime:reporting-errors ("decrypting in a test")
+                             (tuatara.defaults::decrypt-naming-keys octets :passphrase (copy-seq "kea secret pass")))))
+                   (let ((texts (reported)))
+                     (true (find-if (lambda (text) (search "decrypting in a test failed: a type-error" text)) texts)
+                           "~s" texts)
+                     (false (find-if (lambda (text) (or (search "kea secret" text) (search "kiwi" text))) texts)
+                            "~s" texts)))
+              (sb-int:unencapsulate 'tuatara.defaults::gpg-status-p 'test-failing))
+            ;; a job on a buffer whose text is secret
+            (let ((buffer (tuatara.buffer:make-buffer "*secret test*")))
+              (setf (tuatara.io:buffer-plaintext-p buffer) t)
+              (unwind-protect
+                   (let ((job (tuatara.defaults::make-decrypt-job buffer "/tmp/x.txt.gpg" nil)))
+                     (tuatara.runtime:start-job-thread job (lambda (job) (declare (ignore job))
+                                                             (error "plain kiwi words")))
+                     (loop repeat 500 while (tuatara.runtime:job-running-p job) do (sleep 0.01))
+                     (let ((texts (reported)))
+                       (true (find-if (lambda (text) (search "failed" text)) texts) "~s" texts)
+                       (false (find-if (lambda (text) (search "kiwi" text)) texts) "~s" texts)))
+                (tuatara.buffer:kill-buffer buffer)))
+            ;; a decrypt job prints by its file's name alone
+            (let ((job (tuatara.defaults::make-decrypt-job nil "/tmp/x.txt.gpg" "kea secret pass")))
+              (false (search "kea" (prin1-to-string job))))
+            (drain-debug-reports))))))
+
+(define-test (encrypted decrypted-buffer-failures-kept-secret)
+  ;; failures while a decrypted Org text is worked on away from the editor's thread (its outline),
+  ;; taken in, and drawn (a header line, in a window not selected): said in the debug log by their
+  ;; kind alone, never with the text or the calls under way
+  (if (null (tuatara.defaults::gpg-path))
+      (skip "gpg is not installed here" (true nil))
+      (with-test-directory (dir)
+        (let* ((key (gpg-test-key))
+               (file (gpg-test-file (merge-pathnames "kiwi.org.gpg" dir) (format nil "* Heading~%plain kiwi words~%") :key key))
+               (tuatara.defaults::*modal-editing* nil)
+               (tuatara-user:*gpg-passphrase-from* :minibuffer)
+               (kiwi (lambda (&rest arguments)
+                       (declare (ignore arguments))
+                       (error 'type-error :datum "plain kiwi words" :expected-type 'integer))))
+          (drain-debug-reports)
+          (clrhash tuatara.runtime::*error-report-places*)
+          ;; debug mode on in the editors the test starts
+          (setf tuatara-user:*debug-mode* t)
+          (tuatara.runtime:set-debug t)
+          (sb-int:encapsulate 'tuatara.defaults::outline-entries 'test-failing (lambda (f &rest a) (apply kiwi f a)))
+          (sb-int:encapsulate 'tuatara.defaults::decrypted-in 'test-failing
+                              (lambda (f &rest arguments) (apply f arguments) (funcall kiwi)))
+          (unwind-protect
+               (progn
+                 (auto-save-session (list (format nil "C-x C-f C-a C-k ~a RET" (rimu-typed file))
+                                          (list :until (lambda () (not (decrypting-p))))
+                                          (list :wait 0.2)
+                                          "M-g o" (list :wait 0.5) "C-g"
+                                          (list :wait 0.2)))
+                 (let ((buffer (tuatara.buffer:find-buffer "kiwi.org.gpg")))
+                   (true buffer)
+                   (when buffer
+                     (setf (tuatara.display:buffer-header-line buffer) (lambda (window) (declare (ignore window))
+                                                                          (funcall kiwi)))
+                     ;; drawn in the window not selected
+                     (auto-save-session (list "C-x 2 C-x o" (format nil "C-x b ~a RET" (rimu-typed "kiwi.org.gpg"))
+                                              "C-x o" (list :wait 0.3) "C-n" (list :wait 0.2)))
+                     (tuatara.buffer:kill-buffer buffer)))
+                 ;; the editor shows its reports in *Debug* as they come: read from the debug log
+                 (let ((texts (list (if (probe-file *test-debug-log*)
+                                        (alexandria:read-file-into-string *test-debug-log*)
+                                        ""))))
+                   (true (find-if (lambda (text) (search "finding the headings failed: a type-error" text)) texts)
+                         "~s" texts)
+                   (true (find-if (lambda (text) (search "drawing a header line failed: a type-error" text)) texts)
+                         "~s" texts)
+                   (false (find-if (lambda (text) (search "kiwi words" text)) texts) "~s" texts)
+                   ;; no calls under way after either
+                   (dolist (said '("finding the headings failed" "drawing a header line failed"))
+                     (let* ((text (first texts)) (at (search said text))
+                            (next (and at (position #\Newline text :start at))))
+                       (false (and next (search (format nil "~%    (") text :start2 next :end2 (min (length text) (+ next 6))))
+                              "~a: ~s" said text)))))
+            (sb-int:unencapsulate 'tuatara.defaults::outline-entries 'test-failing)
+            (sb-int:unencapsulate 'tuatara.defaults::decrypted-in 'test-failing)
+            (drain-debug-reports))))))
+
+(define-test (encrypted secret-kept-from-what-is-said-and-kept)
+  ;; with a decrypted Org text: a window that cannot be drawn, a command failing with
+  ;; *Backtrace* asked for, its parse failing and a job on it failing say the kind of failure
+  ;; alone, on the screen, in *Backtrace*, the debug log and the job's words; and what is said
+  ;; meanwhile is not kept in *Messages*
+  (if (null (tuatara.defaults::gpg-path))
+      (skip "gpg is not installed here" (true nil))
+      (with-test-directory (dir)
+        (let* ((key (gpg-test-key))
+               (file (gpg-test-file (merge-pathnames "kea.org.gpg" dir) (format nil "* Heading~%plain kiwi words~%") :key key))
+               (tuatara.defaults::*modal-editing* nil)
+               (tuatara-user:*gpg-passphrase-from* :minibuffer)
+               (tuatara.command:*debug-on-error* t)
+               (kiwi (lambda (&rest arguments)
+                       (declare (ignore arguments))
+                       (error 'type-error :datum "plain kiwi words" :expected-type 'integer)))
+               (drawn-wrong nil))
+          (drain-debug-reports)
+          (clrhash tuatara.runtime::*error-report-places*)
+          (setf tuatara-user:*debug-mode* t)
+          (tuatara.runtime:set-debug t)
+          (setf (gethash 'secret-test-failing tuatara.command::*commands*) (lambda () (funcall kiwi)))
+          (sb-int:encapsulate 'tuatara.defaults::org-parse 'test-failing (lambda (f &rest a) (apply kiwi f a)))
+          (sb-int:encapsulate 'tuatara.command::window-pieces 'test-failing
+                              (lambda (f editor window &rest more)
+                                (if (and drawn-wrong (tuatara.io:buffer-plaintext-p (tuatara.display:window-buffer window)))
+                                    (funcall kiwi)
+                                    (apply f editor window more))))
+          (unwind-protect
+               (multiple-value-bind (f editor)
+                   (auto-save-session (list (format nil "C-x C-f C-a C-k ~a RET" (rimu-typed file))
+                                            (list :until (lambda () (not (decrypting-p))))
+                                            (list :wait 0.3)
+                                            "M-x s e c r e t - t e s t - f a i l i n g RET" (list :wait 0.2)
+                                            "C-x o" (list :wait 0.1)))
+                 (declare (ignore editor))
+                 (let ((buffer (tuatara.buffer:find-buffer "kea.org.gpg"))
+                       (backtrace (tuatara.buffer:find-buffer "*Backtrace*")))
+                   (true buffer)
+                   (true backtrace)
+                   (when backtrace
+                     (let ((text (tuatara.buffer:buffer-string backtrace)))
+                       (true (search "a type-error" text) "~a" text)
+                       (false (search "kiwi words" text) "~a" text)))
+                   (true (tuatara.frontend.fake:fake-frame-showing f "a type-error"))
+                   (false (tuatara.frontend.fake:fake-frame-showing f "kiwi words"))
+                   ;; a job on it failing: its words for the person say the kind alone
+                   (when buffer
+                     (let ((job (tuatara.defaults::make-decrypt-job buffer "/tmp/x.txt.gpg" nil)))
+                       (tuatara.runtime:start-job-thread job (lambda (job) (declare (ignore job)) (funcall kiwi)))
+                       (loop repeat 500 while (tuatara.runtime:job-running-p job) do (sleep 0.01))
+                       (false (search "kiwi" (tuatara.runtime:job-ending-words job)))
+                       (true (search "a type-error" (tuatara.runtime:job-ending-words job)))))
+                   ;; drawn: the window that cannot be shown says the kind alone
+                   (setf drawn-wrong t)
+                   (when buffer
+                     (multiple-value-bind (f2 editor2)
+                         (auto-save-session (list (format nil "C-x b ~a RET" (rimu-typed "kea.org.gpg")) (list :wait 0.2)))
+                       (declare (ignore editor2))
+                       (true (tuatara.frontend.fake:fake-frame-showing f2 "This window cannot be shown: a type-error"))
+                       (false (tuatara.frontend.fake:fake-frame-showing f2 "kiwi words"))))
+                   (setf drawn-wrong nil)
+                   (let ((messages (tuatara.buffer:find-buffer "*Messages*")))
+                     (when messages
+                       (false (search "kiwi words" (tuatara.buffer:buffer-string messages)))))
+                   (let ((log (if (probe-file *test-debug-log*) (alexandria:read-file-into-string *test-debug-log*) "")))
+                     (true (search "a type-error" log))
+                     (false (search "kiwi words" log) "~a" log))
+                   (when buffer (tuatara.buffer:kill-buffer buffer))))
+            (sb-int:unencapsulate 'tuatara.defaults::org-parse 'test-failing)
+            (sb-int:unencapsulate 'tuatara.command::window-pieces 'test-failing)
+            (remhash 'secret-test-failing tuatara.command::*commands*)
+            (drain-debug-reports))))))

@@ -261,7 +261,7 @@ part of the data or show as text."
             (tuatara.buffer:buffer-insert
              buffer size
              (format nil "~:[~;~%~]~@[~a ~]LocalWords: ~a~%"
-                     (and (plusp size) (char/= (tuatara.buffer:buffer-char-at buffer (1- size)) #\Newline))
+                     (and (plusp size) (not (member (tuatara.buffer:buffer-char-at buffer (1- size)) '(#\Newline #\Return))))
                      prefix word))))))
   t)
 
@@ -325,20 +325,22 @@ text, what is shown of it, its colours, the languages or the answers change."
   (declare (ignore editor))
   (let ((buffer (tuatara.display:window-buffer window)))
     (when (and (plusp (length rows)) (spellcheck-p buffer))
-      (let ((key (list (tuatara.buffer:buffer-version buffer) (car *spelling-generation*)
-                       (spellcheck-p buffer) (spellcheck-languages-of buffer)
-                       (tuatara.display:shown-ranges rows :join 2 :shown t :buffer buffer) syntax))
-            (kept (gethash window *spelling-shown*)))
-        (if (and kept (equal (car kept) key))
-            (cdr kept)
-            (multiple-value-bind (wrong unknown languages) (spelling-in-rows buffer rows syntax)
-              (spelling-note-languages languages)
-              (let ((marks (loop for (start end) in wrong collect (list start end :spellcheck))))
-                (if unknown
-                    (progn (remhash window *spelling-shown*)
-                           (spelling-ask languages (mapcar #'third unknown)))
-                    (setf (gethash window *spelling-shown*) (cons key marks)))
-                marks)))))))
+      (let* ((shown (tuatara.display:shown-ranges rows :join 2 :shown t :buffer buffer))
+             (kept (gethash window *spelling-shown*)))
+        (flet ((key (colours)
+                 (list (tuatara.buffer:buffer-version buffer) (car *spelling-generation*)
+                       (spellcheck-p buffer) (spellcheck-languages-of buffer) shown colours)))
+          (if (and kept (equal (car kept) (key syntax)))
+              (cdr kept)
+              (multiple-value-bind (wrong unknown languages) (spelling-in-rows buffer rows syntax)
+                (spelling-note-languages languages)
+                (let ((marks (loop for (start end) in wrong collect (list start end :spellcheck))))
+                  (if unknown
+                      (progn (remhash window *spelling-shown*)
+                             (spelling-ask languages (mapcar #'third unknown)))
+                      ;; the colours are lent for this frame: what they were is kept
+                      (setf (gethash window *spelling-shown*) (cons (key (copy-tree syntax)) marks)))
+                  marks))))))))
 
 ;;; Correcting
 
@@ -366,9 +368,9 @@ have been drawn anew meanwhile."
 
 (defun spelling-ready (buffer)
   "Signal an error unless BUFFER's words can be checked here."
-  (cond ((spellcheck-never-p buffer) (error "Spelling is never checked in a file opened safely or shown as octets"))
-        ((null (spellcheck-kind buffer)) (error "Spelling is not checked in ~a" (tuatara.buffer:buffer-name buffer)))
-        ((not (enchant-p)) (error "Spellcheck needs enchant (libenchant-2), which could not be loaded"))))
+  (cond ((spellcheck-never-p buffer) (refuse "Spelling is never checked in a file opened safely or shown as octets"))
+        ((null (spellcheck-kind buffer)) (refuse "Spelling is not checked in ~a" (tuatara.buffer:buffer-name buffer)))
+        ((not (enchant-p)) (refuse "Spellcheck needs enchant (libenchant-2), which could not be loaded"))))
 
 (defun spelling-word-at (buffer position)
   "The word around POSITION in BUFFER, as SPELLING-WORDS finds words, (START
@@ -522,9 +524,7 @@ when one of them takes it. Empty: as *SPELLCHECK-LANGUAGES* says."
     (setf (tuatara.buffer:buffer-local buffer :spellcheck-languages) languages)
     (message "Spelling checked in ~{~a~^ ~}" (spellcheck-languages-of buffer))))
 
-(defun install-spellcheck (editor)
+(defun install-spellcheck ()
   "Mark the words spelt wrong in the windows whose buffers want it, redrawn
 as the speller answers, and say what cannot be checked."
-  (let ((frontend (editor-frontend editor)))
-    (setf *spelling-wake-function* (lambda () (tuatara.frontend:frontend-wake frontend))))
   (pushnew 'spellcheck-highlights tuatara.command:*text-highlight-functions*))

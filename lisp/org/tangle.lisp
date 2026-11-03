@@ -255,20 +255,24 @@ file its links lead to, or its own path."
   (let* ((path (code-file-path file))
          (folder (tuatara.io:parent-path path))
          ;; where writing it lands: a link in its path, the file's own or a folder's, followed
-         (real (or (ignore-errors (tuatara.io:real-path path))
-                   (let* ((resolved (or (ignore-errors (tuatara.io:native (tuatara.io:resolve-links path))) path))
-                          (place (ignore-errors (tuatara.io:real-path (tuatara.io:parent-path resolved)))))
+         (real (or (ignoring-errors-reported ("finding where ~a leads" path) (tuatara.io:real-path path))
+                   (let* ((resolved (or (ignoring-errors-reported ("finding where ~a leads" path)
+                                          (tuatara.io:native (tuatara.io:resolve-links path)))
+                                        path))
+                          (place (ignoring-errors-reported ("finding where ~a leads" resolved)
+                                   (tuatara.io:real-path (tuatara.io:parent-path resolved)))))
                      (and place (tuatara.io:path-join place (tuatara.io:native-file-name resolved))))))
          (stamp (progn (setf (code-file-real file) (and real (string/= real path) real))
-                       (ignore-errors (tuatara.io:path-stamp (code-file-place file) :follow nil)))))
+                       (tuatara.io:path-stamp (code-file-place file) :follow nil :failure nil))))
     (setf (code-file-stamp file) stamp)
     (cond ((and stamp (not (eq (tuatara.io:stamp-kind stamp) :regular)))
            (setf (code-file-state file) :cannot
                  (code-file-reason file) (format nil "it is ~a" (tuatara.io:kind-words (tuatara.io:stamp-kind stamp)))))
           (stamp
-           (let ((old (ignore-errors (tuatara.io:file-octets (code-file-place file)))))
+           (let ((old (ignoring-errors-reported ("reading ~a to compare" (code-file-place file))
+                        (tuatara.io:file-octets (code-file-place file)))))
              (setf (code-file-state file) (if (equalp old (tuatara.text:string-octets (code-file-text file))) :same :changed))))
-          ((or (ignore-errors (tuatara.io:path-stamp folder)) (code-file-make-directories file))
+          ((or (tuatara.io:path-stamp folder :failure nil) (code-file-make-directories file))
            (setf (code-file-state file) :new))
           (t (setf (code-file-state file) :cannot
                    (code-file-reason file) "its folder does not exist (:mkdirp yes makes it)")))
@@ -285,7 +289,8 @@ Org file's folder marked."
   "True when FILE (a CODE-FILE) lands in the folder HOME (native, ending in /),
 by its name and by where its links lead."
   (and (uiop:string-prefix-p home (code-file-path file))
-       (uiop:string-prefix-p (or (ignore-errors (tuatara.io:real-path home)) home)
+       (uiop:string-prefix-p (or (ignoring-errors-reported ("finding where ~a leads" home) (tuatara.io:real-path home))
+                                 home)
                              (or (code-file-real file) (code-file-path file)))))
 
 (defun code-file-words (file)
@@ -313,7 +318,8 @@ path, from the Org file's folder when it is in it."
                                 (cond ((null mode) "")
                                       ((eq mode :executable) ", executable")
                                       (t (format nil ", mode ~3,'0o" mode))))
-                              (and (eq (code-file-state file) :new) (not (ignore-errors (tuatara.io:path-stamp (tuatara.io:parent-path path)))))))
+                              (and (eq (code-file-state file) :new)
+                                   (not (tuatara.io:path-stamp (tuatara.io:parent-path path) :failure nil)))))
                   (if inside (subseq path (length home)) (abbreviated-path path))
                   (and (code-file-real file) (abbreviated-path (code-file-real file)))
                   (or inside (null home)))
@@ -327,19 +333,23 @@ it lands, into a new file renamed into place: a symbolic link put there since,
 or a file put there or changed since, is refused, never followed or written
 over."
   (handler-case
-      (let ((path (code-file-path file)))
-        (when (code-file-make-directories file)
-          (let ((folders '()))
-            (loop for folder = (string-right-trim "/" (tuatara.io:parent-path path))
-                    then (string-right-trim "/" (tuatara.io:parent-path folder))
-                  while (and (plusp (length folder)) (not (ignore-errors (tuatara.io:path-stamp folder))))
-                  do (push folder folders))
-            (dolist (folder folders) (tuatara.io:make-directory folder))))
-        (let ((mode (code-file-mode file)))
-          (tuatara.io:write-text-file (tuatara.text:make-rope (code-file-text file)) (code-file-place file)
-                                      :expected (code-file-stamp file) :follow-links nil
-                                      :mode (and mode (lambda (now) (if (eq mode :executable) (logior (logand now #o777) #o111) mode)))))
-        nil)
+      (reporting-errors ("writing ~a" (code-file-path file))
+        (let ((path (code-file-path file)))
+          (when (code-file-make-directories file)
+            (let ((folders '()))
+              (loop for folder = (string-right-trim "/" (tuatara.io:parent-path path))
+                      then (string-right-trim "/" (tuatara.io:parent-path folder))
+                    while (and (plusp (length folder)) (not (tuatara.io:path-stamp folder :failure nil)))
+                    do (push folder folders))
+              (dolist (folder folders) (tuatara.io:make-directory folder))))
+          (let ((mode (code-file-mode file)))
+            (tuatara.io:write-text-file (tuatara.text:make-rope (code-file-text file)) (code-file-place file)
+                                        :expected (code-file-stamp file) :follow-links nil
+                                        :mode (and mode (lambda (now)
+                                                          (if (eq mode :executable)
+                                                              (logior (logand now #o777) #o111)
+                                                              mode)))))
+          nil))
     (error (e) (format nil "~a" e))))
 
 (define-command tangle-code-files ()
@@ -359,13 +369,13 @@ when you say so. Nothing in a block is ever run."
   (let ((buffer (current-buffer)))
     (if (not (typep (buffer-major-mode buffer) 'org-mode))
         (message "tangle-code-files writes the code of an Org file's source blocks: this is no Org buffer")
-        (let ((tree (org-tree-now buffer)))
+        (let ((tree (org-parse-tree (org-parse-now buffer))))
           (let* ((org-file (let ((file (tuatara.buffer:buffer-file buffer))) (and file (tuatara.io:native file))))
                  (files (mapcar #'check-code-file (org-code-files tree org-file)))
                  (to-write (remove-if-not (lambda (f) (member (code-file-state f) '(:new :changed))) files)))
             (cond
               ((null files) (message "No source block here has :tangle: nothing to write"))
-              ((and (tuatara.buffer:buffer-local buffer :plaintext)
+              ((and (tuatara.io:buffer-plaintext-p buffer)
                     (not (yes-or-no-p* (format nil "~a is encrypted, but the code files it writes are not; go on?"
                                                (tuatara.buffer:buffer-name buffer)))))
                (message "No code files written"))

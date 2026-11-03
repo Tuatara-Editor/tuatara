@@ -16,10 +16,6 @@
   "The enchant library spelling is checked with; one that cannot be loaded
 leaves the editor without spelling, which says so.")
 
-(defvar *spelling-wake-function* nil
-  "A function of no arguments called when words asked about are answered, so
-that the editor redraws with their marks; NIL for none.")
-
 (defvar *spelling-answers* (make-hash-table :test 'equal :synchronized t)
   "For each list of languages, as their names joined by spaces, a table of
 the words asked about: :RIGHT, :WRONG, or :ASKED while the answer is on its way.")
@@ -60,7 +56,9 @@ the words asked about: :RIGHT, :WRONG, or :ASKED while the answer is on its way.
                             (lambda ()
                               (loop (let ((work (sb-concurrency:receive-message mailbox)))
                                       (handler-case (funcall work)
-                                        (error (e) (tuatara.runtime:debug-report :spelling "~a" e))))))
+                                        (error (e)
+                                          (tuatara.runtime:debug-report :spelling "~a"
+                                                                        (tuatara.runtime:failure-words e)))))))
                             :name "tuatara speller")
                            mailbox)))))))
 
@@ -157,8 +155,8 @@ of it may differ.")
 (defun spelling-answered ()
   "Have the editor redraw with the answers."
   (sb-ext:atomic-incf (car *spelling-generation*))
-  (let ((wake *spelling-wake-function*))
-    (when wake (ignore-errors (funcall wake)))))
+  (ignoring-errors-reported ("waking the editor for the spelling")
+    (tuatara.runtime:host-wake tuatara.runtime:*host*)))
 
 (defun spelling-known (languages word)
   "What is known of WORD's spelling in LANGUAGES: :RIGHT, :WRONG, or NIL
@@ -178,7 +176,8 @@ again: the words on the screen are answered first, however fast it moves.")
 
 (defvar *spelling-wanted* '()
   "The lots of words waiting for the speller, newest first, each (LANGUAGES
-TABLE . WORDS); taken newest first by SPELLING-DRAIN.")
+TABLE SECRET . WORDS), SECRET true for words of a text kept secret; taken
+newest first by SPELLING-DRAIN.")
 
 (defun spelling-drain ()
   "On the speller thread: answer the lots of words waiting, the newest first,
@@ -191,12 +190,13 @@ asked again and again, and the words after it are still answered."
            (let ((lot (sb-thread:with-mutex (*spelling-wanted-lock*)
                         (or (pop *spelling-wanted*) (progn (setf *spelling-draining* nil) nil)))))
              (unless lot (setf done t) (return))
-             (destructuring-bind (languages table . words) lot
+             (destructuring-bind (languages table secret . words) lot
                (handler-case
                    (dolist (w words)
                      (when (eq (gethash w table) :asked) (setf (gethash w table) (spelling-of languages w))))
                  (error (e)
-                   (tuatara.runtime:debug-report :spelling "~a" e)
+                   (let ((*secret-at-hand* (or *secret-at-hand* secret)))
+                     (tuatara.runtime:debug-report :spelling "~a" (tuatara.runtime:failure-words e)))
                    (dolist (w words) (when (eq (gethash w table) :asked) (setf (gethash w table) :right))))))
              (spelling-answered)))
       ;; ended any other way: the next words asked about start it again
@@ -205,7 +205,7 @@ asked again and again, and the words after it are still answered."
 
 (defun spelling-ask (languages words)
   "Have WORDS checked in LANGUAGES on the speller thread, those not yet asked
-about; when they are answered the editor redraws (*SPELLING-WAKE-FUNCTION*).
+about; when they are answered the editor redraws (SPELLING-ANSWERED).
 The newest asked are answered first (*SPELLING-BACKLOG*). Returns true when
 some were asked about."
   (let ((table (spelling-table languages)))
@@ -218,12 +218,12 @@ some were asked about."
       (when (and new (enchant-p))
         (let ((start nil))
           (sb-thread:with-mutex (*spelling-wanted-lock*)
-            (push (list* languages table new) *spelling-wanted*)
+            (push (list* languages table *secret-at-hand* new) *spelling-wanted*)
             ;; the oldest lots over the backlog: dropped, their words to be asked again when shown
             (let ((old (nthcdr *spelling-backlog* *spelling-wanted*)))
               (when old
                 (setf *spelling-wanted* (ldiff *spelling-wanted* old))
-                (loop for (nil old-table . old-words) in old
+                (loop for (nil old-table nil . old-words) in old
                       do (dolist (w old-words) (when (eq (gethash w old-table) :asked) (remhash w old-table))))))
             (unless *spelling-draining* (setf *spelling-draining* t start t)))
           (when start (speller-run #'spelling-drain)))

@@ -108,12 +108,14 @@ of *DOCX-BASE-SIZE* (132 at 11 points in Courier New)."
 
 (defun font-file-tables (octets)
   "The tables of the TrueType or OpenType font OCTETS, each (TAG OFFSET LENGTH); NIL for another kind."
-  (when (and (>= (length octets) 12) (member (tuatara.io:octets-be octets 0 4) '(#x00010000 #x4F54544F)))
-    (loop for i below (tuatara.io:octets-be octets 4 2)
+  (when (and (>= (length octets) 12)
+             (member (tuatara.io:octets-integer octets 0 4 :big-endian t) '(#x00010000 #x4F54544F)))
+    (loop for i below (tuatara.io:octets-integer octets 4 2 :big-endian t)
           for at = (+ 12 (* 16 i))
           while (<= (+ at 16) (length octets))
           collect (list (tuatara.text:octets-latin-1 octets :start at :end (+ at 4))
-                        (tuatara.io:octets-be octets (+ at 8) 4) (tuatara.io:octets-be octets (+ at 12) 4)))))
+                        (tuatara.io:octets-integer octets (+ at 8) 4 :big-endian t)
+                        (tuatara.io:octets-integer octets (+ at 12) 4 :big-endian t)))))
 
 (defun font-character-ratio (family)
   "The width of a character of the font FAMILY as a part of its size, when it
@@ -124,21 +126,22 @@ ten of its glyphs that width. NIL otherwise."
     (when (and bar (member family (mapcar (lambda (name) (string-trim " " name))
                                           (uiop:split-string (subseq found 0 bar) :separator '(#\,)))
                            :test #'string-equal))
-      (ignore-errors
-       (let* ((octets (tuatara.io:file-octets (subseq found (1+ bar))))
-              (tables (font-file-tables octets)))
-         (flet ((table (tag) (second (assoc tag tables :test #'string=))))
-           (let ((head (table "head")) (hhea (table "hhea")) (hmtx (table "hmtx")))
-             (when (and head hhea hmtx)
-               (let* ((units (tuatara.io:octets-be octets (+ head 18) 2))
-                      (metrics (tuatara.io:octets-be octets (+ hhea 34) 2))
-                      (widths (loop for i below metrics collect (tuatara.io:octets-be octets (+ hmtx (* 4 i)) 2)))
-                      (counts (make-hash-table)))
-                 (dolist (w widths) (when (plusp w) (incf (gethash w counts 0))))
-                 (let ((common 0) (most 0))
-                   (maphash (lambda (w n) (when (> n most) (setf common w most n))) counts)
-                   (and (plusp units) (>= (* 10 most) (* 9 (count-if #'plusp widths)))
-                        (/ common units))))))))))))
+      (ignoring-errors-reported ("measuring the font ~a" family)
+        (let* ((octets (tuatara.io:file-octets (subseq found (1+ bar))))
+               (tables (font-file-tables octets)))
+          (flet ((table (tag) (second (assoc tag tables :test #'string=))))
+            (let ((head (table "head")) (hhea (table "hhea")) (hmtx (table "hmtx")))
+              (when (and head hhea hmtx)
+                (let* ((units (tuatara.io:octets-integer octets (+ head 18) 2 :big-endian t))
+                       (metrics (tuatara.io:octets-integer octets (+ hhea 34) 2 :big-endian t))
+                       (widths (loop for i below metrics
+                                     collect (tuatara.io:octets-integer octets (+ hmtx (* 4 i)) 2 :big-endian t)))
+                       (counts (make-hash-table)))
+                  (dolist (w widths) (when (plusp w) (incf (gethash w counts 0))))
+                  (let ((common 0) (most 0))
+                    (maphash (lambda (w n) (when (> n most) (setf common w most n))) counts)
+                    (and (plusp units) (>= (* 10 most) (* 9 (count-if #'plusp widths)))
+                         (/ common units))))))))))))
 
 (defparameter *docx-column-gap* 360
   "The space between the columns of a section of columns, in twentieths of a point (0.635 cm).")
@@ -201,8 +204,9 @@ long dash, -- a short one, ... an ellipsis, \\- a place to break a word."
 (defun docx-plain-text (text)
   "TEXT, Org text between objects, as runs: each line end, with the spaces
 around it, one space, as a paragraph's lines are joined, or kept with
-*DOCX-KEEP-LINES*."
-  (docx-run (docx-special-strings (if *docx-keep-lines* text (cl-ppcre:regex-replace-all "[ \\t]*\\n[ \\t]*" text " ")))))
+*DOCX-KEEP-LINES*; each straight quote as the mark for it
+\(EXPORT-SMART-QUOTES)."
+  (docx-run (docx-special-strings (export-smart-quotes (if *docx-keep-lines* text (cl-ppcre:regex-replace-all "[ \\t]*\\n[ \\t]*" text " "))))))
 
 ;;; Objects: the text of a paragraph, a cell, a headline
 
@@ -317,7 +321,7 @@ file as a hyperlink, a place in the note as a link to its bookmark."
        (when (string-equal (org-property node :back-end) "docx")
          (let ((value (org-property node :value)))
            (when (uiop:string-prefix-p "redacted:" value)
-             (write-string (docx-redaction (or (ignore-errors (parse-integer value :start 9)) 1)) out)))))
+             (write-string (docx-redaction (or (whole-number value :start 9) 1)) out)))))
       (footnote-reference (docx-footnote node out))
       (link (docx-link node out))
       (target (write-string (docx-bookmarked node "") out))
@@ -370,7 +374,8 @@ the text; a note when it cannot be shown or is outside the folders an export
 may take files from (ORG-EXPORT-FILE-ALLOWED-P), and its name in its place.
 A picture your own template ASKED the note for ({{{logo:path}}}) shows from
 wherever the note names it, as the PDF export's does."
-  (let* ((full (or (ignore-errors (org-export-path (org-property link :path)))
+  (let* ((full (or (ignoring-errors-reported ("finding ~a" (org-property link :path))
+                     (org-export-path (org-property link :path)))
                    (org-property link :path)))
          (picture (multiple-value-bind (made why) (if (or asked (org-export-file-allowed-p full)) (latex-picture full) (values nil :outside))
                     (cond ((and made (member (string-downcase (or (tuatara.io:native-file-type made) "")) '("png" "jpg" "jpeg") :test #'string=))
@@ -460,11 +465,11 @@ comes after it."
                                     (eq (gethash node (docx-numbers *docx*)) :annex))))
                       (mapc #'walk (org-node-children node)))))
                  (table (when (getf (org-property node :affiliated) :caption)
-                          (setf (gethash node (docx-numbers *docx*)) (format nil "Table ~d" (incf (docx-tables *docx*))))))
+                          (setf (gethash node (docx-numbers *docx*)) (format nil "~a ~d" (export-language-word :table) (incf (docx-tables *docx*))))))
                  (paragraph (when (and (getf (org-property node :affiliated) :caption)
                                        (let ((children (org-node-children node)))
                                          (and (= 1 (length children)) (org-latex-image-link-p (first children)))))
-                              (setf (gethash node (docx-numbers *docx*)) (format nil "Figure ~d" (incf (docx-figures *docx*))))))
+                              (setf (gethash node (docx-numbers *docx*)) (format nil "~a ~d" (export-language-word :figure) (incf (docx-figures *docx*))))))
                  (t (mapc #'walk (org-node-children node))))))
       (walk tree))))
 
@@ -909,7 +914,7 @@ written already as part of another."
 level up to DEPTH, its number and title linked to it, the page it is on
 after a tab (a PAGEREF field, which Word and LibreOffice fill in)."
   (with-output-to-string (out)
-    (format out "<w:p><w:pPr><w:pStyle w:val=\"TOCHeading\"/></w:pPr>~a</w:p>~%" (docx-run "Contents"))
+    (format out "<w:p><w:pPr><w:pStyle w:val=\"TOCHeading\"/></w:pPr>~a</w:p>~%" (docx-run (export-language-word :contents)))
     (dolist (entry (reverse *docx-contents*))
       (destructuring-bind (level number title bookmark) entry
         (when (<= level depth)
@@ -1121,7 +1126,7 @@ a third what else to say of it, a list of sentences."
       (docx-template-start parts)
       (when own
         ;; its LaTeX half setting tables against the left margin: the Word half's there too
-        (let ((latex (ignore-errors (latex-template-for named directory))))
+        (let ((latex (ignoring-errors-reported ("reading the template ~a" named) (latex-template-for named directory))))
           (when (and latex (cl-ppcre:scan "\\\\setlength\\s*\\{?\\s*\\\\LTleft\\s*\\}?\\s*\\{\\s*0(pt|cm|mm|em)?\\s*\\}" latex))
             (setf (getf (docx-section *docx*) :tables-left) t))))
       (when (and named (null own))

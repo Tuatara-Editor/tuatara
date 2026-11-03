@@ -249,7 +249,7 @@ number, today unless given), made when there is none."
                     (let ((window (current-window)))
                       (prog1 (journal-make-entry day)
                         (show-buffer (tuatara.display:window-buffer window)))))))
-    (t (error "No such capture target: ~s" target))))
+    (t (refuse "No such capture target: ~s" target))))
 
 (defun org-capture-file (text target &optional (day (org-today)) at)
   "File TEXT where TARGET says (ORG-INSERT-ENTRY), one change to undo, the
@@ -258,18 +258,20 @@ character AT of several with its titles; returns the buffer it went into and
 where it begins there (an octet)."
   (let ((buffer (org-capture-target-buffer target day)))
     (check-writable buffer)
-    (values buffer
-            (case (first target)
-              (:file-headline
-               (let ((headline (org-headline-titled (org-tree-now buffer) (third target))))
-                 (if headline
-                     (org-insert-entry buffer text :headline headline)
-                     (org-insert-entry buffer text :title (third target)))))
-              (:olp
-               (let ((headline (org-headline-at-path (org-tree-now buffer) (cddr target) at)))
-                 (unless headline (error "~a is not there" (org-olp-text target)))
-                 (org-insert-entry buffer text :headline headline)))
-              (t (org-insert-entry buffer text))))))
+    (let ((parse (org-parse-now buffer)))
+      (values buffer
+              (case (first target)
+                (:file-headline
+                 (let ((headline (org-headline-titled (org-parse-tree parse) (third target))))
+                   (if headline
+                       (org-insert-entry parse text :headline headline)
+                       (org-insert-entry parse text :title (third target)))))
+                (:olp
+                 (let ((headline (org-headline-at-path (org-parse-tree parse) (cddr target) at)))
+                   (unless headline
+                     (refuse "~a is not there" (if *secret-at-hand* "The heading" (org-olp-text target))))
+                   (org-insert-entry parse text :headline headline)))
+                (t (org-insert-entry parse text)))))))
 
 (defun org-capture-clock (buffer at started resume)
   "Clock the heading of BUFFER at the octet AT from the universal time
@@ -329,7 +331,8 @@ the capture is for that day (ORG-CAPTURE-ON-DAY)."
          (target (capture-template-target template))
          (link (multiple-value-list (org-link-to-here origin)))
          (target-buffer (and (member (first target) '(:file-headline :file :olp))
-                             (ignore-errors (org-capture-target-buffer target)))))
+                             (ignoring-errors-reported ("reading ~a to capture into" (second target))
+                               (org-capture-target-buffer target)))))
     (multiple-value-bind (text point)
         (org-capture-fill (capture-template-text template) :link (and (first link) link)
                                                            :selection (org-capture-selection origin)
@@ -345,7 +348,7 @@ the capture is for that day (ORG-CAPTURE-ON-DAY)."
         (setf (tuatara.buffer:buffer-local buffer 'org-capture)
               (list :description description :target target :started started :day day
                     :clock-in (capture-template-clock-in template) :clock-resume (capture-template-clock-resume template))
-              (tuatara.buffer:buffer-local buffer :header-line)
+              (tuatara.display:buffer-header-line buffer)
               (let ((line (substitute-command-keys
                            (format nil " \\<org-capture-mode>\\[org-capture-finalize] files it, \\[org-capture-refile] elsewhere, \\[org-capture-kill] throws it away: ~a, ~a"
                                    description (org-capture-target-text target)))))
@@ -412,7 +415,7 @@ back to where you were; with its template's clock, clock it."
   "File the text of this *Capture* buffer under a heading chosen as
 \\<org-mode>\\[org-refile] chooses one, instead of where its template says."
   (let ((capture (tuatara.buffer:buffer-local (current-buffer) 'org-capture)))
-    (unless capture (error "This is no capture buffer"))
+    (unless capture (refuse "This is no capture buffer"))
     (multiple-value-bind (target at) (org-read-refile-target "File the capture under: " (current-buffer))
       (org-capture-finish target at))))
 
@@ -424,7 +427,7 @@ capture began."
   (let* ((buffer (current-buffer))
          (capture (tuatara.buffer:buffer-local buffer 'org-capture))
          (text (string-right-trim '(#\Space #\Tab #\Newline) (tuatara.buffer:buffer-string buffer))))
-    (unless capture (error "This is no capture buffer"))
+    (unless capture (refuse "This is no capture buffer"))
     (destructuring-bind (&key description target clock-in clock-resume started day) capture
       (when elsewhere (setf target elsewhere))
       (if (zerop (length (string-trim '(#\Space #\Tab #\Newline) text)))
@@ -442,6 +445,6 @@ capture began."
 (define-command org-capture-kill ()
   "Throw away what this *Capture* buffer holds, and go back to where you were."
   (let ((buffer (current-buffer)))
-    (unless (tuatara.buffer:buffer-local buffer 'org-capture) (error "This is no capture buffer"))
+    (unless (tuatara.buffer:buffer-local buffer 'org-capture) (refuse "This is no capture buffer"))
     (org-capture-done buffer)
     (message "Capture thrown away")))

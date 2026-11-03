@@ -10,37 +10,108 @@
 ;;;; else Tuatara may change. Positions are octets from 0 into a buffer's text
 ;;;; as it is now, as the core counts them; the Emacs names that count
 ;;;; characters from 1 (point, goto-char) are an init file's, never here.
-;;;; Loaded last, when every name below is defined; the few states of a
-;;;; buffer a package may read and set are given their names here.
+;;;; Loaded last, when every name below is defined.
 
 (in-package #:tuatara.defaults)
-
-(defun buffer-read-only-p (buffer)
-  "True when BUFFER may not be changed by typing or by commands that edit."
-  (tuatara.buffer:buffer-local buffer :read-only))
-
-(defun (setf buffer-read-only-p) (value buffer)
-  "Make BUFFER read-only when VALUE is true, changeable again when it is NIL."
-  (setf (tuatara.buffer:buffer-local buffer :read-only) value))
-
-(defun list-preview-p (buffer)
-  "True when BUFFER, a list, shows the entry on its line in a window beside
-it (\\[list-toggle-preview] switches it)."
-  (tuatara.buffer:buffer-local buffer :list-preview))
-
-(defun (setf list-preview-p) (value buffer)
-  "Have BUFFER, a list, show the entry on its line beside it when VALUE is
-true; not when it is NIL."
-  (setf (tuatara.buffer:buffer-local buffer :list-preview) value))
 
 (defun (setf sentence-end-double-space-p) (value buffer)
   "Make BUFFER's sentences two spaces apart when VALUE is true, one space when
 it is NIL, whatever *SENTENCE-END-DOUBLE-SPACE* says."
   (setf (tuatara.buffer:buffer-local buffer :sentence-end-double-space) value))
 
+(defun agenda-entry-get (entry field)
+  "What the agenda entry ENTRY (as ORG-AGENDA-FILE-ENTRIES gives them) holds
+for FIELD: :FILE, the path of its file; :TEXT, the whole text of that file as
+it was read; :POSITION and :END, the characters of that text its headline
+begins at and its own text ends at, its headlines below left out; :LEVEL, how
+many stars it has; :TODO, its TODO keyword, or NIL; :TODO-TYPE, TODO or DONE
+for that keyword, NIL for none; :TITLE, its headline without stars, keyword,
+priority and tags; :HEADING, its headline after the stars as written; :TAGS,
+its tags, those it inherits first; :LOCAL-TAGS, its own, on its headline;
+:SCHEDULED, :DEADLINE and :CLOSED, the texts of those timestamps, or NIL;
+:PROPERTIES, an alist of names and values; :STAMPS, the texts of the active
+timestamps in its text, its planning line's left out; :RANGES, its ranges of
+days, each (FROM TO), the two timestamps' texts; :KIND, :HEADLINE, or
+:CHECKBOX for a list item with a checkbox kept as a task; :PRIORITY, Org's
+number for it, 2000 for [#A], 1000 for [#B] and none, 0 for [#C];
+:CATEGORY, its category; :LOGS, what its log says, in order, each one of
+\(:CLOSED TIMESTAMP NIL NIL) for its CLOSED: line; (:CLOCK FROM DURATION
+STOPPED OPEN) for a CLOCK: line, FROM its start as written, DURATION as
+written (1:05) and STOPPED the time of day it stopped (10:00) when it has an
+end, OPEN true while it has none; (:DONE-NOTE TIMESTAMP NIL NIL TICKED) for
+a note of being done, TICKED (DONE . TOTAL) of its checkboxes when the line
+after says so, else NIL."
+  (ecase field
+    (:file (agenda-entry-file entry))
+    (:text (agenda-entry-text entry))
+    (:position (agenda-entry-position entry))
+    (:end (agenda-entry-end entry))
+    (:level (agenda-entry-level entry))
+    (:todo (agenda-entry-todo entry))
+    (:todo-type (agenda-entry-todo-type entry))
+    (:title (agenda-entry-title entry))
+    (:heading (agenda-entry-heading entry))
+    (:tags (agenda-entry-tags entry))
+    (:local-tags (agenda-entry-local-tags entry))
+    (:scheduled (agenda-entry-scheduled entry))
+    (:deadline (agenda-entry-deadline entry))
+    (:closed (agenda-entry-closed entry))
+    (:properties (agenda-entry-properties entry))
+    (:stamps (agenda-entry-stamps entry))
+    (:ranges (agenda-entry-ranges entry))
+    (:kind (agenda-entry-kind entry))
+    (:priority (agenda-entry-priority entry))
+    (:category (agenda-entry-category entry))
+    (:logs (agenda-entry-logs entry))))
+
+(defun org-ts-get (ts field)
+  "What the timestamp TS (as ORG-READ-TS reads one) holds for FIELD: :ACTIVE,
+true for <...>, NIL for [...]; :YEAR, :MONTH and :DAY, its date as written;
+:DAY-NUMBER, its day as a day number (DAY-NUMBER), a date past its month's
+end counted on into the next; :HOUR and :MINUTE, its time, NIL without one;
+:END-HOUR and :END-MINUTE, the end of its time range, NIL without one;
+:REPEATER, how it repeats, :CUMULATE (+), :CATCH-UP (++) or :RESTART (.+), NIL
+when it does not; :REPEAT-VALUE and :REPEAT-UNIT, how often, the unit #\\h,
+#\\d, #\\w, #\\m or #\\y; :WARNING, how its warning counts, :ALL (-) or :FIRST
+\(--), NIL without one; :WARNING-VALUE and :WARNING-UNIT, how long before,
+in the same units."
+  (ecase field
+    (:active (org-ts-active ts))
+    (:year (org-ts-year ts))
+    (:month (org-ts-month ts))
+    (:day (org-ts-day ts))
+    (:day-number (org-ts-day-number ts))
+    (:hour (org-ts-hour ts))
+    (:minute (org-ts-minute ts))
+    (:end-hour (org-ts-end-hour ts))
+    (:end-minute (org-ts-end-minute ts))
+    (:repeater (org-ts-repeater ts))
+    (:repeat-value (org-ts-repeat-value ts))
+    (:repeat-unit (org-ts-repeat-unit ts))
+    (:warning (org-ts-warning ts))
+    (:warning-value (org-ts-warning-value ts))
+    (:warning-unit (org-ts-warning-unit ts))))
+
+(defun org-rule-get (rule field)
+  "What the date by rule RULE (as ORG-READ-RULE reads one) holds for FIELD:
+:KIND, one of :FLOAT (the Nth or last weekday of a month), :CYCLIC (every N
+days), :BLOCK (every day from one date to another), :ANNIVERSARY (a day each
+year), :DATE (the days whose year, month and day are as given), :WEEKDAYS
+\(the days of the week listed, 0 for Sunday to 6 for Saturday), :ALL (the days
+all its rules take) or :ANY (the days any of them takes); :ARGUMENTS, what
+its form says, as ORG-READ-RULE reads them; :HOUR, :MINUTE, :END-HOUR and
+:END-MINUTE, the time written after it, or NIL."
+  (ecase field
+    (:kind (org-rule-kind rule))
+    (:arguments (org-rule-arguments rule))
+    (:hour (org-rule-hour rule))
+    (:minute (org-rule-minute rule))
+    (:end-hour (org-rule-end-hour rule))
+    (:end-minute (org-rule-end-minute rule))))
+
 (defparameter *api*
   '(;; defining commands, modes, keys, faces, settings and background work
-    tuatara.command:define-command tuatara.modes:define-major-mode define-face define-package-setting
+    tuatara.command:define-command tuatara.modes:define-major-mode define-face tuatara.packages:define-package-setting
     tuatara.command:define-key tuatara.command:define-keys tuatara.command:label-keys tuatara.modes:mode-keymap
     tuatara.runtime:define-job-words tuatara.command:substitute-command-keys commands-for-mode buttons-in-mode
     tuatara.modes:fundamental-mode special-mode text-mode org-mode org-agenda-mode
@@ -49,6 +120,7 @@ it is NIL, whatever *SENTENCE-END-DOUBLE-SPACE* says."
     tuatara.buffer:make-buffer tuatara.buffer:find-buffer tuatara.buffer:kill-buffer tuatara.buffer:live-buffer-p
     tuatara.buffer:unique-buffer-name tuatara.buffer:buffer-name tuatara.buffer:buffer-file tuatara.command:buffer-directory
     tuatara.buffer:buffer-point tuatara.buffer:buffer-string tuatara.buffer:buffer-size tuatara.buffer:buffer-region
+    tuatara.buffer:buffer-start tuatara.buffer:buffer-end tuatara.buffer:buffer-narrowed-p tuatara.buffer:with-narrowing-lifted
     tuatara.buffer:buffer-line-start tuatara.buffer:buffer-line-end tuatara.buffer:buffer-line-text
     tuatara.buffer:buffer-char-at tuatara.buffer:buffer-forward-char char-before-position buffer-crlf-p
     tuatara.buffer:buffer-mark-active-p tuatara.buffer:buffer-version tuatara.buffer:buffer-local delete-spans
@@ -59,15 +131,15 @@ it is NIL, whatever *SENTENCE-END-DOUBLE-SPACE* says."
     tuatara.buffer:buffer-text tuatara.text:rope-bytes tuatara.text:rope-octet tuatara.text:rope-copy-into
     tuatara.text:rope-find-octet tuatara.text:rope-line-start tuatara.text:rope-line-end
     ;; asking and waiting
-    tuatara.command:read-string tuatara.command:finish-minibuffer tuatara.command:quit tuatara.command:completing-read tuatara.command:completing-read-value tuatara.command:make-candidate tuatara.command:yes-or-no-p*
-    tuatara.command:complete-in-minibuffer
+    tuatara.command:read-string tuatara.command:finish-minibuffer tuatara.command:quit tuatara.command:completing-read tuatara.command:completing-read-value tuatara.command:make-candidate tuatara.command:yes-or-no-p* tuatara.command:y-or-n-p*
+    tuatara.command:complete-in-minibuffer tuatara.command:*question-variables* tuatara.command:*buffers-asked-about*
     read-date tuatara.dates:read-date-text
-    read-path read-file-path read-native-path read-new-native-path read-whole-number tuatara.command:wait-interruptibly tuatara.command:wait-until-interruptibly
+    read-path read-file-path read-directory-path read-native-path read-new-native-path read-whole-number tuatara.command:wait-interruptibly tuatara.command:wait-until-interruptibly
     tuatara.command:first-line tuatara.text:one-line
     ;; telling what has just happened, on the desktop and in *Notifications*
     notify
     ;; lists and text made by a command
-    set-made-text render-pieces render-table-list pieces-text collecting-pieces table-cell table-heading-pieces table-row-pieces list-entry-at ansi-pieces
+    set-made-text render-pieces render-table-list pieces-text collecting-pieces table-cell table-heading-pieces table-row-pieces list-entry-at tuatara.terminal-emulator:ansi-pieces
     set-search-filtering search-filters search-filter-p search-filter-string search-filter-where search-filter-match-p
     light-search-filters search-filter-regex list-search-filters remove-search-filters
     marked-list-mode sectioned-list-mode sectioned-pieces entry-member entry-mark keep-list-marks list-acted-on
@@ -83,6 +155,9 @@ it is NIL, whatever *SENTENCE-END-DOUBLE-SPACE* says."
     tuatara.runtime:jobs-of tuatara.runtime:make-guarded-thread tuatara.runtime:deadline-in tuatara.runtime:deadline-passed-p
     tuatara.runtime:job-take-in tuatara.runtime:job-percent tuatara.runtime:job-state-words tuatara.runtime:job-status
     tuatara.runtime:job-program-started tuatara.runtime:running-job take-in-soon
+    ;; failures nothing can be done about, kept in the debug log, and failures said
+    tuatara.runtime:ignoring-errors-reported tuatara.runtime:*secret-at-hand*
+    tuatara.runtime:failure-words
     ;; hooks, each a list a package adds its function to
     *post-self-insert-functions* tuatara.buffer:*kill-buffer-functions* *kill-buffer-query-functions* tuatara.command:*mode-line-functions*
     *health-decoder-functions* *preview-text-functions* *file-local-setting-functions* *file-local-taken-functions* *file-views*
@@ -95,12 +170,15 @@ it is NIL, whatever *SENTENCE-END-DOUBLE-SPACE* says."
     tuatara.io:slash-ended tuatara.io:path-within-p tuatara.io:real-path-or-parent tuatara.io:path-join tuatara.io:path-kind tuatara.io:path-stamp tuatara.io:stamp-size tuatara.io:free-bytes
     tuatara.io:directory-entries walk-directory tuatara.io:call-with-file tuatara.io:file-head tuatara.io:binary-head-p tuatara.io:read-fd-start
     tuatara.io:read-fd-octets tuatara.io:write-octets tuatara.io:file-system-error tuatara.io:copy-regular-file tuatara.io:write-new-file tuatara.io:make-directory tuatara.io:remove-file tuatara.io:delete-tree
+    ;; evidence, and the places nothing is written in
+    tuatara.io:writing-refusal tuatara.io:writing-refused copy-file-checked
     tuatara.io:percent-decoded-octets file-kind tuatara.io:octets-kind tuatara.io:kind-name-disagrees-p
     tuatara.io:+binary-sample+ tuatara.io:*compound-file-signature*
     ;; octets, text and dates
-    tuatara.text:octets tuatara.io:octets-at-p tuatara.io:octets-le tuatara.io:octets-signed tuatara.io:base64-octets tuatara.io:octets-words
+    tuatara.text:octets tuatara.io:octets-at-p tuatara.io:octets-search tuatara.io:octets-integer
+    tuatara.io:octets-signed tuatara.io:base64-octets tuatara.io:octets-words
     tuatara.text:octets-string tuatara.text:octets-latin-1 tuatara.text:charset-text tuatara.text:utf-16-text tuatara.text:string-octets
-    tuatara.text:string-octet-length tuatara.text:string-line-start tuatara.text:parse-decimal
+    tuatara.text:string-octet-length tuatara.text:string-line-start tuatara.text:parse-decimal tuatara.text:whole-number
     tuatara.text:lenient-string tuatara.text:merge-ranges tuatara.text:string-hash
     tuatara.text:xml-entity tuatara.text:xml-tag-end tuatara.text:xml-text-value tuatara.io:fd-octets tuatara.io:file-octets tuatara.text:xml-escape
     tuatara.text:xml-name tuatara.text:xml-attribute tuatara.text:xml-children tuatara.text:xml-child tuatara.text:xml-root
@@ -115,12 +193,8 @@ it is NIL, whatever *SENTENCE-END-DOUBLE-SPACE* says."
     tuatara.dates:zone-rule tuatara.dates:make-zone-rule tuatara.dates:zone-rule-standard-name tuatara.dates:zone-rule-standard-offset
     tuatara.dates:zone-rule-daylight-name tuatara.dates:zone-rule-daylight-offset tuatara.dates:zone-rule-to-daylight tuatara.dates:zone-rule-to-standard
     ;; Org entries as the agenda reads them, their timestamps, dates by rule and times cancelled or moved
-    org-agenda-file-entries agenda-entry-file agenda-entry-text agenda-entry-position agenda-entry-end agenda-entry-level
-    agenda-entry-todo agenda-entry-todo-type agenda-entry-title agenda-entry-heading agenda-entry-tags agenda-entry-local-tags
-    agenda-entry-scheduled agenda-entry-deadline agenda-entry-closed agenda-entry-properties agenda-entry-stamps agenda-entry-ranges
-    org-read-ts make-org-ts org-ts-text org-ts-day-number org-ts-active org-ts-year org-ts-month org-ts-day org-ts-hour org-ts-minute
-    org-ts-end-hour org-ts-end-minute org-ts-repeater org-ts-repeat-value org-ts-repeat-unit org-ts-time-text org-day-timestamp-text
-    org-read-rule org-rule-text-p org-rule-next org-rule-kind org-rule-arguments org-rule-hour org-rule-minute org-rule-end-hour org-rule-end-minute
+    org-agenda-file-entries agenda-entry-get org-read-ts make-org-ts org-ts-get org-ts-text org-ts-time-text
+    org-day-timestamp-text org-read-rule org-rule-get org-rule-text-p org-rule-next
     org-occurrence-notes org-occurrence-note repeat-rule-text repeat-months repeat-open-end org-agenda-main-file org-capture-with
     org-planning-line-p org-ends-with-newline-p org-ensure-newline tuatara.io:file-text
     ;; an Org file written to while it may be open: its buffer, its new text by lines, saved
@@ -129,12 +203,11 @@ it is NIL, whatever *SENTENCE-END-DOUBLE-SPACE* says."
     org-safe-line org-safe-line-words org-escape-block org-unescape-block
     tuatara.io:inflate tuatara.text:xml-parse xmp-fields jpeg-metadata file-sha256 shown-file
     ;; PDF objects, read from octets alone
-    pdf-object-at pdf-skip-space pdf-delimiter-p pdf-literal-string-at pdf-hex-string-at pdf-string-text pdf-date-words
-    *pdf-most-items* tuatara.io:pdf-header-at pdf-white-p pdf-line-end-after pdf-integer-at pdf-number-at
-    pdf-get pdf-dictionary-p pdf-ref-p pdf-array-items pdf-object-header-before pdf-indirect-object-at
-    pdf-indirect-p pdf-indirect-number pdf-indirect-generation pdf-indirect-value pdf-indirect-at pdf-indirect-end
-    pdf-indirect-stream-start pdf-indirect-stream-end pdf-indirect-length pdf-indirect-packed-in
-    pdf-stream-filters pdf-stream-octets *pdf-picture-filters* pdf-object-stream-offsets pdf-packed-object
+    pdf-object-at pdf-string-text pdf-date-words *pdf-most-items* tuatara.io:pdf-header-at pdf-white-p
+    pdf-get pdf-dictionary-p pdf-ref-p pdf-array-items map-pdf-dictionary
+    pdf-indirect-object-at pdf-indirect-get map-pdf-written-objects pdf-eof-lines pdf-startxref pdf-offset-base
+    map-pdf-cross-reference-table map-pdf-cross-reference-stream pdf-stream-filters pdf-stream-octets
+    *pdf-picture-filters* pdf-object-stream-offsets pdf-packed-object map-pdf-content
     ;; octets shown as a hex dump, text shortened, and text from a file with its control characters shown
     show-octets-in-hex tuatara.text:octets-hex tuatara.display:shorten-string tuatara.command:escape-controls tuatara.text:xml-unprefixed tuatara.io:ensure-directories
     ;; programs from outside, shut in
@@ -142,7 +215,7 @@ it is NIL, whatever *SENTENCE-END-DOUBLE-SPACE* says."
     ;; a program of your own run on what a job gives it through a pipe, its arguments split as a shell would
     tuatara.io:call-with-program tuatara.io:filter-through-program tuatara.io:command-words tuatara.io:read-stream-octets
     tuatara.io:sandbox-find-program run-on-copies copies-original-names
-    run-on-copies-for-report tuatara.io:sandbox-outcome-words sandbox-pdf program-health-words likelihood-face
+    run-on-copies-for-report sandbox-outcome-words sandbox-pdf program-health-words likelihood-face
     read-decimal-number read-fraction fraction-p tuatara.io:random-name tuatara.io:copy-to-free-name tuatara.io:percent-decoded tuatara.dates:*short-month-names*
     user-program-path start-detached open-externally-file new-private-folder private-cache-directory private-state-directory tuatara.io:replace-file
     tuatara.io:memory-file sandbox-font-directories pdf-view-make

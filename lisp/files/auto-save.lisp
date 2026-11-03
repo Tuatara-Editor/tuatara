@@ -63,8 +63,8 @@ not one of the system's made-up files."
   (and *auto-save*
        (tuatara.buffer:buffer-file buffer)
        (not (tuatara.io:safe-visit-p buffer))
-       (not (tuatara.buffer:buffer-local buffer :plaintext))
-       (not (tuatara.buffer:buffer-local buffer :read-only))
+       (not (tuatara.io:buffer-plaintext-p buffer))
+       (not (buffer-read-only-p buffer))
        (not (eq (tuatara.buffer:buffer-local buffer :file-class) :pseudo))
        (<= (tuatara.buffer:buffer-size buffer) *auto-save-largest*)))
 
@@ -73,9 +73,9 @@ not one of the system's made-up files."
 when there is one."
   (let ((copy (auto-save-path file)))
     (when (and copy (tuatara.io:path-stamp copy))
-      (ignore-errors (tuatara.io:remove-file copy))
-      (ignore-errors (tuatara.io:remove-file (concatenate 'string copy ".path")))
-      (ignore-errors (refill-open-list "*Auto-saves*" 'auto-saves-mode)))))
+      (ignoring-errors-reported ("deleting ~a" copy) (tuatara.io:remove-file copy))
+      (ignoring-errors-reported ("deleting ~a.path" copy) (tuatara.io:remove-file (concatenate 'string copy ".path")))
+      (ignoring-errors-reported ("listing the auto-saves again") (refill-open-list "*Auto-saves*" 'auto-saves-mode)))))
 
 (defun delete-auto-save (buffer)
   "Delete BUFFER's auto-saved copy, and its name kept beside it, when there is
@@ -122,6 +122,14 @@ auto-saved copy in the background, a job."
   "False: an auto-save is not shown as work under way in the mode line."
   nil)
 
+(defun write-auto-save (rope file copy)
+  "Write ROPE, the text of a buffer visiting the native FILE, to COPY, its
+auto-saved copy (AUTO-SAVE-PATH), for you alone, and FILE's name beside it
+when COPY's name cannot hold it."
+  (tuatara.io:write-text-file rope copy :expected :any :follow-links nil :mode (constantly #o600))
+  (when (nth-value 1 (tuatara.io:path-file-name file))
+    (tuatara.io:write-private-file (concatenate 'string copy ".path") file)))
+
 (defun start-auto-save (buffer)
   "Write BUFFER's text as it is now to its auto-saved copy, a job in the
 background."
@@ -136,10 +144,17 @@ background."
      job
      (lambda (job)
        (declare (ignore job))
-       (tuatara.io:write-text-file rope copy :expected :any :follow-links nil :mode (constantly #o600))
-       (when (nth-value 1 (tuatara.io:path-file-name file))
-         (tuatara.io:write-private-file (concatenate 'string copy ".path") file)))
+       (write-auto-save rope file copy))
      :name "tuatara auto-save")))
+
+(defun auto-save-now (buffer)
+  "Write BUFFER's text as it is now to its auto-saved copy at once, on this
+thread: as the editor stops with no one to ask whether to save it."
+  (let ((file (tuatara.io:native (tuatara.buffer:buffer-file buffer))))
+    (tuatara.io:ensure-private-directory (auto-save-directory))
+    (write-auto-save (tuatara.text:version-rope (tuatara.buffer:buffer-version buffer)) file (auto-save-path file))
+    (setf (tuatara.buffer:buffer-local buffer 'auto-save-written) (tuatara.buffer:buffer-content-number buffer)
+          (tuatara.buffer:buffer-local buffer 'auto-save-file) file)))
 
 (defmethod tuatara.runtime:job-take-in ((job auto-save-job))
   "Note the copy written, or say why it was not; a buffer saved meanwhile has
@@ -205,12 +220,13 @@ For a buffer whose file has no auto-saved copy newer than it, says so."
   (let ((buffer (current-buffer)))
     (cond ((null (tuatara.buffer:buffer-file buffer)) (message "~a visits no file" (tuatara.buffer:buffer-name buffer)))
           ((tuatara.io:safe-visit-p buffer) (message "~a is opened safely: nothing is recovered into it" (tuatara.buffer:buffer-name buffer)))
-          ((tuatara.buffer:buffer-local buffer :read-only) (message "~a is read-only: ~a first" (tuatara.buffer:buffer-name buffer)
+          ((buffer-read-only-p buffer) (message "~a is read-only: ~a first" (tuatara.buffer:buffer-name buffer)
                                                                     (substitute-command-keys "\\[read-only-mode]")))
           (t (multiple-value-bind (copy time) (auto-save-newer-p buffer)
                (cond ((null copy) (message "~a has no auto-saved changes newer than its file" (tuatara.buffer:buffer-name buffer)))
-                     ((yes-or-no-p* (format nil "Recover ~a from its changes auto-saved ~a?" (tuatara.buffer:buffer-name buffer) (short-time-words time)))
+                     ((y-or-n-p* (format nil "Recover ~a from its changes auto-saved ~a?" (tuatara.buffer:buffer-name buffer) (short-time-words time)))
                       (let ((octets (tuatara.io:file-octets copy)))
+                        (tuatara.buffer:widen-buffer buffer)
                         (tuatara.buffer:buffer-replace buffer 0 (tuatara.buffer:buffer-size buffer) octets)
                         (setf (tuatara.buffer:buffer-point buffer) 0)
                         (message "~a recovered: ~a saves it, ~a takes it back" (tuatara.buffer:buffer-name buffer)
@@ -236,12 +252,14 @@ to say."
 :SIZE, its octets; :STATE, :NEWER (than the file), :OLDER or :GONE (the file
 is not there)."
   (let ((directory (auto-save-directory)) (copies '()))
-    (loop for (name nil nil own stamp) in (and directory (ignore-errors (tuatara.io:directory-entries directory :stamps t)))
+    (loop for (name nil nil own stamp) in (and directory (ignoring-errors-reported ("listing ~a" directory)
+                                                           (tuatara.io:directory-entries directory :stamps t)))
           for copy = (concatenate 'string directory name)
           do (when (and stamp (eq own :regular) (not (uiop:string-suffix-p name ".path")))
-          (let* ((file (or (ignore-errors (string-right-trim '(#\Newline) (tuatara.io:file-text (concatenate 'string copy ".path"))))
-                           (ignore-errors (tuatara.io:percent-decoded name))))
-                 (file-stamp (and file (ignore-errors (tuatara.io:path-stamp file)))))
+          (let* ((file (or (ignoring-errors-reported ("reading ~a.path" copy)
+                             (string-right-trim '(#\Newline) (tuatara.io:file-text (concatenate 'string copy ".path"))))
+                           (ignoring-errors-reported ("reading the name ~a" name) (tuatara.io:percent-decoded name))))
+                 (file-stamp (and file (tuatara.io:path-stamp file :failure nil))))
             (when (and file (plusp (length file)) (char= (char file 0) #\/))
               (push (list :copy copy :file file :time (mtime-universal-time (tuatara.io:stamp-mtime stamp))
                           :size (tuatara.io:stamp-size stamp)
@@ -329,8 +347,9 @@ file no longer there is opened as a new one."
     (if (yes-or-no-p* (format nil "~a?" (list-question "Delete the auto-saved changes of" "file" copies :the nil
                                                        :name-of (lambda (copy) (abbreviated-path (getf copy :file))))))
         (progn (dolist (copy copies)
-                 (ignore-errors (tuatara.io:remove-file (getf copy :copy)))
-                 (ignore-errors (tuatara.io:remove-file (concatenate 'string (getf copy :copy) ".path"))))
+                 (ignoring-errors-reported ("deleting ~a" (getf copy :copy)) (tuatara.io:remove-file (getf copy :copy)))
+                 (ignoring-errors-reported ("deleting ~a.path" (getf copy :copy))
+                   (tuatara.io:remove-file (concatenate 'string (getf copy :copy) ".path"))))
                (unmark-list list)
                (message "Deleted ~d auto-saved cop~:@p" (length copies)))
         (message "Kept"))))
@@ -354,7 +373,8 @@ twentieth of a second until they are."
                                    '(*auto-save-directory*)
                                    (lambda (give cancel)
                                      (declare (ignore cancel))
-                                     (funcall give (count :newer (ignore-errors (auto-save-copies))
+                                     (funcall give (count :newer (ignoring-errors-reported ("listing the auto-saves")
+                                                                   (auto-save-copies))
                                                           :key (lambda (c) (getf c :state))))))))
            1/20)
           ((not (gathering-done counting)) 1/20)

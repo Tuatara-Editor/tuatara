@@ -48,7 +48,8 @@ the working buffer, the one the Lisp typed sees as current. \\[ielm-tab] and
   "Where the input after BUFFER's last prompt starts."
   (let ((anchor (tuatara.buffer:buffer-local buffer 'ielm-input-start)))
     (min (tuatara.buffer:buffer-size buffer)
-         (or (and anchor (ignore-errors (tuatara.text:anchor-position anchor (tuatara.buffer:buffer-version buffer))))
+         (or (and anchor (ignoring-errors-reported ("finding the input in ~a" (tuatara.buffer:buffer-name buffer))
+                           (tuatara.text:anchor-position anchor (tuatara.buffer:buffer-version buffer))))
              (tuatara.buffer:buffer-size buffer)))))
 
 (defun prompt-length-at (buffer line)
@@ -92,11 +93,14 @@ editor: made with a prompt the first time, as it was after."
   "True when TEXT, read in PACKAGE, holds whole expressions only, none left
 open: what \\<ielm-mode>\\[ielm-return] evaluates. Nothing is evaluated reading it."
   (let ((*package* package) (*read-eval* nil) (eof '#:eof))
-    (handler-case (with-input-from-string (in text)
-                    (loop until (eq (read in nil eof) eof))
-                    t)
-      (end-of-file () nil)
-      ;; a reader error is shown by the evaluation
+    (handler-case
+        (reporting-errors ("reading the input to evaluate")
+          (handler-case (with-input-from-string (in text)
+                          (loop until (eq (read in nil eof) eof))
+                          t)
+            (end-of-file () nil)
+            ;; a reader error is shown by the evaluation
+            (reader-error () t)))
       (error () t))))
 
 (defun ielm-results (result)
@@ -108,7 +112,8 @@ what was printed, then each value readably on a line of its own, or the error."
     (with-output-to-string (out)
       (write-output-and-values out (getf result :output "") values)
       (cond ((eq outcome :stopped) (format out "*** Evaluation stopped~%"))
-            ((eq (first outcome) :error) (format out "*** Eval error ***  ~a~%" (tuatara.runtime:condition-words (second outcome))))
+            ((eq (first outcome) :error)
+             (format out "*** Eval error ***  ~a~%" (tuatara.runtime:failure-words (second outcome) :said t)))
             ((null values) (format out "; No values~%"))))))
 
 (defun ielm-evaluate (buffer)
@@ -139,8 +144,8 @@ values go after it, then a new prompt; the input is remembered for
                (tuatara.buffer:buffer-insert buffer (tuatara.buffer:buffer-size buffer) (ielm-results result))
             ;; a new prompt whatever became of the results
             (ielm-insert-prompt buffer))
-          (when (and (getf result :backtrace) *backtrace-function*)
-            (funcall *backtrace-function* (second outcome) (getf result :backtrace)))))
+          (when (getf result :backtrace)
+            (show-backtrace (second outcome) (getf result :backtrace)))))
     ;; point in *ielm* itself: the Lisp typed, or *Backtrace*, may have selected another window
     (setf (tuatara.buffer:buffer-point buffer) (tuatara.buffer:buffer-size buffer))))
 

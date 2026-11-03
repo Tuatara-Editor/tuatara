@@ -11,7 +11,16 @@
 #     each as tools/lisp-archives.sha256 lists it. Quicklisp is then told to
 #     download nothing, so a library new since that list stops the build
 #     rather than being fetched unchecked.
-# Everything comes over HTTPS. Usage: tools/ci-setup.sh
+# Everything comes over HTTPS. Then bubblewrap (bwrap), which the grammars'
+# build shuts each grammar.js in with, from the machine's own Ubuntu archive,
+# checked by apt against its signed index; its version goes in the log. Ubuntu
+# 24.04 lets a program make a user namespace only when an AppArmor profile
+# allows it, so Ubuntu's own profile for bwrap (bwrap-userns-restrict, taken
+# out of its apparmor-profiles package, nothing else of it installed) is
+# loaded: bwrap alone may, the programs it starts may not, and the rule stays
+# as it is for everything else. bwrap is then tried once, and a bwrap that
+# cannot shut a program in stops it here.
+# Usage: tools/ci-setup.sh
 set -euo pipefail
 root="$(cd "$(dirname "$0")/.." && pwd)"
 work="$(mktemp -d)"
@@ -19,8 +28,8 @@ trap 'rm -rf "$work"' EXIT
 
 sbcl_url=https://downloads.sourceforge.net/project/sbcl/sbcl/2.6.8/sbcl-2.6.8-x86-64-linux-binary.tar.bz2
 sbcl_sha256=5391773774b94554a015db9f992370d06937fb6f0cdb0b2142281aebef9e96c1
-zig_url=https://ziglang.org/download/0.16.0/zig-x86_64-linux-0.16.0.tar.xz
-zig_sha256=70e49664a74374b48b51e6f3fdfbf437f6395d42509050588bd49abe52ba3d00
+zig_url=https://ziglang.org/download/0.17.0/zig-x86_64-linux-0.17.0.tar.xz
+zig_sha256=1cbe9df9f27e6b78d14ccbca43b6703a404ef79ef1c463de901d7f088d4e2026
 # the Quicklisp client, as client-info.sexp of its version 2021-02-13 names it
 ql_client_url=https://beta.quicklisp.org/client/2021-02-13/quicklisp.tar
 ql_client_sha256=a8a3c8c91b51dd185175abad4d7c3999ebb4e2520be5a6cee2127035ac6c87be
@@ -28,8 +37,6 @@ ql_setup_url=https://beta.quicklisp.org/client/2021-02-11/setup.lisp
 ql_setup_sha256=549fe3e7e0f2669daede98437c99cd60e02c0b8536d3d135c9aa9d346ed951b6
 ql_asdf_url=https://beta.quicklisp.org/asdf/3.2.1/asdf.lisp
 ql_asdf_sha256=51912f3f7c2c62c204f515d97346d56011528399bbf0a76a123318343ebd8bf0
-# the Quicklisp set; its libraries are checked one by one, so its lists are not
-ql_dist_url=https://beta.quicklisp.org/dist/quicklisp/2026-01-01
 
 fetch() {  # download $1 to $2, kept only when its SHA-256 is $3
   curl -sSfL --retry 3 -o "$2.part" "$1"
@@ -62,18 +69,25 @@ fetch "$ql_client_url" "$work/quicklisp.tar" "$ql_client_sha256"
 tar -xf "$work/quicklisp.tar" -C "$ql"
 fetch "$ql_setup_url" "$ql/setup.lisp" "$ql_setup_sha256"
 fetch "$ql_asdf_url" "$ql/asdf.lisp" "$ql_asdf_sha256"
-for file in distinfo.txt systems.txt releases.txt; do
-  curl -sSfL --retry 3 -o "$dist/$file" "$ql_dist_url/$file"
-done
-touch "$dist/enabled.txt"
+"$root/tools/lisp-archives.sh" index "$ql"
 # the archives, each checked before it is unpacked or loaded; Quicklisp unpacks
 # one it finds in archives/ and fetches nothing
-[ -s "$root/tools/lisp-archives.sha256" ] || { echo "tools/lisp-archives.sha256 is missing" >&2; exit 1; }
-while read -r sha256 archive; do
-  url=$(awk -v a="${archive%.tgz}" '$6 == a { print $2 }' "$dist/releases.txt" | sed 's|^http:|https:|')
-  [ -n "$url" ] || { echo "$archive is not in the Quicklisp set $ql_dist_url" >&2; exit 1; }
-  fetch "$url" "$dist/archives/$archive" "$sha256"
-done < <(grep -v '^#' "$root/tools/lisp-archives.sha256")
-# a proxy that answers nothing: anything Quicklisp would still download fails
-echo "http://127.0.0.1:9/" > "$ql/config/proxy-url.txt"
+"$root/tools/lisp-archives.sh" fetch "$ql"
+"$root/tools/lisp-archives.sh" check "$ql"
+# anything Quicklisp would still download fails
+"$root/tools/lisp-archives.sh" lock "$ql"
 echo "Quicklisp $(cat "$ql/quicklisp/version.txt"), $(sed -n 's/^version: //p' "$dist/distinfo.txt"), $(grep -vc '^#' "$root/tools/lisp-archives.sha256") libraries"
+
+echo "== bubblewrap"
+sudo apt-get update -qq
+sudo DEBIAN_FRONTEND=noninteractive apt-get install -y -qq bubblewrap >/dev/null
+if [ "$(cat /proc/sys/kernel/apparmor_restrict_unprivileged_userns 2>/dev/null || echo 0)" = 1 ]; then
+  profile=usr/share/apparmor/extra-profiles/bwrap-userns-restrict
+  (cd "$work" && apt-get download -qq apparmor-profiles)
+  dpkg-deb --fsys-tarfile "$work"/apparmor-profiles_*.deb | tar -x -C "$work" "./$profile"
+  sudo apparmor_parser -r "$work/$profile"
+fi
+bwrap --unshare-all --die-with-parent --clearenv --proc /proc --dev /dev --ro-bind /usr /usr \
+  --symlink usr/lib64 /lib64 --symlink usr/lib /lib --symlink usr/bin /bin -- /usr/bin/true ||
+  { echo "bwrap cannot shut a program in on this machine" >&2; exit 1; }
+echo "bubblewrap $(dpkg-query -W -f='${Version}' bubblewrap)"

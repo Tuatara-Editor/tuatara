@@ -14,7 +14,7 @@
 ;;;; (tools/terminal-library.sh builds it); layout.sexp beside it says what its
 ;;;; C headers say of the values and structures read here.
 
-(in-package #:tuatara.defaults)
+(in-package #:tuatara.terminal-emulator)
 
 ;;; The library
 
@@ -66,7 +66,7 @@ layout the first time it is needed."
 (declaim (inline layout-cell-value))
 (defun layout-cell-value (cell)
   "The value CELL, one of *LAYOUT-CELLS*, holds; an error when the layout has none."
-  (or (cdr cell) (error "The terminal library's layout says nothing of ~s" (car cell))))
+  (or (cdr cell) (refuse "The terminal library's layout says nothing of ~s" (car cell))))
 
 (defun vt (key)
   "The value KEY has in the terminal library's layout (*TERMINAL-LAYOUT*)."
@@ -85,31 +85,41 @@ layout the first time it is needed."
 library: TERMINAL, RENDER-STATE, ITERATOR and CELLS are the library's handles;
 ENCODER and EVENT turn keys into what the program reads, MOUSE-ENCODER and
 MOUSE-EVENT what the mouse does; PROCESS the program,
-FD the pseudo-terminal's side the editor holds. LOCK
-guards the library's state; WANTED is set while the editor's thread wants a
-frame, the reader waiting on TURN meanwhile; CHANGED is set when the program
-printed since the last frame; CLOSED once the program's side is gone. WAKE,
-when given, is called when a frame is wanted after quiet. LAST-OUTPUT is when
-the program last printed (internal real time); TO-COMPRESS is set while its
+file descriptor (FD) the pseudo-terminal's side the editor holds. LOCK guards
+the library's state; WANTED is set while the editor's thread wants a frame,
+the reader waiting on TURN meanwhile; CHANGED is set when the program printed
+since the last frame; CLOSED once the program's side is gone. WAKE, when
+given, is called when a frame is wanted after quiet. LAST-OUTPUT is when the
+program last printed (internal real time); TO-COMPRESS is set while its
 scrollback has not been compressed since. CELL-WIDTH and CELL-HEIGHT are a
 cell's pixels where known (0 else); PLACEMENTS the library's iterator over the
-pictures shown, when pictures are on, and PICTURES the pictures made of them
-for the editor, by what they were made from; PLACEHOLDERS, for each row of
-the screen, the cells standing for a part of a picture (ROW-PLACEHOLDERS).
+pictures shown, when pictures are on, PICTURE-MEMORY the most octets of
+pictures it keeps, GRAPHICS-GENERATION what the library said of its pictures
+when they were last counted (KEEP-PLACEMENTS-WITHIN-BOUNDS), PICTURES-DROPPED
+true once they were dropped, PICTURES the pictures made of them for the
+editor, by what they were made from, and PICTURES-SHOWN those of them a frame
+shows; PLACEHOLDERS, for each row of the screen, the cells standing for a
+part of a picture (ROW-PLACEHOLDERS), and PLACEHOLDER-ENDS the table a frame
+joins their runs with (PLACEHOLDER-AREAS).
 INPUT-LOCK guards the encoders and their events, which hold what the program
 last asked of keys and the mouse (SYNC-INPUT-STATE), so that typing never
-waits for the library; BRACKETED and SCROLLS-BY-KEYS say, as of the
-program's last output, whether it asks for pastes marked and whether the
-wheel is to send it the up and down keys. REPLIES counts the octets of the
-library's answers to the program waiting in OUTBOX (*TERMINAL-REPLY-LIMIT*)."
+waits for the library; BRACKETED-PASTE-P and SCROLLS-BY-KEYS-P say, as of
+the program's last output, whether it asks for pastes marked as pasted, so
+that a shell runs none of a paste's lines until RET, and whether the wheel is
+to send it the up and down keys, as a full-screen program on the alternate
+screen that leaves alternate scrolling on (mode 1007) wants, such as less.
+REPLIES counts the octets of the library's answers to the program waiting in
+OUTBOX (*TERMINAL-REPLY-LIMIT*)."
   (id 0 :type fixnum) terminal render-state iterator cells encoder event mouse-encoder mouse-event process (fd -1 :type fixnum)
   (last-output 0 :type integer) to-compress
   (cell-width 0 :type fixnum) (cell-height 0 :type fixnum) placements placeholders
-  (pictures (make-hash-table :test 'equal))
+  (picture-memory 0 :type (unsigned-byte 64)) (graphics-generation 0 :type (unsigned-byte 64)) pictures-dropped
+  (pictures (make-hash-table :test 'equal)) (pictures-shown (make-hash-table :test 'equal))
+  (placeholder-ends (make-hash-table))
   (lock (sb-thread:make-mutex :name "terminal"))
   (input-lock (sb-thread:make-mutex :name "terminal input"))
   (turn (sb-thread:make-waitqueue :name "terminal turn"))
-  wanted changed closed reader writer bracketed scrolls-by-keys
+  wanted changed closed reader writer bracketed-paste-p scrolls-by-keys-p
   (outbox (sb-concurrency:make-mailbox :name "terminal input"))
   (replies 0 :type sb-ext:word)
   wake (columns 80 :type fixnum) (rows 24 :type fixnum))
@@ -139,7 +149,7 @@ what you type is never dropped.")
 return the pointer, or signal an error when it returns other than success."
   (sb-alien:with-alien ((place sb-sys:system-area-pointer (tuatara.io:null-pointer)))
     (let ((result (apply function (append arguments (list (sb-alien:alien-sap (sb-alien:addr place)))))))
-      (unless (eql result (vt :success)) (error "The terminal library refused (~d)" result)))
+      (unless (eql result (vt :success)) (refuse "The terminal library refused (~d)" result)))
     place))
 
 (defmacro vt-new (constructor &rest arguments)
@@ -206,9 +216,10 @@ its layout), or NIL when it gives none."
       (sb-concurrency:send-message (emulator-outbox emulator) (cons :reply (tuatara.io:sap-octets data size))))))
 
 (defun set-window-size (fd columns rows &optional (cell-width 0) (cell-height 0))
-  "Tell the pseudo-terminal FD its size, COLUMNS by ROWS of cells CELL-WIDTH by
-CELL-HEIGHT pixels (0 when not known), which the program reads (TIOCSWINSZ):
-a program sending pictures sizes them by it."
+  "Tell the pseudo-terminal open as file descriptor (FD) its size, COLUMNS by
+ROWS of cells CELL-WIDTH by CELL-HEIGHT pixels (0 when not known), which
+the program reads (TIOCSWINSZ): a program sending pictures sizes them by
+it."
   (tuatara.io:set-terminal-window-size fd rows columns (* columns cell-width) (* rows cell-height)))
 
 (defun resize-library (emulator columns rows cell-width cell-height)
@@ -226,7 +237,7 @@ or the editor's own, with *TERMINAL-ENVIRONMENT* in place of those it names."
   (let ((names (mapcar (lambda (v) (subseq v 0 (1+ (position #\= v)))) *terminal-environment*)))
     (append *terminal-environment*
             (remove-if (lambda (v) (some (lambda (name) (uiop:string-prefix-p name v)) names))
-                       (or environment (sb-ext:posix-environ))))))
+                       (or environment (tuatara.io:program-environment))))))
 
 (defun start-emulator (program arguments &key (columns 80) (rows 24) directory environment wake
                                             (scrollback-lines 100000) (scrollback-bytes (* 256 1024 1024))
@@ -243,7 +254,7 @@ function of no arguments, is called on the reader's thread when the program
 printed after quiet, so that a frame is drawn. Returns the EMULATOR; an error
 when the library cannot be loaded."
   (unless (terminal-library-p)
-    (error "The terminal library is not there (tools/terminal-library.sh builds it)"))
+    (refuse "The terminal library is not there (tools/terminal-library.sh builds it)"))
   (let* ((id (1+ (sb-ext:atomic-incf (car *emulator-count*))))
          (terminal (vt-new "ghostty_terminal_new" ((sb-alien:unsigned 16) columns) ((sb-alien:unsigned 16) rows)))
          (emulator (%make-emulator :id id :terminal terminal :columns columns :rows rows :wake wake
@@ -300,6 +311,7 @@ when the program's side of the pseudo-terminal is gone."
                        do (sb-thread:condition-wait (emulator-turn emulator) (emulator-lock emulator)))
                  (foreign-call "ghostty_terminal_vt_write" sb-alien:void (sb-sys:system-area-pointer (emulator-terminal emulator))
                                (sb-sys:system-area-pointer buffer) ((sb-alien:unsigned 64) got))
+                 (when (emulator-placements emulator) (keep-placements-within-bounds emulator))
                  (sync-input-state emulator))
                (setf (emulator-last-output emulator) (get-internal-real-time))
                (unless (emulator-to-compress emulator)
@@ -307,9 +319,11 @@ when the program's side of the pseudo-terminal is gone."
                  (wake-compressor))
                (unless (emulator-changed emulator)
                  (setf (emulator-changed emulator) t)
-                 (when (emulator-wake emulator) (ignore-errors (funcall (emulator-wake emulator))))))))
+                 (when (emulator-wake emulator)
+                   (ignoring-errors-reported ("waking the editor") (funcall (emulator-wake emulator))))))))
       (setf (emulator-closed emulator) t)
-      (when (emulator-wake emulator) (ignore-errors (funcall (emulator-wake emulator)))))))
+      (when (emulator-wake emulator)
+        (ignoring-errors-reported ("waking the editor") (funcall (emulator-wake emulator)))))))
 
 (defun write-program-input (emulator)
   "What EMULATOR's writer thread does: write what is sent to its outbox to the
@@ -389,9 +403,10 @@ given to it, so that typing never waits for the library."
                     (sb-sys:system-area-pointer (emulator-encoder emulator)) (sb-sys:system-area-pointer terminal))
       (foreign-call "ghostty_mouse_encoder_setopt_from_terminal" sb-alien:void
                     (sb-sys:system-area-pointer (emulator-mouse-encoder emulator)) (sb-sys:system-area-pointer terminal)))
-    (setf (emulator-bracketed emulator) (emulator-mode-p emulator (vt :mode-bracketed-paste))
-          (emulator-scrolls-by-keys emulator) (and (eql (library-size terminal (vt :data-active-screen)) (vt :screen-alternate))
-                                                   (emulator-mode-p emulator (vt :mode-alternate-scroll))))))
+    (setf (emulator-bracketed-paste-p emulator) (emulator-mode-p emulator (vt :mode-bracketed-paste))
+          (emulator-scrolls-by-keys-p emulator) (and (eql (library-size terminal (vt :data-active-screen))
+                                                          (vt :screen-alternate))
+                                                     (emulator-mode-p emulator (vt :mode-alternate-scroll))))))
 
 (defun library-mods (ctrl meta shift)
   "The terminal library's bits for the keys held with a key or the mouse:
@@ -453,12 +468,6 @@ means something to a terminal."
                                           (sb-sys:system-area-pointer out) ((sb-alien:unsigned 64) 128)
                                           (sb-sys:system-area-pointer length))))))))))
 
-(defun emulator-bracketed-paste-p (emulator)
-  "True when EMULATOR's program asks for pastes marked as pasted (bracketed
-paste), as of its last output, so that a shell runs none of a paste's lines
-until you press RET; never waits for the library."
-  (emulator-bracketed emulator))
-
 (defun emulator-paste (emulator text)
   "Paste TEXT into EMULATOR's program as terminals paste: marked as pasted when
 the program asks for that (EMULATOR-BRACKETED-PASTE-P, so that a shell runs
@@ -478,7 +487,7 @@ read it, nor for the library. Returns true when it was marked."
                                    ((sb-alien:boolean 8) bracketed)
                                    (sb-sys:system-area-pointer (sb-sys:vector-sap out)) ((sb-alien:unsigned 64) room)
                                    (sb-sys:system-area-pointer (sb-alien:alien-sap (sb-alien:addr written)))))
-          (error "The terminal library could not make the paste")))
+          (refuse "The terminal library could not make the paste")))
       (emulator-input emulator (subseq out 0 written)))
     bracketed))
 
@@ -524,13 +533,6 @@ HISTORY at ROW of its whole history, scrollback first; NIL when it has none."
                 (when (eql (vt :success) (tuatara.io:with-octets-sap (sap octets) (link sap (length octets))))
                   (tuatara.text:octets-string (subseq octets 0 (min length (length octets)))))))))))))
 
-(defun emulator-scrolls-by-keys-p (emulator)
-  "True when the wheel over EMULATOR's screen is to send its program the
-up and down keys: a full-screen program (on the alternate screen) that does
-not track the mouse, while it leaves alternate scrolling on (mode 1007),
-such as the pager less; as of its last output, never waiting for the library."
-  (emulator-scrolls-by-keys emulator))
-
 (defun emulator-resize (emulator columns rows &optional (cell-width 0) (cell-height 0))
   "Make EMULATOR's screen COLUMNS by ROWS (cells of CELL-WIDTH by CELL-HEIGHT
 pixels, when known), and tell its program. True when that changed it;
@@ -572,7 +574,7 @@ in *LOOK-ATTRIBUTES*.")
 (defmacro look-bit (attribute)
   "The bit of a look standing for ATTRIBUTE, one of *LOOK-ATTRIBUTES*."
   (ash 1 (+ +look-attributes-shift+ (or (position attribute *look-attributes*)
-                                         (error "~s is not an attribute of a look" attribute)))))
+                                         (refuse "~s is not an attribute of a look" attribute)))))
 
 (declaim (inline rgb-code palette-code sap-rgb-code style-colour))
 (defun rgb-code (red green blue)
@@ -809,7 +811,7 @@ so to be called away from the editor's thread for a long scrollback."
                                    (sb-alien:int (if styled 1 0))
                                    (sb-sys:system-area-pointer (sb-alien:alien-sap (sb-alien:addr out)))
                                    (sb-sys:system-area-pointer (sb-alien:alien-sap (sb-alien:addr length)))))
-          (error "The terminal's text could not be made"))
+          (refuse "The terminal's text could not be made"))
         (let ((octets (if (zerop length)
                           (make-array 0 :element-type '(unsigned-byte 8))
                           (prog1 (tuatara.io:sap-octets out length)
@@ -840,7 +842,9 @@ when it cannot be told: what the system says of the program's own process,
 so that it follows cd whatever the shell is and however it is set up."
   (let ((process (emulator-process emulator)))
     (when (and process (not (emulator-closed emulator)))
-      (let ((directory (ignore-errors (sb-posix:readlink (format nil "/proc/~d/cwd" (program-group process))))))
+      (let ((directory (ignoring-errors-reported ("finding the directory of the terminal's program")
+                         (handler-case (sb-posix:readlink (format nil "/proc/~d/cwd" (program-group process)))
+                           (sb-posix:syscall-error () nil)))))
         (and directory (char= (char directory 0) #\/) (tuatara.io:slash-ended directory))))))
 
 ;;; Pictures programs send (kitty's graphics protocol)
@@ -868,24 +872,24 @@ into the pixels the library keeps (red, green, blue and alpha), in memory
 from ALLOCATOR, described at OUT (a GhosttySysImage): drawn by the program
 the sandbox shuts in, as every picture from outside is (DECODE-IMAGE), never
 by the editor itself (DECODE-PICTURE). True when it was drawn."
-  (handler-case
-      (let ((image (decode-picture (tuatara.io:sap-octets data size) :png *terminal-picture-largest* *terminal-picture-largest*)))
-        (when image
-          (let* ((width (tuatara.frontend:image-width image)) (height (tuatara.frontend:image-height image))
-                 (channels (tuatara.frontend:image-channels image)) (pixels (tuatara.frontend:image-pixels image))
-                 (length (* width height 4))
-                 (buffer (foreign-call "ghostty_alloc" sb-sys:system-area-pointer (sb-sys:system-area-pointer allocator)
-                                  ((sb-alien:unsigned 64) length))))
-            (unless (tuatara.io:null-pointer-p buffer)
-              (dotimes (i (* width height))
-                (dotimes (c 3) (setf (sb-sys:sap-ref-8 buffer (+ (* 4 i) c)) (aref pixels (+ (* channels i) c))))
-                (setf (sb-sys:sap-ref-8 buffer (+ (* 4 i) 3)) (if (= channels 4) (aref pixels (+ (* channels i) 3)) 255)))
-              (setf (sb-sys:sap-ref-32 out (vt :sys-image-width)) width
-                    (sb-sys:sap-ref-32 out (vt :sys-image-height)) height
-                    (sb-sys:sap-ref-sap out (vt :sys-image-data)) buffer
-                    (sb-sys:sap-ref-64 out (vt :sys-image-length)) length)
-              t))))
-    (error () nil)))
+  (ignoring-errors-reported ("drawing a picture the terminal's program sent")
+    (let ((image (decode-picture (tuatara.io:sap-octets data size)
+                                 :png *terminal-picture-largest* *terminal-picture-largest*)))
+      (when image
+        (let* ((width (tuatara.frontend:image-width image)) (height (tuatara.frontend:image-height image))
+               (channels (tuatara.frontend:image-channels image)) (pixels (tuatara.frontend:image-pixels image))
+               (length (* width height 4))
+               (buffer (foreign-call "ghostty_alloc" sb-sys:system-area-pointer (sb-sys:system-area-pointer allocator)
+                                ((sb-alien:unsigned 64) length))))
+          (unless (tuatara.io:null-pointer-p buffer)
+            (dotimes (i (* width height))
+              (dotimes (c 3) (setf (sb-sys:sap-ref-8 buffer (+ (* 4 i) c)) (aref pixels (+ (* channels i) c))))
+              (setf (sb-sys:sap-ref-8 buffer (+ (* 4 i) 3)) (if (= channels 4) (aref pixels (+ (* channels i) 3)) 255)))
+            (setf (sb-sys:sap-ref-32 out (vt :sys-image-width)) width
+                  (sb-sys:sap-ref-32 out (vt :sys-image-height)) height
+                  (sb-sys:sap-ref-sap out (vt :sys-image-data)) buffer
+                  (sb-sys:sap-ref-64 out (vt :sys-image-length)) length)
+            t))))))
 
 (defun allow-pictures (emulator)
   "Have EMULATOR keep the pictures its program sends, *TERMINAL-PICTURE-MEMORY*
@@ -897,15 +901,53 @@ cannot make the terminal read other files."
       (foreign-call "ghostty_sys_set" sb-alien:int (sb-alien:int (vt :sys-decode-png))
                     (sb-sys:system-area-pointer (sb-alien:alien-sap (sb-alien:alien-callable-function 'tuatara-terminal-decode-png))))
       (setf *png-decoder-set* t))
-    (set-size-option terminal (vt :opt-kitty-storage-limit) tuatara-user:*terminal-picture-memory*)
+    (setf (emulator-picture-memory emulator) tuatara-user:*terminal-picture-memory*)
+    (set-size-option terminal (vt :opt-kitty-storage-limit) (emulator-picture-memory emulator))
     (sb-alien:with-alien ((off (sb-alien:unsigned 8) 0))
       (dolist (option (list (vt :opt-kitty-medium-file) (vt :opt-kitty-medium-shared-mem)))
         (foreign-call "ghostty_terminal_set" sb-alien:int (sb-sys:system-area-pointer terminal) (sb-alien:int option)
                       (sb-sys:system-area-pointer (sb-alien:alien-sap (sb-alien:addr off))))))
     (foreign-call "ghostty_terminal_set" sb-alien:int (sb-sys:system-area-pointer terminal) (sb-alien:int (vt :opt-kitty-medium-temp-file))
                   (sb-sys:system-area-pointer (tuatara.io:null-pointer)))
-    (when (plusp tuatara-user:*terminal-picture-memory*)
+    (when (plusp (emulator-picture-memory emulator))
       (setf (emulator-placements emulator) (vt-new "ghostty_kitty_graphics_placement_iterator_new")))))
+
+(defparameter *terminal-placement-limit* 1024
+  "The most places a terminal's program may show its pictures at; past it
+the terminal drops every picture the program sent
+\(KEEP-PLACEMENTS-WITHIN-BOUNDS), and the program may send more.")
+
+(defun keep-placements-within-bounds (emulator)
+  "Drop every picture EMULATOR's program sent when it has placed them more
+than *TERMINAL-PLACEMENT-LIMIT* times, counted only when its pictures
+changed since they were last counted: the library's room for pictures is
+made none, which deletes them and their places, then what it was, and the
+debug log says so the first time. To be called holding the library,
+pictures on."
+  (sb-alien:with-alien ((graphics sb-sys:system-area-pointer (tuatara.io:null-pointer))
+                        (generation (sb-alien:unsigned 64) 0)
+                        (iterator sb-sys:system-area-pointer (emulator-placements emulator)))
+    (let ((terminal (emulator-terminal emulator)))
+      (flet ((graphics-get (what place)
+               (eql (vt :success) (foreign-call "ghostty_kitty_graphics_get" sb-alien:int (sb-sys:system-area-pointer graphics)
+                                                (sb-alien:int what) (sb-sys:system-area-pointer place)))))
+        (when (and (eql (vt :success) (foreign-call "ghostty_terminal_get" sb-alien:int (sb-sys:system-area-pointer terminal)
+                                                    (sb-alien:int (vt :data-kitty-graphics))
+                                                    (sb-sys:system-area-pointer (sb-alien:alien-sap (sb-alien:addr graphics)))))
+                   (not (tuatara.io:null-pointer-p graphics))
+                   (graphics-get (vt :graphics-generation) (sb-alien:alien-sap (sb-alien:addr generation)))
+                   (/= generation (emulator-graphics-generation emulator)))
+          (setf (emulator-graphics-generation emulator) generation)
+          (when (and (graphics-get (vt :graphics-placement-iterator) (sb-alien:alien-sap (sb-alien:addr iterator)))
+                     (loop for placements from 0
+                           while (foreign-call "ghostty_kitty_graphics_placement_next" (sb-alien:boolean 8) (sb-sys:system-area-pointer iterator))
+                           thereis (>= placements *terminal-placement-limit*)))
+            (set-size-option terminal (vt :opt-kitty-storage-limit) 0)
+            (set-size-option terminal (vt :opt-kitty-storage-limit) (emulator-picture-memory emulator))
+            (unless (shiftf (emulator-pictures-dropped emulator) t)
+              (tuatara.runtime:queue-debug-report
+               :terminal (format nil "terminal ~d: pictures dropped, placed more than ~:d times"
+                                 (emulator-id emulator) *terminal-placement-limit*)))))))))
 
 (defun image-value (image-handle what &optional (bits 32))
   "What WHAT (an :image- value of the library's layout) is of the picture the
@@ -986,7 +1028,9 @@ shows them over its cells: each (IMAGE ROW COLUMN COLUMNS ROWS), ROW and
 COLUMN of the screen from 0, the part of a picture partly off the screen
 alone. Pictures are made once for each picture the program sends and kept
 \(EMULATOR's PICTURES) while it shows them. To be called holding the library."
-  (let ((kept (emulator-pictures emulator)) (used '()) (shown '()) (virtual (make-hash-table)))
+  (let ((kept (emulator-pictures emulator))
+        (used (setf (emulator-pictures-shown emulator) (emptied-table (emulator-pictures-shown emulator))))
+        (shown '()) (virtual (make-hash-table)))
     (sb-alien:with-alien ((graphics sb-sys:system-area-pointer (tuatara.io:null-pointer))
                           (id (sb-alien:unsigned 32) 0))
      (tuatara.io:with-foreign-memory (info (vt :render-info-size))
@@ -1046,12 +1090,14 @@ alone. Pictures are made once for each picture the program sends and kept
                                                                      (min w (- (tuatara.frontend:image-width whole) x))
                                                                      (min h (- (tuatara.frontend:image-height whole) y)))))))
                                       (setf (gethash key kept) (list part))
-                                      (push key used) (push (list :whole id) used)
+                                      (setf (gethash key used) t (gethash (list :whole id) used) t)
                                       (push (list part (+ row above) (+ column left) shown-columns shown-rows) shown)))))))))))
            ;; pictures in text: the areas of cells standing for them, each drawn at its cells' size
            (when (and (emulator-placeholders emulator) (plusp (hash-table-count virtual))
                       (plusp (emulator-cell-width emulator)) (plusp (emulator-cell-height emulator)))
-             (dolist (area (placeholder-areas (emulator-placeholders emulator)))
+             (dolist (area (placeholder-areas (emulator-placeholders emulator)
+                                              (setf (emulator-placeholder-ends emulator)
+                                                    (emptied-table (emulator-placeholder-ends emulator)))))
                (let ((placement (gethash (first area) virtual)))
                  (when placement
                    (destructuring-bind (handle columns rows) placement
@@ -1060,17 +1106,18 @@ alone. Pictures are made once for each picture the program sends and kept
                          (let* ((cw (emulator-cell-width emulator)) (ch (emulator-cell-height emulator))
                                 (columns (if (plusp columns) columns (ceiling (tuatara.frontend:image-width whole) cw)))
                                 (rows (if (plusp rows) rows (ceiling (tuatara.frontend:image-height whole) ch)))
-                                (key (list* :text generation columns rows cw ch area))
+                                ;; the area's own place first: keys alike in their first few parts hash alike
+                                (key (list* (second area) (third area) (first area) :text generation columns rows cw ch area))
                                 (part (or (car (gethash key kept))
                                           (placeholder-picture whole area columns rows cw ch))))
                            (setf (gethash key kept) (list part))
-                           (push key used) (push (list :whole (first area)) used)
+                           (setf (gethash key used) t (gethash (list :whole (first area)) used) t)
                            (destructuring-bind (id row column area-columns area-rows &rest more) area
                              (declare (ignore id more))
                              (push (list part row column area-columns area-rows) shown))))))))))
            ;; let go of what no longer shows
            (loop for key being the hash-keys of kept
-                 unless (member key used :test #'equal) do (remhash key kept))
+                 unless (gethash key used) do (remhash key kept))
            (nreverse shown))))))
 
 (defvar *kitty-mark-numbers*
@@ -1100,13 +1147,22 @@ after its column."
           (push this out)
           (setf before this))))))
 
-(defun placeholder-areas (rows)
+(defun emptied-table (table)
+  "TABLE emptied for the next frame; when the last frame filled a quarter of
+it at most, a new, smaller table of its kind instead."
+  (let ((size (hash-table-size table)) (count (hash-table-count table)))
+    (if (and (> size 256) (< (* 4 count) size))
+        (make-hash-table :test (hash-table-test table) :size (max 64 (* 2 count)))
+        (clrhash table))))
+
+(defun placeholder-areas (rows &optional (ends (make-hash-table)))
   "The parts of pictures ROWS (EMULATOR's PLACEHOLDERS, a vector of
 ROW-PLACEHOLDERS lists) stand for, each (PICTURE ROW COLUMN COLUMNS ROWS
 PART-ROW PART-COLUMN): the screen's cells from ROW and COLUMN, COLUMNS by
 ROWS, showing that much of the picture from its cell PART-ROW, PART-COLUMN;
 the cells of a row in a run, and the runs of the rows below that carry on
-from it, one area."
+from it, one area. ENDS, an empty EQL table, is used to join them. Takes
+time in step with the cells."
   (let ((runs '()))
     ;; the runs of each row: cells one after another, of one picture and row, its columns in turn
     (loop for cells across rows
@@ -1120,20 +1176,20 @@ from it, one area."
                        (progn (when run (push run runs))
                               (setf run (list id screen-row column 1 1 row part-column))))))
                (when run (push run runs))))
-    ;; a run joined to the area above it when it carries on from it
+    ;; a run joined to the area above it when it carries on from it; each area kept in
+    ;; ENDS by the row below its last and its column, the only place a run carrying it on
+    ;; can be, as areas of one row never share a cell
     (let ((areas '()))
       (dolist (run (nreverse runs) (nreverse areas))
         (destructuring-bind (id screen-row column columns rows row part-column) run
           (declare (ignore rows))
-          (let ((above (find-if (lambda (area)
-                                  (destructuring-bind (a-id a-row a-column a-columns a-rows a-part-row a-part-column) area
-                                    (and (= a-id id) (= a-column column) (= a-columns columns)
-                                         (= (+ a-row a-rows) screen-row) (= (+ a-part-row a-rows) row)
-                                         (= a-part-column part-column))))
-                                areas)))
-            (if above
-                (incf (fifth above))
-                (push (copy-list run) areas))))))))
+          (let* ((place (+ (* screen-row 65536) column))
+                 (above (gethash place ends))
+                 (area (if (and above (= (first above) id) (= (fourth above) columns)
+                                (= (+ (sixth above) (fifth above)) row) (= (seventh above) part-column))
+                           (progn (incf (fifth above)) above)
+                           (car (push run areas)))))
+            (setf (gethash (+ place 65536) ends) area)))))))
 
 (defun placeholder-picture (whole area columns rows cell-width cell-height)
   "The part of the picture WHOLE that AREA (PLACEHOLDER-AREAS') shows, drawn
@@ -1241,16 +1297,14 @@ until one prints, never waking for nothing."
                       (setf (emulator-to-compress emulator) t
                             soonest (min (* after internal-time-units-per-second)
                                          (or soonest (* after internal-time-units-per-second)))))))))))
-      ;; a wake meanwhile is not lost: it set *COMPRESSOR-WOKEN*; after a timeout
-      ;; the lock is not held
-      (sb-thread:grab-mutex *compressor-lock*)
-      (let ((held (or *compressor-woken*
-                      (if soonest
-                          (sb-thread:condition-wait *compressor-wake* *compressor-lock*
-                                                    :timeout (max 0.05 (/ soonest internal-time-units-per-second)))
-                          (sb-thread:condition-wait *compressor-wake* *compressor-lock*)))))
-        (setf *compressor-woken* nil)
-        (when held (sb-thread:release-mutex *compressor-lock*))))))
+      ;; a wake meanwhile is not lost: it set *COMPRESSOR-WOKEN*
+      (sb-thread:with-mutex (*compressor-lock*)
+        (unless *compressor-woken*
+          (if soonest
+              (tuatara.runtime:wait-on *compressor-wake* *compressor-lock*
+                                       (max 0.05 (/ soonest internal-time-units-per-second)))
+              (sb-thread:condition-wait *compressor-wake* *compressor-lock*)))
+        (setf *compressor-woken* nil)))))
 
 (defun emulator-memory (emulator)
   "How much memory EMULATOR's screen and scrollback hold, a property list:
@@ -1277,10 +1331,11 @@ until one prints, never waking for nothing."
 setsid started, which leads a session and a group of its own; PROCESS's own
 when it has none."
   (let* ((pid (sb-ext:process-pid process))
-         (children (ignore-errors
-                    (with-open-file (in (format nil "/proc/~d/task/~d/children" pid pid))
-                      (read-line in nil "")))))
-    (or (and children (ignore-errors (parse-integer children :junk-allowed t))) pid)))
+         (children (ignoring-errors-reported ("finding the program of process ~d" pid)
+                     (handler-case (with-open-file (in (format nil "/proc/~d/task/~d/children" pid pid))
+                                     (read-line in nil ""))
+                       (file-error () nil)))))
+    (or (and children (parse-integer children :junk-allowed t)) pid)))
 
 (defun group-alive-p (group)
   "True while a process of the process group GROUP is there."
@@ -1295,21 +1350,25 @@ is done at once, the waiting and the rest on a thread of its own."
   (let* ((process (emulator-process emulator))
          (group (and process (sb-ext:process-alive-p process) (program-group process))))
     (when group
-      (ignore-errors (sb-posix:kill (- group) sb-posix:sighup)))
+      (handler-case (sb-posix:kill (- group) sb-posix:sighup) (sb-posix:syscall-error () nil)))
     (flet ((finish ()
              (when group
                (loop repeat 100 while (group-alive-p group) do (sleep 0.02))
                (when (group-alive-p group)
-                 (ignore-errors (sb-posix:kill (- group) sb-posix:sigkill))
+                 (handler-case (sb-posix:kill (- group) sb-posix:sigkill) (sb-posix:syscall-error () nil))
                  (loop repeat 50 while (group-alive-p group) do (sleep 0.02)))
                ;; setsid, waiting for its program, ends with it
                (loop repeat 50 while (sb-ext:process-alive-p process) do (sleep 0.02))
-               (when (sb-ext:process-alive-p process) (ignore-errors (sb-ext:process-kill process sb-posix:sigkill))))
+               (when (sb-ext:process-alive-p process)
+                 (ignoring-errors-reported ("ending the terminal's program")
+                   (sb-ext:process-kill process sb-posix:sigkill))))
              (sb-concurrency:send-message (emulator-outbox emulator) :stop)
-             (when process (ignore-errors (close (sb-ext:process-pty process))))
+             (when process (ignoring-errors-reported ("closing the terminal") (close (sb-ext:process-pty process))))
              (dolist (thread (list (emulator-reader emulator) (emulator-writer emulator)))
-               (when thread (ignore-errors (sb-thread:join-thread thread :timeout 2 :default nil))))
-             (when process (ignore-errors (sb-ext:process-close process)))
+               (when thread
+                 (ignoring-errors-reported ("waiting for ~a to end" (sb-thread:thread-name thread))
+                   (sb-thread:join-thread thread :timeout 2 :default nil))))
+             (when process (ignoring-errors-reported ("closing the terminal's program") (sb-ext:process-close process)))
              ;; the encoders too, which typing uses holding only their own lock
              (sb-thread:with-mutex ((emulator-lock emulator))
                (sb-thread:with-mutex ((emulator-input-lock emulator))

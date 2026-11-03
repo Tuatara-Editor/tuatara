@@ -3,24 +3,27 @@
 
 (defpackage #:tuatara.syntax
   (:use #:cl #:alexandria)
-  (:import-from #:tuatara.io #:null-pointer #:null-pointer-p #:sap-octets #:with-foreign-memory)
+  (:import-from #:tuatara.io #:null-pointer #:null-pointer-p #:sap-octets #:with-foreign-memory #:poll-fd #:socket-pair
+                #:send-with-descriptors)
+  (:import-from #:tuatara-user #:*syntax-helper-unconfined*)
   (:documentation "The search and regex interface, the tree-sitter binding, parsing in the background, colouring and moving by syntax.")
   (:export #:search-forward #:search-backward #:search-all #:case-fold-p #:*serial-window* #:*parallel-piece*
            #:compile-regex #:compile-pattern #:*regex-thorough* #:regex-search-forward #:regex-search-backward #:regex-search-all
            #:literal-pattern-p #:regex-case-fold-p #:map-regex-matches #:matched-text #:map-slice-matches #:make-decoder #:with-decoder #:*regex-longest-match*
            #:map-literal-matches #:collect-matches #:join-pieces #:bracket-end #:pattern-refused #:pattern-refused-words #:pattern-group-count
            ;; tree-sitter: grammars, parsing, queries
-           #:find-grammar #:grammar #:grammar-p #:grammar-name #:grammar-symbols #:syntax-library-p
-           #:*grammar-directories* #:grammar-directories #:forget-grammars
+           #:find-grammar #:grammar-pending-p #:grammar #:grammar-p #:grammar-name #:grammar-symbols #:syntax-helper-program
+           #:*helper* #:*parsing-buffer* #:text-key #:forget-text-faults #:with-own-helper #:buffer-helper #:buffer-helper-soon #:kept-helper #:forget-buffer-helper #:helper-memory #:*syntax-helper-memory* #:*syntax-helper-wait* #:host-trusted-text-p #:host-say-helper-ended #:host-say-helper-refused #:host-buffer-shown-p #:host-must-not-wait-p #:helper-parsing #:helper-kind #:helper #:helper-p #:helper-alive #:helper-shared #:helper-ended #:stop-helpers #:tree #:tree-p #:parser #:parser-p
+           #:*grammar-directories* #:grammar-directories #:forget-grammars #:user-grammar-directory #:user-grammar-store #:store-refused-why #:user-grammar-file #:user-grammar-p #:regular-file-p #:grammar-name-p #:host-user-grammar-allowed-p
            #:make-parser #:delete-parser #:parse-rope #:delete-tree #:edit-tree #:tree-has-error-p
            #:compile-query #:query #:query-p #:query-grammar #:query-captures #:query-properties
-           #:query-error #:query-error-kind #:query-error-line #:query-error-text #:query-error-grammar
+           #:query-not-answered #:query-error #:query-error-kind #:query-error-line #:query-error-text #:query-error-grammar
            #:map-query-matches #:query-non-local-patterns #:disable-query-pattern #:query-starts #:query-source
            ;; syntax trees of buffers, and their colours
            #:syntax #:syntax-p #:syntax-buffer #:buffer-syntax #:attach-syntax #:detach-syntax #:syntax-tree #:syntax-grammar
-           #:syntax-rope #:syntax-broken #:parse-memory-limit #:parse-time-limit #:*syntax-fault-function* #:*syntax-slow-function* #:*syntax-time-limit* #:*syntax-time-per-megabyte* #:*syntax-memory-limit* #:*syntax-memory-per-octet* #:grammar-faulted #:syntax-too-big #:syntax-current #:syntax-job #:syntax-generation
+           #:syntax-rope #:syntax-broken #:parse-memory-limit #:parse-time-limit #:host-say-syntax-fault #:host-say-syntax-slow #:*syntax-time-limit* #:*syntax-time-per-megabyte* #:*syntax-memory-limit* #:*syntax-memory-per-octet* #:grammar-faulted #:grammar-failure #:parsers-let-go #:syntax-too-big #:syntax-current #:syntax-job #:syntax-generation
            #:syntax-ready-tree #:parse-under-way-p #:copy-tree-pointer #:wait-for-parse #:catch-up #:refresh-syntax #:*syntax-refresh-delay* #:syntax-patched #:syntax-no-refresh
-           #:*syntax-size-limit* #:*syntax-wait* #:*syntax-edit-limit* #:*syntax-wake-function*
+           #:*syntax-size-limit* #:*syntax-wait* #:*syntax-edit-limit*
            #:syntax-highlights #:*rules-generation* #:rich-highlights #:language-highlights #:injection-cut #:*injection-reach*
            ;; moving by the tree
            #:tree-node #:tree-node-p #:tree-node-start #:tree-node-end #:tree-node-name #:tree-node-named

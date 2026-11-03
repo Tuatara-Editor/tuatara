@@ -161,8 +161,8 @@ ended and the PDFs' views are drawn. Returns the frontend and the editor."
     ;; M-x lists the commands used lately first: none, as for RUN-KEYS
     (setf tuatara.defaults::*command-history* '())
     (labels ((busy ()
-               (or (some #'tuatara.defaults::pdf-export-p tuatara.runtime:*jobs*)
-                   (some #'tuatara.defaults::docx-export-p tuatara.runtime:*jobs*)
+               (or (some #'tuatara.export::pdf-export-p tuatara.runtime:*jobs*)
+                   (some #'tuatara.export::docx-export-p tuatara.runtime:*jobs*)
                    (some (lambda (b) (let ((view (tuatara.defaults::pdf-view-of b)))
                                        (and view (or (tuatara.defaults::pdf-view-job view) (tuatara.defaults::pdf-view-text-job view)))))
                          tuatara.defaults::*pdf-views*)))
@@ -294,15 +294,15 @@ is not offered by M-x either; NIL when it runs there."
       ;; a file that is neither Org nor LaTeX
       (let ((file (merge-pathnames "notes.txt" dir)))
         (alexandria:write-string-into-file "Text" file)
-        (is equal "org-export-latex-pdf works in Org files only" (refusal-in file 'tuatara.defaults::org-export-latex-pdf))
-        (is equal "latex-compile-pdf works in LaTeX files only" (refusal-in file 'tuatara.defaults::latex-compile-pdf)))
+        (is equal "org-export-latex-pdf works in Org files only" (refusal-in file 'tuatara.export::org-export-latex-pdf))
+        (is equal "latex-compile-pdf works in LaTeX files only" (refusal-in file 'tuatara.export::latex-compile-pdf)))
       ;; a file opened safely: nothing run
       (let ((file (merge-pathnames "evidence.org" dir))
             (tuatara-user:*safe-directories* (list (namestring dir))))
         (alexandria:write-string-into-file "* Evidence" file)
-        (is equal "org-export-latex-pdf works in Org files only" (refusal-in file 'tuatara.defaults::org-export-latex-pdf))
+        (is equal "org-export-latex-pdf works in Org files only" (refusal-in file 'tuatara.export::org-export-latex-pdf))
         ;; and called all the same, nothing run
-        (export-session file (list (lambda () (tuatara.defaults::start-latex-export :file))))
+        (export-session file (list (lambda () (tuatara.export::start-latex-export :file))))
         (false (probe-file (merge-pathnames "ran.txt" dir))))
       ;; a LaTeX file with changes: saved first, then made into a PDF from what was saved
       (let ((file (merge-pathnames "paper.tex" dir)))
@@ -319,7 +319,7 @@ is not offered by M-x either; NIL when it runs there."
     (let* ((root (namestring (merge-pathnames "texlive/" dir)))
            (old (ensure-directories-exist (merge-pathnames "texlive/2024/bin/x86_64-linux/" dir)))
            (new (ensure-directories-exist (merge-pathnames "texlive/2026/bin/x86_64-linux/" dir)))
-           (tuatara.defaults::*tex-live-directories* (list "/nonexistent/texlive/" root))
+           (tuatara.export::*tex-live-directories* (list "/nonexistent/texlive/" root))
            (tuatara-user:*latex-engines* (list "tuatara-test-xelatex" "tuatara-test-lualatex")))
       (declare (ignore old))
       (stand-in-latex (merge-pathnames "texlive/2024/bin/x86_64-linux/" dir) "tuatara-test-xelatex")
@@ -328,10 +328,10 @@ is not offered by M-x either; NIL when it runs there."
       (is equal (list (cons "tuatara-test-xelatex" (namestring (merge-pathnames "tuatara-test-xelatex" new)))
                       (cons "tuatara-test-lualatex"
                             (namestring (merge-pathnames "texlive/2024/bin/x86_64-linux/tuatara-test-lualatex" dir))))
-          (tuatara.defaults::latex-engines-found))
+          (tuatara.export::latex-engines-found))
       ;; a full path is taken as it is, never looked for elsewhere
       (let ((tuatara-user:*latex-engines* (list "/nonexistent/tuatara-test-xelatex")))
-        (is equal '() (tuatara.defaults::latex-engines-found))))))
+        (is equal '() (tuatara.export::latex-engines-found))))))
 
 (define-test (latex-export enhanced)
   (with-test-directory (dir)
@@ -346,8 +346,8 @@ is not offered by M-x either; NIL when it runs there."
       (let ((file (merge-pathnames "paper.tex" dir)))
         (alexandria:write-string-into-file "\\documentclass{article}" file)
         (is equal "org-export-latex-pdf-enhanced works in Org files only"
-            (refusal-in file 'tuatara.defaults::org-export-latex-pdf-enhanced))
-        (is equal nil (refusal-in file 'tuatara.defaults::latex-compile-pdf))
+            (refusal-in file 'tuatara.export::org-export-latex-pdf-enhanced))
+        (is equal nil (refusal-in file 'tuatara.export::latex-compile-pdf))
         (false (probe-file (merge-pathnames "paper.pdf" dir)))))))
 
 (define-test (latex-export styles)
@@ -463,9 +463,9 @@ is not offered by M-x either; NIL when it runs there."
     (true (search "hides text only in the enhanced export"
                   (handler-case (progn (tuatara.defaults::org-latex-document text) "")
                     (error (e) (princ-to-string e)))))
-    (is string= "R" (tuatara.defaults::only-enhanced-macro text))
+    (is string= "R" (tuatara.export::only-enhanced-macro text))
     ;; found shown elsewhere as the long names are
-    (is equal '("Bo Raglan") (mapcar #'second (tuatara.defaults::redaction-findings
+    (is equal '("Bo Raglan") (mapcar #'second (tuatara.export::redaction-findings
                                            (format nil "Subject {{{R(Bo Raglan)}}}; later Bo Raglan.~%") :org)))
     ;; where Org reads no macros, refused as the long names are
     (true (search "on line 3 is where Org reads no macros"
@@ -579,7 +579,7 @@ is not offered by M-x either; NIL when it runs there."
   (let ((text (format nil "#+begin_src emacs-lisp~%(defun hello () \"A string\")~%#+end_src~%~%#+begin_example~%path\\to{x}~%#+end_example~%")))
     ;; the enhanced export: lines that break at the margin, the code in its colours, the rest as written
     (let ((latex (tuatara.defaults::org-latex-document text :enhanced t)))
-      (true (search "\\begin{Verbatim}[breaklines,breakafter=/-.\\,;:=,commandchars=\\\\\\{\\}]" latex))
+      (true (search "\\begin{Verbatim}[breaklines,breakautoindent=false,breakindent=1em,breakafter=/-.\\,;:=,commandchars=\\\\\\{\\}]" latex))
       (true (search "\\usepackage{fvextra}" latex))
       (true (search "\\color[HTML]{" latex))
       (true (search "defun" latex))
@@ -645,7 +645,7 @@ is not offered by M-x either; NIL when it runs there."
     (is equalp #(137 80 78 71 13 10 26 10) (subseq png 0 8))
     (is equalp #(0 0 0 2 0 0 0 1 8 2) (subseq png 16 26))
     (is = (tuatara.defaults::crc32 png 12 29)
-        (tuatara.io:octets-be png 29 4)))
+        (tuatara.io:octets-integer png 29 4 :big-endian t)))
   (with-test-directory (dir)
     (alexandria:write-string-into-file
      "<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"40\" height=\"20\"><rect width=\"40\" height=\"20\" fill=\"#3a6ea5\"/></svg>"
@@ -665,7 +665,7 @@ is not offered by M-x either; NIL when it runs there."
             (let ((octets (alexandria:read-file-into-byte-vector (subseq png 1))))
               (is equalp #(137 80 78 71) (subseq octets 0 4))
               ;; 40 pixels wide drawn at 300 dots an inch, not at its own size
-              (true (> (tuatara.io:octets-be octets 18 2) 40)))))
+              (true (> (tuatara.io:octets-integer octets 18 2 :big-endian t) 40)))))
         ;; one that is no picture: its name in a frame, and why said
         (true (search "\\fbox{\\texttt{broken.svg}}" latex))
         (true (some (lambda (n) (search "broken.svg is no picture" n)) notes)))
@@ -736,15 +736,15 @@ is not offered by M-x either; NIL when it runs there."
 
 (define-test (latex-export redactions-checked)
   ;; found: the whole (any case), a word of it alone, a token a hidden part completes; never a time that only ends alike
-  (let ((findings (tuatara.defaults::redaction-findings
+  (let ((findings (tuatara.export::redaction-findings
                    (format nil "Subject {{{redact(John Otago)}}} used 90.233.1.{{{redact(40)}}}.~%Later john otago wrote; Otago again; from 90.233.1.40 at 08:12:40.~%")
                    :org)))
     (is equal '("john otago" "Otago" "90.233.1.40") (mapcar #'second findings)))
   ;; protect counts only when its text is hidden
-  (is = 0 (length (tuatara.defaults::redaction-findings (format nil "{{{protect(Ann Nelson)}}} and Ann Nelson~%") :org)))
-  (is = 1 (length (tuatara.defaults::redaction-findings (format nil "#+options: protect:t~%{{{protect(Ann Nelson)}}} and Ann Nelson~%") :org)))
+  (is = 0 (length (tuatara.export::redaction-findings (format nil "{{{protect(Ann Nelson)}}} and Ann Nelson~%") :org)))
+  (is = 1 (length (tuatara.export::redaction-findings (format nil "#+options: protect:t~%{{{protect(Ann Nelson)}}} and Ann Nelson~%") :org)))
   ;; a LaTeX file's own commands
-  (is equal '("John Otago") (mapcar #'second (tuatara.defaults::redaction-findings (format nil "\\R{John Otago} met John Otago.~%") :latex)))
+  (is equal '("John Otago") (mapcar #'second (tuatara.export::redaction-findings (format nil "\\R{John Otago} met John Otago.~%") :latex)))
   (with-test-directory (dir)
     (let ((file (merge-pathnames "leak.org" dir))
           (tuatara-user:*latex-engines* (list (stand-in-latex dir "xelatex"))))
@@ -1046,7 +1046,7 @@ its text's size in half points, when given."
   (with-test-directory (dir)
     (alexandria:write-string-into-file (format nil "#+options: protect:t~%") (merge-pathnames "setup.org" dir))
     (let ((directory (namestring dir)))
-      (flet ((hidden (text) (mapcar #'fourth (tuatara.defaults::hidden-spans text :org directory))))
+      (flet ((hidden (text) (mapcar #'fourth (tuatara.export::hidden-spans text :org directory))))
         (is equal '("redact") (hidden (format nil "{{{R(Ann)}}} and {{{P(Bo)}}}~%")))
         (is equal '("redact" "protect") (hidden (format nil "#+setupfile: setup.org~%{{{R(Ann)}}} and {{{P(Bo)}}}~%")))
         (is equal '("protect") (hidden (format nil "#+setupfile: setup.org~%#+options: redact:nil~%{{{R(Ann)}}} and {{{P(Bo)}}}~%")))
@@ -1299,11 +1299,11 @@ its text's size in half points, when given."
                  (dolist (name names) (format s "Met {{{redact(~a)}}} today.~%" name))
                  (loop repeat 2000 do (format s "Plain words of a long note with nothing hidden in them at all.~%"))
                  (format s "Later Person7 Surname7 wrote, and person12 again.~%")))
-         (start (get-internal-real-time))
-         (findings (tuatara.defaults::redaction-findings text :org)))
+         (start (thread-cpu-time))
+         (findings (tuatara.export::redaction-findings text :org)))
     (is equal '("Person7 Surname7" "person12") (mapcar #'second findings))
-    (true (< (- (get-internal-real-time) start) (* 2 internal-time-units-per-second))
-          "~,2f s" (/ (- (get-internal-real-time) start) internal-time-units-per-second))))
+    (true (< (- (thread-cpu-time) start) (* 2 internal-time-units-per-second))
+          "~,2f s" (/ (- (thread-cpu-time) start) internal-time-units-per-second))))
 
 (define-test (latex-export docx-hidden-heading-in-contents)
   ;; a heading hiding a name: in the contents as [redacted], never its markup nor the name
@@ -1381,7 +1381,7 @@ its text's size in half points, when given."
         (with-open-file (o (uiop:parse-native-namestring note) :direction :output) (format o "#+title: T~%Text.~%"))
         (export-session note (list (export-command "org-export-docx")))
         (true (tuatara.io:path-stamp (concatenate 'string (namestring file) "survey [1].docx")))
-        (when (tuatara.defaults::latex-engines-found)
+        (when (tuatara.export::latex-engines-found)
           (export-session note (list (export-command "org-export-latex-pdf")))
           (true (tuatara.io:path-stamp (concatenate 'string (namestring file) "survey [1].pdf"))))))))
 
@@ -1529,7 +1529,7 @@ its text's size in half points, when given."
   ;; LaTeX's own Lua, run by lualatex for a document, reads only the document's folder and TeX's own,
   ;; writes nowhere in it, and the PDF is made all the same; without a sandbox it runs as before, and that is said
   (let ((tuatara-user:*latex-engines* '("lualatex")))
-    (when (and (tuatara.defaults::latex-engines-found) (eq :ready (tuatara.io:sandbox-status)))
+    (when (and (tuatara.export::latex-engines-found) (eq :ready (tuatara.io:sandbox-status)))
       (with-test-directory (dir)
         (let* ((folder (merge-pathnames "survey/" dir))
                (home (merge-pathnames "home/" dir))
@@ -1556,7 +1556,7 @@ Shut in.
            tex)
           (flet ((said ()
                    (alexandria:read-file-into-string
-                    (concatenate 'string (tuatara.defaults::latex-build-directory tex "lualatex") "probe.log"))))
+                    (concatenate 'string (tuatara.export::latex-build-directory tex "lualatex") "probe.log"))))
             (let ((f (export-session tex (export-command "latex-compile-pdf") :width 200)))
               (true (tuatara.frontend.fake:fake-frame-showing f "probe.pdf (lualatex)"))
               (false (tuatara.frontend.fake:fake-frame-showing f "without the sandbox")))
@@ -1603,29 +1603,29 @@ Shut in.
        (format nil "\\documentclass{article}~%\\usepackage{graphicx}~%\\begin{document}~%\\includegraphics[width=1cm]{~a}~%\\includegraphics{~a}~%\\includegraphics{local.png}~%\\end{document}~%" logo fake)
        tex)
       ;; only when one's own template or setup file names it: never from the note's own text
-      (is equal (list logo) (tuatara.defaults::latex-picture-files tex (list (format nil "\\includegraphics{~a}" logo) fake)))
-      (false (tuatara.defaults::latex-picture-files tex '()))
-      (false (tuatara.defaults::latex-picture-files tex (list "an unrelated template")))
-      (let ((job (tuatara.defaults::make-pdf-export nil tex :org :file nil nil nil)))
-        (setf (tuatara.defaults::pdf-export-trusted job) (list logo fake))
+      (is equal (list logo) (tuatara.export::latex-picture-files tex (list (format nil "\\includegraphics{~a}" logo) fake)))
+      (false (tuatara.export::latex-picture-files tex '()))
+      (false (tuatara.export::latex-picture-files tex (list "an unrelated template")))
+      (let ((job (tuatara.export::make-pdf-export nil tex :org :file nil nil nil)))
+        (setf (tuatara.export::pdf-export-trusted job) (list logo fake))
         (destructuring-bind (&key directories &allow-other-keys)
-            (tuatara.defaults::latex-sandbox-places job tex (stand-in-latex dir "xelatex") "/build/")
+            (tuatara.export::latex-sandbox-places job tex (stand-in-latex dir "xelatex") "/build/")
           (true (member logo directories :test #'string=))
           (false (member fake directories :test #'string=))
           (false (member (string-right-trim "/" (namestring elsewhere)) directories :test #'string=))))
       ;; a LaTeX file exported as it is: its pictures from elsewhere only when it stands in one's own folders
-      (let ((job (tuatara.defaults::make-pdf-export nil tex :latex :file nil nil nil)))
+      (let ((job (tuatara.export::make-pdf-export nil tex :latex :file nil nil nil)))
         (destructuring-bind (&key directories &allow-other-keys)
-            (tuatara.defaults::latex-sandbox-places job tex (stand-in-latex dir "xelatex") "/build/")
+            (tuatara.export::latex-sandbox-places job tex (stand-in-latex dir "xelatex") "/build/")
           (false (member logo directories :test #'string=)))
         (let ((tuatara-user:*export-trusted-folders* (list (namestring folder))))
           (destructuring-bind (&key directories &allow-other-keys)
-              (tuatara.defaults::latex-sandbox-places job tex (stand-in-latex dir "xelatex") "/build/")
+              (tuatara.export::latex-sandbox-places job tex (stand-in-latex dir "xelatex") "/build/")
             (true (member logo directories :test #'string=)))))
       ;; made into a PDF by a LaTeX program shut in, where there is one
       (let ((tuatara-user:*latex-engines* '("lualatex"))
             (tuatara-user:*export-trusted-folders* (list (namestring folder))))
-        (when (and (tuatara.defaults::latex-engines-found) (eq :ready (tuatara.io:sandbox-status)))
+        (when (and (tuatara.export::latex-engines-found) (eq :ready (tuatara.io:sandbox-status)))
           (alexandria:write-string-into-file
            (format nil "\\documentclass{article}~%\\usepackage{graphicx}~%\\begin{document}~%\\includegraphics[width=1cm]{~a}~%\\end{document}~%" logo)
            tex :if-exists :supersede)
@@ -1640,10 +1640,10 @@ Shut in.
     (let* ((folder (namestring (ensure-directories-exist (merge-pathnames "survey/" dir))))
            (engine (stand-in-latex dir "xelatex"))
            (tex (concatenate 'string folder "notes.tex"))
-           (job (tuatara.defaults::make-pdf-export nil tex :latex :file nil nil nil))
+           (job (tuatara.export::make-pdf-export nil tex :latex :file nil nil nil))
            (tuatara-user:*export-trusted-folders* (list (namestring dir))))
       (destructuring-bind (&key directories writable overlays)
-          (tuatara.defaults::latex-sandbox-places job tex engine "/build/")
+          (tuatara.export::latex-sandbox-places job tex engine "/build/")
         (true (member folder directories :test #'string=))
         (true (some (lambda (d) (string= (string-right-trim "/" d) (string-right-trim "/" (namestring dir)))) directories))
         (is equal '("/build/") writable)
@@ -1652,16 +1652,16 @@ Shut in.
         (false (find-if (lambda (d) (search "latex/pictures" d)) directories)))
       ;; never the root, the home folder nor a folder holding it, whole: a note there shows only its LaTeX
       ;; and the files its pictures are drawn from (nothing is written: the paths are only worked out)
-      (let* ((home (tuatara.defaults::latex-home)))
-        (false (tuatara.defaults::shown-whole-p "/"))
-        (false (tuatara.defaults::shown-whole-p home))
-        (false (tuatara.defaults::shown-whole-p (tuatara.io:parent-path home)))
-        (true (tuatara.defaults::shown-whole-p folder))
+      (let* ((home (tuatara.export::latex-home)))
+        (false (tuatara.export::shown-whole-p "/"))
+        (false (tuatara.export::shown-whole-p home))
+        (false (tuatara.export::shown-whole-p (tuatara.io:parent-path home)))
+        (true (tuatara.export::shown-whole-p folder))
         (let* ((given (concatenate 'string home "/given.tex"))
-               (job (tuatara.defaults::make-pdf-export nil (concatenate 'string home "/given.org") :org :file nil nil nil))
+               (job (tuatara.export::make-pdf-export nil (concatenate 'string home "/given.org") :org :file nil nil nil))
                (picture (concatenate 'string folder "drawn.png")))
-          (setf (tuatara.defaults::pdf-export-pictures job) (list picture))
-          (let ((directories (getf (tuatara.defaults::latex-sandbox-places job given engine "/build/") :directories)))
+          (setf (tuatara.export::pdf-export-pictures job) (list picture))
+          (let ((directories (getf (tuatara.export::latex-sandbox-places job given engine "/build/") :directories)))
             (true (member given directories :test #'string=))
             (true (member picture directories :test #'string=))
             (false (find-if (lambda (d) (member (string-right-trim "/" d) (list home (string-right-trim "/" (tuatara.io:parent-path home))) :test #'string=))
@@ -1674,29 +1674,29 @@ Shut in.
              (kpsewhich (concatenate 'string bin "kpsewhich")))
         (alexandria:write-string-into-file
          (format nil "#!/bin/sh~%printf '%s\\n' '{~a.texlive/web2c,/usr/share/texmf/web2c,~a,/}' '~atexlive' '~atexlive/texmf-dist' '' '' '' '' '' '{}' '~atexlive/texmf-var'~%"
-                 (namestring dir) (tuatara.defaults::latex-home) (namestring dir) (namestring dir) (namestring dir))
+                 (namestring dir) (tuatara.export::latex-home) (namestring dir) (namestring dir) (namestring dir))
          kpsewhich)
         (sb-posix:chmod kpsewhich #o755)
-        (multiple-value-bind (trees var) (tuatara.defaults::tex-trees tex-engine)
+        (multiple-value-bind (trees var) (tuatara.export::tex-trees tex-engine)
           (true (member (format nil "~a.texlive/web2c" (namestring dir)) trees :test #'string=) "~s" trees)
           (false (member "/usr/share/texmf/web2c" trees :test #'string=))
           ;; never the whole home or the root, whatever a setting says
-          (false (member (tuatara.defaults::latex-home) trees :test #'string=))
+          (false (member (tuatara.export::latex-home) trees :test #'string=))
           (false (member "" trees :test #'string=))
           (true (member (format nil "~atexlive/texmf-dist" (namestring dir)) trees :test #'string=))
           (is string= (format nil "~atexlive/texmf-var" (namestring dir)) var)))
       ;; TeX Live's folders as kpsewhich beside it tells them; its cache seen, written apart
-      (let ((real (cdr (first (let ((tuatara-user:*latex-engines* '("lualatex"))) (tuatara.defaults::latex-engines-found))))))
+      (let ((real (cdr (first (let ((tuatara-user:*latex-engines* '("lualatex"))) (tuatara.export::latex-engines-found))))))
         (when (and real (tuatara.io:find-program (concatenate 'string (tuatara.io:parent-path real) "kpsewhich")))
-          (multiple-value-bind (trees var) (tuatara.defaults::tex-trees real)
+          (multiple-value-bind (trees var) (tuatara.export::tex-trees real)
             (true (member (string-right-trim "/" (tuatara.io:parent-path real)) trees :test #'string=))
             (true (some (lambda (tree) (search "texmf-dist" tree)) trees) "~s" trees)
             (when var
               (destructuring-bind (&key overlays writable &allow-other-keys)
-                  (tuatara.defaults::latex-sandbox-places job tex real "/build/")
+                  (tuatara.export::latex-sandbox-places job tex real "/build/")
                 (true (or (find var overlays :key #'first :test #'string=)
                           (find var writable :key (lambda (w) (and (consp w) (cdr w))) :test #'equal)))
-                (false (find var (getf (tuatara.defaults::latex-sandbox-places job tex real "/build/") :directories)
+                (false (find var (getf (tuatara.export::latex-sandbox-places job tex real "/build/") :directories)
                              :test #'string=))))))))))
 
 (define-test (latex-export pictures-only-from-own-templates)
@@ -1798,12 +1798,12 @@ Shut in.
       (sb-posix:symlink "xetex" (concatenate 'string real "xelatex"))
       (sb-posix:symlink (string-right-trim "/" real) linked)
       (is string= (concatenate 'string (tuatara.io:real-path real) "/xelatex")
-          (tuatara.defaults::latex-program-place (concatenate 'string linked "/xelatex")))
-      (is string= "/nowhere/xelatex" (tuatara.defaults::latex-program-place "/nowhere/xelatex")))))
+          (tuatara.export::latex-program-place (concatenate 'string linked "/xelatex")))
+      (is string= "/nowhere/xelatex" (tuatara.export::latex-program-place "/nowhere/xelatex")))))
 
 (define-test (latex-export redactions-each-text-once)
   ;; the same name hidden twice, in another case too: looked for once, given away to the first hiding it
-  (let ((findings (tuatara.defaults::redaction-findings
+  (let ((findings (tuatara.export::redaction-findings
                    (format nil "{{{R(Ann Nelson)}}} then {{{R(ann nelson)}}}; Ann Nelson and NELSON.~%") :org)))
     (is equal '("Ann Nelson" "NELSON") (mapcar #'second findings))
     (is equal '("Ann Nelson" "Ann Nelson") (mapcar #'third findings))))
@@ -1816,11 +1816,11 @@ Shut in.
         (loop repeat 100000 do (write-line "Overfull \\hbox in paragraph at lines 1--2" out))
         (write-line "! Undefined control sequence." out)
         (write-line "l.12 \\foo" out))
-      (let ((text (tuatara.defaults::latex-log-text log)))
-        (true (<= (length text) tuatara.defaults::*latex-log-tail*))
+      (let ((text (tuatara.export::latex-log-text log)))
+        (true (<= (length text) tuatara.export::*latex-log-tail*))
         (true (search "! Undefined control sequence." text))
-        (is = 1 (length (tuatara.defaults::latex-errors text))))
-      (is string= "" (tuatara.defaults::latex-log-text (namestring (merge-pathnames "none.log" dir)))))))
+        (is = 1 (length (tuatara.export::latex-errors text))))
+      (is string= "" (tuatara.export::latex-log-text (namestring (merge-pathnames "none.log" dir)))))))
 
 (define-test (latex-export link-to-a-part-left-out)
   ;; a link to a heading left out of the export is written as its words, never a reference to no label
@@ -1851,7 +1851,7 @@ Shut in.
     (multiple-value-bind (latex named lines missing notes) (tuatara.defaults::org-latex-document text)
       (declare (ignore named lines missing))
       (true (< (length latex) 30000) "~:d characters" (length latex))
-      (true (find-if (lambda (n) (search "*org-macro-limit*" n)) notes) "~s" notes))
+      (true (find-if (lambda (n) (search "left as written" n)) notes) "~s" notes))
     ;; one call whose value alone is past the limit: left as it is
     (let ((latex (tuatara.defaults::org-latex-document
                   (format nil "#+macro: m ~{~a~}~%{{{m(~a)}}}~%" (make-list 100 :initial-element "$1") (make-string 200 :initial-element #\x)))))
@@ -1955,14 +1955,15 @@ Shut in.
     (let* ((image (picture 200))
            (png (tuatara.defaults::png-octets image))
            (idat (search (map 'vector #'char-code "IDAT") png))
-           (length (tuatara.io:octets-be png (- idat 4) 4))
+           (length (tuatara.io:octets-integer png (- idat 4) 4 :big-endian t))
            (raw (tuatara.io:inflate png :start (+ idat 6) :end (+ idat 4 length -4))))
       (is = (* 200 (1+ (* 200 4))) (length raw))
       (true (loop for y below 200
                   always (and (zerop (aref raw (* y 801)))
                               (equalp (subseq raw (1+ (* y 801)) (* (1+ y) 801))
                                       (subseq (tuatara.frontend:image-pixels image) (* y 800) (* (1+ y) 800))))))
-      (is = (tuatara.defaults::crc32 png idat (+ idat 4 length)) (tuatara.io:octets-be png (+ idat 4 length) 4))
+      (is = (tuatara.defaults::crc32 png idat (+ idat 4 length))
+            (tuatara.io:octets-integer png (+ idat 4 length) 4 :big-endian t))
       (is = (+ idat 4 length 4 12) (length png)))
     (flet ((consed (side)
              (let ((image (picture side)))
@@ -2047,3 +2048,185 @@ Shut in.
       (false (search "image2" text))
       (is = 2 (length (cl-ppcre:all-matches-as-strings "<a:blip r:embed=" text)))
       (true (search "<wp:docPr id=\"2\" name=\"Picture 2\"/>" text)))))
+
+(defun latex-without-breaks (latex)
+  "LATEX with the places a line may break in code taken out, as copying from the PDF leaves them."
+  (cl-ppcre:regex-replace-all "\\\\codebreak\\{\\}|\\\\discretionary\\{\\}\\{\\}\\{\\}" latex ""))
+
+(defun latex-longest-between-breaks (latex)
+  "The most characters of LATEX between two places a line may break in code."
+  (loop for piece in (cl-ppcre:split "\\\\codebreak\\{\\}|\\\\discretionary\\{\\}\\{\\}\\{\\}|\\\\texttt\\{|\\}|[ \\n&]|\\\\\\\\" latex)
+        maximize (length piece)))
+
+(define-test (latex-export long-code-breaks)
+  (let ((enhanced (lambda (text) (tuatara.defaults::org-latex-document text :enhanced t)))
+        (digest "d41d8cd98f00b2040000e9800998ecf8427e0000da39a3ee5e6b4b0d3255bfef95601890"))
+    ;; a long span: places to break in a path and a message, and in a digest with none; with
+    ;; them taken out, the span is what was written
+    (dolist (span '("~/Projects/palimpsest-practice/hand.pdf"
+                    "Wrote ~/Projects/palimpsest-practice/hand.pdf: 434 octets"
+                    "tuatara-user:*org-latex-text-characters*"
+                    "d41d8cd98f00b2040000e9800998ecf8427e0000da39a3ee5e6b4b0d"))
+      (let ((latex (funcall enhanced (format nil "See =~a= here.~%" span))))
+        (true (search "\\codebreak{}" latex) "no place to break in ~a" span)
+        (true (search (format nil "\\texttt{~a}" (tuatara.defaults::latex-escape span :special-strings nil))
+                      (latex-without-breaks latex))
+              "the copied text differs for ~a" span)))
+    ;; a long line of a block: its digest may break, and the line is what was written
+    (let* ((line (format nil "SHA-256     ~a" digest))
+           (latex (funcall enhanced (format nil "#+begin_example~%~a~%#+end_example~%" line))))
+      (true (search "breakautoindent=false,breakindent=1em" latex))
+      (true (search "\\discretionary{}{}{}" latex))
+      (true (< (latex-longest-between-breaks (subseq latex (search "SHA-256" latex))) 17))
+      (true (search line (latex-without-breaks latex))))))
+
+(define-test (latex-export long-table-cells-break)
+  ;; a long cell of a table of columns too many for the text: the pieces are shorter than in
+  ;; running text, and with the places to break taken out, the cell is what was written
+  (let* ((digest "d41d8cd98f00b2040000e9800998ecf8427e0000da39a3ee5e6b4b0d3255bfef95601890")
+         (row (format nil "| =[[:sha1:]]= | a digest, 40 hex digits | =[[:sha1:]]= | =~a and more= | =~a= |" digest digest))
+         (latex (tuatara.defaults::org-latex-document
+                 (format nil "| Written | Means | Pattern | In | Finds |~%|-~%~a~%~a~%" row row) :enhanced t)))
+    (true (search (format nil "\\texttt{~a and more}" digest) (latex-without-breaks latex)))
+    (true (< (latex-longest-between-breaks (subseq latex (search "\\midrule" latex) (search "\\bottomrule" latex))) 11))))
+
+(define-test (latex-export text-width-from-the-template)
+  ;; the enhanced export's own A4 page is the standard; a narrower page has fewer characters across
+  (is = 78 (tuatara.defaults::latex-template-text-characters
+            (tuatara.defaults::find-latex-template "article" :built-in t)))
+  (is = 64 (tuatara.defaults::latex-template-text-characters
+            "\\usepackage[a5paper, top=12mm, bottom=14mm, left=11mm, right=11mm]{geometry}"))
+  (is = 64 (tuatara.defaults::latex-template-text-characters
+            (format nil "\\usepackage[paperwidth=14.8cm, paperheight=21cm, margin=1.1cm]{geometry}~%")))
+  (is = 39 (tuatara.defaults::latex-template-text-characters "\\usepackage[textwidth=77mm]{geometry}"))
+  ;; a template that says too little leaves the standard
+  (false (tuatara.defaults::latex-template-text-characters "\\documentclass{article}"))
+  (false (tuatara.defaults::latex-template-text-characters "\\usepackage[a4paper]{geometry}")))
+
+(define-test (latex-export enhanced-quotes)
+  (flet ((latex-in (language text &key enhanced)
+           (org-latex-of (format nil "#+language: ~a~%* One~%~a~%" language text) :enhanced enhanced)))
+    (let* ((text (format nil "He said \"hello there\" and 'quoted' it's (\"paren\") \"*bold*\" *\"x\"* \"=k=\" ~~\"c\"~~ ok.~%#+begin_example~%echo \"x\" 'y'~%#+end_example"))
+           (english (latex-in "en" text :enhanced t))
+           (swedish (latex-in "sv" text :enhanced t))
+           (plain (latex-in "en" text)))
+      (true (search "He said “hello there” and ‘quoted’ it’s (“paren”) “\\textbf{bold}” \\textbf{“x”} “\\texttt{k}” \\texttt{\"c\"} ok." english))
+      (true (search "He said ”hello there” and ’quoted’ it’s (”paren”) ”\\textbf{bold}” \\textbf{”x”} ”\\texttt{k}” \\texttt{\"c\"} ok." swedish))
+      ;; code blocks keep their straight quotes; so does the compatible export
+      (true (search "echo \"x\" 'y'" english))
+      (true (search "echo \"x\" 'y'" swedish))
+      (true (search "He said \"hello there\" and 'quoted'" plain))
+      ;; an apostrophe before a digit or a common elision is not an opening mark
+      (let ((latex (latex-in "en" "In '90s and 'tis, 'twas 'em, rock 'n' roll, said 'yes' to 'tisane'." :enhanced t)))
+        (true (search "In ’90s and ’tis, ’twas ’em, rock ’n’ roll, said ‘yes’ to ‘tisane’." latex))))))
+
+(define-test (latex-export docx-quotes)
+  (flet ((xml-in (language text)
+           (docx-text (tuatara.defaults::org-docx-document
+                       (format nil "#+language: ~a~%* One~%~a~%" language text)))))
+    (let* ((text (format nil "He said \"hello there\" and 'quoted' it's (\"paren\") \"*bold*\" =\"c\"= ok in '90s.~%#+begin_example~%echo \"x\" 'y'~%#+end_example"))
+           (english (xml-in "en" text))
+           (swedish (xml-in "sv" text)))
+      (true (search "He said “hello there” and ‘quoted’ it’s (“paren”) “" english))
+      (true (search "He said ”hello there” and ’quoted’ it’s (”paren”) ”" swedish))
+      (true (search "“</w:t></w:r><w:r><w:rPr><w:b/></w:rPr><w:t xml:space=\"preserve\">bold</w:t></w:r><w:r><w:t xml:space=\"preserve\">” </w:t>" english))
+      (true (search "ok in ’90s." english))
+      ;; code and examples keep their straight quotes
+      (true (search ">&quot;c&quot;<" english))
+      (true (search ">&quot;c&quot;<" swedish))
+      (true (search "echo &quot;x&quot; 'y'" english))
+      (true (search "echo &quot;x&quot; 'y'" swedish)))))
+
+(define-test (latex-export secret-words-left-out)
+  ;; while a secret is at hand, what an export refuses with says nothing the note says
+  (let ((tuatara.runtime:*secret-at-hand* t))
+    (flet ((words (thunk)
+             (let ((condition (nth-value 1 (ignore-errors (funcall thunk)))))
+               (true condition)
+               (princ-to-string condition))))
+      (let ((text (words (lambda () (tuatara.export::check-export-folder "/nowhere-kiwi/x.pdf")))))
+        (false (search "kiwi" text) "~a" text)
+        (true (search "#+export_file_name" text) "~a" text))
+      (let ((text (words (lambda () (tuatara.defaults::latex-template-for "./kiwi-template" "/tmp/")))))
+        (false (search "kiwi" text) "~a" text))
+      (let ((text (words (lambda () (tuatara.defaults::latex-template-for "kiwi-template" "/tmp/")))))
+        (false (search "kiwi" text) "~a" text))))
+  ;; the first LaTeX error is told by its place alone
+  (sb-int:encapsulate 'tuatara.export::error-place 'test-place
+                      (lambda (function job problem)
+                        (declare (ignore function job problem))
+                        (values "/tmp/note.org" 3)))
+  (unwind-protect
+       (let ((tuatara.runtime:*secret-at-hand* t))
+         (is string= "note.org:3" (tuatara.export::error-words nil '(:message "Undefined kiwi words"))))
+    (sb-int:unencapsulate 'tuatara.export::error-place 'test-place)))
+
+(define-test (latex-export hyphenation-asked-shut-in)
+  ;; kpsewhich is asked for the hyphenation files shut in, and a stop of the job asking ends it
+  (let ((runs '()) (unconfined '())
+        (tuatara.runtime:*job* (tuatara.export::make-pdf-export nil nil :org nil nil "" nil)))
+    (sb-int:encapsulate 'tuatara.io:sandbox-run 'hyphenation-seen
+                        (lambda (function program arguments &rest keys)
+                          (declare (ignore function))
+                          (push (list program arguments keys) runs)
+                          (values (tuatara.text:string-octets
+                                   (format nil "/usr/share/texmf/tex/generic/hyph-utf8/loadhyph-de-1996.tex~%"))
+                                  :done "")))
+    (sb-int:encapsulate 'tuatara.io:program-output 'hyphenation-seen
+                        (lambda (function command &rest keys)
+                          (push command unconfined) (apply function command keys)))
+    (unwind-protect
+         (is equal '("de-1996")
+             (tuatara.export::hyphenation-files-found "/nonexistent/bin/kpsewhich" '("de-1996" "sv")))
+      (sb-int:unencapsulate 'tuatara.io:sandbox-run 'hyphenation-seen)
+      (sb-int:unencapsulate 'tuatara.io:program-output 'hyphenation-seen))
+    (is equal '() unconfined)
+    (is = 1 (length runs))
+    (destructuring-bind (program arguments keys) (first runs)
+      (is string= "/nonexistent/bin/kpsewhich" program)
+      (is equal '("loadhyph-de-1996.tex" "loadhyph-sv.tex") arguments)
+      (is eq (tuatara.runtime:job-cancel tuatara.runtime:*job*) (getf keys :cancel)))))
+
+(define-test (latex-export tex-folders-asked-shut-in)
+  ;; kpsewhich is asked for TeX's folders shut in, shown TeX Live's own; with no sandbox, only the program's folder
+  (with-test-directory (dir)
+    (let* ((root (concatenate 'string (tuatara.io:native dir) "texlive/2025/"))
+           (bin (concatenate 'string root "bin/x86_64-linux/"))
+           (engine (concatenate 'string bin "lualatex"))
+           (runs '()) (unconfined '()) (outcome :done))
+      (ensure-directories-exist bin)
+      (dolist (name '("lualatex" "kpsewhich"))
+        (alexandria:write-string-into-file (format nil "#!/bin/sh~%exit 1~%") (concatenate 'string bin name))
+        (sb-posix:chmod (concatenate 'string bin name) #o755))
+      (sb-int:encapsulate 'tuatara.io:sandbox-run 'tex-folders-seen
+                          (lambda (function program arguments &rest keys)
+                            (declare (ignore function))
+                            (push (list program arguments keys) runs)
+                            (values (tuatara.text:string-octets
+                                     (format nil "~{~a~%~}"
+                                             (loop for variable in tuatara.export::*tex-tree-variables*
+                                                   collect (format nil "~atexmf-~(~a~)" root variable))))
+                                    outcome "")))
+      (sb-int:encapsulate 'tuatara.io:program-output 'tex-folders-seen
+                          (lambda (function command &rest keys)
+                            (push command unconfined) (apply function command keys)))
+      (flet ((trees ()
+               (remhash (list engine (sb-posix:getenv "HOME")) tuatara.export::*tex-trees*)
+               (multiple-value-list (tuatara.export::tex-trees engine))))
+        (unwind-protect
+             (progn
+               (destructuring-bind (folders var) (trees)
+                 (is string= (string-right-trim "/" bin) (first folders))
+                 (true (member (format nil "~atexmf-texmfdist" root) folders :test #'string=))
+                 (is string= (format nil "~atexmf-texmfvar" root) var))
+               (is equal '() unconfined)
+               (destructuring-bind (program arguments keys) (first runs)
+                 (is string= (concatenate 'string bin "kpsewhich") program)
+                 (true (uiop:string-prefix-p "-expand-var=" (first arguments)))
+                 (true (member (string-right-trim "/" root) (getf keys :directories) :test #'string=)
+                       "~s" (getf keys :directories)))
+               (setf outcome :unavailable)
+               (is equal (list (list (string-right-trim "/" bin)) nil) (trees)))
+          (sb-int:unencapsulate 'tuatara.io:sandbox-run 'tex-folders-seen)
+          (sb-int:unencapsulate 'tuatara.io:program-output 'tex-folders-seen)
+          (remhash (list engine (sb-posix:getenv "HOME")) tuatara.export::*tex-trees*))))))

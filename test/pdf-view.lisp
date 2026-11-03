@@ -499,3 +499,17 @@ and zooms kept for the next time."
       (let ((f (pdf-session file nil "g l <wheel-up>" :cell-pixels '(10 20))))
         (true (tuatara.frontend.fake:fake-frame-showing f "Page 2 of 3")))
       (pdf-forget))))
+
+(define-test (pdf-view damaged-data-read-quietly)
+  ;; damaged zlib data is no octets, and text that is not UTF-8 is read as Latin-1: what a
+  ;; damaged PDF holds at every turn, so nothing for the debug log even while debug mode is on
+  (drain-debug-reports)
+  (unwind-protect
+       (let ((packed (coerce #(120 156 255 255 255 0 1 2) 'tuatara.text:octets))
+             (text (coerce #(75 101 97 233 104 117 116) 'tuatara.text:octets)))
+         (tuatara.runtime:set-debug t)
+         (false (tuatara.defaults::zlib-octets packed 0 (length packed)))
+         (fail (tuatara.defaults::zlib-octets packed 0 (length packed) :errors t) 'tuatara.io:zip-error)
+         (is string= (format nil "Kea~chut" (code-char 233)) (tuatara.defaults::octets-text text 0 (length text)))
+         (true (sb-concurrency:queue-empty-p tuatara.runtime:*debug-reports*)))
+    (drain-debug-reports)))

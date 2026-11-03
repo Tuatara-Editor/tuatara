@@ -4,37 +4,64 @@
 # Fetch the tree-sitter library and the grammars listed in syntax/grammars.tsv,
 # each at its pinned commit, and compile them (in the toolbox when there is one; a scanner
 # written in C++ with the C++ compiler, the grammar linked with its library) into
-# build/grammars/: libtuatara-syntax.so (tree-sitter with syntax/syntax.c) and
+# build/grammars/: tuatara-syntax-helper (tree-sitter with syntax/syntax.c and
+# syntax/helper.c, the program that runs the grammars for the editor) and
 # one NAME.so per grammar, from the directory the manifest's fifth column
 # names in its repository when it has one, and build/grammars/licenses/NAME/
 # with its licence: its own licence files (LICENSE, COPYING, a LICENSES/
-# folder; in that directory, else at the top of its repository), else syntax/licenses/NAME.txt for one that has none; a
-# grammar with neither stops it. A grammar with syntax/patches/NAME.patch is patched
+# folder; in that directory, else at the top of its repository), else
+# syntax/licenses/NAME.txt for one that has none; that file goes beside its
+# own files too when they name a licence without holding its text (an
+# SPDX-License-Identifier line, a notice). A grammar without a licence stops
+# it, as does one whose licence is named and its text not carried, one with
+# a syntax/licenses/NAME.txt it has no need of, and one whose licence the
+# manifest's fourth column names otherwise than its licence files do
+# (tools/licence-names.sh). A grammar with syntax/patches/NAME.patch is patched
 # and its parser generated again with the pinned tree-sitter program first;
 # tree-sitter itself is patched with syntax/patches/tree-sitter.patch.
+# Each is compiled from a checkout of its pinned commit with nothing changed
+# or added (one that has been changed stops it: delete its folder in
+# build/grammar-sources/ to fetch it again), and only when what compiling it
+# reads (its parser, its scanner, the headers they include, and the
+# grammar.js a parser is generated from) hashes as syntax/grammar-inputs.sha256
+# records. When a pin moves, tools/check-grammar-sources.sh says what changed
+# in that; once it is read, tools/grammars.sh --record NAME... records the new
+# hashes (--record --all, every grammar's).
 # Nothing is fetched or compiled while Tuatara runs.
-# Usage: tools/grammars.sh  (does nothing when everything is up to date)
+# Usage: tools/grammars.sh                 (does nothing when everything is up to date)
+#        tools/grammars.sh --record NAME... | --all
 set -euo pipefail
 root="$(cd "$(dirname "$0")/.." && pwd)"
 out="$root/build/grammars"
 sources="$root/build/grammar-sources"
 stamp="$out/.built-from"
-wanted="$(cat "$root/syntax/grammars.tsv" "$root/syntax/syntax.c" "$root/syntax/safe-ctype.h" "$root"/syntax/patches/*.patch "$root"/syntax/licenses/*.txt "$0" "$root/tools/grammar-build.sh" 2>/dev/null | sha256sum | cut -c1-16)"
-if [ -f "$stamp" ] && [ "$(cat "$stamp")" = "$wanted" ]; then exit 0; fi
+record=""
+if [ "${1:-}" = --record ]; then
+  shift
+  if [ $# -eq 0 ]; then
+    echo "Usage: tools/grammars.sh --record NAME... (or --all): name the grammars whose change you have read." >&2
+    exit 1
+  elif [ "$1" = --all ] && [ $# -eq 1 ]; then
+    record="all"
+  else
+    for name in "$@"; do
+      if ! grep -v "^#" "$root/syntax/grammars.tsv" | cut -f1 | grep -qxF -- "$name"; then
+        echo "tools/grammars.sh: no grammar called $name in syntax/grammars.tsv: nothing recorded." >&2
+        exit 1
+      fi
+    done
+    record="all $*"
+  fi
+fi
+wanted="$(cat "$root/syntax/grammars.tsv" "$root/syntax/grammar-inputs.sha256" "$root/syntax/syntax.c" "$root/syntax/helper.c" "$root/syntax/safe-ctype.h" "$root/syntax/counted-memory.h" "$root"/syntax/patches/*.patch "$root"/syntax/licenses/*.txt "$0" "$root/tools/grammar-build.sh" "$root/tools/licence-names.sh" 2>/dev/null | sha256sum | cut -c1-16)"
+if [ -z "$record" ] && [ -f "$stamp" ] && [ "$(cat "$stamp")" = "$wanted" ]; then exit 0; fi
 mkdir -p "$out" "$sources" "$root/build/tools"
 . "$root/tools/inside.sh"
 inside bash -euo pipefail -c '
-root="$1"; out="$2"; sources="$3"
+root="$1"; out="$2"; sources="$3"; record="$4"
 manifest() { grep -v "^#" "$root/syntax/grammars.tsv" | grep -v "^[[:space:]]*$"; }
-fetch() {  # fetch repository $2 at commit $3 into $sources/$1
-  local dir="$sources/$1"
-  if [ "$(git -C "$dir" rev-parse HEAD 2>/dev/null)" != "$3" ] || [ "$(git -C "$dir" rev-parse --show-toplevel 2>/dev/null)" != "$dir" ]; then
-    rm -rf "$dir"; mkdir -p "$dir"
-    git -C "$dir" init -q
-    git -C "$dir" fetch -q --depth 1 "$2" "$3"
-    git -C "$dir" checkout -q FETCH_HEAD
-  fi
-}
+. "$root/tools/grammar-build.sh"
+fetch() { fetch_grammar "$sources/$1" "$2" "$3"; }  # fetch repository $2 at commit $3 into $sources/$1
 cli="$root/build/tools/tree-sitter"
 get_cli() {  # download the tree-sitter program from $1 unless it is there, checked against SHA-256 $2
   if [ ! -x "$cli" ] || [ "$(cat "$cli.sha256" 2>/dev/null)" != "$2" ]; then
@@ -54,8 +81,10 @@ while IFS=$'"'"'\t'"'"' read -r name url commit license subpath; do
 done < <(manifest)
 # then the licences, to go with the release: the licence files of the grammar
 # itself, else those at the top of its repository, else the text in
-# syntax/licenses/ for a repository that has none; nothing compiled without one
-rm -rf "$out/licenses"; unlicensed=""
+# syntax/licenses/ for a repository that has none or only names its licence;
+# nothing compiled without one, with one named and its text not carried, nor
+# with one the manifest names otherwise
+rm -rf "$out/licenses"; unlicensed=""; misnamed=""; untexted=""; needless=""
 while IFS=$'"'"'\t'"'"' read -r name url commit license subpath; do
   [ "$name" = tree-sitter-cli ] && continue
   dir="$sources/$name"; kept="$out/licenses/$name"; found=""
@@ -65,11 +94,33 @@ while IFS=$'"'"'\t'"'"' read -r name url commit license subpath; do
               if [ -d "$place/LICENSES" ]; then find "$place/LICENSES" -maxdepth 1 -type f; fi; } | sort)
     [ -n "$found" ] && break
   done
+  text="$root/syntax/licenses/$name.txt"
   if [ -n "$found" ]; then
     mkdir -p "$kept"
     while IFS= read -r file; do cp "$file" "$kept/"; done <<< "$found"
-  elif [ -f "$root/syntax/licenses/$name.txt" ]; then
+    mapfile -t files <<< "$found"
+    if [ -f "$text" ]; then
+      if [ -n "$(bash "$root/tools/licence-names.sh" --untexted "${files[@]}")" ]; then
+        cp "$text" "$kept/LICENSE-TEXT"; found="$found"$'"'"'\n'"'"'"$text"
+      else
+        needless="$needless $name"
+      fi
+    fi
+  elif [ -f "$text" ]; then
     mkdir -p "$kept"; cp "$root/syntax/licenses/$name.txt" "$kept/LICENSE"
+    found="$root/syntax/licenses/$name.txt"
+  fi
+  if [ -n "$found" ]; then
+    mapfile -t files <<< "$found"
+    if ! said=$(bash "$root/tools/licence-names.sh" --agrees "$license" "${files[@]}" 2>&1); then
+      echo "  $name: $said" >&2
+      misnamed="$misnamed $name"
+    fi
+    without="$(bash "$root/tools/licence-names.sh" --untexted "${files[@]}")"
+    if [ -n "$without" ]; then
+      echo "  $name: its files name $(echo $without) without the text" >&2
+      untexted="$untexted $name"
+    fi
   else
     unlicensed="$unlicensed $name"
   fi
@@ -78,9 +129,46 @@ if [ -n "$unlicensed" ]; then
   echo "tools/grammars.sh: no licence for:$unlicensed. Its text goes in syntax/licenses/NAME.txt, or the grammar is left out." >&2
   exit 1
 fi
+if [ -n "$untexted" ]; then
+  echo "tools/grammars.sh: the licence files of$untexted name a licence without its text, as shown above. The text goes in syntax/licenses/NAME.txt, carried beside them." >&2
+  exit 1
+fi
+if [ -n "$needless" ]; then
+  echo "tools/grammars.sh: syntax/licenses/ has a text for$needless, whose own licence files hold the texts of their licences: delete it." >&2
+  exit 1
+fi
+if [ -n "$misnamed" ]; then
+  echo "tools/grammars.sh: syntax/grammars.tsv names the licence of$misnamed otherwise than its licence files, as shown above. The fourth column is made to say what the files grant, or the grammar is left out." >&2
+  exit 1
+fi
 # then the library and the grammars are compiled, each grammar as
-# tools/grammar-build.sh says
-. "$root/tools/grammar-build.sh"
+# tools/grammar-build.sh says, from its pinned commit with nothing changed and
+# only when what it compiles is what was recorded
+recorded="$root/syntax/grammar-inputs.sha256"
+pristine() { pristine_grammar "$sources/$1"; }
+inputs_of() { grammar_inputs_of "$root" "$1" "$2"; }  # the SHA-256 of what compiling $1 (subfolder $2) reads
+checked() {  # stop unless the checkout of $1 (subpath $2) is its pinned commit as fetched, hashing as recorded
+  grammar_checked "$1" "$sources/$1" "$recorded" "$(inputs_of "$1" "$2")" || exit 1
+}
+if [ -n "$record" ]; then
+  # --record: the hashes of those named (all when none), written in the order of the manifest
+  set -- $record; shift
+  lines="$(while IFS=$'"'"'\t'"'"' read -r name url commit license subpath; do
+    [ "$name" = tree-sitter-cli ] && continue
+    wanted=1
+    if [ $# -gt 0 ]; then wanted=0; for one in "$@"; do [ "$one" = "$name" ] && wanted=1; done; fi
+    if [ "$wanted" = 1 ]; then
+      pristine "$name"
+      echo "$(inputs_of "$name" "$subpath")  $name"
+    else
+      grep "  $name\$" "$recorded" || true
+    fi
+  done < <(manifest))"
+  { grep "^#" "$recorded"; echo "$lines"; } > "$recorded.new"
+  mv "$recorded.new" "$recorded"
+  echo "Recorded in $recorded: ${*:-every grammar}" >&2
+  exit 0
+fi
 while IFS=$'"'"'\t'"'"' read -r name url commit license subpath; do
   dir="$sources/$name"
   # a grammar in a directory of its repository (tree-sitter-typescript/tsx)
@@ -89,34 +177,38 @@ while IFS=$'"'"'\t'"'"' read -r name url commit license subpath; do
     tree-sitter-cli|*/*) ;;
     tree-sitter)
       # with syntax/patches/tree-sitter.patch applied, as a grammar is
-      git -C "$dir" checkout -q -- .
-      [ -f "$root/syntax/patches/tree-sitter.patch" ] && git -C "$dir" apply "$root/syntax/patches/tree-sitter.patch"
-      # its checks name their files from the top of the sources, not from this machine
-      cc -O2 -fPIC -shared -std=c11 -D_POSIX_C_SOURCE=200112L -D_DEFAULT_SOURCE \
+      pristine "$name"
+      checked "$name" ""
+      [ -f "$root/syntax/patches/tree-sitter.patch" ] && grammar_git -C "$dir" apply "$root/syntax/patches/tree-sitter.patch"
+      # without its assertions, as the grammars are: one that fails would end
+      # the program, and the patch makes the parser check what a grammar gives
+      # it instead (a parse that meets a wrong value fails); what names a
+      # file names it from the top of the sources, not from this machine;
+      # its names seen by the grammars it loads, which take their memory
+      # through it (syntax/counted-memory.h)
+      cc -O2 -std=c11 -DNDEBUG -D_POSIX_C_SOURCE=200112L -D_DEFAULT_SOURCE \
          -ffile-prefix-map="$root/=" -ffile-prefix-map="$dir/=tree-sitter/" \
          -I"$dir/lib/include" -I"$dir/lib/src" \
-         "$dir/lib/src/lib.c" "$root/syntax/syntax.c" -o "$out/libtuatara-syntax.so" ;;
+         "$dir/lib/src/lib.c" "$root/syntax/syntax.c" "$root/syntax/helper.c" \
+         -rdynamic -lpthread -ldl -o "$out/tuatara-syntax-helper"
+      rm -f "$out/libtuatara-syntax.so" ;;
     *)
       patch="$root/syntax/patches/$name.patch"
-      made="$commit ${grammar_cflags[*]} $(sha256sum < "$root/syntax/safe-ctype.h" | cut -c1-16)"
+      made="$commit ${grammar_cflags[*]} $(cat "$root/syntax/safe-ctype.h" "$root/syntax/counted-memory.h" | sha256sum | cut -c1-16)"
       [ -f "$patch" ] && made="$made $(sha256sum < "$patch" | cut -c1-16)"
       [ -f "$src/scanner.cc" ] && made="$made c++ ${grammar_cxxflags[*]}"
       if [ ! -f "$out/$name.so" ] || [ "$(cat "$out/$name.commit" 2>/dev/null)" != "$made" ]; then
-        if [ -f "$patch" ]; then
-          git -C "$dir" checkout -q -- . && git -C "$dir" clean -q -fd -e node_modules
-          git -C "$dir" apply "$patch"
-          # a changed grammar.js needs its parser generated again, a changed scanner not
-          if grep -q "^diff --git a/grammar.js" "$patch"; then
-            echo "  patching $name and generating its parser" >&2
-            generate_parser "$dir" "$cli"
-          else
-            echo "  patching $name" >&2
-          fi
-        fi
+        prepare_grammar "$root" "$name" "$subpath" "$cli" || exit 1
         compile_grammar "$src" "$out/$name.so"
         echo "$made" > "$out/$name.commit"
       fi ;;
   esac
 done < <(manifest)
-' grammars "$root" "$out" "$sources"
+# a grammar left out of the manifest is left out of what is built
+for made in "$out"/*.so; do
+  name="$(basename "$made" .so)"
+  manifest | cut -f1 | grep -qx "$name" || rm -f "$made" "$out/$name.commit"
+done
+' grammars "$root" "$out" "$sources" "$record"
+[ -n "$record" ] && exit 0
 echo "$wanted" > "$stamp"

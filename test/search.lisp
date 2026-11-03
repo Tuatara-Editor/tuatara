@@ -92,10 +92,7 @@ byte triples, scanning the whole string at once (the reference for the
 windowed engine); REGEX a pattern, or a scanner made already (as
 TUATARA.SYNTAX:COMPILE-REGEX makes one)."
   (let ((offsets (make-array (1+ (length string)) :element-type 'fixnum)) (b 0)
-        (scanner (if (functionp regex)
-                     regex
-                     (cl-ppcre:create-scanner regex :multi-line-mode t
-                                                    :case-insensitive-mode (tuatara.syntax:regex-case-fold-p regex))))
+        (scanner (if (functionp regex) regex (tuatara.syntax:compile-regex regex)))
         (out '()) (from 0))
     (loop for i from 0 below (length string)
           do (setf (aref offsets i) b)
@@ -268,7 +265,8 @@ newlines and some multibyte characters."
   (let ((scanner (tuatara.syntax:compile-regex "kea error")))
     (is eq scanner (tuatara.syntax:compile-regex (copy-seq "kea error")))
     (isnt eq scanner (tuatara.syntax:compile-regex "kea error" :case-fold nil))
-    (isnt eq scanner (tuatara.syntax:compile-regex "kea error" :crlf t))
+    ;; lines end the same way in every text: CRLF makes no other scanner
+    (is eq scanner (tuatara.syntax:compile-regex "kea error" :crlf t))
     (let ((consed (loop repeat 3
                         minimize (let ((before (tuatara.bench::bytes-consed)))
                                    (tuatara.syntax:compile-regex "kea error")
@@ -410,9 +408,9 @@ newlines and some multibyte characters."
 (define-test (search sign-fades-on-one-thread)
   ;; a sign lit again and again, as each key of a search lights it, is faded by one thread
   (flet ((faders () (count "tuatara sign fading" (sb-thread:list-all-threads) :key #'sb-thread:thread-name :test #'equal)))
-    (let ((f (tuatara.frontend.fake:make-fake-frontend))
+    (let ((editor (tuatara.command:make-editor (tuatara.frontend.fake:make-fake-frontend)))
           (tuatara.defaults::*sign-lit-seconds* 0.3))
-      (dotimes (i 20) (tuatara.defaults::note-sign-work :searching f))
+      (dotimes (i 20) (tuatara.defaults::note-sign-work :searching editor))
       (true (<= (faders) 1) "~d threads" (faders))
       (loop repeat 200 while (plusp (faders)) do (sleep 0.01))
       (is = 0 (faders))
@@ -460,3 +458,17 @@ newlines and some multibyte characters."
                             while at collect at do (setf i (+ at n)))
                 (loop with i = 0 for at = (tuatara.syntax::scan-chunk chunk needle fold i size size other-case)
                       while at collect at do (setf i (+ at n))))))))))
+
+(define-test (search unreadable-pattern-quiet)
+  ;; a pattern that is no regular expression is taken as text, or has no groups,
+  ;; as before; being one typed wrong, it is no failure for the debug log
+  (drain-debug-reports)
+  (unwind-protect
+       (progn
+         (tuatara.runtime:set-debug t)
+         (true (cl-ppcre:scan (tuatara.syntax:compile-pattern "a(b" :or-text t) "xa(by"))
+         (is = 0 (tuatara.syntax:pattern-group-count "a(b"))
+         (is = 0 (tuatara.syntax:pattern-group-count "[[:nosuchclass:]]"))
+         (is = 1 (tuatara.syntax:pattern-group-count "a(b)"))
+         (true (sb-concurrency:queue-empty-p tuatara.runtime:*debug-reports*)))
+    (drain-debug-reports)))

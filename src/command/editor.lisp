@@ -9,29 +9,77 @@
 
 (in-package #:tuatara.command)
 
-(define-condition quit (error) ()
-  (:documentation "Signalled by keyboard-quit (\\`C-g') to abandon the current command or minibuffer.")
-  (:report (lambda (c s) (declare (ignore c)) (format s "Quit"))))
+(defstruct (client (:constructor make-client (&key frontend directory environment (number 1)
+                                                    (remote (and frontend t))))
+                   (:copier nil))
+  "Someone working with the editor on screens of their own (clients.lisp):
+in an editor of its own, the one who started it, on its own screen
+\(FRONTEND NIL, REMOTE false); in an editor running in the background, each
+program that attached to show it (REMOTE true), painting what the remote
+frontend FRONTEND sends, let go of once it ends.
+NUMBER tells it apart from the others; DIRECTORY is the folder it was
+started in, and ENVIRONMENT its variables laid over the editor's for the
+programs started from its frames, each (NAME . VALUE); BEGAN, when it
+began, and ENDED, when it ended or NIL, in universal time. STARTUP-BUFFERS
+are the buffers of the files it was started with, in order: those a program
+running it as its editor waits on. EXIT-CODE and EXIT-WORDS are the code it
+ends with and what it says then; ENDINGS, functions of it called as it ends,
+before those are given. An ended client keeps only what names its folder:
+its number, folder and times."
+  (frontend nil)
+  (remote nil :read-only t)
+  (number 1 :type fixnum :read-only t)
+  (directory nil)
+  (environment '())
+  (began (get-universal-time))
+  (ended nil)
+  (startup-buffers '())
+  (exit-code 0)
+  (exit-words nil)
+  (endings '()))
 
-(defstruct (editor (:constructor %make-editor (frontend)) (:copier nil))
-  "The editor state. FRONTEND paints and reads events; WINDOW is the selected
-window, the one commands act on, in a layout of one or more (EDITOR-WINDOWS);
-SELECTIONS counts the times a window was selected; MINIBUFFER-PROMPT,
-MINIBUFFER-TEXT and MINIBUFFER-ACTIVE describe the
-echo area; MESSAGE is transient text shown there; KILL-RING holds killed text,
-newest first; PENDING are the key specs of an unfinished key sequence;
-STATE-KEYMAP is the modal state's map consulted before the others (the modal layer's);
-RUNNING is false once the editor should exit; UNREAD holds events read while
-the editor waited on work of its own, to be handled next, in order; DEFERRED
+(setf (documentation 'make-client 'function)
+      "A CLIENT on FRONTEND (NIL: the editor's own screen), started in DIRECTORY; REMOTE for one that showed an
+editor running in the background, by default when it has a FRONTEND."
+      (documentation 'client-p 'function) "True when OBJECT is a CLIENT."
+      (documentation 'client-frontend 'function)
+      "The remote frontend CLIENT paints, or NIL for the editor's own screen or once CLIENT has ended."
+      (documentation 'client-remote 'function) "True when CLIENT shows an editor running in the background, from a program of its own."
+      (documentation 'client-number 'function) "The number telling CLIENT apart from the editor's other clients."
+      (documentation 'client-directory 'function) "The folder CLIENT was started in, or NIL."
+      (documentation 'client-environment 'function)
+      "CLIENT's variables laid over the editor's for the programs started from its frames, each (NAME . VALUE)."
+      (documentation 'client-began 'function) "When CLIENT began, in universal time."
+      (documentation 'client-ended 'function) "When CLIENT ended, in universal time, or NIL while it works."
+      (documentation 'client-startup-buffers 'function)
+      "The buffers of the files CLIENT was started with: those a program running it as its editor waits on."
+      (documentation 'client-exit-code 'function) "The code CLIENT ends with: 0, or 1 for a program running it as its editor to give up."
+      (documentation 'client-exit-words 'function) "What CLIENT says as it ends, or NIL."
+      (documentation 'client-endings 'function) "Functions of CLIENT called as it ends, newest first.")
+
+(defstruct (frame (:constructor make-frame (frontend)) (:copier nil))
+  "One screen of the editor. FRONTEND paints it and reads its events; WINDOW
+is its selected window, the one commands act on, in a layout of one or more;
+MINIBUFFER-PROMPT, MINIBUFFER-TEXT and MINIBUFFER-ACTIVE describe its echo
+area; MESSAGE is transient text shown there; PENDING are the key specs of an
+unfinished key sequence typed in it; UNREAD holds events read while the
+editor waited on work of its own, to be handled next, in order; DEFERRED
 holds the window closed or files dropped while a command was asking for
-something, to be handled once it is done."
+something, to be handled once it is done. LAST-COMMAND, REPEATABLE and
+REPEAT-MAP are what the next command typed in it follows on from;
+KEYS-RECORDING and KEYS-PLAYING the keys being recorded in it and played
+into it. PAINTED is what it showed when it was last painted while another
+frame was worked in, for PAINT-OTHER-FRAMES, or NIL to be painted again.
+HELD is, while its question waits for what is done in another frame to run
+inside it (RUN-INSIDE-QUESTION), the variables of that question, their
+values there and the buffer it is about, as (VARIABLES VALUES BUFFER); NIL
+otherwise. DELETED is true once the frame has left the editor. NAME is what
+it is called, F1 for the first: the mode line shows it while frames take
+turns on one display, as in a terminal. CLIENT is the one who works in it
+\(CLIENT), whose buffers it shows first."
   (frontend nil :read-only t)
+  (name "F1" :type string)
   (window nil)
-  (selections 0 :type fixnum)
-  (global-keymap (make-keymap :name "global"))
-  (state-keymap nil :type (or null keymap))
-  (fallback-keymap nil :type (or null keymap))
-  (minibuffer-keymap (make-keymap :name "minibuffer"))
   (minibuffer-prompt nil)
   (minibuffer-text nil)
   (minibuffer-point 0 :type fixnum)
@@ -43,80 +91,214 @@ something, to be handled once it is done."
   (minibuffer-completer nil)
   (height 24 :type fixnum)
   (width 80 :type fixnum)
-  (key-hints t)
   (message nil)
-  (kill-ring '())
   (pending '())
-  (last-command nil)
-  (this-command nil)
   (prefix-argument nil)
-  (running t)
   (unread '())
   (collecting-prefix nil)
   (this-key nil)
-  (self-insert-command nil)
-  (mode-line-function nil)
-  (cursor-shape-function nil)
-  (post-command-functions '())
-  (repeatable nil)
-  (repeat-map nil)
   (transient-map nil)
   (transient-keep nil)
   (transient-exit nil)
   (transient-fresh nil)
   (menu nil)
-  (pre-command-functions '())
   (title-shown nil)
-  (deferred '()))
+  (deferred '())
+  (last-command nil)
+  (repeatable nil)
+  (repeat-map nil)
+  (keys-recording nil)
+  (keys-playing nil)
+  (painted nil)
+  (held nil)
+  (deleted nil)
+  (client nil))
+
+(setf (documentation 'make-frame 'function) "A FRAME painted through FRONTEND, with no window yet."
+      (documentation 'frame-p 'function) "True when OBJECT is a FRAME."
+      (documentation 'frame-deleted 'function) "True once FRAME has left its editor (REMOVE-FRAME)."
+      (documentation 'frame-name 'function) "What FRAME is called: F1, F2, the smallest number no other frame has."
+      (documentation 'frame-painted 'function)
+      "What FRAME showed when it was last painted while another frame was worked in, or NIL (PAINT-OTHER-FRAMES)."
+      (documentation 'frame-held 'function)
+      "While FRAME's question waits for another frame, its variables, their values and its buffer, as (VARIABLES VALUES BUFFER)."
+      (documentation 'frame-client 'function) "The client who works in FRAME (CLIENT).")
+
+(defstruct (editor (:constructor %make-editor (frontend &aux (frame (make-frame frontend)) (frames (list frame))))
+                   (:copier nil))
+  "The editor state. FRAMES are its screens, a list replaced and never changed
+in place, as other threads read it; FRAME is the one being worked in, between
+commands the one you last typed in: EDITOR-WINDOW, EDITOR-MESSAGE,
+EDITOR-LAST-COMMAND and the other names of a screen's state read and set that
+frame's; SELECTIONS counts the times a window was selected; KILL-RING holds
+killed text, newest first; STATE-KEYMAP is the modal state's map consulted
+before the others (the modal layer's); OTHERS-PAINTED is when the frames
+not worked in were last painted (PAINT-OTHER-FRAMES), and SETTINGS-LOOKED
+when the settings were last looked at for them (LOOK-AT-SETTINGS), in
+internal time; CLIENTS, those who work with it (CLIENT), the one who
+started it first, a list replaced and never changed in place; IDLE-FRONTEND,
+in an editor running in the background, the frontend with no screen its
+frame shows on while no client shows it, else NIL;
+RUNNING is false once the editor should exit."
+  (frames '() :type list)
+  (frame nil :type frame)
+  (clients '() :type list)
+  (idle-frontend nil)
+  (selections 0 :type fixnum)
+  (others-painted 0)
+  (settings-looked 0)
+  (global-keymap (make-keymap :name "global"))
+  (state-keymap nil :type (or null keymap))
+  (fallback-keymap nil :type (or null keymap))
+  (minibuffer-keymap (make-keymap :name "minibuffer"))
+  (key-hints t)
+  (kill-ring '())
+  (this-command nil)
+  (running t)
+  (self-insert-command nil)
+  (mode-line-function nil)
+  (cursor-shape-function nil)
+  (post-command-functions '())
+  (pre-command-functions '()))
+
+(defmacro define-frame-accessor (name slot documentation &key read-only)
+  "Define NAME, a function of an editor, as SLOT of the editor's current frame,
+documented by DOCUMENTATION; SETF, INCF and PUSH on it change that frame's,
+unless READ-ONLY. The frame's own reader of SLOT is documented as NAME's."
+  (let ((reader (symbolicate 'frame- slot)))
+    `(progn
+       (setf (documentation ',reader 'function)
+             ,(format nil "The ~(~a~) of FRAME, which `~(~a~)' gives of an editor's current frame." slot name))
+       (declaim (inline ,name ,@(unless read-only `((setf ,name)))))
+       (defun ,name (editor)
+         ,documentation
+         (,reader (editor-frame editor)))
+       ,@(unless read-only
+           `((defun (setf ,name) (value editor)
+               ,documentation
+               (setf (,reader (editor-frame editor)) value)))))))
+
+(define-frame-accessor editor-frontend frontend
+  "The frontend of EDITOR's current frame." :read-only t)
+(define-frame-accessor editor-window window
+  "The selected window of EDITOR's current frame, the one commands act on.")
+(define-frame-accessor editor-minibuffer-prompt minibuffer-prompt
+  "The prompt shown while the minibuffer of EDITOR's current frame is active.")
+(define-frame-accessor editor-minibuffer-text minibuffer-text
+  "The text typed so far in the minibuffer of EDITOR's current frame.")
+(define-frame-accessor editor-minibuffer-point minibuffer-point
+  "The cursor position within the minibuffer text of EDITOR's current frame.")
+(define-frame-accessor editor-minibuffer-count minibuffer-count
+  "While a question that is no completing read counts something, what it shows
+before its prompt in EDITOR's current frame (3/12, or \"\" for its place kept
+empty); else NIL.")
+(define-frame-accessor editor-minibuffer-active minibuffer-active
+  "True while the minibuffer of EDITOR's current frame reads input.")
+(define-frame-accessor editor-completion completion
+  "The COMPLETION state while a completing read is active in EDITOR's current frame, or NIL.")
+(define-frame-accessor editor-popup popup
+  "The list of completions shown beside the cursor in EDITOR's current frame (COMPLETE-IN-TEXT), or NIL.")
+(define-frame-accessor editor-note note
+  "The box of words shown under the cursor in EDITOR's current frame (SHOW-NOTE),
+as (BUFFER POSITION PARAGRAPHS), or NIL.")
+(define-frame-accessor editor-minibuffer-completer minibuffer-completer
+  "While the minibuffer of EDITOR's current frame reads, the function
+\\<minibuffer>\\[minibuffer-complete] calls to complete the word at its cursor, or NIL.")
+(define-frame-accessor editor-height height
+  "Rows of the whole display of EDITOR's current frame.")
+(define-frame-accessor editor-width width
+  "Columns of the whole display of EDITOR's current frame.")
+(define-frame-accessor editor-message message
+  "Transient text shown in the echo area of EDITOR's current frame, or NIL.")
+(define-frame-accessor editor-pending pending
+  "Key specs of an unfinished key sequence typed in EDITOR's current frame.")
+(define-frame-accessor editor-prefix-argument prefix-argument
+  "The numeric prefix argument for the current command, given in EDITOR's current frame, or NIL.")
+(define-frame-accessor editor-unread unread
+  "Events of EDITOR's current frame read while the editor waited on work of its
+own, to be handled next, in order.")
+(define-frame-accessor editor-collecting-prefix collecting-prefix
+  "True while \\[universal-argument] collects digits for the prefix argument in EDITOR's current frame:
+:DIGITS once a digit has come since the last \\[universal-argument].")
+(define-frame-accessor editor-this-key this-key
+  "The key that completed the current command's key sequence in EDITOR's current frame.")
+(define-frame-accessor editor-transient-map transient-map
+  "A keymap consulted before all others in EDITOR's current frame while its
+commands keep it (SET-TRANSIENT-MAP), or NIL.")
+(define-frame-accessor editor-transient-keep transient-keep
+  "The function of a command that says whether the transient map of EDITOR's current frame stays after it.")
+(define-frame-accessor editor-transient-exit transient-exit
+  "The function called when the transient map of EDITOR's current frame goes, or NIL.")
+(define-frame-accessor editor-transient-fresh transient-fresh
+  "True while the command that set the transient map of EDITOR's current frame
+runs: that one is not asked whether it keeps it.")
+(define-frame-accessor editor-menu menu
+  "The menu open now in EDITOR's current frame, the arguments it has on and
+those it was opened with, as (MENU ARGUMENTS OPENED), or NIL (OPEN-MENU).")
+(define-frame-accessor editor-title-shown title-shown
+  "The buffer name and *GUI-TITLE* the title of EDITOR's current frame was last made from, as a list.")
+(define-frame-accessor editor-deferred deferred
+  "Events that ended a command's question in EDITOR's current frame, the window
+closed or files dropped, to be handled once it is done, oldest first.")
+(define-frame-accessor editor-last-command last-command
+  "The command run before the current one in EDITOR's current frame.")
+(define-frame-accessor editor-repeatable repeatable
+  "The last command run in EDITOR's current frame other than repeat, the prefix
+argument it had and the key that ran it, as (COMMAND ARGUMENT . KEY).")
+(define-frame-accessor editor-repeat-map repeat-map
+  "The keymap of keys that repeat the command just run in EDITOR's current
+frame by themselves (DEFINE-REPEAT-KEYS), while it is in force, or NIL.")
+(define-frame-accessor editor-keys-recording keys-recording
+  "The keys being recorded in EDITOR's current frame, a RECORDING, or NIL while none are.")
+(define-frame-accessor editor-keys-playing keys-playing
+  "While recorded keys are played into EDITOR's current frame, the PLAYING they
+are read from: READ-EVENT gives its keys before any typed, and nothing is
+drawn; NIL otherwise.")
 
 (setf (documentation 'editor-p 'function) "True when OBJECT is an EDITOR."
-      (documentation 'editor-frontend 'function) "The frontend of EDITOR."
-      (documentation 'editor-window 'function) "The selected window of EDITOR, the one commands act on."
+      (documentation 'editor-frames 'function) "The frames of EDITOR, its screens."
+      (documentation 'editor-frame 'function) "The current frame of EDITOR, the screen being worked in."
+      (documentation 'editor-clients 'function) "Those who work with EDITOR (CLIENT), the one who started it first."
+      (documentation 'editor-idle-frontend 'function)
+      "The frontend with no screen EDITOR's frame shows on while no client shows it, or NIL."
+      (documentation 'editor-others-painted 'function) "When the frames of EDITOR not worked in were last painted, in internal time."
+      (documentation 'editor-settings-looked 'function) "When the settings were last looked at for the frames of EDITOR not worked in, in internal time."
       (documentation 'editor-selections 'function) "How many times a window of EDITOR has been selected: the clock of WINDOW-USE-TIME."
       (documentation 'editor-global-keymap 'function) "EDITOR's global keymap, the last one consulted."
       (documentation 'editor-state-keymap 'function) "The modal state keymap consulted first, or NIL."
       (documentation 'editor-fallback-keymap 'function) "A keymap consulted after the buffer's own and before the global one (the modal support keys), or NIL."
       (documentation 'editor-minibuffer-keymap 'function) "The keymap active while the minibuffer reads input."
-      (documentation 'editor-minibuffer-prompt 'function) "The prompt shown while the minibuffer is active."
-      (documentation 'editor-minibuffer-text 'function) "The text typed so far in the minibuffer."
-      (documentation 'editor-minibuffer-point 'function) "The cursor position within the minibuffer text."
-      (documentation 'editor-minibuffer-count 'function) "While a question that is no completing read counts something, what it shows before its prompt (3/12, or \"\" for its place kept empty); else NIL."
-      (documentation 'editor-minibuffer-active 'function) "True while the minibuffer reads input."
-      (documentation 'editor-completion 'function) "The COMPLETION state while a completing read is active, or NIL."
-      (documentation 'editor-popup 'function) "The list of completions shown beside the cursor (COMPLETE-IN-TEXT), or NIL."
-      (documentation 'editor-note 'function) "The box of words shown under the cursor (SHOW-NOTE), as (BUFFER POSITION PARAGRAPHS), or NIL."
-      (documentation 'editor-minibuffer-completer 'function) "While the minibuffer reads, the function \\<minibuffer>\\[minibuffer-complete] calls to complete the word at its cursor, or NIL."
-      (documentation 'editor-height 'function) "Rows of the whole display."
-      (documentation 'editor-width 'function) "Columns of the whole display."
       (documentation 'editor-key-hints 'function) "True to show the bindings under a pending prefix key in the panel."
-      (documentation 'editor-message 'function) "Transient text shown in the echo area, or NIL."
       (documentation 'editor-kill-ring 'function) "Kills, newest first: strings, or ropes for kills too large for the system clipboard."
-      (documentation 'editor-unread 'function) "Events read while the editor waited on work of its own, to be handled next, in order."
-      (documentation 'editor-pending 'function) "Key specs of an unfinished key sequence."
-      (documentation 'editor-last-command 'function) "The command run before the current one."
       (documentation 'editor-this-command 'function) "The command being run."
-      (documentation 'editor-prefix-argument 'function) "The numeric prefix argument for the current command, or NIL."
       (documentation 'editor-running 'function) "False once the editor should exit."
-      (documentation 'editor-this-key 'function) "The key that completed the current command's key sequence."
-      (documentation 'editor-collecting-prefix 'function) "True while \\[universal-argument] collects digits for the prefix argument:
-:DIGITS once a digit has come since the last \\[universal-argument]."
       (documentation 'editor-self-insert-command 'function) "Command run for an unbound plain character, or NIL to treat it as undefined."
       (documentation 'editor-mode-line-function 'function) "Function of (EDITOR WINDOW) returning the text of WINDOW's mode line and the spans of it in faces of their own, or NIL for the default."
       (documentation 'editor-cursor-shape-function 'function) "Function of (EDITOR) returning the cursor's shape and colour, as *CURSOR-SHAPE* and *CURSOR-COLOUR* take them, NIL for those; and as a third value, true while text is typed. NIL for *CURSOR-SHAPE* and *CURSOR-COLOUR* always."
       (documentation 'editor-post-command-functions 'function) "Functions called with (EDITOR) after every command."
-      (documentation 'editor-repeatable 'function) "The last command run other than repeat, the prefix argument it had and the key that ran it, as (COMMAND ARGUMENT . KEY)."
-      (documentation 'editor-repeat-map 'function) "The keymap of keys that repeat the command just run by themselves (DEFINE-REPEAT-KEYS), while it is in force, or NIL."
-      (documentation 'editor-transient-map 'function) "A keymap consulted before all others while its commands keep it (SET-TRANSIENT-MAP), or NIL."
-      (documentation 'editor-transient-keep 'function) "The function of a command that says whether the transient map stays after it."
-      (documentation 'editor-transient-exit 'function) "The function called when the transient map goes, or NIL."
-      (documentation 'editor-transient-fresh 'function) "True while the command that set the transient map runs: that one is not asked whether it keeps it."
-      (documentation 'editor-menu 'function) "The menu open now, the arguments it has on and those it was opened with, as (MENU ARGUMENTS OPENED), or NIL (OPEN-MENU)."
-      (documentation 'editor-pre-command-functions 'function) "Functions called with (EDITOR COMMAND) before every command runs."
-      (documentation 'editor-title-shown 'function) "The buffer name and *GUI-TITLE* the window's title was last made from, as a list."
-      (documentation 'editor-deferred 'function) "Events that ended a command's question, the window closed or files dropped, to be handled once it is done, oldest first.")
+      (documentation 'editor-pre-command-functions 'function) "Functions called with (EDITOR COMMAND) before every command runs.")
+
+(defun wake-editor (editor)
+  "Wake EDITOR, from any thread, to show what work in the background has for
+it: its frames share one source of events, which is woken once, through the
+frame being worked in; an error waking it is ignored."
+  (tuatara.runtime:ignoring-errors-reported ("waking the editor")
+    (tuatara.frontend:frontend-wake (frame-frontend (editor-frame editor)))))
 
 (defvar *editor* nil
   "The editor whose command is running.")
+
+(defvar *display-generation* 0
+  "A count moved on whenever what every frame may show changes beside the text
+of its buffers: work taken in from the background, a way of showing text
+switched, a setting changed (SETTINGS-MOVED-P), a job's work or a message
+taken in. A frame not worked in is painted again when it moved since it was
+\(PAINT-OTHER-FRAMES).")
+
+(defvar *background-work* nil
+  "True when a tick function said at the last tick that work of its own runs
+in the background. A frontend for tests ends its session only once nothing
+runs.")
 
 (defun prefix-argument ()
   "The prefix argument given the command running now, a number: 4 for
@@ -125,7 +307,7 @@ lone minus; NIL for none, or with no editor."
   (and *editor* (editor-prefix-argument *editor*)))
 
 (defstruct (completion (:constructor make-completion (table &key annotate require-match history (separator #\/) (filter t)
-                                                             select reselect preview source default keep-order none
+                                                             select reselect preview source default keep-order none taken
                                                              (prompt "")))
                        (:copier nil))
   "State of a completing read. TABLE is a list of CANDIDATE or a function of
@@ -155,8 +337,9 @@ DEFAULT, when not NIL, is what \\[minibuffer-done] takes while nothing is
 typed, its candidate offered first then, and named in the prompt; KEEP-ORDER
 true keeps the candidates matching in the order TABLE gives them, not sorted
 best first; NONE, words the prompt says once all have come and there are
-none; PROMPT, the question as asked, before those words are added to it (or
-a function of no arguments giving it).
+none; TAKEN, a list of names the read takes when they are typed whole,
+though they are not among its candidates; PROMPT, the question as asked,
+before those words are added to it (or a function of no arguments giving it).
 DONE-PENDING is true when \\[minibuffer-done] came while nothing could be
 chosen yet and more was coming, to be done once it has come; MOVED
 is true once a candidate was selected by hand for the input typed, which
@@ -180,6 +363,7 @@ alone."
   (default nil :read-only t)
   (keep-order nil :read-only t)
   (none nil :read-only t)
+  (taken '() :read-only t)
   (prompt "" :type (or string function) :read-only t)
   (working nil)
   (listed nil)
@@ -208,6 +392,7 @@ alone."
       (documentation 'completion-source 'function) "The function a COMPLETION calls to take in candidates found in the background, or NIL."
       (documentation 'completion-default 'function) "What a COMPLETION takes while nothing is typed, or NIL."
       (documentation 'completion-keep-order 'function) "True when a COMPLETION keeps its candidates in the order given."
+      (documentation 'completion-taken 'function) "The names a COMPLETION takes when typed whole, though they are not among its candidates."
       (documentation 'completion-none 'function) "The words a COMPLETION's prompt says when all have come and there are none, or NIL."
       (documentation 'completion-prompt 'function) "The question a COMPLETION asks, as asked."
       (documentation 'completion-working 'function) "True while a COMPLETION's SOURCE said more candidates may come."
@@ -305,18 +490,21 @@ first; NIL keeps none.")
           (if count (values (subseq line 0 open) count) (values line 1)))
         (values line 1))))
 
-(defvar *messages-made-function* nil
-  "A function of the *Messages* buffer, called when it has just been made,
-giving it what more it has (its major mode); NIL for nothing more.")
+(defgeneric host-messages-made (host buffer)
+  (:documentation "Give BUFFER, the *Messages* buffer just made, what more it has (its major
+mode); on the core's own host, nothing.")
+  (:method ((host tuatara.runtime:host) buffer)
+    (declare (ignore buffer))
+    nil))
 
 (defun messages-buffer ()
   "The *Messages* buffer, made when there is none: read-only, and given what
-*MESSAGES-MADE-FUNCTION* gives it."
+HOST-MESSAGES-MADE gives it."
   (or (tuatara.buffer:find-buffer "*Messages*")
       (let ((b (tuatara.buffer:make-buffer "*Messages*")))
-        (setf (tuatara.buffer:buffer-local b :read-only) t
-              (tuatara.buffer:buffer-local b :kind) :messages)
-        (when *messages-made-function* (funcall *messages-made-function* b))
+        (setf (tuatara.buffer:buffer-read-only-p b) t
+              (buffer-kind b) :messages)
+        (host-messages-made tuatara.runtime:*host* b)
         b)))
 
 (defun add-to-log (buffer max change)
@@ -340,11 +528,18 @@ showing its end goes on showing it."
     (dolist (window following)
       (setf (tuatara.display:window-point window) (tuatara.buffer:buffer-size buffer)))))
 
+(defvar *secret-messages* (make-hash-table :test 'eq :weakness :key :synchronized t)
+  "The messages said while a secret was at hand (TUATARA.RUNTIME:*SECRET-AT-HAND*),
+shown but never kept in *Messages* (LOG-MESSAGE).")
+
 (defun log-message (text)
   "Add TEXT, a message just shown, to the *Messages* buffer (made when there is
 none): a line of its own, or the last line counted up when it says the same
-(\"Saved [2 times]\"). The buffer keeps *MESSAGE-LOG-MAX* lines (ADD-TO-LOG)."
-  (when (and *message-log-max* (plusp (length text)))
+(\"Saved [2 times]\"). The buffer keeps *MESSAGE-LOG-MAX* lines (ADD-TO-LOG).
+A message said while a secret is, or was, at hand is not kept: its words may
+hold the secret."
+  (when (and *message-log-max* (plusp (length text))
+             (not tuatara.runtime:*secret-at-hand*) (not (gethash text *secret-messages*)))
     (add-to-log (messages-buffer) *message-log-max*
                 (lambda (buffer)
                   (let* ((size (tuatara.buffer:buffer-size buffer))
@@ -367,11 +562,13 @@ when none does. Work on other threads finds it here.")
 
 (defvar *messages-from-threads* '()
   "The messages said on other threads while an editor runs, the newest first,
-for the editor's thread to show and keep (TAKE-IN-THREAD-MESSAGES).")
+each with the frame it is for (THREAD-FRAME), as (FRAME . TEXT), for the
+editor's thread to show and keep (TAKE-IN-THREAD-MESSAGES).")
 
 (defvar *actions-from-threads* '()
   "The functions given to DEFER-ACTION on other threads while an editor runs,
-the newest first, for the editor's thread to run (TAKE-IN-THREAD-MESSAGES).")
+the newest first, each with the frame it is for (THREAD-FRAME), as (FRAME .
+FUNCTION), for the editor's thread to run (TAKE-IN-THREAD-MESSAGES).")
 
 (defvar *messages-from-threads-lock* (sb-thread:make-mutex :name "messages from threads")
   "Held while *MESSAGES-FROM-THREADS* or *ACTIONS-FROM-THREADS* is changed.")
@@ -381,29 +578,83 @@ the newest first, for the editor's thread to run (TAKE-IN-THREAD-MESSAGES).")
   (let ((running *running-editor*))
     (and running (not (eq (cdr running) sb-thread:*current-thread*)))))
 
+(defmethod tuatara.runtime:host-wake ((host editor-host))
+  "Wake the running editor (WAKE-EDITOR) from another thread."
+  (let ((running *running-editor*))
+    (when (and running (not (eq (cdr running) sb-thread:*current-thread*)))
+      (wake-editor (car running)))))
+
+(defun thread-frame ()
+  "The frame what is said or handed on from this thread is for: on the thread
+of a job, the frame the job was begun in (TUATARA.RUNTIME:JOB-FRAME); NIL
+elsewhere, for the frame you are in."
+  (let ((job tuatara.runtime:*job*))
+    (and job (tuatara.runtime:job-frame job))))
+
 (defmacro hand-to-editor-thread (item place)
   "Push ITEM onto PLACE, *MESSAGES-FROM-THREADS* or *ACTIONS-FROM-THREADS*,
-under *MESSAGES-FROM-THREADS-LOCK*, and wake the running editor to take it in."
-  `(progn (sb-thread:with-mutex (*messages-from-threads-lock*)
-            (push ,item ,place))
-          (let ((running *running-editor*))
-            (when running
-              (ignore-errors (tuatara.frontend:frontend-wake (editor-frontend (car running))))))))
+with the frame it is for (THREAD-FRAME), under *MESSAGES-FROM-THREADS-LOCK*,
+and wake the running editor to take it in."
+  `(let ((entry (cons (thread-frame) ,item)))
+     (sb-thread:with-mutex (*messages-from-threads-lock*)
+       (push entry ,place))
+     (let ((running *running-editor*))
+       (when running
+         (wake-editor (car running))))))
+
+(defun frame-or-current (editor frame)
+  "FRAME while it is one of EDITOR's frames, else the frame EDITOR works in:
+where what was meant for FRAME goes once FRAME has gone."
+  (if (and frame (not (frame-deleted frame))) frame (editor-frame editor)))
 
 (defun take-in-thread-messages (editor)
   "Show and keep in *Messages*, on EDITOR's thread, the messages said on other
 threads since last time, in the order they were said, and have the functions
-given to DEFER-ACTION there run as EDITOR's next commands, in that order too."
+given to DEFER-ACTION there run as EDITOR's next commands, in that order too.
+Each message shows in the frame it is for while that frame is open, else in
+the frame you are in; each function waits among the things to be done in
+that frame likewise (FRAME-DEFERRED), to run with it the one worked in. True
+when there was anything to take in."
   (when (or *messages-from-threads* *actions-from-threads*)
     (let (texts actions)
       (sb-thread:with-mutex (*messages-from-threads-lock*)
         (setf texts (shiftf *messages-from-threads* '())
               actions (shiftf *actions-from-threads* '())))
-      (dolist (text (reverse texts))
-        (setf (editor-message editor) text)
-        (ignore-errors (log-message text)))
-      (when actions
-        (setf (editor-deferred editor) (append (editor-deferred editor) (reverse actions)))))))
+      (loop for (frame . text) in (reverse texts)
+            do (let ((shown (frame-or-current editor frame)))
+                 (setf (frame-message shown) text
+                       (frame-painted shown) nil))
+               (tuatara.runtime:ignoring-errors-reported ("keeping a message in *Messages*") (log-message text)))
+      (loop for (frame . action) in (reverse actions)
+            do (let ((done-in (frame-or-current editor frame)))
+                 (setf (frame-deferred done-in) (append (frame-deferred done-in) (list action)))))
+      t)))
+
+(defvar *command-notes* nil
+  "While a command run from a key runs (RUN-COMMAND), a list cell whose car is
+a property list of what is noted for that command alone: an answer given once
+for all its edits, words to say with each of its later messages
+\(SAY-WITH-COMMAND-MESSAGES). NIL when no command runs: a tick, work in the background,
+a buffer edited from Lisp outside the command loop.")
+
+(defun say-with-command-messages (control &rest arguments)
+  "Say a formatted message, as MESSAGE does, and while a command runs have it
+said too with each message the command says after it, joined to that one:
+something the command did on the way that the person must see (a buffer
+widened to show where it went), whatever the command goes on to say."
+  (let ((text (apply #'message control arguments)))
+    (when *command-notes*
+      (setf (getf (car *command-notes*) :said-too) text))
+    text))
+
+(defun with-command-notes-said (text)
+  "TEXT, a message, as the echo area shows it: followed by what the command
+running had said too (SAY-WITH-COMMAND-MESSAGES), its first letter lower
+case, when TEXT does not hold it already."
+  (let ((also (and *command-notes* (getf (car *command-notes*) :said-too))))
+    (if (and also (not (search also text)))
+        (format nil "~a; ~a~a" text (string-downcase (subseq also 0 1)) (subseq also 1))
+        text)))
 
 (defun message (control &rest arguments)
   "Show a formatted message in the echo area until the next command, and keep
@@ -412,16 +663,19 @@ it in the *Messages* buffer (LOG-MESSAGE). The keys CONTROL names as
 in :help-key-binding. Said by work away from the editor's thread, while
 *MESSAGES-KEPT* holds a cell, it is kept there to be shown later; said there
 otherwise, it is handed to the editor's thread, which shows it as soon as it
-is woken."
+is woken. What the command running said too (SAY-WITH-COMMAND-MESSAGES) is
+shown after it. Said while a secret is at hand, it is shown but not kept."
   (let ((text (unmark-keys (apply #'format nil (substitute-command-keys control :marks t :for-format t) arguments))))
+    (when tuatara.runtime:*secret-at-hand*
+      (setf (gethash text *secret-messages*) t))
     (cond (*messages-kept*
            (push text (car *messages-kept*)))
           ((away-from-editor-p)
            (hand-to-editor-thread text *messages-from-threads*))
           (t
            (when *editor*
-             (setf (editor-message *editor*) text))
-           (ignore-errors (log-message text))))
+             (setf (editor-message *editor*) (with-command-notes-said text)))
+           (tuatara.runtime:ignoring-errors-reported ("keeping a message in *Messages*") (log-message text))))
     text))
 
 (defun echo (control &rest arguments)
@@ -430,9 +684,12 @@ in *Messages*: the keys of a sequence being typed, prompts."
   (setf (editor-message *editor*)
         (unmark-keys (apply #'format nil (substitute-command-keys control :marks t :for-format t) arguments))))
 
-(defun keyboard-quit-signal ()
-  "Signal QUIT: abandon the current command or minibuffer read."
-  (error 'quit))
+(defun keyboard-quit-signal (&optional words)
+  "Signal QUIT: abandon the current command or minibuffer read, saying WORDS,
+when given, of why in place of Quit. Keys being recorded are given up
+\(GIVE-UP-KEY-RECORDING)."
+  (give-up-keys-recording)
+  (error 'quit :words words))
 
 (defvar *key-question* nil
   "True while a question in the echo area waits for one key (READ-KEY): the

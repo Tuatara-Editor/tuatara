@@ -115,12 +115,12 @@ shown are sorted."
     (if (= a z)
         (and inserts
              (or (< start a end)
-                 (and (= a end) (/= 10 (aref insert 0)))))
+                 (and (= a end) (not (member (aref insert 0) '(10 13))))))
         (let ((reach (if (< end (tuatara.text:rope-bytes rope)) (1+ end) end)))
           (and (< a reach) (> z start)
                (not (and (= z (1+ start)) (< 0 a start)
-                         (= 10 (tuatara.text:rope-octet rope (1- a)))
-                         (or (not inserts) (= 10 (aref insert (1- (length insert))))))))))))
+                         (= (1- a) (tuatara.text:rope-line-end rope (1- a)))
+                         (or (not inserts) (member (aref insert (1- (length insert))) '(10 13))))))))))
 
 (defun map-hidden-bounds (bounds batch rope)
   "BOUNDS, as HIDE-RANGES takes them, in ROPE, carried through BATCH, the
@@ -231,7 +231,10 @@ in the rows and between them is left out (SHOWN-PARTS, UNFOLDED-PARTS)."
           for bytes = (row-bytes row)
           ;; the first character shown, past what a line scrolled sideways hides and
           ;; what stands for no character before it (Org's indented view)
-          for start = (or (find-if-not #'minusp bytes) (row-start row))
+          for start = (if (row-mixed row)
+                          (loop for byte across bytes when (>= byte 0) minimize byte into low
+                                finally (return (if (< low most-positive-fixnum) low (row-start row))))
+                          (or (find-if-not #'minusp bytes) (row-start row)))
           for end = (max start (row-shown-end row) (if (or shown (row-truncated-p row))
                                                                       0
                                                                       (row-end row)))
@@ -324,7 +327,7 @@ also where point goes when no line follows them."
                 (let* ((rope (tuatara.buffer:buffer-text buffer))
                        (size (tuatara.text:rope-bytes rope))
                        (end (cdr fold)))
-                  (cond ((and (< end size) (= 10 (tuatara.text:rope-octet rope end))) (1+ end))
+                  (cond ((and (< end size) (= end (tuatara.text:rope-line-end rope end))) (1+ end))
                         ((tuatara.text:rope-crlf-p rope end)
                          (+ end 2))
                         (t end)))

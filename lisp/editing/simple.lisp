@@ -82,16 +82,20 @@ the space left after it."
 
 (defun join-lines-above (buffer bound)
   "Join the line point is on to the one above it, and so on upwards while the
-line's start is after BOUND: each line end goes, and the spaces about it
-become one or none (FIXUP-WHITESPACE-AT), point left at the last join."
+line's start is after BOUND and after the start of the part shown while
+the buffer is narrowed: each line end goes, and the spaces about it become
+one or none (FIXUP-WHITESPACE-AT), point left at the last join."
   (loop
     (let ((bol (tuatara.buffer:buffer-line-start buffer (point))))
       ;; past the bound, point stays at the last join
       (unless (> bol bound) (return))
       (goto bol)
-      (unless (and (plusp bol) (eql (tuatara.buffer:buffer-char-at buffer (1- bol)) #\Newline))
+      ;; at the start of the text, or of the part shown: nothing above to join
+      (unless (and (> bol (tuatara.buffer:buffer-start buffer))
+                   (member (tuatara.buffer:buffer-char-at buffer (1- bol)) '(#\Newline #\Return)))
         (return))
-      (let ((start (if (and (> bol 1) (eql (tuatara.buffer:buffer-char-at buffer (- bol 2)) #\Return))
+      (let ((start (if (and (> bol 1) (eql (tuatara.buffer:buffer-char-at buffer (1- bol)) #\Newline)
+                            (eql (tuatara.buffer:buffer-char-at buffer (- bol 2)) #\Return))
                        (- bol 2)
                        (1- bol))))
         (tuatara.buffer:buffer-delete buffer start bol)
@@ -206,7 +210,7 @@ every line it takes in, in the background when it holds more than
   "Insert a line end after point, point staying before it; with a count, that
 many line ends. The new line is not indented."
   (let ((n (insert-count)) (b (current-buffer)) (p (point)))
-    (tuatara.buffer:buffer-insert b p (repeated-text (tuatara.buffer:buffer-newline b) n))
+    (tuatara.buffer:buffer-insert b p (tuatara.buffer:unjoined-line-ends b p (repeated-text (tuatara.buffer:buffer-newline b) n)))
     (goto p)))
 
 (define-command back-to-indentation ()
@@ -219,7 +223,7 @@ many line ends. The new line is not indented."
 around it but one; on a blank line alone, that one; on a line with text, the
 blank lines after it."
   (let* ((b (current-buffer))
-         (size (tuatara.buffer:buffer-size b))
+         (size (tuatara.buffer:buffer-end b))
          (line (tuatara.buffer:buffer-line-start b (point)))
          (this-blank (blank-line-at-p b line))
          (next (next-line-start b line))
@@ -234,8 +238,8 @@ blank lines after it."
            (text-at-or-after (p)
              ;; the start of the line of the first character at or after P that is no blank
              (let ((q (skip-blanks b p)))
-               (if (>= q (tuatara.buffer:buffer-size b))
-                   (tuatara.buffer:buffer-size b)
+               (if (>= q (tuatara.buffer:buffer-end b))
+                   (tuatara.buffer:buffer-end b)
                    (tuatara.buffer:buffer-line-start b q)))))
       ;; the blank lines before, and this one when it is alone
       (when this-blank
@@ -252,9 +256,9 @@ blank lines after it."
       (let ((p (point)))
         (when (and (= p (tuatara.buffer:buffer-line-start b p))
                    (blank-line-at-p b p)
-                   (= (next-line-start b p) (tuatara.buffer:buffer-size b))
-                   (< p (tuatara.buffer:buffer-size b)))
-          (tuatara.buffer:buffer-delete b p (tuatara.buffer:buffer-size b)))))))
+                   (= (next-line-start b p) (tuatara.buffer:buffer-end b))
+                   (< p (tuatara.buffer:buffer-end b)))
+          (tuatara.buffer:buffer-delete b p (tuatara.buffer:buffer-end b)))))))
 
 ;;; Trailing whitespace
 
@@ -264,18 +268,19 @@ blank lines at its end too.")
 
 (define-command delete-trailing-whitespace ()
   "Delete the spaces and tabs at the end of every line, of the selection when
-there is one, else of the whole buffer, and then the blank lines at the
-buffer's end too (*DELETE-TRAILING-LINES*). A form feed is not whitespace. A
+there is one, else of the whole buffer (of the part shown of a narrowed one),
+and then the blank lines at its end too (*DELETE-TRAILING-LINES*). A form
+feed is not whitespace. A
 large buffer is done in the background, as \\[replace-regexp] does it."
   (let* ((b (current-buffer))
          (region (tuatara.buffer:buffer-mark-active-p b))
          (origin (point)))
-    (multiple-value-bind (low high) (if region (tuatara.buffer:buffer-region b) (values 0 (tuatara.buffer:buffer-size b)))
+    (multiple-value-bind (low high) (if region (tuatara.buffer:buffer-region b) (tuatara.buffer:buffer-bounds b))
       (setf (tuatara.buffer:buffer-mark-active-p b) nil)
       ;; the blank lines at the end first: their text is gone before the lines are looked at
       (let ((blank-lines 0))
         (when (and (not region) *delete-trailing-lines*)
-          (let* ((size (tuatara.buffer:buffer-size b)) (q (skip-blanks b size :backward t)))
+          (let* ((size (tuatara.buffer:buffer-end b)) (q (skip-blanks b size :backward t)))
             ;; keep the line end that ends the last line of text
             (let ((keep (next-line-start b q)))
               (when (and (< keep size) (< q size))
@@ -285,10 +290,10 @@ large buffer is done in the background, as \\[replace-regexp] does it."
         (let ((lines (let ((*last-search-pattern* *last-search-pattern*))
                        ;; the last search stays the one typed
                        (run-substitution b (make-search-line :pattern "[ \\t]+(\\r?)$" :replacement "\\1" :flags "g")
-                                         t low (min high (tuatara.buffer:buffer-size b)) "trailing whitespace"
-                                         (min origin (tuatara.buffer:buffer-size b)) :flags "g"))))
+                                         t low (min high (tuatara.buffer:buffer-end b)) "trailing whitespace"
+                                         (min origin (tuatara.buffer:buffer-end b)) :flags "g"))))
           ;; in the background the job says what it does; here, what was done
-          (unless (rewrite-of b)
+          (unless (tuatara.runtime:running-job b 'rewrite)
             (cond ((and (zerop lines) (zerop blank-lines)) (message "No trailing whitespace"))
                   ((zerop blank-lines) (message "Deleted trailing whitespace on ~:d line~:p" lines))
                   ((zerop lines) (message "Deleted ~:d blank line~:p at the end" blank-lines))
@@ -303,8 +308,8 @@ negative; past either end, an error: \"End of buffer\" or
 \"Beginning of buffer\"."
   (let ((p position))
     (dotimes (i (abs count) p)
-      (cond ((and (plusp count) (>= p (tuatara.buffer:buffer-size buffer))) (error "End of buffer"))
-            ((and (minusp count) (<= p 0)) (error "Beginning of buffer")))
+      (cond ((and (plusp count) (>= p (tuatara.buffer:buffer-size buffer))) (error (edge-words t nil)))
+            ((and (minusp count) (<= p 0)) (error (edge-words nil nil))))
       (setf p (tuatara.buffer:buffer-forward-char buffer p (if (plusp count) 1 -1))))))
 
 (defun word-mover (buffer position count)
@@ -317,26 +322,28 @@ start, as \\[forward-word] and \\[backward-word] go (WORDS-FORWARD)."
 (defun line-mover (buffer position count)
   "Where the start of the line COUNT lines on from POSITION's is, back when
 COUNT is negative, for \\[transpose-lines]: going forward past the last line
-makes the line ends it lacks."
+makes the line ends it lacks; of a narrowed buffer, the lines of the part
+shown alone."
   (if (plusp count)
       (let ((p position) (left count))
-        (loop while (and (plusp left) (< (next-line-start buffer p) (tuatara.buffer:buffer-size buffer)))
+        (loop while (and (plusp left) (< (next-line-start buffer p) (tuatara.buffer:buffer-end buffer)))
               do (setf p (next-line-start buffer p)) (decf left))
         ;; at the last line: to its end, and a line end for each line still wanted
         (when (plusp left)
-          (let ((size (tuatara.buffer:buffer-size buffer)))
+          (let ((size (tuatara.buffer:buffer-end buffer)))
             (setf p size)
-            (unless (and (plusp size) (eql (tuatara.buffer:buffer-char-at buffer (1- size)) #\Newline))
+            (unless (and (plusp size) (member (tuatara.buffer:buffer-char-at buffer (1- size)) '(#\Newline #\Return)))
               (tuatara.buffer:buffer-insert buffer size (tuatara.buffer:buffer-newline buffer))
-              (setf p (tuatara.buffer:buffer-size buffer))
+              (setf p (tuatara.buffer:buffer-end buffer))
               (decf left))
             (when (plusp left)
-              (tuatara.buffer:buffer-insert buffer p (repeated-text (tuatara.buffer:buffer-newline buffer) left))
-              (setf p (tuatara.buffer:buffer-size buffer)))))
+              (tuatara.buffer:buffer-insert buffer p (tuatara.buffer:unjoined-line-ends
+                                                     buffer p (repeated-text (tuatara.buffer:buffer-newline buffer) left)))
+              (setf p (tuatara.buffer:buffer-end buffer)))))
         p)
       (let ((p (tuatara.buffer:buffer-line-start buffer position)))
         (dotimes (i (- count) p)
-          (when (zerop p) (return p))
+          (when (<= p (tuatara.buffer:buffer-start buffer)) (return p))
           (setf p (tuatara.buffer:buffer-line-start buffer (1- p)))))))
 
 (defun mover-aux (mover)
@@ -377,7 +384,7 @@ and at the mark change places."
            (let ((pos1 (if (> (car pos1) (cdr pos1)) (cons (cdr pos1) (car pos1)) pos1))
                  (pos2 (if (> (car pos2) (cdr pos2)) (cons (cdr pos2) (car pos2)) pos2)))
              (when (> (car pos1) (car pos2)) (rotatef pos1 pos2))
-             (when (> (cdr pos1) (car pos2)) (error "Don't have two things to transpose"))
+             (when (> (cdr pos1) (car pos2)) (refuse "Don't have two things to transpose"))
              (if (> (- (cdr pos2) (car pos1)) tuatara.buffer:*large-edit-octets*)
                  ;; far apart or large: the three texts moved as they are, nothing copied
                  (let ((second (tuatara.buffer:buffer-slice buffer (car pos2) (cdr pos2))))
@@ -393,7 +400,7 @@ and at the mark change places."
              (values (car pos1) (- (cdr pos1) (car pos1)) (car pos2) (- (cdr pos2) (car pos2))))))
     (cond ((zerop arg)
            (let ((mark (tuatara.buffer:buffer-mark buffer)) (point (point)))
-             (unless mark (error "No mark set in this buffer"))
+             (unless mark (refuse "No mark set in this buffer"))
              (let ((pos1 (funcall aux buffer point 1))
                    (pos2 (funcall aux buffer mark 1)))
                (multiple-value-bind (a1 l1 a2 l2) (swap pos1 pos2)
@@ -445,7 +452,7 @@ them in BUFFER's language."
 symbol; between expressions, the one after the blanks and comments."
   (flet ((at (p) (tuatara.buffer:buffer-char-at buffer p))
          (motion (p n)
-           (or (sexp-motion buffer p n) (error "Not between two complete sexps"))))
+           (or (sexp-motion buffer p n) (refuse "Not between two complete sexps"))))
     (if (if (plusp count)
             (sexp-symbol-char-p buffer (at position))
             (and (plusp position) (sexp-symbol-char-p buffer (at (1- position)))))
@@ -482,22 +489,25 @@ one; with a negative count, -N lines back, with the line end before them
 rather than after; with 0, the line without its line end. After another kill,
 the text before point goes at the front of that kill and the rest after it, so
 that the kills read in order. Lines that would take part of the text a fold
-hides, but not all of it, are not killed: the fold is shown instead."
+hides, but not all of it, are not killed: the fold is shown instead. In a
+narrowed buffer, the lines of the part shown."
   (let* ((b (current-buffer)) (n (prefix)) (p (point))
-         (size (tuatara.buffer:buffer-size b))
-         (bol (tuatara.buffer:buffer-line-start b p))
-         (eol (tuatara.buffer:buffer-line-end b p)))
-    (when (and (plusp n) (= p size) (= bol size)) (error "End of buffer"))
-    (when (and (minusp n) (zerop p) (zerop eol)) (error "Beginning of buffer"))
+         (narrowed (tuatara.buffer:buffer-narrowed-p b))
+         (low (tuatara.buffer:buffer-start b))
+         (size (tuatara.buffer:buffer-end b))
+         (bol (tuatara.buffer:within-narrowing b (tuatara.buffer:buffer-line-start b p)))
+         (eol (tuatara.buffer:within-narrowing b (tuatara.buffer:buffer-line-end b p))))
+    (when (and (plusp n) (= p size) (= bol size)) (error (edge-words t narrowed)))
+    (when (and (minusp n) (= p low) (= eol low)) (error (edge-words nil narrowed)))
     (let* ((other (cond ((zerop n) eol)
                         ((minusp n)
                          ;; the start of the line -N-1 back, then back over the line end before it
                          (let ((q bol))
-                           (dotimes (i (- (1+ n))) (unless (zerop q) (setf q (tuatara.buffer:buffer-line-start b (1- q)))))
-                           (cond ((zerop q) 0)
-                                 ((and (> q 1) (eql (tuatara.buffer:buffer-char-at b (- q 2)) #\Return)) (- q 2))
+                           (dotimes (i (- (1+ n))) (unless (<= q low) (setf q (tuatara.buffer:within-narrowing b (tuatara.buffer:buffer-line-start b (1- q))))))
+                           (cond ((<= q low) low)
+                                 ((and (> q (1+ low)) (eql (tuatara.buffer:buffer-char-at b (- q 2)) #\Return)) (- q 2))
                                  (t (1- q)))))
-                        (t (let ((q p)) (dotimes (i n q) (setf q (next-line-start b q)))))))
+                        (t (let ((q p)) (dotimes (i n q) (setf q (min size (next-line-start b q))))))))
            (first-end (if (minusp n) eol bol))
            (start (min p other first-end)) (end (max p other first-end))
            (appending (kill-command-p (editor-last-command *editor*))))
@@ -519,7 +529,7 @@ key is said to be no character FOR that."
             ((and (characterp base) (not (tuatara.frontend:key-ctrl key)) (not (tuatara.frontend:key-meta key))) base)
             ((eq base :enter) #\Newline)
             ((eq base :tab) #\Tab)
-            (t (error "~a is no character ~a" (tuatara.frontend:key-description (tuatara.frontend:key-spec key)) for))))))
+            (t (refuse "~a is no character ~a" (tuatara.frontend:key-description (tuatara.frontend:key-spec key)) for))))))
 
 (defun find-char-occurrence (buffer position char count fold)
   "Where the COUNTth CHAR after POSITION of BUFFER ends, or where the -COUNTth
@@ -564,8 +574,9 @@ any other in either case."
                      p))
            (found (find-char-occurrence b from char count fold)))
       (cond ((eq found :far)
-             (error "~s not found within ~d MB" (string char) (floor *text-scan-limit* (* 1024 1024))))
-            ((null found) (error "Search failed: ~s" (string char))))
+             (refuse "~:[~s~;The character~*~] not found within ~d MB"
+                     *secret-at-hand* (string char) (floor *text-scan-limit* (* 1024 1024))))
+            ((null found) (refuse "Search failed~:[: ~s~;~*~]" *secret-at-hand* (string char))))
       (let ((end (if up-to
                      (if forward
                          (tuatara.buffer:buffer-forward-char b found -1)
@@ -636,6 +647,8 @@ car turns true."
          (ending nil)
          ;; since the last line end, only blanks: a blank line ends a sentence
          (line-blank t)
+         ;; a carriage return just seen: a line end unless a newline comes next
+         (return-before nil)
          ;; the octets read, three more for those of a character a piece cut, carried to the next
          (piece (make-array (+ 3 (min *count-piece* (max 1 (- end start)))) :element-type '(unsigned-byte 8)))
          (carried 0) (counted 0)
@@ -647,7 +660,12 @@ car turns true."
                     (and (>= i 0) (>= i (- chars (length ring))) (schar ring (mod i (length ring)))))))
     (declare (type fixnum lines sentences words chars carried counted left))
     (labels ((sentence-over () (when in-sentence (incf sentences)) (setf in-sentence nil ending nil))
+             (line-over ()
+               (when line-blank (sentence-over))
+               (setf line-blank t))
              (see (char)
+               (when (and return-before (char/= char #\Newline)) (line-over))
+               (setf return-before (char= char #\Return))
                (setf (schar ring (mod chars (length ring))) char)
                (incf chars)
                (let ((word (word-char-p char)))
@@ -663,9 +681,7 @@ car turns true."
                                (:blank (setf ending :blank))
                                (t (setf ending nil))))))
                    (:blank (if blank (sentence-over) (setf ending nil))))
-                 (cond ((char= char #\Newline)
-                        (when line-blank (sentence-over))
-                        (setf line-blank t))
+                 (cond ((char= char #\Newline) (line-over))
                        (blank)
                        (t
                         (setf line-blank nil in-sentence t)
@@ -683,6 +699,8 @@ car turns true."
                           (tuatara.text:rope-copy-into rope at (+ at n) piece carried)
                           (loop for k from carried below filled
                                 do (let ((octet (aref piece k)))
+                                     ;; a carriage return no newline follows ends a line too
+                                     (when (and (eql last-octet 13) (/= octet 10)) (incf lines))
                                      (setf last-octet octet)
                                      (when (= octet 10) (incf lines))))
                           ;; a character begun at the end may go on in the next piece
@@ -723,8 +741,8 @@ buffer was killed."
 
 (define-command count-words ()
   "Say how many lines, sentences, words and characters the selection has, or
-the whole buffer without one: \"Region has 2 lines, 2 sentences, 9 words, and
-48 characters\". A sentence ends where \\[forward-sentence] finds its end: at
+the whole buffer without one (the part shown of a narrowed one): \"Region
+has 2 lines, 2 sentences, 9 words, and 48 characters\". A sentence ends where \\[forward-sentence] finds its end: at
 . ? ! or … and a space or a line end after it (two spaces, a tab or a line
 end with *SENTENCE-END-DOUBLE-SPACE*), or at a blank line. The lines search filters hide
 \(\\[search-filter-regex]) are not counted. A large text is counted in the background, its
@@ -734,7 +752,8 @@ the buffer it waits its turn (\\[list-jobs])."
     (multiple-value-bind (start end what)
         (if (tuatara.buffer:buffer-mark-active-p b)
             (multiple-value-bind (s e) (tuatara.buffer:buffer-region b) (values s e "Region"))
-            (values 0 (tuatara.buffer:buffer-size b) "Buffer"))
+            (multiple-value-call #'values (tuatara.buffer:buffer-bounds b)
+              (if (tuatara.buffer:buffer-narrowed-p b) "The part shown" "Buffer")))
       (unless (queue-if-busy b (format nil "Counting the words of the ~(~a~)" what)
                              (list (cons start :before) (cons end :after))
                              (lambda (start end) (start-word-count b start end what)))

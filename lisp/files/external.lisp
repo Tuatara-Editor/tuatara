@@ -21,20 +21,22 @@ program in *OPEN-EXTERNALLY-PROGRAMS* goes there instead.")
 
 (defvar *open-externally-programs* '()
   "Programs to open files and addresses in instead of the one the desktop
-would choose (xdg-open), by MIME type as xdg-mime names them: a list of
-(TYPE . PROGRAM). TYPE is a MIME type, \"application/pdf\", or a group of
-them, \"video/*\"; for web and mail addresses in Org links,
-\"x-scheme-handler/https\" or \"x-scheme-handler/mailto\". PROGRAM is a
-program's name, looked for on the PATH, or its full path, or a list of it and
-the arguments to give before the file's name. A file's type is told by its
-contents, not its name (*KIND-MIME-TYPES*); the entry for the exact type
-wins over one for its group, and a type with none goes to the desktop's
-program. The program is run as it is, never by a shell. For example:
-'((\"application/pdf\" . \"zathura\") (\"video/*\" \"mpv\" \"--fs\")).")
+would choose (xdg-open), by Multipurpose Internet Mail Extensions (MIME) type
+as xdg-mime names them: a list of (TYPE . PROGRAM). TYPE is a MIME type,
+\"application/pdf\", or a group of them, \"video/*\"; for web and mail
+addresses in Org links, \"x-scheme-handler/https\" or
+\"x-scheme-handler/mailto\". PROGRAM is a program's name, looked for on the
+PATH, or its full path, or a list of it and the arguments to give before the
+file's name. A file's type is told by its contents, not its name
+(*KIND-MIME-TYPES*); the entry for the exact type wins over one for its group,
+and a type with none goes to the desktop's program. The program is run as it
+is, never by a shell. For example: '((\"application/pdf\" . \"zathura\")
+(\"video/*\" \"mpv\" \"--fs\")).")
 
 (defparameter *kind-mime-types*
   '((:png "image/png") (:jpeg "image/jpeg") (:gif "image/gif") (:webp "image/webp") (:bmp "image/bmp")
     (:tiff "image/tiff") (:raw "image/x-dcraw") (:ico "image/vnd.microsoft.icon") (:heif "image/heif") (:avif "image/avif")
+    (:jp2 "image/jp2") (:j2k "image/x-jp2-codestream") (:jxl "image/jxl")
     (:xcf "image/x-xcf") (:psd "image/vnd.adobe.photoshop") (:svg "image/svg+xml") (:pdf "application/pdf")
     (:mp4 "video/mp4" ("m4a" . "audio/mp4") ("m4b" . "audio/mp4") ("mov" . "video/quicktime") ("qt" . "video/quicktime")
      ("3gp" . "video/3gpp") ("3g2" . "video/3gpp2"))
@@ -61,17 +63,19 @@ program. The program is run as it is, never by a shell. For example:
      ("ppt" . "application/vnd.ms-powerpoint") ("pot" . "application/vnd.ms-powerpoint") ("pps" . "application/vnd.ms-powerpoint"))
     (:odt "application/vnd.oasis.opendocument.text") (:ods "application/vnd.oasis.opendocument.spreadsheet")
     (:odp "application/vnd.oasis.opendocument.presentation"))
-  "The MIME type of each kind of file \\[open-externally] may open, by
-*OPEN-EXTERNALLY-PROGRAMS*: (KIND TYPE (EXTENSION . TYPE)...), KIND as
-TUATARA.IO:OCTETS-KIND tells it by the file's contents, TYPE its type, and
-where the kind holds more than one sort of thing (sound or video, a
-document or its template, an Office document of before 2007), the type a name
-ending in EXTENSION has instead (an Ogg file named .ogv is video/ogg, a
-compound file named .xls application/vnd.ms-excel).")
+  "The Multipurpose Internet Mail Extensions (MIME) type of each kind of file
+\\[open-externally] may open, by *OPEN-EXTERNALLY-PROGRAMS*: (KIND TYPE
+(EXTENSION . TYPE)...), KIND as TUATARA.IO:OCTETS-KIND tells it by the
+file's contents, TYPE its type, and where the kind holds more than one sort
+of thing (sound or video, a document or its template, an Office document of
+before 2007), the type a name ending in EXTENSION has instead (an Ogg file
+named .ogv is video/ogg, a compound file named .xls
+application/vnd.ms-excel).")
 
 (defun file-mime-type (kind name)
-  "The MIME type of a file of KIND, as its contents tell, named NAME
-(*KIND-MIME-TYPES*); NIL for a kind with none."
+  "The Multipurpose Internet Mail Extensions (MIME) type of a file of KIND, as
+its contents tell, named NAME (*KIND-MIME-TYPES*); NIL for a kind with
+none."
   (let ((entry (assoc kind *kind-mime-types*)))
     (when entry
       (let ((extension (tuatara.io:native-file-type name)))
@@ -79,10 +83,10 @@ compound file named .xls application/vnd.ms-excel).")
             (second entry))))))
 
 (defun chosen-program (type)
-  "The program *OPEN-EXTERNALLY-PROGRAMS* gives the MIME type TYPE, the exact
-type before its group, as three values: its full path (NIL when it is not
-found), the arguments to give before the name, and the program as given; NIL
-when it gives none."
+  "The program *OPEN-EXTERNALLY-PROGRAMS* gives the Multipurpose Internet Mail
+Extensions (MIME) type TYPE, the exact type before its group, as three
+values: its full path (NIL when it is not found), the arguments to give
+before the name, and the program as given; NIL when it gives none."
   (when type
     (let* ((group (concatenate 'string (subseq type 0 (or (position #\/ type) (length type))) "/*"))
            (entry (or (assoc type *open-externally-programs* :test #'string-equal)
@@ -90,16 +94,17 @@ when it gives none."
       (when entry
         (let ((words (if (listp (cdr entry)) (cdr entry) (list (cdr entry)))))
           (unless (and words (every #'stringp words) (plusp (length (first words))))
-            (error "*open-externally-programs*: the program for ~a is not a name, or a list of a name and its arguments"
+            (refuse "*open-externally-programs*: the program for ~a is not a name, or a list of a name and its arguments"
                    (car entry)))
           (values (tuatara.io:find-program (first words)) (rest words) (first words)))))))
 
 (defun external-opener (type)
-  "What opens a file or an address of the MIME type TYPE outside Tuatara, as
-four values: the program's full path (NIL when not found), the arguments to
-give before the name, the program as given, and how to speak of it (the
-desktop's program, or the program's name); a program of your choosing
-(*OPEN-EXTERNALLY-PROGRAMS*) before the desktop's (*OPEN-EXTERNALLY-PROGRAM*)."
+  "What opens a file or an address of the Multipurpose Internet Mail
+Extensions (MIME) type TYPE outside Tuatara, as four values: the program's
+full path (NIL when not found), the arguments to give before the name, the
+program as given, and how to speak of it (the desktop's program, or the
+program's name); a program of your choosing (*OPEN-EXTERNALLY-PROGRAMS*)
+before the desktop's (*OPEN-EXTERNALLY-PROGRAM*)."
   (multiple-value-bind (path arguments given) (chosen-program type)
     (if given
         (values path arguments given (tuatara.io:native-file-name given))
@@ -107,14 +112,14 @@ desktop's program, or the program's name); a program of your choosing
                 '() *open-externally-program* "the desktop's program"))))
 
 (defun opener-missing (given type)
-  "What to say when GIVEN, the program to open the MIME type TYPE with, is
-not found."
+  "What to say when GIVEN, the program to open the Multipurpose Internet Mail
+Extensions (MIME) type TYPE with, is not found."
   (if (nth-value 2 (chosen-program type))
       (format nil "~a, the program for ~a in *open-externally-programs*, was not found" given type)
       (format nil "~a was not found: install xdg-utils to open files in the desktop's programs" given)))
 
 (defvar *open-externally-kinds*
-  '(:png :jpeg :gif :webp :bmp :tiff :raw :ico :heif :avif :xcf :psd :pdf
+  '(:png :jpeg :gif :webp :bmp :tiff :raw :ico :heif :avif :jp2 :j2k :jxl :xcf :psd :pdf
     :mp4 :matroska :avi :mpeg :mp3 :ogg :flac :wav :aiff :midi
     :docx :xlsx :pptx :odt :ods :odp)
   "The kinds of file \\[open-externally] opens in the desktop's own program, as
@@ -139,16 +144,17 @@ read where its first directory stands when that is past them
 third value, why)."
   (let ((head (tuatara.io:file-head path)))
     (cond ((null head)
-           (handler-case (progn (tuatara.io:call-with-file path (constantly nil))
-                                (values nil nil "it cannot be read"))
+           (handler-case (reporting-errors ("reading ~a" path)
+                           (tuatara.io:call-with-file path (constantly nil))
+                           (values nil nil "it cannot be read"))
              (error (e) (values nil nil (princ-to-string e)))))
           ((tuatara.io:tiff-octets-p head)
            (multiple-value-bind (words kind)
-               (ignore-errors
-                (tuatara.io:call-with-file path (lambda (fd native size)
-                                                  (declare (ignore native size))
-                                                  (octets-kind-of-file fd head))))
-             (if kind (values words kind) (tuatara.io:octets-kind head))))
+               (ignoring-errors-reported ("reading ~a" path)
+                 (tuatara.io:call-with-file path (lambda (fd native size)
+                                                   (declare (ignore native size))
+                                                   (octets-kind-of-file fd head))))
+             (if (keywordp kind) (values words kind) (tuatara.io:octets-kind head))))
           (t (tuatara.io:octets-kind head)))))
 
 (defun open-externally-refusal (path &key also)
@@ -204,12 +210,12 @@ used, in universal time.")
 folders a session still uses (*PRIVATE-FOLDERS-HELD*): copies whose programs
 have them open still, or are long done."
   (let ((day-ago (- (get-universal-time) 86400)))
-    (dolist (entry (ignore-errors (tuatara.io:directory-entries directory)))
+    (dolist (entry (ignoring-errors-reported ("listing ~a" directory) (tuatara.io:directory-entries directory)))
       (let* ((path (tuatara.io:path-join directory (first entry)))
-             (stamp (ignore-errors (tuatara.io:path-stamp path :follow nil))))
+             (stamp (tuatara.io:path-stamp path :follow nil :failure nil)))
         (when (and stamp (< (mtime-universal-time (tuatara.io:stamp-mtime stamp)) day-ago)
                    (not (gethash (tuatara.io:slash-ended path) *private-folders-held*)))
-          (ignore-errors (tuatara.io:delete-tree path)))))))
+          (ignoring-errors-reported ("deleting ~a" path) (tuatara.io:delete-tree path)))))))
 
 (defun new-private-folder (directory &key (hold t))
   "A new folder of its own in DIRECTORY, its name random, for you alone,
@@ -225,10 +231,46 @@ do."
       (setf (gethash place *private-folders-held*) t))
     place))
 
+(defun make-owned-folder (name)
+  "A new folder of its own in NAME (ending in /, in the cache directory), its
+file owner.lock locked from the moment it is made while the session runs, and
+then naming this machine, so that no other session, whatever process numbers
+it sees, takes it for one left behind (FORGET-ABANDONED-FOLDERS). Returns the
+folder, a native name ending in /, and the descriptor of the lock, to close
+when the folder is deleted."
+  (let* ((folder (new-private-folder (private-cache-directory name)))
+         (lock (tuatara.io:path-join folder "owner.lock"))
+         (fd (tuatara.io:open-lock-file lock)))
+    (tuatara.io:write-octets fd (tuatara.text:string-octets (machine-instance)) :path lock)
+    (values folder fd)))
+
+(defun forget-abandoned-folders (name &optional own)
+  "Delete the folders in NAME (in the cache directory) that sessions on this
+machine no longer running made with MAKE-OWNED-FOLDER and left (they crashed):
+each whose owner.lock names this machine and no session holds; and one with no
+owner.lock, made more than an hour ago. OWN, a folder of this session, stays.
+Another machine's, sharing the folder, are its own to judge."
+  (let ((all (private-cache-directory name))
+        (hour-ago (- (get-universal-time) 3600)))
+    (dolist (entry (ignoring-errors-reported ("listing ~a" all) (tuatara.io:directory-entries all)))
+      (let* ((folder (tuatara.io:slash-ended (tuatara.io:path-join all (first entry))))
+             (lock (tuatara.io:path-join folder "owner.lock")))
+        (unless (equal folder own)
+          (if (eq (tuatara.io:path-kind lock :follow nil) :regular)
+              (let ((host (ignoring-errors-reported ("reading ~a" lock)
+                            (tuatara.text:lenient-string (tuatara.io:file-octets lock :limit 1024))))
+                    (fd (ignoring-errors-reported ("opening ~a" lock) (sb-posix:open lock sb-posix:o-rdwr))))
+                (when (and fd (equal host (machine-instance)) (tuatara.runtime:lock-fd fd))
+                  (ignoring-errors-reported ("deleting ~a" folder) (tuatara.io:delete-tree folder)))
+                (when fd (sb-posix:close fd)))
+              (let ((stamp (tuatara.io:path-stamp folder :follow nil :failure nil)))
+                (when (and stamp (< (mtime-universal-time (tuatara.io:stamp-mtime stamp)) hour-ago))
+                  (ignoring-errors-reported ("deleting ~a" folder) (tuatara.io:delete-tree folder))))))))))
+
 (defun delete-private-folder (folder)
   "Delete FOLDER, a private folder NEW-PRIVATE-FOLDER made, and all in it; it
 is held no longer."
-  (ignore-errors (tuatara.io:delete-tree folder))
+  (ignoring-errors-reported ("deleting ~a" folder) (tuatara.io:delete-tree folder))
   (remhash folder *private-folders-held*))
 
 (defun keep-private-folders-fresh (editor)
@@ -243,7 +285,7 @@ it is next wanted."
       (setf *private-folders-touched* now)
       (maphash (lambda (folder held)
                  (declare (ignore held))
-                 (ignore-errors (tuatara.io:touch-path folder)))
+                 (ignoring-errors-reported ("marking ~a as used" folder) (tuatara.io:touch-path folder)))
                *private-folders-held*))
     (max 60 (- (+ *private-folders-touched* (* 6 3600)) now))))
 
@@ -279,8 +321,12 @@ stays when the editor or its terminal goes, nothing of the editor's given to
 it on standard input, output or error; it is waited for in the background.
 Returns its process."
   (let ((process (multiple-value-bind (run given) (tuatara.io:setsid-command program arguments)
-                   (sb-ext:run-program run given :wait nil :input nil :output nil :error nil))))
-    (tuatara.runtime:make-guarded-thread (lambda () (ignore-errors (sb-ext:process-wait process) (sb-ext:process-close process)))
+                   (sb-ext:run-program run given :wait nil :input nil :output nil :error nil
+                                                 :environment (tuatara.io:program-environment)))))
+    (tuatara.runtime:make-guarded-thread (lambda ()
+                                           (ignoring-errors-reported ("waiting for ~a" label)
+                                             (sb-ext:process-wait process)
+                                             (sb-ext:process-close process)))
                                          :name (format nil "tuatara ~a" label))
     process))
 
@@ -291,21 +337,23 @@ given ARGUMENTS before its name: copy it where only you can read it
 file changed after it was looked at is not opened; and open the copy. Returns
 what to say of it, LABEL naming the program."
   (handler-case
-      (let* ((copy (private-copy-path name))
-             (place (tuatara.io:parent-path copy)))
-        ;; the content copied into a new file of its own: a link is followed to its file, never made again
-        (unless (eq :regular (tuatara.io:path-kind native))
-          (return-from open-copy-externally (format nil "~a is not a plain file: not opened" name)))
-        (unless (tuatara.io:copy-regular-file native copy)
-          (return-from open-copy-externally (format nil "~a could not be copied whole: not opened" name)))
-        (sb-posix:chmod copy #o400)
-        (unless (eq kind (nth-value 1 (file-kind copy)))
-          (ignore-errors (tuatara.io:delete-tree place))
-          (return-from open-copy-externally (format nil "~a changed after it was looked at: not opened" name)))
-        ;; a session of its own (setsid): the program stays when the editor or its terminal goes
-        (start-detached program (append arguments (list copy)) :label "opened file")
-        (tuatara.runtime:debug-report :file "opened outside Tuatara: ~a (~a) as its copy ~a, with ~a" native words copy program)
-        (format nil "Opened ~a in ~a (a copy of it, read only)" name label))
+      (reporting-errors ("opening ~a outside Tuatara" native)
+        (let* ((copy (private-copy-path name))
+               (place (tuatara.io:parent-path copy)))
+          ;; the content copied into a new file of its own: a link is followed to its file, never made again
+          (unless (eq :regular (tuatara.io:path-kind native))
+            (return-from open-copy-externally (format nil "~a is not a plain file: not opened" name)))
+          (unless (tuatara.io:copy-regular-file native copy)
+            (return-from open-copy-externally (format nil "~a could not be copied whole: not opened" name)))
+          (sb-posix:chmod copy #o400)
+          (unless (eq kind (nth-value 1 (file-kind copy)))
+            (ignoring-errors-reported ("deleting ~a" place) (tuatara.io:delete-tree place))
+            (return-from open-copy-externally (format nil "~a changed after it was looked at: not opened" name)))
+          ;; a session of its own (setsid): the program stays when the editor or its terminal goes
+          (start-detached program (append arguments (list copy)) :label "opened file")
+          (tuatara.runtime:debug-report :file "opened outside Tuatara: ~a (~a) as its copy ~a, with ~a"
+                                        native words copy program)
+          (format nil "Opened ~a in ~a (a copy of it, read only)" name label)))
     (error (e) (format nil "~a not opened: ~a" name e))))
 
 (defun open-externally-file (path &key also)
@@ -330,7 +378,7 @@ was looked at is not opened. True when the opening was started."
                      (message "Not opened")
                      nil)
                     (t
-                     (let ((frontend (editor-frontend *editor*))
+                     (let ((editor *editor*)
                            (opening (cons nil nil)))
                        (setf (car opening)
                              (tuatara.runtime:make-guarded-thread
@@ -342,7 +390,7 @@ was looked at is not opened. True when the opening was started."
                                              (serious-condition (e) (format nil "~a not opened: ~a" name e))))
                                   ;; however it ends, the opening is over and said
                                   (unless (cdr opening) (setf (cdr opening) (format nil "~a not opened" name)))
-                                  (ignore-errors (tuatara.frontend:frontend-wake frontend))))
+                                  (wake-editor editor)))
                               :name "tuatara open outside"))
                        (push opening *openings*)
                        (message "Opening ~a in ~a..." name label)
@@ -373,12 +421,12 @@ PROMPT."
 
 (define-command open-externally ()
   "Open the file shown, in the desktop's own program for its kind (xdg-open),
-or the one *OPEN-EXTERNALLY-PROGRAMS* gives its MIME type, for what Tuatara
-does not do: printing, forms, playing. In a list of a
-directory, the entry on the line; in a PDF's view, the PDF. That program is
-not shut in the sandbox: only a picture, a PDF, a sound or a video
-(*OPEN-EXTERNALLY-KINDS*), by its contents and with a name that agrees, is
-opened, after asking (*OPEN-EXTERNALLY-ASK*)."
+or the one *OPEN-EXTERNALLY-PROGRAMS* gives its Multipurpose Internet Mail
+Extensions (MIME) type, for what Tuatara does not do: printing, forms,
+playing. In a list of a directory, the entry on the line; in a PDF's view, the
+PDF. That program is not shut in the sandbox: only a picture, a PDF, a sound
+or a video (*OPEN-EXTERNALLY-KINDS*), by its contents and with a name that
+agrees, is opened, after asking (*OPEN-EXTERNALLY-ASK*)."
   (let ((path (shown-file (current-buffer))))
     (if (null path)
         (message "~a shows no file" (tuatara.buffer:buffer-name (current-buffer)))
@@ -395,14 +443,17 @@ MISSING, what to do about it (install readpst)."
 (defparameter *outside-programs*
   '((:spelling :name "Enchant" :what "spelling"
      :fedora ("enchant2") :debian ("libenchant-2-2") :arch ("enchant") :weight :recommends)
-    (:sandbox :name "bubblewrap" :what "pictures and programs run shut in"
+    (:sandbox :name "bubblewrap" :what "pictures, programs and grammars run shut in"
      :fedora ("bubblewrap") :debian ("bubblewrap") :arch ("bubblewrap") :weight :recommends)
     (:pictures :name "ImageMagick" :what "pictures"
-     :fedora ("ImageMagick") :debian ("imagemagick") :arch ("imagemagick") :weight :recommends)
+     :fedora ("ImageMagick") :debian ("imagemagick") :arch ("imagemagick" "libjpeg-turbo" "libtiff" "libwebp" "libheif" "librsvg" "libraw" "openjpeg2" "libjxl")
+     :weight :recommends)
     (:pdf :name "poppler" :what "PDF files"
      :fedora ("poppler-utils") :debian ("poppler-utils") :arch ("poppler") :weight :recommends)
     (:git :name "git" :what "the git interface"
      :fedora ("git-core") :debian ("git") :arch ("git") :weight :recommends)
+    (:man :name "man-db and groff" :what "manual pages"
+     :fedora ("man-db" "groff-base") :debian ("man-db" "groff-base") :arch ("man-db" "groff") :weight :recommends)
     (:notify :name "libnotify" :what "notifications told on the desktop"
      :fedora ("libnotify") :debian ("libnotify-bin") :arch ("libnotify") :weight :recommends)
     (:gpg :name "GnuPG" :what "encrypted files"
@@ -419,17 +470,22 @@ MISSING, what to do about it (install readpst)."
 :NAME what it is called, :WHAT what it is for, the packages it comes in on
 Fedora, on Debian and Ubuntu, and on Arch (:FEDORA, :DEBIAN, :ARCH), and
 whether Tuatara's own packages recommend it or only suggest it (:WEIGHT).
+Arch's ImageMagick reads most kinds of picture only with their libraries
+installed beside it (JPEG, TIFF, WebP, HEIF and AVIF, SVG, camera raws,
+JPEG 2000, JPEG XL: the Arch packages of *IMAGE-FORMAT-LIBRARIES*), so they
+are named with it.
 \\[check-health] says what to install from it; tools/distro-packages.sh names
 the same packages.")
 
 (defun outside-program (key)
   "The entry of *OUTSIDE-PROGRAMS* for KEY, a property list; an error when there is none."
-  (or (rest (assoc key *outside-programs*)) (error "No outside program is known as ~s" key)))
+  (or (rest (assoc key *outside-programs*)) (refuse "No outside program is known as ~s" key)))
 
 (defun system-package-family ()
   "Which packages this system takes, by its /etc/os-release: :FEDORA,
 :DEBIAN (Ubuntu too) or :ARCH; NIL for another or when it does not say."
-  (let ((text (ignore-errors (tuatara.io:file-text "/etc/os-release" :limit 65536))))
+  (let ((text (ignoring-errors-reported ("reading /etc/os-release")
+                (tuatara.io:file-text "/etc/os-release" :limit 65536))))
     (when text
       (let ((ids (loop for line in (uiop:split-string text :separator '(#\Newline))
                        when (or (uiop:string-prefix-p "ID=" line) (uiop:string-prefix-p "ID_LIKE=" line))

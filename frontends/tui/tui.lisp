@@ -3,6 +3,7 @@
 
 (defpackage #:tuatara.frontend.tui
   (:use #:cl)
+  (:import-from #:tuatara.io #:define-c-function #:null-pointer #:null-pointer-p)
   (:import-from #:tuatara-user #:*tui-padding* #:*tui-pictures* #:*tui-mouse* #:*tui-colours* #:*kitty-keyboard*)
   (:documentation "The ncurses frontend: paints rows into the terminal and turns key presses into events.")
   (:export #:tui-frontend #:make-tui-frontend))
@@ -48,50 +49,57 @@ Escape then a key from Meta and that key, and Tab from C-i, RET from C-m:
 :AUTO (the standard) asks the terminal (kitty, foot, WezTerm, Ghostty and
 others speak it), T uses it, NIL never.")
 
-(cffi:define-foreign-library ncursesw (:unix (:or "libncursesw.so.6" "libncursesw.so")))
+(defun load-ncurses ()
+  "Load ncurses, the library the terminal is drawn with, once; signals when it is missing."
+  (unless (some #'tuatara.runtime:foreign-library-p '("libncursesw.so.6" "libncursesw.so"))
+    (error "The library libncursesw.so.6 is not installed")))
 
 ;; setlocale comes from the C library already linked into the SBCL runtime;
 ;; "libc.so" on Linux is a linker script, not a loadable object.
 
-(cffi:defcfun ("setlocale" %setlocale) :string (category :int) (locale :string))
-(cffi:defcfun ("newterm" %newterm) :pointer (type :string) (out :pointer) (in :pointer))
-(cffi:defcfun ("set_term" %set-term) :pointer (screen :pointer))
-(cffi:defcfun ("delscreen" %delscreen) :void (screen :pointer))
-(cffi:defcfun ("setupterm" %setupterm) :int (term :string) (fd :int) (error :pointer))
-(cffi:defcfun ("tigetnum" %tigetnum) :int (name :string))
-(cffi:defcfun ("del_curterm" %del-curterm) :int (terminal :pointer))
-(cffi:defcfun ("endwin" %endwin) :int)
-(cffi:defcfun ("raw" %raw) :int)
-(cffi:defcfun ("noecho" %noecho) :int)
-(cffi:defcfun ("nonl" %nonl) :int)
-(cffi:defcfun ("keypad" %keypad) :int (window :pointer) (enable :boolean))
-(cffi:defcfun ("nodelay" %nodelay) :int (window :pointer) (enable :boolean))
-(cffi:defcfun ("wtimeout" %wtimeout) :void (window :pointer) (delay :int))
-(cffi:defcfun ("set_escdelay" %set-escdelay) :int (ms :int))
-(cffi:defcfun ("wget_wch" %wget-wch) :int (window :pointer) (wch :pointer))
-(cffi:defcfun ("werase" %werase) :int (window :pointer))
-(cffi:defcfun ("wmove" %wmove) :int (window :pointer) (y :int) (x :int))
-(cffi:defcfun ("waddstr" %waddstr) :int (window :pointer) (string :string))
-(cffi:defcfun ("waddstr" %waddstr-octets) :int (window :pointer) (octets :pointer))
-(cffi:defcfun ("wclrtoeol" %wclrtoeol) :int (window :pointer))
-(cffi:defcfun ("wrefresh" %wrefresh) :int (window :pointer))
-(cffi:defcfun ("clearok" %clearok) :int (window :pointer) (enable :boolean))
-(cffi:defcfun ("ttyname" %ttyname) :string (fd :int))
-(cffi:defcfun ("wredrawln" %wredrawln) :int (window :pointer) (start :int) (count :int))
-(cffi:defcfun ("wattr_set" %wattr-set) :int (window :pointer) (attrs :uint32) (pair :short) (opts :pointer))
-(cffi:defcfun ("curs_set" %curs-set) :int (visibility :int))
-(cffi:defcfun ("getmaxx" %getmaxx) :int (window :pointer))
-(cffi:defcfun ("getmaxy" %getmaxy) :int (window :pointer))
-(cffi:defcfun ("start_color" %start-color) :int)
-(cffi:defcfun ("use_default_colors" %use-default-colors) :int)
-(cffi:defcfun ("has_colors" %has-colors) :boolean)
-(cffi:defcfun ("init_pair" %init-pair) :int (pair :short) (fg :short) (bg :short))
-(cffi:defcfun ("init_extended_pair" %init-extended-pair) :int (pair :int) (fg :int) (bg :int))
-(cffi:defcfun ("wbkgd" %wbkgd) :int (window :pointer) (ch :uint32))
-(cffi:defcfun ("getcurx" %getcurx) :int (window :pointer))
-(cffi:defcfun ("keyname" %keyname) :string (code :int))
-(cffi:defcfun ("typeahead" %typeahead) :int (fd :int))
-(cffi:defcfun ("ungetch" %ungetch) :int (ch :int))
+(define-c-function ("setlocale" %setlocale) :string (category :int) (locale :string))
+(define-c-function ("newterm" %newterm) :pointer (type :string) (out :pointer) (in :pointer))
+(define-c-function ("set_term" %set-term) :pointer (screen :pointer))
+(define-c-function ("delscreen" %delscreen) :void (screen :pointer))
+(define-c-function ("setupterm" %setupterm) :int (term :string) (fd :int) (error :pointer))
+(define-c-function ("tigetnum" %tigetnum) :int (name :string))
+(define-c-function ("del_curterm" %del-curterm) :int (terminal :pointer))
+(define-c-function ("endwin" %endwin) :int)
+(define-c-function ("raw" %raw) :int)
+(define-c-function ("noecho" %noecho) :int)
+(define-c-function ("nonl" %nonl) :int)
+(define-c-function ("keypad" %keypad) :int (window :pointer) (enable :bool))
+(define-c-function ("nodelay" %nodelay) :int (window :pointer) (enable :bool))
+(define-c-function ("wtimeout" %wtimeout) :void (window :pointer) (delay :int))
+(define-c-function ("set_escdelay" %set-escdelay) :int (ms :int))
+(define-c-function ("wget_wch" %wget-wch) :int (window :pointer) (wch :pointer))
+(define-c-function ("werase" %werase) :int (window :pointer))
+(define-c-function ("wmove" %wmove) :int (window :pointer) (y :int) (x :int))
+(define-c-function ("waddstr" %waddstr) :int (window :pointer) (string :string))
+(define-c-function ("waddstr" %waddstr-octets) :int (window :pointer) (octets :pointer))
+(define-c-function ("wclrtoeol" %wclrtoeol) :int (window :pointer))
+(define-c-function ("wrefresh" %wrefresh) :int (window :pointer))
+(define-c-function ("clearok" %clearok) :int (window :pointer) (enable :bool))
+(define-c-function ("ttyname" %ttyname) :string (fd :int))
+(define-c-function ("wredrawln" %wredrawln) :int (window :pointer) (start :int) (count :int))
+(define-c-function ("wattr_set" %wattr-set) :int (window :pointer) (attrs :uint32) (pair :short) (opts :pointer))
+(define-c-function ("curs_set" %curs-set) :int (visibility :int))
+(define-c-function ("getmaxx" %getmaxx) :int (window :pointer))
+(define-c-function ("getmaxy" %getmaxy) :int (window :pointer))
+(define-c-function ("start_color" %start-color) :int)
+(define-c-function ("use_default_colors" %use-default-colors) :int)
+(define-c-function ("has_colors" %has-colors) :bool)
+(define-c-function ("init_pair" %init-pair) :int (pair :short) (fg :short) (bg :short))
+(define-c-function ("init_extended_pair" %init-extended-pair) :int (pair :int) (fg :int) (bg :int))
+(define-c-function ("wbkgd" %wbkgd) :int (window :pointer) (ch :uint32))
+(define-c-function ("getcurx" %getcurx) :int (window :pointer))
+(define-c-function ("keyname" %keyname) :string (code :int))
+(define-c-function ("typeahead" %typeahead) :int (fd :int))
+(define-c-function ("ungetch" %ungetch) :int (ch :int))
+
+(defmacro c-variable (name type)
+  "The value of the C library's variable NAME, of the alien TYPE."
+  `(sb-alien:extern-alien ,name ,type))
 
 (defconstant +a-reverse+ (ash 1 18) "The ncurses A_REVERSE attribute bit.")
 (defconstant +a-bold+ (ash 1 21) "The ncurses A_BOLD attribute bit.")
@@ -124,13 +132,12 @@ to it apart (ATTRIBUTES-ON), so that pairs past 255 can be used."
 (defun attributes-on (window attrs)
   "Write what follows in WINDOW with ATTRS, the bits and the colour pair of
 SPEC-ATTRIBUTES, the pair given as ncurses's extended one."
-  (cffi:with-foreign-object (pair :int)
-    (setf (cffi:mem-ref pair :int) (ash attrs -32))
-    (%wattr-set window (ldb (byte 32 0) attrs) 0 pair)))
+  (sb-alien:with-alien ((pair sb-alien:int (ash attrs -32)))
+    (%wattr-set window (ldb (byte 32 0) attrs) 0 (sb-alien:alien-sap (sb-alien:addr pair)))))
 
 (defun attributes-off (window)
   "Write what follows in WINDOW plain again."
-  (%wattr-set window 0 0 (cffi:null-pointer)))
+  (%wattr-set window 0 0 (load-time-value (null-pointer) t)))
 
 (defun background-character (attrs)
   "ATTRS, as SPEC-ATTRIBUTES gives them, as a blank character carrying them
@@ -203,10 +210,10 @@ tells from its neighbours)."
   "How many colours the installed description of terminal type TERM gives (0
 for none), or NIL when there is none installed."
   (when (plusp (length term))
-    (cffi:with-foreign-object (error :int)
-      (when (zerop (%setupterm term 1 error))
+    (sb-alien:with-alien ((failure sb-alien:int 0))
+      (when (zerop (%setupterm term 1 (sb-alien:alien-sap (sb-alien:addr failure))))
         (prog1 (max 0 (%tigetnum "colors"))
-          (%del-curterm (cffi:mem-ref (cffi:foreign-symbol-pointer "cur_term") :pointer)))))))
+          (%del-curterm (c-variable "cur_term" sb-sys:system-area-pointer)))))))
 
 (defun wanted-colours (&key (setting *tui-colours*) (no-color (uiop:getenv "NO_COLOR")))
   "The colours asked for: *TUI-COLOURS* when it says (:24-BIT, 256, 16, 8 or
@@ -290,7 +297,7 @@ switching themes back and forth never uses the pairs up."
   "The modifiers a terminal's modifier FIELD stands for (one more than the sum
 of 1 Shift, 2 Alt, 4 Control, as xterm and kitty send it; NIL for none), as
 three values: shift, meta and control."
-  (let* ((number (or (and field (ignore-errors (parse-integer (first (uiop:split-string field :separator ":"))))) 1))
+  (let* ((number (or (and field (tuatara.text:whole-number (first (uiop:split-string field :separator ":")))) 1))
          (bits (max 0 (1- number))))
     (values (logtest bits 1) (logtest bits 2) (logtest bits 4))))
 
@@ -315,7 +322,7 @@ description names (KEY-NAME-KEY)."
            (multiple-value-bind (group n) (floor (- code 265) 12)
              (tuatara.frontend:make-key (intern (format nil "F~d" (1+ n)) :keyword)
                                         :shift (and (member group '(1 3)) t) :ctrl (and (member group '(2 3)) t) :meta (= group 4))))
-          (t (key-name-key (ignore-errors (%keyname code)))))))
+          (t (key-name-key (tuatara.runtime:ignoring-errors-reported ("naming the key ~d" code) (%keyname code)))))))
 
 (defvar *kitty-keyboard-decided* nil
   "True once the terminal frontend has decided on the kitty keyboard protocol,
@@ -365,7 +372,7 @@ terminal's own), so that it is sent only when it changes.")
 
 (defun stdscr ()
   "The ncurses standard screen."
-  (cffi:mem-ref (cffi:foreign-symbol-pointer "stdscr") :pointer))
+  (c-variable "stdscr" sb-sys:system-area-pointer))
 
 (defvar *saved-stderr* nil
   "The terminal's standard error, a descriptor, while DIVERT-STDERR has it sent to a log; else NIL.")
@@ -386,8 +393,9 @@ sessions before are kept beside it (TUATARA.IO:SESSION-LOG)."
 (defun restore-stderr ()
   "Give standard error back to the terminal (DIVERT-STDERR)."
   (when *saved-stderr*
-    (ignore-errors (sb-posix:dup2 *saved-stderr* 2))
-    (ignore-errors (sb-posix:close *saved-stderr*))
+    (tuatara.runtime:ignoring-errors-reported ("giving standard error back to the terminal")
+      (sb-posix:dup2 *saved-stderr* 2))
+    (tuatara.runtime:ignoring-errors-reported ("closing the saved standard error") (sb-posix:close *saved-stderr*))
     (setf *saved-stderr* nil)))
 
 (defun set-terminal-modes (modes on)
@@ -406,8 +414,28 @@ moves while a button is held, the wheel, in SGR's form), or to stop."
 takes it in as text and never as keys (READ-PASTE), or to stop."
   (set-terminal-modes '(2004) on))
 
+(defun tell-terminal-order (on)
+  "Ask the terminal to show the characters of each row in the order they are
+sent (ON true: explicit mode, CSI 8 l), as Tuatara sends right-to-left text
+already in the order it is read, so that a terminal that turns such text
+round itself does not turn it back; or to go back to its own way (implicit
+mode, CSI 8 h). The terminals that do it (those made with GNOME's VTE) take
+this request; the others turn nothing round, and leave it."
+  (terminal-control (if on "[8l" "[8h")))
+
+(defparameter *reordering-terminals* '("KONSOLE_VERSION" "MLTERM")
+  "The environment variables that name a terminal turning right-to-left text
+round itself, unasked and whatever it is asked (Konsole, mlterm): Tuatara
+sends such a terminal its text in the order it is stored.")
+
+(defmethod tuatara.frontend:frontend-reorders-text-p ((f tui-frontend))
+  "True when the terminal is one of *REORDERING-TERMINALS*."
+  (and (find-if (lambda (name) (let ((value (uiop:getenv name))) (and value (plusp (length value)))))
+                *reordering-terminals*)
+       t))
+
 (defmethod tuatara.frontend:frontend-start ((f tui-frontend))
-  (cffi:use-foreign-library ncursesw)
+  (load-ncurses)
   (%setlocale 6 "")                     ; LC_ALL: let ncurses handle UTF-8
   (setf *screen* nil)
   (start-screen f)
@@ -416,6 +444,7 @@ takes it in as text and never as keys (READ-PASTE), or to stop."
         *terminal-answers* :unasked)
   (when *tui-mouse* (tell-terminal-mouse t))
   (tell-terminal-pastes t)
+  (tell-terminal-order t)
   (setf (tui-wake f) (tuatara.io:make-wake-pipe)))
 
 (defun start-screen (f)
@@ -430,17 +459,17 @@ the first time, or again in place of the screen before, which has ended."
          (before *screen*)
          (screen (progn (when direct (sb-posix:setenv "TERM" direct 1))
                         (unwind-protect
-                             (%newterm (or direct term) (cffi:mem-ref (cffi:foreign-symbol-pointer "stdout") :pointer)
-                                       (cffi:mem-ref (cffi:foreign-symbol-pointer "stdin") :pointer))
+                             (%newterm (or direct term) (c-variable "stdout" sb-sys:system-area-pointer)
+                                       (c-variable "stdin" sb-sys:system-area-pointer))
                           (when direct (sb-posix:setenv "TERM" term 1))))))
-    (when (cffi:null-pointer-p screen)
+    (when (null-pointer-p screen)
       (error "The terminal ~a is not known (TERM)" (or term "not set")))
     (%set-term screen)
     (when before (%delscreen before))
     (setf *screen* screen *colours-wanted* wanted)
     (setf *colours* (and wanted (%has-colors) (zerop (%start-color))))
     (multiple-value-bind (count why)
-        (colours-used wanted (if *colours* (cffi:mem-ref (cffi:foreign-symbol-pointer "COLORS") :int) 0) direct)
+        (colours-used wanted (if *colours* (c-variable "COLORS" sb-alien:int) 0) direct)
       (setf *terminal-colours* count *colours-why* why)))
   (setf (tui-window f) (stdscr))
   ;; nonl: the return key arrives as itself (13), not made a newline, so that
@@ -448,7 +477,7 @@ the first time, or again in place of the screen before, which has ended."
   (%raw) (%noecho) (%nonl)
   (when *colours*
     (%use-default-colors)
-    (setf *terminal-pairs* (cffi:mem-ref (cffi:foreign-symbol-pointer "COLOR_PAIRS") :int)
+    (setf *terminal-pairs* (c-variable "COLOR_PAIRS" sb-alien:int)
           *direct-colour* (>= *terminal-colours* #x1000000)
           *next-pair* 1)
     (clrhash *pairs*)
@@ -467,23 +496,26 @@ told apart (1) and a key with Shift is reported with what it types (4)."
 
 (defun give-terminal-back (f)
   "Leave F's terminal as it was before the editor: its pictures gone, and its
-cursor, keys, mouse and pastes its own again; ncurses ended."
+cursor, keys, mouse, pastes and order of characters its own again; ncurses
+ended."
   (forget-images f t)
   (terminal-control "[0 q")
   (terminal-control "]112~c" (code-char 7))
   (when *kitty-keyboard-on* (kitty-keyboard nil))
   (when (tui-mouse f) (tell-terminal-mouse nil))
   (tell-terminal-pastes nil)
+  (tell-terminal-order nil)
   (setf *shown-cursor-shape* nil *shown-cursor-colour* nil)
   (%endwin))
 
 (defun take-terminal-again (f kitty mouse)
   "Take F's terminal back after GIVE-TERMINAL-BACK: the kitty keyboard
 protocol on again when KITTY, the mouse reported when MOUSE, pastes marked,
-and the screen painted whole, as what was drawn on it meanwhile is gone."
+characters shown in the order sent, and the screen painted whole, as what was drawn on it meanwhile is gone."
   (when kitty (kitty-keyboard t))
   (when mouse (tell-terminal-mouse t))
   (tell-terminal-pastes t)
+  (tell-terminal-order t)
   (%clearok (tui-window f) t)
   (%wrefresh (tui-window f)))
 
@@ -500,13 +532,16 @@ and the screen painted whole, as what was drawn on it meanwhile is gone."
   (restore-stderr))
 
 (defmethod tuatara.frontend:frontend-terminal-device ((f tui-frontend))
-  (and (tui-window f) (ignore-errors (%ttyname 0))))
+  (and (tui-window f) (tuatara.runtime:ignoring-errors-reported ("naming the terminal") (%ttyname 0))))
 
-(defmethod tuatara.frontend:frontend-lend-terminal ((f tui-frontend) function)
+(defmethod tuatara.frontend:frontend-lend-terminal ((f tui-frontend) function &key words)
   (if (null (tui-window f))
       (funcall function)
       (let ((kitty *kitty-keyboard-on*) (mouse (tui-mouse f)))
         (give-terminal-back f)
+        (when words
+          (format t "~%~a~%" (tuatara.command:escape-controls words))
+          (finish-output))
         (unwind-protect (funcall function)
           (take-terminal-again f kitty mouse)))))
 
@@ -577,9 +612,9 @@ text (TUI-PADDING), which is what the editor has to lay out."
 
 (defun read-wide-char (window)
   "Two values from wget_wch: the status (0 for a character, 256 for a key code, -1 for none) and the value."
-  (cffi:with-foreign-object (wch :uint32)
-    (let ((status (%wget-wch window wch)))
-      (values status (cffi:mem-ref wch :uint32)))))
+  (sb-alien:with-alien ((wch (sb-alien:unsigned 32) 0))
+    (let ((status (%wget-wch window (sb-alien:alien-sap (sb-alien:addr wch)))))
+      (values status wch))))
 
 (defun char-key (code &key meta)
   "The KEY for a character CODE from the terminal, decoding control characters:
@@ -627,7 +662,9 @@ octets so far, is true."
 first time anything wants to know): :KEYBOARD, the kitty keyboard protocol;
 :PICTURES, kitty's pictures; :SHARED, pictures read from shared memory."
   (when (eq *terminal-answers* :unasked)
-    (setf *terminal-answers* (or (ignore-errors (ask-terminal)) '())))
+    (setf *terminal-answers* (or (tuatara.runtime:ignoring-errors-reported ("asking the terminal what it does")
+                                   (ask-terminal))
+                                 '())))
   (getf *terminal-answers* key))
 
 (defun ask-terminal ()
@@ -657,7 +694,8 @@ answers as TERMINAL-ANSWERS-IN reads them."
              (give-back-keys (cl-ppcre:regex-replace-all (format nil "~c\\[\\?[0-9;]*[uc]|~c_G[^~c]*~c\\\\" #\Escape #\Escape #\Escape #\Escape)
                                                          text ""))
              (terminal-answers-in text)))
-      (when shared (ignore-errors (sb-posix:unlink (shared-picture-path shared)))))))
+      (when shared
+        (handler-case (sb-posix:unlink (shared-picture-path shared)) (sb-posix:syscall-error () nil))))))
 
 (defun multiplexer-p ()
   "True when Tuatara runs inside tmux or screen, which take a picture's
@@ -692,11 +730,13 @@ user alone; NIL when none could be made."
   (let* ((name (shared-picture-name))
          (path (shared-picture-path name))
          (fd (handler-case (sb-posix:open path (logior sb-posix:o-creat sb-posix:o-excl sb-posix:o-rdwr) #o600)
-               (error () nil))))
+               (sb-posix:syscall-error () nil))))
     (when fd
       (unwind-protect
-           (handler-case (progn (tuatara.io:write-octets fd octets :path name) name)
-             (error () (ignore-errors (sb-posix:unlink path)) nil))
+           (handler-case (tuatara.runtime:reporting-errors ("writing a picture to ~a" path)
+                           (tuatara.io:write-octets fd octets :path name)
+                           name)
+             (error () (tuatara.runtime:ignoring-errors-reported ("deleting ~a" path) (sb-posix:unlink path)) nil))
         (sb-posix:close fd)))))
 
 (defun terminal-answers-in (text)
@@ -750,8 +790,8 @@ it (by a US keyboard when the terminal does not say); Shift stays only on
 keys that type nothing."
   (let* ((fields (uiop:split-string parameters :separator ";"))
          (codes (uiop:split-string (first fields) :separator ":"))
-         (code (ignore-errors (parse-integer (first codes))))
-         (shifted-code (and (second codes) (plusp (length (second codes))) (ignore-errors (parse-integer (second codes))))))
+         (code (tuatara.text:whole-number (first codes)))
+         (shifted-code (and (second codes) (plusp (length (second codes))) (tuatara.text:whole-number (second codes)))))
     (multiple-value-bind (shift meta ctrl) (modifier-bits (second fields))
       (when code
         (let ((special (cdr (assoc code *kitty-key-codes*))))
@@ -786,7 +826,7 @@ answer among them."
                       (#\Z (return-from csi-key (tuatara.frontend:make-key :tab :shift t)))
                       (#\A :up) (#\B :down) (#\C :right) (#\D :left) (#\H :home) (#\F :end)
                       (#\P :f1) (#\Q :f2) (#\S :f4)
-                      (#\~ (cdr (assoc (ignore-errors (parse-integer (first fields))) *csi-tilde-keys*))))))
+                      (#\~ (cdr (assoc (tuatara.text:whole-number (first fields)) *csi-tilde-keys*))))))
           (and base (tuatara.frontend:make-key base :ctrl ctrl :meta meta :shift shift)))))))
 
 (defconstant +key-mouse+ 409 "ncurses' code for the start of a report of the mouse.")
@@ -802,7 +842,8 @@ first button's press (a second or third on the cell soon after, a double or
 triple), its moves while held, its letting go, the middle button's press,
 the wheel; at the cell of the editor's screen (the padding taken off), with
 Control, Meta and Shift as held. NIL for the other buttons."
-  (let ((fields (mapcar (lambda (field) (ignore-errors (parse-integer field))) (uiop:split-string (subseq parameters 1) :separator ";"))))
+  (let ((fields (mapcar (lambda (field) (tuatara.text:whole-number field))
+                        (uiop:split-string (subseq parameters 1) :separator ";"))))
     (destructuring-bind (&optional button x y &rest more) fields
       (declare (ignore more))
       (when (and button x y)
@@ -1075,8 +1116,8 @@ may reach another thread and so not end the wait."
 
 (defmethod tuatara.frontend:frontend-put-row ((f tui-frontend) row string &key face spans scales over parts)
   (declare (ignore scales over parts))     ; a terminal's rows are all one size, painted as ncurses keeps them
-  ;; nothing the terminal cannot be sent or that would move its cursor
-  (setf string (tuatara.display:displayable string))
+  ;; nothing the terminal cannot be sent or that would move its cursor; Arabic letters joined, as no terminal does
+  (setf string (tuatara.display:joined-arabic (tuatara.display:displayable string) spans))
   ;; a mark beginning the row would be drawn on the cell before it: on a dotted circle
   (when (and (plusp (length string)) (tuatara.display:mark-code-p (char-code (char string 0))))
     (setf string (concatenate 'string (string tuatara.display:*mark-base*) string)
@@ -1092,7 +1133,7 @@ may reach another thread and so not end the wait."
           (flet ((put (text start end attrs)
                    (when (< start end)
                      (when (plusp attrs) (attributes-on window attrs))
-                     (cffi:with-foreign-string (octets text :start start :end end :encoding :utf-8)
+                     (tuatara.io:with-c-string (octets text :start start :end end)
                        (%waddstr-octets window octets))
                      (when (plusp attrs) (attributes-off window)))))
             (%wmove window (+ row top) left)
@@ -1162,17 +1203,18 @@ cannot say when it changes)."
          (read (second programs))
          (echo (tuatara.io:find-program "echo")))
     (when (and read echo (search "wl-paste" (first read)))
-      (let ((process (ignore-errors
-                      (sb-ext:run-program (first read) (list "--watch" echo "changed")
-                                          :input nil :output :stream :error nil :wait nil
-                                          :external-format :utf-8))))
+      (let ((process (tuatara.runtime:ignoring-errors-reported ("starting ~a to watch the clipboard" (first read))
+                       (sb-ext:run-program (first read) (list "--watch" echo "changed")
+                                           :input nil :output :stream :error nil :wait nil
+                                           :external-format :utf-8))))
         (when process
           (let ((watch (make-clipboard-watch :process process)))
             (setf (clipboard-watch-thread watch)
                   (tuatara.runtime:make-guarded-thread
                    (lambda ()
                        (unwind-protect
-                            (loop for line = (ignore-errors (read-line (sb-ext:process-output process) nil))
+                            (loop for line = (tuatara.runtime:ignoring-errors-reported ("reading the clipboard watch")
+                                               (read-line (sb-ext:process-output process) nil))
                                   while line
                                   do (sb-thread:with-mutex ((clipboard-watch-lock watch))
                                        (setf (clipboard-watch-state watch) :reading))
@@ -1185,7 +1227,8 @@ cannot say when it changes)."
                          (sb-thread:with-mutex ((clipboard-watch-lock watch))
                            (setf (clipboard-watch-state watch) :ended)
                            (sb-thread:condition-broadcast (clipboard-watch-changed watch)))
-                         (ignore-errors (sb-ext:process-close process))))
+                         (tuatara.runtime:ignoring-errors-reported ("closing the clipboard watch")
+                           (sb-ext:process-close process))))
                    :name "clipboard watch"))
             watch))))))
 
@@ -1193,7 +1236,8 @@ cannot say when it changes)."
   "Stop watching the clipboard."
   (let ((watch (shiftf *clipboard-watch* nil)))
     (when (and watch (not (eq watch :none)))
-      (ignore-errors (sb-ext:process-kill (clipboard-watch-process watch) 15)))))
+      (tuatara.runtime:ignoring-errors-reported ("stopping the clipboard watch")
+        (sb-ext:process-kill (clipboard-watch-process watch) 15)))))
 
 (defun watched-clipboard ()
   "The clipboard's text as the watch has it, waiting a moment for a change
@@ -1352,7 +1396,7 @@ terminal, which reads it and removes it. NIL when no object could be made."
 (defun forget-shared-pictures ()
   "Remove the shared memory objects of pictures the terminal has not read."
   (dolist (name *shared-pictures*)
-    (ignore-errors (sb-posix:unlink (shared-picture-path name))))
+    (handler-case (sb-posix:unlink (shared-picture-path name)) (sb-posix:syscall-error () nil)))
   (setf *shared-pictures* '()))
 
 (defun send-image (image number)

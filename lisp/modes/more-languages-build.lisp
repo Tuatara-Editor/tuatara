@@ -243,10 +243,6 @@
   :extensions ("cylc")
   :file-names ("suite.rc"))
 
-(define-language cylc
-  "Cylc workflow definitions, parsed with tree-sitter-cylc."
-  :grammar "cylc" :modes (cylc-mode) :indent 4 :queries "cylc" :injection-names "cylc" :definitions :textobjects)
-
 (define-major-mode earthfile-mode prog-mode
   "Earthfiles: builds for Earthly."
   :lighter "Earthfile"

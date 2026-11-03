@@ -210,7 +210,7 @@ templates those in DIRECTORY's capture-templates/ (none unless a test makes them
     (alexandria:write-string-into-file *refile-agenda* agenda :if-exists :supersede)
     (let* ((buffer (tuatara.io:visit-file agenda))
            (names (mapcar #'tuatara.command:candidate-string
-                          (tuatara.defaults::org-refile-candidates buffer :exclude (list buffer 0 (search "* Commitments" *refile-agenda*))))))
+                          (tuatara.defaults::org-refile-candidates buffer :exclude (list (tuatara.defaults::org-parse-now buffer) 0 (search "* Commitments" *refile-agenda*))))))
       (false (find "agenda.org/Inbox" names :test #'string=))
       (false (find "agenda.org/Inbox/Call back" names :test #'string=))
       (true (find "agenda.org/Commitments and Jobs/Old" names :test #'string=)))))
@@ -282,7 +282,7 @@ templates those in DIRECTORY's capture-templates/ (none unless a test makes them
   (with-capture (dir agenda)
     (alexandria:write-string-into-file (format nil "* Projects~%** Notes~%first~%** Notes~%second~%* Inbox~%** Item~%") agenda :if-exists :supersede)
     (let* ((buffer (tuatara.io:visit-file agenda))
-           (tree (tuatara.defaults::org-tree-now buffer))
+           (tree (tuatara.defaults::org-parse-tree (tuatara.defaults::org-parse-now buffer)))
            (item (find "Item" (tuatara.defaults::org-headlines tree) :key (lambda (h) (tuatara.defaults::org-property h :raw-value)) :test #'string=))
            (second-notes (second (remove "Notes" (tuatara.defaults::org-headlines tree) :key (lambda (h) (tuatara.defaults::org-property h :raw-value)) :test-not #'string=))))
       ;; offered twice, told apart by where each begins
@@ -396,3 +396,30 @@ templates those in DIRECTORY's capture-templates/ (none unless a test makes them
         (true (search (format nil "* Other~%** Leave me :home:~%** Dentist~%:PROPERTIES:~%:LOCATION:~%:END:") (file-text agenda))
               "~a" (file-text agenda))
         (true (tuatara.frontend.fake:fake-frame-showing f "Event filed under agenda.org/Other"))))))
+
+(define-test (capture refile-the-last-subtree-from-the-end)
+  ;; point at the very end of the file is under its last heading, which C-c C-w refiles
+  (with-capture (dir agenda)
+    (alexandria:write-string-into-file *refile-agenda* agenda :if-exists :supersede)
+    (multiple-value-bind (f editor)
+        (run-keys "M-> C-c C-w I n b o x RET" :file agenda :width 100 :height 16)
+      (declare (ignore editor))
+      (true (tuatara.frontend.fake:fake-frame-showing f "Refiled to agenda.org/Inbox"))
+      (let ((text (file-text agenda)))
+        (true (< (search "** TODO Old" text) (search "* Commitments and Jobs" text)) "~a" text)))))
+
+(define-test (capture refile-of-a-heading-gone-while-asking)
+  ;; the heading being refiled taken away while its target is asked for: refused, the next heading left
+  (with-capture (dir agenda)
+    (alexandria:write-string-into-file *refile-agenda* agenda :if-exists :supersede)
+    (multiple-value-bind (f editor)
+        (run-keys (list "j C-c C-w"
+                        (lambda ()
+                          (let* ((buffer (tuatara.buffer:find-buffer "agenda.org"))
+                                 (gone (format nil "** Call back~%About the case.~%*** Detail~%~%"))
+                                 (at (search gone (tuatara.buffer:buffer-string buffer))))
+                            (tuatara.buffer:buffer-delete buffer at (+ at (length gone)))))
+                        "I n b o x RET")
+                  :file agenda :width 100 :height 16)
+      (true (tuatara.frontend.fake:fake-frame-showing f "The headline is no longer there"))
+      (is string= (format nil "* Inbox~%* Commitments and Jobs~%** TODO Old~%Text.~%") (session-text editor)))))

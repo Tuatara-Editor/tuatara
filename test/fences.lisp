@@ -28,6 +28,15 @@
 ;; Nor read or write the developer's configuration folder (their Word and LaTeX
 ;; templates): one of the run's own.
 (sb-posix:setenv "XDG_CONFIG_HOME" (namestring (merge-pathnames "config/" *test-state-directory*)) 1)
+;; Nor move the cache when a test makes a home of its own: it stays where it was
+;; for the whole run, and no .cache/ folder appears in that home.
+(sb-posix:setenv "XDG_CACHE_HOME" (namestring (uiop:xdg-cache-home)) 1)
+;; Nor reach the developer's running daemons, or start one where they look: the
+;; run's own folder of sockets, for the run alone as the system's is.
+(let ((runtime (merge-pathnames "runtime/" *test-state-directory*)))
+  (ensure-directories-exist runtime)
+  (sb-posix:chmod (namestring runtime) #o700)
+  (setf tuatara.defaults::*runtime-directory* (namestring runtime)))
 ;; Nor touch the developer's trashes, the home one or a drive's (a USB stick's): the
 ;; tests' data home is their own, on the drive their files are made on, and they see
 ;; no drive mounted.
@@ -54,6 +63,11 @@
     (format out "[user]~%	name = Test~%	email = test@example.invalid~%[commit]~%	gpgsign = false~%[init]~%	defaultBranch = main~%"))
   (sb-posix:setenv "GIT_CONFIG_GLOBAL" (namestring settings) 1)
   (sb-posix:setenv "GIT_CONFIG_NOSYSTEM" "1" 1))
+;; Nor read the developer's own agenda files (the clocks left open are looked for in them as
+;; a session starts), and no tick works out notifications from any agenda files meanwhile
+;; (the notification tests start theirs): the next is never due.
+(setf tuatara.defaults::*org-agenda-files* (list "/nonexistent/tuatara-test-agenda/agenda.org"))
+(setf (second tuatara.defaults::**org-notify-state**) most-positive-fixnum)
 ;; Nor copy changes not saved anywhere: the auto-save tests turn it on for themselves.
 (setf tuatara-user:*auto-save* nil)
 ;; The fake frontend has no screen to flicker: work in the background is looked
@@ -62,7 +76,12 @@
 ;; the file questions list their entries in plain order, not by what earlier tests chose
 (setf tuatara-user:*last-used-first* nil)
 ;; a language's rules are compiled before its colours are checked, however long it takes
-(setf tuatara.defaults::*rules-wait* 60)
+(setf tuatara.defaults::*rules-wait* 60
+      tuatara.defaults::*rules-editor-wait* 60)
+;; and the program parsing a file's text started before its first frame is
+;; drawn, however busy the machine: a test reads the colours of that frame
+;; (the tests of starting it on time bind their own wait)
+(setf tuatara.syntax::*at-once-wait* 30)
 
 (defun remove-test-directories ()
   "Take away the directories this test run kept its state and data in, the

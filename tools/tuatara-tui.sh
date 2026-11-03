@@ -19,5 +19,6 @@ fi
 if [ "$(ldd "$image" 2>/dev/null | grep -c "not found")" = 0 ] && [ "$(ldconfig -p 2>/dev/null | grep -c "libncursesw.so.6")" != 0 ]; then
   exec "$image" "$@"
 else
-  inside "$image" "$@"
+  # the toolbox passes on only the variables it knows: the request to write the desktop entries named
+  inside env ${TUATARA_DESKTOP_ENTRIES:+"TUATARA_DESKTOP_ENTRIES=$TUATARA_DESKTOP_ENTRIES"} "$image" "$@"
 fi

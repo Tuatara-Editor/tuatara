@@ -34,7 +34,7 @@ function of no arguments giving them, called again when \\[revert-buffer]
 makes the help again; given as they are, they are shown again as they are.
 With *HELP-WINDOW-SELECT* its window is selected."
   (let ((help (buffer-in-mode name 'help-mode)))
-    (setf (tuatara.buffer:buffer-local help :kind) :help)
+    (setf (buffer-kind help) :help)
     (render-pieces help (if (functionp pieces) pieces (constantly pieces)) :keys t :point :start)
     (let ((window (display-buffer help :at :start)))
       (when (and window *help-window-select*) (select-window window))
@@ -114,12 +114,18 @@ place, list them in *xref*."
           (t (go-to-definition (first definitions) :other t)))))
 
 (defun source-location-pieces (symbol kind)
-  "Where SYMBOL's definition of KIND (:function, :variable) is, from SBCL's
-source records, as help pieces: Defined in, then its file within the source
-tree (SOURCE-FILE-WORDS) as a link that shows it there (VISIT-SOURCE); NIL
-when it is not known."
-  (let* ((sources (ignore-errors (sb-introspect:find-definition-sources-by-name symbol kind)))
-         (file (and sources (sb-introspect:definition-source-pathname (first sources)))))
+  "Where SYMBOL's definition of KIND (:function, :variable) is, as help
+pieces: Defined in, then its file within the source tree (SOURCE-FILE-WORDS)
+as a link that shows it there (VISIT-SOURCE); NIL when it is not known. A
+function the init file defined is in the init file (INIT-FILE-DEFINITION);
+others are where Steel Bank Common Lisp (SBCL)'s source records say."
+  (let* ((init (and (eq kind :function) (init-file-definition symbol)))
+         (sources (and (not init)
+                       (ignoring-errors-reported ("finding where ~s is defined" symbol)
+                         (sb-introspect:find-definition-sources-by-name symbol kind))))
+         (file (if init
+                   (first init)
+                   (and sources (sb-introspect:definition-source-pathname (first sources))))))
     (when file
       (list (format nil "~%Defined in ")
             (list (source-file-words file) :button (lambda () (visit-source symbol)))))))
@@ -201,7 +207,7 @@ defined, the file a link that shows the definition. The one named at point in a 
 first: \\<minibuffer>\\[minibuffer-done] alone describes it."
   (let* ((b (current-buffer))
          (here (and (typep (buffer-major-mode b) 'lisp-mode)
-                    (let ((name (ignore-errors (symbol-at-point b))))
+                    (let ((name (ignoring-errors-reported ("reading the name at point") (symbol-at-point b))))
                       (and name (let ((symbol (lisp-symbol-named name (lisp-package b))))
                                   (and symbol (fboundp symbol) symbol))))))
          (chosen (completing-read "Describe function: " (function-candidates)
@@ -362,7 +368,7 @@ prefix's keys under its name, indented."
                             (key-line out indent keys name)))))
       (walk prefix 1))))
 
-(defun describe-prefix-keys (editor prefix)
+(defmethod host-show-prefix-help ((host defaults-host) editor prefix)
   "Show in *Help* every key under PREFIX (key specs) where the cursor is:
 \\`C-h' after a prefix key (\\`C-x C-h', \\`SPC C-h')."
   (let* ((keymaps (active-keymaps editor))
@@ -376,10 +382,18 @@ is in it already."
   (unless (typep (buffer-major-mode buffer) 'special-mode)
     (set-major-mode buffer 'special-mode)))
 
+(defmethod host-messages-made ((host defaults-host) buffer)
+  "Put BUFFER, *Messages* just made, in special mode (MESSAGES-IN-SPECIAL-MODE)."
+  (messages-in-special-mode buffer))
+
+(defmethod host-show-help ((host defaults-host) text)
+  "Show TEXT in *Help* (SHOW-HELP)."
+  (show-help text))
+
 (define-command tuatara-version ()
   "Say which Tuatara this is: its version, the commit it was built from and
-when, the SBCL it runs on, and where it shows (a window, the terminal). With
-\\[universal-argument], put that at point instead."
+when, the Steel Bank Common Lisp (SBCL) it runs on, and where it shows (a
+window, the terminal). With \\[universal-argument], put that at point instead."
   (let ((line (tuatara:version-line (tuatara.frontend:frontend-description (editor-frontend *editor*)))))
     (if (prefix-argument)
         (goto (tuatara.buffer:buffer-insert (current-buffer) (point) line))
@@ -398,11 +412,9 @@ and which \\<special-mode>\\[quit-window] closes."
   (display-buffer (messages-buffer) :at :end))
 
 (defun install-help ()
-  "Bind the help keys; \\`C-h' after a prefix key lists the keys under it;
-*Messages* in special mode, made so again when it has been killed."
+  "Bind the help keys, and put *Messages* in special mode, as it is again
+when it is made anew after it has been killed."
   (buttons-in-mode 'help-mode "*Help* and *Apropos*")
-  (setf *prefix-help-function* 'describe-prefix-keys
-        *menu-help-function* 'show-help)
   (define-key *global-keymap* "C-h k" 'describe-key)
   (define-key *global-keymap* "C-h f" 'describe-function)
   (define-key *global-keymap* "C-h x" 'describe-command)
@@ -410,5 +422,4 @@ and which \\<special-mode>\\[quit-window] closes."
   (define-key *global-keymap* "C-h a" 'apropos-command)
   (define-key *global-keymap* "C-h b" 'describe-bindings)
   (define-key *global-keymap* "C-h e" 'view-echo-area-messages)
-  (setf *messages-made-function* 'messages-in-special-mode)
   (messages-in-special-mode (messages-buffer)))

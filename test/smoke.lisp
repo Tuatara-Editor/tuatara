@@ -32,10 +32,33 @@
     (true (search (format nil "Tuatara ~a (" (tuatara:version)) out)))
   (let ((out (with-output-to-string (*standard-output*)
                (is = 0 (tuatara.terminal:main '("--help"))))))
-    (true (search "Usage: tuatara [--gui] [-c INIT-FILE] [FILE...]" out))
+    ;; every way of starting it, the first after Usage:, the others under it
+    (true (search (format nil "Usage: ~a~%" (first tuatara.terminal:*usage-forms*)) out))
+    (dolist (form (rest tuatara.terminal:*usage-forms*))
+      (true (search (format nil "       ~a~%" form) out) "~a is not shown" form))
+    (true (search "Usage: tuatara [--gui] [--frames N] [-Q] [-c INIT-FILE] [--safe] [--hex] [[+LINE[:COLUMN]] FILE...]" out))
+    (true (search "tuatara --client[=NAME] [--gui] [--start]" out))
+    (true (search "tuatara --stop[=NAME]" out))
+    (true (search "--diff OLD NEW" out))
     (true (search "~/.config/tuatara/init.lisp" out))
     (true (search "--generate-config" out))
-    (true (search "--dynamic-space-size SIZE" out))))
+    (true (search "--dynamic-space-size SIZE" out))
+    (true (search "Michael A Jones" out))))
+
+(define-test (smoke help-lists-real-options)
+  ;; every option --help lists is one the program takes, or one the AppImage's launcher takes
+  (let ((out (with-output-to-string (*standard-output*)
+               (tuatara.terminal:main '("--help"))))
+        (launcher '("--install-desktop" "--remove-desktop" "--dark" "--light" "--dynamic-space-size")))
+    (loop with start = 0
+          for at = (search "  -" out :start2 start)
+          while at
+          do (let* ((end (or (position-if (lambda (c) (member c '(#\Space #\, #\Newline))) out :start (+ at 2)) (length out)))
+                    (option (subseq out (+ at 2) end)))
+               (true (or (tuatara.terminal::option-p (tuatara.terminal::bare-flag option))
+                         (member option launcher :test #'string=))
+                     "~a is listed but not taken" option)
+               (setf start end)))))
 
 (define-test (smoke init-file-options)
   ;; -c names the init file, anywhere among the options; -- ends them

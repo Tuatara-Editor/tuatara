@@ -21,7 +21,7 @@ and the colouring options.")
   "Parse TEXT with the grammar called GRAMMAR; return the tree, the rope and
 the parser. Release them with RELEASE-PARSE."
   (let* ((g (tuatara.syntax:find-grammar grammar))
-         (parser (tuatara.syntax:make-parser g))
+         (parser (tuatara.syntax:make-parser g (tuatara.syntax:kept-helper :shared)))
          (rope (tuatara.text:string->rope text)))
     (values (tuatara.syntax:parse-rope parser rope) rope parser)))
 
@@ -313,7 +313,7 @@ what stopped the walk (NIL at a bracket)."
   (let ((tuatara.syntax:*syntax-wait* 30)
         (buffer (tuatara.syntax::syntax-buffer syntax)))
     (tuatara.syntax:syntax-highlights syntax query (tuatara.defaults::query-faces query :rich 0)
-                                      0 (tuatara.buffer:buffer-size buffer))))
+                                      (list (cons 0 (tuatara.buffer:buffer-size buffer))))))
 
 (defun fresh-rich-ranges (grammar text query)
   "The rich colours of TEXT parsed from scratch with GRAMMAR."
@@ -372,11 +372,11 @@ what stopped the walk (NIL at a bracket)."
                    (dotimes (i 1500) (write-string sample s)))))
          (buffer (tuatara.buffer:make-buffer "*syntax-large*" :text text))
          (woken 0)
-         (tuatara.syntax:*syntax-wake-function* (lambda () (incf woken))))
+         (tuatara.runtime:*host* (make-answering-host 'tuatara.runtime:host-wake (lambda () (incf woken)))))
     (unwind-protect
-         (let* ((start (get-internal-real-time))
+         (let* ((start (thread-cpu-time))
                 (syntax (tuatara.syntax:attach-syntax buffer (tuatara.syntax:find-grammar "rust"))))
-           (true (< (- (get-internal-real-time) start) (* 0.1 internal-time-units-per-second)))
+           (true (< (- (thread-cpu-time) start) (* 0.1 internal-time-units-per-second)))
            (true (tuatara.syntax:syntax-job syntax))
            (let ((tuatara.syntax:*syntax-wait* 0))
              (false (tuatara.syntax:syntax-ready-tree syntax)))
@@ -390,10 +390,350 @@ what stopped the walk (NIL at a bracket)."
            (true (tuatara.syntax:syntax-job syntax))
            (let ((stop (get-internal-real-time)))
              (tuatara.syntax:detach-syntax buffer)
-             (true (< (- (get-internal-real-time) stop) internal-time-units-per-second)))
+             (true (< (- (get-internal-real-time) stop) (* internal-time-units-per-second (machine-slowdown)))))
            (false (tuatara.syntax:buffer-syntax buffer)))
       (tuatara.syntax:detach-syntax buffer)
       (tuatara.buffer:kill-buffer buffer))))
+
+(define-test (syntax helpers-end-with-their-buffers)
+  ;; the text of each file is parsed by a program of its own, no more than
+  ;; *syntax-helpers-most* at once, those used longest ago ended for room;
+  ;; killing the buffers ends the programs, none left running
+  (let ((started '()))
+    (with-test-directory (directory)
+      (let ((tuatara.syntax::*syntax-helpers-most* 4))
+        (dotimes (i 12)
+          (let ((path (merge-pathnames (format nil "f~d.rs" i) directory)))
+            (with-open-file (o path :direction :output) (format o "fn f~d() {}~%" i))
+            (run-keys "C-g" :file (namestring path))
+            (dolist (helper tuatara.syntax::**helpers**)
+              (when (eq :own (tuatara.syntax::helper-kind helper)) (pushnew helper started)))
+            (true (<= (count :own tuatara.syntax::**helpers** :key #'tuatara.syntax::helper-kind) 4))))))
+    (true (>= (length started) 4))
+    ;; the buffers are killed with their folder: so are their programs
+    (dolist (helper started)
+      (false (tuatara.syntax:helper-alive helper))
+      (false (loop repeat 200
+                   while (sb-ext:process-alive-p (tuatara.syntax::helper-process helper))
+                   do (sleep 0.01)
+                   finally (return (sb-ext:process-alive-p (tuatara.syntax::helper-process helper))))))
+    (false (intersection started tuatara.syntax::**helpers**))))
+
+;;; A helper that is not the program: it answers as each test says
+
+(defun fake-send-octet (fd octet)
+  "Write the one OCTET to FD; NIL when it cannot be written."
+  (let ((one (make-array 1 :element-type '(unsigned-byte 8) :initial-element octet)))
+    (sb-sys:with-pinned-objects (one)
+      (eq t (tuatara.syntax::transfer fd (sb-sys:vector-sap one) 1 :write nil)))))
+
+(defun octets-u32 (octets at)
+  "The little-endian 32-bit number of OCTETS at AT."
+  (logior (aref octets at) (ash (aref octets (+ at 1)) 8) (ash (aref octets (+ at 2)) 16) (ash (aref octets (+ at 3)) 24)))
+
+(defun put-octets-u32 (octets at value)
+  "Put VALUE in OCTETS at AT as a little-endian 32-bit number."
+  (dotimes (i 4) (setf (aref octets (+ at i)) (ldb (byte 8 (* 8 i)) value))))
+
+(defun fake-send (fd id how octets)
+  "Write to FD a message as a helper writes it: ID, HOW and the OCTETS of its body."
+  (let ((all (make-array (+ 12 (length octets)) :element-type '(unsigned-byte 8))))
+    (put-octets-u32 all 0 (length octets)) (put-octets-u32 all 4 id) (put-octets-u32 all 8 how)
+    (replace all octets :start1 12)
+    (sb-sys:with-pinned-objects (all)
+      (eq t (tuatara.syntax::transfer fd (sb-sys:vector-sap all) (length all) :write nil)))))
+
+(defun fake-receive (fd)
+  "The next message on FD, as its header's three numbers and its body's
+octets, four values; NIL when FD has ended."
+  (let ((header (make-array 12 :element-type '(unsigned-byte 8))))
+    (when (sb-sys:with-pinned-objects (header)
+            (eq t (tuatara.syntax::transfer fd (sb-sys:vector-sap header) 12 :read nil)))
+      (let ((body (make-array (octets-u32 header 0) :element-type '(unsigned-byte 8))))
+        (when (or (zerop (length body))
+                  (sb-sys:with-pinned-objects (body)
+                    (eq t (tuatara.syntax::transfer fd (sb-sys:vector-sap body) (length body) :read nil))))
+          (values (octets-u32 header 0) (octets-u32 header 4) (octets-u32 header 8) body))))))
+
+(defun words (&rest numbers)
+  "NUMBERS as 32-bit words, the octets of a message's body."
+  (let ((octets (make-array (* 4 (length numbers)) :element-type '(unsigned-byte 8))))
+    (loop for n in numbers for i from 0 do (put-octets-u32 octets (* 4 i) n))
+    octets))
+
+(defun call-with-fake-helper (answer function)
+  "Call FUNCTION with a helper whose one connection a thread of the test's
+answers: ANSWER is called with the descriptor, the request's how and its body
+for each request, and writes what it likes; :NEVER for a helper that reads
+nothing. The helper is ended after."
+  (multiple-value-bind (first first-theirs) (tuatara.syntax::socket-pair)
+    (multiple-value-bind (mine theirs) (tuatara.syntax::socket-pair)
+      (let* ((tuatara.runtime:*host* (make-answering-host 'tuatara.syntax:host-say-helper-ended (constantly nil)))
+             (helper (tuatara.syntax::%make-helper nil first '() :own))
+             (call (tuatara.syntax::make-call helper mine))
+             (thread (sb-thread:make-thread
+                      (lambda ()
+                        (if (eq answer :never)
+                            (loop while (tuatara.syntax:helper-alive helper) do (sleep 0.05))
+                            (loop (multiple-value-bind (size id how body) (fake-receive theirs)
+                                    (declare (ignore id))
+                                    (unless size (return))
+                                    (funcall answer theirs how body)))))
+                      :name "fake syntax helper")))
+        (sb-thread:with-mutex ((tuatara.syntax::helper-write-lock helper))
+          (push call (tuatara.syntax::helper-idle helper)))
+        (unwind-protect (funcall function helper)
+          (tuatara.syntax::end-helper helper :stopped)
+          (sb-thread:join-thread thread :default nil :timeout 5)
+          (sb-posix:close theirs)
+          (sb-posix:close first-theirs))))))
+
+(defconstant +top-bit+ #x80000000)
+
+(define-test (syntax helper-reads-only-the-parse-it-runs)
+  ;; a helper may read only the text of the parse it was asked for, while it
+  ;; runs, on its connection, within the text; asking for more ends it
+  (let ((grammar (tuatara.syntax:find-grammar "rust"))
+        (rope (tuatara.text:string->rope "abcdef")))
+    (flet ((try (answer function)
+             (let (ended)
+               (call-with-fake-helper answer
+                                      (lambda (helper)
+                                        (funcall function helper)
+                                        (setf ended (tuatara.syntax:helper-ended helper))))
+               ended)))
+      ;; no parse under way: asking for text ends it
+      (is eq :broken (try (lambda (fd how body) (declare (ignore how body))
+                            (fake-send fd (logior +top-bit+ 0) 64 (words 0 0)))
+                          (lambda (helper)
+                            (false (tuatara.syntax:tree-has-error-p (tuatara.syntax::%make-tree helper 1))))))
+      (dolist (bad (list (list (logior +top-bit+ 9) (words 9 0))        ; another parser's
+                         (list (logior +top-bit+ 5) (words 5 100))      ; past the text
+                         (list (logior +top-bit+ 5) (words 5 0 0 0))    ; not a request for text
+                         (list (logior +top-bit+ 5) (words 6 0))))      ; asked as one, for another
+        (is eq :broken (try (lambda (fd how body) (declare (ignore how body))
+                              (fake-send fd (first bad) 64 (second bad)))
+                            (lambda (helper)
+                              (false (tuatara.syntax:parse-rope (tuatara.syntax::%make-parser helper 5 grammar) rope))))
+            "~s" bad))
+      ;; the parse asking for its own text gets it, and only from where it asked
+      (let ((given nil))
+        (false (try (lambda (fd how body) (declare (ignore body))
+                      (when (= how 4)
+                        (fake-send fd (logior +top-bit+ 5) 64 (words 5 2))
+                        (multiple-value-bind (size id status text) (fake-receive fd)
+                          (declare (ignore size status))
+                          (when (= id (logior +top-bit+ 5)) (setf given (sb-ext:octets-to-string text))))
+                        (fake-send fd 1 0 (words 0 2))))
+                    (lambda (helper)
+                      (multiple-value-bind (tree why)
+                          (tuatara.syntax:parse-rope (tuatara.syntax::%make-parser helper 5 grammar) rope)
+                        (false tree)
+                        (is eq :slow why)))))
+        (is equal "cdef" given)))))
+
+(defun padded-string-words (string)
+  "STRING as a reply holds it: its length, then its octets made up to four."
+  (let* ((octets (sb-ext:string-to-octets string :external-format :utf-8))
+         (padded (make-array (* 4 (ceiling (length octets) 4)) :element-type '(unsigned-byte 8) :initial-element 0)))
+    (replace padded octets)
+    (concatenate '(vector (unsigned-byte 8)) (words (length octets)) padded)))
+
+(define-test (syntax compiled-rules-held-to-their-text)
+  ;; what the helper compiling rules answers cannot add a test or a property
+  ;; the rules do not hold: a string not in them is refused, the helper
+  ;; ended; a property the editor does not know is left out, never made
+  (let ((grammar (tuatara.syntax:find-grammar "rust")))
+    (flet ((compile-with (source reply)
+             (let (result ended)
+               (call-with-fake-helper
+                (lambda (fd how body) (declare (ignore how body)) (fake-send fd 1 0 reply))
+                (lambda (helper)
+                  (let ((tuatara.syntax:*grammar-directories* (list "/nonexistent/fake-rules/")))
+                    (sb-thread:with-mutex (tuatara.syntax::**helpers-lock**)
+                      (push (cons (cons :rules (tuatara.syntax:grammar-directories)) helper) tuatara.syntax::**kept-helpers**))
+                    (unwind-protect
+                         (setf result (handler-case (tuatara.syntax::compile-query-text grammar source)
+                                        (tuatara.syntax:query-error () :refused)))
+                      (sb-thread:with-mutex (tuatara.syntax::**helpers-lock**)
+                        (setf tuatara.syntax::**kept-helpers** (remove helper tuatara.syntax::**kept-helpers** :key #'cdr)))))
+                  (setf ended (tuatara.syntax:helper-ended helper))))
+               (values result ended))))
+      ;; a #match? the rules do not have
+      (multiple-value-bind (result ended)
+          (compile-with "(identifier) @name"
+                        (concatenate '(vector (unsigned-byte 8))
+                                     (words 0 1) (padded-string-words "name")
+                                     (words 1 0 0 4)
+                                     (words 2) (padded-string-words "match?") (words 1 0)
+                                     (words 2) (padded-string-words "^evil$") (words 0 0)))
+        (is eq :refused result)
+        (is eq :broken ended))
+      ;; a property no one knows: not made a keyword
+      (multiple-value-bind (result ended)
+          (compile-with "((identifier) @name (#set! zzq-unknown-property \"v\"))"
+                        (concatenate '(vector (unsigned-byte 8))
+                                     (words 0 1) (padded-string-words "name")
+                                     (words 1 0 0 4)
+                                     (words 2) (padded-string-words "set!")
+                                     (words 2) (padded-string-words "zzq-unknown-property")
+                                     (words 2) (padded-string-words "v") (words 0 0)))
+        (true (tuatara.syntax::query-p result))
+        (false ended)
+        (when (tuatara.syntax::query-p result)
+          (false (aref (tuatara.syntax::query-properties result) 0)))
+        (false (find-symbol "ZZQ-UNKNOWN-PROPERTY" :keyword))))))
+
+(define-test (syntax late-helper-ended-at-its-deadline)
+  ;; one deadline holds for the whole of a call, both ways: a reply that
+  ;; comes an octet at a time, a parse asking for its text without end, a
+  ;; helper reading nothing of a long request; each helper is ended in time,
+  ;; and the editor carries on
+  (let ((tuatara.syntax:*syntax-helper-wait* 1)
+        (grammar (tuatara.syntax:find-grammar "rust")))
+    (flet ((ends-in-time (answer ask)
+             (let ((began (get-internal-real-time)) ended)
+               (call-with-fake-helper answer (lambda (helper)
+                                               (funcall ask helper)
+                                               (setf ended (tuatara.syntax:helper-ended helper))))
+               (true (< (tuatara.runtime:seconds-since began) 4))
+               ended)))
+      ;; slow drip
+      (is eq :hung (ends-in-time
+                    (lambda (fd how body)
+                      (declare (ignore how body))
+                      (let ((all (words 4 1 0 1)))
+                        (dotimes (i (length all))
+                          (unless (fake-send-octet fd (aref all i)) (return))
+                          (sleep 0.3))))
+                    (lambda (helper) (false (tuatara.syntax:tree-has-error-p (tuatara.syntax::%make-tree helper 1))))))
+      ;; asking for text without end
+      (true (member (ends-in-time
+                     (lambda (fd how body)
+                       (declare (ignore body))
+                       (when (= how 4)
+                         (loop (unless (fake-send fd (logior +top-bit+ 5) 64 (words 5 0)) (return))
+                               (unless (fake-receive fd) (return)))))
+                     (lambda (helper)
+                       (false (tuatara.syntax:parse-rope (tuatara.syntax::%make-parser helper 5 grammar)
+                                                         (tuatara.text:string->rope "abcdef") :limit 0.5))))
+                    '(:hung :broken)))
+      ;; reading nothing
+      (is eq :hung (ends-in-time
+                    :never
+                    (lambda (helper)
+                      (tuatara.syntax::with-call (call helper 16)
+                        (tuatara.syntax::call-octets call (make-array (* 4 1024 1024) :element-type '(unsigned-byte 8)))
+                        (is eq :dead (tuatara.syntax::call-send call))))))
+      (true (parses-elsewhere)))))
+
+(defun garbled-words (random)
+  "Octets of a reply made up of numbers a reply might hold and numbers it
+should not, drawn with the random state RANDOM."
+  (apply #'words (loop repeat (random 40 random)
+                       collect (case (random 6 random)
+                                 (0 0) (1 1) (2 (random 8 random)) (3 (random 64 random))
+                                 (4 #xffffffff) (t (random (expt 2 32) random))))))
+
+(define-test (syntax garbled-replies-end-the-helper)
+  ;; a reply that cannot be right ends its helper, and what was asked gives
+  ;; nothing: never an error, never something outside the text
+  (let* ((random (sb-ext:seed-random-state 20261030))
+         (grammar (tuatara.syntax:find-grammar "rust"))
+         (query (tuatara.syntax:compile-query grammar "(identifier) @name"))
+         (rope (tuatara.text:string->rope "fn main() { let x = y; }"))
+         (bytes (tuatara.text:rope-bytes rope))
+         (buffer (tuatara.buffer:make-buffer "*garbled*" :text "fn main() { let x = y; }"))
+         (syntax (let ((syntax (tuatara.syntax:attach-syntax buffer grammar))) (parse-done syntax) syntax))
+         (errors 0)
+         (ended 0))
+    (flet ((within (ranges) (every (lambda (r) (<= 0 (car r) (cdr r) bytes)) ranges)))
+      (let ((asks
+              (list (lambda (helper tree) (declare (ignore helper)) (tuatara.syntax:tree-has-error-p tree))
+                    (lambda (helper tree) (declare (ignore helper)) (tuatara.syntax::copy-tree-pointer tree))
+                    (lambda (helper tree) (declare (ignore helper))
+                      (true (within (tuatara.syntax:node-child-ranges tree 0 bytes 1))))
+                    (lambda (helper tree)
+                      (declare (ignore tree))
+                      (let ((nodes (make-array 7 :element-type 'fixnum :initial-contents (list 1 0 bytes 1 0 0 bytes))))
+                        (multiple-value-bind (pairs starts) (tuatara.syntax::node-children-many helper nodes 1)
+                          (when pairs
+                            (is = (length pairs) (aref starts 1))
+                            (true (every (lambda (n) (<= 0 n bytes)) pairs))))))
+                    (lambda (helper tree)
+                      (setf (gethash (tuatara.syntax::query-number query) (tuatara.syntax::helper-queries helper)) t)
+                      (tuatara.syntax:map-query-matches
+                       (lambda (pattern captures count)
+                         (declare (ignore pattern))
+                         (dotimes (i count)
+                           (true (<= 0 (aref captures (+ 1 (* 4 i))) (aref captures (+ 2 (* 4 i))) bytes))))
+                       query tree rope 0 bytes))
+                    (lambda (helper tree)
+                      (setf (gethash (tuatara.syntax::query-number query) (tuatara.syntax::helper-queries helper)) t)
+                      (tuatara.syntax::parse-texts
+                       rope (list (tuatara.syntax::make-text-parse nil nil tree (list (list query 0 bytes)) nil nil)
+                                  (tuatara.syntax::make-text-parse grammar (list (cons 0 bytes)) nil
+                                                                   (list (list query 0 bytes)) 1 nil))
+                       (lambda (trees)
+                         (is = 2 (length trees))
+                         (tuatara.syntax:map-query-matches
+                          (lambda (pattern captures count)
+                            (declare (ignore pattern))
+                            (dotimes (i count)
+                              (true (<= 0 (aref captures (+ 1 (* 4 i))) (aref captures (+ 2 (* 4 i))) bytes))))
+                          query tree rope 0 bytes))
+                       :helper helper))
+                    (lambda (helper tree) (declare (ignore tree)) (tuatara.syntax:helper-memory helper))
+                    ;; with a buffer's syntax whose tree the helper holds
+                    (lambda (helper tree)
+                      (declare (ignore helper))
+                      (let ((old (tuatara.syntax:syntax-tree syntax)))
+                        (setf (tuatara.syntax:syntax-tree syntax) tree)
+                        (unwind-protect
+                             (progn
+                               (dolist (node (tuatara.syntax:node-ancestry syntax 3 5))
+                                 (true (<= 0 (tuatara.syntax:tree-node-start node) (tuatara.syntax:tree-node-end node) bytes)))
+                               (multiple-value-bind (from to) (tuatara.syntax:select-node syntax 3 5 :larger)
+                                 (when from (true (<= 0 from to bytes)))))
+                          (setf (tuatara.syntax:syntax-tree syntax) old))))
+                    ;; as the helper compiling rules, which grammars are loaded in
+                    (lambda (helper tree)
+                      (declare (ignore tree))
+                      (let ((tuatara.syntax:*grammar-directories* (list "/nonexistent/fake-helper/")))
+                        (sb-thread:with-mutex (tuatara.syntax::**helpers-lock**)
+                          (push (cons (cons :rules (tuatara.syntax:grammar-directories)) helper) tuatara.syntax::**kept-helpers**))
+                        (unwind-protect
+                             (progn
+                               (let ((loaded (tuatara.syntax::load-grammar "fake")))
+                                 (true (or (member loaded '(nil :unknown)) (tuatara.syntax:grammar-p loaded))))
+                               (handler-case (tuatara.syntax::compile-query-text grammar "(identifier) @name")
+                                 (tuatara.syntax:query-error () nil)))
+                          (sb-thread:with-mutex (tuatara.syntax::**helpers-lock**)
+                            (setf tuatara.syntax::**kept-helpers**
+                                  (remove helper tuatara.syntax::**kept-helpers** :key #'cdr)))))))))
+        (dolist (ask asks)
+          (dotimes (i 60)
+            (let ((reply (garbled-words random))
+                  (header (case (random 10 random) (0 :huge) (1 :id) (t :good))))
+              (call-with-fake-helper
+               (lambda (fd how body)
+                 (declare (ignore how body))
+                 (ecase header
+                   (:good (fake-send fd 1 0 reply))
+                   (:id (fake-send fd 7 0 reply))
+                   (:huge (let ((all (words #x7fffffff 1 0)))
+                            (sb-sys:with-pinned-objects (all)
+                              (tuatara.syntax::transfer fd (sb-sys:vector-sap all) 12 :write nil))))))
+               (lambda (helper)
+                 (handler-case (funcall ask helper (tuatara.syntax::%make-tree helper 1))
+                   (error (e) (incf errors) (format t "~&~a~%" e)))
+                 (when (eq :broken (tuatara.syntax:helper-ended helper)) (incf ended))
+                 (when (member header '(:huge :id))
+                   (is eq :broken (tuatara.syntax:helper-ended helper) "~s" header)))))))
+        (is = 0 errors)
+        (true (plusp ended))))
+    (tuatara.syntax:detach-syntax buffer)
+    (tuatara.buffer:kill-buffer buffer)))
 
 (define-test (syntax parses-share-one-thread)
   ;; parses after one edit after another run in one thread of the buffer's,
@@ -418,18 +758,202 @@ what stopped the walk (NIL at a bracket)."
       (tuatara.syntax:detach-syntax buffer)
       (tuatara.buffer:kill-buffer buffer))))
 
+(defun fault-buffer (name)
+  "A Rust buffer NAME whose parse failed in the grammar's own code, as the
+parsing thread records it, and its syntax, as two values."
+  (let ((buffer (tuatara.buffer:make-buffer name :text (format nil "fn main() {} // ~a" name))))
+    (tuatara.modes:set-major-mode buffer 'tuatara.defaults::rust-mode)
+    (let ((syntax (tuatara.syntax:buffer-syntax buffer)))
+      (let ((tuatara.syntax:*syntax-wait* 10)) (tuatara.syntax:syntax-ready-tree syntax))
+      (let* ((cancel (sb-alien:alien-sap (sb-alien:make-alien (sb-alien:signed 32))))
+             (job (tuatara.syntax::make-parse-job (tuatara.buffer:buffer-text buffer) nil cancel nil)))
+        (setf (tuatara.syntax::parse-job-fault job) :crashed
+              (tuatara.syntax::parse-job-finished job) t
+              (tuatara.syntax:syntax-job syntax) job)
+        (tuatara.syntax::catch-up syntax))
+      (values buffer syntax))))
+
+(define-test (syntax grammar-faults-per-text)
+  ;; a grammar going wrong on the text of one buffer is turned off for that
+  ;; text alone, which a hostile file cannot change; once it has gone wrong
+  ;; on *grammar-faults-before-off* texts, it is off for every text
+  (let ((grammar (tuatara.syntax:find-grammar "rust"))
+        (buffers '())
+        (said '()))
+    (clrhash tuatara.syntax::**grammar-faults**)
+    (unwind-protect
+         (let ((tuatara.runtime:*host* (make-answering-host 'tuatara.syntax:host-say-syntax-fault
+                                                            (lambda (syntax) (push syntax said)))))
+           (multiple-value-bind (buffer syntax) (fault-buffer "*fault-1*")
+             (push buffer buffers)
+             (is eq syntax (first said))
+             (false (tuatara.syntax:grammar-faulted grammar))
+             (true (tuatara.syntax:syntax-broken syntax))
+             (true (tuatara.syntax:syntax-tree syntax))
+             ;; off for that buffer, set up again: another helper, the grammar still off there
+             (true (tuatara.syntax::grammar-off-p grammar (tuatara.syntax:buffer-helper buffer)))
+             (tuatara.modes:set-major-mode buffer 'tuatara.defaults::rust-mode)
+             (false (tuatara.syntax:buffer-syntax buffer)))
+           ;; another Rust buffer is parsed all the same
+           (let ((other (tuatara.buffer:make-buffer "*fault-other*" :text "fn f() {}")))
+             (push other buffers)
+             (tuatara.modes:set-major-mode other 'tuatara.defaults::rust-mode)
+             (true (tuatara.syntax:buffer-syntax other)))
+           ;; gone wrong on three texts: off for all
+           (dotimes (i (1- tuatara.syntax::*grammar-faults-before-off*))
+             (push (fault-buffer (format nil "*fault-~d*" (+ i 2))) buffers))
+           (is eq :crashed (tuatara.syntax:grammar-faulted grammar))
+           (let ((later (tuatara.buffer:make-buffer "*fault-later*" :text "fn h() {}")))
+             (push later buffers)
+             (tuatara.modes:set-major-mode later 'tuatara.defaults::rust-mode)
+             (false (tuatara.syntax:buffer-syntax later))))
+      (mapc #'tuatara.buffer:kill-buffer buffers)
+      (clrhash tuatara.syntax::**grammar-faults**)
+      (setf (tuatara.syntax:grammar-faulted grammar) nil))))
+
+(define-test (syntax helper-ended-by-the-editor-parses-again)
+  ;; a helper ended for room as it parsed is no fault of the grammar: the
+  ;; text is parsed again in a new one
+  (let ((buffer (tuatara.buffer:make-buffer "*stopped-helper*" :text "fn main() {}"))
+        (grammar (tuatara.syntax:find-grammar "rust")))
+    (unwind-protect
+         (let ((syntax (tuatara.syntax:attach-syntax buffer grammar)))
+           (parse-done syntax)
+           (let ((first (tuatara.syntax::syntax-helper syntax)))
+             (multiple-value-bind (tree why)
+                 (progn (tuatara.syntax::stop-helper first)
+                        (tuatara.syntax:parse-rope (tuatara.syntax::%make-parser first 1 grammar)
+                                                   (tuatara.text:string->rope "fn f() {}")))
+               (false tree)
+               (is eq :stopped why))
+             (tuatara.buffer:buffer-insert buffer 0 " ")
+             (parse-done syntax)
+             (true (tuatara.syntax:syntax-tree syntax))
+             (false (tuatara.syntax:syntax-broken syntax))
+             (false (tuatara.syntax::grammar-off-p grammar (tuatara.syntax::syntax-helper syntax)))
+             (true (tuatara.syntax:helper-alive (tuatara.syntax::syntax-helper syntax)))
+             (false (eq first (tuatara.syntax::syntax-helper syntax)))))
+      (tuatara.syntax:detach-syntax buffer)
+      (tuatara.buffer:kill-buffer buffer))))
+
+(define-test (syntax untrusted-text-parsed-in-its-own-helper)
+  ;; a buffer with no file is parsed by a helper of its own, as a file
+  ;; outside the projects you trust is, its lines alone (a text too large to
+  ;; parse whole) too; an export's source blocks are parsed in one of its own
+  (let ((buffer (tuatara.buffer:make-buffer "*pasted*" :text (format nil "~{fn f~d() {}~%~}" (loop for i below 200 collect i))))
+        (helpers '()))
+    (sb-int:encapsulate 'tuatara.syntax::parse-rope-ranges 'which
+                        (lambda (function &rest arguments)
+                          (push (tuatara.syntax::current-helper) helpers)
+                          (apply function arguments)))
+    (unwind-protect
+         (let* ((tuatara.syntax:*syntax-size-limit* 100)
+                (syntax (tuatara.syntax:attach-syntax buffer (tuatara.syntax:find-grammar "rust")))
+                (own (tuatara.syntax:buffer-helper buffer))
+                (query (tuatara.syntax:compile-query (tuatara.syntax:find-grammar "rust") "(identifier) @name")))
+           (is eq :own (tuatara.syntax:helper-kind own))
+           (true (tuatara.syntax::slice-highlights syntax query (vector :variable) 0 60 nil))
+           (true helpers)
+           (true (every (lambda (helper) (eq helper own)) helpers)))
+      (sb-int:unencapsulate 'tuatara.syntax::parse-rope-ranges 'which)
+      (tuatara.syntax:detach-syntax buffer)
+      (tuatara.buffer:kill-buffer buffer)))
+  (let ((used nil))
+    (tuatara.syntax:with-own-helper ()
+      (true (tuatara.defaults::org-latex-code-faces "fn main() { let x = 1; }" "rust"))
+      (setf used tuatara.syntax:*helper*)
+      (true (tuatara.syntax:helper-p used))
+      (is eq :own (tuatara.syntax:helper-kind used)))
+    (false (tuatara.syntax:helper-alive used))))
+
+(defun call-without-sandbox (function)
+  "Call FUNCTION with no sandbox to be had (bwrap not found), as on a system
+without bubblewrap, and the sandbox as it was after."
+  (let ((before tuatara-user:*sandbox-program*))
+    (setf tuatara-user:*sandbox-program* "/nonexistent/bwrap"
+          tuatara.syntax::**refused-said** nil)
+    (unwind-protect (funcall function)
+      (setf tuatara-user:*sandbox-program* before
+            tuatara.syntax::**refused-said** nil)
+      (tuatara.io:sandbox-status :again t))))
+
+(define-test (syntax no-sandbox-no-parsing)
+  ;; without the sandbox, text outside the projects you trust is never parsed,
+  ;; said once; the projects you trust only when *syntax-helper-unconfined* allows;
+  ;; a sandbox that fails to start starts nothing in its place
+  (let ((said '()))
+    (call-without-sandbox
+     (lambda ()
+       (let ((tuatara.runtime:*host* (make-answering-host 'tuatara.syntax:host-say-helper-refused
+                                                        (lambda (trusted) (push trusted said))))
+             (tuatara.syntax::*syntax-helper-unconfined* nil))
+         (false (tuatara.syntax::start-helper (tuatara.syntax:grammar-directories) :own))
+         (false (tuatara.syntax::start-helper (tuatara.syntax:grammar-directories) :shared))
+         (is equal '(nil) said)
+         (let ((buffer (tuatara.buffer:make-buffer "*no-sandbox*" :text "fn main() {}")))
+           (unwind-protect
+                (progn (false (tuatara.syntax:buffer-helper buffer))
+                       (let ((syntax (tuatara.syntax:attach-syntax buffer (tuatara.syntax:find-grammar "rust"))))
+                         (when syntax
+                           (parse-done syntax)
+                           (true (tuatara.syntax:syntax-broken syntax))
+                           (false (tuatara.syntax:syntax-tree syntax)))))
+             (tuatara.syntax:detach-syntax buffer)
+             (tuatara.buffer:kill-buffer buffer)))
+         (let ((tuatara.syntax::*syntax-helper-unconfined* t))
+           (false (tuatara.syntax::start-helper (tuatara.syntax:grammar-directories) :own))
+           (let ((shared (tuatara.syntax::start-helper (tuatara.syntax:grammar-directories) :shared)))
+             (true shared)
+             (when shared (tuatara.syntax::stop-helper shared)))))))
+    ;; the sandbox there, but failing to start: no helper, no other process
+    (sb-int:encapsulate 'tuatara.io:sandbox-start 'failing (lambda (function &rest arguments)
+                                                            (declare (ignore function arguments))
+                                                            (error "bwrap would not start")))
+    (unwind-protect
+         (let ((before (length tuatara.syntax::**helpers**)))
+           (false (tuatara.syntax::start-helper (tuatara.syntax:grammar-directories) :own))
+           (is = before (length tuatara.syntax::**helpers**)))
+      (sb-int:unencapsulate 'tuatara.io:sandbox-start 'failing))))
+
+(define-test (syntax trusted-or-not-follows-the-buffer)
+  ;; a buffer whose file comes to be in a project you trust is parsed by the
+  ;; shared helper from its next parse, and by one of its own again after
+  (let* ((trusted nil)
+         (tuatara.runtime:*host* (make-answering-host 'tuatara.syntax:host-trusted-text-p
+                                                      (lambda (buffer) (declare (ignore buffer)) trusted)))
+         (buffer (tuatara.buffer:make-buffer "*trust-follows*" :text "fn main() {}")))
+    (unwind-protect
+         (let ((syntax (tuatara.syntax:attach-syntax buffer (tuatara.syntax:find-grammar "rust"))))
+           (parse-done syntax)
+           (is eq :own (tuatara.syntax:helper-kind (tuatara.syntax::syntax-helper syntax)))
+           (setf trusted t)
+           (tuatara.buffer:buffer-insert buffer 0 " ")
+           (parse-done syntax)
+           (is eq :shared (tuatara.syntax:helper-kind (tuatara.syntax::syntax-helper syntax)))
+           (true (tuatara.syntax:syntax-tree syntax))
+           (setf trusted nil)
+           (tuatara.buffer:buffer-insert buffer 0 " ")
+           (parse-done syntax)
+           (is eq :own (tuatara.syntax:helper-kind (tuatara.syntax::syntax-helper syntax)))
+           (true (tuatara.syntax:syntax-tree syntax)))
+      (tuatara.syntax:detach-syntax buffer)
+      (tuatara.buffer:kill-buffer buffer))))
+
 (define-test (syntax grammar-faults)
   ;; a grammar whose own code fails while reading is turned off for the session:
   ;; the buffer keeps the colours it had, no text is parsed with the grammar
   ;; again, the editor says so, and closing the buffer leaves the parser alone
   (let* ((buffer (tuatara.buffer:make-buffer "*fault*" :text "fn main() {}"))
          (grammar (tuatara.syntax:find-grammar "rust"))
+         ;; off for all after one text
+         (tuatara.syntax::*grammar-faults-before-off* 1)
          (said nil))
     (unwind-protect
          (progn
            (tuatara.modes:set-major-mode buffer 'tuatara.defaults::rust-mode)
            (let ((syntax (tuatara.syntax:buffer-syntax buffer))
-                 (tuatara.syntax:*syntax-fault-function* (lambda (syntax) (setf said syntax))))
+                 (tuatara.runtime:*host* (make-answering-host 'tuatara.syntax:host-say-syntax-fault
+                                                              (lambda (syntax) (setf said syntax)))))
              (let ((tuatara.syntax:*syntax-wait* 10)) (tuatara.syntax:syntax-ready-tree syntax))
              (true (tuatara.syntax:syntax-tree syntax))
              ;; a parse whose grammar failed, as the parsing thread records it
@@ -451,6 +975,7 @@ what stopped the walk (NIL at a bracket)."
                            (false (tuatara.syntax:buffer-syntax other)))
                  (tuatara.buffer:kill-buffer other)))))
       (tuatara.buffer:kill-buffer buffer)
+      (clrhash tuatara.syntax::**grammar-faults**)
       (setf (tuatara.syntax:grammar-faulted grammar) nil)))
   ;; the flag is reset: Rust parses again
   (let ((buffer (tuatara.buffer:make-buffer "*fault-after*" :text "fn g() {}")))
@@ -458,6 +983,1081 @@ what stopped the walk (NIL at a bracket)."
          (progn (tuatara.modes:set-major-mode buffer 'tuatara.defaults::rust-mode)
                 (true (tuatara.syntax:buffer-syntax buffer)))
       (tuatara.buffer:kill-buffer buffer))))
+
+;; a grammar that goes wrong on purpose, test/grammars/misbehaving/
+
+(defun call-with-misbehaving-grammar (function)
+  "Call FUNCTION with the grammar of test/grammars/misbehaving/, compiled as the
+build compiles every grammar into a directory of the test's own, and that
+directory, which the programs parsing meanwhile load grammars from; the
+grammar is forgotten afterwards, and those programs ended."
+  (with-test-directory (directory)
+    (let ((source (uiop:native-namestring (asdf:system-relative-pathname :tuatara "test/grammars/misbehaving/src/")))
+          (library (uiop:native-namestring (merge-pathnames "misbehaving.so" directory))))
+      (multiple-value-bind (output error code)
+          (uiop:run-program (list "bash" "-c" ". \"$1\" && compile_grammar \"$2\" \"$3\"" "_"
+                                  (tools-script "grammar-build.sh") source library)
+                            :output :string :error-output :output :ignore-error-status t)
+        (declare (ignore error))
+        (is = 0 code "the test grammar did not compile:~%~a" output))
+      (remhash "misbehaving" tuatara.syntax::*grammars*)
+      (remhash "misbehaving" tuatara.syntax::**grammar-faults**)
+      (unwind-protect
+           (let ((tuatara.syntax:*grammar-directories* (cons directory (tuatara.syntax:grammar-directories))))
+             (funcall function (tuatara.syntax:find-grammar "misbehaving") directory))
+        (remhash "misbehaving" tuatara.syntax::*grammars*)
+        (remhash "misbehaving" tuatara.syntax::**grammar-faults**)
+        (dolist (helper (copy-list tuatara.syntax::**helpers**))
+          (when (member directory (tuatara.syntax::helper-directories helper) :test #'equal)
+            (tuatara.syntax::stop-helper helper)))))))
+
+(defun held-in-helper (helper)
+  "The octets HELPER says its trees and grammars hold."
+  (or (tuatara.syntax:helper-memory helper) 0))
+
+(defun held-falls-to (helper octets)
+  "True once HELPER holds less than OCTETS, waiting two seconds at most: it
+lets go of a parser in a thread of the parser's own."
+  (loop repeat 200
+        thereis (< (held-in-helper helper) octets)
+        do (sleep 0.01)))
+
+(defun parse-in-buffer (grammar text)
+  "A buffer holding TEXT whose syntax in GRAMMAR has been parsed, or given up,
+and its SYNTAX; the buffer is to be killed by the caller."
+  (let* ((buffer (tuatara.buffer:make-buffer "*misbehaving*" :text text))
+         (syntax (tuatara.syntax:attach-syntax buffer grammar)))
+    (parse-done syntax)
+    (values buffer syntax)))
+
+(defun parse-done (syntax)
+  "Wait for SYNTAX's parses to finish, ten seconds at most, and take their result."
+  (loop repeat 1000
+        do (tuatara.syntax:catch-up syntax)
+        while (tuatara.syntax:syntax-job syntax)
+        do (sleep 0.01)))
+
+(define-test (syntax wrong-values-fail-the-parse)
+  ;; each value a grammar's own code gives the parser that it cannot have
+  ;; fails the parse: a token number from the scanner ("!s"), from the
+  ;; lexing function ("#") and from the keyword lexing function ("bad"), and
+  ;; a length of the scanner's state longer than its buffer ("!z"); the
+  ;; parser reads a right text afterwards
+  (call-with-misbehaving-grammar
+   (lambda (grammar directory)
+     (declare (ignore directory))
+     (true grammar)
+     (when grammar
+       (dolist (text '("abc !s def" "abc # def" "abc bad def" "abc !z def"))
+         (let ((parser (tuatara.syntax:make-parser grammar (tuatara.syntax:kept-helper :shared))))
+           (unwind-protect
+                (multiple-value-bind (tree why)
+                    (tuatara.syntax:parse-rope parser (tuatara.text:string->rope text))
+                  (false tree "~s parsed" text)
+                  (is eq :failed why "~s" text)
+                  (let ((tree (tuatara.syntax:parse-rope parser (tuatara.text:string->rope "abc begin !x def"))))
+                    (true tree "after ~s" text)
+                    (when tree (tuatara.syntax:delete-tree tree))))
+             (tuatara.syntax:delete-parser parser))))))))
+
+(define-test (syntax failing-grammar-turned-off)
+  ;; in a buffer, a grammar that gave the parser a wrong value is turned off
+  ;; for that text and said to have failed, its parser deleted
+  (call-with-misbehaving-grammar
+   (lambda (grammar directory)
+     (declare (ignore directory))
+     (let ((said nil))
+       (unwind-protect
+            (let ((tuatara.runtime:*host* (make-answering-host 'tuatara.syntax:host-say-syntax-fault
+                                                               (lambda (syntax) (setf said syntax)))))
+              (multiple-value-bind (buffer syntax) (parse-in-buffer grammar "abc !s def")
+                (unwind-protect
+                     (progn
+                       (is eq syntax said)
+                       (false (tuatara.syntax:grammar-faulted grammar))
+                       (true (tuatara.syntax::grammar-off-p grammar (tuatara.syntax::syntax-helper syntax)))
+                       (true (tuatara.syntax:syntax-broken syntax))
+                       (false (tuatara.syntax::syntax-parser syntax))
+                       (false (tuatara.syntax:syntax-tree syntax)))
+                  (tuatara.syntax:detach-syntax buffer)
+                  (tuatara.buffer:kill-buffer buffer))))
+         (setf (tuatara.syntax:grammar-faulted grammar) nil))))))
+
+(define-test (syntax scanner-memory-counted)
+  ;; the memory a grammar's scanner takes is counted with tree-sitter's: a
+  ;; scanner taking a megabyte for each mark is stopped by the parse's
+  ;; budget; in a buffer the parse is given up, the editor says so and goes
+  ;; on, and the scanner's memory is let go
+  (call-with-misbehaving-grammar
+   (lambda (grammar directory)
+     (declare (ignore directory))
+     (let* ((text (with-output-to-string (o) (dotimes (i 64) (write-string "word !m " o))))
+            (parser (tuatara.syntax:make-parser grammar (tuatara.syntax:kept-helper :shared)))
+            (helper (tuatara.syntax::parser-helper parser))
+            (held (held-in-helper helper)))
+       (unwind-protect
+            (multiple-value-bind (tree why)
+                (tuatara.syntax:parse-rope parser (tuatara.text:string->rope text) :budget (* 8 1024 1024))
+              (false tree)
+              (is eq :memory why))
+         (tuatara.syntax:delete-parser parser))
+       (true (held-falls-to helper (+ held (* 1024 1024))))
+       (let ((said nil))
+         (let ((tuatara.syntax:*syntax-memory-limit* (* 8 1024 1024))
+               (tuatara.syntax:*syntax-memory-per-octet* 0)
+               (tuatara.runtime:*host* (make-answering-host 'tuatara.syntax:host-say-syntax-slow
+                                                            (lambda (syntax) (setf said syntax)))))
+           (multiple-value-bind (buffer syntax) (parse-in-buffer grammar text)
+             (unwind-protect
+                  (progn
+                    (is eq syntax said)
+                    (is eq :memory (tuatara.syntax:syntax-broken syntax))
+                    (false (tuatara.syntax:grammar-faulted grammar))
+                    ;; editing goes on, the text no longer parsed
+                    (tuatara.buffer:buffer-insert buffer 0 "more ")
+                    (false (tuatara.syntax:syntax-job syntax)))
+               (tuatara.syntax:detach-syntax buffer)
+               (tuatara.buffer:kill-buffer buffer)))))))))
+
+(define-test (syntax tight-memory-budget-tried-again)
+  ;; the program parsing a buffer holds a parse to half of what it may still
+  ;; take: a parse spending that is given up as memory running short, and
+  ;; the text is parsed again at its next edit
+  (let* ((numbers (format nil "[~{~d~^,~}]" (loop repeat 2000000 collect (random 10))))
+         (said nil)
+         ;; found before the buffer's own helper, held to little memory, is started
+         (grammar (tuatara.syntax:find-grammar "json"))
+         (tuatara.syntax:*syntax-helper-memory* (* 256 1024 1024))
+         (tuatara.runtime:*host* (make-answering-host 'tuatara.syntax:host-say-syntax-slow
+                                                      (lambda (syntax) (setf said syntax)))))
+    (let* ((buffer (tuatara.buffer:make-buffer "*tight*" :text numbers))
+           (syntax (progn
+                     ;; a program of its own, as a file's text has, held to that little memory
+                     (setf (tuatara.buffer:buffer-local buffer :syntax-helper)
+                           (tuatara.syntax::start-helper (tuatara.syntax:grammar-directories) :own))
+                     (tuatara.syntax:attach-syntax buffer grammar))))
+      (parse-done syntax)
+      (unwind-protect
+           (progn
+             (is eq :short (tuatara.syntax:syntax-broken syntax))
+             (is eq syntax said)
+             (false (tuatara.syntax:grammar-faulted (tuatara.syntax:syntax-grammar syntax)))
+             ;; the text made short: memory is back, and it is parsed again
+             (tuatara.buffer:buffer-delete buffer 4 (- (length numbers) 1))
+             (parse-done syntax)
+             (is eq nil (tuatara.syntax:syntax-broken syntax))
+             (true (tuatara.syntax:syntax-tree syntax)))
+        (tuatara.syntax:detach-syntax buffer)
+        (tuatara.buffer:kill-buffer buffer)))))
+
+(define-test (syntax no-memory-for-one-request)
+  ;; tree-sitter asked, in a parse, for more memory than can be had at once
+  ;; ("!h", a terabyte): the parse is given up and its parser let go,
+  ;; counted; the program parsing goes on, and so does the editor
+  (call-with-misbehaving-grammar
+   (lambda (grammar directory)
+     (declare (ignore directory))
+     (let* ((parser (tuatara.syntax:make-parser grammar (tuatara.syntax:kept-helper :shared)))
+            (helper (tuatara.syntax::parser-helper parser)))
+       (multiple-value-bind (tree why unusable)
+           (tuatara.syntax:parse-rope parser (tuatara.text:string->rope "abc !h def"))
+         (false tree)
+         (is eq :short why)
+         (true unusable))
+       (true (tuatara.syntax:helper-alive helper))
+       (true (nth-value 1 (tuatara.syntax:helper-memory helper))))
+     (let ((before (tuatara.syntax:parsers-let-go)))
+       (multiple-value-bind (buffer syntax) (parse-in-buffer grammar "abc !h def")
+         (unwind-protect
+              (progn
+                (is eq :short (tuatara.syntax:syntax-broken syntax))
+                (is = (1+ before) (tuatara.syntax:parsers-let-go))
+                ;; a new parser, at the next edit
+                (tuatara.buffer:buffer-delete buffer 4 7)
+                (parse-done syntax)
+                (is eq nil (tuatara.syntax:syntax-broken syntax))
+                (true (tuatara.syntax:syntax-tree syntax)))
+           (tuatara.syntax:detach-syntax buffer)
+           (tuatara.buffer:kill-buffer buffer)))))))
+
+(defun parses-elsewhere ()
+  "True when text is still parsed after a program parsing went wrong."
+  (let ((parser (tuatara.syntax:make-parser (tuatara.syntax:find-grammar "json") (tuatara.syntax:kept-helper :shared))))
+    (unwind-protect
+         (let ((tree (tuatara.syntax:parse-rope parser (tuatara.text:string->rope "[1, 2]"))))
+           (prog1 (and tree t)
+             (when tree (tuatara.syntax:delete-tree tree))))
+      (tuatara.syntax:delete-parser parser))))
+
+(defun call-with-own-helper (function)
+  "Call FUNCTION with a program parsing of its own, as a file you do not trust
+has, ended after."
+  (let ((helper (tuatara.syntax::start-helper (tuatara.syntax:grammar-directories) :own)))
+    (unwind-protect (funcall function helper)
+      (when helper (tuatara.syntax::stop-helper helper)))))
+
+(define-test (syntax looping-text-in-another-language-hangs-once)
+  ;; text in another language whose scanner never returns hangs colouring
+  ;; once: the grammar is then off for that buffer's text, not tried again
+  ;; at each redraw
+  (call-with-misbehaving-grammar
+   (lambda (grammar directory)
+     (declare (ignore directory))
+     (let* ((tuatara.syntax:*syntax-helper-wait* 1)
+            (tuatara.syntax::*injection-time-limit* 0.3)
+            (colours (tuatara.syntax:compile-query grammar "(_) @x"))
+            (buffer (tuatara.buffer:make-buffer "*looping-block*" :text "abc !l def"))
+            (rope (tuatara.buffer:buffer-text buffer))
+            (resolve (lambda (name) (declare (ignore name)) (values grammar colours (vector :keyword)))))
+       (unwind-protect
+            (let ((tuatara.syntax:*parsing-buffer* buffer)
+                  (tuatara.syntax:*helper* (tuatara.syntax:buffer-helper buffer)))
+              (let ((began (get-internal-real-time)))
+                (false (tuatara.syntax:language-highlights resolve "misbehaving" (list (cons 0 10)) rope 0 10))
+                (true (< (tuatara.runtime:seconds-since began) 5)))
+              (true (tuatara.syntax::grammar-off-p grammar buffer))
+              (false (tuatara.syntax:grammar-faulted grammar))
+              ;; the next redraw: no wait at all
+              (let* ((tuatara.syntax:*helper* (tuatara.syntax:buffer-helper buffer))
+                     (began (get-internal-real-time)))
+                (false (tuatara.syntax:language-highlights resolve "misbehaving" (list (cons 0 10)) rope 0 10))
+                (true (< (tuatara.runtime:seconds-since began) 0.2))))
+         (tuatara.buffer:kill-buffer buffer))))))
+
+(define-test (syntax helper-stalled-outside-a-parse-stops-its-buffer)
+  ;; a buffer's helper that stops answering, or answers wrongly, while not
+  ;; parsing: nothing more of that buffer is parsed, so that it hangs once
+  (let ((buffer (tuatara.buffer:make-buffer "*stalled*" :text "fn main() {}")))
+    (unwind-protect
+         (let ((helper (tuatara.syntax:buffer-helper buffer)))
+           (true helper)
+           (tuatara.syntax::end-helper helper :hung)
+           (true (tuatara.syntax::grammar-off-p (tuatara.syntax:find-grammar "rust") buffer))
+           (tuatara.modes:set-major-mode buffer 'tuatara.defaults::rust-mode)
+           (false (tuatara.syntax:buffer-syntax buffer)))
+      (tuatara.buffer:kill-buffer buffer))))
+
+(define-test (syntax lying-matches-cost-little)
+  ;; a reply of more matches than the text asked about could have ends its
+  ;; helper at once; matches whose tests would read the whole text over and
+  ;; over fail those tests past what they may read, at once
+  (let* ((grammar (tuatara.syntax:find-grammar "rust"))
+         (query (tuatara.syntax:compile-query grammar "((identifier) @name (#match? @name \"^x\"))"))
+         (rope (tuatara.text:string->rope (make-string (* 4 1024 1024) :initial-element #\x)))
+         (bytes (tuatara.text:rope-bytes rope)))
+    (dolist (case (list (list 5000 10) (list 100 bytes)))
+      (destructuring-bind (matches width) case
+        (let ((reply (apply #'concatenate '(vector (unsigned-byte 8))
+                            (loop repeat matches collect (words 0 1 0 0 width 0))))
+              (seen 0) ended (began (get-internal-real-time)))
+          (call-with-fake-helper
+           (lambda (fd how body) (declare (ignore how body)) (fake-send fd 1 0 reply))
+           (lambda (helper)
+             (setf (gethash (tuatara.syntax::query-number query) (tuatara.syntax::helper-queries helper)) t)
+             (tuatara.syntax:map-query-matches (lambda (pattern captures count)
+                                                 (declare (ignore pattern captures count))
+                                                 (incf seen))
+                                               query (tuatara.syntax::%make-tree helper 1) rope 0 10)
+             (setf ended (tuatara.syntax:helper-ended helper))))
+          (if (= matches 5000)
+              (is eq :broken ended "~s" case)
+              (progn (false ended) (is = 0 seen)))
+          (true (< seen matches))
+          (true (< (tuatara.runtime:seconds-since began) 2)))))))
+
+(define-test (syntax one-helper-for-a-buffer)
+  ;; threads asking at once for a buffer's helper all get the one helper
+  (let ((buffer (tuatara.buffer:make-buffer "*one-helper*" :text "fn main() {}"))
+        (got '()) (lock (sb-thread:make-mutex)))
+    (unwind-protect
+         (let ((threads (loop repeat 4
+                              collect (sb-thread:make-thread
+                                       (lambda ()
+                                         (let ((helper (tuatara.syntax:buffer-helper buffer)))
+                                           (sb-thread:with-mutex (lock) (push helper got))))))))
+           (mapc #'sb-thread:join-thread threads)
+           (is = 4 (length got))
+           (is = 1 (length (remove-duplicates got)))
+           (is = 1 (count buffer tuatara.syntax::**helpers** :key #'tuatara.syntax::helper-buffer)))
+      (tuatara.buffer:kill-buffer buffer))
+    ;; killed, its helper ends, and none is started for it after
+    (is = 0 (count buffer tuatara.syntax::**helpers** :key #'tuatara.syntax::helper-buffer))
+    (false (tuatara.syntax:buffer-helper buffer))))
+
+(define-test (syntax a-file-counts-once-however-often-opened)
+  ;; a grammar going wrong on one file opened again and again is still one
+  ;; text, not one more each time: no language is turned off for all by it
+  (let ((grammar (tuatara.syntax:find-grammar "rust"))
+        (buffers '()))
+    (clrhash tuatara.syntax::**grammar-faults**)
+    (unwind-protect
+         (progn
+           (dotimes (i 4)
+             (let ((buffer (tuatara.buffer:make-buffer (format nil "*same-file-~d*" i) :text "fn main() {}")))
+               (setf (tuatara.buffer:buffer-file buffer) "/nonexistent/evidence/same.rs")
+               (push buffer buffers)
+               (tuatara.syntax::grammar-went-wrong grammar buffer :crashed)))
+           (false (tuatara.syntax:grammar-faulted grammar))
+           (true (every (lambda (buffer) (tuatara.syntax::grammar-off-p grammar buffer)) buffers)))
+      (mapc #'tuatara.buffer:kill-buffer buffers)
+      (clrhash tuatara.syntax::**grammar-faults**)
+      (setf (tuatara.syntax:grammar-faulted grammar) nil))))
+
+(define-test (syntax one-kept-helper-of-a-kind)
+  ;; threads asking at once for the helper kept for all start one of it
+  (with-test-directory (directory)
+    (let* ((directories (cons (namestring directory) (tuatara.syntax:grammar-directories)))
+           (got '()) (lock (sb-thread:make-mutex)))
+      (unwind-protect
+           (let ((threads (loop repeat 4
+                                collect (sb-thread:make-thread
+                                         (lambda ()
+                                           (let* ((tuatara.syntax:*grammar-directories* directories)
+                                                  (helper (tuatara.syntax:kept-helper :shared)))
+                                             (sb-thread:with-mutex (lock) (push helper got))))))))
+             (mapc #'sb-thread:join-thread threads)
+             (is = 1 (length (remove-duplicates got)))
+             (is = 1 (count-if (lambda (helper) (and (eq :shared (tuatara.syntax:helper-kind helper))
+                                                     (equal directories (tuatara.syntax::helper-directories helper))))
+                               tuatara.syntax::**helpers**)))
+        (dolist (helper (copy-list tuatara.syntax::**helpers**))
+          (when (equal directories (tuatara.syntax::helper-directories helper))
+            (tuatara.syntax::stop-helper helper)))))))
+
+(define-test (syntax editor-thread-never-waits-for-a-start)
+  ;; on a thread that must not wait, a helper kept for all that is not
+  ;; running is started in the background, NIL given at once meanwhile
+  (with-test-directory (directory)
+    (let ((directories (cons (namestring directory) (tuatara.syntax:grammar-directories))))
+      (unwind-protect
+           (let ((tuatara.syntax:*grammar-directories* directories))
+             (let ((tuatara.runtime:*host* (make-answering-host 'tuatara.syntax:host-must-not-wait-p (this-thread-only)))
+                   (asking sb-thread:*current-thread*)
+                   (started-by '()))
+               ;; where each start is made: never on the thread that asked
+               (sb-int:encapsulate 'tuatara.syntax::start-helper 'note-thread
+                                   (lambda (function &rest arguments)
+                                     (push sb-thread:*current-thread* started-by)
+                                     (apply function arguments)))
+               (unwind-protect
+                    (progn
+                      (false (tuatara.syntax:kept-helper :rules))
+                      (true (loop repeat 500
+                                  thereis (tuatara.syntax::known-kept-helper (cons :rules directories))
+                                  do (sleep 0.01)))
+                      (true started-by)
+                      (false (member asking started-by)))
+                 (sb-int:unencapsulate 'tuatara.syntax::start-helper 'note-thread))))
+        (dolist (helper (copy-list tuatara.syntax::**helpers**))
+          (when (equal directories (tuatara.syntax::helper-directories helper))
+            (tuatara.syntax::stop-helper helper)))))))
+
+(define-test (syntax starting-thread-never-waited-for-forever)
+  ;; a start that ends with a condition no error, or takes too long, is
+  ;; given up with that said, and the next start goes on as before
+  (multiple-value-bind (result condition) (tuatara.syntax::in-starter (lambda () (error 'storage-condition)))
+    (false result)
+    (true (typep condition 'storage-condition)))
+  (let ((tuatara.syntax::*starter-wait* 0.5)
+        (began (get-internal-real-time)))
+    (multiple-value-bind (result condition) (tuatara.syntax::in-starter (lambda () (sleep 3) :late))
+      (false result)
+      (true condition)
+      (true (< (tuatara.runtime:seconds-since began) 2))))
+  (is eq :fine (tuatara.syntax::in-starter (lambda () :fine))))
+
+(define-test (syntax a-link-lends-no-trust)
+  ;; a file reached through a link inside a project you trust is parsed as
+  ;; the file it really is, outside it
+  (with-test-directory (trusted)
+    (with-test-directory (elsewhere)
+      (let ((tuatara-user:*lsp-trusted-projects* (list (namestring trusted)))
+            (inside (namestring (merge-pathnames "inside.rs" trusted)))
+            (outside (namestring (merge-pathnames "evidence.rs" elsewhere)))
+            (link (namestring (merge-pathnames "link.rs" trusted))))
+        (ensure-directories-exist (merge-pathnames ".git/" trusted))
+        (dolist (path (list inside outside)) (with-open-file (o path :direction :output) (write-line "fn f() {}" o)))
+        (sb-posix:symlink outside link)
+        (flet ((trusted-p (path)
+                 (let ((buffer (tuatara.buffer:make-buffer (format nil "*trust ~a*" path) :text "")))
+                   (unwind-protect
+                        (progn (setf (tuatara.buffer:buffer-file buffer) path)
+                               (tuatara.defaults::buffer-in-trusted-project-p buffer))
+                     (tuatara.buffer:kill-buffer buffer)))))
+          (true (trusted-p inside))
+          (false (trusted-p link)))))))
+
+(define-test (syntax counts-checked-before-anything-made)
+  ;; a reply to compiling rules naming more captures than the rules have,
+  ;; or a grammar of more node types than tree-sitter can number, is
+  ;; refused before anything is made of it
+  (let ((grammar (tuatara.syntax:find-grammar "rust")))
+    (dolist (case (list (list :rules (words 0 #x7ffffff)) (list :grammar (words 1 #x7ffffff))))
+      (destructuring-bind (kind reply) case
+        (let (ended (before (sb-ext:get-bytes-consed)))
+          (call-with-fake-helper
+           (lambda (fd how body) (declare (ignore how body)) (fake-send fd 1 0 reply))
+           (lambda (helper)
+             (let ((tuatara.syntax:*grammar-directories* (list "/nonexistent/fake-counts/")))
+               (sb-thread:with-mutex (tuatara.syntax::**helpers-lock**)
+                 (push (cons (cons :rules (tuatara.syntax:grammar-directories)) helper) tuatara.syntax::**kept-helpers**))
+               (unwind-protect
+                    (handler-case (if (eq kind :rules)
+                                      (tuatara.syntax::compile-query-text grammar "(identifier) @name")
+                                      (tuatara.syntax::load-grammar "fake"))
+                      (tuatara.syntax:query-error () nil))
+                 (sb-thread:with-mutex (tuatara.syntax::**helpers-lock**)
+                   (setf tuatara.syntax::**kept-helpers** (remove helper tuatara.syntax::**kept-helpers** :key #'cdr)))))
+             (setf ended (tuatara.syntax:helper-ended helper))))
+          (is eq :broken ended "~s" kind)
+          (true (< (- (sb-ext:get-bytes-consed) before) (* 64 1024 1024)) "~s" kind))))))
+
+(define-test (syntax reset-refused-while-parsing)
+  ;; a parser is not reset, nor deleted under it, while it parses on
+  ;; another connection
+  (call-with-misbehaving-grammar
+   (lambda (grammar directory)
+     (declare (ignore directory))
+     (let ((tuatara.syntax:*syntax-helper-wait* 1))
+       (call-with-own-helper
+        (lambda (helper)
+          (let* ((parser (tuatara.syntax:make-parser grammar helper))
+                 (parsing (sb-thread:make-thread
+                           (lambda ()
+                             (tuatara.syntax:parse-rope parser (tuatara.text:string->rope "abc !l def") :limit 2)))))
+            (sleep 0.3)
+            (tuatara.syntax::with-call (call helper tuatara.syntax::+op-reset+)
+              (tuatara.syntax::call-u32 call (tuatara.syntax::parser-number parser))
+              (is eql 1 (tuatara.syntax::call-send call)))
+            (sb-thread:join-thread parsing :default nil))))))))
+
+(define-test (syntax helpers-in-use-not-ended-for-room)
+  ;; past *syntax-helpers-most*, a helper whose buffer is shown or parsing
+  ;; is left running, the helpers going past the most
+  (let ((buffers (loop for i below 3 collect (tuatara.buffer:make-buffer (format nil "*in-use-~d*" i) :text "fn f() {}"))))
+    (unwind-protect
+         (let ((tuatara.syntax::*syntax-helpers-most* 1)
+               (tuatara.runtime:*host* (make-answering-host 'tuatara.syntax:host-buffer-shown-p
+                                                            (lambda (buffer) (member buffer buffers)))))
+           (let ((helpers (mapcar #'tuatara.syntax:buffer-helper buffers)))
+             (true (every #'tuatara.syntax:helper-alive helpers))))
+      (mapc #'tuatara.buffer:kill-buffer buffers))))
+
+(define-test (syntax no-sandbox-nothing-pending)
+  ;; without the sandbox a grammar not yet loaded is not waited for: no
+  ;; helper is started again and again, no thread made for each redraw
+  (let ((starts 0) (kept (gethash "toml" tuatara.syntax::*grammars*)))
+    (call-without-sandbox
+     (lambda ()
+       (tuatara.io:sandbox-status :again t)
+       (sb-int:encapsulate 'tuatara.syntax::start-helper 'counted
+                           (lambda (function &rest arguments) (incf starts) (apply function arguments)))
+       (remhash "toml" tuatara.syntax::*grammars*)
+       (let ((buffer (tuatara.buffer:make-buffer "*pending.toml*" :text "a = 1"))
+             (tuatara.syntax::*syntax-helper-unconfined* nil)
+             (tuatara.runtime:*host* (make-answering-host 'tuatara.syntax:host-must-not-wait-p (this-thread-only))))
+         (unwind-protect
+              (let ((threads (length (sb-thread:list-all-threads))))
+                (tuatara.modes:set-major-mode buffer 'tuatara.defaults::toml-mode)
+                (dotimes (i 20) (tuatara.defaults::syntax-refresh-tick nil))
+                (false (tuatara.syntax:grammar-pending-p "toml"))
+                (false (tuatara.buffer:buffer-local buffer :syntax-pending))
+                (is = 0 starts)
+                (true (<= (length (sb-thread:list-all-threads)) (+ threads 1))))
+           (sb-int:unencapsulate 'tuatara.syntax::start-helper 'counted)
+           (tuatara.buffer:kill-buffer buffer)))))
+    (if kept (setf (gethash "toml" tuatara.syntax::*grammars*) kept) (remhash "toml" tuatara.syntax::*grammars*))))
+
+(define-test (syntax grammar-ending-its-loader-given-up)
+  ;; a grammar whose loading ends the program loading it is tried a few
+  ;; times, then given up on as missing: no helper started without end
+  (with-test-directory (directory)
+    (let ((source (merge-pathnames "crashy.c" directory))
+          (library (merge-pathnames "crashy.so" directory))
+          (rules 0))
+      (with-open-file (o source :direction :output)
+        (format o "#include <stdlib.h>~%const void *tree_sitter_crashy(void) { abort(); }~%"))
+      (multiple-value-bind (output error code)
+          (uiop:run-program (list "cc" "-shared" "-fPIC" "-o" (namestring library) (namestring source))
+                            :output :string :error-output :output :ignore-error-status t)
+        (declare (ignore error))
+        (is = 0 code "~a" output))
+      (sb-int:encapsulate 'tuatara.syntax::start-helper 'counted
+                          (lambda (function directories kind)
+                            (when (eq kind :rules) (incf rules))
+                            (funcall function directories kind)))
+      (unwind-protect
+           (let ((tuatara.syntax:*grammar-directories* (cons (namestring directory) (tuatara.syntax:grammar-directories))))
+             (remhash "crashy" tuatara.syntax::**grammar-load-deaths**)
+             (dotimes (i 10) (false (tuatara.syntax:find-grammar "crashy")))
+             (true (<= rules (1+ tuatara.syntax::*grammar-load-deaths-most*)) "~d starts" rules)
+             (false (tuatara.syntax:grammar-pending-p "crashy")))
+        (sb-int:unencapsulate 'tuatara.syntax::start-helper 'counted)
+        (remhash "crashy" tuatara.syntax::*grammars*)
+        (remhash "crashy" tuatara.syntax::**grammar-load-deaths**)
+        (dolist (helper (copy-list tuatara.syntax::**helpers**))
+          (when (member (namestring directory) (tuatara.syntax::helper-directories helper) :test #'equal)
+            (tuatara.syntax::stop-helper helper)))))))
+
+(define-test (syntax reply-too-large-refused-cleanly)
+  ;; a helper whose reply would be past its most refuses it whole, writes
+  ;; nothing past it, and goes on; built here with a small most
+  (with-test-directory (directory)
+    (let* ((ts (namestring (asdf:system-relative-pathname :tuatara "build/grammar-sources/tree-sitter/")))
+           (root (namestring (asdf:system-relative-pathname :tuatara "")))
+           (program (namestring (merge-pathnames "tuatara-syntax-helper" directory))))
+      (multiple-value-bind (output error code)
+          (uiop:run-program (list "cc" "-O1" "-std=c11" "-DNDEBUG" "-D_POSIX_C_SOURCE=200112L" "-D_DEFAULT_SOURCE"
+                                  "-DREPLY_MOST=16384u"
+                                  (format nil "-I~alib/include" ts) (format nil "-I~alib/src" ts)
+                                  (format nil "~alib/src/lib.c" ts) (format nil "~asyntax/syntax.c" root)
+                                  (format nil "~asyntax/helper.c" root)
+                                  "-rdynamic" "-lpthread" "-ldl" "-o" program)
+                            :output :string :error-output :output :ignore-error-status t)
+        (declare (ignore error))
+        (is = 0 code "~a" output))
+      (let* ((tuatara.syntax:*grammar-directories* (cons (namestring directory) (tuatara.syntax:grammar-directories)))
+             (helper (tuatara.syntax::start-helper (tuatara.syntax:grammar-directories) :own))
+             (grammar (tuatara.syntax:find-grammar "rust"))
+             (query (tuatara.syntax:compile-query grammar "(identifier) @name"))
+             (rope (tuatara.text:string->rope (format nil "~{fn f~d(a: i32, b: i32) -> i32 { a + b }~%~}" (loop for i below 400 collect i)))))
+        (unwind-protect
+             (let* ((parser (tuatara.syntax:make-parser grammar helper))
+                    (tree (tuatara.syntax:parse-rope parser rope))
+                    (seen 0) (began (get-internal-real-time)))
+               (true tree)
+               (tuatara.syntax:map-query-matches (lambda (pattern captures count)
+                                                   (declare (ignore pattern captures count))
+                                                   (incf seen))
+                                                 query tree rope 0 (tuatara.text:rope-bytes rope))
+               (is = 0 seen)
+               (true (< (tuatara.runtime:seconds-since began) 1))
+               (true (tuatara.syntax:helper-alive helper))
+               ;; and a small one is answered as before
+               (tuatara.syntax:map-query-matches (lambda (pattern captures count)
+                                                   (declare (ignore pattern captures count))
+                                                   (incf seen))
+                                                 query tree rope 0 40)
+               (true (plusp seen))
+               (true (tuatara.syntax:helper-alive helper))
+               ;; text in another language whose matches are too many: its trees let go
+               (let ((held (tuatara.syntax:helper-memory helper)))
+                 (dotimes (i 5)
+                   (tuatara.syntax::parse-texts rope (list (tuatara.syntax::make-text-parse
+                                                            grammar (list (cons 0 (tuatara.text:rope-bytes rope))) nil
+                                                            (list (list query 0 (tuatara.text:rope-bytes rope))) 2 nil))
+                                                (lambda (trees) (declare (ignore trees)))
+                                                :helper helper))
+                 (true (< (tuatara.syntax:helper-memory helper) (+ held (* 64 1024))) "~d held, ~d before"
+                       (tuatara.syntax:helper-memory helper) held)))
+          (when helper (tuatara.syntax::stop-helper helper)))))))
+
+(define-test (syntax given-up-starting-thread-takes-no-more)
+  ;; a starting thread given up on takes no more work, its late answer
+  ;; taken for no other start, and every starting thread ends with the rest
+  (let ((tuatara.syntax::*starter-wait* 0.3))
+    (multiple-value-bind (result condition) (tuatara.syntax::in-starter (lambda () (sleep 1) :old))
+      (false result)
+      (true condition)))
+  (is eq :new (tuatara.syntax::in-starter (lambda () :new)))
+  (sleep 1)
+  (is eq :newer (tuatara.syntax::in-starter (lambda () :newer)))
+  (true (>= (length tuatara.syntax::**starters**) 2))
+  (let ((starters (copy-list tuatara.syntax::**starters**)))
+    (tuatara.syntax:stop-helpers)
+    (true (notany #'sb-thread:thread-alive-p starters))))
+
+(define-test (syntax showing-text-never-waits-for-its-helper)
+  ;; on the editor's own thread, a buffer's helper is set going at once when
+  ;; nothing holds it up; while another start does, none is given at once,
+  ;; its helper started in the background
+  (tuatara.io:sandbox-status)
+  (let ((buffer (tuatara.buffer:make-buffer "*soon*" :text "fn main() {}"))
+        (holding (sb-thread:make-semaphore)))
+    (unwind-protect
+         (let* ((tuatara.runtime:*host* (make-answering-host 'tuatara.syntax:host-must-not-wait-p (this-thread-only)))
+               (letting-go (sb-thread:make-semaphore))
+               (given-up nil)
+               (holder (sb-thread:make-thread
+                        (lambda ()
+                          (sb-thread:with-mutex (tuatara.syntax::**room-lock**)
+                            (sb-thread:signal-semaphore holding)
+                            (unless (sb-thread:wait-on-semaphore letting-go :timeout 10)
+                              (setf given-up t)))))))
+           (sb-thread:wait-on-semaphore holding)
+           (false (tuatara.syntax:buffer-helper-soon buffer))
+           ;; given up on while the start was still held up, not after waiting for it
+           (false given-up)
+           (sb-thread:signal-semaphore letting-go)
+           (sb-thread:join-thread holder)
+           (true (loop repeat 500
+                       thereis (let ((own (tuatara.buffer:buffer-local buffer :syntax-helper)))
+                                 (and own (tuatara.syntax:helper-alive own)))
+                       do (sleep 0.01))))
+      (tuatara.buffer:kill-buffer buffer)))
+  ;; nothing holding it up: set going at once
+  (let ((buffer (tuatara.buffer:make-buffer "*soon-now*" :text "fn main() {}")))
+    (unwind-protect
+         (let ((tuatara.runtime:*host* (make-answering-host 'tuatara.syntax:host-must-not-wait-p (this-thread-only)))
+               (tuatara.syntax::*at-once-wait* 30))
+           (true (tuatara.syntax:buffer-helper-soon buffer)))
+      (tuatara.buffer:kill-buffer buffer))))
+
+(define-test (syntax buffer-killed-while-its-helper-starts)
+  ;; a buffer killed while its helper starts leaves none behind
+  (let ((buffer (tuatara.buffer:make-buffer "*killed-starting*" :text "fn main() {}")))
+    (let ((killer nil))
+      ;; killed from another thread while the start is under way
+      (sb-int:encapsulate 'tuatara.syntax::start-helper 'kill-meanwhile
+                          (lambda (function &rest arguments)
+                            (setf killer (sb-thread:make-thread (lambda () (tuatara.buffer:kill-buffer buffer))))
+                            (sleep 0.2)
+                            (apply function arguments)))
+      (unwind-protect
+           (tuatara.syntax:buffer-helper buffer)
+        (sb-int:unencapsulate 'tuatara.syntax::start-helper 'kill-meanwhile)
+        (when killer (sb-thread:join-thread killer :default nil :timeout 10))))
+    (false (find-if (lambda (helper) (and (eq buffer (tuatara.syntax::helper-buffer helper))
+                                          (tuatara.syntax:helper-alive helper)))
+                    tuatara.syntax::**helpers**))))
+
+(define-test (syntax killing-never-waits-for-helper-starts)
+  ;; on the editor's own thread, a buffer with a helper is killed at once while another helper's
+  ;; start holds the room for helpers; its helper is ended all the same, its process with it
+  (let* ((buffer (tuatara.buffer:make-buffer "*killed-while-busy*" :text "fn main() {}"))
+         (helper (tuatara.syntax:buffer-helper buffer))
+         (process (tuatara.syntax::helper-process helper))
+         (holding (sb-thread:make-semaphore))
+         (letting-go (sb-thread:make-semaphore))
+         (holder (sb-thread:make-thread (lambda ()
+                                          (sb-thread:with-mutex (tuatara.syntax::**room-lock**)
+                                            (sb-thread:signal-semaphore holding)
+                                            (sb-thread:wait-on-semaphore letting-go :timeout 10))))))
+    (true (tuatara.syntax:helper-alive helper))
+    (sb-thread:wait-on-semaphore holding)
+    (unwind-protect
+         (let ((tuatara.runtime:*host* (make-answering-host 'tuatara.syntax:host-must-not-wait-p (this-thread-only)))
+               (began (get-internal-real-time)))
+           (tuatara.buffer:kill-buffer buffer)
+           (true (< (tuatara.runtime:seconds-since began) 0.05)))
+      (sb-thread:signal-semaphore letting-go)
+      (sb-thread:join-thread holder :default nil))
+    (false (tuatara.syntax:helper-alive helper))
+    (true (loop repeat 500
+                thereis (not (sb-ext:process-alive-p process))
+                do (sleep 0.01)))))
+
+(define-test (syntax start-finishing-for-killed-buffer-ends-its-helper)
+  ;; a buffer killed while a start for it holds the room for helpers, before it stops being live:
+  ;; the helper that start then makes is ended, not kept for it
+  (let ((buffer (tuatara.buffer:make-buffer "*killed-before-start-ends*" :text "fn main() {}")))
+    (unwind-protect
+         (sb-thread:with-mutex (tuatara.syntax::**room-lock**)
+           (tuatara.syntax::forget-killed-buffer-helper buffer)
+           (true (tuatara.buffer:live-buffer-p buffer))
+           (false (tuatara.syntax::start-own-helper-now nil buffer nil))
+           (false (tuatara.buffer:buffer-local buffer :syntax-helper)))
+      (tuatara.buffer:kill-buffer buffer))
+    (false (find-if (lambda (helper) (and (eq buffer (tuatara.syntax::helper-buffer helper))
+                                          (tuatara.syntax:helper-alive helper)))
+                    tuatara.syntax::**helpers**))))
+
+(define-test (syntax trusted-text-ends-its-own-helper)
+  ;; a file's project trusted after its own helper started: on the editor's own thread its text is
+  ;; given to the shared helper, and its own one ended
+  (let ((buffer (tuatara.buffer:make-buffer "*trusted-later*" :text "fn main() {}")))
+    (unwind-protect
+         (let ((own (tuatara.syntax:buffer-helper buffer)))
+           (true (tuatara.syntax:helper-alive own))
+           (let ((tuatara.runtime:*host* (make-answering-host 'tuatara.syntax:host-trusted-text-p
+                                                              (lambda (other) (eq other buffer))
+                                                              'tuatara.syntax:host-must-not-wait-p (this-thread-only))))
+             (tuatara.syntax:buffer-helper-soon buffer))
+           (false (tuatara.syntax:helper-alive own))
+           (false (tuatara.buffer:buffer-local buffer :syntax-helper)))
+      (tuatara.buffer:kill-buffer buffer))))
+
+(define-test (syntax helper-connections-closed-when-ending-fails)
+  ;; ending a helper's process failing (no thread to be had to wait for its end): the helper is
+  ;; ended and its connection closed all the same
+  (let* ((helper (tuatara.syntax::start-helper (tuatara.syntax:grammar-directories) :own))
+         (fd (tuatara.syntax::helper-fd helper))
+         (process (tuatara.syntax::helper-process helper)))
+    (sb-int:encapsulate 'tuatara.io:end-sandbox 'failing (lambda (function &rest arguments)
+                                                           (declare (ignore function arguments))
+                                                           (error "No thread to wait for the end")))
+    (unwind-protect
+         (finish (tuatara.syntax::stop-helper helper :wait nil))
+      (sb-int:unencapsulate 'tuatara.io:end-sandbox 'failing))
+    (false (tuatara.syntax:helper-alive helper))
+    (fail (sb-posix:fcntl fd sb-posix:f-getfd))
+    (tuatara.io:end-sandbox process)))
+
+(define-test (syntax honest-helpers-not-blamed)
+  ;; tests of a long captured text past what they may read do not pass, the
+  ;; helper left alone; a whole text's matches taking long are slow, not a
+  ;; fault of the buffer's text; reading it again tries its grammars again
+  (let* ((grammar (tuatara.syntax:find-grammar "rust"))
+         (query (tuatara.syntax:compile-query grammar "((string_literal) @s (#match? @s \"x\"))"))
+         (text (format nil "fn f() { let s = \"~a\"; }~%" (make-string (* 3 1024 1024) :initial-element #\x)))
+         (rope (tuatara.text:string->rope text)))
+    (call-with-own-helper
+     (lambda (helper)
+       (let* ((parser (tuatara.syntax:make-parser grammar helper))
+              (tree (tuatara.syntax:parse-rope parser rope))
+              (seen 0))
+         (true tree)
+         (tuatara.syntax:map-query-matches (lambda (pattern captures count)
+                                             (declare (ignore pattern captures count))
+                                             (incf seen))
+                                           query tree rope 0 20)
+         (is = 0 seen)
+         (true (tuatara.syntax:helper-alive helper))))))
+  (let ((buffer (tuatara.buffer:make-buffer "*slow-whole*" :text "fn main() {}"))
+        (tuatara.syntax:*syntax-helper-wait* 0.5))
+    (unwind-protect
+         (progn
+           (call-with-fake-helper
+            :never
+            (lambda (helper)
+              (setf (tuatara.syntax::helper-buffer helper) buffer)
+              (let ((query (tuatara.syntax:compile-query (tuatara.syntax:find-grammar "rust") "(identifier) @x")))
+                (setf (gethash (tuatara.syntax::query-number query) (tuatara.syntax::helper-queries helper)) t)
+                (tuatara.syntax:map-query-matches (lambda (&rest r) (declare (ignore r)))
+                                                  query (tuatara.syntax::%make-tree helper 1)
+                                                  (tuatara.buffer:buffer-text buffer) 0 12))
+              (is eq :slow (tuatara.syntax:helper-ended helper))))
+           (false (tuatara.syntax::grammar-off-p (tuatara.syntax:find-grammar "rust") buffer))
+           (tuatara.syntax::note-faulted buffer :all)
+           (true (tuatara.syntax::grammar-off-p (tuatara.syntax:find-grammar "rust") buffer))
+           (tuatara.defaults::parse-afresh buffer)
+           (false (tuatara.syntax::grammar-off-p (tuatara.syntax:find-grammar "rust") buffer)))
+      (tuatara.buffer:kill-buffer buffer))))
+
+(define-test (syntax a-text-counted-once-whatever-it-is-called)
+  ;; one file reached by a link and by its own path, one text pasted twice,
+  ;; one note exported again and again: each one text
+  (with-test-directory (directory)
+    (let* ((real (namestring (merge-pathnames "real.rs" directory)))
+           (link (namestring (merge-pathnames "link.rs" directory))))
+      (with-open-file (o real :direction :output) (write-line "fn f() {}" o))
+      (sb-posix:symlink real link)
+      (is equal (tuatara.syntax:text-key :file real) (tuatara.syntax:text-key :file link))
+      (let ((a (tuatara.buffer:make-buffer "*pasted-a*" :text "fn g() {}"))
+            (b (tuatara.buffer:make-buffer "*pasted-b*" :text "fn g() {}"))
+            (c (tuatara.buffer:make-buffer "*pasted-c*" :text "fn h() {}")))
+        (unwind-protect
+             (progn
+               (is equal (tuatara.syntax::text-identity a) (tuatara.syntax::text-identity b))
+               (false (equal (tuatara.syntax::text-identity a) (tuatara.syntax::text-identity c))))
+          (mapc #'tuatara.buffer:kill-buffer (list a b c))))
+      (is equal (tuatara.syntax:text-key :file nil :text "* a note") (tuatara.syntax:text-key :text "* a note")))))
+
+(define-test (syntax replies-held-to-what-was-asked)
+  ;; a reply to a parse longer than a parse's reply can be ends its helper
+  (let (ended)
+    (call-with-fake-helper
+     (lambda (fd how body) (declare (ignore how body)) (fake-send fd 1 0 (apply #'words (loop repeat 25 collect 1))))
+     (lambda (helper)
+       (tuatara.syntax:parse-rope (tuatara.syntax::%make-parser helper 5 (tuatara.syntax:find-grammar "rust"))
+                                  (tuatara.text:string->rope "fn f() {}"))
+       (setf ended (tuatara.syntax:helper-ended helper))))
+    (is eq :broken ended)))
+
+(define-test (syntax grammar-unanswered-asked-again)
+  ;; a grammar asked for while no connection to the helper loading grammars
+  ;; can be had is asked for again later, not taken as missing
+  (let ((kept (gethash "toml" tuatara.syntax::*grammars*)))
+    (remhash "toml" tuatara.syntax::*grammars*)
+    (unwind-protect
+         (progn
+           (tuatara.syntax:kept-helper :rules)
+           (sb-int:encapsulate 'tuatara.syntax::take-call 'none (lambda (function helper) (declare (ignore function helper)) nil))
+           (unwind-protect (false (tuatara.syntax:find-grammar "toml"))
+             (sb-int:unencapsulate 'tuatara.syntax::take-call 'none))
+           (false (gethash "toml" tuatara.syntax::*grammars*))
+           (true (tuatara.syntax:find-grammar "toml")))
+      (if kept (setf (gethash "toml" tuatara.syntax::*grammars*) kept) (remhash "toml" tuatara.syntax::*grammars*)))))
+
+(define-test (syntax slow-grammar-load-not-counted)
+  ;; a grammar slow to load is given up on this time, not counted against it
+  ;; nor taken as missing
+  (remhash "slowly" tuatara.syntax::**grammar-load-deaths**)
+  (call-with-fake-helper
+   :never
+   (lambda (helper)
+     (let ((tuatara.syntax:*grammar-directories* (list "/nonexistent/fake-slow/"))
+           (tuatara.syntax::*grammar-load-wait* 0.2))
+       (sb-thread:with-mutex (tuatara.syntax::**helpers-lock**)
+         (push (cons (cons :rules (tuatara.syntax:grammar-directories)) helper) tuatara.syntax::**kept-helpers**))
+       (unwind-protect
+            (is eq :unknown (tuatara.syntax::load-grammar "slowly"))
+         (sb-thread:with-mutex (tuatara.syntax::**helpers-lock**)
+           (setf tuatara.syntax::**kept-helpers** (remove helper tuatara.syntax::**kept-helpers** :key #'cdr)))))
+     (is eq :slow (tuatara.syntax:helper-ended helper))))
+  (false (gethash "slowly" tuatara.syntax::**grammar-load-deaths**)))
+
+(define-test (syntax start-at-once-never-waits)
+  ;; on the editor's own thread a start that would wait (another under way,
+  ;; or the program slow to set going) is left to the background at once,
+  ;; no helper ended for room by it
+  (tuatara.io:sandbox-status)
+  (let ((other (tuatara.buffer:make-buffer "*room-other*" :text "fn f() {}"))
+        (buffer (tuatara.buffer:make-buffer "*at-once*" :text "fn main() {}")))
+    (unwind-protect
+         (let ((tuatara.syntax::*syntax-helpers-most* 1)
+               (tuatara.runtime:*host* (make-answering-host 'tuatara.syntax:host-must-not-wait-p (this-thread-only)))
+               (tuatara.syntax::*at-once-wait* 0.05)
+               (holding (sb-thread:make-semaphore)))
+           (let ((first (tuatara.syntax:buffer-helper other))
+                 (holder (sb-thread:make-thread
+                          (lambda ()
+                            (sb-thread:with-mutex (tuatara.syntax::**starting**)
+                              (sb-thread:signal-semaphore holding)
+                              (sleep 0.5))))))
+             (sb-thread:wait-on-semaphore holding)
+             ;; the start busy: given up on at once, nothing ended for room
+             (let ((began (get-internal-real-time)))
+               (is eq :busy (tuatara.syntax::start-own-helper :buffer buffer :at-once t))
+               (true (< (tuatara.runtime:seconds-since began) 0.05)))
+             (true (tuatara.syntax:helper-alive first))
+             (sb-thread:join-thread holder))
+           ;; set going slowly: given up on at once, started in the background
+           (tuatara.syntax:forget-buffer-helper buffer)
+           (sb-int:encapsulate 'tuatara.io:sandbox-start 'slow (lambda (function &rest arguments)
+                                                                (sleep 0.3)
+                                                                (apply function arguments)))
+           (unwind-protect
+                (let ((began (get-internal-real-time)))
+                  (false (tuatara.syntax:buffer-helper-soon buffer))
+                  (true (< (tuatara.runtime:seconds-since began) 0.2)))
+             (sb-int:unencapsulate 'tuatara.io:sandbox-start 'slow))
+           (true (loop repeat 500
+                       thereis (let ((own (tuatara.buffer:buffer-local buffer :syntax-helper)))
+                                 (and own (tuatara.syntax:helper-alive own)))
+                       do (sleep 0.01)))
+           (sleep 0.5)
+           (is = 1 (count-if (lambda (helper) (and (eq buffer (tuatara.syntax::helper-buffer helper))
+                                                   (tuatara.syntax:helper-alive helper)))
+                             tuatara.syntax::**helpers**)))
+      (tuatara.buffer:kill-buffer buffer)
+      (tuatara.buffer:kill-buffer other))))
+
+(define-test (syntax start-given-up-closes-what-it-held)
+  ;; a start given up on before it was ever taken closes the helper's end of
+  ;; its socket: no descriptor left open by it
+  (tuatara.io:sandbox-status)
+  (flet ((open-descriptors () (length (directory "/proc/self/fd/*" :resolve-symlinks nil))))
+    (let ((before (open-descriptors)))
+      (let ((tuatara.syntax::*at-once-wait* 0))
+        (dotimes (i 5)
+          (let ((helper (tuatara.syntax::start-helper (tuatara.syntax:grammar-directories) :own :at-once t)))
+            (when (tuatara.syntax:helper-p helper) (tuatara.syntax::stop-helper helper)))))
+      (sleep 1)
+      (true (<= (open-descriptors) before) "~d open, ~d before" (open-descriptors) before))))
+
+(define-test (syntax revert-forgets-faults-once-it-reads-again)
+  ;; reading a text again forgets what went wrong in it, with the export's
+  ;; count of its file too; answering no to reading it again forgets nothing
+  (with-test-directory (directory)
+    (let ((path (namestring (merge-pathnames "note.rs" directory)))
+          (answer nil) (buffer nil) (kept-after-no nil))
+      (with-open-file (o path :direction :output) (write-line "fn f() {}" o))
+      (sb-int:encapsulate 'tuatara.command:yes-or-no-p* 'answer (lambda (function prompt) (declare (ignore function prompt)) answer))
+      (unwind-protect
+           (run-keys (list (lambda ()
+                             (setf buffer (tuatara.command:current-buffer))
+                             (tuatara.syntax::note-faulted buffer :all)
+                             (tuatara.syntax::note-faulted (tuatara.syntax:text-key :file path) "rust")
+                             (tuatara.buffer:buffer-insert buffer 0 " "))
+                           "M-x r e v e r t - b u f f e r RET"
+                           (lambda ()
+                             (setf kept-after-no (and (tuatara.syntax::faulted-names buffer) t)
+                                   answer t))
+                           "M-x r e v e r t - b u f f e r RET")
+                     :file path)
+        (sb-int:unencapsulate 'tuatara.command:yes-or-no-p* 'answer))
+      (true kept-after-no)
+      (false (tuatara.syntax::faulted-names buffer))
+      (false (tuatara.syntax::faulted-names (tuatara.syntax:text-key :file path))))))
+
+(define-test (syntax spent-text-budget-keeps-tests-that-read-nothing)
+  ;; once the text matches' tests may read is spent, a test that reads none
+  ;; still passes as it would: a not-equal of texts of other lengths
+  (let ((rope (tuatara.text:string->rope "abc"))
+        (captures (make-array 4 :element-type 'fixnum :initial-contents '(0 0 3 0)))
+        (tuatara.syntax::*capture-text-left* -1))
+    (true (tuatara.syntax::text-test-passes-p :eq 0 (tuatara.text:string-octets "longer text") t rope captures 1))))
+
+(define-test (syntax looping-scanner-ended-at-its-deadline)
+  ;; a scanner that never returns ("!l") cannot be stopped from inside: the
+  ;; program parsing is ended when its time is up, and the editor carries on
+  (call-with-misbehaving-grammar
+   (lambda (grammar directory)
+     (declare (ignore directory))
+     (let ((tuatara.syntax:*syntax-helper-wait* 1))
+       (call-with-own-helper
+        (lambda (helper)
+          (let ((parser (tuatara.syntax:make-parser grammar helper))
+                (began (get-internal-real-time)))
+            (multiple-value-bind (tree why) (tuatara.syntax:parse-rope parser (tuatara.text:string->rope "abc !l def")
+                                                                       :limit 0.5)
+              (false tree)
+              (is eq :hung why)
+              (is eq :hung (tuatara.syntax:helper-ended helper))
+              (true (< (tuatara.runtime:seconds-since began) 5))
+              (false (loop repeat 200
+                           while (sb-ext:process-alive-p (tuatara.syntax::helper-process helper))
+                           do (sleep 0.01)
+                           finally (return (sb-ext:process-alive-p (tuatara.syntax::helper-process helper)))))
+              (true (parses-elsewhere))))))))))
+
+(define-test (syntax runaway-scanner-held-to-its-memory)
+  ;; a scanner taking address space without end ("!r") gets no more than
+  ;; the program parsing is held to, and the editor carries on
+  (call-with-misbehaving-grammar
+   (lambda (grammar directory)
+     (declare (ignore directory))
+     (let ((tuatara.syntax:*syntax-helper-memory* (* 512 1024 1024))
+           (editor-before (sb-kernel:dynamic-usage)))
+       (call-with-own-helper
+        (lambda (helper)
+          (let ((parser (tuatara.syntax:make-parser grammar helper)))
+            (multiple-value-bind (tree why) (tuatara.syntax:parse-rope parser (tuatara.text:string->rope "abc !r def"))
+              (declare (ignore why))
+              (when (eq :ready (tuatara.io:sandbox-status-now))
+                ;; held to its memory: what it may still take is less than one more step
+                (multiple-value-bind (held back left) (tuatara.syntax:helper-memory helper)
+                  (declare (ignore held back))
+                  (true (and left (<= 0 left (* 64 1024 1024))) "~s left" left)))
+              (when tree (tuatara.syntax:delete-tree tree))))))
+       (true (< (- (sb-kernel:dynamic-usage) editor-before) (* 256 1024 1024)))
+       (true (parses-elsewhere))))))
+
+(define-test (syntax long-read-back-given-up-as-slow)
+  ;; a parse reading its text many times over is given no more and given up
+  ;; as too slow: no fault of the grammar, its helper left running
+  (let ((tuatara.syntax::*read-back-times* 0)
+        (tuatara.syntax::*read-back-more* 1000)
+        (tuatara.syntax::*given-text-most* 0)
+        (grammar (tuatara.syntax:find-grammar "rust")))
+    (call-with-own-helper
+     (lambda (helper)
+       (let ((parser (tuatara.syntax:make-parser grammar helper)))
+         (multiple-value-bind (tree why)
+             (tuatara.syntax:parse-rope parser (tuatara.text:string->rope
+                                                (format nil "~{fn f~d() { (\"[<'\") }~%~}" (loop for i below 3000 collect i))))
+           (false tree)
+           (is eq :slow why)
+           (true (tuatara.syntax:helper-alive helper))
+           (false (tuatara.syntax::grammar-off-p grammar helper))))
+       ;; text in another language read many times over (asked for, not sent with the request): the same
+       (multiple-value-bind (tree why)
+           (tuatara.syntax::parse-rope-ranges grammar (tuatara.text:string->rope
+                                                       (format nil "~{fn g~d() {}~%~}" (loop for i below 3000 collect i)))
+                                              (list (cons 0 30000)) :helper helper)
+         (false tree)
+         (is eq :slow why (format nil "~s" (tuatara.syntax:helper-ended helper)))
+         (true (tuatara.syntax:helper-alive helper)))))))
+
+(define-test (syntax scanner-cannot-fill-memory-files)
+  ;; a scanner writing into /dev/shm, memory no limit counts, is ended by
+  ;; the limit on files it may write (none): the editor carries on
+  (call-with-misbehaving-grammar
+   (lambda (grammar directory)
+     (declare (ignore directory))
+     (when (eq :ready (tuatara.io:sandbox-status))
+       (call-with-own-helper
+        (lambda (helper)
+          (let ((parser (tuatara.syntax:make-parser grammar helper)))
+            (multiple-value-bind (tree why)
+                (tuatara.syntax:parse-rope parser (tuatara.text:string->rope "abc !w/dev/shm/tuatara-shm-probe def"))
+              (false tree)
+              (is eq :crashed why)
+              (false (tuatara.syntax:helper-alive helper))))))
+       (true (parses-elsewhere))))))
+
+(define-test (syntax no-helper-unless-named)
+  ;; text parsed with no helper named is not parsed, never sent to the
+  ;; shared one; Org's source blocks are parsed in their buffer's own
+  (let ((tuatara.syntax:*helper* :none))
+    (false (tuatara.syntax::current-helper))
+    (false (tuatara.syntax:make-parser (tuatara.syntax:find-grammar "rust")))
+    (false (tuatara.syntax:language-highlights (tuatara.defaults::injection-resolver :rich 3) "rust"
+                                               (list (cons 0 12)) (tuatara.text:string->rope "fn main() {}") 0 12)))
+  (is eq :none (symbol-value 'tuatara.syntax:*helper*))
+  (let* ((text (format nil "#+begin_src rust~%fn main() {}~%#+end_src~%"))
+         (buffer (tuatara.buffer:make-buffer "*org-blocks*" :text text))
+         (helpers '()))
+    (sb-int:encapsulate 'tuatara.syntax::parse-texts 'which
+                        (lambda (function &rest arguments)
+                          (push (tuatara.syntax::current-helper) helpers)
+                          (apply function arguments)))
+    (unwind-protect
+         (progn
+           ;; its own helper started, then the blocks coloured
+           (true (tuatara.syntax:buffer-helper buffer))
+           (true (tuatara.defaults::org-src-highlights buffer (tuatara.buffer:buffer-text buffer)
+                                                       (list (list "rust" 17 30)) 0 (length text)))
+           (true helpers)
+           (true (every (lambda (helper) (and helper (eq :own (tuatara.syntax:helper-kind helper))
+                                              (eq helper (tuatara.syntax:buffer-helper buffer))))
+                        helpers)))
+      (sb-int:unencapsulate 'tuatara.syntax::parse-texts 'which)
+      (tuatara.buffer:kill-buffer buffer))))
+
+(define-test (syntax scanner-cannot-write-files)
+  ;; a scanner writing a file ("!w" and a path) is refused by the sandbox:
+  ;; the file is not made, and the parse goes on
+  (call-with-misbehaving-grammar
+   (lambda (grammar directory)
+     (let ((path (uiop:native-namestring (merge-pathnames "written-by-scanner" directory))))
+       (call-with-own-helper
+        (lambda (helper)
+          (let ((parser (tuatara.syntax:make-parser grammar helper)))
+            (let ((tree (tuatara.syntax:parse-rope parser (tuatara.text:string->rope (format nil "abc !w~a def" path)))))
+              (true tree)
+              (when tree (tuatara.syntax:delete-tree tree))))))
+       ;; without the sandbox the program is only a process of its own, and may write
+       (is eq (not (eq :ready (tuatara.io:sandbox-status-now))) (and (probe-file path) t))))))
+
+(define-test (syntax scanner-writing-past-its-buffer-faults)
+  ;; a scanner writing past the buffer for its state, a little or much,
+  ;; faults on the page after it before it reaches anything else, ending the
+  ;; program parsing; in a buffer the grammar is turned off, and the editor
+  ;; carries on, other text parsed by another
+  (call-with-misbehaving-grammar
+   (lambda (grammar directory)
+     (declare (ignore directory))
+     (dolist (text '("abc !o def" "abc !O def"))
+       (let ((parser (tuatara.syntax:make-parser grammar (tuatara.syntax:kept-helper :shared))))
+         (multiple-value-bind (tree why unusable) (tuatara.syntax:parse-rope parser (tuatara.text:string->rope text))
+           (false tree)
+           (is eq :crashed why "~s" text)
+           (true unusable)
+           (false (tuatara.syntax:helper-alive (tuatara.syntax::parser-helper parser)))))
+       (let ((said nil))
+         (unwind-protect
+              (let ((tuatara.runtime:*host* (make-answering-host 'tuatara.syntax:host-say-syntax-fault
+                                                                 (lambda (syntax) (setf said syntax)))))
+                (multiple-value-bind (buffer syntax) (parse-in-buffer grammar text)
+                  (unwind-protect
+                       (progn
+                         (is eq syntax said)
+                         (true (tuatara.syntax::grammar-off-p grammar (tuatara.syntax::syntax-helper syntax)) "~s" text)
+                         (true (tuatara.syntax:syntax-broken syntax))
+                         ;; editing goes on, and another language still parses
+                         (tuatara.buffer:buffer-insert buffer 0 "more ")
+                         (let ((parser (tuatara.syntax:make-parser (tuatara.syntax:find-grammar "json")
+                                                                   (tuatara.syntax:kept-helper :shared))))
+                           (unwind-protect
+                                (let ((tree (tuatara.syntax:parse-rope parser (tuatara.text:string->rope "[1, 2]"))))
+                                  (true tree)
+                                  (when tree (tuatara.syntax:delete-tree tree)))
+                             (tuatara.syntax:delete-parser parser))))
+                    (tuatara.syntax:detach-syntax buffer)
+                    (tuatara.buffer:kill-buffer buffer))))
+           (setf (tuatara.syntax:grammar-faulted grammar) nil)))))))
 
 ;; how the parse of a big file stops when it takes too long
 (define-test (syntax slow-parses)
@@ -467,7 +2067,7 @@ what stopped the walk (NIL at a bracket)."
   (let ((text (with-output-to-string (o)
                 (dotimes (i 20000) (format o "fn f~d() {{ let x = ~d; }}~%" i i)))))
     (let* ((grammar (tuatara.syntax:find-grammar "rust"))
-           (parser (tuatara.syntax:make-parser grammar)))
+           (parser (tuatara.syntax:make-parser grammar (tuatara.syntax:kept-helper :shared))))
       (unwind-protect
            (multiple-value-bind (tree why)
                (tuatara.syntax:parse-rope parser (tuatara.text:string->rope text) :limit 0.0001)
@@ -478,7 +2078,8 @@ what stopped the walk (NIL at a bracket)."
            (said nil)
            (tuatara.syntax:*syntax-time-limit* 0.0001)
            (tuatara.syntax:*syntax-time-per-megabyte* 0)
-           (tuatara.syntax:*syntax-slow-function* (lambda (syntax) (setf said syntax))))
+           (tuatara.runtime:*host* (make-answering-host 'tuatara.syntax:host-say-syntax-slow
+                                                        (lambda (syntax) (setf said syntax)))))
       (unwind-protect
            (progn
              (tuatara.modes:set-major-mode buffer 'tuatara.defaults::rust-mode)
@@ -495,8 +2096,9 @@ what stopped the walk (NIL at a bracket)."
   ;; gone wrong would take without end, and all it took is given back; the
   ;; buffer shows no syntax colours and the editor says so
   (let ((numbers (format nil "[~{~d~^,~}]~%" (loop repeat 100000 collect (random 10))))
-        (held (lambda () (tuatara.syntax::ts-call "tuatara_held" :i64))))
-    (let* ((parser (tuatara.syntax:make-parser (tuatara.syntax:find-grammar "json")))
+        (held (lambda () (held-in-helper (tuatara.syntax:kept-helper :shared)))))
+    (let* ((parser (tuatara.syntax:make-parser (tuatara.syntax:find-grammar "json")
+                                               (tuatara.syntax:kept-helper :shared)))
            (before (funcall held)))
       (unwind-protect
            (multiple-value-bind (tree why)
@@ -504,9 +2106,10 @@ what stopped the walk (NIL at a bracket)."
              (false tree)
              (is eq :memory why))
         (tuatara.syntax:delete-parser parser))
-      (true (< (- (funcall held) before) (* 1024 1024))))
+      (true (held-falls-to (tuatara.syntax:kept-helper :shared) (+ before (* 1024 1024)))))
     ;; within the budget its length and tokens call for, it is parsed
-    (let ((parser (tuatara.syntax:make-parser (tuatara.syntax:find-grammar "json"))))
+    (let ((parser (tuatara.syntax:make-parser (tuatara.syntax:find-grammar "json")
+                                              (tuatara.syntax:kept-helper :shared))))
       (unwind-protect
            (let ((tree (tuatara.syntax:parse-rope parser (tuatara.text:string->rope numbers)
                                                   :budget (tuatara.syntax:parse-memory-limit (length numbers)))))
@@ -517,7 +2120,8 @@ what stopped the walk (NIL at a bracket)."
            (said nil)
            (tuatara.syntax:*syntax-memory-limit* (* 1024 1024))
            (tuatara.syntax:*syntax-memory-per-octet* 0)
-           (tuatara.syntax:*syntax-slow-function* (lambda (syntax) (setf said syntax))))
+           (tuatara.runtime:*host* (make-answering-host 'tuatara.syntax:host-say-syntax-slow
+                                                        (lambda (syntax) (setf said syntax)))))
       (unwind-protect
            (progn
              (tuatara.modes:set-major-mode buffer 'tuatara.defaults::json-mode)
@@ -533,13 +2137,14 @@ what stopped the walk (NIL at a bracket)."
   (loop for (grammar text) in (list (list "beancount" (format nil "2014-01-01 balance Assets:Cash 0.0 #~%*~%"))
                                     (list "tera" "{")
                                     (list "tera" (format nil "{% for x in y %}~%  {{ x }}~%{% endfor %}{")))
-        do (let ((parser (tuatara.syntax:make-parser (tuatara.syntax:find-grammar grammar)))
+        do (let ((parser (tuatara.syntax:make-parser (tuatara.syntax:find-grammar grammar)
+                                                     (tuatara.syntax:kept-helper :shared)))
                  (start (get-internal-real-time)))
              (unwind-protect
                   (let ((tree (tuatara.syntax:parse-rope parser (tuatara.text:string->rope text)
                                                          :limit 5 :budget (* 64 1024 1024))))
                     (true tree "~a" grammar)
-                    (true (< (- (get-internal-real-time) start) (floor internal-time-units-per-second 2)) "~a" grammar)
+                    (true (< (- (get-internal-real-time) start) (* 5 internal-time-units-per-second)) "~a" grammar)
                     (when tree (tuatara.syntax:delete-tree tree)))
                (tuatara.syntax:delete-parser parser)))))
 
@@ -642,7 +2247,7 @@ what stopped the walk (NIL at a bracket)."
                 (end (search "fn f203(" text)))
            (true (tuatara.syntax:syntax-too-big syntax))
            (false (tuatara.syntax:syntax-ready-tree syntax))
-           (let ((shown (tuatara.syntax:syntax-highlights syntax query faces start end)))
+           (let ((shown (tuatara.syntax:syntax-highlights syntax query faces (list (cons start end)))))
              (true shown)
              (is equal (multiple-value-bind (tree rope parser) (parse-string "rust" text)
                          (unwind-protect (tuatara.syntax:rich-highlights query tree rope start end faces)
@@ -750,7 +2355,8 @@ bound to the fake frontend and the editor; the file and its buffer go afterwards
     (setf (tuatara.defaults::language-query language) nil
           (tuatara.defaults::language-injection-query language) nil
           (tuatara.defaults::language-locals-query language) nil)
-    (let ((tuatara.defaults::*rules-wait* 0))
+    (let ((tuatara.defaults::*rules-wait* 0)
+          (tuatara-user:*grammars-on* '(:common verilog)))
       (with-file-session ((f editor) "" (format nil "module m(input a, output b);~%  assign b = a;~%endmodule~%") "v")
         (let ((thread (gethash language tuatara.defaults::*warming*)))
           (when thread
@@ -905,7 +2511,9 @@ bound to the fake frontend and the editor; the file and its buffer go afterwards
              result)))
     (is string= (format nil "-- select 1;~%") (after "C" (format nil "select 1;~%") "sql"))
     (is string= (format nil "%% f() -> ok.~%") (after "C" (format nil "f() -> ok.~%") "erl"))
-    (is string= (format nil "{# a #}~%") (after "C" (format nil "a~%") "j2"))))
+    ;; a language whose grammar is off would ask first, taking C as the answer
+    (let ((tuatara-user:*grammars-on* '(:common jinja)))
+      (is string= (format nil "{# a #}~%") (after "C" (format nil "a~%") "j2")))))
 
 (define-test (syntax indenting-lisp)
   ;; > indents Lisp: indent-before.lisp, indented whole, gives indent-after.lisp
@@ -983,6 +2591,31 @@ bound to the fake frontend and the editor; the file and its buffer go afterwards
         (setf result (session-text editor)))
       (is string= (format nil "fn main() {~%x~%}~%") result))))
 
+(define-test (syntax new-line-in-a-block-not-closed-yet)
+  ;; RET after a shell block's opening line puts the new line inside the block
+  ;; before its closing word is typed, as it does once the block is closed
+  (flet ((column (text)
+           (let (result)
+             (with-file-session ((f editor) "M-> A RET x C-g" text "sh")
+               (setf result (session-text editor)))
+             (let ((line (find "x" (uiop:split-string result :separator '(#\Newline))
+                               :test #'string= :key (lambda (line) (string-left-trim " " line)) :from-end t)))
+               (and line (position #\x line))))))
+    (loop for (text expected)
+            in '(("if [ -n \"$1\" ]; then" 2) ("if true; then~%  echo a" 2) ("if a; then~%  x~%else" 2)
+                 ("if a; then~%  x~%elif b; then" 2) ("if a; then~%  if b; then" 4)
+                 ("for a in b; do" 2) ("while true; do" 2) ("until a; do" 2) ("select a in b c; do" 2)
+                 ("f() {" 2) ("function f {" 2) ("f() {~%  echo a" 2) ("{" 2)
+                 ("case $1 in" 2) ("case $1 in~%  a)" 4) ("case $1 in~%  a) echo;;" 2)
+                 ("case $1 in~%  a)~%    echo" 4) ("case $1 in~%  a)~%    echo~%    ;;" 2)
+                 ;; as yet a blank line ends a block not closed, and an unclosed function
+                 ;; reads as one piece of text the grammar cannot place: Emacs gives 2 and 6
+                 ("if a; then~%" 0) ("f() {~%  case $1 in~%    a)" 4)
+                 ;; closed, the line after is outside
+                 ("if true; then~%  echo~%fi" 0) ("for a in b; do~%  x~%done" 0)
+                 ("case x in~%  a) echo;;~%esac" 0) ("case x in~%  a)~%esac" 0))
+          do (is = expected (column (format nil text)) "after ~s" text))))
+
 (define-test (syntax indenting-lisp-quickly)
   ;; a form of 100,000 lines is indented in one pass, and one line at its end
   ;; without reading more than that form
@@ -996,17 +2629,17 @@ bound to the fake frontend and the editor; the file and its buffer go afterwards
            (tuatara.modes:set-major-mode buffer 'tuatara.defaults::lisp-mode)
            (let ((tuatara.syntax:*syntax-wait* 60))
              (tuatara.syntax:syntax-ready-tree (tuatara.syntax:buffer-syntax buffer)))
-           (let ((start (get-internal-real-time)))
+           (let ((start (thread-cpu-time)))
              (is = 100001 (tuatara.defaults::indent-lines buffer 0 (tuatara.buffer:buffer-size buffer)))
-             (true (< (- (get-internal-real-time) start) (* 2 internal-time-units-per-second))))
+             (true (< (- (thread-cpu-time) start) (* 2 internal-time-units-per-second))))
            (is string= "    (99999 \"row 99999\" :key 699993)"
                (let ((line (tuatara.buffer:buffer-goto-line buffer 100000)))
                  (tuatara.buffer:buffer-string buffer :start line :end (tuatara.buffer:buffer-line-end buffer line))))
            (let ((line (tuatara.buffer:buffer-goto-line buffer 100000))
-                 (start (get-internal-real-time)))
+                 (start (thread-cpu-time)))
              (tuatara.buffer:buffer-edit buffer (vector (tuatara.text:make-edit line (+ line 3))))
              (is = 1 (tuatara.defaults::indent-lines buffer line line))
-             (true (< (- (get-internal-real-time) start) (* 1/2 internal-time-units-per-second)))))
+             (true (< (- (thread-cpu-time) start) (* 1/2 internal-time-units-per-second)))))
       (tuatara.buffer:kill-buffer buffer))))
 
 (define-test (syntax indenting-by-the-tree)
@@ -1161,20 +2794,20 @@ bound to the fake frontend and the editor; the file and its buffer go afterwards
                   (query (tuatara.defaults::language-compiled-query language :text-objects))
                   (rope (tuatara.buffer:buffer-text buffer))
                   (point (tuatara.buffer:buffer-goto-line buffer 119995))
-                  (start (get-internal-real-time))
+                  (start (thread-cpu-time))
                   (ranges (tuatara.defaults::text-object-ranges
                            query (tuatara.syntax:syntax-tree (tuatara.syntax:buffer-syntax buffer)) rope
                            "function.around" (- point 65536) (min (tuatara.text:rope-bytes rope) (+ point 65536)))))
-             (true (< (- (get-internal-real-time) start) (* 1/5 internal-time-units-per-second)))
+             (true (< (- (thread-cpu-time) start) (* 1/5 internal-time-units-per-second)))
              (is string= (format nil "fn f19999(a: i32, b: i32) -> i32 {~%    // sum~%    a + b~%}")
                  (let ((r (tuatara.defaults::smallest-around ranges point point nil)))
                    (and r (tuatara.buffer:buffer-string buffer :start (car r) :end (cdr r)))))
              ;; so does a test, its rule anchored to the attribute before it
-             (let* ((start (get-internal-real-time))
+             (let* ((start (thread-cpu-time))
                     (tests (tuatara.defaults::text-object-ranges
                             query (tuatara.syntax:syntax-tree (tuatara.syntax:buffer-syntax buffer)) rope
                             "test.around" (- point 65536) (min (tuatara.text:rope-bytes rope) (+ point 65536)))))
-               (true (< (- (get-internal-real-time) start) (* 1/5 internal-time-units-per-second)))
+               (true (< (- (thread-cpu-time) start) (* 1/5 internal-time-units-per-second)))
                (true (tuatara.defaults::smallest-around tests point point nil)))))
       (tuatara.buffer:kill-buffer buffer))))
 
@@ -1204,9 +2837,10 @@ bound to the fake frontend and the editor; the file and its buffer go afterwards
                       (colour-session "" (format nil "```~%#!/bin/bash~%echo $HOME~%```~%") "md"))
                      2)))
     (true (find :function spans :key (lambda (s) (let ((f (third s))) (if (listp f) (first f) f))))))
-  (let ((spans (aref (tuatara.frontend.fake:fake-spans
-                      (colour-session "" (format nil "run:~%    #!/usr/bin/env python3~%    def f(): pass~%") "just"))
-                     2)))
+  (let ((spans (let ((tuatara-user:*grammars-on* '(:common just)))
+                 (aref (tuatara.frontend.fake:fake-spans
+                        (colour-session "" (format nil "run:~%    #!/usr/bin/env python3~%    def f(): pass~%") "just"))
+                       2))))
     (true (find :keyword spans :key (lambda (s) (let ((f (third s))) (if (listp f) (first f) f))))))
   ;; names of languages this editor does not colour are passed over: the
   ;; block has Markdown's colour alone
@@ -1229,7 +2863,8 @@ bound to the fake frontend and the editor; the file and its buffer go afterwards
     (multiple-value-bind (tree rope parser) (parse-string "markdown" text)
       (unwind-protect
            (let* ((middle (tuatara.text:rope-line-start rope (floor (length text) 2)))
-                  (ranges (tuatara.syntax::injected-highlights injections tree rope middle (+ middle 60))))
+                  (ranges (let ((tuatara.syntax:*helper* :shared))
+                            (tuatara.syntax::injected-highlights injections tree rope middle (+ middle 60)))))
              ;; def as a keyword, the function's name as a function, in the middle
              (true (find-if (lambda (r) (and (<= middle (first r)) (eq (third r) :keyword))) ranges))
              (true (find-if (lambda (r) (and (<= middle (first r)) (eq (third r) :function))) ranges))
@@ -1283,7 +2918,7 @@ bound to the fake frontend and the editor; the file and its buffer go afterwards
            (let* ((language (tuatara.defaults::find-language language))
                   (grammar (tuatara.syntax:find-grammar (tuatara.defaults::language-grammar language)))
                   (rope (tuatara.text:string->rope text))
-                  (parser (tuatara.syntax:make-parser grammar)))
+                  (parser (tuatara.syntax:make-parser grammar (tuatara.syntax:kept-helper :shared))))
              (values (tuatara.syntax:parse-rope parser rope) rope language parser)))
          (resolved-starts (table)
            (sort (loop for key being the hash-keys of table collect (ash key -31)) #'<)))
@@ -1481,7 +3116,7 @@ bound to the fake frontend and the editor; the file and its buffer go afterwards
              (buffer (tuatara.buffer:make-buffer "*syntax-far*" :text rope)))
         (unwind-protect
              (let* ((syntax (tuatara.syntax:attach-syntax buffer grammar))
-                    (shown (tuatara.syntax:syntax-highlights syntax query faces at (+ at (length code))))
+                    (shown (tuatara.syntax:syntax-highlights syntax query faces (list (cons at (+ at (length code))))))
                     (string (+ at (search "\"line\"" code))))
                (true (tuatara.syntax:syntax-too-big syntax))
                (true (find-if (lambda (range) (and (= string (first range)) (= (+ string 6) (second range)))) shown)
@@ -1542,7 +3177,8 @@ bound to the fake frontend and the editor; the file and its buffer go afterwards
                      (dotimes (i 300)
                        (format o "pub fn kea_~d(x: &str) -> Result<String, Error> {~%    if x == \"kea\" { return Ok(None); }~%    self.call(true, 'c')?~%}~%" i))))
              (rope (tuatara.text:string->rope text))
-             (parser (tuatara.syntax:make-parser (tuatara.syntax:find-grammar (tuatara.defaults::language-grammar language))))
+             (parser (tuatara.syntax:make-parser (tuatara.syntax:find-grammar (tuatara.defaults::language-grammar language))
+                                                 (tuatara.syntax:kept-helper :shared)))
              (tree (tuatara.syntax:parse-rope parser rope))
              (matches 0))
         (unwind-protect
@@ -1552,6 +3188,355 @@ bound to the fake frontend and the editor; the file and its buffer go afterwards
                (let ((consed (loop repeat 3 minimize (nth-value 2 (tuatara.bench::measuring (run))))))
                  (true (< consed (* 16 1024)) "~:d matches consed ~:d octets" (floor matches 4) consed)))
           (release-parse tree parser))))))
+
+(define-test (syntax colouring-garbage-flat-with-rows)
+  ;; typing in a coloured buffer: the garbage of its colours, worked out
+  ;; afresh after each key, does not grow with the rows the window shows
+  (let ((text (with-output-to-string (s)
+                (dotimes (i 300)
+                  (format s "(defun f~d (x &key (y ~d))~%  \"Doc ~d.\" (list :k x y 'f~d #\\a \"s~d\" (+ 1 2)))~%"
+                          i i i i i)))))
+    (multiple-value-bind (low low-worked) (typing-garbage-per-key text "lisp" 20 *colouring-functions*)
+      (multiple-value-bind (high high-worked) (typing-garbage-per-key text "lisp" 60 *colouring-functions*)
+        ;; the colours were worked out again for each key that changed the text
+        (true (>= low-worked 16) "~d colourings" low-worked)
+        (true (>= high-worked 16) "~d colourings" high-worked)
+        (true (< (/ (- high low) 40) 64) "~,1f octets a key at 20 rows, ~,1f at 60: ~,1f more for each row"
+              low high (/ (- high low) 40))))))
+
+(define-test (syntax comments-coloured-again-only-when-changed)
+  ;; typing on one line of a Lisp text with a comment on every line: the
+  ;; comments, read as text in another language, are not parsed and coloured
+  ;; again while their text is the same, so a taller window colours no more
+  ;; for each key, and makes far less garbage for each row
+  (let ((text (with-output-to-string (s)
+                (dotimes (i 300)
+                  (format s "(defun f~d (x) (list x 'a)) ; note ~d: TODO look again~%" i i)))))
+    (multiple-value-bind (low low-worked) (typing-garbage-per-key text "lisp" 20 *colouring-functions*)
+      (multiple-value-bind (high high-worked) (typing-garbage-per-key text "lisp" 60 *colouring-functions*)
+        (true (>= low-worked 16) "~d colourings" low-worked)
+        (is = low-worked high-worked "~d colourings at 20 rows, ~d at 60" low-worked high-worked)
+        (true (< (/ (- high low) 40) 1024) "~,1f octets a key at 20 rows, ~,1f at 60: ~,1f more for each row"
+              low high (/ (- high low) 40))))))
+
+(define-test (syntax local-names-garbage-flat-with-rows)
+  ;; typing in Rust: the local names shown are told apart by their octets in
+  ;; room used again, so a taller window makes no more garbage for each key
+  (let ((text (with-output-to-string (s)
+                (dotimes (i 300) (format s "fn f~d(p: u8, q: u8) -> u8 { let a = p + q; g(a, p) }~%" i)))))
+    (multiple-value-bind (low low-worked) (typing-garbage-per-key text "rs" 20 '(tuatara.syntax::local-highlights))
+      (multiple-value-bind (high high-worked) (typing-garbage-per-key text "rs" 60 '(tuatara.syntax::local-highlights))
+        (true (>= low-worked 16) "~d colourings" low-worked)
+        (true (>= high-worked 16) "~d colourings" high-worked)
+        (true (< (/ (- high low) 40) 64) "~,1f octets a key at 20 rows, ~,1f at 60: ~,1f more for each row"
+              low high (/ (- high low) 40))))))
+
+(define-test (syntax edits-told-in-one-request)
+  ;; the edits of one change reach the tree, and the copy a parse begins
+  ;; from is made, in one request to the helper however many places change
+  (let* ((text (with-output-to-string (s) (dotimes (i 40) (format s "fn f~d() {}~%" i))))
+         (buffer (tuatara.buffer:make-buffer "*syntax-edits*" :text text))
+         (requests 0))
+    (unwind-protect
+         (let ((syntax (tuatara.syntax:attach-syntax buffer (tuatara.syntax:find-grammar "rust"))))
+           (parse-done syntax)
+           (flet ((requests-for (places)
+                    (parse-done syntax)
+                    (setf requests 0)
+                    ;; this thread's, not those of the parse it starts
+                    (let ((here sb-thread:*current-thread*))
+                      (sb-int:encapsulate 'tuatara.syntax::call-send 'counting
+                                          (lambda (function &rest arguments)
+                                            (when (eq sb-thread:*current-thread* here) (incf requests))
+                                            (apply function arguments))))
+                    (unwind-protect
+                         (tuatara.buffer:buffer-edit
+                          buffer (coerce (loop for i below places
+                                               for at = (search (format nil "f~d(" i) (tuatara.buffer:buffer-string buffer))
+                                               collect (tuatara.text:make-edit at at (sb-ext:string-to-octets "x")))
+                                         'vector))
+                      (sb-int:unencapsulate 'tuatara.syntax::call-send 'counting))
+                    requests))
+             (let ((one (requests-for 1)) (twenty (requests-for 20)))
+               (is = 1 one "~d requests for an edit in one place" one)
+               (is = one twenty "~d requests for one place, ~d for twenty" one twenty)
+               ;; the tree followed the edits
+               (parse-done syntax)
+               (is equal (tuatara.buffer:buffer-string buffer)
+                   (tuatara.text:rope-string (tuatara.syntax:syntax-rope syntax)))
+               (false (tuatara.syntax:tree-has-error-p (tuatara.syntax:syntax-tree syntax))))))
+      (tuatara.syntax:detach-syntax buffer)
+      (tuatara.buffer:kill-buffer buffer))))
+
+(define-test (syntax colours-worked-out-once-for-a-slow-parse)
+  ;; a key whose parse is not done in time to be shown shows the colours of
+  ;; before moved with the text; they are worked out once, as the parse is done
+  (let ((path (records-file (with-output-to-string (s)
+                              (dotimes (i 200) (format s "(defun f~d (x) (list x \"s\" 'a))~%" i)))
+                            :type "lisp"))
+        (buffer nil) (counting nil) (worked-out 0) (keys 0))
+    (flet ((parsed ()
+             ;; the parse of the key done, and the window drawn after it
+             (let ((syntax (tuatara.syntax:buffer-syntax buffer)))
+               (loop repeat 500
+                     for job = (tuatara.syntax:syntax-job syntax)
+                     while (and job (not (tuatara.syntax::job-finished-p syntax job)))
+                     do (sleep 0.01)))))
+      (sb-int:encapsulate 'tuatara.syntax::run-parse-job 'slow
+                          (lambda (function syntax job) (sleep 0.1) (funcall function syntax job)))
+      (sb-int:encapsulate 'tuatara.syntax:rich-highlights 'counting
+                          (lambda (function &rest arguments)
+                            (when counting (incf worked-out))
+                            (apply function arguments)))
+      (unwind-protect
+           (let ((tuatara.syntax:*syntax-wait* 0.01) (tuatara.defaults::*rules-wait* 30))
+             (run-keys (list* (lambda ()
+                                (setf buffer (tuatara.command:current-buffer))
+                                (loop repeat 600
+                                      for language = (tuatara.buffer:buffer-local buffer :syntax-pending)
+                                      until (or (null language) (tuatara.syntax:buffer-syntax buffer))
+                                      do (tuatara.defaults::start-parsing buffer language) (sleep 0.05))
+                                (parsed))
+                              :tick "C-v i" (lambda () (parsed) (setf counting t))
+                              (loop for key in '("a" "b" "c" "DEL" "DEL" "DEL")
+                                    append (list key (lambda () (incf keys) (parsed)) :tick)))
+                       :file path :width 100 :height 20))
+        (sb-int:unencapsulate 'tuatara.syntax::run-parse-job 'slow)
+        (sb-int:unencapsulate 'tuatara.syntax:rich-highlights 'counting)
+        (kill-records buffer path)))
+    (is = 6 keys)
+    (true (<= keys worked-out (1+ keys)) "colours worked out ~d times for ~d keys" worked-out keys)))
+
+(define-test (syntax parts-coloured-from-one-tree)
+  ;; a window showing two parts of a text (a fold between them): a parse
+  ;; that comes in while the first part's colours are worked out does not
+  ;; take their room for the second's, so both are painted as they are
+  (let ((path (records-file (with-output-to-string (s)
+                              (dotimes (i 120) (format s "(defun f~d (x) (list x \"s~d\" 'a))~%" i i)))
+                            :type "lisp"))
+        (buffer nil) (gate nil) (ready nil) (painted nil) (settled nil) (before 0))
+    (flet ((wait-for (test) (loop repeat 1000 until (funcall test) do (sleep 0.01)))
+           ;; the faces of the text rows of the frame N frames ago, not the mode line's
+           (frame (n) (let ((history (tuatara.frontend.fake:fake-face-history
+                                      (tuatara.command:editor-frontend tuatara.command:*editor*))))
+                        (subseq (coerce (car (nth n history)) 'list) 0 16))))
+      (sb-int:encapsulate 'tuatara.syntax::run-parse-job 'gated
+                          (lambda (function syntax job)
+                            (when gate (loop repeat 1000 until ready do (sleep 0.01)))
+                            (funcall function syntax job)))
+      (sb-int:encapsulate 'tuatara.syntax:rich-highlights 'gated
+                          (lambda (function &rest arguments)
+                            (multiple-value-prog1 (apply function arguments)
+                              ;; the parse comes in after the first part's colours
+                              (when (and gate (not ready))
+                                (setf ready t)
+                                (let ((syntax (tuatara.syntax:buffer-syntax buffer)))
+                                  (wait-for (lambda ()
+                                              (let ((job (tuatara.syntax:syntax-job syntax)))
+                                                (or (null job) (tuatara.syntax::job-finished-p syntax job))))))))))
+      (unwind-protect
+           (let ((tuatara.syntax:*syntax-wait* 0) (tuatara.defaults::*rules-wait* 30))
+             (run-keys
+                       (list (lambda ()
+                               (setf buffer (tuatara.command:current-buffer))
+                               (loop repeat 600
+                                     for language = (tuatara.buffer:buffer-local buffer :syntax-pending)
+                                     until (or (null language) (tuatara.syntax:buffer-syntax buffer))
+                                     do (tuatara.defaults::start-parsing buffer language) (sleep 0.05))
+                               (parse-done (tuatara.syntax:buffer-syntax buffer))
+                               (let ((text (tuatara.buffer:buffer-string buffer)))
+                                 (tuatara.display:fold-region buffer (search "(defun f4 " text) (search "(defun f9 " text))))
+                             :tick
+                             (lambda ()
+                               ;; an edit past what is shown, its parse held back
+                               (setf gate t
+                                     before (length (tuatara.frontend.fake:fake-face-history
+                                                     (tuatara.command:editor-frontend tuatara.command:*editor*))))
+                               (tuatara.buffer:buffer-insert buffer (tuatara.buffer:buffer-size buffer) " ")
+                               ;; none kept to move: as when many windows have taken their room
+                               (setf (tuatara.syntax::syntax-cache (tuatara.syntax:buffer-syntax buffer)) nil))
+                             :tick
+                             ;; the first frame drawn after the edit
+                             (lambda ()
+                               (setf painted (frame (- (length (tuatara.frontend.fake:fake-face-history
+                                                                (tuatara.command:editor-frontend tuatara.command:*editor*)))
+                                                       before 1))))
+                             (lambda () (setf gate nil ready t))
+                             :tick
+                             (lambda () (setf settled (frame 0))))
+                       :file path :width 100 :height 20))
+        (sb-int:unencapsulate 'tuatara.syntax::run-parse-job 'gated)
+        (sb-int:unencapsulate 'tuatara.syntax:rich-highlights 'gated)
+        (kill-records buffer path)))
+    (true painted)
+    (is equal settled painted)))
+
+(define-test (syntax inner-text-not-parsed-coloured-later)
+  ;; Rust code in a doc comment's code block, its parse given up once (too
+  ;; slow): the doc comment's colours are not kept without it, so that the
+  ;; code is coloured at the next edit
+  (let ((path (records-file (format nil "/// Adds.~%///~%/// ```~%/// let total = add(1, 2);~%/// ```~%fn add(a: u8, b: u8) -> u8 { a + b }~%")
+                            :type "rs"))
+        (buffer nil) (failing t))
+    (sb-int:encapsulate 'tuatara.syntax::parse-texts 'slow
+                        (lambda (function rope parses then &rest more)
+                          ;; the parse of Rust inside the comment, given up the first time the
+                          ;; colours of the parsed text are worked out
+                          (if (and failing tuatara.syntax::*injected-colours* (some (lambda (parse)
+                                                   (string= "rust" (tuatara.syntax:grammar-name
+                                                                    (tuatara.syntax::text-parse-grammar parse))))
+                                                 parses))
+                              (progn (setf failing nil)
+                                     (funcall then (mapcar (lambda (parse) (declare (ignore parse)) (list nil :slow)) parses)))
+                              (apply function rope parses then more))))
+    (unwind-protect
+         (let* ((tuatara.syntax:*syntax-wait* 30) (tuatara.defaults::*rules-wait* 30)
+                (f (run-keys (list (lambda ()
+                                     (setf buffer (tuatara.command:current-buffer))
+                                     (loop repeat 600
+                                           for language = (tuatara.buffer:buffer-local buffer :syntax-pending)
+                                           until (or (null language) (tuatara.syntax:buffer-syntax buffer))
+                                           do (tuatara.defaults::start-parsing buffer language) (sleep 0.05))
+                                     (parse-done (tuatara.syntax:buffer-syntax buffer)))
+                                   :tick "M->" "i x DEL C-g" :tick)
+                             :file path :width 100 :height 10)))
+           ;; the code's own colours on its row of the last frame
+           (let* ((row (loop for r below 8
+                             when (search "let total" (tuatara.frontend.fake:fake-screen-line f r)) return r))
+                  (spans (and row (aref (car (first (tuatara.frontend.fake:fake-face-history f))) row))))
+             (true row)
+             (true (find-if (lambda (span) (let ((face (third span)))
+                                             (member :keyword (if (listp face) face (list face)))))
+                            spans)
+                   "~s" spans)))
+      (sb-int:unencapsulate 'tuatara.syntax::parse-texts 'slow)
+      (kill-records buffer path))))
+
+(define-test (syntax edits-refused-parse-afresh)
+  ;; a helper that refuses to be told of an edit (one older than the editor)
+  ;; leaves no tree at the old places: the text is parsed afresh
+  (let* ((text (with-output-to-string (s) (dotimes (i 40) (format s "fn f~d() {}~%" i))))
+         (buffer (tuatara.buffer:make-buffer "*syntax-refused*" :text text))
+         (refusing nil) (left nil))
+    (sb-int:encapsulate 'tuatara.syntax::call-send 'refusing
+                        (lambda (function call &rest arguments)
+                          (if (and refusing (= (sb-sys:sap-ref-32 (tuatara.syntax::call-out call) 8)
+                                               tuatara.syntax::+op-edits+))
+                              (setf (tuatara.syntax::call-status call) 1)
+                              (apply function call arguments))))
+    (unwind-protect
+         (let ((syntax (tuatara.syntax:attach-syntax buffer (tuatara.syntax:find-grammar "rust"))))
+           (parse-done syntax)
+           (setf refusing t)
+           (tuatara.buffer:buffer-insert buffer 0 "fn first() {}")
+           (setf left (tuatara.syntax:syntax-tree syntax) refusing nil)
+           (false left "the tree of the text before the edit is kept")
+           (parse-done syntax)
+           (true (tuatara.syntax:syntax-tree syntax))
+           (false (tuatara.syntax:tree-has-error-p (tuatara.syntax:syntax-tree syntax))))
+      (sb-int:unencapsulate 'tuatara.syntax::call-send 'refusing)
+      (tuatara.syntax:detach-syntax buffer)
+      (tuatara.buffer:kill-buffer buffer))))
+
+(define-test (syntax kept-layers-held-to-column-and-depth)
+  ;; the colours of a text in another language are given again only for the
+  ;; same octets starting at the same column of a line (a grammar may read
+  ;; columns: a heredoc's end) and as deep in texts in other languages
+  (let* ((rope (tuatara.text:string->rope (format nil "x = 1~%    x = 1~%x = 1~%")))
+         (first-line (list (cons 0 5))) (indented (list (cons 10 15))) (third-line (list (cons 16 21)))
+         (tuatara.syntax::*injected-colours* (make-hash-table)))
+    (tuatara.syntax::keep-layer "python" :query :faces 1 rope first-line 0 22 '((0 1 :variable)))
+    (true (tuatara.syntax::kept-layer "python" :query :faces 1 rope third-line 0 22))
+    (false (tuatara.syntax::kept-layer "python" :query :faces 1 rope indented 0 22))
+    (false (tuatara.syntax::kept-layer "python" :query :faces 2 rope third-line 0 22))))
+
+(define-test (syntax edits-logged-in-their-room)
+  ;; the latest edits are kept, for colours to move with the text, in room of
+  ;; their own: logging one makes no garbage, and only the latest are given
+  (let* ((buffer (tuatara.buffer:make-buffer "*syntax-log*" :text "fn f() {}"))
+         (syntax (tuatara.syntax::%make-syntax buffer (tuatara.syntax:find-grammar "rust") nil))
+         (batch :batch))
+    (dotimes (i 20)
+      (incf (tuatara.syntax:syntax-generation syntax))
+      (tuatara.syntax::log-edit syntax batch))
+    (is = 0 (nth-value 2 (tuatara.bench::measuring
+                           (dotimes (i 100)
+                             (incf (tuatara.syntax:syntax-generation syntax))
+                             (tuatara.syntax::log-edit syntax batch)))))
+    (let ((now (tuatara.syntax:syntax-generation syntax)))
+      (is = 3 (length (tuatara.syntax::edits-since syntax (- now 3))))
+      (false (tuatara.syntax::edits-since syntax (- now (1+ tuatara.syntax::*edits-logged*)))))
+    (tuatara.buffer:kill-buffer buffer)))
+
+(define-test (syntax tree-copy-let-go-when-the-parse-is-not-asked)
+  ;; the copy of a tree made for a parse along with an edit is let go when
+  ;; asking for the parse fails before the parse has it
+  (let* ((text (with-output-to-string (s) (dotimes (i 20) (format s "fn f~d() {}~%" i))))
+         (buffer (tuatara.buffer:make-buffer "*syntax-copy*" :text text))
+         (made nil) (let-go '()))
+    (unwind-protect
+         (let ((syntax (tuatara.syntax:attach-syntax buffer (tuatara.syntax:find-grammar "rust"))))
+           (parse-done syntax)
+           (sb-int:encapsulate 'tuatara.syntax:edit-tree 'watching
+                               (lambda (function &rest arguments)
+                                 (multiple-value-bind (copy told) (apply function arguments)
+                                   (setf made copy)
+                                   (values copy told))))
+           (sb-int:encapsulate 'tuatara.syntax:delete-tree 'watching
+                               (lambda (function tree) (push tree let-go) (funcall function tree)))
+           (sb-int:encapsulate 'tuatara.syntax::parse-time-limit 'failing
+                               (lambda (function &rest arguments)
+                                 (declare (ignore function arguments))
+                                 (error "Asking for the parse failed.")))
+           (unwind-protect
+                (handler-case (tuatara.buffer:buffer-insert buffer 0 " ") (simple-error () nil))
+             (sb-int:unencapsulate 'tuatara.syntax::parse-time-limit 'failing)
+             (sb-int:unencapsulate 'tuatara.syntax:delete-tree 'watching)
+             (sb-int:unencapsulate 'tuatara.syntax:edit-tree 'watching))
+           (true made)
+           (true (member made let-go)))
+      (tuatara.syntax:detach-syntax buffer)
+      (tuatara.buffer:kill-buffer buffer))))
+
+(define-test (syntax tree-copy-let-go-once)
+  ;; the copy of a tree made with an edit, let go and then stopped there (an
+  ;; error, or C-g), is let go once: its number, perhaps given to another tree
+  ;; since, is not let go again
+  (let* ((text (with-output-to-string (s) (dotimes (i 20) (format s "fn f~d() {}~%" i))))
+         (buffer (tuatara.buffer:make-buffer "*syntax-once*" :text text))
+         (made nil) (stopping t) (requests '()))
+    (unwind-protect
+         (let ((syntax (tuatara.syntax:attach-syntax buffer (tuatara.syntax:find-grammar "rust"))))
+           (parse-done syntax)
+           (sb-int:encapsulate 'tuatara.syntax:edit-tree 'watching
+                               (lambda (function &rest arguments)
+                                 (multiple-value-bind (copy told) (apply function arguments)
+                                   (setf made copy)
+                                   (values copy told))))
+           ;; stopped just after the copy is let go
+           (sb-int:encapsulate 'tuatara.syntax:delete-tree 'stopping
+                               (lambda (function tree)
+                                 (funcall function tree)
+                                 (when (and stopping (eq tree made))
+                                   (setf stopping nil)
+                                   (error "Stopped."))))
+           (sb-int:encapsulate 'tuatara.syntax::call-send 'counting
+                               (lambda (function call &rest arguments)
+                                 (when (= (sb-sys:sap-ref-32 (tuatara.syntax::call-out call) 8)
+                                          tuatara.syntax::+op-tree-delete+)
+                                   (push (sb-sys:sap-ref-32 (tuatara.syntax::call-out call) 12) requests))
+                                 (apply function call arguments)))
+           (unwind-protect
+                ;; too large to parse now: the copy is let go at once
+                (let ((tuatara.syntax:*syntax-size-limit* 10))
+                  (handler-case (tuatara.buffer:buffer-insert buffer 0 " ") (simple-error () nil)))
+             (sb-int:unencapsulate 'tuatara.syntax::call-send 'counting)
+             (sb-int:unencapsulate 'tuatara.syntax:delete-tree 'stopping)
+             (sb-int:unencapsulate 'tuatara.syntax:edit-tree 'watching))
+           (true made)
+           (is = 1 (count (tuatara.syntax::tree-number made) requests) "requests to let go of ~s" requests))
+      (tuatara.syntax:detach-syntax buffer)
+      (tuatara.buffer:kill-buffer buffer))))
 
 (define-test (syntax colours-kept-for-several-ranges)
   ;; two parts of a buffer shown at once keep their colours, each worked out once
@@ -1563,12 +3548,12 @@ bound to the fake frontend and the editor; the file and its buffer go afterwards
     (unwind-protect
          (let* ((syntax (tuatara.syntax:attach-syntax buffer grammar))
                 (tuatara.syntax:*syntax-wait* 30)
-                (top (tuatara.syntax:syntax-highlights syntax query faces 0 100))
-                (bottom (tuatara.syntax:syntax-highlights syntax query faces 300 400)))
+                (top (tuatara.syntax:syntax-highlights syntax query faces (list (cons 0 100))))
+                (bottom (tuatara.syntax:syntax-highlights syntax query faces (list (cons 300 400)))))
            (true top)
            (true bottom)
-           (is eq top (tuatara.syntax:syntax-highlights syntax query faces 0 100))
-           (is eq bottom (tuatara.syntax:syntax-highlights syntax query faces 300 400)))
+           (is eq top (tuatara.syntax:syntax-highlights syntax query faces (list (cons 0 100))))
+           (is eq bottom (tuatara.syntax:syntax-highlights syntax query faces (list (cons 300 400)))))
       (tuatara.syntax:detach-syntax buffer)
       (tuatara.buffer:kill-buffer buffer))))
 
@@ -1587,9 +3572,9 @@ bound to the fake frontend and the editor; the file and its buffer go afterwards
                 (tuatara.syntax::*injection-time-limit* 1d-9)
                 (syntax (tuatara.syntax:attach-syntax buffer grammar)))
            (true (tuatara.syntax:syntax-too-big syntax))
-           (false (tuatara.syntax:syntax-highlights syntax query faces 0 100))
+           (false (tuatara.syntax:syntax-highlights syntax query faces (list (cons 0 100))))
            (is eq :slow (tuatara.syntax:syntax-broken syntax))
-           (false (tuatara.syntax:syntax-highlights syntax query faces 3000 3100))
+           (false (tuatara.syntax:syntax-highlights syntax query faces (list (cons 3000 3100))))
            (is = 1 parses))
       (sb-int:unencapsulate 'tuatara.syntax::parse-ranges 'counting)
       (tuatara.syntax:detach-syntax buffer)
@@ -1603,3 +3588,173 @@ bound to the fake frontend and the editor; the file and its buffer go afterwards
   (true (< 100 (length (source-files "lisp"))))
   (dolist (file (source-files "lisp"))
     (false (search "tuatara.syntax::" (uiop:read-file-string file)) "~a" (enough-namestring file))))
+
+(define-test (syntax no-sandbox-said-as-it-is)
+  ;; the message without a sandbox says that text is not parsed, in words that
+  ;; read right for both kinds of text
+  (flet ((said (trusted)
+           (let ((tuatara.command::*messages-kept* (list '())))
+             (tuatara.defaults::report-no-sandbox-for-grammars trusted))))
+    (true (search "Files outside the projects you trust are not coloured or parsed" (said nil)))
+    (true (search "No text is coloured or parsed" (said t)))))
+
+(define-test (syntax deeply-nested-text-parsed)
+  ;; text nested hundreds of levels deep, a string open across lines in it:
+  ;; the scanner keeps the indents it saves within the room the parser gives
+  ;; it, and Svelte's scanner follows template strings nested thousands deep
+  ;; without a call within a call for each; the text is parsed, not the
+  ;; program parsing it ended
+  (flet ((deep-yaml (n)
+           (with-output-to-string (o)
+             (dotimes (i n) (format o "~va:~%" i ""))
+             (format o "~vax: 1~%" n "")))
+         (deep-python (n)
+           (with-output-to-string (o)
+             (dotimes (i n) (format o "~vaif x:~%" i ""))
+             (format o "~vax = f\"\"\"a~%b~%\"\"\"~%" n ""))))
+    (loop for (grammar text) in (list (list "yaml" (deep-yaml 300)) (list "python" (deep-python 600))
+                                      (list "mojo" (deep-python 600))
+                                      ;; Typst's list items, each inside the one before
+                                      (list "typst" (with-output-to-string (o)
+                                                      (dotimes (i 400) (format o "~va- item~%" (* 2 i) ""))))
+                                      ;; Svelte's template strings, each in a ${...} of the one before
+                                      (list "svelte" (with-output-to-string (o)
+                                                       (write-string "{" o)
+                                                       (dotimes (i 300000) (write-string "`${" o))
+                                                       (write-string "x" o)
+                                                       (dotimes (i 300000) (write-string "}`" o))
+                                                       (format o "}~%"))))
+          do (let* ((parser (tuatara.syntax:make-parser (tuatara.syntax:find-grammar grammar)
+                                                        (tuatara.syntax:kept-helper :shared))))
+               (multiple-value-bind (tree why) (tuatara.syntax:parse-rope parser (tuatara.text:string->rope text))
+                 (true tree "~a nested deeply is parsed (~s)" grammar why)
+                 (when tree (tuatara.syntax:delete-tree tree)))
+               (ignore-errors (tuatara.syntax:delete-parser parser))))))
+
+(define-test (syntax brace-left-open-parsed-at-once)
+  ;; a brace left open in a long run of text: while Svelte's parser recovers
+  ;; from the error, its scanner does not read the rest of the text again
+  ;; from each place, so the parse takes a moment, not minutes
+  (let* ((run (make-string 100000 :initial-element #\M))
+         (parser (tuatara.syntax:make-parser (tuatara.syntax:find-grammar "svelte")
+                                             (tuatara.syntax:kept-helper :shared))))
+    (multiple-value-bind (tree why)
+        (tuatara.syntax:parse-rope parser (tuatara.text:string->rope (concatenate 'string run "{" run)) :limit 2)
+      (true tree "parsed within two seconds (~s)" why)
+      (when tree (tuatara.syntax:delete-tree tree)))
+    (ignore-errors (tuatara.syntax:delete-parser parser))))
+
+(define-test (syntax rules-not-answered-asked-again)
+  ;; rules the program compiling them did not answer for (a busy moment) are
+  ;; not taken for failed: asked for again after a wait, they compile
+  (let* ((language (tuatara.defaults::find-language 'toml))
+         (kept (tuatara.defaults::language-query language))
+         (tuatara.defaults::*rules-unanswered-wait* 0.2))
+    (tuatara.syntax:kept-helper :rules)
+    (setf (tuatara.defaults::language-query language) nil)
+    (remhash language tuatara.defaults::*rules-unanswered*)
+    (unwind-protect
+         (progn
+           (sb-int:encapsulate 'tuatara.syntax::send-query 'dead
+                               (lambda (function call &rest arguments)
+                                 (declare (ignore function arguments))
+                                 (setf (tuatara.syntax::call-status call) :dead)))
+           (unwind-protect
+                (false (tuatara.defaults::language-compiled-query language :colouring))
+             (sb-int:unencapsulate 'tuatara.syntax::send-query 'dead))
+           (false (tuatara.defaults::language-query language) "not kept as failed")
+           (false (tuatara.defaults::language-compiled-query language :colouring) "not asked again at once")
+           (sleep 0.3)
+           (true (tuatara.syntax:query-p (tuatara.defaults::language-compiled-query language :colouring))
+                 "compiled when asked again"))
+      (remhash language tuatara.defaults::*rules-unanswered*)
+      (unless (tuatara.syntax:query-p (tuatara.defaults::language-query language))
+        (setf (tuatara.defaults::language-query language) kept)))))
+
+(define-test (syntax large-rules-given-time)
+  ;; compiling rules waits longer than other calls, the longer the rules, and
+  ;; lateness there is slowness, not a hang
+  (let ((asked '())
+        (grammar (tuatara.syntax:find-grammar "toml"))
+        (source (tuatara.defaults::language-rules (tuatara.defaults::find-language 'toml))))
+    (sb-int:encapsulate 'tuatara.syntax::call-send 'seen
+                        (lambda (function call &rest keys)
+                          (push keys asked)
+                          (apply function call keys)))
+    (unwind-protect (tuatara.syntax:compile-query grammar source)
+      (sb-int:unencapsulate 'tuatara.syntax::call-send 'seen))
+    (let ((keys (first asked)))
+      (is eq :slow (getf keys :late))
+      (true (and (getf keys :seconds) (> (getf keys :seconds) tuatara.syntax:*syntax-helper-wait*))))))
+
+(define-test (syntax slow-rules-never-hold-the-editor)
+  ;; a key needing rules not compiled yet (RET indenting) waits no longer
+  ;; than *rules-editor-wait*, however slow the compiling, and the rules
+  ;; are kept once compiled in the background
+  (let* ((language (tuatara.defaults::find-language 'rust))
+         (kept (tuatara.defaults::language-indent-query language))
+         (tuatara.defaults::*rules-editor-wait* 0.2))
+    (tuatara.syntax:kept-helper :rules)
+    (setf (tuatara.defaults::language-indent-query language) nil)
+    (sb-int:encapsulate 'tuatara.syntax:compile-query 'slow
+                        (lambda (function grammar source &rest more)
+                          (when (equal (first more) "indentation") (sleep 3))
+                          (apply function grammar source more)))
+    (unwind-protect
+         (let ((began (get-internal-real-time)))
+           (with-file-session ((f editor) "C-e i RET" (format nil "fn f() {~%}~%") "rs")
+             (true (< (tuatara.runtime:seconds-since began) 2.5) "~,2f s" (tuatara.runtime:seconds-since began)))
+           (true (loop repeat 100 thereis (tuatara.syntax:query-p (tuatara.defaults::language-indent-query language))
+                       do (sleep 0.1))
+                 "kept once compiled"))
+      (sb-int:unencapsulate 'tuatara.syntax:compile-query 'slow)
+      (unless (tuatara.syntax:query-p (tuatara.defaults::language-indent-query language))
+        (setf (tuatara.defaults::language-indent-query language) kept)))))
+
+(define-test (syntax rules-unanswered-given-up-at-last)
+  ;; rules the program compiling them never answers for are given up on
+  ;; after *rules-unanswered-most* times, as each time it is ended
+  (let* ((language (tuatara.defaults::find-language 'toml))
+         (kept (tuatara.defaults::language-query language))
+         (tuatara.defaults::*rules-unanswered-wait* 0.01)
+         (tuatara.defaults::*rules-unanswered-most* 2)
+         (tuatara.defaults::*rules-quiet* t))
+    (tuatara.syntax:kept-helper :rules)
+    (setf (tuatara.defaults::language-query language) nil)
+    (remhash language tuatara.defaults::*rules-unanswered*)
+    (sb-int:encapsulate 'tuatara.syntax::send-query 'dead
+                        (lambda (function call &rest arguments)
+                          (declare (ignore function arguments))
+                          (setf (tuatara.syntax::call-status call) :dead)))
+    (unwind-protect
+         (progn
+           (tuatara.defaults::language-compiled-query language :colouring)
+           (false (tuatara.defaults::language-query language) "asked again after the first")
+           (sleep 0.05)
+           (tuatara.defaults::language-compiled-query language :colouring)
+           (is eq :failed (tuatara.defaults::language-query language) "given up on after the second"))
+      (sb-int:unencapsulate 'tuatara.syntax::send-query 'dead)
+      (remhash language tuatara.defaults::*rules-unanswered*)
+      (setf (tuatara.defaults::language-query language) kept))))
+
+(define-test (syntax helper-run-where-its-directory-is-shown)
+  ;; the program that parses, found in a directory written through a link, is run, shut in, at a
+  ;; path within the place that directory is shown: through a link in /tmp, which the sandbox has
+  ;; as its own, the path as written; through one elsewhere, the place the link leads to
+  (with-test-directory (directory)
+    (let* ((real (ensure-directories-exist (merge-pathnames "grammars/" directory)))
+           (elsewhere (uiop:native-namestring (merge-pathnames "linked" directory)))
+           (in-tmp (format nil "/tmp/tuatara-test-~d-~36r" (sb-posix:getpid) (random (expt 36 8)))))
+      (alexandria:write-string-into-file "" (merge-pathnames "tuatara-syntax-helper" real))
+      (tuatara.io:make-symbolic-link (string-right-trim "/" (uiop:native-namestring real)) elsewhere)
+      (tuatara.io:make-symbolic-link (string-right-trim "/" (uiop:native-namestring real)) in-tmp)
+      (unwind-protect
+           (dolist (link (list in-tmp elsewhere))
+             (let* ((program (tuatara.syntax:syntax-helper-program
+                              (list (uiop:ensure-directory-pathname link))))
+                    (run (tuatara.syntax::shut-in-helper-program program))
+                    (arguments (tuatara.io::sandbox-arguments run '() nil nil :directories (list link)))
+                    (shown (tuatara.io:real-place link)))
+               (true (member shown arguments :test #'string=) "~a shown" shown)
+               (true (uiop:string-prefix-p (concatenate 'string shown "/") run) "~a run within ~a" run shown)))
+        (tuatara.io:remove-file in-tmp)))))

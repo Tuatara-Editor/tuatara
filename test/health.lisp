@@ -32,7 +32,7 @@ a moment.")
         (true (search "(seccomp)" (health-line text "Sandbox")))
         ;; and what decodes PDFs: poppler, installed in the test toolbox
         (true (search "PDF text by pdftotext and pdfinfo (poppler)" (health-line text "Decoders")))
-        (true (search "the tree-sitter library and" text))
+        (true (search "the program that runs them and" text))
         ;; every language's grammar found and its rules working
         (dolist (language '("bash" "c" "containerfile" "lisp" "rust"))
           (let ((line (health-line text (format nil "~a " language))))
@@ -123,15 +123,15 @@ a moment.")
 
 (define-test (health latex-shut-in-said)
   ;; health says whether LaTeX runs shut in by the sandbox, where an engine is found
-  (when (tuatara.defaults::latex-engines-found)
+  (when (tuatara.export::latex-engines-found)
     (if (eq :ready (tuatara.io:sandbox-status))
-        (true (search "shut in by the sandbox" (tuatara.defaults::latex-export-words)))
-        (true (search "unconfined" (tuatara.defaults::latex-export-words))))
+        (true (search "shut in by the sandbox" (tuatara.export:latex-export-words)))
+        (true (search "unconfined" (tuatara.export:latex-export-words))))
     ;; no sandbox program: unconfined, and said so
     (unwind-protect
          (let ((tuatara-user:*sandbox-program* nil))
            (tuatara.io:sandbox-status :again t)
-           (true (search "unconfined" (tuatara.defaults::latex-export-words))))
+           (true (search "unconfined" (tuatara.export:latex-export-words))))
       (tuatara.io:sandbox-status :again t))))
 
 (define-test (health drawing-recommended)
@@ -207,7 +207,32 @@ a moment.")
                       when (and end (or (search "optdepends=(" line) (uiop:string-prefix-p "            '" line)))
                         collect (subseq line (1+ start) end))
                 #'string<))))
+  ;; Arch's ImageMagick reads most pictures only with their libraries beside it: each is named with it
+  (dolist (entry tuatara.defaults::*image-format-libraries*)
+    (true (member (third entry) (getf (tuatara.defaults::outside-program :pictures) :arch) :test #'string=)
+          "~a for ~a" (third entry) (first entry)))
+  (true (search "Arch: imagemagick libjpeg-turbo libtiff libwebp libheif librsvg libraw openjpeg2 libjxl"
+                (tuatara.defaults::outside-program-install-words :pictures nil)))
   (is string= "install GnuPG (Fedora: gnupg2)" (tuatara.defaults::outside-program-install-words :gpg :fedora))
   (true (search "Debian and Ubuntu: gnupg; Arch: gnupg" (tuatara.defaults::outside-program-install-words :gpg nil)))
   (let ((words (tuatara.defaults::git-health-words)))
     (true (or (search "by /" words) (search "install git" words)) "~a" words)))
+
+(define-test (health grammar-asked-again)
+  ;; a grammar that could not be had at first, the program loading grammars having ended (as when the
+  ;; sandboxes were ended by something before), is asked for again, not said to be missing
+  (let ((refused 0))
+    (remhash "ada" tuatara.syntax::*grammars*)
+    (sb-int:encapsulate 'tuatara.syntax:find-grammar 'ended-once
+                        (lambda (function name)
+                          (if (and (equal name "ada") (< refused 1))
+                              (progn (incf refused) nil)
+                              (funcall function name))))
+    (unwind-protect
+         (let ((tuatara.defaults::*health-wait* 60))
+           (run-keys "M-x c h e c k - h e a l t h RET" :width 120 :height 50)
+           (is = 1 refused)
+           (let ((line (health-line (health-text) "ada ")))
+             (true line)
+             (false (search "✘" line) "~a" line)))
+      (sb-int:unencapsulate 'tuatara.syntax:find-grammar 'ended-once))))

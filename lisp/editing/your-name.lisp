@@ -12,7 +12,7 @@ as standard, for the name the system has for you.")
   "Your name: *USER-FULL-NAME*, else the name the system has for you (the
 full name of your account, else its login name)."
   (or (and *user-full-name* (plusp (length *user-full-name*)) *user-full-name*)
-      (let ((entry (ignore-errors (sb-posix:getpwuid (sb-posix:getuid)))))
+      (let ((entry (ignoring-errors-reported ("looking up your account") (sb-posix:getpwuid (sb-posix:getuid)))))
         (and entry (let ((gecos (sb-posix:passwd-gecos entry)))
                      (if (plusp (length gecos))
                          (subseq gecos 0 (or (position #\, gecos) (length gecos)))

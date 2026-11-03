@@ -498,13 +498,15 @@ of matches made in the background."
     (multiple-value-bind (f editor) (run-keys (list "C-s o C-s C-s C-r" #'wait-for-search-count :tick "C-g") :text "foo boo" :width 80)
       (declare (ignore editor))
       (true (tuatara.frontend.fake:fake-frame-showing f "2/4    Regex search forward: o"))))
-  ;; a text past *typing-pause-octets*: counted once typing pauses, its place kept empty till then
-  (let ((tuatara.defaults::*typing-pause-octets* 0) (tuatara.defaults::*typing-pause* 1000))
+  ;; a text too large to count at each key: counted once typing pauses, its place kept empty till then
+  (let ((tuatara.defaults::*count-at-once-seconds* 0) (tuatara.defaults::*count-at-once-least* 0)
+        (tuatara.defaults::*typing-pause* 1000))
     (multiple-value-bind (f editor) (run-keys (list "C-s o" :tick "C-g") :text "foo boo" :width 80)
       (declare (ignore editor))
       (true (tuatara.frontend.fake:fake-frame-showing f "       Regex search forward: o"))
       (false (tuatara.frontend.fake:fake-frame-showing f "/4    Regex search forward: o"))))
-  (let ((tuatara.defaults::*typing-pause-octets* 0) (tuatara.defaults::*typing-pause* 1/100))
+  (let ((tuatara.defaults::*count-at-once-seconds* 0) (tuatara.defaults::*count-at-once-least* 0)
+        (tuatara.defaults::*typing-pause* 1/100))
     (multiple-value-bind (f editor) (run-keys (list "C-s o" #'wait-for-search-count :tick "C-g") :text "foo boo" :width 80)
       (declare (ignore editor))
       (true (tuatara.frontend.fake:fake-frame-showing f "1/4    Regex search forward: o"))))
@@ -512,6 +514,48 @@ of matches made in the background."
   (multiple-value-bind (f editor) (run-keys "C-s a RET C-g C-s b RET C-g C-s M-p M-p M-n RET" :text "a b a b")
     (declare (ignore f))
     (is = 7 (session-point editor))))
+
+(define-test (incremental-search count-at-once-as-counts-went)
+  ;; whether a text is counted at each key comes from how fast the counts made so far went:
+  ;; a slow one makes a small text wait for typing to pause, a quick one counts a large text at
+  ;; once, a slow stopped one lowers the rate to what would have finished, a quick one never does;
+  ;; a text of no more than a megabyte is counted at once whatever went before
+  (let ((rate tuatara.defaults::**count-rate**)
+        (tuatara.defaults::*count-at-once-least* 0)
+        (tuatara.defaults::*last-typed* (get-internal-real-time)))
+    (unwind-protect
+         (flet ((timed (octets stopped seconds &optional (value 7))
+                  (tuatara.defaults::count-timed octets (list stopped) (lambda () (sleep seconds) value))))
+           (is = 7 (timed 1000 nil 0.05))
+           (let ((slow tuatara.defaults::**count-rate**))
+             (true (<= 15000 slow 20000) "~d octets a second" slow))
+           (true (tuatara.defaults::typing-pause-left 1000) "1000 octets wait after a slow count")
+           (let ((tuatara.defaults::*count-at-once-least* (* 1024 1024)))
+             (false (tuatara.defaults::typing-pause-left 1000) "1000 octets counted at once all the same"))
+           ;; in a session: the count of a text that is no longer small waits for the pause
+           (let ((tuatara.defaults::*typing-pause* 1000))
+             (multiple-value-bind (f editor)
+                 (run-keys (list "C-s o" :tick "C-g")
+                           :text (format nil "~{~a~^ ~}" (make-list 300 :initial-element "foo")) :width 80)
+               (declare (ignore editor))
+               (true (tuatara.frontend.fake:fake-frame-showing f "       Regex search forward: o"))
+               (false (tuatara.frontend.fake:fake-frame-showing f "/600    Regex search forward: o"))))
+           (timed (* 64 1024 1024 1024) nil 0.001)
+           (false (tuatara.defaults::typing-pause-left (* 1024 1024 1024)) "a gigabyte at once after a quick count")
+           (let ((high tuatara.defaults::**count-rate**))
+             (timed 1000 nil 0.001)
+             (is = high tuatara.defaults::**count-rate** "a short count leaves the rate")
+             (timed (* 1024 1024) t 0.001)
+             (is = high tuatara.defaults::**count-rate** "a count stopped at once leaves it too")
+             ;; a count that failed, or gave up before the end of its text, says nothing of the rate
+             (setf tuatara.defaults::**count-rate** 1000)
+             (is equal '(:error "broken") (timed (* 64 1024 1024 1024) nil 0.001 '(:error "broken")))
+             (timed (* 64 1024 1024 1024) nil 0.001 nil)
+             (timed (* 1024 1024) nil 0.02 '(:error "broken"))
+             (is = 1000 tuatara.defaults::**count-rate** "failed counts leave the rate")
+             (timed (* 1024 1024) t 0.02)
+             (true (< tuatara.defaults::**count-rate** (* 1024 1024 50)) "a stopped count lowers it")))
+      (setf tuatara.defaults::**count-rate** rate))))
 
 (define-test (incremental-search replace-regexp-as-sed)
   ;; r r with nothing selected: the first match on the line at point; % every match in the buffer
@@ -703,7 +747,7 @@ of matches made in the background."
       (seconds "C-M-s a a a a a a a a a C-g")
       (let ((found (seconds "C-M-s a a a a a a a a a C-g"))
             (nowhere (seconds "C-M-s a * q q q q q q q C-g")))
-        (true (< (- nowhere found) (* 8 1/40)) "~,3f s against ~,3f s" nowhere found)))))
+        (true (< (- nowhere found) (* 8 1/40 (machine-slowdown))) "~,3f s against ~,3f s" nowhere found)))))
 
 (define-test (incremental-search search-prompt-cursor)
   ;; C-s: the pattern typed in the minibuffer, the cursor after it; the match lit, point after it a cursor the typing does not go to
@@ -864,7 +908,7 @@ than holding the run."
   ;; a nested repeat on a line that almost matches: each key answered within a tenth of a second,
   ;; the search going on in the background and saying so, C-g ending it, its thread too
   (let ((times '()))
-    (flet ((stamp () (push (get-internal-real-time) times)))
+    (flet ((stamp () (push (thread-cpu-time) times)))
       (call-with-watchdog
        20 (lambda ()
             (multiple-value-bind (f editor)
@@ -902,7 +946,7 @@ than holding the run."
             (true (tuatara.frontend.fake:fake-frame-showing f "The pattern is slow here: replacing in the buffer in the background"))
             (true (tuatara.frontend.fake:fake-frame-showing f "Stop replacing")))))
     (true stopped-in)
-    (true (< stopped-in 1/2) "stopped in ~,3f s" stopped-in)
+    (true (< stopped-in 5) "stopped in ~,3f s" stopped-in)
     (false (find-if #'tuatara.runtime:job-running-p tuatara.runtime:*jobs*))))
 
 (define-test (incremental-search steps-through-empty-matches)

@@ -64,18 +64,21 @@ when given, with the job. Returns the frontend, the editor and the job."
       (values f editor job))))
 
 (defmacro with-questions ((prompts &optional answer) &body body)
-  "Run BODY with every yes-or-no question answered ANSWER (NIL by default) at
-once, and PROMPTS bound to the list of the questions asked, the first first."
+  "Run BODY with every yes-or-no question, typed or of one key, answered
+ANSWER (NIL by default) at once, and PROMPTS bound to the list of the
+questions asked, the first first."
   `(let ((,prompts '()))
-     (sb-int:encapsulate 'tuatara.command:yes-or-no-p* 'job-runner
-                         (lambda (f prompt) (declare (ignore f)) (setf ,prompts (append ,prompts (list prompt))) ,answer))
+     (dolist (asking '(tuatara.command:yes-or-no-p* tuatara.command:y-or-n-p*))
+       (sb-int:encapsulate asking 'job-runner
+                           (lambda (f prompt &rest how) (declare (ignore f how)) (setf ,prompts (append ,prompts (list prompt))) ,answer)))
      (unwind-protect (progn ,@body)
-       (sb-int:unencapsulate 'tuatara.command:yes-or-no-p* 'job-runner))))
+       (dolist (asking '(tuatara.command:yes-or-no-p* tuatara.command:y-or-n-p*))
+         (sb-int:unencapsulate asking 'job-runner)))))
 
 (define-test (job-runner stopping-every-kind)
   ;; M-x stop-job stops each kind, after one question of one form; how it stopped is said in one form
   (loop for (name make question stopped) in (job-kinds)
-        do (multiple-value-bind (f editor job) (job-session make "M-x s t o p - j o b RET y RET")
+        do (multiple-value-bind (f editor job) (job-session make "M-x s t o p - j o b RET y")
              (declare (ignore editor))
              (true (tuatara.frontend.fake:fake-frame-showing f question) "~a asked ~s" name question)
              (true (tuatara.frontend.fake:fake-frame-showing f stopped) "~a said ~s" name stopped)
@@ -183,8 +186,8 @@ once, and PROMPTS bound to the list of the questions asked, the first first."
   ;; asks first, and no keeps the buffer and the export going
   (let ((b (tuatara.buffer:make-buffer "job-runner export" :text "* Note")))
     (unwind-protect
-         (let ((tuatara.runtime:*jobs* (list (tuatara.defaults::make-pdf-export b "/nonexistent/note.org" :org :file nil nil t)
-                                             (tuatara.defaults::make-docx-export b "" "/nonexistent/note.org" :file)))
+         (let ((tuatara.runtime:*jobs* (list (tuatara.export::make-pdf-export b "/nonexistent/note.org" :org :file nil nil t)
+                                             (tuatara.export::make-docx-export b "" "/nonexistent/note.org" :file)))
                (tuatara.defaults::*job-queue* '()))
            (with-questions (prompts)
              (false (tuatara.defaults::jobs-kill-query b))
@@ -253,3 +256,19 @@ once, and PROMPTS bound to the list of the questions asked, the first first."
     (is eq :error (first (car cell)))
     (true (search "stack" (second (car cell))))
     (true woken)))
+
+(define-test (job-runner background-result-failure-reported)
+  ;; a result worked out in the background that fails is delivered as an error, and
+  ;; debug mode keeps the failure in its log, with the calls under way
+  (drain-debug-reports)
+  (unwind-protect
+       (progn
+         (tuatara.runtime:set-debug t)
+         (let ((cell (tuatara.runtime:start-background-result (lambda () (error "No figures to add.")) "tuatara adding" nil)))
+           (loop repeat 1000 until (car cell) do (sleep 0.01))
+           (is equal '(:error "No figures to add.") (car cell))
+           (let ((texts (loop for report = (sb-concurrency:dequeue tuatara.runtime:*debug-reports*)
+                              while report collect (princ-to-string (fourth report)))))
+             (true (find-if (lambda (text) (search "tuatara adding failed: No figures to add." text)) texts)
+                   "~s" texts))))
+    (drain-debug-reports)))

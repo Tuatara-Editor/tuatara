@@ -90,12 +90,13 @@ read-only or shown as a hex dump, or a list is shown already."
                (null (editor-popup editor))
                (not (editor-minibuffer-active editor))
                (eql (char-before-position buffer (tuatara.buffer:buffer-point buffer)) #\/)
-               (not (tuatara.buffer:buffer-local buffer :read-only))
+               (not (buffer-read-only-p buffer))
                (not (tuatara.display:hex-view-p buffer))
                (complete-paths-p buffer))
       (multiple-value-bind (start name-start name-end directory) (path-at-point buffer (tuatara.buffer:buffer-point buffer))
         (declare (ignore name-start name-end))
-        (let ((expanded (and start (ignore-errors (path-directory directory buffer))))
+        (let ((expanded (and start (ignoring-errors-reported ("expanding ~a" directory)
+                                     (path-directory directory buffer))))
               (chosen (and *last-used-first* (chosen-paths))))
           (when expanded
             (when *path-listing* (stop-gathering (fourth *path-listing*)))
@@ -105,7 +106,8 @@ read-only or shown as a hex dump, or a list is shown already."
                                          (lambda (give cancel)
                                            (declare (ignore cancel))
                                            (funcall give (path-listing-order
-                                                          (ignore-errors (directory-candidates expanded chosen))))))))))))))
+                                                          (ignoring-errors-reported ("listing ~a" expanded)
+                                                            (directory-candidates expanded chosen))))))))))))))
 
 (defun path-listing-order (candidates)
   "CANDIDATES, the entries of a folder as DIRECTORY-CANDIDATES gives them,
@@ -163,8 +165,9 @@ stands in when it does not start with / or ~ (PATH-DIRECTORY), or without the
 full stop, comma, colon or the like that ends a sentence after it; NIL when
 nothing is there."
   (flet ((there (path)
-           (let ((native (ignore-errors (tuatara.io:clean-path (tuatara.io:native (path-directory path buffer))))))
-             (and native (ignore-errors (tuatara.io:path-kind native)) native))))
+           (let ((native (ignoring-errors-reported ("expanding ~a" path)
+                           (tuatara.io:clean-path (tuatara.io:native (path-directory path buffer))))))
+             (and native (tuatara.io:path-kind native) native))))
     (or (there typed)
         (let ((trimmed (string-right-trim ".,:;!?" typed)))
           (and (plusp (length trimmed)) (string/= trimmed typed) (there trimmed))))))
@@ -175,14 +178,19 @@ nothing is there."
 \\(~/notes/todo.org, ./README.org, or a file: link's) in its buffer. A path not
 starting with / or ~ is taken from the directory the buffer stands in. With a
 prefix argument (\\[universal-argument] \\[open-path-at-point]), open it safely, as
-\\[find-file-safely] does. A path that names nothing is said, not made."
+\\[find-file-safely] does. A path that names nothing is said, not made. The
+path is remembered as chosen lately (NOTE-VISITED-PATH) unless it opened
+safely or the buffer it is written in is open safely."
   (let* ((b (current-buffer))
          (typed (path-around b (tuatara.buffer:buffer-point b)))
          (native (and typed (existing-path typed b))))
     (cond ((null typed) (message "No path at point"))
           ((null native) (message "No file or folder: ~a" typed))
-          (t (note-chosen-path native)
-             (visit-path native :safe (and (prefix-argument) t))))))
+          (t (let ((buffer (visit-path native :safe (and (prefix-argument) t))))
+               ;; a path written in a file opened safely is evidence too: not remembered
+               (unless (tuatara.io:safe-visit-p b)
+                 (note-visited-path native buffer
+                                    :directory (eq :directory (tuatara.io:path-kind native)))))))))
 
 (defun install-paths-in-text (editor)
   "List the entries of a path's directory beside the cursor as the path is

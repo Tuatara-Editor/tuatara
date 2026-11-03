@@ -12,7 +12,7 @@
 ;;;; is indented as Tuatara indents it. *FORMAT-ON-SAVE* has the languages it
 ;;;; names formatted before each save.
 
-(in-package #:tuatara.defaults)
+(in-package #:tuatara.lsp)
 
 (defvar *format-on-save* '()
   "The languages whose buffers are formatted (\\[format-buffer]) before each
@@ -27,7 +27,9 @@ elsewhere); a formatter reads the project's settings, and some run code of
 the project's.")
 
 (defvar *format-seconds* 30
-  "The seconds a formatter may take before it is stopped and nothing is changed.")
+  "The seconds a formatter may take before it is stopped and nothing is
+changed; a language server laying out code that has not answered by then is
+no longer waited for.")
 
 (defstruct (format-job (:include tuatara.runtime:job) (:constructor make-format-job (buffer version program then)) (:copier nil))
   "BUFFER's text at VERSION being laid out by PROGRAM, a job: OUTPUT, the text
@@ -68,7 +70,7 @@ server), in words, or NIL: a file opened safely, or in one of
   (let ((file (tuatara.buffer:buffer-file buffer)))
     (cond ((tuatara.io:safe-visit-p buffer) "it is opened safely")
           ((and file (safe-directory-of (tuatara.io:native file))) "it is in one of *safe-directories*")
-          ((tuatara.buffer:buffer-local buffer :plaintext) "its text is kept from other programs (an encrypted file)"))))
+          ((tuatara.io:buffer-plaintext-p buffer) "its text is kept from other programs (an encrypted file)"))))
 
 (defun formatter-output (program command input directory cancel)
   "What the formatter PROGRAM (its full name) of COMMAND (as chosen, the program
@@ -90,9 +92,9 @@ the sandbox when *FORMAT-IN-SANDBOX*."
                (case outcome
                  (:done (values output nil))
                  (:unavailable (values nil (format nil "~a; *format-in-sandbox* nil runs formatters without it"
-                                                   (tuatara.io:sandbox-outcome-words outcome said :label "it"))))
+                                                   (sandbox-outcome-words outcome said :label "it"))))
                  (:failed (values nil (if (plusp (length said)) said "it failed")))
-                 (t (values nil (tuatara.io:sandbox-outcome-words outcome said :label "it" :seconds-setting '*format-seconds*)))))
+                 (t (values nil (sandbox-outcome-words outcome said :label "it" :seconds-setting '*format-seconds*)))))
           (sb-posix:close fd)))
       (multiple-value-bind (output ok)
           (tuatara.io:program-output (cons program (rest command))
@@ -109,32 +111,46 @@ text (well-formed UTF-8) for one that is; NIL when it may be."
           ((and (raw-p output) (not (raw-p input))) "what it gave back is not text (UTF-8)"))))
 
 (defun indent-whole-buffer (buffer)
-  "Indent every line of BUFFER as its mode indents it; returns what INDENT-LINES does."
-  (indent-lines buffer 0 (tuatara.text:rope-bytes (tuatara.buffer:buffer-text buffer))))
+  "Indent every line of BUFFER as its mode indents it, or while it is narrowed
+every line of the part shown; returns what INDENT-LINES does."
+  (multiple-value-call #'indent-lines buffer (tuatara.buffer:buffer-bounds buffer)))
 
 (defun start-formatting (buffer &key then)
   "Lay out BUFFER's text: by its language's formatter in the background, or,
 with none installed, by Tuatara's own indentation at once; THEN, a function
 of the buffer and whether its text was laid out, called once it is over.
-Says what it did."
+Says what it did. While BUFFER is narrowed only the part shown is laid out:
+by its language server where it lays out a part, else by indentation; a
+formatter of the whole file is not run then, and that is said."
   (let* ((language (buffer-language buffer))
          (command (and language (language-formatter-command language)))
          (program (installed-program command))
-         (refusal (and program (outside-program-refusal buffer))))
+         (refusal (and program (outside-program-refusal buffer)))
+         (narrowed (tuatara.buffer:buffer-narrowed-p buffer)))
     (cond
-      ((or (tuatara.io:safe-visit-p buffer) (tuatara.buffer:buffer-local buffer :read-only))
+      ((or (tuatara.io:safe-visit-p buffer) (buffer-read-only-p buffer))
        (message "~a is ~:[read only~;opened safely~]: not formatted" (tuatara.buffer:buffer-name buffer) (tuatara.io:safe-visit-p buffer))
        (when then (funcall then buffer nil)))
+      ;; narrowed: the part shown, by a language server that lays out a part
+      ((and narrowed (buffer-servers buffer)
+            (multiple-value-bind (start end) (tuatara.buffer:buffer-bounds buffer)
+              (lsp-format buffer :start start :end end :then then))))
+      ;; a formatter lays out the whole file, never only the part shown
+      ((and narrowed program (not refusal))
+       (message "~a" (tuatara.buffer:outside-narrowing-words buffer))
+       (when then (funcall then buffer nil)))
       ;; no formatter of its own here: its language server, when one lays out code
-      ((and (null program) (buffer-servers buffer) (lsp-format buffer :then then)))
+      ((and (not narrowed) (null program) (buffer-servers buffer) (lsp-format buffer :then then)))
       ((or (null program) refusal)
-       (let ((changed (indent-whole-buffer buffer)))
+       (let ((changed (indent-whole-buffer buffer))
+             (why (if refusal
+                      (format nil "~a: not given to a formatter" refusal)
+                      (format nil "~:[no formatter is known for it~;~:*~a is not installed~], and ~a"
+                              (and command (first command)) (servers-not-formatting-words buffer narrowed)))))
          (case changed
-           (:none (message "~a has no formatter~@[ (~a is not installed)~] and no indentation rules: nothing done"
-                           (tuatara.buffer:buffer-name buffer) (and command (first command))))
-           (:too-large (message "~a is too large to indent here" (tuatara.buffer:buffer-name buffer)))
-           (t (message "~a indented by Tuatara~:[~*~; (~a: not given to a formatter)~]~@[, ~a not being installed~]"
-                       (tuatara.buffer:buffer-name buffer) refusal refusal (and command (not refusal) (first command)))))
+           (:none (message "~a has no indentation rules: nothing done (~a)" (tuatara.buffer:buffer-name buffer) why))
+           (:too-large (message "~a is too large to indent here (~a)" (tuatara.buffer:buffer-name buffer) why))
+           (t (message "~a indented by Tuatara (~a)" (tuatara.buffer:buffer-name buffer) why)))
          (when then (funcall then buffer (not (member changed '(:none :too-large)))))))
       ((formatting-p buffer)
        (message "~a is being formatted already" (tuatara.buffer:buffer-name buffer)))
@@ -161,7 +177,7 @@ places it changed, when it did not fail (FAILURE, words, NIL when it did not)
 and the buffer is as it was given; say what was done, or why not. True when
 the text was put in."
   (cond (failure
-         (message "~a was not formatted by ~a: ~a" (tuatara.buffer:buffer-name buffer) name failure)
+         (message "~a could not format ~a: ~a" name (tuatara.buffer:buffer-name buffer) failure)
          nil)
         ((not (eq (tuatara.buffer:buffer-version buffer) version))
          (message "~a changed while ~a laid it out: nothing put in; format it again" (tuatara.buffer:buffer-name buffer) name)
@@ -177,11 +193,11 @@ otherwise, and go on with what was waiting for it."
          (output (format-job-output job))
          (formatted
            (cond ((not (live-buffer-p buffer)) (return-from tuatara.runtime:job-take-in))
-                 ((not (eq (tuatara.runtime:job-status job) :done))
-                  (message "~a was not formatted: ~a" (tuatara.buffer:buffer-name buffer) (tuatara.runtime:job-ending-words job))
-                  nil)
                  (t (finish-formatting buffer (tuatara.io:native-file-name (format-job-program job)) (format-job-version job)
-                                       (and (null output) (format-job-said job))
+                                       (case (tuatara.runtime:job-status job)
+                                         (:stopped (format nil "it was stopped; ~a" (tuatara.runtime:job-left-words job)))
+                                         (:failed (short-failure-words (or (tuatara.runtime:job-error job) "it ended unexpectedly")))
+                                         (t (and (null output) (short-failure-words (format-job-said job)))))
                                        (lambda ()
                                          (put-text-by-lines buffer (tuatara.text:version-rope (format-job-version job))
                                                            (tuatara.text:octets->rope (coerce output 'tuatara.text:octets)))))))))
@@ -190,11 +206,20 @@ otherwise, and go on with what was waiting for it."
 (define-command format-buffer ()
   "Lay out the code of the current buffer as its language's formatter does
 \(*LANGUAGE-FORMATTERS*, else the language's usual one: rustfmt, ruff,
-clang-format, shfmt...), in the background, shut in the sandbox; the change is one that
-\\[undo] takes back whole. With no formatter installed, its language server
-lays it out where one does, else each line is indented as the mode indents
-it. A file opened safely, in *safe-directories*, or the text of an encrypted
-file is only indented, never given to another program."
+clang-format, shfmt...), in the background, shut in the sandbox; the
+change is one that \\[undo] takes back whole. With no formatter
+installed, its language server lays it out where one does, else each line
+is indented as the mode indents it, and the echo area says why: the
+formatter not installed, and no server, or one that does not format code
+or is still starting. A formatter or server that fails changes nothing:
+its name and its reason are said (rust-analyzer could not format main.rs:
+Failed to spawn rustfmt), as when a server gives no answer within
+*format-seconds*; one that finds nothing to change says it was laid out
+already. A file opened safely, in *safe-directories*, or the text of an
+encrypted file is only indented, never given to another program. In a
+narrowed buffer only the part shown: indented, or laid out by a language
+server that lays out a part; a formatter of the whole file is not run,
+and that is said."
   (start-formatting (current-buffer)))
 
 ;;; Before saving
@@ -217,12 +242,12 @@ and has changed since it last was."
 start formatting it and return :LATER, the save made once that is over,
 laid out or, when the formatter failed, as it is."
   (when (and (format-wanted-p buffer) (not (formatting-p buffer)))
-    (let ((path *save-path*))
+    (let ((path *save-path*) (then *save-then*))
       (start-formatting buffer :then (lambda (b formatted)
                                        (declare (ignore formatted))
                                        ;; formatted or not, not tried again for this save
                                        (setf (tuatara.buffer:buffer-local b 'formatted-at) (tuatara.buffer:buffer-content-number b))
-                                       (save-buffer-with-care b :path path)))
+                                       (save-buffer-with-care b :path path :then then)))
       :later)))
 
 (defun install-format ()
