@@ -2710,12 +2710,6 @@ became is in *Messages* (\\[view-echo-area-messages])."
                (count-if (lambda (r) (uiop:string-prefix-p "failed" (fourth r))) results)
                (car stopped)))))
 
-(defun package-on-line ()
-  "The package on the current line of the package manager, (NAME SOURCE
-VERSION FILE), or NIL."
-  (let ((name (list-entry-at)))
-    (and name (declared-package name))))
-
 (defmethod list-entry-noun ((mode packages-mode))
   "A package."
   "package")
