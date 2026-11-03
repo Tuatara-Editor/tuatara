@@ -118,9 +118,11 @@ the entries as STATE-LIST-ENTRIES gave them last; NOTED and TRIED, how many
 changes were made, and how many there were when the writer last took them;
 LOCK, held while these change; UNREADABLE, the file last said could not be
 read, until it is written; KNOWN-PATH, the native name of its file as last
-worked out, and PLACE, where the state directory was set to be then."
+worked out, and PLACE, the setting of the state directory it was worked out
+for; CHANGES, how many times the entries may have changed, and LOOKED, when
+the file was last looked at for another session's change (STATE-LIST-GENERATION)."
   name parse print limit-variable header path-of key version class fields trust line-key
-  (unreadable nil) (known-path nil) (place nil)
+  (unreadable nil) (known-path nil) (place nil) (changes 0) (looked nil)
   (file nil) (stamp nil) (disk '()) (pending '()) (writing '()) (shown nil)
   (noted 0) (tried 0)
   (lock (sb-thread:make-mutex :name "state list")))
@@ -149,21 +151,41 @@ lines beginning with # are comments, never given to PARSE."
 
 (defun state-list-path (list &key known)
   "The native name of LIST's file: NAME in the state directory, made if
-needed. With KNOWN, the name worked out last is given again while where the
-state directory is set to be is the same, nothing looked at on the disk:
-for reading LIST, which an edit may ask for each key. Never while the state
+needed. With KNOWN, the name worked out last is given again while
+*STATE-DIRECTORY* is the same and the environment has not changed
+\(FORGET-STATE-PATHS), nothing looked at on the disk and nothing made: for
+reading LIST, which an edit may ask for each key. Never while the state
 directory set is kept in memory for want of its drive (CHOSEN-DIRECTORY):
 it is looked for each time, to be used once there."
-  (let ((place (and known (not (tuatara.io:directory-in-memory-p 'tuatara-user:*state-directory*))
-                    (list tuatara-user:*state-directory* (sb-ext:posix-getenv "XDG_STATE_HOME")
-                          (sb-ext:posix-getenv "HOME")))))
-    (if (and place (state-list-known-path list) (equal place (state-list-place list)))
+  (let ((place tuatara-user:*state-directory*)
+        (keep (and known (not (tuatara.io:directory-in-memory-p 'tuatara-user:*state-directory*)))))
+    (if (and keep (state-list-known-path list) (eq place (state-list-place list)))
         (state-list-known-path list)
         (let ((path (tuatara.io:native (merge-pathnames (state-list-name list) (tuatara.io:state-directory)))))
-          (when place
+          (when keep
             (setf (state-list-place list) place
                   (state-list-known-path list) path))
           path))))
+
+(defun forget-state-paths ()
+  "Work out the files of the lists kept between sessions anew the next time
+they are asked for: after the environment that says where the state
+directory is ($XDG_STATE_HOME, $HOME) has been changed."
+  (dolist (list *state-lists*)
+    (setf (state-list-known-path list) nil)))
+
+(defun state-list-generation (list)
+  "A number that is another once the entries of LIST may have changed
+\(STATE-LIST-ENTRIES): by a change made here, by the file written, or by
+another session's change, looked for at most once a second. For answers kept
+elsewhere to be looked at again only then, with no file looked at each time
+they are asked for."
+  (let ((now (get-internal-real-time))
+        (looked (state-list-looked list)))
+    (when (or (null looked) (>= (- now looked) internal-time-units-per-second))
+      (setf (state-list-looked list) now)
+      (state-list-entries list))
+    (state-list-changes list)))
 
 (defun state-file-stamp (file)
   "What FILE is like now, to tell whether it has changed: (INODE SIZE TIME),
@@ -370,6 +392,8 @@ again while nothing changed; empty when there is no state directory."
         ;; what was read kept, unless the writer has put what it wrote in place meanwhile
         (unless (and (not known) (equal file (state-list-file list)) (not (equal stamp (state-list-stamp list)))
                      (equal (state-list-stamp list) (state-file-stamp file)))
+          (unless known
+            (incf (state-list-changes list)))
           (setf (state-list-file list) file
                 (state-list-stamp list) stamp
                 (state-list-disk list) disk))
@@ -385,6 +409,7 @@ again while nothing changed; empty when there is no state directory."
       (sb-thread:with-mutex ((state-list-lock list))
         (push (cons file change) (state-list-pending list))
         (incf (state-list-noted list))
+        (incf (state-list-changes list))
         (setf (state-list-shown list) nil))
       (start-state-writer))))
 
@@ -536,6 +561,7 @@ once in the echo area and the debug log. True when there were any."
               (when (and (eq how :written) (equal file (state-list-file list)))
                 (setf (state-list-disk list) entries
                       (state-list-stamp list) stamp))
+              (incf (state-list-changes list))
               (setf (state-list-shown list) nil))
             (when say
               (tuatara.runtime:debug-report :file "cannot read ~a: its changes wait" file)

@@ -17,9 +17,11 @@ what is still being written to it written first."
     `(with-test-directory (,state)
        (let ((,old (sb-posix:getenv "XDG_STATE_HOME")))
          (sb-posix:setenv "XDG_STATE_HOME" (namestring ,state) 1)
+         (tuatara.defaults::forget-state-paths)
          (unwind-protect (progn ,@body)
            (tuatara.defaults::finish-state-writes)
-           (if ,old (sb-posix:setenv "XDG_STATE_HOME" ,old 1) (sb-posix:unsetenv "XDG_STATE_HOME")))))))
+           (if ,old (sb-posix:setenv "XDG_STATE_HOME" ,old 1) (sb-posix:unsetenv "XDG_STATE_HOME"))
+           (tuatara.defaults::forget-state-paths))))))
 
 (defun another-session (list)
   "A copy of the state list LIST as another session has it: the same file,
@@ -593,3 +595,57 @@ file of text; their native names, as two values."
            (tuatara.defaults::state-list-path list :known t)
            (is = 2 looks))
       (sb-int:unencapsulate 'tuatara.io:state-directory 'counting))))
+
+(define-test (state-and-files state-list-path-made-once)
+  ;; the file of a list asked for again, as an edit may each key, is the one worked out
+  ;; before: nothing is made and no environment string read
+  (with-fresh-state
+    (let* ((list tuatara.defaults::*recent-files*)
+           (path (tuatara.defaults::state-list-path list :known t)))
+      (is string= path (tuatara.defaults::state-list-path list :known t))
+      (is = 0 (let ((before (tuatara.bench::bytes-consed)))
+                (dotimes (i 1000) (tuatara.defaults::state-list-path list :known t))
+                (- (tuatara.bench::bytes-consed) before)))
+      ;; the environment changed: worked out anew
+      (with-test-directory (other)
+        (sb-posix:setenv "XDG_STATE_HOME" (namestring other) 1)
+        (tuatara.defaults::forget-state-paths)
+        (false (string= path (tuatara.defaults::state-list-path list :known t)))))))
+
+(define-test (state-and-files trust-asked-without-looking-at-files)
+  ;; asking again whether a buffer is in a project you trust looks at no file and makes
+  ;; nothing; a project trusted meanwhile, here or by another session, is noticed
+  (with-fresh-state
+    (with-test-directory (project)
+      (ensure-directories-exist (merge-pathnames ".git/" project))
+      (let* ((file (namestring (put-file (merge-pathnames "a.rs" project) "fn f() {}")))
+             (buffer (tuatara.buffer:make-buffer "*trust asked*" :text ""))
+             (stamps 0)
+             (list tuatara.defaults::*lsp-trusted*)
+             (real (tuatara.defaults::real-folder (tuatara.defaults::project-root (namestring project)))))
+        (unwind-protect
+             (progn
+               (setf (tuatara.buffer:buffer-file buffer) file)
+               (false (tuatara.defaults::buffer-in-trusted-project-p buffer))
+               (sb-int:encapsulate 'tuatara.io:path-stamp 'trust-counted
+                                   (lambda (function &rest arguments) (incf stamps) (apply function arguments)))
+               (unwind-protect
+                    (is = 0 (let ((before (tuatara.bench::bytes-consed)))
+                              (dotimes (i 1000) (tuatara.defaults::buffer-in-trusted-project-p buffer))
+                              (- (tuatara.bench::bytes-consed) before)))
+                 (sb-int:unencapsulate 'tuatara.io:path-stamp 'trust-counted))
+               (true (< stamps 4) "~d files looked at" stamps)
+               ;; trusted here: at once
+               (tuatara.defaults::state-list-put list (list real))
+               (true (tuatara.defaults::buffer-in-trusted-project-p buffer))
+               (tuatara.defaults::state-list-drop list (list real))
+               (false (tuatara.defaults::buffer-in-trusted-project-p buffer))
+               (tuatara.defaults::finish-state-writes)
+               ;; trusted by another session: within a second or two
+               (let ((other (another-session list)))
+                 (tuatara.defaults::state-list-put other (list real))
+                 (tuatara.defaults::write-state-list other))
+               (true (loop repeat 40
+                           thereis (tuatara.defaults::buffer-in-trusted-project-p buffer)
+                           do (sleep 0.1))))
+          (tuatara.buffer:kill-buffer buffer))))))

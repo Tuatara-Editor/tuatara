@@ -13,10 +13,12 @@ directory removed afterwards."
     `(with-test-directory (,state)
        (let ((,old (sb-posix:getenv "XDG_STATE_HOME")))
          (sb-posix:setenv "XDG_STATE_HOME" (namestring ,state) 1)
+         (tuatara.defaults::forget-state-paths)
          (unwind-protect (progn ,@body)
            ;; what is still being written goes to this directory, before it goes
            (tuatara.defaults::finish-state-writes)
-           (if ,old (sb-posix:setenv "XDG_STATE_HOME" ,old 1) (sb-posix:unsetenv "XDG_STATE_HOME")))))))
+           (if ,old (sb-posix:setenv "XDG_STATE_HOME" ,old 1) (sb-posix:unsetenv "XDG_STATE_HOME"))
+           (tuatara.defaults::forget-state-paths))))))
 
 (define-test (recent-files kept-on-disk)
   (with-fresh-recent-files

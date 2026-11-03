@@ -84,16 +84,31 @@ write there, nor one within a folder answered look only
          (not (evidence-path-p real))
          (not (folder-holds-evidence-p real)))))
 
+(defun trusted-project-key (file)
+  "What an answer of BUFFER-IN-TRUSTED-PROJECT-P about FILE depends on, as it
+stands now: a vector of FILE, the generations of the projects trusted and of
+those looked at only (STATE-LIST-GENERATION), *LSP-TRUSTED-PROJECTS* and the
+generation of *EVIDENCE-FOLDERS*."
+  (vector file (state-list-generation *lsp-trusted*) (state-list-generation *look-only*) *lsp-trusted-projects*
+          (evidence-generation)))
+
+(defun trusted-project-key-current-p (key file)
+  "True when KEY, made by TRUSTED-PROJECT-KEY, is what it would be now for
+FILE, which allocates nothing."
+  (and (equal (svref key 0) file)
+       (eql (svref key 1) (state-list-generation *lsp-trusted*))
+       (eql (svref key 2) (state-list-generation *look-only*))
+       (equal (svref key 3) *lsp-trusted-projects*)
+       (eql (svref key 4) (evidence-generation))))
+
 (defun buffer-in-trusted-project-p (buffer)
   "True when BUFFER visits a file of a project you trust (PROJECT-TRUSTED-P):
 its text is then parsed by the program shared by such files, not one of its
 own. Looked up again only when the file, the projects trusted or looked at
 only when asked, *LSP-TRUSTED-PROJECTS* or *EVIDENCE-FOLDERS* change."
   (let* ((file (tuatara.buffer:buffer-file buffer))
-         (key (list file (state-list-entries *lsp-trusted*) (state-list-entries *look-only*) *lsp-trusted-projects*
-                    (evidence-generation)))
          (seen (tuatara.buffer:buffer-local buffer :trusted-project-seen)))
-    (if (and seen (equal (car seen) key))
+    (if (and seen (trusted-project-key-current-p (car seen) file))
         (cdr seen)
         ;; where the file really is, every link followed: a link in a trusted
         ;; project to a file elsewhere lends it no trust
@@ -102,7 +117,8 @@ only when asked, *LSP-TRUSTED-PROJECTS* or *EVIDENCE-FOLDERS* change."
                (answer (and real
                             (let ((root (project-root (tuatara.io:parent-path real))))
                               (and root (project-trusted-p root) t)))))
-          (setf (tuatara.buffer:buffer-local buffer :trusted-project-seen) (cons key answer))
+          (setf (tuatara.buffer:buffer-local buffer :trusted-project-seen)
+                (cons (trusted-project-key file) answer))
           answer))))
 
 (defmethod tuatara.syntax:host-trusted-text-p ((host defaults-host) buffer)
