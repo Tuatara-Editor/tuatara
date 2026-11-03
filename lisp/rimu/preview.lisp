@@ -427,8 +427,7 @@ visited safely or the list is opened safely."
                 ((not (or (tuatara.io:safe-visit-p (tuatara.display:window-buffer (rimu-preview-list-window state)))
                           (ignoring-errors-reported ("asking whether ~a opens safely" path)
                             (visit-safely-reason path))))
-                 (let ((first-line (tuatara.text:octets-string octets :end (or (tuatara.text:octets-line-end-position octets 0 (min (length octets) 512))
-                                                                               (min (length octets) 512)))))
+                 (let ((first-line (tuatara.text:octets-first-line octets)))
                    (ignoring-errors-reported ("giving the preview of ~a its mode" path)
                      (set-major-mode buffer (mode-for-file path (string-right-trim '(#\Return) first-line)))))))
               (setf (buffer-read-only-p buffer) t

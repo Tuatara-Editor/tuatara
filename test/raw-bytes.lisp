@@ -257,3 +257,14 @@ every boundary, characters, conversions and the string both ways."
     (is string= (format nil "~cy" (code-char #xDCFF)) (text-from-character raw 255))
     (is string= raw (text-from-character raw (char-code #\x))))
   (false (text-from-character "abc" (char-code #\z))))
+
+(define-test (raw-bytes first-line-of-octets)
+  ;; the first line without its end, cut at the limit; a carriage return before a line feed stays
+  (flet ((first-line (text &optional (most 512))
+           (tuatara.text:octets-first-line (tuatara.text:string-octets text) most)))
+    (is string= "#!/bin/sh" (first-line (format nil "#!/bin/sh~%echo")))
+    (is string= (format nil "one~c" #\Return) (first-line (format nil "one~c~cthree" #\Return #\Linefeed)))
+    (is string= "one" (first-line (format nil "one~ctwo" #\Return)))
+    (is string= "no end" (first-line "no end"))
+    (is string= "" (first-line ""))
+    (is string= "abcd" (first-line "abcdefgh" 4))))

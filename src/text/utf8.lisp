@@ -494,6 +494,12 @@ sequence cut short as one, any other octet as one each."
                               (incf i (unfinished-sequence-length octets i end))))))))
     (if (= n (length out)) out (subseq out 0 n))))
 
+(defun octets-first-line (octets &optional (most 512))
+  "The first line of OCTETS as a string, without its line end, looking no
+further than the first MOST octets."
+  (let ((end (min (length octets) most)))
+    (octets-string octets :end (or (octets-line-end-position octets 0 end) end))))
+
 (defun lenient-string (octets &key (start 0) (end (length octets)) (replacement #\?))
   "OCTETS from START below END read as UTF-8 text, what is not UTF-8 as
 REPLACEMENT, a character or string: a program's output, a part of a file read
