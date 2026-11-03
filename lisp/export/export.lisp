@@ -293,28 +293,46 @@ the root, nor your home folder, nor a folder holding it."
         (home (tuatara.io:real-place (latex-home))))
     (not (or (string= real "") (string= real home) (uiop:string-prefix-p (concatenate 'string real "/") home)))))
 
+(defun tex-settings-said (path)
+  "What the kpsewhich beside the LaTeX program at PATH says TeX's folders
+\(*TEX-TREE-VARIABLES*) are, one to a line, asked shut in by the sandbox,
+shown the program's own folder and the one two above it, where TeX Live keeps
+its settings, for ten seconds at most, and ended at once when the job asking
+is stopped; NIL when there is no kpsewhich there, no sandbox, or it failed.
+True as a second value when the answer is to be kept: not when the asking
+was stopped or ran out of time."
+  (let ((kpsewhich (tuatara.io:find-program (tuatara.io:path-join (tuatara.io:parent-path path) "kpsewhich"))))
+    (if (null kpsewhich)
+        (values nil t)
+        (let* ((own (string-right-trim "/" (tuatara.io:parent-path kpsewhich)))
+               (root (string-right-trim "/" (tuatara.io:parent-path (tuatara.io:parent-path own)))))
+          (multiple-value-bind (output outcome)
+              (tuatara.io:sandbox-run kpsewhich (list (format nil "-expand-var=~{$~a~^~%~}" *tex-tree-variables*))
+                                      :seconds 10
+                                      :cancel (and tuatara.runtime:*job* (tuatara.runtime:job-cancel tuatara.runtime:*job*))
+                                      :directories (remove-if-not #'shown-whole-p (remove "" (list own root) :test #'string=))
+                                      :environment (latex-sandbox-environment kpsewhich))
+            (values (and (eq outcome :done) (tuatara.text:lenient-string output))
+                    (member outcome '(:done :failed :unavailable))))))))
+
 (defun tex-trees (path)
   "The folders of TeX that the LaTeX program at PATH reads, as two values: a
 list of them, its own folder first; and the folder it keeps what it makes
 for itself in (TEXMFVAR), or NIL. As kpsewhich beside it tells them, asked
-once (a fifth of a second) and kept; only the program's folder when there is
-no kpsewhich there. Folders under /usr, which a program shut in sees
+once (TEX-SETTINGS-SAID) and kept; only the program's folder when there is
+no kpsewhich there, or no sandbox to ask it in. Folders under /usr, which a program shut in sees
 already, are left out, and so are those not to be shown whole
 \(SHOWN-WHOLE-P), which a setting may name."
   (let* ((own (string-right-trim "/" (tuatara.io:parent-path path)))
          (key (list path (sb-posix:getenv "HOME")))
          (found (or (gethash key *tex-trees*)
-                    (setf (gethash key *tex-trees*)
-                          (let* ((kpsewhich (tuatara.io:find-program (tuatara.io:path-join (tuatara.io:parent-path path) "kpsewhich")))
-                                 (said (and kpsewhich
-                                            (tuatara.io:program-output
-                                             (list kpsewhich (format nil "-expand-var=~{$~a~^~%~}" *tex-tree-variables*))
-                                             :seconds 10)))
-                                 (lines (and said (org-text-lines said))))
-                            (if (= (length lines) (length *tex-tree-variables*))
-                                (list (loop for line in (butlast lines) append (tex-tree-paths line))
-                                      (first (tex-tree-paths (car (last lines)))))
-                                (list '() nil)))))))
+                    (multiple-value-bind (said kept) (tex-settings-said path)
+                      (let* ((lines (and said (org-text-lines said)))
+                             (found (if (= (length lines) (length *tex-tree-variables*))
+                                        (list (loop for line in (butlast lines) append (tex-tree-paths line))
+                                              (first (tex-tree-paths (car (last lines)))))
+                                        (list '() nil))))
+                        (if kept (setf (gethash key *tex-trees*) found) found))))))
     (flet ((system-p (folder) (or (string= folder "/usr") (uiop:string-prefix-p "/usr/" folder)
                                   (not (shown-whole-p folder)))))
       (values (remove-duplicates (cons own (remove-if #'system-p (first found))) :test #'string= :from-end t)

@@ -2186,3 +2186,47 @@ Shut in.
       (is string= "/nonexistent/bin/kpsewhich" program)
       (is equal '("loadhyph-de-1996.tex" "loadhyph-sv.tex") arguments)
       (is eq (tuatara.runtime:job-cancel tuatara.runtime:*job*) (getf keys :cancel)))))
+
+(define-test (latex-export tex-folders-asked-shut-in)
+  ;; kpsewhich is asked for TeX's folders shut in, shown TeX Live's own; with no sandbox, only the program's folder
+  (with-test-directory (dir)
+    (let* ((root (concatenate 'string (tuatara.io:native dir) "texlive/2025/"))
+           (bin (concatenate 'string root "bin/x86_64-linux/"))
+           (engine (concatenate 'string bin "lualatex"))
+           (runs '()) (unconfined '()) (outcome :done))
+      (ensure-directories-exist bin)
+      (dolist (name '("lualatex" "kpsewhich"))
+        (alexandria:write-string-into-file (format nil "#!/bin/sh~%exit 1~%") (concatenate 'string bin name))
+        (sb-posix:chmod (concatenate 'string bin name) #o755))
+      (sb-int:encapsulate 'tuatara.io:sandbox-run 'tex-folders-seen
+                          (lambda (function program arguments &rest keys)
+                            (declare (ignore function))
+                            (push (list program arguments keys) runs)
+                            (values (tuatara.text:string-octets
+                                     (format nil "~{~a~%~}"
+                                             (loop for variable in tuatara.export::*tex-tree-variables*
+                                                   collect (format nil "~atexmf-~(~a~)" root variable))))
+                                    outcome "")))
+      (sb-int:encapsulate 'tuatara.io:program-output 'tex-folders-seen
+                          (lambda (function command &rest keys)
+                            (push command unconfined) (apply function command keys)))
+      (flet ((trees ()
+               (remhash (list engine (sb-posix:getenv "HOME")) tuatara.export::*tex-trees*)
+               (multiple-value-list (tuatara.export::tex-trees engine))))
+        (unwind-protect
+             (progn
+               (destructuring-bind (folders var) (trees)
+                 (is string= (string-right-trim "/" bin) (first folders))
+                 (true (member (format nil "~atexmf-texmfdist" root) folders :test #'string=))
+                 (is string= (format nil "~atexmf-texmfvar" root) var))
+               (is equal '() unconfined)
+               (destructuring-bind (program arguments keys) (first runs)
+                 (is string= (concatenate 'string bin "kpsewhich") program)
+                 (true (uiop:string-prefix-p "-expand-var=" (first arguments)))
+                 (true (member (string-right-trim "/" root) (getf keys :directories) :test #'string=)
+                       "~s" (getf keys :directories)))
+               (setf outcome :unavailable)
+               (is equal (list (list (string-right-trim "/" bin)) nil) (trees)))
+          (sb-int:unencapsulate 'tuatara.io:sandbox-run 'tex-folders-seen)
+          (sb-int:unencapsulate 'tuatara.io:program-output 'tex-folders-seen)
+          (remhash (list engine (sb-posix:getenv "HOME")) tuatara.export::*tex-trees*))))))
