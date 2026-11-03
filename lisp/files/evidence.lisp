@@ -344,12 +344,6 @@ starts (*EVIDENCE-SAVING*): none runs while the program is saved."
 (pushnew 'stop-evidence-keeper sb-ext:*save-hooks*)
 (pushnew 'evidence-saved sb-ext:*init-hooks*)
 
-(defun evidence-links-learnt-p ()
-  "True once the links the entries of *EVIDENCE-FOLDERS* match have been
-looked for (EVIDENCE-KEEPER), or when it names no folder."
-  (let ((rules (evidence-rules)))
-    (or (null rules) (evidence-rules-linked rules))))
-
 (defun evidence-problems-words ()
   "What is wrong with the entries of *EVIDENCE-FOLDERS*, a sentence each; NIL
 when nothing is."

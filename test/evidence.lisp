@@ -17,7 +17,8 @@
   "Wait, ten seconds at most, until the links the entries of *EVIDENCE-FOLDERS*
 match have been looked for in the background."
   (loop repeat 1000
-        until (tuatara.defaults::evidence-links-learnt-p)
+        until (let ((rules (tuatara.defaults::evidence-rules)))
+                (or (null rules) (tuatara.defaults::evidence-rules-linked rules)))
         do (sleep 1/100)))
 
 (defun wait-for-evidence-generation (after)
