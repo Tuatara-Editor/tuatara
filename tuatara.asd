@@ -92,7 +92,8 @@
                (:module "modal"   :serial t :components ((:file "modal") (:file "tutor")))
                (:static-file "starter-init" :pathname "../data/init.lisp")
                (:file "config")
-               (:module "packages" :components ((:file "packages")))
+               (:module "packages" :serial t
+                :components ((:file "signing") (:file "packages") (:file "compile-apart") (:file "manager") (:file "sweep")))
                (:file "scratch")
                (:file "daemon")
                (:file "setup")
