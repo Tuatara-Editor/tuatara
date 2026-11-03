@@ -36,7 +36,7 @@
 (define-test (tui first-line-of-a-closed-file)
   ;; a file not there and one that may not be read both give no line; only the second is
   ;; kept in the debug log, as a failure
-  (let ((path (format nil "~a/tuatara-first-line-~d" (uiop:getenv "XDG_CACHE_HOME") (sb-posix:getpid))))
+  (let ((path (namestring (merge-pathnames "first-line" *test-state-directory*))))
     (with-open-file (out path :direction :output :if-exists :supersede) (format out "max~%"))
     (drain-debug-reports)
     (unwind-protect
