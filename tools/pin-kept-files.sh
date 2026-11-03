@@ -12,8 +12,15 @@
 set -euo pipefail
 cd "$(dirname "$0")/.."
 . tools/inside.sh
+# this tree, never another one Quicklisp or ASDF knows of
+tree="$PWD/"
 inside sbcl --non-interactive \
   --load tools/quicklisp.lisp \
+  --eval "(push #p\"$tree\" asdf:*central-registry*)" \
   --eval '(ql:quickload :tuatara/tests :silent t)' \
+  --eval "(unless (uiop:subpathp tuatara.tests::*kept-files-file* #p\"$tree\")
+            (format *error-output* \"~&The tree loaded is ~a, not $tree: nothing pinned.~%\"
+                    (asdf:system-source-directory :tuatara))
+            (uiop:quit 1))" \
   --eval '(format t "~&Samples written: ~{~a~^, ~}~%" (tuatara.tests::write-kept-files))' \
   --eval '(format t "~&Pinned ~a~%" (namestring tuatara.tests::*kept-files-file*))'
