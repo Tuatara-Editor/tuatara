@@ -4,10 +4,10 @@
 ;;;; tuatara --daemon runs an editor with no screen; tuatara --client shows it
 ;;;; in a terminal, a frame of its own painted through a remote frontend
 ;;;; (src/frontend/remote.lisp). The daemon listens on a local socket in a
-;;;; folder of the user's alone, $XDG_RUNTIME_DIR/tuatara/NAME.socket, held
+;;;; folder for you alone, $XDG_RUNTIME_DIR/tuatara/NAME.socket, held
 ;;;; by a lock beside it for as long as it runs. A connection is taken only
-;;;; from a program of the same user that sees the same files at the same
-;;;; paths; it is greeted on a thread of its own, never the editor's, and
+;;;; from a program run by the same account that sees the same files at the
+;;;; same paths; it is greeted on a thread of its own, never the editor's, and
 ;;;; handed to the editor, which gives it a frame (ATTACH-CLIENT). Each client
 ;;;; has buffers of its own (src/command/clients.lisp); its frames close with
 ;;;; it and its buffers stay. While no client shows the editor, its one frame
@@ -172,12 +172,12 @@ not safe (DAEMON-FOLDER). Returns the DAEMON."
   "The most clients a daemon is shown by at once; one more is refused.")
 
 (defun peer-refusal (uid namespace &key (own-uid (sb-posix:geteuid)) own-namespace)
-  "Why a program at the other end of a connection, of the user UID in the
-mount namespace NAMESPACE, may not be a client of a daemon run by OWN-UID in
-OWN-NAMESPACE, in words, or NIL when it may: it must be of the same user, and
-see the same files at the same paths."
+  "Why a program at the other end of a connection, run by the account with
+user id (UID) UID in the mount namespace NAMESPACE, may not be a client of a
+daemon run by OWN-UID in OWN-NAMESPACE, in words, or NIL when it may: it must
+be run by the same account, and see the same files at the same paths."
   (cond ((not (eql uid own-uid))
-         "This daemon is another user's: it takes clients of the user who started it alone")
+         "This daemon is another user's: it takes clients only of the account that started it")
         ((or (null namespace) (not (equal namespace own-namespace)))
          (format nil "The daemon runs outside this client's container (another mount namespace), ~
                       where paths name other files: run tuatara --client where the daemon runs, ~
@@ -307,8 +307,8 @@ CLIENT's folder and is CLIENT's."
 (defun checked-terminal (device &key (uid (sb-posix:geteuid)))
   "DEVICE, the terminal a client names, when it is one the client may lend
 \(a program is given it as its terminal, GPG_TTY): a terminal device under
-/dev/pts/ or a /dev/tty, its path with no .. in it, of the user UID; else
-NIL."
+/dev/pts/ or a /dev/tty, its path with no .. in it, owned by the account
+with user id (UID) UID; else NIL."
   (and device
        (or (uiop:string-prefix-p "/dev/pts/" device) (uiop:string-prefix-p "/dev/tty" device))
        (not (search "/.." device)) (not (search "../" device))

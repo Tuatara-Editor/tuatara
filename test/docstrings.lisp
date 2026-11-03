@@ -52,14 +52,13 @@ reported too, since exporting it was a promise."
   "Phrases that explain a thing by how another program behaves, which no
 docstring may hold: a docstring says what a thing does on its own.")
 
-(defun borrowed-phrase-docstrings ()
+(defun phrase-docstrings (phrases)
   "Return a list of strings naming the definitions of the TUATARA packages
-whose docstring holds one of *BORROWED-PHRASES*, any case, each with the phrase
-found."
+whose docstring holds one of PHRASES, any case, each with the phrase found."
   (let ((found '()))
     (dolist (p (tuatara-packages))
       (let ((doc (documentation p t)))
-        (dolist (phrase *borrowed-phrases*)
+        (dolist (phrase phrases)
           (when (and doc (search phrase doc :test #'char-equal))
             (push (format nil "package ~a (~a)" (package-name p) phrase) found))))
       (do-symbols (s p)
@@ -67,14 +66,20 @@ found."
           (dolist (doc (list (and (fboundp s) (documentation s 'function))
                              (documentation s 'variable)
                              (let ((class (find-class s nil))) (and class (documentation class t)))))
-            (dolist (phrase *borrowed-phrases*)
+            (dolist (phrase phrases)
               (when (and doc (search phrase doc :test #'char-equal))
                 (push (format nil "~s (~a)" s phrase) found)))))))
     (sort (remove-duplicates found :test #'string=) #'string<)))
 
 (define-test (documentation docstrings-stand-on-their-own)
-  (let ((found (borrowed-phrase-docstrings)))
+  (let ((found (phrase-docstrings *borrowed-phrases*)))
     (true (null found) "Docstrings that explain by another program: ~{~a~^, ~}" found)))
+
+(define-test (documentation docstrings-speak-to-you)
+  ;; a docstring speaks to the person reading it, or names the account a thing belongs to
+  (let ((found (phrase-docstrings '("the user"))))
+    (true (null found) "Docstrings that say the user: ~{~a~^, ~}" found))
+  (false (search "the user" (tuatara.defaults::peer-refusal (1+ (sb-posix:geteuid)) nil) :test #'char-equal)))
 
 (define-test (documentation csv-column-faces-count-from-zero)
   (dotimes (n 8)

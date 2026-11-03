@@ -108,8 +108,8 @@ or a putting back, to let its journal go, before it is refused.")
 opened or saved until that has ended."))
 
 (defvar *journal-owner* nil
-  "The user a journal must belong to, with the file it is of, to be used:
-NIL for the one Tuatara runs as. Tests name another.")
+  "The account, by its user id (UID), a journal must belong to, with the file
+it is of, to be used: NIL for the one Tuatara runs as. Tests name another.")
 
 (defparameter *journal-heading* "Tuatara save journal"
   "The words a journal's header begins with, before its version.")
@@ -278,7 +278,7 @@ this release reads. PATH names it in messages."
   "Why the journal open as file descriptor JOURNAL, at PATH, is not to be used
 for the file TARGET-STAMP describes, in words; NIL when it may be: a plain
 file of one name that its owner alone may write, who owns that file too and
-is the user Tuatara runs as (*JOURNAL-OWNER*)."
+is the account Tuatara runs as (*JOURNAL-OWNER*)."
   (let ((stamp (fd-stamp journal path))
         (owner (or *journal-owner* (sb-posix:geteuid))))
     (cond ((not (eq (stamp-kind stamp) :regular)) (format nil "it is ~a" (kind-words (stamp-kind stamp))))
