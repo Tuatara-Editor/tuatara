@@ -901,7 +901,8 @@ cat \"$file\"~%" (uiop:native-namestring answers)))
   ;; place, is left out; the mode of its files stays, with no language
   (let ((rows (manifest-rows)))
     (loop for (grammar mode) in '(("rust-format-args" nil) ("djot" tuatara.defaults::djot-mode)
-                                  ("cpon" tuatara.defaults::cpon-mode) ("move" tuatara.defaults::move-mode))
+                                  ("cpon" tuatara.defaults::cpon-mode) ("move" tuatara.defaults::move-mode)
+                                  ("jinja" tuatara.defaults::jinja2-mode))
           do (false (find grammar rows :key #'first :test #'string=) "~a is left out" grammar)
              (false (find grammar tuatara.defaults::*languages* :key #'tuatara.defaults::language-grammar :test #'string=))
              (when mode

@@ -468,12 +468,6 @@ QUERY_FIXES = {
         ('(enum_variant_name (identifier) @definition.constant)', '(enum_field (identifier) @definition.constant)', 'the grammar of coder3101, kept up, has no node for the name of a field or of an enumeration value'),
         ('(field_name (identifier) @definition.constant)', '(field (identifier) @definition.constant)', 'the grammar of coder3101, kept up, has no node for the name of a field or of an enumeration value'),
     ],
-    ('jinja', 'injections'): [
-        ("""((source_file) @injection.content
- (#set! injection.combined)
- (#set! injection.include-children)""", """((content) @injection.content
- (#set! injection.combined)""", 'the grammar of cathaysia, kept up, parses the template whole: the text between its tags is HTML'),
-    ],
     ('sway', 'textobjects'): [RUST_TEST],
     ('cairo', 'textobjects'): [RUST_TEST],
 }
@@ -481,7 +475,7 @@ QUERY_FIXES = {
 # grammars whose repositories are archived with no source kept up in their
 # place: left out; a language of them keeps its mode, its files opened in it
 # with no colours or structure
-DROPPED = {'rust-format-args', 'djot', 'cpon', 'move'}
+DROPPED = {'rust-format-args', 'djot', 'cpon', 'move', 'jinja'}
 
 # rules Helix's no longer fit, its grammar's pin moved off a commit on no
 # branch or tag or to a maintained source: the grammar's own, Helix's newer
@@ -496,12 +490,8 @@ OWN_QUERIES = {
     'svelte': {'highlights', 'indents', 'textobjects', 'injections', 'locals', 'tags'},
     'luau': {'highlights', 'indents', 'textobjects', 'injections', 'locals'},
     'protobuf': {'highlights'},
-    'jinja': {'highlights'},
     'slisp': {'highlights', 'tags'},
 }
-
-# grammars named otherwise than Helix names them: by their maintained source
-GRAMMAR_NAMES = {'jinja': 'jinja'}
 
 def copy_queries(name, done):
     """Copy NAME's query files, and those they inherit, into syntax/; return the kinds copied."""
@@ -589,7 +579,7 @@ def main():
     forms = {file: [] for file, _, _ in FAMILIES}
     for name, mode, lighter, parent, doc in TABLE:
         l = LANGS[name]
-        grammar = GRAMMAR_NAMES.get(name, l['grammar'])
+        grammar = l['grammar']
         dropped = name in DROPPED
         if grammar not in pinned and not dropped:
             pinned.add(grammar)

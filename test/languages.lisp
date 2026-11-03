@@ -578,8 +578,6 @@ flask==3.0.0
 	reverse_proxy localhost:8080
 }
 ")
-    (jinja "{% if x %}{{ x }}{% endif %}
-")
     (twig "{% if x %}{{ x }}{% endif %}
 ")
     (less "@c: red;
