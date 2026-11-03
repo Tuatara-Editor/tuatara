@@ -362,6 +362,9 @@ process with MARK is killed after, whatever FUNCTION did."
         (false (find process tuatara.io::**sandboxes** :key #'car)))
       (let ((process (start)))
         (true (loop repeat 200 thereis (= 3 (processes-running mark)) do (sleep 0.01)))
+        ;; the helpers parsing for the editor ended first, as the editor ends them, so that
+        ;; none is left looking alive with its program gone, for the tests after this one
+        (tuatara.syntax:stop-helpers)
         (tuatara.io::end-sandboxes)
         (true (gone-within mark 2))
         (false (sb-ext:process-alive-p process))))))
