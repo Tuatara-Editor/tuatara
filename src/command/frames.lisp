@@ -152,7 +152,7 @@ worked in. The frame worked in stays so."
   "The most frames the editor opens by itself as it starts: those --frames asks
 for, and those of the session kept.")
 
-(defun open-frame (editor &key buffer (select t))
+(defun open-frame (editor &key buffer (select t) then)
   "Open another frame of EDITOR beside the frame worked in, showing BUFFER,
 else the buffer of the window worked in, and with SELECT make it the one
 worked in, brought before the others; returns it. Where the display shows
@@ -162,7 +162,8 @@ A client of an editor running in the background in a window of its own is
 asked for another window, and NIL returned at once: the frame opens when the
 window comes (OPEN-FRAME-ASKED-FOR), and the echo area says so meanwhile;
 one that shows as many windows as it may, or has as many still to come, is
-asked for none, and that is said."
+asked for none, and that is said. THEN, a function of the frame, is called
+with it once it is open, at once or when its window comes."
   (let* ((here (editor-frontend editor))
          (another (tuatara.frontend:frontend-another here))
          (window (editor-window editor))
@@ -173,7 +174,7 @@ asked for none, and that is said."
                       here (list client shown
                                  (and (eq shown (tuatara.display:window-buffer window))
                                       (tuatara.display:window-point window))
-                                 select)
+                                 select then)
                       (length (client-frames editor client))))))
     (cond ((stringp asked) (message "No other window was opened: ~a" asked) nil)
           (asked (message "Opening a window") nil)
@@ -182,16 +183,18 @@ asked for none, and that is said."
                (when select
                  (select-frame editor frame)
                  (tuatara.frontend:frontend-raise frontend))
+               (when then (funcall then frame))
                frame)))))
 
 (defun open-frame-asked-for (editor frontend what)
   "Open the frame of EDITOR on FRONTEND, the window a client opened as asked
-\(OPEN-FRAME): WHAT, as it was asked, (CLIENT BUFFER POINT SELECT), says the
-client it is for, the buffer it shows and where, and whether it is the one
-worked in then. A buffer killed meanwhile gives way to the one the client
+\(OPEN-FRAME): WHAT, as it was asked, (CLIENT BUFFER POINT SELECT THEN), says
+the client it is for, the buffer it shows and where, whether it is the one
+worked in then, and what is done with the frame once open (a function of it,
+or NIL). A buffer killed meanwhile gives way to the one the client
 used before it (OTHER-BUFFER); a client that has ended meanwhile has the
 window let go of instead."
-  (destructuring-bind (client buffer point select) what
+  (destructuring-bind (client buffer point select &optional then) what
     (if (and client (client-ended client))
         (tuatara.runtime:ignoring-errors-reported ("letting a window go")
           (tuatara.frontend:frontend-stop frontend))
@@ -209,6 +212,7 @@ window let go of instead."
           (when select
             (select-frame editor frame)
             (tuatara.frontend:frontend-raise frontend))
+          (when then (funcall then frame))
           frame))))
 
 (defmethod tuatara.frontend:events-held ((frame frame))

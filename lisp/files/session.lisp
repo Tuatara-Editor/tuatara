@@ -576,8 +576,9 @@ kept (*CLIENT-LAYOUTS*) or whose files opened safely wait closed
 \(*EVIDENCE-WAITING*): those files are opened, safely, and said by how many;
 its buffers become CLIENT's, its folder goes, and CLIENT's frame, and a frame
 more for each other it had, up to *MOST-FRAMES*, are laid out as its were,
-each window showing its buffer where that is still open. True when one was
-taken up."
+each window showing its buffer where that is still open; a client in windows
+of its own is asked for those windows, laid out as they come (OPEN-FRAME).
+True when one was taken up."
   (let ((ended (and *keep-session*
                     (first (sort (remove-if-not #'client-ended
                                                 (remove-duplicates
@@ -606,22 +607,27 @@ taken up."
         (when evidence
           (message "~d file~:p of the folder taken up opened safely (evidence)~[~:;, ~:*~d no longer there~]"
                    opened (- (length evidence) opened)))
-        (loop for lines in layouts
-              for first = t then nil
-              for frame = (cond (first (editor-frame editor))
-                                ((< (length (editor-frames editor)) *most-frames*) (open-frame editor :select nil)))
-              while frame
-              do (let* ((tree (session-layout lines))
-                        (opened (let ((pairs '()))
-                                  (labels ((walk (node)
-                                             (if (eq (first node) :split)
-                                                 (mapc #'walk (cdddr node))
-                                                 (push (cons node (and (fourth node)
-                                                                       (session-entry-buffer (fourth node))))
-                                                       pairs))))
-                                    (walk tree))
-                                  pairs)))
-                   (call-in-frame editor frame (lambda () (session-build-layout editor tree opened)))))
+        (flet ((lay-out (lines)
+                 ;; a function of a frame laying it out as LINES, its section of the session, had it
+                 (lambda (frame)
+                   (let* ((tree (session-layout lines))
+                          (opened (let ((pairs '()))
+                                    (labels ((walk (node)
+                                               (if (eq (first node) :split)
+                                                   (mapc #'walk (cdddr node))
+                                                   (push (cons node (and (fourth node)
+                                                                         (session-entry-buffer (fourth node))))
+                                                         pairs))))
+                                      (walk tree))
+                                    pairs)))
+                     (call-in-frame editor frame (lambda () (session-build-layout editor tree opened)))))))
+          (when layouts
+            (funcall (lay-out (first layouts)) (editor-frame editor)))
+          ;; the others in frames opened for them: in a window client's windows as they come
+          (loop for lines in (rest layouts)
+                for frames from (length (editor-frames editor))
+                while (< frames *most-frames*)
+                do (open-frame editor :select nil :then (lay-out lines))))
         t))))
 
 (defun install-session ()
