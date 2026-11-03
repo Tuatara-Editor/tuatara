@@ -34,7 +34,7 @@
   (:documentation "Git from the editor: every git command run, never through a shell nor on the
 editor's thread, with what keeps a repository not trusted from running anything
 of its own; and the status, log, commits, branches, history and the rest of
-the git command, as Magit has them; and rimu's git column and its lists of a
+the git command, as git users expect them; and rimu's git column and its lists of a
 folder as a commit left it. Other parts of the editor run git through what is
 exported here.")
   (:export #:install-git
