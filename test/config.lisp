@@ -394,7 +394,8 @@ commented inside another one commented (;;   ;; (setf ...) in a load-package's
                                ("*ORG-MACRO-LIMIT*" :tuatara.defaults)
                                ("*KILL-RING-MAX-SIZE*" :tuatara.defaults)
                                ("*GLOBAL-MARK-RING-MAX*" nil)
-                               ("*PICTURE-SECONDS*" nil))
+                               ("*PICTURE-SECONDS*" nil)
+                               ("*NO-ONE-TO-ASK-SAVE-SECONDS*" :tuatara.defaults))
           do (isnt eq :external (nth-value 1 (find-symbol name :tuatara-user)) "~a a setting" name)
              (false (search (string-downcase name) starter) "~(~a~) in the starter init file" name)
              (when home
