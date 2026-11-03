@@ -394,6 +394,9 @@ Tuatara says where its ideas come from:
   (=lisp/help/notifications.lisp=).
 - The file program :: a file's kind told by its first octets, never by its
   name (=src/io/kinds.lisp=).
+- PDF (ISO 32000) :: the structure of a PDF read by =M-x file-metadata=: its
+  objects, cross-reference tables, streams and filters, and page content
+  (=lisp/viewers/pdf-reader.lisp=).
 - RFC 1345 :: the digraphs, as Emacs's rfc1345 input method has them.
 - RFC 3339 :: dates and times as the named date patterns read and compare them
   (=src/syntax/named-patterns.lisp=).

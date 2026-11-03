@@ -224,6 +224,8 @@ version)."
     ("freedesktop.org's desktop notifications" "notifications told on the desktop, the agenda's and"
                                                "packages', through libnotify's notify-send")
     ("The file program" "a file's kind told by its first octets, never by its name")
+    ("PDF (ISO 32000)" "the structure of a PDF read by file-metadata: its objects, cross-reference"
+                       "tables, streams and filters, and page content")
     ("RFC 1345" "the digraphs, as Emacs's rfc1345 input method has them")
     ("RFC 3339" "dates and times as the named date patterns read and compare them")
     ("NO_COLOR (no-color.org)" "no colours in the terminal where NO_COLOR is set")
