@@ -1236,7 +1236,7 @@ NIL while not known, or with nothing typed."
 how many of its entries are shown (FILTER-COUNT-WORDS), and the keys for the
 filters."
   (substitute-command-keys
-   (format nil "~a; \\[list-search-filters] lists the filters, \\[remove-search-filters] takes them away~%"
+   (format nil "~a; \\[search-filter-list] lists the filters, \\[search-filter-remove-all] takes them away~%"
            (filter-count-words filtering (listed-entry-count filtering (list-filtering-source filtering))))))
 
 (defun filtered-list-text (filtering &optional folded)
@@ -1500,11 +1500,11 @@ that ends at POSITION or after it, less one, by halving."
 ;;; Typing, keeping and taking away filters
 
 (define-major-mode search-filters-mode special-mode
-  "The search filters narrowing a list (\\[list-search-filters]), the first
+  "The search filters narrowing a list (\\[search-filter-list]), the first
 first: each pattern, whether it is a regular expression or literal text,
 whether it ignores case, and how many entries it leaves of those the filters
-before it left. \\<search-filters-mode>\\[remove-search-filter] takes away the
-filter on the line, the list widening, and \\[remove-search-filters] all of
+before it left. \\<search-filters-mode>\\[search-filter-remove] takes away the
+filter on the line, the list widening, and \\[search-filter-remove-all] all of
 them; \\[revert-buffer] lists them again; \\[quit-window] returns."
   :lighter "Filters" :interactive nil)
 
@@ -1544,7 +1544,7 @@ next narrows what it leaves."
           (message "Filter ~a kept; the ~:[list narrows~;records narrow~] once searched" (search-filter-words typing)
                    (list-filtering-lines filtering))
           (multiple-value-bind (shown total) (filtered-counts buffer)
-            (message "~:d of ~:d ~a left; \\[list-search-filters] lists the filters"
+            (message "~:d of ~:d ~a left; \\[search-filter-list] lists the filters"
                      shown (or total 0) (list-filtering-nouns filtering)))))))
 
 (defun drop-typed-filter (buffer)
@@ -1592,8 +1592,8 @@ as a filter on the list, and the next one narrows what it leaves;
 \\[search-toggle-regex] switches to literal text;
 \\<minibuffer>\\[minibuffer-previous-history] and \\[minibuffer-next-history] bring back the patterns typed before,
 in any question that takes one (*PATTERN-HISTORY*). The list shows above its
-entries how many are left and by what; \\[list-search-filters] lists the
-filters, to take one away, and \\[remove-search-filters] takes them all away.
+entries how many are left and by what; \\[search-filter-list] lists the
+filters, to take one away, and \\[search-filter-remove-all] takes them all away.
 A list made again is narrowed again.
 In a file of records, a line each, the records are narrowed the same way:
 in a CSV or TSV file, a log, a JSON Lines file and the others
@@ -1655,11 +1655,11 @@ how many entries it leaves; another key means it is out of date."
 
 (keep-shown-current 'search-filters-mode 'search-filters-key)
 
-(define-command list-search-filters ()
+(define-command search-filter-list ()
   "List the search filters narrowing the list here (\\[search-filter-regex])
 in a buffer of their own, each with how many entries it leaves; there
-\\<search-filters-mode>\\[remove-search-filter] takes away the filter on the
-line and \\[remove-search-filters] all of them."
+\\<search-filters-mode>\\[search-filter-remove] takes away the filter on the
+line and \\[search-filter-remove-all] all of them."
   (let ((filtered (filtered-list-at-hand)))
     (if (null filtered)
         (message "Not a list: no filters to list")
@@ -1674,9 +1674,9 @@ line and \\[remove-search-filters] all of them."
     (when (typep (buffer-major-mode buffer) 'search-filters-mode)
       (search-filters-render buffer (tuatara.buffer:buffer-local buffer 'filtered-list)))))
 
-(define-command remove-search-filter ()
+(define-command search-filter-remove ()
   "Take away the search filter on the current line of the list of filters
-\(\\[list-search-filters]): the list it narrowed widens, the filters after
+\(\\[search-filter-list]): the list it narrowed widens, the filters after
 it narrowing again what those before it leave, in the background where that
 takes time."
   (let ((filter (list-entry-at)) (filtered (filtered-list-at-hand)))
@@ -1686,7 +1686,7 @@ takes time."
              (refresh-filters-list)
              (message "Filter ~a taken away" (search-filter-words filter))))))
 
-(define-command remove-search-filters ()
+(define-command search-filter-remove-all ()
   "Take away every search filter narrowing the list here, or the list the
 list of filters here is for: the whole list is shown again."
   (let ((filtered (filtered-list-at-hand)))
@@ -1727,7 +1727,7 @@ messages."
                              (refilter buffer)
                              (keep-typed-filter buffer))))))))))
 
-(define-command list-show-records ()
+(define-command search-filter-show-records ()
   "Show only the records whose line a regular expression matches, hiding
 the others, as \\[search-filter-regex] does, deleting nothing. In a file of
 records a column is asked for first, and the pattern tried on its value
@@ -1743,16 +1743,16 @@ priority, completed, created, text, project, context and the keys of its
 key:value tags; JSON Lines by its keys, strings read with their escapes
 undone, a path of keys apart by dots (user.id) reaching inside. A
 .gitignore and every list try the whole line. The filter is kept with the others, the next
-narrowing what it leaves; \\[list-search-filters] lists them and
-\\[remove-search-filters] takes them all away. \\[list-keep-records] deletes
+narrowing what it leaves; \\[search-filter-list] lists them and
+\\[search-filter-remove-all] takes them all away. \\[list-keep-records] deletes
 the others instead."
-  (filter-records-by 'list-show-records nil))
+  (filter-records-by 'search-filter-show-records nil))
 
-(define-command list-hide-records ()
+(define-command search-filter-hide-records ()
   "Hide the records whose line a regular expression matches, showing the
-others, deleting nothing: asked for as \\[list-show-records] asks, kept with
+others, deleting nothing: asked for as \\[search-filter-show-records] asks, kept with
 the other filters. \\[list-delete-records] deletes them instead."
-  (filter-records-by 'list-hide-records t))
+  (filter-records-by 'search-filter-hide-records t))
 
 (defun list-header-line (window)
   "Header line function: the first line of WINDOW's buffer, its header, as the
@@ -1883,7 +1883,7 @@ that look at one column of a record or of a table, light nothing. An empty
 
 (defun install-search-filters ()
   "Bind the keys of the search filters: \\[search-filter-regex],
-\\[list-search-filters] and \\[remove-search-filters] in every buffer, and
+\\[search-filter-list] and \\[search-filter-remove-all] in every buffer, and
 those of the list of filters; in a file whose lines they hide, say in the
 mode line what they leave, keep the lines hidden from every edit, and work
 them out again after a change that reached into those lines, or once the
@@ -1892,6 +1892,6 @@ file is read again."
   (pushnew 'refilter-touched *tick-functions*)
   (pushnew 'refilter-reloaded *after-reload-functions*)
   (pushnew 'guard-hidden-lines tuatara.buffer:*before-edit-functions*)
-  (define-keys (mode-keymap 'search-filters-mode) '(("d" remove-search-filter) ("D" remove-search-filters)))
-  (commands-for-mode 'search-filters-mode "the list of search filters (\\[list-search-filters])"
-                     'remove-search-filter))
+  (define-keys (mode-keymap 'search-filters-mode) '(("d" search-filter-remove) ("D" search-filter-remove-all)))
+  (commands-for-mode 'search-filters-mode "the list of search filters (\\[search-filter-list])"
+                     'search-filter-remove))

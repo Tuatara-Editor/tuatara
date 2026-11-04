@@ -3,17 +3,17 @@
 ;;;;
 ;;;; A name hidden by {{{redact(...)}}} in an Org note, or by \R{...} in a
 ;;;; LaTeX file, is no secret when it is written out plainly elsewhere in the
-;;;; same file. M-x check-redactions gathers what the buffer hides and lists in
+;;;; same file. M-x export-check-redactions gathers what the buffer hides and lists in
 ;;;; *Redactions* every other place it shows, RET on one showing it; the
-;;;; enhanced export and latex-compile-pdf look first, and ask before making a
+;;;; enhanced export and export-latex-compile-pdf look first, and ask before making a
 ;;;; PDF that would give a hidden text away.
 
 (in-package #:tuatara.export)
 
 (defvar *latex-redaction-commands* '("R" "D" "redact")
   "The LaTeX commands that hide their argument in your LaTeX files, \\\\R{John
-Otago} for one, by their names without the backslash: what \\[check-redactions]
-and \\[latex-compile-pdf] look for in a LaTeX file, as hidden text to be
+Otago} for one, by their names without the backslash: what \\[export-check-redactions]
+and \\[export-latex-compile-pdf] look for in a LaTeX file, as hidden text to be
 found nowhere else.")
 
 (defparameter *redaction-shortest-part* 3
@@ -214,7 +214,7 @@ say what was found, and with QUIET nothing when there is nothing to say."
                     (length findings) (tuatara.buffer:buffer-name buffer) (= 1 (length findings)))))
     (length findings)))
 
-(define-command check-redactions ()
+(define-command export-check-redactions ()
   "Look for the texts this Org or LaTeX file hides shown plainly elsewhere in
 it, and list each place in *Redactions*, where \\<redactions-mode>\\[list-visit] shows it. Hidden are in an
 Org note what {{{redact(...)}}} marks, and {{{protect(...)}}} when its
@@ -222,7 +222,7 @@ Org note what {{{redact(...)}}} marks, and {{{protect(...)}}} when its
 *LATEX-REDACTION-COMMANDS* (\\\\R{...}, \\\\D{...}). Each hidden text is looked
 for whole, and each of its words alone, as whole words in any case: John Otago
 hidden is given away by John Otago or by Otago written elsewhere. The enhanced
-export and \\[latex-compile-pdf] look first, and ask before making the PDF."
+export and \\[export-latex-compile-pdf] look first, and ask before making the PDF."
   (check-buffer-redactions (current-buffer)))
 
 (defparameter *export-kept-folders*
@@ -332,7 +332,7 @@ declares with a #+macro: line, what it stands for shown beside it. A word is
 a name, an address as 90.233.1.40, a mail address or a path. On text in a
 call already, change the call to another macro, or choose none to have the
 text alone again. While reading, a call shows as its text, in green.
-\\[check-redactions] finds hidden text written plainly elsewhere."
+\\[export-check-redactions] finds hidden text written plainly elsewhere."
   (let* ((buffer (current-buffer))
          (point (tuatara.buffer:buffer-point buffer))
          (call (let ((call (macro-call-on-line buffer point)))
@@ -382,12 +382,12 @@ was: {{{R(John Otago)}}} becomes John Otago. \\[org-macro-wrap] wraps text again
 
 (defun install-redactions ()
   "Give *Redactions* the keys of a list whose entries are opened, offer
-\\[check-redactions] in Org and LaTeX buffers, and bind \\`C-c m' and \\`C-c M' in
+\\[export-check-redactions] in Org and LaTeX buffers, and bind \\`C-c m' and \\`C-c M' in
 Org notes to wrap text in a macro (\\[org-macro-wrap]) and take a call away
 \\(\\[org-macro-unwrap])."
   (entry-list-keys 'redactions-mode "*Redactions*")
-  (commands-for-mode 'org-mode "Org and LaTeX files" 'check-redactions)
+  (commands-for-mode 'org-mode "Org and LaTeX files" 'export-check-redactions)
   (commands-for-mode 'org-mode "Org notes" 'org-macro-wrap 'org-macro-unwrap)
   (define-key (mode-keymap 'org-mode) "C-c m" 'org-macro-wrap)
   (define-key (mode-keymap 'org-mode) "C-c M" 'org-macro-unwrap)
-  (commands-for-mode 'latex-mode "Org and LaTeX files" 'check-redactions))
+  (commands-for-mode 'latex-mode "Org and LaTeX files" 'export-check-redactions))

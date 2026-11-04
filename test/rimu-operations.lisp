@@ -817,10 +817,497 @@ it did."
                                      (namestring (here dir "once.tar")))
     (let ((listing (tuatara.defaults::archive-listing (namestring (here dir "once.tar")))))
       (is = 1 (count-matches "sub/c.txt" listing)))
-    (let ((environment (tuatara.defaults::tar-environment)))
+    (let ((environment (tuatara.defaults::archive-environment)))
       (true (assoc "XZ_DEFAULTS" environment :test #'string=)))
-    (is string= "a: b" (tuatara.defaults::tar-failure-words
+    (is string= "a: b" (tuatara.defaults::archive-said-words
                         (format nil "tar: Removing leading `../' from member names~%a: b~%tar: Exiting with failure status due to previous errors")))))
+
+;;; Archives of the kinds bsdtar reads
+
+(defun bsdtar-make (archive format &rest arguments)
+  "Make ARCHIVE in bsdtar's FORMAT (zip, 7zip, iso9660, newc, pax) with
+ARGUMENTS as bsdtar -c takes them; what it said, as text, an error or not."
+  (nth-value 1 (uiop:run-program (list* "bsdtar" "-c" "-f" (namestring archive) "--format" format arguments)
+                                 :error-output :string :ignore-error-status t)))
+
+(defun rar5-octets (entries)
+  "A RAR 5 archive holding ENTRIES, each (NAME . TEXT), stored as they are, laid
+out as RARLAB's description of the RAR 5.0 format has it (a signature, then
+headers each with its CRC-32 and size), since no free program makes one."
+  (labels ((vint (n)
+             (loop for octet = (logand n 127)
+                   do (setf n (ash n -7))
+                   collect (if (plusp n) (logior octet 128) octet)
+                   while (plusp n)))
+           (u32 (n) (loop for k below 4 collect (ldb (byte 8 (* 8 k)) n)))
+           (octets (list) (make-array (length list) :element-type '(unsigned-byte 8) :initial-contents list))
+           (header (type flags body &optional data)
+             (let* ((fields (append (vint type) (vint flags) (and data (vint (length data))) body))
+                    (size (vint (length fields))))
+               (append (u32 (tuatara.io:crc32 (octets (append size fields)))) size fields (coerce data 'list)))))
+    (octets (append (list #x52 #x61 #x72 #x21 #x1A #x07 #x01 #x00)
+                    (header 1 0 (vint 0))
+                    (loop for (name . text) in entries
+                          for data = (tuatara.text:string-octets text)
+                          for name-octets = (coerce (tuatara.text:string-octets name) 'list)
+                          ;; a file: its CRC-32 given, its size, Unix mode, stored, made on Unix, its name
+                          append (header 2 2 (append (vint 4) (vint (length data)) (vint #o100644)
+                                                     (u32 (tuatara.io:crc32 data)) (vint 0) (vint 1)
+                                                     (vint (length name-octets)) name-octets)
+                                         data))
+                    (header 5 0 (vint 0))))))
+
+(defun extract-failure (archive directory &rest keys)
+  "Extract ARCHIVE into DIRECTORY (KEYS as EXTRACT-ARCHIVE takes them): NIL
+when it went well, else what the error said."
+  (handler-case (progn (apply #'tuatara.defaults::extract-archive (namestring archive) (namestring directory) keys) nil)
+    (error (e) (princ-to-string e))))
+
+(defmacro with-each-archive-program ((program) &body body)
+  "Run BODY twice, PROGRAM bound to :7ZZ with 7-Zip as installed, then to
+:BSDTAR with 7-Zip hidden; the first is skipped, said so, where 7-Zip is not
+installed. Work in the background sees 7-Zip as installed either way."
+  `(dolist (,program '(:7zz :bsdtar))
+     (let ((tuatara.defaults::*seven-zip-names* (if (eq ,program :7zz) tuatara.defaults::*seven-zip-names* '())))
+       (if (and (eq ,program :7zz) (null (tuatara.defaults::seven-zip)))
+           (format t "~&7-Zip is not installed: the part of the test for it is skipped~%")
+           (progn ,@body)))))
+
+(define-test (rimu-operations archives-of-every-kind)
+  ;; zip, 7z, ISO 9660, cpio and rar archives listed and extracted as tar ones
+  ;; are, told by what they hold; a file that is none is refused, said so
+  (with-operations-tree (dir)
+    (loop for (name format) in '(("z.zip" "zip") ("s.7z" "7zip") ("i.iso" "iso9660") ("c.cpio" "newc"))
+          do (bsdtar-make (here dir name) format "-C" (namestring dir) "a.txt" "sub"))
+    (alexandria:write-byte-vector-into-file (rar5-octets '(("a.txt" . "alpha") ("sub/c.txt" . "gamma")))
+                                            (here dir "r.rar"))
+    (with-each-archive-program (program)
+      (dolist (name '("z.zip" "s.7z" "i.iso" "c.cpio" "r.rar"))
+        (let ((listing (tuatara.defaults::archive-listing (namestring (here dir name)))))
+          (true (search "sub/c.txt" listing) "~a ~a: ~a" program name listing)
+          (true (search "a.txt" listing) "~a ~a: ~a" program name listing))
+        ;; every file there, each of three times (no worker of the program's left behind to lose one)
+        (dotimes (i 3)
+          (let ((out (here dir (format nil "out-~(~a~)-~a-~d/" program name i))))
+            (false (extract-failure (here dir name) out) "~a ~a" program name)
+            (is string= "alpha" (alexandria:read-file-into-string (here out "a.txt")) "~a ~a" program name)
+            (is string= "gamma" (alexandria:read-file-into-string (here out "sub/c.txt")) "~a ~a" program name)))))
+    ;; 7-Zip lists times to the second
+    (when (tuatara.defaults::seven-zip)
+      (true (cl-ppcre:scan "\\d{4}-\\d\\d-\\d\\d \\d\\d:\\d\\d:\\d\\d sub/c.txt"
+                           (tuatara.defaults::archive-listing (namestring (here dir "s.7z"))))))
+    ;; named as something else: told by what it holds
+    (uiop:copy-file (here dir "s.7z") (here dir "holiday.jpg"))
+    (false (extract-failure (here dir "holiday.jpg") (here dir "misnamed/")))
+    (is string= "gamma" (alexandria:read-file-into-string (here dir "misnamed/sub/c.txt")))
+    (is string= "holiday-extracted" (tuatara.defaults::archive-stem "/x/holiday"))
+    (is string= "holiday" (tuatara.defaults::archive-stem "/x/holiday.jpg"))
+    (is string= "r" (tuatara.defaults::archive-stem "/x/r.rar"))
+    ;; no archive at all, whatever its name: refused, said so, nothing made
+    (alexandria:write-string-into-file "only some text" (here dir "fake.zip"))
+    (true (search "it is no archive" (or (extract-failure (here dir "fake.zip") (here dir "fake/")) "")))
+    (false (tuatara.io:path-stamp (namestring (here dir "fake/"))))
+    ;; Z in rimu: into a folder of its name beside it; C-c e lists it
+    (let ((f (ops-session dir "g f c . c p i o RET Z C-j" :width 300)))
+      (true (tuatara.frontend.fake:fake-frame-showing f "Extracted 1 archive to")))
+    (is string= "alpha" (alexandria:read-file-into-string (here dir "c/a.txt")))
+    (ops-session dir "g f r . r a r RET C-c e")
+    (let ((shown (tuatara.buffer:find-buffer "*Archive: r.rar*")))
+      (true shown)
+      (when shown
+        (loop repeat 200 until (search "sub/c.txt" (tuatara.buffer:buffer-string shown)) do (sleep 0.02))
+        (true (search "sub/c.txt" (tuatara.buffer:buffer-string shown)))
+        (tuatara.buffer:kill-buffer shown)))
+    ;; an archive in an archive is left as it is
+    (bsdtar-make (here dir "outer.zip") "zip" "-C" (namestring dir) "z.zip")
+    (false (extract-failure (here dir "outer.zip") (here dir "outer/")))
+    (true (probe-file (here dir "outer/z.zip")))
+    (false (probe-file (here dir "outer/a.txt")))))
+
+(define-test (rimu-operations archives-extracted-writable)
+  ;; what is extracted can be moved and deleted, whatever modes the archive
+  ;; gives its folders and files (an ISO image's are read only), by tar and
+  ;; bsdtar alike; what was there before is left as it is, links unchanged
+  (with-operations-tree (dir)
+    (let ((content (namestring (here dir "a.txt"))))
+      (alexandria:write-string-into-file
+       (format nil "#mtree~%./ro type=dir mode=0555~%./ro/f.txt type=file mode=0444 contents=~a~%~
+                    ./ro/inner type=dir mode=0500~%./ro/inner/g.txt type=file mode=0400 contents=~a~%~
+                    ./ro/link type=link link=f.txt~%"
+               content content)
+       (here dir "spec.mtree"))
+      (dolist (format '("pax" "zip" "newc"))
+        (bsdtar-make (here dir (format nil "ro.~a" format)) format
+                     (format nil "@~a" (namestring (here dir "spec.mtree")))))
+      (bsdtar-make (here dir "ro.iso") "iso9660" "-C" (namestring dir) "a.txt" "sub")
+      (dolist (name '("ro.pax" "ro.zip" "ro.newc" "ro.iso"))
+        (let ((out (here dir (format nil "out-~a/" name))))
+          (ensure-directories-exist out)
+          ;; one there before, read only: stays so
+          (alexandria:write-string-into-file "mine" (here out "before.txt"))
+          (sb-posix:chmod (namestring (here out "before.txt")) #o444)
+          (sleep 0.1)
+          (false (extract-failure (here dir name) out) "~a" name)
+          (is = #o444 (logand #o777 (tuatara.io:stamp-mode
+                                     (tuatara.io:path-stamp (namestring (here out "before.txt"))))))
+          (dolist (made (if (string= name "ro.iso")
+                            '("sub/" "sub/c.txt" "a.txt")
+                            '("ro/" "ro/f.txt" "ro/inner/" "ro/inner/g.txt")))
+            (let ((stamp (tuatara.io:path-stamp (namestring (here out made)) :follow nil)))
+              (true stamp "~a ~a" name made)
+              (when stamp
+                (true (logtest #o200 (tuatara.io:stamp-mode stamp)) "~a ~a writable" name made))))
+          (unless (string= name "ro.iso")
+            (is eq :symlink (tuatara.io:path-kind (namestring (here out "ro/link")) :follow nil)))
+          ;; deleted as any folder of yours
+          (tuatara.io:delete-tree (namestring out))
+          (false (probe-file out) "~a" name))))))
+
+(define-test (rimu-operations archives-files-room-kept)
+  ;; unpacking stops before the drive has room for too few more files, said so;
+  ;; a drive keeping no count of them is not held to one
+  (let ((root (format nil "/tmp/tuatara-test-files-~d/" (sb-posix:getpid))))
+    (when (tuatara.io::free-inodes "/tmp")
+      (unwind-protect
+           (progn
+             (ensure-directories-exist root)
+             (alexandria:write-string-into-file "alpha" (concatenate 'string root "a.txt"))
+             (bsdtar-make (concatenate 'string root "few.cpio") "newc" "-C" root "a.txt")
+             (let* ((free (tuatara.io::free-inodes root))
+                    (tuatara.defaults::*archive-least-files-left* (+ free 1000))
+                    (said (extract-failure (concatenate 'string root "few.cpio") (concatenate 'string root "out/"))))
+               (true (search "room for too few more files" (or said "")) "~a" said)
+               (false (probe-file (concatenate 'string root "out/")))))
+        (uiop:delete-directory-tree (pathname root) :validate t :if-does-not-exist :ignore)))
+    (with-test-directory (dir)
+      (unless (tuatara.io::free-inodes (namestring dir))
+        (false (tuatara.defaults::archive-files-left (namestring dir)))))))
+
+(define-test (rimu-operations archives-hostile)
+  ;; whatever an archive holds, nothing is written outside the folder it is
+  ;; extracted into, nor through a link; no setuid bit is kept, no named pipe
+  ;; or device made: zip, 7z, cpio and rar by bsdtar, tar by tar
+  (with-operations-tree (dir)
+    (let ((outside (namestring (ensure-directories-exist (here dir "outside/"))))
+          (content (namestring (here dir "a.txt"))))
+      (alexandria:write-string-into-file
+       (format nil "#mtree~%./a/../../victim.txt type=file mode=0644 contents=~a~%~
+                    ./abs.txt type=file mode=0644 contents=~a~%~
+                    ./link type=link link=~a~%./link/through.txt type=file mode=0644 contents=~a~%~
+                    ./suid type=file mode=04755 contents=~a~%./fifo type=fifo mode=0644~%~
+                    ./dev type=char mode=0644 device=native,1,3~%"
+               content content (string-right-trim "/" outside) content content)
+       (here dir "spec.mtree"))
+      ;; the same names, a hard link to one outside then a file through it
+      (alexandria:write-string-into-file "precious" (here dir "kept.txt"))
+      (ensure-directories-exist (here dir "pair/"))
+      (alexandria:write-string-into-file "first" (here dir "pair/x"))
+      (sb-posix:link (namestring (here dir "pair/x")) (namestring (here dir "pair/y")))
+      (dolist (format '("zip" "7zip" "newc" "pax"))
+        (bsdtar-make (here dir (format nil "hostile.~a" format)) format "-P" "-s" ",^\\./abs,/abs,"
+                     (format nil "@~a" (namestring (here dir "spec.mtree")))))
+      (dolist (format '("newc" "pax"))
+        (bsdtar-make (here dir (format nil "linked.~a" format)) format "-P" "-C" (namestring (here dir "pair/"))
+                     "-s" ",^x$,../kept.txt," "x" "y"))
+      (alexandria:write-byte-vector-into-file (rar5-octets '(("../victim.txt" . "evil") ("ok.txt" . "fine")))
+                                              (here dir "hostile.rar"))
+      (with-each-archive-program (program)
+        (dolist (name '("hostile.zip" "hostile.7zip" "hostile.newc" "hostile.pax" "hostile.rar"))
+          (let* ((out (here dir (format nil "out-~(~a~)-~a/" program name)))
+                 (said (extract-failure (here dir name) out)))
+            (false (probe-file (here dir "victim.txt")) "~a ~a: ~a" program name said)
+            (false (probe-file (here dir "abs.txt")) "~a ~a" program name)
+            (false (probe-file (here outside "through.txt")) "~a ~a" program name)
+            (let ((suid (tuatara.io:path-stamp (namestring (here out "suid")) :follow nil)))
+              (when suid
+                (is = 0 (logand #o6000 (tuatara.io:stamp-mode suid)) "~a ~a" program name)))
+            (dolist (special '("fifo" "dev"))
+              (false (member (tuatara.io:path-kind (namestring (here out special)) :follow nil)
+                             '(:fifo :character-device :block-device))
+                     "~a ~a ~a" program name special))
+            ;; an archive in it is left packed
+            (false (remove-if-not (lambda (p) (search ".part" (namestring p))) (uiop:subdirectories out))
+                   "~a ~a" program name)))
+        (is string= "fine" (alexandria:read-file-into-string
+                            (here dir (format nil "out-~(~a~)-hostile.rar/ok.txt" program)))))
+      (dolist (format '("newc" "pax"))
+        (let ((out (here dir (format nil "out-linked-~a/" format))))
+          (extract-failure (here dir (format nil "linked.~a" format)) out)
+          (is string= "precious" (alexandria:read-file-into-string (here dir "kept.txt")) "~a" format)
+          (is = 1 (sb-posix:stat-nlink (sb-posix:stat (namestring (here dir "kept.txt")))) "~a" format))))))
+
+(defparameter *locked-7z-samples*
+  '(("names.7z" "N3q8ryccAAThTxWfgAAAAAAAAAAuAAAAAAAAALGhKW33bMI1NTRGHjjxd1TtPKV/LN4jrQZ6DEKOKYQwKZNKDqulHlC1KcnAmJJoyBdNUEhVzz/IYBw8YZevB4L8WQokcN5+gq8XVNSE5LUJg8Tm1r31qlfaiCBbL25S8MOhGnMg9e0We3Thtbj7kbc/XQPLQDqY/6kmI75oFIoAgwQ16BcGEAEJcAAHCwEAASQG8QcBElMPmdJMi8LmH/ZxSnXanu1QFgxiCgHpC34qAAA=")
+    ("files.7z" "N3q8ryccAAR2+v8mEAAAAAAAAABiAAAAAAAAAEAUPyKxDp5OT5xb+vdR2SsFBaE2AQQGAAEJEAAHCwEAAiQG8QcBElMPaQyLHXs7BbgervvOr6/SxSEhAQABAAwKBgAICgEgMDo2AAAFARkBABENAGEALgB0AHgAdAAAABQKAQBoOjOsuWvdARUGAQAggKSBAAA="))
+  "Two 7z archives locked with the password secret, each holding a.txt with
+hello and a new line: names.7z with its names locked too, files.7z its files
+alone (made by 7z a -psecret -mhe=on, and without -mhe=on).")
+
+(define-test (rimu-operations archives-locked)
+  ;; an archive locked with a password, found so in the background, opens with
+  ;; the right one; a wrong one is said and extracts nothing; with none it is
+  ;; asked for. 7-Zip opens locked zip and 7z archives, their names locked
+  ;; too; bsdtar only zip ones, and says 7-Zip opens the others
+  (with-operations-tree (dir)
+    (dolist (encryption '("aes256" "zipcrypt"))
+      (bsdtar-make (here dir (format nil "locked-~a.zip" encryption)) "zip" "--options"
+                   (format nil "zip:encryption=~a" encryption) "--passphrase" "secret"
+                   "-C" (namestring dir) "a.txt" "sub"))
+    (bsdtar-make (here dir "open.zip") "zip" "-C" (namestring dir) "a.txt")
+    (loop for (name base64) in *locked-7z-samples*
+          do (alexandria:write-byte-vector-into-file (tuatara.io:base64-octets (tuatara.text:string-octets base64))
+                                                     (here dir name)))
+    (with-each-archive-program (program)
+      (flet ((locked-p (name)
+               (let* ((path (namestring (here dir name)))
+                      (kind (tuatara.defaults::archive-kind path)))
+                 (tuatara.defaults::archive-locked-p path kind (tuatara.defaults::archive-program kind))))
+             (out (name) (here dir (format nil "~(~a~)-~a/" program name))))
+        (true (locked-p "locked-aes256.zip") "~a" program)
+        (true (locked-p "locked-zipcrypt.zip") "~a" program)
+        (false (locked-p "open.zip") "~a" program)
+        (dolist (encryption '("aes256" "zipcrypt"))
+          (let ((archive (here dir (format nil "locked-~a.zip" encryption))))
+            ;; a wrong one: said, nothing made, no empty file left to stand in a right one's way
+            (is string= "the password is not right"
+                (extract-failure archive (out (format nil "wrong-~a" encryption)) :password "guess") "~a" program)
+            (false (tuatara.io:path-stamp (namestring (out (format nil "wrong-~a" encryption)))))
+            ;; none: it waits for one
+            (true (search "is locked with a password"
+                          (or (extract-failure archive (out (format nil "none-~a" encryption))) "")))
+            (false (tuatara.io:path-stamp (namestring (out (format nil "none-~a" encryption)))))
+            ;; the right one
+            (false (extract-failure archive (out (format nil "right-~a" encryption)) :password "secret") "~a" program)
+            (is string= "gamma"
+                (alexandria:read-file-into-string (here (out (format nil "right-~a" encryption)) "sub/c.txt")))))
+        (dolist (name '("names.7z" "files.7z"))
+          (if (eq program :7zz)
+              (progn (true (locked-p name) "~a" name)
+                     (is string= "the password is not right"
+                         (extract-failure (here dir name) (out (format nil "wrong-~a" name)) :password "guess")
+                         "~a" name)
+                     (true (search "is locked with a password"
+                                   (or (extract-failure (here dir name) (out (format nil "none-~a" name))) ""))
+                           "~a" name)
+                     (false (extract-failure (here dir name) (out (format nil "right-~a" name)) :password "secret")
+                            "~a" name)
+                     (is string= (format nil "hello~%")
+                         (alexandria:read-file-into-string (here (out (format nil "right-~a" name)) "a.txt"))))
+              (dolist (password '(nil "secret"))
+                (true (search "bsdtar opens no 7z archive so locked; 7-Zip does"
+                              (or (extract-failure (here dir name) (out "seven") :password password) ""))
+                      "~a ~a" name password))))))
+    ;; Z: found locked in the background, then asked for, hidden, and extracted
+    (let ((f (ops-session dir (list "g f l o c k e d - a e s 2 5 6 . z i p RET Z C-j"
+                                    #'wait-for-rimu-operations :tick
+                                    "s e c r e t RET")
+                          :width 300)))
+      (true (tuatara.frontend.fake:fake-frame-showing f "Password for locked-aes256.zip:"))
+      (false (tuatara.frontend.fake:fake-frame-showing f "secret"))
+      (true (tuatara.frontend.fake:fake-frame-showing f "Extracted 1 archive to")))
+    (is string= "alpha" (alexandria:read-file-into-string (here dir "locked-aes256/a.txt")))
+    ;; whether one is locked is never looked into on the editor's thread
+    (let ((threads '()) (editor sb-thread:*current-thread*))
+      (sb-int:encapsulate 'tuatara.defaults::archive-locked-p 'thread-seen
+                          (lambda (function &rest arguments)
+                            (push sb-thread:*current-thread* threads)
+                            (apply function arguments)))
+      (unwind-protect (ops-session dir (list "g f o p e n . z i p RET Z C-j" #'wait-for-rimu-operations))
+        (sb-int:unencapsulate 'tuatara.defaults::archive-locked-p 'thread-seen))
+      (true threads)
+      (false (member editor threads)))
+    ;; no core dump of the editor while a password is held
+    (flet ((dumpable () (sb-alien:alien-funcall (sb-alien:extern-alien "prctl" (function sb-alien:int sb-alien:int
+                                                                                          sb-alien:unsigned-long
+                                                                                          sb-alien:unsigned-long
+                                                                                          sb-alien:unsigned-long
+                                                                                          sb-alien:unsigned-long))
+                                                3 0 0 0 0)))
+      (tuatara.defaults::hold-secret)
+      (is = 0 (dumpable))
+      (tuatara.defaults::let-go-of-secret)
+      (unless tuatara.defaults::*encrypted-buffers*
+        (is = 1 (dumpable))))))
+
+(defun wait-for-rimu-operations ()
+  "Wait, ten seconds at most, until no rimu operation is running."
+  (loop repeat 1000
+        while (find-if (lambda (job) (and (tuatara.defaults::rimu-operation-p job) (tuatara.runtime:job-running-p job)))
+                       tuatara.runtime:*jobs*)
+        do (sleep 0.01)))
+
+(define-test (rimu-operations archives-hard-link-over-nothing)
+  ;; a cpio archive whose second name of a file is written after the first,
+  ;; already there, was skipped: the file there is never written through it
+  (with-operations-tree (dir)
+    (ensure-directories-exist (here dir "pair/"))
+    (alexandria:write-string-into-file "from the archive" (here dir "pair/notes.txt"))
+    (sb-posix:link (namestring (here dir "pair/notes.txt")) (namestring (here dir "pair/x")))
+    (bsdtar-make (here dir "linked.cpio") "newc" "-C" (namestring (here dir "pair/")) "notes.txt" "x")
+    (ensure-directories-exist (here dir "target/"))
+    (alexandria:write-string-into-file "mine" (here dir "target/notes.txt"))
+    (extract-failure (here dir "linked.cpio") (here dir "target/"))
+    (is string= "mine" (alexandria:read-file-into-string (here dir "target/notes.txt")))
+    ;; what was there is said to be left as it is; nothing of the passing folder stays
+    (ensure-directories-exist (here dir "again/"))
+    (alexandria:write-string-into-file "mine" (here dir "again/notes.txt"))
+    (is equal '("notes.txt (in linked.cpio)")
+        (tuatara.defaults::rimu-work :extract (cons (namestring (here dir "linked.cpio")) (namestring (here dir "again/")))
+                                     (list nil)))
+    (is string= "mine" (alexandria:read-file-into-string (here dir "again/notes.txt")))
+    (dolist (folder '("target/" "again/"))
+      (false (remove-if-not (lambda (p) (search ".part" (namestring p)))
+                            (append (uiop:directory-files (here dir folder)) (uiop:subdirectories (here dir folder))))))))
+
+(define-test (rimu-operations archives-format-held)
+  ;; an archive is read only as the format its first octets say: a list of
+  ;; files to copy (mtree) dressed as a disc image copies nothing
+  (with-operations-tree (dir)
+    (alexandria:write-string-into-file "secret beside it" (here dir "beside.txt"))
+    (with-open-file (out (here dir "fake.iso") :direction :output :if-exists :supersede :external-format :latin-1)
+      (format out "#mtree~%./copied type=file mode=0644 contents=~a~%" (namestring (here dir "beside.txt")))
+      ;; the disc's mark inside a comment of the list
+      (loop repeat (- 32768 (file-position out)) do (write-char #\Newline out))
+      (write-string "#CD001" out)
+      (loop repeat 2048 do (write-char #\Newline out)))
+    (is eq :iso (nth-value 1 (tuatara.defaults::file-kind (namestring (here dir "fake.iso")))))
+    (let ((said (extract-failure (here dir "fake.iso") (here dir "out/"))))
+      (true said)
+      (false (probe-file (here dir "out/copied")) "~a" said))))
+
+(define-test (rimu-operations archives-listed-plainly)
+  ;; a name that would turn the direction its line is drawn in is written as its code
+  (with-operations-tree (dir)
+    (let ((name (format nil "photo~cgpj.exe" (code-char #x202E))))
+      (alexandria:write-string-into-file "x" (here dir name))
+      (bsdtar-make (here dir "names.zip") "zip" "-C" (namestring dir) name)
+      (bsdtar-make (here dir "names.tar") "pax" "-C" (namestring dir) name)
+      (with-each-archive-program (program)
+        (dolist (archive '("names.zip" "names.tar"))
+          (let ((listing (tuatara.defaults::archive-listing (namestring (here dir archive)))))
+            (true (or (search "photo<202E>gpj.exe" listing) (search "photo\\u202E" listing :test #'char-equal))
+                  "~a ~a: ~a" program archive listing)
+            (false (find (code-char #x202E) listing) "~a ~a" program archive)))))))
+
+(define-test (rimu-operations archives-cleaned-up-after-a-failure)
+  ;; a step that fails while what was unpacked is put in place leaves nothing
+  ;; of the passing folder behind, and is the error said
+  (with-operations-tree (dir)
+    (bsdtar-make (here dir "sub.zip") "zip" "-C" (namestring dir) "sub")
+    (ensure-directories-exist (here dir "target/sub/"))
+    (sb-posix:chmod (namestring (here dir "target/sub/")) #o555)
+    (unwind-protect
+         (let ((said (extract-failure (here dir "sub.zip") (here dir "target/"))))
+           (true said)
+           (false (remove-if-not (lambda (p) (search ".part" (namestring p)))
+                                 (uiop:subdirectories (here dir "target/")))
+                  "~a" said))
+      (sb-posix:chmod (namestring (here dir "target/sub/")) #o755))))
+
+(define-test (rimu-operations archives-modes-by-umask)
+  ;; what is extracted has the modes your umask allows, whatever the archive says, by 7-Zip and bsdtar alike
+  (with-operations-tree (dir)
+    (alexandria:write-string-into-file
+     (format nil "#mtree~%./wide type=file mode=0777 contents=~a~%./shared type=file mode=0666 contents=~a~%"
+             (namestring (here dir "a.txt")) (namestring (here dir "a.txt")))
+     (here dir "modes.mtree"))
+    (bsdtar-make (here dir "modes.zip") "zip" (format nil "@~a" (namestring (here dir "modes.mtree"))))
+    (let ((umask (tuatara.io::umask-bits)))
+      (with-each-archive-program (program)
+        (let ((out (here dir (format nil "modes-~(~a~)/" program))))
+          (false (extract-failure (here dir "modes.zip") out) "~a" program)
+          (loop for (name mode) in '(("wide" #o777) ("shared" #o666))
+                do (is = (logior #o200 (logand mode (lognot umask)))
+                       (logand #o7777 (tuatara.io:stamp-mode (tuatara.io:path-stamp (namestring (here out name)))))
+                       "~a ~a" program name)))))))
+
+(define-test (rimu-operations archive-password-kept-from-debug-log)
+  ;; an archive that turns out no archive once its password is given: the
+  ;; failure, with the calls under way, never shows the password
+  (with-operations-tree (dir)
+    (drain-debug-reports)
+    (clrhash tuatara.runtime::*error-report-places*)
+    (setf tuatara-user:*debug-mode* t)
+    (tuatara.runtime:set-debug t)
+    (unwind-protect
+         (progn
+           (tuatara.defaults::hold-secret)
+           (tuatara.defaults::rimu-start-operation
+            :extract (list (cons (namestring (here dir "a.txt")) (namestring (here dir "out/")))) nil
+            :passwords (list (cons (namestring (here dir "a.txt")) (copy-seq "hunter2-kiwi"))))
+           (wait-for-rimu-operations)
+           (let ((said (format nil "~{~a~%~}" (mapcar #'fourth (sb-concurrency:list-queue-contents
+                                                               tuatara.runtime:*debug-reports*))))
+                 (log (if (probe-file *test-debug-log*) (alexandria:read-file-into-string *test-debug-log*) "")))
+             (true (search "extract" said) "~a" said)
+             (false (search "hunter2-kiwi" said))
+             (false (search "hunter2-kiwi" log))))
+      (drain-debug-reports))))
+
+(define-test (rimu-operations archive-password-typed-after)
+  ;; a password asked unasked takes only keys pressed once it shows, never those typed before
+  (let ((f (tuatara.frontend.fake:make-fake-frontend :width 60 :height 8))
+        (waiting t) (got nil))
+    (setf (tuatara.frontend.fake:fake-pending f) (lambda (f) (and waiting (tuatara.frontend.fake::fake-events f))))
+    (queue-test-keys f (list (lambda () (setf got (tuatara.command:read-password "Password for x.zip: " :fresh t)))
+                             "w r o n g" (lambda () (setf waiting nil)) "s e c r e t RET"))
+    (tuatara.command:run-editor f :setup #'tuatara.defaults:install-defaults)
+    (is equal "secret" got))
+  ;; and the question rimu asks for an archive found locked is one such
+  (let ((fresh nil))
+    (sb-int:encapsulate 'tuatara.command:read-password 'fresh-seen
+                        (lambda (function prompt &rest keys)
+                          (declare (ignore function prompt))
+                          (setf fresh (getf keys :fresh))
+                          (error 'tuatara.command:quit)))
+    (unwind-protect (ignore-errors (handler-case (tuatara.defaults::rimu-ask-passwords (list (cons "/x.zip" "/y/")) nil)
+                                     (tuatara.command:quit () nil)))
+      (sb-int:unencapsulate 'tuatara.command:read-password 'fresh-seen))
+    (true fresh)))
+
+(define-test (rimu-operations archives-seven-zip-said)
+  ;; 7-Zip's own program known by what it says of itself, and the formats it reads; p7zip's is not taken
+  (let ((said (tuatara.defaults::seven-zip-said
+               (format nil "~%7-Zip 26.02 (x64) : Copyright (c) 1999-2026 Igor Pavlov : 2026-06-25~%~%Formats:~%~
+                            0 C...F..........c.a.m+.. w...0  7z       7z            7 z BC AF ' 1C~%~
+                            0  ......................  Iso      iso img       offset=32769 C D 0 0 1~%~%Codecs:~%"))))
+    (is equal '(26 2) (first said))
+    (is equal '("7z" "Iso") (second said)))
+  (false (tuatara.defaults::seven-zip-said
+          (format nil "7-Zip [64] 16.02 : Copyright (c) 1999-2016 Igor Pavlov : 2016-05-21~%p7zip Version 16.02~%")))
+  ;; with no 7-Zip, bsdtar reads what 7-Zip would
+  (let ((tuatara.defaults::*seven-zip-names* '()))
+    (is eq :bsdtar (tuatara.defaults::archive-program (assoc :7z tuatara.defaults::*archive-kinds*))))
+  (when (tuatara.defaults::seven-zip)
+    (is eq :7zz (tuatara.defaults::archive-program (assoc :7z tuatara.defaults::*archive-kinds*))))
+  ;; a technical list in the columns of the others
+  (is string= (format nil "-rw-r--r-- -/- ~12@a 2026-11-03 21:33:46 a.txt~%drwxr-xr-x -/- ~12@a 2026-11-03 21:33:46 sub~%" 6 0)
+      (tuatara.defaults::seven-zip-listing
+       (format nil "Listing archive: x.7z~%~%--~%Path = x.7z~%Type = 7z~%~%----------~%Path = a.txt~%Size = 6~%~
+                    Modified = 2026-11-03 21:33:46.1675118~%Attributes = A -rw-r--r--~%Encrypted = -~%~%~
+                    Path = sub~%Size = 0~%Modified = 2026-11-03 21:33:46.1712538~%Attributes = D drwxr-xr-x~%~%"))))
+
+(define-test (rimu-operations archives-bomb-held)
+  ;; a zip archive holding far more than it takes up stops before the drive is full, said so
+  (with-operations-tree (dir)
+    (ensure-directories-exist (here dir "zeros/"))
+    (with-open-file (out (here dir "zeros/zero") :direction :output :element-type '(unsigned-byte 8))
+      (let ((block (make-array (* 1024 1024) :element-type '(unsigned-byte 8) :initial-element 0)))
+        (loop repeat 24 do (write-sequence block out))))
+    (bsdtar-make (here dir "zeros.zip") "zip" "-C" (namestring (here dir "zeros/")) "zero")
+    ;; locked too: the password tried on all of it first is held to the same room
+    (bsdtar-make (here dir "locked-zeros.zip") "zip" "--options" "zip:encryption=aes256" "--passphrase" "secret"
+                 "-C" (namestring (here dir "zeros/")) "zero")
+    (delete-file (here dir "zeros/zero"))
+    (with-each-archive-program (program)
+      (loop for (name password) in '(("zeros.zip" nil) ("locked-zeros.zip" "secret"))
+            do (let* ((free (tuatara.io:free-bytes (namestring dir)))
+                      (tuatara.defaults::*archive-free-reserve* (- free (* 4 1024 1024)))
+                      (out (here dir (format nil "out-~(~a~)-~a/" program name)))
+                      (said (extract-failure (here dir name) out :password password)))
+                 (true (search "*archive-free-reserve*" (or said "")) "~a ~a: ~a" program name said)
+                 (let ((size (ignore-errors (tuatara.io:stamp-size (tuatara.io:path-stamp (namestring (here out "zero")))))))
+                   (true (or (null size) (< size (* 24 1024 1024))) "~a ~a" program name)))))))
 
 (define-test (rimu-operations keys-listed)
   ;; ? lists the keys a list takes away as doing nothing there, never as their commands; nor do the key hints

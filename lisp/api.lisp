@@ -141,7 +141,7 @@ its form says, as ORG-READ-RULE reads them; :HOUR, :MINUTE, :END-HOUR and
     ;; lists and text made by a command
     set-made-text render-pieces render-table-list pieces-text collecting-pieces table-cell table-heading-pieces table-row-pieces list-entry-at tuatara.terminal-emulator:ansi-pieces
     set-search-filtering search-filters search-filter-p search-filter-string search-filter-where search-filter-match-p
-    light-search-filters search-filter-regex list-search-filters remove-search-filters
+    light-search-filters search-filter-regex search-filter-list search-filter-remove-all
     marked-list-mode sectioned-list-mode sectioned-pieces entry-member entry-mark keep-list-marks list-acted-on
     list-mark-sign list-mark-face list-question toggle-list-section quit-window
     list-entries-of list-entry-noun delete-entries visit-entry list-visit list-visit-other list-execute list-delete-marked

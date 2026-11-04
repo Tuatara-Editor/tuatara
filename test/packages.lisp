@@ -951,6 +951,110 @@ before loading it again."
       (let ((symbol (find-symbol "*NO-SUCH-SETTING*" :tuatara-user)))
         (when symbol (unintern symbol :tuatara-user))))))
 
+(defun nameless-command-places ()
+  "The places commands are made for (COMMANDS-FOR-MODE) whose names belong to
+no Lisp package any more, each (COMMAND . PLACE)."
+  (loop for command being the hash-keys of tuatara.defaults::*mode-commands* using (hash-value entries)
+        append (loop for (place) in entries unless (symbol-package place) collect (cons command place))))
+
+(defun offered-commands ()
+  "The commands M-x offers in a new session on an empty scratch buffer."
+  (multiple-value-bind (f editor) (run-keys "" :text "")
+    (declare (ignore f))
+    (let ((tuatara.command:*editor* editor))
+      (mapcar #'tuatara.command:candidate-result (tuatara.defaults::command-candidates)))))
+
+(define-test (packages refused-takes-back-places)
+  ;; a package refused once its files have loaded takes back the places it gave Tuatara's
+  ;; own commands (a list's keys for its mode); its mended version loads after it in the
+  ;; same session, and M-x offers every command as before
+  (with-folder-packages (dir)
+    (let ((text "(defpackage #:placer (:use #:cl #:tuatara))
+(in-package #:placer)
+(define-major-mode placer-mode special-mode \"A list of places.\")
+(entry-list-keys 'placer-mode \"a list of places\")
+(define-command placer-run () \"Run.\" (placer-missing))"))
+      (aged-package dir "placer" text)
+      (unwind-protect
+           (progn
+             (false (tuatara-user:load-package "placer" :source (namestring dir)))
+             (true (search "placer-missing" (package-failure "placer")))
+             (false (find-package "PLACER"))
+             (false (nameless-command-places))
+             (forget-failure "placer")
+             (folder-packages dir (list "placer" (concatenate 'string text "
+(defun placer-missing () nil)")))
+             (true (tuatara-user:load-package "placer" :source (namestring dir)))
+             (is equal '("a list of places")
+                 (loop for (place . where) in (gethash 'tuatara.defaults::list-visit tuatara.defaults::*mode-commands*)
+                       when (string= "PLACER-MODE" (symbol-name place)) collect where))
+             (false (nameless-command-places))
+             (let ((offered (offered-commands)))
+               (true (member 'tuatara.defaults::find-file offered))
+               (false (member 'tuatara.defaults::list-visit offered))))
+        (when (find-package "PLACER")
+          (tuatara.packages::forget-package-code (list (find-package "PLACER"))))))))
+
+(define-test (packages failed-takes-back-what-it-loaded)
+  ;; a package whose file fails part of the way, its command and its list's keys already in
+  ;; place, leaves nothing of it behind: not its Lisp package, its command or its places
+  (with-folder-packages (dir)
+    (aged-package dir "failer"
+                  "(defpackage #:failer (:use #:cl #:tuatara))
+(in-package #:failer)
+(define-major-mode failer-mode special-mode \"A list that fails.\")
+(entry-list-keys 'failer-mode \"a list that fails\")
+(define-command failer-run () \"Run.\" nil)
+(error \"The failer package fails as it loads.\")")
+    (unwind-protect
+         (progn
+           (false (tuatara-user:load-package "failer" :source (namestring dir)))
+           (true (search "fails as it loads" (package-failure "failer")))
+           (false (find-package "FAILER"))
+           (false (tuatara.command:find-command "failer-run"))
+           (false (find "FAILER-MODE" (tuatara.modes:mode-names) :key #'symbol-name :test #'string=))
+           (false (nameless-command-places)))
+      (when (find-package "FAILER")
+        (tuatara.packages::forget-package-code (list (find-package "FAILER")))))))
+
+(define-test (packages forgotten-keys-labels-and-toggles)
+  ;; a package taken out takes back its keys in Tuatara's keymaps with their labels, the
+  ;; prefix keys left with nothing under them, and its ways of showing text
+  (let ((package (make-package "FORGOTTEN" :use '("CL" "TUATARA")))
+        (keymap (tuatara.modes:mode-keymap 'tuatara.modes:fundamental-mode))
+        (prefix (tuatara.frontend:parse-key-sequence "C-c +")))
+    (unwind-protect
+         (progn
+           (let ((*package* package))
+             (eval (read-from-string "(progn
+  (define-command forgotten-run () \"Run.\" nil)
+  (define-keys (mode-keymap 'fundamental-mode) '((\"C-c + r\" forgotten-run)))
+  (label-keys (mode-keymap 'fundamental-mode) '((\"C-c +\" \"forgotten\")))
+  (define-display-toggle forgotten-ruler \"Ruler\" \"Show a ruler in the current buffer, or stop.\"
+    :command forgotten-ruler-mode :lookup forgotten-ruler-p
+    :global *forgotten-ruler* :what \"show a ruler\" :example \"'((text-mode . t))\"))")))
+           (let ((labelled (tuatara.command:lookup-key keymap (list (first prefix)) :parents nil)))
+             (is string= "forgotten" (tuatara.command:key-label labelled (second prefix)))
+             (true (tuatara.command:lookup-key keymap prefix :parents nil))
+             (true (tuatara.defaults::find-display-toggle (find-symbol "FORGOTTEN-RULER" package)))
+             (tuatara.packages::forget-package-code (list package))
+             (false (tuatara.command:lookup-key keymap prefix :parents nil))
+             (false (tuatara.command:key-label labelled (second prefix)))
+             (false (find "FORGOTTEN-RULER" tuatara.defaults::*display-toggles*
+                          :key (lambda (toggle) (symbol-name (tuatara.defaults::display-toggle-name toggle)))
+                          :test #'string=))))
+      (tuatara.command:define-key keymap prefix nil)
+      (let ((c-c (tuatara.command:lookup-key keymap (list (first prefix)) :parents nil)))
+        (when (and (tuatara.command:keymap-p c-c) (zerop (hash-table-count (tuatara.command::keymap-table c-c))))
+          (tuatara.command:define-key keymap (list (first prefix)) nil)))
+      (dolist (name '("*FORGOTTEN-RULER*" "*FORGOTTEN-RULER-MODES*"))
+        (let ((symbol (find-symbol name :tuatara-user)))
+          (when symbol
+            (unexport symbol :tuatara-user)
+            (unintern symbol :tuatara-user))))
+      (when (package-name package)
+        (tuatara.packages::forget-package-code (list package))))))
+
 (define-test (packages api-names-loaded)
   ;; a package using only the API, and a name of another library, loads; loaded again from
   ;; what was compiled, what it needs is looked for again: gone, it is refused before it runs

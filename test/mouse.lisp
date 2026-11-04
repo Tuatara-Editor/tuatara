@@ -141,7 +141,7 @@ selected in another program."
     (is = 11 (session-point editor)))
   (is equal '(12 24) (session-region (nth-value 1 (run-events '((:down-mouse-1 8 1) (:double-mouse-1 8 1) (:triple-mouse-1 8 1))))))
   ;; after a rectangle, a word clicked twice is a plain selection
-  (let ((editor (nth-value 1 (run-events '("C-x SPC C-f C-f" (:down-mouse-1 8 0) (:double-mouse-1 8 0))))))
+  (let ((editor (nth-value 1 (run-events '("C-x r SPC C-f C-f" (:down-mouse-1 8 0) (:double-mouse-1 8 0))))))
     (false (tuatara.defaults::rectangle-live-p (session-buffer editor)))
     (is equal '(6 11) (session-region editor)))
   ;; spaces are a run of their own, as are other signs; a bracket gives its group

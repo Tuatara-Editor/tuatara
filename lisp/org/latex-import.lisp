@@ -2,7 +2,7 @@
 ;;;; Copyright (C) 2026 Michael A Jones.  GPL-3.0-or-later; see LICENSE.
 ;;;;
 ;;;; LATEX-IMPORT reads a LaTeX document someone gave you to write a report
-;;;; in and makes of it what M-x make-template-from-latex promises:
+;;;; in and makes of it what M-x export-template-from-latex promises:
 ;;;;
 ;;;; - A LaTeX template, latex-templates/NAME.tex: the document as it is up
 ;;;;   to its first \section (or \chapter, \part), its preamble, cover and
@@ -744,7 +744,10 @@ cannot be read; writes over nothing that exists."
             (push (list body-start finish (format nil "{{{body}}}~%")) edits)
             (push (list begin begin *latex-import-packages*) edits)
             (setf body (latex-org-note-text body-start finish))
-            (setf template (format nil "% Made the Tuatara template ~a from ~a by make-template-from-latex: each field a~%% place, {{{body}}} the note's text. Change it as you like.~%~a"
+            (setf template (format nil (concatenate 'string
+                                                    "% Made the Tuatara template ~a from ~a by "
+                                                    "export-template-from-latex: each field a~%"
+                                                    "% place, {{{body}}} the note's text. Change it as you like.~%~a")
                                    name (tuatara.io:native-file-name path) (latex-import-apply-edits source edits)))))
       (setf template (latex-import-without-outside-files template))
       (when (search "\\input" text) (template-import-note "its \\input files not read (the template still names them)"))

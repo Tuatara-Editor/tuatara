@@ -103,12 +103,12 @@ mode's own keys, as with MAP :global and MODE that mode."
 Shift, as help writes them: \"C-c t\", \"SPC ,\") to COMMAND (a command name
 from any package, matched by name) in MAP: :global (both states), :normal,
 :insert, :support, :leader (keys under the leader key, \\`SPC' or
-*LEADER-KEY*), a special buffer's map such as :buffers, :help, :search,
-:pattern (every question that takes a pattern, a search of files as you type
-among them) or :minibuffer, :popup (the list of completions beside the
-cursor), or a major mode's name ('csv-mode)
-for keys only in that mode and the modes derived from it. The main
-configuration call of an init file.
+*LEADER-KEY*, and under \\`C-x SPC' everywhere), a special buffer's map such
+as :buffers, :help, :search, :pattern (every question that takes a pattern, a
+search of files as you type among them) or :minibuffer, :popup (the list of
+completions beside the cursor), or a major mode's name ('csv-mode) for keys
+only in that mode and the modes derived from it. The main configuration call
+of an init file.
 
 MODE, a major mode's name or a list of them, binds KEYS only in those modes
 and the modes made from them, MAP then :global, :normal, :insert, :support or

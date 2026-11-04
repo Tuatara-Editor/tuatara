@@ -389,6 +389,27 @@ first frontend."
       (is = 1 (tuatara.frontend.fake:fake-raised (second frontends)))
       (true (tuatara.frontend.fake:fake-frame-showing (second frontends) "kea")))))
 
+(define-test (frames leader-on-c-x-spc-in-another-frame)
+  ;; a frame opened by C-x 5 2 reaches the leader's keys by C-x SPC, in INSERT state and with modal
+  ;; editing off, the key hints shown in that frame alone
+  (unwind-protect
+       (progn
+         (tuatara-user:bind-key "o z" 'end-of-buffer :map :leader)
+         (tuatara-user:bind-key "o" nil :map :leader :label "own")
+         (loop for (modal state) in '((t "i ") (nil ""))
+               do (let ((tuatara.defaults::*modal-editing* modal))
+                    (multiple-value-bind (editor frontends)
+                        (run-window-keys (list (format nil "C-x 5 2 ~aC-x SPC" state)) :text "abc" :width 80 :height 14)
+                      (declare (ignore editor))
+                      (true (tuatara.frontend.fake:fake-frame-showing (second frontends) "o +own"))
+                      (false (tuatara.frontend.fake:fake-frame-showing (first frontends) "o +own")))
+                    (let ((editor (run-window-keys (list (format nil "C-x 5 2 ~aC-x SPC o z" state)) :text "abc")))
+                      (destructuring-bind (first second) (tuatara.command:editor-frames editor)
+                        (is = 0 (tuatara.display:window-point (tuatara.command::frame-window first)))
+                        (is = 3 (tuatara.display:window-point (tuatara.command::frame-window second))))))))
+    (tuatara-user:unbind-key "o z" :map :leader)
+    (tuatara-user:unbind-key "o" :map :leader)))
+
 ;;; Frames taking turns on one terminal
 
 (defun shown-frame-name (f)

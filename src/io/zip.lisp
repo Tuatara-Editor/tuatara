@@ -8,7 +8,9 @@
 ;;;; one, stored or deflated (INFLATE, RFC 1951), each file no larger
 ;;;; unpacked than *ZIP-LARGEST-ENTRY* nor *ZIP-LARGEST-RATIO* times its
 ;;;; packed size, its CRC checked; a locked or damaged archive is refused
-;;;; with a ZIP-ERROR. INFLATE follows Mark Adler's puff.c.
+;;;; with a ZIP-ERROR. ZIP-LOCKED-P tells, from the directory at its end alone,
+;;;; whether an archive of any size holds an entry locked with a password.
+;;;; INFLATE follows Mark Adler's puff.c.
 
 (in-package #:tuatara.io)
 
@@ -115,6 +117,42 @@ locked, which are not read."
                       :data (+ local 30 (octets-integer octets (+ local 26) 2) (octets-integer octets (+ local 28) 2)))
                 entries)
           (setf at (+ at 46 name-length extra comment)))))))
+
+;;; Whether a zip archive is locked, read from its directory at its end
+
+(defparameter *zip-largest-directory* (* 16 1024 1024)
+  "The largest central directory of a zip archive ZIP-LOCKED-P reads (16 MB,
+some 200,000 entries).")
+
+(defun zip-locked-p (fd size)
+  "True when an entry of the zip archive open as file descriptor (FD), of SIZE
+octets, is locked with a password, as the directory at its end says (a zip64
+one too); NIL when none is, and when it has no such directory, or one larger
+than *ZIP-LARGEST-DIRECTORY*. Only the directory is read."
+  (let* ((tail (make-array (min size (+ 22 65535 20)) :element-type '(unsigned-byte 8)))
+         (n (read-fd-at fd tail (- size (length tail))))
+         (end (loop for at downfrom (- n 22) to 0
+                    when (= (octets-integer tail at 4) #x06054b50) return at)))
+    (when end
+      (let ((count (octets-integer tail (+ end 10) 2))
+            (length (octets-integer tail (+ end 12) 4))
+            (start (octets-integer tail (+ end 16) 4)))
+        ;; zip64: where the directory is, in the record the locator just before the end points to
+        (when (and (or (= count #xFFFF) (= length #xFFFFFFFF) (= start #xFFFFFFFF))
+                   (>= end 20) (= (octets-integer tail (- end 20) 4) #x07064b50))
+          (let ((record (make-array 56 :element-type '(unsigned-byte 8)))
+                (at (octets-integer tail (- end 12) 8)))
+            (when (and (<= (+ at 56) size)
+                       (= 56 (read-fd-at fd record at))
+                       (= (octets-integer record 0 4) #x06064b50))
+              (setf length (octets-integer record 40 8) start (octets-integer record 48 8)))))
+        (when (and (<= length *zip-largest-directory*) (<= (+ start length) size))
+          (let ((directory (make-array length :element-type '(unsigned-byte 8))))
+            (read-fd-at fd directory start)
+            (loop for at = 0 then (+ at 46 (octets-integer directory (+ at 28) 2) (octets-integer directory (+ at 30) 2)
+                                     (octets-integer directory (+ at 32) 2))
+                  while (and (<= (+ at 46) length) (= (octets-integer directory at 4) #x02014b50))
+                  thereis (logbitp 0 (octets-integer directory (+ at 8) 2)))))))))
 
 ;;; Inflating, as RFC 1951 says, after Mark Adler's puff
 

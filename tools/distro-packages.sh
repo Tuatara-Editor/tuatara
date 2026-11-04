@@ -6,7 +6,7 @@
 # manager, which also fetches the libraries Tuatara needs (GTK 4, ncurses,
 # OpenSSL's crypto, zstd, the C++ runtime) and offers the programs some of its
 # features run, recommended (enchant for spelling, bubblewrap, ImageMagick,
-# poppler's tools, git, man-db with groff, libnotify) or suggested (GnuPG, xdg-utils, LibreOffice,
+# poppler's tools, git, man-db with groff, libnotify, bsdtar, 7-Zip) or suggested (GnuPG, xdg-utils, LibreOffice,
 # TeX Live): the packages *outside-programs* names (lisp/files/external.lisp),
 # which a test holds the lists here to. All three hold Tuatara as
 # tools/release.sh lays it out, in
@@ -129,7 +129,7 @@ Packager: $packager
 ExclusiveArch: x86_64
 AutoProv: no
 Requires: gtk4 ncurses-libs openssl-libs libzstd libstdc++
-Recommends: enchant2 bubblewrap ImageMagick poppler-utils git-core man-db groff-base libnotify
+Recommends: enchant2 bubblewrap ImageMagick poppler-utils git-core man-db groff-base libnotify bsdtar 7zip
 Suggests: gnupg2 xdg-utils libreoffice-writer libreoffice-calc libreoffice-impress texlive-xetex texlive-luatex
 
 %description
@@ -171,7 +171,7 @@ Architecture: amd64
 Maintainer: $packager
 Installed-Size: $(du -sk "$stage" | cut -f1)
 Depends: libc6 (>= 2.39), libgtk-4-1, libncursesw6, libssl3t64 | libssl3, libzstd1, libstdc++6
-Recommends: libenchant-2-2, bubblewrap, imagemagick, poppler-utils, git, man-db, groff-base, libnotify-bin
+Recommends: libenchant-2-2, bubblewrap, imagemagick, poppler-utils, git, man-db, groff-base, libnotify-bin, libarchive-tools, 7zip
 Suggests: gnupg, xdg-utils, libreoffice-writer, libreoffice-calc, libreoffice-impress, texlive-xetex, texlive-luatex
 Section: editors
 Priority: optional
@@ -213,6 +213,8 @@ optdepends=('enchant: spelling'
             'man-db: manual pages'
             'groff: manual pages'
             'libnotify: notifications told on the desktop'
+            'libarchive: zip, 7z, rar, ISO 9660 and cpio archives'
+            '7zip: encrypted 7z and rar, more zip methods'
             'gnupg: encrypted files'
             'xdg-utils: files opened in the desktop programs'
             'libreoffice-fresh: pages of Office documents'

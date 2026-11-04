@@ -306,9 +306,10 @@ directory, else (one path only) to that name. A list of (FROM . TO)."
 list of the trash, a job (TUATARA.RUNTIME:JOB): VERB, one of *RIMU-VERBS*; PAIRS, each (FROM . TO), TO NIL for a deletion; LEFT, what was
 left alone before it began, as words; DONE, how many are through; FAILED, sentences of what could
 not be done; REPLACED, how many names there went to the trash first;
-DONE-PAIRS, the pairs done; THEN, a function of no arguments called once it
+DONE-PAIRS, the pairs done; LOCKED, the pairs of archives to extract that
+wait for their passwords; THEN, a function of no arguments called once it
 is taken in, or NIL. It stops between files."
-  verb pairs left then (done 0) (failed '()) (replaced 0) (done-pairs '()))
+  verb pairs left then (done 0) (failed '()) (replaced 0) (done-pairs '()) (locked '()))
 
 (setf (documentation 'rimu-operation-p 'function) "True when OBJECT is a RIMU-OPERATION.")
 
@@ -376,11 +377,14 @@ away for a copy, a move or an archive, what is extracted so far kept."
       (ignoring-errors-reported ("waiting for ~a to stop" (sb-thread:thread-name thread))
         (sb-thread:join-thread thread :timeout 5 :default nil)))))
 
-(defun rimu-work (verb pair cancel)
+(defun rimu-work (verb pair cancel &key password)
   "Do VERB to PAIR, (FROM . TO), stopping between files when CANCEL's car
-turns true. An error when not all of it was done: a named pipe, a socket or a
-device left out of a copy is said; a copy stopped or failed half-way is taken
-away, so that no file is left with part of what it should hold."
+turns true; an archive locked is extracted with PASSWORD (ARCHIVE-LOCKED
+signalled without one). Returns what was left alone, as words (the names
+in an archive extracted that were there already). An error when not all of
+it was done: a named pipe, a socket or a device left out of a copy is said; a
+copy stopped or failed half-way is taken away, so that no file is left with
+part of what it should hold."
   (destructuring-bind (from . to) pair
     (let ((skipped '()))
       (flet ((skip (path words) (push (format nil "~a (~a)" (tuatara.io:native-file-name path) words) skipped)))
@@ -396,9 +400,12 @@ away, so that no file is left with part of what it should hold."
                      (if skipped (refuse "~a; left out: ~{~a~^, ~}" e (reverse skipped)) (error e)))))
           (:symlink (tuatara.io:make-symbolic-link (string-right-trim "/" from) to))
           (:hardlink (tuatara.io:make-hard-link (string-right-trim "/" from) to))
-          (:extract (extract-archive from to :cancel cancel))
+          (:extract (return-from rimu-work
+                      (mapcar (lambda (name) (format nil "~a (in ~a)" name (tuatara.io:native-file-name from)))
+                              (nth-value 1 (extract-archive from to :cancel cancel :password password)))))
           (:trash (tuatara.io:trash-path from))
-          (:delete (tuatara.io:delete-tree from :cancel cancel)))))))
+          (:delete (tuatara.io:delete-tree from :cancel cancel)))
+        nil))))
 
 (defun rimu-same-file-p (a b)
   "True when the paths A and B are the same file, as two names of one
@@ -429,16 +436,19 @@ them in one step, or none."
         (push (format nil "~a: ~a" (tuatara.io:native-file-name archive) e) (rimu-operation-failed operation))
         (setf (rimu-operation-done operation) 1)))))
 
-(defun rimu-start-operation (verb pairs list &key replace left then along)
+(defun rimu-start-operation (verb pairs list &key replace left then along passwords)
   "Do VERB to each of PAIRS, (FROM . TO), as a job of LIST, a rimu list or the
 list of the trash (TUATARA.RUNTIME:START-JOB-THREAD), :archive to all of them
 at once (RIMU-ARCHIVE-WORK); with REPLACE, the names
 there first moved to the trash. ALONG, a function of a pair's FROM, gives a
 file to delete with it once it is done, or NIL (a thing's .trashinfo in the
 trash), not counted apart. LEFT, what was left alone, is said when it is
-over; THEN, a function of no arguments, is called then. Nothing is begun
-when one of them would write in an evidence folder (*EVIDENCE-FOLDERS*):
-that is said, and NIL returned."
+over; THEN, a function of no arguments, is called then. PASSWORDS, each
+\(FROM . PASSWORD), open the archives extracted that are locked; they are
+wiped once the job is over, and let go of (LET-GO-OF-SECRET). An archive
+found locked without one waits, and its password is asked for once the job
+is taken in (RIMU-ASK-PASSWORDS). Nothing is begun when one of them would write in
+an evidence folder (*EVIDENCE-FOLDERS*): that is said, and NIL returned."
   (let ((refusal (loop for (from . to) in pairs
                        thereis (or (and (member verb '(:move :trash :delete :hardlink))
                                         (evidence-refusal (rimu-verb-words verb :verb) from))
@@ -451,27 +461,39 @@ that is said, and NIL returned."
   (let ((operation (make-rimu-operation verb pairs list left then)))
     (tuatara.runtime:start-job-thread
      operation (lambda (operation)
-                 (if (eq verb :archive)
-                     (rimu-archive-work operation pairs replace)
-                     (dolist (pair pairs)
-                       (when (car (rimu-operation-cancel operation)) (return))
-                       (handler-case
-                           (reporting-errors ("~(~a~) ~a" verb (car pair))
-                             (when (and (cdr pair) (rimu-same-file-p (car pair) (cdr pair)))
-                               (refuse "it is there already, the very same file"))
-                             (when (and replace (cdr pair) (tuatara.io:path-stamp (cdr pair) :follow nil))
-                               (tuatara.io:trash-path (cdr pair))
-                               (incf (rimu-operation-replaced operation)))
-                             (rimu-work verb pair (rimu-operation-cancel operation))
-                             (let ((with (and along (funcall along (car pair)))))
-                               (when (and with (tuatara.io:path-stamp with :follow nil))
-                                 (tuatara.io:remove-file with)))
-                             (push pair (rimu-operation-done-pairs operation)))
-                         (serious-condition (e) (push (format nil "~a: ~a" (tuatara.io:native-file-name (car pair)) e)
-                                                      (rimu-operation-failed operation))))
-                       (incf (rimu-operation-done operation))
-                       (let ((wake (rimu-operation-wake operation)))
-                         (when wake (ignoring-errors-reported ("waking the editor") (funcall wake)))))))
+                 (let ((*secret-at-hand* (or *secret-at-hand* (and passwords t))))
+                   (unwind-protect
+                       (if (eq verb :archive)
+                           (rimu-archive-work operation pairs replace)
+                           (dolist (pair pairs)
+                             (when (car (rimu-operation-cancel operation)) (return))
+                             (handler-case
+                                 (reporting-errors ("~(~a~) ~a" verb (car pair))
+                                   (when (and (cdr pair) (rimu-same-file-p (car pair) (cdr pair)))
+                                     (refuse "it is there already, the very same file"))
+                                   (when (and replace (cdr pair) (tuatara.io:path-stamp (cdr pair) :follow nil))
+                                     (tuatara.io:trash-path (cdr pair))
+                                     (incf (rimu-operation-replaced operation)))
+                                   (let ((kept (rimu-work verb pair (rimu-operation-cancel operation)
+                                                          :password (cdr (assoc (car pair) passwords
+                                                                                :test #'string=)))))
+                                     (when kept
+                                       (setf (rimu-operation-left operation)
+                                             (append (rimu-operation-left operation) kept))))
+                                   (let ((with (and along (funcall along (car pair)))))
+                                     (when (and with (tuatara.io:path-stamp with :follow nil))
+                                       (tuatara.io:remove-file with)))
+                                   (push pair (rimu-operation-done-pairs operation)))
+                               (archive-locked () (push pair (rimu-operation-locked operation)))
+                               (serious-condition (e)
+                                 (push (format nil "~a: ~a" (tuatara.io:native-file-name (car pair)) e)
+                                       (rimu-operation-failed operation))))
+                             (incf (rimu-operation-done operation))
+                             (let ((wake (rimu-operation-wake operation)))
+                               (when wake (ignoring-errors-reported ("waking the editor") (funcall wake))))))
+                     (when passwords
+                       (dolist (password passwords) (wipe-string (cdr password)))
+                       (let-go-of-secret)))))
      :name "tuatara rimu operation" :details (format nil "~:d file~:p" (length pairs)))
     (message "~a ~d...~@[ (~a)~]" (rimu-operation-words operation) (length pairs) (rimu-target verb pairs))
     operation))
@@ -500,7 +522,8 @@ marks of what went, and read the lists touched again."
          (done (rimu-operation-done-pairs operation))
          (failed (reverse (rimu-operation-failed operation)))
          (list (rimu-operation-buffer operation))
-         (count (- (rimu-operation-done operation) (length failed)))
+         (locked (reverse (rimu-operation-locked operation)))
+         (count (- (rimu-operation-done operation) (length failed) (length locked)))
          (target (rimu-target (rimu-operation-verb operation) pairs)))
     (when (eq (rimu-operation-verb operation) :move)
       (follow-moved-paths done))
@@ -524,10 +547,32 @@ marks of what went, and read the lists touched again."
                         (rimu-counted (rimu-operation-verb operation) count) target (and (plusp (rimu-operation-replaced operation)) (rimu-operation-replaced operation))
                         (rimu-operation-left operation) failed)))
       (ecase (rimu-operation-status operation)
-        (:done (message "~a" said))
+        ;; nothing but archives waiting for their passwords: those are asked for at once
+        (:done (unless (and locked (zerop count) (null failed)) (message "~a" said)))
         ;; what was done before it stopped, or failed, is said too
         (:stopped (message "Stopped: ~(~a~)~a" (subseq said 0 1) (subseq said 1)))
-        (:failed (message "~a; ~(~a~)~a" (tuatara.runtime:job-ending-words operation) (subseq said 0 1) (subseq said 1)))))))
+        (:failed (message "~a; ~(~a~)~a" (tuatara.runtime:job-ending-words operation) (subseq said 0 1) (subseq said 1)))))
+    (when (and locked (eq (rimu-operation-status operation) :done))
+      (rimu-ask-passwords locked list))))
+
+(defun rimu-ask-passwords (pairs list)
+  "Ask for the password of each archive of PAIRS, (ARCHIVE . DIRECTORY), found
+locked as they were extracted for LIST, typed hidden, then extract them with
+those (RIMU-START-OPERATION); held as secrets meanwhile (HOLD-SECRET), and
+wiped when nothing is begun."
+  (let ((passwords '()) (started nil) (*secret-at-hand* t))
+    (hold-secret)
+    (unwind-protect
+         (progn (dolist (pair pairs)
+                  ;; asked unasked: keys typed before it shows never become the password
+                  (push (cons (car pair) (read-password (format nil "Password for ~a: "
+                                                                (tuatara.io:native-file-name (car pair)))
+                                                        :fresh t))
+                        passwords))
+                (setf started (rimu-start-operation :extract pairs list :passwords passwords)))
+      (unless started
+        (dolist (password passwords) (wipe-string (cdr password)))
+        (let-go-of-secret)))))
 
 ;;; The operations
 
@@ -678,7 +723,7 @@ only, and no directory. Names already there are replaced only when you say
 so, the old going to the trash."
   (rimu-place :hardlink))
 
-(define-command rimu-archive ()
+(define-command rimu-archive-create ()
   "Pack the marked entries, from every directory they are marked in, or the
 one on the line, into one tar archive asked for, navigating to it as
 \\[find-file] does: the directory of the other list beside this one offered
@@ -704,7 +749,7 @@ replaced only when you say so, the old going to the trash."
                            (tuatara.io:path-join target (if (string= name ".tar.gz") "archive.tar.gz" name))
                            target)))
           (cond ((null target) (message "Nowhere given: nothing archived"))
-                ((null (archive-kind-of-name target))
+                ((null (archive-kind-of-name target :made t))
                  (message "Name the archive .tar, .tar.gz, .tar.bz2, .tar.xz or .tar.zst: nothing archived"))
                 ((some (lambda (path) (tuatara.io:path-within-p target path)) paths)
                  (message "~a would be inside what it holds: nothing archived" (abbreviated-path target)))
@@ -739,15 +784,24 @@ the background, shut in the sandbox."
                    (compare-paths (first paths) other)
                    (message "Nothing to compare with")))))))
 
-(define-command rimu-extract ()
-  "Extract the tar archives marked, from every directory they are marked in,
-or the one on the line, into a directory asked for, navigating to it as
+(define-command rimu-archive-extract ()
+  "Extract the archives marked, from every directory they are marked in, or
+the one on the line, into a directory asked for, navigating to it as
 \\[find-file] does, made when it is not there: for one archive, a directory of
-its name beside it offered first. gzip, bzip2, xz and zstd archives are told
-by what they hold, whatever their names. The files extracted are yours, none
-written outside that directory whatever names and links an archive holds, and
-those of a name there already left as they are. tar does it in the
-background, shut in the sandbox."
+its name beside it offered first. A tar archive, plain or compressed with
+gzip, bzip2, xz or zstd, a zip, 7z, rar, ISO 9660 or cpio one, each told by
+what it holds, whatever its name; a file of none of these kinds is refused,
+said so, and an archive held inside another is left as it is. An archive
+locked with a password asks for it once found so, typed hidden; a wrong one
+is said and extracts nothing. Zip, 7z and rar archives are extracted by
+7-Zip where it is installed, which opens them locked too; else by bsdtar,
+which opens only zip ones locked. The files extracted are yours, their modes
+as your umask has them and yours to change, move and delete, none setuid,
+none written outside that directory whatever names and links an archive
+holds, no named pipe or device made, and those of a name there already left
+as they are, said so. Extracting stops before the drive has less than
+*archive-free-reserve* free, or room for too few more files. tar, 7-Zip or
+bsdtar does it in the background, shut in the sandbox."
   (let* ((buffer (current-buffer))
          (paths (or (rimu-chosen-paths buffer :files-only t)
                     (refuse "~a" (rimu-nothing-words buffer "extract" :files-only t
@@ -1123,7 +1177,8 @@ list shows it, point on it."
   (define-keys *rimu-keymap* '(("m" list-mark-entry) ("u" list-unmark-entry) ("U" list-unmark-all) ("t" list-toggle-marks)
                                ("d" list-mark-for-deletion) ("x" list-execute) ("D" list-delete-marked)
                                ("C" rimu-copy) ("R" rimu-rename) ("M" rimu-move) ("Y" rimu-symlink) ("L" rimu-hardlink)
-                               ("c" rimu-archive) ("Z" rimu-extract) ("C-c e" list-archive) ("=" rimu-diff)
+                               ("c" rimu-archive-create) ("Z" rimu-archive-extract) ("C-c e" rimu-archive-list)
+                               ("=" rimu-diff)
                                ("+" rimu-make-directory) ("K" rimu-take-out-lines)
                                ("a" rimu-touch) ("A" rimu-make-formatted-file) ("C-x C-q" rimu-edit-names)
                                ("g t" rimu-trash) ("g w" rimu-wipe-files) ("C-c f m" rimu-mark-master)))

@@ -59,19 +59,29 @@ may take, or NIL."
 (sb-ext:defglobal **stop-watch-wake** (sb-thread:make-semaphore :name "tuatara stoppable work")
   "Signalled when there is work for the watching thread to watch.")
 
+(defun stopped-cell ()
+  "The cancel of the outermost work this thread does that has been asked to
+stop (STOP-WORK), or NIL."
+  (let ((outermost nil))
+    (dolist (cell *stop-cells*)
+      (when (car cell) (setf outermost cell)))
+    outermost))
+
 (defun check-stopped ()
   "Leave the work this thread does as soon as any of it has been asked to stop
 \(STOP-WORK): to the outermost STOPPABLE-WORK whose cancel's car is true. Else
 nothing."
-  (let ((outermost nil))
-    (dolist (cell *stop-cells*)
-      (when (car cell) (setf outermost cell)))
+  (let ((outermost (stopped-cell)))
     (when outermost (throw outermost (car outermost)))))
 
 (defun stop-stoppable-call ()
   "What an interrupted thread does (STOP-WORK): leave its work when it is in a
-stoppable call of work asked to stop."
-  (when *stoppable-call* (check-stopped)))
+stoppable call of work asked to stop. The call is left once: interrupted
+again on the way out, the thread goes on leaving it."
+  (let ((outermost (and *stoppable-call* (stopped-cell))))
+    (when outermost
+      (setf *stoppable-call* nil)
+      (throw outermost (car outermost)))))
 
 (defun call-stoppable (function)
   "Call FUNCTION as STOPPABLE does, within work that can be stopped."
@@ -116,13 +126,31 @@ nothing outside stoppable work."
         (unless (stop-entry-threads entry)
           (remhash cancel **stop-entries**))))))
 
+(defvar *around-long-work* '()
+  "Functions of one argument, a function, each calling it as work that may take
+long and returning what it returns, the first outermost: around the work of a
+job (START-JOB-THREAD) and of a background result (START-BACKGROUND-RESULT).
+The text layer has each read large files through once
+\(TUATARA.TEXT:WITH-READ-PASS).")
+
+(defun call-as-long-work (function)
+  "Call FUNCTION as work that may take long, within each of *AROUND-LONG-WORK*,
+and return what it returns."
+  (labels ((within (arounds)
+             (if arounds
+                 (funcall (first arounds) (lambda () (within (rest arounds))))
+                 (funcall function))))
+    (within *around-long-work*)))
+
 (defun call-stoppable-work (cancel slow function)
   "Call FUNCTION as STOPPABLE-WORK does."
   (enter-stoppable-work cancel slow)
   (unwind-protect
        (let ((values nil) (done nil))
          (let ((reason (catch cancel
+                         ;; its calls its own, even inside a stoppable call of other work
                          (let ((*stop-cells* (cons cancel *stop-cells*))
+                               (*stoppable-call* nil)
                                (*stoppable-calls* (or *stoppable-calls* (list 0))))
                            (setf values (multiple-value-list (funcall function)) done t)))))
            (if done (values-list values) (values nil reason))))

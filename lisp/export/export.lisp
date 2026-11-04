@@ -5,7 +5,7 @@
 ;;;; it, as Org's own export makes it; org-export-latex-pdf-buffer shows the PDF
 ;;;; too, beside the file when the screen is wide enough, org-export-latex-pdf-xdg
 ;;;; opens it in the desktop's program, and the -enhanced ones add Tuatara's own
-;;;; improvements. In a LaTeX buffer latex-compile-pdf, -buffer and -xdg do the
+;;;; improvements. In a LaTeX buffer export-latex-compile-pdf, -buffer and -xdg do the
 ;;;; same for the LaTeX file. An Org buffer is first written as LaTeX, as it is
 ;;;; in the buffer, by ORG-LATEX-DOCUMENT; a LaTeX file is saved first. The
 ;;;; LaTeX is then run through the first of *LATEX-ENGINES*, xelatex as
@@ -1095,7 +1095,7 @@ makes its PDF from. No LaTeX program is needed for it."
 as \\[org-export-latex-pdf-xdg] opens its PDF."
   (start-latex-export :outside :enhanced t))
 
-(define-command latex-compile-pdf ()
+(define-command export-latex-compile-pdf ()
   "Make the LaTeX file of the current buffer into a PDF beside it, in the
 background, saving it first when it has changes: by xelatex, or by lualatex
 when xelatex fails (*latex-engines*), or first by the one its first lines
@@ -1105,26 +1105,26 @@ apart, so the directory gets only the .pdf. When no program makes it,
 *LaTeX errors* shows what they said, each error at its line,
 \\<latex-errors-mode>\\[list-visit] there showing that line. A view of the PDF
 already open is read again; the PDF is not shown otherwise:
-\\[latex-compile-pdf-buffer] shows it, \\[latex-compile-pdf-xdg] opens it in the
+\\[export-latex-compile-pdf-buffer] shows it, \\[export-latex-compile-pdf-xdg] opens it in the
 desktop's program."
   (start-latex-export :file))
 
-(define-command latex-compile-pdf-buffer ()
+(define-command export-latex-compile-pdf-buffer ()
   "Make the LaTeX file of the current buffer into a PDF beside it, as
-\\[latex-compile-pdf] does, and show the PDF: down the right side of the
+\\[export-latex-compile-pdf] does, and show the PDF: down the right side of the
 screen when it is wide enough (*split-width-threshold* columns), else alone
 on it. The focus stays in the file, and making it again reads the PDF shown
 again, at the same page. Where it shows is the rule for :exported buffers."
   (start-latex-export :view))
 
-(define-command latex-compile-pdf-xdg ()
+(define-command export-latex-compile-pdf-xdg ()
   "Make the LaTeX file of the current buffer into a PDF beside it, as
-\\[latex-compile-pdf] does, and open the PDF in the desktop's program for
+\\[export-latex-compile-pdf] does, and open the PDF in the desktop's program for
 PDFs (xdg-open), or the one *open-externally-programs* gives
 \"application/pdf\", asking first unless *open-externally-ask* is NIL."
   (start-latex-export :outside))
 
-(define-command copy-latex-template ()
+(define-command export-latex-template-copy ()
   "Copy a built-in template of the enhanced export, asked for with completion
 \(article, its own look, or org, the plain export's document), into your
 own templates, ~/.config/tuatara/latex-templates/NAME.tex, and visit it there
@@ -1238,7 +1238,8 @@ and marking of redactions (INSTALL-REDACTIONS)."
   (entry-list-keys 'latex-errors-mode "*LaTeX errors*")
   (commands-for-mode 'org-mode "Org files" 'org-export-latex 'org-export-latex-enhanced 'org-export-latex-pdf 'org-export-latex-pdf-buffer 'org-export-latex-pdf-xdg
                      'org-export-latex-pdf-enhanced 'org-export-latex-pdf-enhanced-buffer 'org-export-latex-pdf-enhanced-xdg)
-  (commands-for-mode 'latex-mode "LaTeX files" 'latex-compile-pdf 'latex-compile-pdf-buffer 'latex-compile-pdf-xdg)
+  (commands-for-mode 'latex-mode "LaTeX files" 'export-latex-compile-pdf 'export-latex-compile-pdf-buffer
+                     'export-latex-compile-pdf-xdg)
   (commands-for-mode 'org-mode "Org files" 'org-insert-export-drawer 'org-export-docx 'org-export-docx-xdg)
   (place-buffers :exported :right-or-alone)
   (install-redactions))

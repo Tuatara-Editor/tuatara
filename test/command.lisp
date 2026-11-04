@@ -459,6 +459,41 @@ TEXTS with the mode line's sign of work, P, lit in :mode-line-sign."
         (true (find 'tuatara.defaults::find-file offered :key #'tuatara.command:candidate-result))))
     (is = 0 said)))
 
+(tuatara.command:define-command test-placed-nowhere ()
+  "Do nothing, for the tests: a command made for places that are not there."
+  nil)
+
+(defun test-failing-place (buffer)
+  "Fail, for the tests: a place of commands whose test fails for BUFFER."
+  (declare (ignore buffer))
+  (error "The place could not be told."))
+
+(define-test (command broken-places-contained)
+  ;; a command made for a mode that is gone (its name left in no Lisp package), for a test
+  ;; that is not there or for one that fails runs nowhere, each said once in the debug log,
+  ;; and M-x still offers every other command
+  (let ((places (list (make-symbol "GONE-MODE") 'test-no-such-place 'test-failing-place)))
+    (dolist (place places)
+      (tuatara.defaults::commands-for-mode place "a place that is not there" 'test-placed-nowhere))
+    (unwind-protect
+         (multiple-value-bind (f editor) (run-keys "" :text "")
+           (declare (ignore f))
+           (loop while (sb-concurrency:dequeue tuatara.runtime:*debug-reports*))
+           (let ((tuatara.command:*editor* editor)
+                 (tuatara.runtime:*debug-on* t))
+             (dotimes (i 2)
+               (let ((offered (mapcar #'tuatara.command:candidate-result (tuatara.defaults::command-candidates))))
+                 (true (member 'tuatara.defaults::find-file offered))
+                 (false (member 'test-placed-nowhere offered))))
+             (is eq :elsewhere (tuatara.defaults::command-refusal-reason 'test-placed-nowhere))
+             (let ((texts (loop for report = (sb-concurrency:dequeue tuatara.runtime:*debug-reports*)
+                                while report collect (princ-to-string (fourth report)))))
+               (dolist (name '("gone-mode failed" "test-no-such-place failed" "test-failing-place failed"))
+                 (is = 1 (count-if (lambda (text) (search name text)) texts) "~a in ~s" name texts)))))
+      (remhash 'test-placed-nowhere tuatara.defaults::*mode-commands*)
+      (dolist (place places)
+        (remhash place tuatara.defaults::*broken-command-places*)))))
+
 (define-test (command odd-places)
   ;; the minibuffer's commands outside it say where they work; . repeats a command run with M-x
   (let ((f (run-keys "M-x m i n i b u f f e r - k i l l - l i n e RET" :text "abc" :width 120 :height 8)))

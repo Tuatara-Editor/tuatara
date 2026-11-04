@@ -39,7 +39,7 @@ text, a rectangle or a number in, C-x r j goes back to a place, C-x r + adds, C-
     (run-keys "C-SPC M-f C-x r s a M-f C-SPC M-b C-x r + a" :text "one two")
     (is string= "onetwo" (register-value-of #\a))
     ;; the second word before the first
-    (run-keys "C-SPC M-f C-x r s a M-f C-SPC M-b M-x p r e p e n d - t o - r e g i s t e r RET a" :text "one two")
+    (run-keys "C-SPC M-f C-x r s a M-f C-SPC M-b M-x r e g i s t e r - p r e p e n d RET a" :text "one two")
     (is string= "twoone" (register-value-of #\a))
     ;; no text there: said so, nothing added
     (multiple-value-bind (f editor) (run-keys "C-SPC M-f C-x r + b" :text "one two")

@@ -45,7 +45,7 @@
   ;; (bind-key "m l" 'org-store-link :map :leader :mode '(org-mode markdown-mode))
 
   ;; The leader's keys after , in NORMAL state, the lists and the calendar, SPC
-  ;; freed. Not set: "SPC".
+  ;; freed; C-x SPC opens them everywhere. Not set: "SPC".
   ;; (setf *leader-key* ",")
 
   ;; SPC t n, called "line numbers" in the key hints.
@@ -69,9 +69,10 @@
   ;; A key no longer bound.
   ;; (unbind-key "C-c t")
 
-  ;; The leader, SPC in NORMAL state, is yours alone and empty until you give it
-  ;; keys: take out the ";; " before those you want. Every command also has a key
-  ;; of its own under C-x, C-c or M-g (C-h f names it).
+  ;; The leader, SPC in NORMAL state and C-x SPC in every buffer and state (also
+  ;; with modal editing off), is yours alone and empty until you give it keys:
+  ;; take out the ";; " before those you want. Every command also has a key of
+  ;; its own under C-x, C-c or M-g (C-h f names it).
   ;; (bind-key "," 'switch-to-buffer :map :leader)
   ;; (bind-key "b" 'switch-other-buffer :map :leader)
   ;; (bind-key "I" 'buffers :map :leader)
@@ -734,7 +735,7 @@
   ;; and puts it back. Not set: nil: every save a new file, whole.
   ;; (setf *save-in-place* t)
 
-  ;; C-x i (insert-note-template) reads other files of up to 64 MB. Not set: 16
+  ;; C-x i (insert-formatted-note-template) reads other files of up to 64 MB. Not set: 16
   ;; MB.
   ;; (setf *insert-file-limit* (* 64 1024 1024))
 
@@ -1173,7 +1174,7 @@
   ;;       '((:agenda-files . 3) (:this-file . 3)
   ;;         ("~/notes/projects.org" . 2)))
 
-  ;; Your capture templates are there, a file each; M-x copy-capture-template
+  ;; Your capture templates are there, a file each; M-x org-capture-template-copy
   ;; copies one of Tuatara's (t TODO, n note, j journal, m meeting). Not set:
   ;; nil: capture-templates/ in the configuration folder,
   ;; ~/.config/tuatara/capture-templates/.
@@ -1196,7 +1197,7 @@
 
   ;;; Exporting: PDFs of Org and LaTeX files
   ;; M-x org-export-latex-pdf and the -buffer, -xdg, -enhanced ones;
-  ;; latex-compile-pdf.
+  ;; export-latex-compile-pdf.
 
   ;; Lualatex first, xelatex when it fails. Not set: '("xelatex" "lualatex"); full
   ;; paths for programs elsewhere.
@@ -1213,7 +1214,7 @@
   ;; Mono ...
   ;; (setf *latex-mono-font* "JetBrains Mono")
 
-  ;; Commands hiding their argument, for M-x check-redactions. Not set: '("R" "D"
+  ;; Commands hiding their argument, for M-x export-check-redactions. Not set: '("R" "D"
   ;; "redact").
   ;; (setf *latex-redaction-commands* '("R" "D" "anon"))
 
@@ -1506,12 +1507,12 @@
   ;; help no SSD or btrfs.
   ;; (setf *wipe-passes* 3)
 
-  ;; tar packing or extracting an archive (rimu's c and Z) is stopped after an
-  ;; hour. Not set: a day.
+  ;; tar, 7-Zip or bsdtar packing, listing or extracting an archive (rimu's c,
+  ;; C-c e and Z) is stopped after an hour. Not set: a day.
   ;; (setf *archive-seconds* (* 60 60))
 
-  ;; Unpacking an archive (Z in rimu) stops before the drive has less than
-  ;; 10 GB free. Not set: 1 GB.
+  ;; Unpacking an archive (Z in rimu: tar, zip, 7z, rar, ISO 9660, cpio) stops
+  ;; before the drive has less than 10 GB free. Not set: 1 GB.
   ;; (setf *archive-free-reserve* (* 10 1024 1024 1024))
 
   ;; What an archive holds (C-c e in rimu) is shown up to 16 MB of its list.

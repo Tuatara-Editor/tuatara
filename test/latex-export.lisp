@@ -295,7 +295,7 @@ is not offered by M-x either; NIL when it runs there."
       (let ((file (merge-pathnames "notes.txt" dir)))
         (alexandria:write-string-into-file "Text" file)
         (is equal "org-export-latex-pdf works in Org files only" (refusal-in file 'tuatara.export::org-export-latex-pdf))
-        (is equal "latex-compile-pdf works in LaTeX files only" (refusal-in file 'tuatara.export::latex-compile-pdf)))
+        (is equal "export-latex-compile-pdf works in LaTeX files only" (refusal-in file 'tuatara.export::export-latex-compile-pdf)))
       ;; a file opened safely: nothing run
       (let ((file (merge-pathnames "evidence.org" dir))
             (tuatara-user:*safe-directories* (list (namestring dir))))
@@ -307,7 +307,7 @@ is not offered by M-x either; NIL when it runs there."
       ;; a LaTeX file with changes: saved first, then made into a PDF from what was saved
       (let ((file (merge-pathnames "paper.tex" dir)))
         (alexandria:write-string-into-file "\\documentclass{article}" file)
-        (let ((f (export-session file (list "g e o x C-g" (export-command "latex-compile-pdf")))))
+        (let ((f (export-session file (list "g e o x C-g" (export-command "export-latex-compile-pdf")))))
           (true (tuatara.frontend.fake:fake-frame-showing f "Compiling paper.tex to PDF..."))
           (true (tuatara.frontend.fake:fake-frame-showing f "paper.pdf (xelatex)"))
           (true (search "x" (alexandria:read-file-into-string file) :start2 20))
@@ -347,7 +347,7 @@ is not offered by M-x either; NIL when it runs there."
         (alexandria:write-string-into-file "\\documentclass{article}" file)
         (is equal "org-export-latex-pdf-enhanced works in Org files only"
             (refusal-in file 'tuatara.export::org-export-latex-pdf-enhanced))
-        (is equal nil (refusal-in file 'tuatara.export::latex-compile-pdf))
+        (is equal nil (refusal-in file 'tuatara.export::export-latex-compile-pdf))
         (false (probe-file (merge-pathnames "paper.pdf" dir)))))))
 
 (define-test (latex-export styles)
@@ -552,7 +552,7 @@ is not offered by M-x either; NIL when it runs there."
     (true (search "\\MakeUppercase{Report}" latex))
     (true (search "Title & Report R-1" latex))
     (true (search "\\contentsline{section}{Mock Report}" latex)))
-  ;; M-x copy-latex-template: a built-in template copied into your own, and visited
+  ;; M-x export-latex-template-copy: a built-in template copied into your own, and visited
   (with-test-directory (dir)
     (let ((old (uiop:getenv "XDG_CONFIG_HOME"))
           (file (merge-pathnames "note.org" dir)))
@@ -560,7 +560,7 @@ is not offered by M-x either; NIL when it runs there."
       (unwind-protect
            (progn
              (sb-posix:setenv "XDG_CONFIG_HOME" (namestring dir) 1)
-             (multiple-value-bind (f editor) (export-session file "M-x c o p y - l a t e x - t e m p l a t e RET a r t i c l e RET" :width 200)
+             (multiple-value-bind (f editor) (export-session file "M-x e x p o r t - l a t e x - t e m p l a t e - c o p y RET a r t i c l e RET" :width 200)
                (let ((copy (merge-pathnames "tuatara/latex-templates/article.tex" dir)))
                  (true (probe-file copy))
                  (is string= (tuatara.defaults::find-latex-template "article" :built-in t) (alexandria:read-file-into-string copy))
@@ -570,7 +570,7 @@ is not offered by M-x either; NIL when it runs there."
                  (alexandria:write-string-into-file "mine" copy :if-exists :supersede)
                  (forget-file-buffers)
                  (true (tuatara.frontend.fake:fake-frame-showing
-                        (export-session file "M-x c o p y - l a t e x - t e m p l a t e RET a r t i c l e RET" :width 200)
+                        (export-session file "M-x e x p o r t - l a t e x - t e m p l a t e - c o p y RET a r t i c l e RET" :width 200)
                         "is yours already"))
                  (is string= "mine" (alexandria:read-file-into-string copy)))))
         (if old (sb-posix:setenv "XDG_CONFIG_HOME" old 1) (sb-posix:unsetenv "XDG_CONFIG_HOME"))))))
@@ -749,9 +749,9 @@ is not offered by M-x either; NIL when it runs there."
     (let ((file (merge-pathnames "leak.org" dir))
           (tuatara-user:*latex-engines* (list (stand-in-latex dir "xelatex"))))
       (alexandria:write-string-into-file (format nil "* Survey~%Subject {{{redact(Bo Raglan)}}}.~%Later Bo Raglan wrote.~%") file)
-      ;; M-x check-redactions: each place listed, n going to it, RET showing it
+      ;; M-x export-check-redactions: each place listed, n going to it, RET showing it
       (multiple-value-bind (f editor)
-          (export-session file (list (export-command "check-redactions")
+          (export-session file (list (export-command "export-check-redactions")
                                      (lambda () (tuatara.defaults::pop-to-buffer (tuatara.buffer:find-buffer "*Redactions*")))
                                      "n RET")
                           :width 200)
@@ -1557,7 +1557,7 @@ Shut in.
           (flet ((said ()
                    (alexandria:read-file-into-string
                     (concatenate 'string (tuatara.export::latex-build-directory tex "lualatex") "probe.log"))))
-            (let ((f (export-session tex (export-command "latex-compile-pdf") :width 200)))
+            (let ((f (export-session tex (export-command "export-latex-compile-pdf") :width 200)))
               (true (tuatara.frontend.fake:fake-frame-showing f "probe.pdf (lualatex)"))
               (false (tuatara.frontend.fake:fake-frame-showing f "without the sandbox")))
             (true (probe-file (merge-pathnames "probe.pdf" folder)))
@@ -1571,11 +1571,11 @@ Shut in.
             ;; file outside read, as LaTeX alone allows
             (delete-file (merge-pathnames "probe.pdf" folder))
             (let ((tuatara-user:*sandbox-program* nil))
-              (let ((f (export-session tex (list (export-command "latex-compile-pdf") "n RET") :width 200)))
+              (let ((f (export-session tex (list (export-command "export-latex-compile-pdf") "n RET") :width 200)))
                 (true (tuatara.frontend.fake:fake-frame-showing f "LaTeX would run without the sandbox (turned off"))
                 (true (tuatara.frontend.fake:fake-frame-showing f "Not exported: LaTeX runs only shut in the sandbox unless you say yes")))
               (false (probe-file (merge-pathnames "probe.pdf" folder)))
-              (let ((f (export-session tex (list (export-command "latex-compile-pdf") "y RET") :width 200)))
+              (let ((f (export-session tex (list (export-command "export-latex-compile-pdf") "y RET") :width 200)))
                 (true (tuatara.frontend.fake:fake-frame-showing f "LaTeX ran without the sandbox (turned off"))))
             (true (probe-file (merge-pathnames "probe.pdf" folder)))
             (false (probe-file (merge-pathnames "written.txt" folder)))
@@ -1629,7 +1629,7 @@ Shut in.
           (alexandria:write-string-into-file
            (format nil "\\documentclass{article}~%\\usepackage{graphicx}~%\\begin{document}~%\\includegraphics[width=1cm]{~a}~%\\end{document}~%" logo)
            tex :if-exists :supersede)
-          (let ((f (export-session tex (export-command "latex-compile-pdf") :width 200)))
+          (let ((f (export-session tex (export-command "export-latex-compile-pdf") :width 200)))
             (true (tuatara.frontend.fake:fake-frame-showing f "report.pdf (lualatex)")))
           (true (probe-file (merge-pathnames "report.pdf" folder))))))))
 

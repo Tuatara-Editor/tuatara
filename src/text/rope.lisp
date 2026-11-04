@@ -107,6 +107,26 @@ summing their counts; unknown counts in any child make the branch's unknown."
 
 ;;; Piece access: the content of a leaf or span
 
+(declaim (inline span-sap))
+(defun span-sap (span start end)
+  "The pointer to SPAN's mapped octets, which START below END of its content
+are read through at the span's offset (SPAN-OFFSET) on: its mapping checked
+still mapped (CHECK-MAPPING) and the reading noted (NOTE-READ), unless,
+outside a pass, it lies where a window reads or was asked about last, as
+nearly every read for the screen does: that costs a few comparisons."
+  (declare (type fixnum start end))
+  (let* ((mapping (span-mapping span))
+         (start (+ (span-offset span) start))
+         (end (+ (span-offset span) end)))
+    (declare (type fixnum start end))
+    (check-mapping mapping)
+    (unless (and (null *read-pass*)
+                 (let ((wanted (mapping-wanted mapping)) (asked (mapping-asked mapping)))
+                   (or (and (<= (the fixnum (car wanted)) start) (<= end (the fixnum (cdr wanted))))
+                       (and (<= (the fixnum (car asked)) start) (<= end (the fixnum (cdr asked)))))))
+      (note-read mapping start end))
+    (mapping-sap mapping)))
+
 (defun piece-copy (node start end out out-start)
   "Copy octets START below END of NODE's content (a leaf or span) into OUT at OUT-START."
   (declare (type fixnum start end out-start) (type octets out))
@@ -114,10 +134,9 @@ summing their counts; unknown counts in any child make the branch's unknown."
     (leaf (replace out (leaf-octets node) :start1 out-start
                                           :start2 (+ (leaf-start node) start)
                                           :end2 (+ (leaf-start node) end)))
-    (span (let ((mapping (span-mapping node)))
-            (check-mapping mapping)
+    (span (let ((sap (span-sap node start end)))
             (sb-sys:with-pinned-objects (out)
-              (sb-kernel:system-area-ub8-copy (mapping-sap mapping) (+ (span-offset node) start)
+              (sb-kernel:system-area-ub8-copy sap (+ (span-offset node) start)
                                               (sb-sys:vector-sap out) out-start
                                               (- end start))))))
   out)
@@ -125,8 +144,8 @@ summing their counts; unknown counts in any child make the branch's unknown."
 (defmacro with-piece-sap ((sap base) node &body body)
   "Run BODY with SAP pointing at memory holding NODE's content (a leaf's or a
 span's) from offset BASE, nothing copied: a leaf's octets pinned meanwhile, a
-span's mapping checked first."
-  (let ((n (gensym "NODE")) (octets (gensym "OCTETS")) (mapping (gensym "MAPPING")))
+span read through SPAN-SAP."
+  (let ((n (gensym "NODE")) (octets (gensym "OCTETS")))
     `(let ((,n ,node))
        (etypecase ,n
          (leaf (let ((,octets (leaf-octets ,n)))
@@ -134,11 +153,9 @@ span's mapping checked first."
                    (let ((,sap (sb-sys:vector-sap ,octets)) (,base (leaf-start ,n)))
                      (declare (type sb-sys:system-area-pointer ,sap) (type fixnum ,base))
                      ,@body))))
-         (span (let ((,mapping (span-mapping ,n)))
-                 (check-mapping ,mapping)
-                 (let ((,sap (mapping-sap ,mapping)) (,base (span-offset ,n)))
-                   (declare (type sb-sys:system-area-pointer ,sap) (type fixnum ,base))
-                   ,@body)))))))
+         (span (let ((,sap (span-sap ,n 0 (node-bytes ,n))) (,base (span-offset ,n)))
+                 (declare (type sb-sys:system-area-pointer ,sap) (type fixnum ,base))
+                 ,@body))))))
 
 (defun piece-units-octets (node count utf16)
   "How many octets of NODE's content its first COUNT characters take, or with
@@ -217,9 +234,7 @@ newlines and raw bytes."
   (declare (type fixnum start end))
   (etypecase node
     (leaf (summarise (leaf-octets node) (+ (leaf-start node) start) (+ (leaf-start node) end)))
-    (span (let ((mapping (span-mapping node)))
-            (check-mapping mapping)
-            (summarise-sap (mapping-sap mapping) (+ (span-offset node) start) (+ (span-offset node) end))))))
+    (span (summarise-sap (span-sap node start end) (+ (span-offset node) start) (+ (span-offset node) end)))))
 
 (defun piece-newlines (node start end)
   "The line ends (LINE-END-OCTET-P) from START below END of NODE's content,
@@ -234,9 +249,9 @@ counted already gives its count when the range is all of it."
                 (sb-sys:with-pinned-objects (octets)
                   (newlines-sap (sb-sys:vector-sap octets) (+ base start) (+ base end) (+ base (node-bytes node))
                                 (if (node-indexed-p node) (plusp (node-returns node)) :look)))))
-        (span (let ((mapping (span-mapping node)) (base (span-offset node)))
-                (check-mapping mapping)
-                (newlines-sap (mapping-sap mapping) (+ base start) (+ base end) (+ base (node-bytes node))
+        (span (let ((base (span-offset node)))
+                (newlines-sap (span-sap node start (min (node-bytes node) (1+ end)))
+                              (+ base start) (+ base end) (+ base (node-bytes node))
                               (if (node-indexed-p node) (plusp (node-returns node)) :look)))))))
 
 (defun piece-octet (node i)
@@ -244,9 +259,8 @@ counted already gives its count when the range is all of it."
   (declare (type fixnum i))
   (etypecase node
     (leaf (aref (leaf-octets node) (+ (leaf-start node) i)))
-    (span (let ((mapping (span-mapping node)))
-            (check-mapping mapping)
-            (sb-sys:sap-ref-8 (mapping-sap mapping) (+ (span-offset node) i))))))
+    ;; the whole span noted: read an octet at a time, it is asked for once
+    (span (sb-sys:sap-ref-8 (span-sap node 0 (node-bytes node)) (+ (span-offset node) i)))))
 
 ;;; Building trees
 
@@ -370,8 +384,20 @@ END are character boundaries of ROPE with START <= END."
 (defun clean-junction-p (left right)
   "True unless the octets of LEFT, a leaf or span, end with the unfinished
 start of a sequence that the first octet of RIGHT continues, or with a
-carriage return that a newline beginning RIGHT follows."
+carriage return that a newline beginning RIGHT follows. Two spans of one
+mapping, RIGHT going on where LEFT ends there, join as the file does: cut
+where a character starts, as every edit cuts, and cut again by the count
+where the file was not counted yet; so they are taken as they are without
+reading them when neither is counted, or LEFT is and holds no carriage
+return, which its counts tell, and slicing or editing a large file reads
+none of it."
   (or (zerop (node-bytes left)) (zerop (node-bytes right))
+      (and (span-p left) (span-p right) (eq (span-mapping left) (span-mapping right))
+           (= (span-offset right) (+ (span-offset left) (node-bytes left)))
+           ;; a carriage return ending LEFT and a newline beginning RIGHT are one line end, not two
+           (or (not (or (node-indexed-p left) (node-indexed-p right)))
+               (and (node-indexed-p left) (zerop (node-returns left)))
+               (/= 13 (piece-octet left (1- (node-bytes left))))))
       (let ((first (piece-octet right 0)))
         (cond ((= first 10) (/= 13 (piece-octet left (1- (node-bytes left)))))
               ((not (continuation-byte-p first)))
@@ -693,10 +719,12 @@ THREADS threads in pieces of about CHUNK octets, taken in the order of the
 text. In-memory leaves and already indexed spans are kept as they are. DONOR,
 an indexed rope over the same mappings (as it was before edits made ROPE),
 gives its spans where a run covers them whole, so that only the pieces at the
-ends of runs are read. PROGRESS, a cons, has its cdr set to the octets to read
-and its car to those read so far, as the work goes. TALLY, a TALLY, is told
-each piece's newlines as it is counted, for line numbers wanted before all of
-the text is counted (TALLY-LINE-NUMBER, TALLY-LINE-START). When CANCEL's car
+ends of runs are read. A large file is read through once (WITH-READ-PASS),
+the memory left as it was found. PROGRESS, a cons, has its cdr set to the
+octets to read and its car to those read so far, as the work goes. TALLY, a
+TALLY, is told each piece's newlines as it is counted, for line numbers
+wanted before all of the text is counted (TALLY-LINE-NUMBER,
+TALLY-LINE-START). When CANCEL's car
 turns true the reading stops and NIL is returned. Returns ROPE itself when
 nothing is unindexed.
 Complexity: O(unindexed octets / THREADS + number of leaves); with a donor,
@@ -760,7 +788,12 @@ O(leaves + the octets of the pieces read)."
                                       (vector-push-extend (lambda ()
                                                             (if (and cancel (car cancel))
                                                                 :cancelled
-                                                                (let* ((from (if (= a start) a (min end (piece-boundary-at sap a length))))
+                                                                (let* ((from (progn
+                                                                               ;; noted before the cuts are read
+                                                                               (note-read mapping a (min length (+ b 4)))
+                                                                               (if (= a start)
+                                                                                   a
+                                                                                   (min end (piece-boundary-at sap a length)))))
                                                                        (to (if (= b end) b (min end (piece-boundary-at sap b length))))
                                                                        (spans (index-range mapping from to)))
                                                                   (when tally
@@ -783,7 +816,8 @@ O(leaves + the octets of the pieces read)."
             (tally-fill tally segment-starts segment-ends segment-lines))
           (when progress
             (setf (car progress) 0 (cdr progress) to-read))
-          (let* ((results (tuatara.runtime:run-tasks (coerce tasks 'simple-vector) :parallelism threads))
+          (let* ((results (with-read-pass ()
+                            (tuatara.runtime:run-tasks (coerce tasks 'simple-vector) :parallelism threads)))
                  (leaves (make-array 0 :adjustable t :fill-pointer 0))
                  (r 0))
             (when (or (and cancel (car cancel)) (find :cancelled results))
@@ -1026,6 +1060,42 @@ Complexity: O(log n + number of leaves in the range)."
                          (e (min (node-bytes node) (- end node-start))))
                      (when (< s e) (funcall function node s e))))))
       (walk (rope-root rope) 0))))
+
+(defun read-ahead (rope start end)
+  "Have the octets of ROPE about to be shown read in from the disk ahead of
+time, those from START below END being shown now: once the shown octets come
+within a window's worth of an edge of the stretch read in last, with more of
+the file past it, the next stretch, from a window's worth behind them to four
+windows' worth ahead (at least 256 KB) in the direction they last moved, all
+of it from the file the first shown octet comes from. Only a large mapped
+file (*LARGE-MAPPING-OCTETS*) is read so, on a thread of its own (WANT-READ):
+the editor never waits for the disk to show the next rows. Complexity:
+O(log n)."
+  (declare (type fixnum start end))
+  (when (>= (rope-bytes rope) *large-mapping-octets*)
+    (let ((node nil) (offset 0))
+      (flet ((first-piece (piece piece-start piece-end)
+               (declare (ignore piece-end))
+               (setf node piece offset piece-start)))
+        (declare (dynamic-extent #'first-piece))
+        (map-leaf-pieces #'first-piece rope :start start :end (min (rope-bytes rope) (1+ start))))
+      (when (span-p node)
+        (let* ((mapping (span-mapping node))
+               (shown (max 1 (- end start)))
+               (at (+ (span-offset node) offset))
+               (back (< at (shiftf (mapping-seen mapping) at)))
+               (wanted (mapping-wanted mapping))
+               (ahead (max (* 4 shown) (* 256 1024)))
+               (page (sb-posix:getpagesize)))
+          (declare (type fixnum shown at ahead page))
+          (unless (and (<= (car wanted) at) (< at (cdr wanted))
+                       (or (zerop (car wanted)) (<= (+ (car wanted) shown) at))
+                       (or (= (cdr wanted) (mapping-length mapping)) (<= (+ at shown shown) (cdr wanted))))
+            (multiple-value-bind (from to)
+                (if back
+                    (values (- at ahead) (+ at shown shown))
+                    (values (- at shown) (+ at shown ahead)))
+              (want-read mapping (* page (floor (max 0 from) page)) (min (mapping-length mapping) to)))))))))
 
 (defun map-rope-sources (function rope)
   "Call FUNCTION for each stretch of ROPE's octets in order: (:MEMORY OCTETS START
@@ -1311,12 +1381,10 @@ below END, or NIL. Complexity: O(log n + distance scanned)."
                                     (declare (type octets octets) (type fixnum base))
                                     (loop for i of-type fixnum from (+ base s) below (+ base e)
                                           when (= (aref octets i) value) return (- i base))))
-                            (span (let ((mapping (span-mapping node)))
-                                    (check-mapping mapping)
-                                    (let ((sap (mapping-sap mapping)) (base (span-offset node)))
-                                      (declare (type sb-sys:system-area-pointer sap) (type fixnum base))
-                                      (loop for i of-type fixnum from (+ base s) below (+ base e)
-                                            when (= (sb-sys:sap-ref-8 sap i) value) return (- i base))))))))
+                            (span (let ((sap (span-sap node s e)) (base (span-offset node)))
+                                    (declare (type sb-sys:system-area-pointer sap) (type fixnum base))
+                                    (loop for i of-type fixnum from (+ base s) below (+ base e)
+                                          when (= (sb-sys:sap-ref-8 sap i) value) return (- i base)))))))
                  (when hit
                    (return-from scan (+ pos (- hit s))))
                  (incf pos (- e s)))))

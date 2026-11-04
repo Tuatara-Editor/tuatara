@@ -934,7 +934,7 @@ windows side by side."
                (values f (tuatara.command:run-editor f :setup #'tuatara.defaults:install-defaults
                                                        :buffer (tuatara.buffer:find-buffer "*scratch*"))))))
       ;; the fixed-width families first, each variant's line for the init file and a sample in its font
-      (multiple-value-bind (f editor) (session "M-x l i s t - f o n t s RET")
+      (multiple-value-bind (f editor) (session "M-x f o n t - l i s t RET")
         (let ((text (session-text editor)))
           (true (search "Fonts with every character the same width, for the window: 2 families" text))
           (true (search "(setf *gui-font* \"Cascadia Code NF Light 11\")" text))
@@ -949,33 +949,33 @@ windows side by side."
                                           spans))
                     (coerce (tuatara.frontend.fake:fake-spans f) 'list))))
       ;; RET on a variant shows the window in it; w copies its line
-      (let ((f (session "M-x l i s t - f o n t s RET j j j RET")))
+      (let ((f (session "M-x f o n t - l i s t RET j j j RET")))
         (is string= "Adwaita Mono Bold 11" (tuatara.frontend.fake:fake-font f)))
-      (multiple-value-bind (f editor) (session "M-x l i s t - f o n t s RET j j j j j j w")
+      (multiple-value-bind (f editor) (session "M-x f o n t - l i s t RET j j j j j j w")
         (declare (ignore f))
         (is string= "(setf *gui-font* \"Cascadia Code NF Light 11\")"
             (first (tuatara.command:editor-kill-ring editor))))
       ;; the modal keys: V copies a whole line, v and g h / g l a part, m i " the font's name
-      (multiple-value-bind (f editor) (session "M-x l i s t - f o n t s RET j j j V y")
+      (multiple-value-bind (f editor) (session "M-x f o n t - l i s t RET j j j V y")
         (declare (ignore f))
         (let ((kill (first (tuatara.command:editor-kill-ring editor))))
           (is eql 0 (search "  (setf *gui-font* \"Adwaita Mono Bold 11\")" kill))
           (is eql #\Newline (char kill (1- (length kill))))))
-      (multiple-value-bind (f editor) (session "M-x l i s t - f o n t s RET j j j g l v g h y")
+      (multiple-value-bind (f editor) (session "M-x f o n t - l i s t RET j j j g l v g h y")
         (declare (ignore f))
         (true (search "(setf *gui-font* \"Adwaita Mono Bold 11\")" (first (tuatara.command:editor-kill-ring editor)))))
-      (multiple-value-bind (f editor) (session "M-x l i s t - f o n t s RET j j j l l l l l l l l l l l l l l l l l l l l l l m i \" y")
+      (multiple-value-bind (f editor) (session "M-x f o n t - l i s t RET j j j l l l l l l l l l l l l l l l l l l l l l l m i \" y")
         (declare (ignore f))
         (is string= "Adwaita Mono Bold 11" (first (tuatara.command:editor-kill-ring editor))))
       ;; g e, G and g g move; g begins those motions, so g r lists the fonts again
-      (multiple-value-bind (f editor) (session "M-x l i s t - f o n t s RET g e")
+      (multiple-value-bind (f editor) (session "M-x f o n t - l i s t RET g e")
         (declare (ignore f))
         (is = (length (tuatara.text:string-octets (session-text editor))) (session-point editor)))
-      (multiple-value-bind (f editor) (session "M-x l i s t - f o n t s RET g e g g")
+      (multiple-value-bind (f editor) (session "M-x f o n t - l i s t RET g e g g")
         (declare (ignore f))
         (is = 0 (session-point editor)))
       ;; C-x / s narrows it as every list: the fonts whose lines match, each under its family; g r keeps the filter
-      (dolist (keys '("M-x l i s t - f o n t s RET C-x / s c a s c RET" "M-x l i s t - f o n t s RET C-x / s c a s c RET g r"))
+      (dolist (keys '("M-x f o n t - l i s t RET C-x / s c a s c RET" "M-x f o n t - l i s t RET C-x / s c a s c RET g r"))
         (multiple-value-bind (f editor) (session keys)
           (declare (ignore f))
           (let ((text (session-text editor)))
@@ -986,7 +986,7 @@ windows side by side."
       (false (gethash 'tuatara.defaults::font-list-filter tuatara.command:*commands*))
       ;; a terminal lists none
       (true (search "a terminal's font is its own"
-                    (tuatara.frontend.fake:fake-screen-line (session "M-x l i s t - f o n t s RET" :font-faces nil) 19))))))
+                    (tuatara.frontend.fake:fake-screen-line (session "M-x f o n t - l i s t RET" :font-faces nil) 19))))))
 
 (define-test (gtk faces-with-fonts)
   ;; a face may name a font; a theme changed after keeps it; the window paints its text in it

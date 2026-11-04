@@ -1485,7 +1485,7 @@ the commands that change files in a list opened safely."
                      rimu-edit-names rimu-names-apply rimu-touch rimu-make-formatted-file rimu-wipe-files
                      rimu-trash rimu-trash-restore rimu-trash-empty
                      rimu-encrypt-files rimu-decrypt-files rimu-sign-files
-                     rimu-archive rimu-extract rename-formatted rename-formatted-keywords))
+                     rimu-archive-create rimu-archive-extract rename-formatted rename-formatted-keywords))
     (pushnew command *file-changing-commands*))
   (define-keys *rimu-keymap* '(("RET" rimu-open) ("l" rimu-open) ("h" rimu-up)
                                ("o" rimu-quick-edit) ("C-o" rimu-display) ("g f" rimu-goto-file)

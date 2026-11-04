@@ -146,6 +146,60 @@
     (true (eq tuatara.defaults::*tuatara-leader-keymap*
               (tuatara.command:lookup-key tuatara.defaults::*tuatara-normal-keymap* (tuatara.frontend:parse-key-sequence "SPC"))))))
 
+(define-test (config leader-on-c-x-spc)
+  ;; C-x SPC opens the leader's keys, with their key hints, in NORMAL and INSERT state, with modal
+  ;; editing off and in a list; moving the leader to another key leaves it there
+  (flet ((point-after (keys &key (modal t))
+           (let ((tuatara.defaults::*modal-editing* modal))
+             (session-point (nth-value 1 (run-keys keys :text "abc")))))
+         (hints-after (keys &key (modal t))
+           (let ((tuatara.defaults::*modal-editing* modal))
+             (run-keys keys :text "abc" :width 140 :height 20))))
+    (unwind-protect
+         (progn
+           (tuatara-user:bind-key "o z" 'end-of-buffer :map :leader)
+           (tuatara-user:bind-key "o" nil :map :leader :label "own")
+           (is = 3 (point-after "C-x SPC o z" :modal nil))
+           (is = 3 (point-after "i C-x SPC o z"))
+           (is = 3 (point-after "C-x SPC o z"))
+           (is = 3 (point-after "SPC o z"))
+           (true (tuatara.frontend.fake:fake-frame-showing (hints-after "C-x SPC" :modal nil) "o +own"))
+           (true (tuatara.frontend.fake:fake-frame-showing (hints-after "i C-x SPC") "o +own"))
+           (true (tuatara.frontend.fake:fake-frame-showing (hints-after "C-x SPC o" :modal nil) "z end-of-buffer"))
+           ;; in the list of buffers, as M-> there
+           (dolist (modal '(t nil))
+             (is = (point-after "C-x C-b M->" :modal modal) (point-after "C-x C-b C-x SPC o z" :modal modal))
+             (isnt = (point-after "C-x C-b" :modal modal) (point-after "C-x C-b C-x SPC o z" :modal modal))
+             (true (tuatara.frontend.fake:fake-frame-showing (hints-after "C-x C-b C-x SPC" :modal modal) "o +own")))
+           ;; the leader moved to another key
+           (let ((tuatara-user:*leader-key* ","))
+             (tuatara.defaults::put-leader-on ",")
+             (is = 3 (point-after "C-x SPC o z" :modal nil))
+             (is = 3 (point-after "i C-x SPC o z"))
+             (is = 3 (point-after ", o z"))))
+      (tuatara.defaults::put-leader-on "SPC")
+      (tuatara-user:unbind-key "o z" :map :leader)
+      (tuatara-user:unbind-key "o" :map :leader))))
+
+(define-test (config mode-leader-on-c-x-spc)
+  ;; a leader key bound for one mode is reached after C-x SPC in that mode alone, in INSERT state
+  ;; and with modal editing off, with its key hint
+  (flet ((point-after (keys &key (modal t))
+           (let ((tuatara.defaults::*modal-editing* modal))
+             (session-point (nth-value 1 (run-keys keys :text "abc"))))))
+    (unwind-protect
+         (progn
+           (tuatara-user:bind-key "o y" 'end-of-line :map :leader :mode 'org-mode)
+           (is = 3 (point-after "M-x o r g - m o d e RET C-x SPC o y" :modal nil))
+           (is = 3 (point-after "M-x o r g - m o d e RET i C-x SPC o y"))
+           (is = 3 (point-after "M-x o r g - m o d e RET C-x SPC o y"))
+           (isnt = 3 (point-after "C-x SPC o y" :modal nil))
+           (true (tuatara.frontend.fake:fake-frame-showing
+                  (let ((tuatara.defaults::*modal-editing* nil))
+                    (run-keys "M-x o r g - m o d e RET C-x SPC o" :text "abc" :width 140 :height 20))
+                  "y end-of-line")))
+      (tuatara-user:unbind-key "o y" :map :leader :mode 'org-mode))))
+
 (define-test (config options-reach-the-editor)
   ;; the options documented for the init file are, read in
   ;; TUATARA-USER, the very variables the editor uses
@@ -395,7 +449,8 @@ commented inside another one commented (;;   ;; (setf ...) in a load-package's
                                ("*KILL-RING-MAX-SIZE*" :tuatara.defaults)
                                ("*GLOBAL-MARK-RING-MAX*" nil)
                                ("*PICTURE-SECONDS*" nil)
-                               ("*NO-ONE-TO-ASK-SAVE-SECONDS*" :tuatara.defaults))
+                               ("*NO-ONE-TO-ASK-SAVE-SECONDS*" :tuatara.defaults)
+                               ("*ARCHIVE-LEAST-FILES-LEFT*" :tuatara.defaults))
           do (isnt eq :external (nth-value 1 (find-symbol name :tuatara-user)) "~a a setting" name)
              (false (search (string-downcase name) starter) "~(~a~) in the starter init file" name)
              (when home

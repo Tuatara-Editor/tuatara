@@ -346,10 +346,11 @@ since their commit."
     (false (tuatara.io:path-kind left))))
 
 (defun shadows-size ()
-  "The octets every shadow of git in the private cache holds on the disk."
+  "The kibibytes this session's shadows of git hold on the disk: its own folder
+in the private cache, not those of other sessions sharing the cache."
   (parse-integer (string-trim '(#\Newline #\Space)
                               (uiop:run-program (list "sh" "-c" "du -sk \"$1\" | cut -f1" "size"
-                                                      (tuatara.defaults::private-cache-directory "git-shadow/"))
+                                                      (tuatara.git::git-shadows-directory))
                                                 :output :string :ignore-error-status t))
                  :junk-allowed t))
 

@@ -820,9 +820,11 @@ when that is not one of OWN, the package's own Lisp packages."
 
 (defun forget-package-code (own)
   "Take out of Tuatara what the code of the Lisp packages OWN put there, and
-delete them: their commands and modes, the keys bound to their commands, and
-their functions on the lists of functions Tuatara calls (*FILE-VIEWS* and the
-rest). Faces and settings they define stay, doing nothing."
+delete them: their commands and modes, the keys bound to their commands, the
+places they gave commands to run in (COMMANDS-FOR-MODE), Tuatara's own among
+them, their ways of showing text (DEFINE-DISPLAY-TOGGLE), and their functions
+on the lists of functions Tuatara calls (*FILE-VIEWS* and the rest). Faces
+and settings they define stay, doing nothing."
   (when own
     (flet ((theirs-p (thing)
              (let ((name (if (functionp thing) (nth-value 2 (function-lambda-expression thing)) thing)))
@@ -830,12 +832,16 @@ rest). Faces and settings they define stay, doing nothing."
       (dolist (command (loop for name being the hash-keys of tuatara.command:*commands* collect name))
         (when (theirs-p command) (tuatara.command:forget-command command)))
       (dolist (command (loop for name being the hash-keys of *mode-commands* collect name))
-        (when (theirs-p command) (remhash command *mode-commands*)))
+        (let ((kept (and (not (theirs-p command)) (remove-if #'theirs-p (gethash command *mode-commands*) :key #'car))))
+          (if kept
+              (setf (gethash command *mode-commands*) kept)
+              (remhash command *mode-commands*))))
       (dolist (mode (mode-names))
         (if (theirs-p mode)
             (forget-major-mode mode)
             (unbind-commands-if #'theirs-p (mode-keymap mode))))
       (when *global-keymap* (unbind-commands-if #'theirs-p *global-keymap*))
+      (setf *display-toggles* (remove-if #'theirs-p *display-toggles* :key #'display-toggle-name))
       (do-external-symbols (name :tuatara)
         (when (and (boundp name) (not (constantp name)))
           (let ((value (symbol-value name)))
@@ -992,7 +998,9 @@ its files have loaded, Tuatara's above all: a package load-package loads
 that uses a name this Tuatara lacks is refused, with an error naming them,
 and what of it loaded is taken out again. A name of Tuatara's or of another
 library is looked for before the file using it loads; a package refused is
-refused again before any of it loads, until its files or Tuatara change.
+refused again before any of it loads, until its files or Tuatara change. A
+package whose loading fails or is stopped part of the way has what of it
+loaded taken out again too.
 
 A package loaded while the editor runs is first compiled in a process of
 its own, Tuatara run again without a window or a buffer shown, where its
@@ -1010,11 +1018,10 @@ editor instead."
         (let* ((check (make-package-check *loading-package-name* (beside-fasl (package-fasl file) "refused")))
                (*package-check* check))
           (refuse-as-before check)
-          ;; stopped between its files: what of it loaded taken out again
-          (handler-bind ((package-load-stopped (lambda (e)
-                                                 (declare (ignore e))
-                                                 (forget-package-code (package-check-own check)))))
-            (load-checked-file file check))
+          ;; failed or stopped between its files: what of it loaded taken out again
+          (let ((loaded nil))
+            (unwind-protect (progn (load-checked-file file check) (setf loaded t))
+              (unless loaded (forget-package-code (package-check-own check)))))
           (let ((missing (remove-if #'needed-name-present-p (package-check-needs check))))
             (when missing (refuse-package check missing)))))
     file))

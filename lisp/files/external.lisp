@@ -456,6 +456,10 @@ MISSING, what to do about it (install readpst)."
      :fedora ("man-db" "groff-base") :debian ("man-db" "groff-base") :arch ("man-db" "groff") :weight :recommends)
     (:notify :name "libnotify" :what "notifications told on the desktop"
      :fedora ("libnotify") :debian ("libnotify-bin") :arch ("libnotify") :weight :recommends)
+    (:archives :name "bsdtar" :what "zip, 7z, rar, ISO 9660 and cpio archives"
+     :fedora ("bsdtar") :debian ("libarchive-tools") :arch ("libarchive") :weight :recommends)
+    (:seven-zip :name "7-Zip" :what "encrypted 7z and rar, more zip methods"
+     :fedora ("7zip") :debian ("7zip") :arch ("7zip") :weight :recommends)
     (:gpg :name "GnuPG" :what "encrypted files"
      :fedora ("gnupg2") :debian ("gnupg") :arch ("gnupg") :weight :suggests)
     (:open :name "xdg-utils" :what "files opened in the desktop programs"

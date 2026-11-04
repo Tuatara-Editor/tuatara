@@ -1208,7 +1208,7 @@ file sets them."
                (is string= "" (tuatara.defaults::formatted-template-text (first (tuatara.defaults::formatted-templates))))))
         (if old (sb-posix:setenv "XDG_CONFIG_HOME" old 1) (sb-posix:unsetenv "XDG_CONFIG_HOME"))))))
 
-(define-test (formatted insert-note-template)
+(define-test (formatted insert-formatted-note-template)
   ;; C-x i: a template's text read into the buffer at point, never its file opened; any file too; asked over text
   (with-test-directory (dir)
     (let* ((folder (merge-pathnames "templates/" dir))

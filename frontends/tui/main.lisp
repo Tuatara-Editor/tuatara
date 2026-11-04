@@ -709,6 +709,17 @@ numbers Tuatara draws differ from one start to the next rather than repeat
 the state the executable was saved with."
   (setf *random-state* (make-random-state t)))
 
+(defun fit-heap (arguments)
+  "Fit this program's heap to what ARGUMENTS, its command line, start: a
+client of a daemon, which paints and reads keys, keeps the heap it was saved
+with and collects its garbage often (*CLIENT-NURSERY-OCTETS*), so that little
+of its memory is touched; anything else is started again with the heap its
+machine wants (HEAP-TO-RESTART-WITH), when that is another."
+  (if (client-arguments-p arguments)
+      (tuatara.defaults::set-collection-policy tuatara.defaults::*client-nursery-octets*)
+      (let ((mb (heap-to-restart-with)))
+        (when mb (restart-with-heap mb)))))
+
 (defun image-toplevel ()
   "What the saved executable runs: MAIN on its command-line arguments, then exit
 with its code at once, the terminal already given back. First, when this
@@ -724,15 +735,13 @@ it instead, its arguments never looked at
 with TUATARA_DAEMON, it is that daemon (RUN-DAEMON); run by the scripts
 installing it with TUATARA_DESKTOP_ENTRIES, it writes its desktop entries
 \(DESKTOP-ENTRIES-CHILD), a request it does not take said and left alone. A
-client keeps the heap it was saved with."
+client keeps the heap it was saved with (FIT-HEAP)."
   (sb-ext:disable-debugger)
   (setf sb-ext:*posix-argv* (command-line-arguments))
   (fresh-random-state)
   (setf tuatara.io:*saved-program* (tuatara.runtime:ignoring-errors-reported ("finding this program")
                                      (namestring (truename "/proc/self/exe"))))
-  ;; a client paints and reads keys, and wants no heap of its own size
-  (let ((mb (and (not (client-arguments-p (rest sb-ext:*posix-argv*))) (heap-to-restart-with))))
-    (when mb (restart-with-heap mb)))
+  (fit-heap (rest sb-ext:*posix-argv*))
   (sb-posix:unsetenv "TUATARA_HEAP_DECIDED")
   ;; from now on the AppImage, which brings its libraries along, is what starts Tuatara again
   (let ((appimage (uiop:getenv "APPIMAGE")))

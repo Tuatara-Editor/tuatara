@@ -17,10 +17,22 @@
     (true (>= bytes 100000) "expected at least 100000 bytes consed, got ~a" bytes)))
 
 (define-test (smoke harness-reports-budget)
-  (let ((tuatara.bench:*benchmarks* '()))
+  (let ((tuatara.bench:*benchmarks* '())
+        (tuatara.bench::*benchmark-passes* 2))
     (define-benchmark within (:budget-ms 1000 :reps 1) (+ 1 1))
     (true (run-benchmarks :stream (make-broadcast-stream)))
     (define-benchmark over (:budget-ms 0 :reps 1) (sleep 0.002))
+    (false (run-benchmarks :stream (make-broadcast-stream)))))
+
+(define-test (smoke harness-runs-over-budget-again)
+  ;; over budget once, as under a moment of load, then within: run again, within budget; over every time: over
+  (let ((tuatara.bench:*benchmarks* '())
+        (tuatara.bench::*benchmark-passes* 2)
+        (calls 0))
+    (define-benchmark slow-once (:budget-ms 20 :reps 1) (when (= 1 (incf calls)) (sleep 0.05)))
+    (true (run-benchmarks :stream (make-broadcast-stream)))
+    (true (search "(run again)" (with-output-to-string (out) (setf calls 0) (run-benchmarks :stream out))))
+    (define-benchmark slow-always (:budget-ms 20 :reps 1) (sleep 0.05))
     (false (run-benchmarks :stream (make-broadcast-stream)))))
 
 (define-test (smoke program-options)

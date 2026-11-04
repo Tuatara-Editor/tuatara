@@ -75,7 +75,7 @@ it keeps instead, or that it keeps nothing."
 ;;; Keeping
 
 (defun copy-to-register-value (buffer)
-  "What \\[copy-to-register] keeps from BUFFER: its rectangle when one is shown
+  "What \\[register-copy] keeps from BUFFER: its rectangle when one is shown
 \(its rows, left in the rectangle store as they were) as :BLOCK, else the
 region's text as :TEXT. Two values, the kind and the value; NIL, said why,
 when there is nothing to keep."
@@ -92,11 +92,11 @@ when there is nothing to keep."
                  (setf (tuatara.buffer:buffer-mark-active-p buffer) nil)))
               (t (message "The region is empty") nil)))))
 
-(define-command copy-to-register ()
+(define-command register-copy ()
   "Keep the selection under a character you type, as long as the editor runs:
 the text between point and mark, or the block of columns when a rectangle is
-selected (\\[rectangle-mark-mode]). \\[insert-register] puts it in again,
-anywhere, \\[add-to-register] adds to it. Keeping again under the same
+selected (\\[rectangle-mark-mode]). \\[register-insert] puts it in again,
+anywhere, \\[register-add] adds to it. Keeping again under the same
 character replaces what was there. The kill ring is left as it was."
   (let ((name (read-register-name "Copy to register: ")))
     (when name
@@ -105,9 +105,9 @@ character replaces what was there. The kill ring is left as it was."
           (setf (gethash name *registers*) (make-register kind value (plaintext-sources (current-buffer))))
           (message "Register ~a keeps ~a" name (register-kind-words (gethash name *registers*))))))))
 
-(define-command point-to-register ()
+(define-command register-point ()
   "Keep where point is under a character you type, as long as the editor
-runs: \\[jump-to-register] goes back there, the text above it changed or not,
+runs: \\[register-jump] goes back there, the text above it changed or not,
 and even after the buffer is closed when it was a file. A place worth keeping
 beyond this session is a bookmark (\\[bookmark-set])."
   (let ((name (read-register-name "Point to register: ")))
@@ -119,9 +119,9 @@ beyond this session is a bookmark (\\[bookmark-set])."
               (make-register :position (make-register-place buffer anchor (file-place-here buffer offset))))
         (message "Register ~a keeps this place" name)))))
 
-(define-command number-to-register ()
+(define-command register-number ()
   "Keep a whole number under a character you type: the prefix argument, else
-one asked for. \\[add-to-register] adds to it and \\[insert-register] writes
+one asked for. \\[register-add] adds to it and \\[register-insert] writes
 it into the text."
   (let ((name (read-register-name "Number to register: ")))
     (when name
@@ -143,7 +143,7 @@ keeps, or before with FRONT."
                 (tuatara.buffer:buffer-mark-active-p buffer) nil)
           (message "Added to register ~a" name)))))
 
-(define-command add-to-register ()
+(define-command register-add ()
   "Add to what a register keeps: a number grows by the prefix argument (1
 without one, below 0 to take away), text has the selected text put after it.
 Asks for the character; the register must keep one of the two already."
@@ -157,9 +157,9 @@ Asks for the character; the register must keep one of the two already."
                 (message "Register ~a keeps ~d" name sum))
               (add-to-text-register name register (current-buffer) nil)))))))
 
-(define-command prepend-to-register ()
+(define-command register-prepend ()
   "Put the selected text before the text a register keeps, asked for by its
-character, as \\[add-to-register] puts it after."
+character, as \\[register-add] puts it after."
   (let ((name (read-register-name "Prepend to register: ")))
     (when name
       (let ((register (kept-in-register name '(:text))))
@@ -198,8 +198,8 @@ A place in a buffer that kept no file, once closed, is said to be gone."
            (go-to-file-place (format nil "Register ~a" name) (register-place-place place) :other other))
           (t (message "Register ~a: its buffer was closed and had no file to go back to" name)))))
 
-(define-command jump-to-register ()
-  "Go to the place a register keeps (\\[point-to-register]), asked for by its
+(define-command register-jump ()
+  "Go to the place a register keeps (\\[register-point]), asked for by its
 character: in its buffer, shown, point where it was set, moved with the text
 around it. When the buffer has been closed the file is visited again."
   (let ((name (read-register-name "Jump to register: ")))
@@ -207,10 +207,10 @@ around it. When the buffer has been closed the file is visited again."
       (let ((register (kept-in-register name '(:position))))
         (when register (jump-to-register-place name (register-value register)))))))
 
-(define-command insert-register ()
+(define-command register-insert ()
   "Put what a register keeps into the text at point, asked for by its
 character: text as it was, with point after it and the mark before; a block
-\(\\[copy-to-register] of a rectangle) as a block of columns, as
+\(\\[register-copy] of a rectangle) as a block of columns, as
 \\[yank-rectangle] pastes one, with a prefix argument each row that many
 times across; a number as digits. The register keeps what it had."
   (let ((name (read-register-name "Insert register: ")))
@@ -249,7 +249,7 @@ following), so that the register still leads there."
 ;;; The list
 
 (define-major-mode registers-mode marked-list-mode
-  "The list of registers (\\[list-registers]): a line for each, with the
+  "The list of registers (\\[register-list]): a line for each, with the
 character that names it, what it keeps and a look at that.
 \\<registers-mode>\\[list-visit] or \\`RET' goes to the place on the line (a message for the
 others, \\[list-visit-other] in another window), \\[list-mark-entry] marks a register (>),
@@ -306,9 +306,9 @@ start, or with POINT :keep at its column."
              (register-contents-words register))))
    :after (and (null (register-names))
                (list (format nil "~%   No registers: ~a keeps a selection, ~a a place, ~a a number~%"
-                             (substitute-command-keys "\\[copy-to-register]")
-                             (substitute-command-keys "\\[point-to-register]")
-                             (substitute-command-keys "\\[number-to-register]"))))
+                             (substitute-command-keys "\\[register-copy]")
+                             (substitute-command-keys "\\[register-point]")
+                             (substitute-command-keys "\\[register-number]"))))
    :point point :first-line *registers-title-lines*
    :refill (lambda (list) (registers-render list :keep))))
 
@@ -320,7 +320,7 @@ the object it keeps; another key means the list is out of date (KEEP-SHOWN-CURRE
 
 (keep-shown-current 'registers-mode 'registers-key)
 
-(define-command list-registers ()
+(define-command register-list ()
   "List the registers in *Registers*: the character that names each, what it
 keeps (a place, text, a rectangle, a number) and a look at that.
 \\<registers-mode>\\[list-visit] or \\`RET' goes to the place on the line,
@@ -343,7 +343,7 @@ others, say what they keep and how to put it in."
           ((eq (register-kind register) :position)
            (jump-to-register-place name (register-value register) :other other))
           (t (message "Register ~a keeps ~a: ~a puts it in the text where point is"
-                      name (register-kind-words register) (substitute-command-keys "\\[insert-register]"))))))
+                      name (register-kind-words register) (substitute-command-keys "\\[register-insert]"))))))
 
 (defmethod delete-entries ((mode registers-mode) list names mark)
   "Empty the registers NAMES, after asking."
@@ -358,4 +358,4 @@ others, say what they keep and how to put it in."
   "Have a register's place follow its buffer's file once the buffer is closed,
 and give the register list its keys."
   (pushnew 'keep-registered-places tuatara.buffer:*kill-buffer-functions*)
-  (entry-list-keys 'registers-mode "the register list (\\[list-registers])"))
+  (entry-list-keys 'registers-mode "the register list (\\[register-list])"))

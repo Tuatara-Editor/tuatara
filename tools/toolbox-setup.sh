@@ -12,12 +12,12 @@ if [ "$(toolbox list --containers 2>/dev/null | grep -c "[[:space:]]${name}[[:sp
 fi
 # --skip-unavailable: a renamed package must not abort the whole install; the check below reports gaps.
 # Building: SBCL, the compilers and git. Running: GTK 4, ncurses, and the programs
-# the features use (the sandbox, pictures, PDFs, spelling, Office documents, Outlook mailboxes and messages
+# the features use (the sandbox, pictures, PDFs, archives, spelling, Office documents, Outlook mailboxes and messages
 # drawn as they look, the clipboard).
 toolbox run --container "$name" sudo dnf install -y --skip-unavailable \
   sbcl git gcc gcc-c++ make pkg-config \
   gtk4 ncurses-libs \
-  bubblewrap ImageMagick poppler-utils \
+  bubblewrap ImageMagick poppler-utils bsdtar 7zip \
   enchant2 hunspell hunspell-en \
   libreoffice-writer libreoffice-calc libreoffice-impress libpst weasyprint wl-clipboard xclip || exit 1
 
@@ -26,7 +26,7 @@ toolbox run --container "$name" bash -c '
   printf "sbcl: "; sbcl --version 2>/dev/null || echo MISSING
   # the tree-sitter grammars whose scanners are C++ (YAML, Vue...) need it
   printf "c++: "; c++ --version 2>/dev/null | head -1 || echo MISSING
-  for p in bwrap magick pdftoppm weasyprint; do
+  for p in bwrap bsdtar magick pdftoppm weasyprint; do
     printf "%-10s %s\n" "$p" "$(command -v "$p" || echo MISSING)"
   done
   for l in libgtk-4.so.1 libncursesw.so.6 libenchant-2.so.2; do

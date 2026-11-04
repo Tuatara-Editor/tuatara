@@ -498,15 +498,15 @@ FACE)) in a job's face, as (ROW START END FACE)."
     (dolist (crlf '(nil t))
       (dolist (text (list (format nil "abcdef~%gh~%ijklmnop~%") (format nil "abcdef~%gh~%ijklmnop")))
         (dolist (keys '(;; a paste waiting for a cut before it: in at point's column as the cut leaves it
-                        "C-f C-x SPC C-n C-n C-f C-f C-x r k M-> C-x r y"
+                        "C-f C-x r SPC C-n C-n C-f C-f C-x r k M-> C-x r y"
                         ;; point after what was written, cleared or wrapped, as at once
-                        "C-e C-x SPC C-n C-n C-x r t Q RET" "C-f C-x SPC C-n C-n C-f C-f C-x r c"
-                        "C-f C-x SPC C-n C-n C-f C-f C-x r M-w C-x r y" "l m v j j l (" "m v j j l l ~" "l m v j j l y g e P"
+                        "C-e C-x r SPC C-n C-n C-x r t Q RET" "C-f C-x r SPC C-n C-n C-f C-f C-x r c"
+                        "C-f C-x r SPC C-n C-n C-f C-f C-x r M-w C-x r y" "l m v j j l (" "m v j j l l ~" "l m v j j l y g e P"
                         ;; deleted, numbered in and numbered over, as at once
-                        "C-f C-x SPC C-n C-n C-f C-f C-x r d" "C-f C-x SPC C-n C-n C-f C-f C-x r N"
-                        "C-f C-x SPC C-n C-n C-f C-f M-x n u m b e r - r e c t a n g l e - l i n e s - r e p l a c e RET"
+                        "C-f C-x r SPC C-n C-n C-f C-f C-x r d" "C-f C-x r SPC C-n C-n C-f C-f C-x r N"
+                        "C-f C-x r SPC C-n C-n C-f C-f M-x n u m b e r - r e c t a n g l e - l i n e s - r e p l a c e RET"
                         ;; joining, and a case change over CR LF
-                        "% M-^" "C-f C-x SPC C-n C-n C-f C-f M-x u p c a s e - r e g i o n RET"))
+                        "% M-^" "C-f C-x r SPC C-n C-n C-f C-f M-x u p c a s e - r e g i o n RET"))
           (is equal (outcome keys text crlf nil) (outcome keys text crlf t) "~a~:[~; (CR LF)~] on ~s" keys crlf text))))))
 
 (define-test (rewrite split-typing-across-a-job)

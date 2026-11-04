@@ -469,10 +469,11 @@ seconds; the editor draws after it as it does when woken."
         (tuatara.defaults::set-major-mode buffer 'tuatara.defaults::org-mode)
         (tuatara.command:run-editor f :setup #'tuatara.defaults:install-defaults :buffer buffer)
         (is >= 1 most)
-        ;; the last text typed is parsed in the end
-        ;; parsed again once typing has paused
+        ;; the last text typed is parsed in the end, once typing has paused; under load the first parse may
+        ;; still be going when typing ends, and the part has no view until it is done
         (true (loop repeat 300
-                    thereis (tuatara.defaults::org-view-current (tuatara.defaults::org-view-at buffer 0))
+                    thereis (let ((view (tuatara.defaults::org-view-at buffer 0)))
+                              (and view (tuatara.defaults::org-view-current view)))
                     do (sleep 0.05)))
         (tuatara.buffer:buffer-mark-saved buffer)
         (tuatara.buffer:kill-buffer buffer)))))

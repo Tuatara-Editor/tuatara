@@ -133,6 +133,12 @@ signal DONE when the last task of the batch finishes."
                                                                        :arguments (list pool))))
               (setf *pool* pool))))))
 
+(defvar *task-wrappers* '()
+  "Functions of a task (a function of no arguments), each called on the thread
+calling RUN-TASKS with every one of its tasks and giving the function to run
+in its place: the parts of the editor that keep something for the work under
+way on that thread carry it to the tasks so.")
+
 (defun run-tasks (tasks &key (parallelism (cpu-count)) discard)
   "Run TASKS, a simple-vector of thunks, in parallel on the worker pool and the
 calling thread, at most PARALLELISM at a time, and return a simple-vector of
@@ -142,39 +148,45 @@ others, so that what they hold (an open file) is let go. With one task, or
 PARALLELISM 1, runs on the calling thread. The tasks are part of the work
 the calling thread does (STOPPABLE-WORK): a stoppable call of theirs is cut
 short when it is stopped, on every thread, the tasks not yet begun are passed
-over, and the calling thread then leaves that work here."
+over, and the calling thread then leaves that work here. Each task, one
+passed over too, is run as *TASK-WRAPPERS* make it."
   (let* ((n (length tasks))
          (tasks (if *secret-at-hand*
                     ;; the workers hold the secret too
                     (map 'simple-vector (lambda (task) (lambda () (let ((*secret-at-hand* t)) (funcall task)))) tasks)
                     tasks))
+         (helpers (min (1- n) (1- (max 1 parallelism))))
+         ;; made before the tasks are wrapped, so that each wrapped task runs
+         (pool (and (plusp n) (plusp helpers) (ensure-pool)))
          (cells *stop-cells*)
          (cut (list nil))
-         (batch (make-batch (if cells
-                                (map 'simple-vector
-                                     (lambda (task)
-                                       (lambda ()
-                                         (if (some #'car cells)
-                                             ;; the work was stopped: the tasks left are passed over at once
-                                             (progn (setf (car cut) t) nil)
-                                             (let ((value nil))
-                                               (unless (call-within-stop-cells cells (lambda () (setf value (funcall task))))
-                                                 (setf (car cut) t))
-                                               value))))
-                                     tasks)
-                                tasks))))
+         (tasks (if cells
+                    (map 'simple-vector
+                         (lambda (task)
+                           (lambda ()
+                             (if (some #'car cells)
+                                 ;; the work was stopped: the tasks left are passed over at once
+                                 (progn (setf (car cut) t) nil)
+                                 (let ((value nil))
+                                   (unless (call-within-stop-cells cells (lambda () (setf value (funcall task))))
+                                     (setf (car cut) t))
+                                   value))))
+                         tasks)
+                    tasks))
+         ;; outermost, so that each runs for every task, a task passed over too
+         (batch (make-batch (let ((tasks tasks))
+                              (dolist (wrapper *task-wrappers* tasks)
+                                (setf tasks (map 'simple-vector wrapper tasks)))))))
     (setf (batch-results batch) (make-array n :initial-element nil)
           (batch-errors batch) (make-array n :initial-element nil)
           (car (batch-remaining batch)) n)
     (when (plusp n)
-      (let ((helpers (min (1- n) (1- (max 1 parallelism)))))
-        (when (plusp helpers)
-          (let ((pool (ensure-pool)))
-            (loop repeat (min helpers (pool-size pool))
-                  do (sb-concurrency:send-message (pool-mailbox pool) batch))))
-        (work-on batch)
-        ;; pieces taken by workers may still be running
-        (sb-thread:wait-on-semaphore (batch-done batch))))
+      (when pool
+        (loop repeat (min helpers (pool-size pool))
+              do (sb-concurrency:send-message (pool-mailbox pool) batch)))
+      (work-on batch)
+      ;; pieces taken by workers may still be running
+      (sb-thread:wait-on-semaphore (batch-done batch)))
     (let ((e (find-if #'identity (batch-errors batch))))
       (when e
         (when discard

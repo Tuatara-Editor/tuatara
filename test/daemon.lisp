@@ -259,7 +259,7 @@ ended have: the frames shown, the one with no screen left out."
             (is equal '(0 nil) (client-ends a-runner))
             ;; B's list of buffers: A's folder, ended, holding A's file
             (type-keys b "C-x C-b")
-            (true (shows b "ended"))
+            (true (shows b "Ended"))
             (true (shows b "client 1"))
             (type-keys b "C-x C-c")
             (is equal '(0 nil) (client-ends b-runner))))))))
@@ -901,6 +901,24 @@ ended have: the frames shown, the one with no screen left out."
         (type-keys a "C-g C-x C-c")
         (is equal '(0 nil) (client-ends a-runner))))))
 
+(define-test (daemon leader-on-c-x-spc-in-a-client)
+  ;; in a client's frame C-x SPC opens the leader's keys in INSERT state, their key hints shown there
+  (unwind-protect
+       (progn
+         (tuatara-user:bind-key "o y" 'beginning-of-line :map :leader)
+         (tuatara-user:bind-key "o" nil :map :leader :label "own")
+         (with-test-daemon (name)
+           (multiple-value-bind (local runner) (attach-test-client name)
+             (true (shows local "scratch"))
+             (type-keys local "i k e a C-x SPC")
+             (true (shows local "o +own"))
+             (type-keys local "o y t u i")
+             (true (shows local "tuikea") "the screen: ~s" (tuatara.frontend.fake:fake-screen local))
+             (type-keys local "C-g C-x C-c")
+             (is equal '(0 nil) (client-ends runner)))))
+    (tuatara-user:unbind-key "o y" :map :leader)
+    (tuatara-user:unbind-key "o" :map :leader)))
+
 (defun daemon-terminated (daemon thread)
   "Send this process SIGTERM, as the desktop does at logout, with it ending
 DAEMON (TUATARA.DEFAULTS::END-DAEMON-ON-TERMINATE), its editor running on
@@ -981,7 +999,7 @@ after, as it does by itself."
   "How many windows the frame of EDITOR's one client attached now shows."
   (let ((client (find-if (lambda (client) (and (tuatara.command:client-remote client)
                                                (not (tuatara.command:client-ended client))))
-                         (tuatara.command:editor-clients editor))))
+                         (tuatara.command:editor-clients (daemon-editor)))))
     (length (tuatara.display:area-windows
              (tuatara.display:area-root
               (tuatara.command:frame-window (first (tuatara.command:client-frames editor client))))))))
@@ -1045,6 +1063,18 @@ after, as it does by itself."
     (let ((said (with-output-to-string (*error-output*)
                   (is eql 1 (tuatara.terminal::run-client (list :client name :files '()) :terminal t)))))
       (true (search "no daemon named" said)))))
+
+(define-test (daemon client-collects-often)
+  ;; a client of a daemon keeps the heap it was saved with, of many gigabytes, but collects its
+  ;; garbage after a few megabytes of it: the memory it touches painting frame after frame stays
+  ;; small and in use, not hundreds of megabytes lying idle for the system to move out to swap
+  (let ((was (sb-ext:bytes-consed-between-gcs)))
+    (unwind-protect
+         (progn
+           (tuatara.terminal::fit-heap (list "--client" "--gui"))
+           (is = tuatara.defaults::*client-nursery-octets* (sb-ext:bytes-consed-between-gcs))
+           (true (<= (sb-ext:bytes-consed-between-gcs) (* 64 1024 1024))))
+      (setf (sb-ext:bytes-consed-between-gcs) was))))
 
 (define-test (daemon lifetime-options-read)
   ;; --fallback goes with --client alone; --generate-autostart with nothing but --daemon=NAME
@@ -1291,3 +1321,161 @@ after, as it does by itself."
                           (tuatara.runtime:refusal (condition) (princ-to-string condition)))))
            (true (search "cannot be opened" refused) "~a" refused))
       (sb-posix:unlink path))))
+
+;;; The folders of clients that ended in the buffer list
+
+(defun row-showing (local text)
+  "The first row of the last frame LOCAL, a fake screen, painted that shows TEXT, or NIL."
+  (position-if (lambda (row) (search text row)) (tuatara.frontend.fake:fake-screen local)))
+
+(defun faces-over (local row text)
+  "The faces the last frame of LOCAL painted over the first cell of ROW showing TEXT."
+  (let ((column (search text (tuatara.frontend.fake:fake-screen-line local row))))
+    (and column
+         (loop for (start end face) in (aref (tuatara.frontend.fake:fake-spans local) row)
+               when (and (<= start column) (< column end))
+                 append (if (listp face) face (list face))))))
+
+(defun remote-client-numbered (number)
+  "The client of the test daemon that came as NUMBER, one on a screen of its own."
+  (in-daemon (lambda ()
+               (find-if (lambda (client)
+                          (and (tuatara.command:client-remote client) (eql (tuatara.command:client-number client) number)))
+                        (tuatara.command:editor-clients (daemon-editor))))))
+
+(defun client-in-daemon-p (client)
+  "True when CLIENT is still one of the test daemon's clients."
+  (in-daemon (lambda () (and (member client (tuatara.command:editor-clients (daemon-editor))) t))))
+
+(defun call-with-ended-folders (function)
+  "Call FUNCTION with a daemon's clients: the
+fake screen of a client that stays, with the buffer list showing, and the
+clients that ended, A (two files, alpha and beta) and B (gamma), each a client
+structure; the folder of A ended an hour after B's."
+  (with-test-directory (dir)
+    (let ((alpha (namestring (put-file (merge-pathnames "alpha.txt" dir) "alpha text")))
+          (beta (namestring (put-file (merge-pathnames "beta.txt" dir) "beta text")))
+          (gamma (namestring (put-file (merge-pathnames "gamma.txt" dir) "gamma text")))
+          (delta (namestring (put-file (merge-pathnames "delta.txt" dir) "delta text"))))
+      (with-test-daemon (name)
+        (multiple-value-bind (a a-runner) (attach-test-client name :directory dir :files (list alpha beta))
+          (true (shows a "alpha text"))
+          (multiple-value-bind (b b-runner) (attach-test-client name :directory dir :files (list gamma))
+            (true (shows b "gamma text"))
+            (multiple-value-bind (c c-runner)
+                (attach-test-client name :directory dir :files (list delta) :width 100 :height 24)
+              (true (shows c "delta text"))
+              (type-keys c "C-x C-b")
+              (true (shows c "This client"))
+              (type-keys a "C-x C-c")
+              (type-keys b "C-x C-c")
+              (client-ends a-runner)
+              (client-ends b-runner)
+              (let ((ended-a (remote-client-numbered 1))
+                    (ended-b (remote-client-numbered 2)))
+                (in-daemon (lambda ()
+                             (setf (tuatara.command:client-ended ended-b) (encode-universal-time 0 0 12 1 1 2026)
+                                   (tuatara.command:client-ended ended-a) (encode-universal-time 0 0 13 1 1 2026))))
+                (tuatara.command::wake-editor (daemon-editor))
+                (funcall function c ended-a ended-b)
+                (type-keys c "C-x C-c")
+                (client-ends c-runner)))))))))
+
+(define-test (daemon ended-folders-titled-faint-and-ordered)
+  ;; a client that ended has a faint heading beginning Ended and its time; the live ones come first, then
+  ;; the ended, the last to end first, then the folder of every client
+  (call-with-ended-folders
+   (lambda (c ended-a ended-b)
+     (declare (ignore ended-a ended-b))
+     (true (shows c "Ended 13:00 — client 1 since") "the heading says when it ended")
+     (let ((this (row-showing c "This client"))
+           (last-ended (row-showing c "Ended 13:00"))
+           (first-ended (row-showing c "Ended 12:00"))
+           (everyone (row-showing c "Every client's")))
+       (true (and this last-ended first-ended everyone) "all four headings are shown")
+       (when (and this last-ended first-ended everyone)
+         (true (< this last-ended first-ended everyone) "live, the last to end, the first to end, every client's")
+         (true (member :list-dim (faces-over c last-ended "Ended 13:00")) "the ended heading is faint")
+         (false (member :list-dim (faces-over c this "This client")) "the live heading is not"))))))
+
+(defun marked-for-deletion ()
+  "The keys marked for deletion in *Buffers*; call it in the daemon."
+  (tuatara.defaults::list-marked (tuatara.buffer:find-buffer "*Buffers*") :deletion))
+
+(defun goto-folder-heading (client-screen folder)
+  "Put point of the buffer list on the heading of FOLDER, a client, in the daemon."
+  (declare (ignore client-screen))
+  (in-daemon (lambda ()
+               (let ((list (tuatara.buffer:find-buffer "*Buffers*")))
+                 (tuatara.defaults::list-goto-entry list (list :section folder))))))
+
+(define-test (daemon ended-folders-return-takes-up)
+  ;; RET on the heading of a folder that ended takes its buffers into this client and the folder goes
+  (call-with-ended-folders
+   (lambda (c ended-a ended-b)
+     (declare (ignore ended-b))
+     (goto-folder-heading c ended-a)
+     (type-keys c "RET")
+     (true (wait-until (lambda () (not (client-in-daemon-p ended-a))) 10)
+           "the folder is gone")
+     (let ((alpha (in-daemon (lambda () (tuatara.buffer:find-buffer "alpha.txt")))))
+       (true alpha)
+       (true (in-daemon (lambda ()
+                          (let ((clients (tuatara.command::buffer-clients alpha)))
+                            (and (notany #'tuatara.command:client-ended clients) clients))))
+             "alpha is a live client's now"))
+     (true (wait-until (lambda () (not (row-showing c "Ended 13:00"))) 10) "the list is made again")
+     (true (row-showing c "Ended 12:00") "the other folder stays"))))
+
+(define-test (daemon ended-folders-d-marks-the-folder)
+  ;; d on the heading of a folder that ended marks each of its buffers for deletion, no others
+  (call-with-ended-folders
+   (lambda (c ended-a ended-b)
+     (declare (ignore ended-b))
+     (flet ((marked ()
+              (in-daemon (lambda ()
+                           (sort (mapcar #'tuatara.buffer:buffer-name (marked-for-deletion)) #'string<)))))
+       (goto-folder-heading c ended-a)
+       (type-keys c "d")
+       (true (wait-until (lambda () (marked)) 10) "buffers are marked")
+       (is equal '("*lisp-scratch*" "alpha.txt" "beta.txt") (marked) "the folder's buffers, no others")
+       (type-keys c "x")
+       (true (wait-until (lambda () (not (in-daemon (lambda () (tuatara.buffer:find-buffer "alpha.txt"))))) 10)
+             "the folder's buffers are killed")
+       (true (in-daemon (lambda () (tuatara.buffer:find-buffer "gamma.txt"))) "the other folder's stays")))))
+
+(define-test (daemon ended-folders-evidence-stays-closed-until-take-up)
+  ;; a file waiting closed in a folder that ended is not opened by showing the list, folding or marking
+  ;; the folder, only by RET on its heading, and then safely
+  (call-with-ended-folders
+   (lambda (c ended-a ended-b)
+     (declare (ignore ended-b))
+     (with-test-directory (dir)
+       (let ((evidence (namestring (put-file (merge-pathnames "disk.img" dir) "evidence text"))))
+         (in-daemon (lambda () (push (list ended-a (list :safe 0 evidence)) tuatara.defaults::*evidence-waiting*)))
+         (goto-folder-heading c ended-a)
+         (type-keys c "TAB")
+         (type-keys c "d")
+         (true (wait-until (lambda () (in-daemon (lambda () (marked-for-deletion)))) 10)
+               "the folder is marked")
+         (false (in-daemon (lambda () (tuatara.defaults::buffer-visiting evidence))) "closed while the list is used")
+         (goto-folder-heading c ended-a)
+         (type-keys c "RET")
+         (true (wait-until (lambda () (in-daemon (lambda () (tuatara.defaults::buffer-visiting evidence)))) 10)
+               "opened as the folder is taken up")
+         (true (in-daemon (lambda () (tuatara.io:safe-visit-p (tuatara.defaults::buffer-visiting evidence))))
+               "and safely"))))))
+
+(define-test (daemon capital-d-kills-a-clients-folder)
+  ;; D on the heading of a client's folder, ended or live, kills the buffers of that folder after asking
+  (call-with-ended-folders
+   (lambda (c ended-a ended-b)
+     (declare (ignore ended-a))
+     (flet ((buffer-there-p (name) (in-daemon (lambda () (and (tuatara.buffer:find-buffer name) t)))))
+       (goto-folder-heading c ended-b)
+       (type-keys c "D")
+       (true (shows c "Kill the 2 buffers") "asked as for a project")
+       (type-keys c "y RET")
+       (true (wait-until (lambda () (not (buffer-there-p "gamma.txt"))) 10) "the folder's buffers are killed")
+       (true (buffer-there-p "alpha.txt") "another folder's stay")
+       (true (buffer-there-p "delta.txt") "this client's stay")))))

@@ -144,10 +144,10 @@ files let go."
               (client-startup-buffers client) '() (client-endings client) '())))))
 
 (defun client-folder-words (client)
-  "What the lists of buffers call CLIENT's: when it ended, or began, and
-where it was started (\"ended 14:20, client 2, ~/cases/x\", \"client 3
-since 14:02, ~/notes\")."
-  (format nil "~:[client ~d since ~a~;ended ~:*~a, client ~d~*~]~@[, ~a~]"
+  "What the lists of buffers call CLIENT's: its number, when it began and
+where it was started (\"client 3 since 14:02, ~/notes\"); one that ended,
+when it ended first (\"Ended 15:47 — client 2 since 14:02, ~/cases/x\")."
+  (format nil "~@[Ended ~a — ~]client ~d since ~a~@[, ~a~]"
           (and (client-ended client) (tuatara.dates:format-time "%H:%M" (client-ended client)))
           (client-number client)
           (tuatara.dates:format-time "%H:%M" (client-began client))

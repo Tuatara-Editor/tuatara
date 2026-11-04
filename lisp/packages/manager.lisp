@@ -38,9 +38,9 @@ loads from a source, as the buffer list (\\[buffers]) has its buffers.
 \\<support>\\[next-line] and \\[previous-line] move, \\<packages-mode>\\[list-visit] or \\`RET' lists the folder of
 the package on the line in rimu, \\[list-visit-other] in another window, \\[quit-window] or
 \\`h' returns; \\[list-mark-entry] marks a package (>), \\[list-mark-for-deletion] marks it for deletion (D),
-\\[list-unmark-entry] unmarks it, \\[list-unmark-all] unmarks them all, \\[list-toggle-marks] swaps marked and unmarked; \\[packages-update-marked] fetches the
-marked ones again (the one on the line when none is), \\[list-delete-marked] deletes what
-is kept of them after asking, \\[list-execute] of those marked for deletion;
+\\[list-unmark-entry] unmarks it, \\[list-unmark-all] unmarks them all, \\[list-toggle-marks] swaps marked and
+unmarked; \\[package-update-marked] fetches the marked ones again (the one on the line when none is),
+\\[list-delete-marked] deletes what is kept of them after asking, \\[list-execute] of those marked for deletion;
 \\[revert-buffer] lists them again, marks kept, as the list does by itself while it
 is shown. The README of the package on the line is shown beside the list,
 \\[list-toggle-preview] turning that off and on."
@@ -155,7 +155,7 @@ apart; why one was refused or failed is shown beside the list in place of
 its README. \\<packages-mode>\\[list-visit] or \\`RET' lists a package's
 folder in rimu, to read its source, \\[list-visit-other] in another window; \\[list-mark-entry] marks
 it, \\[list-mark-for-deletion] marks it for deletion, \\[list-unmark-entry] and \\[list-unmark-all] unmark, \\[list-toggle-marks] swaps marked and unmarked, a count marking as
-many; \\[packages-update-marked] fetches the marked ones again, \\[list-delete-marked] deletes what is kept of
+many; \\[package-update-marked] fetches the marked ones again, \\[list-delete-marked] deletes what is kept of
 them after asking, \\[list-execute] of those marked for deletion. The README of
 the package on the line is shown beside the list, \\[list-toggle-preview] turning that
 off and on. \\[package-update] fetches them all again."
@@ -305,7 +305,7 @@ in the init file (:signers) still decide for their source."
               (log-message (format nil "The source ~a is trusted anew: who signs it is asked again" where))
               (update-packages (list name))))))))
 
-(define-command packages-update-marked ()
+(define-command package-update-marked ()
   "Fetch again the marked packages (>), or with none marked the one on the
 current line, as \\[package-update] does them all."
   (act-on-list (current-buffer) (lambda (list names) (update-packages names) (unmark-list list)) "package"))
@@ -384,7 +384,7 @@ the package manager (PACKAGE-PREVIEW-BUFFER)."
 (defun install-packages ()
   "Bind the package manager's keys, \\`P' turning the README beside it off and on."
   (entry-list-keys 'packages-mode "the package manager (\\[package-manager])")
-  (define-keys *packages-keymap* '(("f" packages-update-marked)))
+  (define-keys *packages-keymap* '(("f" package-update-marked)))
   (entry-preview-keys 'packages-mode "the package manager (\\[package-manager])"))
 
-(commands-for-mode 'packages-mode "the package manager (\\[package-manager])" 'packages-update-marked)
+(commands-for-mode 'packages-mode "the package manager (\\[package-manager])" 'package-update-marked)

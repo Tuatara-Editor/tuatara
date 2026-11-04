@@ -13,10 +13,10 @@
   (:import-from #:tuatara.git
                 #:*git-safety* #:git-failure-words #:git-hash-p #:git-network-environment #:run-git-program)
   (:import-from #:tuatara.defaults
-                #:*global-keymap* #:*init-file-stop* #:*mode-commands*
+                #:*display-toggles* #:*global-keymap* #:*init-file-stop* #:*mode-commands*
                 #:act-on-list #:buffer-in-mode #:commands-for-mode #:config-file #:define-state-list #:delete-entries
-                #:entry-list-keys #:entry-preview-keys #:entry-preview-width #:escape-path #:field-line-key
-                #:keep-shown-current #:list-entry-at #:list-entry-noun #:list-mark-face #:list-mark-sign
+                #:display-toggle-name #:entry-list-keys #:entry-preview-keys #:entry-preview-width #:escape-path
+                #:field-line-key #:keep-shown-current #:list-entry-at #:list-entry-noun #:list-mark-face #:list-mark-sign
                 #:list-preview-p #:list-question #:map-text-forms #:marked-list-mode #:mode-named
                 #:outside-program-install-words #:preview-entry #:render-table-list #:rimu-show-directory
                 #:rimu-tree-size #:show-help #:side-preview-note #:state-line-fields #:state-list-drop

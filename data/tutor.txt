@@ -1085,7 +1085,8 @@ every match at once.  \`M-p' brings back what you typed before.
 Every buffer a program made for you -- help, *Messages*, the buffer
 list -- is a SUPPORT buffer: \`h' \`j' \`k' \`l' and the \`SPC' leader are
 the modal keys, and every other key is the buffer's own.  The mode line says
-TUATARA[S].
+TUATARA[S].  \`C-x SPC' opens the leader too, in every buffer and state,
+INSERT included.
 
 
 That is the working set

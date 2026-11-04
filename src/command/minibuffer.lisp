@@ -3,15 +3,17 @@
 
 (in-package #:tuatara.command)
 
-(defun read-password (prompt &key confirm)
+(defun read-password (prompt &key confirm fresh)
   "Read a secret, a passphrase, with PROMPT in the minibuffer, what is typed
 shown as stars and kept nowhere else (no history, no debug log); with CONFIRM
-asked twice, an error when the two differ. Returns the string, which the
+asked twice, an error when the two differ. With FRESH, for a question that
+comes unasked, only keys pressed once it is shown count (CALL-ASKED-UNASKED):
+keys typed before never become part of it. Returns the string, which the
 caller should wipe (WIPE-STRING) once it has handed it on. Every copy not
 returned is wiped, the question given up (\\[keyboard-quit]) too."
   (let* ((*minibuffer-hidden* t)
          (tuatara.runtime:*secret-at-hand* t)
-         (first (read-string prompt))
+         (first (if fresh (call-asked-unasked prompt (lambda () (read-string prompt))) (read-string prompt)))
          (returned nil))
     (if (not confirm)
         first
@@ -370,24 +372,38 @@ deliver."
     (if (and replay (car replay) (not fresh))
         (pop (car replay))
         (let ((editor *editor*) (*key-question* t))
-          (echo "~a" prompt)
-          (let* ((frame (editor-frame editor))
-                 (playing (frame-keys-playing frame))
-                 (recording (frame-keys-recording frame)))
-            (when fresh
-              (setf (frame-keys-playing frame) nil (frame-keys-recording frame) nil))
-            (unwind-protect
-                 (progn
-                   (redisplay-or-say editor)
-                   (when fresh (discard-typed-ahead editor))
+          (flet ((answer ()
                    (let* ((event (read-event editor))
                           (key (case (tuatara.frontend:event-kind event)
                                  (:quit (if fresh (error 'quit) (keyboard-quit-signal)))
                                  (t (tuatara.frontend:event-key event)))))
                      (when (and replay (not fresh)) (push key (cdr replay)))
-                     key))
-              (when fresh
-                (setf (frame-keys-playing frame) playing (frame-keys-recording frame) recording))))))))
+                     key)))
+            (if fresh
+                (call-asked-unasked prompt #'answer)
+                (progn (echo "~a" prompt)
+                       (redisplay-or-say editor)
+                       (answer))))))))
+
+(defun call-asked-unasked (prompt function)
+  "Call FUNCTION, which reads the answer to a question that comes unasked,
+asked by Tuatara of itself rather than by a command you gave, once PROMPT is
+shown in the echo area: the keys typed until it shows are thrown away
+\(DISCARD-TYPED-AHEAD), so that only keys pressed after it answer it, and the
+question is out of any recording of keys: keys being played do not answer
+it, the keys pressed are not recorded, and \\`C-g' there leaves the recording
+going. Returns what FUNCTION returns."
+  (let* ((editor *editor*)
+         (frame (editor-frame editor))
+         (playing (frame-keys-playing frame))
+         (recording (frame-keys-recording frame)))
+    (echo "~a" prompt)
+    (setf (frame-keys-playing frame) nil (frame-keys-recording frame) nil)
+    (unwind-protect
+         (progn (redisplay-or-say editor)
+                (discard-typed-ahead editor)
+                (funcall function))
+      (setf (frame-keys-playing frame) playing (frame-keys-recording frame) recording))))
 
 (defun answer-keys-words (answers)
   "The keys ANSWERS, a list of characters, in words: y, n or v."

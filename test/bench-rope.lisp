@@ -13,7 +13,11 @@
 ;;;; the collections they set off take 75 ms (one run in nine, 130 ms for the
 ;;;; file rope); the best of the timed runs is what is kept, so neither counts.
 ;;;; A 59 ms best once seen came from other work on the machine slowing every
-;;;; run in a pass; it did not come back in ten fresh processes.
+;;;; run in a pass; it did not come back in ten fresh processes.  Each pass
+;;;; begins once the processor runs at its full clock (WARM-PROCESSOR): saving
+;;;; power, the i9-13900KF holds a busy core at 1.1 GHz instead of 3.0 for
+;;;; seconds, every benchmark then 2.7 times as slow.  A benchmark over its
+;;;; budget is given a few more passes, the best of all of them kept (RUN-ONE).
 ;;;; Set a budget again from such runs, never by raising it to make a failure
 ;;;; pass.
 

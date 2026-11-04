@@ -551,15 +551,24 @@ a section (ENTRY-MEMBER).")
     (declare (ignore mode list entry other))
     (message "Nothing to open on this line")))
 
+(defgeneric visit-section (mode list section other)
+  (:documentation "What \\[list-visit] and \\[list-visit-other] do on the heading of SECTION in
+LIST, a buffer in MODE.")
+  (:method (mode list section other)
+    "Fold or unfold the section."
+    (declare (ignore mode other))
+    (toggle-list-section list section)))
+
 (defun visit-entry-at (other)
   "Open the entry on the current line of the list (VISIT-ENTRY), in another
-window with OTHER; on a section's heading, fold or unfold the section."
+window with OTHER; on a section's heading, what the list does there
+\(VISIT-SECTION), folding or unfolding the section as standard."
   (let* ((list (current-buffer))
          (mode (buffer-major-mode list))
          (entry (list-entry-at list))
          (sectioned (typep mode 'sectioned-list-mode))
          (shown (if sectioned (entry-member entry) entry)))
-    (cond ((and sectioned (eq (first entry) :section)) (toggle-list-section list (second entry)))
+    (cond ((and sectioned (eq (first entry) :section)) (visit-section mode list (second entry) other))
           (shown (visit-entry mode list shown other))
           (t (message "No ~a on this line" (list-entry-noun mode))))))
 
@@ -609,7 +618,7 @@ there is one, before them all, and the section LAST after them. O(items)."
                 (if order (stable-sort others order :key #'car) others)
                 (alone last))))))
 
-(defun sectioned-pieces (list sections title row &key count after)
+(defun sectioned-pieces (list sections title row &key count after section-face)
   "The lines of LIST for SECTIONS, each (SECTION . MEMBERS), as two values:
 their entries, for RENDER-PIECES, and their pieces. Each section has a
 heading: ▾, or ▸ when it is folded, its title (TITLE, a function of the
@@ -624,8 +633,9 @@ with entries of their own, ROW gives as a second value their entries, a
 sequence of one for each line. AFTER, a function of the section and its
 members, gives lines following the members of an open section the same way,
 their pieces and their entries (\"... 3 more\"). An empty line follows each
-open section another comes after. The sections are kept for
-\\[list-toggle-all-folds]."
+open section another comes after. SECTION-FACE, a function of a section,
+gives the face of its heading, :heading when it gives none. The sections are
+kept for \\[list-toggle-all-folds]."
   (setf (tuatara.buffer:buffer-local list 'list-sections) (mapcar #'car sections))
   (let ((folded (list-folded list)) (entries '()) (pieces '()))
     (flet ((add (&optional more-pieces more-entries)
@@ -640,7 +650,7 @@ open section another comes after. The sections are kept for
                  (push (string #\Newline) pieces))
                (push (list :section section) entries)
                (push (cons (format nil "~:[▸~;▾~] ~a~@[ (~:d)~]" open (escape-controls (funcall title section)) number)
-                           :heading)
+                           (or (and section-face (funcall section-face section)) :heading))
                      pieces)
                (push (string #\Newline) pieces)
                (when (or open (list-filters-on-p list))
@@ -813,18 +823,19 @@ RENDER-PIECES, FIRST-LINE counted from the titles when not given."
 (defun render-table-list (list columns items cells
                           &rest options
                           &key (marked-by (lambda (item section) (declare (ignore section)) item))
-                               sections section-title (keep-marks t)
+                               sections section-title section-face (keep-marks t)
                           &allow-other-keys)
   "Fill LIST with a table (TABLE-HEADING-PIECES): the titles of COLUMNS over
 a row for each of ITEMS, its cells what CELLS, a function of the item, its
 mark (ENTRY-MARK) and its section, gives (TABLE-ROW-PIECES). With SECTIONS,
 ITEMS are sections, each (SECTION . MEMBERS), under headings that fold
-\(SECTIONED-PIECES, SECTION-TITLE naming each). MARKED-BY, a function of an
+\(SECTIONED-PIECES, SECTION-TITLE naming each, SECTION-FACE giving the face of
+its heading). MARKED-BY, a function of an
 item and its section, gives what its mark is kept by; with KEEP-MARKS, the marks of
 items no longer listed are dropped. The other OPTIONS go to
 RENDER-MADE-TABLE-LIST: BEFORE and AFTER, pieces above the titles and below
 the rows, and those of RENDER-PIECES. Each row's cells are kept as text, so
-that \\[list-show-records] can try a pattern on one column."
+that \\[search-filter-show-records] can try a pattern on one column."
   (let ((texts (make-hash-table :test 'eq)) (first nil))
     (flet ((row (item section)
              (multiple-value-bind (pieces cell-texts)
@@ -838,7 +849,7 @@ that \\[list-show-records] can try a pattern on one column."
                                   (mapcar (lambda (item) (funcall marked-by item nil)) items))))
       (multiple-value-bind (entries rows)
           (if sections
-              (sectioned-pieces list items section-title #'row)
+              (sectioned-pieces list items section-title #'row :section-face section-face)
               (values items (loop for item in items append (row item nil))))
         (apply #'render-made-table-list list columns rows texts first
                :entries entries
@@ -846,7 +857,7 @@ that \\[list-show-records] can try a pattern on one column."
                              (lambda (entry) (let ((member (entry-member entry))) (and member (funcall marked-by member (third entry)))))
                              (lambda (entry) (funcall marked-by entry nil)))
                (loop for (name value) on options by #'cddr
-                     unless (member name '(:marked-by :sections :section-title :keep-marks))
+                     unless (member name '(:marked-by :sections :section-title :section-face :keep-marks))
                        append (list name value)))))))
 
 (defun keep-list-table (list titles texts first)

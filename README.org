@@ -218,6 +218,8 @@ In the window and in a terminal alike:
 | bubblewrap                     | the sandbox every program reading a file for Tuatara runs in: without it no PDF, picture or Office document is shown |
 | poppler's tools                | PDFs as pages, their text and attachments                            |
 | ImageMagick                    | pictures of every kind, and their previews                           |
+| bsdtar (libarchive)            | zip, 7z, rar, ISO 9660 and cpio archives listed and extracted in rimu |
+| 7-Zip (7zz)                    | the best of archives: encrypted 7z and rar, more zip methods; used before bsdtar |
 | LibreOffice (Writer, Calc, Impress) | Word, Excel, PowerPoint and OpenDocument files shown as pages    |
 | enchant and a hunspell dictionary | spelling                                                          |
 | git                            | the git status (=C-x g=), and packages fetched                       |
@@ -244,7 +246,7 @@ To install them all:
 
 #+begin_example
 # Fedora
-sudo dnf install bubblewrap poppler-utils ImageMagick libreoffice-writer libreoffice-calc \
+sudo dnf install bubblewrap poppler-utils ImageMagick bsdtar 7zip libreoffice-writer libreoffice-calc \
   libreoffice-impress enchant2 hunspell-en git gnupg2 xdg-utils wl-clipboard xclip \
   texlive-xetex 'tex(amsmath.sty)' 'tex(amssymb.sty)' 'tex(booktabs.sty)' 'tex(capt-of.sty)' \
   'tex(fancyhdr.sty)' 'tex(float.sty)' 'tex(fontspec.sty)' 'tex(fvextra.sty)' 'tex(geometry.sty)' \
@@ -252,11 +254,11 @@ sudo dnf install bubblewrap poppler-utils ImageMagick libreoffice-writer libreof
   'tex(multicol.sty)' 'tex(rotating.sty)' 'tex(titlesec.sty)' 'tex(ulem.sty)' 'tex(wrapfig.sty)' \
   'tex(xcolor.sty)' 'tex(xltabular.sty)'
 # Ubuntu
-sudo apt install bubblewrap poppler-utils imagemagick libreoffice-writer libreoffice-calc \
+sudo apt install bubblewrap poppler-utils imagemagick libarchive-tools 7zip libreoffice-writer libreoffice-calc \
   libreoffice-impress libenchant-2-2 hunspell-en-us git gnupg xdg-utils wl-clipboard xclip \
   texlive-xetex texlive-latex-extra texlive-plain-generic
 # Arch and Omarchy
-sudo pacman -S bubblewrap poppler imagemagick libreoffice-fresh enchant hunspell-en_us git \
+sudo pacman -S bubblewrap poppler imagemagick libarchive 7zip libreoffice-fresh enchant hunspell-en_us git \
   gnupg xdg-utils wl-clipboard xclip texlive-xetex texlive-latexextra texlive-plaingeneric
 #+end_example
 
@@ -273,7 +275,7 @@ every setting, commented out. For example:
 #+begin_example
 (bind-key "C-c t" 'end-of-buffer)                ; in every modal state
 (bind-key "SPC ." 'beginning-of-buffer :map :normal)
-(bind-key "; ;" 'end-of-line :map :leader)       ; under SPC
+(bind-key "; ;" 'end-of-line :map :leader)       ; under SPC and C-x SPC
 (unbind-key "C-x C-b")
 (set-face :comment :fg :cyan :italic nil)        ; faces: see lisp/theme.lisp
 (load-theme 'ao-light)                           ; ao-dark (the default), terminal, plain
@@ -285,7 +287,7 @@ redefine any of it.
 
 * Status
 
-Version 0.90.14, a pre-release: in daily use by its author, its parts tested
+Version 0.90.15, a pre-release: in daily use by its author, its parts tested
 (=tools/test.sh=, about 225,000 checks), its interfaces still changing until
 1.0.0, the first stable release.
 
@@ -400,6 +402,8 @@ Tuatara says where its ideas come from:
 - PDF (ISO 32000) :: the structure of a PDF read by =M-x file-metadata=: its
   objects, cross-reference tables, streams and filters, and page content
   (=lisp/viewers/pdf-reader.lisp=).
+- RARLAB's RAR 5.0 format description :: the rar archives the tests make, laid
+  out as it describes (=test/rimu-operations.lisp=).
 - RFC 1345 :: the digraphs, as Emacs's rfc1345 input method has them.
 - RFC 3339 :: dates and times as the named date patterns read and compare them
   (=src/syntax/named-patterns.lisp=).

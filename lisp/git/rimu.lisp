@@ -278,7 +278,7 @@ was on (RIMU-SHOW-NEAREST)."
 
 (defparameter *rimu-rewound-refused*
   '(rimu-quick-edit rimu-goto-file rimu-home rimu-last-directory rimu-toggle-git rimu-toggle-sizes rimu-toggle-picture
-    rimu-diff list-archive rimu-verify-files file-metadata open-externally
+    rimu-diff rimu-archive-list rimu-verify-files file-metadata open-externally
     rimu-find rimu-find-text rimu-duplicates diff-files
     git-file-menu git-blame git-log-file git-diff-file)
   "The commands refused in a rimu list of a folder as a commit left it, as

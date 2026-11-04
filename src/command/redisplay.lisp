@@ -843,6 +843,11 @@ cells, a terminal's) are noted too, its text shown as it is."
                        (loop for (column face) in (loop for f in *ruler-functions* append (tuatara.runtime:call-hook-function f window))
                              for at = (+ margin (- column shift))
                              when (and (<= margin at) (< at width)) collect (list at face)))))
+        ;; what follows the rows in a large file read in before it is wanted
+        (when (plusp (length rows))
+          (tuatara.text:read-ahead (tuatara.buffer:buffer-text (tuatara.display:window-buffer window))
+                                   (tuatara.display:row-start (aref rows 0))
+                                   (tuatara.display:row-end (aref rows (1- (length rows))))))
         (when (plusp (tuatara.display:window-header-rows window))
           (let ((header-top (tuatara.display:area-top window)))
             (multiple-value-bind (text spans)

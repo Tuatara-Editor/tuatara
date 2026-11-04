@@ -338,6 +338,89 @@ process with MARK is killed after, whatever FUNCTION did."
     (setf (car cancel) t)
     (true (gone-within running 3))))
 
+(defun systemctl-output (&rest arguments)
+  "What systemctl, given ARGUMENTS after --user, prints of your own service manager."
+  (tuatara.io:program-output (list* (tuatara.io:find-program "systemctl") "--user" arguments)
+                             :seconds 10 :environment (tuatara.io::scope-environment)))
+
+(defun scopes-with (text)
+  "The names of the scopes of your own service manager whose line in its
+list, the command run in them included, has TEXT."
+  (loop for line in (uiop:split-string (or (systemctl-output "list-units" "--all" "--plain" "--no-legend" "--full"
+                                                             "*.scope")
+                                           "")
+                                       :separator '(#\Newline))
+        when (search text line)
+          collect (find-if (lambda (word) (search ".scope" word))
+                           (remove "" (uiop:split-string line :separator " ") :test #'string=))))
+
+(define-test (sandbox scopes-let-go)
+  ;; no scope systemd-run made is left once its sandbox has ended, even one ended
+  ;; while systemd-run still had the scope made, which the service manager would
+  ;; otherwise keep, empty, for good
+  (let ((mark (format nil "31.~d" (+ 100000 (random 900000))))
+        (sleep (tuatara.io:sandbox-find-program "sleep"))
+        (memory (* 256 1024 1024)))
+    (true tuatara.io::**sandbox-scope**)
+    (unwind-protect
+         (progn
+           (let ((process (tuatara.io:sandbox-start sleep (list mark) nil :memory memory)))
+             (true (loop repeat 200 thereis (scopes-with mark) do (sleep 0.05)) "a sandbox started in a scope")
+             (tuatara.io:end-sandbox process))
+           ;; ended at every moment of their start, systemd-run's request on its way included
+           (dotimes (i 160)
+             (let ((process (tuatara.io:sandbox-start sleep (list mark) nil :memory memory)))
+               (sleep (* (mod i 40) 0.001))
+               (tuatara.io:end-sandbox process)))
+           (dotimes (i 5)
+             (is eq :done (nth-value 1 (tuatara.io:sandbox-run "sh" (list "-c" "true" mark)))))
+           (true (loop repeat 200 thereis (null (scopes-with mark)) do (sleep 0.05))
+                 "no scope left of those sandboxes"))
+      (let ((left (remove nil (scopes-with mark))))
+        (when left (apply #'systemctl-output "stop" "--no-block" left))))))
+
+(define-test (sandbox scopes-left-stopped)
+  ;; the scopes of an editor that has ended are stopped when the sandbox is next
+  ;; tried; those of an editor running, of another namespace of processes, and
+  ;; any not named by an editor are kept
+  (let* ((mark (format nil "31.~d" (+ 100000 (random 900000))))
+         (number (+ 1000000000 (random 1000000000)))
+         (namespace (tuatara.io::pid-namespace))
+         (gone (let ((process (sb-ext:run-program (tuatara.io:find-program "sleep") '("30") :wait nil)))
+                 (prog1 (format nil "~d-~a" (sb-ext:process-pid process)
+                                (tuatara.io::process-start-time (sb-ext:process-pid process)))
+                   (sb-ext:process-kill process sb-unix:sigkill)
+                   (sb-ext:process-wait process)
+                   (sb-ext:process-close process))))
+         (left (format nil "tuatara-sandbox-~a-~a-~d.scope" namespace gone number))
+         (kept (list (format nil "tuatara-sandbox-~a-~d.scope" (tuatara.io::scope-owner) number)
+                     (format nil "tuatara-sandbox-1-~a-~d.scope" gone number)
+                     (format nil "tuatara-sandbox-test-~d.scope" number)))
+         (processes '()))
+    (unwind-protect
+         (progn
+           (dolist (name (cons left kept))
+             (push (sb-ext:run-program (tuatara.io:find-program "systemd-run")
+                                       (list "--user" "--scope" "--quiet" "--collect" "--unit" name
+                                             "--" (tuatara.io:find-program "sleep") mark)
+                                       :wait nil :environment (tuatara.io::scope-environment))
+                   processes))
+           (true (loop repeat 200 thereis (= 4 (length (scopes-with mark))) do (sleep 0.05))
+                 "the four scopes made")
+           (tuatara.io:sandbox-status :again t)
+           (true (loop repeat 200 thereis (not (find left (scopes-with mark) :test #'equal)) do (sleep 0.05))
+                 "the scope of the editor gone stopped")
+           (sleep 0.5)
+           (let ((there (scopes-with mark)))
+             (dolist (name kept)
+               (true (find name there :test #'equal) "~a kept" name))))
+      (let ((there (remove nil (scopes-with mark))))
+        (when there (apply #'systemctl-output "stop" there)))
+      (dolist (process processes)
+        (sb-ext:process-kill process sb-unix:sigkill)
+        (sb-ext:process-wait process)
+        (sb-ext:process-close process)))))
+
 (define-test (sandbox ended-with-their-thread)
   ;; the sandboxes a thread started are ended before it ends, and every one
   ;; as the editor does when it ends
@@ -404,6 +487,29 @@ try: socket.socket(socket.AF_INET)
 except OSError as e: print(e.errno)'")))
   ;; threads still made, through clone when clone3 is refused
   (is string= (format nil "4~%") (sandbox-shell "for i in 1 2 3 4; do sleep 0.01 & done; wait; echo 4")))
+
+(define-test (sandbox secret-given)
+  ;; a secret read on standard input, a new line after it; read past it, the
+  ;; program is answered at once that there is no more, never left waiting
+  (multiple-value-bind (text outcome said) (sandbox-shell "cat; echo \"ended $?\"" :secret "open sesame" :seconds 10)
+    (is eq :done outcome)
+    (is string= (format nil "open sesame~%ended 1~%") text)
+    (true (search "temporarily unavailable" said) "~a" said))
+  ;; an empty one: nothing at all, not even a new line
+  (is string= (format nil "ended 1~%") (sandbox-shell "cat; echo \"ended $?\"" :secret "" :seconds 10))
+  ;; one longer than the pipe holds is refused, never left to block
+  (true (search "it is longer than"
+                (handler-case (progn (sandbox-shell "cat" :secret (make-string 100000 :initial-element #\x)) "")
+                  (tuatara.io:file-system-error (e) (princ-to-string e)))))
+  ;; never among the arguments of what runs
+  (false (search "hidden" (sandbox-shell "cat /proc/[0-9]*/cmdline </dev/null; true" :secret "hidden"))))
+
+(define-test (sandbox no-special-files-made)
+  ;; a program shut in makes no named pipe and no device
+  (multiple-value-bind (text outcome said) (sandbox-shell "mkfifo /tmp/pipe && echo made")
+    (is eq :failed outcome)
+    (false (search "made" text))
+    (true (search "not permitted" said) "~a" said)))
 
 (define-test (sandbox files-given)
   ;; files shown read only, and what is in the environment besides

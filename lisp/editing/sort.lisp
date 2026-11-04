@@ -1116,8 +1116,8 @@ the command in messages."
 are separated by spaces and tabs, and the prefix argument names the field (the
 first by default; a negative one counts from the end of the line). A line with
 too few fields stops the sort. In a file of records, a CSV, a log, JSON Lines
-and the others \\[list-show-records] names, the records are sorted instead by
-the column asked for, as \\[list-show-records] asks for it, each record whole
+and the others \\[search-filter-show-records] names, the records are sorted instead by
+the column asked for, as \\[search-filter-show-records] asks for it, each record whole
 and the header line staying first; a record without the column sorts as
 empty. Without a selection, does nothing and says so."
   (let ((field (field-argument)))
@@ -1567,7 +1567,7 @@ several lines deleting them all; ^ and $ are a line's start and end, so that
 search: a pattern with a capital letter, or naming a case ([[:upper:]],
 \\p{Lu}), heeds case. Says how many were deleted.
 In a file of records cut into columns, a CSV, a log, JSON Lines and the
-others \\[list-show-records] names, a column is asked for first (nothing for
+others \\[search-filter-show-records] names, a column is asked for first (nothing for
 the whole line), the pattern tried on its value alone, and a header line
 always stays. Without a selection, does nothing
 and says so; a large selection is handled in the background."
@@ -1591,9 +1591,9 @@ a JSON Lines file and the others *LINE-RECORD-MODES* names
   "Keep the records whose line a regular expression matches and delete the
 rest, in a file of records, a line each: a CSV or TSV, a log, a JSON Lines
 file, todo.txt and the others *LINE-RECORD-MODES* names, the column asked
-for first as \\[list-show-records] asks. The lines the selection touches, or
+for first as \\[search-filter-show-records] asks. The lines the selection touches, or
 every record; a header line always stays (\\[toggle-list-header]). Smart case, as in search. One step to undo; a large file
-is filtered in the background. \\[list-show-records] hides the others
+is filtered in the background. \\[search-filter-show-records] hides the others
 instead, deleting nothing."
   (if (records-file-p (current-buffer))
       (filter-lines 'list-keep-records t :whole t :noun "record" :words "keep records")
@@ -1602,7 +1602,7 @@ instead, deleting nothing."
 (define-command list-delete-records ()
   "Delete the records whose line a regular expression matches, keeping the
 rest: asked for as \\[list-keep-records] asks, in the same files. A header
-line always stays. \\[list-hide-records] hides them instead,
+line always stays. \\[search-filter-hide-records] hides them instead,
 deleting nothing."
   (if (records-file-p (current-buffer))
       (filter-lines 'list-delete-records nil :whole t :noun "record" :words "delete records")

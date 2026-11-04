@@ -285,7 +285,7 @@ is there or TRIES turns have gone."
       (sb-posix:setenv "XDG_CONFIG_HOME" (namestring (merge-pathnames "config/" dir)) 1)
       (unwind-protect
         (multiple-value-bind (f editor)
-            (run-keys (list (format nil "M-x m a k e - t e m p l a t e - f r o m - d o c x RET ~a C-j RET" (typed-keys source))
+            (run-keys (list (format nil "M-x e x p o r t - t e m p l a t e - f r o m - d o c x RET ~a C-j RET" (typed-keys source))
                             (wait-for-buffer "untitled"))
                       :width 120 :height 20)
           (declare (ignore f))

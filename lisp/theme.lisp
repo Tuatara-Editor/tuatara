@@ -59,16 +59,18 @@ colours show until a theme sets them.")
 (define-face :list-filters "The line above a list narrowed by search filters (\\[search-filter-regex]), saying by what and how many entries are left." :inherit :warning)
 (define-face :list-special "Something Tuatara made rather than a file of yours, in a list: the names in stars in the buffer list (\\[buffers]), *Messages* and *scratch*." :fg :green)
 (define-face :list-read-only "Something that cannot be changed, in a list: the names of read-only buffers in the buffer list (\\[buffers])." :fg :blue)
-(define-face :list-dim "What is of less interest in a list, set back: help buffers in the buffer list (\\[buffers]), packages not loaded, bookmarks whose file is gone, files ignored in rimu and in a git status, a value missing in the health report (\\[check-health]), a line saying more are not shown." :fg :bright-black)
+(define-face :list-dim "What is of less interest in a list, set back: help buffers and the headings of clients that ended in the buffer list (\\[buffers]), packages not loaded, bookmarks whose file is gone, files ignored in rimu and in a git status, a value missing in the health report (\\[check-health]), a line saying more are not shown." :fg :bright-black)
 (define-face :list-directory "The names of folders in a list: in rimu (\\[rimu]) and where a link to a folder leads, in the trash (\\[rimu-trash]) and among bookmarks (\\[bookmark-manager])." :fg :blue)
 (define-face :list-date "Dates and times in a list or beside completion candidates: when a file last changed, the date in a formatted name, a rimu list's last commits (\\<rimu-mode>\\[rimu-toggle-git]), when a message was sent." :fg :blue)
 (define-face :list-size "Sizes in a list or beside completion candidates: of files and buffers, and a rimu list's sizes column (\\<rimu-mode>\\[rimu-toggle-sizes])." :fg :cyan)
 (define-face :list-note "What is said of an entry beside it in a list: the first line of a rimu list's last commit messages, the first sentence of a face's description in \\[list-faces], the details under a finding in a report." :fg :bright-black)
-(define-face :list-name "The name of a thing set apart in a list, above what it holds: a font's family over its variants in \\[list-fonts]." :fg :magenta :bold t)
+(define-face :list-name "The name of a thing set apart in a list, above what it holds: a font's family over its variants
+in \\[font-list]." :fg :magenta :bold t)
 (define-face :list-label "The name of a field before its value, in a report or a message's details (Subject:, Verdict)." :fg :yellow)
 (define-face :list-good "A state that is as it should be, in a list: a check that passed in the health report (\\[check-health])." :fg :green :bold t)
 (define-face :list-bad "A state that is not as it should be, in a list: a check that failed in the health report (\\[check-health])." :fg :red :bold t)
-(define-face :font-list-line "The line for the init file that chooses a font, in the list of fonts (\\[list-fonts])." :fg :green)
+(define-face :font-list-line "The line for the init file that chooses a font, in the list of fonts (\\[font-list])."
+  :fg :green)
 
 ;;; Rimu
 

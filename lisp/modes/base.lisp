@@ -90,7 +90,7 @@ pattern on one."
 
 (defgeneric mode-record-fields (mode buffer)
   (:documentation "How the records of BUFFER, in major mode MODE, are cut into fields (a
-RECORD-FIELDS): \\[list-show-records], \\[keep-lines] and the others ask for
+RECORD-FIELDS): \\[search-filter-show-records], \\[keep-lines] and the others ask for
 one and try the pattern on it alone. NIL when only the whole line is tried.")
   (:method (mode buffer)
     "No fields: the whole line."
