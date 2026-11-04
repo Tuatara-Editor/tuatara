@@ -77,7 +77,7 @@ opens what was made; gpg-lock makes gpg-agent forget its passphrases.")
               (tuatara-user:*gpg-passphrase-from* :minibuffer))
           (gpg-test-key)
           (flet ((encrypting (path keys)
-                   (auto-save-session (append (cons (format nil "M-x e n c r y p t - f i l e RET C-a C-k ~a C-j" (rimu-typed path)) keys)
+                   (auto-save-session (append (cons (format nil "M-x g p g - e n c r y p t - f i l e RET C-a C-k ~a C-j" (rimu-typed path)) keys)
                                               (list (list :until (lambda () (not (wiping-p)))) (list :wait 0.3)
                                                     (list :until (lambda () (not (wiping-p)))))))))
             ;; to a key: wiped once said, no passphrase asked

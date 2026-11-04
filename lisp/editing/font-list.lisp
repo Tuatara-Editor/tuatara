@@ -78,7 +78,7 @@ search filters (\\[search-filter-regex])."
     (set-search-filtering buffer :nouns "fonts" :heading #'consp)
     (render-pieces buffer pieces :point point :entries lines :refill 'font-list-refill)))
 
-(define-command list-fonts ()
+(define-command font-list ()
   "List every font installed in *Fonts*, the fixed-width ones first: each family
 with its variants, the line of the init file that chooses each, and a sample
 written in it. \\<font-list-mode>\\[font-list-use] on a variant shows the window
@@ -127,5 +127,5 @@ included, narrowed again by its search filters, point on the same line
   "Bind the keys of the list of fonts."
   (define-keys *font-list-keymap* '(("RET" font-list-use) ("w" font-list-copy))))
 
-(commands-for-mode 'font-list-mode "the list of fonts (\\[list-fonts])"
+(commands-for-mode 'font-list-mode "the list of fonts (\\[font-list])"
                    'font-list-use 'font-list-copy)

@@ -227,7 +227,7 @@ have made the signature."
                  (format nil "signed by ~a (key ~a)" (getf signature :name) fingerprint)
                  (format nil "signed by the key ~a" fingerprint)))
       (:unchecked (format nil "signed by the GPG key ~a, which your keyring lacks, so the signature cannot be checked: ~
-                               import that key (M-x import-keys), then fetch it again (M-x package-update)"
+                               import that key (M-x gpg-import-keys), then fetch it again (M-x package-update)"
                           (getf signature :key-id)))
       (:bad "signed, but its signature does not hold: it was changed after it was signed, or its key is revoked")
       (:error (format nil "signed, but who signed it could not be checked~@[ (~a)~]" (getf signature :why)))

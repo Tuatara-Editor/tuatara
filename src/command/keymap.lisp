@@ -137,14 +137,21 @@ does. Returns KEYMAP."
 
 (defun unbind-commands-if (test keymap)
   "Take out of KEYMAP, and of the keymaps of its prefix keys, each binding to
-a command (a symbol) for which TEST is true."
+a command (a symbol) for which TEST is true, with its label, and each prefix
+key left with nothing bound under it so."
   (with-keymaps-held
     (incf *keymaps-generation*)
     (labels ((walk (map)
-               (loop for spec being the hash-keys of (keymap-table map) using (hash-value binding)
-                     do (cond ((keymap-p binding) (walk binding))
-                              ((and binding (symbolp binding) (not (keywordp binding)) (funcall test binding))
-                               (remhash spec (keymap-table map)))))))
+               (let ((labels (gethash map *key-labels*))
+                     (taken nil))
+                 (loop for spec being the hash-keys of (keymap-table map) using (hash-value binding)
+                       when (if (keymap-p binding)
+                                (and (walk binding) (zerop (hash-table-count (keymap-table binding))))
+                                (and binding (symbolp binding) (not (keywordp binding)) (funcall test binding)))
+                         do (remhash spec (keymap-table map))
+                            (when labels (remhash spec labels))
+                            (setf taken t))
+                 taken)))
       (walk keymap))))
 
 (defun label-keys (keymap labels)

@@ -54,7 +54,7 @@ it goes under, with these filled in:
        several days chosen in the calendar, a timestamp each, a run a range
   %<%H:%M>  the time as the pattern says (format-time's %-specifiers)
   %%  a %
-\\[copy-capture-template] makes one of Tuatara's yours to change.")
+\\[org-capture-template-copy] makes one of Tuatara's yours to change.")
 
 (defparameter *built-in-capture-templates* (built-in-data-files "capture-templates/")
   "Tuatara's own capture templates, each (FILE-NAME TEXT): a TODO for the
@@ -111,7 +111,7 @@ of one of Tuatara's with the same key."
                                   own #'capture-template-key)
                  #'string< :key #'capture-template-key)))
 
-(define-command copy-capture-template ()
+(define-command org-capture-template-copy ()
   "Copy one of Tuatara's own capture templates, chosen by its name, into your
 capture templates folder (the first of *CAPTURE-TEMPLATE-DIRECTORIES*) and
 visit it: your copy, changed as you like (where it files, its text), takes

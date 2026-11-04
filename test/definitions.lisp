@@ -4,7 +4,7 @@
 (in-package #:tuatara.tests)
 
 (define-test definitions
-  :description "No function, macro or command is defined twice in one package, where the later would quietly replace the earlier; no two tests have one name; the core asks the host, never a variable holding one function.")
+  :description "No function, macro or command is defined twice in one package, where the later would quietly replace the earlier; no two tests have one name; the core asks the host, never a variable holding one function; the octets of a mapped file are read through the text layer alone.")
 
 (defun source-files (top)
   "Every Lisp source file under the folder TOP of the repository (\"lisp\", \"src\")."
@@ -94,3 +94,22 @@ the package's name and the reader's name in lower case."
           (setf (gethash name seen) (file-namestring file)))))
     (true (> count 300))
     (true (null twice) "Tests named twice: ~{~a~^; ~}" twice)))
+
+(defparameter *mapped-octets-read-elsewhere*
+  '(("files.lisp" "a save writes what the kernel did not copy of a stretch it noted read (NOTE-READ) first")
+    ("sort.lisp" "a sort merges its own files of sorted lines, which are taken away after the merge"))
+  "The files outside src/text that read a mapping's octets themselves
+\(MAPPING-SAP), each with why that leaves no file in memory.")
+
+(define-test (definitions mapped-octets-read-through-the-text-layer)
+  ;; the octets of a mapped file are read through the text layer (its spans, SPAN-SAP), which
+  ;; notes what is read, so that a pass through a large file leaves memory as it found it
+  ;; (WITH-READ-PASS); a reader of its own elsewhere would read the file into memory and leave it
+  ;; there: only the few known ones, each for its reason, do
+  (let ((found '()))
+    (dolist (file (loop for top in '("src" "lisp" "frontends") append (source-files top)))
+      (unless (search "/src/text/" (namestring file))
+        (when (cl-ppcre:scan "mapping-sap\\b" (uiop:read-file-string file))
+          (push (file-namestring file) found))))
+    (is equal (sort (mapcar #'first *mapped-octets-read-elsewhere*) #'string<) (sort found #'string<)
+        "Reading mapped octets outside src/text: ~{~a~^, ~}" found)))

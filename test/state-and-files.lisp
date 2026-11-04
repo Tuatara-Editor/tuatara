@@ -46,6 +46,12 @@ nothing read yet."
     (tuatara.defaults::*chosen-paths* "/other/one/" "/mine/two.txt"))
   "Each list kept between sessions with an entry another session puts there and one put here.")
 
+(define-test (state-and-files temporary-files-kept-to-the-run)
+  ;; what a test writes to the temporary folder lands in the run's own directory, removed with it
+  (let ((tmp (uiop:temporary-directory)))
+    (true (uiop:subpathp tmp *test-state-directory*) "~a" tmp)
+    (true (uiop:directory-exists-p tmp))))
+
 (define-test (state-and-files wipe-compares-regular-files-only)
   ;; the comparison before a wipe refuses a named pipe put in the file's place
   ;; at once, never waiting on it

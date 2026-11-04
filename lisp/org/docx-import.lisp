@@ -2,7 +2,7 @@
 ;;;; Copyright (C) 2026 Michael A Jones.  GPL-3.0-or-later; see LICENSE.
 ;;;;
 ;;;; DOCX-IMPORT reads a Word document someone gave you to write a report in
-;;;; and makes of it what M-x make-template-from-docx promises:
+;;;; and makes of it what M-x export-template-from-docx promises:
 ;;;;
 ;;;; - The Word half of a template, docx-templates/NAME/: the document as it
 ;;;;   is up to its first heading (its cover, contents, facts), its headers,
@@ -343,7 +343,7 @@ the lines of tuatara.txt, its tables' style and its lists' numberings."
             (cond ((and (equal kind "bullet") (null bullets)) (setf bullets abstract))
                   ((and kind (not (member kind '("bullet" "none") :test #'string=)) (null numbers)) (setf numbers abstract)))))))
     (with-output-to-string (s)
-      (format s "# How the note's text follows this template's design: made by make-template-from-docx.~%")
+      (format s "# How the note's text follows this template's design: made by export-template-from-docx.~%")
       (format s "table style: ~@[~a~]~%table position: ~@[~a~]~%bullets: ~@[~a~]~%numbers: ~@[~a~]~%" table-style table-position bullets numbers))))
 
 ;;; The LaTeX half
@@ -408,7 +408,8 @@ FIELDS for its places and CONTENTS true for a table of contents."
                          (points-text points) (points-text (* 6/5 points)) (getf look :bold) (getf look :colour) command
                          command (docx-twips-pt (or (getf look :before) 0)) (docx-twips-pt (or (getf look :after) 0))))))
         (with-output-to-string (s)
-          (format s "% Created {{{created}}} with Tuatara, template ~a: made by make-template-from-docx from a Word~%" name)
+          (format s "% Created {{{created}}} with Tuatara, template ~a: made by export-template-from-docx from a Word~%"
+                  name)
           (format s "% document, its design as near as LaTeX says it; change it as you like.~%")
           (format s "% Intended LaTeX compiler: {{{engine}}}~%")
           (format s "\\documentclass[~dpt]{article}~%" (cond ((<= size 10) 10) ((<= size 11) 11) (t 12)))

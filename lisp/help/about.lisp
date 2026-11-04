@@ -226,6 +226,8 @@ version)."
     ("The file program" "a file's kind told by its first octets, never by its name")
     ("PDF (ISO 32000)" "the structure of a PDF read by file-metadata: its objects, cross-reference"
                        "tables, streams and filters, and page content")
+    ("RARLAB's RAR 5.0 format description" "the rar archives the tests make, laid out as it describes"
+                                          "(test/rimu-operations.lisp)")
     ("RFC 1345" "the digraphs, as Emacs's rfc1345 input method has them")
     ("RFC 3339" "dates and times as the named date patterns read and compare them")
     ("NO_COLOR (no-color.org)" "no colours in the terminal where NO_COLOR is set")

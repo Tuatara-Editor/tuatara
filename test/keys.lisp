@@ -250,3 +250,45 @@ the editor TUATARA.COMMAND:*EDITOR* is bound to."
         (false (search "M-x keyboard-quit" help) "~(~a~)" command)
         (true (search "the quit key" help :test #'char-equal) "~(~a~)" command)
         (true (search "C-g" help) "~(~a~)" command)))))
+
+(define-test command-families
+  :description "Commands of one family share a prefix in M-x: the old names are no longer commands, the
+new ones are, and keep the keys the old ones had.")
+
+(define-test (command-families renamed)
+  (dolist (old '("encrypt-region" "encrypt-file" "decrypt-region" "decrypt-file" "decrypt-with-passphrase"
+                 "sign-region" "sign-file" "verify-region" "verify-file" "list-keys" "import-keys"
+                 "import-keys-region" "choose-encryption-keys" "copy-to-register" "insert-register"
+                 "jump-to-register" "point-to-register" "number-to-register" "add-to-register"
+                 "prepend-to-register" "list-registers" "bookmarks-rename" "bookmarks-set-categories"
+                 "packages-update-marked" "list-search-filters" "remove-search-filter"
+                 "remove-search-filters" "list-hide-records" "list-show-records" "list-fonts"
+                 "list-archive" "rimu-archive" "rimu-extract" "latex-compile-pdf" "latex-compile-pdf-buffer"
+                 "latex-compile-pdf-xdg" "copy-latex-template"
+                 "make-template-from-docx" "make-template-from-latex" "check-redactions" "copy-capture-template"))
+    (false (tuatara.command:find-command old) "~a is still a command" old))
+  (dolist (new '("gpg-encrypt-region" "gpg-encrypt-file" "gpg-decrypt-region" "gpg-decrypt-file"
+                 "gpg-decrypt-with-passphrase" "gpg-sign-region" "gpg-sign-file" "gpg-verify-region"
+                 "gpg-verify-file" "gpg-list-keys" "gpg-import-keys" "gpg-import-keys-region"
+                 "gpg-choose-encryption-keys" "register-copy" "register-insert" "register-jump"
+                 "register-point" "register-number" "register-add" "register-prepend" "register-list"
+                 "bookmark-rename" "bookmark-set-categories" "package-update-marked" "search-filter-list"
+                 "search-filter-remove" "search-filter-remove-all" "search-filter-hide-records"
+                 "search-filter-show-records" "font-list" "rimu-archive-list"
+                 "rimu-archive-create" "rimu-archive-extract"
+                 "export-latex-compile-pdf" "export-latex-compile-pdf-buffer" "export-latex-compile-pdf-xdg"
+                 "export-latex-template-copy"
+                 "export-template-from-docx" "export-template-from-latex" "export-check-redactions"
+                 "org-capture-template-copy"))
+    (true (tuatara.command:find-command new) "~a is not a command" new)))
+
+(define-test (command-families keys-kept)
+  (with-editor-session (editor)
+    (loop for (command keys) in '(("register-copy" "C-x r s") ("register-point" "C-x r p")
+                                  ("register-number" "C-x r n") ("register-add" "C-x r +")
+                                  ("register-insert" "C-x r i") ("register-jump" "C-x r j")
+                                  ("register-list" "C-x r l") ("search-filter-list" "C-x / l")
+                                  ("search-filter-remove-all" "C-x / r")
+                                  ("search-filter-show-records" "C-x / f")
+                                  ("search-filter-hide-records" "C-x / h"))
+          do (is string= keys (tuatara.command:substitute-command-keys (format nil "\\[~a]" command))))))

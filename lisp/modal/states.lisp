@@ -33,9 +33,10 @@ was, % and y to select and copy its text, and the \\`SPC' leader, under the
 calendar's own keys; nothing else of NORMAL state.")
 
 (defvar *tuatara-leader-keymap* (make-keymap :name "leader")
-  "The \\`SPC' leader map, in NORMAL state: yours alone, empty until your init
-file gives it keys (bind-key with :map :leader); the starter init file lists
-some, commented out, each a command with a key of its own under C-x or C-c too.")
+  "The leader map, opened by \\`SPC' in NORMAL state and by \\`C-x SPC' anywhere:
+yours alone, empty until your init file gives it keys (bind-key with :map
+:leader); the starter init file lists some, commented out, each a command with
+a key of its own under C-x or C-c too.")
 
 (defvar *modal-editing* t
   "True for Tuatara's modal editing: NORMAL and INSERT states in editing

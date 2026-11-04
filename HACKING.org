@@ -24,8 +24,9 @@
   release; check yours the same way (=sha256sum=). A distribution's Zig of
   another version is refused.
 - At run time: GTK 4 for the window, ncurses for the terminal; bubblewrap,
-  ImageMagick and poppler's tools for pictures and PDFs; enchant and hunspell
-  for spelling.
+  ImageMagick and poppler's tools for pictures and PDFs; bsdtar for zip, 7z,
+  rar, ISO 9660 and cpio archives, and 7-Zip for encrypted 7z and rar ones;
+  enchant and hunspell for spelling.
 
 On Fedora Atomic (Silverblue, Kinoite), =tools/toolbox-setup.sh= makes a toolbox
 container called =tuatara= with all of these but Zig and Quicklisp, and the

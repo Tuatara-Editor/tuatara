@@ -569,7 +569,7 @@ or :HUNG, so that each of several sessions in a test says how it ended."
       (true (uiop:string-prefix-p (format nil "one~%") text))
       (true (uiop:string-suffix-p text (format nil "ee~%four~%five~%")))
       (true (search "thr" text :end2 (search "two" text)))))
-  (multiple-value-bind (f editor) (narrowing-keys (list "C-f C-x SPC C-n C-n C-f C-x r M-w C-g"
+  (multiple-value-bind (f editor) (narrowing-keys (list "C-f C-x r SPC C-n C-n C-f C-x r M-w C-g"
                                                   (lambda () (tuatara.buffer:narrow-buffer (tuatara.command:current-buffer) 4 14))
                                                   "M-< C-x r y")
                                             :text *narrowing-text* :width 120)

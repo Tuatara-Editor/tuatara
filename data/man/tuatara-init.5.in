@@ -74,7 +74,9 @@ or
 say.
 .B :map :leader
 binds in the leader's map, the keys after the leader key in the modal
-layer.
+layer, and after
+.B C\-x SPC
+in every buffer and state.
 .TP
 .BI "(unbind\-key " KEYS ")"
 Take a key you or the defaults bound away.

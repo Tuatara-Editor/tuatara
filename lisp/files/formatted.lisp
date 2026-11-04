@@ -817,7 +817,7 @@ when there are two or more."
         (formatted-template-text (first templates)))))
 
 (defparameter *insert-file-limit* (* 16 1024 1024)
-  "The most octets \\[insert-note-template] reads from a file that is no note template;
+  "The most octets \\[insert-formatted-note-template] reads from a file that is no note template;
 a larger file is refused, and said so.")
 
 (defun read-file-text (path)
@@ -830,7 +830,7 @@ nothing in it acted on; an error says so when it is larger than
                                           (refuse "~a is larger than ~a (*insert-file-limit*): not read"
                                                  (tuatara.io:native-file-name name) (octets-words *insert-file-limit*)))))
 
-(define-command insert-note-template ()
+(define-command insert-formatted-note-template ()
   "Read a note template, or any file, into the current buffer at point: one
 of your templates (blank, and each file in
 ~/.config/tuatara/note-templates/), %date% and %author% filled in, or with

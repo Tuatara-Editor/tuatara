@@ -349,12 +349,15 @@ reached EVENT (started, ended), DETAILS, a string or NIL, said after it."
 becomes what FUNCTION returns, or (:ERROR TEXT) when it fails, a lack of
 memory or stack too, WAKE (a function, or NIL) called then to have the editor look; unless CANCEL, a cell,
 has turned true meanwhile, when nothing is kept; STOP-WORK on CANCEL also cuts
-short a call of FUNCTION's that does not look at it (STOPPABLE-WORK)."
+short a call of FUNCTION's that does not look at it (STOPPABLE-WORK).
+FUNCTION runs as background work (CALL-AS-LONG-WORK)."
   (let ((cell (list nil)))
     (make-guarded-thread
      (lambda ()
        (let ((value (handler-case (reporting-errors ("~a" name)
-                                    (if cancel (stoppable-work (cancel) (funcall function)) (funcall function)))
+                                    (call-as-long-work
+                                     (lambda ()
+                                       (if cancel (stoppable-work (cancel) (funcall function)) (funcall function)))))
                       (serious-condition (condition) (list :error (failure-words condition :said t))))))
          (unless (and cancel (car cancel))
            (setf (car cell) value)
@@ -372,8 +375,8 @@ happens, the job never stays :RUNNING: a condition signalled in WORK, a lack
 of memory or stack too, or no thread to be had for it, ends it :FAILED with
 the condition's words, JOB-STOPPED or anything once it was asked to stop ends
 it :STOPPED; and the editor is woken as it ends. WORK is the job's stoppable
-work (STOPPABLE-WORK): JOB-STOP ends it even inside a call that never looks.
-Returns JOB."
+work (STOPPABLE-WORK): JOB-STOP ends it even inside a call that never looks,
+and background work (CALL-AS-LONG-WORK). Returns JOB."
   (host-job-started *host* job)
   (setf *jobs* (append *jobs* (list job)))
   (report-job job "started" details)
@@ -385,8 +388,10 @@ Returns JOB."
                       (progn
                         (reporting-errors ("~a in ~a" (job-description job) (job-buffer-name job))
                           ;; M-x stop-job reaches into a call that never looks (STOP-WORK)
-                          (stoppable-work ((job-cancel job))
-                            (funcall work job)))
+                          (call-as-long-work
+                           (lambda ()
+                             (stoppable-work ((job-cancel job))
+                               (funcall work job)))))
                         (when (job-running-p job)
                           (setf (job-status job) (if (car (job-cancel job)) :stopped :done))))
                     (job-stopped () (setf (job-status job) :stopped))

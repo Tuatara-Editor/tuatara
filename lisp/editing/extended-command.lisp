@@ -173,13 +173,24 @@ they say that they work in WHERE (\"a quick edit\") and do nothing, and
 \\[execute-extended-command] does not offer them."
   (apply #'commands-for-mode test where commands))
 
+(defvar *broken-command-places* (make-hash-table :test 'eq :weakness :key :synchronized t)
+  "The places of *MODE-COMMANDS* that are no major mode and whose function is
+not there or failed (COMMAND-PLACE-P): no buffer is one of them.")
+
 (defun command-place-p (place buffer)
   "True when BUFFER is a place a command made for PLACE runs in: PLACE the
 name of a major mode, BUFFER in that mode or one made from it; else the name
-of a function of a buffer (COMMANDS-FOR-BUFFERS), true for BUFFER."
-  (if (find-mode place)
-      (typep (buffer-major-mode buffer) place)
-      (funcall place buffer)))
+of a function of a buffer (COMMANDS-FOR-BUFFERS), true for BUFFER. A PLACE
+that is neither, or whose function fails, is no place at all from then on,
+said once in the debug log: the commands made for it run nowhere, and the
+others are not hindered."
+  (cond ((find-mode place) (typep (buffer-major-mode buffer) place))
+        ((gethash place *broken-command-places*) nil)
+        (t (multiple-value-bind (answer failure)
+               (let ((tuatara.runtime:*hook-failures-said* nil))
+                 (call-hook-function place buffer))
+             (when failure (setf (gethash place *broken-command-places*) t))
+             answer))))
 
 (defun minibuffer-active-p (buffer)
   "True while the minibuffer reads something, whatever BUFFER is."

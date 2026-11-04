@@ -17,7 +17,7 @@
 ;;;; The decrypted text is kept from the disk and from other programs: no
 ;;;; auto-saved copy, no session file, no scratch file of a large sort or
 ;;;; replacement (refused past memory), no git gutter, no system clipboard but
-;;;; on request (M-x copy-to-clipboard), no core dump of the editor while one is
+;;;; on request (M-x gpg-copy-to-clipboard), no core dump of the editor while one is
 ;;;; open; an export asks first, since what it writes is not encrypted. A file
 ;;;; opened safely is never decrypted: evidence stays its encrypted octets.
 
@@ -128,9 +128,11 @@ PATH a block at a time (FILE-SOURCE), never read whole into memory."
                                    (declare (ignore size))
                                    (let ((source (file-source in name))
                                          (buffer (make-array 65536 :element-type '(unsigned-byte 8))))
-                                     (loop for n = (funcall source buffer)
-                                           while (plusp n)
-                                           do (tuatara.io:write-octets fd buffer :end n :path "gpg")))))
+                                     (unwind-protect
+                                          (loop for n = (funcall source buffer)
+                                                while (plusp n)
+                                                do (tuatara.io:write-octets fd buffer :end n :path "gpg"))
+                                       (close-source source)))))
       (tuatara.io:write-octets fd octets :path "gpg")))
 
 (defun gpg-run (arguments &key input input-path passphrase cancel (asker (gpg-asker)) second-input second-path)
@@ -322,6 +324,35 @@ its first octets are read."
                                                                      sb-alien:unsigned-long))
                             4 (if dumpable 1 0) 0 0 0)))
 
+(sb-ext:defglobal **secrets-held** 0
+  "How many secrets other than buffers' text are held at once (HOLD-SECRET):
+no core dump of the editor while any is. Changed under **DUMPABLE-LOCK**.")
+
+(sb-ext:defglobal **dumpable-lock** (sb-thread:make-mutex :name "core dumps")
+  "Held while whether the editor may be dumped is worked out and told the
+system, so that two threads never tell it in the wrong order.")
+
+(defun core-dumps-allowed-again ()
+  "Allow core dumps of the editor again, when no encrypted file's text is open
+and no secret is held (HOLD-SECRET)."
+  (sb-thread:with-recursive-lock (**dumpable-lock**)
+    (when (and (zerop **secrets-held**) (notany #'live-buffer-p *encrypted-buffers*))
+      (set-dumpable t))))
+
+(defun hold-secret ()
+  "Say that a secret, a password asked for, is now held in memory: no core
+dump of the editor until it is let go (LET-GO-OF-SECRET), from any thread."
+  (sb-thread:with-recursive-lock (**dumpable-lock**)
+    (incf **secrets-held**)
+    (set-dumpable nil)))
+
+(defun let-go-of-secret ()
+  "Say that a secret held (HOLD-SECRET) has been wiped: core dumps are allowed
+again once nothing else keeps them away."
+  (sb-thread:with-recursive-lock (**dumpable-lock**)
+    (decf **secrets-held**)
+    (core-dumps-allowed-again)))
+
 (defun keep-from-disk (buffer)
   "Keep BUFFER's text, which was encrypted, from the disk and from other
 programs (TUATARA.IO:BUFFER-PLAINTEXT-P, which auto-save, the session, scratch
@@ -329,8 +360,9 @@ files, the git gutter, the clipboard, exports and code files heed); no core
 dump of the editor while it is open. A save writes it encrypted, or asks
 first where it would write it as it is (TUATARA.IO:HOST-SAVE-TRANSFORM)."
   (setf (tuatara.io:buffer-plaintext-p buffer) t)
-  (pushnew buffer *encrypted-buffers*)
-  (set-dumpable nil))
+  (sb-thread:with-recursive-lock (**dumpable-lock**)
+    (pushnew buffer *encrypted-buffers*)
+    (set-dumpable nil)))
 
 (defun note-encrypted (buffer encryption)
   "Mark BUFFER as holding an encrypted file's text, ENCRYPTION a plist of
@@ -342,8 +374,7 @@ first where it would write it as it is (TUATARA.IO:HOST-SAVE-TRANSFORM)."
   "Kill-buffer function: forget BUFFER among the encrypted ones; core dumps allowed again once none is open."
   (when (member buffer *encrypted-buffers*)
     (setf *encrypted-buffers* (remove buffer *encrypted-buffers*))
-    (unless (some #'live-buffer-p *encrypted-buffers*)
-      (set-dumpable t))))
+    (core-dumps-allowed-again)))
 
 ;;; Opening
 
@@ -414,9 +445,10 @@ gone."
            (message "~a decrypted; a save encrypts it ~{~a~^ and ~} (~a chooses again)"
                     name (remove nil (list (and (getf info :keys) (format nil "to ~{~a~^, ~}" (getf info :key-words)))
                                            (and (getf info :symmetric) "with a passphrase")))
-                    (substitute-command-keys "\\[choose-encryption-keys]")))
+                    (substitute-command-keys "\\[gpg-choose-encryption-keys]")))
           ((getf info :needs-passphrase)
-           (encrypted-placeholder buffer (format nil "~a needs its passphrase: ~a asks for it.~%" name (substitute-command-keys "\\[decrypt-with-passphrase]")))
+           (encrypted-placeholder buffer (format nil "~a needs its passphrase: ~a asks for it.~%" name
+                                                 (substitute-command-keys "\\[gpg-decrypt-with-passphrase]")))
            (setf (buffer-override-keymap buffer) *encrypted-waiting-keymap*)
            (message "~a needs its passphrase: RET asks for it" name))
           (t
@@ -460,7 +492,7 @@ pinentry, when it asks there (WITH-GPG-TERMINAL)."
               (setf (decrypt-job-text job) text (decrypt-job-info job) info)))))))
    :name "tuatara decrypt"))
 
-(define-command decrypt-with-passphrase ()
+(define-command gpg-decrypt-with-passphrase ()
   "Ask for the passphrase of the encrypted file this buffer waits for, shown
 as stars, and decrypt it with it."
   (let* ((buffer (current-buffer))
@@ -507,7 +539,7 @@ buffer, or one saved under a name ending in .gpg, its text encrypted by gpg
 to the keys and passphrase it has; with none yet, the
 question how to encrypt it asked first (READ-ENCRYPTION), the save refused
 when nothing is chosen. A buffer holding text decrypted in place in a file
-that is not encrypted (\\[decrypt-region]) is saved as it is, the decrypted
+that is not encrypted (\\[gpg-decrypt-region]) is saved as it is, the decrypted
 text in clear, only when the question asked first is answered yes; else the
 save is refused."
   (when (and (tuatara.io:buffer-plaintext-p buffer)
@@ -643,7 +675,7 @@ nothing."
         (funcall then chosen)
         (message "Nothing chosen: nothing done"))))
 
-(define-command choose-encryption-keys ()
+(define-command gpg-choose-encryption-keys ()
   "Choose again whom the encrypted file shown is encrypted to, or a
 passphrase, in the minibuffer: from its next save it is encrypted so."
   (let ((buffer (current-buffer)))
@@ -656,7 +688,7 @@ passphrase, in the minibuffer: from its next save it is encrypted so."
 
 ;;; The rest of the editor
 
-(define-command copy-to-clipboard ()
+(define-command gpg-copy-to-clipboard ()
   "Put the text copied last on the system clipboard, even text of an encrypted
 file, which is otherwise kept within Tuatara: other programs (clipboard
 managers among them) can then read it, and keep it."
@@ -689,4 +721,4 @@ start, its text kept from the disk before its first save encrypts it."
   (pushnew 'encrypted-visit *file-views*)
   (pushnew 'encrypted-killed tuatara.buffer:*kill-buffer-functions*)
   (pushnew 'encrypted-new-file tuatara.buffer:*find-file-functions*)
-  (define-key *encrypted-waiting-keymap* "RET" 'decrypt-with-passphrase))
+  (define-key *encrypted-waiting-keymap* "RET" 'gpg-decrypt-with-passphrase))

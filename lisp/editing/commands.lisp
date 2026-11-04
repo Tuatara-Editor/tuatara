@@ -918,7 +918,7 @@ filters hide is refused outright, whole or not (REFUSE-HIDDEN-LINES)."
   "Refuse a command that would change the lines search filters hide: they
 are never changed by an edit of the lines shown."
   (refuse "~a" (substitute-command-keys
-               "That would change lines the search filters hide: \\[remove-search-filters] shows them")))
+               "That would change lines the search filters hide: \\[search-filter-remove-all] shows them")))
 
 (defun check-hidden-lines (buffer start end)
   "Refuse a command that would rewrite the text of BUFFER from START below
@@ -1059,7 +1059,7 @@ another program copied from what is there already.")
 (defun send-to-clipboard (text)
   "Put TEXT on the system clipboard, as *USE-SYSTEM-CLIPBOARD* says: a kill
 kept as a rope (too large for it) is not, nor one from an encrypted file's
-text, which \\[copy-to-clipboard] puts there on request."
+text, which \\[gpg-copy-to-clipboard] puts there on request."
   (when (and *use-system-clipboard* *editor* (stringp text) (<= (length text) *clipboard-max-size*)
              (not (tuatara.io:buffer-plaintext-p (current-buffer)))
              (tuatara.frontend:frontend-set-clipboard (editor-frontend *editor*) text))

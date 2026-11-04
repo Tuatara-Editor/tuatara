@@ -223,10 +223,11 @@ save's journal) has each copied from where it reads it."
       (cond ((and mapping (rest (tuatara.text:mapping-sources mapping)))
              (loop for (start end source delta) in (tuatara.text:mapping-sources mapping)
                    do (sb-posix:lseek copy start sb-posix:seek-set)
-                      (copy-fd-contents source copy (- end start) :from (+ start delta) :path path))
+                      ;; the lease is broken: the writer waits for the copy, which waits for no device
+                      (copy-fd-contents source copy (- end start) :from (+ start delta) :path path :wait nil))
              (values copy :snapshot))
             ((clone-fd fd copy) (values copy :clone))
-            (t (copy-fd-contents fd copy (stamp-size (lease-stamp lease)) :path path)
+            (t (copy-fd-contents fd copy (stamp-size (lease-stamp lease)) :path path :wait nil)
                (values copy :snapshot))))))
 
 (defun move-leased (lease)
@@ -1747,10 +1748,6 @@ yet, so that saving writes that file and the link stays a link."
   "The block size file systems share blocks in: copies of whole blocks at the
 same place within a block in both files can share them.")
 
-(defvar *write-out-window* (* 32 1024 1024)
-  "Octets a save hands the system before it has them written out to the device
-and waits for the ones before: the most a save leaves in memory not yet on
-disk, and so how far its progress can be ahead of the device.")
 
 (defun write-rope (fd rope &key (path "a file") cancel progress kept)
   "Write ROPE's octets to the file open as file descriptor (FD), from offset 0
@@ -1769,20 +1766,10 @@ POSITION it goes to) giving whether the file holds its first octets already
 where they go, and how many from there are alike: those it holds are passed
 over, not written. Returns true, or NIL when CANCEL's car turned true first."
   (let ((done 0) (total (tuatara.text:rope-bytes rope))
-        (written-out 0)                 ; below this, on the device
-        (going-out 0)                   ; below this, on its way there
-        (can-send t))                   ; NIL on a file system that cannot be asked
+        (out (make-write-out fd 0)))
     (flet ((move-on ()
-             ;; once a window more is written: send it out, wait for the one before
-             (when (and can-send (>= (- done going-out) *write-out-window*))
-               (if (sync-range fd going-out (- done going-out))
-                   (progn
-                     (when (sync-range fd written-out (- going-out written-out) :wait t)
-                       (drop-cached fd written-out (- going-out written-out))
-                       (setf written-out going-out))
-                     (setf going-out done))
-                   (setf can-send nil)))
-             (when progress (funcall progress (if can-send written-out done) total))))
+             (let ((there (write-out-step out done)))
+               (when progress (funcall progress there total)))))
       (block write
         (tuatara.text:map-rope-sources
          (lambda (kind a b c)
@@ -1803,7 +1790,8 @@ over, not written. Returns true, or NIL when CANCEL's car turned true first."
                                                       (if (and (plusp misaligned) (= misaligned (mod done +block-size+)))
                                                           (min length (- +block-size+ misaligned))
                                                           (min length *write-out-window*))))
-                                              (copied (copy-fd-range source at fd n)))
+                                              (copied (progn (tuatara.text:note-read mapping offset (+ offset n))
+                                                             (copy-fd-range source at fd n))))
                                          (when (< copied n)
                                            (write-sap fd (sb-sys:sap+ (tuatara.text:mapping-sap mapping) (+ offset copied))
                                                       (- n copied) :path path))

@@ -25,6 +25,11 @@
 (defvar *test-state-directory*
   (merge-pathnames (format nil "tuatara-test-state-~d/" (sb-posix:getpid)) (uiop:temporary-directory)))
 (sb-posix:setenv "XDG_STATE_HOME" (namestring *test-state-directory*) 1)
+;; Nor leave files in the system's temporary folder: the run has one of its
+;; own inside that directory, so whatever a test forgets goes with it.
+(let ((tmp (ensure-directories-exist (merge-pathnames "tmp/" *test-state-directory*))))
+  (sb-posix:setenv "TMPDIR" (namestring tmp) 1)
+  (setf uiop:*temporary-directory* tmp))
 ;; Nor read or write the developer's configuration folder (their Word and LaTeX
 ;; templates): one of the run's own.
 (sb-posix:setenv "XDG_CONFIG_HOME" (namestring (merge-pathnames "config/" *test-state-directory*)) 1)

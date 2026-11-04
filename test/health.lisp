@@ -218,6 +218,37 @@ a moment.")
   (let ((words (tuatara.defaults::git-health-words)))
     (true (or (search "by /" words) (search "install git" words)) "~a" words)))
 
+(define-test (health archives-program-said)
+  ;; bsdtar, which reads archives other than tar ones, named where it is found,
+  ;; or what to install for it, on each system; an archive it would read is
+  ;; refused in the same words
+  (true (search "archives by /usr/bin/bsdtar, shut in" (tuatara.defaults::archive-health-words)))
+  ;; 7-Zip named for the best of them, found or not; one older than 25.00 said worth updating
+  (true (search "7-Zip" (tuatara.defaults::archive-health-words)))
+  (let ((found (tuatara.defaults::seven-zip)))
+    (when found
+      (false (search "older than 25.00" (tuatara.defaults::archive-health-words)))
+      (unwind-protect
+           (progn (setf tuatara.defaults::**seven-zip** (list (first found) '(23 1) (third found)))
+                  (true (search "7-Zip 23.01, shut in: older than 25.00, it lacks fixes"
+                                (tuatara.defaults::archive-health-words))))
+        (setf tuatara.defaults::**seven-zip** found))))
+  (let ((tuatara.defaults::*seven-zip-names* '()))
+    (true (search "7-Zip for the best of them, not found: encrypted 7z and rar, more zip methods: install 7-Zip ("
+                  (tuatara.defaults::archive-health-words))))
+  (is string= "install bsdtar (Fedora: bsdtar; Debian and Ubuntu: libarchive-tools; Arch: libarchive)"
+      (tuatara.defaults::outside-program-install-words :archives nil))
+  (let ((tuatara.io:*sandbox-path* "/nonexistent"))
+    (true (search "archives by none: install bsdtar (" (tuatara.defaults::archive-health-words)))
+    (with-test-directory (dir)
+      (alexandria:write-byte-vector-into-file (tuatara.io:zip-octets '(("a.txt" . "alpha")))
+                                              (merge-pathnames "a.zip" dir))
+      (true (search "bsdtar is not installed: install bsdtar"
+                    (handler-case (progn (tuatara.defaults::extract-archive (namestring (merge-pathnames "a.zip" dir))
+                                                                            (namestring (merge-pathnames "out/" dir)))
+                                         "")
+                      (error (e) (princ-to-string e))))))))
+
 (define-test (health grammar-asked-again)
   ;; a grammar that could not be had at first, the program loading grammars having ended (as when the
   ;; sandboxes were ended by something before), is asked for again, not said to be missing

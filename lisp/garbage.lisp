@@ -34,10 +34,18 @@ more than Steel Bank Common Lisp (SBCL)'s standard, so that collections come
 seldom; each takes as long as what is still in use takes to copy, not as long
 as this.")
 
-(defun set-collection-policy ()
-  "Have garbage collected as Tuatara wants it (*NURSERY-OCTETS*), as the
-editor starts."
-  (setf (sb-ext:bytes-consed-between-gcs) *nursery-octets*))
+(defparameter *client-nursery-octets* (* 32 1024 1024)
+  "How many octets of new data a client showing a daemon (tuatara --client)
+makes between two collections of garbage: few, as it keeps little but makes
+new data for each frame it paints, so that the memory it uses stays small and
+in use rather than spreading over a large part of the heap, idle between
+collections, for the system to move out to swap.")
+
+(defun set-collection-policy (&optional (nursery *nursery-octets*))
+  "Have garbage collected as Tuatara wants it, after NURSERY octets of new
+data each time: *NURSERY-OCTETS* as the editor starts, *CLIENT-NURSERY-OCTETS*
+as a client of a daemon does."
+  (setf (sb-ext:bytes-consed-between-gcs) nursery))
 
 ;;; Collected while nothing is typed
 

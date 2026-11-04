@@ -329,7 +329,7 @@ the list."
                         (is equal '("▸ fruit (2)") (lines))
                         (true (search "1 of 4 entries" (summary))))
                       ;; the filters taken away, the section folded meanwhile stays folded
-                      "M-x r e m o v e - s e a r c h - f i l t e r s RET"
+                      "M-x s e a r c h - f i l t e r - r e m o v e - a l l RET"
                       (lambda ()
                         (is equal '("▸ fruit (2)" "▾ nuts (2)" "  walnut" "  pecan")
                             (remove "" (uiop:split-string (tuatara.buffer:buffer-string list) :separator '(#\Newline)) :test #'string=))))
@@ -873,7 +873,7 @@ tiny pieces, a few lines each, so that a small text exercises it."
   ;; not filterable: said
   (multiple-value-bind (f editor) (run-keys "C-x / f" :text "a b c" :width 100)
     (declare (ignore editor))
-    (true (tuatara.frontend.fake:fake-frame-showing f "list-show-records was not run"))))
+    (true (tuatara.frontend.fake:fake-frame-showing f "search-filter-show-records was not run"))))
 
 (defparameter *headerless-records*
   (format nil "Eve,Wellington~%Ann,Auckland~%Dan,Auckland~%")

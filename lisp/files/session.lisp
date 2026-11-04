@@ -569,25 +569,30 @@ target, or NIL: none is opened for it."
                (and kept (eq (first kept) (first entry)) (equal (third kept) (third entry)))))
            tuatara.buffer:*buffers*))
 
-(defun take-up-ended-folder (editor client)
-  "With *KEEP-SESSION*, have CLIENT, just attached to EDITOR with no files,
-take up the folder of the client that ended last whose frames' layouts are
-kept (*CLIENT-LAYOUTS*) or whose files opened safely wait closed
+(defun ended-later-p (a b)
+  "True when the client A ended after the client B; of two that ended in the
+same second, when A began after B."
+  (or (> (client-ended a) (client-ended b))
+      (and (= (client-ended a) (client-ended b)) (> (client-number a) (client-number b)))))
+
+(defun take-up-ended-folder (editor client &optional folder)
+  "Have CLIENT, of EDITOR, take up FOLDER, the client of a folder that ended,
+or with *KEEP-SESSION*, when CLIENT has just attached with no files and FOLDER
+is not given, the folder of the client that ended last whose frames' layouts
+are kept (*CLIENT-LAYOUTS*) or whose files opened safely wait closed
 \(*EVIDENCE-WAITING*): those files are opened, safely, and said by how many;
 its buffers become CLIENT's, its folder goes, and CLIENT's frame, and a frame
 more for each other it had, up to *MOST-FRAMES*, are laid out as its were,
 each window showing its buffer where that is still open; a client in windows
 of its own is asked for those windows, laid out as they come (OPEN-FRAME).
 True when one was taken up."
-  (let ((ended (and *keep-session*
-                    (first (sort (remove-if-not #'client-ended
-                                                (remove-duplicates
-                                                 (append (mapcar #'car *client-layouts*)
-                                                         (remove :everyone (mapcar #'car *evidence-waiting*)))))
-                                 ;; the last to end; of those ending in the same second, the last begun
-                                 (lambda (a b) (or (> (client-ended a) (client-ended b))
-                                                   (and (= (client-ended a) (client-ended b))
-                                                        (> (client-number a) (client-number b))))))))))
+  (let ((ended (or (and folder (client-ended folder) (not (eq folder client)) folder)
+                   (and (null folder) *keep-session*
+                        (first (sort (remove-if-not #'client-ended
+                                                    (remove-duplicates
+                                                     (append (mapcar #'car *client-layouts*)
+                                                             (remove :everyone (mapcar #'car *evidence-waiting*)))))
+                                     #'ended-later-p))))))
     (when ended
       (let ((layouts (cdr (assoc ended *client-layouts*)))
             (evidence (waiting-evidence ended))

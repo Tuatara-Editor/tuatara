@@ -8,7 +8,7 @@
 ;;;; plainly where that cannot work: on a file system that writes changes
 ;;;; elsewhere (btrfs, zfs), and on a solid-state drive, which moves writes
 ;;;; about, the old blocks stay until reused; only the disk's own encryption
-;;;; keeps them from being read. Encrypting a file (M-x encrypt-file) offers to
+;;;; keeps them from being read. Encrypting a file (M-x gpg-encrypt-file) offers to
 ;;;; wipe the original once it is done; with a passphrase, only after the
 ;;;; passphrase, asked again, is seen to open the encrypted file to the same
 ;;;; octets, so that a passphrase mistyped or forgotten never loses the file.

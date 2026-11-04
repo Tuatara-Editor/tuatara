@@ -15,7 +15,8 @@
 ;;;; tried. A seccomp filter refuses it the system calls no decoder needs
 ;;;; and that reach into the kernel's most exposed parts: mounting,
 ;;;; namespaces, kernel modules and keys, tracing other processes, io_uring,
-;;;; BPF, sockets other than local ones, and pushing keys into a terminal.
+;;;; BPF, sockets other than local ones, and pushing keys into a terminal; nor
+;;;; may it make a named pipe or a device.
 ;;;;
 ;;;; The file is not shown to it by name: it reads it on its standard input, a
 ;;;; copy of it in memory that nothing can change, made from a descriptor opened
@@ -315,6 +316,11 @@ rest; NIL when there is no such process."
     ;; pid (name) state ppid pgrp session ...: the fields after the name's closing parenthesis
     (and stat (uiop:split-string (subseq stat (+ 2 (or (position #\) stat :from-end t) -2))) :separator " "))))
 
+(defun process-name (pid)
+  "The name of the program the process with process id (PID) runs, as /proc
+gives it, its first 15 octets; an empty string when there is no such process."
+  (string-right-trim '(#\Newline) (or (proc-text (format nil "/proc/~d/comm" pid)) "")))
+
 (defun process-parent (pid)
   "The number of the parent of the process with process id (PID); NIL when
 there is no such process."
@@ -571,7 +577,9 @@ programs read to find libraries and alternatives."
      ;; io_uring_setup io_uring_enter io_uring_register vhangup clock_adjtime clock_settime
      425 426 427 153 305 227
      ;; settimeofday adjtimex iopl ioperm nfsservctl pidfd_getfd
-     164 159 172 173 180 438)
+     164 159 172 173 180 438
+     ;; mknod mknodat
+     133 259)
     (:arm64 #xC00000B7
      89 217 219 218 280 51 41 40 39 97 268
      105 273 106 104 294 142 224 225 116
@@ -579,7 +587,8 @@ programs read to find libraries and alternatives."
      18 265 264 262
      428 429 430 431 432 433 442
      425 426 427 58 266 112
-     170 171 42 438))
+     170 171 42 438
+     33))
   "For each processor the seccomp filter knows (a feature of the Lisp, then
 the kernel's AUDIT_ARCH number), the system calls refused, by number.")
 
@@ -827,10 +836,11 @@ manager, and nothing else."
         for value = (sb-posix:getenv name)
         when value collect (format nil "~a=~a" name value)))
 
-(defun scope-arguments (total)
-  "systemd-run's arguments putting what follows them in a scope of its own,
-its processes together held to TOTAL octets of memory, none of it swapped."
-  (list "--user" "--scope" "--quiet" "--collect"
+(defun scope-arguments (total unit)
+  "systemd-run's arguments putting what follows them in a scope of its own
+named UNIT (SCOPE-NAME), its processes together held to TOTAL octets of
+memory, none of it swapped, the scope let go once they have all ended."
+  (list "--user" "--scope" "--quiet" "--collect" "--unit" unit
         "-p" (format nil "MemoryMax=~d" total) "-p" "MemorySwapMax=0" "--"))
 
 (defun version-text (program)
@@ -842,9 +852,96 @@ empty string when it says nothing within five seconds."
   "systemd-run's path when it can put a program in a scope of your own here, else NIL."
   (let ((path (find-program "systemd-run")))
     (and path
-         (nth-value 1 (program-output (append (list path) (scope-arguments (* 64 1024 1024)) (list "/bin/true"))
+         (nth-value 1 (program-output (append (list path) (scope-arguments (* 64 1024 1024) (scope-name))
+                                              (list "/bin/true"))
                                       :capture nil :seconds 10 :environment (scope-environment)))
          path)))
+
+;;; Scopes named for the editor that made them
+
+(defparameter *scope-prefix* "tuatara-sandbox-"
+  "How the name of every scope Tuatara has systemd-run make begins (SCOPE-NAME).")
+
+(sb-ext:defglobal **scope-owner** nil
+  "This run of the editor as the names of its scopes hold it (SCOPE-OWNER),
+made when first needed; NIL until then.")
+
+(sb-ext:defglobal **scope-counter** (list 0)
+  "Numbers the scopes this run of the editor has made.")
+
+(defun process-start-time (pid)
+  "When the process with process id (PID) started, in clock ticks since the
+system started, as /proc gives it (a string); NIL when there is no such
+process. Two processes given the same number one after the other never
+have the same."
+  ;; the 22nd field of its stat, the 20th after the name
+  (nth 19 (process-stat pid)))
+
+(defun pid-namespace ()
+  "The number of the namespace of process ids (PID) this editor runs in,
+from /proc, as a string; NIL when it cannot be read."
+  (let ((link (handler-case (sb-posix:readlink "/proc/self/ns/pid") (sb-posix:syscall-error () nil))))
+    ;; pid:[4026531836]
+    (and link (let ((open (position #\[ link)) (close (position #\] link)))
+                (and open close (< open close) (subseq link (1+ open) close))))))
+
+(defun scope-owner ()
+  "This run of the editor, as the names of its scopes hold it: its namespace
+of process ids (PID), its process id and its start time (PROCESS-START-TIME),
+joined by dashes; no other process has all three while it runs."
+  (or **scope-owner**
+      (let ((pid (sb-posix:getpid)))
+        (setf **scope-owner** (format nil "~a-~d-~a" (pid-namespace) pid (process-start-time pid))))))
+
+(defun scope-name ()
+  "A new name for a scope of this run of the editor: *SCOPE-PREFIX*, its
+owner (SCOPE-OWNER) and a number, as tuatara-sandbox-4026531836-4242-1785-7.scope."
+  (format nil "~a~a-~d.scope" *scope-prefix* (scope-owner) (sb-ext:atomic-incf (car **scope-counter**))))
+
+(defun scope-name-owner (name)
+  "The namespace of process ids (PID), process id and start time of the
+editor that made the scope called NAME, as three strings; NIL when NAME is
+not one SCOPE-NAME makes."
+  (let ((end (- (length name) (length ".scope"))))
+    (when (and (uiop:string-prefix-p *scope-prefix* name) (uiop:string-suffix-p name ".scope")
+               (< (length *scope-prefix*) end))
+      (let ((parts (uiop:split-string (subseq name (length *scope-prefix*) end) :separator "-")))
+        (when (and (= 4 (length parts))
+                   (every (lambda (part) (and (plusp (length part)) (every #'digit-char-p part))) parts))
+          (values-list (butlast parts)))))))
+
+(defun scope-left-p (name)
+  "True when the scope called NAME is one an editor made (SCOPE-NAME) that
+has ended: an editor of this namespace of process ids (PID) whose process
+is gone, or whose number is another's now. A scope of an editor running,
+of another namespace, or not made by an editor at all, is never left."
+  (multiple-value-bind (namespace pid start) (scope-name-owner name)
+    (and namespace
+         (equal namespace (pid-namespace))
+         (not (equal start (process-start-time (parse-integer pid)))))))
+
+(defun stop-scopes (names)
+  "Have the service manager stop the scopes NAMES, ending any process left
+in them, without waiting for it; true when it took the request."
+  (let ((systemctl (find-program "systemctl")))
+    (and systemctl names
+         (nth-value 1 (program-output (list* systemctl "--user" "stop" "--no-block" names)
+                                      :capture nil :seconds 10 :environment (scope-environment))))))
+
+(defun end-scopes-left ()
+  "Stop the scopes left by editors that ended before theirs were let go
+\(SCOPE-LEFT-P); how many."
+  (let* ((systemctl (find-program "systemctl"))
+         (listed (and systemctl
+                      (program-output (list systemctl "--user" "list-units" "--all" "--plain" "--no-legend"
+                                            (format nil "~a*" *scope-prefix*))
+                                      :seconds 10 :environment (scope-environment))))
+         (left (loop for line in (and listed (uiop:split-string listed :separator '(#\Newline)))
+                     for words = (remove "" (uiop:split-string line :separator " ") :test #'string=)
+                     ;; the name first, after a mark when the unit is in trouble
+                     for name = (find-if #'scope-name-owner words :end (min 2 (length words)))
+                     when (and name (scope-left-p name)) collect name)))
+    (if (and left (stop-scopes left)) (length left) 0)))
 
 ;;; Sandboxes running, and their end
 
@@ -877,22 +974,29 @@ thread that started it, from their start until they are ended (END-SANDBOX).")
 sandbox, at once: the first process of the sandbox, bwrap's child, whose end
 ends every process in it, then bwrap with its process group, which holds the
 sandbox's first process too while bwrap is still making the sandbox. Its end
-is waited for here, or, unless WAIT, on a thread of its own. Any other
-program started is ended the same way, with what it started."
-  (when (process-unreaped-p process)
-    (let ((pid (sb-ext:process-pid process)))
-      (dolist (child (process-children process))
-        (signal-process-if child (lambda () (eql pid (process-parent child))) sb-unix:sigkill))
-      (tuatara.runtime:ignoring-errors-reported ("ending ~a" process)
-        (sb-ext:process-kill process sb-unix:sigkill :process-group))))
-  (sb-thread:with-mutex (**sandboxes-lock**)
-    (setf **sandboxes** (remove process **sandboxes** :key #'car)))
-  (flet ((reap ()
-           (tuatara.runtime:ignoring-errors-reported ("waiting for ~a to end" process) (sb-ext:process-wait process))
-           (tuatara.runtime:ignoring-errors-reported ("closing ~a" process) (sb-ext:process-close process))))
-    (if wait
-        (reap)
-        (tuatara.runtime:make-guarded-thread #'reap :name "sandbox ending"))))
+is waited for here, or, unless WAIT, on a thread of its own. Ended while
+systemd-run was still having its scope made, before it became bwrap, that
+scope is stopped then: the service manager would otherwise keep it, empty,
+for good. Any other program started is ended the same way, with what it
+started."
+  (let ((unit (getf (sb-ext:process-plist process) :scope))
+        (starting nil))
+    (when (process-unreaped-p process)
+      (let ((pid (sb-ext:process-pid process)))
+        (setf starting (and unit (string= "systemd-run" (process-name pid))))
+        (dolist (child (process-children process))
+          (signal-process-if child (lambda () (eql pid (process-parent child))) sb-unix:sigkill))
+        (tuatara.runtime:ignoring-errors-reported ("ending ~a" process)
+          (sb-ext:process-kill process sb-unix:sigkill :process-group))))
+    (sb-thread:with-mutex (**sandboxes-lock**)
+      (setf **sandboxes** (remove process **sandboxes** :key #'car)))
+    (flet ((reap ()
+             (tuatara.runtime:ignoring-errors-reported ("waiting for ~a to end" process) (sb-ext:process-wait process))
+             (tuatara.runtime:ignoring-errors-reported ("closing ~a" process) (sb-ext:process-close process))
+             (when starting (stop-scopes (list unit)))))
+      (if wait
+          (reap)
+          (tuatara.runtime:make-guarded-thread #'reap :name "sandbox ending")))))
 
 (defun end-sandboxes (&key thread)
   "End every sandbox running (END-SANDBOX), or, with THREAD, those started
@@ -912,9 +1016,11 @@ leave a process behind."
 
 (defun forget-sandboxes ()
   "End every sandbox running, as a saved image is made, and forget the mark of
-this run's sandboxes: each run of the image makes its own."
+this run's sandboxes and the owner its scopes are named for: each run of the
+image has its own."
   (end-sandboxes)
-  (setf **sandbox-mark** nil))
+  (setf **sandbox-mark** nil
+        **scope-owner** nil))
 
 (pushnew 'close-sandboxes sb-ext:*exit-hooks*)
 (pushnew 'forget-sandboxes sb-ext:*save-hooks*)
@@ -935,7 +1041,7 @@ left behind: bwrap, marked (PROCESS-MARKED-P), the first of a namespace of
 processes of its own, its parent no marked bwrap. That process waits for
 bwrap's go-ahead before it makes the sandbox; bwrap ended before it gives
 it, it waits for ever, and the kernel lets no signal but SIGKILL end it."
-  (and (string= "bwrap" (string-trim '(#\Newline) (or (proc-text (format nil "/proc/~d/comm" pid)) "")))
+  (and (string= "bwrap" (process-name pid))
        (process-marked-p pid)
        (let* ((status (proc-text (format nil "/proc/~d/status" pid)))
               (line (and status (find-if (lambda (line) (uiop:string-prefix-p "NSpid:" line))
@@ -976,19 +1082,21 @@ can stop this thread, to keep it where the caller ends it."
                                     :seccomp seccomp :files (reverse data)
                                     (alexandria:remove-from-plist keys :files :total :outputs :started))))
                 (keep (remove nil (cons seccomp (mapcar #'cdr data))))
-                (scope (and total **sandbox-scope**)))
+                (scope (and total **sandbox-scope**))
+                (unit (and scope (scope-name))))
            ;; counted among those running before this thread can be ended
            (sb-sys:without-interrupts
              (let ((process
                      (if scope
                          ;; systemd-run moves itself into the scope and becomes bwrap: still this one's child
-                         (sb-ext:run-program scope (append (scope-arguments total) (list bwrap) arguments)
+                         (sb-ext:run-program scope (append (scope-arguments total unit) (list bwrap) arguments)
                                              :search nil :wait nil :input stdin :preserve-fds keep
                                              :output outputs :error outputs
                                              :environment (cons (sandbox-mark) (scope-environment)))
                          (sb-ext:run-program bwrap arguments
                                              :search nil :wait nil :input stdin :preserve-fds keep
                                              :output outputs :error outputs :environment (list (sandbox-mark))))))
+               (when unit (setf (getf (sb-ext:process-plist process) :scope) unit))
                (sb-thread:with-mutex (**sandboxes-lock**)
                  (push (cons process sb-thread:*current-thread*) **sandboxes**))
                (when started (funcall started process))
@@ -1024,16 +1132,17 @@ memory in a scope of its own (systemd-run); without one, each process is
 held only to its own address space."
   (and (eq :ready (sandbox-status)) **sandbox-scope** t))
 
-(defun %sandbox-run (bwrap program arguments input seconds memory output-limit cancel ended-well &rest keys)
+(defun %sandbox-run (bwrap program arguments input seconds memory output-limit cancel ended-well kept &rest keys)
   "Run PROGRAM with ARGUMENTS in the sandbox bwrap at the path BWRAP makes,
 KEYS those of SANDBOX-ARGUMENTS but SECCOMP, FILES each (PATH . TEXT); it
-ends well with an exit code among ENDED-WELL. See SANDBOX-RUN."
+ends well with an exit code among ENDED-WELL; what it prints is KEPT, or only
+counted. See SANDBOX-RUN."
   (let ((stdin (and input (sb-sys:make-fd-stream input :input t :element-type '(unsigned-byte 8)
                                                         :buffering :none :auto-close nil)))
         (process nil)
         (piece (make-array 65536 :element-type '(unsigned-byte 8)))
         ;; what it printed and said
-        (output (make-octet-pieces)) (said (make-octet-pieces))
+        (output (make-octet-pieces)) (said (make-octet-pieces)) (printed 0)
         (deadline (tuatara.runtime:deadline-in seconds))
         (outcome nil))
     (flet ((left () (tuatara.runtime:seconds-left deadline))
@@ -1058,9 +1167,9 @@ ends well with an exit code among ENDED-WELL. See SANDBOX-RUN."
                                        (cond ((zerop n) (setf open (remove fd open)))
                                              ((and (= fd out) (null output-limit)))   ; read and let go
                                              ((= fd out)
-                                              (if (> (+ (octet-pieces-size output) n) output-limit)
-                                                  (setf outcome :too-much)
-                                                  (take output piece n output-limit)))
+                                              (incf printed n)
+                                              (cond ((> printed output-limit) (setf outcome :too-much))
+                                                    (kept (take output piece n output-limit))))
                                              (t (take said piece n *sandbox-said-limit*))))))))))
              ;; its end: it may have shut its outputs and gone on
              (loop while (and (null outcome) (sb-ext:process-alive-p started))
@@ -1078,7 +1187,8 @@ ends well with an exit code among ENDED-WELL. See SANDBOX-RUN."
 (defun try-sandbox ()
   "Find bwrap and try it, as a list (STATUS DETAIL PATH): see SANDBOX-STATUS.
 The sandboxes left behind by an editor ended before it could end them are
-ended first (END-SANDBOXES-LEFT)."
+ended first (END-SANDBOXES-LEFT), and the scopes left by one stopped in the
+background (END-SCOPES-LEFT)."
   (let ((path (and *sandbox-program* (find-program *sandbox-program*))))
     (cond ((null *sandbox-program*) (list :off "turned off (*sandbox-program* is nil)" nil))
           ((null path) (list :missing (format nil "~a not found on the PATH" *sandbox-program*) nil))
@@ -1088,10 +1198,17 @@ ended first (END-SANDBOXES-LEFT)."
              (let ((version (said-text (sb-ext:string-to-octets (version-text path)))))
                (multiple-value-bind (output outcome said)
                    (handler-case (tuatara.runtime:reporting-errors ("trying the sandbox ~a" path)
-                                   (%sandbox-run path "true" '() nil 10 (* 64 1024 1024) 0 nil '(0)))
+                                   (%sandbox-run path "true" '() nil 10 (* 64 1024 1024) 0 nil '(0) t))
                      (error (e) (values nil :failed (princ-to-string e))))
                  (declare (ignore output))
                  (setf **sandbox-scope** (try-scope))
+                 (when **sandbox-scope**
+                   (tuatara.runtime:make-guarded-thread
+                    (lambda ()
+                      (let ((left (end-scopes-left)))
+                        (when (plusp left)
+                          (tuatara.runtime:debug-report :job "sandbox: ~d scopes of editors gone, stopped" left))))
+                    :name "sandbox scopes left"))
                  (if (eq outcome :done)
                      (list :ready (format nil "~a (~a)~@[, together held to ~a of memory (systemd-run)~]"
                                           (if (plusp (length version)) version *sandbox-program*) path
@@ -1163,8 +1280,45 @@ trying then started in the background."
                 :name "sandbox trial"))
              :unknown))))
 
-(defun sandbox-run (program arguments &key input (seconds *sandbox-seconds*) (memory *sandbox-memory*)
-                                           (output-limit (* 256 1024 1024)) cancel files environment directories
+(defun cloexec-pipe ()
+  "A new pipe, both its ends closed in programs started (pipe2 with
+O_CLOEXEC): its reading and its writing descriptor."
+  (sb-alien:with-alien ((fds (array sb-alien:int 2)))
+    (unless (zerop (sb-alien:alien-funcall (sb-alien:extern-alien "pipe2" (function sb-alien:int (* (array sb-alien:int 2))
+                                                                                      sb-alien:int))
+                                           (sb-alien:addr fds) #x80000))         ; O_CLOEXEC
+      (fail "make" "a pipe"))
+    (values (sb-alien:deref fds 0) (sb-alien:deref fds 1))))
+
+(defun secret-pipe (secret)
+  "A pipe holding SECRET, a string, and a new line after it (nothing at all
+for an empty one), as two values: the descriptor to read it from and the one
+it was written through, which must be kept open while a program reads, then
+closed. Read past SECRET, it answers at once that there is nothing more
+\(EAGAIN), so that a program asking again fails, never waits nor takes an
+empty line for an answer. Both ends are closed in programs started but the
+one given the reading end. A secret longer than the pipe holds is refused
+with a FILE-SYSTEM-ERROR, never left to block."
+  (multiple-value-bind (in out) (cloexec-pipe)
+    (let* ((line (if (string= secret "") (make-string 0) (concatenate 'string secret (string #\Newline))))
+           (octets (tuatara.text:string-octets line))
+           (made nil))
+      (unwind-protect (progn (let ((room (fcntl-int out 1032 0)))         ; F_GETPIPE_SZ
+                               (when (and (plusp room) (> (length octets) room))
+                                 (error 'file-system-error :operation "pass" :path "a secret"
+                                                           :reason (format nil "it is longer than ~:d octets" room))))
+                             (write-octets out octets :path "a pipe")
+                             (sb-posix:fcntl in sb-posix:f-setfl (logior (sb-posix:fcntl in sb-posix:f-getfl)
+                                                                         sb-posix:o-nonblock))
+                             (setf made t))
+        (fill line #\Nul)
+        (fill octets 0)
+        (unless made (sb-posix:close in) (sb-posix:close out))))
+    (values in out)))
+
+(defun sandbox-run (program arguments &key input secret (seconds *sandbox-seconds*) (memory *sandbox-memory*)
+                                           (output-limit (* 256 1024 1024)) (output-kept t) cancel files
+                                           environment directories
                                            writable overlays (directory "/tmp") (file-limit *sandbox-file-limit*)
                                            (ended-well '(0)))
   "Run PROGRAM (a name looked for on the sandbox's PATH, /usr/bin:/bin, or a
@@ -1175,10 +1329,15 @@ the files it writes in its own /tmp limited; reading INPUT, an open descriptor, 
 standard input from its start (nothing when NIL): a sealed copy of it
 \(SEALED-COPY), never INPUT itself; an INPUT that is such a copy already is
 read as it is, through a descriptor of its own (one copy can serve many runs,
-at once too).
+at once too). With SECRET, a string, in place of INPUT, it reads that
+on its standard input instead, through a pipe, followed by a new line (none
+for an empty one), and nothing after it: asking again, it is answered at once
+that there is nothing more (SECRET-PIPE). SECRET is never in its arguments,
+which other programs can see, nor in the debug log.
 Waits for it: call it from a thread doing work in the background. It is ended
 after SECONDS, when it prints more than OUTPUT-LIMIT octets (NIL: what it
-prints is let go, never kept), or when CANCEL, a cons, has a true car; it may
+prints is let go, never kept; with OUTPUT-KEPT NIL, counted against it but
+not kept), or when CANCEL, a cons, has a true car; it may
 take MEMORY octets (NIL: no limit), and write files of FILE-LIMIT octets at
 most (NIL: no limit). Returns three values: the octets it printed; how it
 went, :DONE (it ended well: with an exit code among ENDED-WELL, 0 alone
@@ -1201,19 +1360,22 @@ only). Those that do not exist are left out; a directory in another one shown
 is seen in it. DIRECTORY is where it starts, /tmp unless given."
   (multiple-value-bind (status detail bwrap) (sandbox-status)
     (if (eq status :ready)
-        (let ((start (get-internal-real-time))
-              (copy (and input (if (sealed-p input) (reopen-sealed input) (sealed-copy input)))))
+        (multiple-value-bind (copy writer)
+            (cond (secret (secret-pipe secret))
+                  (input (if (sealed-p input) (reopen-sealed input) (sealed-copy input))))
           (unwind-protect
+               (let ((start (get-internal-real-time)))
                (multiple-value-bind (output outcome said)
-                   (%sandbox-run bwrap program arguments copy seconds memory output-limit cancel ended-well
+                   (%sandbox-run bwrap program arguments copy seconds memory output-limit cancel ended-well output-kept
                                  :files files :environment environment :directories directories :writable writable
                                  :overlays overlays :directory directory :file-limit file-limit)
                  (tuatara.runtime:debug-report :job "sandbox: ~a ~{~a~^ ~}: ~(~a~) in ~,3f s, ~:d octets~@[: ~a~]"
                                                program arguments outcome
                                                (tuatara.runtime:seconds-since start)
                                                (length output) (and (plusp (length said)) said))
-                 (values output outcome said))
-            (when copy (sb-posix:close copy))))
+                 (values output outcome said)))
+            (when copy (sb-posix:close copy))
+            (when writer (sb-posix:close writer))))
         (values (make-array 0 :element-type '(unsigned-byte 8)) :unavailable detail))))
 
 (defun sandbox-run-on-file (path program arguments &rest keys)

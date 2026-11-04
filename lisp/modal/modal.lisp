@@ -288,10 +288,11 @@ this window alone on the screen; not the keys that move by words or select
 parts of lines, which have nothing to act on there.")
 
 (defparameter *tuatara-leader-bindings* '()
-  "The leader's keys (after \\`SPC' in NORMAL state) as standard: none, the
-leader being yours alone for keys of your own (bind-key with :map :leader;
-the starter init file lists, commented out, the keys it had once). What it
-had has keys under C-x and C-c (\\[describe-bindings] lists them).")
+  "The leader's keys (after \\`SPC' in NORMAL state, or \\`C-x SPC' anywhere)
+as standard: none, the leader being yours alone for keys of your own
+(bind-key with :map :leader; the starter init file lists, commented out, the
+keys it had once). What it had has keys under C-x and C-c
+(\\[describe-bindings] lists them).")
 
 (defparameter *tuatara-leader-labels*
   '(("i" "input"))
@@ -303,7 +304,8 @@ bind-key's :label.")
   "The key that opens the leader's keys (bind-key's :map :leader) in NORMAL and
 support states, in lists and in the calendar: SPC, or another written as
 bind-key writes keys (\",\", \"C-c SPC\"). The key it was on is freed. Read
-once the init file is.")
+once the init file is. \\`C-x SPC' opens them in every buffer and state,
+whatever this is.")
 
 (defvar *leader-key-in-force* nil
   "The key the leader's keys are on now (*LEADER-KEY* once the init file is read).")
@@ -367,13 +369,15 @@ the leader's, the leader's keys last."
 (defun mode-layer (name kind)
   "The keys bound for the major mode called NAME of KIND (:normal, :insert,
 :support or :leader), made when there are none: the leader's opened by the
-leader key in the mode's NORMAL and support keys."
+leader key in the mode's NORMAL and support keys, and by \\`C-x SPC' in the
+mode's own keys."
   (or (gethash (cons name kind) *mode-layers*)
       (let ((map (make-keymap :name (format nil "~(~a~) ~(~a~)" name kind))))
         (setf (gethash (cons name kind) *mode-layers*) map)
         (when (eq kind :leader)
           (dolist (state '(:normal :support))
-            (define-key (mode-layer name state) (or *leader-key-in-force* *leader-key*) map)))
+            (define-key (mode-layer name state) (or *leader-key-in-force* *leader-key*) map))
+          (define-key (mode-keymap name) "C-x SPC" map))
         (link-mode-layers)
         map)))
 
@@ -413,6 +417,7 @@ binds it to, when it binds one."
                                            ("n" calendar-journal-entry)))
   (copy-normal-keys '("%" "y") *tuatara-calendar-keymap*)
   (put-leader-on *leader-key*)
+  (define-key *global-keymap* "C-x SPC" *tuatara-leader-keymap*)
   (define-keys *tuatara-leader-keymap* *tuatara-leader-bindings*)
   (label-keys *tuatara-leader-keymap* *tuatara-leader-labels*)
   (tuatara-normal-claim-wrap-keys))

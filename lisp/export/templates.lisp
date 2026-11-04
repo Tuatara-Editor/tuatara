@@ -1,10 +1,10 @@
 ;;;; lisp/export/templates.lisp --- Templates made from a Word or LaTeX document given you to fill in.
 ;;;; Copyright (C) 2026 Michael A Jones.  GPL-3.0-or-later; see LICENSE.
 ;;;;
-;;;; M-x make-template-from-docx and M-x make-template-from-latex ask for the
+;;;; M-x export-template-from-docx and M-x export-template-from-latex ask for the
 ;;;; document and the template's name, make the template and its note
 ;;;; template in the background (docx-import.lisp, latex-import.lisp), then
-;;;; show a new note begun from the note template; M-x insert-note-template
+;;;; show a new note begun from the note template; M-x insert-formatted-note-template
 ;;;; begins each one after.
 
 (in-package #:tuatara.export)
@@ -30,7 +30,8 @@ BUFFER; NOTE, the note template's path once made; WORDS, what to say of it."
             (name (template-import-job-name job)))
         (set-major-mode buffer 'org-mode)
         (tuatara.buffer:buffer-insert buffer 0 (formatted-template-text (list name :file (template-import-job-note job))))
-        (message "Template ~a made: ~{~a~^; ~}. A new note begun from it; \\[insert-note-template] ~a begins another"
+        (message (concatenate 'string "Template ~a made: ~{~a~^; ~}. A new note begun from it; "
+                              "\\[insert-formatted-note-template] ~a begins another")
                  name (template-import-job-words job) name))
       (message "~a" (tuatara.runtime:job-ending-words job))))
 
@@ -50,7 +51,7 @@ when PATH is NIL, no document named."
               :name "tuatara template import")
              (message "Making ~a the template ~a..." (tuatara.io:native-file-name path) name)))))
 
-(define-command make-template-from-docx ()
+(define-command export-template-from-docx ()
   "Make a Word document given to you a template to write reports in: asked
 for the document (the one shown, if any) and the template's name, it makes
 the template's Word half (the document up to its first heading, its headers,
@@ -61,7 +62,7 @@ LaTeX says it) and its note template, NAME in
 ~/.config/tuatara/note-templates/: #+template: NAME, a comment and a keyword
 for each field (empty where the document had placeholder text, %date% for a
 date), then the document's text, its tables Org tables, to write over. When
-it is done a new note begun from it is shown, and \\[insert-note-template]
+it is done a new note begun from it is shown, and \\[insert-formatted-note-template]
 NAME begins each one after. \\[org-export-docx] then writes a document that
 looks as the one given, your values in its fields and your text in its
 design. Its macros, comments and tracked changes are left out; nothing in it
@@ -73,7 +74,7 @@ is run, and nothing is written beside it. In the background."
     (start-template-import (or shown (read-native-path "Word document to make a template of: " :kind :file))
                            #'docx-import)))
 
-(define-command make-template-from-latex ()
+(define-command export-template-from-latex ()
   "Make a LaTeX document given to you a template to write reports in: asked
 for the document (the one visited, if any) and the template's name, it makes
 the LaTeX template NAME in ~/.config/tuatara/latex-templates/ (the document
@@ -85,7 +86,7 @@ rest {{{body}}}) and its note template, NAME in
 ~/.config/tuatara/note-templates/: #+template: NAME, a comment and a keyword
 for each field, then the document's text as Org (sections, lists, tables,
 pictures, footnotes) to write over. When it is done a new note begun from it
-is shown, and \\[insert-note-template] NAME begins each one after.
+is shown, and \\[insert-formatted-note-template] NAME begins each one after.
 \\[org-export-latex-pdf] then writes a PDF that looks as the document given.
 A document that has {{{body}}} already is taken as it is. Nothing in it is
 run, the files it \\inputs are not read, and nothing is written beside it.

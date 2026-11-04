@@ -99,7 +99,7 @@ templates those in DIRECTORY's capture-templates/ (none unless a test makes them
 (define-test (capture copied-to-be-yours)
   (with-capture (dir agenda)
     (let ((copy (merge-pathnames "capture-templates/m-meeting.org" dir)))
-      (multiple-value-bind (f editor) (run-keys "M-x c o p y - c a p t u r e - t e m p l a t e RET M e e t i n g RET" :text "x" :width 120 :height 16)
+      (multiple-value-bind (f editor) (run-keys "M-x o r g - c a p t u r e - t e m p l a t e - c o p y RET M e e t i n g RET" :text "x" :width 120 :height 16)
         (true (probe-file copy))
         (true (search "# clock-resume: t" (file-text copy)))
         (is string= "m-meeting.org" (tuatara.buffer:buffer-name (session-buffer editor)))
@@ -107,7 +107,7 @@ templates those in DIRECTORY's capture-templates/ (none unless a test makes them
       (forget-file-buffers)
       ;; never written over
       (alexandria:write-string-into-file (format nil "# name: Mine~%# key: m~%# journal: t~%# --~%x~%") copy :if-exists :supersede)
-      (let ((f (run-keys "M-x c o p y - c a p t u r e - t e m p l a t e RET M e e t i n g RET" :text "x" :width 120 :height 16)))
+      (let ((f (run-keys "M-x o r g - c a p t u r e - t e m p l a t e - c o p y RET M e e t i n g RET" :text "x" :width 120 :height 16)))
         (true (tuatara.frontend.fake:fake-frame-showing f "is yours already"))
         (true (search "# name: Mine" (file-text copy))))
       (forget-file-buffers))))

@@ -640,3 +640,453 @@ b")))
                    (is = 1 (tuatara.buffer:buffer-line-number b (tuatara.buffer:buffer-point b)))
                    (tuatara.buffer:kill-buffer b)))))
         (kill-buffers-visiting dir)))))
+
+(defmacro with-every-file-large (() &body body)
+  "Run BODY with every mapped file counted as large (*LARGE-MAPPING-OCTETS*),
+on every thread, the background's too."
+  `(let ((was tuatara.text:*large-mapping-octets*))
+     (unwind-protect (progn (setf tuatara.text:*large-mapping-octets* 0) ,@body)
+       (setf tuatara.text:*large-mapping-octets* was))))
+
+(defun pages-held (path &optional (start 0) end)
+  "Two values: how many pages of the file at PATH, of those from octet START
+below END (its end when not given), the system holds in memory, and how many
+there are."
+  (let ((mapping (tuatara.text:map-file path)))
+    (unwind-protect
+         (let* ((page (sb-posix:getpagesize))
+                (from (* page (floor start page)))
+                (pages (tuatara.text::pages-in-memory (sb-sys:sap+ (tuatara.text:mapping-sap mapping) from)
+                                                      (- (or end (tuatara.text:mapping-length mapping)) from))))
+           (values (count 1 pages) (length pages)))
+      (tuatara.text:close-mapping mapping))))
+
+(defun pages-held-inside (path)
+  "PAGES-HELD of the file at PATH between the ends that a pass reading it
+through keeps in memory (TUATARA.TEXT::+KEPT-ENDS+)."
+  (let ((size (sb-posix:stat-size (sb-posix:stat path))))
+    (pages-held path tuatara.text::+kept-ends+ (- size tuatara.text::+kept-ends+))))
+
+(defun let-go-of-file (path)
+  "Have the system write the file at PATH out and let go of its pages; true
+when it holds none of them afterwards, which a file system in memory never
+does."
+  (let ((fd (sb-posix:open path sb-posix:o-rdonly)))
+    (unwind-protect (progn (sb-posix:fsync fd)
+                           (tuatara.text:drop-cached fd 0 (sb-posix:stat-size (sb-posix:fstat fd))))
+      (sb-posix:close fd)))
+  (zerop (pages-held path)))
+
+(define-test (counting-lines memory-left-as-found)
+  ;; counting a large file's lines reads it through once: the pages the system did not hold
+  ;; before are let go of again, so that a file larger than the memory does not push out what is
+  ;; in use, the editor's own memory included; those it held, it holds still
+  (with-every-file-large ()
+    (with-test-directory (dir)
+      (let ((path (namestring (put-file (merge-pathnames "big.txt" dir) (sample-lines 1200000)))))
+        (flet ((count-lines ()
+                 (multiple-value-bind (rope mapping) (tuatara.text:open-file-rope path)
+                   (true (tuatara.text:rope-indexed-p (tuatara.text:index-rope rope :threads 4 :chunk 262144)))
+                   (tuatara.text:close-mapping mapping))))
+          (if (let-go-of-file path)
+              (progn
+                (count-lines)
+                (multiple-value-bind (held all) (pages-held-inside path)
+                  (true (< held (/ all 20)) "~d of ~d pages held after counting" held all))
+                (alexandria:read-file-into-byte-vector path)
+                (count-lines)
+                (multiple-value-bind (held all) (pages-held path)
+                  (is = all held)))
+              (skip "this file system holds its files in memory" (true nil))))))))
+
+(defun shown-start (editor)
+  "Where the rows of EDITOR's window begin, as an octet of its buffer."
+  (tuatara.display:row-start (aref (tuatara.display:window-rows (tuatara.command:editor-window editor)) 0)))
+
+(define-test (counting-lines read-ahead-where-the-window-goes)
+  ;; what a window shows of a large file, and the stretch past it the way the window moves, is
+  ;; read in ahead on a thread of its own, asked for again only near the stretch's edge: paging
+  ;; down from the top, the stretch reaches on past the rows; paging up from the end, back before
+  ;; them; and the system holds it once asked
+  (with-every-file-large ()
+    (with-test-directory (dir)
+      (let ((path (namestring (put-file (merge-pathnames "big.txt" dir) (sample-lines 400000))))
+            (asked '())
+            (tuatara.io::*memory-read-limit* 0))
+        (sb-int:encapsulate 'tuatara.text::want-read 'asked
+                            (lambda (function mapping start end)
+                              (push (list start end) asked)
+                              (funcall function mapping start end)))
+        (unwind-protect
+             (flet ((pages (way) (format nil "~{~a~^ ~}" (make-list 30 :initial-element way))))
+               (let-go-of-file path)
+               (multiple-value-bind (f editor) (run-keys (pages "C-v") :file path :width 80 :height 20)
+                 (declare (ignore f))
+                 (let ((at (shown-start editor)))
+                   (true (< 0 (length asked) 4) "asked ~d times for 30 pages down" (length asked))
+                   (destructuring-bind (start end) (first asked)
+                     (true (<= start at))
+                     (true (>= end (+ at (* 200 1024))) "read ahead to ~d, shown from ~d" end at)
+                     (true (loop repeat 100
+                                 thereis (multiple-value-bind (held all) (pages-held path start end) (= held all))
+                                 do (sleep 0.02))
+                           "the stretch asked for read in"))
+                   (tuatara.buffer:kill-buffer (session-buffer editor))))
+               (setf asked '())
+               (multiple-value-bind (f editor)
+                   (run-keys (concatenate 'string "g e " (pages "M-v")) :file path :width 80 :height 20)
+                 (declare (ignore f))
+                 (let ((at (shown-start editor)))
+                   (true (< 0 (length asked) 5) "asked ~d times for 30 pages up from the end" (length asked))
+                   (destructuring-bind (start end) (first asked)
+                     (true (<= start (- at (* 200 1024))) "read ahead from ~d, shown from ~d" start at)
+                     (true (> end at)))
+                   (tuatara.buffer:kill-buffer (session-buffer editor)))))
+          (sb-int:unencapsulate 'tuatara.text::want-read 'asked))))))
+
+(define-test (counting-lines scrolling-reads-near-the-window)
+  ;; paging through a large file whose lines are counted reads what is shown and what is read
+  ;; ahead of it, never the rest of the file: a bound on the pages brought into memory for each
+  ;; page of text scrolled, beyond what opening the file read (its head and its end, where its
+  ;; settings may stand); the looks through a whole file of a size that has them, for conflicts
+  ;; and against git, left out
+  (with-every-file-large ()
+    (with-test-directory (dir)
+      (let ((path (namestring (put-file (merge-pathnames "big.txt" dir) (sample-lines 800000))))
+            (tuatara.io::*memory-read-limit* 0)
+            (tuatara.defaults::*conflict-markers-max-bytes* 0)
+            (tuatara.defaults::*vc-gutter-max-bytes* 0))
+        (flet ((paged (n)
+                 ;; the pages held after paging down N times, and the octets paged through
+                 (let-go-of-file path)
+                 (multiple-value-bind (f editor)
+                     (run-keys (format nil "~{~a~^ ~}" (make-list n :initial-element "C-v"))
+                               :file path :width 80 :height 20)
+                   (declare (ignore f))
+                   (multiple-value-prog1 (values (pages-held-inside path) (shown-start editor))
+                     (tuatara.buffer:kill-buffer (session-buffer editor))))))
+          (if (let-go-of-file path)
+              (let ((opened (paged 0)))
+                (multiple-value-bind (held at) (paged 40)
+                  (multiple-value-bind (all-held all) (pages-held-inside path)
+                    (declare (ignore all-held))
+                    ;; the rows paged through, 256 KB read ahead, and what the system reads around a page
+                    (true (< (- held opened) (+ (ceiling at 4096) 64 128))
+                          "~d pages held more after paging through ~d octets" (- held opened) at)
+                    (true (< held (/ all 4)) "~d of ~d pages held" held all))))
+              (skip "this file system holds its files in memory" (true nil))))))))
+
+(defun reading-ahead-garbage (keys path)
+  "The octets READ-AHEAD made while KEYS were typed on the file at PATH, and
+how many times it was called, as two values."
+  (let ((octets 0) (calls 0))
+    (sb-int:encapsulate 'tuatara.text:read-ahead 'garbage
+                        (lambda (function &rest arguments)
+                          (incf calls)
+                          (let ((before (sb-ext:get-bytes-consed)))
+                            (multiple-value-prog1 (apply function arguments)
+                              (incf octets (- (sb-ext:get-bytes-consed) before))))))
+    (unwind-protect
+         (multiple-value-bind (f editor) (run-keys keys :file path :width 80 :height 20)
+           (declare (ignore f))
+           (tuatara.buffer:kill-buffer (session-buffer editor)))
+      (sb-int:unencapsulate 'tuatara.text:read-ahead 'garbage))
+    (values octets calls)))
+
+(define-test (counting-lines reading-ahead-makes-no-garbage)
+  ;; reading ahead is looked at for every frame a window of a large file draws: what one more line
+  ;; moved down costs it, in octets, stays near nothing (each key a frame; a stretch is asked for
+  ;; only now and then; the looks through the whole file in the background, which make what they
+  ;; need meanwhile, left out)
+  (with-every-file-large ()
+    (with-test-directory (dir)
+      (let ((path (namestring (put-file (merge-pathnames "big.txt" dir) (sample-lines 400000))))
+            (tuatara.io::*memory-read-limit* 0)
+            (tuatara.defaults::*conflict-markers-max-bytes* 0)
+            (tuatara.defaults::*vc-gutter-max-bytes* 0))
+        (flet ((keys (n) (format nil "~{~a~^ ~}" (make-list n :initial-element "C-n"))))
+          (reading-ahead-garbage (keys 20) path)
+          (multiple-value-bind (few few-calls) (reading-ahead-garbage (keys 200) path)
+            (multiple-value-bind (more more-calls) (reading-ahead-garbage (keys 1000) path)
+              ;; looked at for each frame drawn
+              (true (>= (- more-calls few-calls) 800) "~d calls more" (- more-calls few-calls))
+              (true (< (/ (- more few) 800.0) 8) "~,1f octets a line" (/ (- more few) 800.0)))))))))
+
+(defmacro with-large-file ((path dir &key (lines 1200000)) &body body)
+  "Run BODY with PATH bound to a file of LINES lines in DIR, mapped when it is
+visited, the system holding none of it in memory; or say the test is skipped
+where the file system holds its files in memory."
+  `(let ((,path (namestring (put-file (merge-pathnames "big.txt" ,dir) (sample-lines ,lines))))
+         (tuatara.io::*memory-read-limit* 0))
+     (if (let-go-of-file ,path)
+         (progn ,@body)
+         (skip "this file system holds its files in memory" (true nil)))))
+
+(defun few-pages-held (path)
+  "Check that the system holds in memory less than a twentieth of the file at
+PATH, its ends left out (PAGES-HELD-INSIDE), as a pass reading it through
+once leaves it."
+  (multiple-value-bind (held all) (pages-held-inside path)
+    (true (< held (/ all 20)) "~d of ~d pages held" held all)))
+
+(defun read-in-the-background (path function)
+  "Call FUNCTION with a rope over the file at PATH as work in the background
+does (TUATARA.RUNTIME::CALL-AS-LONG-WORK), then let the rope's mapping
+go; return what FUNCTION returned."
+  (multiple-value-bind (rope mapping) (tuatara.text:open-file-rope path)
+    (unwind-protect (tuatara.runtime::call-as-long-work (lambda () (funcall function rope)))
+      (tuatara.text:close-mapping mapping))))
+
+(define-test (counting-lines work-in-the-background-reads-through-once)
+  ;; a background result reading a large file whole, as a count of matches does, leaves the
+  ;; memory as it found it: what it reads is let go of behind it
+  (with-every-file-large ()
+    (with-test-directory (dir)
+      (with-large-file (path dir)
+        (multiple-value-bind (rope mapping) (tuatara.text:open-file-rope path)
+          (let ((cell (tuatara.runtime:start-background-result
+                       (lambda ()
+                         (let ((block (tuatara.text:make-octets 65536)))
+                           (loop for at from 0 below (tuatara.text:rope-bytes rope) by 65536
+                                 sum (tuatara.text:rope-copy-into
+                                                      rope at (min (tuatara.text:rope-bytes rope) (+ at 65536)) block))))
+                       "a test reading" nil)))
+            (loop repeat 500 until (car cell) do (sleep 0.01))
+            (is = (tuatara.text:rope-bytes rope) (car cell))
+            (tuatara.text:close-mapping mapping)
+            (few-pages-held path)))))))
+
+(define-test (counting-lines conflict-look-reads-through-once)
+  ;; looking through a large file for conflicts, as its job does, leaves the memory as it found it
+  (with-every-file-large ()
+    (with-test-directory (dir)
+      (with-large-file (path dir)
+        (is equal '() (read-in-the-background path #'tuatara.defaults::conflict-find-all))
+        (few-pages-held path)))))
+
+(define-test (counting-lines git-comparison-reads-through-once)
+  ;; the lines of a large file hashed to compare it with git, as its job does, leave the memory
+  ;; as it was found
+  (with-every-file-large ()
+    (with-test-directory (dir)
+      (with-large-file (path dir)
+        (is = 1200000 (length (read-in-the-background path #'tuatara.defaults::rope-line-hashes)))
+        (few-pages-held path)))))
+
+(define-test (counting-lines search-reads-through-once)
+  ;; a search through all of a large file, literal and by pattern, on all the cores, and one going
+  ;; back from the end, leaves the memory as it found it
+  (with-every-file-large ()
+    (with-test-directory (dir)
+      (with-large-file (path dir)
+        (is = 1200000 (length (read-in-the-background path (lambda (rope) (tuatara.syntax:search-all rope "line"))))))
+      (with-large-file (path dir)
+        (is = 11999 (length (read-in-the-background
+                            path (lambda (rope) (tuatara.syntax:regex-search-all rope "^\\d+00 "))))))
+      (with-large-file (path dir)
+        (false (read-in-the-background path (lambda (rope) (tuatara.syntax:search-backward rope "kiwi"))))
+        (few-pages-held path)))))
+
+(defun run-until-jobs-end (keys path)
+  "Type KEYS on the file at PATH, then wait for the work they started in the
+background to end, within a minute, and for the system to hold less than
+eight megabytes of PATH, within fifteen seconds more, as counts of matches started
+alongside end; the pages of PATH the system holds then, its ends left out
+\(PAGES-HELD-INSIDE), and how many there are."
+  (let ((held nil))
+    (run-keys (list keys
+                    (lambda ()
+                      (loop repeat 3000
+                            while (some #'tuatara.runtime:job-running-p tuatara.runtime:*jobs*)
+                            do (sleep 0.02))
+                      (loop repeat 750
+                            do (setf held (multiple-value-list (pages-held-inside path)))
+                            until (< (first held) 2048)
+                            do (sleep 0.02))))
+              :file path :width 80 :height 20)
+    (kill-buffers-visiting (directory-namestring path))
+    (values-list held)))
+
+(define-test (counting-lines replace-reads-through-once)
+  ;; a replacement in every line of a large file, made in the background, leaves the memory as it
+  ;; found it
+  (with-every-file-large ()
+    (with-test-directory (dir)
+      (with-large-file (path dir :lines 1600000)
+        (let ((tuatara.defaults::*rewrite-threshold* 0))
+          (multiple-value-bind (held all) (run-until-jobs-end "C-x h r r % l i n e / w o r d RET" path)
+            ;; what the window and the editor itself read, the file's head and its end among them, and a
+          ;; megabyte about each: a few megabytes at most
+          (true (< held 2048) "~d of ~d pages held" held all)))))))
+
+(define-test (counting-lines sort-reads-through-once)
+  ;; sorting the lines of a large file on disk leaves the memory as it found it
+  (with-every-file-large ()
+    (with-test-directory (dir)
+      (with-large-file (path dir :lines 1600000)
+        (let ((tuatara.defaults::*sort-in-memory-limit* 0))
+          (multiple-value-bind (held all) (run-until-jobs-end "C-x h M-x s o r t - l i n e s RET" path)
+            ;; what the window and the editor itself read, the file's head and its end among them, and a
+          ;; megabyte about each: a few megabytes at most
+          (true (< held 2048) "~d of ~d pages held" held all)))))))
+
+(define-test (counting-lines copy-reads-through-once)
+  ;; a large file copied, as a snapshot of it is made, leaves the memory as it found it, though
+  ;; the kernel cannot copy it itself (into memory, here) and it is read and written in pieces
+  (with-every-file-large ()
+    (with-test-directory (dir)
+      (with-large-file (path dir)
+        (let ((in (sb-posix:open path sb-posix:o-rdonly))
+              (size (sb-posix:stat-size (sb-posix:stat path))))
+          (unwind-protect
+               (let ((copy (tuatara.io::sealed-memory-file
+                            "copy" (lambda (out) (tuatara.io:copy-fd-contents in out size)))))
+                 (is = size (sb-posix:stat-size (sb-posix:fstat copy)))
+                 (sb-posix:close copy))
+            (sb-posix:close in))
+          (few-pages-held path))))))
+
+(define-test (counting-lines copy-of-a-file-cut-short-fails-cleanly)
+  ;; a large file cut short while a copy reads it through fails the copy as one that changed
+  ;; while it was copied, and the pass the copy read in ends without reading past the new end
+  (with-every-file-large ()
+    (with-test-directory (dir)
+      (with-large-file (path dir)
+        (let ((in (sb-posix:open path sb-posix:o-rdonly))
+              (out (sb-posix:open (namestring (merge-pathnames "copy" dir))
+                                  (logior sb-posix:o-wronly sb-posix:o-creat sb-posix:o-trunc) #o600))
+              (size (sb-posix:stat-size (sb-posix:stat path))))
+          (unwind-protect
+               (progn
+                 (sb-int:encapsulate 'tuatara.io:copy-fd-range 'cut-short
+                                     (lambda (function &rest arguments)
+                                       (sb-posix:truncate path 100000)
+                                       (apply function arguments)))
+                 (unwind-protect
+                      (is eq :changed (handler-case (progn (tuatara.io:copy-fd-contents in out size :path path) :copied)
+                                        (tuatara.io:file-system-error () :changed)))
+                   (sb-int:unencapsulate 'tuatara.io:copy-fd-range 'cut-short)))
+            (sb-posix:close out)
+            (sb-posix:close in)))))))
+
+(defun thread-major-faults ()
+  "How many times the calling thread has waited for the disk to read a page
+it touched, as /proc counts them."
+  (let ((stat (uiop:read-file-string "/proc/thread-self/stat")))
+    (parse-integer (nth 10 (uiop:split-string (subseq stat (1+ (position #\) stat :from-end t))) :separator " ")))))
+
+(define-test (counting-lines pass-ended-after-memory-let-go-reads-nothing)
+  ;; a pass that ends after the system let go of what it asked for, as it does when memory is
+  ;; short, waits for nothing on its way from the disk: it reads none of it back in
+  (with-every-file-large ()
+    (with-test-directory (dir)
+      (with-large-file (path dir)
+        (multiple-value-bind (rope mapping) (tuatara.text:open-file-rope path)
+          (declare (ignore rope))
+          (let ((pass (tuatara.text::make-read-pass)) (at (* 3 tuatara.text::+read-piece+)))
+            (let ((tuatara.text::*read-pass* pass))
+              (tuatara.text:note-read mapping at (+ at 65536)))
+            (sleep 0.2)
+            (true (let-go-of-file path))
+            (let ((before (thread-major-faults)))
+              (tuatara.text::end-read-pass pass)
+              (is = before (thread-major-faults))))
+          (tuatara.text:close-mapping mapping))))))
+
+(define-test (counting-lines sum-reads-through-once)
+  ;; the SHA-256 sum of a large file leaves the memory as it found it
+  (with-every-file-large ()
+    (with-test-directory (dir)
+      (with-large-file (path dir)
+        (true (tuatara.defaults::file-sha256 path))
+        (few-pages-held path)))))
+
+(define-test (counting-lines settings-at-the-end-read-alone)
+  ;; the settings a large file may name at its end are read without the megabytes around them
+  ;; that a read of a mapped file brings in on some file systems
+  (with-every-file-large ()
+    (with-test-directory (dir)
+      (with-large-file (path dir)
+        (let ((size (sb-posix:stat-size (sb-posix:stat path))))
+          (multiple-value-bind (held all)
+              (run-until-jobs-end "" path)
+            (declare (ignore all))
+            ;; the end a pass keeps aside, the octets read there and a megabyte about them reach no further
+            (multiple-value-bind (before-end pages)
+                (pages-held path (- size (* 2 tuatara.text::+kept-ends+)) (- size tuatara.text::+kept-ends+))
+              (true (< before-end 64) "~d of the ~d pages before the end held, ~d in all"
+                    before-end pages held))))))))
+
+(define-test (counting-lines pass-finished-after-stopped-work)
+  ;; a pass whose work is stopped, the tasks it had not begun passed over, still finishes once its
+  ;; tasks are done, so that what it held is given back
+  (let ((pass nil) (cancel (list nil)))
+    (tuatara.text:with-read-pass ()
+      (setf pass tuatara.text::*read-pass*)
+      (tuatara.runtime:stoppable-work (cancel)
+        (tuatara.runtime:run-tasks
+         (coerce (loop repeat 256 collect (lambda () (setf (car cancel) t) (sleep 0.001))) 'simple-vector))))
+    (true (loop repeat 500 thereis (tuatara.text::read-pass-finished pass) do (sleep 0.01))
+          "~d tasks still counted" (tuatara.text::read-pass-users pass))))
+
+(define-test (counting-lines slices-read-nothing)
+  ;; a slice of a large file whose lines are not counted yet, as a look at the file shown takes,
+  ;; reads none of the file: the spans following each other in it are joined as they lie
+  (with-every-file-large ()
+    (with-test-directory (dir)
+      (with-large-file (path dir)
+        (multiple-value-bind (rope mapping) (tuatara.text:open-file-rope path)
+          (let ((slice (tuatara.text:rope-slice rope 0 (tuatara.text:rope-bytes rope))))
+            (is = (tuatara.text:rope-bytes rope) (tuatara.text:rope-bytes slice))
+            (true (< (pages-held path) 8) "~d pages held" (pages-held path)))
+          (tuatara.text:close-mapping mapping))))))
+
+(define-test (counting-lines stopped-reading-leaves-the-records-sound)
+  ;; reading through a pass cut short again and again inside its stoppable calls, as C-g and the
+  ;; watch on slow calls cut a search short, leaves no piece held once the passes are done, the
+  ;; records of what is held whole, no count left standing by a stop in the middle of one, and
+  ;; almost none of the file in memory once what the disk was still reading has come
+  (with-every-file-large ()
+    (with-test-directory (dir)
+      (with-large-file (path dir)
+        (multiple-value-bind (rope mapping) (tuatara.text:open-file-rope path)
+          (let ((size (tuatara.text:rope-bytes rope)))
+            (dotimes (round 40)
+              (let* ((cancel (list nil))
+                     (reader (sb-thread:make-thread
+                              (lambda ()
+                                (tuatara.text:with-read-pass ()
+                                  (tuatara.runtime:stoppable-work (cancel)
+                                    (let ((block (tuatara.text:make-octets 65536)))
+                                      (loop for at from (* round 65536) below size by 65536
+                                            do (tuatara.runtime:stoppable
+                                                 (tuatara.text:rope-copy-into
+                                                  rope at (min size (+ at 65536)) block))))))))))
+                (sleep (random 0.01))
+                (tuatara.runtime:stop-work cancel)
+                (sb-thread:join-thread reader :default nil)))
+            (let ((pieces (tuatara.text::mapping-pieces mapping)))
+              (true (loop repeat 500 thereis (zerop (hash-table-count pieces)) do (sleep 0.01))
+                    "~d pieces still held" (hash-table-count pieces))
+              (let ((entries 0))
+                (maphash (lambda (piece entry) (declare (ignore piece entry)) (incf entries)) pieces)
+                (is = 0 entries))))
+          ;; what the disk brought in after it was let go of, let go of again
+          (true (loop repeat 500 thereis (null tuatara.text::**late-looks**) do (sleep 0.01)))
+          (tuatara.text:close-mapping mapping))
+        (few-pages-held path)))))
+
+(define-test (counting-lines cancelled-sum-lets-go)
+  ;; a sum of a large file stopped before it reads anything lets go of the descriptor it opened
+  ;; to ask the system and of all it asked for: no descriptor and no mapping are left
+  (with-every-file-large ()
+    (with-test-directory (dir)
+      (with-large-file (path dir)
+        (flet ((open-fds () (length (directory "/proc/self/fd/*" :resolve-symlinks nil))))
+          (let ((fds (open-fds)) (mappings (length (tuatara.text:live-mappings)))
+                (fd (sb-posix:open path sb-posix:o-rdonly)))
+            (unwind-protect (false (tuatara.defaults::fd-sha256 fd path :cancel (list t)))
+              (sb-posix:close fd))
+            (is = fds (open-fds))
+            (is = mappings (length (tuatara.text:live-mappings)))))
+        (few-pages-held path)))))

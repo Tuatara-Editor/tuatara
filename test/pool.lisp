@@ -92,6 +92,47 @@
                      (dotimes (i 4) (tuatara.runtime:stoppable (sleep 0.01)))
                      :finished)))
 
+(define-test (pool stopped-call-left-once)
+  ;; a stoppable call cut short goes on leaving with its own clean-up done to the end, though
+  ;; it is interrupted again on the way out, as the watch interrupts a thread still in a
+  ;; call of stopped work
+  (let* ((cancel (list nil))
+         (cleaned (list nil))
+         (worker (sb-thread:make-thread (lambda ()
+                                          (tuatara.runtime:stoppable-work (cancel)
+                                            (tuatara.runtime:stoppable
+                                              (unwind-protect (loop)
+                                                (sleep 0.2)
+                                                (setf (car cleaned) t)))))
+                                        :name "tuatara test worker")))
+    (sleep 0.05)
+    (tuatara.runtime:stop-work cancel)
+    (sb-thread:join-thread worker :default nil :timeout 10)
+    (true (car cleaned))))
+
+(define-test (pool nested-work-stopped-each-in-turn)
+  ;; work begun inside a stoppable call of other work, and stopped, leaves the other work
+  ;; stoppable: stopping it afterwards still cuts its call short
+  (let* ((outer (list nil))
+         (inner (list nil))
+         (between (list nil))
+         (worker (sb-thread:make-thread (lambda ()
+                                          (tuatara.runtime:stoppable-work (outer)
+                                            (tuatara.runtime:stoppable
+                                              (tuatara.runtime:stoppable-work (inner)
+                                                (tuatara.runtime:stoppable (loop)))
+                                              (setf (car between) t)
+                                              (loop))))
+                                        :name "tuatara test worker")))
+    (sleep 0.05)
+    (tuatara.runtime:stop-work inner)
+    (true (loop repeat 500 thereis (car between) do (sleep 0.01)))
+    (tuatara.runtime:stop-work outer)
+    (let ((left (sb-thread:join-thread worker :default :running :timeout 2)))
+      (when (eq :running left)
+        (sb-thread:terminate-thread worker))
+      (false (eq :running left)))))
+
 (defun thread-niceness ()
   "The calling thread's standing for the processor, as nice counts it."
   (let ((stat (uiop:read-file-string "/proc/thread-self/stat")))

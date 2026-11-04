@@ -642,15 +642,29 @@ waiting writer go on."
   (fcntl-int fd +f-setlease+ 2)
   nil)
 
-(defun free-bytes (path)
-  "Octets an unprivileged user may still write on the file system holding PATH,
-or NIL when the system does not say."
+(defun statvfs-fields (path &rest offsets)
+  "The fields of what statvfs says of the file system holding PATH, each of 8
+octets at one of OFFSETS into its structure, as a list; NIL when the system
+does not say."
   (let ((buffer (make-array 128 :element-type '(unsigned-byte 8) :initial-element 0)))
     (with-octets-sap (sap buffer)
       (when (zerop (sb-alien:alien-funcall
                     (sb-alien:extern-alien "statvfs" (function sb-alien:int sb-alien:c-string sb-sys:system-area-pointer))
                     (native path) sap))
-        (* (octets-integer buffer 32 8) (octets-integer buffer 8 8))))))
+        (mapcar (lambda (offset) (octets-integer buffer offset 8)) offsets)))))
+
+(defun free-bytes (path)
+  "Octets an unprivileged user may still write on the file system holding PATH,
+or NIL when the system does not say."
+  (let ((fields (statvfs-fields path 32 8)))            ; f_bavail, f_frsize
+    (and fields (* (first fields) (second fields)))))
+
+(defun free-inodes (path)
+  "How many more files an unprivileged user may make on the file system
+holding PATH, and as a second value how many it holds in all; NIL when the
+system does not say, or the file system keeps no such count (btrfs)."
+  (destructuring-bind (&optional free total) (statvfs-fields path 56 40)   ; f_favail, f_files
+    (and total (plusp total) (values free total))))
 
 (defun octets-words (n &key binary compact)
   "N octets in words, to one decimal: 950 B, 12.3 MB, 11.5 GB; with BINARY in
@@ -938,16 +952,79 @@ no advice is fine."
                           fd offset length 3)             ; POSIX_FADV_WILLNEED
   nil)
 
-(defun copy-fd-contents (source dest length &key (path "a file") cancel progress (from 0))
+(defvar *write-out-window* (* 32 1024 1024)
+  "Octets a save or a copy hands the system before it has them written out to
+the device and waits for the ones before: the most it leaves in memory not
+yet on disk, and so how far its progress can be ahead of the device.")
+
+(defstruct (write-out (:constructor make-write-out (fd start &key (wait t) &aux (written start) (going start)))
+                      (:copier nil))
+  "The octets written to the file open as file descriptor (FD) from START on,
+sent out to the device a window at a time (WRITE-OUT-STEP): below WRITTEN
+on the device and out of memory, below GOING on their way there; CAN-SEND
+false on a file system that cannot be asked. With WAIT false, nothing waits
+for the device: what has gone out is let go of from memory as it is there,
+the rest sent out."
+  (fd -1 :type fixnum :read-only t)
+  (wait t :read-only t)
+  (written 0 :type fixnum)
+  (going 0 :type fixnum)
+  (can-send t))
+
+(setf (documentation 'write-out-p 'function) "True when OBJECT is a WRITE-OUT."
+      (documentation 'write-out-fd 'function) "The descriptor a WRITE-OUT writes."
+      (documentation 'write-out-written 'function) "Below this offset a WRITE-OUT's octets are on the device."
+      (documentation 'write-out-going 'function) "Below this offset a WRITE-OUT's octets are on their way out."
+      (documentation 'write-out-can-send 'function) "False once a WRITE-OUT's file system cannot be asked to write out."
+      (documentation 'write-out-wait 'function) "True when a WRITE-OUT waits for the device.")
+
+(defun write-out-step (out done)
+  "With the file of OUT written below offset DONE: once a window
+\(*WRITE-OUT-WINDOW*) more than went out last is written, send it out to the
+device, wait for the window before it to be there, and have the system let
+go of that from memory, so that a slow device holds a long write back as it
+goes and memory does not fill with what waits for it. Returns the offset
+below which the octets are on the device, or DONE on a file system that
+cannot be asked (its flush at the end then does it all)."
+  (let ((fd (write-out-fd out)) (going (write-out-going out)) (written (write-out-written out)))
+    (when (and (write-out-can-send out) (>= (- done going) *write-out-window*))
+      (if (sync-range fd going (- done going))
+          (progn
+            (if (write-out-wait out)
+                (when (sync-range fd written (- going written) :wait t)
+                  (drop-cached fd written (- going written))
+                  (setf (write-out-written out) going))
+                ;; what is on the device leaves memory now, the rest as it gets there
+                (progn (drop-cached fd written (- going written))
+                       (setf (write-out-written out) going)))
+            (setf (write-out-going out) done))
+          (setf (write-out-can-send out) nil)))
+    (if (write-out-can-send out) (write-out-written out) done)))
+
+(defun copy-fd-contents (source dest length &key (path "a file") cancel progress (from 0) (wait t))
   "Copy LENGTH octets of the open file SOURCE, its first or those from FROM
 on, to the open file DEST at its current offset: by the kernel
 \(COPY-FD-RANGE) where it can, else read and written here in pieces, read at
-explicit offsets so that a descriptor shared with others is not moved.
-CANCEL, a cons, stops it when its car turns true (returning NIL); PROGRESS,
-when given, is called with the octets done so far. True when done."
-  (let ((piece (* 64 1024 1024)) (done 0) (buffer nil))
+explicit offsets so that a descriptor shared with others is not moved. A
+large file is read through once (TUATARA.TEXT:BEGIN-FILE-READ-PASS) and its
+copy written out as it goes (WRITE-OUT-STEP), so that the copy leaves in
+memory what was there; with WAIT false, without waiting for the device as it
+goes (MAKE-WRITE-OUT). CANCEL, a cons, stops it when its car turns true
+\(returning NIL); PROGRESS, when given, is called with the octets done so
+far. True when done."
+  (let ((pass (tuatara.text:begin-file-read-pass source (+ from length) path)))
+    (unwind-protect (copy-fd-pieces source dest length path cancel progress from pass wait)
+      (tuatara.text:end-file-read-pass pass))))
+
+(defun copy-fd-pieces (source dest length path cancel progress from pass wait)
+  "Copy as COPY-FD-CONTENTS does, the stretches read noted in PASS, a
+TUATARA.TEXT:FILE-READ-PASS or NIL, and written out as they go when PASS is
+one, waiting for the device when WAIT is true."
+  (let ((piece (* 64 1024 1024)) (done 0) (buffer nil)
+        (out (and pass (make-write-out dest (sb-posix:lseek dest 0 sb-posix:seek-cur) :wait wait))))
     (loop while (< done length)
-          do (when (and cancel (car cancel)) (return-from copy-fd-contents nil))
+          do (when (and cancel (car cancel)) (return-from copy-fd-pieces nil))
+             (tuatara.text:file-read-pass-note pass (+ from done) (+ from done (min piece (- length done))))
              (let* ((n (min piece (- length done)))
                     (at (+ done (copy-fd-range source (+ from done) dest n))))
                (loop while (< at (+ done n))
@@ -961,6 +1038,7 @@ when given, is called with the octets done so far. True when done."
                           (write-octets dest buffer :end got :path path)
                           (incf at got)))
                (incf done n)
+               (when out (write-out-step out (sb-posix:lseek dest 0 sb-posix:seek-cur)))
                (when progress (funcall progress done))))
     t))
 
@@ -1068,6 +1146,30 @@ than +MOST-SOCKET-PATH+ octets or holds a NUL."
     (when (minusp fd) (fail "make" "a local socket"))
     fd))
 
+(sb-ext:defglobal **umask** nil
+  "Your umask as UMASK-BITS read it, or NIL before it is first needed.")
+
+(defun umask-bits ()
+  "The permission bits your umask takes away from what is made, as the system
+says (the Umask line of /proc/self/status), read once and kept, never set;
+#o022 where the system does not say."
+  (or **umask**
+      (setf **umask**
+            (or (let* ((text (proc-text "/proc/self/status"))
+                       (at (and text (search (format nil "~%Umask:") text))))
+                  (and at (parse-integer text :start (+ at 7) :radix 8 :junk-allowed t)))
+                #o022))))
+
+(defun set-path-mode (path mode)
+  "Give the entry at PATH the permissions MODE, never what a link there leads
+to: a link is left as it is. True when done, NIL when not (a link, or no
+entry there)."
+  (with-c-string (name (native path))
+    (zerop (sb-alien:alien-funcall
+            (sb-alien:extern-alien "fchmodat" (function sb-alien:int sb-alien:int sb-sys:system-area-pointer
+                                                        sb-alien:unsigned-int sb-alien:int))
+            +at-fdcwd+ name mode #x100))))                   ; AT_SYMLINK_NOFOLLOW
+
 (defun listen-at (path &key (backlog 16))
   "A local socket bound at PATH, listening, as a descriptor that ACCEPT-ON
 takes connections from, BACKLOG of them waiting at most; PATH must not be
@@ -1083,12 +1185,8 @@ there. The socket file is made for you alone (0600)."
                                    fd sap length))
                      (fail "listen at" path))))
            ;; the socket itself, never what a link put in its place points at
-           (with-c-string (name (native path))
-             (unless (zerop (sb-alien:alien-funcall
-                             (sb-alien:extern-alien "fchmodat" (function sb-alien:int sb-alien:int sb-sys:system-area-pointer
-                                                                         sb-alien:unsigned-int sb-alien:int))
-                             +at-fdcwd+ name #o600 #x100))                ; AT_SYMLINK_NOFOLLOW
-               (fail "make for you alone" path)))
+           (unless (set-path-mode path #o600)
+             (fail "make for you alone" path))
            (unless (zerop (sb-alien:alien-funcall
                            (sb-alien:extern-alien "listen" (function sb-alien:int sb-alien:int sb-alien:int))
                            fd backlog))
@@ -1722,16 +1820,6 @@ are there. True when the system did so; NIL on a file system that cannot
                (sb-alien:extern-alien "sync_file_range" (function sb-alien:int sb-alien:int (sb-alien:signed 64)
                                                                   (sb-alien:signed 64) sb-alien:unsigned-int))
                fd offset length (if wait 7 2)))))  ; WAIT_BEFORE | WRITE | WAIT_AFTER, or WRITE
-
-(defun drop-cached (fd offset length)
-  "Tell the system the octets of file descriptor (FD) from OFFSET, LENGTH of
-them, written out already, are not needed in memory: they need not crowd
-out what is."
-  (when (plusp length)
-    (sb-alien:alien-funcall
-     (sb-alien:extern-alien "posix_fadvise" (function sb-alien:int sb-alien:int (sb-alien:signed 64)
-                                                      (sb-alien:signed 64) sb-alien:int))
-     fd offset length 4)))              ; POSIX_FADV_DONTNEED
 
 (defvar *session-log-words* nil
   "What the session writing to stderr.log is (the window, the terminal), as

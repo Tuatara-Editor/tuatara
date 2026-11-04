@@ -4,6 +4,7 @@
 (defpackage #:tuatara.io
   (:use #:cl #:alexandria)
   (:import-from #:tuatara.runtime #:refuse)
+  (:import-from #:tuatara.text #:drop-cached)
   (:import-from #:tuatara-user #:*default-directory* #:*cache-directory* #:*state-directory* #:*sandbox-program* #:*sandbox-seconds* #:*sandbox-memory* #:*sandbox-input-limit* #:*sandbox-total-memory* #:*sandbox-seccomp* #:*program-output-limit* #:*deepest-folder-tree*
                 #:*save-in-place*)
   (:documentation "Files: visiting them so that no other program can change the text shown,
@@ -19,7 +20,7 @@ running programs, shut in a sandbox when they read files from elsewhere.")
    ;; what the system says about files
    #:stamp #:stamp-p #:path-stamp #:path-size #:fd-stamp #:stamp-kind #:make-stamp #:same-content-p
    #:stamp-dev #:stamp-ino #:stamp-size #:stamp-mtime #:stamp-nlink #:stamp-mode #:stamp-uid #:stamp-gid #:stamp-ctime #:file-holes-p
-   #:fd-file-system #:file-system-class #:free-bytes #:read-only-mount-p #:can-give-owner-p #:writable-p #:writing-refused #:host-writing-refusal #:writing-refusal #:writing-refused-anywhere-p #:check-writing #:check-tree-writing #:fd-real-path #:host-say-writing #:tell-writing
+   #:fd-file-system #:file-system-class #:free-bytes #:free-inodes #:set-path-mode #:umask-bits #:now-nanoseconds #:read-only-mount-p #:can-give-owner-p #:writable-p #:writing-refused #:host-writing-refusal #:writing-refusal #:writing-refused-anywhere-p #:check-writing #:check-tree-writing #:fd-real-path #:host-say-writing #:tell-writing
    #:take-read-lease #:lease-breaking-p #:release-lease
    ;; copies and scratch files
    #:clone-fd #:copy-fd-range #:copy-fd-contents #:read-fd-octets #:read-fd-into #:octet-pieces #:make-octet-pieces #:add-octet-piece #:octet-pieces-size #:joined-octets #:wipe-octet-pieces #:read-fd-at #:read-fd-exactly #:advise-will-need #:write-octets #:writer #:make-writer #:writer-p #:writer-fd #:writer-flush #:writer-length #:writer-octets #:writer-sap #:writer-rope #:writer-spaces #:copy-xattrs #:host-save-transform #:wipe-file #:copy-on-write-p #:fd-xattr-names #:fd-xattr-value #:path-times
@@ -34,7 +35,7 @@ running programs, shut in a sandbox when they read files from elsewhere.")
    ;; new names, and what a program shut in came to
    #:random-name #:numbered-name #:create-free-file #:copy-to-free-name
    ;; files read whole, zip archives
-   #:fd-octets #:crc32 #:zip-octets #:zip-entries #:zip-entry-octets #:inflate #:zip-error
+   #:fd-octets #:crc32 #:zip-octets #:zip-entries #:zip-entry-octets #:zip-locked-p #:inflate #:zip-error
    #:*zip-largest-entry* #:*zip-largest-ratio*
    ;; memory outside Lisp
    #:with-octets-sap #:with-foreign-memory #:sap-octets #:null-pointer #:null-pointer-p

@@ -130,3 +130,46 @@
                         :name "mapping a pipe")))
            (is eq :refused (sb-thread:join-thread thread :timeout 5 :default :waiting)))
       (ignore-errors (sb-posix:unlink fifo)))))
+
+(define-test (rope-file return-and-newline-join-once-after-an-edit)
+  ;; a carriage return and the newline after it, inside one counted span of a mapped file, are
+  ;; one line end: an x put between them and taken away again leaves two spans of the file that
+  ;; follow each other, and still one line end, every line number after it as before
+  (let ((text (with-output-to-string (out)
+                (dotimes (i 20000)
+                  (write-string "kea ruru" out)
+                  (when (= i 1000) (write-char #\Return out))
+                  (terpri out)))))
+    (with-temp-file (path (to-octets text))
+      (multiple-value-bind (rope mapping) (tuatara.text:open-file-rope path)
+        (let* ((counted (tuatara.text:index-rope rope))
+               (newline (1+ (position #\Return text)))
+               (typed (tuatara.text:splice-rope counted newline newline (tuatara.text:string->rope "x")))
+               (after (tuatara.text:splice-rope typed newline (1+ newline))))
+          (is = 20000 (tuatara.text:rope-lines counted))
+          (is = (tuatara.text:rope-bytes counted) (tuatara.text:rope-bytes after))
+          (is = (tuatara.text:rope-lines counted) (tuatara.text:rope-lines after))
+          (loop for byte in (list newline (+ newline 2) 60000 (1- (length text)))
+                do (is = (tuatara.text:byte->line counted byte) (tuatara.text:byte->line after byte))))
+        (tuatara.text:close-mapping mapping)))))
+
+(define-test (rope-file return-and-newline-join-once-while-counting)
+  ;; a carriage return and the newline after it, parted where the file is counted on one side
+  ;; and not yet on the other, as an edit made while a large file is counted parts them, are
+  ;; one line end once all of it is counted
+  (let ((text (with-output-to-string (out)
+                (dotimes (i 20000)
+                  (write-string "kea ruru" out)
+                  (when (= i 1000) (write-char #\Return out))
+                  (terpri out)))))
+    (with-temp-file (path (to-octets text))
+      (multiple-value-bind (rope mapping) (tuatara.text:open-file-rope path)
+        (let* ((newline (1+ (position #\Return text)))
+               (left (tuatara.text:rope-slice rope 0 newline))
+               (right (tuatara.text:index-rope (tuatara.text:rope-slice rope newline (tuatara.text:rope-bytes rope))))
+               (joined (tuatara.text:index-rope (tuatara.text:splice-rope left newline newline right))))
+          (is = 20000 (tuatara.text:rope-lines joined))
+          (loop for byte in (list newline (+ newline 2) 60000 (1- (length text)))
+                do (is = (tuatara.text:byte->line (tuatara.text:index-rope rope) byte)
+                       (tuatara.text:byte->line joined byte))))
+        (tuatara.text:close-mapping mapping)))))

@@ -315,6 +315,11 @@ cases/2026-0001/work/ (WORK), each bound to its native name ending in /."
       (false (tuatara.defaults::rimu-start-operation :copy (list (cons (concatenate 'string work "../evidence/a.txt")
                                                                        (concatenate 'string evidence "a2.txt")))
                                                      nil))
+      ;; nor is an archive extracted into it
+      (false (tuatara.defaults::rimu-start-operation :extract (list (cons (concatenate 'string work "found.zip")
+                                                                          (concatenate 'string evidence "found/")))
+                                                     nil))
+      (false (probe-file (concatenate 'string evidence "found/")))
       (true (probe-file (concatenate 'string evidence "a.txt")))
       (kill-buffers-visiting root)
       ;; an Org note elsewhere exporting into it is refused before anything is made

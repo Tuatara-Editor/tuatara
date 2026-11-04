@@ -455,8 +455,8 @@ and the width its text has."
 design, as lines of NAME: VALUE: table style, the style of the note's tables
 \(a table style's id in the template's styles); bullets and numbers, the
 abstract numbering (an abstractNumId in its numbering) the note's bulleted
-and numbered lists take; table position, left, centre or right. Made by \\[make-template-from-docx]; never written into a
-document.")
+and numbered lists take; table position, left, centre or right. Made by
+\\[export-template-from-docx]; never written into a document.")
 
 (defun docx-template-design (parts)
   "What the Word template PARTS says of its design (*DOCX-TEMPLATE-DESIGN-FILE*),

@@ -7,7 +7,7 @@
 ;;;; signed file FILE.gpg) or its signature verified, saying who signed it,
 ;;;; when, and how far that key is trusted; the same on the region, the
 ;;;; armoured blocks in it decrypted or verified in place; and the keys
-;;;; listed (M-x list-keys), their details shown, imported from a file or the
+;;;; listed (M-x gpg-list-keys), their details shown, imported from a file or the
 ;;;; region, exported, inserted, deleted. gpg reads and writes through pipes
 ;;;; as for encrypted files (encrypted.lisp): a file is read by Tuatara
 ;;;; without changing its access time, and what gpg gives back is written by
@@ -145,7 +145,7 @@ given, and wiped once gpg has it."
                                    (and (getf encryption :symmetric) (gpg-minibuffer-p)
                                         (gpg-read-passphrase (format nil "Passphrase to encrypt ~a with: " (tuatara.io:native-file-name path)) :confirm t)))))))
 
-(define-command encrypt-file ()
+(define-command gpg-encrypt-file ()
   "Encrypt the file shown (in a list of a directory, the one on the line; with
 \\[universal-argument], or where there is none, asked for) into FILE.gpg, to the keys
 or with a passphrase chosen in the minibuffer, commas between several. Once
@@ -182,7 +182,7 @@ buffers too to lock it away."
         (message "gpg-agent has forgotten the passphrases it kept")
         (message "gpg-agent could not be told to forget its passphrases: gpgconf failed or took over 5 seconds"))))
 
-(define-command decrypt-file ()
+(define-command gpg-decrypt-file ()
   "Decrypt the file shown (in a list of a directory, the one on the line) into
 a file asked for, the name without .gpg offered; after asking, since its text
 is then on disk where it can be read (made for you alone). To read it, visit
@@ -198,7 +198,7 @@ the encrypted file instead: its text stays in memory."
   '(("detached signature (FILE.sig)" ".sig" "--detach-sign")
     ("clear-signed text (FILE.asc)" ".asc" "--clearsign")
     ("signed file (FILE.gpg)" ".gpg" "--sign"))
-  "The kinds of signature sign-file makes: the words asked with, the ending of the file made, gpg's option.")
+  "The kinds of signature gpg-sign-file makes: the words asked with, the ending of the file made, gpg's option.")
 
 (defun read-signature-kind ()
   "The kind of signature to make, asked for: an entry of *SIGNATURE-KINDS*."
@@ -215,7 +215,7 @@ minibuffer's loopback, wiped once gpg has it."
         (gpg-file-to path target "sign" (list (third kind) "--output" "-") (format nil "Signed: ~a" (abbreviated-path target))
                      :status "SIG_CREATED" :passphrase passphrase))))
 
-(define-command sign-file ()
+(define-command gpg-sign-file ()
   "Sign the file shown (in a list of a directory, the one on the line) with your
 key: a detached signature (FILE.sig, the file left as it is), clear-signed text
 (FILE.asc) or a signed file (FILE.gpg), asked which."
@@ -243,10 +243,12 @@ far the key is trusted, or why the signature does not hold."
             ((gpg-status-p statuses "EXPKEYSIG") (format nil "Signature by ~a, whose key has expired" (field "EXPKEYSIG" 2)))
             ((gpg-status-p statuses "REVKEYSIG") (format nil "Signature by ~a, whose key is revoked" (field "REVKEYSIG" 2)))
             ((gpg-status-p statuses "NO_PUBKEY")
-             (format nil "Signed by key ~a, which you do not have: import it (M-x import-keys) to check the signature" (field "NO_PUBKEY" 1)))
+             (format nil "Signed by key ~a, which you do not have: import it (M-x gpg-import-keys) to check ~
+                       the signature"
+                     (field "NO_PUBKEY" 1)))
             (t (format nil "No signature checked: ~a" (gpg-failure-words statuses said)))))))
 
-(define-command verify-file ()
+(define-command gpg-verify-file ()
   "Check the signature of the file shown (in a list of a directory, the one on
 the line): a detached signature (FILE.sig, FILE.asc) against its file, else
 the signature within the file; say who signed it, when, and how far that key
@@ -254,7 +256,7 @@ is trusted. Neither file's access time changes."
   (verify-file-at (shown-file-argument "Verify file: ")))
 
 (defun verify-file-at (path)
-  "Check the signature of the file at PATH, as \\[verify-file] does."
+  "Check the signature of the file at PATH, as \\[gpg-verify-file] does."
   (let* ((data (gpg-stripped-name path '(".sig" ".asc")))
          (detached (and data (tuatara.io:path-stamp data)
                         (not (search "-----BEGIN PGP SIGNED MESSAGE-----"
@@ -283,7 +285,7 @@ say that WORDS was not put in, the text having changed."
              t)
       (progn (message "~a: the text changed meanwhile, nothing put in" words) nil)))
 
-(define-command encrypt-region ()
+(define-command gpg-encrypt-region ()
   "Encrypt the text selected in place, as an armoured block (-----BEGIN PGP
 MESSAGE-----), to the keys or with a passphrase chosen in the minibuffer."
   (let ((buffer (current-buffer)))
@@ -335,7 +337,7 @@ one nearest to point, before or after it."
                                                         (t 0)))))))
         (and found (values (car found) (cdr found))))))
 
-(define-command decrypt-region ()
+(define-command gpg-decrypt-region ()
   "Decrypt in place the armoured block (-----BEGIN PGP MESSAGE-----) in the
 text selected, or without a selection the one point is in, else the one
 nearest to point; the buffer's text is then kept from the disk as an
@@ -357,7 +359,7 @@ asks before writing the decrypted text to the file unencrypted."
                           :input cipher
                           :passphrase (and (gpg-minibuffer-p) (gpg-own-passphrase "the block"))))))))
 
-(define-command sign-region ()
+(define-command gpg-sign-region ()
   "Clear-sign the text selected in place (-----BEGIN PGP SIGNED MESSAGE-----), with your key."
   (let ((buffer (current-buffer)))
     (multiple-value-bind (start end) (region-or-error buffer)
@@ -371,7 +373,7 @@ asks before writing the decrypted text to the file unencrypted."
                             (message "Not signed: ~a" (gpg-failure-words statuses said))))
                       :input plain :passphrase (gpg-own-passphrase "signing the selection"))))))
 
-(define-command verify-region ()
+(define-command gpg-verify-region ()
   "Check the signature of the clear-signed block (-----BEGIN PGP SIGNED
 MESSAGE-----) in the text selected, or without a selection the one point is
 in, else the one nearest to point: who signed it, when, and how far that key
@@ -393,13 +395,13 @@ is trusted."
 name, expiry, what it can do (e encrypt, s sign, c certify), yours.
 \\<gpg-keys-mode>\\[list-mark-entry] marks the key at the cursor and moves down, \\[list-unmark-entry] unmarks it,
 \\[list-unmark-all] unmarks them all, \\[list-toggle-marks] swaps marked and unmarked; \\[gpg-keys-details] shows its details;
-\\[import-keys] imports keys from a file, \\[gpg-keys-export] exports the keys marked (or the one at
+\\[gpg-import-keys] imports keys from a file, \\[gpg-keys-export] exports the keys marked (or the one at
 the cursor) to a file, \\[gpg-keys-insert] puts them in the buffer you came from, \\[list-delete-marked]
 deletes them, after asking; \\[revert-buffer] lists them again."
   :lighter "Keys" :interactive nil)
 
 (defvar *gpg-keys-keymap* (make-keymap :name "The list of GnuPG keys, before the modal keys")
-  "Keys of the list of GnuPG keys (\\[list-keys]), before the modal keys.")
+  "Keys of the list of GnuPG keys (\\[gpg-list-keys]), before the modal keys.")
 
 (defparameter *gpg-keys-columns* '((" M" :width 2) ("ID" :width 16) ("Validity" :width 9) ("Can" :width 4)
                                    ("Expires" :width 10) ("Yours" :width 5) ("Name"))
@@ -438,10 +440,10 @@ background, point on line POINT or kept."
   "The ID of KEY, one of GPG-KEYS: what a mark on it in the list of keys is kept by."
   (getf key :id))
 
-(define-command list-keys ()
+(define-command gpg-list-keys ()
   "List your GnuPG keys and those you have of others: there \\<gpg-keys-mode>\\[list-mark-entry] marks one,
-\\[gpg-keys-details] shows its details, \\[import-keys] imports keys from a file, \\[gpg-keys-export] exports, \\[gpg-keys-insert]
-inserts and \\[list-delete-marked] deletes those marked."
+\\[gpg-keys-details] shows its details, \\[gpg-import-keys] imports keys from a file, \\[gpg-keys-export]
+exports, \\[gpg-keys-insert] inserts and \\[list-delete-marked] deletes those marked."
   (let ((from (current-buffer))
         (buffer (buffer-in-mode "*GnuPG keys*" 'gpg-keys-mode)))
     (unless (eq from buffer) (setf (tuatara.buffer:buffer-local buffer 'gpg-keys-from) from))
@@ -474,7 +476,7 @@ each line written as the editor shows them (ESCAPE-CONTROLS)."
                             (message "No details of ~a: ~a" (getf key :id) (if (plusp (length said)) said "gpg failed"))))
                       :asker :agent :quiet t))))
 
-(define-command import-keys ()
+(define-command gpg-import-keys ()
   "Import the keys in a file asked for (armoured or not) into your keyring; say what was imported."
   (let ((path (read-native-path "Import keys from: " :kind :file)))
     (when path
@@ -485,7 +487,7 @@ each line written as the editor shows them (ESCAPE-CONTROLS)."
                       (refill-open-list "*GnuPG keys*" 'gpg-keys-mode))
                     :input-path path))))
 
-(define-command import-keys-region ()
+(define-command gpg-import-keys-region ()
   "Import the keys in the text selected (an armoured -----BEGIN PGP PUBLIC KEY BLOCK-----) into your keyring."
   (let ((buffer (current-buffer)))
     (multiple-value-bind (start end) (region-or-error buffer)
@@ -575,5 +577,5 @@ yours with its secret part, asked twice."
 (defun install-gpg-commands ()
   "Bind the keys of the list of GnuPG keys; its keys have no mark for deletion."
   (define-key (mode-keymap 'gpg-keys-mode) "d" :undefined)
-  (define-keys *gpg-keys-keymap* '(("RET" gpg-keys-details) ("i" import-keys) ("x" gpg-keys-export)
+  (define-keys *gpg-keys-keymap* '(("RET" gpg-keys-details) ("i" gpg-import-keys) ("x" gpg-keys-export)
                                    ("I" gpg-keys-insert) ("D" list-delete-marked))))

@@ -195,7 +195,9 @@ pool's workers take every piece."
                                    until (eql old (sb-ext:compare-and-swap (car best) old k))))
                            result)))))))
     (let ((results (tuatara.runtime:stoppable-work (cancel)
-                     (tuatara.runtime:run-tasks tasks :parallelism (max 1 threads)))))
+                     ;; a search through much of a large file reads it through once
+                     (tuatara.text:with-read-pass ()
+                       (tuatara.runtime:run-tasks tasks :parallelism (max 1 threads))))))
       (if (car cancel)
           (values nil :stopped)
           (find-if-not #'null results)))))
@@ -2019,7 +2021,9 @@ kept for each, so counting a hundred million costs no more memory than one."
                     (sb-ext:atomic-incf (car found) matches)
                     (list (nreverse acc) matches last-end)))))))
     (let ((results (tuatara.runtime:stoppable-work (cancel)
-                     (tuatara.runtime:run-tasks tasks :parallelism (max 1 threads)))))
+                     ;; a search through much of a large file reads it through once
+                     (tuatara.text:with-read-pass ()
+                       (tuatara.runtime:run-tasks tasks :parallelism (max 1 threads))))))
       (cond ((car cancel) (values nil :stopped (car found)))
             ((car over) (values nil :over (car found)))
             (t (multiple-value-bind (matches total) (join-collected-pieces mapper results start end piece keep)
