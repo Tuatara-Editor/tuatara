@@ -86,7 +86,7 @@
 ;; and the program parsing a file's text started before its first frame is
 ;; drawn, however busy the machine: a test reads the colours of that frame
 ;; (the tests of starting it on time bind their own wait)
-(setf tuatara.syntax::*at-once-wait* 30)
+(setf tuatara.io::*at-once-wait* 30)
 
 (defun remove-test-directories ()
   "Take away the directories this test run kept its state and data in, the

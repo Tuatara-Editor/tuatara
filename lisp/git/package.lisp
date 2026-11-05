@@ -26,7 +26,8 @@
                 #:rimu-git #:rimu-goto-file #:rimu-home #:rimu-last-directory #:rimu-list-p #:rimu-make-list
                 #:rimu-path #:rimu-quick-edit #:rimu-reading-layout #:rimu-rewound #:rimu-show-directory
                 #:rimu-show-layout #:rimu-source #:rimu-source-buffer-name #:rimu-source-call-with-entry
-                #:rimu-source-listing #:rimu-source-open #:rimu-source-shown #:rimu-source-taken #:rimu-source-top
+                #:rimu-source-listing #:rimu-source-open #:rimu-source-refusal-words #:rimu-source-shown
+                #:rimu-source-taken #:rimu-source-top #:*rimu-disk-commands*
                 #:rimu-toggle #:rimu-toggle-picture #:rimu-toggle-sizes #:rimu-update #:rimu-verify-files
                 #:save-buffer-with-care #:save-buffers-kill-editor #:say-in-background #:sectioned-pieces
                 #:set-made-text #:set-rimu-column #:show-list-text #:shown-file #:special-mode #:table-list-rows

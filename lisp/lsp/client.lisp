@@ -489,9 +489,10 @@ program cannot be started (said so)."
     (setf (lsp-server-process server)
           (handler-case
               (reporting-errors ("starting ~a" (getf spec :name))
-                (sb-ext:run-program program (rest command) :wait nil :search nil :directory root
-                                    :input :stream :output :stream :error :stream :external-format :latin-1
-                                    :environment (append (getf spec :environment) (tuatara.io:program-environment))))
+                (tuatara.io:start-program (cons program (rest command)) :directory root
+                                          :input :stream :output :stream :error :stream :external-format :latin-1
+                                          :environment (append (getf spec :environment)
+                                                               (tuatara.io:program-environment))))
             (error (e) (message "~a could not be started: ~a" (getf spec :name) e) (return-from lsp-start nil))))
     (push server *lsp-servers*)
     (lsp-start-reading server)

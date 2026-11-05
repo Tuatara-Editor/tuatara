@@ -101,7 +101,7 @@ put a sandbox in a scope of its own whose memory is limited; NIL when not.")
 (defun program-search-path ()
   "The directories programs are looked for in, as the PATH lists them:
 the editor's own PATH, or *DEFAULT-PROGRAM-PATH* when it has none."
-  (or (sb-posix:getenv "PATH") *default-program-path*))
+  (or (own-variable "PATH") *default-program-path*))
 
 (defun find-program (name &optional (search (program-search-path)))
   "The full path of the program NAME in the directories SEARCH lists (the
@@ -237,7 +237,10 @@ Tuatara set for itself (*OWN-VARIABLES*)."
 
 (defun program-variable (name)
   "The value of the environment variable NAME as a program started now has
-it (PROGRAM-ENVIRONMENT), or NIL when it has none."
+it (PROGRAM-ENVIRONMENT), or NIL when it has none. Working through a daemon,
+that is as the client you work from has it: its display, its terminal's
+variables. Read with it what belongs to where you are working; the editor's
+own folders and settings with OWN-VARIABLE."
   (let ((prefix (concatenate 'string name "=")))
     (loop for setting in (program-environment)
           when (uiop:string-prefix-p prefix setting) return (subseq setting (length prefix)))))
@@ -298,6 +301,67 @@ of its name, a later one in place of an earlier one."
             (remove-if (lambda (setting) (member (name setting) settings :key #'name :test #'string=))
                        (listed-environment (program-environment) (append *restricted-variables* names))))))
 
+(defun start-program (command &key input output error if-error-exists directory (environment nil environment-p)
+                                     preserve-fds pty session with-editor close-fds
+                                     (external-format '(:utf-8 :replacement #\?)))
+  "Start COMMAND, a program's full name and its arguments (never through a
+shell and never looked for), left running; its process, for the caller to
+end (END-UNWANTED-PROGRAM, DONE-WITH-PROGRAM) or to close. INPUT, OUTPUT and
+ERROR say what it reads and writes, as SB-EXT:RUN-PROGRAM takes them: NIL
+for nothing, :STREAM for a pipe, T for the editor's own (INPUT T keeps the
+terminal, for a program that asks for a password on it), a stream on a
+descriptor, or a path (IF-ERROR-EXISTS saying what is done with a file
+ERROR names that is there already); :OUTPUT as ERROR joins its errors to what
+it writes. With PTY, it runs on a new pseudo-terminal, its process's
+SB-EXT:PROCESS-PTY. DIRECTORY is where it runs, ENVIRONMENT, when given, all
+it sees of one, NAME=VALUE strings (else PROGRAM-ENVIRONMENT);
+PRESERVE-FDS, descriptors it is given besides. SESSION NIL leaves it in a
+process group of its own; T starts it in a session of its own (setsid), so
+that it stays when the editor or its terminal goes, the process given back
+being setsid's, which may end at once; :TERMINAL as well makes its
+pseudo-terminal its controlling terminal and gives back a process that ends
+when it ends (setsid -w -c). WITH-EDITOR true has it killed when the
+editor ends, killed or not (SETPRIV-COMMAND), started from the one thread
+kept for that (IN-STARTER), since it would be killed when the thread
+starting it ends; refused when setpriv is not there. CLOSE-FDS, file
+descriptors (FDs) handed over with the start, such as the program's end of
+a socket: closed by the thread that starts it once it is started or its
+start failed, so that a start given up on while under way never finds them
+closed, or reused, under it. EXTERNAL-FORMAT is that of its pipes."
+  (flet ((close-handed ()
+           (dolist (fd close-fds)
+             (tuatara.runtime:ignoring-errors-reported ("closing a descriptor handed to a program")
+               (sb-posix:close fd)))))
+    (when with-editor
+      (let ((tied (setpriv-command (first command) (rest command))))
+        (unless tied
+          (close-handed)
+          (program-missing "setpriv" :install "util-linux"
+                                     :why (format nil "~a would outlive the editor"
+                                                  (native-file-name (first command)))))
+        (multiple-value-bind (process failure)
+            (in-starter (lambda ()
+                          (apply #'start-program tied
+                                 :input input :output output :error error :if-error-exists if-error-exists
+                                 :directory directory :preserve-fds preserve-fds :pty pty :session session
+                                 :close-fds close-fds :external-format external-format
+                                 (and environment-p (list :environment environment))))
+                        :untaken #'close-handed)
+          (when failure (error failure))
+          (return-from start-program process))))
+    (unwind-protect
+         (multiple-value-bind (program arguments)
+             (if session
+                 (apply #'setsid-command (first command) (rest command) (and (eq session :terminal) '("-w" "-c")))
+                 (values (first command) (rest command)))
+           (apply #'sb-ext:run-program program arguments
+                  :wait nil :search nil :input input :output output :error error :pty pty
+                  :external-format external-format :environment (if environment-p environment (program-environment))
+                  (append (and if-error-exists (list :if-error-exists if-error-exists))
+                          (and directory (list :directory directory))
+                          (and preserve-fds (list :preserve-fds preserve-fds)))))
+      (close-handed))))
+
 (defun call-with-program (command function &key job input output error directory (environment nil environment-p)
                                                preserve-fds (external-format '(:utf-8 :replacement #\?)))
   "Start COMMAND, a program's full name and its arguments (never through a
@@ -311,20 +375,174 @@ is the program the job runs (TUATARA.RUNTIME:JOB-PROGRAM-STARTED): stopping
 the job ends it. However FUNCTION ends, the program is ended when it still
 runs, with what it started (END-UNWANTED-PROGRAM), without waiting for it,
 so that none is left behind; one ended already is waited for and closed."
-  (let ((process (apply #'sb-ext:run-program (first command) (rest command)
-                        :wait nil :input input :output output :error error :external-format external-format
-                        :environment (if environment-p environment (program-environment))
-                        (append (and directory (list :directory directory))
-                                (and preserve-fds (list :preserve-fds preserve-fds))))))
+  (let ((process (apply #'start-program command
+                        :input input :output output :error error :external-format external-format
+                        :directory directory :preserve-fds preserve-fds
+                        (and environment-p (list :environment environment)))))
     (when job (tuatara.runtime:job-program-started job process))
     (unwind-protect (funcall function process)
       (done-with-program process))))
+
+;;; Programs that end with the editor
+
+(sb-ext:defglobal **starter** nil
+  "The thread programs that end with the editor are started from, made on
+first use and kept as long as the editor runs: setpriv --pdeathsig
+\(PR_SET_PDEATHSIG) and bwrap --die-with-parent end a program when the
+thread that started it ends, not the editor, so none such is started from a
+thread that may end first.")
+
+(sb-ext:defglobal **starter-lock** (sb-thread:make-mutex :name "program starting")
+  "Held while work is handed to the starting thread, or taken from it.")
+
+(sb-ext:defglobal **starter-wake** (sb-thread:make-waitqueue :name "program starting")
+  "Signalled when the starting thread is given work, and when it has done it.")
+
+(sb-ext:defglobal **starter-work** nil
+  "The work handed to the starting thread, (TOKEN FUNCTION . UNTAKEN),
+FUNCTION of no arguments, until it takes it; UNTAKEN, a function or NIL,
+called should the work be dropped before it is taken.")
+
+(sb-ext:defglobal **starter-done** (make-hash-table :test 'eq)
+  "What each work given to a starting thread returned, by its token, as
+\(RESULT CONDITION), until it is taken; under **STARTER-LOCK**.")
+
+(sb-ext:defglobal **starters** '()
+  "Every thread programs have been started from, the one in use and those
+given up on (RETIRED), which take no more work and are left to end their
+programs' lives with the editor's; under **STARTER-LOCK**.")
+
+(sb-ext:defglobal **retired** '()
+  "The starting threads given up on, as one that did not answer in time.")
+
+(defun starter-loop ()
+  "What the starting thread does: run each function handed to it, keeping what
+it returns, or the condition that stopped it, by the work's token, unless
+that work was given up on; once itself given up on, nothing more, waiting
+to be ended with the rest. The sandboxes it started are ended before it
+ends: a sandbox ends with the thread that started it, and ended so it may
+leave a process behind (END-SANDBOXES)."
+  (unwind-protect (starter-work-loop)
+    (end-sandboxes :thread sb-thread:*current-thread*)))
+
+(defun starter-work-loop ()
+  "The loop of STARTER-LOOP: each function handed to the starting thread run in turn."
+  (loop
+    (let ((work (sb-thread:with-mutex (**starter-lock**)
+                  (loop until (and **starter-work** (not (member sb-thread:*current-thread* **retired**)))
+                        do (sb-thread:condition-wait **starter-wake** **starter-lock**))
+                  (shiftf **starter-work** nil))))
+      (let ((result (handler-case (list (funcall (second work))) (serious-condition (e) (list nil e)))))
+        (sb-thread:with-mutex (**starter-lock**)
+          (if (eq (car (car work)) :abandoned)
+              ;; given up on: a program it started meanwhile is ended, not left behind
+              (when (sb-ext:process-p (first result))
+                (end-sandbox (first result)))
+              (setf (gethash (car work) **starter-done**) result))
+          (sb-thread:condition-broadcast **starter-wake**))))))
+
+(sb-ext:defglobal **starting** (sb-thread:make-mutex :name "program start")
+  "Held by the thread having a program started on the starting thread, so that one is started at a time.")
+
+(defparameter *starter-wait* 30
+  "The seconds a start on the starting thread may take, a sandbox looked for
+first, before it is given up and another thread made to start programs from.")
+
+(defparameter *at-once-wait* 0.05
+  "The seconds a start on a thread that must not wait may take, past which
+it is left to finish in the background (IN-STARTER :AT-ONCE).")
+
+(defun in-starter (function &key at-once held untaken)
+  "What FUNCTION returns, called in the thread programs that end with the
+editor are started from (made the first time, and again when it has died or
+not done its last work within *STARTER-WAIT*, that one then retired, its
+programs left running), and the condition that stopped it, if one did, as a
+second value. FUNCTION owns what it opens: given up on, it may still run
+later. AT-ONCE: when another start is under way, :BUSY at once, FUNCTION not
+called; and given up on after *AT-ONCE-WAIT* (:BUSY), the thread not
+retired, what FUNCTION started then ended. HELD when the caller holds the
+start already (HOLDING-STARTER). UNTAKEN, a function, is called when
+FUNCTION was given up on before it was ever called. START-PROGRAM with
+:WITH-EDITOR starts one program so; this is for a start that does more
+around it, as a sandbox's (SANDBOX-START)."
+  (unless (or held (sb-thread:grab-mutex **starting** :waitp (not at-once)))
+    (when untaken
+      (tuatara.runtime:ignoring-errors-reported ("letting go of a start not taken") (funcall untaken)))
+    (return-from in-starter :busy))
+  (unwind-protect (in-starter-now function (if at-once *at-once-wait* *starter-wait*) (not at-once) untaken)
+    (unless held (sb-thread:release-mutex **starting**))))
+
+(defun in-starter-now (function wait retire untaken)
+  "The work of IN-STARTER, the start held: FUNCTION waited for WAIT
+seconds; the starting thread RETIRE'd when it did not answer in them. Work
+an earlier asker left there untaken, gone without waiting, is let go of in
+its place, its UNTAKEN called."
+  (sb-thread:with-mutex (**starter-lock**)
+    (unless (and **starter** (sb-thread:thread-alive-p **starter**))
+      (setf **starter** (sb-thread:make-thread #'starter-loop :name "tuatara program starting"))
+      (push **starter** **starters**))
+    (let ((token (list :work))
+          (starter **starter**)
+          (deadline (tuatara.runtime:deadline-in wait)))
+      ;; work its asker left untaken, gone without waiting for it, lets go of what it holds
+      (let ((left (shiftf **starter-work** (list* token function untaken))))
+        (when (and left (cddr left))
+          (setf (car (car left)) :abandoned)
+          (tuatara.runtime:ignoring-errors-reported ("letting go of a start not taken")
+            (funcall (cddr left)))))
+      (sb-thread:condition-broadcast **starter-wake**)
+      (loop until (or (nth-value 1 (gethash token **starter-done**))
+                      (not (sb-thread:thread-alive-p starter))
+                      (tuatara.runtime:deadline-passed-p deadline))
+            do (tuatara.runtime:wait-on **starter-wake** **starter-lock**
+                                        (max 0.005 (min 1 (tuatara.runtime:seconds-left deadline)))))
+      (multiple-value-bind (result done) (gethash token **starter-done**)
+        (remhash token **starter-done**)
+        (cond (done (values-list result))
+              (t
+               (setf (car token) :abandoned)
+               ;; never taken: what it would have closed is closed here
+               (when (eq (car **starter-work**) token)
+                 (setf **starter-work** nil)
+                 (when untaken
+                   (tuatara.runtime:ignoring-errors-reported ("letting go of a start not taken")
+                     (funcall untaken))))
+               (cond (retire
+                      ;; dead or stuck: retired, the next start made from another
+                      (push starter **retired**)
+                      (setf **starter** nil)
+                      (values nil (make-condition 'simple-error
+                                                  :format-control "the thread starting programs did not answer")))
+                     (t :busy))))))))
+
+(defun holding-starter (function)
+  "What FUNCTION returns, called holding the one start at a time on the
+starting thread, for it to start there with IN-STARTER :HELD, so that no
+other start comes first; :BUSY at once, FUNCTION not called, when another
+start is under way."
+  (if (sb-thread:grab-mutex **starting** :waitp nil)
+      (unwind-protect (funcall function) (sb-thread:release-mutex **starting**))
+      :busy))
+
+(defun end-starters ()
+  "End every thread programs that end with the editor were started from, and
+with them those programs, as the editor ends and before a saved image is made."
+  (dolist (starter (sb-thread:with-mutex (**starter-lock**)
+                     (prog1 **starters** (setf **starters** '() **retired** '() **starter** nil))))
+    (when (sb-thread:thread-alive-p starter)
+      (tuatara.runtime:ignoring-errors-reported ("ending the thread starting programs")
+        (sb-thread:terminate-thread starter))
+      (tuatara.runtime:ignoring-errors-reported ("waiting for the thread starting programs to end")
+        (sb-thread:join-thread starter :default nil :timeout 2)))))
+
+(pushnew 'end-starters sb-ext:*exit-hooks*)
+(pushnew 'end-starters sb-ext:*save-hooks*)
 
 ;;; Programs in a session of their own
 
 (defun user-shell ()
   "The shell a command typed is run with (a compile's, a terminal's): $SHELL, else /bin/sh."
-  (let ((shell (uiop:getenv "SHELL")))
+  (let ((shell (own-variable "SHELL")))
     (if (plusp (length shell)) shell "/bin/sh")))
 
 (defun session-command (command)
@@ -990,7 +1208,7 @@ not UTF-8 shown as ?."
   "What systemd-run needs of the environment to reach your own service
 manager, and nothing else."
   (loop for name in '("XDG_RUNTIME_DIR" "DBUS_SESSION_BUS_ADDRESS")
-        for value = (sb-posix:getenv name)
+        for value = (own-variable name)
         when value collect (format nil "~a=~a" name value)))
 
 (defun scope-arguments (total unit)
@@ -1246,13 +1464,12 @@ can stop this thread, to keep it where the caller ends it."
              (let ((process
                      (if scope
                          ;; systemd-run moves itself into the scope and becomes bwrap: still this one's child
-                         (sb-ext:run-program scope (append (scope-arguments total unit) (list bwrap) arguments)
-                                             :search nil :wait nil :input stdin :preserve-fds keep
-                                             :output outputs :error outputs
-                                             :environment (cons (sandbox-mark) (scope-environment)))
-                         (sb-ext:run-program bwrap arguments
-                                             :search nil :wait nil :input stdin :preserve-fds keep
-                                             :output outputs :error outputs :environment (list (sandbox-mark))))))
+                         (start-program (list* scope (append (scope-arguments total unit) (list bwrap) arguments))
+                                        :input stdin :preserve-fds keep :output outputs :error outputs
+                                        :external-format :default :environment (cons (sandbox-mark) (scope-environment)))
+                         (start-program (cons bwrap arguments)
+                                        :input stdin :preserve-fds keep :output outputs :error outputs
+                                        :external-format :default :environment (list (sandbox-mark))))))
                (when unit (setf (getf (sb-ext:process-plist process) :scope) unit))
                (sb-thread:with-mutex (**sandboxes-lock**)
                  (push (cons process sb-thread:*current-thread*) **sandboxes**))

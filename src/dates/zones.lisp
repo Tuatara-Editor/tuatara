@@ -120,7 +120,7 @@ much after it."
 
 (defun zoneinfo-directory ()
   "The directory of the system's zoneinfo files: TZDIR when set, else /usr/share/zoneinfo/."
-  (let ((dir (sb-posix:getenv "TZDIR")))
+  (let ((dir (tuatara.io:own-variable "TZDIR")))
     (if (and dir (plusp (length dir)))
         (if (char= (char dir (1- (length dir))) #\/) dir (concatenate 'string dir "/"))
         "/usr/share/zoneinfo/")))
@@ -257,7 +257,7 @@ NIL when there is none by that name. Read once, then kept."
   "The name of the time zone the system keeps its clock in: TZ when it names
 a zone of the zoneinfo, else the zone /etc/localtime leads to; NIL when
 neither names one."
-  (let ((tz (sb-posix:getenv "TZ")))
+  (let ((tz (tuatara.io:own-variable "TZ")))
     (or (and tz (let ((name (string-left-trim ":" tz))) (and (zone-named name) name)))
         ;; the link followed to its end: a toolbox's leads through /run/host
         (let* ((path (handler-case (namestring (truename "/etc/localtime")) (file-error () nil)))
@@ -272,7 +272,7 @@ else as /etc/localtime holds it, else TZ read as a rule, else as far as the
 clock's offset now tells it."
   (or (let ((name (system-zone-name))) (and name (zone-named name)))
       (let ((octets (zoneinfo-file-octets "/etc/localtime"))) (and octets (read-zoneinfo octets nil)))
-      (let* ((tz (sb-posix:getenv "TZ")) (rule (and tz (read-zone-rule tz))))
+      (let* ((tz (tuatara.io:own-variable "TZ")) (rule (and tz (read-zone-rule tz))))
         (and rule (%make-time-zone nil #() #() (zone-rule-standard-offset rule) rule)))
       (fixed-time-zone (local-offset (get-universal-time)))))
 

@@ -677,8 +677,9 @@ up after the longest."
 (defun rimu-source (buffer)
   "The source BUFFER lists its folder from, when it is a rimu list of a folder
 as something other than the disk keeps it, as a commit left it
-\(\\[git-rewind]), read through RIMU-SOURCE-LISTING and the rest of that
-protocol; NIL for a list of the disk, or a buffer that is no rimu list."
+\(\\[git-rewind]) or on another machine, read through RIMU-SOURCE-LISTING and
+the rest of that protocol; NIL for a list of the disk, or a buffer that is
+no rimu list."
   (and (rimu-list-p buffer) (tuatara.buffer:buffer-local buffer 'rimu-rewound)))
 
 ;;; A folder listed as something other than the disk keeps it
@@ -709,6 +710,37 @@ file named OCTETS in DIRECTORY as SOURCE keeps it, its name and its size."))
 
 (defgeneric rimu-source-taken (source buffer)
   (:documentation "BUFFER, a list made like another, now lists its folder as SOURCE keeps it too."))
+
+(defgeneric rimu-source-changes (source)
+  (:documentation "The commands that change files (*FILE-CHANGING-COMMANDS*) a list of a folder as
+SOURCE keeps it does through SOURCE; the others are refused there (RIMU-SOURCE-REFUSAL).")
+  (:method (source)
+    (declare (ignore source))
+    '()))
+
+(defgeneric rimu-source-refusal-words (source command)
+  (:documentation "What a list of a folder as SOURCE keeps it says instead of running COMMAND,
+one it refuses (RIMU-SOURCE-REFUSAL)."))
+
+(defvar *rimu-disk-commands*
+  '(rimu-quick-edit rimu-goto-file rimu-home rimu-last-directory rimu-toggle-git rimu-toggle-sizes rimu-toggle-picture
+    rimu-diff rimu-archive-list rimu-verify-files file-metadata open-externally
+    rimu-find rimu-find-text rimu-duplicates diff-files)
+  "The commands refused in a rimu list of a folder as something other than
+the disk keeps it (RIMU-SOURCE), as they work on the files as the disk has
+them, besides those that change files its source does not do
+\(RIMU-SOURCE-CHANGES).")
+
+(defun rimu-source-refusal (command buffer)
+  "What to say instead of running COMMAND in BUFFER when it is a rimu list of
+a folder as something other than the disk keeps it and COMMAND works on the
+files as the disk has them (*RIMU-DISK-COMMANDS*), or changes files in a way
+its source does not (RIMU-SOURCE-CHANGES); else NIL."
+  (let ((source (rimu-source buffer)))
+    (when (and source
+               (or (member command *rimu-disk-commands*)
+                   (and (member command *file-changing-commands*) (not (member command (rimu-source-changes source))))))
+      (rimu-source-refusal-words source command))))
 
 (defun rimu-column-allowed-p (buffer key)
   "True when the rimu list BUFFER has the column KEY (its buffer-local
@@ -980,7 +1012,13 @@ took its place or the buffer was killed meanwhile."
     (setf (tuatara.buffer:buffer-local buffer 'rimu-job) nil)
     (if (rimu-job-reason job)
         (message "Could not list ~a: ~a" (tuatara.buffer:buffer-local buffer 'rimu-directory) (rimu-job-reason job))
-        (progn
+        (let ((read (rimu-listing-directory (rimu-job-listing job))))
+          ;; a source may find where the folder is, from the root, only as it reads it
+          (when (and (rimu-source buffer) (string/= read (tuatara.buffer:buffer-local buffer 'rimu-directory)))
+            (setf (tuatara.buffer:buffer-local buffer 'rimu-directory) read
+                  (buffer-given-directory buffer) read
+                  (tuatara.buffer:buffer-name buffer)
+                  (tuatara.buffer:unique-buffer-name (rimu-source-buffer-name (rimu-source buffer) read))))
           (setf (tuatara.buffer:buffer-local buffer 'rimu-listing) (rimu-job-listing job))
           (rimu-show-layout buffer (rimu-job-layout job)
                             (or (rimu-job-point-on job)
@@ -1138,20 +1176,25 @@ POINT-ON. With SAFE the list is opened safely: what is opened from it opens
 safely, its preview shows files as they are opened safely, and it shows no
 git column or sizes. With ROOT, a directory at or above PATH, \\<rimu-mode>\\[rimu-up]
 there goes back to BACK, the buffer the list was opened from, instead of the
-directory above. Returns the list, or NIL (said) when PATH is no directory."
-  (let* ((directory (directory-name path :clean t))
-         (stamp (tuatara.io:path-stamp directory :failure nil)))
-    (cond ((null stamp) (message "No directory ~a" (abbreviated-path directory)) nil)
-          ((not (eq (tuatara.io:stamp-kind stamp) :directory))
+directory above. A folder on another machine (/ssh:HOST:/folder/) is
+listed through SFTP (REMOTE-RIMU-LIST), whether it is one found once it is
+read. Returns the list, or NIL (said) when PATH is no directory."
+  (let* ((remote (remote-name-p path))
+         (directory (if remote (remote-directory-name path) (directory-name path :clean t)))
+         (stamp (and (not remote) (tuatara.io:path-stamp directory :failure nil))))
+    (cond ((and (not remote) (null stamp)) (message "No directory ~a" (abbreviated-path directory)) nil)
+          ((and (not remote) (not (eq (tuatara.io:stamp-kind stamp) :directory)))
            (message "~a is not a directory" (abbreviated-path (string-right-trim "/" directory))) nil)
-          (t (let ((buffer (or (find-if (lambda (b)
-                                          (and (rimu-list-p b)
-                                               (not (tuatara.buffer:buffer-local b 'rimu-preview-buffer))
-                                               (not (rimu-found-p b))
-                                               (not (rimu-source b))
-                                               (equal (tuatara.buffer:buffer-local b 'rimu-directory) directory)))
-                                        tuatara.buffer:*buffers*)
-                                (rimu-make-list directory))))
+          (t (let ((buffer (if remote
+                               (remote-rimu-list directory)
+                               (or (find-if (lambda (b)
+                                              (and (rimu-list-p b)
+                                                   (not (tuatara.buffer:buffer-local b 'rimu-preview-buffer))
+                                                   (not (rimu-found-p b))
+                                                   (not (rimu-source b))
+                                                   (equal (tuatara.buffer:buffer-local b 'rimu-directory) directory)))
+                                            tuatara.buffer:*buffers*)
+                                   (rimu-make-list directory)))))
                (when safe (setf (tuatara.io:safe-visit-p buffer) t))
                (when root
                  (setf (tuatara.buffer:buffer-local buffer 'rimu-root) (directory-name root :clean t)
@@ -1301,7 +1344,7 @@ opened from the package manager, go back there."
     (cond
       ((rimu-found-p buffer) (rimu-show-directory directory))
       ((and (rimu-source buffer) (string= directory (rimu-source-top (rimu-source buffer))))
-       (message "This is the top of the repository"))
+       (message "~a is the top of this list" (abbreviated-path directory)))
       ((equal directory (tuatara.buffer:buffer-local buffer 'rimu-root))
        (if (live-buffer-p back)
            (show-buffer back)
@@ -1478,7 +1521,8 @@ asking whether to save, and its preview closes."
   "Bind the keys of rimu's lists, of its quick edits and those that start it,
 show what is read in the background, mark a quick edit in the mode line, keep
 point on a list's entries, have EDITOR's preview follow the list, and refuse
-the commands that change files in a list opened safely."
+the commands that change files in a list opened safely, and in a list of a
+folder not on the disk those it does not do (RIMU-SOURCE-REFUSAL)."
   (pushnew 'rimu-preview-follow (editor-post-command-functions editor))
   (pushnew 'rimu-keep-point-on-entries (editor-post-command-functions editor))
   (dolist (command '(rimu-copy rimu-move rimu-symlink rimu-hardlink rimu-rename list-delete-marked list-execute rimu-make-directory
@@ -1507,6 +1551,7 @@ the commands that change files in a list opened safely."
   (install-rimu-sizes)
   (pushnew 'rimu-visit-directory *file-views*)
   (pushnew 'rimu-refresh-lists *paths-changed-functions*)
+  (pushnew 'rimu-source-refusal *command-refusal-functions*)
   (pushnew 'rimu-tick *tick-functions*)
   (follow-directories-for 'rimu-watched-directories 'rimu-directories-changed))
 

@@ -39,34 +39,33 @@ keeps (*DAEMON-VARIABLES*)."
   (unless tuatara.io:*saved-program*
     (format *error-output* "tuatara: a daemon is started from the built program, not from the sources~%")
     (return-from start-daemon 1))
-  (multiple-value-bind (program arguments)
-      (tuatara.io:setsid-command tuatara.io:*saved-program* (and config (list "-c" (tuatara.io:native config))))
-    (let* ((process (sb-ext:run-program program arguments
-                                        :wait nil :input nil :output :stream :error :output
-                                        :environment (tuatara.io:restricted-environment
-                                                      *daemon-variables* (format nil "TUATARA_DAEMON=~a" name))))
-           (out (sb-ext:process-output process))
-           (deadline (tuatara.runtime:deadline-in tuatara.frontend:*starting-seconds*)))
-      (unwind-protect
-           (loop
-             (when (tuatara.runtime:deadline-passed-p deadline)
-               (format *error-output* "tuatara: the daemon ~a did not say it was ready within ~d seconds; its log is ~a~%"
-                       name tuatara.frontend:*starting-seconds* (daemon-log-path name))
-               (return 1))
-             (when (plusp (tuatara.io:poll-fd (sb-sys:fd-stream-fd out) 1 1000))
-               (let ((line (read-line out nil)))
-                 (cond ((null line)
-                        (format *error-output* "tuatara: the daemon ~a ended before it was ready; its log is ~a~%"
-                                name (daemon-log-path name))
-                        (return 1))
-                       ((string= line "ready")
-                        (unless quiet
-                          (format t "The Tuatara daemon ~a runs: tuatara --client~:[=~a~;~*~] shows it~%"
-                                  name (string= name tuatara.defaults::*daemon-default-name*) name))
-                        (return 0))
-                       (t (format *error-output* "~a~%" (shown line)))))))
-        (close out)
-        (sb-ext:process-close process)))))
+  (let* ((process (tuatara.io:start-program (list* tuatara.io:*saved-program*
+                                                     (and config (list "-c" (tuatara.io:native config))))
+                                              :session t :output :stream :error :output :external-format :default
+                                              :environment (tuatara.io:restricted-environment
+                                                            *daemon-variables* (format nil "TUATARA_DAEMON=~a" name))))
+         (out (sb-ext:process-output process))
+         (deadline (tuatara.runtime:deadline-in tuatara.frontend:*starting-seconds*)))
+    (unwind-protect
+         (loop
+           (when (tuatara.runtime:deadline-passed-p deadline)
+             (format *error-output* "tuatara: the daemon ~a did not say it was ready within ~d seconds; its log is ~a~%"
+                     name tuatara.frontend:*starting-seconds* (daemon-log-path name))
+             (return 1))
+           (when (plusp (tuatara.io:poll-fd (sb-sys:fd-stream-fd out) 1 1000))
+             (let ((line (read-line out nil)))
+               (cond ((null line)
+                      (format *error-output* "tuatara: the daemon ~a ended before it was ready; its log is ~a~%"
+                              name (daemon-log-path name))
+                      (return 1))
+                     ((string= line "ready")
+                      (unless quiet
+                        (format t "The Tuatara daemon ~a runs: tuatara --client~:[=~a~;~*~] shows it~%"
+                                name (string= name tuatara.defaults::*daemon-default-name*) name))
+                      (return 0))
+                     (t (format *error-output* "~a~%" (shown line)))))))
+      (close out)
+      (sb-ext:process-close process))))
 
 (defun daemon-output (name)
   "A descriptor open for writing where what the daemon NAME prints goes once
@@ -127,12 +126,12 @@ a daemon could not be started, why said on the error output."
         (when (and start (not (funcall runs)))
           (unless (zerop (start-daemon name nil :quiet t))
             (return-from report-daemon-socket 1))
-          (let ((words (lingering-words (or (uiop:getenv "USER") (uiop:getenv "LOGNAME")))))
+          (let ((words (lingering-words (or (tuatara.io:own-variable "USER") (tuatara.io:own-variable "LOGNAME")))))
             (when words (format *error-output* "tuatara: the daemon ~a was started, but ~a~%" name words))))
         (write-daemon-report *standard-output* :home (tuatara.io:native (user-homedir-pathname)) :socket socket
                                                :runs (funcall runs) :gpg-socket (gpgconf-directory "agent-socket")
                                                :gpg-autostart (gpg-autostart-p) :unlink (sshd-unlinks)
-                                               :agent (let ((agent (uiop:getenv "SSH_AUTH_SOCK")))
+                                               :agent (let ((agent (tuatara.io:own-variable "SSH_AUTH_SOCK")))
                                                         (and (forwardable-path-p agent) agent)))
         (finish-output)
         0)

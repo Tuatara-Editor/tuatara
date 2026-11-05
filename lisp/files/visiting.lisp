@@ -185,9 +185,12 @@ again at each key typed in it."
 
 (defun input-directory-path (input)
   "The directory INPUT, a path being typed, names the entries of: its part up
-to its last slash as an absolute pathname, the current directory when it has none."
+to its last slash as an absolute pathname, the current directory when it has
+none; a folder on another machine as its name, /ssh:HOST:/folder/."
   (let ((dir (input-directory input)))
-    (tuatara.io:expand-path (if (string= dir "") "./" dir))))
+    (if (remote-name-p dir)
+        dir
+        (tuatara.io:expand-path (if (string= dir "") "./" dir)))))
 
 (defun directory-candidates (expanded chosen)
   "The candidates FILE-CANDIDATES gives for the entries of the directory
@@ -195,6 +198,8 @@ EXPANDED, CHOSEN being the paths chosen lately (CHOSEN-PATHS) or NIL: those
 made last while the directory has not changed since, else made afresh. The
 directory is read on the thread calling this, which in a question for a file
 is one of its own (READ-PATH)."
+  (when (remote-name-p expanded)
+    (return-from directory-candidates (remote-candidates expanded)))
   (let* ((native (tuatara.io:native expanded))
          (time (let ((stamp (tuatara.io:path-stamp expanded :failure nil))) (and stamp (tuatara.io:stamp-mtime stamp))))
          (kept *file-candidates-kept*))
@@ -235,10 +240,15 @@ moved to the front, the others in their order."
           (setf latest c))))
     (if latest (cons latest (delete latest candidates :count 1 :test #'eq)) candidates)))
 
+(defun input-name-start (input)
+  "Where the name being typed in INPUT, a path, begins: after its last slash,
+or after the /ssh:HOST: of a file on another machine when that comes later."
+  (max (1+ (or (position #\/ input :from-end t) -1)) (or (remote-prefix-length input) 0)))
+
 (defun input-directory (input)
-  "The directory part of INPUT, a path being typed: up to its last slash."
-  (let ((slash (position #\/ input :from-end t)))
-    (if slash (subseq input 0 (1+ slash)) "")))
+  "The directory part of INPUT, a path being typed: up to its last slash, or
+the /ssh:HOST: naming the home folder on another machine."
+  (subseq input 0 (input-name-start input)))
 
 (defun substitute-file-input (input)
   "INPUT, a path being typed, as the file prompts read it: a path typed after
@@ -255,9 +265,9 @@ is before the ~ (/etc/~/notes is ~/notes)."
 (defun resolve-file-input (input chosen)
   "The path to visit when CHOSEN (a candidate string or the raw input) was
 chosen while INPUT was typed: the candidate is relative to INPUT's directory part."
-  (let ((slash (position #\/ input :from-end t)))
-    (if (and slash (not (find #\/ chosen :end (max 0 (1- (length chosen))))))
-        (concatenate 'string (subseq input 0 (1+ slash)) chosen)
+  (let ((start (input-name-start input)))
+    (if (and (plusp start) (not (find #\/ chosen :end (max 0 (1- (length chosen))))))
+        (concatenate 'string (subseq input 0 start) chosen)
         chosen)))
 
 (defun input-when-directory (candidates input)
@@ -712,8 +722,12 @@ already that was left in INSERT state is shown in NORMAL state when it is
 visited from another buffer (*SHOWN-AGAIN-FUNCTIONS*); visited from its own
 buffer, going to another place in it, it stays as it is. The file's first
 octets are read once for all of this (TUATARA.IO:CALL-WITH-FILE-HEADS).
-Returns the buffer, and true as a second value when it was open already."
-  (tuatara.io:call-with-file-heads (lambda () (visit-path-once path safe show))))
+Returns the buffer, and true as a second value when it was open already.
+A file on another machine, /ssh:HOST:/path, is read from there first
+\(VISIT-REMOTE)."
+  (if (remote-name-p path)
+      (visit-remote path safe show)
+      (tuatara.io:call-with-file-heads (lambda () (visit-path-once path safe show)))))
 
 (defvar *shown-again-functions* '()
   "Functions called with a buffer of a file open already, just shown by a
@@ -998,11 +1012,12 @@ offered to change: a name alone keeps it in its folder, a path (~/notes/a.org,
 written again, and the buffer follows it, named after it, in the mode its
 new name calls for; changes not saved stay so. A name there already, or
 one another buffer visits, is refused. A buffer with no file is saved under
-the name asked for, as \\[write-file] does; a file visited safely is left as
-it is."
+the name asked for, as \\[write-file] does; a file visited safely, or on
+another machine, is left as it is."
   (let* ((b (current-buffer))
          (file (tuatara.buffer:buffer-file b)))
     (cond ((null file) (write-file))
+          ((buffer-remote b) (message "~a is on another machine: its file is left as it is" (buffer-remote-name b)))
           ((tuatara.io:safe-visit-p b) (message "~a is visited safely: its file is left as it is" (tuatara.buffer:buffer-name b)))
           ((tuatara.io:save-of b) (message "~a is being saved: try again once it is" (tuatara.buffer:buffer-name b)))
           (t

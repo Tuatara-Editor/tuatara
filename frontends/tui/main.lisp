@@ -244,7 +244,7 @@ says, or less under a memory limit (MEMORY-LIMIT-KB). NIL when unknown."
         (limit (memory-limit-kb)))
     (if (and total limit) (min total limit) (or total limit))))
 
-(defun wanted-heap-mb (&key (setting (uiop:getenv "TUATARA_HEAP_MB")) (memory (memory-kb)))
+(defun wanted-heap-mb (&key (setting (tuatara.io:own-variable "TUATARA_HEAP_MB")) (memory (memory-kb)))
   "The heap Tuatara wants, in megabytes: SETTING ($TUATARA_HEAP_MB) when it is
 a number, else half of MEMORY (kilobytes, the machine's), from 2 GB to 16 GB,
 so that a replacement across a file of many gigabytes has room while the heap
@@ -253,7 +253,8 @@ cannot outgrow the memory. NIL when neither is known."
       (and memory (max 2048 (min 16384 (floor memory 2048))))))
 
 (defun heap-to-restart-with (&key (now (sb-ext:dynamic-space-size)) (built *built-heap*)
-                                  (wanted (wanted-heap-mb)) (restarted (uiop:getenv "TUATARA_HEAP_DECIDED")))
+                                  (wanted (wanted-heap-mb))
+                                  (restarted (tuatara.io:own-variable "TUATARA_HEAP_DECIDED")))
   "The heap, in megabytes, to start again with, or NIL to go on: when the heap
 NOW (octets) is the one the executable was BUILT with, not one asked for, and
 the WANTED one differs from it by more than a tenth, unless this start is
@@ -748,10 +749,10 @@ keys from and no window wanted."
           (let ((gui (or (getf options :gui) (window-wanted-p))))
             ;; a copy started to measure how the window draws (check-health): no init
             ;; file, the window's font as the one measuring has it
-            (let ((measure (uiop:getenv "TUATARA_MEASURE_DRAWING")))
+            (let ((measure (tuatara.io:own-variable "TUATARA_MEASURE_DRAWING")))
               (when measure
                 (setf tuatara.defaults::*config-file* (merge-pathnames "no-init-file.lisp" measure)
-                      tuatara-user:*gui-font* (uiop:getenv "TUATARA_MEASURE_FONT"))))
+                      tuatara-user:*gui-font* (tuatara.io:own-variable "TUATARA_MEASURE_FONT"))))
             (if gui
                 (tuatara.frontend.gtk:run-in-window files #'tuatara.defaults:install-defaults :start start)
                 (progn
@@ -768,8 +769,8 @@ LD_LIBRARY_PATH back as it was before AppRun added the libraries Tuatara
 brings: the system looks there for Tuatara's own all the same, as it read the
 path when Tuatara started, while the programs Tuatara starts (a terminal's
 shell, the desktop's programs, those the sandbox shuts in) use their own."
-  (when (uiop:getenv "TUATARA_APPIMAGE")
-    (let ((before (uiop:getenv "TUATARA_LD_LIBRARY_PATH")))
+  (when (tuatara.io:own-variable "TUATARA_APPIMAGE")
+    (let ((before (tuatara.io:own-variable "TUATARA_LD_LIBRARY_PATH")))
       (if (and before (plusp (length before)))
           (sb-posix:setenv "LD_LIBRARY_PATH" before 1)
           (sb-posix:unsetenv "LD_LIBRARY_PATH")))
@@ -824,26 +825,26 @@ of its own (--fallback)."
   (fit-heap (rest sb-ext:*posix-argv*))
   (sb-posix:unsetenv "TUATARA_HEAP_DECIDED")
   ;; from now on the AppImage, which brings its libraries along, is what starts Tuatara again
-  (let ((appimage (uiop:getenv "APPIMAGE")))
-    (when (and appimage (uiop:getenv "TUATARA_APPIMAGE"))
+  (let ((appimage (tuatara.io:own-variable "APPIMAGE")))
+    (when (and appimage (tuatara.io:own-variable "TUATARA_APPIMAGE"))
       (setf tuatara.io:*saved-program* appimage)))
   (leave-appimage-environment)
   (uiop:call-image-restore-hook)
   ;; run again by the editor to compile a package apart from it: told so by the
   ;; environment the editor gave it, never by the command line
-  (when (uiop:getenv "TUATARA_COMPILE_PACKAGE")
+  (when (tuatara.io:own-variable "TUATARA_COMPILE_PACKAGE")
     (let ((code (tuatara.packages:compile-package-child)))
       (finish-output)
       (sb-ext:exit :code code :abort t)))
   ;; run by the scripts that install it to write its desktop entries, told so likewise; a request
   ;; not taken leaves it to start as it would
-  (when (uiop:getenv "TUATARA_DESKTOP_ENTRIES")
+  (when (tuatara.io:own-variable "TUATARA_DESKTOP_ENTRIES")
     (let ((code (desktop-entries-child (rest sb-ext:*posix-argv*))))
       (when code
         (finish-output)
         (sb-ext:exit :code code :abort t))))
   ;; run again by tuatara --daemon to be the daemon, told so likewise
-  (let ((daemon (uiop:getenv "TUATARA_DAEMON")))
+  (let ((daemon (tuatara.io:own-variable "TUATARA_DAEMON")))
     (when daemon
       (let ((code (run-daemon daemon (rest sb-ext:*posix-argv*))))
         (finish-output)

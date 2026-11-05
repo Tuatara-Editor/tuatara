@@ -291,11 +291,19 @@ target copies and moves are offered first; NIL when there is none."
                   (not (tuatara.buffer:buffer-local shown 'rimu-preview-buffer)))
           return (tuatara.buffer:buffer-local shown 'rimu-directory)))
 
+(defun rimu-place-kind (target)
+  "What TARGET, a place files are copied or moved to, is, as TUATARA.IO:PATH-KIND
+says: a folder on another machine is taken for a folder, not asked for."
+  (if (remote-name-p target) :directory (tuatara.io:path-kind target)))
+
 (defun rimu-destinations (paths target)
   "Where each of PATHS goes, copied or moved to TARGET: into it when it is a
 directory, else (one path only) to that name. A list of (FROM . TO)."
-  (if (eq :directory (tuatara.io:path-kind target))
-      (mapcar (lambda (from) (cons from (tuatara.io:path-join target (tuatara.io:native-file-name from)))) paths)
+  (if (eq :directory (rimu-place-kind target))
+      (mapcar (lambda (from)
+                (cons from (funcall (if (remote-name-p target) #'remote-join #'tuatara.io:path-join)
+                                    target (tuatara.io:native-file-name from))))
+              paths)
       (list (cons (first paths) (string-right-trim "/" target)))))
 
 ;;; Work in the background
@@ -384,10 +392,16 @@ signalled without one). Returns what was left alone, as words (the names
 in an archive extracted that were there already). An error when not all of
 it was done: a named pipe, a socket or a device left out of a copy is said; a
 copy stopped or failed half-way is taken away, so that no file is left with
-part of what it should hold."
+part of what it should hold. A file or folder on another machine is worked
+on through SFTP (REMOTE-RIMU-WORK)."
   (destructuring-bind (from . to) pair
     (let ((skipped '()))
       (flet ((skip (path words) (push (format nil "~a (~a)" (tuatara.io:native-file-name path) words) skipped)))
+        (when (or (remote-name-p from) (and to (remote-name-p to)))
+          (remote-rimu-work verb from to #'skip)
+          (when skipped
+            (refuse "not all copied, left out: ~{~a~^, ~}" (reverse skipped)))
+          (return-from rimu-work nil))
         (ecase verb
           ;; a copy stopped or failed half-way leaves nothing under its name (COPY-PATH-TREE)
           (:copy (let ((whole (tuatara.io:copy-path-tree from to :cancel cancel :skipped #'skip)))
@@ -507,11 +521,13 @@ PATHS is in."
       (setf (gethash (tuatara.io:parent-path path) directories) t
             (gethash (concatenate 'string (string-right-trim "/" path) "/") directories) t))
     (dolist (buffer (copy-list tuatara.buffer:*buffers*))
-      (when (and (rimu-list-p buffer) (not (rimu-source buffer))
+      (when (and (rimu-list-p buffer)
                  (let ((directory (tuatara.buffer:buffer-local buffer 'rimu-directory)))
-                   (if (rimu-found-p buffer)
-                       (some (lambda (path) (tuatara.io:path-within-p path directory)) paths)
-                       (gethash directory directories))))
+                   ;; a folder as a commit left it does not change; one on another machine does
+                   (and (or (not (rimu-source buffer)) (remote-name-p directory))
+                        (if (rimu-found-p buffer)
+                            (some (lambda (path) (tuatara.io:path-within-p path directory)) paths)
+                            (gethash directory directories)))))
         (rimu-update buffer :reread t :wait nil)))))
 
 (defmethod tuatara.runtime:job-take-in ((operation rimu-operation))
@@ -614,9 +630,9 @@ entries to a place asked for."
                                                  (rimu-question (rimu-verb-words verb :ask) paths :here here :after "to:"))
                                          :initial (abbreviated-path offered) :writing t)))
           (cond ((null target) (message "Nowhere given: nothing done"))
-                ((and (eq verb :move) (not (eq :directory (tuatara.io:path-kind target))))
+                ((and (eq verb :move) (not (eq :directory (rimu-place-kind target))))
                  (message "~a is no directory: nothing moved (\\<rimu-mode>\\[rimu-rename] renames)" (abbreviated-path target)))
-                ((and (> (length paths) 1) (not (eq :directory (tuatara.io:path-kind target))))
+                ((and (> (length paths) 1) (not (eq :directory (rimu-place-kind target))))
                  (message "~a is no directory: ~d files go only into one" (abbreviated-path target) (length paths)))
                 (t (rimu-place-to verb paths target buffer)))))))
 
@@ -626,10 +642,11 @@ itself, a symbolic link on the way followed (FROM's own last link not
 followed: a link is copied as a link)."
   (or (string= (string-right-trim "/" (car pair)) (cdr pair))
       (tuatara.io:path-within-p (cdr pair) (car pair))
-      (let ((from (let ((above (tuatara.io:real-path (tuatara.io:parent-path (car pair)))))
-                    (and above (tuatara.io:path-join above (tuatara.io:native-file-name (car pair))))))
-            (into (tuatara.io:real-path (tuatara.io:parent-path (cdr pair)))))
-        (and from into (tuatara.io:path-within-p into from)))))
+      (and (not (remote-name-p (car pair))) (not (remote-name-p (cdr pair)))
+           (let ((from (let ((above (tuatara.io:real-path (tuatara.io:parent-path (car pair)))))
+                         (and above (tuatara.io:path-join above (tuatara.io:native-file-name (car pair))))))
+                 (into (tuatara.io:real-path (tuatara.io:parent-path (cdr pair)))))
+             (and from into (tuatara.io:path-within-p into from))))))
 
 (defun rimu-doubled-pairs (pairs)
   "Those of PAIRS, each (FROM . TO), whose TO an earlier one has: files of
@@ -846,6 +863,8 @@ is refused. Buffers visiting it follow it. \\<rimu-mode>\\[rimu-edit-names] rena
                    ((not (plain-file-name-p new))
                     (message "~a is no name: a name only, no directory nor control character (\\<rimu-mode>\\[rimu-move] moves)"
                              (escape-controls new)))
+                   ;; on another machine in the background, a name there already refused by the server
+                   ((remote-name-p from) (rimu-start-operation :move (list (cons from to)) buffer))
                    ((tuatara.io:path-stamp to :follow nil) (message "~a is there already" new))
                    (t (handler-case
                           (reporting-errors ("renaming ~a" from)
@@ -858,8 +877,16 @@ is refused. Buffers visiting it follow it. \\<rimu-mode>\\[rimu-edit-names] rena
 (defun rimu-delete-paths (paths buffer &key for-good)
   "Put PATHS, of the rimu list BUFFER, in the trash, or with FOR-GOOD delete
 them, asking first; those that cannot go to the trash are deleted only after a
-second, plain yes."
-  (let ((here (and (live-buffer-p buffer) (tuatara.buffer:buffer-local buffer 'rimu-directory))))
+second, plain yes. Those on another machine, which keeps no trash, are
+deleted for good after one plain yes that says so."
+  (let ((here (and (live-buffer-p buffer) (tuatara.buffer:buffer-local buffer 'rimu-directory)))
+        (remote (remove-if-not #'remote-name-p paths)))
+    (when remote
+      (when (yes-or-no-p* (format nil "~a for good? A server keeps no trash: nothing deleted there can be put back."
+                                  (rimu-question "Delete" remote :here here)))
+        (rimu-start-operation :delete (mapcar #'list remote) buffer))
+      (setf paths (set-difference paths remote :test #'string=))
+      (unless paths (return-from rimu-delete-paths nil)))
     (cond ((or for-good (not *rimu-delete-to-trash*))
            (when (and (yes-or-no-p* (format nil "~a for good?" (rimu-question "Delete" paths :here here)))
                       (yes-or-no-p* (format nil "~a for good? It cannot be put back." (rimu-question "Really delete" paths :here here))))

@@ -48,12 +48,16 @@ to expand (%u, ~), a separator (:), a space or an option."
 (defparameter *ssh-options*
   '("StrictHostKeyChecking=yes" "ForwardAgent=no" "ForwardX11=no" "GSSAPIDelegateCredentials=no"
     "ClearAllForwardings=yes" "PermitLocalCommand=no" "RemoteCommand=none" "RequestTTY=no"
-    "ExitOnForwardFailure=yes" "ConnectTimeout=30" "ServerAliveInterval=15" "ServerAliveCountMax=4")
-  "The ssh options a connection to a daemon's machine is opened with, beside
-its control socket's: on the command line, they win over the ssh
+    "ExitOnForwardFailure=yes" "ConnectTimeout=30" "ServerAliveInterval=15" "ServerAliveCountMax=4"
+    "ForkAfterAuthentication=no" "Tunnel=no" "StdinNull=no")
+  "The ssh options a connection to another machine is opened with, a
+daemon's or the files there: on the command line, they win over the ssh
 configuration's. Only machines whose host key is known already are reached;
-no agent, display, Kerberos ticket, local command, remote command or forward
-of the configuration's goes with the connection.")
+no agent, display, Kerberos ticket, local command, remote command, forward
+or tunnel of the configuration's goes with the connection, and ssh neither
+goes into the background nor stops reading its input. What the
+configuration runs to reach a machine (ProxyCommand, KnownHostsCommand, a
+Match exec) still runs, as it does for ssh typed by hand.")
 
 (defun ssh-option-arguments (&optional agent-option)
   "The arguments giving ssh *SSH-OPTIONS*, each after -o, with AGENT-OPTION,
@@ -104,6 +108,42 @@ TUATARA.IO:*PROGRAM-SAID-LIMIT* octets of each, never to be shown raw."
   "The version of OpenSSH whose ssh is PROGRAM, as a list of numbers, 10.2
 as (10 2) (TUATARA.IO:VERSION-NUMBERS); NIL when it does not say one."
   (tuatara.io:version-numbers (nth-value 2 (run-bounded program '("-V") :seconds 10)) "OpenSSH_"))
+
+(defun ssh-settings (program host)
+  "What ssh, PROGRAM, makes of its configuration for HOST (ssh -G), as a
+list of (KEY . VALUE), the keys in lower case, in the order it says them."
+  (multiple-value-bind (code said) (run-bounded program (list "-G" "--" host) :seconds 10)
+    (and (eql code 0)
+         (loop for line in (uiop:split-string said :separator '(#\Newline))
+               for space = (position #\Space line)
+               when space collect (cons (string-downcase (subseq line 0 space)) (subseq line (1+ space)))))))
+
+(sb-ext:defglobal **ssh-machines** (make-hash-table :test 'equal :synchronized t)
+  "The machine ssh reaches for each host name asked of SSH-MACHINE, as
+\(MACHINE . WHEN), WHEN the internal real time it was asked.")
+
+(defparameter *ssh-machine-seconds* 60
+  "The seconds what ssh makes of a host name (SSH-MACHINE) is kept before ssh is asked again.")
+
+(defun ssh-machine (host)
+  "The machine ssh reaches for HOST ([user@]machine, or an alias of its
+configuration), as hostname:port from what ssh makes of its configuration
+\(SSH-SETTINGS), so that two names of one machine, and two accounts on it,
+are told the same; HOST itself when ssh says none. Kept *SSH-MACHINE-SECONDS* for each
+HOST. ssh -G reaches no machine, but is a program run on the thread asking:
+not for the editor's own thread."
+  (let ((kept (gethash host **ssh-machines**)) (now (get-internal-real-time)))
+    (if (and kept (< (- now (cdr kept)) (* *ssh-machine-seconds* internal-time-units-per-second)))
+        (car kept)
+        (let* ((program (and (not (host-refusal host)) (tuatara.io:system-program *ssh-program*)))
+               (settings (and program (ssh-settings program host)))
+               (name (cdr (assoc "hostname" settings :test #'string=)))
+               (machine (if name
+                            (format nil "~a:~a" (string-downcase name)
+                                    (or (cdr (assoc "port" settings :test #'string=)) "22"))
+                            host)))
+          (setf (gethash host **ssh-machines**) (cons machine now))
+          machine))))
 
 ;;; The list
 

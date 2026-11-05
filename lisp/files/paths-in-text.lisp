@@ -84,7 +84,8 @@ directory part as typed, and what reads it (START-GATHERING).")
 beside the cursor, in a path being typed (PATH-AT-POINT): read the path's
 directory on a thread of its own, for PATH-COMPLETION-TICK to list it once
 read. Nothing is done where COMPLETE-PATHS-P says not, the buffer is
-read-only or shown as a hex dump, or a list is shown already."
+read-only or shown as a hex dump, or a list is shown already, nor for a
+folder on another machine: only a question for a file reads one there."
   (let ((buffer (current-buffer)))
     (when (and (member (editor-last-command editor) '(self-insert-command popup-insert))
                (null (editor-popup editor))
@@ -95,8 +96,12 @@ read-only or shown as a hex dump, or a list is shown already."
                (complete-paths-p buffer))
       (multiple-value-bind (start name-start name-end directory) (path-at-point buffer (tuatara.buffer:buffer-point buffer))
         (declare (ignore name-start name-end))
-        (let ((expanded (and start (ignoring-errors-reported ("expanding ~a" directory)
-                                     (path-directory directory buffer))))
+        (let ((expanded (and start (not (remote-name-p directory))
+                             ;; a path not from the root or ~ is in the buffer's folder, maybe there
+                             (or (and (plusp (length directory)) (find (char directory 0) "/~"))
+                                 (not (remote-name-p (buffer-directory buffer))))
+                             (ignoring-errors-reported ("expanding ~a" directory)
+                               (path-directory directory buffer))))
               (chosen (and *last-used-first* (chosen-paths))))
           (when expanded
             (when *path-listing* (stop-gathering (fourth *path-listing*)))

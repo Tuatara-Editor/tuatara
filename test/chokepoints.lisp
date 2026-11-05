@@ -61,39 +61,14 @@ not in FOUND."
 
 (define-chokepoint programs-started
   ((("run-program" "launch-program")))
-  (("src/io/sandbox.lisp" "the one place that starts programs: limits, environment and confinement")
-   ("frontends/tui/client.lisp" "starts the daemon the client talks to, with its own environment")
-   ("frontends/tui/ssh.lisp" "runs ssh for the remote editing connection")
-   ("frontends/tui/tui.lisp" "runs the clipboard watcher the terminal listens to")
-   ("lisp/files/external.lisp" "hands a file to the desktop's program for it")
-   ("lisp/git/remote.lisp" "asks git once for the commands it has built in")
-   ("lisp/lsp/client.lisp" "starts a language server and talks to it over pipes")
-   ("lisp/terminal/emulator.lisp" "starts the shell of a terminal buffer on a pseudo-terminal")
-   ("src/syntax/helper.lisp" "starts the helper that parses in its own process"))
-  "Programs are started in the sandbox's file, and in the few files whose job is a program of their own.")
+  (("src/io/sandbox.lisp" "the one place that starts programs: limits, environment, sessions and confinement"))
+  "Programs are started in the sandbox's file alone (START-PROGRAM and what is built on it).")
 
 (define-chokepoint environment-read
   ((("getenv" "getenv-absolute-directory" "posix-getenv")))
-  (("src/io/sandbox.lisp" "the environment programs get, and the variables the editor itself asks for")
-   ("src/io/posix.lisp" "the folders of the state and of the runtime, from the XDG variables")
-   ("src/io/operations.lisp" "the data folder, from XDG_DATA_HOME")
-   ("src/dates/zones.lisp" "the time zone, from TZ and TZDIR")
-   ("src/command/redisplay.lisp" "the home folder, to show paths short")
-   ("lisp/api.lisp" "re-exports uiop's getenv for packages")
-   ("lisp/daemon.lisp" "the runtime folder the daemon's socket is in")
-   ("lisp/editing/spellcheck.lisp" "the language, from LC_ALL, LC_MESSAGES and LANG")
-   ("lisp/export/export.lisp" "the home and configuration folders the export tools use")
-   ("lisp/files/files.lisp" "the time zone, from TZ")
-   ("lisp/files/walk.lisp" "the configuration folder, from XDG_CONFIG_HOME")
-   ("lisp/packages/compile-apart.lisp" "the request a compiling child process is given")
-   ("frontends/gtk/window.lisp" "the renderer and measuring switches of the window")
-   ("frontends/tui/client.lisp" "the user and the ssh agent of the daemon's owner")
-   ("frontends/tui/desktop.lisp" "the folder of desktop entries")
-   ("frontends/tui/main.lisp" "the heap size and the switches of the built program")
-   ("frontends/tui/ssh.lisp" "the user's name for ssh's % words")
-   ("frontends/tui/tui.lisp" "the terminal and the desktop the editor itself runs in"))
-  "Environment variables are read through the program environment in the sandbox's file, and in the files whose
-variable is the editor's own (its terminal, folders, time zone and switches).")
+  (("src/io/posix.lisp" "OWN-VARIABLE, the one way the editor reads a variable of its own environment"))
+  "Environment variables are read with OWN-VARIABLE (or OWN-DIRECTORY) for the editor's own, and with PROGRAM-VARIABLE
+for the environment a program is started with. Packages have uiop's getenv from the API.")
 
 (define-chokepoint files-written
   ((":direction" (":output" ":io"))

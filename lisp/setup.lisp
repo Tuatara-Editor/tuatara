@@ -215,6 +215,7 @@ so that \\`C-c' shows, and runs, what the buffer at hand can do in every mode
     (install-registers)
     (tuatara.packages:install-packages)
     (install-servers)
+    (install-remote-files)
     (install-file-local-variables)
     (install-snippets editor)
     (install-paths-in-text editor)

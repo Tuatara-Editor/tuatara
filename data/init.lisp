@@ -1536,6 +1536,12 @@
   ;; Not set: none, nothing checked.
   ;; (setf *evidence-folders* '("~/cases/*/evidence/"
   ;;                            (:regex "^[0-9]{4}-[0-9]{4}$" :within "~/cases/" :then "evidence")))
+
+  ;;; Files on another machine (/ssh:HOST:/path)
+
+  ;; Seconds a server has to answer each request for its files, and ssh to
+  ;; connect, before the work in hand fails. Not set: 30.
+  ;; (setf *remote-seconds* 60)
   )
 
 ;;;; ================================================================

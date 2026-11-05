@@ -122,8 +122,9 @@ only when asked, *LSP-TRUSTED-PROJECTS* or *EVIDENCE-FOLDERS* change."
           answer))))
 
 (defmethod tuatara.syntax:host-trusted-text-p ((host defaults-host) buffer)
-  "True when BUFFER visits a file of a project you trust (BUFFER-IN-TRUSTED-PROJECT-P)."
-  (buffer-in-trusted-project-p buffer))
+  "True when BUFFER visits a file of a project you trust (BUFFER-IN-TRUSTED-PROJECT-P),
+or a copy of a file on a trusted server (\\[server-list])."
+  (or (buffer-in-trusted-project-p buffer) (remote-text-trusted-p buffer)))
 
 (defun project-look-only-p (root)
   "True when the project at ROOT, where it really is, is or is within a

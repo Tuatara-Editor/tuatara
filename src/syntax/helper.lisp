@@ -630,123 +630,6 @@ the sandbox shows its directory (TUATARA.IO:REAL-PLACE), which a link to a
 directory under /tmp, the sandbox's own there, leaves as written."
   (tuatara.io:real-place (uiop:native-namestring program)))
 
-(sb-ext:defglobal **starter** nil
-  "The thread helpers are started from, kept as long as the editor runs: a
-helper, and the sandbox it is shut in, end when the thread that started them
-ends (PR_SET_PDEATHSIG), so none is started from a thread that may end first.")
-
-(sb-ext:defglobal **starter-lock** (sb-thread:make-mutex :name "syntax helper starting")
-  "Held while work is handed to the starting thread, or taken from it.")
-
-(sb-ext:defglobal **starter-wake** (sb-thread:make-waitqueue :name "syntax helper starting")
-  "Signalled when the starting thread is given work, and when it has done it.")
-
-(sb-ext:defglobal **starter-work** nil
-  "The work handed to the starting thread, (TOKEN . FUNCTION), FUNCTION of no
-arguments, until it takes it.")
-
-(sb-ext:defglobal **starter-done** (make-hash-table :test 'eq)
-  "What each work given to a starting thread returned, by its token, as
-\(RESULT CONDITION), until it is taken; under **STARTER-LOCK**.")
-
-(sb-ext:defglobal **starters** '()
-  "Every thread helpers have been started from, the one in use and those
-given up on (RETIRED), which take no more work and are left to end their
-helpers' lives with the editor's; under **STARTER-LOCK**.")
-
-(sb-ext:defglobal **retired** '()
-  "The starting threads given up on, as one that did not answer in time.")
-
-(defun starter-loop ()
-  "What the starting thread does: run each function handed to it, keeping what
-it returns, or the condition that stopped it, by the work's token, unless
-that work was given up on; once itself given up on, nothing more, waiting
-to be ended with the rest. The sandboxes it started are ended before it
-ends: a sandbox ends with the thread that started it, and ended so it may
-leave a process behind (TUATARA.IO:END-SANDBOXES)."
-  (unwind-protect (starter-work-loop)
-    (tuatara.io:end-sandboxes :thread sb-thread:*current-thread*)))
-
-(defun starter-work-loop ()
-  "The loop of STARTER-LOOP: each function handed to the starting thread run in turn."
-  (loop
-    (let ((work (sb-thread:with-mutex (**starter-lock**)
-                  (loop until (and **starter-work** (not (member sb-thread:*current-thread* **retired**)))
-                        do (sb-thread:condition-wait **starter-wake** **starter-lock**))
-                  (shiftf **starter-work** nil))))
-      (let ((result (handler-case (list (funcall (cdr work))) (serious-condition (e) (list nil e)))))
-        (sb-thread:with-mutex (**starter-lock**)
-          (if (eq (car (car work)) :abandoned)
-              ;; given up on: a program it started meanwhile is ended, not left behind
-              (when (sb-ext:process-p (first result))
-                (tuatara.io:end-sandbox (first result)))
-              (setf (gethash (car work) **starter-done**) result))
-          (sb-thread:condition-broadcast **starter-wake**))))))
-
-(sb-ext:defglobal **starting** (sb-thread:make-mutex :name "syntax helper start")
-  "Held by the thread having a helper started, so that one is started at a time.")
-
-(defparameter *starter-wait* 30
-  "The seconds a helper's start may take, the sandbox looked for first, before
-it is given up and another thread made to start helpers from.")
-
-(defparameter *at-once-wait* 0.05
-  "The seconds a start on a thread that must not wait may take, past which
-it is left to finish in the background (IN-STARTER :AT-ONCE).")
-
-(defun in-starter (function &key at-once held untaken)
-  "What FUNCTION returns, called in the thread helpers are started from (made
-the first time, and again when it has died or not done its last work within
-*STARTER-WAIT*, that one then retired, its helpers left running), and the
-condition that stopped it, if one did, as a second value. FUNCTION owns what
-it opens: given up on, it may still run later. AT-ONCE: when another start
-is under way, :BUSY at once, FUNCTION not called; and given up on after
-*AT-ONCE-WAIT* (:BUSY), the thread not retired, what FUNCTION started then
-ended. HELD when the caller holds **STARTING** already. UNTAKEN, a function,
-is called when FUNCTION was given up on before it was ever called."
-  (unless (or held (sb-thread:grab-mutex **starting** :waitp (not at-once)))
-    (when untaken
-      (tuatara.runtime:ignoring-errors-reported ("letting go of a helper's start not taken") (funcall untaken)))
-    (return-from in-starter :busy))
-  (unwind-protect (in-starter-now function (if at-once *at-once-wait* *starter-wait*) (not at-once) untaken)
-    (unless held (sb-thread:release-mutex **starting**))))
-
-(defun in-starter-now (function wait retire untaken)
-  "The work of IN-STARTER, **STARTING** held: FUNCTION waited for WAIT
-seconds; the starting thread RETIRE'd when it did not answer in them."
-  (sb-thread:with-mutex (**starter-lock**)
-    (unless (and **starter** (sb-thread:thread-alive-p **starter**))
-      (setf **starter** (sb-thread:make-thread #'starter-loop :name "tuatara syntax helper starting"))
-      (push **starter** **starters**))
-    (let ((token (list :work))
-          (starter **starter**)
-          (deadline (tuatara.runtime:deadline-in wait)))
-      (setf **starter-work** (cons token function))
-      (sb-thread:condition-broadcast **starter-wake**)
-      (loop until (or (nth-value 1 (gethash token **starter-done**))
-                      (not (sb-thread:thread-alive-p starter))
-                      (tuatara.runtime:deadline-passed-p deadline))
-            do (tuatara.runtime:wait-on **starter-wake** **starter-lock**
-                                        (max 0.005 (min 1 (/ (milliseconds-to deadline) 1000)))))
-      (multiple-value-bind (result done) (gethash token **starter-done**)
-        (remhash token **starter-done**)
-        (cond (done (values-list result))
-              (t
-               (setf (car token) :abandoned)
-               ;; never taken: what it would have closed is closed here
-               (when (eq (car **starter-work**) token)
-                 (setf **starter-work** nil)
-                 (when untaken
-                   (tuatara.runtime:ignoring-errors-reported ("letting go of a helper's start not taken")
-                     (funcall untaken))))
-               (cond (retire
-                      ;; dead or stuck: retired, the next start made from another
-                      (push starter **retired**)
-                      (setf **starter** nil)
-                      (values nil (make-condition 'simple-error
-                                                  :format-control "the thread starting helpers did not answer")))
-                     (t :busy))))))))
-
 (defparameter *syntax-helper-descriptors* 256
   "The most files a program parsing for the editor may have open: its
 connections, and a grammar's file while it is loaded.")
@@ -778,7 +661,7 @@ in by the sandbox; NIL when its program is not found, or when there is no
 sandbox: then a helper parsing a file outside the projects you trust is
 never started, and another only when *SYNTAX-HELPER-UNCONFINED* says so, a
 process of its own not shut in. AT-ONCE, when another start is under way,
-or this one takes more than a moment, gives :BUSY (IN-STARTER), which HELD
+or this one takes more than a moment, gives :BUSY (TUATARA.IO:IN-STARTER), which HELD
 says the caller holds already."
   (let ((program (syntax-helper-program directories)))
     (when program
@@ -790,7 +673,7 @@ says the caller holds already."
                (unconfined (and *syntax-helper-unconfined* (not (eq kind :own))))
                (how nil))
           (multiple-value-bind (process error)
-              (in-starter
+              (tuatara.io:in-starter
                ;; the helper's end of the socket is this work's own, closed by
                ;; it once given: run late, given up on, it touches nothing else
                (lambda ()
@@ -803,9 +686,8 @@ says the caller holds already."
                                                              :processes processes :descriptors descriptors))
                             (when unconfined
                               (setf how :unconfined)
-                              (sb-ext:run-program (uiop:native-namestring program) places
-                                                  :search nil :wait nil :input stream :output nil :error nil
-                                                  :environment '())))
+                              (tuatara.io:start-program (cons (uiop:native-namestring program) places)
+                                                        :input stream :environment '())))
                      (sb-posix:close theirs))))
                :at-once at-once :held held
                ;; the work never run: its end of the socket closed here
@@ -965,17 +847,10 @@ the texts it parsed are parsed again by another. NIL."
     (end-helper helper :stopped :wait wait)))
 
 (defun stop-helpers ()
-  "End every helper, and every thread they were started from, as the program does
-before a saved image is made and when it ends."
+  "End every helper, as the program does before a saved image is made and when it ends."
   (dolist (helper (sb-thread:with-mutex (**helpers-lock**) (copy-list **helpers**)))
-    (stop-helper helper))
-  (dolist (starter (sb-thread:with-mutex (**starter-lock**)
-                     (prog1 **starters** (setf **starters** '() **retired** '() **starter** nil))))
-    (when (sb-thread:thread-alive-p starter)
-      (tuatara.runtime:ignoring-errors-reported ("ending the thread starting helpers")
-        (sb-thread:terminate-thread starter))
-      (tuatara.runtime:ignoring-errors-reported ("waiting for the thread starting helpers to end")
-        (sb-thread:join-thread starter :default nil :timeout 2)))))
+    (stop-helper helper)))
+
 
 (pushnew 'forget-killed-buffer-helper tuatara.buffer:*kill-buffer-functions*)
 (pushnew 'stop-helpers sb-ext:*save-hooks*)
@@ -1080,19 +955,17 @@ takes more than a moment."
        (let ((running (and buffer (tuatara.buffer:buffer-local buffer :syntax-helper))))
          (cond ((and running (helper-alive running)) running)
                ((and buffer (not (tuatara.buffer:live-buffer-p buffer))) nil)
-               ;; at once: the start had first, so that a busy one ends no helper for room
-               ((and at-once (not (sb-thread:grab-mutex **starting** :waitp nil))) :busy)
-               (t (unwind-protect
-                       (progn
-                         (make-room-for-helper :wait (not at-once))
-                         (start-own-helper-now kept buffer at-once))
-                    (when at-once (sb-thread:release-mutex **starting**))))))
+               (t (flet ((start ()
+                           (make-room-for-helper :wait (not at-once))
+                           (start-own-helper-now kept buffer at-once)))
+                    ;; at once: the start had first, so that a busy one ends no helper for room
+                    (if at-once (tuatara.io:holding-starter #'start) (start))))))
     (sb-thread:release-mutex **room-lock**)))
 
 (defun start-own-helper-now (kept buffer at-once)
-  "The work of START-OWN-HELPER, room made: the start, AT-ONCE holding
-**STARTING**; a helper started for a buffer killed meanwhile ended, ended
-in the background AT-ONCE."
+  "The work of START-OWN-HELPER, room made: the start, AT-ONCE within
+TUATARA.IO:HOLDING-STARTER; a helper started for a buffer killed meanwhile
+ended, ended in the background AT-ONCE."
   (let ((helper (start-helper (grammar-directories) :own :at-once at-once :held at-once)))
     (cond ((not (helper-p helper)) helper)
           (t (setf (helper-kept helper) kept

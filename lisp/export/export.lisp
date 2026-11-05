@@ -324,7 +324,7 @@ no kpsewhich there, or no sandbox to ask it in. Folders under /usr, which a prog
 already, are left out, and so are those not to be shown whole
 \(SHOWN-WHOLE-P), which a setting may name."
   (let* ((own (string-right-trim "/" (tuatara.io:parent-path path)))
-         (key (list path (sb-posix:getenv "HOME")))
+         (key (list path (tuatara.io:own-variable "HOME")))
          (found (or (gethash key *tex-trees*)
                     (multiple-value-bind (said kept) (tex-settings-said path)
                       (let* ((lines (and said (org-text-lines said)))
@@ -357,7 +357,7 @@ folder where VAR is not there yet)."
   "Your home folder as a LaTeX program is told it, shut in: as the editor has
 it in its environment, so that TeX and the fonts find your own where they
 always do."
-  (string-right-trim "/" (or (sb-posix:getenv "HOME") (tuatara.io:home-directory))))
+  (string-right-trim "/" (or (tuatara.io:own-variable "HOME") (tuatara.io:home-directory))))
 
 (defparameter *latex-picture-file-kinds* '(:png :jpeg :pdf :postscript)
   "The kinds of file, by their contents, a LaTeX program shut in is shown when
@@ -399,8 +399,10 @@ LaTeX file exported as it is when it stands in your own folders
   (multiple-value-bind (trees var) (tex-trees path)
     (multiple-value-bind (overlays var-writable) (if var (tex-cache-overlay var) (values '() '()))
       (let* ((home (latex-home))
-             (config (string-right-trim "/" (or (sb-posix:getenv "XDG_CONFIG_HOME") (format nil "~a/.config" home))))
-             (cache (string-right-trim "/" (or (sb-posix:getenv "XDG_CACHE_HOME") (format nil "~a/.cache" home)))))
+             (config (string-right-trim "/" (or (tuatara.io:own-variable "XDG_CONFIG_HOME")
+                                                (format nil "~a/.config" home))))
+             (cache (string-right-trim "/" (or (tuatara.io:own-variable "XDG_CACHE_HOME")
+                                               (format nil "~a/.cache" home)))))
         (list :directories (append (let ((folders (list (tuatara.io:parent-path tex) (tuatara.io:parent-path (pdf-export-source job)))))
                                      (if (every #'shown-whole-p folders) folders (list tex)))
                                    (loop for folder in *export-trusted-folders*

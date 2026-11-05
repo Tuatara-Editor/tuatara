@@ -1352,20 +1352,6 @@ has, ended after."
           (when (equal directories (tuatara.syntax::helper-directories helper))
             (tuatara.syntax::stop-helper helper)))))))
 
-(define-test (syntax starting-thread-never-waited-for-forever)
-  ;; a start that ends with a condition no error, or takes too long, is
-  ;; given up with that said, and the next start goes on as before
-  (multiple-value-bind (result condition) (tuatara.syntax::in-starter (lambda () (error 'storage-condition)))
-    (false result)
-    (true (typep condition 'storage-condition)))
-  (let ((tuatara.syntax::*starter-wait* 0.5)
-        (began (get-internal-real-time)))
-    (multiple-value-bind (result condition) (tuatara.syntax::in-starter (lambda () (sleep 3) :late))
-      (false result)
-      (true condition)
-      (true (< (tuatara.runtime:seconds-since began) 2))))
-  (is eq :fine (tuatara.syntax::in-starter (lambda () :fine))))
-
 (define-test (syntax a-link-lends-no-trust)
   ;; a file reached through a link inside a project you trust is parsed as
   ;; the file it really is, outside it
@@ -1552,21 +1538,6 @@ has, ended after."
                        (tuatara.syntax:helper-memory helper) held)))
           (when helper (tuatara.syntax::stop-helper helper)))))))
 
-(define-test (syntax given-up-starting-thread-takes-no-more)
-  ;; a starting thread given up on takes no more work, its late answer
-  ;; taken for no other start, and every starting thread ends with the rest
-  (let ((tuatara.syntax::*starter-wait* 0.3))
-    (multiple-value-bind (result condition) (tuatara.syntax::in-starter (lambda () (sleep 1) :old))
-      (false result)
-      (true condition)))
-  (is eq :new (tuatara.syntax::in-starter (lambda () :new)))
-  (sleep 1)
-  (is eq :newer (tuatara.syntax::in-starter (lambda () :newer)))
-  (true (>= (length tuatara.syntax::**starters**) 2))
-  (let ((starters (copy-list tuatara.syntax::**starters**)))
-    (tuatara.syntax:stop-helpers)
-    (true (notany #'sb-thread:thread-alive-p starters))))
-
 (define-test (syntax showing-text-never-waits-for-its-helper)
   ;; on the editor's own thread, a buffer's helper is set going at once when
   ;; nothing holds it up; while another start does, none is given at once,
@@ -1599,7 +1570,7 @@ has, ended after."
   (let ((buffer (tuatara.buffer:make-buffer "*soon-now*" :text "fn main() {}")))
     (unwind-protect
          (let ((tuatara.runtime:*host* (make-answering-host 'tuatara.syntax:host-must-not-wait-p (this-thread-only)))
-               (tuatara.syntax::*at-once-wait* 30))
+               (tuatara.io::*at-once-wait* 30))
            (true (tuatara.syntax:buffer-helper-soon buffer)))
       (tuatara.buffer:kill-buffer buffer))))
 
@@ -1807,12 +1778,12 @@ has, ended after."
     (unwind-protect
          (let ((tuatara.syntax::*syntax-helpers-most* 1)
                (tuatara.runtime:*host* (make-answering-host 'tuatara.syntax:host-must-not-wait-p (this-thread-only)))
-               (tuatara.syntax::*at-once-wait* 0.05)
+               (tuatara.io::*at-once-wait* 0.05)
                (holding (sb-thread:make-semaphore)))
            (let ((first (tuatara.syntax:buffer-helper other))
                  (holder (sb-thread:make-thread
                           (lambda ()
-                            (sb-thread:with-mutex (tuatara.syntax::**starting**)
+                            (sb-thread:with-mutex (tuatara.io::**starting**)
                               (sb-thread:signal-semaphore holding)
                               (sleep 0.5))))))
              (sb-thread:wait-on-semaphore holding)
@@ -1849,7 +1820,7 @@ has, ended after."
   (tuatara.io:sandbox-status)
   (flet ((open-descriptors () (length (directory "/proc/self/fd/*" :resolve-symlinks nil))))
     (let ((before (open-descriptors)))
-      (let ((tuatara.syntax::*at-once-wait* 0))
+      (let ((tuatara.io::*at-once-wait* 0))
         (dotimes (i 5)
           (let ((helper (tuatara.syntax::start-helper (tuatara.syntax:grammar-directories) :own :at-once t)))
             (when (tuatara.syntax:helper-p helper) (tuatara.syntax::stop-helper helper)))))
@@ -2552,69 +2523,71 @@ bound to the fake frontend and the editor; the file and its buffer go afterwards
 (define-test (syntax indenting-new-lines)
   ;; RET, o and O put the new line at its column as the language's mode
   ;; indents it, point where its text begins
-  (flet ((after (keys text extension)
-           (let (result)
-             (with-file-session ((f editor) keys text extension)
-               (setf result (session-text editor)))
-             result)))
-    (is string= (format nil "(defun f ()~%  (g)~%") (after "A RET ( g ) C-g" (format nil "(defun f ()~%") "lisp"))
-    ;; a line begun and left blank loses its blanks
-    (is string= (format nil "(defun f ()~%~%") (after "A RET C-g" (format nil "(defun f ()~%") "lisp"))
-    (is string= (format nil "(defun f ()~%~%  x~%") (after "A RET RET x C-g" (format nil "(defun f ()~%") "lisp"))
-    ;; one u undoes RET and the indenting with it
-    (is string= (format nil "(defun f ()~%") (after "A RET C-g u" (format nil "(defun f ()~%") "lisp"))
-    (is string= (format nil "(let ((a 1))~%  a)~%") (after "A RET a ) C-g" (format nil "(let ((a 1))~%") "lisp"))
-    ;; a package's settings after :config two columns in, as Emacs's use-package
-    (is string= (format nil "(load-package \"showing\"~%  :config)~%") (after "A RET : c o n f i g ) C-g" (format nil "(load-package \"showing\"~%") "lisp"))
-    (is string= (format nil "fn main() {~%    x~%}~%") (after "o x C-g" (format nil "fn main() {~%}~%") "rs"))
-    (is string= (format nil "fn main() {~%    x~%}~%") (after "j O x C-g" (format nil "fn main() {~%}~%") "rs"))
-    (is string= (format nil "if true; then~%  echo a~%fi~%") (after "o e c h o SPC a C-g" (format nil "if true; then~%fi~%") "sh"))
-    ;; O leaves the line it pushes down as it was
-    (is string= (format nil "fn main() {~%    x~%        }~%") (after "j O x C-g" (format nil "fn main() {~%        }~%") "rs"))
-    ;; a buffer with no rules for indenting: column 0, as before
-    (is string= (format nil "  words~%more~%") (after "A RET m o r e C-g" (format nil "  words~%") "txt"))
-    ;; a Python block goes on after its last line (@extend), but not after its return
-    (is string= (format nil "def f(x):~%    y = x~%    z~%") (after "j A RET z C-g" (format nil "def f(x):~%    y = x~%") "py"))
-    (is string= (format nil "def f(x):~%    return x~%z~%") (after "j A RET z C-g" (format nil "def f(x):~%    return x~%") "py"))
-    (is string= (format nil "def f(x):~%    y = x~%    z~%") (after "j o z C-g" (format nil "def f(x):~%    y = x~%") "py"))
-    ;; nested: the innermost block reaches on
-    (is string= (format nil "def f(x):~%    if x:~%        y = 1~%        z~%")
-        (after "j j A RET z C-g" (format nil "def f(x):~%    if x:~%        y = 1~%") "py"))
-    ;; a Go block's closing brace is not passed by it: spaces, or a tab where Go is set to have tabs
-    (is string= (format nil "func f() {~%    x~%}~%") (after "o x C-g" (format nil "func f() {~%}~%") "go"))
-    (with-mode-tabs ((go :tabs t))
-      (is string= (format nil "func f() {~%~cx~%}~%" #\Tab) (after "o x C-g" (format nil "func f() {~%}~%") "go"))))
-  ;; turned off in the init file: column 0
-  (let ((tuatara.defaults::*indent-new-lines* nil))
-    (let (result)
-      (with-file-session ((f editor) "o x C-g" (format nil "fn main() {~%}~%") "rs")
-        (setf result (session-text editor)))
-      (is string= (format nil "fn main() {~%x~%}~%") result))))
+  (let ((tuatara.syntax:*syntax-wait* 30) (tuatara.defaults::*rules-wait* 30))
+    (flet ((after (keys text extension)
+             (let (result)
+               (with-file-session ((f editor) keys text extension)
+                 (setf result (session-text editor)))
+               result)))
+      (is string= (format nil "(defun f ()~%  (g)~%") (after "A RET ( g ) C-g" (format nil "(defun f ()~%") "lisp"))
+      ;; a line begun and left blank loses its blanks
+      (is string= (format nil "(defun f ()~%~%") (after "A RET C-g" (format nil "(defun f ()~%") "lisp"))
+      (is string= (format nil "(defun f ()~%~%  x~%") (after "A RET RET x C-g" (format nil "(defun f ()~%") "lisp"))
+      ;; one u undoes RET and the indenting with it
+      (is string= (format nil "(defun f ()~%") (after "A RET C-g u" (format nil "(defun f ()~%") "lisp"))
+      (is string= (format nil "(let ((a 1))~%  a)~%") (after "A RET a ) C-g" (format nil "(let ((a 1))~%") "lisp"))
+      ;; a package's settings after :config two columns in, as Emacs's use-package
+      (is string= (format nil "(load-package \"showing\"~%  :config)~%") (after "A RET : c o n f i g ) C-g" (format nil "(load-package \"showing\"~%") "lisp"))
+      (is string= (format nil "fn main() {~%    x~%}~%") (after "o x C-g" (format nil "fn main() {~%}~%") "rs"))
+      (is string= (format nil "fn main() {~%    x~%}~%") (after "j O x C-g" (format nil "fn main() {~%}~%") "rs"))
+      (is string= (format nil "if true; then~%  echo a~%fi~%") (after "o e c h o SPC a C-g" (format nil "if true; then~%fi~%") "sh"))
+      ;; O leaves the line it pushes down as it was
+      (is string= (format nil "fn main() {~%    x~%        }~%") (after "j O x C-g" (format nil "fn main() {~%        }~%") "rs"))
+      ;; a buffer with no rules for indenting: column 0, as before
+      (is string= (format nil "  words~%more~%") (after "A RET m o r e C-g" (format nil "  words~%") "txt"))
+      ;; a Python block goes on after its last line (@extend), but not after its return
+      (is string= (format nil "def f(x):~%    y = x~%    z~%") (after "j A RET z C-g" (format nil "def f(x):~%    y = x~%") "py"))
+      (is string= (format nil "def f(x):~%    return x~%z~%") (after "j A RET z C-g" (format nil "def f(x):~%    return x~%") "py"))
+      (is string= (format nil "def f(x):~%    y = x~%    z~%") (after "j o z C-g" (format nil "def f(x):~%    y = x~%") "py"))
+      ;; nested: the innermost block reaches on
+      (is string= (format nil "def f(x):~%    if x:~%        y = 1~%        z~%")
+          (after "j j A RET z C-g" (format nil "def f(x):~%    if x:~%        y = 1~%") "py"))
+      ;; a Go block's closing brace is not passed by it: spaces, or a tab where Go is set to have tabs
+      (is string= (format nil "func f() {~%    x~%}~%") (after "o x C-g" (format nil "func f() {~%}~%") "go"))
+      (with-mode-tabs ((go :tabs t))
+        (is string= (format nil "func f() {~%~cx~%}~%" #\Tab) (after "o x C-g" (format nil "func f() {~%}~%") "go"))))
+    ;; turned off in the init file: column 0
+    (let ((tuatara.defaults::*indent-new-lines* nil))
+      (let (result)
+        (with-file-session ((f editor) "o x C-g" (format nil "fn main() {~%}~%") "rs")
+          (setf result (session-text editor)))
+        (is string= (format nil "fn main() {~%x~%}~%") result)))))
 
 (define-test (syntax new-line-in-a-block-not-closed-yet)
   ;; RET after a shell block's opening line puts the new line inside the block
   ;; before its closing word is typed, as it does once the block is closed
-  (flet ((column (text)
-           (let (result)
-             (with-file-session ((f editor) "M-> A RET x C-g" text "sh")
-               (setf result (session-text editor)))
-             (let ((line (find "x" (uiop:split-string result :separator '(#\Newline))
-                               :test #'string= :key (lambda (line) (string-left-trim " " line)) :from-end t)))
-               (and line (position #\x line))))))
-    (loop for (text expected)
-            in '(("if [ -n \"$1\" ]; then" 2) ("if true; then~%  echo a" 2) ("if a; then~%  x~%else" 2)
-                 ("if a; then~%  x~%elif b; then" 2) ("if a; then~%  if b; then" 4)
-                 ("for a in b; do" 2) ("while true; do" 2) ("until a; do" 2) ("select a in b c; do" 2)
-                 ("f() {" 2) ("function f {" 2) ("f() {~%  echo a" 2) ("{" 2)
-                 ("case $1 in" 2) ("case $1 in~%  a)" 4) ("case $1 in~%  a) echo;;" 2)
-                 ("case $1 in~%  a)~%    echo" 4) ("case $1 in~%  a)~%    echo~%    ;;" 2)
-                 ;; as yet a blank line ends a block not closed, and an unclosed function
-                 ;; reads as one piece of text the grammar cannot place: Emacs gives 2 and 6
-                 ("if a; then~%" 0) ("f() {~%  case $1 in~%    a)" 4)
-                 ;; closed, the line after is outside
-                 ("if true; then~%  echo~%fi" 0) ("for a in b; do~%  x~%done" 0)
-                 ("case x in~%  a) echo;;~%esac" 0) ("case x in~%  a)~%esac" 0))
-          do (is = expected (column (format nil text)) "after ~s" text))))
+  (let ((tuatara.syntax:*syntax-wait* 30) (tuatara.defaults::*rules-wait* 30))
+    (flet ((column (text)
+             (let (result)
+               (with-file-session ((f editor) "M-> A RET x C-g" text "sh")
+                 (setf result (session-text editor)))
+               (let ((line (find "x" (uiop:split-string result :separator '(#\Newline))
+                                 :test #'string= :key (lambda (line) (string-left-trim " " line)) :from-end t)))
+                 (and line (position #\x line))))))
+      (loop for (text expected)
+              in '(("if [ -n \"$1\" ]; then" 2) ("if true; then~%  echo a" 2) ("if a; then~%  x~%else" 2)
+                   ("if a; then~%  x~%elif b; then" 2) ("if a; then~%  if b; then" 4)
+                   ("for a in b; do" 2) ("while true; do" 2) ("until a; do" 2) ("select a in b c; do" 2)
+                   ("f() {" 2) ("function f {" 2) ("f() {~%  echo a" 2) ("{" 2)
+                   ("case $1 in" 2) ("case $1 in~%  a)" 4) ("case $1 in~%  a) echo;;" 2)
+                   ("case $1 in~%  a)~%    echo" 4) ("case $1 in~%  a)~%    echo~%    ;;" 2)
+                   ;; as yet a blank line ends a block not closed, and an unclosed function
+                   ;; reads as one piece of text the grammar cannot place: Emacs gives 2 and 6
+                   ("if a; then~%" 0) ("f() {~%  case $1 in~%    a)" 4)
+                   ;; closed, the line after is outside
+                   ("if true; then~%  echo~%fi" 0) ("for a in b; do~%  x~%done" 0)
+                   ("case x in~%  a) echo;;~%esac" 0) ("case x in~%  a)~%esac" 0))
+            do (is = expected (column (format nil text)) "after ~s" text)))))
 
 (define-test (syntax indenting-lisp-quickly)
   ;; a form of 100,000 lines is indented in one pass, and one line at its end
@@ -2749,34 +2722,35 @@ bound to the fake frontend and the editor; the file and its buffer go afterwards
 (define-test (syntax selecting-tests-entries-elements)
   ;; m y / m Y a test, m e / m E an entry, m x / m X an element, inside or all
   ;; of it: from the grammar and its rules alone, nothing else installed
-  (flet ((region (keys text extension)
-           (let (result)
-             (with-file-session ((f editor) keys text extension)
-               (setf result (session-region-text editor)))
-             result))
-         (to (line column)
-           (format nil "~{~a~^ ~}" (append (make-list line :initial-element "j")
-                                           (make-list column :initial-element "l")))))
-    (let ((rust (format nil "#[test]~%fn a() {~%    x();~%}~%~%fn b() {}~%~%#[test]~%#[should_panic]~%// why~%fn c() {}~%")))
-      (is string= (format nil "{~%    x();~%}") (region (format nil "~a m y" (to 2 4)) rust "rs"))
-      (is string= (format nil "fn a() {~%    x();~%}") (region (format nil "~a m Y" (to 2 4)) rust "rs"))
-      ;; a function after a test is not one; one after more attributes and a comment is
-      (false (region (format nil "~a m Y" (to 5 4)) rust "rs"))
-      (is string= "fn c() {}" (region (format nil "~a m Y" (to 10 4)) rust "rs")))
-    (is string= "assert f() == 2" (region (format nil "~a m y" (to 1 6)) (format nil "def test_f():~%    assert f() == 2~%") "py"))
-    (let ((json (format nil "{\"a\": 1, \"b\": [2, 3]}~%")))
-      (is string= "1" (region (format nil "~a m e" (to 0 6)) json "json"))
-      (is string= "\"a\": 1" (region (format nil "~a m E" (to 0 6)) json "json"))
-      (is string= "3" (region (format nil "~a m E" (to 0 18)) json "json"))
-      (is string= "\"b\": [2, 3]" (region (format nil "~a m E m E" (to 0 18)) json "json")))
-    (is string= "name: app" (region (format nil "~a m E" (to 0 7)) (format nil "name: app~%ports:~%  - 80~%") "yaml"))
-    (let ((html (format nil "<ul><li>one</li><li>two</li></ul>~%")))
-      (is string= "two" (region (format nil "~a m x" (to 0 20)) html "html"))
-      (is string= "<li>two</li>" (region (format nil "~a m X" (to 0 20)) html "html"))
-      (is string= "<ul><li>one</li><li>two</li></ul>" (region (format nil "~a m X m X" (to 0 20)) html "html"))))
-  (with-file-session ((f editor) "j m y" (format nil "fn main() {~%    x();~%}~%") "rs")
-    (false (session-region-text editor))
-    (true (tuatara.frontend.fake:fake-frame-showing f "No test around point"))))
+  (let ((tuatara.syntax:*syntax-wait* 30) (tuatara.defaults::*rules-wait* 30))
+    (flet ((region (keys text extension)
+             (let (result)
+               (with-file-session ((f editor) keys text extension)
+                 (setf result (session-region-text editor)))
+               result))
+           (to (line column)
+             (format nil "~{~a~^ ~}" (append (make-list line :initial-element "j")
+                                             (make-list column :initial-element "l")))))
+      (let ((rust (format nil "#[test]~%fn a() {~%    x();~%}~%~%fn b() {}~%~%#[test]~%#[should_panic]~%// why~%fn c() {}~%")))
+        (is string= (format nil "{~%    x();~%}") (region (format nil "~a m y" (to 2 4)) rust "rs"))
+        (is string= (format nil "fn a() {~%    x();~%}") (region (format nil "~a m Y" (to 2 4)) rust "rs"))
+        ;; a function after a test is not one; one after more attributes and a comment is
+        (false (region (format nil "~a m Y" (to 5 4)) rust "rs"))
+        (is string= "fn c() {}" (region (format nil "~a m Y" (to 10 4)) rust "rs")))
+      (is string= "assert f() == 2" (region (format nil "~a m y" (to 1 6)) (format nil "def test_f():~%    assert f() == 2~%") "py"))
+      (let ((json (format nil "{\"a\": 1, \"b\": [2, 3]}~%")))
+        (is string= "1" (region (format nil "~a m e" (to 0 6)) json "json"))
+        (is string= "\"a\": 1" (region (format nil "~a m E" (to 0 6)) json "json"))
+        (is string= "3" (region (format nil "~a m E" (to 0 18)) json "json"))
+        (is string= "\"b\": [2, 3]" (region (format nil "~a m E m E" (to 0 18)) json "json")))
+      (is string= "name: app" (region (format nil "~a m E" (to 0 7)) (format nil "name: app~%ports:~%  - 80~%") "yaml"))
+      (let ((html (format nil "<ul><li>one</li><li>two</li></ul>~%")))
+        (is string= "two" (region (format nil "~a m x" (to 0 20)) html "html"))
+        (is string= "<li>two</li>" (region (format nil "~a m X" (to 0 20)) html "html"))
+        (is string= "<ul><li>one</li><li>two</li></ul>" (region (format nil "~a m X m X" (to 0 20)) html "html"))))
+    (with-file-session ((f editor) "j m y" (format nil "fn main() {~%    x();~%}~%") "rs")
+      (false (session-region-text editor))
+      (true (tuatara.frontend.fake:fake-frame-showing f "No test around point")))))
 
 (define-test (syntax selecting-quickly)
   ;; selecting a function or a test reads the text near point, not the

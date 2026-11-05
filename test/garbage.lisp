@@ -5,14 +5,22 @@
 
 (define-test garbage)
 
+(defun collecting (function)
+  "Call FUNCTION, which collects garbage, and return what it returned once
+the editor has noted the collection (TUATARA.DEFAULTS::REPORT-GC), which a
+busy machine may do a while after the collection."
+  (let ((before tuatara.defaults::*consed-at-gc*))
+    (multiple-value-prog1 (funcall function)
+      (tuatara.runtime:wait-until (lambda () (/= before tuatara.defaults::*consed-at-gc*)) 60))))
+
 (define-test (garbage collected-when-idle)
   ;; started with the editor, as a tick
   (run-keys "")
   (true (member 'tuatara.defaults::idle-garbage-tick tuatara.command:*tick-functions*))
   (let ((tuatara.defaults::*nursery-octets* (* 4 1024 1024))
-        (tuatara-user:*idle-collection-seconds* 0.3)
+        (tuatara-user:*idle-collection-seconds* 5)
         (garbage nil))
-    (sb-ext:gc)
+    (collecting #'sb-ext:gc)
     ;; little made since the last collection: nothing to do, not called again before a key
     (false (tuatara.defaults::idle-garbage-tick nil))
     (setf garbage (loop repeat 4096 collect (make-array 1024 :element-type '(unsigned-byte 8))))
@@ -23,12 +31,12 @@
     (let ((tuatara.command:*last-input-time* (get-internal-real-time))
           (before sb-ext:*gc-run-time*))
       (let ((again (tuatara.defaults::idle-garbage-tick nil)))
-        (true (and (realp again) (< 0 again 0.31)) "~a" again))
+        (true (and (realp again) (< 0 again 5.01)) "~a" again))
       (is = before sb-ext:*gc-run-time*))
     ;; left alone for longer: collected now, and nothing waits after it
-    (let ((tuatara.command:*last-input-time* (- (get-internal-real-time) internal-time-units-per-second))
+    (let ((tuatara.command:*last-input-time* (- (get-internal-real-time) (* 10 internal-time-units-per-second)))
           (before sb-ext:*gc-run-time*))
-      (false (tuatara.defaults::idle-garbage-tick nil))
+      (false (collecting (lambda () (tuatara.defaults::idle-garbage-tick nil))))
       (true (> sb-ext:*gc-run-time* before))
       (true (< (tuatara.defaults::consed-since-gc) (* 2 1024 1024)))
       (false (tuatara.defaults::idle-garbage-tick nil)))

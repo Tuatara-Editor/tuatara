@@ -155,7 +155,7 @@ KEY-ALIAS in the known hosts when given; the key file's native name."
                 (sb-int:encapsulate 'tuatara.io:sandbox-find-program 'no-setpriv
                                     (lambda (function name)
                                       (and (string/= name "setpriv") (funcall function name))))
-                (unwind-protect (refused "setpriv (util-linux) is not installed")
+                (unwind-protect (refused "setpriv is not installed (util-linux)")
                   (sb-int:unencapsulate 'tuatara.io:sandbox-find-program 'no-setpriv))
                 (put-file (format nil "~a.add-fails" log) "")
                 (refused "ssh-add could not put your keys in the agent forwarded to build.example")))
@@ -222,8 +222,11 @@ KEY-ALIAS in the known hosts when given; the key file's native name."
             (true link)
             (when link
               (let ((master (tuatara.terminal::ssh-link-master link)))
+                (true (sb-ext:process-alive-p master) "ssh outlives the thread that asked for it")
+                ;; as the client's process ends
+                (tuatara.io::end-starters)
                 (true (wait-until (lambda () (not (sb-ext:process-alive-p master))) 10)
-                      "ssh ends with the thread that started it")
+                      "ssh ends with the thread kept to start it")
                 (false (tuatara.io:connect-to (tuatara.terminal::ssh-link-socket link)) "no forward is left")
                 (sb-ext:process-close master)
                 (sb-posix:close (tuatara.terminal::ssh-link-lock link))))

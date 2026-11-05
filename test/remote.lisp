@@ -797,10 +797,10 @@ cleanly or as malformed, else the error, in words."
         ;; once what was typed shows at the client, the editor is left
         (sb-thread:make-thread
          (lambda ()
-           (loop repeat 1000
+           (loop repeat 6000
                  until (and (tuatara.frontend.fake:fake-screen local)
                             (equal "tui" (tuatara.frontend.fake:fake-screen-line local 1))
-                            (equal "" (tuatara.frontend.fake:fake-screen-line local 6)))
+                            (search "TUATARA" (tuatara.frontend.fake:fake-screen-line local 4)))
                  do (sleep 0.01))
            (apply #'type-at local (keys "C-x C-c")))))
       (let ((editor (without-grammar-questions

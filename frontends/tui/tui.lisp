@@ -196,9 +196,9 @@ tells from its neighbours)."
 
 (defun terminfo-installed-p (name)
   "True when a description of terminal type NAME is installed where ncurses looks for one."
-  (let ((dirs (append (let ((dir (uiop:getenv "TERMINFO"))) (and (plusp (length dir)) (list dir)))
+  (let ((dirs (append (let ((dir (tuatara.io:own-variable "TERMINFO"))) (and (plusp (length dir)) (list dir)))
                       (list (namestring (merge-pathnames ".terminfo/" (user-homedir-pathname))))
-                      (tuatara.text:split-words (or (uiop:getenv "TERMINFO_DIRS") "") ":")
+                      (tuatara.text:split-words (or (tuatara.io:own-variable "TERMINFO_DIRS") "") ":")
                       *terminfo-directories*)))
     (some (lambda (dir)
             (let ((dir (string-right-trim "/" dir)))
@@ -215,14 +215,15 @@ for none), or NIL when there is none installed."
         (prog1 (max 0 (%tigetnum "colors"))
           (%del-curterm (c-variable "cur_term" sb-sys:system-area-pointer)))))))
 
-(defun wanted-colours (&key (setting *tui-colours*) (no-color (uiop:getenv "NO_COLOR")))
+(defun wanted-colours (&key (setting *tui-colours*) (no-color (tuatara.io:own-variable "NO_COLOR")))
   "The colours asked for: *TUI-COLOURS* when it says (:24-BIT, 256, 16, 8 or
 NIL), else NIL where NO_COLOR is set (not empty), else :AUTO."
   (cond ((not (eq setting :auto)) setting)
         ((plusp (length no-color)) nil)
         (t :auto)))
 
-(defun direct-terminal-type (&key (term (uiop:getenv "TERM")) (colorterm (uiop:getenv "COLORTERM"))
+(defun direct-terminal-type (&key (term (tuatara.io:own-variable "TERM"))
+                                  (colorterm (tuatara.io:own-variable "COLORTERM"))
                                   (wanted (wanted-colours)) (term-colours (terminfo-colours term)))
   "The terminal type to start ncurses with for 24-bit colour, or NIL to go on
 with TERM: xterm-direct256 (xterm-256color with 24-bit colour, whose numbers
@@ -430,7 +431,7 @@ sends such a terminal its text in the order it is stored.")
 
 (defmethod tuatara.frontend:frontend-reorders-text-p ((f tui-frontend))
   "True when the terminal is one of *REORDERING-TERMINALS*."
-  (and (find-if (lambda (name) (let ((value (uiop:getenv name))) (and value (plusp (length value)))))
+  (and (find-if (lambda (name) (let ((value (tuatara.io:own-variable name))) (and value (plusp (length value)))))
                 *reordering-terminals*)
        t))
 
@@ -455,7 +456,7 @@ the first time, or again in place of the screen before, which has ended."
   ;; as it was
   (let* ((wanted (wanted-colours))
          (direct (direct-terminal-type :wanted wanted))
-         (term (uiop:getenv "TERM"))
+         (term (tuatara.io:own-variable "TERM"))
          (before *screen*)
          (screen (progn (when direct (sb-posix:setenv "TERM" direct 1))
                         (unwind-protect
@@ -551,9 +552,9 @@ characters shown in the order sent, and the screen painted whole, as what was dr
 (defun terminal-name ()
   "The terminal Tuatara runs in, as far as its environment says: kitty, the
 TERM_PROGRAM a terminal sets, else TERM."
-  (cond ((uiop:getenv "KITTY_WINDOW_ID") "kitty")
-        ((let ((program (uiop:getenv "TERM_PROGRAM"))) (and program (plusp (length program)) program)))
-        (t (or (uiop:getenv "TERM") "a terminal"))))
+  (cond ((tuatara.io:own-variable "KITTY_WINDOW_ID") "kitty")
+        ((let ((program (tuatara.io:own-variable "TERM_PROGRAM"))) (and program (plusp (length program)) program)))
+        (t (or (tuatara.io:own-variable "TERM") "a terminal"))))
 
 (defmethod tuatara.frontend:frontend-description ((f tui-frontend))
   (format nil "in the terminal (~a)" (terminal-name)))
@@ -561,7 +562,8 @@ TERM_PROGRAM a terminal sets, else TERM."
 (defmethod tuatara.frontend:frontend-health ((f tui-frontend))
   (let ((colours (tuatara.frontend:frontend-colour-count f))
         (programs (clipboard-programs)))
-    (list (cons "Display" (format nil "this terminal (TERM ~a), ~a (~a), ~a" (or (uiop:getenv "TERM") "not set")
+    (list (cons "Display" (format nil "this terminal (TERM ~a), ~a (~a), ~a"
+                                  (or (tuatara.io:own-variable "TERM") "not set")
                                   (cond ((>= colours 16777216) "24-bit colour")
                                         ((plusp colours) (format nil "~d colours" colours))
                                         (t "no colours"))
@@ -701,8 +703,8 @@ answers as TERMINAL-ANSWERS-IN reads them."
   "True when Tuatara runs inside tmux or screen, which take a picture's
 commands for something else (the window's title), so that pictures are asked
 about and shown there only when *TUI-PICTURES* is T."
-  (let ((term (or (uiop:getenv "TERM") "")))
-    (or (uiop:getenv "TMUX") (uiop:getenv "STY")
+  (let ((term (or (tuatara.io:own-variable "TERM") "")))
+    (or (tuatara.io:own-variable "TMUX") (tuatara.io:own-variable "STY")
         (uiop:string-prefix-p "screen" term) (uiop:string-prefix-p "tmux" term))))
 
 (defun shared-probe ()
@@ -1175,9 +1177,9 @@ wl-paste under Wayland, else xclip or xsel under X; NIL when there are none.")
           (flet ((found (write read)
                    (let ((w (tuatara.io:find-program (first write))) (r (tuatara.io:find-program (first read))))
                      (and w r (list (cons w (rest write)) (cons r (rest read)))))))
-            (or (and (uiop:getenv "WAYLAND_DISPLAY")
+            (or (and (tuatara.io:own-variable "WAYLAND_DISPLAY")
                      (found '("wl-copy" "--type" "text/plain;charset=utf-8") '("wl-paste" "--no-newline" "--type" "text")))
-                (and (uiop:getenv "DISPLAY")
+                (and (tuatara.io:own-variable "DISPLAY")
                      (or (found '("xclip" "-selection" "clipboard" "-in") '("xclip" "-selection" "clipboard" "-out" "-target" "UTF8_STRING"))
                          (found '("xsel" "--clipboard" "--input") '("xsel" "--clipboard" "--output"))))))))
   *clipboard-programs*)
@@ -1204,9 +1206,8 @@ cannot say when it changes)."
          (echo (tuatara.io:find-program "echo")))
     (when (and read echo (search "wl-paste" (first read)))
       (let ((process (tuatara.runtime:ignoring-errors-reported ("starting ~a to watch the clipboard" (first read))
-                       (sb-ext:run-program (first read) (list "--watch" echo "changed")
-                                           :input nil :output :stream :error nil :wait nil
-                                           :external-format :utf-8))))
+                       (tuatara.io:start-program (list (first read) "--watch" echo "changed")
+                                                 :output :stream :external-format :utf-8))))
         (when process
           (let ((watch (make-clipboard-watch :process process)))
             (setf (clipboard-watch-thread watch)
@@ -1347,8 +1348,8 @@ given ARGUMENTS (written as it is when there are none)."
   "True when the terminal draws a picture in place of the characters standing
 for it (U+10EEEE): kitty and Ghostty. Not WezTerm or Konsole, as their
 environment says, which draw a picture only where it is put (PLACE-PICTURES)."
-  (not (or (equal (uiop:getenv "TERM_PROGRAM") "WezTerm")
-           (uiop:getenv "KONSOLE_VERSION"))))
+  (not (or (equal (tuatara.io:own-variable "TERM_PROGRAM") "WezTerm")
+           (tuatara.io:own-variable "KONSOLE_VERSION"))))
 
 (defmethod tuatara.frontend:frontend-images-p ((f tui-frontend))
   (and (tui-window f)
@@ -1373,7 +1374,8 @@ have read (and so not removed) yet, removed when the terminal is let go of.")
 (defun local-terminal-p ()
   "True when the terminal may run on this machine, not at the other end of SSH,
 so that it is worth asking whether it reads what is put in shared memory here."
-  (not (or (uiop:getenv "SSH_CONNECTION") (uiop:getenv "SSH_TTY") (uiop:getenv "SSH_CLIENT"))))
+  (not (or (tuatara.io:own-variable "SSH_CONNECTION") (tuatara.io:own-variable "SSH_TTY")
+           (tuatara.io:own-variable "SSH_CLIENT"))))
 
 (defun send-image-shared (image number)
   "Send the terminal IMAGE's pixels, as its picture NUMBER, through shared

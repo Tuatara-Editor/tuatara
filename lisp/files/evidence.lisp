@@ -104,6 +104,16 @@ folder counts as the folder it leads to); an error saying why it cannot be."
     (refuse "an empty path names no folder"))
   (unless (or (char= (char given 0) #\/) (char= (char given 0) #\~))
     (refuse "~s is not a path from the root or from ~~/" given))
+  ;; a folder on another machine, kept as written, nothing here asked
+  (when (remote-name-p given)
+    (multiple-value-bind (host path) (remote-name-parts given)
+      (unless (uiop:string-prefix-p "/" path)
+        (refuse "~s is not a path from the root there" given))
+      (return-from read-glob-entry
+        (make-evidence-entry given :glob (list (nfc-name (remote-name host (if (string= path "/")
+                                                                                path
+                                                                                (string-right-trim "/" path)))))
+                             nil nil))))
   (let* ((glob (nfc-name (written-folder-name given)))
          (end (glob-fixed-end glob))
          (front (if (plusp end) (string-right-trim "/" (nfc-name (real-folder-name (subseq glob 0 end)))) "")))
@@ -508,18 +518,19 @@ when it is a link; / for the root."
         (let ((folder (string-right-trim "/" (tuatara.io:real-path-so-far (tuatara.io:parent-path name)))))
           (concatenate 'string folder "/" (tuatara.io:native-file-name name))))))
 
-(defun written-evidence-match (rules written)
+(defun written-evidence-match (rules written &optional (entries (evidence-rules-entries rules)))
   "The evidence folder the place WRITTEN (an absolute path as written, . and ..
-taken out) is, or is in, by RULES and the names on it alone, the disk not
-asked: the deepest folder of it an entry matches, as (EVIDENCE-FOLDER .
-ENTRY), or NIL. A link named as an evidence folder is told so however far
-it leads."
+taken out) is, or is in, by ENTRIES (as standard those of RULES) and the
+names on it alone, the disk not asked: the deepest folder of it an entry
+matches, as (EVIDENCE-FOLDER . ENTRY), or NIL. A link here named as an
+evidence folder is told so however far it leads."
   (loop for end = (length written) then (position #\/ written :end end :from-end t)
         while (and end (plusp end))
         do (let* ((folder (subseq written 0 end))
-                  (entry (find-if (lambda (entry) (evidence-entry-matches-p entry folder)) (evidence-rules-entries rules))))
+                  (entry (find-if (lambda (entry) (evidence-entry-matches-p entry folder)) entries)))
              (when entry
-               (learn-link-target rules entry folder)
+               (unless (remote-name-p folder)
+                 (learn-link-target rules entry folder))
                (return (cons folder entry))))))
 
 (defun learn-link-target (rules entry folder)
@@ -559,11 +570,16 @@ is an evidence folder, or within one, by where it really is, links on the
 way followed (its own name not, when it is a link). Two values then: the
 evidence folder (a native name ending in /) and the entry of
 *EVIDENCE-FOLDERS* that makes it one, as written. NIL at once when the
-setting names no folder."
+setting names no folder. A path on another machine (/ssh:HOST:/path) is told
+here by its name alone, as written, nothing asked of the server; the work
+done there asks it too (REMOTE-EVIDENCE)."
   (let ((rules (evidence-rules)))
     (when (and rules path)
-      (let* ((written (absolute-native (tuatara.io:expand-path path)))
-             (match (evidence-match rules (place-real-path written) written)))
+      (let* ((remote (remote-name-p path))
+             (written (if remote path (absolute-native (tuatara.io:expand-path path))))
+             (match (if remote
+                        (written-evidence-match rules written)
+                        (evidence-match rules (place-real-path written) written))))
         (and match (values (tuatara.io:slash-ended (car match)) (evidence-entry-given (cdr match))))))))
 
 (defun evidence-words (folder entry)

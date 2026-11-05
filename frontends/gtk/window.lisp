@@ -318,10 +318,10 @@ tuatara, as the desktop's launcher does (tools/install-desktop.sh)."
 started. The GSK_RENDERER set here stays for as long as Tuatara runs, GTK
 reading it as each window opens; the programs Tuatara starts are not given
 it (TUATARA.IO:*OWN-VARIABLES*)."
-  (cond ((uiop:getenv "TUATARA_RENDERER_CHOSEN")
+  (cond ((tuatara.io:own-variable "TUATARA_RENDERER_CHOSEN")
          (sb-posix:unsetenv "TUATARA_RENDERER_CHOSEN")
-         (setf *window-renderer* (uiop:getenv "GSK_RENDERER")))
-        ((uiop:getenv "GSK_RENDERER")
+         (setf *window-renderer* (tuatara.io:own-variable "GSK_RENDERER")))
+        ((tuatara.io:own-variable "GSK_RENDERER")
          (setf *window-renderer* :environment))
         (t
          (setf *window-renderer* (renderer-name *gui-renderer*))
@@ -544,7 +544,7 @@ terminal shows it (LOG-STDERR-UNLESS-TERMINAL)."
                            (unless (gtk-done window) (tuatara.frontend:frontend-stop window)))
                          (g-idle-add (callback on-editor-ended) (null-pointer))))
                      :name "editor")))
-        (let ((out (uiop:getenv "TUATARA_MEASURE_DRAWING")))
+        (let ((out (tuatara.io:own-variable "TUATARA_MEASURE_DRAWING")))
           (when out (measure-drawing f out)))
         (loop until (and ended (null (open-windows)))
               do (g-main-context-iteration (null-pointer) t))

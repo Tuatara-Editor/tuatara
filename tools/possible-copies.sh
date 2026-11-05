@@ -17,7 +17,13 @@
 #   --pass-through   the functions whose whole body calls one other function
 #                    with the arguments it was given, in the order given;
 #                    those the reuse index lists (exported) are named apart.
-# Usage: tools/possible-copies.sh BASE [HEAD]
+# With --meaning, each added definition also gets the five definitions of the whole tree nearest to it by
+# meaning, internal ones too, ranked by a local embedding model (tools/meaning.py, which says how to set it up);
+# the two lists are labelled. Without the model it says so in one line and gives the word list alone.
+#   --where TEXT...  the ten definitions nearest by meaning to each description TEXT, for finding where code that does
+#                    something already lives.
+# Usage: tools/possible-copies.sh [--meaning] BASE [HEAD]
+#        tools/possible-copies.sh --where "what the code would do" ...
 #        tools/possible-copies.sh --bodies [--packages] [--threshold SCORE]
 #        tools/possible-copies.sh --pass-through [--packages]
 #   HEAD is a commit; without it the working tree is compared, new files included.
@@ -26,6 +32,8 @@
 set -euo pipefail
 cd "$(dirname "$0")/.."
 exec python3 -I - "$@" <<'PYTHON'
+import importlib.util
+import json
 import math
 import os
 import re
@@ -181,6 +189,61 @@ def score(entry, terms, weight, doc):
 share, and a full weight more when DOC names the entry."""
     named = "-" in entry["name"] and entry["name"] in doc.lower()
     return sum(weight[t] for t in terms & entry["terms"]) + (RAREST if named else 0)
+
+
+# What the meaning lists rank: every definition of these kinds in the tree, internal ones included.
+MEANING_DEFINERS = ("defun", "defmacro", "defgeneric", "defmethod", "define-command")
+MEANING_SHOWN = 10
+
+
+def meaning_module():
+    """The module tools/meaning.py, loaded from its file, as the isolated interpreter does not search this folder."""
+    spec = importlib.util.spec_from_file_location("meaning", "tools/meaning.py")
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
+
+
+def meaning_corpus():
+    """A list of (file, name, line) for each definition of the tree, LINE being its name, the first 300 characters of
+    its docstring and its file, the text the model reads."""
+    found = []
+    pattern = re.compile(r"^\((" + "|".join(MEANING_DEFINERS) + r")\s+(\(setf\s+\S+?\)|[^\s()]+)", re.M)
+    for path in source_files(False):
+        text = open(path, encoding="utf-8", errors="replace").read()
+        for match in pattern.finditer(text):
+            doc = re.sub(r"\s+", " ", docstring(text, match.start())).strip()
+            name = match.group(2).lower()
+            found.append((path, name, f"{name}  {doc[:300]}  {path}"))
+    return found
+
+
+def by_meaning(corpus, queries, top):
+    """For each of QUERIES a list of (score, index into CORPUS), TOP long, from tools/meaning.py; or None after a
+    line on standard error saying why the model could not be used."""
+    meaning = meaning_module()
+    run_with, reason = meaning.command()
+    if not run_with:
+        print(f"meaning: {reason}; the word list alone follows", file=sys.stderr)
+        return None
+    request = json.dumps({"corpus": [line for _, _, line in corpus], "queries": queries, "top": top})
+    done = subprocess.run(run_with, input=request, stdout=subprocess.PIPE, text=True)
+    if done.returncode != 0:
+        print("meaning: the model could not be run (see above); the word list alone follows", file=sys.stderr)
+        return None
+    return json.loads(done.stdout)["nearest"]
+
+
+def report_where(descriptions):
+    """Print the definitions nearest by meaning to each of DESCRIPTIONS, with scores."""
+    corpus = meaning_corpus()
+    found = by_meaning(corpus, descriptions, MEANING_SHOWN)
+    if found is None:
+        sys.exit(1)
+    for text, near in zip(descriptions, found):
+        print(f"== {text}")
+        for points, i in near:
+            print(f"  {points:.3f}  {corpus[i][1]}  {corpus[i][0]}")
 
 
 # The tree's definitions, read for the reports that cover all of it.
@@ -393,7 +456,9 @@ def report_pass_through(packages):
 
 
 def main(argv):
-    options = {a for a in argv if a in ("--bodies", "--pass-through", "--packages")}
+    if argv[:1] == ["--where"]:
+        return report_where(argv[1:]) if argv[1:] else sys.exit("usage: --where DESCRIPTION...")
+    options = {a for a in argv if a in ("--bodies", "--pass-through", "--packages", "--meaning")}
     threshold = 60.0
     if "--threshold" in argv:
         at = argv.index("--threshold")
@@ -405,8 +470,8 @@ def main(argv):
     if "--pass-through" in options:
         return report_pass_through("--packages" in options)
     if not 1 <= len(argv) <= 2:
-        sys.exit("usage: tools/possible-copies.sh BASE [HEAD] | --bodies [--packages] [--threshold SCORE] "
-                 "| --pass-through [--packages]")
+        sys.exit("usage: tools/possible-copies.sh [--meaning] BASE [HEAD] | --bodies [--packages] [--threshold SCORE] "
+                 "| --pass-through [--packages] | --where DESCRIPTION...")
     base, head = argv[0], (argv[1] if len(argv) > 1 else None)
     entries = read_index()
     frequency = {}
@@ -415,7 +480,10 @@ def main(argv):
             frequency[term] = frequency.get(term, 0) + 1
     scale = RAREST / math.log(len(entries))
     weight = {t: scale * math.log(len(entries) / n) for t, n in frequency.items()}
-    for path, name, doc in added_definitions(base, head):
+    added = added_definitions(base, head)
+    corpus = meaning_corpus() if "--meaning" in options and added else []
+    meant = by_meaning(corpus, [f"{name}: {doc}" for _, name, doc in added], MEANING_SHOWN) if corpus else None
+    for number, (path, name, doc) in enumerate(added):
         terms = sentence_words(doc) | name_parts(name)
         for term in terms:
             weight.setdefault(term, RAREST)
@@ -423,11 +491,19 @@ def main(argv):
                        if (e["file"], e["name"]) != (path, name)),
                       key=lambda pair: (-pair[0], pair[1]["name"]))
         near = [pair for pair in near[:SHOWN] if pair[0] >= MINIMUM]
-        if not near:
+        close = [(points, corpus[i]) for points, i in meant[number] if corpus[i][:2] != (path, name)][:SHOWN] \
+            if meant else []
+        if not near and not close:
             continue
         print(f"{path}  {name}")
+        if meant:
+            print("  by words:")
         for points, entry in near:
             print(f"  {points:5.1f}  {entry['name']}  {entry['file']}")
+        if close:
+            print("  by meaning:")
+            for points, (file, other, _) in close:
+                print(f"  {points:5.3f}  {other}  {file}")
 
 
 main(sys.argv[1:])

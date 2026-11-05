@@ -236,7 +236,7 @@ configuration is only read, never run: core.excludesFile of its [core] section,
     (cond ((null setting) nil)
           ((not (eq setting :git)) (tuatara.io:native (tuatara.io:expand-path setting)))
           (t
-           (let* ((xdg (let ((env (uiop:getenv "XDG_CONFIG_HOME")))
+           (let* ((xdg (let ((env (tuatara.io:own-variable "XDG_CONFIG_HOME")))
                          (if (and env (plusp (length env))) (directory-name env) (directory-name "~/.config/"))))
                   (named nil))
              (dolist (file (list (concatenate 'string xdg "git/config") (concatenate 'string (directory-name "~/") ".gitconfig")))

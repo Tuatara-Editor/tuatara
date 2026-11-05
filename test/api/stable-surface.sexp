@@ -2,7 +2,7 @@
 ;; ARGUMENTS (REQUIRED OPTIONAL KEYS REST OTHER-KEYS); (:setting NAME); (:init NAME KIND ARGUMENTS), the init
 ;; file's functions and macros; (:keywords LOAD-PACKAGE KEYWORDS); (:flag OPTION), the command line's
 ;; options; (:command PACKAGE NAME).
-(:version "0.90.16")
+(:version "0.90.17")
 (:api "*BUFFERS-ASKED-ABOUT*" :variable)
 (:api "*BUILD*" :variable)
 (:api "*BUILT-AT*" :variable)
@@ -274,6 +274,8 @@
 (:api "ORG-TS-TEXT" :function (1 nil nil nil nil))
 (:api "ORG-TS-TIME-TEXT" :function (1 nil nil nil nil))
 (:api "ORG-UNESCAPE-BLOCK" :function (1 nil nil nil nil))
+(:api "OWN-DIRECTORY" :function (1 nil nil nil nil))
+(:api "OWN-VARIABLE" :function (1 nil nil nil nil))
 (:api "PACKAGE-FILE" :function (1 nil nil nil nil))
 (:api "PARENT-PATH" :function (1 nil nil nil nil))
 (:api "PARSE-DECIMAL" :function (1 nil ("MOST-DIGITS") nil nil))
@@ -313,6 +315,7 @@
 (:api "PROGRAM-HEALTH-WORDS" :function (3 nil ("HOW") nil nil))
 (:api "PROGRAM-MISSING" :function (1 nil ("INSTALL" "WHY") nil nil))
 (:api "PROGRAM-OUTPUT" :function (1 nil ("CAPTURE" "DIRECTORY" "ENVIRONMENT" "INPUT" "MOST" "SECONDS" "WAIT") nil nil))
+(:api "PROGRAM-VARIABLE" :function (1 nil nil nil nil))
 (:api "PROSE-BUFFER-P" :function (1 nil nil nil nil))
 (:api "PROSE-P" :function (2 nil nil nil nil))
 (:api "PROSE-READY-P" :function (1 nil nil nil nil))
@@ -438,7 +441,6 @@
 (:api "TOGGLE-LIST-SECTION" :function (2 nil nil nil nil))
 (:api "TOO-LARGE-HERE-P" :function (3 nil nil nil nil))
 (:api "TSV-MODE" :function (0 nil nil nil nil))
-(:api "UIOP:GETENV" :function (1 nil nil nil nil))
 (:api "UIOP:SPLIT-STRING" :function (1 nil ("MAX" "SEPARATOR") nil nil))
 (:api "UIOP:STRING-PREFIX-P" :function (2 nil nil nil nil))
 (:api "UIOP:STRING-SUFFIX-P" :function (2 nil nil nil nil))
@@ -2176,6 +2178,7 @@
 (:setting "*RELATIVE-AGE-LIMIT*")
 (:setting "*RELOAD-CHANGED-FILES*")
 (:setting "*REMEMBER-RECENT-FILES*")
+(:setting "*REMOTE-SECONDS*")
 (:setting "*REMOVED-SENTENCE-ABBREVIATIONS*")
 (:setting "*RIMU-DELETE-TO-TRASH*")
 (:setting "*RIMU-DETAILS*")

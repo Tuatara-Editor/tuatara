@@ -212,6 +212,7 @@ its form says, as ORG-READ-RULE reads them; :HOUR, :MINUTE, :END-HOUR and
     show-octets-in-hex tuatara.text:octets-hex tuatara.display:shorten-string tuatara.command:escape-controls tuatara.text:xml-unprefixed tuatara.io:ensure-directories
     ;; programs from outside, shut in
     tuatara.io:find-program tuatara.io:program-missing tuatara.io:program-output tuatara.io:sandbox-run
+    tuatara.io:program-variable tuatara.io:own-variable tuatara.io:own-directory
     ;; a program of your own run on what a job gives it through a pipe, its arguments split as a shell would
     tuatara.io:call-with-program tuatara.io:filter-through-program tuatara.io:command-words tuatara.io:read-stream-octets
     tuatara.io:sandbox-find-program run-on-copies copies-original-names
@@ -245,9 +246,11 @@ from one version of Tuatara to the next.")
 (defparameter *api-from-libraries*
   '(cl-ppcre:create-scanner cl-ppcre:scan cl-ppcre:scan-to-strings cl-ppcre:all-matches cl-ppcre:do-scans
     cl-ppcre:do-register-groups cl-ppcre:regex-replace-all cl-ppcre:quote-meta-chars
-    uiop:string-prefix-p uiop:string-suffix-p uiop:split-string uiop:getenv)
+    uiop:string-prefix-p uiop:string-suffix-p uiop:split-string)
   "The names of the libraries Tuatara is built with that a package may use as
 well, written with their library's package in front: cl-ppcre's regular
 expressions (a scanner COMPILE-REGEX makes is cl-ppcre's) and uiop's
-string-prefix-p, string-suffix-p, split-string and getenv. Each keeps its
-meaning from one version of Tuatara to the next, as the names above do.")
+string-prefix-p, string-suffix-p and split-string. Each keeps its meaning
+from one version of Tuatara to the next, as the names above do. An
+environment variable is read with PROGRAM-VARIABLE (yours, as the client you
+work from has it) or OWN-VARIABLE (the editor process's own), not getenv.")

@@ -618,7 +618,7 @@ COPY-PATH-TREE has it."
 (defun data-home (&optional home)
   "Where your data lives: $XDG_DATA_HOME, or .local/share/ in HOME, your home
 directory unless given."
-  (or (uiop:getenv-absolute-directory "XDG_DATA_HOME")
+  (or (own-directory "XDG_DATA_HOME")
       (merge-pathnames ".local/share/" (if home
                                            (uiop:ensure-directory-pathname (uiop:parse-native-namestring (native home)))
                                            (user-homedir-pathname)))))

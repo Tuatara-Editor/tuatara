@@ -106,7 +106,7 @@ entries start and the words before the entries' own; each path written said
 on the standard output. The exit code: 0 when written, 1 when not, why said
 on the error output. A request not taken (DESKTOP-ENTRIES-REFUSAL) is said on
 the error output and NIL returned: the program starts as it would without it."
-  (let* ((folder (uiop:getenv "TUATARA_DESKTOP_ENTRIES"))
+  (let* ((folder (tuatara.io:own-variable "TUATARA_DESKTOP_ENTRIES"))
          (why (desktop-entries-refusal folder arguments)))
     (sb-posix:unsetenv "TUATARA_DESKTOP_ENTRIES")
     (if why

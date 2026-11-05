@@ -224,7 +224,7 @@ In the window and in a terminal alike:
 | enchant and a hunspell dictionary | spelling                                                          |
 | git                            | the git status (=C-x g=), and packages fetched                       |
 | GnuPG                          | =.gpg= files opened and saved encrypted                              |
-| OpenSSH and util-linux's setpriv | a daemon on another machine shown here (=--client=HOST:=), your ssh agent lent to it for each use you confirm |
+| OpenSSH and util-linux's setpriv | a daemon on another machine shown here (=--client=HOST:=), your ssh agent lent to it for each use you confirm; files on a server (=/ssh:HOST:/path=) |
 | xdg-utils                      | a file opened in the desktop's own program, a link in the browser    |
 | XeLaTeX or LuaLaTeX            | Org documents exported to PDF                                        |
 | a language's server and formatter | completion, errors and layout for that language; =M-x check-health= names the one each language looks for |
@@ -288,7 +288,7 @@ redefine any of it.
 
 * Status
 
-Version 0.90.16, a pre-release: in daily use by its author, its parts tested
+Version 0.90.17, a pre-release: in daily use by its author, its parts tested
 (=tools/test.sh=, about 225,000 checks), its interfaces still changing until
 1.0.0, the first stable release.
 

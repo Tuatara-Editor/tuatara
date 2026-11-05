@@ -66,9 +66,11 @@ nearest folder up from its file holding one of LANGUAGE's root files
 (defun outside-program-refusal (buffer)
   "Why BUFFER's text is kept from other programs (a formatter, a language
 server), in words, or NIL: a file opened safely, or in one of
-*SAFE-DIRECTORIES*, and the text of an encrypted file."
+*SAFE-DIRECTORIES*, the text of an encrypted file, and a file on another
+machine."
   (let ((file (tuatara.buffer:buffer-file buffer)))
     (cond ((tuatara.io:safe-visit-p buffer) "it is opened safely")
+          ((tuatara.buffer:buffer-local buffer :remote-file) "it is a file on another machine")
           ((and file (safe-directory-of (tuatara.io:native file))) "it is in one of *safe-directories*")
           ((tuatara.io:buffer-plaintext-p buffer) "its text is kept from other programs (an encrypted file)"))))
 

@@ -69,17 +69,22 @@ what sessions side by side put there meanwhile (STATE-LIST-PUT)."
 
 (defun remember-buffer-file (buffer)
   "Put the file BUFFER visits first in the list of recent files, when there is
-one on disk: after a visit, and after a save (a new file, or saving as)."
+one on disk: after a visit, and after a save (a new file, or saving as). A
+file on another machine is remembered by its name there."
   (let ((file (tuatara.buffer:buffer-file buffer)))
-    (when (and file (tuatara.io:path-stamp file :failure nil))
-      (remember-file file :safe (tuatara.io:safe-visit-p buffer)))))
+    (cond ((buffer-remote buffer) (remember-file (buffer-remote-name buffer) :safe (tuatara.io:safe-visit-p buffer)))
+          ((and file (tuatara.io:path-stamp file :failure nil))
+           (remember-file file :safe (tuatara.io:safe-visit-p buffer))))))
 
 (defun recent-file-fields (entry stamps now)
   "What is shown at the right of ENTRY, a (PATH . SAFE) of the recent files: as
-for any file its permissions, size and when it last changed, or not found.
+for any file its permissions, size and when it last changed, or not found;
+for a file on another machine, that it is there, the machine not asked.
 STAMPS keeps what was learnt of each file while the question is open, so that
 each is examined once."
   (let ((path (car entry)))
+    (when (remote-name-p path)
+      (return-from recent-file-fields (list (list "on another machine" :completion-annotation))))
     (multiple-value-bind (stamp known) (gethash path stamps)
       (unless known
         (setf stamp (tuatara.io:path-stamp path :failure nil)
@@ -96,7 +101,7 @@ can be chosen. The file of the current buffer is left out, so that
 \\<minibuffer>\\[minibuffer-done] alone goes back to the one before. With *preview-files*, the
 file selected is shown meanwhile, opened safely."
   (let* ((current (let ((file (tuatara.buffer:buffer-file (current-buffer))))
-                    (and file (tuatara.io:native file))))
+                    (or (buffer-remote-name (current-buffer)) (and file (tuatara.io:native file)))))
          (entries (remove current (ignoring-errors-reported ("reading the recent files") (read-recent-files))
                           :key #'car :test #'equal)))
     (if (null entries)
@@ -134,9 +139,12 @@ just renamed, visited safely or not as it was."
 
 (defun gone-recent-files (entries)
   "The paths of ENTRIES, (PATH . SAFE) of the list of recent files, that name
-no file any more. One that cannot be looked at is not counted gone."
+no file any more. One that cannot be looked at is not counted gone, nor one
+on another machine, which is not asked."
   (remove-duplicates (loop for (path) in entries
-                           when (ignoring-errors-reported ("examining ~a" path) (null (tuatara.io:path-stamp path)))
+                           when (and (not (remote-name-p path))
+                                     (ignoring-errors-reported ("examining ~a" path)
+                                       (null (tuatara.io:path-stamp path))))
                              collect path)
                      :test #'string=))
 

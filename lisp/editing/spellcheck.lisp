@@ -65,7 +65,7 @@ before."
   "The language the system's locale names (LC_ALL, LC_MESSAGES or LANG), as
 en_NZ for en_NZ.UTF-8; NIL for C, POSIX or none."
   (let ((locale (find-if (lambda (v) (and v (plusp (length v))))
-                         (mapcar #'uiop:getenv '("LC_ALL" "LC_MESSAGES" "LANG")))))
+                         (mapcar #'tuatara.io:own-variable '("LC_ALL" "LC_MESSAGES" "LANG")))))
     (when locale
       (let ((name (subseq locale 0 (position-if (lambda (c) (find c ".@")) locale))))
         (and (cl-ppcre:scan "^[a-z]{2,3}(_[A-Z]{2})?$" name) name)))))

@@ -327,9 +327,7 @@ path."
 stays when the editor or its terminal goes, nothing of the editor's given to
 it on standard input, output or error; it is waited for in the background.
 Returns its process."
-  (let ((process (multiple-value-bind (run given) (tuatara.io:setsid-command program arguments)
-                   (sb-ext:run-program run given :wait nil :input nil :output nil :error nil
-                                                 :environment (tuatara.io:program-environment)))))
+  (let ((process (tuatara.io:start-program (cons program arguments) :session t)))
     (tuatara.runtime:make-guarded-thread (lambda ()
                                            (ignoring-errors-reported ("waiting for ~a" label)
                                              (sb-ext:process-wait process)

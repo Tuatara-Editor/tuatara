@@ -563,6 +563,21 @@ ended have: the frames shown, the one with no screen left out."
 (defmethod tuatara.io:host-program-environment ((host listed-host))
   (listed-host-variables host))
 
+(define-test (daemon own-variables-ignore-the-client)
+  ;; a client's variables are what programs run for it get, never what the editor's own folders and terminal are read from
+  (with-environment-variable ("TUATARA_TEST_OWN" "/editor/own")
+    (let ((tuatara.runtime:*host* (make-instance 'listed-host :variables '("TUATARA_TEST_OWN=/client/own"))))
+      (is string= "/client/own" (tuatara.io:program-variable "TUATARA_TEST_OWN"))
+      (is string= "/editor/own" (tuatara.io:own-variable "TUATARA_TEST_OWN"))
+      (is string= "/editor/own/" (namestring (tuatara.io:own-directory "TUATARA_TEST_OWN")))))
+  (with-environment-variable ("TUATARA_TEST_OWN" "relative/own")
+    (false (tuatara.io:own-directory "TUATARA_TEST_OWN")))
+  (with-environment-variable ("TUATARA_TEST_OWN" "")
+    (false (tuatara.io:own-directory "TUATARA_TEST_OWN")))
+  (with-environment-variable ("TUATARA_TEST_OWN" nil)
+    (false (tuatara.io:own-variable "TUATARA_TEST_OWN"))
+    (false (tuatara.io:own-directory "TUATARA_TEST_OWN"))))
+
 (define-test (daemon variables-kept-narrowly)
   ;; only variables that say where a client is and who it is: none naming where git works, what it runs, or a terminal
   (dolist (name '("PATH" "LANG" "LC_ALL" "TERM" "DISPLAY" "GIT_AUTHOR_NAME" "GIT_COMMITTER_EMAIL"))

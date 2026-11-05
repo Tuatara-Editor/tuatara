@@ -76,10 +76,12 @@ NIL when there is none.")
   "True when BUFFER is a rimu list, not one made for a preview, with its
 preview on. In a list opened safely the preview shows each file as a file
 opened safely is shown: its text with no major mode, a picture or a PDF only
-as the sandbox draws it."
+as the sandbox draws it. A list of a folder on another machine has none."
   (and (rimu-list-p buffer)
        (list-preview-p buffer)
-       (not (tuatara.buffer:buffer-local buffer 'rimu-preview-buffer))))
+       (not (tuatara.buffer:buffer-local buffer 'rimu-preview-buffer))
+       ;; a server's files are not read to be previewed
+       (not (remote-name-p (tuatara.buffer:buffer-local buffer 'rimu-directory)))))
 
 (defvar *rimu-quick-edit-keymap* (make-keymap :name "rimu quick edit")
   "Keys of a file being quick-edited from a rimu list (\\<rimu-mode>\\[rimu-quick-edit]),

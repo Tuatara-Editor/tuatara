@@ -42,7 +42,8 @@ or session-daemon-NAME for the daemon NAME, whose session is its own.")
 \(a file opened safely), :DIRECTORY (a rimu list) or :SCRATCH (one of the
 scratch buffers, by name); a view of a file (a PDF's pages, a picture, an
 Office document) kept as its file, opened again as it opens; NIL for a buffer
-not kept (help, lists, terminals, buffers with no file, an encrypted file's text)."
+not kept (help, lists, terminals, buffers with no file, an encrypted file's text,
+a file on another machine)."
   (let* ((point (tuatara.buffer:buffer-point buffer))
          (directory (tuatara.buffer:buffer-local buffer 'rimu-directory))
          ;; a view (a PDF's pages, a picture, an Office document's pages or text) kept by the file it shows
@@ -51,7 +52,7 @@ not kept (help, lists, terminals, buffers with no file, an encrypted file's text
                         (ignoring-errors-reported ("finding the file ~a shows" (tuatara.buffer:buffer-name buffer))
                           (shown-file buffer))
                         (tuatara.buffer:buffer-local buffer 'office-reading)))))
-    (cond ((tuatara.io:buffer-plaintext-p buffer) nil)
+    (cond ((or (tuatara.io:buffer-plaintext-p buffer) (buffer-remote buffer)) nil)
           (directory (list :directory 0 directory))
           (file (list (if (tuatara.io:safe-visit-p buffer) :safe :file) point (tuatara.io:native file)))
           ((member (tuatara.buffer:buffer-name buffer) '("*lisp-scratch*" "*org-scratch*" "*scratch*") :test #'string=)

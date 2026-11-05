@@ -324,7 +324,7 @@ internal real time, and the name as the mode line shows it.")
 changes, else at most once a second, so that drawing makes no call to the
 file system."
   (let ((kept *shown-default-directory*)
-        (home (sb-posix:getenv "HOME"))
+        (home (tuatara.io:own-variable "HOME"))
         (now (get-internal-real-time)))
     (if (and kept (eq (first kept) tuatara-user:*default-directory*) (equal (second kept) home)
              (< (- now (third kept)) internal-time-units-per-second))

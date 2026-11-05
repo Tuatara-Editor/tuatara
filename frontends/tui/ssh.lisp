@@ -274,21 +274,12 @@ unless SSH_ASKPASS_REQUIRE is force."
          (format nil "the ssh agent is not forwarded to ~a: there is no display for ssh-askpass to ask you to ~
                       confirm each use of a key on" host))))
 
-(defun ssh-settings (program host)
-  "What ssh, PROGRAM, makes of its configuration for HOST (ssh -G), as a
-list of (KEY . VALUE), the keys in lower case, in the order it says them."
-  (multiple-value-bind (code said) (tuatara.defaults::run-bounded program (list "-G" "--" host) :seconds 10)
-    (and (eql code 0)
-         (loop for line in (uiop:split-string said :separator '(#\Newline))
-               for space = (position #\Space line)
-               when space collect (cons (string-downcase (subseq line 0 space)) (subseq line (1+ space)))))))
-
 (defun known-host-name (program host)
   "The name ssh, PROGRAM, knows the machine HOST ([user@]machine, or an
 alias of its configuration) by in its known hosts, for ssh-add -h: its
 HostKeyAlias, else its HostName, the account written before it kept."
   (let* ((at (position #\@ host))
-         (settings (ssh-settings program (subseq host (if at (1+ at) 0))))
+         (settings (tuatara.defaults::ssh-settings program (subseq host (if at (1+ at) 0))))
          (name (or (cdr (assoc "hostkeyalias" settings :test #'string=))
                    (cdr (assoc "hostname" settings :test #'string=))
                    (subseq host (if at (1+ at) 0)))))
@@ -313,9 +304,9 @@ out; NIL when it names a token TOKENS lacks."
 (defun identity-files (link)
   "The key files ssh names for LINK's machine (IdentityFile in ssh -G), ~,
 %d, %u, %h, %r and %% written out (WRITTEN-OUT), those that are there."
-  (let* ((settings (ssh-settings (ssh-link-program link) (ssh-link-host link)))
+  (let* ((settings (tuatara.defaults::ssh-settings (ssh-link-program link) (ssh-link-host link)))
          (home (string-right-trim "/" (tuatara.io:native (user-homedir-pathname))))
-         (tokens `((#\% . "%") (#\d . ,home) (#\u . ,(or (uiop:getenv "USER") ""))
+         (tokens `((#\% . "%") (#\d . ,home) (#\u . ,(or (tuatara.io:own-variable "USER") ""))
                    (#\h . ,(or (cdr (assoc "hostname" settings :test #'string=)) ""))
                    (#\r . ,(or (cdr (assoc "user" settings :test #'string=)) "")))))
     (loop for (key . value) in settings
@@ -360,24 +351,22 @@ as two values."
          (agent (tuatara.io:system-program *ssh-agent-program*))
          (add (tuatara.io:system-program *ssh-add-program*))
          (socket (ssh-link-agent-socket link))
-         (command (and agent (tuatara.io:setpriv-command agent (list "-D" "-a" socket))))
          (keys (and agent add (identity-files link))))
     (cond ((not (and agent add))
            (format nil "the ssh agent is not forwarded to ~a: ssh-agent and ssh-add are not installed in the ~
                         system's folders of programs" host))
-          ((not command)
-           (format nil "the ssh agent is not forwarded to ~a: setpriv (util-linux) is not installed, and without ~
-                        it the agent would outlive a client that is killed" host))
           ((confirm-refusal host))
           ((null keys)
            (format nil "the ssh agent is not forwarded to ~a: none of the keys ssh -G ~a names (IdentityFile) is ~
                         there" host host))
           ((nth-value 1 (agent-limits link (getf (ssh-link-permissions link) :destinations))))
-          ((progn (setf (ssh-link-agent link)
-                        (sb-ext:run-program (first command) (rest command)
-                                            :wait nil :input nil :output nil :error nil
-                                            :environment (tuatara.defaults::ssh-environment)))
-                  (tuatara.runtime:wait-until (lambda () (or (eq (tuatara.io:path-kind socket :follow nil) :socket)
+          ((handler-case (progn (setf (ssh-link-agent link)
+                                      (tuatara.io:start-program (list agent "-D" "-a" socket) :with-editor t
+                                                                :environment (tuatara.defaults::ssh-environment)))
+                                nil)
+             (tuatara.runtime:refusal (condition)
+               (format nil "the ssh agent is not forwarded to ~a: ~a" host condition))))
+          ((progn (tuatara.runtime:wait-until (lambda () (or (eq (tuatara.io:path-kind socket :follow nil) :socket)
                                                              (not (sb-ext:process-alive-p (ssh-link-agent link)))))
                                               10)
                   (not (eq (tuatara.io:path-kind socket :follow nil) :socket)))
@@ -621,21 +610,19 @@ with it; ssh asks for a password or passphrase on the terminal, as it does,
 what it says kept in LINK's folder. NIL once its control socket is there;
 else why not, in words, and what ssh said, as two values."
   (let* ((host (ssh-link-host link))
-         (command (tuatara.io:setpriv-command (ssh-link-program link) (ssh-arguments link :master t)))
          (control (tuatara.io:path-join (ssh-link-folder link) "c"))
          (said (tuatara.io:path-join (ssh-link-folder link) "e")))
     (flet ((said () (or (tuatara.runtime:ignoring-errors-reported ("reading what ssh said")
                           (tuatara.text:lenient-string
                            (tuatara.io:file-octets said :limit tuatara.io:*program-said-limit*)))
                         "")))
-      (unless command
-        (return-from start-master
-          (format nil "setpriv (util-linux) is not installed in the system's folders of programs: without it ~
-                       ssh's connection to ~a would outlive a client that is killed" host)))
       (setf (ssh-link-master link)
-            (sb-ext:run-program (first command) (rest command)
-                                :wait nil :input t :output nil :error said :if-error-exists :supersede
-                                :environment (tuatara.defaults::ssh-environment)))
+            (handler-case
+                (tuatara.io:start-program (cons (ssh-link-program link) (ssh-arguments link :master t))
+                                          :input t :error said :if-error-exists :supersede :with-editor t
+                                          :environment (tuatara.defaults::ssh-environment))
+              (tuatara.runtime:refusal (condition)
+                (return-from start-master (format nil "ssh's connection to ~a is not made: ~a" host condition)))))
       (let ((master (ssh-link-master link)))
         (tuatara.runtime:wait-until (lambda () (or (eq (tuatara.io:path-kind control :follow nil) :socket)
                                                    (not (sb-ext:process-alive-p master))))

@@ -277,12 +277,10 @@ when the library cannot be loaded."
     ;; a session of its own, the pseudo-terminal its controlling terminal, for job control (C-z, fg);
     ;; the terminal's usual settings before the program starts (echo on, UTF-8), which a
     ;; program's line editor reads as it starts
-    (let ((process (multiple-value-call #'sb-ext:run-program
-                     (tuatara.io:setsid-command "/bin/sh" (list* "-c" "stty sane iutf8 2>/dev/null; exec \"$0\" \"$@\"" program arguments)
-                                                "-w" "-c")
-                     :pty t :wait nil :search t
-                     :directory directory
-                     :environment (terminal-environment environment))))
+    (let ((process (tuatara.io:start-program
+                    (list* "/bin/sh" "-c" "stty sane iutf8 2>/dev/null; exec \"$0\" \"$@\"" program arguments)
+                    :session :terminal :pty t :directory directory :external-format :default
+                    :environment (terminal-environment environment))))
       (setf (emulator-process emulator) process
             (emulator-fd emulator) (sb-sys:fd-stream-fd (sb-ext:process-pty process)))
       (set-window-size (emulator-fd emulator) columns rows cell-width cell-height))

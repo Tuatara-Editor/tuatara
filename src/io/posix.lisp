@@ -88,6 +88,23 @@ character), as the pathname of a directory, whether or not its name ends with
 a slash."
   (sb-ext:parse-native-namestring (native directory) nil *default-pathname-defaults* :as-directory t))
 
+(defun own-variable (name)
+  "The value of the environment variable NAME as the editor itself has it,
+or NIL when it has none: what the editor's own folders, time zone, terminal
+and switches are read from. A program started for someone else is given their
+variables where they came with a request (PROGRAM-VARIABLE); this one never
+follows them."
+  (sb-posix:getenv name))
+
+(defun own-directory (name)
+  "The directory the environment variable NAME names for the editor itself
+(OWN-VARIABLE), as a pathname ending in /; NIL when it is not set, is empty or
+does not start at the root."
+  (let ((value (own-variable name)))
+    (and value (plusp (length value))
+         (let ((directory (uiop:ensure-directory-pathname (uiop:parse-native-namestring value))))
+           (and (uiop:absolute-pathname-p directory) directory)))))
+
 (defvar *home-names* nil
   "The home directory's names, as HOME gives it and as the file system has it
 (where HOME leads there through a link, as /home to /var/home), each ending in
@@ -1784,7 +1801,7 @@ or when the folder is one nothing may be written in (WRITING-REFUSED)."
             (if (eq :directory (path-kind name))
                 (progn (forget-in-memory)
                        (directory-pathname name))
-                (let ((memory (uiop:getenv-absolute-directory "XDG_RUNTIME_DIR")))
+                (let ((memory (own-directory "XDG_RUNTIME_DIR")))
                   (unless memory
                     (error 'file-system-error
                            :operation "keep files in" :path name
@@ -1876,7 +1893,7 @@ is read."
 between one session and the next, such as the files visited lately.
 *STATE-DIRECTORY* when set (CHOSEN-DIRECTORY), else $XDG_STATE_HOME/tuatara/,
 or ~/.local/state/tuatara/."
-  (let ((home (uiop:getenv-absolute-directory "XDG_STATE_HOME")))
+  (let ((home (own-directory "XDG_STATE_HOME")))
     (chosen-directory '*state-directory*
                       (merge-pathnames "tuatara/" (or home (merge-pathnames ".local/state/" (user-homedir-pathname)))))))
 

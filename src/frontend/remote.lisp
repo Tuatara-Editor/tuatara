@@ -1309,6 +1309,8 @@ frontend's events, which paints it too."
                             nil)
                            (:resize (and (send-event client event) (send-facts client)))
                            (t (send-event client event)))
+                   ;; the editor gone mid-send: what it sent before going is still shown
+                   (paint-arrived client)
                    (return))))
            (error (condition)
              (tuatara.runtime:debug-report :remote "painting what the editor sent: ~a"

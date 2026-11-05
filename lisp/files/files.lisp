@@ -163,6 +163,8 @@ changed on disk, write-protected, another file's name): the save is refused."
     (cond
       (running (message "~a is already being saved (~d%)" name (tuatara.io:save-progress running)))
       (refused (message "~a" refused))
+      ((remote-name-p path)
+       (message "~a is on another machine: not saved; open it there (\\[find-file]) and save that buffer" path))
       ((eq (tuatara.io:file-disk-state buffer) :stale)
        (message "~a cannot be saved: its file was rewritten on disk while shown from it; \\[revert-buffer] reads it again"
                 name))
@@ -539,7 +541,7 @@ HOSTS name (in any case); only file:///PATH and file://HOST/PATH are taken."
   "The environment that has a program shut in the sandbox write times in
 your time zone, a list of (NAME VALUE): TZ as yours is set, or as the zone
 /etc/localtime names; NIL when neither says one."
-  (let ((zone (or (uiop:getenv "TZ") (system-zone-name))))
+  (let ((zone (or (tuatara.io:own-variable "TZ") (system-zone-name))))
     (and zone (plusp (length zone)) (list (list "TZ" zone)))))
 
 (defun safe-directories ()

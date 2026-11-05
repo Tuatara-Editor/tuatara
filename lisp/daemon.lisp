@@ -111,7 +111,7 @@ for the one $XDG_RUNTIME_DIR names, as the system sets it.")
 is not there, and checked each time (RUNTIME-FOLDER-REFUSAL). Refused, saying
 why, when XDG_RUNTIME_DIR is not set or the folder is not safe: there is no
 other place for it."
-  (let ((runtime (or *runtime-directory* (uiop:getenv "XDG_RUNTIME_DIR")))
+  (let ((runtime (or *runtime-directory* (tuatara.io:own-variable "XDG_RUNTIME_DIR")))
         (uid (sb-posix:geteuid)))
     (unless (and runtime (plusp (length runtime)) (char= (char runtime 0) #\/))
       (refuse "XDG_RUNTIME_DIR is not set to a folder, and a daemon's socket goes nowhere else"))

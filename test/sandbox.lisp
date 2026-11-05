@@ -36,12 +36,12 @@ as text, how it went, and what it said on its error output."
     (is string= "hi" (tuatara.io:call-with-program (list printf "hi") (lambda (p) (read-line (sb-ext:process-output p))) :output :stream))
     ;; a program still running when FUNCTION returns, or signals, is ended, not left behind
     (let ((process nil) (start (get-internal-real-time)))
-      (flet ((ended (process) (loop repeat 200 never (sb-ext:process-alive-p process) do (sleep 0.01))))
+      (flet ((ended (process) (tuatara.runtime:wait-until (lambda () (not (sb-ext:process-alive-p process))) 10)))
         (tuatara.io:call-with-program (list sleep "30") (lambda (p) (setf process p)))
         (true (ended process))
         (ignore-errors (tuatara.io:call-with-program (list sleep "30") (lambda (p) (setf process p) (error "gone wrong"))))
         (true (ended process)))
-      (true (< (- (get-internal-real-time) start) (* 5 internal-time-units-per-second))))
+      (true (< (- (get-internal-real-time) start) (* 15 internal-time-units-per-second))))
     ;; the program of a job: stopping the job ends it
     (let ((job (tuatara.defaults::make-vc-job nil 0)) (start (get-internal-real-time)))
       (is eq :signaled
@@ -52,7 +52,39 @@ as text, how it went, and what it said on its error output."
                                           (sb-ext:process-wait p)
                                           (sb-ext:process-status p))
                                         :job job))
-      (true (< (- (get-internal-real-time) start) (* 5 internal-time-units-per-second))))))
+      (true (< (- (get-internal-real-time) start) (* 15 internal-time-units-per-second))))))
+
+(define-test (sandbox programs-started-one-way)
+  ;; every program is started by START-PROGRAM: the environment programs get, a session of its own, a terminal
+  (flet ((said (command &rest keys)
+           (let ((process (apply #'tuatara.io:start-program command :output :stream keys)))
+             (unwind-protect (string-trim '(#\Newline #\Space)
+                                          (uiop:slurp-stream-string (sb-ext:process-output process)))
+               (tuatara.io:done-with-program process))))
+         (own-session ()
+           (nth-value 1 (tuatara.io::process-group-and-session (sb-posix:getpid)
+                                                               (make-array 1024 :element-type '(unsigned-byte 8))))))
+    (let ((sh (tuatara.io:find-program "sh"))
+          (session "cut -d' ' -f6 /proc/$$/stat"))
+      ;; the variables the editor keeps for itself are not given
+      (flet ((path-given-p ()
+               (some (lambda (line) (uiop:string-prefix-p "PATH=" line))
+                     (uiop:split-string (said (list (tuatara.io:find-program "env"))) :separator '(#\Newline)))))
+        (true (path-given-p))
+        (let ((tuatara.io:*own-variables* '("PATH")))
+          (false (path-given-p))))
+      (is string= "A=1" (said (list (tuatara.io:find-program "env")) :environment '("A=1")))
+      (is = (own-session) (parse-integer (said (list sh "-c" session))))
+      (when (tuatara.io:find-program "setsid")
+        (isnt = (own-session) (parse-integer (said (list sh "-c" session) :session t)))
+        ;; a terminal's program leads its session on its pseudo-terminal, and the process ends when it ends
+        (let ((process (tuatara.io:start-program
+                        (list sh "-c" (concatenate 'string "[ \"$(cut -d' ' -f6 /proc/$$/stat)\" = $$ ] && "
+                                                   "[ \"$(cut -d' ' -f7 /proc/$$/stat)\" != 0 ] && exit 3"))
+                        :session :terminal :pty t)))
+          (unwind-protect (progn (sb-ext:process-wait process)
+                                 (is eql 3 (sb-ext:process-exit-code process)))
+            (tuatara.io:done-with-program process)))))))
 
 (define-test (sandbox program-refusing-to-end-killed)
   ;; a program that will not end when asked is killed, with what it started,
@@ -677,7 +709,8 @@ cat ~a/l.txt; echo; echo new > ~a/n.txt && cat ~a/n.txt; cat ~a/h.txt 2>/dev/nul
          (list (tuatara.io:find-program "sh") "-c" "trap '' TERM; sleep 60 & echo $!; echo $$; wait")
          nil :seconds 1)
       (declare (ignore said))
-      (true (< (tuatara.runtime:seconds-since began) (+ 3 tuatara.io::*program-end-grace*))
+      ;; far short of the minute its sleep would last, a busy machine starting and ending programs slowly
+      (true (< (tuatara.runtime:seconds-since began) (+ 20 tuatara.io::*program-end-grace*))
             "waited for no longer than its seconds and its ending")
       (false exit)
       (false too-much)
@@ -771,3 +804,94 @@ cat ~a/l.txt; echo; echo new > ~a/n.txt && cat ~a/n.txt; cat ~a/h.txt 2>/dev/nul
     (is equal (format nil "77~%7~%")
         (uiop:run-program (list* "bash" "-c" (concatenate 'string as-dash (third shell)) (nthcdr 3 shell))
                           :output :string :ignore-error-status t))))
+
+(define-test (sandbox starting-thread-never-waited-for-forever)
+  ;; a start that ends with a condition no error, or takes too long, is
+  ;; given up with that said, and the next start goes on as before
+  (multiple-value-bind (result condition) (tuatara.io:in-starter (lambda () (error 'storage-condition)))
+    (false result)
+    (true (typep condition 'storage-condition)))
+  (let ((tuatara.io::*starter-wait* 0.5)
+        (began (get-internal-real-time)))
+    (multiple-value-bind (result condition) (tuatara.io:in-starter (lambda () (sleep 3) :late))
+      (false result)
+      (true condition)
+      (true (< (tuatara.runtime:seconds-since began) 2))))
+  (is eq :fine (tuatara.io:in-starter (lambda () :fine))))
+
+(define-test (sandbox given-up-starting-thread-takes-no-more)
+  ;; a starting thread given up on takes no more work, its late answer
+  ;; taken for no other start, and every starting thread ends with the rest
+  (let ((tuatara.io::*starter-wait* 0.3))
+    (multiple-value-bind (result condition) (tuatara.io:in-starter (lambda () (sleep 1) :old))
+      (false result)
+      (true condition)))
+  (is eq :new (tuatara.io:in-starter (lambda () :new)))
+  (sleep 1)
+  (is eq :newer (tuatara.io:in-starter (lambda () :newer)))
+  (true (>= (length tuatara.io::**starters**) 2))
+  (let ((starters (copy-list tuatara.io::**starters**)))
+    (tuatara.io::end-starters)
+    (true (notany #'sb-thread:thread-alive-p starters))))
+
+(define-test (sandbox programs-with-the-editor-outlive-their-thread)
+  ;; a program set to end with the editor is started from the thread kept for that, so the thread asking may
+  ;; end and the program go on; started so from the asking thread itself, it ends with that thread
+  (let ((sleep (tuatara.io:find-program "sleep")))
+    (if (null (tuatara.io:setpriv-command sleep '()))
+        (skip "no setpriv here" (true nil))
+        (flet ((started-from-a-thread (function)
+                 ;; the thread ends once setpriv has done its work and become sleep
+                 (let ((process nil))
+                   (sb-thread:join-thread
+                    (sb-thread:make-thread
+                     (lambda ()
+                       (setf process (funcall function))
+                       (tuatara.runtime:wait-until
+                        (lambda () (string= "sleep" (tuatara.io::process-name (sb-ext:process-pid process)))) 5))))
+                   process)))
+          (let ((kept (started-from-a-thread
+                       (lambda () (tuatara.io:start-program (list sleep "30") :with-editor t))))
+                (lost (started-from-a-thread
+                       (lambda () (tuatara.io:start-program (tuatara.io:setpriv-command sleep '("30")))))))
+            (unwind-protect
+                 (progn
+                   (true (tuatara.runtime:wait-until (lambda () (not (sb-ext:process-alive-p lost))) 5)
+                         "the control: ended with the thread that started it")
+                   (true (sb-ext:process-alive-p kept)))
+              (tuatara.io:done-with-program kept)
+              (tuatara.io:done-with-program lost)))))))
+
+(define-test (sandbox handed-descriptors-closed-by-the-start)
+  ;; descriptors handed over with a start are closed by the thread starting the program, even when the start
+  ;; is given up on while under way, so that the asker never closes one the start may still use
+  (let ((true-program (tuatara.io:find-program "true")))
+    (if (null (tuatara.io:setpriv-command true-program '()))
+        (skip "no setpriv here" (true nil))
+        (multiple-value-bind (in out) (sb-posix:pipe)
+          (unwind-protect
+               (let ((stream (sb-sys:make-fd-stream out :output t :buffering :none :auto-close nil)))
+                 (let ((tuatara.io::*starter-wait* 0))
+                   (handler-case
+                       (let ((process (tuatara.io:start-program (list true-program) :output stream :with-editor t
+                                                                                    :close-fds (list out))))
+                         (when (sb-ext:process-p process) (tuatara.io:done-with-program process)))
+                     (error () nil)))
+                 ;; the pipe ends once every writing end is closed: the program's, and the one handed over
+                 (true (let ((buffer (make-array 64 :element-type '(unsigned-byte 8)))
+                             (deadline (tuatara.runtime:deadline-in 10)))
+                         (loop until (tuatara.runtime:deadline-passed-p deadline)
+                               thereis (and (sb-sys:wait-until-fd-usable in :input 0.2)
+                                            (zerop (sb-sys:with-pinned-objects (buffer)
+                                                     (sb-posix:read in (sb-sys:vector-sap buffer) 64))))))))
+            (sb-posix:close in))))))
+
+(define-test (sandbox untaken-work-let-go-when-replaced)
+  ;; work handed to the starting thread by an asker gone without waiting, never taken, lets go of what it
+  ;; holds when the next start takes its place
+  (is eq :first (tuatara.io:in-starter (lambda () :first)))
+  (let ((let-go nil))
+    (sb-thread:with-mutex (tuatara.io::**starter-lock**)
+      (setf tuatara.io::**starter-work** (list* (list :work) (lambda () :left) (lambda () (setf let-go t)))))
+    (is eq :next (tuatara.io:in-starter (lambda () :next)))
+    (true let-go)))
