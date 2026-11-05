@@ -77,15 +77,12 @@ to show it."
 that take it SHARED, else held alone: true when it was had, waiting at most
 WAIT seconds for another holder to let it go. The lock goes when FD is
 closed or the process ends."
-  (let ((deadline (deadline-in wait)))
-    (loop
-      ;; LOCK_SH 1 or LOCK_EX 2, with LOCK_NB 4: never blocked in the call itself
-      (when (zerop (sb-alien:alien-funcall
-                    (sb-alien:extern-alien "flock" (function sb-alien:int sb-alien:int sb-alien:int))
-                    fd (logior (if shared 1 2) 4)))
-        (return t))
-      (when (deadline-passed-p deadline) (return nil))
-      (sleep 0.005))))
+  (wait-until (lambda ()
+                ;; LOCK_SH 1 or LOCK_EX 2, with LOCK_NB 4: never blocked in the call itself
+                (zerop (sb-alien:alien-funcall
+                        (sb-alien:extern-alien "flock" (function sb-alien:int sb-alien:int sb-alien:int))
+                        fd (logior (if shared 1 2) 4))))
+              wait :interval 1/200))
 
 (defun unlock-fd (fd)
   "Let go of the lock LOCK-FD took on the file open as file descriptor (FD),

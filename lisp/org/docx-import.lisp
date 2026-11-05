@@ -4,22 +4,24 @@
 ;;;; DOCX-IMPORT reads a Word document someone gave you to write a report in
 ;;;; and makes of it what M-x export-template-from-docx promises:
 ;;;;
-;;;; - The Word half of a template, docx-templates/NAME/: the document as it
+;;;; - The Word half of a template, docx-templates/NAME/, the document as it
 ;;;;   is up to its first heading (its cover, contents, facts), its headers,
 ;;;;   footers, styles, theme and page; the text from the first heading on
-;;;;   become {{{body}}}, the contents {{{contents}}}, and each field a place:
-;;;;   a content control (its tag or title), a form field (its name), a merge
+;;;;   become {{{body}}}, the contents {{{contents}}}, and each field a place,
+;;;;   whether a content control (its tag or title), a form field (its name), a merge
 ;;;;   field, placeholder text ([Enter name], <Version>, «Date»), a table row
 ;;;;   or a paragraph labelled "Version: 0.1", the title and subtitle. What
 ;;;;   the text's tables and lists look like goes into its tuatara.txt.
 ;;;;   Macros, comments, tracked changes, the link to an attached template and
 ;;;;   tracking turned on are left out.
+;;;;
 ;;;; - Its LaTeX half, latex-templates/NAME.tex: the same page, fonts, sizes,
 ;;;;   spacing, headers and footers as LaTeX can say them, near enough.
+;;;;
 ;;;; - Its note template, note-templates/NAME.org, that each new note to
 ;;;;   write in begins from: #+template: NAME, a keyword for each field with
 ;;;;   what the document had in it (a comment says what kind of value it
-;;;;   takes: a date in what format, one of a list, text), and the document's
+;;;;   takes, such as a date in what format, one of a list, text), and the document's
 ;;;;   text as Org (its changes accepted, its hidden text and comments left
 ;;;;   out, its pictures saved in note-templates/NAME-media/ and linked by
 ;;;;   their whole path, so that a note anywhere shows them).
@@ -137,7 +139,7 @@ the look of its result, the field itself taken away."
   "PARAGRAPH (a w:p) with its placeholder text made places; with FRONT (a
 paragraph of the document before its text) a paragraph styled Title or
 Subtitle made {{{title}}} or {{{subtitle}}}, and one written Label: value
-made Label: {{{label}}}."
+made the same label with {{{label}}} for its value."
   (if (or (uiop:string-suffix-p paragraph "/>") (null (position #\> paragraph)))
       paragraph
       (multiple-value-bind (items head tail) (docx-run-items paragraph)

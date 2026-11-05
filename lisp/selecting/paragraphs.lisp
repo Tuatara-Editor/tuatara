@@ -3,7 +3,7 @@
 ;;;;
 ;;;; The commands behave as Emacs's of the same names: a paragraph ends at a
 ;;;; blank line, a sentence at . ? ! or … followed by a space or a line end
-;;;; (two spaces, where sentences are two spaces apart: *sentence-end-double-space*).
+;;;; (two spaces, where sentences are two spaces apart; see *sentence-end-double-space*).
 
 (in-package #:tuatara.defaults)
 

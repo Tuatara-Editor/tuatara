@@ -127,7 +127,7 @@ their first octets tell them (pictures, PDFs, sound and video, and Office
 documents, as standard): keywords as TUATARA.IO:OCTETS-KIND gives them, :png,
 :jpeg, :pdf, :docx and the like. Each is opened after asking, from a copy only
 you can read, never the file itself. An Office document can hold macros,
-which the program opening it may offer to run: answer no there. :svg is left
+which the program opening it may offer to run; answer no there. :svg is left
 out: an SVG image is a document that can hold a program, which a web browser,
 the program many desktops open it in, runs. Office documents of before 2007
 (:ole) are left out: the same kind is a mail item or an installer.")
@@ -207,14 +207,17 @@ used, in universal time.")
 
 (defun forget-old-copies (directory)
   "Delete what DIRECTORY holds from more than a day ago, but for the private
-folders a session still uses (*PRIVATE-FOLDERS-HELD*): copies whose programs
-have them open still, or are long done."
+folders a session still uses (*PRIVATE-FOLDERS-HELD*, or the owner.lock of
+MAKE-OWNED-FOLDER held): copies whose programs have them open still, or are
+long done."
   (let ((day-ago (- (get-universal-time) 86400)))
     (dolist (entry (ignoring-errors-reported ("listing ~a" directory) (tuatara.io:directory-entries directory)))
       (let* ((path (tuatara.io:path-join directory (first entry)))
              (stamp (tuatara.io:path-stamp path :follow nil :failure nil)))
         (when (and stamp (< (mtime-universal-time (tuatara.io:stamp-mtime stamp)) day-ago)
-                   (not (gethash (tuatara.io:slash-ended path) *private-folders-held*)))
+                   (not (gethash (tuatara.io:slash-ended path) *private-folders-held*))
+                   (not (tuatara.io:lock-file-held-p (tuatara.io:path-join (tuatara.io:slash-ended path)
+                                                                           "owner.lock"))))
           (ignoring-errors-reported ("deleting ~a" path) (tuatara.io:delete-tree path)))))))
 
 (defun new-private-folder (directory &key (hold t))
@@ -231,26 +234,28 @@ do."
       (setf (gethash place *private-folders-held*) t))
     place))
 
-(defun make-owned-folder (name)
-  "A new folder of its own in NAME (ending in /, in the cache directory), its
-file owner.lock locked from the moment it is made while the session runs, and
-then naming this machine, so that no other session, whatever process numbers
-it sees, takes it for one left behind (FORGET-ABANDONED-FOLDERS). Returns the
-folder, a native name ending in /, and the descriptor of the lock, to close
-when the folder is deleted."
-  (let* ((folder (new-private-folder (private-cache-directory name)))
+(defun make-owned-folder (name &key (base (tuatara.io:cache-directory)))
+  "A new folder of its own in NAME (ending in /, in the folder BASE, by
+default the cache directory), its file owner.lock locked from the moment it
+is made while the session runs, and then naming this machine, so that no
+other session, whatever process numbers it sees, takes it for one left
+behind (FORGET-ABANDONED-FOLDERS). Returns the folder, a native name ending
+in /, and the descriptor of the lock, to close when the folder is deleted."
+  (let* ((folder (new-private-folder (private-directory-in base name)))
          (lock (tuatara.io:path-join folder "owner.lock"))
          (fd (tuatara.io:open-lock-file lock)))
     (tuatara.io:write-octets fd (tuatara.text:string-octets (machine-instance)) :path lock)
     (values folder fd)))
 
-(defun forget-abandoned-folders (name &optional own)
-  "Delete the folders in NAME (in the cache directory) that sessions on this
-machine no longer running made with MAKE-OWNED-FOLDER and left (they crashed):
-each whose owner.lock names this machine and no session holds; and one with no
-owner.lock, made more than an hour ago. OWN, a folder of this session, stays.
-Another machine's, sharing the folder, are its own to judge."
-  (let ((all (private-cache-directory name))
+(defun forget-abandoned-folders (name &key own (base (tuatara.io:cache-directory)) before)
+  "Delete the folders in NAME (in the folder BASE, by default the cache
+directory) that sessions on this machine no longer running made with
+MAKE-OWNED-FOLDER and left (they crashed): each whose owner.lock names this
+machine and no session holds, BEFORE, a function of the folder, called
+first, when given; and one with no owner.lock, made more than an hour ago.
+OWN, a folder of this session, stays. Another machine's, sharing the
+folder, are its own to judge."
+  (let ((all (private-directory-in base name))
         (hour-ago (- (get-universal-time) 3600)))
     (dolist (entry (ignoring-errors-reported ("listing ~a" all) (tuatara.io:directory-entries all)))
       (let* ((folder (tuatara.io:slash-ended (tuatara.io:path-join all (first entry))))
@@ -261,6 +266,8 @@ Another machine's, sharing the folder, are its own to judge."
                             (tuatara.text:lenient-string (tuatara.io:file-octets lock :limit 1024))))
                     (fd (ignoring-errors-reported ("opening ~a" lock) (sb-posix:open lock sb-posix:o-rdwr))))
                 (when (and fd (equal host (machine-instance)) (tuatara.runtime:lock-fd fd))
+                  (when before
+                    (ignoring-errors-reported ("ending what ~a held" folder) (funcall before folder)))
                   (ignoring-errors-reported ("deleting ~a" folder) (tuatara.io:delete-tree folder)))
                 (when fd (sb-posix:close fd)))
               (let ((stamp (tuatara.io:path-stamp folder :follow nil :failure nil)))
@@ -291,7 +298,7 @@ it is next wanted."
 
 (defun attachment-file-name (name &optional (fallback "attachment"))
   "NAME, as an attachment or an embedded file calls itself, made a file's name
-alone: what follows its last / or \\, control characters and those a name
+alone; what follows its last / or \\, control characters and those a name
 cannot hold on the drives other systems use (: * ? \" < > |) left out, spaces
 and full stops trimmed from its ends, at most 200 characters; FALLBACK for
 one with nothing left, or no NAME."
@@ -434,7 +441,7 @@ agrees, is opened, after asking (*OPEN-EXTERNALLY-ASK*)."
 
 (defun program-health-words (what program missing &key (how "shut in"))
   "What a program does here, as \\[check-health] says it: WHAT by PROGRAM,
-HOW (mailboxes by readpst, shut in), or with PROGRAM NIL, WHAT by none:
+HOW (mailboxes by readpst, shut in), or with PROGRAM NIL, WHAT by none;
 MISSING, what to do about it (install readpst)."
   (if program
       (format nil "~a by ~a~@[, ~a~]" what program how)
@@ -536,7 +543,7 @@ found or NIL, HOW, or by none, what to install."
 
 (defun mail-address-without-attachments (address)
   "ADDRESS, a mailto: address, without the files it asks the mail program to
-attach (attach=, attachment=, in any case, %XX written or not): a link from a file
+attach (attach=, attachment=, in any case, %XX written or not), for a link from a file
 not trusted could name any file of yours. As it is when it asks for none."
   (let ((query (position #\? address)))
     (if (or (null query) (not (uiop:string-prefix-p "mailto:" (string-downcase address))))
@@ -552,8 +559,7 @@ not trusted could name any file of yours. As it is when it asks for none."
 
 (defparameter *open-address-schemes* '("http" "https" "ftp" "mailto")
   "The kinds of address, by the scheme they begin with, that OPEN-ADDRESS hands
-to another program: web and mail addresses. Any other kind, a file: or smb:
-address among them, is refused.")
+to another program: web and mail addresses. Any other kind, a file or smb address among them, is refused.")
 
 (defun address-scheme (address)
   "The scheme ADDRESS begins with, before its first colon, in lower case; an

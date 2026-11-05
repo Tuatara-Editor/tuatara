@@ -1625,7 +1625,7 @@ BUFFER's lines end with both."
 (defun place-edit (buffer place diff previous-end &key exact)
   "Two values: the edit that changes PLACE of BUFFER as DIFF says (NIL when
 none is needed), and where the place then reaches to. :DIFFERS when the
-deletions past its edges cannot be made there the same way: the same number
+deletions past its edges cannot be made there the same way, that is the same number
 of characters with the line breaks where they were, or with EXACT the very
 same text; :MEETS when they would reach PREVIOUS-END, the end of the place
 before (when given)."

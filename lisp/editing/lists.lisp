@@ -111,7 +111,7 @@ just before its closing bracket. Not in a string or comment."
          (syntax (ready-syntax b))
          (count (prefix)))
     (if (and syntax (tuatara.syntax:text-kind-around syntax (point)))
-        (message "This command doesn't work in strings or comments")
+        (message "It doesn't work in strings or comments")
         (dotimes (i (abs count))
           (let ((scan (group-scan b (point))))
             (multiple-value-bind (q opening) (if (plusp count)

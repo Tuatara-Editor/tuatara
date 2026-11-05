@@ -91,6 +91,12 @@ the projects within it trusted no more."
   (alexandria:write-byte-vector-into-file (to-octets text) path :if-exists :supersede)
   path)
 
+(defun put-program (path text)
+  "Write TEXT, a shell script, at PATH as PUT-FILE does, runnable by you alone; its native name."
+  (put-file path text)
+  (sb-posix:chmod (namestring path) #o700)
+  (namestring path))
+
 (defun file-text (path)
   "The text of the file at PATH."
   (sb-ext:octets-to-string (alexandria:read-file-into-byte-vector path) :external-format :utf-8))
@@ -663,6 +669,11 @@ second value."
   (is string= "report.eml" (tuatara.io:numbered-name "report.eml" 1))
   (is string= "report (2).eml" (tuatara.io:numbered-name "report.eml" 2))
   (is string= "notes (3)" (tuatara.io:numbered-name "notes" 3))
+  ;; or -2 and so on, for a name with no space, as a file dropped from another machine is given
+  (is string= "report.eml" (tuatara.io:numbered-name "report.eml" 1 :dash))
+  (is string= "report-2.eml" (tuatara.io:numbered-name "report.eml" 2 :dash))
+  (is string= "notes-3" (tuatara.io:numbered-name "notes" 3 :dash))
+  (is string= "kea.tar-2.gz" (tuatara.io:numbered-name "kea.tar.gz" 2 :dash))
   (with-test-directory (dir)
     (let ((folder (tuatara.io:native dir))
           (from (namestring (put-file (merge-pathnames "source.bin" dir) "contents"))))
@@ -777,6 +788,12 @@ second value."
         (true played)
         (false played-running "played keys wait for the save")
         (true (>= played-waited 0.4) "~,2f s" played-waited)))))
+
+(define-test (visiting-and-saving save-buffer-says-every-save-runs-apart)
+  ;; every save runs on a thread of its own, however small the buffer: its help says so
+  (let ((words (documentation 'tuatara.defaults::save-buffer 'function)))
+    (true (search "written on a thread of its own" words))
+    (false (search "a large buffer is saved in the background" words))))
 
 (define-test (visiting-and-saving saved-files-counted-once-saved)
   ;; saving several files says how many once they are on disk, saved in the background or not

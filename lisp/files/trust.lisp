@@ -73,7 +73,7 @@ is, was trusted when asked (kept by where it really was then), or is in one
 of *LSP-TRUSTED-PROJECTS* (where they really are); never one that is, is in
 or holds an evidence folder (FOLDER-HOLDS-EVIDENCE-P), whose programs could
 write there, nor one within a folder answered look only
-\(PROJECT-LOOK-ONLY-P): the answer that runs less wins."
+\(PROJECT-LOOK-ONLY-P); the answer that runs less wins."
   (let ((real (real-folder root)))
     (and real
          (or (member real (state-list-entries *lsp-trusted*) :test #'equal)

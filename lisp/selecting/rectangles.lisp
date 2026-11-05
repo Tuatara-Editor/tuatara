@@ -5,7 +5,7 @@
 ;;;; of rows: y keeps it by where it is (the text as it was, which never
 ;;;; changes, its lines and its columns), at once whatever its size, and d, c,
 ;;;; P and the wrap keys rewrite its lines in the background as a replacement
-;;;; does (rewrite.lisp): the editor stays usable, P is lit in the mode line,
+;;;; does (rewrite.lisp); the editor stays usable, P is lit in the mode line,
 ;;;; C-x J (stop-job) stops it, and one undo takes it back.
 
 (in-package #:tuatara.defaults)
@@ -274,7 +274,7 @@ unless no row has any: true when kept."
 (defun copy-selected-rectangle ()
   "\\<normal>\\[copy-selection-or-char] on a rectangle: copy the block to the rectangle
 store, and let it go; one over more text than *REWRITE-THRESHOLD* is kept by
-where it is, at once, unless search filters hide lines inside it: the rows
+where it is, at once, unless search filters hide lines inside it; the rows
 of those are left out. A block with no width copies nothing and stays."
   (let ((b (current-buffer)))
     (multiple-value-bind (left right) (rectangle-columns b)
@@ -713,7 +713,7 @@ a line ending inside the block cut at its left column and one shorter than the
 block left alone; :NUMBER puts in place of each row what NUMBERING, a function
 of the row's index from 0, gives (octets), a short row padded out to the
 block, and :NUMBER-IN puts it in at the block's left column, replacing
-nothing; :TYPE writes what was typed at a cursor on each row (TYPED-ROW): TEXT
+nothing; :TYPE writes what was typed at a cursor on each row (TYPED-ROW), TEXT
 in place of the columns, or at the line's end with AT-END, the BACK characters
 before them and the FORWARD after them deleted too. The rows starting at the
 offsets SKIP holds (a hash table) are left as they are; REFUSED counts, in its

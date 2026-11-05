@@ -29,7 +29,7 @@ it would be beside the program when neither is there."
 comment such as ; inherits: ecma,_javascript.")
 
 (defparameter *rules-largest* (* 1024 1024)
-  "The largest set of rules read, in characters: a rules file larger, or one
+  "The largest set of rules read, in characters, so a rules file larger, or one
 whose ; inherits: lines make it larger, is not used, and that is said.")
 
 (defun read-query (directory name &optional seen)
@@ -945,7 +945,7 @@ build container images from."
 ((list_lit . (sym_lit) @_definer . (_) . (_)+ @class.inside) @class.around
  (#match? @_definer \"^(?i)(defclass|defstruct|define-condition|deftype)$\"))
 
-; parameters: each part of a lambda list, and each argument of a call
+; parameters, each part of a lambda list, and each argument of a call
 (defun_header lambda_list: (list_lit (_) @parameter.inside @parameter.around))
 (list_lit . (sym_lit) (_) @parameter.inside @parameter.around)
 ")

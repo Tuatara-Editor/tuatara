@@ -651,14 +651,14 @@ outer lines thicker, as the PDF's top and bottom rules are."
                 collect side collect on when on collect size)))
 
 (defun docx-table (node out)
-  "Write the table NODE to OUT: its caption above it (Table N), its columns as
+  "Write the table NODE to OUT, its caption above it (Table N), its columns as
 wide as their text but no wider together than the page, or as the :EXPORT:
-drawer's widths say, or sharing the width it gives the table (full: margin
+drawer's widths say, or sharing the width it gives the table (full, margin
 to margin) as their text does; in the middle of the page, or against the
 margin its position names; each aligned as it says or as its numbers are; the
 rows above its first rule a header in bold, again at the top of each page
 unless the drawer says repeat header: no; the lines its lines setting
-prints (TABLE-LINES), as the PDF's: above, under the header, between its
+prints (TABLE-LINES), as the PDF's are, above, under the header, between its
 parts and under it as standard; with the template's table style, the
 style's unless the drawer gives lines."
   (if (not (eq (org-property node :type) 'org))

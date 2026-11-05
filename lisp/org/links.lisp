@@ -2,14 +2,14 @@
 ;;;; Copyright (C) 2026 Michael A Jones.  GPL-3.0-or-later; see LICENSE.
 ;;;;
 ;;;; A link in an Org buffer is followed as Org's org-open-at-point follows
-;;;; it: one to a headline (*Title), a custom ID (#id), a target or a name in
-;;;; the buffer goes there; file: visits the file (with ::*Heading or ::text,
-;;;; there in it); id: goes to the headline with that ID, here or in the Org
-;;;; files of your notes (*formatted-file-directory*); denote: visits the
-;;;; note with that identifier, and denote:query-filenames: lists the notes
-;;;; whose names match (match-denote-files-link inserts one), as
-;;;; formatted-match: does by a regular expression (match-formatted-files-link);
-;;;; a web address or a mail address is handed to
+;;;; it. One to a headline (*Title), a custom ID (#id), a target or a name in
+;;;; the buffer goes there. A file: link visits the file (with ::*Heading or
+;;;; ::text, there in it). An id: link goes to the headline with that ID, here
+;;;; or in the Org files of your notes (*formatted-file-directory*). A denote:
+;;;; link visits the note with that identifier. A denote:query-filenames: link
+;;;; lists the notes whose names match (match-denote-files-link inserts one).
+;;;; A formatted-match: link does so by a regular expression
+;;;; (match-formatted-files-link). A web address or a mail address is handed to
 ;;;; the desktop's program after asking, as it runs outside Tuatara.
 
 (in-package #:tuatara.defaults)
@@ -280,7 +280,7 @@ it runs."
 
 (defun org-follow-id (parse id)
   "Go to the headline whose ID is ID: in PARSE's buffer at once, else in the Org files
-of your notes, looked through in the background (ORG-SEARCH-NOTES): each as
+of your notes, looked through in the background (ORG-SEARCH-NOTES), each as
 its buffer has it when one is open, else read from disk as the agenda reads
 it, untouched (ORG-READ-FILE-TEXT); found, it is shown. True when found here
 or looked for."
@@ -311,7 +311,7 @@ for in the background (ORG-SEARCH-NOTES). True: it is looked for."
   t)
 
 (defun denote-files-scanner (query)
-  "A scanner for QUERY as denote:query-filenames: links match names, ignoring case:
+  "A scanner for QUERY as denote:query-filenames: links match names, ignoring case;
 QUERY that is no regular expression is matched as text."
   (tuatara.syntax:compile-pattern query :case-fold t :or-text t))
 
@@ -343,7 +343,7 @@ function of a regular expression and the files) gives listed as it is
 typed, the files found in the background meanwhile
 \(CALL-WITH-FORMATTED-FILES); \\<pattern>\\[search-toggle-regex] switches to literal
 text and back. \\<pattern-answer>\\[pattern-done] takes what is typed, whichever file is
-selected: a regular expression, literal text with its
+selected, be it a regular expression or literal text with its
 special characters escaped; a regular expression that cannot be used says
 why in the prompt, waiting for it to be mended."
   (let ((typed "") (regex t) (refused nil))
@@ -385,7 +385,7 @@ one to visit, as a link match-formatted-files-link makes is followed."
 
 (defun follow-denote-files-link (query)
   "List your files with formatted names whose names QUERY matches, to choose
-one to visit: where a denote:query-filenames: link leads."
+one to visit, where a denote:query-filenames: link leads."
   (let ((scanner (denote-files-scanner query)))
     (show-formatted-files (format nil "Files matching ~a: " query)
                           (lambda (relative) (cl-ppcre:scan scanner relative)))))
@@ -451,8 +451,8 @@ in Org (and others), [LABEL](denote:query-filenames:QUERY) in Markdown,
 (define-command match-denote-files-link ()
   "Insert a link to your files with formatted names whose names match what is
 asked for, the files it matches listed as it is typed, as a denote: link,
-which other programs reading those links follow too:
-[[denote:query-filenames:TEXT][LABEL]]; in Markdown
+which other programs reading those links follow too,
+written [[denote:query-filenames:TEXT][LABEL]]; in Markdown
 [LABEL](denote:query-filenames:TEXT) and in text files
 <denote:query-filenames:TEXT>. The text selected becomes the link, its label; with
 none, the label is asked for, TEXT offered. Following it (\\`RET' or
@@ -466,7 +466,7 @@ parentheses in what is matched are refused, as these links cannot hold them."
          (extension (if file (name-extension (tuatara.io:native-file-name file)) ".org")))
     (cond ((string= (string-trim " " query) "") (message "No link inserted: nothing to match"))
           ((or (find #\[ query) (find #\] query) (find #\( query) (find #\) query))
-           (message "No link inserted: denote: links take no brackets or parentheses"))
+           (message "No link inserted: denote links take no brackets or parentheses"))
           (t (let* ((label (if (string-equal extension ".txt") "" (read-link-label region buffer query)))
                     (problem (link-label-problem label)))
                (if problem
@@ -488,7 +488,7 @@ or news address, a DOI's at https://doi.org/; NIL for a link of any other type."
 its buffer it leads to, or open the address outside it."
   (let ((buffer (org-parse-buffer parse))
         (type (org-property link :type)) (path (org-property link :path)) (raw (org-property link :raw-link)))
-    ;; a type Org itself does not know, read as text to search for: denote: leads to a file by its identifier
+    ;; a type Org itself does not know, read as text to search for; denote: leads to a file by its identifier
     (when (and (string= type "fuzzy") (uiop:string-prefix-p "denote:" path))
       (setf type "denote" path (subseq path 7)))
     (when (and (string= type "fuzzy") (uiop:string-prefix-p (format nil "~a:" *formatted-files-link-type*) path))

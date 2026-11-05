@@ -83,9 +83,9 @@ in."
 
 (defun popup-region (popup)
   "Where the word POPUP completes is now, as three values: its start, its end
-and the word; NIL when there is no longer a word to complete: the cursor gone
+and the word; NIL when there is no longer a word to complete (the cursor gone
 out of it, its buffer no longer the one shown, or what cannot be part of a
-word put in it."
+word put in it)."
   (let ((editor *editor*) (target (popup-target popup)))
     (if (eq target :minibuffer)
         (let ((text (editor-minibuffer-text editor))

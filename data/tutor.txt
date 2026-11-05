@@ -62,8 +62,8 @@ exactly that.  Give it as \`C-u' N before the key.
 
 Every motion takes one, and so does every \`m' key that selects a thing,
 along with \[delete-selection-or-char], \[copy-selection-or-char], \[tuatara-change], \[yank-over-selection], \[tuatara-open-below], \[tuatara-open-above] and \[select-lines].  The keys with no
-"how many" in them -- entering INSERT at the cursor, the other two
-selection toggles, asking for help -- ignore a count rather than
+"how many" in them (entering INSERT at the cursor, the other two
+selection toggles, asking for help) ignore a count rather than
 refusing it, so a guess there costs nothing.
 
 Mind the \`C-u': a count always starts with it.  A bare \`3' does NOT start a
@@ -117,7 +117,7 @@ A character that is not on your keyboard has a code of its own, and
 one.
 
 >> Put the cursor on the full stop below, press \[tuatara-insert], type the missing
-   word -- it is "dog" -- then press \`C-g' to return to NORMAL.
+   word ("dog"), then press \`C-g' to return to NORMAL.
 
    ----> The quick brown fox jumps over the lazy .
 
@@ -198,10 +198,10 @@ end of its sentence.
 w W b B s S mark and grow exactly as their m-prefixed keys do, so \`M' \`w' \`b'
 selects what three prefixed presses select, the press itself being
 the first of them.  A reminder of the object keys stays in the echo
-area for as long as the mode is on, and goes when the mode does -- as
+area for as long as the mode is on, and goes when the mode does, as
 one does for v, V and m v too, each naming what its own selection
 answers to.  It names the keys whose SUBJECT the mode changes and no
-others -- w moves by a word in NORMAL state and marks one here --
+others (w moves by a word in NORMAL state and marks one here),
 while a key that keeps its subject is left out: h j k l still move,
 J and K still work on lines, \`.' still repeats, u and U still step
 back and forward.  All of them are below.
@@ -223,7 +223,7 @@ and \`M' \`w' is two words.
 J and K grow the selection by lines, J at the bottom end and K at the
 top, each finishing its own end's line first: from a word, \`J' reaches
 the end of its line, newline and all, \`K' the start, and \`J' \`K' is the
-whole line -- so a delete after the pair removes it outright, and
+whole line, so a delete after the pair removes it outright, and
 from a line's first word \`J' alone is enough.  h j k l move point and
 adjust the selection's near end; g h and g l are the two that own an
 end apiece instead, so they add up -- \`M' \`g' \`h' \`g' \`l' takes the whole
@@ -246,16 +246,16 @@ words, and each \`.' is one step for \`u' to take back.
 
 Paragraphs keep their m prefix there, since p and P stay the paste
 keys inside the mode: m p and m P grow a run just as the bare letters
-do.  A selection you already have -- from \[start-selection], \[select-lines] or the mark keys -- is
+do.  A selection you already have (from \[start-selection], \[select-lines] or the mark keys) is
 ADOPTED by \[mark-run-toggle] rather than dropped, and the object keys grow it from there.
 
 Any other key returns to NORMAL state and does its ordinary job in the
 same press, so \[mark-run-toggle] \`w' \`w' \[delete-selection-or-char] selects two words and deletes them with
 no explicit exit.  Two presses are held back from that: a key that
-does nothing -- one that is unbound -- leaves the run standing, so a
+does nothing (one that is unbound) leaves the run standing, so a
 mistyped key costs nothing but a message, and \[select-lines] says to
-leave the run first rather than quietly taking it over.  \[mark-run-toggle] again --
-or \`C-g' -- drops the selection and the mode with it.
+leave the run first rather than quietly taking it over.  \[mark-run-toggle] again
+or \`C-g' drops the selection and the mode with it.
 
 A word stops at a hyphen or underscore; a symbol runs straight through
 one.  On a name held together by them the two select very different
@@ -603,8 +603,8 @@ clears the block first, no mark command being able to act on columns.
 \`%' is the same: inside a run it takes the whole buffer, and the run
 carries on.
 
-Pressing a starter twice cancels it -- \`V' \`V', \`m' \`v' \`m' \`v',
-\[mark-run-toggle] \[mark-run-toggle] -- except \`v', which re-anchors instead.
+Pressing a starter twice cancels it (\`V' \`V', \`m' \`v' \`m' \`v',
+\[mark-run-toggle] \[mark-run-toggle]), except \`v', which re-anchors instead.
 
 
 Lesson 11 -- when two selections disagree
@@ -679,8 +679,8 @@ which of the two you get.
 
 Either half of a pair does the same thing, so \`)' wraps as \`(' does and
 you can reach for whichever is nearer.  The delimiters are the pairs
-\[select-inside-pair] and \[select-pair] already know -- the brackets, the quotes, the curved
-quotes, the guillemets, and \`=' \`*' \`/' \`~' \`|' \`\' \`+' \`_' \`$' -- so whatever those
+\[select-inside-pair] and \[select-pair] already know (the brackets, the quotes, the curved
+quotes, the guillemets, and \`=' \`*' \`/' \`~' \`|' \`\' \`+' \`_' \`$'), so whatever those
 two can select, a key can wrap.
 
 Two of them are not wrap keys: \`:' goes to a line and \`>' indents, and
@@ -905,7 +905,7 @@ The matches do not have to agree.
 
 Where the matches differ, what you type goes at their edges: moving
 into one ends the split, since there is no one text to edit in all of
-them.  And matches that touch are refused -- a over aaa -- since text
+them.  And matches that touch are refused (a over aaa), since text
 typed where two meet would belong to both.
 
 In a regexp some characters are special: \d is a digit, \s a
@@ -1040,7 +1040,7 @@ when they have them.
 A cursor never leaves its own line: a motion that would cross stops at
 the line's edge.  Cursors that come to share a line become one, and a
 command that fails at one cursor is undone at all of them.  A key the
-cursors do not answer -- \`j' and \`k' among them -- ends them and does its
+cursors do not answer (\`j' and \`k' among them) ends them and does its
 ordinary job.
 
 
@@ -1082,8 +1082,8 @@ word under the cursor is offered as the pattern.  \[split-selection] edits
 every match at once.  \`M-p' brings back what you typed before.
 \[describe-bindings] lists the bindings.
 
-Every buffer a program made for you -- help, *Messages*, the buffer
-list -- is a SUPPORT buffer: \`h' \`j' \`k' \`l' and the \`SPC' leader are
+Every buffer a program made for you (help, *Messages*, the buffer
+list) is a SUPPORT buffer. There \`h' \`j' \`k' \`l' and the \`SPC' leader are
 the modal keys, and every other key is the buffer's own.  The mode line says
 TUATARA[S].  \`C-x SPC' opens the leader too, in every buffer and state,
 INSERT included.

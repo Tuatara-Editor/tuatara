@@ -113,7 +113,7 @@ defaults are installed in an editor; before, as the core has them."
 
 (defmethod host-keymap-named ((host defaults-host) name)
   "The keymap called NAME in help and messages: one bind-key names (normal,
-leader, minibuffer, popup: KEYMAP-REGISTRY), a variable of the editor's
+leader, minibuffer, popup, as KEYMAP-REGISTRY has them), a variable of the editor's
 holding one (*tuatara-normal-keymap*), else a major mode's (buffers-mode); NIL
 when there is none."
   (or (cdr (assoc name (keymap-registry) :test (lambda (name key) (string-equal name (symbol-name key)))))
@@ -214,6 +214,7 @@ so that \\`C-c' shows, and runs, what the buffer at hand can do in every mode
     (install-bookmarks)
     (install-registers)
     (tuatara.packages:install-packages)
+    (install-servers)
     (install-file-local-variables)
     (install-snippets editor)
     (install-paths-in-text editor)

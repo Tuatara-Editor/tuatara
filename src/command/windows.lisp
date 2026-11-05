@@ -256,7 +256,7 @@ rows, below a lone window; else the window used least lately), :below or
 whole left or right side),
 :right-or-alone (down the whole right side when the screen has
 *SPLIT-WIDTH-THRESHOLD* columns, else the only window on it, the others
-closed: their buffers stay), or :nowhere (not shown at all).
+closed; their buffers stay), or :nowhere (not shown at all).
 
 SIZE is how big a new window is: a fraction of the screen's height, or width
 for :beside, :left and :right (0.3), a number of rows of text or of columns (12), or

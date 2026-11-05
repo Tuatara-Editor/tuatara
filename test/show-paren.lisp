@@ -8,17 +8,6 @@
 shown in :paren-match; one of another kind or none in :paren-mismatch; brackets in strings and
 comments count for nothing; M-x show-paren-mode switches it.")
 
-(defun faces-at (frontend row column)
-  "The faces the last frame FRONTEND painted over COLUMN of ROW, a list."
-  (loop for (start end face) in (aref (tuatara.frontend.fake:fake-spans frontend) row)
-        when (and (<= start column) (< column end))
-          append (if (listp face) face (list face))))
-
-(defun row-showing (frontend text)
-  "The row of the last frame FRONTEND painted that holds TEXT, or NIL."
-  (loop for row from 0 below (length (tuatara.frontend.fake:fake-screen frontend))
-        when (search text (tuatara.frontend.fake:fake-screen-line frontend row)) return row))
-
 (define-test (show-paren partners)
   (flet ((partner (text at &optional spans)
            (multiple-value-list (tuatara.defaults::counted-partner (tuatara.text:string->rope text) (coerce spans 'simple-vector)

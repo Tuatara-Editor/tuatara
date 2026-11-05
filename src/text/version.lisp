@@ -49,7 +49,7 @@ text has no edits and its SWAP instead."
 
 (defstruct (link (:constructor make-link (map)) (:copier nil))
   "A version's place in its text's history, without its text: MAP takes a
-position of the version before to this one (NIL for the first: a batch of
+position of the version before to this one (NIL for the first, otherwise a batch of
 edits, or a function of a position and a bias for a swap of the whole text);
 NEXT is the link of the version after, or NIL while it is current."
   (map nil :type (or null batch function) :read-only t)

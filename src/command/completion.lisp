@@ -71,7 +71,7 @@ CASE-SENSITIVE (FOLD-COMPONENT), matches STRING, as four values: the kind of
 match, :prefix, :substring, :initialism (its characters the first characters
 of STRING's first words, WORD-START-P), :flex (its characters in STRING in
 order, not necessarily adjacent) or NIL; where a prefix or substring was
-found; how spread out a flex match is, found in order from STRING's start: the
+found; how spread out a flex match is, found in order from STRING's start, the
 gaps between its characters counted ten each and the characters skipped inside
 it one each, 0 when they stand together; and with POSITIONS, the positions of
 STRING it matches, as a list. Each character of STRING is compared once for
@@ -279,7 +279,7 @@ Complexity: O(COUNT log COUNT)."
   "Return the CANDIDATES (a list or a vector) matching INPUT as a
 simple-vector sorted best first:
 the one whose string is INPUT exactly; then those matching more closely
-\(COMPONENT-SCORE's second value: found at the start of a word before inside
+\(COMPONENT-SCORE's second value, found at the start of a word before inside
 one, before the first letters of words, before letters apart); among those
 matching as closely, entries of HISTORY (a list of strings, most recent
 first) and candidates with a RANK before others, in that order; then those

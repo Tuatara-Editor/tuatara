@@ -340,7 +340,7 @@ key:value tags of BUFFER's first tasks (FIRST-RECORDS)."
 
 (defun json-line-each ()
   "A RECORD-FIELDS-EACH for JSON Lines: the value of key FIELD, or of a path
-of keys apart by dots (user.id), of the JSON object a line holds: a string as
+of keys apart by dots (user.id), of the JSON object a line holds; a string as
 it reads, escapes undone; anything else as JSON. NIL for a line that is no
 JSON, or a key it lacks or that holds null. The value is found where it lies
 in the line (JSON-PATH-BOUNDS): a string without escapes, a whole number,

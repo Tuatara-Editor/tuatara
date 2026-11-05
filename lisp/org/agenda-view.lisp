@@ -51,7 +51,7 @@ text where the time would have been.")
 (defvar *org-agenda-event-kind-text* "Event:"
   "What the agenda's column of kinds (Scheduled:, Deadline:) says on the line
 of an event, a date in the text of an entry with no TODO keyword
-\(:org-agenda-event-kind): Event:, so that every line says what it is and
+\(:org-agenda-event-kind), Event:, so that every line says what it is and
 its heading stands in one column, the kinds shorter than the column (1/3):
 filled out to it; \"\" leaves the column empty, lined up all the same; NIL
 leaves it out, the heading where the kind would have been, as Org's, a
@@ -157,9 +157,9 @@ or  8:00 followed by the time grid's AFTER-TIME, twelve columns wide."
     (format nil "~12a" text)))
 
 (defun org-agenda-tags-text (entry)
-  "ENTRY's tags as the agenda shows them: :home::work: for home inherited and
-work its own, :home:: for home inherited and none its own, :work: for its own
-alone; NIL for none. A list item's checkbox kept as a task has no tags of its
+  "ENTRY's tags as the agenda shows them: home inherited and work its own as
+:home::work:, home inherited and none its own as :home::, its own alone as
+:work:; NIL for none. A list item's checkbox kept as a task has no tags of its
 own, only those of its headline: :home:, nothing after them."
   (let* ((local (agenda-entry-local-tags entry))
          (inherited (remove-if (lambda (tag) (member tag local :test #'string=)) (agenda-entry-tags entry))))
@@ -796,10 +796,10 @@ scheduled tasks, deadlines and timestamps."
 
 (define-command org-agenda-check-dates ()
   "Show the entries of *ORG-AGENDA-FILES* whose dates look wrong, each with
-what is wrong (ORG-ENTRY-DATE-PROBLEM): Both: a date in its text and a
-SCHEDULED: or DEADLINE: too; No repeat: a task with times done, moved or
-cancelled one at a time whose dates no longer repeat; Plain date: a task with
-a date in its text alone. Nothing is changed: \\<org-agenda-mode>\\[org-agenda-switch-to] opens the entry,
+what is wrong (ORG-ENTRY-DATE-PROBLEM). \"Both\" is a date in its text and a
+SCHEDULED: or DEADLINE: too; \"No repeat\" is a task with times done, moved or
+cancelled one at a time whose dates no longer repeat; \"Plain date\" is a task
+with a date in its text alone. Nothing is changed: \\<org-agenda-mode>\\[org-agenda-switch-to] opens the entry,
 and the agenda's keys act on it as on any line."
   (org-agenda-show (list :kind :check) :point :first))
 

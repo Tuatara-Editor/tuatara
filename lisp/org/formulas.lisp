@@ -531,7 +531,7 @@ ORG-CALC-TEXT takes it), :DIGITS (;p20), :PRINTF (%.2f...), :UNSUPPORTED."
 ;;; Formulas of a table
 
 (defstruct (org-formula (:conc-name org-formula-))
-  "One formula of a table: TEXT as #+TBLFM: has it, LHS (what it fills: :COLUMN
+  "One formula of a table: TEXT as #+TBLFM: has it, LHS (what it fills as :COLUMN
 with COLUMN, :FIELD with ROW and COLUMN, :RANGE with FROM and TO), RHS (the
 text to work out), its FLAGS (as ORG-READ-FORMULA-FLAGS gives them) and
 PARSED, its right-hand side once read."

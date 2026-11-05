@@ -85,7 +85,7 @@ cdr; its car the face generation (TUATARA.DISPLAY:*FACE-GENERATION*) they
 were made for.")
 
 (defun terminal-faces (look)
-  "The faces a cell of LOOK (EMULATOR-FRAME's, a number: LOOK-LIST) is shown
+  "The faces a cell of LOOK (EMULATOR-FRAME's, a number, see LOOK-LIST) is shown
 in: its colours, then bold, italic, underlined, dim and reversed. Made once
 for each look while the faces stay as they are."
   (let ((known *terminal-look-faces*))
@@ -159,7 +159,7 @@ green and blue; 0 for none."
 
 (defun sgr-colour-parts (parts)
   "The parts of a colour written with colons (2::R:G:B, 2:R:G:B or 5:N, after
-38: or 48:) as SGR-COLOUR takes them: the colour space a 2:: may hold left out."
+38: or 48:) as SGR-COLOUR takes them, the colour space a 2:: may hold left out."
   (if (and (eql (first parts) 2) (= (length parts) 5)) (list* 2 (cddr parts)) parts))
 
 (defun ansi-pieces (text)
@@ -602,8 +602,8 @@ meanwhile kept by its emulator (BUFFER-HELD-BY-QUESTION-P)."
                        ((nil))
                        (:busy (setf again t))
                        (t (setf all t))))))
-               ;; typing stopped: the history as text, made in the background; typing
-               ;; again: the screen as it is now
+               ;; typing stopped, the history as text, made in the background; typing
+               ;; again, the screen as it is now
                (let ((typing (terminal-typing-p buffer)))
                  (unless (eq typing (tuatara.buffer:buffer-local buffer 'terminal-was-typing))
                    (setf (tuatara.buffer:buffer-local buffer 'terminal-was-typing) typing

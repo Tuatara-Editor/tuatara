@@ -418,7 +418,7 @@ and is passed at once."
 WIDTH pixels wide, in three passes over all rows, as PASS says. :grid, the row
 in its own cells but for the parts SCALES names, each (START END SCALE SHIFT
 HEIGHT) in columns and rows, only its runs of characters that reach the columns
-from FROM below TO; :large, those parts alone: the text from START on
+from FROM below TO; :large, those parts alone, the text from START on
 drawn SCALE times as tall and wide, SHIFT rows lower, over the cells from
 START below END of the HEIGHT rows it reaches (SCALE 0: nothing); :over, the
 parts of OVER, each (LEFT TEXT SPANS), in the row's own cells over everything,
@@ -704,7 +704,7 @@ their width in pixels."
 
 (defstruct (kept-rows (:constructor make-kept-rows (key)) (:copier nil))
   "The rows of the window as last painted, kept from one frame to the next so
-that only what changed is painted again (KEEP-ROWS): PIECES, for each row
+that only what changed is painted again (KEEP-ROWS). PIECES, for each row
 down the window, its parts as painted, each (FROM BELOW STRIP SHOWS
 TEXTURE): a picture in memory, STRIP, of the row's cells from column FROM below
 BELOW, without what is drawn over the rows (the cursor, pictures, what the
@@ -999,7 +999,7 @@ red, green and blue, with alpha when it has four channels."
          (stride (* width channels)))
     (tuatara.io:with-octets-sap (data pixels)
       (let* ((bytes (g-bytes-new data (length pixels)))
-             ;; 5: R8G8B8A8, 7: R8G8B8 (GdkMemoryFormat)
+             ;; 5 is R8G8B8A8, 7 is R8G8B8 (GdkMemoryFormat)
              (texture (gdk-memory-texture-new width (tuatara.frontend:image-height image)
                                               (if (= channels 4) 5 7) bytes stride)))
         (g-bytes-unref bytes)
@@ -1250,13 +1250,3 @@ height in pixels, and the width and height of a cell; its value is returned."
     (tuatara.display:colour-hex
      (list (sb-sys:sap-ref-8 data (+ offset 2)) (sb-sys:sap-ref-8 data (+ offset 1))
            (sb-sys:sap-ref-8 data offset)))))
-
-(defun paint-frame-to-png (frame path &rest options)
-  "Paint FRAME as the window would into a PNG file at PATH, without a display;
-OPTIONS as for CALL-WITH-PAINTED-FRAME. Returns the width and height in pixels."
-  (apply #'call-with-painted-frame
-         (lambda (surface width height cell-width cell-height)
-           (declare (ignore cell-width cell-height))
-           (cairo-surface-write-to-png surface (namestring path))
-           (values width height))
-         frame options))

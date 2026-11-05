@@ -40,9 +40,10 @@ the package on the line in rimu, \\[list-visit-other] in another window, \\[quit
 \\`h' returns; \\[list-mark-entry] marks a package (>), \\[list-mark-for-deletion] marks it for deletion (D),
 \\[list-unmark-entry] unmarks it, \\[list-unmark-all] unmarks them all, \\[list-toggle-marks] swaps marked and
 unmarked; \\[package-update-marked] fetches the marked ones again (the one on the line when none is),
-\\[list-delete-marked] deletes what is kept of them after asking, \\[list-execute] of those marked for deletion;
-\\[revert-buffer] lists them again, marks kept, as the list does by itself while it
-is shown. The README of the package on the line is shown beside the list,
+\\[package-load] loads them, \\[package-unload] unloads them from the running editor, \\[package-remove] removes them
+from the packages loaded, \\[list-delete-marked] unloads, removes and deletes them after asking
+\(\\[package-delete]), \\[list-execute] those marked for deletion; \\[revert-buffer] lists them again, marks kept,
+as the list does by itself while it is shown. The README of the package on the line is shown beside the list,
 \\[list-toggle-preview] turning that off and on."
   :lighter "Packages" :interactive nil)
 
@@ -70,18 +71,21 @@ entry remembered (KEY COMMIT TAG ACCEPTED) and where it is kept, as two values."
 (defun package-condition (name entry)
   "What is become of the package NAME this session, ENTRY what is remembered
 of it: loaded, fetching, loading (compiled and loaded in the background),
-refused (it uses names this Tuatara lacks), failed, waiting (for another,
-:after), later (to load on a command, a mode or once started), declined (not
-let load), kept or not fetched."
+removed (not loaded though the init file names it), refused (it uses names
+this Tuatara lacks), failed, waiting (for another, :after), later (to load on
+a command, a mode or once started), unloaded, declined (not let load), kept
+or not fetched."
   (cond ((package-loaded-p name) "loaded")
         ((member name *fetching-packages* :test #'string=) "fetching")
         ((let ((job (cdr (assoc name *packages-in-hand* :test #'string=))))
            (and job (package-fetch-load job)))
          "loading")
+        ((package-removed-p name) "removed")
         ((member name *refused-packages* :test #'string=) "refused")
         ((assoc name *package-failures* :test #'string=) "failed")
         ((find name *packages-waiting* :key #'second :test #'string=) "waiting")
         ((member name *deferred-packages* :test #'string=) "later")
+        ((member name *unloaded-packages* :test #'string=) "unloaded")
         ((and entry (not (fourth entry))) "declined")
         (entry "kept")
         (t "not fetched")))
@@ -138,8 +142,9 @@ CONDITION, none for one loaded."
   "What the package manager LIST shows, cheaply; another key means it is out
 of date (KEEP-SHOWN-CURRENT)."
   (declare (ignore list))
-  (list *declared-packages* *loaded-packages* *fetching-packages* *packages-in-hand* *package-failures*
-        (state-list-entries *fetched-packages*) (state-list-entries *package-trust*)))
+  (list *declared-packages* *loaded-packages* *unloaded-packages* *fetching-packages* *packages-in-hand*
+        *package-failures* (state-list-entries *fetched-packages*) (state-list-entries *package-trust*)
+        (state-list-entries *removed-packages*)))
 
 (keep-shown-current 'packages-mode 'packages-key)
 
@@ -147,16 +152,18 @@ of date (KEEP-SHOWN-CURRENT)."
   "Manage the packages the init file loads from a source (load-package with
 :source) in a list, as the buffer list (\\[buffers]) manages buffers. Each
 line: its mark (> marked, D marked for deletion), name, the version kept (its
-tag), its commit, what is become of it (loaded; fetching; refused, using
-names this Tuatara lacks; failed; declined, not let load; kept, not loaded;
-not fetched), who signs its source's versions (unsigned, and unencrypted for
+tag), its commit, what is become of it (loaded; fetching; removed, not
+loaded though the init file names it; refused, using names this Tuatara
+lacks; failed; unloaded; declined, not let load; kept, not loaded; not
+fetched), who signs its source's versions (unsigned, and unencrypted for
 an address of http:// or git://) and where it comes from; the names of those not loaded set
 apart; why one was refused or failed is shown beside the list in place of
 its README. \\<packages-mode>\\[list-visit] or \\`RET' lists a package's
 folder in rimu, to read its source, \\[list-visit-other] in another window; \\[list-mark-entry] marks
 it, \\[list-mark-for-deletion] marks it for deletion, \\[list-unmark-entry] and \\[list-unmark-all] unmark, \\[list-toggle-marks] swaps marked and unmarked, a count marking as
-many; \\[package-update-marked] fetches the marked ones again, \\[list-delete-marked] deletes what is kept of
-them after asking, \\[list-execute] of those marked for deletion. The README of
+many; \\[package-update-marked] fetches the marked ones again, \\[package-load] loads them, \\[package-unload] unloads
+them, \\[package-remove] removes them from the packages loaded, \\[list-delete-marked] unloads, removes and
+deletes them after asking (\\[package-delete]), \\[list-execute] those marked for deletion. The README of
 the package on the line is shown beside the list, \\[list-toggle-preview] turning that
 off and on. \\[package-update] fetches them all again."
   (let ((list (buffer-in-mode "*Packages*" 'packages-mode)))
@@ -211,14 +218,16 @@ was read."
                                           (push (list inner line t) found)))))))
       (values (nreverse found) (and stopped (cons (car stopped) (princ-to-string (cdr stopped))))))))
 
-(defun scan-init-file-packages (file)
+(defun scan-init-file-packages (file &optional names)
   "Load each package the init file FILE names with load-package and :source
-that is not loaded or on its way (INIT-FILE-PACKAGE-FORMS): its load-package
-evaluated by itself, as at the start, so that it is fetched, asked about and
-loaded as there. Each found, (NAME LINE INSIDE OUTCOME), OUTCOME what
-became of it (PACKAGE-CONDITION) or why it failed; as a second value, where
-the reading stopped, (LINE . WHY), or NIL."
+that is not loaded or on its way (INIT-FILE-PACKAGE-FORMS), of NAMES alone
+when given: its load-package evaluated by itself, as at the start, so that it
+is fetched, asked about and loaded as there. Each found, (NAME LINE INSIDE
+OUTCOME), OUTCOME what became of it (PACKAGE-CONDITION) or why it failed; as
+a second value, where the reading stopped, (LINE . WHY), or NIL."
   (multiple-value-bind (found stopped) (init-file-package-forms file)
+    (when names
+      (setf found (remove-if-not (lambda (item) (member (second (first item)) names :test #'string=)) found)))
     (values
      (loop for (form line inside) in found
            for name = (second form)
@@ -310,34 +319,11 @@ in the init file (:signers) still decide for their source."
 current line, as \\[package-update] does them all."
   (act-on-list (current-buffer) (lambda (list names) (update-packages names) (unmark-list list)) "package"))
 
-(defun forget-package (name source version)
-  "Delete what is kept of the package NAME from SOURCE, VERSION asked for:
-what is remembered of it, its commits fetched and their files compiled; for a
-folder of your disk, that it was let load and its files compiled, the folder
-left as it is."
-  (let* ((where (package-where source))
-         (local (local-source-p where))
-         (top (if local (package-folder-of name where nil) (package-kept-folder where name))))
-    (state-list-drop *fetched-packages* (list (package-key name where version)))
-    (dolist (folder (cons (directory-namestring (package-fasl (merge-pathnames "x" top))) (unless local (list top))))
-      (when (probe-file folder)
-        (delete-package-folder folder)))))
-
-(defun packages-delete (list names)
-  "Delete what is kept of the packages called NAMES after asking (FORGET-PACKAGE),
-and make LIST again."
-  (when (yes-or-no-p* (format nil "~a?" (list-question "Delete what Tuatara keeps of" "package" names)))
-    (dolist (name names)
-      (let ((package (declared-package name)))
-        (when package (forget-package (first package) (second package) (third package)))))
-    (unmark-list list)
-    (message "~[No packages~;1 package~:;~:*~d packages~] deleted: one loaded stays so until Tuatara ends; at the next start its load-package line fetches it again, or for a folder of your disk asks again"
-             (length names))))
-
 (defmethod delete-entries ((mode packages-mode) list names mark)
-  "Delete what is kept of the packages, after asking (PACKAGES-DELETE)."
+  "Unload, remove and delete the packages, after asking (\\[package-delete])."
   (declare (ignore mark))
-  (packages-delete list names))
+  (start-packages-delete names)
+  (unmark-list list))
 
 (defun package-readme (folder)
   "The README of the package in FOLDER: README.org, README.md, README.txt or
@@ -382,9 +368,11 @@ the package manager (PACKAGE-PREVIEW-BUFFER)."
   (table-columns-width *packages-columns* *packages-source-width*))
 
 (defun install-packages ()
-  "Bind the package manager's keys, \\`P' turning the README beside it off and on."
+  "Bind the package manager's keys, \\`P' turning the README beside it off and
+on, \\`L', \\`K' and \\`R' loading, unloading and removing the packages marked."
   (entry-list-keys 'packages-mode "the package manager (\\[package-manager])")
-  (define-keys *packages-keymap* '(("f" package-update-marked)))
+  (define-keys *packages-keymap* '(("f" package-update-marked) ("L" package-load) ("K" package-unload)
+                                   ("R" package-remove)))
   (entry-preview-keys 'packages-mode "the package manager (\\[package-manager])"))
 
 (commands-for-mode 'packages-mode "the package manager (\\[package-manager])" 'package-update-marked)

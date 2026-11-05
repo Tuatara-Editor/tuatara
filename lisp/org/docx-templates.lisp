@@ -11,7 +11,7 @@
 ;;;; paragraph for the note's text, {{{contents}}} alone in one for its
 ;;;; contents, {{{KEY:path}}} alone in one for a picture,
 ;;;; and {{{#KEY}}}...{{{/KEY}}} or {{{^KEY}}}...{{{/KEY}}} around what is kept
-;;;; only when KEY has a value or has none: within a paragraph, around
+;;;; only when KEY has a value or has none, within a paragraph, around
 ;;;; paragraphs, or anywhere in a table's row for the whole row. A place Word
 ;;;; has split among runs of different looks is found all the same. The
 ;;;; template's styles, page, header and footer are kept; Tuatara adds the

@@ -95,7 +95,7 @@ comma when none does. True as a second value when one does."
 (defvar *csv-separator* :detect
   "What separates the fields of the files CSV mode shows: :DETECT, the
 default, takes whichever of comma, semicolon, tab and pipe the first line of
-each file has most of (a comma while it has none, until one is typed there:
+each file has most of (a comma while it has none, until one is typed there,
 in an empty file, or one made empty); a character, such as #\\,
 #\\; or #\\Tab, is taken always, whatever the file holds. Files ending in .tsv
 or .tab are separated by tabs. \\<csv-mode>\\[csv-define-separator] sets the
@@ -115,7 +115,7 @@ record like the rest, the columns offered by their numbers.
 (defun separator-char (separator)
   "The character SEPARATOR stands for as a separator of fields: a character, a
 string of one, or one of the names of *CSV-SEPARATOR-NAMES*; NIL for anything
-else, and for a character that cannot separate fields: one outside ASCII, a
+else, and for a character that cannot separate fields, one outside ASCII, a
 line end or the double quote."
   (let ((char (typecase separator
                 (character separator)

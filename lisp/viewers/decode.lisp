@@ -27,7 +27,7 @@ the editor's when that starts (TUATARA.RUNTIME:CARRY-SETTINGS).")
      :info ("pdfinfo" "fd://0")
      :text ("pdftotext" "-layout" "-enc" "UTF-8" "-l" :pages "fd://0" "-")
      :page ("pdftoppm" "-f" :page "-l" :page "-scale-to-x" :width "-scale-to-y" :height "fd://0")))
-  "The programs known to take the text out of a PDF, the first found used:
+  "The programs known to take the text out of a PDF, the first found used,
 each a list of :NAME, the package they come in, :TEXT, the program printing
 the text and its arguments (:PAGES standing for how many pages, the file read
 on standard input), :INFO, the one printing the number of pages, their size
@@ -269,7 +269,7 @@ program: call it from a thread working in the background."
      :jpeg-hint ("-size" "~dx~d")))
   "The programs known to turn an image into pixels, the first found used
 \(ImageMagick 7's magick, then ImageMagick 6's convert as some systems still
-have it, under the same policy, then GraphicsMagick): each
+have it, under the same policy, then GraphicsMagick), each
 a list of :NAME, the package they come in, and :PROGRAM, the program and its
 arguments, :INPUT standing for the image on standard input, its format named
 (PNG:-[0], its first frame), :SIZE for the most it may be (640x480>, made
@@ -463,7 +463,7 @@ mapped memory and disk set to that."
   "What the sandbox gives ImageMagick: a policy of its own (MAGICK-POLICY,
 MEMORY the octets it is given) at *MAGICK-POLICY-PATH*, through
 MAGICK_CONFIGURE_PATH, and the same policy in place of each of OVERLAYS, the
-other policy files it reads (MAGICK-POLICY-OVERLAYS): reading only the
+other policy files it reads (MAGICK-POLICY-OVERLAYS); reading only the
 formats of *IMAGE-FORMATS*, writing only PAM pixels, no program started
 \(delegates), no filters, no file named by @, no image wider or taller than
 *MAGICK-LARGEST-SIDE*, two threads at most, no more memory than it is given."
@@ -771,7 +771,7 @@ its car turns true; NIL, NIL then. DENSITY, dots an inch, draws a drawing
 :png, :tiff, :jxl, :jp2 for a JPEG 2000 file or :j2k for a bare JPEG 2000
 codestream, either read as both, as a PDF's /JPXDecode picture is one or
 the other...), turned into pixels in the sandbox as DECODE-IMAGE turns a
-file's, no larger than WIDTH by HEIGHT pixels, as two values: a
+file's, no larger than WIDTH by HEIGHT pixels, as two values, a
 TUATARA.FRONTEND:IMAGE, NIL when it could not be made, and notes saying
 why. For a package reading pictures it finds in other files: only plain
 pixels come back, checked, the picture itself never decoded in the editor.

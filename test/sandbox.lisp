@@ -668,6 +668,97 @@ cat ~a/l.txt; echo; echo new > ~a/n.txt && cat ~a/n.txt; cat ~a/h.txt 2>/dev/nul
     (false exit)
     (true too-much)))
 
+(define-test (sandbox program-given-seconds)
+  ;; a program given seconds is ended with what it started once they pass, though it pays no heed to SIGTERM,
+  ;; what it printed so far kept and no exit code given
+  (let ((began (get-internal-real-time)))
+    (multiple-value-bind (output said exit too-much)
+        (tuatara.io:filter-through-program
+         (list (tuatara.io:find-program "sh") "-c" "trap '' TERM; sleep 60 & echo $!; echo $$; wait")
+         nil :seconds 1)
+      (declare (ignore said))
+      (true (< (tuatara.runtime:seconds-since began) (+ 3 tuatara.io::*program-end-grace*))
+            "waited for no longer than its seconds and its ending")
+      (false exit)
+      (false too-much)
+      (let ((pids (uiop:split-string (string-trim '(#\Newline) (tuatara.text:octets-string output))
+                                     :separator '(#\Newline))))
+        (is = 2 (length pids))
+        (dolist (pid pids)
+          (true (wait-until (lambda () (not (probe-file (format nil "/proc/~a/" pid)))) 10)
+                "~a is ended, killed once it did not end when asked" pid)))))
+  ;; printing more than the limit with TRUNCATE: the first octets kept, the rest read and let go
+  (multiple-value-bind (output said exit too-much)
+      (tuatara.io:filter-through-program (list (tuatara.io:find-program "head") "-c" "100000" "/dev/zero") nil
+                                         :limit 1000 :truncate t :seconds 10)
+    (declare (ignore said))
+    (is = 1000 (length output))
+    (is eql 0 exit)
+    (true too-much))
+  ;; what it reads given as a file in place of WRITE
+  (with-test-directory (dir)
+    (let ((path (put-file (merge-pathnames "kea.txt" dir) "kea seen")))
+      (is string= "kea seen" (tuatara.text:octets-string
+                              (tuatara.io:filter-through-program (list (tuatara.io:find-program "cat")) nil
+                                                                 :input path :seconds 10))))))
+
+(define-test (sandbox program-ended-once)
+  ;; a program kept on the editor's own terminal (:INPUT T, as ssh asking for a password is) is ended at its
+  ;; deadline too, by one ending; one whose output cannot be read is ended, not waited for without end
+  (let ((endings 0))
+    (sb-int:encapsulate 'tuatara.io::end-unwanted-program 'counted
+                        (lambda (function &rest arguments) (incf endings) (apply function arguments)))
+    (unwind-protect
+         (multiple-value-bind (output said exit)
+             (tuatara.io:filter-through-program
+              (list (tuatara.io:find-program "sh") "-c" "trap '' TERM; echo $$; sleep 60") nil :input t :seconds 1)
+           (declare (ignore said))
+           (false exit)
+           (let ((pid (string-trim '(#\Newline) (tuatara.text:octets-string output))))
+             (true (wait-until (lambda () (not (probe-file (format nil "/proc/~a/" pid)))) 10) "~a is ended" pid))
+           (is = 1 endings "ended once"))
+      (sb-int:unencapsulate 'tuatara.io::end-unwanted-program 'counted)))
+  (sb-int:encapsulate 'tuatara.io::read-outputs 'failing
+                      (lambda (function &rest arguments)
+                        (declare (ignore function arguments))
+                        (error "the pipes cannot be read")))
+  (unwind-protect
+       (let ((began (get-internal-real-time)))
+         (false (nth-value 2 (tuatara.io:filter-through-program (list (tuatara.io:find-program "sleep") "60") nil)))
+         (true (< (tuatara.runtime:seconds-since began) 10) "ended, not waited for"))
+    (sb-int:unencapsulate 'tuatara.io::read-outputs 'failing)
+    (drain-debug-reports)))
+
+(define-test (sandbox later-setting-taken)
+  ;; of two settings of one variable, the later is the one a program is given
+  (let ((environment (tuatara.io:restricted-environment '() "PATH=/usr/bin" "TZ=Pacific/Auckland" "PATH=/kept")))
+    (is equal '("PATH=/kept") (remove-if-not (lambda (setting) (uiop:string-prefix-p "PATH=" setting)) environment))
+    (true (member "TZ=Pacific/Auckland" environment :test #'string=))))
+
+(define-test (sandbox versions-compared)
+  ;; one reading of a version for bwrap and OpenSSH, and one comparison
+  (is equal '(0 11 0) (tuatara.io:version-numbers (format nil "bubblewrap 0.11.0~%")))
+  (is equal '(9 9) (tuatara.io:version-numbers "OpenSSH_9.9p1, OpenSSL 3.2.2 4 Jun 2024" "OpenSSH_"))
+  (is equal '(10 2) (tuatara.io:version-numbers "OpenSSH_10.2p1 Debian" "OpenSSH_"))
+  (false (tuatara.io:version-numbers "no version here"))
+  (false (tuatara.io:version-numbers "OpenSSL 3.2.2" "OpenSSH_"))
+  (true (tuatara.io:version-at-least-p '(8 9) '(8 9)))
+  (true (tuatara.io:version-at-least-p '(10 0) '(8 9)))
+  (true (tuatara.io:version-at-least-p '(0 11 0) '(0 11)))
+  (false (tuatara.io:version-at-least-p '(8 8) '(8 9)))
+  (false (tuatara.io:version-at-least-p '(0 9) '(0 10)))
+  (true (tuatara.io:version-at-least-p '(1) '(0 99)))
+  (false (tuatara.io:version-at-least-p '(0) '(0 1)))
+  ;; a pre-release comes before its release, alpha before beta before rc
+  (is equal '(0 90 13 -1 1) (tuatara.io:version-numbers "0.90.13-rc1"))
+  (false (tuatara.io:version-at-least-p (tuatara.io:version-numbers "0.90.13-rc1") '(0 90 13)))
+  (true (tuatara.io:version-at-least-p (tuatara.io:version-numbers "0.90.13-rc1") '(0 90 12)))
+  (true (tuatara.io:version-at-least-p (tuatara.io:version-numbers "0.90.13") (tuatara.io:version-numbers "0.90.13-rc2")))
+  (false (tuatara.io:version-at-least-p (tuatara.io:version-numbers "0.90.13-beta.3")
+                                        (tuatara.io:version-numbers "0.90.13-rc1")))
+  (true (tuatara.io:version-at-least-p (tuatara.io:version-numbers "0.90.13-rc2")
+                                       (tuatara.io:version-numbers "0.90.13-rc1"))))
+
 (define-test (sandbox limits-set-by-every-shell)
   ;; the limits are set by the system's /bin/sh, which on Debian and Ubuntu is dash: its ulimit names
   ;; the process limit -p, not -u. Run here by bash made to answer as dash does, the limits are set

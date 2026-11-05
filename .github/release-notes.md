@@ -12,7 +12,7 @@ For x86-64 Linux. Download what you need and `SHA256SUMS`, and check them first:
 sha256sum -c --ignore-missing SHA256SUMS
 ```
 
-**AppImage**: one file, nothing installed, for any system with glibc 2.39 or later (Ubuntu 24.04, Debian 13, Fedora 40 and newer):
+**AppImage** is one file, nothing installed, for any system with glibc 2.39 or later (Ubuntu 24.04, Debian 13, Fedora 40 and newer). Run it like this:
 
 ```sh
 chmod +x Tuatara-x86_64.AppImage

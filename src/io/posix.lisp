@@ -65,7 +65,7 @@ writer of UTF-8 for the system is wrapped, as its TRACE wraps a function."
 (defun path-folder-and-name (path)
   "PATH's name parted at its last /, as two values: the folder, ending in /
 \(./ when there is no /), and the name after it, empty for a name ending in
-/: \"/data/case/\" and \"notes [old].org\" for /data/case/notes [old].org."
+/. For /data/case/notes [old].org they are \"/data/case/\" and \"notes [old].org\"."
   (let* ((name (native path)) (slash (position #\/ name :from-end t)))
     (if slash
         (values (subseq name 0 (1+ slash)) (subseq name (1+ slash)))
@@ -250,7 +250,7 @@ garbage is made for them; BODY must not keep SAP."
   (defun c-type (type)
     "The alien type DEFINE-C-FUNCTION takes TYPE for: :pointer, :int, :uint,
 :short, :uint8, :uint32, :ulong, :size, :double, :float, :void, :boolean (a
-truth value as an int: GLib's gboolean), :bool (a truth value of one octet:
+truth value as an int, GLib's gboolean), :bool (a truth value of one octet,
 C's bool) and :string (text, in UTF-8); any other TYPE is taken as an alien
 type itself."
     (case type
@@ -345,7 +345,7 @@ the system tells: device, inode, size and modification time."
 (defconstant +o-cloexec+ #o2000000 "open's O_CLOEXEC: the descriptor is not given to programs started.")
 (defconstant +o-path+ #o10000000
   "Linux's O_PATH, which sb-posix does not name: a descriptor that only names a
-file, so that it can be examined, nothing in it opened: a device or a named
+file, so that it can be examined, nothing in it opened; a device or a named
 pipe named so is not woken.")
 
 (defun statx-buffer-stamp (buffer)
@@ -668,7 +668,7 @@ system does not say, or the file system keeps no such count (btrfs)."
 
 (defun octets-words (n &key binary compact)
   "N octets in words, to one decimal: 950 B, 12.3 MB, 11.5 GB; with BINARY in
-units of 1,024: 950 B, 954.0 MiB, 1.2 TiB. With COMPACT, as narrow as a
+units of 1,024, as 950 B, 954.0 MiB, 1.2 TiB. With COMPACT, as narrow as a
 column of sizes wants it, in units of 1,024 with one letter for the unit:
 260, 4.1K, 24K, 1.0M; below 10 with one decimal, every figure rounded up."
   (if compact
@@ -1982,6 +1982,18 @@ lock. Signals FILE-SYSTEM-ERROR when it cannot be opened."
     (if (tuatara.runtime:lock-fd fd :wait wait)
         fd
         (progn (sb-posix:close fd) nil))))
+
+(defun lock-file-held-p (path)
+  "True when the lock of the lock file at PATH (OPEN-LOCK-FILE) is held now,
+by another process or this one; NIL when it is free or there is no such
+file. Only a plain file counts: a link is not followed, and a named pipe or
+a device there is never waited on."
+  (let ((fd (handler-case (sb-posix:open (native path) (logior sb-posix:o-rdonly sb-posix:o-nonblock
+                                                               +o-nofollow+ +o-cloexec+))
+              (sb-posix:syscall-error () nil))))
+    (and fd (unwind-protect (and (sb-posix:s-isreg (sb-posix:stat-mode (sb-posix:fstat fd)))
+                                 (not (tuatara.runtime:lock-fd fd :shared t)))
+              (sb-posix:close fd)))))
 
 (defun call-with-state-lock (path function &key (wait 0.1))
   "Call FUNCTION, of no arguments, holding the lock of the file at PATH, a

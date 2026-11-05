@@ -12,6 +12,7 @@
 (load (merge-pathnames "../../tools/quicklisp.lisp" *load-truename*))
 (push (merge-pathnames "../../" (make-pathname :name nil :type nil :defaults *load-truename*)) asdf:*central-registry*)
 (ql:quickload :tuatara/terminal :silent t)
+(import 'tuatara.runtime:wait-until)
 
 (defvar *seen* '()
   "What was seen at each step, newest first, as a property list.")
@@ -31,13 +32,6 @@
         (format nil "~{~a~^~%~}" (loop for row across (tuatara.frontend.gtk::frame-rows frame)
                                        when row collect (first row)))
         "")))
-
-(defun wait-until (test &optional (seconds 30))
-  "Wait until TEST, a function of no arguments, is true, SECONDS at most; its value."
-  (loop repeat (* 10 seconds)
-        for value = (funcall test)
-        when value return value
-        do (sleep 0.1)))
 
 (defun type-keys (f keys)
   "Type KEYS, a key sequence as written (\"C-x 5 2\"), in F's window."
@@ -81,12 +75,12 @@
   "Go through the steps, noting what is seen."
   (see :windows (length (wait-until (lambda () (let ((open (windows)))
                                                (and (= 2 (length open)) (every #'tuatara.frontend.gtk::gtk-shown open)
-                                                    open))))))
+                                                    open))) 30)))
   (destructuring-bind (&optional first second &rest others) (windows)
     (declare (ignore others))
     (when second
-      (see :first-shows-a (and (wait-until (lambda () (search "alpha" (shown-text first)))) t))
-      (see :second-shows-b (and (wait-until (lambda () (search "beta" (shown-text second)))) t))
+      (see :first-shows-a (and (wait-until (lambda () (search "alpha" (shown-text first))) 30) t))
+      (see :second-shows-b (and (wait-until (lambda () (search "beta" (shown-text second))) 30) t))
       ;; typing in the second window: its frame's buffer, the first window painted again only for
       ;; work taken in, never for each key
       (sleep 1)
@@ -96,23 +90,24 @@
                               (when (eq frontend first) (incf paints))
                               (funcall function frontend)))
         (type-keys second "i z y x w v u t s r q p o n m l k j i h g")
-        (see :typed-in-second (and (wait-until (lambda () (search "zyxwvutsrqponmlkjihgbeta" (shown-text second)))) t))
+        (see :typed-in-second
+             (and (wait-until (lambda () (search "zyxwvutsrqponmlkjihgbeta" (shown-text second))) 30) t))
         (sleep 0.5)
         (sb-int:unencapsulate 'tuatara.frontend:frontend-end-frame 'counting)
         (see :first-painted-while-typing paints))
       ;; the second window's close button: its frame closed, the editor going on
       (setf *to-close* second)
       (tuatara.gtk:g-idle-add (tuatara.gtk:callback on-close-pressed) (tuatara.io:null-pointer))
-      (see :closed-one (and (wait-until (lambda () (= 1 (length (windows))))) t))
+      (see :closed-one (and (wait-until (lambda () (= 1 (length (windows)))) 30) t))
       (see :frames-left (length (editor-frames)))
       (type-keys first "i y")
-      (see :first-still-typed (and (wait-until (lambda () (search "yalpha" (shown-text first)))) t))
+      (see :first-still-typed (and (wait-until (lambda () (search "yalpha" (shown-text first))) 30) t))
       ;; C-x 5 2 opens another window, worked in; the first given the keyboard again is the one worked in
       (type-keys first "<escape> C-x 5 2")
-      (see :opened-by-key (and (wait-until (lambda () (= 2 (length (windows))))) t))
+      (see :opened-by-key (and (wait-until (lambda () (= 2 (length (windows)))) 30) t))
       (see :new-worked-in (and (wait-until (lambda ()
                                            (eq (tuatara.command::editor-frame (tuatara.command:running-editor))
-                                               (second (editor-frames)))))
+                                               (second (editor-frames)))) 30)
                                t))
       (setf *to-present* first)
       (tuatara.gtk:g-idle-add (tuatara.gtk:callback on-present) (tuatara.io:null-pointer))

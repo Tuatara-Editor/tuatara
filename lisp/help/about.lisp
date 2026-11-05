@@ -65,8 +65,8 @@ and do what a button there does."
 ;;; *About Tuatara*
 
 (define-major-mode about-mode special-mode
-  "*About Tuatara*: what Tuatara is, whose, under which license, and the ways
-in, each a button: \\<about-mode>\\[push-button] or a click on one opens what it
+  "*About Tuatara*, what Tuatara is, whose, under which license, and the ways
+in, each a button. \\<about-mode>\\[push-button] or a click on one opens what it
 names, \\[forward-button] and \\[backward-button] go from one to the next,
 \\`q' closes; the modal keys that move, select and copy work as in any support
 buffer."

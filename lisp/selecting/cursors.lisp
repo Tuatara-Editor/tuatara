@@ -799,7 +799,7 @@ cursor at its line's end types there."
     (settle-cursors split)))
 
 (defun cursor-span (buffer place count whole-lines)
-  "Three values for what PLACE's cursor acts on: the start and end, and
+  "Three values for what PLACE's cursor acts on, the start and end, and
 whether it is a selection: the selection, with WHOLE-LINES a selected line
 with its newline, or else COUNT characters from the cursor within its line."
   (let ((cursor (cursor-position buffer place)))

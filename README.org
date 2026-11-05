@@ -36,7 +36,7 @@ rope up to the init file.
 - Files with formatted names, a journal and a calendar.
 - rimu, a directory editor, with the trash, a preview, and git status.
 - Viewers for PDFs, pictures, and Word, Excel and PowerPoint documents and
-  LibreOffice's own (OpenDocument: .odt, .ods, .odp), each drawn by a program
+  LibreOffice's own (OpenDocument, .odt, .ods, .odp), each drawn by a program
   shut in a sandbox (bubblewrap), the Office ones also read as text by
   Tuatara itself: nothing in a file is ever run.
 - Auto-save into a private folder of its own, never into the file itself
@@ -48,8 +48,8 @@ rope up to the init file.
   request); a file opened safely is never decrypted.
 - The session kept, as an option (=*keep-session*=): the files, directories and
   windows opened again as they were at the next start.
-- =M-x file-metadata=: what a file is and says of itself, read by Tuatara alone
-  (no other program): kind by contents, owner, permissions, its four times,
+- =M-x file-metadata= shows what a file is and says of itself, read by Tuatara
+  alone (no other program): kind by contents, owner, permissions, its four times,
   SHA-256, extended attributes (where a download came from); a photograph's
   EXIF with its GPS position and thumbnail (JPEG, HEIC, PNG, WebP, TIFF),
   XMP and its edit history, a PDF's information, saves and scripts, MP3 and
@@ -224,6 +224,7 @@ In the window and in a terminal alike:
 | enchant and a hunspell dictionary | spelling                                                          |
 | git                            | the git status (=C-x g=), and packages fetched                       |
 | GnuPG                          | =.gpg= files opened and saved encrypted                              |
+| OpenSSH and util-linux's setpriv | a daemon on another machine shown here (=--client=HOST:=), your ssh agent lent to it for each use you confirm |
 | xdg-utils                      | a file opened in the desktop's own program, a link in the browser    |
 | XeLaTeX or LuaLaTeX            | Org documents exported to PDF                                        |
 | a language's server and formatter | completion, errors and layout for that language; =M-x check-health= names the one each language looks for |
@@ -287,7 +288,7 @@ redefine any of it.
 
 * Status
 
-Version 0.90.15, a pre-release: in daily use by its author, its parts tested
+Version 0.90.16, a pre-release: in daily use by its author, its parts tested
 (=tools/test.sh=, about 225,000 checks), its interfaces still changing until
 1.0.0, the first stable release.
 

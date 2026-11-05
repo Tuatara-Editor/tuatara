@@ -174,7 +174,7 @@ signal an error when the library refuses."
       (emulator-mouse-event "ghostty_mouse_event_new" "ghostty_mouse_event_free"))
     "The terminal library's objects an emulator holds: each its slot's reader,
 the C function that makes it from no more than a place for it (NIL for one
-made otherwise: the terminal, which takes its size, and the pictures'
+made otherwise, the terminal, which takes its size, and the pictures'
 iterator, made only when pictures are on), and the one that frees it."))
 
 (defmacro make-library-objects (emulator)
@@ -1131,8 +1131,8 @@ alone. Pictures are made once for each picture the program sends and kept
 each (COLUMN COLOUR MARKS): COLOUR the code of the cell's colour (STYLE-COLOUR), MARKS the code points after U+10EEEE. As a list of (COLUMN PICTURE
 ROW PART-COLUMN): PICTURE the picture's number (its colour, the third mark its
 highest octet), ROW and PART-COLUMN the cell's of the picture, from its
-marks, or, those left out, from the cell before it: its row, and the column
-after its column."
+marks, or, those left out, from the cell before it (its row, and the column
+after its column)."
   (let ((out '()) (before nil))
     (dolist (cell cells (nreverse out))
       (destructuring-bind (column colour marks) cell

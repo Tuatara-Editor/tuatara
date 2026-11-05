@@ -23,8 +23,7 @@ then ends at . ? ! or … followed by two spaces, a tab or a line end, and
 filling keeps two spaces after a sentence's end where there were two or a line
 end. NIL, one space ends a sentence and filling puts one. Either way an
 abbreviation's full stop (*SENTENCE-ABBREVIATIONS*: e.g., Dr.) ends none. A
-buffer whose file says which it uses (sentence-end-double-space: t in its
-Local Variables: block) goes by that.")
+buffer whose file says which it uses (sentence-end-double-space: t in its Local Variables block) goes by that.")
 
 (defun sentence-end-double-space-p (buffer)
   "True when BUFFER's sentences are two spaces apart (*SENTENCE-END-DOUBLE-SPACE*,
@@ -218,7 +217,7 @@ paragraph of its own, as Org fills one."
 
 (defun paragraph-lines (buffer line low high separator-p &optional item-start-p)
   "Two values: the starts of the first and the last line of the paragraph of
-BUFFER about LINE, a line start: the lines above it back to LOW and below it
+BUFFER about LINE, a line start; the lines above it back to LOW and below it
 up to HIGH, up to a line SEPARATOR-P, a function of a line's start, is true
 of, and, with ITEM-START-P given, up to a line it is true of, which begins a
 paragraph of its own. An error when the paragraph is larger than
@@ -314,7 +313,7 @@ two columns, a combining mark none."
 (defun sentence-end-word-p (word)
   "True when WORD ends a sentence: its last character, past any closing quotes
 and brackets, is . ? ! … or ‽, and not the full stop of an abbreviation
-\(ABBREVIATION-ENDING-P: e.g., Dr.)."
+\(ABBREVIATION-ENDING-P, e.g., Dr.)."
   (let ((end (position-if-not #'sentence-closing-char-p word :from-end t)))
     (and end (sentence-end-char-p (char word end))
          (not (and (char= (char word end) #\.) (abbreviation-ending-p (subseq word 0 (1+ end)))))

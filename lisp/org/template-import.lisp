@@ -9,10 +9,12 @@
 ;;;;
 ;;;; - #+title:, #+template: NAME, and #+options: with redact:nil and
 ;;;;   protect:nil, a comment saying what {{{R(...)}}} and {{{P(...)}}} do;
+;;;;
 ;;;; - for each field a comment naming it, with the document's example, and
 ;;;;   its keyword: empty where the document had placeholder text ([Enter
 ;;;;   name], XXXX), %date% for a date, %author% for an empty author, else
 ;;;;   what the document had; and
+;;;;
 ;;;; - the document's text as Org, a heading with nothing under it given a
 ;;;;   comment saying what to write there.
 ;;;;
@@ -37,7 +39,7 @@ CHOICES) in the order met; NOTES, what to say of it."
 
 (defun template-field-key (text)
   "TEXT, a field's tag, title, label or placeholder, as the name of a place
-and a keyword: lower case, words joined by _, the words that ask (enter,
+and a keyword in lower case, words joined by _, the words that ask (enter,
 insert, type, your) left out: \"[Enter surveyor name]\" is surveyor_name."
   (let* ((words (cl-ppcre:all-matches-as-strings "[A-Za-z0-9]+" (string-downcase text)))
          (words (loop for rest on words

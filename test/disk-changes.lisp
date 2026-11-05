@@ -6,14 +6,6 @@
 (define-test files-changed-on-disk
   :description "The watcher hears of changes through inotify, not by looking every few seconds, and not of the editor's own saves; a file that only grew has just the new part added (tail -f); a file read again keeps point on the same text; with *reload-changed-files* or M-x follow-file buffers keep up by themselves; many files changed at once make one message.")
 
-(defun wait-until (predicate &optional (seconds 3))
-  "Call PREDICATE every hundredth of a second until it answers true, at most
-SECONDS; its answer, or NIL."
-  (loop repeat (round (* seconds 100))
-        for answer = (funcall predicate)
-        when answer return answer
-        do (sleep 0.01)))
-
 (defun append-on-disk (path text)
   "Append TEXT (a string, or octets) to the file at PATH, as a program writing a log does."
   (let ((fd (sb-posix:open (namestring path) (logior sb-posix:o-wronly sb-posix:o-append))))
@@ -171,7 +163,7 @@ whose state changed, and those whose file changed again."
     (let ((path (tuatara.buffer:buffer-file b)) (size (tuatara.buffer:buffer-size b)))
       (replace-by-rename path (concatenate 'string (format nil "l0~%") (file-text path)))
       (wait-until (lambda () (tuatara.defaults::files-tick tuatara.command:*editor*)
-                    (/= size (tuatara.buffer:buffer-size b)))))))
+                    (/= size (tuatara.buffer:buffer-size b))) 3))))
 
 (tuatara.command:define-command test-change-and-wait ()
   "Put a line at the start of the current buffer's file on disk and wait for the watcher's news of it, for the tests."
@@ -181,7 +173,7 @@ whose state changed, and those whose file changed again."
     (let ((path (tuatara.buffer:buffer-file b)))
       (replace-by-rename path (concatenate 'string (format nil "l0~%") (file-text path)))
       (wait-until (lambda () (tuatara.defaults::files-tick tuatara.command:*editor*)
-                    (tuatara.io:file-disk-state b))))))
+                    (tuatara.io:file-disk-state b)) 3))))
 
 (tuatara.command:define-command test-append-and-catch-up ()
   "Append a line to the current buffer's file on disk and take in the watcher's news, for the tests."
@@ -191,7 +183,7 @@ whose state changed, and those whose file changed again."
     (let ((size (tuatara.buffer:buffer-size b)))
       (append-on-disk (tuatara.buffer:buffer-file b) (format nil "more~%"))
       (wait-until (lambda () (tuatara.defaults::files-tick tuatara.command:*editor*)
-                    (/= size (tuatara.buffer:buffer-size b)))))))
+                    (/= size (tuatara.buffer:buffer-size b))) 3))))
 
 (tuatara.command:define-command test-change-several-on-disk ()
   "Visit the other files in the current buffer's directory, change them all on disk and take in the watcher's news, for the tests."
@@ -205,7 +197,7 @@ whose state changed, and those whose file changed again."
     (tuatara.defaults::files-tick tuatara.command:*editor*)
     (dolist (buffer all) (replace-by-rename (tuatara.buffer:buffer-file buffer) "theirs"))
     (wait-until (lambda () (tuatara.defaults::files-tick tuatara.command:*editor*)
-                  (every #'tuatara.io:file-disk-state all)))))
+                  (every #'tuatara.io:file-disk-state all)) 3)))
 
 (define-test (files-changed-on-disk reading-again-in-place)
   (with-slow-polling

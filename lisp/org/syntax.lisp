@@ -667,7 +667,7 @@ element, the objects of one that holds text; none deeper than *ORG-DEEPEST*."
 
 (defun org-collect-affiliated (position limit)
   "The affiliated keywords from POSITION (#+NAME:, #+CAPTION:, #+ATTR_...: lines
-before an element), as two values: where the element itself begins, and a
+before an element), as two values, where the element itself begins, and a
 plist of their values (:name, :caption, :attr_html...), NIL when there are none."
   (let ((p position) (found '()))
     (loop

@@ -31,14 +31,25 @@ place of the editor's own, and none of these the client has not. No variable
 that names where git works, runs a program or writes is kept; GPG_TTY is the
 client's terminal, as the editor checked it.")
 
-(defun client-variable-p (name)
+(defparameter *machine-variables* '("DISPLAY" "WAYLAND_DISPLAY" "SSH_AUTH_SOCK" "PATH")
+  "Those of *CLIENT-VARIABLES* that name what is on the client's machine:
+its desktop, its ssh agent, its folders of programs. A client on another
+machine has them in its own, where they mean nothing here; the editor's own
+stay for the programs started from its frames.")
+
+(defun client-variable-p (name &optional far)
   "True when the environment variable NAME is one the editor keeps for a
-client (*CLIENT-VARIABLES*)."
-  (some (lambda (kept)
-          (if (char= #\* (char kept (1- (length kept))))
-              (uiop:string-prefix-p (subseq kept 0 (1- (length kept))) name)
-              (string= kept name)))
-        *client-variables*))
+client (*CLIENT-VARIABLES*); with FAR, for a client on another machine, but
+for those naming what is on that machine (*MACHINE-VARIABLES*)."
+  (and (tuatara.io:variable-listed-p name *client-variables*)
+       (not (and far (member name *machine-variables* :test #'string=)))))
+
+(defun client-far-p (client)
+  "True when CLIENT shows the editor from another machine, its connection
+carried by ssh (TUATARA.FRONTEND:REQUEST-FAR)."
+  (let ((frontend (client-frontend client)))
+    (and (typep frontend 'tuatara.frontend:remote-frontend)
+         (tuatara.frontend:request-far (tuatara.frontend:remote-request frontend)))))
 
 (defun buffer-clients (buffer)
   "The clients BUFFER is offered to (CLIENT-SEES-BUFFER-P), or NIL when it is
@@ -157,18 +168,21 @@ when it ended first (\"Ended 15:47 — client 2 since 14:02, ~/cases/x\")."
   "The editor's variables, those it keeps for a client (*CLIENT-VARIABLES*)
 taken from the client the work is for (CLIENT-ENVIRONMENT) where it is one
 on a screen of its own, and GPG_TTY naming its terminal: the client of the frame a job was begun in, on its
-thread, else of the frame worked in."
+thread, else of the frame worked in. For a client on another machine, the
+editor's own variables naming what is on a machine (*MACHINE-VARIABLES*)
+stay."
   (let* ((editor (or *editor* (running-editor)))
          (frame (or (thread-frame) (and editor (editor-frame editor))))
          (client (and frame (frame-client frame)))
          (environment (sb-ext:posix-environ)))
     (if (not (and client (client-remote client) (client-frontend client)))
         environment
-        (let ((terminal (tuatara.frontend:frontend-terminal-device (client-frontend client))))
+        (let ((terminal (tuatara.frontend:frontend-terminal-device (client-frontend client)))
+              (far (client-far-p client)))
           (append (and terminal (list (format nil "GPG_TTY=~a" terminal)))
                   (loop for (name . value) in (client-environment client) collect (format nil "~a=~a" name value))
                   (remove-if (lambda (setting)
                                (let ((equals (position #\= setting)))
                                  (and equals (let ((name (subseq setting 0 equals)))
-                                               (or (client-variable-p name) (string= name "GPG_TTY"))))))
+                                               (or (client-variable-p name far) (string= name "GPG_TTY"))))))
                              environment))))))

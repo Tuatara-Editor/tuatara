@@ -102,6 +102,16 @@ given up for this session), unless a test wants it asked."
   "Run BODY with no grammar question asked in it (CALL-WITHOUT-GRAMMAR-QUESTIONS)."
   `(call-without-grammar-questions (lambda () ,@body)))
 
+(defun row-showing (frontend text)
+  "The first row of the last frame FRONTEND, a fake screen, painted that shows TEXT, or NIL."
+  (position-if (lambda (row) (search text row)) (tuatara.frontend.fake:fake-screen frontend)))
+
+(defun faces-at (frontend row column)
+  "The faces the last frame FRONTEND, a fake screen, painted over COLUMN of ROW, a list."
+  (loop for (start end face) in (aref (tuatara.frontend.fake:fake-spans frontend) row)
+        when (and (<= start column) (< column end))
+          append (if (listp face) face (list face))))
+
 (defun run-keys (keys &key (text "") (width 40) (height 8) file cell-pixels)
   "Run an editor session on a scratch buffer holding TEXT (or FILE) with KEYS
 typed (a string, or a list of strings and :WAIT, QUEUE-TEST-KEYS); return the

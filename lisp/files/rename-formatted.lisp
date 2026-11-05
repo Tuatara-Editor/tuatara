@@ -47,7 +47,7 @@ keywords, as two values."
   (and (>= (length line) (length prefix)) (string-equal prefix line :end2 (length prefix))))
 
 (defun text-header-line-p (line)
-  "True when LINE can be one of a text file's header: a field (a name and a
+  "True when LINE can be one of a text file's header, either a field (a name and a
 colon, as title: and tags:) or a line of dashes under them."
   (let ((colon (position #\: line)))
     (or (and colon (plusp colon) (every (lambda (c) (or (alphanumericp c) (char= c #\_) (char= c #\-))) (subseq line 0 colon)))

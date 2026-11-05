@@ -315,18 +315,15 @@ templates those in DIRECTORY's capture-templates/ (none unless a test makes them
 (define-test (capture templates-in-the-configuration-folder)
   ;; no folders named: your templates are those in capture-templates/ of the configuration folder, XDG_CONFIG_HOME's
   (with-test-directory (dir)
-    (let ((was (uiop:getenv "XDG_CONFIG_HOME"))
-          (folder (merge-pathnames "tuatara/capture-templates/" dir))
+    (let ((folder (merge-pathnames "tuatara/capture-templates/" dir))
           (tuatara-user:*capture-template-directories* nil))
       (ensure-directories-exist folder)
       (alexandria:write-string-into-file (format nil "# name: Kea seen~%# key: z~%# file: ~~/notes/kea.org~%# --~%* %?~%")
                                          (merge-pathnames "z-kea.org" folder))
-      (sb-posix:setenv "XDG_CONFIG_HOME" (namestring dir) 1)
-      (unwind-protect
-           (progn
-             (is equal (list (namestring folder)) (tuatara.defaults::capture-template-directories))
-             (true (find "z" (tuatara.defaults::capture-templates) :key #'tuatara.defaults::capture-template-key :test #'string=)))
-        (if was (sb-posix:setenv "XDG_CONFIG_HOME" was 1) (sb-posix:unsetenv "XDG_CONFIG_HOME"))))))
+      (with-environment-variable ("XDG_CONFIG_HOME" (namestring dir))
+        (is equal (list (namestring folder)) (tuatara.defaults::capture-template-directories))
+        (true (find "z" (tuatara.defaults::capture-templates) :key #'tuatara.defaults::capture-template-key
+                                                               :test #'string=))))))
 
 (define-test (capture on-the-day-at-point)
   (with-capture (dir agenda)

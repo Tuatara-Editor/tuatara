@@ -125,3 +125,11 @@ process no longer running."
     (let ((line (string-left-trim " " line)))
       (when (cl-ppcre:scan "^;; \\(bind-key \"[^\"]+\" (nil|'[a-z-]+) :map :leader( :mode '(?:[a-z-]+|\\([a-z -]+\\)))?( :label \"[^\"]*\")?\\)\\s*$" line)
         (eval (read-from-string (subseq line 3)))))))
+
+(defmacro with-environment-variable ((name value) &body body)
+  "Run BODY with the environment variable NAME set to VALUE (NIL: unset), as it was after."
+  (let ((before (gensym "BEFORE")))
+    `(let ((,before (sb-posix:getenv ,name)))
+       (if ,value (sb-posix:setenv ,name ,value 1) (sb-posix:unsetenv ,name))
+       (unwind-protect (progn ,@body)
+         (if ,before (sb-posix:setenv ,name ,before 1) (sb-posix:unsetenv ,name))))))

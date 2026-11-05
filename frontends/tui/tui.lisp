@@ -12,7 +12,7 @@
 
 (defvar *tui-padding* 0
   "The room, in whole cells, between the edges of the terminal and Tuatara's
-text: one number for all four sides, or a list: of two, the top and bottom,
+text: one number for all four sides, or a list, of two, the top and bottom,
 then the right and left ((0 2) is none above and below, two columns at the
 sides); of three, the top, the right and left, the bottom; of four, the top,
 right, bottom and left, clockwise. A terminal may have padding of its own,
@@ -1523,7 +1523,7 @@ from its column FROM: the first marked with its row, its column and, when not
 \(PLACE-PICTURES), IMAGE shown ACROSS by DOWN cells of WIDTH by HEIGHT pixels:
 with OFFSET, at its own size, the part from FROM-ROW and FROM-COLUMN on,
 ROWS by COLUMNS cells of it; else the whole of it, as large as fits, its
-proportions kept: the columns given where its width decides, the rows where
+proportions kept, the columns given where its width decides, the rows where
 its height does, neither where it is shown at its own size."
   (let ((w (tuatara.frontend:image-width image))
         (h (tuatara.frontend:image-height image)))

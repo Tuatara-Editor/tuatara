@@ -15,6 +15,7 @@
 (load (merge-pathnames "../../tools/quicklisp.lisp" *load-truename*))
 (push (merge-pathnames "../../" (make-pathname :name nil :type nil :defaults *load-truename*)) asdf:*central-registry*)
 (ql:quickload :tuatara/terminal :silent t)
+(import 'tuatara.runtime:wait-until)
 
 (defvar *arguments* (uiop:command-line-arguments)
   "NAME RUNTIME FILE DROPPED PICTURE OUT, as the test gives them.")
@@ -54,13 +55,6 @@
   (let ((frame (sb-thread:with-mutex ((tuatara.frontend.gtk::gtk-lock f)) (tuatara.frontend.gtk::gtk-shown f))))
     (if frame (length (tuatara.frontend.gtk::frame-images frame)) 0)))
 
-(defun wait-until (test &optional (seconds 30))
-  "Wait until TEST, a function of no arguments, is true, SECONDS at most; its value."
-  (loop repeat (* 10 seconds)
-        for value = (funcall test)
-        when value return value
-        do (sleep 0.1)))
-
 (defun type-keys (f keys)
   "Type KEYS, a key sequence as written (\"C-x 5 2\"), in F's window."
   (dolist (spec (tuatara.frontend:parse-key-sequence keys))
@@ -83,27 +77,27 @@
 (defun steps ()
   "Go through the steps, noting what is seen."
   (let ((first (wait-until (lambda () (let ((open (windows))) (and open (tuatara.frontend.gtk::gtk-shown (first open))
-                                                                  (first open)))))))
+                                                                  (first open)))) 30)))
     (see :window (and first t))
     (when first
-      (see :shows-file (and (wait-until (lambda () (search "kiwi window" (shown-text first)))) t))
+      (see :shows-file (and (wait-until (lambda () (search "kiwi window" (shown-text first))) 30) t))
       (type-keys first "i h e l l o SPC <escape>")
-      (see :typed (and (wait-until (lambda () (search "hello kiwi window" (shown-text first)))) t))
+      (see :typed (and (wait-until (lambda () (search "hello kiwi window" (shown-text first))) 30) t))
       ;; another program's copy, taken from the client's clipboard as the daemon pastes
       (tuatara.frontend:frontend-set-clipboard first "from the desktop ")
       (sleep 1)
       (type-keys first "i C-y <escape>")
-      (see :pasted (and (wait-until (lambda () (search "from the desktop" (shown-text first)))) t))
+      (see :pasted (and (wait-until (lambda () (search "from the desktop" (shown-text first))) 30) t))
       ;; the font a step larger in this window
       (type-keys first "C-x C-+")
       (see :font-larger (and (wait-until (lambda () (eql 1 (font-steps first))) 10) t))
       (type-keys first "C-g")
       ;; another window of the client, its font as it started
       (type-keys first "C-x 5 2")
-      (see :another-window (and (wait-until (lambda () (= 2 (length (windows))))) t))
+      (see :another-window (and (wait-until (lambda () (= 2 (length (windows)))) 30) t))
       (let ((second (second (windows))))
         (when second
-          (see :another-shows (and (wait-until (lambda () (search "hello" (shown-text second)))) t))
+          (see :another-shows (and (wait-until (lambda () (search "hello" (shown-text second))) 30) t))
           (see :another-font-steps (font-steps second))
           ;; both windows drawn as the daemon's init file asks, GSK_RENDERER kept from the programs started
           (see :renderers (list (tuatara.frontend.gtk::gtk-drawn-by first) (tuatara.frontend.gtk::gtk-drawn-by second)))
@@ -111,15 +105,15 @@
           (see :renderer-given (some (lambda (setting) (uiop:string-prefix-p "GSK_RENDERER=" setting))
                                      (tuatara.io:program-environment)))
           (type-keys second "i z z <escape>")
-          (see :typed-in-another (and (wait-until (lambda () (search "zz" (shown-text first)))) t))
+          (see :typed-in-another (and (wait-until (lambda () (search "zz" (shown-text first))) 30) t))
           (setf *to-close* second)
           (tuatara.gtk:g-idle-add (tuatara.gtk:callback on-close-pressed) (tuatara.io:null-pointer))
-          (see :closed-another (and (wait-until (lambda () (= 1 (length (windows))))) t))))
+          (see :closed-another (and (wait-until (lambda () (= 1 (length (windows)))) 30) t))))
       ;; files dropped on the window: a text, then a picture, sent as a file in memory
       (tuatara.frontend.gtk::push-event first :drop :files (list (fourth *arguments*)) :column 1 :row 1)
-      (see :dropped (and (wait-until (lambda () (search "dropped kea" (shown-text first)))) t))
+      (see :dropped (and (wait-until (lambda () (search "dropped kea" (shown-text first))) 30) t))
       (tuatara.frontend.gtk::push-event first :drop :files (list (fifth *arguments*)) :column 1 :row 1)
-      (see :picture (and (wait-until (lambda () (plusp (shown-pictures first)))) t))
+      (see :picture (and (wait-until (lambda () (plusp (shown-pictures first))) 30) t))
       (type-keys first "C-x C-c"))))
 
 ;; the daemon's sockets where the test's daemon listens

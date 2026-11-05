@@ -248,7 +248,7 @@ over *NUMBER-WIDTH-MOST*."
 (defun natural-string-lessp (a b)
   "True when the string A comes before B in the order people sort names in:
 letters alphabetically whatever their case, and a run of digits by the number
-it writes: file2 before file10, Notes before notes.txt; two
+it writes (file2 before file10, Notes before notes.txt); two
 names alike but for case, or for zeros before a number, in the order their
 characters' codes give. Complexity: O(length of the shorter), nothing made."
   (declare (type string a b) (optimize speed))

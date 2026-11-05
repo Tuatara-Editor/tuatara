@@ -278,8 +278,8 @@ bring it up to date; in a table, align it; on its #+TBLFM: line, work its formul
 
 (defun org-context-keys (editor prefix)
   "For \\`C-c' in an Org buffer: what the cursor is on, as
-*KEY-HINT-FOCUS-FUNCTIONS* has it, the keys that act on it first: a link,
-a table, a source block, a list item, a heading; nothing while the file's
+*KEY-HINT-FOCUS-FUNCTIONS* has it, the keys that act on it first, be it a link,
+a table, a source block, a list item or a heading; nothing while the file's
 parse is behind its text."
   (declare (ignore editor))
   (let ((buffer (current-buffer)))

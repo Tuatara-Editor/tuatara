@@ -17,6 +17,11 @@
   "The seconds each end of a new connection waits for the other's hello and,
 in the editor, for what the client's screen is.")
 
+(defparameter *starting-seconds* 60
+  "The seconds a daemon may take to start, reading its init file and loading
+its packages: how long tuatara --daemon waits for it to say it is ready, and a
+client that connected meanwhile for its hello.")
+
 (defparameter *answer-seconds* 1/5
   "The seconds the editor waits for a client to answer a question (the text
 of its clipboard) before taking it as having none.")
@@ -86,9 +91,14 @@ STALL-SECONDS, however little at a time it took; NIL when the socket failed."
       (setf (outbox-fill box) 0 (outbox-descriptors box) '()))))
 
 (defun shown-words (text)
-  "TEXT, from the other end of a connection, without its control characters,
-to be shown or put in a log."
-  (remove-if (lambda (c) (tuatara.text:control-code-p (char-code c))) text))
+  "TEXT, from the other end of a connection, without its control characters
+and the invisible characters that change the direction text is drawn in or
+draw nothing (TUATARA.DISPLAY:HIDING-CODE-P), to be shown or put in a
+log."
+  (remove-if (lambda (c)
+               (let ((code (char-code c)))
+                 (or (tuatara.text:control-code-p code) (tuatara.display:hiding-code-p code))))
+             text))
 
 (defun read-hello (inbox)
   "Read the other end's hello from INBOX, which is the first thing it says;
@@ -568,7 +578,8 @@ while its client takes it, the client told to exit, and its socket closed."
   (facts-health (remote-facts f)))
 
 (defmethod frontend-images-p ((f remote-frontend))
-  (facts-images (remote-facts f)))
+  ;; a picture's pixels are passed as a descriptor, which cannot cross ssh
+  (and (facts-images (remote-facts f)) (not (request-far (remote-request f)))))
 
 (defmethod frontend-reorders-text-p ((f remote-frontend))
   (facts-reorders (remote-facts f)))
@@ -846,7 +857,12 @@ arrived or the editor is gone; SETTINGS, the settings the editor last said
 \(TAKE-SETTINGS); ANOTHER, a function of the client and a word, which opens
 another window attached with that word when the editor asks for one, or
 says it does not (DECLINE-WINDOW), or NIL; PAINTED, true once the editor
-has painted a frame on it."
+has painted a frame on it; FAR, true when the editor is on another machine;
+then nothing of this machine's clipboard is given it or taken from it, no
+terminal lent and no dropped file named to it, but what ALLOW lets through,
+a plist of :CLIPBOARD, true for the clipboard shared, as text with no
+control characters taken (FAR-TEXT), and :DROP, a function sending the
+files dropped to that machine (see MAKE-REMOTE-CLIENT)."
   (fd -1 :type fixnum :read-only t)
   (frontend nil :read-only t)
   (inbox nil :read-only t)
@@ -864,7 +880,9 @@ has painted a frame on it."
   (reader nil)
   (settings '())
   (another nil)
-  (painted nil))
+  (painted nil)
+  (far nil)
+  (allow '()))
 
 (setf (documentation '%make-remote-client 'function) "A REMOTE-CLIENT of the editor at FD painting on FRONTEND."
       (documentation 'remote-client-p 'function) "True when OBJECT is a REMOTE-CLIENT."
@@ -887,7 +905,10 @@ has painted a frame on it."
       (documentation 'remote-client-another 'function)
       "The function of CLIENT and a word that opens another window for CLIENT's editor, or NIL."
       (documentation 'remote-client-painted 'function)
-      "True once CLIENT's editor has painted a frame on it: a window asked for and let go before is not.")
+      "True once CLIENT's editor has painted a frame on it: a window asked for and let go before is not."
+      (documentation 'remote-client-far 'function) "True when CLIENT's editor is on another machine, reached over ssh."
+      (documentation 'remote-client-allow 'function)
+      "What CLIENT's editor on another machine is given all the same: a plist of :CLIPBOARD and :DROP.")
 
 (defun send-to-editor (client write)
   "Send CLIENT's editor the messages WRITE, a function of the box, writes;
@@ -919,13 +940,26 @@ when one was given."
             do (setf (symbol-value name) value given t))
     given))
 
-(defun greet-editor (fd &key (take t))
+(defun wait-for-editor (fd starting)
+  "Wait until the editor at the other end of the new local socket FD says
+something, *STARTING-SECONDS* at most, as a daemon still reading its init file
+says nothing yet; once *HELLO-SECONDS* have gone by in silence, call STARTING,
+a function of none, if given, to say so."
+  (let ((early (tuatara.runtime:deadline-in *hello-seconds*))
+        (deadline (tuatara.runtime:deadline-in *starting-seconds*)))
+    (loop until (or (plusp (tuatara.io:poll-fd fd 1 1000)) (tuatara.runtime:deadline-passed-p deadline))
+          when (and starting (tuatara.runtime:deadline-passed-p early))
+            do (funcall (shiftf starting nil)))))
+
+(defun greet-editor (fd &key (take t) starting)
   "Read the hello of the editor at the other end of the new local socket FD
 and the settings it shows its clients by (*DISPLAY-SETTINGS*), and with TAKE
 take them here, before a client's screen opens (not for another window of a
-client that took them already): what was read, for MAKE-REMOTE-CLIENT.
-Signals REMOTE-REFUSED when the editor is of another build, refuses the
+client that took them already): what was read, for MAKE-REMOTE-CLIENT. A
+daemon still starting is waited for (WAIT-FOR-EDITOR), STARTING called to say
+so. Signals REMOTE-REFUSED when the editor is of another build, refuses the
 client or says nothing it should; FD is then the caller's to close."
+  (wait-for-editor fd starting)
   (let ((inbox (make-inbox fd :client :deadline (tuatara.runtime:deadline-in *hello-seconds*))))
     (handler-bind ((remote-refused (lambda (condition)
                                      (declare (ignore condition))
@@ -943,7 +977,7 @@ client or says nothing it should; FD is then the caller's to close."
         (when take (use-settings settings :at-start t))
         (list inbox settings)))))
 
-(defun make-remote-client (fd frontend &key (request (make-request)) standard-input greeted another)
+(defun make-remote-client (fd frontend &key (request (make-request)) standard-input greeted another allow)
   "A client painting on FRONTEND, started, what the editor at the other end
 of the local socket FD sends, once both have said hello and the client what
 its screen is and what it asks for, REQUEST; STANDARD-INPUT, a descriptor
@@ -951,9 +985,13 @@ passed with it to be read into a buffer (REQUEST-STANDARD-INPUT then true),
 is closed here once passed. GREETED is what GREET-EDITOR read of FD, when it
 was called before FRONTEND was made, else it is called here. ANOTHER, a
 function of the client and a word, opens another window when the editor
-asks for one (REMOTE-CLIENT-ANOTHER). Signals REMOTE-REFUSED when the editor is of
-another build, refuses the client or says nothing it should; FD is then the
-caller's to close."
+asks for one (REMOTE-CLIENT-ANOTHER). ALLOW, for an editor on another
+machine, says what it is given all the same: :CLIPBOARD true shares the
+clipboard; :DROP, a function of a list of the paths of files dropped,
+called on a thread of its own, sends them there and gives their paths
+there, or NIL when they could not be sent. Signals REMOTE-REFUSED when the
+editor is of another build, refuses the client or says nothing it should;
+FD is then the caller's to close."
   (destructuring-bind (inbox settings)
       (or greeted
           (handler-bind ((remote-refused (lambda (condition)
@@ -962,7 +1000,9 @@ caller's to close."
             (greet-editor fd)))
     (let ((client (%make-remote-client fd frontend inbox)))
       (setf (remote-client-settings client) settings
-            (remote-client-another client) another)
+            (remote-client-another client) another
+            (remote-client-far client) (request-far request)
+            (remote-client-allow client) allow)
       (unless (send-to-editor client (lambda (box)
                                        (put-hello box)
                                        (let ((at (outbox-fill box)))
@@ -1098,13 +1138,36 @@ up waiting, and nothing is lent."
                  do (sb-thread:condition-wait (remote-client-moved client) (remote-client-lock client)))))
        :words words)))
 
+(defun far-text (text)
+  "TEXT, copied by an editor on another machine, as this machine's clipboard
+takes it: without its control characters but tabs and line ends, and
+without the invisible characters that change the direction text is drawn in
+or draw nothing (TUATARA.DISPLAY:*DIRECTION-CONTROLS*, *ESCAPED-INVISIBLES*),
+so that nothing pasted from it runs, moves or hides what it should not."
+  (remove-if (lambda (c)
+               (or (and (eq (sb-unicode:general-category c) :cc) (not (member c '(#\Tab #\Newline))))
+                   (tuatara.display:hiding-code-p (char-code c))))
+             text))
+
+(defun clipboard-closed-p (client)
+  "True when CLIENT's editor is on another machine and may not have the
+clipboard now: it is not shared with it, or CLIENT's window does not have
+the keyboard (FRONTEND-FOCUSED-P), so that one left in the background can
+neither read what is copied elsewhere nor put something in its place."
+  (and (remote-client-far client)
+       (not (and (getf (remote-client-allow client) :clipboard)
+                 (frontend-focused-p (remote-client-frontend client))))))
+
 (defun answer-editor (client request question argument)
   "Answer CLIENT's editor's question QUESTION, with ARGUMENT, numbered
-REQUEST, from CLIENT's frontend."
+REQUEST, from CLIENT's frontend; an editor on another machine is given
+nothing of the clipboard unless it is shared with it and CLIENT's window
+has the keyboard (CLIPBOARD-CLOSED-P)."
   (let* ((frontend (remote-client-frontend client))
+         (far (clipboard-closed-p client))
          (answer (ecase question
-                   (:clipboard (frontend-clipboard frontend))
-                   (:primary (frontend-primary-selection frontend))
+                   (:clipboard (and (not far) (frontend-clipboard frontend)))
+                   (:primary (and (not far) (frontend-primary-selection frontend)))
                    (:font (frontend-set-font frontend argument))
                    (:font-steps (setf (frontend-font-steps frontend) argument))
                    (:lend nil))))
@@ -1117,8 +1180,13 @@ REQUEST, from CLIENT's frontend."
 
 (defun paint-arrived (client)
   "Paint on CLIENT's frontend what its editor has sent since this was last
-done, and answer its questions, in the order they came."
+done, and answer its questions, in the order they came. An editor on
+another machine puts nothing in the clipboard, unless it is shared with it
+and CLIENT's window has the keyboard, and then text with no control
+characters (FAR-TEXT), and is lent no
+terminal; the files sent it are named to it once there."
   (let ((frontend (remote-client-frontend client))
+        (far (remote-client-far client))
         (items (sb-thread:with-mutex ((remote-client-lock client))
                  (reverse (shiftf (remote-client-arrived client) '())))))
     (loop for (item . later) on items
@@ -1136,9 +1204,11 @@ done, and answer its questions, in the order they came."
                                 (apply #'frontend-put-image frontend (rest call))))))
                 (frontend-end-frame frontend))
                (:title (frontend-set-title frontend (second item)))
-               (:selection (if (zerop (second item))
-                               (frontend-set-clipboard frontend (third item))
-                               (frontend-set-primary-selection frontend (third item))))
+               (:selection (let ((text (if far (far-text (third item)) (third item))))
+                             (cond ((clipboard-closed-p client))
+                                   ((zerop (second item)) (frontend-set-clipboard frontend text))
+                                   (t (frontend-set-primary-selection frontend text)))))
+               (:sent (send-to-editor client (lambda (box) (put-event box (second item)))))
                (:toggle (frontend-toggle-state frontend (second item)))
                (:raise (frontend-raise frontend))
                (:settings (when (use-settings (second item) :before (remote-client-settings client))
@@ -1152,7 +1222,7 @@ done, and answer its questions, in the order they came."
                (:decline (send-to-editor client (lambda (box) (put-no-window box (second item) (third item)))))
                ;; taken again where it was lent (LEND-TERMINAL), else nothing to take
                (:take-back)
-               (:ask (if (eq (third item) :lend)
+               (:ask (if (and (eq (third item) :lend) (not far))
                          (lend-terminal client (second item) (fourth item) later)
                          (apply #'answer-editor client (rest item))))))))
 
@@ -1164,10 +1234,33 @@ why being WORDS: from any thread, said on the thread painting CLIENT."
     (sb-thread:condition-broadcast (remote-client-moved client)))
   (frontend-wake (remote-client-frontend client)))
 
+(defun send-dropped (client event)
+  "Have the files of EVENT, dropped on CLIENT's frontend, sent to the machine
+of CLIENT's editor, on a thread of its own, and the drop named to the editor
+with their paths there once they are (PAINT-ARRIVED); when they could not
+be, nothing is named."
+  (let ((send (getf (remote-client-allow client) :drop)))
+    (when send
+      (tuatara.runtime:make-guarded-thread
+       (lambda ()
+         (let ((there (funcall send (event-files event))))
+           (when there
+             (sb-thread:with-mutex ((remote-client-lock client))
+               (push (list :sent (make-event :drop :files there :column (event-column event) :row (event-row event)
+                                                   :frame (event-frame event)))
+                     (remote-client-arrived client))
+               (sb-thread:condition-broadcast (remote-client-moved client)))
+             (frontend-wake (remote-client-frontend client)))))
+       :name "tuatara files dropped sent"))
+    t))
+
 (defun send-event (client event)
   "Send CLIENT's editor EVENT, read from CLIENT's frontend, when it is of a
-kind the editor takes; a paste in pieces. NIL when it could not be sent."
+kind the editor takes; a paste in pieces. Files dropped are not named to an
+editor on another machine: they are sent there when it is let have them
+\(SEND-DROPPED). NIL when it could not be sent."
   (or (not (sendable-event-p event))
+      (and (remote-client-far client) (eq (event-kind event) :drop) (send-dropped client event))
       (send-to-editor client
                       (lambda (box)
                         (if (eq (event-kind event) :paste)

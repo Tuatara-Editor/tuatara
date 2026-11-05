@@ -39,7 +39,8 @@ alpha later, then a commit no tag names, \"newest\"."
 
 (defun forget-test-packages (dir)
   "Forget the packages from DIR: what was remembered of them, what was kept of
-them and compiled, the session's lists of them and their versions' setting."
+them and compiled, the session's lists of them, those removed, and their
+versions' setting."
   (let ((where (format nil "file://~a" (string-right-trim "/" (namestring dir)))))
     (tuatara.defaults::state-list-drop tuatara.packages::*fetched-packages*
                                        (remove-if-not (lambda (key) (search (namestring dir) key))
@@ -51,8 +52,12 @@ them and compiled, the session's lists of them and their versions' setting."
     (let ((fasls (directory-namestring (tuatara.packages::package-fasl (merge-pathnames "x" dir)))))
       (when (probe-file fasls)
         (uiop:delete-directory-tree (pathname fasls) :validate (lambda (p) (search "/tuatara/packages/" (namestring p)))))))
+  (tuatara.defaults::state-list-drop tuatara.packages::*removed-packages*
+                                     (tuatara.defaults::state-list-entries tuatara.packages::*removed-packages*))
   (setf tuatara.packages::*declared-packages* '()
         tuatara.packages::*loaded-packages* '()
+        tuatara.packages::*unloaded-packages* '()
+        tuatara.packages::*package-code* '()
         tuatara.packages::*package-failures* '()
         tuatara.packages::*refused-packages* '())
   (makunbound 'tuatara-user::*package-test-version*)
@@ -166,8 +171,8 @@ WHERE its file:// address, all of it forgotten afterwards."
 
 (define-test (packages up-to-date-and-managed)
   ;; two packages of one commit each kept apart; package-update finds the same tag; the
-  ;; package manager lists them, the README of the one on the line beside it, and deletes
-  ;; what is kept of the one on the line
+  ;; package manager lists them, the README of the one on the line beside it, and unloads,
+  ;; removes and deletes the one on the line
   (with-package-repository (dir where)
     (let ((tuatara-user:*package-ask-before-loading* nil)
           (commit (string-trim '(#\Newline) (git-output dir "rev-parse" "alpha^{commit}")))
@@ -183,7 +188,10 @@ WHERE its file:// address, all of it forgotten afterwards."
                         (list :until (lambda () (screen (tuatara.command:editor-frontend tuatara.command:*editor*)) t))
                         "C-n" (list :wait 0.2)
                         (list :until (lambda () (screen (tuatara.command:editor-frontend tuatara.command:*editor*)) t))
-                        "C-p D" (list :wait 0.2)
+                        "C-p D"
+                        (list :until (lambda () (tuatara.frontend.fake:fake-frame-showing
+                                                 (tuatara.command:editor-frontend tuatara.command:*editor*)
+                                                 "Unload, remove and delete")))
                         (list :until (lambda () (screen (tuatara.command:editor-frontend tuatara.command:*editor*)) t))
                         "y e s RET"
                         (list :until (lambda () (search "deleted" (or (tuatara.command:editor-message tuatara.command:*editor*) ""))))
@@ -196,8 +204,8 @@ WHERE its file:// address, all of it forgotten afterwards."
             (false (search "Reads alpha." after))
             (false (search "deleted on disk" after))
             (true (search "pkgone is not fetched yet" after) "~a" after)
-            ;; what is deleted asked plainly, Tuatara's copy of it
-            (true (search "Delete what Tuatara keeps of the package pkgone?" question))
+            ;; what is done asked plainly, with the size of what is deleted
+            (true (search "Unload, remove and delete the package pkgone, " question) "~a" question)
             (true (search "pkgone" first))
             (true (search "alpha" first))
             (true (search (subseq commit 0 7) first))
@@ -208,7 +216,8 @@ WHERE its file:// address, all of it forgotten afterwards."
           (is equal "alpha" (symbol-value 'tuatara-user::*package-test-two*))
           (false (probe-file (tuatara.packages::package-kept-folder where "pkgone")))
           (true (probe-file (tuatara.packages::package-kept-folder where "pkgtwo")))
-          (false (tuatara.packages::package-state "pkgone" where nil)))))))
+          (false (tuatara.packages::package-state "pkgone" where nil))
+          (true (tuatara.packages::package-removed-p "pkgone")))))))
 
 (define-test (packages compile-failure-said)
   ;; a file that cannot be read says why, not only that it could not be compiled
@@ -244,13 +253,7 @@ WHERE its file:// address, all of it forgotten afterwards."
              (is equal "mine" (package-test-version))
              (makunbound 'tuatara-user::*package-test-version*)
              (true (tuatara-user:load-package "mypkg" :source "mine" :file "start.lisp"))
-             (is equal "mine" (package-test-version))
-             ;; deleted: its files compiled go too, the folder of yours stays as it is
-             (let ((fasl (tuatara.packages::package-fasl (merge-pathnames "start.lisp" dir))))
-               (true (probe-file fasl))
-               (tuatara.packages::forget-package "mypkg" "mine" nil)
-               (false (probe-file fasl))
-               (true (probe-file (merge-pathnames "start.lisp" dir)))))
+             (is equal "mine" (package-test-version)))
         (forget-test-packages dir)))))
 
 (defmacro with-folder-package ((dir name text) &body body)
@@ -1146,9 +1149,7 @@ no Lisp package any more, each (COMMAND . PLACE)."
 (define-test (packages api-names-used)
   ;; informative: the names of the API no package of ours uses, said in the test's output, so
   ;; that they can be weighed; none is taken away for it, other packages may use them
-  (let ((sources (find-if #'uiop:directory-exists-p
-                          (list (merge-pathnames "../tuatara-packages/" (asdf:system-source-directory :tuatara))
-                                (merge-pathnames "../../../../tuatara-packages/" (asdf:system-source-directory :tuatara))))))
+  (let ((sources (packages-folder)))
     (if (null sources)
         (skip "the packages' sources are not beside the editor's" (true nil))
         (let* ((words (make-hash-table :test 'equal))
@@ -1339,3 +1340,150 @@ entry file of a package of a source nothing names, kept in it."
                (true (find-if (lambda (text) (search (format nil "reading ~a failed" broken) text)) texts)
                      "~s" texts)))
         (drain-debug-reports)))))
+
+(defparameter *unloader-text* "(defpackage #:unloader (:use #:cl #:tuatara))
+(in-package #:unloader)
+(define-package-setting *unloader-size* 3 \"How many things a list of things unloaded shows.\")
+(define-major-mode unloader-mode special-mode \"A list of things unloaded.\")
+(entry-list-keys 'unloader-mode \"a list of things unloaded\")
+(defmethod list-entry-noun ((mode unloader-mode)) \"thing\")
+(define-command unloader-run () \"Run.\" nil)
+(define-keys (mode-keymap 'fundamental-mode) '((\"C-c + r\" unloader-run)))
+(label-keys (mode-keymap 'fundamental-mode) '((\"C-c +\" \"unloader\")))
+(defun unloader-tick () nil)
+(pushnew 'unloader-tick *tick-functions*)
+(push (lambda (path show) (declare (ignore path show)) nil) *file-views*)
+(defstruct (unloader-job (:include job)))
+(defun unloader-start ()
+  (start-job-thread (make-unloader-job) (lambda (job) (declare (ignore job)) (loop (job-check-stop) (sleep 0.01)))))"
+  "A package of a folder that puts in Tuatara one of each thing unloading takes out.")
+
+(define-test (packages unloaded-taken-out)
+  ;; K in the package manager unloads a package: its command, mode, key and label, hooks,
+  ;; tick function, setting, methods and Lisp package go, its job is stopped, a buffer in its
+  ;; mode is put in fundamental-mode; its load-package stays, and package-load brings it back
+  ;; with the value given to its setting
+  (with-folder-packages (dir)
+    (aged-package dir "unloader" *unloader-text*)
+    (let* ((init (merge-pathnames "init.lisp" dir))
+           (keymap (tuatara.modes:mode-keymap 'tuatara.modes:fundamental-mode))
+           (prefix (tuatara.frontend:parse-key-sequence "C-c +"))
+           (views (length tuatara.defaults::*file-views*))
+           (buffer nil) (job nil))
+      (alexandria:write-string-into-file (format nil "(load-package \"unloader\" :source ~s)~%" (namestring dir)) init)
+      (unwind-protect
+           (progn
+             (true (tuatara-user:load-package "unloader" :source (namestring dir)))
+             (let* ((package (find-package "UNLOADER"))
+                    (mode (find-symbol "UNLOADER-MODE" package))
+                    (class (find-class mode))
+                    (setting (find-symbol "*UNLOADER-SIZE*" :tuatara-user))
+                    (labelled (tuatara.command:lookup-key keymap (list (first prefix)) :parents nil)))
+               (setf job (funcall (find-symbol "UNLOADER-START" package))
+                     buffer (tuatara.buffer:make-buffer "*unloader test*"))
+               (tuatara.modes:set-major-mode buffer mode)
+               (setf (symbol-value setting) 7)
+               (is string= "unloader" (tuatara.command:key-label labelled (second prefix)))
+               (is = (1+ views) (length tuatara.defaults::*file-views*))
+               (true (sb-mop:specializer-direct-methods class))
+               (auto-save-session
+                (list "M-x p a c k a g e - m a n a g e r RET K"
+                      (list :until (lambda () (not (tuatara.packages::package-loaded-p "unloader"))))))
+               (false (package-name package))
+               (false (tuatara.command:find-command "unloader-run"))
+               (false (member mode (tuatara.modes:mode-names)))
+               (false (tuatara.command:lookup-key keymap prefix :parents nil))
+               (false (tuatara.command:key-label labelled (second prefix)))
+               (is = views (length tuatara.defaults::*file-views*))
+               (false (find "UNLOADER-TICK" tuatara.command:*tick-functions*
+                            :key (lambda (f) (and (symbolp f) (symbol-name f))) :test #'equal))
+               (false (sb-mop:specializer-direct-methods class))
+               (wait-for-job job)
+               (false (tuatara.runtime:job-running-p job))
+               (is eq :internal (nth-value 1 (find-symbol "*UNLOADER-SIZE*" :tuatara-user)))
+               (false (get setting 'tuatara.packages::package-setting))
+               (true (tuatara.buffer:live-buffer-p buffer))
+               (is eq 'tuatara.modes:fundamental-mode (type-of (tuatara.modes:buffer-major-mode buffer)))
+               (is string= "unloaded" (tuatara.packages::package-condition "unloader" nil))
+               (true (tuatara.packages::declared-package "unloader"))
+               ;; loaded again by its load-package, the value given to its setting kept
+               (let ((tuatara.defaults:*config-file* init))
+                 (tuatara.packages::load-packages-again '("unloader")))
+               (true (tuatara.packages::package-loaded-p "unloader"))
+               (true (tuatara.command:find-command "unloader-run"))
+               (is eq :external (nth-value 1 (find-symbol "*UNLOADER-SIZE*" :tuatara-user)))
+               (is eql 7 (symbol-value setting))))
+        (when buffer (tuatara.buffer:kill-buffer buffer))
+        (when job
+          (tuatara.runtime:job-stop job)
+          (wait-for-job job)
+          (tuatara.runtime::forget-job job))
+        (when (find-package "UNLOADER")
+          (tuatara.packages::forget-package-code (list (find-package "UNLOADER"))))
+        (tuatara.command:define-key keymap prefix nil)
+        (let ((c-c (tuatara.command:lookup-key keymap (list (first prefix)) :parents nil)))
+          (when (and (tuatara.command:keymap-p c-c) (zerop (hash-table-count (tuatara.command::keymap-table c-c))))
+            (tuatara.command:define-key keymap (list (first prefix)) nil)))
+        (let ((symbol (find-symbol "*UNLOADER-SIZE*" :tuatara-user)))
+          (when symbol
+            (unexport symbol :tuatara-user)
+            (unintern symbol :tuatara-user)))))))
+
+(define-test (packages removed-passed-over-at-start)
+  ;; a package removed is not loaded at the start though the init file names it, said once in
+  ;; *Messages*, listed as removed; L in the package manager loads it, no longer removed, and R
+  ;; removes it again; the init file is left as it was
+  (with-folder-packages (dir)
+    (folder-packages dir '("remover" "(defparameter *package-test-said* :remover)"))
+    (let* ((init (merge-pathnames "init.lisp" dir))
+           (text (format nil "(load-package \"remover\" :source ~s)~%(load-package \"remover\" :source ~s)~%"
+                         (namestring dir) (namestring dir))))
+      (alexandria:write-string-into-file text init)
+      (tuatara.packages::remove-package "remover")
+      (let ((tuatara.defaults:*config-file* init)
+            (tuatara.packages::*removed-packages-said* '())
+            (said nil) (loaded-at-start t))
+        (auto-save-session
+         (list "M-x p a c k a g e - m a n a g e r RET"
+               (list :until (lambda () (tuatara.frontend.fake:fake-frame-showing
+                                        (tuatara.command:editor-frontend tuatara.command:*editor*) "removed")))
+               (list :until (lambda ()
+                              (setf said (count-matches "The package remover is removed" (messages-text))
+                                    loaded-at-start (boundp 'tuatara-user::*package-test-said*))
+                              t))
+               "L" (list :until (lambda () (tuatara.packages::package-loaded-p "remover")))
+               (list :until (lambda () (boundp 'tuatara-user::*package-test-said*)))
+               "R" (list :until (lambda () (tuatara.packages::package-removed-p "remover"))))
+         :width 160 :height 20)
+        ;; named twice at the start, said once
+        (is = 1 said)
+        (false loaded-at-start))
+      (false (tuatara.packages::package-loaded-p "remover"))
+      (is string= "removed" (tuatara.packages::package-condition "remover" nil))
+      (is string= text (tuatara.io:file-text init)))))
+
+(define-test (packages deleted-with-its-files)
+  ;; package-delete unloads a package of a folder of yours, removes it, and deletes its
+  ;; compiled files after asking with their size; the folder of yours stays as it is
+  (with-folder-packages (dir)
+    (aged-package dir "deleter" "(defpackage #:deleter (:use #:cl #:tuatara))
+(in-package #:deleter)
+(define-command deleter-run () \"Run.\" nil)")
+    (let ((source (merge-pathnames "deleter/deleter.lisp" dir)))
+      (true (tuatara-user:load-package "deleter" :source (namestring dir)))
+      (let ((fasl (tuatara.packages::package-fasl source)))
+        (true (probe-file fasl))
+        (auto-save-session
+         (list "M-x p a c k a g e - d e l e t e RET d e l e t e r RET"
+               (list :until (lambda () (tuatara.frontend.fake:fake-frame-showing
+                                        (tuatara.command:editor-frontend tuatara.command:*editor*)
+                                        "Unload, remove and delete the package deleter")))
+               "y e s RET" (list :until (lambda () (echo-says "deleter deleted"))))
+         :width 160 :height 20)
+        (false (probe-file fasl))
+        (true (probe-file source))
+        (false (find-package "DELETER"))
+        (false (tuatara.command:find-command "deleter-run"))
+        (false (tuatara.packages::package-loaded-p "deleter"))
+        (true (tuatara.packages::package-removed-p "deleter"))
+        (false (tuatara.packages::package-state "deleter" (namestring dir) nil))))))

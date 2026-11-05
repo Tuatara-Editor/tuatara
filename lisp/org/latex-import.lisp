@@ -4,17 +4,18 @@
 ;;;; LATEX-IMPORT reads a LaTeX document someone gave you to write a report
 ;;;; in and makes of it what M-x export-template-from-latex promises:
 ;;;;
-;;;; - A LaTeX template, latex-templates/NAME.tex: the document as it is up
+;;;; - A LaTeX template, latex-templates/NAME.tex, the document as it is up
 ;;;;   to its first \section (or \chapter, \part), its preamble, cover and
-;;;;   facts, with each field a place: \title, \author and \date; a value
+;;;;   facts, with each field a place, as \title, \author and \date; a value
 ;;;;   defined in the preamble (\newcommand{\refnumber}{REF-0001}, \def);
 ;;;;   in the front, placeholder text ([Enter name], <Version>, «Date»), a
 ;;;;   tabular row of labels and values (REFERENCE: & REF-XXXX) and a line
 ;;;;   labelled "Version: 0.1". The text from the first section on becomes
 ;;;;   {{{body}}}; the packages an Org note's text needs are loaded before
 ;;;;   \begin{document} unless the document loads them itself.
+;;;;
 ;;;; - Its note template, note-templates/NAME.org, as template-import.lisp
-;;;;   writes one: the fields, then the document's text as Org: its
+;;;;   writes one, with the fields, then the document's text as Org: its
 ;;;;   sections headings (a starred one unnumbered, those after \appendix
 ;;;;   tagged :appendix:), its lists, tables with their captions, pictures
 ;;;;   (saved in note-templates/NAME-media/), footnotes, bold, italic, links
@@ -317,7 +318,7 @@ START below END to OUT as an Org list, nested lists within indented."
 
 (defun latex-org-heading (name arguments out)
   "Write the sectioning command NAME (section, subsection*...) with its
-ARGUMENTS to OUT as an Org heading: unnumbered when starred, tagged
+ARGUMENTS to OUT as an Org heading, unnumbered when starred, tagged
 :appendix: after \\appendix when outermost."
   (let* ((starred (uiop:string-suffix-p name "*"))
          (base (string-right-trim "*" name))
@@ -608,7 +609,7 @@ places."
 
 (defun latex-import-front-fields (text start end edits)
   "EDITS with the fields of the front of TEXT, from START below END, made
-places: tabular rows of labels and values, lines labelled \"Version: 0.1\",
+places, as tabular rows of labels and values, lines labelled \"Version: 0.1\",
 then placeholder text ([Enter name], «Name», <Version>)."
   ;; tables of labels and values: a cell ending in : and the one after it
   (let ((i start))

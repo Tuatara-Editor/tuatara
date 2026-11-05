@@ -345,7 +345,7 @@ other languages coloured again by the grammars on."
 once the question is shown (READ-ANSWER-KEY; keys typed before are thrown
 away): y keeps it on and parses the buffers in it, n keeps it off and says
 how to turn it on later; any other key says which keys answer and asks
-again; \\`C-g' is \"not now\": not asked again in this session, and nothing
+again; \\`C-g' is \"not now\", not asked again in this session, and nothing
 kept."
   (let* ((words (language-words language))
          (answer (handler-case (read-answer-key (format nil "Turn on the ~a grammar? (y or n) " words) '(#\y #\n) :fresh t)

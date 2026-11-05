@@ -165,7 +165,7 @@ the days a scheduled TS waits; NIL when it says none."
   "A headline of an agenda file, as the agenda reads it: its FILE (path) and
 TEXT, the character it begins at (POSITION) and where its own text ends (END),
 its LEVEL, TODO keyword and TODO-TYPE (TODO, DONE or NIL), PRIORITY (Org's
-number: 2000 for [#A], 1000 for B and none, 0 for C), TITLE, TAGS (inherited
+number is 2000 for [#A], 1000 for B and none, 0 for C), TITLE, TAGS (inherited
 first) and LOCAL-TAGS (its own, on its headline), CATEGORY, its planning's SCHEDULED, DEADLINE and CLOSED timestamps
 (texts), HEADING, its line after the stars, its PROPERTIES (an alist), its
 plain active STAMPS (texts), its RANGES of days ((FROM TO) texts) and its LOGS
@@ -381,7 +381,7 @@ tells whether it changed."
 (defun org-agenda-open-snapshot ()
   "On the editor's thread: the agenda files open now, as their buffers have
 them (ORG-AGENDA-SNAPSHOT), for ORG-AGENDA-SNAPSHOT-WITH to finish on another
-thread: the buffers visiting an Org file, or a file the agenda reads
+thread. They are the buffers visiting an Org file, or a file the agenda reads
 \(ORG-AGENDA-FILES-IN-FORCE).
 Nothing on disk is looked at."
   (let ((named (loop for file in (org-agenda-files-in-force)
@@ -964,8 +964,8 @@ repeats gone on past it."
 
 (defun org-agenda-noted-lines (entries current today)
   "The lines of the times of ENTRIES cancelled or moved one at a time on the
-day CURRENT, today being TODAY. A time cancelled: Cancelled: on its day,
-faint. A time moved: Moved: and where it went on the day it was, faint; on
+day CURRENT, today being TODAY. A time cancelled shows Cancelled: on its day,
+faint. A time moved shows Moved: and where it went on the day it was, faint; on
 the day it went to, the time itself, as scheduled for a task and as a
 timestamp for an event, till a task is done for it; a task's moved to a day
 gone and not done, today, as one scheduled before."

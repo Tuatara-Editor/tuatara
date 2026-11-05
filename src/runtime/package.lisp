@@ -6,7 +6,7 @@
   (:documentation "Threads: the pool of workers that runs pieces of work in parallel, the number of processors, waiting on a condition with a time limit, jobs in the background and their one runner, the running of hooks, and the reports of debug mode.")
   (:export #:host #:*host* #:host-wake #:jobs-of #:make-spares #:take-spare #:give-back-spare #:with-spare #:resource-directories #:foreign-library-p #:foreign-call  #:*source-tree* #:cpu-count #:run-tasks #:*task-wrappers* #:*around-long-work* #:ensure-pool #:*pool* #:pool #:pool-size #:wait-on #:wait-on-until
            #:*debug-on* #:*debug-start* #:*debug-reports* #:debug-report #:with-thread-guard #:make-guarded-thread #:bisect #:carry-settings #:queue-debug-report #:*stop-wait* #:join-within #:left-running
-           #:set-debug #:milliseconds-since #:seconds-since #:deadline-in #:deadline-passed-p #:seconds-left #:*debug-log-path* #:log-in-use-p #:debug-report-line #:backtrace-lines
+           #:set-debug #:milliseconds-since #:seconds-since #:deadline-in #:deadline-passed-p #:seconds-left #:wait-until #:*debug-log-path* #:log-in-use-p #:debug-report-line #:backtrace-lines
            #:reporting-errors #:ignoring-errors-reported
            ;; hooks
            #:quit #:quit-words #:run-hook #:run-hook-until-success #:run-hook-until-done #:call-hook-function #:hook-function-name

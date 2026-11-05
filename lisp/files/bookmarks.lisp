@@ -253,7 +253,7 @@ buffers, in sections: one for each category (\\[bookmark-set] asks for them,
 \\<bookmarks-mode>\\[bookmark-set-categories] here sets them), its heading saying how many it holds, then
 one for the bookmarks in none; a bookmark in two categories is in both. Each
 line: its mark (> marked, D marked for deletion), name, whether it keeps a
-place in a file or a folder (a rimu list's: the entry the cursor was on), and
+place in a file or a folder (a rimu list's, the entry the cursor was on), and
 the file or folder; the names of folders, of bookmarks whose file or folder
 is gone and of those marked each set apart in a face of their own.
 \\[list-toggle-fold] or \\`RET' on a heading folds or unfolds a section,

@@ -20,7 +20,7 @@
 ;;;; with DEFINE-PACKAGE-SETTING.
 ;;;;
 ;;;; A package says which Tuatara it needs in a line of its entry file's
-;;;; header, ;;;; Needs: Tuatara 0.91.0, read without running it: a version
+;;;; header, ;;;; Needs: Tuatara 0.91.0, read without running it. A version
 ;;;; needing a newer one is never taken, an older one that fits taken in its
 ;;;; place. Who signed the commit or tag fetched is checked by git, and the
 ;;;; signer of a source's first version taken is remembered: a later version
@@ -84,6 +84,22 @@ are passed over (STATE-LINE-FIELDS)."
   "What is remembered of the package KEY names (PACKAGE-KEY), (KEY COMMIT TAG
 ACCEPTED), or NIL."
   (state-list-find *fetched-packages* key))
+
+(defun parse-removed-package-line (line)
+  "The name of the package LINE of the file of packages removed writes, or
+NIL for a line that is no package's name. Fields after it are passed over
+\(STATE-LINE-FIELDS)."
+  (let ((name (first (state-line-fields line))))
+    (and name (cl-ppcre:scan "^[a-z0-9][a-z0-9-]*$" name) name)))
+
+(define-state-list *removed-packages* "packages-removed" 'parse-removed-package-line 'identity '*packages-kept*
+  :header (format nil "# The packages removed (M-x package-remove), the latest first: each is not~%~
+                       # loaded though the init file names it, until M-x package-load loads it.~%"))
+
+(defun package-removed-p (name)
+  "True when the package NAME is removed (\\[package-remove]): its load-package
+in the init file is passed over until \\[package-load] loads it."
+  (and (state-list-find *removed-packages* name) t))
 
 (defun tuatara-user:package-source (name where &key signers)
   "Name WHERE, a git repository's address or a folder of your disk (~/ for
@@ -209,8 +225,27 @@ for each commit of it fetched."
 (defvar *package-folder* nil
   "The folder of the package being loaded, for LOAD-PACKAGE-FILE.")
 
+(defun package-folder-native ()
+  "The native name of the folder of the package being loaded, or NIL."
+  (and *package-folder* (tuatara.io:native *package-folder*)))
+
 (defvar *loaded-packages* '()
   "The names of the packages loaded this session.")
+
+(defvar *unloaded-packages* '()
+  "The names of the packages unloaded this session (\\[package-unload]) and not
+loaded again since.")
+
+(defvar *package-code* '()
+  "The Lisp packages each package loaded this session made, each (NAME .
+PACKAGES): what unloading it takes out (FORGET-PACKAGE-CODE).")
+
+(defvar *package-command-stubs* '()
+  "The commands of packages not loaded yet that load them when run
+\(PACKAGE-COMMAND-STUB), each (COMMAND NAME . FUNCTION), NAME the package.")
+
+(defvar *removed-packages-said* '()
+  "The names of the packages removed that this session has said it passes over.")
 
 (defvar *fetching-packages* '()
   "The names of the packages being fetched.")
@@ -298,30 +333,30 @@ keyword with its value, or for the last four with any number of them:
          \"tuatara\", a mode's name (\"org\" for org-mode) or a name of
          your own for a group of settings (\"writing\"), which load nothing
          and run :init and :config at once. A name a letter or two from a
-         package's or a mode's is taken for a mistyping of it: an error,
+         package's or a mode's is taken for a mistyping of it, an error
          saying which.
-:version the tag, branch or commit fetched: the repository's newest tag by
+:version the tag, branch or commit fetched, the repository's newest tag by
          date when not given or \"release\", its newest commit for \"latest\"
          or when not given and it has no tag yet.
 :folder  its folder in the repository or source folder, when not NAME.
 :file    its first file, when not NAME.lisp or load.lisp.
 :signers the fingerprints of the keys its versions must be signed by, a
-         list (as package-source takes them): only those are taken.
+         list (as package-source takes them); only those are taken.
 :plain   t to allow an address of http:// or git://, whose transport is not
-         encrypted: refused without it.
+         encrypted; refused without it.
 :disabled t to leave the whole block out, as if it were not there.
-:if      a form: the block is left out when it gives NIL, as on another
+:if      a form; the block is left out when it gives NIL, as on another
          machine, (:if (string= (machine-instance) \"laptop\")).
 :defer   t to load it once the editor has started rather than while the init
          file is read.
-:after   another package's or group's name: loaded, or for a group its
+:after   another package's or group's name; loaded, or for a group its
          :config run, only once that one has. There is no :before: A
          before B is B :after A.
 :commands commands of it, loaded when one of them is first run (\\[execute-extended-command] offers
          them meanwhile, a key may be bound to them).
 :modes   modes, loaded when a buffer is first in one of them (\"csv\" for csv-mode).
 :init    forms evaluated at once, before it loads.
-:config  forms evaluated once it has loaded: its settings and keys (bind-key
+:config  forms evaluated once it has loaded, its settings and keys (bind-key
          with :mode for keys of a mode).
 
 For a group of settings, \"tuatara\" or a mode's block, nothing loads: :init
@@ -373,6 +408,7 @@ the others still evaluated."
 evaluated, the packages waiting for it (:after) load, and the commands of it
 run before it had loaded run (*COMMANDS-AFTER-LOAD*)."
   (pushnew name *loaded-packages* :test #'string=)
+  (setf *unloaded-packages* (remove name *unloaded-packages* :test #'string=))
   (run-package-forms name :config (cdr (assoc name *package-configs* :test #'string=)))
   (let ((waiting (remove name *packages-waiting* :key #'car :test-not #'string=)))
     (setf *packages-waiting* (remove name *packages-waiting* :key #'car :test #'string=))
@@ -427,7 +463,7 @@ counted as loaded (PACKAGE-LOAD-ENDED). THEN, a function, is called with the
 file loaded, or NIL when it failed, and true as a second argument when it
 was stopped on purpose; what it returns is returned. While the editor's
 session runs (LOAD-IN-BACKGROUND-P) the package is loaded in the background
-\(START-PACKAGE-LOAD): COMPILE, a function of the job, compiles it first
+\(START-PACKAGE-LOAD). COMPILE, a function of the job, compiles it first
 apart from the editor, which goes on with your keys meanwhile; LOAD then
 runs while the editor waits, and THEN is called on the editor's thread once
 it has loaded: NIL is returned at once, and without THEN, once it has
@@ -482,21 +518,34 @@ already is left as it is."
         (setf (symbol-function command) stub
               (documentation command 'function)
               (format nil "A command of the package ~a: running it loads the package (its load-package's :commands), then runs the package's own." name)
-              (gethash command *commands*) stub)))))
+              (gethash command *commands*) stub
+              *package-command-stubs* (acons command (cons name stub)
+                                             (remove command *package-command-stubs* :key #'car)))))))
+
+(defun say-package-removed (name)
+  "Say in *Messages* and the debug log, once a session, that the package NAME
+is removed and so not loaded (PACKAGE-REMOVED-P)."
+  (unless (member name *removed-packages-said* :test #'string=)
+    (push name *removed-packages-said*)
+    (tuatara.runtime:debug-report :package "~a is removed: its load-package is passed over" name)
+    (log-message (substitute-command-keys
+                  (format nil "The package ~a is removed and not loaded, though the init file names it; \\[package-load] loads it" name)))))
 
 (defun arrange-package-load (name load &key defer after commands modes)
   "Have LOAD, a function loading the package NAME, called once: at once; with
 AFTER, once the package AFTER has loaded; with COMMANDS or MODES, when one of
 those commands is first run or a buffer is first in one of those modes; with
-DEFER alone, once the editor has started."
+DEFER alone, once the editor has started. Never once NAME is removed
+\(PACKAGE-REMOVED-P)."
   (let* ((started nil)
          (start (lambda ()
                   (unless started
                     (setf started t
                           *deferred-packages* (remove name *deferred-packages* :test #'string=))
-                    (if (and after (not (package-loaded-p after)))
-                        (push (list* after name load) *packages-waiting*)
-                        (funcall load))))))
+                    (cond ((package-removed-p name) (say-package-removed name))
+                          ((and after (not (package-loaded-p after)))
+                           (push (list* after name load) *packages-waiting*))
+                          (t (funcall load)))))))
     (cond ((or commands modes)
            (pushnew name *deferred-packages* :test #'string=)
            (dolist (command commands) (package-command-stub command name start))
@@ -538,8 +587,9 @@ of four letters or fewer, two for a longer one."
 (defun declare-package (name &key left-out source version file folder signers plain defer after commands modes init config)
   "Load the package NAME as LOAD-PACKAGE says, each keyword as it takes it,
 INIT and CONFIG the forms after :init and :config; LEFT-OUT :disabled or :if
-when the block is left out, said in *Messages*. Returns the file loaded, or
-NIL when it is loaded later or nothing is."
+when the block is left out, said in *Messages*. A package removed
+\(PACKAGE-REMOVED-P) is listed, nothing of it run or loaded, and that said
+once. Returns the file loaded, or NIL when it is loaded later or nothing is."
   (when left-out
     (log-message (format nil "~a is left out (~(~s~))" name left-out))
     (when (and (stringp source) (plusp (length source)))
@@ -564,7 +614,13 @@ NIL when it is loaded later or nothing is."
                                                      (setf result (and (or (stringp loaded) (pathnamep loaded)) loaded))))
                                    :defer defer :after after :commands commands :modes modes)
              result)))
-    (cond (source
+    (cond ((and source (package-removed-p name))
+           ;; listed as removed, nothing of it run
+           (when (and (stringp source) (plusp (length source)))
+             (declared (list name source version file folder)))
+           (say-package-removed name)
+           nil)
+          (source
            (run-package-forms name :init init)
            (unless (and (stringp source) (plusp (length source)))
              (refuse "A package's :source is a source's name, an address or a folder: ~s" source))
@@ -634,11 +690,16 @@ changed."
                                                     (directory (merge-pathnames "lisp/**/*.lisp" top)))
                                 maximize (or (file-write-date file) 0))))))))
 
+(defun packages-compiled-directory ()
+  "The folder in the cache that packages are compiled into, a folder for each
+Steel Bank Common Lisp (SBCL) in it (PACKAGE-CACHE)."
+  (format nil "~apackages/" (tuatara.io:native (tuatara.io:cache-directory))))
+
 (defun package-cache ()
   "The folder packages are compiled into for this Tuatara and this Steel Bank
 Common Lisp (SBCL); those of other ones are deleted the first time it is
 asked for."
-  (let* ((sbcl (format nil "~apackages/~a/" (tuatara.io:native (tuatara.io:cache-directory))
+  (let* ((sbcl (format nil "~a~a/" (packages-compiled-directory)
                        (tuatara.io:percent-encoded (lisp-implementation-version) :safe "._-")))
          (here (format nil "~a~a/" sbcl (tuatara-identity))))
     (unless (probe-file here)
@@ -669,7 +730,7 @@ names its own files so, as where it is loaded from is the cache's."
 
 (defun compile-failure-words (report)
   "Why compiling a file failed, on one line, from REPORT, what the compiler
-wrote: the error it caught (a reader error: an unclosed parenthesis, and the
+wrote, the error it caught (a reader error, an unclosed parenthesis, and the
 line its form starts on); NIL when it names none."
   (let ((at (search "caught ERROR:" report)))
     (when at
@@ -818,35 +879,71 @@ when that is not one of OWN, the package's own Lisp packages."
                            name))))
     (if (eq (first needed) :setf-function) (format nil "(setf ~a)" word) word)))
 
-(defun forget-package-code (own)
-  "Take out of Tuatara what the code of the Lisp packages OWN put there, and
-delete them: their commands and modes, the keys bound to their commands, the
+(defun forget-package-code (own &optional folder)
+  "Take out of Tuatara what the code of the Lisp packages OWN, loaded from
+FOLDER when given, put there, and delete them: their jobs running, of their
+own kinds, asked to stop; their modes, a buffer in one of them put in the
+mode its file calls for, or fundamental-mode; their commands, and those whose
+function is theirs; the keys bound to their commands, with their labels; the
 places they gave commands to run in (COMMANDS-FOR-MODE), Tuatara's own among
-them, their ways of showing text (DEFINE-DISPLAY-TOGGLE), and their functions
-on the lists of functions Tuatara calls (*FILE-VIEWS* and the rest). Faces
-and settings they define stay, doing nothing."
+them; their ways of showing text (DEFINE-DISPLAY-TOGGLE); their functions on
+the lists of functions Tuatara calls (*FILE-VIEWS*, *TICK-FUNCTIONS* and the
+rest); their methods of Tuatara's generic functions; and their settings,
+which are settings no more, their values kept for when they load again.
+Their faces stay, doing nothing. A function is theirs when one of their
+symbols names it, or it was made in one of their functions or by a file of
+FOLDER."
   (when own
-    (flet ((theirs-p (thing)
-             (let ((name (if (functionp thing) (nth-value 2 (function-lambda-expression thing)) thing)))
-               (and name (symbolp name) (member (symbol-package name) own)))))
-      (dolist (command (loop for name being the hash-keys of tuatara.command:*commands* collect name))
-        (when (theirs-p command) (tuatara.command:forget-command command)))
+    (labels ((own-p (name)
+               (typecase name
+                 (null nil)
+                 (symbol (and (member (symbol-package name) own) t))
+                 (string (and folder (tuatara.io:path-within-p name folder)))
+                 (cons (or (own-p (car name)) (own-p (cdr name))))))
+             (theirs-p (thing)
+               ;; a function made within another is named (LAMBDA (...) :IN NAME-OR-FILE)
+               (cond ((functionp thing) (own-p (nth-value 2 (function-lambda-expression thing))))
+                     ((symbolp thing) (own-p thing)))))
+      (dolist (job tuatara.runtime:*jobs*)
+        (when (and (tuatara.runtime:job-running-p job) (theirs-p (type-of job)))
+          (tuatara.runtime:job-stop job)))
+      (let ((modes (remove-if-not #'theirs-p (mode-names))))
+        (mapc #'forget-major-mode modes)
+        (dolist (buffer (buffer-list))
+          (when (member (type-of (buffer-major-mode buffer)) modes)
+            (set-auto-mode buffer))))
+      (loop for name being the hash-keys of tuatara.command:*commands* using (hash-value function)
+            when (or (theirs-p name) (theirs-p function))
+              collect name into gone
+            finally (mapc #'tuatara.command:forget-command gone))
       (dolist (command (loop for name being the hash-keys of *mode-commands* collect name))
         (let ((kept (and (not (theirs-p command)) (remove-if #'theirs-p (gethash command *mode-commands*) :key #'car))))
           (if kept
               (setf (gethash command *mode-commands*) kept)
               (remhash command *mode-commands*))))
       (dolist (mode (mode-names))
-        (if (theirs-p mode)
-            (forget-major-mode mode)
-            (unbind-commands-if #'theirs-p (mode-keymap mode))))
+        (unbind-commands-if #'theirs-p (mode-keymap mode)))
       (when *global-keymap* (unbind-commands-if #'theirs-p *global-keymap*))
       (setf *display-toggles* (remove-if #'theirs-p *display-toggles* :key #'display-toggle-name))
       (do-external-symbols (name :tuatara)
         (when (and (boundp name) (not (constantp name)))
           (let ((value (symbol-value name)))
             (when (and (consp value) (handler-case (list-length value) (type-error () nil)) (some #'theirs-p value))
-              (setf (symbol-value name) (remove-if #'theirs-p value)))))))
+              (setf (symbol-value name) (remove-if #'theirs-p value))))))
+      (let ((names (mapcar #'package-name own))
+            (settings '()))
+        (do-external-symbols (symbol :tuatara-user)
+          (when (member (get symbol 'package-setting) names :test #'equal)
+            (push symbol settings)))
+        (dolist (symbol settings)
+          (remprop symbol 'package-setting)
+          (unexport symbol :tuatara-user)))
+      (dolist (package own)
+        (do-symbols (symbol package)
+          (let ((class (and (eq (symbol-package symbol) package) (find-class symbol nil))))
+            (when class
+              (dolist (method (copy-list (sb-mop:specializer-direct-methods class)))
+                (remove-method (sb-mop:method-generic-function method) method)))))))
     (dolist (package own)
       (dolist (user (package-used-by-list package))
         (unuse-package package user))
@@ -870,7 +967,7 @@ names the editor has may be missing: the editor refuses it as it loads."
                          (list :sources (package-check-sources check) :needs needed))))
     (tuatara.runtime:debug-report :package "~a refused, its code using names this Tuatara lacks: ~{~a~^, ~}"
                                   (package-check-name check) words)
-    (forget-package-code own)
+    (forget-package-code own (package-folder-native))
     (setf *loaded-packages* (remove (package-check-name check) *loaded-packages* :test #'string=))
     (error 'package-lacks-names :name (package-check-name check) :names words)))
 
@@ -1021,9 +1118,12 @@ editor instead."
           ;; failed or stopped between its files: what of it loaded taken out again
           (let ((loaded nil))
             (unwind-protect (progn (load-checked-file file check) (setf loaded t))
-              (unless loaded (forget-package-code (package-check-own check)))))
+              (unless loaded (forget-package-code (package-check-own check) (package-folder-native)))))
           (let ((missing (remove-if #'needed-name-present-p (package-check-needs check))))
-            (when missing (refuse-package check missing)))))
+            (when missing (refuse-package check missing)))
+          (let* ((name (package-check-name check))
+                 (own (union (package-check-own check) (cdr (assoc name *package-code* :test #'string=)))))
+            (setf *package-code* (acons name own (remove name *package-code* :key #'car :test #'string=))))))
     file))
 
 (defun load-package-for-test (name folder)
@@ -1093,7 +1193,7 @@ needs: the comment lines at its top.")
 
 (defun needed-version-in (text)
   "The version of Tuatara the start of a package's entry file, TEXT, says it
-needs, as a string: a line of the comments at its top that reads
+needs, as a string, a line of the comments at its top that reads
 \";;;; Needs: Tuatara 0.91.0\" (any number of semicolons, \"or later\" after
 it allowed); NIL when there is none."
   (loop for start = 0 then (1+ end)
@@ -1118,21 +1218,12 @@ says none, or has no entry."
                                                    (tuatara.io:read-fd-start fd path size *package-header-octets*))))))
         (and octets (needed-version-in (tuatara.text:lenient-string octets)))))))
 
-(defun version-numbers (text)
-  "The numbers of the version TEXT, as a list: 0.90.13 is (0 90 13)."
-  (mapcar #'parse-integer (cl-ppcre:all-matches-as-strings "[0-9]+" text)))
-
 (defun tuatara-fits-p (needed)
   "True when this Tuatara is the version NEEDED or later, each number
 compared in turn, one left out counted 0; true too when this one's version
 is not known."
-  (let ((have (version-numbers (tuatara:version))) (need (version-numbers needed)))
-    (or (null have)
-        (loop for i below (max (length have) (length need))
-              for a = (or (nth i have) 0) and b = (or (nth i need) 0)
-              when (> a b) return t
-              when (< a b) return nil
-              finally (return t)))))
+  (let ((have (tuatara.io:version-numbers (tuatara:version))))
+    (or (null have) (tuatara.io:version-at-least-p have (tuatara.io:version-numbers needed)))))
 
 (defun unfitting-version (folder name file)
   "The version of Tuatara the package NAME in FOLDER needs when it is newer
@@ -1223,7 +1314,7 @@ there.")
 before it is ended.")
 
 (defun package-git-environment ()
-  "What git is given when it fetches and checks packages: what it is given to
+  "What git is given when it fetches and checks packages, what it is given to
 push and pull now (GIT-NETWORK-ENVIRONMENT), and besides: no hooks, no
 submodules, no attributes file of yours, and none of the system's, so that
 none of your own git's programs runs on a package; symbolic links in a
@@ -1320,7 +1411,7 @@ packages are kept or compiled in, nothing it holds followed when it is a link (D
 an error for any other folder."
   (let ((native (tuatara.io:native folder)))
     (unless (or (tuatara.io:path-within-p native (tuatara.io:native (packages-directory)))
-                (tuatara.io:path-within-p native (format nil "~apackages/" (tuatara.io:native (tuatara.io:cache-directory)))))
+                (tuatara.io:path-within-p native (packages-compiled-directory)))
       (refuse "~a is no folder of the packages': not deleted" (abbreviated-path native)))
     (tuatara.io:delete-tree native)))
 

@@ -515,8 +515,7 @@ the tests' own keyring lacks: the folder and the key's fingerprint."
            (before (uiop:getenv "GIT_CONFIG_GLOBAL"))
            (tuatara-user:*package-ask-before-loading* nil))
       (dolist (hook '("post-checkout" "reference-transaction"))
-        (alexandria:write-string-into-file (format nil "#!/bin/sh~%touch ~a~%" (namestring hooked)) (merge-pathnames hook hooks))
-        (sb-posix:chmod (namestring (merge-pathnames hook hooks)) #o755))
+        (put-program (merge-pathnames hook hooks) (format nil "#!/bin/sh~%touch ~a~%" (namestring hooked))))
       (alexandria:write-string-into-file
        (format nil "[user]~%	name = Test~%	email = test@example.invalid~%[commit]~%	gpgsign = false~%[filter \"own\"]~%	smudge = sh -c 'touch ~a; cat'~%	required = true~%[core]~%	hooksPath = ~a~%"
                (namestring marker) (namestring hooks))

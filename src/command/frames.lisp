@@ -388,7 +388,7 @@ held."
 (defun guard-buffers-held-by-questions (buffer edits)
   "Before-edit function (TUATARA.BUFFER:*BEFORE-EDIT-FUNCTIONS*): refuse EDITS
 of BUFFER while a question waiting in another frame is about it, saying in
-which frame (*BUFFERS-HELD-BY-QUESTIONS*): the question holds places in its
+which frame (*BUFFERS-HELD-BY-QUESTIONS*); the question holds places in its
 text, which the edits would move."
   (declare (ignore edits))
   (let ((held (and *buffers-held-by-questions* (assoc buffer *buffers-held-by-questions*))))

@@ -126,7 +126,7 @@ the day of the month, a date past the month's end counted on into the next:
 
 (defun org-day-timestamp-text (day &key active hour minute)
   "The day number DAY as an Org timestamp, any year: [2026-10-01 Thu], or
-<2026-10-01 Thu> when ACTIVE, with HOUR and MINUTE when HOUR is given:
+<2026-10-01 Thu> when ACTIVE, with HOUR and MINUTE when HOUR is given as
 [2026-10-01 Thu 17:30]."
   (format nil (if active "<~a>" "[~a]") (date-time-text day hour minute)))
 
@@ -192,8 +192,8 @@ were moved, as a second value. A repeater of 0 (+0d) repeats nothing."
             count)))
 
 ;;; One time of a repeat cancelled or moved, the rest going on: a note in
-;;; the entry's log, - State "CANCELLED"  for [2026-10-30 Fri 08:00] [...] or
-;;; - State "MOVED"      for [2026-10-26 Mon] to [2026-10-27 Tue] [...].
+;;; the entry's log, as a list item, State "CANCELLED"  for [2026-10-30 Fri 08:00]
+;;; [...] or State "MOVED"      for [2026-10-26 Mon] to [2026-10-27 Tue] [...].
 ;;; A time is an occurrence, (DAY . TIME): a day number, and the time of day
 ;;; as 930 for 09:30, or NIL for all that day.
 

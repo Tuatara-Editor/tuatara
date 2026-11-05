@@ -401,7 +401,7 @@ group; the Word document's part alone too.")
 (defun org-latex-redaction (kind text)
   "What {{{KIND(TEXT)}}} stands for, KIND redact or protect: TEXT as it is
 when it is shown (ORG-LATEX-REDACTING-P), else a black box as wide as TEXT
-would be: for LaTeX made from as many letters n, [redacted] in its
+would be, for LaTeX made from as many letters n, [redacted] in its
 bookmarks, and for a Word document as many characters (@@docx:redacted:N@@),
 so that TEXT is in neither, nor in what is made from them. What is made so
 is read back by *ORG-REDACTION-SCANNER*."
@@ -687,7 +687,7 @@ highest), or NIL when it is written as a list item instead (past H)."
       (format out "\\hfill{}\\textsc{~{~a~^:~}}" (mapcar #'latex-escape tags)))))
 
 (defun org-latex-numbered-p (headline)
-  "True when HEADLINE is printed with a number: as #+OPTIONS: num says, but
+  "True when HEADLINE is printed with a number, as #+OPTIONS: num says, but
 not with :UNNUMBERED: t, nor numbered: no in its :EXPORT: drawer."
   (and (org-latex-option "num" t) (not (org-headline-property headline "UNNUMBERED"))
        (not (export-setting-no-p headline "numbered"))))
@@ -1595,8 +1595,8 @@ is not among them: a link to it is written as its words."
 (defun org-latex-link (node out)
   "Write the link NODE to OUT: to the web as \\href, a picture shown, a place
 in the document as \\hyperref with its description. One with none shows what
-it leads to by its number (\\ref: 3), and in the enhanced export by its kind
-and number (\\autoref: section 3, Table 2, Figure 1); one to a heading with no
+it leads to by its number (3, by \\ref), and in the enhanced export by its kind
+and number (section 3, Table 2, Figure 1, by \\autoref); one to a heading with no
 number by its title, to a target with none by its words. Anything else as its
 description."
   (let* ((type (org-property node :type))
@@ -1707,7 +1707,7 @@ description."
 \\newenvironment{tuataralandscape}{\\tuatara@turn}{\\tuatara@turn}
 \\makeatother
 "
-  "LaTeX for pages turned sideways (a page: landscape setting): the paper's
+  "LaTeX for pages turned sideways (a page: landscape setting), with the paper's
 width and height swapped from a page of their own on and back after, the
 text as much wider and shorter, so that headers, footers, columns and tables
 lie across the page as a Word document's landscape section has them.")

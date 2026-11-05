@@ -13,7 +13,7 @@
 (in-package #:tuatara.defaults)
 
 (define-major-mode rimu-trash-mode sectioned-list-mode
-  "What is in the trash (\\[rimu-trash]), as the buffer list (\\[buffers]) has its buffers: a
+  "What is in the trash (\\[rimu-trash]), as the buffer list (\\[buffers]) has its buffers, a
 section for your own trash and one for each drive's, a line each thing:
 its mark, name, when it went there and where it was. \\<support>\\[next-line] and \\[previous-line]
 move, \\<rimu-trash-mode>\\[list-visit] or \\`RET' opens the thing on the line safely, to look at

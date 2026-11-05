@@ -728,9 +728,11 @@ each (AT FACE), and SHIFT, how far rows drawn large above move it down."
 \(ROW-PIECE): the TEXT of the row of the buffer it showed and the FACES of its
 characters (copies), its EXTEND, COLUMNS and SCALE, the GUTTER pieces, the
 CURSOR, the RULERS, the LEFT, WIDTH and MARGIN of the window and the SHIFT of
-the rows above. TEXT is NIL for a row past the buffer's text."
+the rows above. TEXT is NIL for a row past the buffer's text. START is where
+that row began in the buffer's text, an octet, and FRAME the window's frame
+that last drew it (DRAWN-ROWS-FRAME)."
   (text nil) (faces nil) (extend nil) (columns 0) (scale 1) (gutter nil) (cursor nil) (rulers nil)
-  (left 0) (width 0) (margin 0) (shift 0) (piece nil))
+  (left 0) (width 0) (margin 0) (shift 0) (piece nil) (start nil) (frame -1 :type fixnum))
 
 (setf (documentation 'drawn-row-p 'function) "True when OBJECT is a DRAWN-ROW."
       (documentation 'make-drawn-row 'function) "A DRAWN-ROW of nothing drawn yet."
@@ -746,22 +748,55 @@ the rows above. TEXT is NIL for a row past the buffer's text."
       (documentation 'drawn-row-width 'function) "The window's width."
       (documentation 'drawn-row-margin 'function) "The width of the window's gutter."
       (documentation 'drawn-row-shift 'function) "How far rows drawn large above moved the row down."
-      (documentation 'drawn-row-piece 'function) "The piece of the screen row made, or NIL before.")
+      (documentation 'drawn-row-piece 'function) "The piece of the screen row made, or NIL before."
+      (documentation 'drawn-row-start 'function) "Where the buffer's row drawn began, an octet, or NIL past the text."
+      (documentation 'drawn-row-frame 'function) "The window's frame that last drew the row.")
+
+(defstruct (drawn-rows (:constructor make-drawn-rows ()) (:copier nil))
+  "The rows of a window's screen as drawn: NOW, the DRAWN-ROW of each of the
+first NOW-COUNT screen rows of the frame being drawn, BEFORE and BEFORE-COUNT
+those of the frame before, and FRAME, the number of the frame being drawn."
+  (now (vector) :type simple-vector) (now-count 0 :type fixnum)
+  (before (vector) :type simple-vector) (before-count 0 :type fixnum)
+  (frame 0 :type fixnum))
+
+(setf (documentation 'drawn-rows-p 'function) "True when OBJECT is a DRAWN-ROWS."
+      (documentation 'make-drawn-rows 'function) "The DRAWN-ROWS of a window not drawn yet."
+      (documentation 'drawn-rows-now 'function) "The DRAWN-ROW of each screen row of the frame being drawn."
+      (documentation 'drawn-rows-now-count 'function) "How many screen rows the frame being drawn has."
+      (documentation 'drawn-rows-before 'function) "The DRAWN-ROW of each screen row of the frame before."
+      (documentation 'drawn-rows-before-count 'function) "How many screen rows the frame before had."
+      (documentation 'drawn-rows-frame 'function) "The number of the frame being drawn.")
 
 (defvar *drawn-rows* (make-hash-table :test 'eq :weakness :key :synchronized t)
-  "For each window, a vector of the DRAWN-ROW of each of its screen rows.")
+  "For each window, its DRAWN-ROWS.")
 
-(defun drawn-row (window r)
-  "The DRAWN-ROW of WINDOW's screen row R."
-  (let ((rows (gethash window *drawn-rows*)))
-    (when (<= (length rows) r)
-      (setf rows (setf (gethash window *drawn-rows*)
-                       (let ((more (make-array (max (1+ r) (* 2 (length rows))))))
-                         (replace more rows)
-                         (loop for i from (length rows) below (length more)
-                               do (setf (svref more i) (make-drawn-row)))
-                         more))))
-    (svref rows r)))
+(defun begin-drawing-rows (window height)
+  "Begin a frame of WINDOW's HEIGHT screen rows: the rows of the frame drawn
+last become those it was drawn from (DRAWN-ROWS-BEFORE)."
+  (let ((drawn (or (gethash window *drawn-rows*) (setf (gethash window *drawn-rows*) (make-drawn-rows)))))
+    (rotatef (drawn-rows-now drawn) (drawn-rows-before drawn))
+    (when (< (length (drawn-rows-now drawn)) height)
+      (setf (drawn-rows-now drawn) (make-array height :initial-element nil)))
+    (setf (drawn-rows-before-count drawn) (drawn-rows-now-count drawn)
+          (drawn-rows-now-count drawn) height)
+    (incf (drawn-rows-frame drawn))
+    drawn))
+
+(defun drawn-row-starting (drawn start)
+  "The row DRAWN, a DRAWN-ROWS, drew in the frame before from where START, an
+octet, began, or NIL: looked for by halves, the rows drawn from the text going
+down it in order."
+  (let ((rows (drawn-rows-before drawn)))
+    (loop with low = 0 and high = (1- (drawn-rows-before-count drawn))
+          while (<= low high)
+          do (let* ((middle (floor (+ low high) 2))
+                    (row (svref rows middle))
+                    (at (and row (drawn-row-start row))))
+               (cond ((null at) (setf high (1- middle)))
+                     ((= at start) (return row))
+                     ((< at start) (setf low (1+ middle)))
+                     (t (setf high (1- middle))))))))
 
 (defun drawn-as-before-p (drawn row pieces margin left width cursor rulers shift)
   "True when DRAWN, a DRAWN-ROW, was drawn from what the screen row is to be
@@ -784,17 +819,37 @@ LEFT, WIDTH, CURSOR, RULERS and SHIFT as ROW-PIECE takes them."
        (= (drawn-row-left drawn) left) (= (drawn-row-width drawn) width)
        (= (drawn-row-margin drawn) margin) (= (drawn-row-shift drawn) shift)))
 
-(defun row-piece (window r row pieces margin left width cursor rulers shift)
-  "The piece of WINDOW's screen row R (see PUT-SCREEN-ROW): ROW of its buffer
-as TEXT-ROW-PIECE makes it from PIECES, MARGIN, LEFT, WIDTH, CURSOR, RULERS
-and SHIFT, or with no ROW a row past the text. The piece made the last time
-the row was drawn is given again while it is drawn from the same: a row is
-made only when something it shows has changed."
-  (let ((drawn (drawn-row window r)))
-    (if (drawn-as-before-p drawn row pieces margin left width cursor rulers shift)
+(defun row-piece (rows r row pieces margin left width cursor rulers shift)
+  "The piece of screen row R of the window whose DRAWN-ROWS are ROWS (see
+PUT-SCREEN-ROW): ROW of its buffer as TEXT-ROW-PIECE makes it from PIECES,
+MARGIN, LEFT, WIDTH, CURSOR, RULERS and SHIFT, or with no ROW a row past the
+text. The piece made the last time the row was drawn is given again while it
+is drawn from the same, at the same screen row or, the window moved, at
+another: a row is made only when something it shows has changed."
+  (let* ((frame (drawn-rows-frame rows))
+         (there (and (< r (drawn-rows-before-count rows)) (svref (drawn-rows-before rows) r)))
+         (drawn (flet ((as-before (drawn)
+                         (and drawn (/= (drawn-row-frame drawn) frame)
+                              (drawn-as-before-p drawn row pieces margin left width cursor rulers shift)
+                              drawn)))
+                  (or (as-before there)
+                      (and row (as-before (drawn-row-starting rows (tuatara.display:row-start row))))))))
+    (unless drawn
+      ;; made again: in the row that showed this part of the text, else in a new one, as the row
+      ;; drawn here may yet be wanted lower down, where the window moved it
+      (setf drawn (if (and there (/= (drawn-row-frame there) frame)
+                           (or (null (drawn-row-start there))
+                               (and row (= (drawn-row-start there) (tuatara.display:row-start row)))))
+                      there
+                      (make-drawn-row))
+            (drawn-row-piece drawn) nil))
+    (setf (drawn-row-frame drawn) frame
+          (svref (drawn-rows-now rows) r) drawn)
+    (if (drawn-row-piece drawn)
         (drawn-row-piece drawn)
         (progn
-          (setf (drawn-row-text drawn) (and row (copy-seq (tuatara.display:row-string row)))
+          (setf (drawn-row-start drawn) (and row (tuatara.display:row-start row))
+                (drawn-row-text drawn) (and row (copy-seq (tuatara.display:row-string row)))
                 (drawn-row-faces drawn) (and row (coerce (copy-seq (tuatara.display:row-faces row)) 'simple-vector))
                 (drawn-row-extend drawn) (and row (tuatara.display:row-extend row))
                 (drawn-row-columns drawn) (if row (tuatara.display:row-columns row) 0)
@@ -882,14 +937,15 @@ cells, a terminal's) are noted too, its text shown as it is."
         ;; SHIFT: how far the rows drawn large above have moved this one down, in rows; the rows
         ;; past those the window draws (WINDOW-ROWS-DRAWN) left out
         ;; (a picture in place of the text leaves no rows)
-        (let ((shift 0) (drawn (min (length rows) (tuatara.display:window-rows-drawn window))))
+        (let ((shift 0) (drawn (min (length rows) (tuatara.display:window-rows-drawn window)))
+              (drawn-rows (begin-drawing-rows window height)))
          (dotimes (r height)
           (push (if (< r drawn)
                     (let ((row (aref rows r)))
-                      (prog1 (row-piece window r row (pop cells) margin left width (cdr (assoc r cursor-ends))
+                      (prog1 (row-piece drawn-rows r row (pop cells) margin left width (cdr (assoc r cursor-ends))
                                         rulers shift)
                         (incf shift (1- (tuatara.display:row-scale row)))))
-                    (row-piece window r nil nil margin left width nil rulers shift))
+                    (row-piece drawn-rows r nil nil margin left width nil rulers shift))
                 (aref screen (+ top r)))
           (when (tuatara.display:window-divider window)
             (push (list (+ left width) 1 *window-divider* '((0 1 :vertical-border)) nil) (aref screen (+ top r))))))
@@ -919,12 +975,6 @@ shows the name alone.")
   "Functions of the editor returning text to show before the window's title
 (the clock running on an Org task), or NIL.")
 
-(defparameter *escaped-invisibles* '((#x200B . #x200B) (#x2060 . #x2064) (#xFEFF . #xFEFF))
-  "Code point ranges of the invisible characters, besides those changing the
-direction text is drawn in, that ESCAPE-CONTROLS writes as their code: the
-zero-width space, the word joiner and its kin and the byte-order mark, which
-take no part in drawing any language's text.")
-
 (defun escape-controls (text &optional spans (which :controls))
   "TEXT with each control character in it written as the editor shows one in
 text (^J for a newline, ^I for a tab, \\x85 for code 133), and each invisible
@@ -944,10 +994,7 @@ match."
              (if (eq which :raw-bytes)
                  (and (tuatara.text:raw-byte-code-p code) (tuatara.display:raw-byte-display code))
                  (cond ((tuatara.text:control-code-p code) (tuatara.display:control-char-display c))
-                       ((and (>= code #x61C)
-                             (or (tuatara.display:in-ranges-p code tuatara.display:*direction-controls*)
-                                 (tuatara.display:in-ranges-p code *escaped-invisibles*)))
-                        (tuatara.display:invisible-code-display code)))))))
+                       ((tuatara.display:hiding-code-p code) (tuatara.display:invisible-code-display code)))))))
     (if (find-if #'shown text)
         (let ((moved (make-array (1+ (length text)))) (at 0))
           (values (with-output-to-string (out)

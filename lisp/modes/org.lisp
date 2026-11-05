@@ -5,7 +5,7 @@
 
 (define-major-mode org-mode text-mode
   "Org documents: outlines, notes, tasks and literate programs, in
-Org's syntax: headlines folded with TAB and S-TAB and moved with M-arrows, TODO states,
+Org's syntax, with headlines folded with TAB and S-TAB and moved with M-arrows, TODO states,
 tags, timestamps, scheduling and deadlines for the agenda, checkboxes, tables
 and their formulas, links, the clock, dynamic blocks and source blocks to
 tangle; \\[describe-bindings] lists its keys."

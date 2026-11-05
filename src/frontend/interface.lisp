@@ -513,6 +513,12 @@ unless given)."
 PIXELS, row after row from the top left, with an ID of its own."
   (%make-image width height channels pixels (sb-ext:atomic-incf (car **image-count**))))
 
+(defgeneric frontend-focused-p (frontend)
+  (:documentation "True while FRONTEND's window has the keyboard, so that what is copied
+or read from the clipboard there is yours to give. The default answers T: a
+terminal does not say when it is left.")
+  (:method (frontend) (declare (ignore frontend)) t))
+
 (defgeneric frontend-images-p (frontend)
   (:documentation "True when FRONTEND can show pictures (FRONTEND-PUT-IMAGE). The
 default answers NIL: a window showing a picture then shows its buffer's text.")

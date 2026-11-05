@@ -81,6 +81,12 @@ vowels and finals of a Hangul syllable written as jamo.")
 is drawn in. They are shown as a stand-in of one column of their own, so that
 none can make a file name, buffer name or message read in another order.")
 
+(defparameter *escaped-invisibles* '((#x200B . #x200B) (#x2060 . #x2064) (#xFEFF . #xFEFF))
+  "Code point ranges of the invisible characters, besides those changing the
+direction text is drawn in, that ESCAPE-CONTROLS writes as their code: the
+zero-width space, the word joiner and its kin and the byte-order mark, which
+take no part in drawing any language's text.")
+
 (defparameter *invisible-characters*
   '((#x00AD . #x00AD) (#x061C . #x061C) (#x115F . #x1160) (#x17B4 . #x17B5) (#x180E . #x180E)
     (#x200B . #x200F) (#x202A . #x202E) (#x2060 . #x2064) (#x2066 . #x206F) (#xFEFF . #xFEFF)
@@ -109,6 +115,14 @@ Tabs are handled by the layout engine, not here."
   "True when the character of CODE draws nothing of its own and joins no
 letter (`*invisible-characters*'). Complexity: O(1)."
   (and (>= code #xAD) (in-ranges-p code *invisible-characters*)))
+
+(defun hiding-code-p (code)
+  "True when the character of CODE is one of the invisible characters that
+could hide or reorder what a name from elsewhere says: one that changes the
+direction text is drawn in (`*direction-controls*') or one of
+`*escaped-invisibles*'. A name shows it as its code (ESCAPE-CONTROLS), and a
+paste or message from another machine leaves it out. Complexity: O(1)."
+  (and (>= code #x61C) (or (in-ranges-p code *direction-controls*) (in-ranges-p code *escaped-invisibles*))))
 
 (defun invisible-code-display (code)
   "The text the character of CODE, one that draws nothing, is shown as while
@@ -338,7 +352,7 @@ a full stop, with the blanks after it; NIL when LINE begins no item."
 
 (defun docstring-paragraphs (doc)
   "DOC, a docstring, cut into its parts in order, for its text to be filled
-and the rest kept as written: (:BLANK) for a blank line; (:AS-IS LINE) for a
+and the rest kept as written, as (:BLANK) for a blank line; (:AS-IS LINE) for a
 line set in (a table, an example; under an item of a list, set in further
 than its words); (:FILLED HEAD INDENT WORDS LINES) for lines whose words are
 filled: HEAD what begins them (an item's - or * or number and full stop with

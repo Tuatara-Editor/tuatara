@@ -42,7 +42,7 @@
            #:client-startup-buffers #:client-exit-code #:client-exit-words #:client-endings #:add-client #:end-client
            #:client-frames #:client-buffers #:client-sees-buffer-p #:buffer-clients #:join-client
            #:*buffers-for-every-client* #:*client-end-functions* #:editor-idle-frontend #:idle-frame-p
-           #:keep-idle-frame #:client-folder-words #:*client-variables* #:client-variable-p #:*buffers-asked-about* #:buffer-held-by-question-p
+           #:keep-idle-frame #:client-folder-words #:*client-variables* #:client-variable-p #:client-far-p #:*buffers-asked-about* #:buffer-held-by-question-p
            #:select-frame #:call-in-frame #:*display-generation* #:editor-job-waker #:buffer-window #:buffer-windows #:editor-selections #:one-window-p #:fit-windows #:select-window #:split-window
            #:remove-window #:only-window #:swap-windows #:rotate-window-states #:window-towards
            #:window-cursor-cell #:window-at-cell #:window-text-cell #:window-cell-position #:most-recent-window

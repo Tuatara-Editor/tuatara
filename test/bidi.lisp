@@ -285,10 +285,6 @@ held by nothing else."
     (is eq nil (tuatara.defaults::text-direction-p b))
     (let ((tuatara-user:*text-direction-when-safe* t))
       (is eq :auto (tuatara.defaults::text-direction-p b))))
-  (let ((before (uiop:getenv "KONSOLE_VERSION")))
-    (unwind-protect
-         (progn
-           (sb-posix:setenv "KONSOLE_VERSION" "240800" 1)
-           (true (tuatara.frontend:frontend-reorders-text-p (tuatara.frontend.tui:make-tui-frontend))))
-      (if before (sb-posix:setenv "KONSOLE_VERSION" before 1) (sb-posix:unsetenv "KONSOLE_VERSION"))))
+  (with-environment-variable ("KONSOLE_VERSION" "240800")
+    (true (tuatara.frontend:frontend-reorders-text-p (tuatara.frontend.tui:make-tui-frontend))))
   (false (tuatara.frontend:frontend-reorders-text-p (tuatara.frontend.fake:make-fake-frontend))))

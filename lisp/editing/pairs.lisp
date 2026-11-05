@@ -123,8 +123,7 @@ True when it did."
 *ELECTRIC-PAIR-TYPING* names write their closing half after point, typing that
 half where it stands steps over it, and \\[delete-backward-char] between an
 empty pair takes both; a delimiter typed with a count is typed that many
-times and paired with none. This command with a count: on when it is
-positive, off when it is zero or less."
+times and paired with none. With a count it is on when it is positive and off when it is zero or less."
   (setf *electric-pair-mode* (switched-by-count *electric-pair-mode*))
   (message "Electric pair mode ~:[off~;on~]" *electric-pair-mode*))
 

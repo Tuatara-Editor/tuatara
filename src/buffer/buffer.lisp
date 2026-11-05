@@ -438,8 +438,8 @@ until the work is done. The first time a buffer lets changes go, the editor
 says so once, naming the buffer.
 
 Some values and what they give:
-  (* 64 1024 1024)    64 MB: room for most editing, memory kept small.
-  (* 256 1024 1024)   256 MB: long sessions on large files stay undoable.
+  (* 64 1024 1024)    64 MB, room for most editing, memory kept small.
+  (* 256 1024 1024)   256 MB, long sessions on large files stay undoable.
   (* 1024 1024 1024)  1 GB: a replacement of millions of matches in a large
                       file can still be undone.
 

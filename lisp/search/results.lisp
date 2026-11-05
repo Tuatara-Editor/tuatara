@@ -24,7 +24,7 @@ saved by it.")
 (defstruct (result-line (:constructor make-result-line (path line prefix text
                                                         &aux (prefix-octets (tuatara.text:string-octet-length prefix))))
                         (:copier nil))
-  "A line a search of files found, as listed: the file's PATH, its LINE number from 1, the PREFIX
+  "A line a search of files found, as listed, with the file's PATH, its LINE number from 1, the PREFIX
 shown before it (path:line: ), and its TEXT as found without the white space before it, NIL for a
 line that is not changed (cut short where it was listed, or holding a line break)."
   path line prefix text (prefix-octets 0 :type fixnum))
@@ -39,13 +39,13 @@ line that is not changed (cut short where it was listed, or holding a line break
 (define-major-mode search-results-mode special-mode
   "The lines a search of files found (\\[search-files-list]), one each as path:line: text.
 \\<search-results-mode>\\[list-visit] opens the file at the line; \\[search-results-edit] makes the text after
-path:line: changeable; the keys of the lines being changed are those of
+the path and line number changeable; the keys of the lines being changed are those of
 \\<search-results-editing-mode>\\[search-results-apply] and \\[search-results-discard]."
   :lighter "Found" :interactive nil)
 
 (define-major-mode search-results-editing-mode fundamental-mode
-  "The lines a search of files found, being changed: type in the text after path:line: with
-every key that changes text; the path and line number stay as they are, and a line is not split or
+  "The lines a search of files found, being changed: type in the text after the path and line number with every
+key that changes text; the path and line number stay as they are, and a line is not split or
 joined. \\<search-results-editing-mode>\\[search-results-apply] writes the lines changed into their files, each only
 while it still holds what was found, \\[search-results-discard] throws the changes away, and
 \\[list-visit] opens the file at the line."
@@ -159,7 +159,7 @@ puts a line break in it."
       (setf (tuatara.buffer:buffer-point buffer) (min point (tuatara.buffer:buffer-size buffer))))))
 
 (define-command search-results-edit ()
-  "Make the text after path:line: of the lines found changeable, with the keys
+  "Make the text after the path and line number of the lines found changeable, with the keys
 that change text: the path and line number stay as they are, and a line is
 not split or joined. Then \\<search-results-editing-mode>\\[search-results-apply] writes the lines changed into
 their files and \\[search-results-discard] throws the changes away; the keys that list,

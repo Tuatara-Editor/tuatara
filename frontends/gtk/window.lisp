@@ -406,7 +406,7 @@ milliseconds from a key to the painting of the frame that shows it."
   "Measure how F's window draws, for \\[check-health]: once it has shown its
 text, hold the down arrow, 60 keys a second for three seconds, each frame
 painted taken from the window's frame clock, then write to the file OUT the
-renderer's name and DRAWING-FIGURES, and end Tuatara: with exit code 0, or 1
+renderer's name and DRAWING-FIGURES, and end Tuatara with exit code 0, or 1
 when the measuring failed, said in the debug log."
   (tuatara.runtime:make-guarded-thread
    (lambda ()
@@ -553,7 +553,7 @@ terminal shows it (LOG-STDERR-UNLESS-TERMINAL)."
 
 ;;; A client of an editor running elsewhere, in windows of its own
 
-(defun show-client-window (f fd greeted request input &key another painted gone)
+(defun show-client-window (f fd greeted request input &key another painted gone allow)
   "Show in F, a window, the editor at the other end of the local socket FD,
 which has said hello (GREETED, as TUATARA.FRONTEND:GREET-EDITOR read it),
 asking it for REQUEST, with INPUT, a descriptor, passed to be read, until the
@@ -561,7 +561,8 @@ editor lets the window go or goes. PAINTED, a function of the exit code and
 the words the editor gave, is called when it painted the window; GONE, a
 function of no arguments, once the window has gone, whatever happened, a
 failure to close it too; ANOTHER opens another window when the editor asks
-for one (TUATARA.FRONTEND:MAKE-REMOTE-CLIENT). FD is closed here when no
+for one, and ALLOW says what an editor on another machine is given all the
+same (TUATARA.FRONTEND:MAKE-REMOTE-CLIENT). FD is closed here when no
 client could be made of it."
   (let ((client nil))
     (unwind-protect
@@ -570,7 +571,8 @@ client could be made of it."
                ;; the window, started here or already open, takes its size before the editor is told it
                (tuatara.frontend:frontend-start f)
                (setf client (tuatara.frontend:make-remote-client fd f :request request :standard-input input
-                                                                       :greeted greeted :another another))
+                                                                       :greeted greeted :another another
+                                                                       :allow allow))
                ;; its events stand for the editor's frame, as an editor's window's do
                (setf (tuatara.frontend:frontend-frame f) client)
                (multiple-value-bind (exit said) (tuatara.frontend:run-remote-client client)
@@ -583,14 +585,34 @@ client could be made of it."
       (unwind-protect (tuatara.frontend:frontend-stop f)
         (funcall gone)))))
 
-(defun run-window-client (fd greeted request &key standard-input connect)
+(defun show-in-window (function)
+  "Call FUNCTION with a window of its own, a GTK-FRONTEND it starts and
+stops, on a thread of its own, GTK running on this thread, which must be
+the main one, until the window has closed: for a client to show why it
+could not show its daemon."
+  (load-gtk-libraries)
+  (with-gtk-float-traps
+    (let ((f (open-first-window)) (done nil))
+      (setf (gtk-renderer-checked f) t)
+      (tuatara.runtime:make-guarded-thread
+       (lambda ()
+         (unwind-protect (funcall function f)
+           (setf done t)
+           (g-idle-add (callback on-editor-ended) (null-pointer))))
+       :name "tuatara window of words" :niceness 0)
+      (loop until (and done (null (open-windows)))
+            do (g-main-context-iteration (null-pointer) t)))))
+
+(defun run-window-client (fd greeted request &key standard-input connect allow)
   "Show the editor at the other end of the local socket FD, which has said
 hello (GREETED, as TUATARA.FRONTEND:GREET-EDITOR read it, its settings taken
 here), in a window of its own, asking it for REQUEST, a TUATARA.FRONTEND:REQUEST,
 with STANDARD-INPUT, a descriptor, passed to be read: its events sent to the
 editor and what it paints shown. Each further window the editor asks for
 \(another frame) is a connection of its own, which CONNECT, a function of no
-arguments, makes: a socket, or NIL when none can be made. GTK runs on this
+arguments, makes: a socket, or NIL when none can be made. ALLOW, what an
+editor on another machine is given all the same, goes to every window
+\(TUATARA.FRONTEND:MAKE-REMOTE-CLIENT). GTK runs on this
 thread, which must be the main one; each window is painted and read on a
 thread of its own; a window it will not open, it says so to the editor at
 once. Returns once every window has closed: the exit code the editor gave
@@ -608,7 +630,8 @@ painted (one that came too late) gives none."
                  (sb-thread:with-mutex (lock) (decf showing))
                  (g-idle-add (callback on-editor-ended) (null-pointer)))
                (show (f fd greeted request input)
-                 (show-client-window f fd greeted request input :another #'another :painted #'painted :gone #'gone))
+                 (show-client-window f fd greeted request input :another #'another :painted #'painted :gone #'gone
+                                                                :allow allow))
                (another (asking word)
                  ;; asked for by the editor: a connection of its own, attached with WORD, or word that it is not
                  (let* ((room (sb-thread:with-mutex (lock)
@@ -634,7 +657,8 @@ painted (one that came too late) gives none."
                             (if greeted
                                 (show (let ((f (make-gtk-frontend))) (setf (gtk-renderer-checked f) t) f) fd greeted
                                       (tuatara.frontend:make-request
-                                       :directory (tuatara.frontend:request-directory request) :joins word)
+                                       :directory (tuatara.frontend:request-directory request) :joins word
+                                       :far (tuatara.frontend:request-far request))
                                       nil)
                                 (progn (tuatara.frontend:shut-and-close fd)
                                        (gone)))))

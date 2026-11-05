@@ -382,7 +382,7 @@ from, the rows and columns scrolled kept within the page."
          (window (buffer-window buffer)))
     (if (null entry)
         ;; the page on its way: the one before stays until it comes, so that nothing flashes
-        ;; between them; one that could not be drawn, or none before: nothing (never the text)
+        ;; between them; one that could not be drawn, or none before, nothing (never the text)
         (when (find-if (lambda (e) (and (eql (first e) (pdf-view-page view)) (null (third e)))) (pdf-view-images view))
           (setf (tuatara.buffer:buffer-local buffer :image) nil))
         (let ((image (pdf-view-shown-image entry)))

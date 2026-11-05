@@ -92,12 +92,10 @@ are installed.")
 (defun stand-in-kpsewhich (directory present)
   "A kpsewhich in DIRECTORY that finds the hyphenation files named in PRESENT, endings (sv),
 and no other. Returns the folder of its engine's name beside it."
-  (let ((script (namestring (merge-pathnames "kpsewhich" directory))))
-    (alexandria:write-string-into-file
-     (format nil "#!/bin/sh~%for f in \"$@\"; do case \"$f\" in ~{loadhyph-~a.tex) echo /texmf/hyph/$f;; ~}esac; done~%" present)
-     script :if-exists :supersede)
-    (sb-posix:chmod script #o700)
-    script))
+  (put-program (merge-pathnames "kpsewhich" directory)
+               (format nil "#!/bin/sh~%for f in \"$@\"; do~%  case \"$f\" in ~{loadhyph-~a.tex) echo /texmf/hyph/$f;; ~}~
+                            esac~%done~%"
+                       present)))
 
 (define-test (latex-languages patterns-missing)
   (with-test-directory (dir)

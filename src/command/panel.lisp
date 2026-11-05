@@ -117,9 +117,9 @@ default itself."
           (t (princ-to-string default)))))
 
 (defun prompt-with-words (prompt words)
-  "PROMPT with WORDS in brackets before its colon: \"Open file: \" and
-\"listing, 12 so far\" give \"Open file (listing, 12 so far): \"; PROMPT
-itself when WORDS is NIL."
+  "PROMPT with WORDS in brackets before its colon, as \"Open file: \" given
+\"listing, 12 so far\". That gives \"Open file (listing, 12 so far): \".
+PROMPT itself when WORDS is NIL."
   (let ((trimmed (string-right-trim " " prompt)))
     (cond ((null words) prompt)
           ((and (plusp (length trimmed)) (char= (char trimmed (1- (length trimmed))) #\:))
@@ -127,10 +127,10 @@ itself when WORDS is NIL."
           (t (format nil "~a(~a) " prompt words)))))
 
 (defun shown-prompt (completion)
-  "The prompt COMPLETION's question shows: the one asked, with in brackets the
+  "The prompt COMPLETION's question shows, the one asked, with in brackets the
 default it takes (default X), and while candidates still come, how many so far
 as its SOURCE tells (listing, 12 so far), or once all have come and there are
-none, its NONE words: Open file (listing, 12 so far): ."
+none, its NONE words; for example, Open file (listing, 12 so far): ."
   (let ((words (remove nil (list (and (completion-default completion)
                                       (format nil "default ~a" (default-words completion)))
                                  (cond ((completion-working completion)

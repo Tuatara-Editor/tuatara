@@ -303,7 +303,7 @@ under it, ROOT first, calling FUNCTION with three arguments: on entering a
 folder, the folder (a native name ending in /), its path from ROOT (\"\" for
 ROOT, else ending in /) and NIL; then, for each entry of it by name, the
 folder, its path from ROOT and the entry, a list as TUATARA.IO:DIRECTORY-ENTRIES
-gives it with stamps: (NAME KIND SIZE OWN STAMP). A folder among the entries
+gives it with stamps, as (NAME KIND SIZE OWN STAMP). A folder among the entries
 is entered when FUNCTION returns true for it: depth first, just after its
 entry, or with BREADTH-FIRST once every folder nearer ROOT has been gone
 through. A link to a folder is entered only with FOLLOW-LINKS; with
@@ -353,7 +353,7 @@ folder wanted was gone through, NIL when CANCEL or LIMIT ended it."
 (PATH . RELATIVE), RELATIVE the path from ROOT, by name within each directory:
 hidden files and directories (names starting with a dot) and backups left
 out, links to directories not followed, and with GITIGNORE what git leaves
-out: the .gitignore files there and, in a repository, those above ROOT, the
+out, that is the .gitignore files there and, in a repository, those above ROOT, the
 repository's .git/info/exclude and your excludes file (OUTER-GITIGNORE-RULES). At most LIMIT of them; a second
 value is true when there were more. With DIRECTORIES, the subdirectories in
 place of the files, each before what is in it, both its paths ending in /;

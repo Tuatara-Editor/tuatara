@@ -268,20 +268,22 @@ shown, by an ordinary change of the buffer."
   (with-test-directory (dir)
     (let ((a (put-file (merge-pathnames "a.txt" dir) (format nil "alpha kiwi~%other~%kiwi two~%")))
           (entered (list nil)) (release (list nil))
-          (said "Only the 2 lines found so far: the search had not ended"))
-      ;; the files too large to keep, searched last, are held up until the list is made
+          (said "Only the 2 lines found so far: the search had not ended")
+          (bound 60))
+      ;; the files too large to keep, searched last, are held up until the list is made; the
+      ;; hold and the turns wait for that, BOUND seconds at most, however slow the machine is
       (sb-int:encapsulate 'tuatara.defaults::lines-on-disk-many 'held
                           (lambda (function &rest arguments)
                             (setf (car entered) t)
                             (let ((cancel (getf (nthcdr 3 arguments) :cancel)))
-                              (loop repeat 500 until (or (car release) (and cancel (car cancel))) do (sleep 0.01)))
+                              (loop repeat (* bound 100) until (or (car release) (and cancel (car cancel))) do (sleep 0.01)))
                             (apply function arguments)))
       (unwind-protect
            (multiple-value-bind (f editor)
                (run-keys (append (list (format nil "C-x C-f ~a RET M-s g k i w i" (key-string (tuatara.io:native a))))
                                  ;; turns of the editor's own, each taking in the files read, then the lines
                                  ;; found, until the search waits on the files too large to keep
-                                 (loop repeat 500
+                                 (loop repeat (* bound 100)
                                        collect (lambda ()
                                                  (unless (car entered) (sleep 0.01))
                                                  (tuatara.command::take-in-source tuatara.command:*editor*)))

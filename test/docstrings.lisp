@@ -11,31 +11,49 @@
                           (not (member n '("TUATARA.TESTS" "TUATARA.BENCH") :test #'string=)))))
                  (list-all-packages)))
 
+(defun docstring-with-sentence-p (doc)
+  "True when DOC is a string whose first sentence says something: it holds a
+letter or digit before its first full stop."
+  (and (stringp doc)
+       (find-if #'alphanumericp doc :end (or (position #\. doc) (length doc)))
+       t))
+
 (defun undocumented-symbols (package)
   "Return a list of strings naming external symbols of PACKAGE that lack a
 docstring in any role they fill: function or macro, special variable (or a
-name standing for one), class, type. A symbol that fills no role at all (exported but never defined) is
-reported too, since exporting it was a promise."
+name standing for one), class, type. The docstring needs a first sentence. A symbol that fills
+no role at all (exported but never defined) is reported too, since exporting it was a promise."
   (let ((missing '()))
     (do-external-symbols (s package)
       (let ((roles 0))
         (when (fboundp s)
           (incf roles)
-          (unless (documentation s 'function) (push (format nil "~a (function)" s) missing)))
+          (unless (docstring-with-sentence-p (documentation s 'function))
+            (push (format nil "~a (function)" s) missing)))
         (when (member (sb-int:info :variable :kind s) '(:special :constant :macro))
           (incf roles)
-          (unless (documentation s 'variable) (push (format nil "~a (variable)" s) missing)))
+          (unless (docstring-with-sentence-p (documentation s 'variable))
+            (push (format nil "~a (variable)" s) missing)))
         (when (find-class s nil)
           (incf roles)
-          (unless (documentation (find-class s) t) (push (format nil "~a (class)" s) missing)))
+          (unless (docstring-with-sentence-p (documentation (find-class s) t))
+            (push (format nil "~a (class)" s) missing)))
         (when (and (not (find-class s nil)) (sb-int:info :type :kind s))
           (incf roles)
-          (unless (documentation s 'type) (push (format nil "~a (type)" s) missing)))
+          (unless (docstring-with-sentence-p (documentation s 'type)) (push (format nil "~a (type)" s) missing)))
         (when (zerop roles) (push (format nil "~a (exported but undefined)" s) missing))))
     (sort missing #'string<)))
 
 (define-test documentation
   :description "Self-documentation gate: every public symbol of every TUATARA package has a docstring.")
+
+(define-test (documentation docstring-first-sentences-are-checked)
+  (true (docstring-with-sentence-p "Return the size. More."))
+  (true (docstring-with-sentence-p "Return the size"))
+  (false (docstring-with-sentence-p nil))
+  (false (docstring-with-sentence-p ""))
+  (false (docstring-with-sentence-p "  "))
+  (false (docstring-with-sentence-p ". Text after a stop.")))
 
 (define-test (documentation packages-have-docstrings)
   (let ((undocumented (remove-if (lambda (p) (documentation p t)) (tuatara-packages))))

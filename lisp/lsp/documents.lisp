@@ -39,7 +39,7 @@ FORMAT-PROJECT-DIRECTORY finds it, a native name ending in /."
 (defstruct (lsp-doc (:constructor make-lsp-doc (buffer language uri &optional shadow)) (:copier nil))
   "What servers of LANGUAGE see of BUFFER, by the address uniform resource
 identifier (URI): its whole text, or, with SHADOW, the code of its LANGUAGE
-alone (a note's source blocks): SHADOW is then a function of the buffer
+alone (a note's source blocks). SHADOW is then a function of the buffer
 returning that text, line for line with the buffer (the lines of no such
 code empty), and the stretches of the buffer's lines that are code, a
 vector in order of (FIRST LAST OCTETS): the lines FIRST below LAST, OCTETS

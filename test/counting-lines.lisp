@@ -4,7 +4,7 @@
 (in-package #:tuatara.tests)
 
 (define-test counting-lines
-  :description "A file larger than *index-at-open-limit* opens before its lines are counted: they are counted in the background, taking what was counted before; what needs them waits, and the screen shows without them.")
+  :description "A file larger than *memory-read-limit*, mapped, opens before its lines are counted: they are counted in the background, taking what was counted before; what needs them waits, and the screen shows without them.")
 
 (defun sample-lines (n)
   "N lines of text with characters of every width, for counting."
@@ -151,7 +151,6 @@ SECONDS."
 counted, as a file of gigabytes is, each counting held PAUSE seconds before it
 begins."
   `(let ((tuatara.io::*memory-read-limit* 0)
-         (tuatara.io:*index-at-open-limit* 0)
          (tuatara.io:*index-job-hook* (lambda () (sleep ,pause))))
      ,@body))
 
@@ -162,7 +161,6 @@ begins."
     (let ((path (namestring (put-file (merge-pathnames "big.txt" dir) (sample-lines 5000))))
           (started 0))
       (let ((tuatara.io::*memory-read-limit* 0)
-            (tuatara.io:*index-at-open-limit* 0)
             (tuatara.buffer:*line-scan-limit* 100)
             (tuatara.io:*index-job-hook* (lambda () (incf started) (error "the disk went away"))))
         (multiple-value-bind (f editor) (run-keys "M-g g 4 2 RET" :file path :width 120 :height 12)
@@ -170,6 +168,19 @@ begins."
             (true (tuatara.frontend.fake:fake-frame-showing f "could not be counted: the disk went away"))
             (true (<= started 2) "started ~d times" started)
             (tuatara.buffer:kill-buffer b)))))))
+
+(define-test (counting-lines mapped-file-counted-in-the-background)
+  ;; a file too large to be read into memory is mapped and opens before its lines are counted, however
+  ;; little larger it is
+  (with-test-directory (dir)
+    (let ((path (namestring (put-file (merge-pathnames "mapped.txt" dir) (sample-lines 5000))))
+          (tuatara.io::*memory-read-limit* 1024)
+          (tuatara.io:*index-job-hook* (lambda () (sleep 0.3))))
+      ;; at its end, L… in the mode line until they are
+      (multiple-value-bind (f editor) (run-keys "g e" :file path :width 100 :height 12)
+        (let ((b (tuatara.display:window-buffer (tuatara.command:editor-window editor))))
+          (true (tuatara.frontend.fake:fake-frame-showing f "L…"))
+          (tuatara.buffer:kill-buffer b))))))
 
 (define-test (counting-lines in-the-editor)
   (with-test-directory (dir)

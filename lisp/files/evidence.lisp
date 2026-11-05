@@ -64,7 +64,7 @@ are kept in Unicode's composed form (NFC-NAME)."
       (documentation 'evidence-entry-withins 'function) "The folder the entry is held to, as written and where it really is, or NIL."
       (documentation 'evidence-entry-then 'function) "The names of the folders below a matched one that are the evidence."
       (documentation 'evidence-entry-targets 'function) "The real paths of the folders that links the entry matches lead to."
-      (documentation 'evidence-entry-links 'function) "How the links the entry matches were looked for: NIL not yet, :WHOLE, :CAPPED (not all of its folders), :ANYWHERE (not looked for: it may match anywhere)."
+      (documentation 'evidence-entry-links 'function) "How the links the entry matches were looked for: NIL not yet, :WHOLE, :CAPPED (not all of its folders), :ANYWHERE (not looked for; it may match anywhere)."
       (documentation 'evidence-entry-p 'function) "True when OBJECT is an EVIDENCE-ENTRY.")
 
 (defun nfc-name (text)

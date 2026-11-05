@@ -355,7 +355,7 @@ left as it is."
   (let ((times (make-array 32 :element-type '(unsigned-byte 8) :initial-element 0))
         (now (eq nanoseconds :now)))
     (with-octets-sap (sap times)
-      ;; UTIME_OMIT ((1 << 30) - 2) for the access time, UTIME_NOW ((1 << 30) - 1) for now
+      ;; UTIME_OMIT ((1 << 30) minus 2) for the access time, UTIME_NOW ((1 << 30) minus 1) for now
       (setf (sb-sys:sap-ref-64 sap 0) 0
             (sb-sys:sap-ref-64 sap 8) (- (ash 1 30) 2)
             (sb-sys:signed-sap-ref-64 sap 16) (if now 0 (floor nanoseconds 1000000000))
@@ -783,7 +783,7 @@ it always fits in a folder. True as a second value when it was shortened."
 
 (defun percent-decoded (text)
   "TEXT with each %XX made the octet it stands for again, the octets read as
-UTF-8: what PERCENT-ENCODED wrote, as a file: address or a .trashinfo has a
+UTF-8; what PERCENT-ENCODED wrote, as a file: address or a .trashinfo has a
 path."
   (tuatara.text:octets-string (percent-decoded-octets text)))
 
@@ -837,12 +837,13 @@ trash for it."
 
 ;;; New names
 
-(defun numbered-name (name n)
+(defun numbered-name (name n &optional (style :brackets))
   "NAME for the Nth try at a name not taken: NAME itself, then NAME with
-\(2), (3) and so on before its ending, as report (2).pdf."
-  (if (= n 1)
-      name
-      (format nil "~a (~d)~@[.~a~]" (native-file-stem name) n (native-file-type name))))
+\(2), (3) and so on before its ending, as report (2).pdf; with STYLE
+:DASH, -2, -3 and so on, as report-2.pdf, for a name with no space."
+  (cond ((= n 1) name)
+        ((eq style :dash) (format nil "~a-~d~@[.~a~]" (native-file-stem name) n (native-file-type name)))
+        (t (format nil "~a (~d)~@[.~a~]" (native-file-stem name) n (native-file-type name)))))
 
 (defun create-free-file (directory name-of &key (mode #o600) (usable (constantly t)))
   "A new, empty file in DIRECTORY, made with MODE under the first name that

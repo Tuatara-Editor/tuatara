@@ -334,7 +334,7 @@ that project or client's folder, after asking."
 
 (define-command kill-project-buffers ()
   "Kill every buffer of the project the current buffer is in (a folder above
-it holding one of *PROJECT-ROOT-MARKERS*: .git or .project): its files, its
+it holding one of *PROJECT-ROOT-MARKERS*, .git or .project), its files, its
 folders listed (\\[rimu]), and the buffers standing in them; after asking,
 saying how many are modified, each modified one asked about as it goes. In
 *Buffers*, the project of the section the cursor is in."

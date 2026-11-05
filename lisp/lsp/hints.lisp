@@ -2,8 +2,8 @@
 ;;;; Copyright (C) 2026 Michael A Jones.  GPL-3.0-or-later; see LICENSE.
 ;;;;
 ;;;; A server that gives inlay hints shows, faint within a line, what the code
-;;;; leaves unsaid: a binding's type (let total: i32 = ...), the name of the
-;;;; parameter an argument goes to (add(a: 1, b: 2)). They are no text of the
+;;;; leaves unsaid, a binding's type (`let total: i32 = ...') and the name of the
+;;;; parameter an argument goes to (`add(a: 1, b: 2)'). They are no text of the
 ;;;; buffer: the cursor passes them by, a copy leaves them out, a save never
 ;;;; writes them. Asked for again each time the text is sent to the server;
 ;;;; meanwhile they move with the text typed, so that the line never jumps.

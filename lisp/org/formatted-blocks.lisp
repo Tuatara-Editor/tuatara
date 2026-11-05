@@ -67,7 +67,7 @@ read so: a category, a syntax class not listed, a backslash at the end."
                         (#\( (cond ((and (< (1+ i) n) (char= (char regex i) #\?) (char= (char regex (1+ i)) #\:))
                                     (emit "(?:") (incf i 2))
                                    ((and (< i n) (char= (char regex i) #\?))
-                                    ;; \(?3: a group of a number given: a group
+                                    ;; \(?3: a group of a number given; a group
                                     (let ((colon (position #\: regex :start i)))
                                       (unless (and colon (> colon (1+ i)) (every #'digit-char-p (subseq regex (1+ i) colon)))
                                         (fail))
@@ -253,7 +253,7 @@ are written there (alpha_beta), or NIL."
 
 (defun formatted-file-kind (file &optional text)
   "The kind of note FILE, (PATH . RELATIVE), is by the end of its name, as
-Denote tells them: :ORG (.org), :MARKDOWN-YAML or, when its TEXT has a
+Denote tells them. It is :ORG (.org), :MARKDOWN-YAML or, when its TEXT has a
 title = line and no title: line, :MARKDOWN-TOML (.md), :TEXT (.txt); NIL for
 another kind of file, an encrypted one too."
   (let ((extension (name-extension (formatted-file-name-of file))))

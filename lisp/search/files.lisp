@@ -387,7 +387,7 @@ its car turns true."
     (nreverse found)))
 
 (defun line-candidates (corpus lines &optional (inside ""))
-  "Completion candidates for LINES of CORPUS (CORPUS-LINES): path:line: text,
+  "Completion candidates for LINES of CORPUS (CORPUS-LINES) as path:line: text,
 each standing for (PATH LINE OFFSET TEXT), TEXT the line as listed, NIL for one cut
 short (\\[search-files-list] edits the others); with INSIDE, a directory's path from
 the corpus's root, only those of files in it, their paths from it."
@@ -594,7 +594,7 @@ and has the lines found listed in a buffer of their own, for \\[search-files-lis
 \\<search-files>\\[search-files-list].")
 
 (define-command search-files-list ()
-  "While searching files (\\[search-in-files]): list the lines found so far in a
+  "While searching files (\\[search-in-files]), list the lines found so far in a
 buffer of their own, one each as path:line: text, to go through with
 \\<search-results-mode>\\[list-visit] or to change at once, with \\[search-results-edit], and write
 back into their files."

@@ -116,8 +116,8 @@ runs."
 
 (defun git-writes-work-tree-p (arguments)
   "True when git run with ARGUMENTS may write in the repository's working
-files: every command but those of *GIT-COMMANDS-LEAVING-THE-WORK-TREE*, and
-of the rest these only as they are given: apply with --cached or --check
+files, every command but those of *GIT-COMMANDS-LEAVING-THE-WORK-TREE*, and
+of the rest these only as they are given, namely apply with --cached or --check
 \(not --index), reset without --hard, --merge, --keep or
 --recurse-submodules, restore of --staged alone, rm --cached, stash list and
 show, worktree list, submodule status and summary, bisect log,
@@ -278,9 +278,9 @@ DIRECTORY is in no repository (REPOSITORY-TOP), or when git is not found
 \(FIND-PROGRAM). In a repository you trust (PROJECT-TRUSTED-P) git looks
 for no repository above its top and takes no bare one it finds on the way.
 In any other (never asked, answered look only, one that is, is in or holds
-an evidence folder, or one whose .git leads into such a one:
-GIT-READS-ONLY-P) git only reads, on a shadow of the repository, and runs
-none of its programs (CALL-GIT-READING): ENVIRONMENT is not given it, it is
+an evidence folder, or one whose .git leads into such a one,
+see GIT-READS-ONLY-P) git only reads, on a shadow of the repository, and runs
+none of its programs (CALL-GIT-READING). ENVIRONMENT is not given it, it is
 ended after *GIT-READING-SECONDS* when SECONDS gives no time, and a command
 that would do more is refused, GIT-REFUSED signalled; once git has run too
 long there, git is not run there again this session (NOTE-GIT-TIMED-OUT)

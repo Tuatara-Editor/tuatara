@@ -27,8 +27,8 @@ what a note or a package tells is cut there, on one line.")
 
 (defun notify-arguments (title words)
   "The arguments *NOTIFY-PROGRAM* is given to show TITLE and WORDS: its name
-as Tuatara's, and -- before them, so that a title beginning with - is shown
-as it is; the words escaped, the program reading markup in them, so that
+as Tuatara's, and `--' before them (so that a title beginning with `-' is shown
+as it is); the words escaped, the program reading markup in them, so that
 nothing in them becomes a link or a picture."
   (list "--app-name=Tuatara" "--" title (xml-escape words)))
 
@@ -81,7 +81,7 @@ same. Title and words are kept on one line, cut where they are long
            nil))))
 
 (define-command view-notifications ()
-  "Show *Notifications*: what was told so far this session, the agenda's
+  "Show *Notifications*, what was told so far this session, the agenda's
 entries tagged :notify: as their time came and what packages told, a line
 each with the date and time it was told and who told it, the latest at the
 end. It goes where *Messages* goes (\\[view-echo-area-messages]);

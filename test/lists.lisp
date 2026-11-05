@@ -146,7 +146,7 @@ a keyword, with where it stood: (NAME . POSITION)."
     (is equal '(5 "") (downs :lisp-mode "(a (b) c)" "C-u - C-M-d C-u - C-M-d" 9))
     ;; strings are passed over, and are no place to go down from
     (is equal '(7 "") (downs :lisp-mode "\"(\" x (y)" "C-M-d"))
-    (is equal '(5 "This command doesn't work in strings or comments") (downs :lisp-mode "(a \"bc\")" "C-M-d" 5))
+    (is equal '(5 "It doesn't work in strings or comments") (downs :lisp-mode "(a \"bc\")" "C-M-d" 5))
     (is equal '(6 "") (downs nil "x [y {z}]" "C-u 2 C-M-d"))))
 
 (define-test (lists over-groups)

@@ -68,6 +68,11 @@ state, data or cache; PATH within it, a folder's ending in /; CLASS :KEPT,
       "89abcdef0123456789abcdef0123456789abcdef" "v1.1.0" "SHA256:abcDEF0123456789+/=")
      ("mine ~/packages/ latest" "-" nil t nil nil nil)
      ("third https://example.org/third.git latest" "abcdef0" nil nil "1234567" nil nil))
+    (tuatara.packages::*removed-packages*
+     "example" "mine")
+    (tuatara.defaults::*trusted-servers*
+     ("me@build.example" t ("github.com" "git@git.example") t t "Dropped" "2026-11-05")
+     ("box" nil () nil nil nil "2026-11-04"))
     (tuatara.defaults::*grammar-answers*
      ("yaml" . t) ("nix" . nil))
     (tuatara.defaults::*user-grammar-sums*

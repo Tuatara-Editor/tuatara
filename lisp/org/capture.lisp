@@ -50,7 +50,7 @@ it goes under, with these filled in:
   %^{Prompt}       asked for          %^{Prompt|one|two}  chosen among
   %^g  tags asked for, with the tags used in the target and the agenda
   %^t, %^T  a date asked for as \\[org-time-stamp] asks it (fri 10:00, +3d,
-       every week 10:00), written as an active timestamp: <2026-10-30 Fri 10:00>;
+       every week 10:00), written as an active timestamp, <2026-10-30 Fri 10:00>;
        several days chosen in the calendar, a timestamp each, a run a range
   %<%H:%M>  the time as the pattern says (format-time's %-specifiers)
   %%  a %
@@ -217,8 +217,8 @@ says, \\[org-capture-kill] throws it away; either way you are back where you wer
 
 (defun org-agenda-main-file ()
   "The agenda's main file, a native path, which a capture template's # file:
-*org-agenda-files* names: the first of *ORG-AGENDA-FILES* when it is a file,
-else agenda.org in the folder it names or its pattern's folder."
+*org-agenda-files* names. It is the first of *ORG-AGENDA-FILES* when it is a
+file, else agenda.org in the folder it names or its pattern's folder."
   (let* ((first (or (first *org-agenda-files*) "~/org/agenda.org"))
          (path (tuatara.io:native (tuatara.io:expand-path first))))
     (multiple-value-bind (parent name) (tuatara.io:path-folder-and-name path)

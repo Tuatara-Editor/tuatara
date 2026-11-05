@@ -390,7 +390,7 @@ is shown, shut in, as a plist of SANDBOX-RUN's :DIRECTORIES, :WRITABLE and
 :OVERLAYS. Read only: the folder of TEX and that of the file exported, and
 the folders *EXPORT-TRUSTED-FOLDERS* names, each when it may be shown whole
 \(SHOWN-WHOLE-P; else TEX alone), TeX's own folders (TEX-TREES) and your
-fonts and their settings; to write in: DIRECTORY alone, and TeX's own cache
+fonts and their settings; to write in, DIRECTORY alone, and TeX's own cache
 \(TEX-CACHE-OVERLAY). The files the note's pictures are drawn from (those an
 export draws in latex/pictures/ among them), the pictures your own template
 and setup files have TEX include from elsewhere (LATEX-PICTURE-FILES), or a
@@ -1097,7 +1097,7 @@ as \\[org-export-latex-pdf-xdg] opens its PDF."
 
 (define-command export-latex-compile-pdf ()
   "Make the LaTeX file of the current buffer into a PDF beside it, in the
-background, saving it first when it has changes: by xelatex, or by lualatex
+background, saving it first when it has changes, by xelatex, or by lualatex
 when xelatex fails (*latex-engines*), or first by the one its first lines
 name (\"% Intended LaTeX compiler: lualatex\", \"%!TEX program = lualatex\"),
 run as often as its cross-references need. Their working files are kept

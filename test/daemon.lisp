@@ -58,12 +58,13 @@ on and DAEMON to the daemon, stopped after."
        (stop-test-daemon ,thread))))
 
 (defun attach-test-client (name &key (directory "/tmp/") files safe merge diff stop terminal environment standard-input
-                                     (width 70) (height 14) window joins another (frames 1))
+                                     (width 70) (height 14) window joins another (frames 1) far)
   "A client of the daemon NAME on a fake screen of WIDTH by HEIGHT, a window
 when WINDOW, asking for what a client started so asks for (FILES, each a
 path or (PATH LINE COLUMN), SAFE, MERGE, DIFF, STOP, TERMINAL, ENVIRONMENT,
 STANDARD-INPUT, a descriptor passed, JOINS, the word of a window the daemon
-asked for, FRAMES), ANOTHER opening a window the daemon asks for; three values: the
+asked for, FRAMES, FAR as a client on another machine), ANOTHER opening a
+window the daemon asks for; three values: the
 fake screen, the thread running the client, which returns its exit code and
 words as a list, and the client."
   (let ((local (make-instance 'queued-fake-frontend :width width :height height :font-steps (and window 0)))
@@ -75,7 +76,7 @@ words as a list, and the client."
                              :directory (namestring directory) :terminal terminal :environment environment
                              :files (mapcar (lambda (file) (if (consp file) file (list (namestring file) nil nil))) files)
                              :safe safe :merge merge :diff diff :stop stop :wait t
-                             :standard-input (and standard-input t) :joins joins :frames frames)
+                             :standard-input (and standard-input t) :joins joins :frames frames :far far)
                    :standard-input standard-input :another another)))
       (values local
               (sb-thread:make-thread (lambda () (multiple-value-list (tuatara.frontend:run-remote-client client)))
@@ -150,18 +151,43 @@ ended have: the frames shown, the one with no screen left out."
       (true (refusal #o40777 uid nil))
       (true (search "not there" (tuatara.defaults::runtime-folder-refusal nil "F" uid)))))
   ;; with no XDG_RUNTIME_DIR, or one others may write in, nowhere: no fallback to /tmp
-  (let ((runtime (sb-posix:getenv "XDG_RUNTIME_DIR"))
-        (tuatara.defaults::*runtime-directory* nil))
-    (unwind-protect
-         (progn (sb-posix:unsetenv "XDG_RUNTIME_DIR")
-                (fail (tuatara.defaults::daemon-folder) 'tuatara.runtime:refusal)
-                (sb-posix:setenv "XDG_RUNTIME_DIR" "/tmp" 1)
-                (fail (tuatara.defaults::daemon-folder) 'tuatara.runtime:refusal))
-      (if runtime (sb-posix:setenv "XDG_RUNTIME_DIR" runtime 1) (sb-posix:unsetenv "XDG_RUNTIME_DIR"))))
+  (let ((tuatara.defaults::*runtime-directory* nil))
+    (with-environment-variable ("XDG_RUNTIME_DIR" nil)
+      (fail (tuatara.defaults::daemon-folder) 'tuatara.runtime:refusal)
+      (sb-posix:setenv "XDG_RUNTIME_DIR" "/tmp" 1)
+      (fail (tuatara.defaults::daemon-folder) 'tuatara.runtime:refusal)))
   ;; the tests' own folder, made for them alone
   (let ((folder (tuatara.defaults::daemon-folder)))
     (is = #o700 (logand #o777 (tuatara.io:stamp-mode (tuatara.io:path-stamp folder :follow nil))))
     (true (search "/runtime/tuatara/" folder))))
+
+(define-test (daemon folders-on-the-way)
+  ;; a folder on the way to one kept safe is root's or the user's, written in by others only with the sticky bit
+  (let ((uid (sb-posix:geteuid)))
+    (flet ((refusal (mode owner)
+             (tuatara.defaults::runtime-folder-refusal (tuatara.io:make-stamp 1 2 0 0 1 mode owner 0) "F" uid
+                                                       :on-the-way t)))
+      (false (refusal #o40755 0))
+      (false (refusal #o40755 uid))
+      (false (refusal #o41777 0))
+      (false (refusal #o41777 uid))
+      (true (search "another user's" (refusal #o40755 (1+ uid))))
+      (true (search "another user's" (refusal #o41777 (1+ uid))))
+      (true (search "may be used by others" (refusal #o40775 uid)))
+      (true (search "may be used by others" (refusal #o40777 0)))
+      ;; in a rootless container, the system's /tmp shows as owned by the overflow id, which is taken when sticky
+      (let ((outside (tuatara.defaults::outside-owner)))
+        (when outside
+          (false (refusal #o41777 outside))
+          (true (search "another user's" (refusal #o40755 outside)))))))
+  ;; the folder of sockets is refused when a folder on the way to it is open to others
+  (with-test-directory (dir)
+    (let ((open (namestring (merge-pathnames "open/runtime/" dir))))
+      (ensure-directories-exist open)
+      (sb-posix:chmod open #o700)
+      (sb-posix:chmod (namestring (merge-pathnames "open/" dir)) #o777)
+      (let ((tuatara.defaults::*runtime-directory* open))
+        (fail (tuatara.defaults::daemon-folder) 'tuatara.runtime:refusal)))))
 
 (define-test (daemon peer-refusals)
   ;; another user's program, or one in another mount namespace, is refused; the same user's in the same one taken
@@ -278,6 +304,39 @@ ended have: the frames shown, the one with no screen left out."
                             10))
           (true (sb-thread:thread-alive-p thread))
           (true (in-daemon (lambda () (tuatara.defaults::buffer-visiting file)))))))))
+
+(define-test (daemon client-waits-for-a-slow-init-file)
+  ;; a client that connects while the daemon still reads its init file is shown once it is read, not refused
+  (with-test-directory (dir)
+    (let* ((init (put-file (merge-pathnames "init.lisp" dir) "(sleep 3)"))
+           (name (format nil "test~d" (incf *test-daemons*)))
+           (daemon (tuatara.defaults::open-daemon name))
+           (thread (sb-thread:make-thread
+                    (lambda ()
+                      (let ((tuatara.defaults:*config-file* init))
+                        (call-without-grammar-questions
+                         (lambda () (tuatara.defaults::run-daemon-editor daemon)))))
+                    :name "test daemon"))
+           (said 0))
+      (unwind-protect
+           (let ((tuatara.frontend::*hello-seconds* 1))
+             (multiple-value-bind (local runner)
+                 (let ((fd (tuatara.io:connect-to (tuatara.defaults::daemon-path name "socket")))
+                       (local (make-instance 'queued-fake-frontend :width 70 :height 14)))
+                   (tuatara.frontend:frontend-start local)
+                   (let* ((greeted (tuatara.frontend:greet-editor fd :starting (lambda () (incf said))))
+                          (client (tuatara.frontend:make-remote-client
+                                   fd local :request (tuatara.frontend:make-request :directory "/tmp/" :wait t)
+                                            :greeted greeted)))
+                     (values local (sb-thread:make-thread
+                                    (lambda () (multiple-value-list (tuatara.frontend:run-remote-client client)))
+                                    :name "test client"))))
+               (true (shows local "scratch"))
+               (is = 1 said "the wait said once")
+               (type-keys local "C-x C-c")
+               (is equal '(0 nil) (client-ends runner))))
+        (wait-until #'daemon-editor 20)
+        (stop-test-daemon thread)))))
 
 (define-test (daemon git-editor-exit-codes)
   ;; tuatara --client as git's editor: C-c C-c saves the message and ends the client with 0, C-c C-k with 1
@@ -496,6 +555,14 @@ ended have: the frames shown, the one with no screen left out."
       (true (getf options :gui)))
     (true (search "-Q" (getf (options "--daemon" "-Q") :error)))))
 
+(defclass listed-host (tuatara.runtime:host)
+  ((variables :initarg :variables :reader listed-host-variables
+              :documentation "The variables each program started is given, as NAME=VALUE strings."))
+  (:documentation "A host whose programs are given VARIABLES and nothing else."))
+
+(defmethod tuatara.io:host-program-environment ((host listed-host))
+  (listed-host-variables host))
+
 (define-test (daemon variables-kept-narrowly)
   ;; only variables that say where a client is and who it is: none naming where git works, what it runs, or a terminal
   (dolist (name '("PATH" "LANG" "LC_ALL" "TERM" "DISPLAY" "GIT_AUTHOR_NAME" "GIT_COMMITTER_EMAIL"))
@@ -504,11 +571,14 @@ ended have: the frames shown, the one with no screen left out."
                   "GIT_EXTERNAL_DIFF" "GIT_ASKPASS" "GIT_AUTHOR_DATE" "GIT_TRACE" "GIT_EDITOR" "GPG_TTY" "LD_PRELOAD"))
     (false (tuatara.command:client-variable-p name) "~a kept" name))
   ;; a daemon started from a command line keeps none of what that line ran with
-  (let ((kept (tuatara.terminal::daemon-environment
-               '("HOME=/home/k" "PATH=/bin" "LC_TIME=mi_NZ" "XDG_RUNTIME_DIR=/run/user/1" "GIT_DIR=/x"
-                 "GIT_INDEX_FILE=/x/index" "PWD=/tmp" "TERM=xterm" "GPG_TTY=/dev/pts/1" "TMUX=/tmp/t"
-                 "LD_LIBRARY_PATH=/x" "APPDIR=/x" "TUATARA_APPIMAGE=1"))))
-    (is equal '("HOME=/home/k" "PATH=/bin" "LC_TIME=mi_NZ" "XDG_RUNTIME_DIR=/run/user/1") kept)))
+  (let ((tuatara.runtime:*host*
+          (make-instance 'listed-host
+                         :variables '("HOME=/home/k" "PATH=/bin" "LC_TIME=mi_NZ" "XDG_RUNTIME_DIR=/run/user/1"
+                                      "GIT_DIR=/x" "GIT_INDEX_FILE=/x/index" "PWD=/tmp" "TERM=xterm"
+                                      "GPG_TTY=/dev/pts/1" "TMUX=/tmp/t" "LD_LIBRARY_PATH=/x" "APPDIR=/x"
+                                      "TUATARA_APPIMAGE=1" "TUATARA_DAEMON=other"))))
+    (is equal '("TUATARA_DAEMON=kaka" "HOME=/home/k" "PATH=/bin" "LC_TIME=mi_NZ" "XDG_RUNTIME_DIR=/run/user/1")
+        (tuatara.io:restricted-environment tuatara.terminal::*daemon-variables* "TUATARA_DAEMON=kaka"))))
 
 (define-test (daemon terminal-checked)
   ;; a terminal a client names is lent only when it is a terminal device of the user's, by a plain path
@@ -1324,17 +1394,10 @@ after, as it does by itself."
 
 ;;; The folders of clients that ended in the buffer list
 
-(defun row-showing (local text)
-  "The first row of the last frame LOCAL, a fake screen, painted that shows TEXT, or NIL."
-  (position-if (lambda (row) (search text row)) (tuatara.frontend.fake:fake-screen local)))
-
 (defun faces-over (local row text)
   "The faces the last frame of LOCAL painted over the first cell of ROW showing TEXT."
   (let ((column (search text (tuatara.frontend.fake:fake-screen-line local row))))
-    (and column
-         (loop for (start end face) in (aref (tuatara.frontend.fake:fake-spans local) row)
-               when (and (<= start column) (< column end))
-                 append (if (listp face) face (list face))))))
+    (and column (faces-at local row column))))
 
 (defun remote-client-numbered (number)
   "The client of the test daemon that came as NUMBER, one on a screen of its own."

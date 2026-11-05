@@ -6,7 +6,7 @@
 ;;;; no entity but XML's five and numbered characters, so that nothing in the
 ;;;; file is fetched, expanded or run; each part no larger than
 ;;;; *ZIP-LARGEST-ENTRY*, the elements no deeper than *XML-DEEPEST*. It is
-;;;; written as an Org note: headings by their styles, lists by their
+;;;; written as an Org note, with headings by their styles, lists by their
 ;;;; numbering, tables as Org tables, bold, italic and the rest as Org's
 ;;;; markup, links as links, footnotes and comments as Org footnotes, tracked
 ;;;; changes marked where they are (inserted underlined, deleted struck
@@ -968,7 +968,7 @@ changed; an empty string when there are none."
 (defun docx-read-about (path &key (what "document") (program "Word") (usual "word/document.xml") more)
   "The first section of the note (OFFICE-ABOUT-SECTION): what the document at
 PATH is, WHAT in words \(a document, a workbook, a presentation), made for
-PROGRAM (Word, Excel, PowerPoint), whose main part is USUAL as standard: what
+PROGRAM (Word, Excel, PowerPoint), whose main part is USUAL as standard; what
 the file says of itself, then MORE (lines of the note, or NIL), then whether
 it holds macros, embedded files or links outside it."
   (let* ((core (docx-reading-part "docProps/core.xml"))

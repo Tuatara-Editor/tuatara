@@ -63,7 +63,7 @@ name ends in) just chosen in a question for one, as the latest: the next
 question starts in its folder and that folder's list offers it first; kept
 in the state folder, with what other sessions chose (STATE-LIST-PUT).
 Nothing is remembered of a path opened safely (SAFE, or a buffer showing it
-so: SHOWN-SAFELY-P) or in one of *SAFE-DIRECTORIES*: a later question
+so: SHOWN-SAFELY-P) or in one of *SAFE-DIRECTORIES*; a later question
 neither starts there nor offers it."
   (let ((native (ignoring-errors-reported ("expanding ~a" path) (tuatara.io:native (tuatara.io:expand-path path)))))
     (when (and native (plusp (length native)) (not safe)
@@ -102,14 +102,6 @@ WRITING-CHOSEN-P): the path itself when it is a folder (its name ends in /),
 else the folder it is in; NIL when there is none or *LAST-USED-FIRST* is NIL."
   (let ((last (and *last-used-first* (find-if-not (if writing #'writing-chosen-p #'named-safe-p) (chosen-paths)))))
     (and last (if (directory-input-p last) last (tuatara.io:parent-path last)))))
-
-(defun last-chosen-folder ()
-  "The folder of the path chosen last in a question for a file or a folder
-\(LAST-CHOSEN-NATIVE-FOLDER) as the questions show it (~/notes/), or NIL.
-The disk is not asked: a folder no longer there is listed as empty, the
-question's listing finding it so."
-  (let ((folder (last-chosen-native-folder)))
-    (and folder (abbreviated-path folder))))
 
 (defvar *slow-listings* '()
   "The folders whose listing in a question for a path had not ended within
@@ -155,7 +147,7 @@ INITIAL names a file."
 or something in it, by CHOSEN, the paths chosen lately (CHOSEN-PATHS): a
 table from its name, a folder's with a slash after it, to its place among
 them, 0 the latest; those in one of *SAFE-DIRECTORIES* left out
-\(SAFE-DIRECTORY-OF, which may ask the disk: called where the folder is read)."
+\(SAFE-DIRECTORY-OF, which may ask the disk; called where the folder is read)."
   (let ((ranks (make-hash-table :test 'equal)) (length (length directory)))
     (loop for path in chosen
           for place from 0
@@ -305,7 +297,7 @@ of the path typed, listing what is in it."
 (defun read-path (prompt &key writing (initial (path-question-start :writing writing)) directories preview)
   "Ask with PROMPT for a path, as READ-FILE-PATH and READ-DIRECTORY-PATH do:
 from INITIAL (as standard the folder of the path chosen last in such a
-question, else the folder the current buffer stands in:
+question, else the folder the current buffer stands in, by
 PATH-QUESTION-START; with WRITING, for a question whose answer is written
 to, never a place in an evidence folder, which is then neither where it
 starts (WRITING-START) nor ranked first among the entries), its name completed against the entries of the folder
@@ -907,7 +899,7 @@ from there again. \\[read-only-mode] allows editing it after all;
 (define-command end-safe-visit ()
   "Open the file of this buffer, opened safely, as usual from now on, where it
 is: the mode line no longer says Safe, the buffer is editable when you may
-write the file, and it gets what \\[find-file] gives a file: its major mode
+write the file, and it gets what \\[find-file] gives a file, its major mode
 (or keeps the one chosen meanwhile, its colours now shown), version control,
 and a place among the files visited lately that opens it as usual. Point,
 changes not saved and undo stay as they are. A file of evidence
@@ -968,8 +960,10 @@ folder of the path chosen last in a question for a path (else the buffer's
 own folder, your home folder for the scratch buffers); a name that does not
 exist is the new file. The file is written safely (a new copy
 renamed over the old, keeping its owner, permissions and labels); a file
-changed on disk since it was read is not overwritten without asking; a large
-buffer is saved in the background while you carry on."
+changed on disk since it was read is not overwritten without asking. Every
+save is written on a thread of its own and waited for half a second; one that
+takes longer, as a large buffer's may, goes on in the background while you
+carry on, its progress in the mode line."
   (let ((b (current-buffer)))
     (if (tuatara.buffer:buffer-file b)
         (save-buffer-with-care b)

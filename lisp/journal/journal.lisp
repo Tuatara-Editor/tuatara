@@ -1,8 +1,8 @@
 ;;;; lisp/journal/journal.lisp --- The journal: an entry a day (or week, month, year), opened or made.
 ;;;; Copyright (C) 2026 Michael A Jones.  GPL-3.0-or-later; see LICENSE.
 ;;;;
-;;;; As Emacs's denote-journal: journal-new-or-existing-entry (C-x n j) opens
-;;;; today's entry, or makes it: a file with a formatted name in the journal's
+;;;; As Emacs's denote-journal, journal-new-or-existing-entry (C-x n j) opens
+;;;; today's entry, or makes it, a file with a formatted name in the journal's
 ;;;; directory, titled with the day (Friday 20 March 2026), keyword journal,
 ;;;; the header of its kind, saved at once. Several entries for the day are
 ;;;; offered to choose from. Entries can be a week's, a month's or a year's

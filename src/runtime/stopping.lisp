@@ -209,7 +209,7 @@ one aside, to leave it (STOP-STOPPABLE-CALL)."
 
 (sb-ext:defglobal **calls-seen** (make-hash-table :test 'eq)
   "For the watching thread: each thread seen in a stoppable call of work given
-seconds, as (COUNTER CALL TIME): the call, told by its work's counter
+seconds, as (COUNTER CALL TIME); the call, told by its work's counter
 \(*STOPPABLE-CALLS*) and number, and the internal real time it was first seen
 in it.")
 

@@ -82,15 +82,16 @@ the kind of line it is and the place it names.")
      (list :error (scanner "^(?:(?:fatal )?error(?:\\[[^\\]]*\\])?:|; caught ERROR:|(?:g?make|ninja)(?:\\[\\d+\\])?: \\*\\*\\*|FAILED:|Traceback \\(most recent call last\\):|[A-Za-z_][\\w.]*(?:Error|Exception): |.*\\*\\*\\* .*Stop\\.$)"))
      (list :warning (scanner "^(?:warning(?:\\[[^\\]]*\\])?:|; caught WARNING:)"))
      (list :note (scanner "^(?:note:|help:|; caught STYLE-WARNING:)"))
-     ;; grep -n and the rest: file:line: or file:line:col:, of a file that is there
+     ;; grep -n and the rest, file:line: or file:line:col:, of a file that is there
      (list :plain (scanner "^([^\\s:\"'(][^\\s:]*):(\\d{1,9}):(?:(\\d{1,9}):)?"))))
   "The patterns lines of a compile's output are matched against, in order,
-each (WHAT SCANNER): :KINDED for file:line:col: and error, warning or note;
-:ARROW for rustc's --> file:line:col; :TRACEBACK for Python's File \"x\",
-line n; :PANIC for Rust's thread 'x' panicked at file:line:col (a test
-failing); :PARENTHESISED for file(line,col): error or warning (tsc, C#,
-MSVC), the file's name holding a . or /; :ERROR, :WARNING and :NOTE for a
-line saying one, naming no place; :PLAIN for file:line: (grep -n). Lines
+each (WHAT SCANNER). The :KINDED one is for file:line:col: and error, warning
+or note. The :ARROW one is for rustc's --> file:line:col; :TRACEBACK for
+Python's File \"x\", line n; :PANIC for Rust's thread 'x' panicked at
+file:line:col (a test failing). The :PARENTHESISED one is for
+file(line,col): error or warning (tsc, C#, MSVC), the file's name holding a .
+or /; :ERROR, :WARNING and :NOTE for a line saying one, naming no place. The
+:PLAIN one is for file:line: (grep -n). Lines
 and columns have nine digits at most.")
 
 (defparameter *make-directory-scanner*

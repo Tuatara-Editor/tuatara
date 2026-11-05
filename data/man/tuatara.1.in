@@ -38,6 +38,14 @@ or
 stops it, asking about the changes not saved; sent SIGTERM, as at logout, it
 asks nothing, keeps the changes it may as auto-saved copies (never an
 encrypted file's text, nor a file opened safely), and ends.
+A daemon on another machine is shown the same way,
+.BR "tuatara \-\-client=HOST:" ,
+its socket brought here by the system's ssh; the files, programs and
+everything else stay on that machine, and nothing of this one's clipboard,
+agents or terminal goes there, unless the machine is trusted with it
+.RB ( "M\-x server\-list" ):
+the ssh agent, each use of a key confirmed here; gpg-agent; the clipboard;
+files dropped, sent to a folder there.
 Plain
 .B tuatara
 never joins a daemon: case work kept in an editor of its own ends with it.
@@ -73,7 +81,8 @@ With
 or
 .BR \-\-stop ,
 no daemon of that name runs, it ended, or it went on (a change it could not
-keep), as is said.
+keep), as is said; with a host, also when ssh cannot reach it, or the Tuatara
+there is missing or another build.
 When git started tuatara to write a message (see
 .BR ENVIRONMENT ),
 \fBC\-c C\-k\fR gives the message up and ends the session with 1, so that git

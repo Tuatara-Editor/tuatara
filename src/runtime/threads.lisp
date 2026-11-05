@@ -17,6 +17,16 @@
   "True once DEADLINE (DEADLINE-IN), an internal real time, has come."
   (>= (get-internal-real-time) deadline))
 
+(defun wait-until (test seconds &key (interval 1/50))
+  "Call TEST, a function of no arguments, every INTERVAL seconds until it
+returns true or SECONDS have passed (NIL: as long as it takes), asleep in
+between: what it returned, or NIL when the time ran out first."
+  (loop with deadline = (and seconds (deadline-in seconds))
+        for value = (funcall test)
+        when value return value
+        when (and deadline (deadline-passed-p deadline)) return nil
+        do (sleep interval)))
+
 (defun seconds-since (time)
   "The seconds since TIME, in internal time units, as a ratio."
   (/ (- (get-internal-real-time) time) internal-time-units-per-second))

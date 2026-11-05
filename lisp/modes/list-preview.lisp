@@ -157,11 +157,14 @@ with its preview on (\\[list-toggle-preview])."
                       (setf (gethash (class-of mode) *previewing-modes*)
                             (if (rest (compute-applicable-methods #'preview-entry (list mode buffer nil))) :yes :no)))))))
 
-(defun entry-preview-again ()
+(defun entry-preview-again (&optional now)
   "Have the preview beside a list show the entry on its line anew after this
-command, as what it showed may have changed: deleted, made again."
+command, as what it showed may have changed: deleted, made again. With NOW,
+at once, for work taken in from the background, which no command follows."
   (when *entry-preview*
-    (setf (side-preview-shown *entry-preview*) nil)))
+    (setf (side-preview-shown *entry-preview*) nil)
+    (when (and now *editor*)
+      (entry-preview-follow *editor*))))
 
 (defun close-entry-preview ()
   "Take away the preview beside a list: its window, and its buffer when that

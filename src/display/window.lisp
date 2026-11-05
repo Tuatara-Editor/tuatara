@@ -928,7 +928,7 @@ a character that draws nothing as its code while BUFFER shows it so."
 (defun buffer-screen-slice (buffer line-start left right)
   "The part of BUFFER's line starting at LINE-START between the columns LEFT
 and RIGHT on the screen, as four values: where it starts and ends, and the
-columns it starts and ends at (TUATARA.TEXT:MAP-LINE-SLICES): a tab across an
+columns it starts and ends at (TUATARA.TEXT:MAP-LINE-SLICES); a tab across an
 edge in it, a wide character across one out of it, the line's end when the
 line is shorter."
   (let ((slice (list line-start line-start 0 0)))

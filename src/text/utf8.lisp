@@ -478,8 +478,8 @@ up to where it goes wrong; else the one octet at I."
 (defun octets-string (octets &key (start 0) (end (length octets)) replacement)
   "OCTETS from START below END as a string: well-formed UTF-8 decoded, every
 other octet as its raw byte's character (U+DC80..U+DCFF); with REPLACEMENT, a
-character, each piece of what is not UTF-8 as that character instead: a
-sequence cut short as one, any other octet as one each."
+character, each piece of what is not UTF-8 as that character instead (a
+sequence cut short as one, any other octet as one each)."
   (declare (type octets octets) (type fixnum start end) (type (or null character) replacement))
   (let ((out (make-string (- end start))) (n 0) (i start))
     (declare (type fixnum n i))

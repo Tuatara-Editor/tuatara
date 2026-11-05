@@ -281,7 +281,7 @@ octets at least +READER-CHUNK+ long (new ones when not given)."
   (%make-reader rope position end (or chunk (tuatara.text:make-octets +reader-chunk+))))
 
 (defun reader-fill (reader)
-  "Ensure the reader's chunk covers its position; return NIL at END."
+  "Make sure the reader's chunk covers its position; return NIL at END."
   (let ((pos (reader-position reader)))
     (cond ((>= pos (reader-end reader)) nil)
           ((and (<= (reader-chunk-start reader) pos) (< pos (reader-chunk-end reader))) t)

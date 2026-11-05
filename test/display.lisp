@@ -888,6 +888,47 @@
   (is string= "\\xA9" (tuatara.display:raw-byte-display #xDCA9))
   (is string= "        " (tuatara.display:char-display #\Tab 0 8)))
 
+(defun line-scroll-garbage-per-key (height)
+  "The octets drawing the rows of a window HEIGHT rows tall makes for each key
+moving point down a line past its last row, so that the window moves a line
+for each, its layout and colours left out."
+  (let ((text (with-output-to-string (s)
+                (dotimes (i 1000) (format s "Line ~d of a plain text, long enough to fill a row of the window.~%" i))))
+        (octets 0) (counting nil))
+    (flet ((count-octets (name sign)
+             (sb-int:encapsulate name 'scroll-garbage
+                                 (lambda (function &rest arguments)
+                                   (if counting
+                                       (let ((before (tuatara.bench::bytes-consed)))
+                                         (multiple-value-prog1 (apply function arguments)
+                                           (incf octets (* sign (- (tuatara.bench::bytes-consed) before)))))
+                                       (apply function arguments))))))
+      (count-octets 'tuatara.command::window-pieces 1)
+      (dolist (name '(tuatara.command::lay-out-window tuatara.command::window-highlights-for
+                      tuatara.display:apply-highlights))
+        (count-octets name -1)))
+    (flet ((moved (keys)
+             (setf octets 0)
+             (run-keys (append (loop repeat 100 collect "C-n")
+                               (list (lambda () (setf counting t)))
+                               (loop repeat keys collect "C-n")
+                               (list (lambda () (setf counting nil))))
+                       :text text :width 100 :height height)
+             octets))
+      (unwind-protect (let ((few (moved 50)) (many (moved 250)))
+                        (/ (- many few) 200.0))
+        (dolist (name '(tuatara.command::window-pieces tuatara.command::lay-out-window
+                        tuatara.command::window-highlights-for tuatara.display:apply-highlights))
+          (sb-int:unencapsulate name 'scroll-garbage))))))
+
+(define-test (display rows-moved-not-made-again)
+  ;; the window moving a line: the rows still shown, now a row higher, are not made again, so a
+  ;; taller window makes no more garbage for each line moved (it made each row again, some 2,400
+  ;; octets a row)
+  (let ((low (line-scroll-garbage-per-key 20)) (high (line-scroll-garbage-per-key 60)))
+    (true (< (/ (- high low) 40) 64) "~,1f octets a key at 20 rows, ~,1f at 60: ~,1f more for each row"
+          low high (/ (- high low) 40))))
+
 (define-test (display rows-fitted-in-one-pass)
   ;; a piece of a screen row is cut or padded to its columns as before, looking at each
   ;; character once: a row of plain text in less time than counting its columns takes

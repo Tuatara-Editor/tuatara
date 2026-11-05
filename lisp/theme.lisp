@@ -369,7 +369,7 @@ colour as the cursor's character is (set as the cursor's colour changes)." :reve
 (define-face :org-agenda-calendar-event "An entry at a time or on a range of days, and what was clocked, in the agenda.")
 (define-face :org-agenda-category "The category an agenda line begins with, the file's name or its CATEGORY (garden:)." :dim t)
 (define-face :org-agenda-time "The time of an agenda line, 9:30-10:15." :fg :cyan)
-(define-face :org-agenda-event-kind "The kind of an agenda line of a date in an entry's text: Event:, or Task: for a task's (*org-agenda-event-kind-text*, *org-agenda-task-kind-text*)." :inherit :org-agenda-calendar-event)
+(define-face :org-agenda-event-kind "The kind of an agenda line of a date in an entry's text, `Event:' or `Task:' for a task's (*org-agenda-event-kind-text*, *org-agenda-task-kind-text*)." :inherit :org-agenda-calendar-event)
 (define-face :org-agenda-untimed "The time column of an agenda line with no time of day, all day (*org-agenda-untimed-text*)." :dim t)
 (define-face :org-agenda-tags "The tags at the end of an agenda line, :work:meeting:." :dim t)
 (define-face :org-latex-and-related "LaTeX in Org text ($x^2$, \\alpha)." :fg :magenta)

@@ -200,7 +200,7 @@ due, or NIL when none waits."
     (and soonest (max 0.01 soonest))))
 
 (defun short-failure-words (words)
-  "WORDS, why a program or a server failed, short enough for the echo area:
+  "WORDS, why a program or a server failed, short enough for the echo area,
 their first line that says anything, a program it could not run named
 alone, not by the command line it was run by (*COMMAND-LINE-SCANNER*):
 Failed to spawn rustfmt; \"it failed\" when they say nothing."

@@ -1,8 +1,8 @@
 ;;;; lisp/org/schedule.lisp --- Org tasks scheduled and given deadlines, dates read as Org reads them.
 ;;;; Copyright (C) 2026 Michael A Jones.  GPL-3.0-or-later; see LICENSE.
 ;;;;
-;;;; C-c C-s schedules the task point is under, C-c C-d gives it a deadline:
-;;;; the date is asked for as any date is (read-date: fri, +3d, 10-15,
+;;;; C-c C-s schedules the task point is under, C-c C-d gives it a deadline.
+;;;; The date is asked for as any date is (read-date: fri, +3d, 10-15,
 ;;;; sep 30, tomorrow, 2026-12-24 14:00, 3pm), the timestamp it reads shown as it is
 ;;;; typed, a date already past taken in the year or month to come. The
 ;;;; planning line under the headline gets it, as Org writes it, a repeater
@@ -481,7 +481,7 @@ answered in the calendar (*ORG-DATE-CHOOSING*), the calendar's day alone moves."
   (org-date-calendar-step -7 0))
 
 (define-command org-calendar-forward-month ()
-  "In Org's date prompt: the calendar's day a month on, written at the prompt:
+  "In Org's date prompt: the calendar's day a month on, written at the prompt as
 the same day of the month, or the month's last when it has fewer (31 January
 a month on is 28 February), as the calendar moves; +1m typed counts on past
 the month's end instead (3 March)."
@@ -489,19 +489,19 @@ the month's end instead (3 March)."
 
 (define-command org-calendar-backward-month ()
   "In Org's date prompt: the calendar's day a month back, written at the
-prompt: the same day of the month, or the month's last when it has fewer, as
+prompt as the same day of the month, or the month's last when it has fewer, as
 the calendar moves; -1m typed counts on past the month's end instead."
   (org-date-calendar-step 0 -1))
 
 (define-command org-calendar-forward-year ()
-  "In Org's date prompt: the calendar's day a year on, written at the prompt:
+  "In Org's date prompt: the calendar's day a year on, written at the prompt, so
 29 February a year on is 28 February, as the calendar moves; +1y typed is
 1 March."
   (org-date-calendar-step 0 12))
 
 (define-command org-calendar-backward-year ()
   "In Org's date prompt: the calendar's day a year back, written at the
-prompt: 29 February a year back is 28 February, as the calendar moves; -1y
+prompt, so 29 February a year back is 28 February, as the calendar moves; -1y
 typed is 1 March."
   (org-date-calendar-step 0 -12))
 

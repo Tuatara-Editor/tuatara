@@ -1103,3 +1103,46 @@ printf 'Source: foo\\nChecksums-Sha256:\\n %s 4 foo_1.0.orig.tar.xz\\nFiles:\\n 
         (declare (ignore out))
         (isnt = 0 status)
         (true (search "libfoo.so.1 is given twice" error))))))
+
+(define-test (tools possible-copies-ranks-by-words-and-names)
+  ;; a fixture index and a branch adding two definitions: one with the words and the name of an
+  ;; entry from another file, one like nothing; the definition itself is left out, a near-match in its own file is listed
+  (with-test-directory (directory)
+    (flet ((path (name) (uiop:native-namestring (merge-pathnames name directory)))
+           (git (&rest arguments)
+             (uiop:run-program (list* "git" "-C" (uiop:native-namestring directory) "-c" "user.name=T"
+                                      "-c" "user.email=t@example.org" "-c" "commit.gpgsign=false" arguments)
+                               :output :string :error-output :output)))
+      (ensure-directories-exist (merge-pathnames "tools/" directory))
+      (ensure-directories-exist (merge-pathnames "test/api/" directory))
+      (ensure-directories-exist (merge-pathnames "lisp/" directory))
+      (uiop:copy-file (tools-script "possible-copies.sh") (path "tools/possible-copies.sh"))
+      (with-open-file (out (path "test/api/reuse-index.txt") :direction :output)
+        (format out "~{~a~%~}"
+                '(";; The reuse index"
+                  "tuatara:read-bank-statement  function  Read the bank statement from a file and return its lines.  lisp/bank.lisp"
+                  "tuatara:parse-bank-statement  function  Read the bank statement the same way.  lisp/new.lisp"
+                  "tuatara:load-bank-statement  function  Read the bank statement in FILE and give its lines.  lisp/new.lisp"
+                  "tuatara:draw-the-moon  function  Paint the night sky.  lisp/sky.lisp"
+                  "tuatara:other-one  function  Something else entirely about cheese.  lisp/cheese.lisp"
+                  "tuatara:another  function  Further things about rivers.  lisp/rivers.lisp"
+                  "tuatara:tea  function  Brew a pot of tea.  lisp/tea.lisp"
+                  "tuatara:lamp  function  Switch the lamp on.  lisp/lamp.lisp"
+                  "tuatara:door  function  Lock the front door.  lisp/door.lisp"
+                  "tuatara:kite  function  Fly a kite in wind.  lisp/kite.lisp")))
+      (git "init" "-q")
+      (git "add" "-A")
+      (git "commit" "-q" "-m" "base")
+      (with-open-file (out (path "lisp/new.lisp") :direction :output)
+        (format out "(defun load-bank-statement (file)~%  \"Read the bank statement in FILE and give its lines.\"~%  file)~%~%~
+                     (defun zzz-quux (x)~%  \"Frobnicate the widgets.\"~%  x)~%"))
+      (git "add" "-A")
+      (git "commit" "-q" "-m" "branch")
+      (let ((out (uiop:run-program (list "bash" (path "tools/possible-copies.sh") "HEAD~1" "HEAD")
+                                   :output :string)))
+        (true (search "lisp/new.lisp  load-bank-statement" out))
+        (true (search "read-bank-statement  lisp/bank.lisp" out))
+        (true (search "parse-bank-statement  lisp/new.lisp" out))
+        (false (search "  load-bank-statement  lisp/new.lisp" out))
+        (false (search "draw-the-moon" out))
+        (false (search "zzz-quux" out))))))

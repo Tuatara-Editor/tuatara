@@ -514,7 +514,7 @@ pictures, sections, sheets and data), sorted, each once; none is followed."
 
 (defun odf-read-about (path what &optional more)
   "The first section of the note (OFFICE-ABOUT-SECTION): what the file at
-PATH is, WHAT in words \(a document, a spreadsheet, a presentation): what it
+PATH is, WHAT in words \(a document, a spreadsheet, a presentation); what it
 says of itself, then MORE (lines of the note, or NIL), then whether it holds
 macros, embedded files or links outside it."
   (let* ((meta (docx-reading-part "meta.xml"))

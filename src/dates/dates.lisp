@@ -211,7 +211,7 @@ weekday in a month a day is, the first Monday to the fifth.")
 ;;; Times written in a pattern
 
 (defun format-day (pattern day &optional (hour 0) (minute 0) (second 0) offset)
-  "The day number DAY at HOUR:MINUTE:SECOND written as PATTERN says: its
+  "The day number DAY at HOUR:MINUTE:SECOND written as PATTERN says; its
 characters as they are, except for these, which stand for parts of the date:
   %Y year (2026, four digits at least)   %y year in two digits   %G ISO week's year
   %m month (01-12)   %d day of the month (01-31)   %e day of the month, space-padded
@@ -220,7 +220,7 @@ characters as they are, except for these, which stand for parts of the date:
   %H hour (00-23)   %I hour (01-12)   %p AM or PM   %M minute   %S second
   %F the date as %Y-%m-%d   %T the time as %H:%M:%S   %R the time as %H:%M
   %z offset from universal time as +1300   %:z as +13:00   %% a %
-A - after the % leaves out the padding (%-e, %-d: 5 for 05), a ^ makes the
+A - after the % leaves out the padding (%-e, %-d give 5 for 05), a ^ makes the
 part capitals (%^p, %^a). OFFSET is the seconds local time is ahead of
 universal time for %z; NIL to work it out. O(length of PATTERN)."
   (multiple-value-bind (year month date) (day-date day)
@@ -575,7 +575,7 @@ none."
 (defun written-date-at (text start end format)
   "A date written in FORMAT, :ISO, :DMY or :MDY, at START of TEXT: 2026-06-30
 for :ISO; 30.06.2026, 1.7.2026 or 30/06/2026 for :DMY; 06/30/2026 or 7/1/2026
-for :MDY, the parts apart by . / or - (/ or - for :MDY), the same both
+for :MDY, the parts apart by a dot, slash or hyphen (slash or hyphen for :MDY), the same both
 times. Four values: its year, month and day, and the index after it; NIL when
 no date that is in the calendar is there."
   (multiple-value-bind (year month day at)

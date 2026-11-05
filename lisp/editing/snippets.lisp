@@ -19,7 +19,7 @@
 ;;;; language servers write theirs: $1, $2... are fields \`TAB' goes to in
 ;;;; turn and \`S-TAB' back, ${1:text} one holding text that typing replaces,
 ;;;; ${1|a,b,c|} one offering a choice, $0 where the cursor ends; a field's
-;;;; number used again is filled in as the field is. $NAME stands for a value:
+;;;; number used again is filled in as the field is. $NAME stands for a value such as
 ;;;; the date ($CURRENT_YEAR, $CURRENT_MONTH, $CURRENT_DATE...), the file
 ;;;; ($TM_FILENAME, $TM_FILENAME_BASE, $TM_DIRECTORY), the text selected
 ;;;; ($TM_SELECTED_TEXT), your name ($AUTHOR); \$ is a dollar sign. Nothing in
@@ -59,8 +59,8 @@ one of Tuatara's (NIL for one of yours)."
 (setf (documentation 'snippet-p 'function) "True when OBJECT is a SNIPPET.")
 
 (defun read-snippet (file-name text)
-  "The snippet a file called FILE-NAME holding TEXT is: its # name: and # key:
-lines before # -- (its name the file's when it gives none), its body after;
+  "The snippet a file called FILE-NAME holding TEXT is: its name and key from the lines before # -- (# name:, #
+key:; its name the file's when it gives none), its body after;
 the whole text its body when it has no such head (TEMPLATE-HEAD)."
   (multiple-value-bind (head body) (template-head text)
     (let ((key (cdr (assoc "key" head :test #'string=))))

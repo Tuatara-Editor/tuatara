@@ -14,9 +14,10 @@ long is kept beside its copy.")
 AUTO-SAVE-SESSION waits on now began starts: a message said as a step's work
 went on is there for the step after, however soon another followed it.")
 
-(defvar *until-bound* 10
+(defvar *until-bound* 120
   "The most seconds a step (:until FUNCTION) of AUTO-SAVE-SESSION waits when
-it names none: a bound on a wait that never ends, never what a test waits for.")
+it names none: a bound on a wait that never ends, never what a test waits for;
+a loaded machine, a suite running, may make a step wait long.")
 
 (defun auto-save-session (steps &key (width 100) (height 20) pending)
   "Run an editor session on STEPS, each a string of keys, (:wait SECONDS), or

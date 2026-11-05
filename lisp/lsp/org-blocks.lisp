@@ -42,9 +42,9 @@ LINES, each (NUMBER . TEXT) in order, as ORG-SOURCE-BLOCKS gives them."
     (nreverse blocks)))
 
 (defun org-source-blocks (text)
-  "The source blocks of TEXT, an Org note, in order: each (NAME FIRST LAST),
+  "The source blocks of TEXT, an Org note, in order, each (NAME FIRST LAST),
 NAME the language it is given, FIRST and LAST the 0-based lines of its code
-\(LAST past it): line for line, as the note's documents need them."
+\(LAST past it), line for line, as the note's documents need them."
   (org-pair-source-blocks (loop for line in (uiop:split-string text :separator '(#\Newline))
                                 for n from 0
                                 collect (cons n line))))

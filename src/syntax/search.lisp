@@ -463,7 +463,7 @@ matches."
   (not (find-if (lambda (c) (or (find c "\\^$.|?*+()[]{}") (tuatara.text:raw-byte-code-p (char-code c)))) pattern)))
 
 (defun regex-case-fold-p (pattern)
-  "True when a search for PATTERN ignores case (smart case): when it has no
+  "True when a search for PATTERN ignores case (smart case), when it has no
 upper-case letter outside an escape such as \\W or \\S, a character's code
 \(\\x4A, \\x{1F600}), the name of a group ((?<Year>...), \\k<Year>) and the
 name of a character property (\\pL, \\p{Greek}), and names no case either: no
@@ -519,7 +519,7 @@ Uppercase_Letter), which ask for case as a capital letter does."
   ((words :initarg :words :reader pattern-refused-words))
   (:report (lambda (condition stream) (write-string (pattern-refused-words condition) stream)))
   (:documentation "Signalled for a pattern holding what the regular expressions here do
-not support, or a name they do not know: WORDS say what, as the prompt shows
+not support, or a name they do not know; WORDS say what, as the prompt shows
 it (\"not supported: \\K\")."))
 
 (setf (documentation 'pattern-refused-words 'function) "What a refused pattern holds that is not supported, in words.")
@@ -1972,7 +1972,7 @@ matches found again from where it ends.
 Three values: the matches as a list of (START END TEXT GROUPS); NIL when all
 were found, :STOPPED when STOP, asked on the calling thread every few
 milliseconds, answered true, or :OVER when the estimated cost passed
-COST-LIMIT (octets): MATCH-COST for each match and BLOCK-SIZE for each block of
+COST-LIMIT (octets), counted as MATCH-COST for each match and BLOCK-SIZE for each block of
 that many octets the matches touch; then the list is NIL. And how many matches
 were found, all or before giving up. STOP is also asked once before the pieces
 start, so it is heard even when the pool's workers take every piece.

@@ -1,7 +1,7 @@
 ;;;; lisp/gpg/gpg-commands.lisp --- GnuPG on files, regions and keys: encrypt, decrypt, sign, verify, and the keys listed.
 ;;;; Copyright (C) 2026 Michael A Jones.  GPL-3.0-or-later; see LICENSE.
 ;;;;
-;;;; The commands Emacs's EasyPG has, under plain names: a file encrypted
+;;;; The commands Emacs's EasyPG has, under plain names, a file encrypted
 ;;;; (FILE.gpg), decrypted (asked where, the text then on disk as it is),
 ;;;; signed (a detached signature FILE.sig, clear-signed text FILE.asc, or a
 ;;;; signed file FILE.gpg) or its signature verified, saying who signed it,
@@ -47,8 +47,8 @@ stopped without asking when its buffer is killed."
 
 (defun gpg-in-background (words work then &key (asker (gpg-asker)) (buffer (current-buffer)) quiet)
   "Call WORK, a function of a cancel cell running gpg, on WORDS's behalf (words
-for the job: decrypting FILE), and THEN on the editor's thread with the values
-it returns: in the background, a job of BUFFER's (QUIET as GPG-JOB has it), or
+for the job, as decrypting FILE), and THEN on the editor's thread with the values
+it returns, in the background, a job of BUFFER's (QUIET as GPG-JOB has it), or
 at once with the terminal lent to gpg-agent's pinentry when ASKER is
 :TERMINAL (GPG-ASKER)."
   (if (eq asker :terminal)
@@ -166,10 +166,11 @@ passphrase, only after the passphrase, asked again, opens what was made."
                                 (gpg-read-passphrase (format nil "Passphrase for ~a: " (tuatara.io:native-file-name path))))))
 
 (defun gpgconf-path ()
-  "gpgconf, GnuPG's program that runs its parts: the one beside gpg (*GPG-PROGRAM*), else found; NIL when there is none."
+  "gpgconf, GnuPG's program that runs its parts: the one beside gpg (*GPG-PROGRAM*), else the one in the system's
+own folders of programs; NIL when there is none."
   (let ((gpg (gpg-path)))
     (or (and gpg (tuatara.io:find-program (tuatara.io:path-join (tuatara.io:parent-path gpg) "gpgconf")))
-        (tuatara.io:find-program "gpgconf"))))
+        (tuatara.io:sandbox-find-program "gpgconf"))))
 
 (define-command gpg-lock ()
   "Make gpg-agent forget every passphrase it keeps for a while (ten minutes,
@@ -178,7 +179,8 @@ next to open one asks again. Text already open stays open: kill those
 buffers too to lock it away."
   (let ((gpgconf (or (gpgconf-path) (tuatara.io:program-missing "gpgconf" :why (outside-program-install-words :gpg)))))
     ;; reloading gpg-agent flushes its cache; one not running keeps nothing
-    (if (nth-value 1 (tuatara.io:program-output (list gpgconf "--reload" "gpg-agent") :capture nil :seconds 5))
+    (if (nth-value 1 (tuatara.io:program-output (list gpgconf "--reload" "gpg-agent") :capture nil :seconds 5
+                                                 :environment (gpg-environment :agent)))
         (message "gpg-agent has forgotten the passphrases it kept")
         (message "gpg-agent could not be told to forget its passphrases: gpgconf failed or took over 5 seconds"))))
 

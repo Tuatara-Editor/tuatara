@@ -33,7 +33,7 @@
     (:cpio :programs (:bsdtar) :words "cpio" :format "cpio" :endings (".cpio")))
   "The kinds of archive listed and unpacked, each the kind of its first octets
 \(TUATARA.IO:OCTETS-KIND) and a property list: :PROGRAMS, the programs that
-read it, the first installed that can taken (ARCHIVE-PROGRAM): GNU tar (:TAR),
+read it, the first installed that can taken (ARCHIVE-PROGRAM), GNU tar (:TAR),
 which also makes the archives it reads, 7-Zip (:7ZZ) or bsdtar (:BSDTAR);
 :OPTION, tar's option compressing it; :WORDS, what a message calls it;
 :FORMAT, how bsdtar names the format it read (in its own words, the start of

@@ -35,7 +35,7 @@ client who works in the frame too (JOIN-CLIENT)."
     buffer))
 
 (defvar *tick-functions* '()
-  "Functions of the editor for work going on in the background: each is called
+  "Functions of the editor for work going on in the background; each is called
 before every redisplay of the command loop and returns when it wants to be
 called again: NIL for not until the next key; T while work of its own runs in
 the background, to be called soon (*TICK-INTERVAL*); or a number of seconds,

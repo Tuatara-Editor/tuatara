@@ -20,7 +20,7 @@
   (:import-from #:tuatara.frontend #:make-event-queue #:queue-push #:queue-pop #:queue-empty-p)
   (:import-from #:tuatara-user #:*gui-font* #:*gui-renderer* #:*gui-padding* #:*window-colours-from-desktop*)
   (:documentation "The GTK4 frontend: Tuatara in a window of its own, one drawing area painted with Pango and Cairo.")
-  (:export #:gtk-frontend #:make-gtk-frontend #:run-in-window #:run-window-client #:gdk-key #:paint-frame-to-png
+  (:export #:gtk-frontend #:make-gtk-frontend #:run-in-window #:run-window-client #:show-in-window #:gdk-key
            #:call-with-painted-frame #:pixel-colour
            #:make-frame #:frame-rows #:colour-rgb))
 
@@ -32,7 +32,7 @@ NIL for the desktop's monospace font. Set it in the init file.")
 
 (defvar *gui-padding* 8
   "The room, in pixels, between the edges of Tuatara's window and its text, in
-the ground's colour: one number for all four sides, or a list: of two, the
+the ground's colour: one number for all four sides, or a list, of two, the
 top and bottom, then the right and left ((4 12) is 4 above and below, 12 at
 the sides); of three, the top, the right and left, the bottom; of four, the
 top, right, bottom and left, clockwise. Set it in the init file, or try values
@@ -446,7 +446,7 @@ with FONT the full name that chooses each at SIZE (Pango units), sorted by name.
                (not (null-pointer-p
                      ;; the settings' class, which the object's first field points at
                      (g-object-class-find-property (sb-sys:sap-ref-sap settings 0) "gtk-interface-color-scheme"))))
-      ;; 1: no preference, which desktops show light; 2: dark; 3: light
+      ;; 1 is no preference, which desktops show light; 2 is dark; 3 is light
       (case (g-object-get-int settings "gtk-interface-color-scheme")
         (2 :dark)
         ((1 3) :light)
@@ -526,6 +526,10 @@ most; NIL when there is none."
   (let ((rows (frame-rows (gtk-frame f))))
     (when (< -1 row (length rows))
       (setf (aref rows row) (list (copy-seq string) face (copy-list spans) (copy-list scales) (copy-tree over) (copy-list parts))))))
+
+(defmethod tuatara.frontend:frontend-focused-p ((f gtk-frontend))
+  "True while the window has the keyboard."
+  (gtk-focused f))
 
 (defmethod tuatara.frontend:frontend-images-p ((f gtk-frontend))
   t)

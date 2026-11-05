@@ -32,7 +32,7 @@
 ;;;; its owner alone, who owns the file and runs Tuatara), no save or putting
 ;;;; back holds it (each holds a lock on it throughout), and it fits the file:
 ;;;; the same file, born when it was, its length between the old and the new,
-;;;; last changed by the save: while a save writes, it marks its journal with
+;;;; last changed by the save. While while a save writes, it marks its journal with
 ;;;; the time every few seconds, so that a change to the file after the save
 ;;;; was cut short is told from one the save made. Anything else, such as
 ;;;; another program having written the file since, is said and nothing

@@ -131,7 +131,7 @@ time it is wanted; NIL when enchant has none for it."
                           (sb-sys:system-area-pointer dictionary) (sb-sys:system-area-pointer list))))))))
 
 (defun enchant-add (dictionary word &key session)
-  "On the speller thread: have DICTIONARY take WORD as right from now on: in
+  "On the speller thread: have DICTIONARY take WORD as right from now on, in
 its personal word list, kept on disk; with SESSION, only while the editor runs."
   (let ((octets (enchant-octets word)))
     (sb-sys:with-pinned-objects (octets)

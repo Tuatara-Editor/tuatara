@@ -432,7 +432,7 @@ its blanks and line ends made single spaces, cut to 60 columns with …."
 (defun integer-annotation (value)
   "For an integer VALUE, what the echo area shows after it when it is the one
 value of one expression: its octal and hex, and the character it is the code of
-up to 127, written as Lisp reads them: \" (#o101, #x41, #\\A)\"; NIL for
+up to 127, written as Lisp reads them, as in \" (#o101, #x41, #\\A)\"; NIL for
 anything else."
   (when (integerp value)
     (format nil " (#o~o, #x~(~x~)~@[, ~s~])" value value (and (<= 0 value 127) (code-char value)))))

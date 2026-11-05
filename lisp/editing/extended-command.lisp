@@ -79,9 +79,9 @@ tells which."
         (t "regex")))
 
 (defun pattern-prompt (regex words &optional note)
-  "The prompt of a question that takes a pattern: its kind first, as REGEX
+  "The prompt of a question that takes a pattern, its kind first, as REGEX
 says (PATTERN-KIND-WORDS), then WORDS saying what is done with it, and NOTE
-in brackets when given, why the pattern cannot be used: Regex keep lines
+in brackets when given, why the pattern cannot be used, as in Regex keep lines
 [incomplete]: ."
   (format nil "~a ~a~@[ [~a]~]: " (string-capitalize (pattern-kind-words regex) :end 1) words note))
 
@@ -115,7 +115,7 @@ REGEX is true, else literal text with every special character escaped."
 
 (defun read-pattern (words &key (initial "") count)
   "Ask for a pattern for what WORDS says is done with it (\"keep lines\"), the
-prompt naming its kind first as a search's does (Regex keep lines: ):
+prompt naming its kind first as a search's does (Regex keep lines: );
 \\<pattern>\\[search-toggle-regex] switches between a regular expression and literal text,
 \\<minibuffer>\\[minibuffer-previous-history] and \\[minibuffer-next-history] bring back the patterns typed before
 \(*PATTERN-HISTORY*), and a regular expression that cannot be used says why

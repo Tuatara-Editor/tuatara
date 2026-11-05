@@ -189,7 +189,7 @@ says, in local time; NIL when it says no time there is."
 (defun formatted-file-name (identifier title keywords extension)
   "The formatted name of a file: IDENTIFIER, then -- and TITLE's slug, then __
 and the KEYWORDS joined by _, then EXTENSION (with its dot), each part left out
-when empty: 20260927T213446--my-notes__garden_project.org."
+when empty, as in 20260927T213446--my-notes__garden_project.org."
   (let ((title (title-slug title))
         (keywords (name-keywords keywords)))
     (format nil "~a~:[--~a~;~*~]~:[__~{~a~^_~}~;~*~]~a"
@@ -233,7 +233,7 @@ octets, as it is made to; its zero octets keep its text from being read.")
 
 (defun encrypted-head-p (head)
   "True when HEAD, the first octets of a file (or its text, as characters),
-begins as an encrypted file does: a line of *ENCRYPTED-TEXT-HEADERS* (after
+begins as an encrypted file does, namely a line of *ENCRYPTED-TEXT-HEADERS* (after
 blank space), or a key written as text with Proc-Type: 4,ENCRYPTED; one of
 *ENCRYPTED-SIGNATURES* where it belongs; or the first packet of a binary
 OpenPGP message, its tag and version as gpg writes them
@@ -260,7 +260,7 @@ OpenPGP message, its tag and version as gpg writes them
                head))))))
 
 (defun encrypted-file-p (path &optional text)
-  "True when the file at PATH is encrypted: as its name says (ENCRYPTED-NAME-P:
+  "True when the file at PATH is encrypted: as its name says (ENCRYPTED-NAME-P for
 .gpg, .age), as its header on disk shows (ENCRYPTED-HEAD-P), or as TEXT, the
 text a buffer shows of it, when given, begins. The text of such a file is
 never read for searching, for a directory kept read or for a dynamic block,
@@ -290,7 +290,7 @@ signature, -- the title, __ the keywords, @@ an identifier not at the start.")
 
 (defun name-parts (name)
   "The parts of the formatted file NAME, as four values: its identifier, its
-signature, its title and its keywords (a list), NIL for those it has not:
+signature, its title and its keywords (a list), NIL for those it has not;
 20260503T131940==5=2--my-title__garden_project.org has all four."
   (let* ((base (file-name-base-of name))
          (end (length base))
@@ -373,8 +373,8 @@ Org, 2026-09-27 in text, 2026-09-27T21:34:46+13:00 in Markdown."
   "The title and the tags HEAD, the start of a note, gives in its front
 matter, the lines at its top before a blank line or the body, as two values:
 in Org (STYLE :org) its #+title: and #+filetags: lines among its keyword
-lines (comments among them too); in Markdown (:markdown) or text (:text) its
-title: and tags: lines (title = and tags = in Markdown's TOML), Markdown's
+lines (comments among them too); in Markdown (:markdown) or text (:text) its title and tags lines (title = and
+tags = in Markdown's TOML), Markdown's
 between lines of --- or +++. A title in double quotes is read as written in
 them (\" a quote); the tags a list of words, as :a:b: in Org, [\"a\", \"b\"]
 in Markdown, a  b in text. NIL for a title it has not, or an empty one, and
@@ -654,7 +654,7 @@ selected: no keywords, or no more. Returns a list of strings."
 
 (defun read-formatted-extension ()
   "Ask for the end of a new file's name, as free text: org, md, txt or any
-other, with a default: nothing typed takes *FORMATTED-FILE-EXTENSION*, which
+other, with a default; nothing typed takes *FORMATTED-FILE-EXTENSION*, which
 the prompt names (default org) when there is one, and a lone dot none. Returns
 it with a dot before it (typed or not), or \"\" for none."
   (let* ((offered (string-trim " ." (or *formatted-file-extension* "")))

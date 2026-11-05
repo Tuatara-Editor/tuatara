@@ -5,7 +5,7 @@
   :description "Tuatara: an Emacs-shaped editor in Common Lisp."
   :author "Michael A Jones <yardquit@pm.me>"
   :license "GPL-3.0-or-later"
-  :version "0.90.15"
+  :version "0.90.16"
   :depends-on ("tuatara/core")
   :in-order-to ((test-op (test-op "tuatara/tests"))))
 
@@ -93,9 +93,11 @@
                (:static-file "starter-init" :pathname "../data/init.lisp")
                (:file "config")
                (:module "packages" :serial t
-                :components ((:file "signing") (:file "packages") (:file "compile-apart") (:file "manager") (:file "sweep")))
+                :components ((:file "signing") (:file "packages") (:file "compile-apart") (:file "manager")
+                             (:file "sweep") (:file "unload")))
                (:file "scratch")
                (:file "daemon")
+               (:file "servers")
                (:file "setup")
                (:file "api")))
 
@@ -119,7 +121,8 @@
   :license "GPL-3.0-or-later"
   :depends-on ("tuatara/frontend-tui" "tuatara/frontend-gtk" "tuatara/defaults")
   :pathname "frontends/tui/"
-  :components ((:file "main") (:file "man-pages") (:file "client") (:file "desktop" :depends-on ("main"))))
+  :components ((:file "main") (:file "man-pages") (:file "ssh" :depends-on ("main"))
+               (:file "client" :depends-on ("main" "ssh")) (:file "desktop" :depends-on ("main"))))
 
 (defsystem "tuatara/tests"
   :description "Test suite (Parachute) and the benchmark harness that enforces their budgets."
@@ -136,6 +139,10 @@
                (:file "garbage")
                (:file "docstrings")
                (:file "definitions")
+               (:file "source-scan")
+               (:file "chokepoints")
+               (:file "dead-code")
+               (:file "sizes")
                (:file "smoke")
                (:file "rope")
                (:file "rope-file")
@@ -220,6 +227,7 @@
                (:file "packages")
                (:file "package-trust")
                (:file "stable-surface")
+               (:file "reuse-index")
                (:file "state-and-files")
                (:file "kept-files")
                (:file "job-endings")
@@ -237,6 +245,8 @@
                (:file "tui")
                (:file "remote")
                (:file "daemon")
+               (:file "daemon-over-ssh")
+               (:file "ssh-servers")
                (:file "tools")
                (:file "config")
                (:file "modes")

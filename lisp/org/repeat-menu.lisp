@@ -3,8 +3,8 @@
 ;;;;
 ;;;; At the date prompt of C-c C-s, C-c C-d and C-c ., C-r opens a menu of the
 ;;;; repeat, as a calendar program asks for one: the day it starts and its
-;;;; time, how it repeats (each choice named from the start day: monthly on
-;;;; the first Monday when it starts on one, or custom: every so many days,
+;;;; time, how it repeats (each choice named from the start day, as monthly on
+;;;; the first Monday when it starts on one, or custom, which is every so many days,
 ;;;; weeks, months or years), every how many, which days of the week, and when
 ;;;; it ends, never, on a day or after so many times. What
 ;;;; they come to is shown under the menu, the timestamp and the days to come,

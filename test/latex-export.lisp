@@ -137,21 +137,18 @@ item text
   "A program NAME in DIRECTORY that does as a LaTeX program does for an export:
 writes the file's PDF and log into its -output-directory, or with FAIL a log
 with an error and no PDF, ending 1. Returns its full name."
-  (let ((script (namestring (merge-pathnames name directory)))
-        (pdf (namestring (merge-pathnames "stand-in.pdf" directory))))
+  (let ((pdf (namestring (merge-pathnames "stand-in.pdf" directory))))
     (unless (probe-file pdf)
       (alexandria:write-byte-vector-into-file (pdf-octets '("Exported page one" "Exported page two")) pdf))
-    (alexandria:write-string-into-file
+    (put-program
+     (merge-pathnames name directory)
      (format nil "#!/bin/sh
 for a in \"$@\"; do case \"$a\" in -output-directory=*) out=\"${a#-output-directory=}\";; *.tex) tex=\"$a\";; esac; done
 stem=$(basename \"$tex\" .tex)
 echo \"~a ran\" >> '~a'
 ~:[cp '~a' \"$out/$stem.pdf\"; echo 'Output written' > \"$out/$stem.log\"; exit 0~;~*n=$(grep -n nonsense \"$tex\" | head -1 | cut -d: -f1); printf './%s.tex:%s: Undefined control sequence.\\nl.%s Some \\\\nonsense\\n' \"$stem\" \"${n:-1}\" \"${n:-1}\" > \"$out/$stem.log\"; exit 1~]
 "
-             name (namestring (merge-pathnames "ran.txt" directory)) fail pdf)
-     script :if-exists :supersede)
-    (sb-posix:chmod script #o700)
-    script))
+             name (namestring (merge-pathnames "ran.txt" directory)) fail pdf))))
 
 (defun export-session (file steps &key (width 120) (height 30) cell-pixels)
   "Visit FILE in an editor session and take STEPS in turn, each keys to type
@@ -1672,11 +1669,10 @@ Shut in.
       (let* ((bin (namestring (ensure-directories-exist (merge-pathnames "texlive/bin/" dir))))
              (tex-engine (stand-in-latex bin "xelatex"))
              (kpsewhich (concatenate 'string bin "kpsewhich")))
-        (alexandria:write-string-into-file
+        (put-program
+         kpsewhich
          (format nil "#!/bin/sh~%printf '%s\\n' '{~a.texlive/web2c,/usr/share/texmf/web2c,~a,/}' '~atexlive' '~atexlive/texmf-dist' '' '' '' '' '' '{}' '~atexlive/texmf-var'~%"
-                 (namestring dir) (tuatara.export::latex-home) (namestring dir) (namestring dir) (namestring dir))
-         kpsewhich)
-        (sb-posix:chmod kpsewhich #o755)
+                 (namestring dir) (tuatara.export::latex-home) (namestring dir) (namestring dir) (namestring dir)))
         (multiple-value-bind (trees var) (tuatara.export::tex-trees tex-engine)
           (true (member (format nil "~a.texlive/web2c" (namestring dir)) trees :test #'string=) "~s" trees)
           (false (member "/usr/share/texmf/web2c" trees :test #'string=))
@@ -2196,8 +2192,7 @@ Shut in.
            (runs '()) (unconfined '()) (outcome :done))
       (ensure-directories-exist bin)
       (dolist (name '("lualatex" "kpsewhich"))
-        (alexandria:write-string-into-file (format nil "#!/bin/sh~%exit 1~%") (concatenate 'string bin name))
-        (sb-posix:chmod (concatenate 'string bin name) #o755))
+        (put-program (concatenate 'string bin name) (format nil "#!/bin/sh~%exit 1~%")))
       (sb-int:encapsulate 'tuatara.io:sandbox-run 'tex-folders-seen
                           (lambda (function program arguments &rest keys)
                             (declare (ignore function))
@@ -2230,3 +2225,12 @@ Shut in.
           (sb-int:unencapsulate 'tuatara.io:sandbox-run 'tex-folders-seen)
           (sb-int:unencapsulate 'tuatara.io:program-output 'tex-folders-seen)
           (remhash (list engine (sb-posix:getenv "HOME")) tuatara.export::*tex-trees*))))))
+
+(define-test (latex-export fallback-font-has-a-space)
+  ;; a font xelatex loads without a space glyph says so on every run: a font that has the
+  ;; character and a space is chosen over one that has only the character, whatever the order
+  (let ((fonts '(("Droid Sans Japanese" "a.ttf" ((#x6F22 . #x6F22)))
+                 ("Droid Sans Fallback" "b.ttf" ((32 . 32) (#x6F22 . #x6F22))))))
+    (is equal "Droid Sans Fallback" (tuatara.defaults::font-for-character #x6F22 fonts))
+    (is equal "Droid Sans Japanese" (tuatara.defaults::font-for-character #x6F22 (subseq fonts 0 1)))
+    (is equal nil (tuatara.defaults::font-for-character #x6F23 fonts))))

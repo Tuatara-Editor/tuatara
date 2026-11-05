@@ -135,8 +135,8 @@ the things it names.")
 (defun regex-problem (condition)
   "Words for the prompt on why a pattern does not compile, from CONDITION:
 \"incomplete\" when it lacks a closing parenthesis or bracket or ends early,
-else \"invalid: \" and the reason in plain words (*REGEX-PROBLEMS*), or
-\"not supported: \" and what (TUATARA.SYNTAX:PATTERN-REFUSED). A problem not
+else \"invalid\" and the reason in plain words (*REGEX-PROBLEMS*), or \"not supported\" and what
+(TUATARA.SYNTAX:PATTERN-REFUSED). A problem not
 known is said by where it is, never by what the program holds."
   (cond ((typep condition 'tuatara.syntax:pattern-refused) (tuatara.syntax:pattern-refused-words condition))
         ((typep condition 'cl-ppcre:ppcre-syntax-error)
@@ -462,7 +462,7 @@ symbol's in BUFFER."
       "[\\p{L}0-9_-]"))
 
 (defun search-quote (text regex &key whole (parsed t))
-  "TEXT written so that the search prompt finds it as it is: in a regular
+  "TEXT written so that the search prompt finds it as it is, that is in a regular
 expression (REGEX true) its special characters escaped, and with WHOLE true
 kept from matching inside a longer symbol of the current buffer: no symbol
 character (SYMBOL-CHAR-P) just before or after it. PARSED true, the default,
@@ -806,7 +806,7 @@ so. Returns the number of matches replaced or counted here."
               (goto origin)
               (when (member status '(:over :slow))
                 ;; too many to hold in memory: what is in sight at once, the rest in the background;
-                ;; a pattern slow on this text: all of it in the background
+                ;; a pattern slow on this text has all of it in the background
                 (if (eq status :over)
                     (rewrite-after-sight buffer line regex low high words flags matcher replacement-for all)
                     (start-rewrite buffer line regex low high words flags :slow t))

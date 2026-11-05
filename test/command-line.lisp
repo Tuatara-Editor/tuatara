@@ -549,6 +549,38 @@ frontend, the editor, and the options read."
               (dolist (folder (list dead live elsewhere))
                 (ignore-errors (tuatara.io:delete-tree folder))))))))))
 
+(define-test (command-line held-folder-outlives-a-day)
+  ;; an owned folder older than a day stays while its session holds its lock, as a client's does, which keeps
+  ;; no folder fresh; let go, it is swept as any old copy is
+  (multiple-value-bind (folder lock) (tuatara.defaults::make-owned-folder "bare-state/")
+    (unwind-protect
+         (let ((owner (concatenate 'string folder "owner.lock"))
+               (two-days-ago (- (sb-posix:time) (* 2 86400))))
+           ;; as another session's folder: this one's own list of folders it holds leaves it out
+           (remhash folder tuatara.defaults::*private-folders-held*)
+           (sb-posix:utimes folder two-days-ago two-days-ago)
+           (tuatara.defaults::forget-old-copies (tuatara.defaults::private-cache-directory "bare-state/"))
+           (true (probe-file folder) "a held folder stays")
+           (true (tuatara.io:lock-file-held-p owner))
+           (sb-posix:close (shiftf lock nil))
+           (false (tuatara.io:lock-file-held-p owner))
+           (tuatara.defaults::forget-old-copies (tuatara.defaults::private-cache-directory "bare-state/"))
+           (false (probe-file folder) "let go, it is swept"))
+      (when lock (sb-posix:close lock))
+      (ignore-errors (tuatara.io:delete-tree folder))))
+  (false (tuatara.io:lock-file-held-p "/nonexistent/owner.lock"))
+  ;; a named pipe in a lock file's place is never waited on
+  (with-test-directory (dir)
+    (let ((pipe (namestring (merge-pathnames "owner.lock" dir))))
+      (sb-posix:mkfifo pipe #o600)
+      (let ((asking (sb-thread:make-thread (lambda () (tuatara.io:lock-file-held-p pipe)))))
+        (is eq nil (sb-thread:join-thread asking :timeout 5 :default :late))
+        (when (sb-thread:thread-alive-p asking)
+          ;; let it go: a writer opening the pipe ends its wait
+          (let ((fd (sb-posix:open pipe (logior sb-posix:o-wronly sb-posix:o-nonblock))))
+            (sb-posix:close fd))
+          (sb-thread:join-thread asking :timeout 5 :default nil))))))
+
 (define-test (command-line options-on-the-stable-surface)
   ;; the options the program takes are pinned, +LINE among them
   (multiple-value-bind (version pinned) (read-stable-surface)

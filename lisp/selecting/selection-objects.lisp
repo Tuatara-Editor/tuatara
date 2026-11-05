@@ -395,7 +395,7 @@ paragraph's end aside; NIL when none does within *TEXT-SCAN-LIMIT* octets."
 (defun sentences-forward (buffer position count)
   "Where COUNT sentences forward of POSITION end: at the next full stop
 (or ? ! …) and its closers followed by a blank (two spaces where sentences
-are two spaces apart: SENTENCE-END-AT), or the end of the paragraph's text
+are two spaces apart; see SENTENCE-END-AT), or the end of the paragraph's text
 when that comes first. Only the text up to that full stop is read for the
 paragraph's end; farther than *TEXT-SCAN-LIMIT* is an error."
   (let ((p position))

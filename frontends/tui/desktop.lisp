@@ -80,7 +80,7 @@ program they start and the words before the entries' own, is not taken, in
 words, or NIL when it is: FOLDER must be named from the root, the program be
 tuatara, or named from the root and be this program SELF (the AppImage's
 path when it runs from one) or the launcher tools/tuatara-tui.sh of the
-checkout SELF was built in, and every other word an option (--dark): so that
+checkout SELF was built in, and every other word an option (--dark), so that
 no file named on the command line becomes a program the desktop runs."
   (flet ((real (path) (and path (tuatara.runtime:ignoring-errors-reported ("finding ~a" path)
                                   (tuatara.io:real-path path)))))

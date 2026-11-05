@@ -136,7 +136,7 @@ entries it shows, headings aside, each worked out once."
 being typed at the search prompt, or NIL; SOURCE, the whole list (a
 LIST-SOURCE) while filters narrow it; SHOWN, the bits of the entries shown,
 or NIL for all; JOB, the filters being worked out in the background; and what
-the list says of itself (SET-SEARCH-FILTERING): TEXT, NOUNS, HEADING,
+the list says of itself (SET-SEARCH-FILTERING), namely TEXT, NOUNS, HEADING,
 EMPTY-HEADINGS, DECORATION and SEARCHES. For a file of records (LINES, how
 many header lines it has, always shown: 0 for none), SOURCE is the version
 of its text the filters were worked out for, SHOWN the runs of lines shown
@@ -196,7 +196,7 @@ shown; HEADING, a function of an entry, is true of one that heads a section,
 shown while an entry under it is and never matched itself, and, unless
 EMPTY-HEADINGS is NIL, while nothing at all is under it; DECORATION, a
 function of an entry, is true of a line that goes with the heading above it
-\(a time grid's line under a day): never matched nor counted, shown while
+\(a time grid's line under a day); never matched nor counted, shown while
 that heading is; with SEARCHES, \\[regex-search-forward] and
 \\[regex-search-backward] there narrow it too. Returns BUFFER."
   (let ((filtering (list-filtering-made buffer)))
@@ -439,7 +439,7 @@ in, so that typing never waits on it.")
   "True when what FILTERING narrows is small enough to filter at once, on the
 editor's thread: for a list, no more text given of its entries than their
 lines, and no more text than *SEARCH-FILTER-QUICK-CHARACTERS* characters;
-for a file of records, no more octets to look at than that: those of the
+for a file of records, no more octets to look at than that, namely those of the
 runs PREVIOUS leaves (LINES-MATCHING), or of every record when it is NIL."
   (if (list-filtering-lines filtering)
       (< (if previous
@@ -741,7 +741,7 @@ vector, a run ending where the next begins made one with it."
 (defun lines-matching-everywhere (filter rope ranges crlf progress halt hook &optional ends)
   "LINES-MATCHING for FILTER over RANGES of ROPE, cut into pieces of
 *FILTER-PIECE* octets matched on all but two cores at once, the runs put
-together in order: the same three values, the same as one scan finds them:
+together in order: the same three values, the same as one scan finds them;
 a piece into which a match of the pieces before runs is matched again from
 where that match ends. Each piece begins by calling HOOK, when given
 \(*REWRITE-PIECE-HOOK* as the work began); records ending as ENDS says
@@ -1211,9 +1211,9 @@ not known."
 
 (defun filter-count-words (filtering total)
   "What FILTERING's filters leave of TOTAL entries or records (NIL while not
-known), for a list's first line and a file's mode line: Filtered by kiwi,
-nz: 12 of 1,000 records; while they are being worked out in the
-background, Filtered by kiwi: ... of 1,000 records (counting)."
+known), for a list's first line and a file's mode line, as in Filtered by kiwi,
+nz: 12 of 1,000 records. While they are being worked out in the background, it reads Filtered by kiwi: ... of
+1,000 records (counting)."
   (let ((patterns (mapcar #'search-filter-words (search-filter-chain filtering)))
         (nouns (list-filtering-nouns filtering))
         (left (filter-left filtering total)))
@@ -1439,8 +1439,8 @@ has, two values; NIL as the second while not known."
     (values (list-filtering-shown-count filtering) (filter-total filtering))))
 
 (defun filters-mode-line (editor buffer)
-  "Mode line function: in a file whose lines search filters hide, what they
-leave of its records (FILTER-COUNT-WORDS): Filtered by kiwi: 12 of 1,000
+  "Mode line function. In a file whose lines search filters hide, what they
+leave of its records (FILTER-COUNT-WORDS), as in Filtered by kiwi: 12 of 1,000
 records."
   (declare (ignore editor))
   (let ((filtering (list-filtering buffer)))

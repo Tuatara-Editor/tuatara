@@ -428,9 +428,7 @@
   ;; on the desktop by the program, given -- before the title; a program not there said once
   (uiop:with-temporary-file (:pathname out)
     (uiop:with-temporary-file (:pathname program :type "sh")
-      (with-open-file (o program :direction :output :if-exists :supersede)
-        (format o "#!/bin/sh~%printf '%s|' \"$@\" >> '~a'~%" (namestring out)))
-      (sb-posix:chmod (namestring program) #o700)
+      (put-program program (format nil "#!/bin/sh~%printf '%s|' \"$@\" >> '~a'~%" (namestring out)))
       (let ((tuatara.defaults::*notify-program* (namestring program)))
         (true (tuatara.defaults::notify "-rf /" "words"))
         (loop repeat 100 until (search "words" (uiop:read-file-string out)) do (sleep 0.05))

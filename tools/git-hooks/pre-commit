@@ -1,0 +1,18 @@
+#!/bin/sh
+# Keeps test/api/reuse-index.txt in step with the code: when the commit stages
+# a Lisp file, tools/reuse-index.sh writes the index again, and a changed index
+# goes into the same commit. Without the toolbox it only warns; the test
+# (definitions reuse-index-current) still catches a stale index.
+# Install: cp tools/git-hooks/pre-commit "$(git rev-parse --git-common-dir)/hooks/"
+top=$(git rev-parse --show-toplevel) || exit 0
+cd "$top" || exit 0
+git diff --cached --name-only --diff-filter=ACMRD | grep -q '\.lisp$' || exit 0
+if ! tools/reuse-index.sh >/dev/null 2>&1; then
+  echo "pre-commit: tools/reuse-index.sh failed (no toolbox?); test/api/reuse-index.txt may be stale." >&2
+  exit 0
+fi
+if [ -n "$(git status --porcelain -- test/api/reuse-index.txt)" ]; then
+  git add test/api/reuse-index.txt
+  echo "pre-commit: test/api/reuse-index.txt updated and added to the commit." >&2
+fi
+exit 0

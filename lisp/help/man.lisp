@@ -1,7 +1,7 @@
 ;;;; lisp/help/man.lisp --- M-x man: the system's manual pages, read in a buffer.
 ;;;; Copyright (C) 2026 Michael A Jones.  GPL-3.0-or-later; see LICENSE.
 ;;;;
-;;;; As Emacs's M-x man does, with man-db and groff: a page is asked for with the
+;;;; As Emacs's M-x man does, with man-db and groff. A page is asked for with the
 ;;;; names of the system's pages to complete on, formatted in the background to
 ;;;; the width of the window, and shown read-only, its headings, bold and
 ;;;; underlined text in faces and its references to other pages (ls(1)) as

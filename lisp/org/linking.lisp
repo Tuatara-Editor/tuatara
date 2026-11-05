@@ -4,9 +4,9 @@
 ;;;; org-store-link keeps a link to where point is: a headline of an Org
 ;;;; file (by its CUSTOM_ID, else its title), one of your notes (denote:ID),
 ;;;; a line of another file. org-insert-link (C-c C-l) asks for a link, the
-;;;; stored ones and the kinds of link offered, file: and denote: chosen from
-;;;; your files, and a label, and writes [[link][label]]; on a link, it edits
-;;;; it. A stored link to the file it is put in becomes a link within it, as
+;;;; stored ones and the kinds of link offered (file and denote ones chosen
+;;;; from your files), and a label, and writes [[link][label]]; on a link, it
+;;;; edits it. A stored link to the file it is put in becomes a link within it, as
 ;;;; Org makes it.
 
 (in-package #:tuatara.defaults)
@@ -16,8 +16,8 @@
 
 (defparameter *org-link-kinds*
   '("file:" "denote:" "https:" "http:" "mailto:" "id:" "doi:" "formatted-match:")
-  "The kinds of link org-insert-link offers besides the stored links: file:
-and denote: go on to ask for the file or the note.")
+  "The kinds of link org-insert-link offers besides the stored links. The file and
+denote ones go on to ask for the file or the note.")
 
 (defun org-link-path (path directory)
   "PATH (native) as a file: link writes it from a file in DIRECTORY (native, ending
@@ -77,9 +77,9 @@ another file, to the line point is on."
           (message "Stored: ~a" (or label link))))))
 
 (defun org-link-within (link buffer)
-  "LINK, a stored link, as it is put in BUFFER: a file: link to a
+  "LINK, a stored link, as it is put in BUFFER: a file link to a
 headline of BUFFER's own file made a link within it (*Title, #id); another
-file: link written from BUFFER's folder when the file is in it or under it."
+file link written from BUFFER's folder when the file is in it or under it."
   (let ((file (tuatara.buffer:buffer-file buffer))
         (directory (buffer-directory buffer)))
     (multiple-value-bind (match groups) (cl-ppcre:scan-to-strings "^file:(.+?)(?:::(.*))?$" link)
@@ -109,8 +109,8 @@ values; NIL when none was chosen."
                                               (buffer-directory buffer))))))
 
 (defun read-link-target (buffer)
-  "Ask for a link, offering the stored links and the kinds of link: file:
-and denote: go on to ask for the file or note. RET with nothing typed takes
+  "Ask for a link, offering the stored links and the kinds of link (file
+and denote go on to ask for the file or note). RET with nothing typed takes
 the link stored last. The link and a label to offer for it, as two values;
 NIL when none was given."
   (let* ((stored (loop for (link label) in *org-stored-links*
@@ -139,7 +139,7 @@ NIL when none was given."
 (define-command org-insert-link ()
   "Insert an Org link (\\`C-c C-l'): it asks for the
 link, offering those org-store-link (\\[org-store-link]) kept and the kinds of
-link (file: asks for a file, denote: for one of your notes), then for its
+link (file asks for a file, denote for one of your notes), then for its
 label, one offered selected (the stored link's, the note's title) to take or
 type over; the text selected becomes the label instead. A stored link to a
 headline of this file becomes a link within it (*Title). On a link, edit it:

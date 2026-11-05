@@ -852,13 +852,13 @@ tags: 0, one space after the headline's text; negative, so that they end at
 that column (-77 to end at the 77th); positive, so that they start there.")
 
 (defun org-tags-from-text (text)
-  "The tags TEXT names, :work:urgent: or work urgent or work, urgent: each
-once, in order."
+  "The tags TEXT names, each once and in order, as written :work:urgent: or
+work urgent or work, urgent."
   (remove-duplicates (remove "" (cl-ppcre:split "[:,\\s]+" text) :test #'string=) :test #'string= :from-end t))
 
 (defun read-org-tags (buffer &optional old)
-  "Ask for tags, OLD, a list, written to begin with: the tags used in BUFFER
-and the agenda files (ORG-KNOWN-TAGS) offered for the one being typed after
+  "Ask for tags, OLD, a list, written to begin with, offering the tags used in
+BUFFER and the agenda files (ORG-KNOWN-TAGS) for the one being typed after
 the last colon, those already written left out; work urgent and
 :work:urgent: both taken. Returns the tags, a list."
   (let ((known (org-known-tags buffer)))
@@ -981,7 +981,7 @@ one step to undo."
   "Add a note to the entry point is under (\\`C-c C-z'):
 the note is asked for, and logged where Org logs notes, at the top of its
 :LOGBOOK: drawer with *ORG-LOG-INTO-DRAWER*, else after its planning line and
-properties: - Note taken on [2026-10-01 Thu 18:00] \\\\ and the note under it.
+properties, in the form - Note taken on [2026-10-01 Thu 18:00] \\\\ and the note under it.
 On a list item's line with a checkbox, on that item, in a :LOGBOOK: drawer
 under it. An empty note is not kept."
   (flet ((owner (parse position)
@@ -1114,7 +1114,7 @@ being saved (ORG-SAVE-SOON)."
   "Save BUFFER after a command changed it for you (an entry filed into it or
 taken out, a clock's line): an agenda file as the agenda saves one
 \(*ORG-AGENDA-AUTOSAVE-FILES*), any other file when it had no changes of its
-own before (WAS-MODIFIED false, TUATARA.IO:CHANGES-UNSAVED-P: a change a save
+own before (WAS-MODIFIED false, TUATARA.IO:CHANGES-UNSAVED-P, since a change a save
 under way writes is not your own); once that save is done (ORG-SAVE-SOON). With EXISTING, only while its file is still there: one
 taken away meanwhile is not made again."
   (let ((file (tuatara.buffer:buffer-file buffer)))

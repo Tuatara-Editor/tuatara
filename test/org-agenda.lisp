@@ -1739,9 +1739,8 @@ help left out."
           ;; told once: the program run by its thread, a stand-in writing what it was given
           (uiop:with-temporary-file (:pathname out)
             (uiop:with-temporary-file (:pathname program :type "sh")
-              (with-open-file (o program :direction :output :if-exists :supersede)
-                (format o "#!/bin/sh~%printf '%s|' \"$@\" >> '~a'~%printf '\\n' >> '~a'~%" (namestring out) (namestring out)))
-              (sb-posix:chmod (namestring program) #o700)
+              (put-program program (format nil "#!/bin/sh~%printf '%s|' \"$@\" >> '~a'~%printf '\\n' >> '~a'~%"
+                                           (namestring out) (namestring out)))
               (let ((tuatara.defaults::*notify-program* (namestring program))
                     (snapshot (tuatara.defaults::org-agenda-snapshot files))
                     (now (encode-universal-time 0 0 16 23 10 2026)))

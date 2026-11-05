@@ -350,7 +350,7 @@ in the private cache (MAKE-OWNED-FOLDER), made the first time one is wanted."
   "Delete the shadows of sessions on this machine no longer running, as one
 that ended without deleting its own (a crash) leaves them
 \(FORGET-ABANDONED-FOLDERS)."
-  (forget-abandoned-folders "git-shadow/" (car *git-shadows-folder*)))
+  (forget-abandoned-folders "git-shadow/" :own (car *git-shadows-folder*)))
 
 (defun git-file-row (path)
   "What a shadow knows of the file or folder at PATH, a link not followed:

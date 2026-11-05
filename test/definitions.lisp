@@ -4,18 +4,22 @@
 (in-package #:tuatara.tests)
 
 (define-test definitions
-  :description "No function, macro or command is defined twice in one package, where the later would quietly replace the earlier; no two tests have one name; the core asks the host, never a variable holding one function; the octets of a mapped file are read through the text layer alone.")
+  :description "No function, macro or command is defined twice in one package, where the later would quietly replace the earlier; no two tests have one name; the core asks the host, never a variable holding one function; the octets of a mapped file are read through the text layer alone; no source file names a package of a higher layer.")
 
 (defun source-files (top)
   "Every Lisp source file under the folder TOP of the repository (\"lisp\", \"src\")."
   (directory (merge-pathnames (make-pathname :directory (list :relative top :wild-inferiors) :name :wild :type "lisp")
                               (asdf:system-source-directory "tuatara"))))
 
+(defun core-source-files ()
+  "Every Lisp source file of the core: the folders src, lisp and frontends."
+  (loop for top in '("src" "lisp" "frontends") append (source-files top)))
+
 (defun source-definitions ()
   "Every (PACKAGE NAME FILE) the source files define with DEFUN, DEFMACRO,
 DEFGENERIC or DEFINE-COMMAND, the package read from each file's IN-PACKAGE."
   (let ((found '()))
-    (dolist (file (loop for top in '("src" "lisp" "frontends") append (source-files top)))
+    (dolist (file (core-source-files))
       (let ((text (uiop:read-file-string file)) (package nil))
         (cl-ppcre:do-register-groups (name) ("(?m)^\\(in-package #:([^)\\s]+)\\)" text)
           (setf package name))
@@ -107,9 +111,98 @@ the package's name and the reader's name in lower case."
   ;; (WITH-READ-PASS); a reader of its own elsewhere would read the file into memory and leave it
   ;; there: only the few known ones, each for its reason, do
   (let ((found '()))
-    (dolist (file (loop for top in '("src" "lisp" "frontends") append (source-files top)))
+    (dolist (file (core-source-files))
       (unless (search "/src/text/" (namestring file))
         (when (cl-ppcre:scan "mapping-sap\\b" (uiop:read-file-string file))
           (push (file-namestring file) found))))
     (is equal (sort (mapcar #'first *mapped-octets-read-elsewhere*) #'string<) (sort found #'string<)
         "Reading mapped octets outside src/text: ~{~a~^, ~}" found)))
+
+(defparameter *package-layers*
+  '(("tuatara" . 0) ("tuatara-user" . 0) ("tuatara.runtime" . 0)
+    ("tuatara.dates" . 1) ("tuatara.text" . 1)
+    ("tuatara.buffer" . 2)
+    ("tuatara.io" . 3)
+    ("tuatara.syntax" . 4)
+    ("tuatara.display" . 5) ("tuatara.frontend" . 5) ("tuatara.command" . 5) ("tuatara.modes" . 5)
+    ("tuatara.defaults" . 6) ("tuatara.git" . 6) ("tuatara.lsp" . 6) ("tuatara.compile" . 6)
+    ("tuatara.packages" . 6) ("tuatara.export" . 6) ("tuatara.terminal-emulator" . 6)
+    ("tuatara.frontend.fake" . 7) ("tuatara.frontend.tui" . 7) ("tuatara.frontend.gtk" . 7)
+    ("tuatara.gtk" . 7) ("tuatara.terminal" . 7))
+  "The layers of Tuatara's packages, low to high: the runtime and the settings,
+dates and the text model, buffers, files and processes, syntax, the display and
+the command loop with its modes, the defaults and the features, and the
+frontends. A source file's package may name packages of its own layer or a
+lower one.")
+
+(defparameter *layering-exceptions*
+  '(("zones.lisp" "tuatara.io"
+     "time zones are read from the system's zoneinfo files as any file is, through io's reading"))
+  "The source files that name a package of a higher layer, each with the package
+it names and why that is allowed. Questions the lower layers ask what is loaded
+above them go through the host's generic functions, which need no entry.")
+
+(defun layer-references (file)
+  "The packages of Tuatara that the source FILE names, as (NAME . LINE): the
+packages its package definition uses or imports from, and every PACKAGE:SYMBOL
+or PACKAGE::SYMBOL in its code; strings and comments are not read."
+  (let* ((text (uiop:read-file-string file))
+         (code (cl-ppcre:regex-replace-all
+                "(?s)\"(?:[^\"\\\\]|\\\\.)*\"|;[^\\n]*|#\\\\."
+                text
+                (lambda (match &rest rest)
+                  (declare (ignore rest))
+                  (make-string (count #\Newline match) :initial-element #\Newline))
+                :simple-calls t))
+         (found '()))
+    (flet ((note (name position)
+             (push (cons (string-downcase name) (1+ (count #\Newline code :end position))) found)))
+      (cl-ppcre:do-scans (start end starts ends "(?i)(?<![\\w.#:-])(tuatara[\\w.-]*):{1,2}(?=[^\\s:()])" code)
+        (note (subseq code (aref starts 0) (aref ends 0)) start))
+      (cl-ppcre:do-scans (start end starts ends "(?i)\\(:import-from\\s+#:(tuatara[\\w.-]*)" code)
+        (note (subseq code (aref starts 0) (aref ends 0)) start))
+      (cl-ppcre:do-scans (start end starts ends "(?i)\\(:use\\s([^()]*)\\)" code)
+        (cl-ppcre:do-matches-as-strings (name "(?i)(?<=#:)tuatara[\\w.-]*" (subseq code (aref starts 0) (aref ends 0)))
+          (note name start))))
+    found))
+
+(defun layer-violations (&optional (files (loop for top in '("src" "lisp") append (source-files top))))
+  "Every (FILE PACKAGE LINE REFERENCED-PACKAGE) where one of FILES, by default the
+sources under src/ and lisp/, names a package of a higher layer than its own, as
+the exceptions allow."
+  (let ((violations '()))
+    (dolist (file files)
+      (let* ((text (uiop:read-file-string file))
+             (package (or (cl-ppcre:register-groups-bind (name) ("(?m)^\\(in-package #:([^)\\s]+)\\)" text) name)
+                          (cl-ppcre:register-groups-bind (name) ("(?m)^\\((?:uiop:)?def(?:ine-)?package #:(\\S+)" text)
+                            name)))
+             (own (and package (cdr (assoc (string-downcase package) *package-layers* :test #'string=)))))
+        (if (null own)
+            (push (list (file-namestring file) package 0 "a package with no layer") violations)
+            (dolist (reference (layer-references file))
+              (let ((layer (cdr (assoc (car reference) *package-layers* :test #'string=))))
+                (when (and layer (> layer own)
+                           (not (find-if (lambda (e) (and (string= (first e) (file-namestring file))
+                                                          (string= (second e) (car reference))))
+                                         *layering-exceptions*)))
+                  (push (list (file-namestring file) package (cdr reference) (car reference)) violations)))))))
+    violations))
+
+(define-test (definitions layering)
+  ;; the layers are the packages' real order: a lower layer never names a higher one
+  (let ((violations (layer-violations)))
+    (is equal '() violations "A file names a package of a higher layer: ~{~a~^; ~}" violations))
+  ;; the scan sees what an exception covers
+  (true (find "tuatara.io" (layer-references (merge-pathnames "src/dates/zones.lisp"
+                                                              (asdf:system-source-directory "tuatara")))
+              :key #'car :test #'string=))
+  ;; a call into the defaults from the core, in a file made for the purpose, is found
+  (let ((file (merge-pathnames (format nil "layering-~36r.lisp" (random (expt 36 8) (make-random-state t)))
+                               (uiop:temporary-directory))))
+    (unwind-protect
+         (progn
+           (with-open-file (out file :direction :output :if-exists :supersede)
+             (format out "(in-package #:tuatara.io)~%~%(defun f ()~%  (tuatara.defaults::g))~%"))
+           (is equal (list (list (file-namestring file) "tuatara.io" 4 "tuatara.defaults"))
+               (layer-violations (list file))))
+      (uiop:delete-file-if-exists file))))

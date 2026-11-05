@@ -15,7 +15,7 @@
 
 (defun parse-trust-line (line)
   "The entry LINE of the trust file writes, (WHERE SIGNER NAME KEY), or NIL
-for a line that makes no sense: SIGNER a key's fingerprint or \"unsigned\",
+for a line that makes no sense. SIGNER a key's fingerprint or \"unsigned\",
 NAME the signer's name or NIL, KEY a secure shell (SSH) signer's key or NIL;
 SIGNER is key: and a GNU Privacy Guard (GPG) key's fingerprint for a source
 whose first version was signed by a key your keyring lacks. Fields after those
@@ -244,7 +244,7 @@ have made the signature."
 (defun package-trust-verdict (where signature)
   "What becomes of a version of the source WHERE that SIGNATURE
 \(PACKAGE-SIGNATURE) says who signed, as three values: :TAKE, :ASK (its
-first version: whoever signed it is asked about, as the version is) or
+first version, whoever signed it is asked about, as the version is) or
 :REFUSE; who signed it in words, or why it is refused; and the entry of
 *PACKAGE-TRUST* to remember once it is taken (for one refused, to remember
 all the same), or NIL. With the signers the init file names (:signers),

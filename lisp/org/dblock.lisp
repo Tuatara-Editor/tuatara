@@ -775,7 +775,7 @@ value, rounded to the nearest, halves to even."
 file) before aligning them,
 PARAMS its parameters: a column for the file when :MULTIFILE, a level column
 \(:level), a timestamp column (:timestamp), a tags column (:tags), the
-property columns, :emphasize, :compact, :narrow (40! by default: headlines
+property columns, :emphasize, :compact, :narrow (40! by default, headlines
 cut to 40), :tcolumns, :filetitle, a hundredths column (:formula %)."
   (let* ((multifile (getf params :multifile))
          (maxlevel (clocktable-maxlevel params))

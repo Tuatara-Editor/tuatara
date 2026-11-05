@@ -209,6 +209,35 @@ so it asks again. A version-1 line with extra fields is read (only a hand
 edit or a release breaking this rule writes one). A later field may only add
 information; a narrowing of a trust is a line of a new kind.
 
+** The reuse index
+
+=test/api/reuse-index.txt= lists what the code defines, to look in before
+writing a function: a line for each exported function, macro, generic
+function and variable, as =package:name  kind  first sentence of the
+docstring  file=, with no line numbers, so it changes only when a definition
+or the first sentence of a docstring does. =tools/reuse-index.sh= writes it
+again from the code of the tree it runs in. The test =(definitions
+reuse-index-current)= fails when the file is not what the code defines, and
+lists up to 20 entries added and removed.
+
+=tools/git-hooks/pre-commit= keeps it current: when a commit stages a Lisp
+file, it runs =tools/reuse-index.sh= and adds the index to the commit if it
+changed. It works in a worktree too. Without the toolbox it warns and lets the
+commit go; the test still catches the drift. Install it once in the main
+checkout, next to the =commit-msg= hook (worktrees share the hooks folder):
+
+: cp tools/git-hooks/pre-commit "$(git rev-parse --git-common-dir)/hooks/"
+
+=tools/possible-copies.sh BASE [HEAD]= shows what a branch may repeat. For each
+function, macro, generic function and variable the changes from BASE to HEAD
+add (the working tree when HEAD is left out), it lists up to five entries of
+the index whose docstring's first sentence or name shares words with the new
+definition, with a score, the name and the file; the definition itself
+is left out. It reads the diff and the index only, so it takes a second.
+Run it with =main= as BASE before a review, and say for each entry listed
+whether the new code reuses or extends it, or why it is different. The
+reviewer reads its output beside the diff.
+
 * Working in a running editor
 
 =tools/lisp-server.sh= starts SBCL with Tuatara loaded and a Swank (SLIME) or

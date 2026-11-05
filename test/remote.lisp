@@ -160,6 +160,23 @@ its number, size, channels, pixels and place: lists EQUAL compares."
                                            (coerce (tuatara.frontend:image-pixels image) 'list)
                                            place)))))
 
+(define-test (remote far-words-hide-nothing)
+  ;; what the other end of a connection says, a paste from another machine and a name shown in a list leave
+  ;; out, or show as their code, the same invisible characters: those that turn text round or draw nothing
+  (let ((hiding (map 'string #'code-char '(97 #x202E 98 #x200B 99 #x2066 100 #xFEFF 101)))
+        (kept (format nil "a~cb" (code-char #xAD))))
+    (is string= "abcde" (tuatara.frontend::shown-words hiding))
+    (is string= "abcde" (tuatara.frontend::far-text hiding))
+    (is string= "a<202E>b<200B>c<2066>d<FEFF>e" (tuatara.command:escape-controls hiding))
+    (is string= "words" (tuatara.frontend::shown-words (format nil "wo~crds~c" (code-char 27) (code-char 7))))
+    ;; a soft hyphen draws nothing either, but is shown as it is everywhere
+    (is string= kept (tuatara.frontend::shown-words kept))
+    (is string= kept (tuatara.frontend::far-text kept))
+    (is string= kept (tuatara.command:escape-controls kept))
+    (true (tuatara.display:invisible-code-p #xAD))
+    (false (tuatara.display:hiding-code-p #xAD))
+    (true (tuatara.display:hiding-code-p #x202E))))
+
 (define-test (remote paints-as-painted-directly)
   ;; a session typed, its every frame painted on a fake directly and through the remote one: the same, row for row
   (multiple-value-bind (direct local remote code)

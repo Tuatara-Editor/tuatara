@@ -13,7 +13,7 @@
 
 ;;; Kinds and bounds
 
-(defconstant +protocol+ 3
+(defconstant +protocol+ 4
   "The number of the messages' format, said first both ways: a client and an
 editor of different numbers, or of different builds, do not talk.")
 
@@ -480,7 +480,7 @@ given as (NAME . VALUE), in the order of *DISPLAY-SETTINGS*."
 ;;; What a client asks for as it attaches
 
 (defstruct (request (:constructor make-request (&key directory terminal environment files safe hex standard-input
-                                                      diff merge (frames 1) wait stop joins))
+                                                      diff merge (frames 1) wait stop joins far agent notes))
                     (:copier nil))
   "What a client asks of the editor as it attaches, beside what its screen
 is: DIRECTORY, the folder it was started in, an absolute path; TERMINAL, the
@@ -493,9 +493,15 @@ the two paths to compare, MERGE the four to merge, or NIL; FRAMES, how many
 frames to open; WAIT, true when the program that started it waits for the
 files to be done with; STOP, true when it asks the editor to stop; JOINS,
 the word the editor gave a client asking it for another window, which this
-connection then is (FRONTEND-ANOTHER), or NIL."
+connection then is (FRONTEND-ANOTHER), or NIL; FAR, true when the client is
+on another machine, its connection carried by ssh: it passes no descriptor
+and names no terminal, and its paths are the editor's machine's; AGENT, for
+such a client, the socket on the editor's machine its ssh connection brings
+the desk's agent to, for the programs of its frames alone, or NIL; NOTES,
+what its connection said, at most eight lines, to be shown in its frame."
   (directory nil) (terminal nil) (environment '()) (files '()) (safe nil) (hex nil) (standard-input nil)
-  (diff nil) (merge nil) (frames 1 :type fixnum) (wait nil) (stop nil) (joins nil))
+  (diff nil) (merge nil) (frames 1 :type fixnum) (wait nil) (stop nil) (joins nil) (far nil) (agent nil)
+  (notes '()))
 
 (setf (documentation 'make-request 'function) "A REQUEST of a client, as its keywords give it."
       (documentation 'request-p 'function) "True when OBJECT is a REQUEST."
@@ -513,7 +519,10 @@ connection then is (FRONTEND-ANOTHER), or NIL."
       (documentation 'request-wait 'function) "True when the client waits for its files to be done with."
       (documentation 'request-stop 'function) "True when the client asks the editor to stop."
       (documentation 'request-joins 'function)
-      "The word of the window the editor asked the client for that this connection is, or NIL.")
+      "The word of the window the editor asked the client for that this connection is, or NIL."
+      (documentation 'request-far 'function) "True when the client is on another machine, reached over ssh."
+      (documentation 'request-agent 'function) "The socket of the desk's agent for a far client's frames, or NIL."
+      (documentation 'request-notes 'function) "What the client's connection said, to show in its frame.")
 
 (defconstant +most-path+ 4096 "The most octets of a path a client names.")
 
@@ -522,7 +531,8 @@ connection then is (FRONTEND-ANOTHER), or NIL."
 past their bounds are the client's to refuse before it is sent."
   (put-number box (logior (if (request-wait request) 1 0) (if (request-stop request) 2 0)
                           (if (request-safe request) 4 0) (if (request-hex request) 8 0)
-                          (if (request-standard-input request) 16 0) (if (request-joins request) 32 0))
+                          (if (request-standard-input request) 16 0) (if (request-joins request) 32 0)
+                          (if (request-far request) 64 0))
               2)
   (put-number box (max 1 (min 16 (request-frames request))) 1)
   (put-text box (or (request-directory request) "/") +most-path+)
@@ -539,7 +549,11 @@ past their bounds are the client's to refuse before it is sent."
     (put-number box (length paths) 1)
     (dolist (path paths) (put-text box path +most-path+)))
   (when (request-joins request)
-    (put-text box (request-joins request) 64)))
+    (put-text box (request-joins request) 64))
+  (put-text box (or (request-agent request) "") 256)
+  (let ((notes (subseq (request-notes request) 0 (min 8 (length (request-notes request))))))
+    (put-number box (length notes) 1)
+    (dolist (note notes) (put-text box note 1024))))
 
 (defun put-no-window (box word words)
   "Put a message in BOX telling the editor the window asked for by WORD is not
@@ -570,8 +584,10 @@ digits and underscores, not first a digit."
        (not (digit-char-p (char name 0)))))
 
 (defun take-request (inbox)
-  "Read a REQUEST from INBOX, as PUT-REQUEST put it."
-  (let* ((flags (take-bounded inbox 2 0 63 "a request's flags"))
+  "Read a REQUEST from INBOX, as PUT-REQUEST put it; malformed when a client
+on another machine (REQUEST-FAR) names a terminal or passes its standard
+input."
+  (let* ((flags (take-bounded inbox 2 0 127 "a request's flags"))
          (frames (take-bounded inbox 1 1 16 "a count of frames"))
          (directory (take-path inbox "a folder"))
          (terminal (let ((device (take-text inbox 256)))
@@ -594,13 +610,23 @@ digits and underscores, not first a digit."
          (joins (and (logtest 32 flags)
                      (let ((word (take-text inbox 64)))
                        (unless (window-word-p word) (malformed "a window asked for by a word of other characters"))
-                       word))))
+                       word)))
+         (agent (let ((path (take-text inbox 256)))
+                  (cond ((zerop (length path)) nil)
+                        ((and (uiop:string-prefix-p "/" path) (not (find (code-char 0) path))) path)
+                        (t (malformed "an agent's socket not named from the root")))))
+         (notes (loop repeat (take-bounded inbox 1 0 8 "a count of notes") collect (take-text inbox 1024))))
     (unless (member (length diff) '(0 2)) (malformed "~d files to compare" (length diff)))
     (unless (member (length merge) '(0 4)) (malformed "~d files to merge" (length merge)))
+    ;; nothing but octets crosses ssh, and a terminal there is no terminal here
+    (when (and (logtest 64 flags) (or terminal (logtest 16 flags)))
+      (malformed "a client on another machine passing a terminal or its standard input"))
+    (when (and agent (not (logtest 64 flags)))
+      (malformed "a client on this machine naming an agent"))
     (make-request :directory directory :terminal terminal :environment environment :files files
                   :safe (logtest 4 flags) :hex (logtest 8 flags) :standard-input (logtest 16 flags)
                   :diff diff :merge merge :frames frames :wait (logtest 1 flags) :stop (logtest 2 flags)
-                  :joins joins)))
+                  :joins joins :far (logtest 64 flags) :agent agent :notes notes)))
 
 ;;; Events, from a client
 

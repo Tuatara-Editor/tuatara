@@ -16,9 +16,7 @@ the names it is given to the file RECORD, as xdg-open would open them."
   (let ((script (gensym "SCRIPT")))
     `(let* ((,record (merge-pathnames "opened.txt" ,directory))
             (,script (merge-pathnames "stand-in-xdg-open" ,directory)))
-       (alexandria:write-string-into-file (format nil "#!/bin/sh~%printf '%s\\n' \"$@\" >> '~a'~%" (namestring ,record))
-                                          ,script :if-exists :supersede)
-       (sb-posix:chmod (namestring ,script) #o700)
+       (put-program ,script (format nil "#!/bin/sh~%printf '%s\\n' \"$@\" >> '~a'~%" (namestring ,record)))
        (let ((tuatara-user:*open-externally-program* (namestring ,script)))
          ,@body))))
 

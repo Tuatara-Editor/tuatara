@@ -121,7 +121,7 @@ to be, which may be a folder of files not to be trusted."
 (defun program-missing (name &key install why)
   "Signal that the program NAME is not installed, saying how to install it
 (INSTALL, \"Fedora: sudo dnf install gnupg2\") and what is not done without it
-\(WHY), each when given: (or (find-program \"git\") (program-missing \"git\"))."
+\(WHY), each when given, as in (or (find-program \"git\") (program-missing \"git\"))."
   (refuse "~a is not installed~@[ (~a)~]~@[: ~a~]" name install why))
 
 (defun setsid-command (program arguments &rest setsid-flags)
@@ -138,6 +138,14 @@ looked for again; PROGRAM is left as it is when it is not found."
         (values setsid (append setsid-flags (cons program arguments)))
         (values program arguments))))
 
+(defun setpriv-command (program arguments)
+  "How to start PROGRAM, by its full path, with ARGUMENTS so that it is
+killed when the editor ends, killed or not (setpriv --pdeathsig KILL), as
+a list of the program to run and its arguments; NIL when setpriv is not in
+the system's own folders of programs (SANDBOX-FIND-PROGRAM)."
+  (let ((setpriv (sandbox-find-program "setpriv")))
+    (and setpriv (list* setpriv "--pdeathsig" "KILL" "--" program arguments))))
+
 (defparameter *program-output-limit* (* 64 1024 1024)
   "The most octets PROGRAM-OUTPUT takes of what a program writes (64 MB):
 one that writes more, a clipboard of a huge copy or a program gone wrong, is
@@ -147,13 +155,16 @@ stopped and its output not taken, so that it cannot fill memory.")
   "The seconds a program no longer wanted has to end once asked to (SIGTERM),
 before it is killed (END-UNWANTED-PROGRAM).")
 
-(defun end-unwanted-program (process)
+(defun end-unwanted-program (process &key (close t))
   "End PROCESS, a program started and no longer wanted, with every program in
 its process group and in the sessions its children lead (as the program
 SESSION-COMMAND starts leads one): asked to end (SIGTERM), then those not
 ended within *PROGRAM-END-GRACE* seconds killed (SIGKILL), PROCESS waited for
-and closed. Returns at once: the waiting is done on a thread of its own,
-which kills what is left if it is itself ended first."
+and closed, or with CLOSE NIL left for whoever reads its pipes to close.
+PROCESS itself is signalled too, for one started in the editor's own group
+to keep its terminal (SB-EXT:RUN-PROGRAM's :INPUT T). Returns at once the
+thread doing the waiting, which kills what is left if it is itself ended
+first."
   (let* ((groups (list (sb-ext:process-pid process)))
          (buffer (make-array 1024 :element-type '(unsigned-byte 8)))
          (sessions (loop for child in (process-children process)
@@ -162,10 +173,16 @@ which kills what is left if it is itself ended first."
     ;; its group's number is its own while it is not reaped
     (tuatara.runtime:ignoring-errors-reported ("ending ~a" process)
       (sb-ext:process-kill process sb-unix:sigterm :process-group))
+    (tuatara.runtime:ignoring-errors-reported ("ending ~a" process)
+      (when (sb-ext:process-alive-p process)
+        (sb-ext:process-kill process sb-unix:sigterm :pid)))
     (tuatara.runtime:make-guarded-thread
      (lambda ()
        (let ((buffer (make-array 1024 :element-type '(unsigned-byte 8))))
          (flet ((signal-all (signal)
+                  (tuatara.runtime:ignoring-errors-reported ("ending ~a" process)
+                    (when (sb-ext:process-alive-p process)
+                      (sb-ext:process-kill process signal :pid)))
                   (dolist (pid (processes-in groups sessions buffer))
                     (signal-process-if pid (lambda ()
                                              (multiple-value-bind (group session) (process-group-and-session pid buffer)
@@ -174,15 +191,25 @@ which kills what is left if it is itself ended first."
            (unwind-protect
                 (progn
                   (when sessions (signal-all sb-unix:sigterm))
-                  (loop with deadline = (tuatara.runtime:deadline-in *program-end-grace*)
-                        until (or (tuatara.runtime:deadline-passed-p deadline)
-                                  (and (not (sb-ext:process-alive-p process))
-                                       (null (processes-in groups sessions buffer))))
-                        do (sleep 0.05)))
+                  (tuatara.runtime:wait-until (lambda ()
+                                                (and (not (sb-ext:process-alive-p process))
+                                                     (null (processes-in groups sessions buffer))))
+                                              *program-end-grace* :interval 1/20))
              (signal-all sb-unix:sigkill)
              (tuatara.runtime:ignoring-errors-reported ("waiting for ~a to end" process) (sb-ext:process-wait process))
-             (tuatara.runtime:ignoring-errors-reported ("closing ~a" process) (sb-ext:process-close process))))))
+             (when close
+               (tuatara.runtime:ignoring-errors-reported ("closing ~a" process) (sb-ext:process-close process)))))))
      :name "program ending")))
+
+(defun done-with-program (process)
+  "Let go of PROCESS, a program started: ended with what it started when it
+still runs, without waiting for it (END-UNWANTED-PROGRAM), so that none is
+left behind; else waited for and closed."
+  (if (sb-ext:process-alive-p process)
+      (end-unwanted-program process)
+      (progn (tuatara.runtime:ignoring-errors-reported ("waiting for ~a to end" process)
+               (sb-ext:process-wait process))
+             (tuatara.runtime:ignoring-errors-reported ("closing ~a" process) (sb-ext:process-close process)))))
 
 (defgeneric host-program-environment (host)
   (:documentation "The variables a program started now is given when it is given none of its
@@ -215,6 +242,62 @@ it (PROGRAM-ENVIRONMENT), or NIL when it has none."
     (loop for setting in (program-environment)
           when (uiop:string-prefix-p prefix setting) return (subseq setting (length prefix)))))
 
+(defun desktop-p ()
+  "True when a program started now has a desktop to show a window on: its
+DISPLAY or WAYLAND_DISPLAY names one (PROGRAM-VARIABLE)."
+  (and (or (plusp (length (program-variable "DISPLAY")))
+           (plusp (length (program-variable "WAYLAND_DISPLAY"))))
+       t))
+
+(defparameter *askpass-programs*
+  '("/usr/libexec/openssh/ssh-askpass" "/usr/lib/ssh/ssh-askpass" "/usr/lib/openssh/ssh-askpass" "/usr/bin/ssh-askpass")
+  "Where the program OpenSSH asks for a passphrase or a confirmation in a
+window with is looked for when SSH_ASKPASS names none: where the systems
+put the one OpenSSH comes with.")
+
+(defun askpass-program ()
+  "The program ssh and ssh-agent ask in a window with, by its full path: the
+one SSH_ASKPASS names (PROGRAM-VARIABLE), as gnome-ssh-askpass or
+ksshaskpass, else the first of *ASKPASS-PROGRAMS* there; NIL when there is
+none."
+  (let ((named (program-variable "SSH_ASKPASS")))
+    (if (plusp (length named))
+        (find-program named)
+        (some #'find-program *askpass-programs*))))
+
+(defun variable-listed-p (name names)
+  "True when the environment variable NAME is one of NAMES, a * at the end of
+one standing for any ending (LC_* for LC_ALL, LC_TIME and the rest)."
+  (some (lambda (listed)
+          (if (char= #\* (char listed (1- (length listed))))
+              (uiop:string-prefix-p (subseq listed 0 (1- (length listed))) name)
+              (string= listed name)))
+        names))
+
+(defun listed-environment (environment names)
+  "Those of ENVIRONMENT, NAME=VALUE strings, whose names are among NAMES (VARIABLE-LISTED-P)."
+  (remove-if-not (lambda (setting)
+                   (let ((equals (position #\= setting)))
+                     (and equals (variable-listed-p (subseq setting 0 equals) names))))
+                 environment))
+
+(defparameter *restricted-variables* '("HOME" "USER" "LOGNAME" "LANG" "LANGUAGE" "LC_*" "TZ" "TMPDIR")
+  "The environment variables every program run with only some of the
+editor's keeps (RESTRICTED-ENVIRONMENT): who you are and where your home
+is, your language and time zone, and where scratch files go.")
+
+(defun restricted-environment (names &rest settings)
+  "The environment of a program given only some of the variables a program
+started now has (PROGRAM-ENVIRONMENT), as NAME=VALUE strings: those named
+in *RESTRICTED-VARIABLES* or NAMES, a * at the end of a name standing for
+any ending; each of SETTINGS, NAME=VALUE strings, in place of the variable
+of its name, a later one in place of an earlier one."
+  (flet ((name (setting) (subseq setting 0 (position #\= setting))))
+    (setf settings (remove-duplicates settings :key #'name :test #'string=))
+    (append settings
+            (remove-if (lambda (setting) (member (name setting) settings :key #'name :test #'string=))
+                       (listed-environment (program-environment) (append *restricted-variables* names))))))
+
 (defun call-with-program (command function &key job input output error directory (environment nil environment-p)
                                                preserve-fds (external-format '(:utf-8 :replacement #\?)))
   "Start COMMAND, a program's full name and its arguments (never through a
@@ -235,11 +318,7 @@ so that none is left behind; one ended already is waited for and closed."
                                 (and preserve-fds (list :preserve-fds preserve-fds))))))
     (when job (tuatara.runtime:job-program-started job process))
     (unwind-protect (funcall function process)
-      (if (sb-ext:process-alive-p process)
-          (end-unwanted-program process)
-          (progn (tuatara.runtime:ignoring-errors-reported ("waiting for ~a to end" process)
-                   (sb-ext:process-wait process))
-                 (tuatara.runtime:ignoring-errors-reported ("closing ~a" process) (sb-ext:process-close process)))))))
+      (done-with-program process))))
 
 ;;; Programs in a session of their own
 
@@ -449,48 +528,106 @@ serving the clipboard) is not waited for: only the one started."
   "The most octets kept of what a program says on its error output
 \(FILTER-THROUGH-PROGRAM); the rest is read and let go.")
 
+(defun read-outputs (fds limits drains &key deadline too-much)
+  "Read FDS, pipes open for reading, each to its end, on this thread alone,
+waiting on them all at once so that none waits on another: of each, the
+first octets up to its limit in LIMITS (NIL: all) are kept; past it, the
+rest is read and let go when its flag in DRAINS is true, else that pipe is
+no longer read and TOO-MUCH, a function of no arguments, is called. Reading
+stops at DEADLINE (TUATARA.RUNTIME:DEADLINE-IN) when one is given. Three
+values: a list of what each gave, as octets, NIL for one that gave more than
+its limit and was not drained; a list of true for each that gave more than
+its limit; and true when DEADLINE came before every pipe ended."
+  (let ((pieces (loop repeat (length fds) collect (make-octet-pieces)))
+        (over (make-list (length fds)))
+        (open (copy-list fds))
+        (buffer (make-array 65536 :element-type '(unsigned-byte 8))))
+    (loop while open
+          until (and deadline (tuatara.runtime:deadline-passed-p deadline))
+          do (let ((ready (wait-for-fds open (if deadline (min 1 (max 0 (tuatara.runtime:seconds-left deadline))) 1))))
+               (when (consp ready)
+                 (dolist (fd ready)
+                   (let* ((i (position fd fds))
+                          (into (nth i pieces))
+                          (limit (nth i limits))
+                          (got (read-fd-into fd buffer :path "a program's output")))
+                     (cond ((zerop got) (setf open (remove fd open)))
+                           ((nth i over))
+                           (t (add-octet-piece into (subseq buffer 0 got))
+                              (when (and limit (> (octet-pieces-size into) limit))
+                                (setf (nth i over) t)
+                                (unless (nth i drains)
+                                  (setf open (remove fd open))
+                                  (when too-much (funcall too-much)))))))))))
+    (values (loop for into in pieces
+                  for limit in limits
+                  for past in over
+                  for drain in drains
+                  collect (cond ((not past) (joined-octets into))
+                                (drain (subseq (joined-octets into) 0 limit))))
+            over
+            (and open t))))
+
 (defun filter-through-program (command write &key job directory (environment nil environment-p)
-                                                 (limit *program-output-limit*))
+                                                 (limit *program-output-limit*) truncate input seconds)
   "Run COMMAND, a program's full name and its arguments (never through a
 shell), calling WRITE with the descriptor of its standard input to give it
 what it reads, a piece at a time (WRITE-OCTETS; a buffer's text from
 BUFFER-TEXT, say), its input closed once WRITE returns; what it prints and
-what it says on its error output are read meanwhile on threads of their own,
-so that none waits on another. A program that ends before it has read all
-makes WRITE's next write fail (FILE-SYSTEM-ERROR), which WRITE may take as
-the end. With JOB, it is the program the job runs: stopping the job ends it.
-DIRECTORY is where it runs, ENVIRONMENT, when given, all it sees of one.
-Four values: what it printed, as octets (NIL when it printed more than
-LIMIT octets: it is ended then; a LIMIT of NIL takes all it prints); what
-it said, as text, its first *PROGRAM-SAID-LIMIT* octets; its exit code, NIL
-when it did not exit of itself; and true when it printed more than LIMIT."
+what it says on its error output are read meanwhile on a thread of their
+own, so that none waits on another. A program that ends before it has read
+all makes WRITE's next write fail (FILE-SYSTEM-ERROR), which WRITE may take
+as the end. With WRITE NIL, INPUT is what it reads instead, as
+SB-EXT:RUN-PROGRAM takes it: T, the editor's own standard input, so that a
+program asking for a password on the terminal (ssh, ssh-add) can; a file
+stream or path; NIL, nothing. With JOB, it is the program the job runs:
+stopping the job ends it. DIRECTORY is where it runs, ENVIRONMENT, when
+given, all it sees of one. With SECONDS, it is given that long, then ended
+with every program it started (END-UNWANTED-PROGRAM), waited for while it
+ends, *PROGRAM-END-GRACE* seconds and a little more at most. Four values:
+what it printed, as octets (NIL when it printed more than LIMIT octets, and
+it is ended then; with TRUNCATE, the first LIMIT octets, the rest read and
+let go while it runs on; a LIMIT of NIL takes all it prints); what it said,
+as text, its first *PROGRAM-SAID-LIMIT* octets; its exit code, NIL when it
+did not exit of itself or was ended for taking too long; and true when it
+printed more than LIMIT."
   (apply #'call-with-program command
          (lambda (process)
-           (flet ((reader (stream most drain name)
-                    (tuatara.runtime:make-guarded-thread
-                     (lambda ()
-                       (multiple-value-bind (octets too-much)
-                           (tuatara.runtime:ignoring-errors-reported ("reading what ~a writes" (first command))
-                             (read-stream-octets stream :limit most :drain drain))
-                         ;; ended, so that it waits on no one reading what it prints
-                         (when (and too-much (not drain))
-                           (tuatara.runtime:ignoring-errors-reported ("ending ~a" process)
-                             (sb-ext:process-kill process 15)))
-                         (list octets too-much)))
-                     :name name)))
-             (let ((output (reader (sb-ext:process-output process) limit nil "program output"))
-                   (said (reader (sb-ext:process-error process) *program-said-limit* t "program messages")))
+           (let* ((deadline (and seconds (tuatara.runtime:deadline-in seconds)))
+                  (reader (tuatara.runtime:make-guarded-thread
+                           (lambda ()
+                             (destructuring-bind (&optional said over (late t))
+                                 (tuatara.runtime:ignoring-errors-reported ("reading what ~a writes" (first command))
+                                   (multiple-value-list
+                                    (read-outputs (list (sb-sys:fd-stream-fd (sb-ext:process-output process))
+                                                        (sb-sys:fd-stream-fd (sb-ext:process-error process)))
+                                                  (list limit *program-said-limit*) (list truncate t)
+                                                  :deadline deadline
+                                                  ;; ended, so that it waits on no one reading what it prints
+                                                  :too-much (lambda ()
+                                                              (tuatara.runtime:ignoring-errors-reported
+                                                                  ("ending ~a" process)
+                                                                (sb-ext:process-kill process 15))))))
+                               ;; ended at its deadline, or when its pipes could not be read
+                               (list said over late (and late (end-unwanted-program process :close nil)))))
+                           :name "program output")))
+             (when write
                (unwind-protect (funcall write (sb-sys:fd-stream-fd (sb-ext:process-input process)))
                  (tuatara.runtime:ignoring-errors-reported ("closing the input of ~a" (first command))
-                   (close (sb-ext:process-input process))))
-               (destructuring-bind (&optional octets too-much) (sb-thread:join-thread output :default nil)
-                 (let ((spoken (first (sb-thread:join-thread said :default nil))))
-                   (sb-ext:process-wait process)
-                   (values (and (not too-much) octets)
-                           (if spoken (tuatara.text:lenient-string spoken) "")
-                           (and (eq (sb-ext:process-status process) :exited) (sb-ext:process-exit-code process))
-                           too-much))))))
-         :job job :input :stream :output :stream :error :stream :directory directory
+                   (close (sb-ext:process-input process)))))
+             (destructuring-bind (&optional said over late ending) (sb-thread:join-thread reader :default nil)
+               (when ending
+                 (tuatara.runtime:join-within ending (1+ *program-end-grace*)))
+               (let ((exited (and (not late)
+                                  (if deadline
+                                      (tuatara.runtime:wait-until (lambda () (not (sb-ext:process-alive-p process)))
+                                                                  (max 0 (tuatara.runtime:seconds-left deadline)))
+                                      (sb-ext:process-wait process)))))
+                 (values (and (or truncate (not (first over))) (first said))
+                         (if (second said) (tuatara.text:lenient-string (second said)) "")
+                         (and exited (eq (sb-ext:process-status process) :exited) (sb-ext:process-exit-code process))
+                         (first over))))))
+         :job job :input (if write :stream input) :output :stream :error :stream :directory directory
          (and environment-p (list :environment environment))))
 
 (defun command-words (text &key (backslash :shell))
@@ -546,6 +683,30 @@ programs read to find libraries and alternatives."
           (loop for path in '("/etc/ld.so.cache" "/etc/alternatives" "/etc/fonts")
                 append (list "--ro-bind-try" path path))))
 
+(defun version-numbers (text &optional (after ""))
+  "The numbers of the first version written in TEXT after AFTER, a regular
+expression, as a list: (0 11 0) for \"bubblewrap 0.11.0\", (9 9) for
+\"OpenSSH_9.9p1, OpenSSL 3.2.2\" after \"OpenSSH_\"; NIL when there is none.
+A pre-release after a -, alpha, beta or rc and its number, adds -3, -2 or -1
+and that number, so that it comes before its release (VERSION-AT-LEAST-P):
+0.90.13-rc1 is (0 90 13 -1 1)."
+  (multiple-value-bind (match parts)
+      (cl-ppcre:scan-to-strings (concatenate 'string after "(\\d+(?:\\.\\d+)*)(?:-(alpha|beta|rc)\\.?(\\d*))?") text)
+    (when match
+      (append (mapcar #'parse-integer (uiop:split-string (aref parts 0) :separator "."))
+              (let ((label (aref parts 1)))
+                (and label (list (cond ((string= label "alpha") -3) ((string= label "beta") -2) (t -1))
+                                 (or (parse-integer (aref parts 2) :junk-allowed t) 0))))))))
+
+(defun version-at-least-p (version needed)
+  "True when VERSION, a list of numbers as VERSION-NUMBERS gives, is NEEDED,
+another, or later: each number compared in turn, one left out counted 0."
+  (loop for i below (max (length version) (length needed))
+        for have = (or (nth i version) 0) and need = (or (nth i needed) 0)
+        when (> have need) return t
+        when (< have need) return nil
+        finally (return t)))
+
 (defvar *bwrap-versions* (make-hash-table :test 'equal :synchronized t)
   "The version of each bwrap program asked so far, by its path: a list of numbers, or :UNKNOWN.")
 
@@ -555,12 +716,8 @@ programs read to find libraries and alternatives."
     (when program
       (let ((version (or (gethash program *bwrap-versions*)
                          (setf (gethash program *bwrap-versions*)
-                               (or (let ((numbers (cl-ppcre:all-matches-as-strings "\\d+" (version-text program))))
-                                     (and numbers (mapcar #'parse-integer numbers)))
-                                   :unknown)))))
-        (and (consp version)
-             (or (> (first version) major)
-                 (and (= (first version) major) (>= (or (second version) 0) minor))))))))
+                               (or (version-numbers (version-text program)) :unknown)))))
+        (and (consp version) (version-at-least-p version (list major minor)))))))
 
 (defparameter *seccomp-refused*
   '((:x86-64 #xC000003E
@@ -1225,6 +1382,15 @@ background (END-SCOPES-LEFT)."
 program elsewhere, as in the home directory, cannot be run shut in."
   (and (not (find #\/ name)) (find-program name *sandbox-path*)))
 
+(defun system-program (name)
+  "The program NAME found: by its full path from the root, as it is; by
+name, only in the system's own folders of programs (SANDBOX-FIND-PROGRAM),
+never in a folder of yours your PATH may name. NIL when there is none, as
+for a path not from the root (./gpg)."
+  (if (uiop:string-prefix-p "/" name)
+      (find-program name)
+      (sandbox-find-program name)))
+
 (defun sandbox-status (&key again)
   "Whether programs decoding files can be shut in here, as three values: a
 keyword, :READY, :MISSING (bwrap is not on the PATH), :BROKEN (it is there but
@@ -1326,7 +1492,7 @@ full path to one it is shown) with ARGUMENTS (strings, never through a shell)
 shut in: it sees the system's programs and libraries, read only, and nothing
 else (no home directory, no network, no other process), its time, memory and
 the files it writes in its own /tmp limited; reading INPUT, an open descriptor, on its
-standard input from its start (nothing when NIL): a sealed copy of it
+standard input from its start (nothing when NIL), a sealed copy of it
 \(SEALED-COPY), never INPUT itself; an INPUT that is such a copy already is
 read as it is, through a descriptor of its own (one copy can serve many runs,
 at once too). With SECRET, a string, in place of INPUT, it reads that
@@ -1340,7 +1506,7 @@ prints is let go, never kept; with OUTPUT-KEPT NIL, counted against it but
 not kept), or when CANCEL, a cons, has a true car; it may
 take MEMORY octets (NIL: no limit), and write files of FILE-LIMIT octets at
 most (NIL: no limit). Returns three values: the octets it printed; how it
-went, :DONE (it ended well: with an exit code among ENDED-WELL, 0 alone
+went, :DONE (it ended well, with an exit code among ENDED-WELL, 0 alone
 unless given), :FAILED (it ended with an error, or ran out of memory),
 :TIMEOUT, :TOO-MUCH, :CANCELLED, or :UNAVAILABLE when there is no sandbox
 here (SANDBOX-STATUS); and what it said on its error output, or why there is

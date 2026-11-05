@@ -3,7 +3,7 @@
 ;;;;
 ;;;; While Tuatara runs, today's agenda is worked out on a thread of its own
 ;;;; about once a minute, from the agenda files as they are then, and each of
-;;;; its entries tagged :notify: is told on the desktop by notify-send: some
+;;;; its entries tagged :notify: is told on the desktop by notify-send, some
 ;;;; minutes before its time and when the time comes, or, with a date alone,
 ;;;; once in the morning. Each is told once (NOTIFY, kept in *Notifications*
 ;;;; too); a task done is told no more.

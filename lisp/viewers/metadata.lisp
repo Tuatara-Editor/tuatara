@@ -59,7 +59,7 @@ those with no value left out; an empty string when none has one."
 (defun file-octets-for-metadata (fd size)
   "The octets of the file open as file descriptor (FD), of SIZE octets, read
 to find what it says of itself: all of it, or its first and last halves of
-*METADATA-LARGEST-READ* octets when it is larger (two values: the octets, and
+*METADATA-LARGEST-READ* octets when it is larger (two values, the octets, and
 true when they are cut so)."
   (let ((limit *metadata-largest-read*))
     (if (<= size limit)

@@ -782,7 +782,7 @@ DICTIONARY is given and whose decoded octets are DATA, in the order written:
 the object's number, the entry's type (0 free, 1 written in the file, 2 in
 an object stream; 1 when the stream gives no type) and its two fields (an
 offset or object stream's number, and a generation or index; 0 when not
-given), as written: an offset counts from the PDF's header, so that
+given), as written; an offset counts from the PDF's header, so that
 PDF-OFFSET-BASE is added to have it in the file. Stop when FUNCTION returns
 true. NIL when /W gives no field widths
 it can be read by; else how its entries ended: :END, as its /Index (or

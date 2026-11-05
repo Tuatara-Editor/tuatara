@@ -2,7 +2,7 @@
 ;;;; Copyright (C) 2026 Michael A Jones.  GPL-3.0-or-later; see LICENSE.
 ;;;;
 ;;;; M-x format-buffer gives the buffer's text to its language's formatter
-;;;; (rustfmt, ruff, clang-format, shfmt...: *LANGUAGE-FORMATTERS*, else the one
+;;;; (rustfmt, ruff, clang-format, shfmt..., see *LANGUAGE-FORMATTERS*, else the one
 ;;;; Helix names) on its standard input, in the background, shut in the sandbox:
 ;;;; it sees the project's folder and its own, read only, and no network. What
 ;;;; comes back is put in as one change that undo takes back whole, only the
@@ -211,7 +211,7 @@ change is one that \\[undo] takes back whole. With no formatter
 installed, its language server lays it out where one does, else each line
 is indented as the mode indents it, and the echo area says why: the
 formatter not installed, and no server, or one that does not format code
-or is still starting. A formatter or server that fails changes nothing:
+or is still starting. A formatter or server that fails changes nothing,
 its name and its reason are said (rust-analyzer could not format main.rs:
 Failed to spawn rustfmt), as when a server gives no answer within
 *format-seconds*; one that finds nothing to change says it was laid out

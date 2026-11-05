@@ -24,13 +24,16 @@
 (in-package #:tuatara.defaults)
 
 (defvar *gpg-program* "gpg"
-  "The GnuPG program that decrypts and encrypts .gpg files, by name or full path.")
+  "The GnuPG program that decrypts and encrypts .gpg files, by its full path,
+from the root (/opt/gnupg/bin/gpg), or by name, then looked for only in the
+system's own folders of programs (/usr/local/bin, /usr/bin, /bin), never in
+a folder of yours your PATH may name, nor in the folder the editor is in.")
 
 (defvar *gpg-passphrase-from* :auto
-  "Who asks for a passphrase gpg needs: :AGENT, gpg-agent's pinentry in its
+  "Who asks for a passphrase gpg needs. :AGENT is gpg-agent's pinentry in its
 own window; :TERMINAL, gpg-agent's pinentry in the terminal the editor shows
 in, lent to it while gpg runs; :MINIBUFFER, the minibuffer, what is typed
-shown as stars (gpg's loopback: the passphrase then passes through the
+shown as stars (gpg's loopback, the passphrase then passes through the
 editor); :AUTO, the agent's window in a desktop session, else the terminal,
 else the minibuffer. Pinentry keeps the passphrase out of the editor.")
 
@@ -41,21 +44,26 @@ and what that risks (the garbage collector's copies, memory not locked, no
 keyboard grab, a look-alike). NIL: the question alone, once you know them.")
 
 (defun gpg-path ()
-  "The gpg program found (*GPG-PROGRAM*), or NIL."
-  (tuatara.io:find-program *gpg-program*))
+  "The gpg program found (*GPG-PROGRAM*), as TUATARA.IO:SYSTEM-PROGRAM finds
+it; NIL when there is none."
+  (tuatara.io:system-program *gpg-program*))
 
 (defun gpg-terminal ()
   "The terminal device the editor shows in, which gpg-agent's pinentry can be lent; NIL in a window of its own."
   (and *editor* (tuatara.frontend:frontend-terminal-device (editor-frontend *editor*))))
 
 (defun gpg-asker ()
-  "Who asks for passphrases, as *GPG-PASSPHRASE-FROM* says: :AGENT, :TERMINAL or :MINIBUFFER."
-  (case *gpg-passphrase-from*
-    ((:agent :minibuffer) *gpg-passphrase-from*)
-    (:terminal (if (gpg-terminal) :terminal :minibuffer))
-    (t (cond ((or (tuatara.io:program-variable "DISPLAY") (tuatara.io:program-variable "WAYLAND_DISPLAY")) :agent)
-             ((gpg-terminal) :terminal)
-             (t :minibuffer)))))
+  "Who asks for passphrases, as *GPG-PASSPHRASE-FROM* says: :AGENT, :TERMINAL or :MINIBUFFER.
+In the frame of a client on another machine, gpg-agent alone, whatever it
+says: a passphrase is never typed into an editor on a server."
+  (let ((from (let ((client (current-client)))
+                (if (and client (client-far-p client)) :agent *gpg-passphrase-from*))))
+    (case from
+      ((:agent :minibuffer) from)
+      (:terminal (if (gpg-terminal) :terminal :minibuffer))
+      (t (cond ((tuatara.io:desktop-p) :agent)
+               ((gpg-terminal) :terminal)
+               (t :minibuffer))))))
 
 (defun gpg-minibuffer-p ()
   "True when the minibuffer, not gpg-agent's pinentry, asks for passphrases (GPG-ASKER)."
@@ -110,6 +118,94 @@ meanwhile; else just call it."
 
 ;;; Running gpg
 
+(defparameter *gpg-variables*
+  '("GNUPGHOME" "TERM" "GPG_TTY" "DISPLAY" "WAYLAND_DISPLAY" "XAUTHORITY" "DBUS_SESSION_BUS_ADDRESS"
+    "XDG_RUNTIME_DIR" "PINENTRY_USER_DATA")
+  "The environment variables gpg is given, of those programs started from the
+editor have, besides TUATARA.IO:*RESTRICTED-VARIABLES*: where your keyring
+is, and where gpg-agent and its pinentry find your terminal or desktop. Its
+PATH is the system's own folders of programs, and nothing else reaches it.")
+
+(defparameter *gpg-staying-home-options*
+  '("--disable-dirmngr" "--no-auto-key-retrieve" "--no-auto-key-locate" "--no-auto-key-import"
+    "--list-options" "no-show-photos" "--verify-options" "no-show-photos")
+  "The options every gpg run is given, after those of your gpg.conf, so that
+whatever that or a file asks, gpg fetches no key over the network, takes
+none into your keyring from a signed file, and starts no program to show the
+photo in a key. Those of *GPG-NEWER-OPTIONS* only a gpg that knows them is
+given.")
+
+(defparameter *gpg-newer-options* '("--no-auto-key-import")
+  "The options of *GPG-STAYING-HOME-OPTIONS* that older gpg versions (2.2.27
+and before) do not know and refuse to run with: a gpg is given them only
+when it lists them (GPG-OPTIONS).")
+
+(sb-ext:defglobal **gpg-options** nil
+  "The options the gpg last asked knows (GPG-OPTIONS): (PATH . OPTIONS), or NIL before.")
+
+(defun gpg-options (program environment)
+  "The options the gpg program at PROGRAM knows, as its --dump-options lists
+them, run with ENVIRONMENT (GPG-ENVIRONMENT); asked of it once for each
+program, in a few milliseconds, and kept. :UNKNOWN when it gives no answer
+within 5 seconds, asked again the next time."
+  (let ((known **gpg-options**))
+    (if (equal program (car known))
+        (cdr known)
+        (multiple-value-bind (text ended-well)
+            (tuatara.io:program-output (list program "--dump-options") :seconds 5 :environment environment)
+          (if ended-well
+              (cdr (setf **gpg-options** (cons program (uiop:split-string text :separator '(#\Newline)))))
+              :unknown)))))
+
+(defun forget-gpg-options ()
+  "Forget the options gpg was found to know (GPG-OPTIONS), as a saved image is
+made: the gpg where the image runs may be another."
+  (setf **gpg-options** nil))
+
+(pushnew 'forget-gpg-options sb-ext:*save-hooks*)
+
+(defun gpg-staying-home-options (program environment)
+  "The options of *GPG-STAYING-HOME-OPTIONS* the gpg program at PROGRAM is
+given, run with ENVIRONMENT: those of *GPG-NEWER-OPTIONS* left out when it
+says it does not know them (GPG-OPTIONS), kept when it gives no answer."
+  (let ((known (gpg-options program environment)))
+    (if (eq known :unknown)
+        *gpg-staying-home-options*
+        (remove-if (lambda (option)
+                     (and (member option *gpg-newer-options* :test #'string=)
+                          (not (member option known :test #'string=))))
+                   *gpg-staying-home-options*))))
+
+(defun gpg-home-refusal ()
+  "Why the folder gpg takes its keys and options from is not safe, in words,
+or NIL when it is: GNUPGHOME, or with none ~/.gnupg (your home folder while
+that is not made yet), must be a folder of yours that only you may write in,
+no link, named from the root, every folder on the way to it root's or yours
+and writable by others only with the sticky bit (FOLDER-REFUSAL). gpg reads
+its options there, and options can have it run programs."
+  (let ((uid (sb-posix:geteuid))
+        (home (tuatara.io:program-variable "GNUPGHOME")))
+    (if (and home (plusp (length home)))
+        (folder-refusal home (format nil "GNUPGHOME (~a)" home) uid :private nil)
+        (let* ((yours (or (tuatara.io:program-variable "HOME") (sb-posix:passwd-dir (sb-posix:getpwuid uid))))
+               (default (tuatara.io:path-join yours ".gnupg")))
+          (if (tuatara.io:path-stamp default :follow nil :failure nil)
+              (folder-refusal default default uid :private nil)
+              (folder-refusal yours (format nil "your home folder (~a)" yours) uid :private nil))))))
+
+(defun gpg-environment (asker)
+  "The environment gpg runs with, as NAME=VALUE strings: the variables of
+*GPG-VARIABLES* programs started from the editor have, PATH the system's own
+folders of programs (TUATARA.IO:*SANDBOX-PATH*), and with ASKER :TERMINAL,
+GPG_TTY the terminal lent to gpg-agent's pinentry. Refused, saying why, when
+the folder gpg takes its keys and options from is not safe (GPG-HOME-REFUSAL)."
+  (let ((device (and (eq asker :terminal) (gpg-terminal)))
+        (why (gpg-home-refusal)))
+    (when why
+      (refuse "gpg is not run: the folder gpg takes its keys and options from is not safe: ~a" why))
+    (apply #'tuatara.io:restricted-environment *gpg-variables* (format nil "PATH=~a" tuatara.io:*sandbox-path*)
+           (and device (list (format nil "GPG_TTY=~a" device))))))
+
 (defparameter *gpg-least-output-limit* (* 64 1024 1024)
   "The most octets gpg may write however little it is given (GPG-MOST-OUTPUT).")
 
@@ -150,9 +246,12 @@ through a pipe of their own too, apart from what it says, which a file could
 put words in. More output than GPG-MOST-OUTPUT stops it. Four values: the
 octets it wrote, its status lines (\"ENC_TO ...\"), true when it ended well,
 and what it said besides. An error meanwhile writes no passphrase or text
-to the debug log (*SECRET-AT-HAND*)."
+to the debug log (*SECRET-AT-HAND*). It runs with an environment of its own
+\(GPG-ENVIRONMENT) and fetches nothing over the network
+\(*GPG-STAYING-HOME-OPTIONS*)."
   (let* ((tuatara.runtime:*secret-at-hand* t)
          (program (or (gpg-path) (tuatara.io:program-missing "gpg" :why (outside-program-install-words :gpg))))
+         (environment (gpg-environment asker))
          (most (gpg-most-output (if input-path
                                     (tuatara.io:path-size input-path)
                                     (length input))))
@@ -169,7 +268,8 @@ to the debug log (*SECRET-AT-HAND*)."
                (setf (second pipe) nil)))
            (tuatara.io:call-with-program
             (list* program
-                   (append (list "--yes" "--status-fd" (princ-to-string (second status))
+                   (append (gpg-staying-home-options program environment)
+                           (list "--yes" "--status-fd" (princ-to-string (second status))
                                  "--max-output" (princ-to-string most))
                            (and (not (eq asker :terminal)) (list "--no-tty"))
                            (and (eq asker :minibuffer) (list "--pinentry-mode" "loopback"))
@@ -240,11 +340,7 @@ to the debug log (*SECRET-AT-HAND*)."
                   (push (format nil "it gave more than ~a, far more than this holds: stopped" (octets-words most)) said))))
             :input (if (or input input-path) :stream nil) :output :stream :error :stream :external-format :latin-1
             :preserve-fds (append (list (second status)) (and pipe (list (first pipe))) (and second (list (first second))))
-            :environment (let ((device (and (eq asker :terminal) (gpg-terminal))))
-                           (if device
-                               (cons (format nil "GPG_TTY=~a" device)
-                                     (remove-if (lambda (e) (uiop:string-prefix-p "GPG_TTY=" e)) (tuatara.io:program-environment)))
-                               (tuatara.io:program-environment)))))
+            :environment environment))
       (dolist (fd (append pipe second))
         (when fd (ignoring-errors-reported ("closing a pipe to gpg") (sb-posix:close fd))))
       (dolist (fd status) (when fd (ignoring-errors-reported ("closing a pipe from gpg") (sb-posix:close fd)))))
@@ -643,7 +739,7 @@ cons."
                     (let ((e (getf entry :expires))) (and e (format-time "%F" e))) (getf entry :secret)))))
 
 (defun read-encryption (what &optional encryption)
-  "Ask in the minibuffer how WHAT (words: a file's name) is encrypted: to keys,
+  "Ask in the minibuffer how WHAT (words, a file's name) is encrypted, to keys,
 with a passphrase, or both, several at once with commas between them
 \(READ-SEVERAL), those of ENCRYPTION (a plist of :KEYS and :SYMMETRIC) there
 already. Returns the encryption chosen, a plist as ENCRYPTION is, or NIL

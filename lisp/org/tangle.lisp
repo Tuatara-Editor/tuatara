@@ -6,7 +6,7 @@
 ;;;; the whole file) has its code written to FILE, the blocks for one file
 ;;;; one after another. tangle-code-files lists every file it would write,
 ;;;; new, changed or the same, and those outside the Org file's folder, and
-;;;; writes them only when told to: the Org file decides where they go.
+;;;; writes them only when told to; the Org file decides where they go.
 ;;;; Nothing in a block is run: <<name()>>, which Org would run, is left as it is.
 
 (in-package #:tuatara.defaults)
@@ -353,9 +353,9 @@ over."
     (error (e) (format nil "~a" e))))
 
 (define-command tangle-code-files ()
-  "Write the code files of this Org file's source blocks (\\`C-c C-v t'): each block with :tangle FILE (on its
-#+begin_src line, in a subtree's :header-args: or :header-args:LANGUAGE:
-property, or in #+PROPERTY: header-args for the file) goes to FILE, relative
+  "Write the code files of this Org file's source blocks (\\`C-c C-v t'), each block with :tangle FILE (on its
+#+begin_src line, in a subtree's property :header-args: or :header-args:LANGUAGE:,
+or in #+PROPERTY: header-args for the file) goes to FILE, relative
 to the Org file's folder, the blocks for one file in order, a blank line
 between them unless :padline no; :tangle yes, the Org file's name with the
 language's ending (*CODE-FILE-EXTENSIONS*); :mkdirp yes makes the folders a

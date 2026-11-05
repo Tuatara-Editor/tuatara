@@ -207,10 +207,10 @@ touched them."
       (and (= (cdr span) size) (= (car span) (max 0 (- size *local-words-reach*)))))))
 
 (defun local-words (buffer)
-  "The words BUFFER's own word list takes as right: those after
+  "The words BUFFER's own word list takes as right; those after
 \"LocalWords:\" on its lines near its end (*LOCAL-WORDS-REACH*), written
-as comments (# LocalWords: Aotearoa Ōtaki in Org, ;; LocalWords: in
-Lisp), a table of strings; read again when the text near the end changes."
+as comments (# LocalWords: Aotearoa Ōtaki in Org, the same after ;; in Lisp), a table of strings; read again when
+the text near the end changes."
   (let ((version (tuatara.buffer:buffer-version buffer))
         (kept (tuatara.buffer:buffer-local buffer :local-words)))
     (cond ((and kept (eq (first kept) version)) (third kept))
@@ -234,7 +234,7 @@ Lisp), a table of strings; read again when the text near the end changes."
              words)))))
 
 (defun add-local-word (buffer word)
-  "Add WORD to BUFFER's own word list: to its last LocalWords: line near its
+  "Add WORD to BUFFER's own word list: to its last LocalWords line near its
 end while that stays within the fill column, else on a new one at the end,
 written as a comment of the buffer's language (# in Org, ;; in Lisp), or as a
 line of its own in plain text. Nothing is added when the list has WORD
@@ -441,7 +441,7 @@ one before; the count's worth. Says so when there is none within
 (define-command spellcheck-correct ()
   "Correct the word spelt wrong at point, or else the one nearest point in the
 window: choose one of enchant's suggestions, or type the word as it should be,
-or keep the word: while the editor runs, in the file's own word list (as
+or keep the word, while the editor runs, in the file's own word list (as
 \\[spellcheck-add-word-to-file] does), or for good in a language's word list
 \(as \\[spellcheck-add-word] does)."
   (let* ((window (current-window)) (buffer (current-buffer)) (point (point)))
@@ -504,7 +504,7 @@ it was there already (ADD-LOCAL-WORD)."
 
 (define-command spellcheck-add-word-to-file ()
   "Keep the word at point as right in this file only: added to the file's own
-word list, a LocalWords: line at its end, written as a comment (# in Org,
+word list, a LocalWords line at its end, written as a comment (# in Org,
 ;; in Lisp) that other spelling checkers read too. A word the file names that is
 no word elsewhere (a name, a case number) stays out of the language's list."
   (let ((buffer (current-buffer)))

@@ -103,7 +103,7 @@ SINCE is the buffer's undo stack as the job began (JOINS when given): its
 change stands there in the undo history, before the changes made meanwhile
 \(TUATARA.BUFFER:BUFFER-TAKE-IN-JOB-RESULT); unless SESSION, for a job that
 writes out of sight what typing at places in sight still goes on writing (a
-split's, a block's rows): its change joins that typing on top, one change for
+split's, a block's rows), its change joins that typing on top, one change for
 undo with it. PREPARE, when not NIL, a function of the job,
 runs on the job's thread before the pieces are rewritten, to learn what their
 rewriting needs to know of the whole scope. GOAL, when not NIL, a function of the
@@ -192,7 +192,7 @@ does not enter makes nothing however many matches there are. (An expander may
 also give, for a replacement too large to hold, a cons of its length in octets
 and a function of a writer \(TUATARA.IO:WRITER) that writes it:
 REPLACEMENT-LENGTH.) As a second value, the TEXTS a scan is to give it
-\(TUATARA.SYNTAX:MATCHED-TEXT): NIL, T, or MATCH-CASE-KIND when only the
+\(TUATARA.SYNTAX:MATCHED-TEXT), one of NIL, T, or MATCH-CASE-KIND when only the
 match's letter case counts, so that no match's text is copied. A line break
 written in REPLACEMENT is NEWLINE, the buffer's."
   (multiple-value-bind (text-of needs) (replacement-text-function replacement regex fold newline)
@@ -1079,7 +1079,7 @@ the text."
 
 (defun line-octets (rope line line-end block block-start block-end)
   "Two values: octets holding the text of ROPE from LINE below LINE-END, and
-where it starts in them: BLOCK, the octets from BLOCK-START below BLOCK-END,
+where it starts in them, taken from BLOCK, the octets from BLOCK-START below BLOCK-END,
 when it holds it, else the text read now."
   (declare (type fixnum line line-end block-start block-end))
   (if (and (>= line block-start) (<= line-end block-end))
@@ -1108,7 +1108,7 @@ checked now and then, answers true."
   "Rewrite the lines of BUFFER from the one starting at FROM to the one ending
 at TO, in the background on all but two cores, as PER-LINE says, a line at a
 time: a function of (FUNCTION LINE LINE-END NEXT ROPE BLOCK BLOCK-START
-BLOCK-END) called for each line, its start, its end (before the line's end:
+BLOCK-END) called for each line, its start, its end (before the line's end, that is
 its newline, or with carriage return and line feed (CRLF) the carriage
 return), the next line's start, and the text with the octets read around the
 line (BLOCK-OCTET reads them), which calls FUNCTION with (START END NIL

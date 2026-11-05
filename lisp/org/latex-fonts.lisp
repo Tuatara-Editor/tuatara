@@ -140,9 +140,12 @@ the order fontconfig lists them; asked of it once."
   (font-listing t ":color=false" "-f"))
 
 (defun font-for-character (code fonts)
-  "A font among FONTS (FALLBACK-FONTS) that has the character with CODE: a
+  "A font among FONTS (FALLBACK-FONTS) that has the character with CODE: one
+that also has a space, which xelatex looks for when it loads a font, then a
 Noto one when there is one; NIL for none."
-  (let ((having (remove-if-not (lambda (font) (characters-have-p (third font) code)) fonts)))
+  (let* ((having (remove-if-not (lambda (font) (characters-have-p (third font) code)) fonts))
+         (spaced (remove-if-not (lambda (font) (characters-have-p (third font) 32)) having))
+         (having (or spaced having)))
     (first (or (find-if (lambda (font) (search "Noto" (first font))) having) (first having)))))
 
 (defun font-name-family (name installed)

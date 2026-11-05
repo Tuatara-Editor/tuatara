@@ -3,7 +3,7 @@
 ;;;;
 ;;;; C-s and C-r search as you type for a regular expression, the pattern
 ;;;; typed in the minibuffer; M-r switches to literal text and back. The
-;;;; prompt says what runs: "Regex search forward: ".
+;;;; prompt says what runs, as in "Regex search forward: ".
 ;;;; Typed as vim's :s, pattern/replacement/flags replaces on RET instead
 ;;;; (substitute.lisp); the matches it will replace are the ones
 ;;;; highlighted. A region limits a search to itself unless the string starts
@@ -189,7 +189,7 @@ COUNT, a function of a function telling it to stop, run on a thread of its
 own over OCTETS of text, returns how many (NIL when stopped); over a large
 text it starts once typing pauses (TYPING-PAUSE-LEFT). Two values, as a
 question's UPDATE takes them: true while it counts, or the seconds still to
-wait; and what to show before the prompt: \"12\", what it showed last until
+wait; and what to show before the prompt, such as \"12\", what it showed last until
 the new count comes, \"\" before any or with nothing to count."
   (let* ((job (pattern-count-job counter))
          (result (and job (car (second job)))))
@@ -371,7 +371,7 @@ further than its end, and within the part shown when it is narrowed."
 
 (defun search-bounds (state &optional (buffer (current-buffer)))
   "Values: the start and end of the text STATE searches in BUFFER, the current
-one unless given, and words for them when they are not the whole buffer: the
+one unless given, and words for them when they are not the whole buffer, namely the
 scope of a replacement; for a search, the region active as it began; of a
 narrowed buffer, within the part shown."
   (let ((region (search-region state)))

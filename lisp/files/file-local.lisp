@@ -21,8 +21,8 @@
 (in-package #:tuatara.defaults)
 
 (defvar *file-local-variables* t
-  "True for a file's own settings (-*- mode: org -*- on its first line, a
-Local Variables: block near its end) to be taken as it is opened: its major
+  "True for a file's own settings (-*- mode: org -*- on its first line, a Local Variables block near its end) to
+be taken as it is opened, namely its major
 mode, tab width, tabs or spaces, fill column and spaces between sentences,
 and those a package takes; nothing else.")
 
@@ -70,7 +70,7 @@ letters without the blanks around it and VALUE as written; NIL without a colon."
                      (subseq text (1+ colon))))))
 
 (defun local-variables-heading (text)
-  "Where the Local Variables: block of TEXT begins, as three values: the index
+  "Where the Local Variables block of TEXT begins, as three values: the index
 of its first line, which says Local Variables:, and what that line has before
 and after those words, the text each of the block's lines begins and ends
 with. Only a line with nothing after the words but what closes a comment
@@ -84,7 +84,7 @@ with. Only a line with nothing after the words but what closes a comment
                (return (values line (subseq text line at) after))))))
 
 (defun local-variables-block (text)
-  "The Local Variables: block in TEXT, the end of a file: the line saying so
+  "The Local Variables block in TEXT, the end of a file: the line saying so
 \(LOCAL-VARIABLES-HEADING), then the lines after it that begin with what it
 begins with, up to End:. As four values: the text each line begins with and
 ends with; its settings' lines, each (START END NAME . VALUE), START and END
@@ -118,7 +118,7 @@ TEXT has none."
         collect (cons name (file-local-value value))))
 
 (defun file-tail (buffer)
-  "The end of BUFFER's text, where its Local Variables: block is looked for:
+  "The end of BUFFER's text, where its Local Variables block is looked for:
 its last *FILE-LOCAL-TAIL* characters, and the octet they begin at, as two
 values."
   (let* ((rope (tuatara.buffer:buffer-text buffer))
@@ -209,7 +209,7 @@ mode first, and say which of them are left alone; then call
   (cond ((eq value t) "t") ((null value) "nil") (t (princ-to-string value))))
 
 (defun file-local-marks (buffer)
-  "What each line of a Local Variables: block in BUFFER begins and ends with,
+  "What each line of a Local Variables block in BUFFER begins and ends with,
 as two values: its mode's comment marker and a space (\"# \" in Org), or a
 block comment's opener and closer (<!-- and -->), or nothing."
   (let ((mode (buffer-major-mode buffer)))
@@ -222,8 +222,8 @@ block comment's opener and closer (<!-- and -->), or nothing."
                 (values "" "")))))))
 
 (defun set-file-local-setting (buffer name value)
-  "Write NAME: VALUE into the Local Variables: block at the end of BUFFER's
-text, as one change, the buffer left modified and not saved: the line naming
+  "Write NAME: VALUE into the Local Variables block at the end of BUFFER's
+text, as one change, the buffer left modified and not saved; the line naming
 NAME changed, else one added before End:, else a block added at the end, each
 line written as a comment of the buffer's language (FILE-LOCAL-MARKS) and
 ended as the buffer's lines are. BUFFER's file then declares it

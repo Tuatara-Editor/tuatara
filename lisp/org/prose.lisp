@@ -78,7 +78,7 @@ begun after a blank or at the line's start and not closed yet."
 (defun org-section-around (buffer position)
   "The part of BUFFER's Org text read to tell whether POSITION is prose: from
 the headline above it, or at most *ORG-PARSE-AT-ONCE* octets back, to the end
-of POSITION's line, as two values: the text and the character of it POSITION
+of POSITION's line, as two values, the text and the character of it POSITION
 is."
   (let* ((floor (max 0 (- position *org-parse-at-once*)))
          (start (loop with line = (tuatara.buffer:buffer-line-start buffer position)

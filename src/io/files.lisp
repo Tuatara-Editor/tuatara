@@ -24,7 +24,7 @@
 ;;;;
 ;;;; Saving: a new file with no name is written beside the old one, flushed to
 ;;;; disk, given the old one's owner, permissions and extended attributes
-;;;; (SELinux label, ACLs), named, renamed over it, and the directory flushed:
+;;;; (SELinux label, ACLs), named, renamed over it, and the directory flushed;
 ;;;; the file on disk is always the old one or the new one, even after a power
 ;;;; cut, and a crash while writing leaves nothing behind. Where the file system
 ;;;; has no unnamed files, a hidden named one serves. A symlink is followed and
@@ -47,7 +47,10 @@
 
 (defvar *memory-read-limit* (* 64 1024 1024)
   "Files up to this many octets are read into memory when visited, where no other
-program can change them; larger ones are mapped (see this file's header).")
+program can change them, their lines counted as they open; larger ones are
+mapped (see this file's header) and open at once, their lines counted in the
+background (START-INDEXING), so that a file of many gigabytes shows before the
+whole of it has been read.")
 
 (defvar *lease-large-files* t
   "True to read large local files themselves under a read lease, copying them
@@ -77,7 +80,7 @@ the buffer.")
 (read into memory), :LEASED (the file itself, which a writer must wait to
 change until it is cloned), :CLONE (a clone sharing blocks), :SNAPSHOT (a copy,
 or the old file after a save), :PENDING (mapped while a copy is made) or
-:DIRECT (mapped with no copy: changes are caught but not kept out)."
+:DIRECT (mapped with no copy; changes are caught but not kept out)."
   (tuatara.buffer:buffer-local buffer :file-isolation :memory))
 
 (defun file-disk-state (buffer)
@@ -382,21 +385,6 @@ buffer it serves, and the buffer its lease."
     (snapshot (setf (snapshot-served guard) buffer))
     (lease (setf (lease-buffer guard) buffer))))
 
-;;; Visiting
-
-(defvar *index-at-open-limit* (* 64 1024 1024)
-  "Octets up to which a file's lines are counted as it opens. A larger file
-opens at once and has them counted in the background (START-INDEXING), so that
-a file of many gigabytes shows before the whole of it has been read.")
-
-(defun rope-over (mapping)
-  "A rope over all of MAPPING: indexed, or for a file larger than
-*INDEX-AT-OPEN-LIMIT* not yet, its lines to be counted in the background."
-  (let ((rope (tuatara.text:mapping-rope mapping)))
-    (if (> (tuatara.text:mapping-length mapping) *index-at-open-limit*)
-        rope
-        (tuatara.text:index-rope rope))))
-
 ;;; Counting a large text's lines in the background
 
 (defstruct (index-job (:include tuatara.runtime:job) (:constructor %make-index-job (buffer rope donor)) (:copier nil))
@@ -647,7 +635,7 @@ clipboard, exports and code files leave it alone."
   "Where the scratch files of work on BUFFER's text go (the runs of a sort,
 rewritten text): as SCRATCH-DIRECTORY has it for its file and a text of its
 size, except for a file visited safely, whose file system stays as it was even
-once editing is allowed: its scratch files go to the cache directory; and NIL
+once editing is allowed; its scratch files go to the cache directory; and NIL
 for an encrypted file's text, which never goes to a scratch file (its work
 done in memory, or refused)."
   (cond ((buffer-plaintext-p buffer) nil)
@@ -801,10 +789,11 @@ What is opened is what is decided on, however a link is changed meanwhile."
                         (clone (and (null lease) (not safe) (eq class :local) (try-clone fd path))))
                    (cond
                      (lease
-                      (values (rope-over (lease-mapping lease)) (lease-mapping lease) stamp :leased lease class))
+                      (values (tuatara.text:mapping-rope (lease-mapping lease)) (lease-mapping lease) stamp :leased lease
+                              class))
                      (clone
                        (let ((mapping (tuatara.text:map-fd clone size path)))
-                         (values (rope-over mapping) mapping stamp :clone nil class)))
+                         (values (tuatara.text:mapping-rope mapping) mapping stamp :clone nil class)))
                      (t
                        (let ((mapping (tuatara.runtime:ignoring-errors-reported ("mapping ~a" path)
                                         (tuatara.text:map-fd fd size path))))
@@ -812,7 +801,8 @@ What is opened is what is decided on, however a link is changed meanwhile."
                              ;; a file system that cannot map this file: map a copy instead
                              (let ((copy (copy-to-cache fd size path)))
                                (let ((mapping (tuatara.text:map-fd copy size path)))
-                                 (values (rope-over mapping) mapping stamp :snapshot nil class)))
+                                 (values (tuatara.text:mapping-rope mapping) mapping stamp :snapshot nil
+                                         class)))
                              (progn
                                (setf keep-fd t) ; the mapping owns it now
                                (let ((snapshot (and *snapshot-large-files* (not (read-only-mount-p fd))
@@ -823,7 +813,7 @@ What is opened is what is decided on, however a link is changed meanwhile."
                                                                           (cache-directory)
                                                                           (snapshot-directory path class
                                                                                               :room size)))))))
-                                 (values (rope-over mapping) mapping stamp (if snapshot :pending :direct)
+                                 (values (tuatara.text:mapping-rope mapping) mapping stamp (if snapshot :pending :direct)
                                          snapshot class))))))))))))
       (unless keep-fd (sb-posix:close fd)))))
 
@@ -1114,7 +1104,7 @@ mapping owns FD from then on. FD is closed when it cannot be read or mapped."
         (unwind-protect (setf mapping (tuatara.text:map-fd fd size path))
           (unless mapping
             (tuatara.runtime:ignoring-errors-reported ("closing the copy of ~a" path) (sb-posix:close fd))))
-        (values (rope-over mapping) mapping))))
+        (values (tuatara.text:mapping-rope mapping) mapping))))
 
 (defun buffer-file-stamp (buffer)
   "The stamp (PATH-STAMP) BUFFER's file had when it was last read or saved, by
@@ -1614,7 +1604,7 @@ watcher found (TAKE-FILE-LOOKS)."
 (defun watcher-loop ()
   "What the watcher thread does: take requests, read inotify's events, look at
 the files whose time has come, report what changed, and wait for the next of
-these, which may be a long time: no looking without cause but for polled files."
+these, which may be a long time; no looking without cause but for polled files."
   (let ((inotify (inotify-open))
         (buffer (make-array 65536 :element-type '(unsigned-byte 8)))
         (directories (make-hash-table :test 'equal))
@@ -2120,7 +2110,7 @@ buffer read or wrote, or :ANY when FORCE or when PATH is another file."
   (:documentation "The transform of BUFFER's text for its save as PATH, asked on the editor's
 thread as the save begins: NIL to write its text as it is, or a function of its
 text (a rope) returning what is written instead (octets or a rope), called on
-the thread that writes: an encrypted file's text encrypted before anything
+the thread that writes; an encrypted file's text encrypted before anything
 touches the disk. It may signal an error to refuse the save.")
   (:method ((host tuatara.runtime:host) buffer path)
     (declare (ignore buffer path))

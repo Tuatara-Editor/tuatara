@@ -13,26 +13,25 @@
 (in-package #:tuatara.git)
 
 (defun ssh-askpass-window-p ()
-  "True when ssh can ask for a passphrase in a window: a desktop is running
-\(DISPLAY or WAYLAND_DISPLAY) and SSH_ASKPASS names a program that is there,
-as gnome-ssh-askpass or ksshaskpass."
-  (let ((askpass (uiop:getenv "SSH_ASKPASS")))
-    (and (uiop:getenvp "SSH_ASKPASS")
-         (or (uiop:getenvp "DISPLAY") (uiop:getenvp "WAYLAND_DISPLAY"))
-         (tuatara.io:find-program askpass)
-         t)))
+  "The program ssh can ask for a passphrase in a window with, when a desktop
+is running (TUATARA.IO:DESKTOP-P): the one SSH_ASKPASS names, as
+gnome-ssh-askpass or ksshaskpass, else OpenSSH's own
+\(TUATARA.IO:ASKPASS-PROGRAM); NIL when there is none or no desktop."
+  (and (tuatara.io:desktop-p) (tuatara.io:askpass-program)))
 
 (defun git-network-environment (&rest settings)
   "What git is given to fetch or push, with SETTINGS, each (KEY VALUE), of its
 configuration besides: never to run a program an address of the ext:: kind
 names, nor the ssh a repository's own configuration names. The keys and
 credentials it needs come from your agent and helpers; a key's passphrase
-the agent does not hold, or a server not yet known, is asked in ssh's own
-window on a desktop (SSH-ASKPASS-WINDOW-P), never on the terminal, and with
-no desktop ssh asks nothing and fails."
-  (let ((settings (cons '("protocol.ext.allow" "never") settings)))
-    (append (if (ssh-askpass-window-p)
-                (list "GIT_SSH_COMMAND=ssh" "SSH_ASKPASS_REQUIRE=force")
+the agent does not hold is asked in ssh's own window on a desktop
+\(SSH-ASKPASS-WINDOW-P), never on the terminal, and with no desktop ssh asks
+nothing and fails. A server whose key ssh does not know yet is refused."
+  (let ((settings (cons '("protocol.ext.allow" "never") settings))
+        (askpass (ssh-askpass-window-p)))
+    (append (if askpass
+                (list "GIT_SSH_COMMAND=ssh -o StrictHostKeyChecking=yes" (format nil "SSH_ASKPASS=~a" askpass)
+                      "SSH_ASKPASS_REQUIRE=force")
                 (list "GIT_SSH_COMMAND=ssh -o BatchMode=yes"))
             (list (format nil "GIT_CONFIG_COUNT=~d" (length settings)))
             (loop for (key value) in settings

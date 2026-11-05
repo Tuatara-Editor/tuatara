@@ -28,10 +28,10 @@ standard, for as many as its window's width holds (three in 80 columns, four
 in 105), a number for that many.")
 
 (defvar *calendar-mark-functions* '()
-  "What marks days in the calendar: functions called on the editor's thread
+  "What marks days in the calendar, functions called on the editor's thread
 with the first and last day numbers shown, each returning a function of no
 arguments that a thread of its own calls, returning the days to mark: day
-numbers (the agenda's: the days with entries), shown in :calendar-marked, or
+numbers (the agenda's, the days with entries), shown in :calendar-marked, or
 \(DAY . FACE) for a face of its own (the journal's days, :calendar-journal).")
 
 (defvar *calendar-day-openers* '()
@@ -416,8 +416,8 @@ around this one, the one ending in them (2027 in 2026, 1999 for '99)."
           (t year))))
 
 (defun calendar-read-month (text)
-  "The first day of the month TEXT names, as a day number: jan '27, jan 27,
-january 2027 (a month's name, three letters at least, then its year: two
+  "The first day of the month TEXT names, as a day number, such as jan '27, jan 27,
+january 2027 (a month's name, three letters at least, then its year, two
 digits, with or without ', for the year of this century nearest to this one,
 four as it is); jan alone for this year's; 2027-03; or a date as
 CALENDAR-READ-DAY reads it, its month. NIL for none."

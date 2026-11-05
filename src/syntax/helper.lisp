@@ -1042,7 +1042,7 @@ for the parsers made meanwhile, as of text in another language in it: a
 HELPER; :OWN for one of its own, started when first wanted
 \(WITH-OWN-HELPER); :SHARED for the text of projects you trust, parsed in
 the shared one; :NONE, as it is unless bound, when the text is not to be
-parsed: what parses text says which.")
+parsed; what parses text says which.")
 
 (defun current-helper ()
   "The helper for what is parsed now (*HELPER*): NIL when there is none to be had."
@@ -1234,7 +1234,7 @@ for it meanwhile makes, as soon as it is made."
 (defun helper-memory (helper)
   "What HELPER says of its memory: the octets its trees and grammars hold,
 whether the memory it keeps for running short is kept, and the octets it may
-still take (-1: no limit), as three values; NIL when it has ended."
+still take (-1 for no limit), as three values; NIL when it has ended."
   (with-call (call helper +op-memory+)
     (when (eql 0 (call-send call))
       (values (reply-i64-at call 0) (= 1 (reply-u32 call 2)) (reply-i64-at call 16)))))

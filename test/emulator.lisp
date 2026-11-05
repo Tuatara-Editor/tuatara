@@ -166,23 +166,29 @@ and fourth values."
 
 (define-test (emulator answers-kept-within-bounds)
   ;; text asking what the terminal is over and over, the program reading nothing a while:
-  ;; the answers waiting stay within the limit, and what is typed reaches it after
-  (let ((was tuatara.terminal-emulator::*terminal-reply-limit*))
+  ;; the answers waiting stay within the limit, and what is typed reaches it after; the
+  ;; program reads nothing until the answers have been counted, however late that is
+  (let ((was tuatara.terminal-emulator::*terminal-reply-limit*)
+        (go-on (format nil "~a/tuatara-answers-~d" (uiop:temporary-directory) (random (expt 2 32)))))
     ;; set, not bound: the reader's thread reads it
     (setf tuatara.terminal-emulator::*terminal-reply-limit* 65536)
     (unwind-protect
-         (with-emulator (e "sh" (list "-c" "stty -echo -icanon; printf '\\033[c%.0s' $(seq 1 60000); echo flooded; sleep 1; exec cat -v")
+         (with-emulator (e "sh" (list "-c" (format nil "stty -echo -icanon; printf '\\033[c%.0s' $(seq 1 60000); echo flooded; ~
+                                                  until [ -e ~a ]; do sleep 0.05; done; exec cat -v" go-on))
                         :columns 80 :rows 10)
-           (let ((most 0) (deadline (tuatara.runtime:deadline-in 20)))
+           (let ((most 0) (deadline (tuatara.runtime:deadline-in 60)))
              (loop until (or (find-if (lambda (r) (search "flooded" r)) (emulator-screen e :seconds 0))
                              (<= (tuatara.runtime:seconds-left deadline) 0))
                    do (setf most (max most (tuatara.terminal-emulator::emulator-replies e)))
                       (sleep 1/100))
+             (setf most (max most (tuatara.terminal-emulator::emulator-replies e)))
              (true (<= most 65536) "~:d octets of answers waited" most)
              (true (plusp most))
+             (with-open-file (out go-on :direction :output) (write-line "go" out))
              (tuatara.terminal-emulator::emulator-input e (format nil "typed-ok~c" #\Return))
              (true (find-if (lambda (r) (search "typed-ok" r)) (emulator-screen e :until (screen-has "typed-ok") :seconds 20)))))
-      (setf tuatara.terminal-emulator::*terminal-reply-limit* was))))
+      (setf tuatara.terminal-emulator::*terminal-reply-limit* was)
+      (ignore-errors (delete-file go-on)))))
 
 (define-test (emulator pictures-off-keeps-none)
   ;; without pictures the library keeps none of them; with them, as much as is allowed

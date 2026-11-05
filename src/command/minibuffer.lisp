@@ -3,16 +3,26 @@
 
 (in-package #:tuatara.command)
 
+(defun password-prompt (prompt)
+  "PROMPT, a question for a secret ending in \": \", as it is asked, in the
+frame of a client on another machine (CLIENT-FAR-P), saying that what is
+typed goes to the machine the editor runs on."
+  (let ((client (current-client)))
+    (if (and client (client-far-p client))
+        (format nil "~a (sent to ~a): " (string-right-trim ": " prompt) (machine-instance))
+        prompt)))
+
 (defun read-password (prompt &key confirm fresh)
-  "Read a secret, a passphrase, with PROMPT in the minibuffer, what is typed
-shown as stars and kept nowhere else (no history, no debug log); with CONFIRM
-asked twice, an error when the two differ. With FRESH, for a question that
+  "Read a secret, a passphrase, with PROMPT in the minibuffer
+\(PASSWORD-PROMPT), what is typed shown as stars and kept nowhere else (no
+history, no debug log); with CONFIRM asked twice, an error when the two differ. With FRESH, for a question that
 comes unasked, only keys pressed once it is shown count (CALL-ASKED-UNASKED):
 keys typed before never become part of it. Returns the string, which the
 caller should wipe (WIPE-STRING) once it has handed it on. Every copy not
 returned is wiped, the question given up (\\[keyboard-quit]) too."
   (let* ((*minibuffer-hidden* t)
          (tuatara.runtime:*secret-at-hand* t)
+         (prompt (password-prompt prompt))
          (first (if fresh (call-asked-unasked prompt (lambda () (read-string prompt))) (read-string prompt)))
          (returned nil))
     (if (not confirm)
@@ -82,7 +92,7 @@ answer brought back, before the screen is drawn again. It must be quick, a
 few hundredths of a second at most: what takes longer it starts in the
 background (START-JOB-THREAD) and takes in with UPDATE. UPDATE, a function of
 no arguments, is called on the editor's thread before the question is drawn
-each time and whenever the editor is woken (as a job ending wakes it): it
+each time and whenever the editor is woken (as a job ending wakes it); it
 takes in what the work in the background has done, and returns three values:
 true while such work goes on, the question woken for it, or a number of
 seconds after which to call UPDATE again (work put off while typing goes
@@ -365,7 +375,7 @@ the cursor standing after PROMPT meanwhile (*KEY-QUESTION*). With FRESH, the
 keys typed until PROMPT is shown are thrown away (DISCARD-TYPED-AHEAD), and
 the question is out of any recording of keys: keys being played do not
 answer it, the key pressed is not recorded, and \\`C-g' there leaves the
-recording going: for a question no key typed ahead may answer, asked by
+recording going; it is for a question no key typed ahead may answer, asked by
 Tuatara of itself. Signals QUIT when the frontend has nothing more to
 deliver."
   (let ((replay *read-key-replay*))
@@ -388,7 +398,7 @@ deliver."
 (defun call-asked-unasked (prompt function)
   "Call FUNCTION, which reads the answer to a question that comes unasked,
 asked by Tuatara of itself rather than by a command you gave, once PROMPT is
-shown in the echo area: the keys typed until it shows are thrown away
+shown in the echo area; the keys typed until it shows are thrown away
 \(DISCARD-TYPED-AHEAD), so that only keys pressed after it answer it, and the
 question is out of any recording of keys: keys being played do not answer
 it, the keys pressed are not recorded, and \\`C-g' there leaves the recording
@@ -464,7 +474,7 @@ COMPLETION); the prompt says (listing, 12 so far) meanwhile, and NONE, when
 given, once all have come and there are none. \\[minibuffer-done]
 before anything can be chosen, more coming, chooses once it has come.
 DEFAULT, when given, is what \\[minibuffer-done] takes while nothing is
-typed: its candidate comes first then, selected, and the prompt names it,
+typed; its candidate comes first then, selected, and the prompt names it,
 Describe function (default car): . With KEEP-ORDER, the candidates that
 match stay in the order TABLE gives them, not sorted best first; with
 KEEP-ORDER :UNTIL-TYPED, only while nothing is typed to match them.

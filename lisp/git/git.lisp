@@ -120,7 +120,7 @@ work that only reads."
    :name "tuatara git"))
 
 (defun git-failure-words (command text)
-  "What is said when git COMMAND (push) failed, having printed TEXT: git push:
+  "What is said when git COMMAND (push) failed, having printed TEXT, git push,
 and the line saying what went wrong, the first beginning fatal: or error:,
 else the last line it printed, else that it failed; when the server refused
 every ssh key, that, and how to give ssh yours."
@@ -410,11 +410,11 @@ line of the graph alone a GIT-COMMIT of its own."
 ;;; What the repository holds
 
 (defstruct (git-state (:constructor make-git-state ()) (:copier nil))
-  "A repository as \\[git] shows it: its HEAD (the branch, or NIL when
+  "A repository as \\[git] shows it, its HEAD (the branch, or NIL when
 detached, and the commit, (initial) before the first), the UPSTREAM and how
-many commits AHEAD and BEHIND it is, and its files: UNMERGED (in conflict,
+many commits AHEAD and BEHIND it is, and its files, UNMERGED (in conflict,
 git having joined two changes to them only in part, KIND saying how each
-side changed it: GIT-UNMERGED-WORD), UNTRACKED, UNSTAGED and
+side changed it, see GIT-UNMERGED-WORD), UNTRACKED, UNSTAGED and
 STAGED, each a list of (PATH KIND), KIND a word, a rename staged (PATH KIND
 ORIGINAL), ORIGINAL its name before, a folder none of whose files is
 tracked one entry of UNTRACKED ending in /; the STASHES, each (NAME
@@ -566,7 +566,7 @@ is as it was then."
 
 (defun git-read-unpushed (job top state)
   "On JOB's thread: put in STATE, of the repository at TOP, the commits of its
-branch not pushed: those its upstream lacks, when it has one; else, when the
+branch not pushed, those its upstream lacks when it has one, else, when the
 repository has a remote, those on no remote at all."
   (let ((range (cond ((git-state-upstream state) (and (plusp (git-state-ahead state)) (list "@{upstream}..HEAD")))
                      ((plusp (length (string-trim '(#\Space #\Newline) (or (git-job-try job top (list "remote")) ""))))

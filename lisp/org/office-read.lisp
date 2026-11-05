@@ -336,7 +336,7 @@ for a shape of its own; a placeholder of no kind given is body."
 
 (defun slide-write-shapes (tree out &key only)
   "Write to OUT the text of the shapes of TREE, a slide or its notes, in
-their order, as Org text: each paragraph an item of a list, indented by its
+their order, as Org text, each paragraph an item of a list, indented by its
 level; a table an Org table; a picture [picture: its description]; the
 title left out (it is the heading). With ONLY, a placeholder kind, the text
 of those shapes alone (body, a notes page's notes)."

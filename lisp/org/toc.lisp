@@ -5,7 +5,7 @@
 ;;;; the first headline tagged :TOC: holds a list of links to the file's
 ;;;; headlines, made again each time the file is saved. Made line for line as
 ;;;; toc-org makes it, so that a file kept in both editors stays the same in
-;;;; each: the headlines up to the depth its tag gives (:TOC_3:), their TODO
+;;;; each, the headlines up to the depth its tag gives (:TOC_3:), their TODO
 ;;;; keywords, priorities, tags and links taken out, those under COMMENT and
 ;;;; :noexport: left out, each a link to a GitHub anchor (#a-headline) or, with
 ;;;; :TOC_2_org:, to its title. Its links lead to their headlines here too. A
@@ -21,13 +21,13 @@ leave it to \\[toc-org-insert-toc].")
 
 (defvar *org-toc-max-depth* 2
   "How deep the headlines of a table of contents go when its tag says nothing
-(:TOC:): 2 for those of one and two stars. :TOC_3: says 3.")
+(:TOC:), 2 for those of one and two stars. A tag :TOC_3: says 3.")
 
 (defvar *org-toc-style* "gh"
-  "How a table of contents links to its headlines when its tag says nothing:
+  "How a table of contents links to its headlines when its tag says nothing,
 \"gh\" for GitHub's anchors (#a-headline, which
-GitHub shows a README's headlines by), \"org\" for their titles. :TOC_2_org:
-or :TOC_2_gh: says it for one table.")
+GitHub shows a README's headlines by), \"org\" for their titles. For one table,
+its tag says it, as :TOC_2_org: or :TOC_2_gh:.")
 
 (defvar *markdown-toc-on-save* t
   "True to make the table of contents of a Markdown file again each time it is
@@ -342,10 +342,10 @@ as Markdown."
 (define-command toc-org-insert-toc ()
   "Make the table of contents of the current Org file again, under its first
 headline tagged :TOC: (as saving does, with
-*org-toc-on-save*): a list of links to its headlines, two levels deep unless
+*org-toc-on-save*), a list of links to its headlines, two levels deep unless
 the tag says how deep (:TOC_3:), to GitHub's anchors unless it says :TOC_2_org:
 for their titles; :TOC:QUOTE: puts it in a quote block. Headlines tagged
-:noexport: (or :noexport_1: for those under them), and those under a COMMENT
+:noexport: (or, for those under them, :noexport_1:), and those under a COMMENT
 headline, are left out; TODO keywords, priorities, tags and links are taken
 out of the titles. \\`RET' or \\[org-open-at-point] on a link goes to its headline.
 In a Markdown file the same, under its first heading tagged :TOC: (## Contents

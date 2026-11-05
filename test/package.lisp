@@ -8,6 +8,7 @@
 
 (defpackage #:tuatara.tests
   (:use #:cl #:parachute #:tuatara.bench)
+  (:import-from #:tuatara.runtime #:wait-until)
   (:documentation "The Parachute test suite. Run with (parachute:test :tuatara.tests) or tools/test.sh.
 A package repository's test run calls TEST-PACKAGE.")
   (:export #:test-package))

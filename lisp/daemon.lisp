@@ -29,19 +29,77 @@ them."
        (every (lambda (c) (or (alphanumericp c) (member c '(#\- #\_)))) name)
        (every (lambda (c) (< (char-code c) 128)) name)))
 
-(defun runtime-folder-refusal (stamp what uid &key (private t))
+(defun outside-owner ()
+  "The owner a file shows when its real owner is one the editor's namespace
+of user ids leaves out (the system's overflow id, 65534 as it comes), as a
+user id, when it runs in such a namespace, as in a rootless container
+\(toolbox, podman); NIL when it does not. There the system's /tmp, root's,
+shows as owned by that id."
+  (handler-case
+      (let ((map (string-trim '(#\Space #\Newline) (uiop:read-file-string "/proc/self/uid_map"))))
+        (and (not (equal (tuatara.text:split-words map) '("0" "0" "4294967295")))
+             (parse-integer (uiop:read-file-string "/proc/sys/kernel/overflowuid") :junk-allowed t)))
+    (file-error () nil)))
+
+(defun runtime-folder-refusal (stamp what uid &key (private t) on-the-way)
   "Why the folder WHAT, as STAMP (not following a link) says it is, is not
 safe for a daemon's socket, in words, or NIL when it is: there, a folder and
 no link, UID's, and with PRIVATE for UID alone (mode 700), else at least not
-writable by others."
-  (cond ((null stamp) (format nil "~a is not there" what))
-        ((eq (tuatara.io:stamp-kind stamp) :symlink) (format nil "~a is a link, not a folder" what))
-        ((not (eq (tuatara.io:stamp-kind stamp) :directory)) (format nil "~a is not a folder" what))
-        ((/= (tuatara.io:stamp-uid stamp) uid) (format nil "~a is another user's" what))
-        ((if private
-             (/= (logand (tuatara.io:stamp-mode stamp) #o777) #o700)
-             (logtest (tuatara.io:stamp-mode stamp) #o022))
-         (format nil "~a may be used by others (its mode is ~3,'0o)" what (logand (tuatara.io:stamp-mode stamp) #o777)))))
+writable by others. With ON-THE-WAY, WHAT is a folder on the way to that one
+and need only be root's or UID's, and writable by others only with the
+sticky bit, as /tmp is, where no one may remove or rename what is another's;
+a sticky one may also be owned by an id the editor's namespace of user ids
+leaves out (OUTSIDE-OWNER), as /tmp is seen from a container."
+  (let ((mode (and stamp (tuatara.io:stamp-mode stamp))))
+    (cond ((null stamp) (format nil "~a is not there" what))
+          ((eq (tuatara.io:stamp-kind stamp) :symlink) (format nil "~a is a link, not a folder" what))
+          ((not (eq (tuatara.io:stamp-kind stamp) :directory)) (format nil "~a is not a folder" what))
+          ((not (member (tuatara.io:stamp-uid stamp)
+                        (cond ((not on-the-way) (list uid))
+                              ((logtest mode #o1000) (list 0 uid (outside-owner)))
+                              (t (list 0 uid)))))
+           (format nil "~a is another user's" what))
+          ((if on-the-way
+               (and (logtest mode #o022) (not (logtest mode #o1000)))
+               (if private (/= (logand mode #o777) #o700) (logtest mode #o022)))
+           (format nil "~a may be used by others (its mode is ~3,'0o)" what (logand mode #o777))))))
+
+(defun folder-refusal (path what uid &key (private t))
+  "Why the folder at PATH, a native name, is not safe to keep what only UID
+may change in, in words naming it WHAT, or NIL when it is: named from the
+root, every folder on the way to it from there safe as RUNTIME-FOLDER-REFUSAL
+says with ON-THE-WAY, a link on the way followed and where it leads checked
+the same way, and the folder itself no link and safe as that says with
+PRIVATE."
+  (flet ((named (parts) (format nil "/~{~a~^/~}" (reverse parts)))
+         (on-the-way (name stamp)
+           (runtime-folder-refusal stamp (format nil "~a, on the way to ~a," name what) uid :on-the-way t)))
+    (if (not (uiop:string-prefix-p "/" path))
+        (format nil "~a is not named from the root" what)
+        (let ((passed '()) (links 0)
+              (ahead (uiop:split-string path :separator "/")))
+          (or (on-the-way "/" (tuatara.io:path-stamp "/" :follow nil :failure nil))
+              (loop
+                (let ((part (pop ahead)))
+                  (cond ((and (null part) (null passed)) (return (format nil "~a is the root" what)))
+                        ((null part)
+                         (return (runtime-folder-refusal (tuatara.io:path-stamp (named passed) :follow nil :failure nil)
+                                                         what uid :private private)))
+                        ((member part '("" ".") :test #'string=))
+                        ((string= part "..") (pop passed))
+                        ((every (lambda (next) (string= next "")) ahead) (push part passed))
+                        (t
+                         (let* ((name (named (cons part passed)))
+                                (stamp (tuatara.io:path-stamp name :follow nil :failure nil)))
+                           (if (and stamp (eq (tuatara.io:stamp-kind stamp) :symlink))
+                               (let ((target (handler-case (sb-posix:readlink name) (sb-posix:syscall-error () nil))))
+                                 (when (or (null target) (> (incf links) 40))
+                                   (return (format nil "~a, on the way to ~a, leads nowhere" name what)))
+                                 (when (uiop:string-prefix-p "/" target) (setf passed '()))
+                                 (setf ahead (append (uiop:split-string target :separator "/") ahead)))
+                               (let ((why (on-the-way name stamp)))
+                                 (when why (return why))
+                                 (push part passed)))))))))))))
 
 (defvar *runtime-directory* nil
   "The folder of the session's own files that daemons' sockets go in, or NIL
@@ -59,14 +117,13 @@ other place for it."
       (refuse "XDG_RUNTIME_DIR is not set to a folder, and a daemon's socket goes nowhere else"))
     (let* ((runtime (tuatara.io:slash-ended runtime))
            (folder (tuatara.io:path-join runtime "tuatara/"))
-           (why (runtime-folder-refusal (tuatara.io:path-stamp runtime :follow nil :failure nil)
-                                        (format nil "XDG_RUNTIME_DIR (~a)" runtime) uid :private nil)))
+           (why (folder-refusal runtime (format nil "XDG_RUNTIME_DIR (~a)" runtime) uid :private nil)))
       (when why (refuse "~a: no daemon's socket goes there" why))
       (unless (tuatara.io:path-stamp folder :follow nil :failure nil)
         (handler-case (tuatara.io:make-directory folder #o700)
           ;; made meanwhile by another start: it is checked as it is
           (tuatara.io:file-system-error () nil)))
-      (let ((why (runtime-folder-refusal (tuatara.io:path-stamp folder :follow nil :failure nil) folder uid)))
+      (let ((why (folder-refusal folder folder uid)))
         (when why (refuse "~a: no daemon's socket goes there" why)))
       folder)))
 
@@ -279,10 +336,20 @@ shut (CLOSE-DAEMON), each as TAKE-CONNECTION takes it."
 
 ;;; A client attached
 
-(defun kept-client-environment (environment)
+(defun kept-client-environment (environment &optional far)
   "Those of ENVIRONMENT, a client's variables as (NAME . VALUE), the editor
-keeps for it (TUATARA.COMMAND:CLIENT-VARIABLE-P)."
-  (remove-if-not (lambda (entry) (client-variable-p (car entry))) environment))
+keeps for it (TUATARA.COMMAND:CLIENT-VARIABLE-P), FAR for a client on
+another machine."
+  (remove-if-not (lambda (entry) (client-variable-p (car entry) far)) environment))
+
+(defun far-client-agent (request)
+  "The variable giving the programs of the frames of the client of REQUEST
+the agent its ssh connection brings to this machine, as (NAME . VALUE) in a
+list: SSH_AUTH_SOCK, for a client on another machine naming a path ssh can
+forward (FORWARDABLE-PATH-P); else nothing."
+  (let ((path (tuatara.frontend:request-agent request)))
+    (and (tuatara.frontend:request-far request) path (forwardable-path-p path)
+         (list (cons "SSH_AUTH_SOCK" path)))))
 
 (defun client-scratch (client)
   "A scratch buffer for CLIENT: the one shown at the start (STARTUP-BUFFER)
@@ -331,7 +398,9 @@ showing a scratch buffer of its own (CLIENT-SCRATCH, ADD-CLIENT). What the
 client asked for (TUATARA.FRONTEND:REMOTE-REQUEST) is done in its frame as
 soon as the editor is free (START-CLIENT); a client that ends first has its
 standard input closed unread. The terminal it names is kept only when it
-may be lent (CHECKED-TERMINAL)."
+may be lent (CHECKED-TERMINAL). A client on another machine is given the
+agent its ssh connection brings, for the programs of its frames alone
+\(FAR-CLIENT-AGENT), and what its connection said is shown in its frame."
   (let* ((request (tuatara.frontend:remote-request remote))
          (named (tuatara.frontend:request-terminal request))
          (client nil))
@@ -340,10 +409,19 @@ may be lent (CHECKED-TERMINAL)."
       (tuatara.runtime:debug-report :daemon "a client's terminal not taken: ~a" (tuatara.frontend:shown-words named)))
     (setf client (add-client editor remote
                              :directory (tuatara.io:slash-ended (tuatara.frontend:request-directory request))
-                             :environment (kept-client-environment (tuatara.frontend:request-environment request))
+                             :environment (append (far-client-agent request)
+                                                  (kept-client-environment
+                                                   (tuatara.frontend:request-environment request)
+                                                   (tuatara.frontend:request-far request)))
                              :buffer #'client-scratch
                              :start (lambda () (unless (client-ended client) (start-client editor client request)))))
     (push (lambda (client) (declare (ignore client)) (close-standard-input request)) (client-endings client))
+    (let ((notes (tuatara.frontend:request-notes request))
+          (frame (first (client-frames editor client))))
+      (when (and notes frame *daemon*)
+        (tuatara.frontend:queue-push
+         (daemon-queue *daemon*)
+         (tuatara.frontend:make-event :said :frame frame :text (escape-controls (format nil "~{~a~^; ~}" notes))))))
     (tuatara.runtime:debug-report :daemon "client ~d attached in ~a~@[ (~a)~]" (client-number client)
                                   (tuatara.frontend:shown-words (client-directory client))
                                   (tuatara.frontend:request-terminal request))
@@ -352,7 +430,7 @@ may be lent (CHECKED-TERMINAL)."
 (defun take-in-clients (editor)
   "Tick function of a daemon (*TICK-FUNCTIONS*): give each client greeted
 since a frame of EDITOR (ATTACH-CLIENT), and each window a client opened as
-asked its frame (OPEN-FRAME-ASKED-FOR), each apart: one that cannot be
+asked its frame (OPEN-FRAME-ASKED-FOR), each apart. One that cannot be
 attached is let go, its standard input closed. A window asked for that has
 not come in time is no longer waited for, and that is said in a frame of the
 client that asked. What is attached is painted as soon as the editor paints,
@@ -518,7 +596,7 @@ wherever this is called from (it is woken)."
 
 (define-command daemon-quit ()
   "Stop the editor running in the background (tuatara --daemon), from any of
-its clients: asked first about every change not saved in it, the clients
+its clients, asked first about every change not saved in it, the clients
 that ended included, folder by folder: s saves those of a folder, l leaves
 them unsaved, \\`C-g' keeps the daemon running; the saves begun are waited
 for (\\`C-g' there keeps it running too). Then every other client is told the
@@ -676,7 +754,7 @@ says, rather than end the process at once."
   "Tick function of a daemon (*TICK-FUNCTIONS*): once it was asked to end
 \(ASK-DAEMON-TO-END), stop EDITOR as tuatara --stop with no terminal does
 \(STOP-WITH-NO-ONE-TO-ASK), but whatever changes would be lost, as it is
-not asked whether it may: every change an auto-saved copy may keep is kept
+not asked whether it may, every change an auto-saved copy may keep is kept
 so, those that cannot be are said in the log, every client exits 1, and the
 daemon writes what it keeps. Taken in inside a question too, which is
 given up."

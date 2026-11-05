@@ -763,7 +763,7 @@ answers, when the file is still as it was asked of."
   "Have BUFFER's server lay out its text, or that from START to END, and make
 its changes once it answers, when the buffer is as it was asked of; THEN, a
 function of the buffer and whether its text was laid out, called once it is
-over. What came of it is said (FINISH-FORMATTING): the places changed, that
+over. What came of it is said (FINISH-FORMATTING), the places changed, that
 it was laid out already, or why nothing changed: the server's own words when
 it failed, no answer within *FORMAT-SECONDS*, its changes not saying where
 they go, or the buffer changed meanwhile. NIL when no server lays it out."
@@ -834,7 +834,7 @@ each its keys, its command and what the key hints call it.")
 
 (defun code-context-keys (editor prefix)
   "For \\`C-c' in code open in a language server: what the cursor is on, as
-*KEY-HINT-FOCUS-FUNCTIONS* has it, the keys that act on it first: something
+*KEY-HINT-FOCUS-FUNCTIONS* has it, the keys that act on it first, something
 a server found wrong, or a name."
   (declare (ignore editor))
   (let ((buffer (current-buffer)))

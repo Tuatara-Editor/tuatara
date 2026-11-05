@@ -313,7 +313,7 @@ true when it is to be handled now, in the frame worked in. One of no frame, or
 of the frame worked in, is; one of a frame that has gone is dropped. READING
 says what read it. While a command works (NIL), what happened in another
 frame waits among that frame's unread events for its turn. Otherwise a
-window of another frame resized is drawn again there, and: between commands
+window of another frame resized is drawn again there, and, and, between commands
 \(:BETWEEN-COMMANDS, the command loop's own read), what you do in another
 frame, and its window given the keyboard, makes it the one worked in; while
 the frame worked in asks a question (:QUESTION), what you do in another

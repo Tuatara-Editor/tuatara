@@ -377,8 +377,8 @@ turn, as the questions before a kill or an exit list them."
 (defun jobs-ask (running waiting then)
   "Ask once before the jobs RUNNING are stopped, or waited for when they save
 \(TUATARA.RUNTIME:JOB-AT-EXIT), and the WAITING jobs queued dropped, THEN (kill
-the buffer, exit) being done: In the background: *scratch*: Sorting 42%, 1
-queued; stop them, then exit? True to go on."
+the buffer, exit) being done, as in `In the background: *scratch*: Sorting 42%, 1 queued; stop them, then exit?'
+True to go on."
   (let ((waits (find :wait running :key #'tuatara.runtime:job-at-exit))
         (stops (or (find :stop running :key #'tuatara.runtime:job-at-exit) (plusp waiting)))
         (many (> (+ (length running) waiting) 1)))

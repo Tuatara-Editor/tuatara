@@ -398,7 +398,7 @@ to the next field. After a snippet's key (<s for a source block), the snippet
          (line (org-line-head buffer start))
          (bare (string-left-trim " 	" line)))
     ;; a line that is no headline, table, template or list item to fold: indented, the file not parsed for it
-    ;; a drawer's first line: the drawer folded or opened, found by its lines
+    ;; a drawer's first line, the drawer folded or opened, found by its lines
     (when (and (or (uiop:string-prefix-p ":" bare) (uiop:string-prefix-p "- " bare) (uiop:string-prefix-p "CLOCK: " bare))
                (org-cycle-drawer buffer start))
       (return-from org-cycle))

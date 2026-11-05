@@ -154,7 +154,7 @@ the per cent, Sorting 42%, or what it does alone when it cannot tell.")
   (:method ((job job)) (string-downcase (job-doing job))))
 
 (defgeneric job-left-words (job)
-  (:documentation "What stopping JOB leaves, for when it has stopped: Stopped: WORDS.")
+  (:documentation "What stopping JOB leaves, for when it has stopped, as Stopped: WORDS.")
   (:method ((job job)) "nothing was changed"))
 
 (defmacro define-job-words (class &key (doing nil doing-p) (description nil description-p) (verb nil verb-p)
@@ -243,7 +243,7 @@ result where it goes, say how it went. Called once, after JOB has left
 
 (defun job-ending-words (job)
   "How JOB ended, when it did not end done, in the words every kind says it
-with: Stopped: what that left, or Could not do it: why."
+with. For a stop it is Stopped: what that left. Otherwise it is Could not do it: why."
   (ecase (job-status job)
     (:stopped (format nil "Stopped: ~a" (job-left-words job)))
     (:failed (format nil "Could not ~a: ~a" (job-verb job) (or (job-error job) "it ended unexpectedly")))))
@@ -261,7 +261,7 @@ and change it? and what stopping does, when the job says (JOB-CONSEQUENCE)."
           (job-doing job) (job-percent job) (job-doing job) (job-consequence job)))
 
 (defun job-guard-refusal (job)
-  "What is said when an edit that would spoil the work of JOB is not made: Not
+  "What is said when an edit that would spoil the work of JOB is not made, as Not
 changed: sorting goes on."
   (format nil "Not changed: ~(~a~) goes on" (job-doing job)))
 
@@ -291,9 +291,9 @@ is then all of it."
                 (t first))))
 
 (defun two-phase-words (doing first counting)
-  "The state of work in two phases (TWO-PHASE-PERCENT) for the list of jobs:
+  "The state of work in two phases (TWO-PHASE-PERCENT) for the list of jobs,
 DOING and FIRST per cent, Sorting 42%, then, once COUNTING is a cons, counting
-the lines of what it wrote: Sorting: counting lines 42%."
+the lines of what it wrote, as Sorting: counting lines 42%."
   (if counting
       (format nil "~a: counting lines ~d%" doing (part-percent counting))
       (format nil "~a ~d%" doing (min 100 first))))

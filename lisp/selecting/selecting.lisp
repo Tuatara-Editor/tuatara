@@ -47,7 +47,7 @@ written in the background as the typing ends.")
 them all the same, the memory having room, rather than those in sight only:
 the matches of \\<normal>\\[split-selection] past *SPLIT-LIMIT*, the cursors of
 \\[add-cursor-below] past *CURSORS-LIMIT* (a count past it too), and those of
-\\[tuatara-change] on a rectangle past *RECTANGLE-CURSORS-LIMIT*: one
+\\[tuatara-change] on a rectangle past *RECTANGLE-CURSORS-LIMIT*; one
 question, the same for them all. NIL, the default, holds those in sight.")
 
 ;;; Selections: the mark, and visual-line sessions started with V
@@ -120,7 +120,7 @@ filters hide are not taken."
 (defun line-after (buffer position)
   "Where the line a window shows after POSITION's line of BUFFER starts, or
 the text's end: past a line whose end a fold hides, after all the fold hides,
-but never past the lines search filters hide: the line after it is then one
+but never past the lines search filters hide; the line after it is then one
 of those."
   (let ((line-end (tuatara.display:visible-line-end buffer position :hidden nil)))
     (if (< line-end (tuatara.buffer:buffer-size buffer))

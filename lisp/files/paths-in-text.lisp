@@ -150,7 +150,7 @@ other list is shown; true while it is being read."
 ;;; Opening the path at the cursor
 
 (defun path-around (buffer position)
-  "The path in the text around POSITION of BUFFER, as typed: the word there
+  "The path in the text around POSITION of BUFFER, as typed, the word there
 made of what a path is made of (PATH-PART-P), a file: link's without its
 file:; NIL when there is none."
   (multiple-value-bind (start end) (word-bounds-at buffer position #'path-part-p *popup-reach*)

@@ -527,7 +527,7 @@ all.")
   "The native path of the file: address uniform resource identifier (URI), its
 . and .. taken as they lead; NIL for another kind of address, one holding a
 null (NUL), and one not from the root or of a computer other than those
-HOSTS name (in any case): only file:///PATH and file://HOST/PATH are taken."
+HOSTS name (in any case); only file:///PATH and file://HOST/PATH are taken."
   (when (and (stringp uri) (> (length uri) 7) (string-equal "file://" uri :end2 7))
     (let* ((rest (subseq uri 7))
            (slash (position #\/ rest)))
@@ -635,7 +635,7 @@ their order, so that the watcher is told only when that changed.")
 (defun follow-directories (editor)
   "Tick function: have the watcher watch the directories every part of
 *DIRECTORY-FOLLOWERS* wants, telling it only when they changed (a part's list
-the same object as before, or alike, costs nothing to compare: a directory
+the same object as before, or alike, costs nothing to compare; a directory
 kept read has tens of thousands), and tell each part of those found changed."
   (declare (ignore editor))
   (let ((wanted (loop for (want) in *directory-followers*

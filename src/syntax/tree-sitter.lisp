@@ -1134,7 +1134,7 @@ at and their octets, as three values; NIL when they were not asked for."
 (defun map-query-matches (function query tree rope start end)
   "Call FUNCTION with (PATTERN CAPTURES COUNT) for each match of QUERY in TREE
 (the tree of ROPE) that touches octets START below END and passes its
-predicates: PATTERN is the pattern's number, and CAPTURES a fixnum vector
+predicates; PATTERN is the pattern's number, and CAPTURES a fixnum vector
 holding COUNT captures as four numbers each: the capture's number, the octets
 its node starts and ends at, and the node's symbol. CAPTURES is reused for the
 next match and gone once MAP-QUERY-MATCHES returns, so it must not be kept.

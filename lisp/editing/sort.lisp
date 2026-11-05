@@ -902,7 +902,7 @@ counted once written: sorting is the first half, counting the second."
 
 (defun sort-note-batch (job batch)
   "Change function while JOB runs: follow the region through BATCH, and note
-when BATCH touches it (TUATARA.RUNTIME:SPAN-TOUCHED-P): an insertion at its
+when BATCH touches it (TUATARA.RUNTIME:SPAN-TOUCHED-P), that is an insertion at its
 start or inside it, a deletion or replacement overlapping it, the whole text
 swapped."
   (unless (sort-job-changed job)
@@ -1194,7 +1194,7 @@ Without a selection, does nothing and says so."
 
 (define-command sort-regexp-fields ()
   "Sort the matches of a regular expression within the selection: asks for the
-pattern of the records, then for their key: \\& for the whole record, \\1 to \\9
+pattern of the records, then for their key, either \\& for the whole record, \\1 to \\9
 for a group of the record's pattern, or a pattern whose first match in the
 record is its key (an empty key when there is none). Keys compare as text; with
 a prefix argument, in descending order. The text between the records stays

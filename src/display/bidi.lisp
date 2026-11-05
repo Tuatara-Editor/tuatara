@@ -356,7 +356,8 @@ terminators (rules W1 to W7), SOS being the direction before the sequence."
       (setf (svref ts k) (cond ((zerop k) sos)
                                ((member (svref ts (1- k)) '(:lri :rli :fsi :pdi)) :on)
                                (t (svref ts (1- k)))))))
-  ;; W2: a European digit after an Arabic letter is an Arabic one; W3: an Arabic letter is right to left
+  ;; W2: a European digit after an Arabic letter is an Arabic one.
+  ;; W3: an Arabic letter is right to left
   (let ((strong sos))
     (dotimes (k m)
       (case (svref ts k)
@@ -370,7 +371,8 @@ terminators (rules W1 to W7), SOS being the direction before the sequence."
                (:es (when (and (eq before :en) (eq after :en)) (setf (svref ts k) :en)))
                (:cs (cond ((and (eq before :en) (eq after :en)) (setf (svref ts k) :en))
                           ((and (eq before :an) (eq after :an)) (setf (svref ts k) :an)))))))
-  ;; W5: terminators beside a European digit; W6: separators and terminators left are neutral
+  ;; W5: terminators beside a European digit.
+  ;; W6: separators and terminators left are neutral
   (let ((k 0))
     (declare (type fixnum k))
     (loop while (< k m)
@@ -702,7 +704,7 @@ PARAGRAPHS worked out of ROPE, the text it last showed, those of a text
 before free to be filled again (NEXT, the one to fill when none is); the
 SCRATCH they are worked out in; whether right-to-left text was found
 between SCAN-FROM and SCAN-TO of SCAN-ROPE (SCAN-FOUND); and the room a row
-is put in order in: its STRING, FACES, CHARS and BYTES copied, and UNITS, five
+is put in order in, with its STRING, FACES, CHARS and BYTES copied, and UNITS, five
 numbers for each character shown with the marks on it."
   (rope nil)
   (paragraphs (make-array 0 :adjustable t :fill-pointer 0) :type vector)

@@ -14,7 +14,7 @@ is shown as an age (5 min ago, 3 days ago); older ones show the date, and with
   "When a file last changed, MTIME (a STAMP-MTIME, in nanoseconds), in words
 beside a completion candidate: an age within *RELATIVE-AGE-LIMIT* (42 s ago,
 5 min ago, 3 h ago, 2 days ago), else the date, with the time when it is this
-year: 16 Apr 19:23, 2 Apr 2025."
+year, as in 16 Apr 19:23, 2 Apr 2025."
   (let* ((time (mtime-universal-time mtime))
          (age (- now time)))
     (cond ((and (<= 0 age) (< age *relative-age-limit*))

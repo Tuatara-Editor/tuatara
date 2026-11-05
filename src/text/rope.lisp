@@ -110,7 +110,7 @@ summing their counts; unknown counts in any child make the branch's unknown."
 (declaim (inline span-sap))
 (defun span-sap (span start end)
   "The pointer to SPAN's mapped octets, which START below END of its content
-are read through at the span's offset (SPAN-OFFSET) on: its mapping checked
+are read through at the span's offset (SPAN-OFFSET) on, its mapping checked
 still mapped (CHECK-MAPPING) and the reading noted (NOTE-READ), unless,
 outside a pass, it lies where a window reads or was asked about last, as
 nearly every read for the screen does: that costs a few comparisons."
@@ -1646,7 +1646,7 @@ back to just after the last octet before it that is not one of them, or BOUND
 
 (defun map-line-slices (function rope start end left right &key crlf octets width block)
   "Call FUNCTION for each line of ROPE that starts at a byte offset in [START,
-END), START being a line start: with the line's start, the byte offsets of its
+END), START being a line start, with the line's start, the byte offsets of its
 LEFT-th and RIGHT-th characters (its end, where it is shorter), the columns
 those stand at (the line's length in characters, where it is shorter), and the
 line's end: the octet that ends it (LINE-END-OCTET-P), with carriage return
@@ -1665,7 +1665,7 @@ them), another character across one out of it, and a character of no width (a
 combining mark) goes with the one before it. The text is read once, a block at
 a time: as large as the lines asked for, from 4 KB to a megabyte, never more
 than the text left, into BLOCK when given octets as large, else into one kept
-for reading into (WITH-OCTET-BLOCK), so that nothing is made for it: FUNCTION
+for reading into (WITH-OCTET-BLOCK), so that nothing is made for it. FUNCTION
 must not keep the block. An ASCII octet is a character by itself, so most
 lines cost a look at each octet. Complexity: O(END - START + the length of the
 last line)."
@@ -1851,7 +1851,7 @@ O(log n + distance scanned)."
   "Return the byte offset of the start of the line containing byte offset BYTE:
 the position after the line end before it (LINE-END-OCTET-P), or 0. Complexity: O(log n + the part
 of the line before BYTE), and once ROPE's line counts are made no more than
-64 KB of it, however long the line: a longer one is found by its number."
+64 KB of it, however long the line; a longer one is found by its number."
   (declare (type fixnum byte))
   (check-byte-offset rope byte)
   (let* ((near (max 0 (- byte 65536)))
@@ -1866,7 +1866,7 @@ of the line before BYTE), and once ROPE's line counts are made no more than
 newline, or a carriage return no newline follows), or the text length when
 the last line has none. Complexity: O(log n + the part of the
 line after BYTE), and once ROPE's line counts are made no more than 64 KB of
-it, however long the line: a longer one is found by its number."
+it, however long the line; a longer one is found by its number."
   (declare (type fixnum byte))
   (check-byte-offset rope byte)
   (let* ((total (rope-bytes rope))

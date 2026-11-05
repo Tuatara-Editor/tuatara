@@ -314,24 +314,38 @@ DIR is visited and its status read, the project trusted. Returns the frontend."
 
 (define-test (git passphrase-window)
   ;; on a desktop with an askpass program, ssh asks a key's passphrase in its window; else it asks nothing
-  (let ((saved (mapcar (lambda (name) (cons name (uiop:getenv name))) '("SSH_ASKPASS" "DISPLAY" "WAYLAND_DISPLAY"))))
-    (flet ((with-env (askpass display)
-             (if askpass (sb-posix:setenv "SSH_ASKPASS" askpass 1) (sb-posix:unsetenv "SSH_ASKPASS"))
-             (if display (sb-posix:setenv "DISPLAY" display 1) (sb-posix:unsetenv "DISPLAY"))
-             (sb-posix:unsetenv "WAYLAND_DISPLAY")
-             (tuatara.git:git-network-environment)))
-      (unwind-protect
-           (progn
-             (let ((env (with-env "/bin/true" ":0")))
-               (true (member "GIT_SSH_COMMAND=ssh" env :test #'string=))
-               (true (member "SSH_ASKPASS_REQUIRE=force" env :test #'string=))
-               ;; still no program an address names
-               (true (member "GIT_CONFIG_VALUE_0=never" env :test #'string=)))
-             (dolist (env (list (with-env "/bin/true" nil) (with-env "/nonexistent/askpass" ":0") (with-env nil ":0")))
-               (true (member "GIT_SSH_COMMAND=ssh -o BatchMode=yes" env :test #'string=))
-               (false (member "SSH_ASKPASS_REQUIRE=force" env :test #'string=))))
-        (loop for (name . value) in saved
-              do (if value (sb-posix:setenv name value 1) (sb-posix:unsetenv name)))))))
+  (flet ((with-env (askpass display)
+           (with-environment-variable ("SSH_ASKPASS" askpass)
+             (with-environment-variable ("DISPLAY" display)
+               (with-environment-variable ("WAYLAND_DISPLAY" nil)
+                 (tuatara.git:git-network-environment))))))
+    (let ((tuatara.io:*askpass-programs* '()))
+      (let ((env (with-env "/bin/true" ":0")))
+        (true (member "GIT_SSH_COMMAND=ssh -o StrictHostKeyChecking=yes" env :test #'string=)
+              "a server whose key is not known yet is still refused")
+        (true (member "SSH_ASKPASS=/bin/true" env :test #'string=))
+        (true (member "SSH_ASKPASS_REQUIRE=force" env :test #'string=))
+        ;; still no program an address names
+        (true (member "GIT_CONFIG_VALUE_0=never" env :test #'string=)))
+      (dolist (env (list (with-env "/bin/true" nil) (with-env "/bin/true" "") (with-env "/nonexistent/askpass" ":0")
+                         (with-env nil ":0")))
+        (true (member "GIT_SSH_COMMAND=ssh -o BatchMode=yes" env :test #'string=))
+        (false (member "SSH_ASKPASS_REQUIRE=force" env :test #'string=))))
+    ;; with SSH_ASKPASS naming none, OpenSSH's own, where the system put it, as ssh-agent finds it
+    (let ((tuatara.io:*askpass-programs* '("/nonexistent/ssh-askpass" "/bin/true")))
+      (let ((env (with-env nil ":0")))
+        (true (member "SSH_ASKPASS=/bin/true" env :test #'string=))
+        (true (member "SSH_ASKPASS_REQUIRE=force" env :test #'string=)))
+      (with-environment-variable ("SSH_ASKPASS" nil)
+        (with-environment-variable ("DISPLAY" nil)
+          (with-environment-variable ("WAYLAND_DISPLAY" nil)
+            (false (tuatara.git::ssh-askpass-window-p))
+            (false (tuatara.io:desktop-p) "no desktop")
+            (sb-posix:setenv "WAYLAND_DISPLAY" "" 1)
+            (false (tuatara.io:desktop-p) "an empty WAYLAND_DISPLAY names none")
+            (sb-posix:setenv "WAYLAND_DISPLAY" "wayland-0" 1)
+            (true (tuatara.io:desktop-p))
+            (is equal "/bin/true" (tuatara.git::ssh-askpass-window-p))))))))
 
 (define-test (git what-went-wrong)
   ;; what git said went wrong: its fatal: or error: line, else its last
@@ -360,8 +374,7 @@ DIR is visited and its status read, the project trusted. Returns the frontend."
     (git-output dir "add" "a.txt")
     (let ((hook (merge-pathnames ".git/hooks/pre-commit" dir))
           (described '()))
-      (put-file hook (format nil "#!/bin/sh~%sleep 30~%"))
-      (sb-posix:chmod (namestring hook) #o755)
+      (put-program hook (format nil "#!/bin/sh~%sleep 30~%"))
       (flet ((git-jobs () (remove-if-not #'tuatara.git::git-job-p tuatara.runtime:*jobs*)))
         (let ((f (git-session dir "a.txt"
                               (list "c c" (list :until (lambda () (tuatara.git::git-buffer-of (tuatara.git:repository-top (namestring dir)) 'tuatara.defaults::git-commit-mode))) "S e c o n d C-c C-c"
