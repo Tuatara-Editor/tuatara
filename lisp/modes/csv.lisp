@@ -24,6 +24,10 @@ window as the rest scrolls under it. \\[search-filter-regex] hides the records
 a pattern does not match, the mode line saying how many it leaves."
   :lighter "CSV" :extensions ("csv"))
 
+(defmethod mode-wraps-p ((mode csv-mode))
+  "A CSV file is read in columns: its lines never wrap."
+  nil)
+
 (define-major-mode tsv-mode csv-mode
   "Tab-separated values: CSV mode with the tab as the delimiter."
   :lighter "TSV" :extensions ("tsv" "tab"))

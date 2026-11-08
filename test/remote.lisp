@@ -1223,7 +1223,10 @@ what it sets is undone after."
                (dotimes (i count) (tuatara.frontend:frontend-settings-changed remote))
                (- (sb-ext:get-bytes-consed) before))))
       (garbage 100)
-      (let ((per-look (/ (- (min (garbage 20000) (garbage 20000)) (min (garbage 2000) (garbage 2000))) 18000.0)))
+      ;; the count is every thread's: another's garbage can only raise it, so the least of a few rounds
+      (let ((per-look (loop repeat 5
+                            minimize (/ (- (min (garbage 20000) (garbage 20000)) (min (garbage 2000) (garbage 2000)))
+                                        18000.0))))
         (true (< per-look 1) "~,2f octets a look" per-look)))))
 
 (define-test (remote window-asked-for-by-its-process-alone)
@@ -1273,3 +1276,543 @@ what it sets is undone after."
                (true (and (stringp refused) (search "32 windows" refused)) "~s" refused))
              (is = 2 (asked)))
         (forget)))))
+
+;;; Pictures to a client on another machine
+
+(define-test (remote deflate-makes-what-inflate-reads)
+  ;; packed and unpacked again to the same octets, for runs, noise, lengths at a block's edge and nothing
+  (let ((*random-state* (sb-ext:seed-random-state 7)))
+    (flet ((same (octets)
+             (let ((packed (tuatara.io:deflate octets)))
+               (is equalp octets (tuatara.io:inflate packed :limit (max 1 (length octets)) :size (length octets))))))
+      (same (tuatara.text:make-octets 0))
+      (same (coerce #(1) 'tuatara.text:octets))
+      (same (tuatara.text:make-octets 100000))
+      (dolist (size '(258 259 32767 32768 32769 65535 65536 70000))
+        (let ((noise (tuatara.text:make-octets size)) (pattern (tuatara.text:make-octets size)))
+          (dotimes (i size) (setf (aref noise i) (random 256) (aref pattern i) (mod (* i i) 7)))
+          (same noise)
+          (same pattern)))
+      ;; noise is stored, a run packs to almost nothing
+      (let ((noise (tuatara.text:make-octets 70000)))
+        (dotimes (i (length noise)) (setf (aref noise i) (random 256)))
+        (true (<= (length (tuatara.io:deflate noise)) (+ (length noise) 32))))
+      (true (< (length (tuatara.io:deflate (tuatara.text:make-octets 100000))) 200)))))
+
+(defun far-remote (local)
+  "An editor's remote frontend and a client on another machine painting on the
+fake frontend LOCAL, over a socket: the remote frontend and the client, not yet running."
+  (multiple-value-bind (mine theirs) (tuatara.io:socket-pair)
+    (let* ((maker (sb-thread:make-thread
+                   (lambda () (tuatara.frontend:make-remote-client
+                               theirs local :request (tuatara.frontend:make-request :directory "/" :far t)))))
+           (remote (tuatara.frontend:make-remote-frontend mine)))
+      (values remote (sb-thread:join-thread maker)))))
+
+(defun two-colour-image (width height channels)
+  "A picture WIDTH by HEIGHT of CHANNELS octets, red above and blue below, as octets."
+  (let ((pixels (tuatara.text:make-octets (* width height channels))))
+    (dotimes (y height)
+      (dotimes (x width)
+        (let ((at (* channels (+ x (* y width)))))
+          (setf (aref pixels at) (if (< y (/ height 2)) 200 0)
+                (aref pixels (+ at 2)) (if (< y (/ height 2)) 0 200))
+          (when (= channels 4) (setf (aref pixels (+ at 3)) 255)))))
+    (tuatara.frontend:make-image width height channels pixels)))
+
+(defun paint-picture (remote image &optional (columns 40) (rows 12) offset)
+  "Have REMOTE paint a frame showing IMAGE in COLUMNS by ROWS cells, or none when IMAGE is NIL."
+  (tuatara.frontend:frontend-begin-frame remote)
+  (when image (tuatara.frontend:frontend-put-image remote image 0 0 columns rows offset))
+  (tuatara.frontend:frontend-end-frame remote))
+
+(defun far-picture-of (remote source)
+  "REMOTE's record of the picture numbered SOURCE, its newest."
+  (find source (tuatara.frontend::remote-far-pictures remote) :key #'tuatara.frontend::far-picture-source))
+
+(defun far-ready-p (remote source)
+  "True when REMOTE's client has the picture numbered SOURCE whole."
+  (let ((far (far-picture-of remote source)))
+    (and far (eq (tuatara.frontend::far-picture-state far) :ready))))
+
+(define-test (remote far-picture-made-small-and-shown)
+  ;; a picture four times the size of its window goes once, the size it shows at, and is shown with the pixels
+  ;; it was given, a good deal smaller than the picture; the frame before it arrives has a blank, not a picture
+  (let* ((local (make-instance 'queued-fake-frontend :width 40 :height 12 :cell-pixels '(8 16)))
+         (image (two-colour-image 1280 768 3)))
+    (multiple-value-bind (remote client) (far-remote local)
+      (let ((runner (sb-thread:make-thread (lambda () (tuatara.frontend:run-remote-client client)))))
+        (paint-picture remote image)
+        (true (tuatara.runtime:wait-until (lambda () (far-ready-p remote (tuatara.frontend:image-id image))) 30)
+              "the picture came")
+        (let ((far (far-picture-of remote (tuatara.frontend:image-id image))))
+          ;; the window is 320 by 192 pixels: the picture fitted to it
+          (is = 320 (tuatara.frontend::far-picture-width far))
+          (is = 192 (tuatara.frontend::far-picture-height far))
+          (isnt = (tuatara.frontend:image-id image) (tuatara.frontend::far-picture-id far))
+          (true (< (tuatara.frontend::far-picture-total far) 2000)
+                "~d octets for two colours" (tuatara.frontend::far-picture-total far))
+          (paint-picture remote image)
+          (true (tuatara.runtime:wait-until (lambda () (tuatara.frontend.fake:fake-images local)) 30) "shown")
+          (destructuring-bind ((shown row column columns rows offset)) (tuatara.frontend.fake:fake-images local)
+            (is equal '(0 0 40 12 nil) (list row column columns rows offset))
+            (is = 320 (tuatara.frontend:image-width shown))
+            (is = 192 (tuatara.frontend:image-height shown))
+            (is = 3 (tuatara.frontend:image-channels shown))
+            (is equal '(200 0 0) (coerce (subseq (tuatara.frontend:image-pixels shown) 0 3) 'list) "red above")
+            (is equal '(0 0 200)
+                (coerce (subseq (tuatara.frontend:image-pixels shown) (- (* 320 192 3) 3)) 'list) "blue below"))
+          ;; the next frame of the picture asks nothing more of the connection
+          (let ((count (length (tuatara.frontend::remote-far-pictures remote))))
+            (paint-picture remote image)
+            (is = count (length (tuatara.frontend::remote-far-pictures remote)))))
+        (tuatara.frontend:frontend-stop remote)
+        (client-done runner)))))
+
+(define-test (remote far-picture-at-own-size-with-offset)
+  ;; shown from an offset, a picture goes whole: the view scrolls over it without asking again
+  (let* ((local (make-instance 'queued-fake-frontend :width 40 :height 12 :cell-pixels '(8 16)))
+         (image (two-colour-image 1000 1600 3)))
+    (multiple-value-bind (remote client) (far-remote local)
+      (let ((runner (sb-thread:make-thread (lambda () (tuatara.frontend:run-remote-client client)))))
+        (paint-picture remote image 40 12 '(4 0))
+        (true (tuatara.runtime:wait-until (lambda () (far-ready-p remote (tuatara.frontend:image-id image))) 30))
+        (paint-picture remote image 40 12 '(4 0))
+        (true (tuatara.runtime:wait-until (lambda () (tuatara.frontend.fake:fake-images local)) 30))
+        (destructuring-bind ((shown row column columns rows offset)) (tuatara.frontend.fake:fake-images local)
+          (declare (ignore row column columns rows))
+          (is equal '(4 0) offset)
+          (is = 1000 (tuatara.frontend:image-width shown))
+          (is equalp (tuatara.frontend:image-pixels image) (tuatara.frontend:image-pixels shown)))
+        (tuatara.frontend:frontend-stop remote)
+        (client-done runner)))))
+
+(define-test (remote far-picture-cancelled-off-screen)
+  ;; with a client that takes in nothing no more than the window of a picture is queued; a frame without the
+  ;; picture cancels it, the client forgets what came, the connection goes on, and a smaller picture comes
+  (let* ((local (make-instance 'queued-fake-frontend :width 40 :height 12 :cell-pixels '(8 16)))
+         (noise (tuatara.text:make-octets (* 320 192 3)))
+         (image (let ((*random-state* (sb-ext:seed-random-state 11)))
+                  (dotimes (i (length noise)) (setf (aref noise i) (random 256)))
+                  (tuatara.frontend:make-image 320 192 3 noise)))
+         (other (two-colour-image 64 64 3)))
+    (multiple-value-bind (remote client) (far-remote local)
+      (paint-picture remote image)
+      (true (tuatara.runtime:wait-until
+             (lambda ()
+               (let ((far (far-picture-of remote (tuatara.frontend:image-id image))))
+                 (and far (eq (tuatara.frontend::far-picture-state far) :sending))))
+             30)
+            "begun")
+      ;; held at the window: not everything is put among the messages
+      (sleep 0.3)
+      (let ((queued (+ (tuatara.frontend::outbox-fill (tuatara.frontend::remote-unsent remote))
+                       (tuatara.frontend::outbox-fill (tuatara.frontend::remote-sending remote)))))
+        (true (<= queued (+ tuatara.frontend::+far-pictures-in-flight+ 70000))
+              "~d octets waiting for a client that took nothing" queued))
+      (paint-picture remote nil)
+      (true (tuatara.runtime:wait-until (lambda () (null (far-picture-of remote (tuatara.frontend:image-id image)))) 10)
+            "cancelled")
+      (let ((runner (sb-thread:make-thread (lambda () (tuatara.frontend:run-remote-client client)))))
+        (paint-picture remote other 8 8)
+        (true (tuatara.runtime:wait-until (lambda () (far-ready-p remote (tuatara.frontend:image-id other))) 30)
+              "the next one came")
+        (is equal nil (tuatara.frontend::remote-client-arriving client))
+        (is = 1 (length (tuatara.frontend::remote-client-pictures client)) "the cancelled one is not kept")
+        (false (tuatara.frontend::remote-client-ended client))
+        (tuatara.frontend:frontend-stop remote)
+        (client-done runner)))))
+
+(define-test (remote far-picture-refused-past-the-most)
+  ;; a picture past what a client on another machine takes (at its own size, shown from an offset) is left out
+  ;; once: no error, no sending, and the frame goes on without it
+  (let* ((local (make-instance 'queued-fake-frontend :width 40 :height 12 :cell-pixels '(8 16)))
+         (image (tuatara.frontend::%make-image 20000 3 3 (tuatara.text:make-octets (* 20000 3 3))
+                                               (sb-ext:atomic-incf (car tuatara.frontend::**image-count**)))))
+    (multiple-value-bind (remote client) (far-remote local)
+      (let ((runner (sb-thread:make-thread (lambda () (tuatara.frontend:run-remote-client client)))))
+        (dotimes (n 3) (paint-picture remote image 40 12 '(0 0)))
+        (let ((far (far-picture-of remote (tuatara.frontend:image-id image))))
+          (true far)
+          (is eq :refused (tuatara.frontend::far-picture-state far)))
+        (is = 1 (count (tuatara.frontend:image-id image) (tuatara.frontend::remote-far-pictures remote)
+                       :key #'tuatara.frontend::far-picture-source)
+            "asked for once")
+        (false (tuatara.frontend::remote-far-sender remote) "no thread for what is not sent")
+        (tuatara.frontend:frontend-stop remote)
+        (client-done runner)))))
+
+(defun client-reading (build)
+  "A client with an inbox of the octets the function BUILD writes to an outbox,
+as messages from an editor; the client."
+  (let ((box (tuatara.frontend::make-outbox)))
+    (funcall build box)
+    (tuatara.frontend::%make-remote-client
+     -1 (tuatara.frontend.fake:make-fake-frontend :cell-pixels '(8 16))
+     (tuatara.frontend::make-inbox nil :client
+                                   :octets (subseq (tuatara.frontend::outbox-octets box)
+                                                   0 (tuatara.frontend::outbox-fill box))
+                                   :end (tuatara.frontend::outbox-fill box)))))
+
+(defun read-all-as-client (client)
+  "Read all CLIENT's inbox holds, as the reading thread does; the items for its frontend."
+  (let ((inbox (tuatara.frontend::remote-client-inbox client)))
+    (loop for kind = (tuatara.frontend::read-message inbox)
+          while kind
+          collect (tuatara.frontend::take-from-editor client kind inbox))))
+
+(defun refused-as-malformed-p (build)
+  "True when a client reading what BUILD writes takes it as malformed."
+  (handler-case (progn (read-all-as-client (client-reading build)) nil)
+    (tuatara.frontend:malformed-message () t)))
+
+(defun put-picture-begin-raw (box id width height channels total)
+  "Put a picture's beginning in BOX with whatever numbers it is given."
+  (let ((at (tuatara.frontend::begin-message box :picture-begin)))
+    (dolist (field (list (list id 4) (list width 4) (list height 4) (list channels 1) (list total 4)))
+      (tuatara.frontend::put-number box (first field) (second field)))
+    (tuatara.frontend::end-message box at)))
+
+(defun put-picture-piece-raw (box id start octets)
+  "Put a piece of a picture in BOX with whatever octets and place it is given."
+  (let ((at (tuatara.frontend::begin-message box :picture-piece)))
+    (tuatara.frontend::put-number box id 4)
+    (tuatara.frontend::put-number box start 4)
+    (tuatara.frontend::put-octets box octets)
+    (tuatara.frontend::end-message box at)))
+
+(define-test (remote far-picture-from-a-hostile-editor)
+  ;; every number and length of a picture's messages held to its bound; the octets of what comes unpack, or
+  ;; end the connection, and never to more than the size it said; a picture given whole is taken
+  (let ((pixels (coerce #(1 2 3 4 5 6 7 8 9 10 11 12) 'tuatara.text:octets)))
+    ;; a good picture of 2 by 2: rows against those above, deflated
+    (let* ((packed (tuatara.io:deflate (tuatara.frontend::rows-against-above pixels 6)))
+           (client (client-reading
+                    (lambda (box)
+                      (put-picture-begin-raw box 9 2 2 3 (length packed))
+                      (put-picture-piece-raw box 9 0 packed)))))
+      (read-all-as-client client)
+      (true (tuatara.runtime:wait-until (lambda () (tuatara.frontend::remote-client-pictures client)) 10))
+      (let ((kept (first (tuatara.frontend::remote-client-pictures client))))
+        (true kept)
+        (is equalp pixels (tuatara.frontend:image-pixels kept))
+        (is = 9 (tuatara.frontend:image-id kept))))
+    (let ((packed (tuatara.io:deflate (tuatara.text:make-octets 12))))
+      (macrolet ((refused (&body body) `(true (refused-as-malformed-p (lambda (box) ,@body)))))
+        ;; sizes past the most
+        (refused (put-picture-begin-raw box 1 0 2 3 8))
+        (refused (put-picture-begin-raw box 1 2 0 3 8))
+        (refused (put-picture-begin-raw box 1 2 2 5 8))
+        (refused (put-picture-begin-raw box 1 2 2 2 8))
+        (refused (put-picture-begin-raw box 1 16385 1 3 100))
+        (refused (put-picture-begin-raw box 1 16384 16384 4 100))
+        ;; more packed than the pixels can come to
+        (refused (put-picture-begin-raw box 1 2 2 3 100000))
+        (refused (put-picture-begin-raw box 1 2 2 3 0))
+        ;; a piece before any begin, of another picture, out of order, past its end
+        (refused (put-picture-piece-raw box 9 0 packed))
+        (refused (put-picture-begin-raw box 9 2 2 3 (length packed))
+                 (put-picture-piece-raw box 8 0 packed))
+        (refused (put-picture-begin-raw box 9 2 2 3 (length packed))
+                 (put-picture-piece-raw box 9 1 packed))
+        (refused (put-picture-begin-raw box 9 2 2 3 (length packed))
+                 (put-picture-piece-raw box 9 0 (concatenate 'tuatara.text:octets packed #(1))))
+        ;; a piece of nothing
+        (refused (put-picture-begin-raw box 9 2 2 3 (length packed))
+                 (put-picture-piece-raw box 9 0 (tuatara.text:make-octets 0)))
+        ;; a second begun over the first
+        (refused (put-picture-begin-raw box 9 2 2 3 (length packed))
+                 (put-picture-begin-raw box 8 2 2 3 (length packed)))
+        ;; a forgotten picture never sent
+        (refused (let ((at (tuatara.frontend::begin-message box :picture-forget)))
+                   (tuatara.frontend::put-number box 3 4)
+                   (tuatara.frontend::end-message box at))))
+      ;; what does not unpack, and what unpacks to more or fewer pixels than it said
+      (flet ((unpacks-p (octets)
+               (let ((arriving (tuatara.frontend::make-arriving-picture 9 2 2 3 (length octets))))
+                 (setf (tuatara.frontend::arriving-picture-octets arriving) (coerce octets 'tuatara.text:octets)
+                       (tuatara.frontend::arriving-picture-filled arriving) (length octets))
+                 (handler-case (tuatara.frontend::arrived-picture arriving)
+                   (tuatara.frontend:malformed-message () nil)))))
+        (true (unpacks-p packed))
+        (false (unpacks-p (coerce #(255 255) 'tuatara.text:octets)))
+        (false (unpacks-p (tuatara.io:deflate (tuatara.text:make-octets 13))))
+        (false (unpacks-p (tuatara.io:deflate (tuatara.text:make-octets 11))))))))
+
+(define-test (remote far-picture-acks-held-to-its-size)
+  ;; a client saying more was taken than a picture holds ends the connection, and ack with no picture is ignored
+  (let ((remote (make-instance 'tuatara.frontend:remote-frontend :fd -1))
+        (far (tuatara.frontend::make-far-picture 5 2 2 3 nil 0)))
+    (setf (tuatara.frontend::far-picture-id far) 5
+          (tuatara.frontend::far-picture-state far) :sending
+          (tuatara.frontend::far-picture-total far) 10
+          (tuatara.frontend::remote-far-pictures remote) (list far))
+    (tuatara.frontend::picture-taken remote 5 4)
+    (is = 4 (tuatara.frontend::far-picture-taken far))
+    (fail (tuatara.frontend::picture-taken remote 5 11) 'tuatara.frontend:malformed-message)
+    (fail (tuatara.frontend::picture-taken remote 5 3) 'tuatara.frontend:malformed-message)
+    (tuatara.frontend::picture-taken remote 77 999)))
+
+(defun send-to-far-client (remote write)
+  "Have REMOTE send its client the messages WRITE, a function of the box, writes."
+  (sb-thread:with-mutex ((tuatara.frontend::remote-lock remote))
+    (funcall write (tuatara.frontend::remote-unsent remote))
+    (sb-thread:condition-broadcast (tuatara.frontend::remote-moved remote))))
+
+(defun put-whole-picture (box id width height channels packed)
+  "Put in BOX a picture numbered ID, WIDTH by HEIGHT by CHANNELS, its packed octets PACKED in pieces as sent."
+  (put-picture-begin-raw box id width height channels (length packed))
+  (loop for start from 0 below (length packed) by tuatara.frontend::+far-picture-piece+
+        for end = (min (length packed) (+ start tuatara.frontend::+far-picture-piece+))
+        do (let ((at (tuatara.frontend::begin-message box :picture-piece)))
+             (tuatara.frontend::put-picture-piece-of box id packed start end)
+             (tuatara.frontend::end-message box at))))
+
+(defun put-frame-naming (box id)
+  "Put in BOX a frame that shows the picture numbered ID and nothing else."
+  (let ((at (tuatara.frontend::begin-message box :frame)))
+    (tuatara.frontend::put-picture-call box id 0 0 4 4 nil)
+    (tuatara.frontend::end-message box at)))
+
+(defun put-forget (box id)
+  "Put in BOX word to forget the picture numbered ID."
+  (let ((at (tuatara.frontend::begin-message box :picture-forget)))
+    (tuatara.frontend::put-number box id 4)
+    (tuatara.frontend::end-message box at)))
+
+(defun put-title (box title)
+  "Put in BOX a message giving the window TITLE."
+  (let ((at (tuatara.frontend::begin-message box :title)))
+    (tuatara.frontend::put-text box title)
+    (tuatara.frontend::end-message box at)))
+
+(defun arrived-title-p (client title)
+  "True when the message giving TITLE is among what CLIENT has read and not painted."
+  (find title (tuatara.frontend::remote-client-arrived client) :key #'second :test #'equal))
+
+(define-test (remote far-picture-resent-under-a-number-of-its-own)
+  ;; a picture sent at its own size, cancelled and sent again goes under another number, so that what the client
+  ;; says of the first is not taken for the second
+  (let* ((local (make-instance 'queued-fake-frontend :width 40 :height 12 :cell-pixels '(8 16)))
+         (noise (tuatara.text:make-octets 90000))
+         (image (let ((*random-state* (sb-ext:seed-random-state 13)))
+                  (dotimes (i (length noise)) (setf (aref noise i) (random 256)))
+                  (tuatara.frontend:make-image 300 100 3 noise))))
+    (multiple-value-bind (remote client) (far-remote local)
+      (flet ((sending ()
+               (let ((far (far-picture-of remote (tuatara.frontend:image-id image))))
+                 (and far (eq (tuatara.frontend::far-picture-state far) :sending) far))))
+        (paint-picture remote image 40 12 '(0 0))
+        (true (tuatara.runtime:wait-until #'sending 30))
+        (let ((first-id (tuatara.frontend::far-picture-id (sending))))
+          (paint-picture remote nil)
+          (true (tuatara.runtime:wait-until
+                 (lambda () (null (far-picture-of remote (tuatara.frontend:image-id image)))) 10))
+          (paint-picture remote image 40 12 '(0 0))
+          (true (tuatara.runtime:wait-until #'sending 30))
+          (isnt = first-id (tuatara.frontend::far-picture-id (sending)) "each send its own number")
+          ;; a late word about the first send changes nothing
+          (tuatara.frontend::picture-taken remote first-id 80000)
+          (is = 0 (tuatara.frontend::far-picture-taken (sending)))))
+      (tuatara.frontend:frontend-stop remote)
+      (tuatara.frontend::close-remote-client client))))
+
+(define-test (remote far-picture-from-an-offset-only-at-its-own-size)
+  ;; a copy made smaller for a window is not shown from an offset: the client would crop it in the wrong pixels
+  (let* ((local (make-instance 'queued-fake-frontend :width 40 :height 12 :cell-pixels '(8 16)))
+         (image (two-colour-image 1000 800 3)))
+    (multiple-value-bind (remote client) (far-remote local)
+      (let ((runner (sb-thread:make-thread (lambda () (tuatara.frontend:run-remote-client client)))))
+        (paint-picture remote image)
+        (true (tuatara.runtime:wait-until (lambda () (far-ready-p remote (tuatara.frontend:image-id image))) 30))
+        (tuatara.frontend:frontend-begin-frame remote)
+        (false (tuatara.frontend::far-picture-to-show remote image 40 12 '(2 0)) "the smaller copy is not shown")
+        (tuatara.frontend:frontend-end-frame remote)
+        (true (tuatara.runtime:wait-until
+               (lambda ()
+                 (tuatara.frontend:frontend-begin-frame remote)
+                 (prog1 (tuatara.frontend::far-picture-to-show remote image 40 12 '(2 0))
+                   (tuatara.frontend:frontend-end-frame remote)))
+               30)
+              "the one of its own size comes")
+        (tuatara.frontend:frontend-stop remote)
+        (client-done runner)))))
+
+(define-test (remote far-picture-begin-takes-no-room-for-what-has-not-come)
+  ;; eighteen octets saying a huge picture is coming make no huge room; the room grows with its pieces
+  (let* ((total 100000000)
+         (client (client-reading (lambda (box) (put-picture-begin-raw box 9 8000 4000 4 total)))))
+    (read-all-as-client client)
+    (let ((arriving (tuatara.frontend::remote-client-arriving client)))
+      (true arriving)
+      (true (<= (length (tuatara.frontend::arriving-picture-octets arriving)) 65536)))))
+
+(define-test (remote inflate-refuses-oversubscribed-codes)
+  ;; a block whose code lengths promise more codes than bits can tell apart is damaged, and says so
+  (let ((writer (tuatara.io::make-bit-writer 64)))
+    (flet ((bits (value count) (tuatara.io::write-bits writer value count)))
+      (bits 1 1) (bits 2 2) (bits 0 5) (bits 0 5) (bits 0 4)
+      (dotimes (i 4) (bits 1 3))
+      (dotimes (i 40) (bits 0 8))
+      (bits 0 7))
+    (let ((words (handler-case (progn (tuatara.io:inflate (subseq (tuatara.io::bit-writer-octets writer)
+                                                                  0 (tuatara.io::bit-writer-fill writer))
+                                                          :limit 1000)
+                                      "unpacked")
+                   (tuatara.io:zip-error (condition) (princ-to-string condition)))))
+      (true (search "more codes than" words) "said ~a" words))))
+
+(define-test (remote far-picture-out-of-memory-keeps-the-sender)
+  ;; no memory while packing one picture: that one is left out, the thread goes on, and the next is sent
+  (let* ((local (make-instance 'queued-fake-frontend :width 40 :height 12 :cell-pixels '(8 16)))
+         (bad (two-colour-image 64 64 3)) (good (two-colour-image 32 32 3)) (failed nil))
+    (sb-int:encapsulate 'tuatara.frontend::packed-picture 'test-no-memory
+                        (lambda (function image)
+                          (when (and (not failed) (= (tuatara.frontend:image-width image) 64))
+                            (setf failed t)
+                            (error (make-condition 'storage-condition)))
+                          (funcall function image)))
+    (unwind-protect
+         (multiple-value-bind (remote client) (far-remote local)
+           (let ((runner (sb-thread:make-thread (lambda () (tuatara.frontend:run-remote-client client)))))
+             (paint-picture remote bad 8 8)
+             (true (tuatara.runtime:wait-until
+                    (lambda ()
+                      (let ((far (far-picture-of remote (tuatara.frontend:image-id bad))))
+                        (and far (eq (tuatara.frontend::far-picture-state far) :refused))))
+                    10)
+                   "left out")
+             (paint-picture remote good 8 8)
+             (true (tuatara.runtime:wait-until (lambda () (far-ready-p remote (tuatara.frontend:image-id good))) 20)
+                   "the next is sent")
+             (tuatara.frontend:frontend-stop remote)
+             (client-done runner)))
+      (sb-int:unencapsulate 'tuatara.frontend::packed-picture 'test-no-memory))))
+
+(define-test (remote far-picture-unpacks-behind-the-frames)
+  ;; a picture being unpacked keeps nothing waiting: what comes after it is read, and painted, meanwhile
+  (let* ((local (make-instance 'queued-fake-frontend :width 40 :height 12 :cell-pixels '(8 16)))
+         (held (sb-thread:make-semaphore))
+         (packed (tuatara.io:deflate (tuatara.frontend::rows-against-above (tuatara.text:make-octets 48) 12))))
+    (sb-int:encapsulate 'tuatara.frontend::arrived-picture 'test-held
+                        (lambda (function arriving)
+                          (sb-thread:wait-on-semaphore held :timeout 30)
+                          (funcall function arriving)))
+    (unwind-protect
+         (multiple-value-bind (remote client) (far-remote local)
+           (let ((runner (sb-thread:make-thread (lambda () (tuatara.frontend:run-remote-client client)))))
+             (send-to-far-client remote (lambda (box)
+                                (put-whole-picture box 40 4 4 3 packed)
+                                (put-title box "behind the picture")))
+             (true (tuatara.runtime:wait-until
+                    (lambda () (equal "behind the picture" (first (tuatara.frontend.fake:fake-titles local)))) 10)
+                   "what came after is painted while the picture unpacks")
+             (false (tuatara.frontend::remote-client-pictures client) "still unpacking")
+             (sb-thread:signal-semaphore held)
+             (true (tuatara.runtime:wait-until (lambda () (tuatara.frontend::remote-client-pictures client)) 10))
+             (tuatara.frontend:frontend-stop remote)
+             (client-done runner)))
+      (sb-int:unencapsulate 'tuatara.frontend::arrived-picture 'test-held))))
+
+(define-test (remote far-pictures-pinned-by-unpainted-frames-bounded)
+  ;; a client not painting: frames naming pictures since let go of hold their pixels; past the most kept,
+  ;; reading stops until they are painted, and then goes on
+  (let* ((local (make-instance 'queued-fake-frontend :width 40 :height 12 :cell-pixels '(8 16)))
+         (width 8192) (height 5461)
+         (packed (tuatara.io:deflate (tuatara.text:make-octets (* width height 3)))))
+    (multiple-value-bind (remote client) (far-remote local)
+      (flet ((picture-and-frame (id)
+               (send-to-far-client remote (lambda (box)
+                                  (put-whole-picture box id width height 3 packed)))
+               (true (tuatara.runtime:wait-until
+                      (lambda () (find id (tuatara.frontend::remote-client-pictures client)
+                                       :key #'tuatara.frontend:image-id))
+                      60)
+                     "picture ~d kept" id)
+               (send-to-far-client remote (lambda (box) (put-frame-naming box id) (put-forget box id)))))
+        (picture-and-frame 50)
+        (picture-and-frame 51)
+        (picture-and-frame 52)
+        (send-to-far-client remote (lambda (box) (put-title box "after the flood")))
+        (false (tuatara.runtime:wait-until (lambda () (arrived-title-p client "after the flood")) 2)
+               "reading waits for painting")
+        (tuatara.frontend::paint-arrived client)
+        (true (tuatara.runtime:wait-until (lambda () (arrived-title-p client "after the flood")) 20)
+              "and goes on once painted"))
+      (tuatara.frontend:frontend-stop remote)
+      (tuatara.frontend::close-remote-client client))))
+
+(define-test (remote far-pictures-told-to-forget-wait-for-a-place)
+  ;; more pictures told to forget than may unpack at once, as after a stall: reading waits for a place and goes on,
+  ;; the connection kept
+  (let* ((local (make-instance 'queued-fake-frontend :width 40 :height 12 :cell-pixels '(8 16)))
+         (held (sb-thread:make-semaphore))
+         (packed (tuatara.io:deflate (tuatara.frontend::rows-against-above (tuatara.text:make-octets 48) 12))))
+    (sb-int:encapsulate 'tuatara.frontend::arrived-picture 'test-held
+                        (lambda (function arriving)
+                          (sb-thread:wait-on-semaphore held :timeout 30)
+                          (funcall function arriving)))
+    (unwind-protect
+         (multiple-value-bind (remote client) (far-remote local)
+           (let ((runner (sb-thread:make-thread (lambda () (tuatara.frontend:run-remote-client client)))))
+             (send-to-far-client remote (lambda (box)
+                                          (loop for id from 60 below 66
+                                                do (put-whole-picture box id 4 4 3 packed)
+                                                   (put-forget box id))
+                                          (put-title box "after the stall")))
+             (false (tuatara.runtime:wait-until
+                     (lambda () (equal "after the stall" (first (tuatara.frontend.fake:fake-titles local)))) 1)
+                    "reading waits while none is done")
+             (false (tuatara.frontend::remote-client-ended client) "the connection is kept")
+             (sb-thread:signal-semaphore held 6)
+             (true (tuatara.runtime:wait-until
+                    (lambda () (equal "after the stall" (first (tuatara.frontend.fake:fake-titles local)))) 20)
+                   "and goes on as they are done")
+             (false (tuatara.frontend::remote-client-ended client))
+             (false (tuatara.frontend::remote-client-pictures client) "all forgotten")
+             (tuatara.frontend:frontend-stop remote)
+             (client-done runner)))
+      (sb-int:unencapsulate 'tuatara.frontend::arrived-picture 'test-held))))
+
+(define-test (remote far-picture-unpacking-leaves-a-closed-socket-alone)
+  ;; a picture that does not unpack, found out once the connection is being closed here, shuts no descriptor
+  (multiple-value-bind (mine theirs) (tuatara.io:socket-pair)
+    (let ((client (tuatara.frontend::%make-remote-client
+                   theirs (tuatara.frontend.fake:make-fake-frontend) (tuatara.frontend::make-inbox theirs :client)))
+          (arriving (tuatara.frontend::make-arriving-picture 9 2 2 3 2)))
+      (setf (tuatara.frontend::arriving-picture-octets arriving) (coerce #(255 255) 'tuatara.text:octets)
+            (tuatara.frontend::arriving-picture-filled arriving) 2
+            (tuatara.frontend::remote-client-closing client) t)
+      (unwind-protect
+           (progn (tuatara.frontend::unpack-picture client arriving)
+                  (is = 0 (tuatara.io:poll-fd mine 1 50) "the socket was not shut"))
+        (sb-posix:close mine)
+        (sb-posix:close theirs)))))
+
+(define-test (remote far-picture-failed-once-begun-is-forgotten)
+  ;; a send that fails after its beginning went: the client is told to forget it, and the next picture comes
+  (let* ((local (make-instance 'queued-fake-frontend :width 40 :height 12 :cell-pixels '(8 16)))
+         (bad (two-colour-image 64 64 3)) (good (two-colour-image 32 32 3)) (failed nil))
+    (sb-int:encapsulate 'tuatara.frontend::queue-message 'test-fails
+                        (lambda (function remote kind &rest more)
+                          (when (and (eq kind :picture-piece) (not failed))
+                            (setf failed t)
+                            (error "a send failing"))
+                          (apply function remote kind more)))
+    (unwind-protect
+         (multiple-value-bind (remote client) (far-remote local)
+           (let ((runner (sb-thread:make-thread (lambda () (tuatara.frontend:run-remote-client client)))))
+             (paint-picture remote bad 8 8)
+             (true (tuatara.runtime:wait-until
+                    (lambda ()
+                      (let ((far (far-picture-of remote (tuatara.frontend:image-id bad))))
+                        (and far (eq (tuatara.frontend::far-picture-state far) :refused))))
+                    10)
+                   "left out")
+             (paint-picture remote good 8 8)
+             (true (tuatara.runtime:wait-until (lambda () (far-ready-p remote (tuatara.frontend:image-id good))) 20)
+                   "the next comes")
+             (false (tuatara.frontend::remote-client-ended client) "the connection is kept")
+             (tuatara.frontend:frontend-stop remote)
+             (client-done runner)))
+      (sb-int:unencapsulate 'tuatara.frontend::queue-message 'test-fails))))

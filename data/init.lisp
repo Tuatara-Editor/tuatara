@@ -272,6 +272,10 @@
   ;; set: t.
   ;; (setf *modal-editing* nil)
 
+  ;; Two keys typed quickly one after the other in INSERT state leave it for
+  ;; NORMAL state, and neither stays in the text. Not set: nil.
+  ;; (setf *insert-escape-keys* "jk")
+
   ;; The modal state alone in the mode line, [N], without TUATARA before it
   ;; (C-x T t switches it). Not set: t: TUATARA[N].
   ;; (setf *mode-line-tuatara* nil)
@@ -284,6 +288,10 @@
   ;; where nothing binds it (it leaves INSERT state); Meta only when a
   ;; terminal sends Escape and another key together.
   ;; (setf *escape-quits* t)
+
+  ;; With Escape as quit, give it to a full-screen program in a terminal all the
+  ;; same (nvim, less, htop); at a shell's prompt it still quits. Not set: nil.
+  ;; (setf *terminal-send-escape* t)
 
   ;; Never the kitty keyboard protocol in a terminal. Not set: :auto: asked of the
   ;; terminal; with it Escape and Alt arrive whole.
@@ -544,7 +552,10 @@
   ;; set: nil.
   ;; (setf *global-soft-wrap-mode* t)
 
-  ;; Wrapping by major mode, before the global setting.
+  ;; Wrapping by major mode, before the global setting. Help (describe-function,
+  ;; the health report, credits) wraps unless you list help-mode and about-mode
+  ;; as nil; the agenda, the calendar, the terminal and other views laid out in
+  ;; columns never wrap.
   ;; (setf *soft-wrap-modes* '((org-mode . t) (csv-mode . nil)))
 
   ;; Wrapping at the window's edge, not at the fill column. Not set: t.
@@ -1700,6 +1711,11 @@
 ;; Never asked before a package is compiled and loaded. Not set: t: asked, y,
 ;; n, or v to read its source first.
 ;; (setf *package-ask-before-loading* nil)
+
+;; Never check who signed a package's version: every version of every source
+;; is taken, signed by any key or by no one, and M-x check-health says so.
+;; Not set: t, versions are checked.
+;; (setf *package-check-signatures* nil)
 
 ;; A package fetched may take up to 2 GB on disk, its history and files
 ;; together; a larger fetch is ended and its files deleted. Not set: 512 MB.

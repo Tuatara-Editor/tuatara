@@ -44,4 +44,4 @@ Defined here, before any file of the defaults refers to it.")
 (declaim (special *virtual-cursor-keymap* *tuatara-list-keymap* *tuatara-calendar-keymap* *split-chooser-keymap*
                   *rimu-quick-edit-normal-keymap* *rimu-quick-edit-keymap* *rewrite-threshold* *last-search-pattern*
                   *init-file-outcome* *image-formats* *enter-dwim-functions* *cursor-run-keymap* *cursor-keymap*
-                  tuatara-user:*rimu-preview* tuatara-user:*gui-font*))
+                  tuatara-user:*rimu-preview* tuatara-user:*gui-font* tuatara-user:*package-check-signatures*))

@@ -13,7 +13,7 @@
 
 ;;; Kinds and bounds
 
-(defconstant +protocol+ 4
+(defconstant +protocol+ 5
   "The number of the messages' format, said first both ways: a client and an
 editor of different numbers, or of different builds, do not talk.")
 
@@ -21,12 +21,12 @@ editor of different numbers, or of different builds, do not talk.")
   '((:hello 1 1024 1024)
     ;; from a client to the editor
     (:attach 2 1048576 nil) (:facts 3 65536 nil) (:event 4 65536 nil) (:answer 5 65536 nil) (:detach 6 64 nil)
-    (:no-window 7 2048 nil)
+    (:no-window 7 2048 nil) (:picture-taken 8 64 nil)
     ;; from the editor to a client
     (:frame 16 nil 16777216) (:names 17 nil 1048576) (:faces 18 nil 1048576) (:picture 19 nil 64)
     (:title 20 nil 65536) (:selection 21 nil 16777216) (:toggle 22 nil 64) (:raise 23 nil 64)
     (:ask 24 nil 65536) (:exit 25 nil 2048) (:refused 26 nil 4096) (:take-back 27 nil 64) (:settings 28 nil 4096)
-    (:another 29 nil 256))
+    (:another 29 nil 256) (:picture-begin 30 nil 64) (:picture-piece 31 nil 32864) (:picture-forget 32 nil 64))
   "Each kind of message as (NAME CODE FROM-CLIENT FROM-EDITOR): its name, its
 number on the wire, and the most octets it may take as the editor reads it
 from a client and as a client reads it from the editor, NIL where it is never
@@ -42,6 +42,22 @@ sent that way.")
 (defconstant +text-piece+ 60000 "The most octets of text one message from a client carries; more goes in pieces.")
 (defconstant +most-pictures+ 16 "The most pictures a client keeps; both ends let go of the oldest first.")
 (defconstant +most-picture-octets+ 268435456 "The most octets of pixels of one picture.")
+(defconstant +most-far-picture-octets+ 134217728
+  "The most octets of pixels of one picture sent to a client on another machine.")
+(defconstant +most-far-pictures-kept+ 268435456
+  "The most octets of pixels of the pictures a client on another machine keeps at once.")
+(defconstant +most-far-picture-side+ 16384
+  "The most pixels either way of a picture sent to a client on another machine.")
+(defconstant +far-picture-piece+ 32768
+  "The most octets of a picture one message to a client on another machine carries.")
+(defconstant +far-pictures-in-flight+ 131072
+  "How many octets of a picture a client on another machine may have not yet
+taken when another piece is sent: with that piece, at most this and
++FAR-PICTURE-PIECE+ less one stand between a key and what it shows.")
+(defconstant +most-pictures-unpacking+ 4
+  "The most pictures a client on another machine unpacks at once: the one
+coming, and those it was told to forget that are not done yet. Past it, reading
+what the editor sends waits for one to be done.")
 
 (define-condition malformed-message (error)
   ((reason :initarg :reason :reader malformed-message-reason
@@ -936,12 +952,12 @@ SCALES, OVER and PARTS)."
   (put-number box (or (position shape *cursor-shapes*) 0) 1)
   (put-colour box colour))
 
-(defun put-picture-call (box image row column columns rows offset)
-  "Put in BOX the picture IMAGE shown (FRONTEND-PUT-IMAGE with ROW, COLUMN,
-COLUMNS, ROWS and OFFSET), by its number; its pixels go in a message of
-their own (PUT-PICTURE)."
+(defun put-picture-call (box id row column columns rows offset)
+  "Put in BOX the picture numbered ID shown (FRONTEND-PUT-IMAGE with ROW,
+COLUMN, COLUMNS, ROWS and OFFSET); its pixels go in messages of their own
+\(PUT-PICTURE, or for a client on another machine PUT-PICTURE-BEGIN)."
   (put-number box 4 1)
-  (put-number box (image-id image) 4)
+  (put-number box id 4)
   (put-bounded box row +most-rows+)
   (put-bounded box column +most-columns+)
   (put-bounded box columns +most-columns+)
@@ -1042,3 +1058,135 @@ its size says, no more and no less."
                (unless (= count (tuatara.io:read-fd-at fd pixels 0)) (malformed "a picture's pixels cut short"))
                (values (%make-image width height channels pixels id) let-go)))
         (close-descriptors (list fd))))))
+
+;;; Pictures for a client on another machine: a descriptor does not cross ssh, so the pixels go as bytes.
+;;; The pixels are packed by DEFLATE; what a client unpacks is only ever rows of pixels,
+;;; no picture format and nothing that is drawn by a program.
+
+(defun rows-against-above (pixels stride &key back)
+  "PIXELS, a picture's rows of STRIDE octets, in a vector of their own, each
+octet less the octet above it (the first row as it is), which packs much
+smaller; with BACK, changed in place from that again to the pixels."
+  (declare (type tuatara.text:octets pixels) (type (and fixnum (integer 1)) stride))
+  (let* ((length (length pixels))
+         (out (if back pixels (tuatara.text:make-octets length))))
+    (declare (type tuatara.text:octets out) (type fixnum length))
+    (if back
+        (loop for at of-type fixnum from stride below length
+              do (setf (aref out at) (logand 255 (+ (aref out at) (aref out (- at stride))))))
+        (progn
+          (replace out pixels :end2 (min stride length))
+          (loop for at of-type fixnum from stride below length
+                do (setf (aref out at) (logand 255 (- (aref pixels at) (aref pixels (- at stride))))))))
+    out))
+
+(defun packed-picture (image)
+  "The octets IMAGE is sent as to a client on another machine: its rows
+against those above (ROWS-AGAINST-ABOVE), deflated."
+  (let ((pixels (image-pixels image)))
+    (tuatara.io:deflate (rows-against-above (if (typep pixels 'tuatara.text:octets)
+                                                pixels
+                                                (coerce pixels 'tuatara.text:octets))
+                                            (* (image-width image) (image-channels image))))))
+
+(defconstant +first-picture-room+ 65536
+  "How many octets of room a picture coming from another machine is given at
+first: the room grows only as its pieces come.")
+
+(defstruct (arriving-picture (:constructor make-arriving-picture
+                                 (id width height channels total
+                                  &aux (octets (tuatara.text:make-octets (min total +first-picture-room+)))))
+                             (:copier nil))
+  "A picture coming to a client from an editor on another machine: its ID,
+size and CHANNELS, the TOTAL of its packed octets, and OCTETS, the first
+FILLED of them come so far, in order. Once all have come it is unpacked by
+THREAD, unless CANCELLED, told to forget it meanwhile."
+  (id 0 :type (unsigned-byte 32) :read-only t)
+  (width 0 :type fixnum :read-only t)
+  (height 0 :type fixnum :read-only t)
+  (channels 0 :type fixnum :read-only t)
+  (total 0 :type fixnum :read-only t)
+  (octets nil :type tuatara.text:octets)
+  (filled 0 :type fixnum)
+  (cancelled nil)
+  (thread nil))
+
+(setf (documentation 'make-arriving-picture 'function)
+      "An ARRIVING-PICTURE of TOTAL packed octets, given room for the first of them."
+      (documentation 'arriving-picture-p 'function) "True when OBJECT is an ARRIVING-PICTURE."
+      (documentation 'arriving-picture-id 'function) "The number the picture arriving is sent by."
+      (documentation 'arriving-picture-width 'function) "The picture arriving's width in pixels."
+      (documentation 'arriving-picture-height 'function) "The picture arriving's height in pixels."
+      (documentation 'arriving-picture-channels 'function) "The octets of each pixel of the picture arriving."
+      (documentation 'arriving-picture-total 'function) "How many packed octets the picture arriving goes in."
+      (documentation 'arriving-picture-octets 'function) "The packed octets of the picture arriving come so far, and room."
+      (documentation 'arriving-picture-filled 'function) "How many of the picture arriving's packed octets have come."
+      (documentation 'arriving-picture-cancelled 'function) "True when the client was told to forget the picture unpacking."
+      (documentation 'arriving-picture-thread 'function) "The thread unpacking the picture arriving, once it is whole.")
+
+(defun put-picture-begin (box id width height channels total)
+  "Begin sending in BOX the picture numbered ID, WIDTH by HEIGHT pixels of
+CHANNELS octets each, packed in TOTAL octets to follow (PUT-PICTURE-PIECE-OF)."
+  (let ((at (begin-message box :picture-begin)))
+    (put-number box id 4)
+    (put-number box width 4)
+    (put-number box height 4)
+    (put-number box channels 1)
+    (put-number box total 4)
+    (end-message box at)))
+
+(defun take-picture-begin (inbox)
+  "An ARRIVING-PICTURE read from INBOX, as PUT-PICTURE-BEGIN put it, held to
+the size and octets a client takes from another machine before any room is
+made for it. Malformed when past them."
+  (let* ((id (take-number inbox 4))
+         (width (take-bounded inbox 4 1 +most-far-picture-side+ "a picture's width"))
+         (height (take-bounded inbox 4 1 +most-far-picture-side+ "a picture's height"))
+         (channels (take-bounded inbox 1 3 4 "a picture's channels"))
+         (count (* width height channels))
+         ;; packed octets may pass the pixels a little, a block's words stored for what does not pack
+         (total (take-bounded inbox 4 1 (+ count (ash count -12) 4096) "a picture's packed octets")))
+    (message-read inbox)
+    (unless (<= count +most-far-picture-octets+) (malformed "a picture of ~d octets" count))
+    (make-arriving-picture id width height channels total)))
+
+(defun put-picture-piece-of (box id octets start end)
+  "Put in BOX the fields of the next octets of the picture numbered ID: OCTETS
+from START below END, where START is how many were sent before."
+  (put-number box id 4)
+  (put-number box start 4)
+  (put-octets box octets start end))
+
+(defun take-picture-piece (inbox arriving)
+  "Read the next octets of the picture ARRIVING from INBOX, as
+PUT-PICTURE-PIECE-OF put them, in order and within its octets; true when they
+were the last. Malformed for a piece of any other picture or place."
+  (let ((id (take-number inbox 4)) (start (take-number inbox 4)))
+    (unless (= id (arriving-picture-id arriving)) (malformed "a piece of picture ~d, while another comes" id))
+    (unless (= start (arriving-picture-filled arriving)) (malformed "a piece of a picture from octet ~d" start))
+    (let* ((count (- (inbox-stop inbox) (inbox-at inbox)))
+           (total (arriving-picture-total arriving))
+           (end (+ start count)))
+      (unless (and (plusp count) (<= end total)) (malformed "a piece of ~d octets, past its picture" count))
+      (when (> end (length (arriving-picture-octets arriving)))
+        (setf (arriving-picture-octets arriving)
+              (replace (tuatara.text:make-octets (min total (max end (* 2 (length (arriving-picture-octets arriving))))))
+                       (arriving-picture-octets arriving) :end2 start)))
+      (replace (arriving-picture-octets arriving) (inbox-octets inbox)
+               :start1 start :start2 (take-place inbox count) :end2 (inbox-stop inbox))
+      (setf (arriving-picture-filled arriving) end)
+      (= end total))))
+
+(defun arrived-picture (arriving)
+  "The picture ARRIVING, whole, as the IMAGE it stands for: unpacked to
+exactly the pixels its size says and no more. Malformed when it does not
+unpack to that."
+  (let* ((stride (* (arriving-picture-width arriving) (arriving-picture-channels arriving)))
+         (count (* stride (arriving-picture-height arriving)))
+         (pixels (handler-case (tuatara.io:inflate (arriving-picture-octets arriving) :end (arriving-picture-filled arriving)
+                                                                 :limit count :size count)
+                   (tuatara.io:zip-error (condition) (malformed "a picture that does not unpack: ~a" condition)))))
+    (unless (= (length pixels) count) (malformed "a picture of ~d octets, for ~d" (length pixels) count))
+    (%make-image (arriving-picture-width arriving) (arriving-picture-height arriving)
+                 (arriving-picture-channels arriving)
+                 (rows-against-above pixels stride :back t) (arriving-picture-id arriving))))

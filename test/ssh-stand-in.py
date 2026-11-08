@@ -372,7 +372,7 @@ def main():
     environment["PATH"] = server_bin + ":/usr/bin:/bin"
     environment.pop("STAND_IN_CONFIG", None)
     environment.pop("SSH_AUTH_SOCK", None)
-    if "ControlPath" in options:
+    if options.get("ControlPath") not in (None, "none"):
         given = ask({"ControlPath": options["ControlPath"], "-F": "none"},
                     ["session", "agent" if options.get("ForwardAgent") == "yes" else "none"])
         if given == 255:

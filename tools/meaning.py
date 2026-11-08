@@ -37,12 +37,15 @@ A graphics processor makes a first run much quicker. Fedora's llama-cpp is
 processor only, so build llama.cpp with Vulkan in the same toolbox:
 
   toolbox run -c tuatara-ai sudo dnf install cmake gcc-c++ git \
-    vulkan-loader-devel vulkan-headers glslc
+    vulkan-loader-devel vulkan-headers spirv-headers-devel glslc
+  # the next commands run inside the toolbox (toolbox enter tuatara-ai), where cmake and the server run
   cd ~/.local/share/tuatara-ai
   git clone --depth 1 --branch b11819 https://github.com/ggml-org/llama.cpp llama.cpp-b11819
   git -C llama.cpp-b11819 rev-parse HEAD
   # must be 0693dbfb915f33233818373b5f6969396658d02c
-  cmake -S llama.cpp-b11819 -B llama.cpp-b11819/build -DGGML_VULKAN=ON -DCMAKE_BUILD_TYPE=Release
+  cmake -S llama.cpp-b11819 -B llama.cpp-b11819/build \
+    -DGGML_VULKAN=ON -DCMAKE_BUILD_TYPE=Release -DLLAMA_BUILD_UI=OFF -DLLAMA_USE_PREBUILT_UI=OFF \
+    -DLLAMA_UI_GZIP=OFF
   cmake --build llama.cpp-b11819/build --target llama-server -j 24
   llama-server --list-devices   # the card should be listed as Vulkan0
 
@@ -120,7 +123,7 @@ class Embedder:
             self.port = s.getsockname()[1]
         self.process = subprocess.Popen(
             [SERVER, "-m", MODEL, "--embeddings", "--pooling", "last", "--host", "127.0.0.1",
-             "--port", str(self.port), "-c", "8192", "-b", "2048", "-ub", "2048", "-t", THREADS,
+             "--port", str(self.port), "-c", "16384", "-b", "4096", "-ub", "4096", "-t", THREADS,
              "--parallel", "4", "--log-disable"]
             + (["-ngl", "99"] if SERVER != "llama-server" else []),
             stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)

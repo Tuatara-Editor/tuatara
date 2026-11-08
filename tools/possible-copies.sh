@@ -204,9 +204,21 @@ def meaning_module():
     return module
 
 
+# The model reads at most this many characters of a definition (about 2000 tokens of Lisp, well inside a slot of
+# tools/meaning.py's server, which holds 4096).
+MEANING_LONGEST = 6000
+
+
+def signature(text, start):
+    """The lambda list of the definition beginning at START in TEXT, whitespace collapsed, or an empty string."""
+    elements = split_form(text, start)
+    found = next((e for e in elements[2:] if e.startswith("(")), "")
+    return re.sub(r"\s+", " ", found)
+
+
 def meaning_corpus():
-    """A list of (file, name, line) for each definition of the tree, LINE being its name, the first 300 characters of
-    its docstring and its file, the text the model reads."""
+    """A list of (file, name, line) for each definition of the tree, LINE being its name, its lambda list, its whole
+    docstring with whitespace collapsed and its file, cut at MEANING_LONGEST characters: the text the model reads."""
     found = []
     pattern = re.compile(r"^\((" + "|".join(MEANING_DEFINERS) + r")\s+(\(setf\s+\S+?\)|[^\s()]+)", re.M)
     for path in source_files(False):
@@ -214,7 +226,8 @@ def meaning_corpus():
         for match in pattern.finditer(text):
             doc = re.sub(r"\s+", " ", docstring(text, match.start())).strip()
             name = match.group(2).lower()
-            found.append((path, name, f"{name}  {doc[:300]}  {path}"))
+            line = f"{name}  {signature(text, match.start())}  {doc}"
+            found.append((path, name, f"{line[:MEANING_LONGEST - len(path) - 2]}  {path}"))
     return found
 
 
@@ -481,6 +494,8 @@ def main(argv):
     scale = RAREST / math.log(len(entries))
     weight = {t: scale * math.log(len(entries) / n) for t, n in frequency.items()}
     added = added_definitions(base, head)
+    if "--meaning" in options and not added:
+        print(f"no definitions added since {base}")
     corpus = meaning_corpus() if "--meaning" in options and added else []
     meant = by_meaning(corpus, [f"{name}: {doc}" for _, name, doc in added], MEANING_SHOWN) if corpus else None
     for number, (path, name, doc) in enumerate(added):

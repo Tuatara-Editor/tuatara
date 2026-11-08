@@ -36,7 +36,8 @@ language, its formatter and servers as LANGUAGE-TOOLS-WORDS says them;
 DRAWING, for each way the window can be drawn, (RENDERER . FIGURES) as
 TUATARA.FRONTEND:FRONTEND-MEASURE-DRAWING gives them, and RENDERER the
 way the settings ask for (*GUI-RENDERER*); EVIDENCE, what is said of the
-evidence folders (EVIDENCE-HEALTH-LINES)."
+evidence folders (EVIDENCE-HEALTH-LINES); NEEDS, the programs Tuatara and
+each package loaded look for (HEALTH-NEEDS)."
   (languages '() :read-only t)
   (grammars '())
   (results '())
@@ -46,7 +47,8 @@ evidence folders (EVIDENCE-HEALTH-LINES)."
   (tools '())
   (drawing '())
   (renderer nil)
-  (evidence '()))
+  (evidence '())
+  (needs '()))
 
 (setf (documentation 'health-check-p 'function) "True when OBJECT is a HEALTH-CHECK.")
 
@@ -137,8 +139,48 @@ them to start, and in a window, how it draws each way it can
              (health-check-renderer check)
              in-use
              (health-check-evidence check)
-             (evidence-health-lines)))
+             (evidence-health-lines)
+             (health-check-needs check)
+             (health-needs)))
      :name "tuatara health"))))
+
+;;; The programs wanted
+
+(defun health-needs-missing (programs)
+  "The ones of PROGRAMS not found on the PATH (TUATARA.IO:FIND-PROGRAM), as
+words: each is a program's name, or a list of names of which any one will do,
+said as \"a or b\"."
+  (loop for spec in programs
+        for names = (alexandria:ensure-list spec)
+        unless (some #'tuatara.io:find-program names)
+          collect (format nil "~{~a~^ or ~}" names)))
+
+(declaim (special tuatara.packages:*package-needs*))
+
+(defun health-needs ()
+  "What Tuatara and each package loaded look for in the system, as sections
+\(TITLE . ROWS); each row is (NAME WHAT WEIGHT MISSING INSTALL): WEIGHT
+:REQUIRED, :RECOMMENDED or :SUGGESTED, MISSING the programs not found (NIL
+when all are) and INSTALL what to do about them. Tuatara's come from
+*OUTSIDE-PROGRAMS* and *SYSTEM-PROGRAMS*, a package's from
+TUATARA.PACKAGES:DECLARE-PACKAGE-NEEDS. Only looks for programs, runs none."
+  (cons (cons "Tuatara"
+              (loop for (key . entry) in (append *outside-programs* *system-programs*)
+                    for found = (getf entry :found)
+                    collect (list (getf entry :name) (getf entry :what)
+                                  (if (eq (getf entry :weight) :recommends) :recommended :suggested)
+                                  (if found
+                                      (and (not (funcall found)) (list (getf entry :name)))
+                                      (health-needs-missing (getf entry :programs)))
+                                  (outside-program-install-words key))))
+        (loop for (name . needs) in (reverse tuatara.packages:*package-needs*)
+              collect (cons (format nil "Package ~a" name)
+                            (loop for need in needs
+                                  for programs = (alexandria:ensure-list (getf need :programs))
+                                  collect (list (format nil "~{~a~^ or ~}" programs) (getf need :what)
+                                                (if (getf need :required) :required :suggested)
+                                                (health-needs-missing (list programs))
+                                                (getf need :install)))))))
 
 ;;; The report's text
 
@@ -262,6 +304,28 @@ editor's own buffers, never a file's."
   (or (and *editor* (ignoring-errors-reported ("measuring the window") (tuatara.display:window-width (current-window))))
       100))
 
+(defun write-health-needs (sections)
+  "Write the programs wanted, SECTIONS as HEALTH-NEEDS gives them, into
+*HEALTH-PIECES*: for Tuatara and each package, the required, the recommended
+and the suggested ones apart, each found or missing with what to install."
+  (health-heading "Programs")
+  (loop for (title . rows) in sections
+        do (health-put title :header-line)
+           (health-put (format nil "~%"))
+           (loop for (weight label) in '((:required "Required") (:recommended "Recommended") (:suggested "Suggested"))
+                 for those = (remove weight rows :key #'third :test-not #'eq)
+                 when those
+                   do (health-put (format nil "  ~a~%" label))
+                      (loop for (name what nil missing install) in those
+                            do (health-put (if missing "    ✘ " "    ✓ ") (cond ((null missing) :list-good)
+                                                                                 ((eq weight :required) :list-bad)
+                                                                                 (t :list-dim)))
+                               (health-put (format nil "~a: ~a" name what))
+                               (when missing
+                                 (health-put (format nil " (not found: ~{~a~^, ~}~@[; ~a~])" missing install)))
+                               (health-put (format nil "~%"))))
+           (health-put (format nil "~%"))))
+
 (defun write-health-report (check)
   "Write the report of CHECK, which is done, into *HEALTH-PIECES*."
   (let* ((languages (health-check-languages check))
@@ -293,6 +357,9 @@ editor's own buffers, never a file's."
                             (*syntax-helper-unconfined*
                              "no sandbox (see above): grammars run, not shut in, for the projects you trust only; nothing else is parsed")
                             (t "no sandbox (see above): no text is parsed or coloured")))
+      (unless tuatara-user:*package-check-signatures*
+        (fact "Packages" "signatures are not checked (*package-check-signatures*): every version of every source is taken"
+              :list-bad))
       (loop for (label . text) in (and frontend (tuatara.frontend:frontend-health frontend))
             do (fact label text))
       (loop for words in (drawing-words (health-check-drawing check) (health-check-renderer check))
@@ -315,6 +382,7 @@ editor's own buffers, never a file's."
     (dolist (line (health-check-evidence check))
       (health-put line)
       (health-put (format nil "~%")))
+    (write-health-needs (health-check-needs check))
     ;; the languages
     (health-heading "Languages")
     (let ((widths (list* 14 7 (append (loop for (kind heading) in *health-rules*

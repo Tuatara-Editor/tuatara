@@ -10,18 +10,34 @@
 
 (in-package #:tuatara.defaults)
 
+(defun org-hanging-columns (buffer line-start)
+  "How far in the text of the line of BUFFER beginning at LINE-START begins
+once its indentation, its list bullet and its checkbox are passed: where the
+rows a long line wraps into line up, at most 20, so that a deep list leaves
+room for its text. 0 for a headline, or a line that is not set in."
+  (let ((head (buffer-line-head buffer line-start)))
+    (if (and (plusp (length head)) (char/= (char head 0) #\*))
+        (min 20 (hanging-columns head))
+        0)))
+
 (defun org-line-prefix (buffer line-start continuation)
   "What the indented view shows before the line of BUFFER beginning at
 LINE-START (a row CONTINUATION of it when true): before a headline of level N,
 N - 1 columns, its hidden stars making the rest; before the text under it,
-2N columns; before what is above the first headline, nothing."
-  (when (org-indented-p buffer)
-    (multiple-value-bind (begin level) (org-headline-at-or-before buffer line-start)
-      (when begin
-        (make-string (if (and (= begin line-start) (not continuation))
-                         (1- level)
-                         (* 2 level))
-                     :initial-element #\Space)))))
+2N columns; before what is above the first headline, nothing. The rows a
+long line wraps into (\\[soft-wrap-mode]) are set in as far as the text of a
+list item begins, after its bullet and its checkbox."
+  (let ((base (when (org-indented-p buffer)
+                (multiple-value-bind (begin level) (org-headline-at-or-before buffer line-start)
+                  (when begin
+                    (make-string (if (and (= begin line-start) (not continuation))
+                                     (1- level)
+                                     (* 2 level))
+                                 :initial-element #\Space)))))
+        (hang (if continuation (org-hanging-columns buffer line-start) 0)))
+    (if (plusp hang)
+        (concatenate 'string base (make-string hang :initial-element #\Space))
+        base)))
 
 (defvar *org-level-heights* (cons -1 nil)
   "Whether any headline level's face has a :height, as of the faces'

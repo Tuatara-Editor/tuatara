@@ -2507,3 +2507,24 @@ buffer of FILE killed first."
                      "~s" texts)
                (false (find-if (lambda (text) (search "reading the pattern" text)) texts) "~s" texts)))
         (drain-debug-reports)))))
+
+(define-test (org agenda-done-task-closing-only)
+  ;; in log mode a done all-day task shows its closing line alone; with an open sub-task, a repeat or a time of
+  ;; day its scheduled line stays
+  (uiop:with-temporary-file (:pathname path :type "org")
+    (with-open-file (o path :direction :output :if-exists :supersede :external-format :utf-8)
+      (format o "* DONE Plain~%CLOSED: [2026-10-27 Tue 08:00] SCHEDULED: <2026-10-27 Tue>~%~
+                 * DONE Boxes~%CLOSED: [2026-10-27 Tue 08:00] SCHEDULED: <2026-10-27 Tue>~%- [ ] Left~%~
+                 * DONE Parent~%CLOSED: [2026-10-27 Tue 08:00] SCHEDULED: <2026-10-27 Tue>~%** TODO Child~%~
+                 * DONE Timed~%CLOSED: [2026-10-27 Tue 08:00] SCHEDULED: <2026-10-27 Tue 14:00>~%~
+                 * DONE Ticked~%CLOSED: [2026-10-27 Tue 08:00] SCHEDULED: <2026-10-27 Tue>~%- [X] Done~%"))
+    (let* ((tuatara.defaults::*org-now* (encode-universal-time 0 0 10 27 10 2026))
+           (rows (mapcar (lambda (row) (list (second row) (sixth row)))
+                         (org-agenda-test-rows (tuatara.defaults::org-agenda-day (tuatara.dates:day-number 2026 10 27)
+                                                                                 :files (list (namestring path)) :log t)))))
+      (true (member '("closed" "DONE Plain") rows :test #'equal) "~s" rows)
+      (false (member '("scheduled" "Plain") rows :test #'equal) "~s" rows)
+      (true (member '("scheduled" "Boxes") rows :test #'equal) "~s" rows)
+      (true (member '("scheduled" "Parent") rows :test #'equal) "~s" rows)
+      (true (member '("scheduled" "Timed") rows :test #'equal) "~s" rows)
+      (false (member '("scheduled" "Ticked") rows :test #'equal) "~s" rows))))

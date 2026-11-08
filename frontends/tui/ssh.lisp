@@ -180,11 +180,12 @@ while it is; HOME, the home folder there, once the Tuatara there said it."
   "Where the socket of LINK's own ssh-agent is here."
   (tuatara.io:path-join (ssh-link-folder link) "a"))
 
-(defun ssh-arguments (link &key master session agent (operation nil operation-p) forward remote command)
+(defun ssh-arguments (link &key master session agent (operation nil operation-p) forward remote command
+                               ask-host)
   "The arguments of ssh for LINK: the control socket's, with MASTER the
 connection's own, held until it is told to exit or the client ends, with no
-command (*SSH-OPTIONS*, the agent forwarded LINK's own when it has one); with
-SESSION, COMMAND, a list of words, run over the connection, reading nothing
+command (*SSH-OPTIONS*, the agent forwarded LINK's own when it has one, a
+machine whose key ssh has not seen asked about with ASK-HOST); with SESSION, COMMAND, a list of words, run over the connection, reading nothing
 when SESSION is :QUIET, no ssh configuration read and no question asked
 should the connection be gone, AGENT asking for the agent there for it; or
 OPERATION (\"forward\", \"cancel\", \"exit\") asked of the connection,
@@ -196,8 +197,11 @@ COMMAND, after --."
                                                          "%" (tuatara.io:path-join (ssh-link-folder link) "c") "%%")))
           (when master
             (list* "-N" "-o" "ControlMaster=yes" "-o" "ControlPersist=no"
-                   (tuatara.defaults::ssh-option-arguments
-                    (and (ssh-link-agent link) (format nil "ForwardAgent=~a" (ssh-link-agent-socket link))))))
+                   ;; ssh takes the first of an option given twice
+                   (append (and ask-host (list "-o" "StrictHostKeyChecking=ask"))
+                           (tuatara.defaults::ssh-option-arguments
+                            (and (ssh-link-agent link)
+                                 (format nil "ForwardAgent=~a" (ssh-link-agent-socket link)))))))
           (when session
             (append (and (eq session :quiet) (list "-n"))
                     (list* "-F" "none" "-o" "BatchMode=yes"
@@ -484,9 +488,10 @@ is named to the daemon."
                               (tuatara.defaults::run-bounded
                                (ssh-link-program link)
                                (ssh-arguments link :session t
-                                                   :command (list "tuatara" (format nil "--receive-file=~d:~a/~a" size
-                                                                                    (string-right-trim "/" folder)
-                                                                                    (dropped-name path))))
+                                                   :command (list (link-tuatara link)
+                                                                  (format nil "--receive-file=~d:~a/~a" size
+                                                                          (string-right-trim "/" folder)
+                                                                          (dropped-name path))))
                                :input input :seconds (+ 60 (floor size 100000)))
                             (let ((there (and (eql code 0) (uiop:string-prefix-p "dropped " said)
                                               (string-right-trim '(#\Newline) (subseq said 8)))))
@@ -603,24 +608,38 @@ before its folder is deleted."
           (unless opened (close-ssh-link link)))
         opened))))
 
+(defun master-asker (&key (terminal (terminal-p 0)) (window (tuatara.defaults::ssh-askpass-window-p)))
+  "How the ssh holding a connection can ask you what it needs: :TERMINAL with
+one to ask on (TERMINAL true), else the askpass program WINDOW names, a
+string, on the desktop; NIL when nobody can answer it."
+  (cond (terminal :terminal)
+        (window window)))
+
 (defun start-master (link)
   "Start the ssh holding LINK's connection, a process of this client's
 that ends with it, killed or not (setpriv --pdeathsig), and every forward
-with it; ssh asks for a password or passphrase on the terminal, as it does,
-what it says kept in LINK's folder. NIL once its control socket is there;
-else why not, in words, and what ssh said, as two values."
+with it; ssh asks for a password or passphrase, or about a machine it has not
+seen, where you can answer (MASTER-ASKER), what it says kept in LINK's folder.
+NIL once its control socket is there; else why not, in words, and what ssh
+said, as two values."
   (let* ((host (ssh-link-host link))
          (control (tuatara.io:path-join (ssh-link-folder link) "c"))
-         (said (tuatara.io:path-join (ssh-link-folder link) "e")))
+         (said (tuatara.io:path-join (ssh-link-folder link) "e"))
+         (asker (master-asker)))
     (flet ((said () (or (tuatara.runtime:ignoring-errors-reported ("reading what ssh said")
                           (tuatara.text:lenient-string
                            (tuatara.io:file-octets said :limit tuatara.io:*program-said-limit*)))
                         "")))
       (setf (ssh-link-master link)
             (handler-case
-                (tuatara.io:start-program (cons (ssh-link-program link) (ssh-arguments link :master t))
+                (tuatara.io:start-program (cons (ssh-link-program link)
+                                                (ssh-arguments link :master t :ask-host (and asker t)))
                                           :input t :error said :if-error-exists :supersede :with-editor t
-                                          :environment (tuatara.defaults::ssh-environment))
+                                          :environment
+                                          (apply #'tuatara.defaults::ssh-environment
+                                                 (and (stringp asker)
+                                                      (list (format nil "SSH_ASKPASS=~a" asker)
+                                                            "SSH_ASKPASS_REQUIRE=force"))))
               (tuatara.runtime:refusal (condition)
                 (return-from start-master (format nil "ssh's connection to ~a is not made: ~a" host condition)))))
       (let ((master (ssh-link-master link)))
@@ -642,6 +661,31 @@ machine whose key ssh does not know yet is refused and how to check it."
                refused: connect once with ssh ~a and check its key~])"
           host (search "host key" said :test #'char-equal) host))
 
+(defun link-tuatara (link)
+  "The tuatara to run on LINK's machine: the one its trust names, else the one on the PATH there."
+  (or (getf (ssh-link-permissions link) :program) "tuatara"))
+
+(defun far-version-words (link)
+  "What the tuatara found on LINK's machine and its version are, asked over
+LINK's connection, 10 seconds at most, in words cleaned to be shown, as
+/usr/bin/tuatara on HOST is 0.90.14; this is 0.90.17; NIL when it does not
+say, or is this version, the refusal then being about something else."
+  (multiple-value-bind (code said)
+      (run-ssh link (ssh-arguments link :session :quiet
+                                        :command (let ((program (link-tuatara link)))
+                                                   (list (format nil "command -v ~a; ~a --version" program program))))
+               :seconds 10)
+    (when (eql code 0)
+      (let* ((lines (uiop:split-string said :separator '(#\Newline)))
+             (place (and (first lines) (shown (tuatara.frontend:shown-words (first lines)))))
+             (version (and (second lines)
+                           (nth-value 1 (cl-ppcre:scan-to-strings "Tuatara ([0-9A-Za-z.+-]{1,40})" (second lines))))))
+        (when (and place (plusp (length place)) (<= (length place) 200) version
+                   (string/= (aref version 0) (tuatara:version)))
+          (format nil "~a on ~a is ~a; this is ~a"
+                  place (ssh-link-host link) (aref version 0)
+                  (tuatara:version)))))))
+
 (defun connect-ssh-link (link name start)
   "Make LINK's connection for OPEN-SSH-LINK, as NAME and START say: its own
 agent started first when its machine is trusted with one, the connection
@@ -662,11 +706,14 @@ as two values."
       (when why (return-from connect-ssh-link (values why said))))
     (multiple-value-bind (code said complained)
         (run-ssh link (ssh-arguments link :session :quiet :agent agent
-                                          :command (list* "tuatara" (format nil "--daemon-socket=~a" name)
+                                          :command (list* (link-tuatara link) (format nil "--daemon-socket=~a" name)
                                                           (and start (list "--start"))))
                  :ask t)
       (let ((why (link-refusal host code said name)))
-        (when why (return-from connect-ssh-link (values why complained))))
+        (when why
+          (let ((found (and (eql (read-daemon-report said) nil) (integerp code) (not (member code '(127 255)))
+                            (far-version-words link))))
+            (return-from connect-ssh-link (values (or found why) complained)))))
       (let ((report (read-daemon-report said)))
         (setf (ssh-link-home link) (getf report :home))
         (when agent

@@ -14,7 +14,7 @@
                 #:ask-project-trust #:buffer-in-mode #:buffer-private-folder #:check-not-saving #:column-text
                 #:commands-for-buffers #:commands-for-mode #:conflict-look-through #:delete-private-folder
                 #:diff-files #:diff-mode #:drop-selection #:entry-lines #:entry-member #:file-metadata
-                #:folder-holds-evidence-p #:follow-directories-for #:forget-abandoned-folders #:fresh-made-buffer
+                #:folder-holds-evidence-p #:ssh-askpass-window-p #:follow-directories-for #:forget-abandoned-folders #:fresh-made-buffer
                 #:git-commit-mode #:git-rebase-mode #:goto-shown #:kill-text #:killed-job-buffer-p #:rimu-archive-list
                 #:list-entry-at #:list-folded #:list-section-at #:list-step-entry #:list-toggle-all-folds
                 #:list-toggle-fold #:make-owned-folder #:make-rimu-listing #:marked-directory #:new-private-folder

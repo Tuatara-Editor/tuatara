@@ -19,7 +19,7 @@ Lisp package uses this one; TUATARA-USER, which init files are read in, does too
   (:documentation "The package user configuration files are read in: BIND-KEY and UNBIND-KEY are
 available unqualified, and the public API of TUATARA is used.")
   (:export #:bind-key #:unbind-key #:define-recorded-keys #:set-face #:load-theme #:load-package #:define-theme #:define-named-pattern
-           #:package-source #:load-package-file #:package-file #:*package-ask-before-loading* #:*package-sources* #:*light-theme* #:*dark-theme* #:*startup-buffer* #:*auto-scratch-buffers*
+           #:package-source #:load-package-file #:package-file #:*package-ask-before-loading* #:*package-check-signatures* #:*package-sources* #:*light-theme* #:*dark-theme* #:*startup-buffer* #:*auto-scratch-buffers*
            #:set-colouring #:set-indentation
            ;; for Lisp typed at M-:, in *lisp-scratch* and in the init file, the basics of
            ;; working on buffers and their text; positions are characters counted from 1
@@ -82,7 +82,7 @@ available unqualified, and the public API of TUATARA is used.")
            #:*journal-directory* #:*journal-keyword* #:*journal-title-format* #:*journal-interval*
            #:*journal-file-type* #:*journal-file-name* #:*journal-org-header*
            ;; the terminal
-           #:*kitty-keyboard* #:*terminal-editor-keys* #:*terminal-paste-keys* #:*terminal-title-max*
+           #:*kitty-keyboard* #:*terminal-send-escape* #:*terminal-editor-keys* #:*terminal-paste-keys* #:*terminal-title-max*
            #:*terminal-compress-after* #:*terminal-picture-memory* #:*terminal-place* #:*terminal-size*
            #:*terminal-width* #:*terminal-program* #:*terminal-scrollback*
            ;; marks, places kept, input methods, help windows and Escape
@@ -113,7 +113,7 @@ available unqualified, and the public API of TUATARA is used.")
            ;; pairs of delimiters
            #:*pair-delimiters* #:*electric-pair-mode* #:*electric-pair-typing* #:*electric-pair-safe-exclusions*
            ;; cursors
-           #:*cursors-limit* #:*modal-editing* #:*mode-line-tuatara* #:*rectangle-cursors-limit* #:*split-limit-ask* #:*split-limit* #:*tuatara-normal-tab-modes*
+           #:*cursors-limit* #:*modal-editing* #:*insert-escape-keys* #:*mode-line-tuatara* #:*rectangle-cursors-limit* #:*split-limit-ask* #:*split-limit* #:*tuatara-normal-tab-modes*
            ;; the window frontend
            #:*gui-font* #:*gui-renderer* #:*gui-title* #:*gui-padding* #:*window-colours-from-desktop* #:*tui-padding* #:*tui-pictures* #:*tui-mouse* #:*tui-colours* #:*follow-desktop-style* #:*open-dropped-files-safely*
            #:*safe-directories* #:*open-binary-files-safely* #:*evidence-folders*

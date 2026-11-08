@@ -119,7 +119,7 @@ OUTBOX (*TERMINAL-REPLY-LIMIT*)."
   (lock (sb-thread:make-mutex :name "terminal"))
   (input-lock (sb-thread:make-mutex :name "terminal input"))
   (turn (sb-thread:make-waitqueue :name "terminal turn"))
-  wanted changed closed reader writer bracketed-paste-p scrolls-by-keys-p
+  wanted changed closed reader writer bracketed-paste-p scrolls-by-keys-p alternate-screen-p
   (outbox (sb-concurrency:make-mailbox :name "terminal input"))
   (replies 0 :type sb-ext:word)
   wake (columns 80 :type fixnum) (rows 24 :type fixnum))
@@ -290,25 +290,68 @@ when the library cannot be loaded."
           (tuatara.runtime:make-guarded-thread (lambda () (write-program-input emulator)) :name "tuatara terminal writer" :niceness 0))
     emulator))
 
+(defparameter +leaving-the-other-screen+
+  (coerce (list 27 91 63 49 48 52 57 108) '(vector (unsigned-byte 8)))
+  "The octets of the sequence that leaves the alternate screen and puts the cursor back (ESC [ ? 1 0 4 9 l).")
+
+(defun write-to-library (emulator buffer count leaving)
+  "Give the terminal library of EMULATOR the COUNT octets at BUFFER, a pointer,
+but for a sequence LEAVING, a pointer to +LEAVING-THE-OTHER-SCREEN+, that comes
+while the alternate screen is not shown: a program that says it leaves it
+without having gone there (a login's logout does) would else put the cursor
+back where it was saved long ago, inside the text. The start of such a
+sequence at the very end is kept: moved to the start of BUFFER, its length
+returned, for the next read to go on after it."
+  (let ((terminal (emulator-terminal emulator)) (start 0) (size (length +leaving-the-other-screen+)))
+    (flet ((pass (from to)
+             (when (< from to)
+               (foreign-call "ghostty_terminal_vt_write" sb-alien:void (sb-sys:system-area-pointer terminal)
+                             (sb-sys:system-area-pointer (sb-sys:sap+ buffer from))
+                             ((sb-alien:unsigned 64) (- to from))))))
+      (loop
+        (let ((found (sb-alien:alien-funcall
+                      (sb-alien:extern-alien "memmem" (function sb-sys:system-area-pointer sb-sys:system-area-pointer
+                                                                sb-alien:unsigned-long sb-sys:system-area-pointer
+                                                                sb-alien:unsigned-long))
+                      (sb-sys:sap+ buffer start) (- count start) leaving size)))
+          (when (zerop (sb-sys:sap-int found)) (return))
+          (let ((at (sb-sys:sap- found buffer)))
+            (pass start at)
+            (when (eql (library-size terminal (vt :data-active-screen)) (vt :screen-alternate))
+              (pass at (+ at size)))
+            (setf start (+ at size)))))
+      (let ((kept (loop for length from (min (1- size) (- count start)) downto 1
+                        when (loop for i below length
+                                   always (= (sb-sys:sap-ref-8 buffer (+ (- count length) i))
+                                             (sb-sys:sap-ref-8 leaving i)))
+                          return length
+                        finally (return 0))))
+        (pass start (- count kept))
+        (dotimes (i kept)
+          (setf (sb-sys:sap-ref-8 buffer i) (sb-sys:sap-ref-8 buffer (+ (- count kept) i))))
+        kept))))
+
 (defun read-program-output (emulator)
   "What EMULATOR's reader thread does: read the program's output a block at a
 time and give it to the library, stepping aside while the editor wants a
 frame, and keep what the program asks of keys, the mouse and pastes
 (SYNC-INPUT-STATE); wake the editor when something changed after quiet. Ends
 when the program's side of the pseudo-terminal is gone."
-  (let ((fd (emulator-fd emulator)))
+  (let ((fd (emulator-fd emulator)) (held 0))
     (unwind-protect
-         (tuatara.io:with-foreign-memory (buffer *terminal-read-size*)
+         (tuatara.io:with-foreign-memory (buffer (+ *terminal-read-size* (length +leaving-the-other-screen+)))
+           (loop for octet across +leaving-the-other-screen+ for at from *terminal-read-size*
+                 do (setf (sb-sys:sap-ref-8 buffer at) octet))
            (loop
-             (let ((got (loop (multiple-value-bind (got errno) (sb-unix:unix-read fd buffer *terminal-read-size*)
+             (let ((got (loop (multiple-value-bind (got errno) (sb-unix:unix-read fd (sb-sys:sap+ buffer held)
+                                                                                  (- *terminal-read-size* held))
                                 ;; a signal (a program the sandbox ran ending) is no end
                                 (unless (and (null got) (eql errno sb-unix:eintr)) (return got))))))
                (when (or (null got) (<= got 0)) (return))
                (sb-thread:with-mutex ((emulator-lock emulator))
                  (loop while (emulator-wanted emulator)
                        do (sb-thread:condition-wait (emulator-turn emulator) (emulator-lock emulator)))
-                 (foreign-call "ghostty_terminal_vt_write" sb-alien:void (sb-sys:system-area-pointer (emulator-terminal emulator))
-                               (sb-sys:system-area-pointer buffer) ((sb-alien:unsigned 64) got))
+                 (setf held (write-to-library emulator buffer (+ held got) (sb-sys:sap+ buffer *terminal-read-size*)))
                  (when (emulator-placements emulator) (keep-placements-within-bounds emulator))
                  (sync-input-state emulator))
                (setf (emulator-last-output emulator) (get-internal-real-time))
@@ -397,13 +440,14 @@ the pager less. To be called holding the library, once its output has been
 given to it, so that typing never waits for the library."
   (let ((terminal (emulator-terminal emulator)))
     (sb-thread:with-mutex ((emulator-input-lock emulator))
-      (foreign-call "ghostty_key_encoder_setopt_from_terminal" sb-alien:void
+      (foreign-call "ghostty_key_encoder_set_from_terminal" sb-alien:void
                     (sb-sys:system-area-pointer (emulator-encoder emulator)) (sb-sys:system-area-pointer terminal))
-      (foreign-call "ghostty_mouse_encoder_setopt_from_terminal" sb-alien:void
+      (foreign-call "ghostty_mouse_encoder_set_from_terminal" sb-alien:void
                     (sb-sys:system-area-pointer (emulator-mouse-encoder emulator)) (sb-sys:system-area-pointer terminal)))
     (setf (emulator-bracketed-paste-p emulator) (emulator-mode-p emulator (vt :mode-bracketed-paste))
-          (emulator-scrolls-by-keys-p emulator) (and (eql (library-size terminal (vt :data-active-screen))
-                                                          (vt :screen-alternate))
+          (emulator-alternate-screen-p emulator) (eql (library-size terminal (vt :data-active-screen))
+                                                      (vt :screen-alternate))
+          (emulator-scrolls-by-keys-p emulator) (and (emulator-alternate-screen-p emulator)
                                                      (emulator-mode-p emulator (vt :mode-alternate-scroll))))))
 
 (defun library-mods (ctrl meta shift)
@@ -456,7 +500,7 @@ means something to a terminal."
           (foreign-call "ghostty_key_event_set_unshifted_codepoint" sb-alien:void (sb-sys:system-area-pointer event)
                         ((sb-alien:unsigned 32) (if (characterp base) (char-code (char-downcase base)) 0)))
           (sb-sys:with-pinned-objects (utf8)
-            (foreign-call "ghostty_key_event_set_utf8" sb-alien:void (sb-sys:system-area-pointer event)
+            (foreign-call "tuatara_terminal_key_text" sb-alien:void (sb-sys:system-area-pointer event)
                           (sb-sys:system-area-pointer (if utf8 (sb-sys:vector-sap utf8) (tuatara.io:null-pointer)))
                           ((sb-alien:unsigned 64) (if utf8 (1- (length utf8)) 0)))
             (send-encoded emulator 128
@@ -616,7 +660,7 @@ index of the palette, #rrggbb, or NIL for the terminal's own, ATTRIBUTES among
   "The colour code of the style at STYLE whose colour starts at OFFSET: of an
 index of the 256-colour palette (the terminal's own, as the frontend shows it),
 of red, green and blue, or 0 for none."
-  (let ((tag (sb-sys:signed-sap-ref-32 style (+ offset (vt :color-tag))))
+  (let ((tag (sb-sys:sap-ref-8 style (+ offset (vt :color-tag))))
         (value (sb-sys:sap+ style (+ offset (vt :color-value)))))
     (cond ((= tag (vt :color-palette)) (palette-code (sb-sys:sap-ref-8 value 0)))
           ((= tag (vt :color-rgb)) (sap-rgb-code value))
@@ -638,20 +682,20 @@ for a cell of no look. STYLE and COLOUR are places for the library to fill."
   (let ((fg 0) (bg 0) (attributes 0))
     (setf (sb-sys:sap-ref-8 colour 0) 0)
     (when (and (cells-get cells (vt :cell-has-styling) colour) (/= 0 (sb-sys:sap-ref-8 colour 0)))
-      (setf (sb-sys:sap-ref-64 style 0) (vt :style-size))
       (when (cells-get cells (vt :cell-style) style)
         (setf fg (style-colour style (vt :style-fg))
               bg (style-colour style (vt :style-bg)))
-        (macrolet ((on (offset attribute)
-                     `(when (/= 0 (sb-sys:sap-ref-8 style ,offset)) (setf attributes (logior attributes (look-bit ,attribute))))))
-          (on (vt :style-bold) :bold)
-          (on (vt :style-italic) :italic)
-          (on (vt :style-faint) :faint)
-          (on (vt :style-inverse) :inverse)
-          (on (vt :style-invisible) :invisible)
-          (on (vt :style-strikethrough) :strike))
-        (when (/= 0 (sb-sys:signed-sap-ref-32 style (vt :style-underline)))
-          (setf attributes (logior attributes (look-bit :underline))))))
+        (let ((flags (sb-sys:sap-ref-16 style (vt :style-flags))))
+          (macrolet ((on (flag attribute)
+                       `(when (logtest flags (vt ,flag)) (setf attributes (logior attributes (look-bit ,attribute))))))
+            (on :style-flag-bold :bold)
+            (on :style-flag-italic :italic)
+            (on :style-flag-faint :faint)
+            (on :style-flag-inverse :inverse)
+            (on :style-flag-invisible :invisible)
+            (on :style-flag-strikethrough :strike))
+          (when (logtest flags (vt :style-underline-mask))
+            (setf attributes (logior attributes (look-bit :underline)))))))
     ;; a ground given to the cell itself, as erasing with a colour leaves it
     (when (and (zerop bg) (cells-get cells (vt :cell-bg-color) colour))
       (setf bg (sap-rgb-code colour)))
@@ -685,7 +729,7 @@ once, else nothing is taken and the value is :BUSY."
            (iterator (emulator-iterator emulator))
            (cells (emulator-cells emulator)))
       (tuatara.io:with-foreign-memory (scratch (+ 64 (vt :style-size) 64))
-        (tuatara.io:with-foreign-memory (codes (* 4 +cell-codes-room+))
+        (tuatara.io:with-foreign-memory (codes (+ (* 4 +cell-codes-room+) 24))
           (let ((style (sb-sys:sap+ scratch 16)) (colour (sb-sys:sap+ scratch 32)) (text (make-string-output-stream)))
              (foreign-call "ghostty_render_state_update" sb-alien:int (sb-sys:system-area-pointer rs)
                       (sb-sys:system-area-pointer (emulator-terminal emulator)))
@@ -738,7 +782,12 @@ once, else nothing is taken and the value is :BUSY."
                                               ;; garble screens): one stand-in, never more than the room written
                                               ((> n +cell-codes-room+) (write-char (code-char #xfffd) text))
                                               (t
-                                                  (cells-get cells (vt :cell-graphemes-buf) codes)
+                                                  ;; the library's buffer of code points, after the room for them
+                                                  (let ((buffer (sb-sys:sap+ codes (* 4 +cell-codes-room+))))
+                                                    (setf (sb-sys:sap-ref-sap buffer 0) codes
+                                                          (sb-sys:sap-ref-64 buffer 8) +cell-codes-room+
+                                                          (sb-sys:sap-ref-64 buffer 16) 0)
+                                                    (cells-get cells (vt :cell-graphemes-buf) buffer))
                                                   (setf marks nil)
                                                   (if (= (sb-sys:sap-ref-32 codes 0) tuatara.frontend:+kitty-placeholder+)
                                                       ;; a cell of a picture in text: a space, the picture drawn over it
@@ -949,12 +998,15 @@ pictures on."
 
 (defun image-value (image-handle what &optional (bits 32))
   "What WHAT (an :image- value of the library's layout) is of the picture the
-library keeps as IMAGE-HANDLE, a number of BITS bits (32 or 64); NIL when it
+library keeps as IMAGE-HANDLE, a number of BITS bits (32 or 64), or the address
+of its pixels (the first 64 bits of a string the library gives); NIL when it
 gives none. To be called holding the library."
-  (sb-alien:with-alien ((place (sb-alien:unsigned 64) 0))
+  (sb-alien:with-alien ((place (array (sb-alien:unsigned 64) 2)))
+    (setf (sb-alien:deref place 0) 0 (sb-alien:deref place 1) 0)
     (and (eql (vt :success) (foreign-call "ghostty_kitty_graphics_image_get" sb-alien:int (sb-sys:system-area-pointer image-handle)
-                                          (sb-alien:int what) (sb-sys:system-area-pointer (sb-alien:alien-sap (sb-alien:addr place)))))
-         (if (= bits 32) (ldb (byte 32 0) place) place))))
+                                          (sb-alien:int what) (sb-sys:system-area-pointer (sb-alien:alien-sap place))))
+         (let ((value (sb-alien:deref place 0)))
+           (if (= bits 32) (ldb (byte 32 0) value) value)))))
 
 (defun terminal-picture-most-pixels ()
   "The most pixels a picture a terminal's program sends may have to be shown:

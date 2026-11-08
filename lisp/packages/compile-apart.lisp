@@ -300,12 +300,14 @@ it could not be told."
 remembers is to be checked again before it loads at a start: who signed it,
 as git checked it when it was taken, is not known, or the trust in force
 now would not take it (PACKAGE-TRUST-VERDICT: the source trusted anew, its
-signer changed since, the init file's :signers naming others)."
+signer changed since, the init file's :signers naming others). Never while
+*PACKAGE-CHECK-SIGNATURES* is NIL."
   (let ((signer (seventh entry)))
-    (or (null signer)
-        (not (eq :take (package-trust-verdict where (if (string= signer "unsigned")
-                                                        (list :status :none)
-                                                        (list :status :good :fingerprint signer))))))))
+    (and *package-check-signatures*
+         (or (null signer)
+             (not (eq :take (package-trust-verdict where (if (string= signer "unsigned")
+                                                             (list :status :none)
+                                                             (list :status :good :fingerprint signer)))))))))
 
 (defmethod tuatara.runtime:job-take-in ((job package-fetch))
   "Ask about and load the package fetched, or say why it was not; its package

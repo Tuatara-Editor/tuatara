@@ -231,7 +231,7 @@ something sets PARSE to the parse ORG-TABLE-ASK gives. BODY returning
 table's, and the file is not parsed for it."
   (let ((buffer (gensym)) (text (gensym)) (position (gensym)) (table (gensym)) (result (gensym)))
     `(let* ((,buffer (current-buffer))
-            (,parse (and (uiop:string-prefix-p "|" (string-left-trim " 	" (org-line-head ,buffer (point))))
+            (,parse (and (uiop:string-prefix-p "|" (string-left-trim " 	" (buffer-line-head ,buffer (point))))
                          (org-parse-now ,buffer))))
        (when ,parse
          (let* ((,text (org-parse-text ,parse))
@@ -430,7 +430,8 @@ subtree (\\`M-L')."
 (defun install-org-tables ()
   "Bind Org's table keys: \\`M-h' \\`M-j' \\`M-k' \\`M-l' (and the arrows) move a
 table's columns and rows, else headlines; \\`M-H' and \\`M-L' delete and insert
-columns, else promote and demote subtrees; \\`C-c -' puts a rule below."
+columns, else promote and demote subtrees; \\`C-c -' puts a rule below a
+table row, and gives a list its next kind of bullet."
   (let ((keymap (mode-keymap 'org-mode)))
     (define-keys keymap '(("M-j" org-metadown) ("M-k" org-metaup) ("M-<down>" org-metadown) ("M-<up>" org-metaup)
                           ("M-h" org-metaleft) ("M-l" org-metaright) ("M-<left>" org-metaleft) ("M-<right>" org-metaright)

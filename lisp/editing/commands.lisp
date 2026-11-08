@@ -126,7 +126,12 @@ corner stands in the columns beyond, but never back past its start."
 with its accents or an emoji with its skin tone one character (CLUSTER-FORWARD);
 in the hex view, COUNT octets."
   (unless (hex-motion :octet count)
-    (goto (cluster-forward (current-buffer) (point) count))))
+    (goto (let* ((target (cluster-forward (current-buffer) (point) count))
+                 (rope (tuatara.buffer:buffer-text (current-buffer)))
+                 (hole (tuatara.text:rope-hole-at rope target)))
+            (cond ((null hole) target)
+                  ((plusp count) (tuatara.text:rope-next-boundary rope (1- (cdr hole))))
+                  (t (tuatara.text:rope-char-start rope (max 0 (1- (car hole))))))))))
 
 (defun edge-words (forward narrowed)
   "What is said of a motion or a change that found nowhere to go: \"End of
@@ -703,6 +708,12 @@ self-insert-command put it in (not under a count, and not in the hex view):
 what closes a delimiter as it is typed. Their changes join the character's
 undo step.")
 
+(defvar *before-self-insert-functions* '()
+  "Functions asked, with the buffer and the character just typed, before
+self-insert-command puts it in (not under a count, not with an input method,
+and not in the hex view): the first to answer true has dealt with the key
+itself, and nothing is inserted.")
+
 (defvar *delete-backward-functions* '()
   "Functions asked, with the buffer, before \\[delete-backward-char] deletes the
 character before point without a count: the first to answer true has done the
@@ -724,6 +735,9 @@ Consecutively typed characters form one undo group. With an input method on
           ((hex-view-here-p)
            ;; the hex view types over octets: hex digits, or characters in its text
            (hex-type string))
+          ((and *before-self-insert-functions* (not (prefix-argument))
+                (run-hook-until-success *before-self-insert-functions* (current-buffer) (tuatara.frontend:key-base key)))
+           nil)
           (t
            (goto (tuatara.buffer:buffer-insert (current-buffer) (point) string :group (typing-goes-on-p)))
            (unless (prefix-argument)

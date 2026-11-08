@@ -446,3 +446,66 @@
                                   (tuatara.buffer:buffer-string (tuatara.command:messages-buffer))))
            (true (search "Two" (tuatara.buffer:buffer-string (tuatara.defaults::notifications-buffer)))))
       (setf tuatara.defaults::**notify-missing-said** said))))
+
+(defun hanging-offsets (f height first-text)
+  "Where FIRST-TEXT starts on the row of the fake frontend F that shows it, and
+where the text of the row after it starts, past its wrap mark; NIL for the
+second when that row does not go on from it."
+  (let* ((rows (loop for row below height
+                     collect (tuatara.frontend.fake:fake-screen-line f row)))
+         (at (position-if (lambda (row) (search first-text row)) rows))
+         (next (and at (nth (1+ at) rows))))
+    (values (and at (search first-text (nth at rows)))
+            (and next (uiop:string-prefix-p "↪" next)
+                 (position-if-not (lambda (c) (char= c #\Space)) next :start 1)))))
+
+(define-test (help credits-hang-under-their-text)
+  ;; a credit's wrapped rows continue under its own text, at 60, 80 and 120 columns
+  (dolist (width '(60 80 120))
+    (let ((f (run-keys "M-x c r e d i t s RET" :width width :height 70)))
+      (multiple-value-bind (text-column next) (hanging-offsets f 70 "the state of a git")
+        (is = 26 text-column)
+        (is eql text-column next))))
+  ;; a window too narrow for the hang keeps half its row for the text
+  (let* ((f (run-keys "M-x c r e d i t s RET" :width 30 :height 60))
+         (rows (loop for row below 60
+                     for line = (tuatara.frontend.fake:fake-screen-line f row)
+                     when (uiop:string-prefix-p "↪" line) collect line)))
+    (true rows)
+    (true (every (lambda (line) (<= (position-if-not (lambda (c) (char= c #\Space)) line :start 1) 17)) rows))))
+
+(define-test (help help-buffers-hang-under-their-text)
+  ;; the rows of an item or a table's second column in a help buffer continue under their own text
+  (let ((buffer (tuatara.defaults::buffer-in-mode "*hang-help*" 'tuatara.defaults::help-mode))
+        (text (format nil "  Name   what it is~%- item words~%plain~%")))
+    (tuatara.buffer:buffer-replace buffer 0 (tuatara.buffer:buffer-end buffer) text)
+    (is string= "         " (tuatara.defaults::hanging-prefix buffer 0 t))
+    (is string= "  " (tuatara.defaults::hanging-prefix buffer (1+ (position #\Newline text)) t))
+    (false (tuatara.defaults::hanging-prefix buffer (1+ (position #\Newline text :from-end t :end (1- (length text)))) t))
+    (true (tuatara.defaults::soft-wrap-p buffer))
+    (tuatara.buffer:kill-buffer buffer)))
+
+(define-test (help table-lists-hang-under-their-last-column)
+  ;; a table whose last column has no width has its wrapped rows start where that column does
+  (let ((buffer (tuatara.buffer:make-buffer "*hang-test*" :text "")))
+    (tuatara.defaults::render-table-list buffer '(("Name" :width 6) ("Note")) '(("abc" "x y z"))
+                                         (lambda (item mark section) (declare (ignore mark section)) item))
+    (progn
+      (is string= "       " (tuatara.defaults::hanging-prefix buffer 0 t))
+      (false (tuatara.defaults::hanging-prefix buffer 0 nil)))
+    ;; a single column, or a last column with a width, hangs nowhere
+    (tuatara.defaults::render-table-list buffer '(("Name" :width 6)) '(("abc")) (lambda (item mark section) (declare (ignore mark section)) item))
+    (false (tuatara.defaults::hanging-prefix buffer 0 t))
+    (tuatara.buffer:kill-buffer buffer)))
+
+(define-test (help hanging-columns-of-lines)
+  (let ((hang #'tuatara.defaults::hanging-columns))
+    (is = 0 (funcall hang "plain words"))
+    (is = 2 (funcall hang "  indented"))
+    (is = 2 (funcall hang "- item"))
+    (is = 9 (funcall hang "  1. [X] done"))
+    (is = 6 (funcall hang "  ab  cd" :cells t))
+    (is = 2 (funcall hang "  ab cd ef" :cells t))
+    (is = 0 (funcall hang "sentence.  Next one" :cells t))
+    (is = 30 (funcall hang (format nil "~40a x" "") :cells t))))
+

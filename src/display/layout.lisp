@@ -287,7 +287,7 @@ octets at least +READER-CHUNK+ long (new ones when not given)."
           ((and (<= (reader-chunk-start reader) pos) (< pos (reader-chunk-end reader))) t)
           (t (let* ((start pos)
                     (end (min (reader-end reader) (+ start +reader-chunk+))))
-               (tuatara.text:rope-copy-into (reader-rope reader) start end (reader-chunk reader))
+               (tuatara.text:rope-copy-into (reader-rope reader) start end (reader-chunk reader) 0 t)
                (setf (reader-chunk-start reader) start
                      (reader-chunk-end reader) end)
                t)))))
@@ -317,7 +317,7 @@ that are not UTF-8 come as raw bytes' characters, one each."
                     (tuatara.text:octets-decode (reader-chunk reader) (- pos start) (- end start))
                     (let ((window (make-array 4 :element-type '(unsigned-byte 8))))
                       (declare (dynamic-extent window))
-                      (tuatara.text:rope-copy-into (reader-rope reader) pos end window)
+                      (tuatara.text:rope-copy-into (reader-rope reader) pos end window 0 t)
                       (tuatara.text:octets-decode window 0 (- end pos))))
               (incf (reader-position reader) length)
               (code-char code)))))))
@@ -378,7 +378,7 @@ time, an ASCII octet looked at once."
                (cut (- stop pos))
                (i 0))
           (declare (type fixnum stop have avail cut i))
-          (tuatara.text:rope-copy-into rope pos have block)
+          (tuatara.text:rope-copy-into rope pos have block 0 t)
           (loop while (< i cut)
                 do (let ((b (aref block i)))
                      (when (and (or (= b 10) (= b 13)) (tuatara.text:line-text-ends-p block i avail crlf))
@@ -655,7 +655,8 @@ not shown: a row reaching one, (START . END) (BUFFER-FOLDS), shows
 standing for its START, and goes on after it. PREFIX, when given, is a
 function of a line's start and whether the row continues it, returning text
 shown at the row's start and its face (an indentation that is no text):
-columns that stand for no character. SCALE, when given, is a function of a
+columns that stand for no character; for a row that continues it, cut to half
+of WIDTH. SCALE, when given, is a function of a
 line's start giving how many rows' height its rows are drawn in (ROW-SCALE), a
 rational of 1 or more: such a row holds as many times fewer columns, and
 HEIGHT is then the rows' heights added up, not their number. Where lines wrap,
@@ -738,6 +739,9 @@ O(WIDTH × HEIGHT), and for each row scrolled sideways O(*SCREEN-COLUMN-REACH*
                  (setf anchor (and wrap (next-wrap-anchor rope line-start position)))
                  (when (and prefix (not (and cut (>= line-start total))))
                    (multiple-value-bind (text face) (funcall prefix line-start continuation)
+                     ;; the rows after a line's first keep at least half the row for the text
+                     (when (and text continuation (> (length text) (max 2 (floor full-limit 2))))
+                       (setf text (subseq text 0 (floor full-limit 2))))
                      (when (and text (plusp (length text)))
                        (loop for c across text
                              do (vector-push-extend c (row-string row))

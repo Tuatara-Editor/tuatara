@@ -212,6 +212,12 @@ it, what the client sends is not read until the editor has taken some.")
                    :documentation "The numbers of the pictures put in the frame being painted.")
    (unsent-pixels :initform 0 :accessor remote-unsent-pixels
                   :documentation "The octets of the pictures among the messages not yet taken to be sent.")
+   (far-pictures :initform '() :accessor remote-far-pictures
+                 :documentation "The pictures of a client on another machine: each a FAR-PICTURE, newest first.")
+   (frame-number :initform 0 :accessor remote-frame-number
+                 :documentation "How many frames have been begun, the frame being painted the last.")
+   (far-sender :initform nil :accessor remote-far-sender
+               :documentation "The thread sending pictures to a client on another machine, once there is one.")
    (requests :initform 0 :accessor remote-requests
              :documentation "How many questions have been put to the client.")
    (asked :initform nil :accessor remote-asked
@@ -437,6 +443,11 @@ the screen is now to REMOTE-FACTS. NIL when the client is going."
                   (message-read inbox)
                   (window-declined remote word words))
      t)
+    (:picture-taken
+     (let ((id (take-number inbox 4)) (taken (take-number inbox 4)))
+       (message-read inbox)
+       (picture-taken remote id taken))
+     t)
     (:detach (message-read inbox) nil)
     ((:hello :attach) (malformed "a ~(~a~) message after the first" kind))))
 
@@ -538,6 +549,7 @@ while its client takes it, the client told to exit, and its socket closed."
   (tuatara.io:shut-socket (remote-fd f))
   (tuatara.runtime:join-within (remote-writer f) 2)
   (tuatara.runtime:join-within (remote-reader f) 2)
+  (when (remote-far-sender f) (tuatara.runtime:join-within (remote-far-sender f) 2))
   (sb-thread:with-mutex ((remote-lock f))
     (unless (shiftf (remote-closed f) t)
       (tuatara.runtime:ignoring-errors-reported ("closing a client's socket") (sb-posix:close (remote-fd f))))
@@ -578,8 +590,7 @@ while its client takes it, the client told to exit, and its socket closed."
   (facts-health (remote-facts f)))
 
 (defmethod frontend-images-p ((f remote-frontend))
-  ;; a picture's pixels are passed as a descriptor, which cannot cross ssh
-  (and (facts-images (remote-facts f)) (not (request-far (remote-request f)))))
+  (facts-images (remote-facts f)))
 
 (defmethod frontend-reorders-text-p ((f remote-frontend))
   (facts-reorders (remote-facts f)))
@@ -737,7 +748,10 @@ lent to a program before the program runs without it.")
     (send-faces f))
   (setf (outbox-fill (remote-painting f)) 0
         (fill-pointer (remote-kept-calls f)) 0
-        (remote-frame-pictures f) '()))
+        (remote-frame-pictures f) '())
+  (when (remote-far-pictures f)
+    (sb-thread:with-mutex ((remote-lock f))
+      (incf (remote-frame-number f)))))
 
 (defparameter *row-left-out* "[This row was left out: the screen is too large to send whole]"
   "What a client is shown in place of a row that does not fit in a frame it can take.")
@@ -808,11 +822,14 @@ than +MOST-UNSENT+ octets not yet sent, the pictures' pixels counted."
   (when (and (facts-images (remote-facts f))
              (<= 1 (image-width image) 65535) (<= 1 (image-height image) 65535) (<= 3 (image-channels image) 4)
              (<= (* (image-width image) (image-height image) (image-channels image)) +most-picture-octets+)
-             (= (length (image-pixels image)) (* (image-width image) (image-height image) (image-channels image)))
-             (or (member (image-id image) (remote-pictures f))
-                 (send-picture f image)))
-    (push (image-id image) (remote-frame-pictures f))
-    (put-picture-call (remote-painting f) image row column columns rows offset)))
+             (= (length (image-pixels image)) (* (image-width image) (image-height image) (image-channels image))))
+    (if (request-far (remote-request f))
+        (let ((far (far-picture-to-show f image columns rows offset)))
+          (when far
+            (put-picture-call (remote-painting f) (far-picture-id far) row column columns rows offset)))
+        (when (or (member (image-id image) (remote-pictures f)) (send-picture f image))
+          (push (image-id image) (remote-frame-pictures f))
+          (put-picture-call (remote-painting f) (image-id image) row column columns rows offset)))))
 
 (defun put-frame (remote box whole)
   "Put the frame REMOTE has painted in BOX as one message; WHOLE, each row
@@ -840,7 +857,289 @@ painted as before written out in full."
         (setf (remote-frame-start f) (outbox-fill box))
         (put-frame f box whole)
         (setf (remote-frame-end f) (outbox-fill box))
+        (when (remote-far-pictures f) (settle-far-pictures f))
         (sb-thread:condition-broadcast (remote-moved f))))))
+
+;;; Pictures for a client on another machine, sent as bytes
+;;; (a descriptor does not cross ssh) by a thread of their own
+
+(defstruct (far-picture (:constructor make-far-picture (source width height channels image shown-at))
+                        (:copier nil))
+  "A picture of an editor's for its client on another machine: a copy of the
+picture numbered SOURCE, the size it is shown at or its own (WIDTH by HEIGHT
+pixels of CHANNELS octets, sent as number ID, given when the copy is made),
+IMAGE, the picture it is made of, until it is sent; STATE, :WANTED, :SENDING,
+:READY once the client has it all, :REFUSED when it cannot be sent, or
+:CANCELLED; SHOWN-AT, the frame that last asked for it; TAKEN, the octets of
+TOTAL the client has said it has."
+  (source 0 :type fixnum :read-only t)
+  (id 0 :type (unsigned-byte 32))
+  (width 0 :type fixnum :read-only t)
+  (height 0 :type fixnum :read-only t)
+  (channels 0 :type fixnum :read-only t)
+  (image nil)
+  (state :wanted :type (member :wanted :sending :ready :refused :cancelled))
+  (shown-at 0 :type fixnum)
+  (taken 0 :type fixnum)
+  (total 0 :type fixnum))
+
+(setf (documentation 'make-far-picture 'function) "A FAR-PICTURE wanted of IMAGE, the copy to send, by frame SHOWN-AT."
+      (documentation 'far-picture-p 'function) "True when OBJECT is a FAR-PICTURE."
+      (documentation 'far-picture-source 'function) "The number of the picture this is a copy of."
+      (documentation 'far-picture-id 'function) "The number the client knows this picture by."
+      (documentation 'far-picture-width 'function) "The width in pixels of the copy sent."
+      (documentation 'far-picture-height 'function) "The height in pixels of the copy sent."
+      (documentation 'far-picture-channels 'function) "The octets of each pixel of the copy sent."
+      (documentation 'far-picture-image 'function) "The picture this is a copy of, until it has been sent."
+      (documentation 'far-picture-state 'function) "How far this picture has got (FAR-PICTURE)."
+      (documentation 'far-picture-shown-at 'function) "The frame that last asked for this picture."
+      (documentation 'far-picture-taken 'function) "How many octets the client has said it has of this picture."
+      (documentation 'far-picture-total 'function) "How many packed octets this picture goes in.")
+
+(defun far-picture-octets (far)
+  "How many octets of pixels FAR's copy has."
+  (* (far-picture-width far) (far-picture-height far) (far-picture-channels far)))
+
+(defun picture-size-for-client (remote image columns rows offset)
+  "The WIDTH and HEIGHT, two values, of the copy of IMAGE to send REMOTE's
+client to show in COLUMNS by ROWS cells; with OFFSET, IMAGE's own, as it is
+shown at its own size (FRONTEND-PUT-IMAGE). The size it is drawn at, as large
+as fits but never larger than it is, held to what a client on another
+machine takes; IMAGE's own when the client's cell is not known."
+  (multiple-value-bind (cell-width cell-height) (frontend-cell-pixels remote)
+    (if (or offset (null cell-width))
+        (values (image-width image) (image-height image))
+        (let* ((box-width (max 1 (* columns cell-width))) (box-height (max 1 (* rows cell-height)))
+               (scale (image-fit-scale image box-width box-height))
+               (side-scale (min 1 (/ +most-far-picture-side+ (max (image-width image) (image-height image)))))
+               (count (* (image-width image) (image-height image) (image-channels image)))
+               (octets-scale (if (> count +most-far-picture-octets+)
+                                 (/ (isqrt (floor (* +most-far-picture-octets+ 1000000) count)) 1000)
+                                 1))
+               (scale (min scale side-scale octets-scale)))
+          (values (max 1 (min (image-width image) (ceiling (* scale (image-width image)))))
+                  (max 1 (min (image-height image) (ceiling (* scale (image-height image))))))))))
+
+(defun far-picture-to-show (remote image columns rows offset)
+  "What of IMAGE REMOTE's client on another machine has, to show in COLUMNS
+by ROWS cells in the frame being painted, or NIL while it has none: the one it
+has of the largest size, when the size wanted comes to more than a quarter
+more, a sharper one sent for meanwhile, which comes in a later frame. With
+OFFSET the client places it in pixels of its own size, so only one of
+IMAGE's own size will do."
+  (multiple-value-bind (width height) (picture-size-for-client remote image columns rows offset)
+    (sb-thread:with-mutex ((remote-lock remote))
+      (unless (or (remote-ended remote) (remote-closing remote))
+        (let* ((number (remote-frame-number remote))
+               (same (remove (image-id image) (remote-far-pictures remote) :key #'far-picture-source :test-not #'=))
+               (ready (let ((ready (remove-if-not (lambda (far)
+                                                    (and (eq (far-picture-state far) :ready)
+                                                         (or (not offset) (= (far-picture-width far) width))))
+                                                  same)))
+                        (and ready
+                             (reduce (lambda (a b) (if (>= (far-picture-width a) (far-picture-width b)) a b)) ready))))
+               (enough (and ready
+                            (or (>= (* 5 (far-picture-width ready)) (* 4 width))
+                                (= (far-picture-width ready) (image-width image))))))
+          (when ready (setf (far-picture-shown-at ready) number))
+          (unless enough
+            (let ((coming (find-if (lambda (far)
+                                     (and (member (far-picture-state far) '(:wanted :sending :refused))
+                                          (or (not offset) (= (far-picture-width far) width))))
+                                   same)))
+              (if coming
+                  (setf (far-picture-shown-at coming) number)
+                  (want-far-picture remote image width height number))
+              (start-far-sender remote)))
+          ready)))))
+
+(defun want-far-picture (remote image width height number)
+  "Have a copy of IMAGE WIDTH by HEIGHT pixels sent to REMOTE's client, as
+frame NUMBER asks, or marked :REFUSED, for good, when it is larger than a
+client on another machine takes; REMOTE-LOCK is held."
+  (let ((far (make-far-picture (image-id image) width height (image-channels image) image number)))
+    (push far (remote-far-pictures remote))
+    (if (or (> (max width height) +most-far-picture-side+) (> (far-picture-octets far) +most-far-picture-octets+))
+        (progn (tuatara.runtime:debug-report :remote "a picture of ~dx~d too large for a client on another machine"
+                                             width height)
+               (setf (far-picture-state far) :refused (far-picture-image far) nil))
+        (sb-thread:condition-broadcast (remote-moved remote)))))
+
+(defun start-far-sender (remote)
+  "Start the thread sending REMOTE's client on another machine its pictures
+when something is wanted and none runs; REMOTE-LOCK is held."
+  (when (and (not (remote-far-sender remote))
+             (find :wanted (remote-far-pictures remote) :key #'far-picture-state))
+    (setf (remote-far-sender remote)
+          (tuatara.runtime:make-guarded-thread (lambda () (send-far-pictures remote))
+                                               :name "tuatara remote pictures"))))
+
+(defun settle-far-pictures (remote)
+  "After a frame has been put, with REMOTE-LOCK held: the pictures of
+REMOTE's client on another machine that frame did not ask for and that are
+not there yet are cancelled, and those that could not be sent forgotten."
+  (let ((number (remote-frame-number remote)))
+    (setf (remote-far-pictures remote)
+          (delete-if (lambda (far)
+                       (and (/= (far-picture-shown-at far) number)
+                            (case (far-picture-state far)
+                              ((:wanted :sending) (setf (far-picture-state far) :cancelled) nil)
+                              (:refused t))))
+                     (remote-far-pictures remote)))))
+
+(defun picture-taken (remote id taken)
+  "REMOTE's client says it has TAKEN octets of the picture numbered ID, which
+is sending to it or just cancelled; more octets than the picture holds is
+malformed."
+  (sb-thread:with-mutex ((remote-lock remote))
+    (let ((far (find id (remote-far-pictures remote) :key #'far-picture-id)))
+      (when (and far (member (far-picture-state far) '(:sending :cancelled)))
+        (unless (<= (far-picture-taken far) taken (far-picture-total far))
+          (malformed "~d octets said taken of a picture of ~d" taken (far-picture-total far)))
+        (setf (far-picture-taken far) taken)
+        (sb-thread:condition-broadcast (remote-moved remote))))))
+
+(defun make-room-for-far-picture (remote far)
+  "Have REMOTE's client let go of as many of the pictures it keeps, oldest
+first, as lets it keep FAR too, within the most it keeps; none the frame begun
+last has asked for goes, which a frame named before it is said to go still
+shows, as the client paints in order. NIL when there is no such room.
+REMOTE-LOCK is held."
+  (let ((number (remote-frame-number remote)))
+    (loop
+      (let* ((kept (remove :ready (remote-far-pictures remote) :key #'far-picture-state :test-not #'eq))
+             (octets (reduce #'+ kept :key #'far-picture-octets :initial-value (far-picture-octets far))))
+        (when (and (< (length kept) +most-pictures+) (<= octets +most-far-pictures-kept+))
+          (return t))
+        (let ((victim (find-if (lambda (candidate) (/= (far-picture-shown-at candidate) number)) kept :from-end t)))
+          (unless victim (return nil))
+          (setf (remote-far-pictures remote) (remove victim (remote-far-pictures remote)))
+          (let* ((box (remote-unsent remote)) (at (begin-message box :picture-forget)))
+            (put-number box (far-picture-id victim) 4)
+            (end-message box at)))))))
+
+(defun far-picture-copy (far)
+  "The picture to send for FAR, under a number of its own that FAR is given,
+so that what a client says of an earlier send is never taken for this one:
+made the size FAR goes at when that is smaller, else the same pixels."
+  (let* ((image (far-picture-image far))
+         (copy (if (and (= (far-picture-width far) (image-width image))
+                        (= (far-picture-height far) (image-height image)))
+                   (make-image (image-width image) (image-height image) (image-channels image) (image-pixels image))
+                   (scaled-image image (far-picture-width far) (far-picture-height far)))))
+    (setf (far-picture-id far) (image-id copy))
+    copy))
+
+(defun scaled-image (image width height)
+  "A new picture of IMAGE made WIDTH by HEIGHT pixels, smaller, each pixel
+the mean of those it covers."
+  (let* ((channels (image-channels image))
+         (from-width (image-width image)) (from-height (image-height image))
+         (from (coerce (image-pixels image) 'tuatara.text:octets))
+         (pixels (tuatara.text:make-octets (* width height channels)))
+         (at 0))
+    (declare (type tuatara.text:octets from pixels) (type fixnum channels from-width from-height at width height))
+    (dotimes (y height)
+      (let ((y0 (floor (* y from-height) height)) (y1 (ceiling (* (1+ y) from-height) height)))
+        (dotimes (x width)
+          (let ((x0 (floor (* x from-width) width)) (x1 (ceiling (* (1+ x) from-width) width)))
+            (dotimes (c channels)
+              (let ((sum 0) (count 0))
+                (declare (type fixnum sum count))
+                (loop for sy from y0 below y1
+                      do (loop for sx from x0 below x1
+                               do (incf sum (aref from (+ (* sy from-width channels) (* sx channels) c)))
+                                  (incf count)))
+                (setf (aref pixels at) (round sum count))
+                (incf at)))))))
+    (make-image width height channels pixels)))
+
+(defun next-far-picture (remote)
+  "The picture to send next to REMOTE's client on another machine, the oldest
+wanted, waiting for one; NIL when the connection ends. Those cancelled before
+they began are forgotten here."
+  (sb-thread:with-mutex ((remote-lock remote))
+    (loop
+      (when (or (remote-closing remote) (remote-ended remote)) (return nil))
+      (setf (remote-far-pictures remote)
+            (remove :cancelled (remote-far-pictures remote) :key #'far-picture-state))
+      (let ((far (find :wanted (remote-far-pictures remote) :key #'far-picture-state :from-end t)))
+        (when far (return far)))
+      (sb-thread:condition-wait (remote-moved remote) (remote-lock remote)))))
+
+(defun send-far-pictures (remote)
+  "Send the pictures REMOTE's client on another machine is waiting for, one
+at a time as they are wanted, until the connection ends: each made the size
+it shows at and packed here, off the editor's thread, then sent a little at a
+time among the frames, no more than +FAR-PICTURES-IN-FLIGHT+ octets ahead of
+what the client has said it took, so that no key waits long behind one. One
+that could not be sent is :REFUSED, not tried again while it stays shown."
+  (unwind-protect
+       (loop for far = (next-far-picture remote)
+             while far
+             do (handler-case
+                    (tuatara.runtime:ignoring-errors-reported ("sending a picture to a client")
+                      (send-far-picture remote far))
+                  (storage-condition ()
+                    (tuatara.runtime:debug-report :remote "not memory enough to send a picture to a client")))
+                ;; a send that failed once begun leaves the client waiting for the rest: it is told to forget it
+                (when (sb-thread:with-mutex ((remote-lock remote))
+                        (let ((begun (eq (far-picture-state far) :sending)))
+                          (when (member (far-picture-state far) '(:wanted :sending))
+                            (setf (far-picture-state far) :refused (far-picture-image far) nil))
+                          begun))
+                  (queue-message remote :picture-forget (lambda (box) (put-number box (far-picture-id far) 4)))))
+    (sb-thread:with-mutex ((remote-lock remote))
+      (setf (remote-far-sender remote) nil))))
+
+(defun send-far-picture (remote far)
+  "Make, pack and send REMOTE's client the picture FAR (SEND-FAR-PICTURES);
+the editor is asked for a frame that shows it when the client has it all.
+One cancelled, or a connection ended, on the way: the client told to forget
+what came of it, and FAR forgotten here."
+  (let* ((copy (far-picture-copy far))
+         (packed (packed-picture copy))
+         (total (length packed))
+         (sent 0))
+    (flet ((stop-p ()
+             (or (remote-closing remote) (remote-ended remote) (eq (far-picture-state far) :cancelled)))
+           (forget-far ()
+             (setf (remote-far-pictures remote) (remove far (remote-far-pictures remote)))))
+      (flet ((wait-until (done)
+               ;; true once DONE is, NIL when stopped first
+               (sb-thread:with-mutex ((remote-lock remote))
+                 (loop until (or (stop-p) (funcall done))
+                       do (tuatara.runtime:wait-on (remote-moved remote) (remote-lock remote) 1))
+                 (not (stop-p))))
+             (give-up ()
+               (queue-message remote :picture-forget (lambda (box) (put-number box (far-picture-id far) 4)))
+               (sb-thread:with-mutex ((remote-lock remote)) (forget-far))))
+        (unless (sb-thread:with-mutex ((remote-lock remote))
+                  (cond ((stop-p) (forget-far) nil)
+                        ((not (make-room-for-far-picture remote far))
+                         (setf (far-picture-state far) :refused (far-picture-image far) nil)
+                         nil)
+                        (t (setf (far-picture-state far) :sending (far-picture-total far) total
+                                 (far-picture-image far) nil)
+                           (put-picture-begin (remote-unsent remote) (far-picture-id far) (far-picture-width far)
+                                              (far-picture-height far) (far-picture-channels far) total)
+                           (sb-thread:condition-broadcast (remote-moved remote))
+                           t)))
+          (return-from send-far-picture nil))
+        (loop while (< sent total)
+              do (unless (wait-until (lambda () (< (- sent (far-picture-taken far)) +far-pictures-in-flight+)))
+                   (give-up)
+                   (return-from send-far-picture nil))
+                 (let ((from sent) (end (min total (+ sent +far-picture-piece+))))
+                   (queue-message remote :picture-piece
+                                  (lambda (box) (put-picture-piece-of box (far-picture-id far) packed from end)))
+                   (setf sent end)))
+        (if (wait-until (lambda () (= (far-picture-taken far) total)))
+            (progn
+              (sb-thread:with-mutex ((remote-lock remote))
+                (setf (far-picture-state far) :ready))
+              (queue-push (remote-queue remote) (make-event :tick :frame (remote-frame remote))))
+            (give-up))))))
 
 ;;; The client's side: a frontend painted as the editor says
 
@@ -850,7 +1149,10 @@ editor sends on FRONTEND and sending it FRONTEND's events: INBOX, what the
 editor sends; OUT, the messages being sent; ARRIVED, what was read and is
 not yet painted, newest first, under LOCK; NAMES, the face names by their
 numbers; KEPT, each row as last painted; PICTURES, the pictures kept,
-newest first; ENDED, true once the editor is gone, and EXIT-CODE, the code
+newest first; ARRIVING, the picture coming in pieces from an editor on
+another machine (ARRIVING-PICTURE), or NIL; UNPACKING, those whole and being
+unpacked; PAINTING, what is being painted, until it has been; CLOSING, true
+once the connection is being closed here; ENDED, true once the editor is gone, and EXIT-CODE, the code
 it gave, EXIT-WORDS, what it said with it; FACTS, the facts last sent as
 octets; READER, the thread reading; MOVED, signalled when something has
 arrived or the editor is gone; SETTINGS, the settings the editor last said
@@ -874,6 +1176,10 @@ files dropped to that machine (see MAKE-REMOTE-CLIENT)."
   (names (make-array (1+ +most-names+) :initial-element nil) :read-only t)
   (kept (make-array +most-rows+ :initial-element nil) :read-only t)
   (pictures '())
+  (arriving nil)
+  (unpacking '())
+  (painting '())
+  (closing nil)
   (ended nil)
   (exit-code nil)
   (facts (make-outbox) :read-only t)
@@ -895,6 +1201,10 @@ files dropped to that machine (see MAKE-REMOTE-CLIENT)."
       (documentation 'remote-client-names 'function) "The face names the editor gave CLIENT, by their numbers."
       (documentation 'remote-client-kept 'function) "Each row as CLIENT last painted it, by row."
       (documentation 'remote-client-pictures 'function) "The pictures CLIENT keeps, newest first."
+      (documentation 'remote-client-arriving 'function) "The picture coming to CLIENT in pieces, or NIL."
+      (documentation 'remote-client-unpacking 'function) "The pictures CLIENT has whole and is unpacking."
+      (documentation 'remote-client-painting 'function) "What CLIENT is painting now, in the order it came."
+      (documentation 'remote-client-closing 'function) "True once CLIENT's connection is being closed here."
       (documentation 'remote-client-ended 'function) "True once the editor CLIENT paints for is gone."
       (documentation 'remote-client-exit-code 'function) "The code the editor told CLIENT to exit with, or NIL."
       (documentation 'remote-client-facts 'function) "The facts CLIENT last sent of its screen, as octets."
@@ -1034,6 +1344,7 @@ what it should not."
                             (push item (remote-client-arrived client))
                             (sb-thread:condition-broadcast (remote-client-moved client)))
                           (frontend-wake frontend))
+                        (when (remote-client-far client) (wait-for-painting client))
                         (when (eq kind :exit) (return))))
            (malformed-message (condition)
              (tuatara.runtime:debug-report :remote "the editor's connection ended: ~a"
@@ -1047,8 +1358,8 @@ what it should not."
 (defun take-from-editor (client kind inbox)
   "Read the message of KIND CLIENT's editor sent from INBOX; what is to be
 done with it on the frontend's thread, as a list whose first is what it is
-\(:FACES :FRAME :TITLE :SELECTION :TOGGLE :RAISE :ASK :TAKE-BACK :SETTINGS
-:ANOTHER), or NIL when reading it was all."
+\(:FACES :FRAME :PICTURE-TAKEN :TITLE :SELECTION :TOGGLE :RAISE :ASK
+:TAKE-BACK :SETTINGS :ANOTHER), or NIL when reading it was all."
   (let ((names (remote-client-names client)))
     (ecase kind
       (:names (take-names inbox names) nil)
@@ -1057,15 +1368,33 @@ done with it on the frontend's thread, as a list whose first is what it is
       (:frame (cons :frame (take-frame inbox names (remote-client-kept client) (remote-client-pictures client))))
       ;; the picture kept, and the one the editor let go of to keep it let go of here too
       (:picture (multiple-value-bind (image let-go) (take-picture inbox)
-                  (let ((pictures (remote-client-pictures client)))
-                    (when let-go
-                      (unless (find let-go pictures :key #'image-id)
-                        (malformed "picture ~d let go of, never kept" let-go))
-                      (setf pictures (remove let-go pictures :key #'image-id)))
-                    (when (>= (length pictures) +most-pictures+)
-                      (malformed "a picture past the ~d kept" +most-pictures+))
-                    (setf (remote-client-pictures client) (cons image pictures)))
+                  (sb-thread:with-mutex ((remote-client-lock client))
+                    (when let-go (let-go-of-picture client let-go))
+                    (keep-picture client image))
                   nil))
+      ;; a picture from another machine comes in pieces, each but the last answered as it is painted
+      (:picture-begin
+       (when (remote-client-arriving client) (malformed "a picture begun while another comes"))
+       (setf (remote-client-arriving client) (take-picture-begin inbox))
+       nil)
+      (:picture-piece
+       (let ((arriving (or (remote-client-arriving client) (malformed "a piece of a picture not begun"))))
+         (cond ((take-picture-piece inbox arriving)
+                (setf (remote-client-arriving client) nil)
+                (start-unpacking client arriving)
+                nil)
+               (t (list :picture-taken (arriving-picture-id arriving) (arriving-picture-filled arriving))))))
+      (:picture-forget
+       (let* ((id (take-number inbox 4)) (arriving (remote-client-arriving client)))
+         (message-read inbox)
+         (if (and arriving (= (arriving-picture-id arriving) id))
+             (setf (remote-client-arriving client) nil)
+             (sb-thread:with-mutex ((remote-client-lock client))
+               (let ((unpacking (find id (remote-client-unpacking client) :key #'arriving-picture-id)))
+                 (if unpacking
+                     (setf (arriving-picture-cancelled unpacking) t)
+                     (let-go-of-picture client id)))))
+         nil))
       (:title (prog1 (list :title (take-text inbox 60000)) (message-read inbox)))
       (:selection (prog1 (list :selection (take-bounded inbox 1 0 1 "a selection") (take-text inbox +most-text+))
                     (message-read inbox)))
@@ -1092,6 +1421,100 @@ done with it on the frontend's thread, as a list whose first is what it is
        (message-read inbox)
        nil)
       ((:hello :refused) (malformed "a ~(~a~) after the first hello" kind)))))
+
+(defun start-unpacking (client arriving)
+  "Unpack the picture ARRIVING, whole, for CLIENT on a thread of its own, so
+that the frames and everything else behind it are not kept waiting; the
+editor names it in a frame only once it is told it was taken, which is said
+when it is unpacked. With +MOST-PICTURES-UNPACKING+ unpacking already, waits
+for one to be done; left out when CLIENT is being closed meanwhile."
+  (sb-thread:with-mutex ((remote-client-lock client))
+    (loop while (and (not (remote-client-closing client))
+                     (>= (length (remote-client-unpacking client)) +most-pictures-unpacking+))
+          do (tuatara.runtime:wait-on (remote-client-moved client) (remote-client-lock client) 1))
+    (unless (remote-client-closing client)
+      (push arriving (remote-client-unpacking client))
+      (setf (arriving-picture-thread arriving)
+            (tuatara.runtime:make-guarded-thread (lambda () (unpack-picture client arriving))
+                                                 :name "tuatara picture unpacking")))))
+
+(defun unpack-picture (client arriving)
+  "Unpack the picture ARRIVING and have CLIENT keep it, and tell its editor it
+has it, unless it was told to forget it meanwhile; when it is not what it said
+it was, or there is not memory enough, the connection ends, why being logged,
+unless it is being closed here already. However it ends, the reader waiting
+for a place among those unpacking is told."
+  (flet ((give-up (words)
+           (tuatara.runtime:debug-report :remote "the editor's connection ended: ~a" words)
+           ;; under the lock: once CLOSING is set the descriptor may be closed, and its number used again
+           (sb-thread:with-mutex ((remote-client-lock client))
+             (unless (remote-client-closing client)
+               (tuatara.runtime:ignoring-errors-reported ("ending the editor's connection")
+                 (tuatara.io:shut-socket (remote-client-fd client)))))))
+    (unwind-protect
+         (handler-case
+             (let ((image (arrived-picture arriving)))
+               (when (sb-thread:with-mutex ((remote-client-lock client))
+                       (setf (remote-client-unpacking client) (remove arriving (remote-client-unpacking client)))
+                       (unless (arriving-picture-cancelled arriving)
+                         (keep-picture client image :most-octets +most-far-pictures-kept+)
+                         (push (list :picture-taken (arriving-picture-id arriving) (arriving-picture-filled arriving))
+                               (remote-client-arrived client))
+                         t))
+                 (frontend-wake (remote-client-frontend client))))
+           (malformed-message (condition) (give-up (malformed-message-reason condition)))
+           (storage-condition () (give-up "not memory enough to unpack a picture")))
+      (sb-thread:with-mutex ((remote-client-lock client))
+        (setf (remote-client-unpacking client) (remove arriving (remote-client-unpacking client)))
+        (sb-thread:condition-broadcast (remote-client-moved client))))))
+
+(defconstant +most-unpainted+ 256
+  "The most things read from an editor on another machine that wait to be
+painted before reading more waits for them.")
+
+(defun too-much-unpainted-p (client)
+  "True when more waits to be painted on CLIENT than may: +MOST-UNPAINTED+
+things, or the pictures CLIENT keeps and those only frames not yet painted
+still name, past +MOST-FAR-PICTURES-KEPT+ octets of pixels. CLIENT's lock is held."
+  (let ((waiting (append (remote-client-arrived client) (remote-client-painting client))))
+    (or (> (length waiting) +most-unpainted+)
+        (let ((images (copy-list (remote-client-pictures client))))
+          (dolist (item waiting)
+            (when (eq (first item) :frame)
+              (dolist (call (rest item))
+                (when (eq (first call) :picture) (pushnew (second call) images :test #'eq)))))
+          (> (reduce #'+ images :key (lambda (image) (length (image-pixels image))))
+             +most-far-pictures-kept+)))))
+
+(defun wait-for-painting (client)
+  "Wait, on the thread reading CLIENT's editor, while more waits to be painted
+than may (TOO-MUCH-UNPAINTED-P), so that an editor on another machine can
+keep no more memory here than that; until CLIENT is closed."
+  (sb-thread:with-mutex ((remote-client-lock client))
+    (loop while (and (not (remote-client-closing client)) (too-much-unpainted-p client))
+          do (tuatara.runtime:wait-on (remote-client-moved client) (remote-client-lock client) 1))))
+
+(defun let-go-of-picture (client id)
+  "Have CLIENT let go of the picture numbered ID, as its editor says to, for
+a frame that names it no more; CLIENT's lock is held. Malformed when CLIENT
+does not keep it."
+  (unless (find id (remote-client-pictures client) :key #'image-id)
+    (malformed "picture ~d let go of, never kept" id))
+  (setf (remote-client-pictures client) (remove id (remote-client-pictures client) :key #'image-id)))
+
+(defun keep-picture (client image &key most-octets)
+  "Have CLIENT keep IMAGE, among the +MOST-PICTURES+ it may, and within
+MOST-OCTETS of pixels in all when given; CLIENT's lock is held. Malformed
+past those."
+  (let ((pictures (remote-client-pictures client)))
+    (when (>= (length pictures) +most-pictures+)
+      (malformed "a picture past the ~d kept" +most-pictures+))
+    (when (and most-octets
+               (> (reduce #'+ pictures :key (lambda (p) (length (image-pixels p)))
+                                       :initial-value (length (image-pixels image)))
+                  most-octets))
+      (malformed "pictures of more than ~d octets kept" most-octets))
+    (setf (remote-client-pictures client) (cons image pictures))))
 
 (defun face-now (face)
   "The attributes of FACE as a message carries them (TAKE-FACE), as SET-FACE-ATTRIBUTES takes them."
@@ -1188,7 +1611,7 @@ terminal; the files sent it are named to it once there."
   (let ((frontend (remote-client-frontend client))
         (far (remote-client-far client))
         (items (sb-thread:with-mutex ((remote-client-lock client))
-                 (reverse (shiftf (remote-client-arrived client) '())))))
+                 (setf (remote-client-painting client) (reverse (shiftf (remote-client-arrived client) '()))))))
     (loop for (item . later) on items
           do (ecase (first item)
                (:faces (take-faces (rest item)))
@@ -1203,6 +1626,11 @@ terminal; the files sent it are named to it once there."
                     (:picture (when (frontend-images-p frontend)
                                 (apply #'frontend-put-image frontend (rest call))))))
                 (frontend-end-frame frontend))
+               (:picture-taken (send-to-editor client (lambda (box)
+                                                        (let ((at (begin-message box :picture-taken)))
+                                                          (put-number box (second item) 4)
+                                                          (put-number box (third item) 4)
+                                                          (end-message box at)))))
                (:title (frontend-set-title frontend (second item)))
                (:selection (let ((text (if far (far-text (third item)) (third item))))
                              (cond ((clipboard-closed-p client))
@@ -1224,7 +1652,10 @@ terminal; the files sent it are named to it once there."
                (:take-back)
                (:ask (if (and (eq (third item) :lend) (not far))
                          (lend-terminal client (second item) (fourth item) later)
-                         (apply #'answer-editor client (rest item))))))))
+                         (apply #'answer-editor client (rest item))))))
+    (sb-thread:with-mutex ((remote-client-lock client))
+      (setf (remote-client-painting client) '())
+      (sb-thread:condition-broadcast (remote-client-moved client)))))
 
 (defun decline-window (client word words)
   "Have CLIENT tell its editor the window it asked for by WORD is not opened,
@@ -1281,9 +1712,18 @@ was last sent (a cell's size, the desktop's style); NIL when it could not be sen
                (send-to-editor client (lambda (box) (put-facts-message box (remote-client-frontend client) :facts)))))))
 
 (defun close-remote-client (client)
-  "End CLIENT's connection: its reading thread stopped and its socket closed."
+  "End CLIENT's connection: its reading thread stopped, the pictures it was
+unpacking let finish, and its socket closed."
+  (sb-thread:with-mutex ((remote-client-lock client))
+    (setf (remote-client-closing client) t)
+    (sb-thread:condition-broadcast (remote-client-moved client)))
   (tuatara.io:shut-socket (remote-client-fd client))
   (tuatara.runtime:join-within (remote-client-reader client) 2)
+  (let ((deadline (tuatara.runtime:deadline-in 2)))
+    (dolist (arriving (sb-thread:with-mutex ((remote-client-lock client)) (copy-list (remote-client-unpacking client))))
+      (when (arriving-picture-thread arriving)
+        (tuatara.runtime:join-within (arriving-picture-thread arriving)
+                                     (max 0.001 (tuatara.runtime:seconds-left deadline))))))
   (tuatara.runtime:ignoring-errors-reported ("closing the editor's socket") (sb-posix:close (remote-client-fd client)))
   nil)
 

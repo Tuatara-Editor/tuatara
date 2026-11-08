@@ -17,7 +17,7 @@
    ;; mapped files
    #:mapping #:mapping-p #:map-file #:map-fd #:close-mapping #:retarget-mapping #:retarget-mapping-range
    #:mapping-source #:mapping-sources #:live-mappings #:drop-cached #:read-ahead #:*large-mapping-octets*
-   #:with-read-pass #:note-read #:begin-file-read-pass #:file-read-pass-note #:end-file-read-pass
+   #:mapping-holes #:mapping-torn #:rope-check-arrived #:rope-arrived-around #:not-arrived #:refuse-not-arrived #:rope-holes #:rope-hole-at #:+kept-ends+ #:with-read-pass #:note-read #:begin-file-read-pass #:file-read-pass-note #:end-file-read-pass
    #:mapping-path #:mapping-length #:mapping-live #:mapping-fd #:mapping-sap #:mapping-rope #:map-rope-sources
    ;; ropes
    #:rope #:rope-p #:make-rope #:string->rope #:octets->rope #:open-file-rope #:index-rope

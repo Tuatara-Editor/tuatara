@@ -931,6 +931,18 @@ forget them: undone, with nothing left to redo."
           do (buffer-undo buffer)
              (add-held buffer 0 (- (group-held-octets buffer (pop (buffer-redo-stack buffer))))))))
 
+(defun undo-back-to-group (buffer stack group)
+  "Take back and forget what BUFFER gained since its undo stack was STACK, whose
+newest group was GROUP, even when that joined GROUP (typing goes on in one
+group): the group is split there first. NIL, and nothing done, when the history
+no longer has the shape one edit makes of STACK."
+  (let ((now (buffer-undo-stack buffer)))
+    (cond ((and now (eq (cdr now) stack)) (undo-back-to buffer stack) t)
+          ((and group (eq (cdr now) (cdr stack)) (tailp group (car now)) (not (eq group (car now))))
+           (setf (buffer-undo-stack buffer) (list* (ldiff (car now) group) group (cdr now)))
+           (undo-back-to buffer (cdr (buffer-undo-stack buffer)))
+           t))))
+
 (defstruct (carry-piece (:constructor make-carry-piece (start linear move shift)) (:copier nil))
   "A stretch of a text edited while work in the background ran, from START up
 to the next piece's START, and where it stands in the work's result with the

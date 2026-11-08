@@ -462,7 +462,10 @@ whole file. The echo area shows how far the count has got; \\`C-g' gives up
 the command, the counting going on; other keys wait their turn; a counting
 that failed gives an error saying why. With LINE, where that line starts;
 NIL when the lines are all counted by then, or there is no counting. Outside
-a command loop the lines are counted there and then (NIL with LINE)."
+a command loop the lines are counted there and then (NIL with LINE). Refused,
+saying so, while the file is still arriving (BUFFER-ARRIVING-P)."
+  (when (tuatara.io:buffer-arriving-p buffer)
+    (refuse "The lines of ~a are counted once the whole file has arrived" (tuatara.buffer:buffer-name buffer)))
   (let ((editor *editor*))
     (if (or (null editor) (null (editor-frontend editor)))
         (unless line

@@ -24,7 +24,7 @@ root="$(cd "$(dirname "$0")/.." && pwd)"
 pin="$root/lisp/terminal/library.pin"
 target="${1:-x86_64-linux-gnu.2.28}"
 field() { awk -F'\t' -v k="$1" '$1 == k { print $2 }' "$pin"; }
-repository="$(field repository)" commit="$(field commit)" zig_wanted="$(field zig)"
+repository="$(field repository)" commit="$(field commit)" zig_wanted="$(field zig)" version="$(field version)"
 out="$root/build/terminal"
 [ "$target" = "x86_64-linux-gnu.2.28" ] || out="$root/build/terminal-$target"
 sources="$root/build/terminal-sources"
@@ -42,7 +42,7 @@ if [ "$(git -C "$sources" rev-parse HEAD 2>/dev/null)" != "$commit" ]; then
   git -C "$sources" checkout -q FETCH_HEAD
 fi
 rm -rf "$out.new"
-(cd "$sources" && zig build -Demit-lib-vt -Doptimize=ReleaseSafe -Dtarget="$target" --prefix "$out.new" >/dev/null)
+(cd "$sources" && zig build -Demit-lib-vt -Dlib-version-string="$version" -Doptimize=ReleaseSafe -Dtarget="$target" --prefix "$out.new" >/dev/null)
 # the licences of what the library compiles in, each in licenses/NAME/
 licences="$out.new/licenses"
 mkdir -p "$licences"
@@ -93,7 +93,7 @@ for file in LICENSE LICENSE-APACHE LICENSE-MIT; do
 done
 from_package uucode "$(zon_hash build.zig.zon uucode)" LICENSE.md
 # the licences uucode's own names, which its package leaves out
-uucode_commit=ea62149739404a73c202b48a33bf6dd2af4bd9b0
+uucode_commit=1fb73433bba5d93366c57f23ff2e9d7939746500
 grep -q "uucode-$uucode_commit\.tar\.gz" "$sources/build.zig.zon" || missing uucode "build.zig.zon names no uucode $uucode_commit"
 from_address uucode LICENSE_unicode "https://raw.githubusercontent.com/jacobsandlund/uucode/$uucode_commit/licenses/LICENSE_unicode" \
   1eda5a3b026870c737b22e8bcd4954338612c790db688242e003f41a4fa95175
@@ -118,7 +118,7 @@ printf '%s\t%s\n' \
   zig "MIT AND Apache-2.0 WITH LLVM-exception" > "$licences/licenses.tsv"
 # the library and its headers in place only now that every licence is there
 mkdir -p "$out"
-cp "$out.new/lib/libghostty-vt.so.0.1.0" "$out/libghostty-vt.so"
+cp "$out.new/lib/libghostty-vt.so.$version" "$out/libghostty-vt.so"
 rm -rf "$out/include"; cp -r "$out.new/include" "$out/include"
 cp "$sources/LICENSE" "$out/LICENSE-ghostty"
 rm -rf "$out/licenses"; cp -r "$licences" "$out/licenses"

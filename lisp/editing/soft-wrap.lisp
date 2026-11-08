@@ -8,11 +8,20 @@
 ;;;; when that is nearer); the text itself is not changed. The rows that go on
 ;;;; from the one above are marked in the gutter, where line numbers stand. On
 ;;;; where the buffer says so, else where its major mode says (*SOFT-WRAP-MODES*),
-;;;; else as *GLOBAL-SOFT-WRAP-MODE* says. While it is on, the keys that move
-;;;; up and down go by rows, and the row point is on is painted in :soft-wrap-row
+;;;; else help (the documentation commands' buffers, the health report, the
+;;;; credits), which wraps unless the list says otherwise, else as
+;;;; *GLOBAL-SOFT-WRAP-MODE* says. Views laid out in fixed columns or by the
+;;;; row (the agenda, the calendar, a terminal) never wrap. While it is on, the
+;;;; keys that move up and down go by rows, and the row point is on is painted in :soft-wrap-row
 ;;;; over the line's :hl-line, each of which the init file may colour.
 
 (in-package #:tuatara.defaults)
+
+(defun soft-wrap-never-p (buffer)
+  "True when BUFFER's lines cannot wrap: it is the hex view, or its major mode
+is laid out in fixed columns or by the row (MODE-WRAPS-P)."
+  (or (tuatara.display:hex-view-p buffer)
+      (not (mode-wraps-p (buffer-major-mode buffer)))))
 
 (define-display-toggle soft-wrap "Soft wrap"
   "Wrap the long lines of the current buffer at a word's edge, or stop: a line
@@ -26,7 +35,8 @@ not changed. The rows that go on from the one above are marked in the gutter
   :what "wrap long lines at a word's edge, at the fill column"
   :example "'((org-mode . t) (text-mode . t) (csv-mode . nil))"
   :mode-line "Wrap"
-  :unless (tuatara.display:hex-view-p "in the hex view"))
+  :unless (soft-wrap-never-p "in the hex view, or a view laid out in columns or by the row, as the agenda is")
+  :default-modes '((help-mode . t) (about-mode . t)))
 
 (defvar *soft-wrap-at-fill-column* t
   "True to wrap long lines at the buffer's fill column (\\[set-fill-column],

@@ -109,15 +109,19 @@ the buffer is narrowed."
 the end of the text (of the part shown, while the buffer is narrowed)."
   (let* ((b (current-buffer))
          (byte (if position (byte-at b position :clamp t) (tuatara.buffer:buffer-point b))))
-    (and (< byte (tuatara.buffer:buffer-end b)) (tuatara.buffer:buffer-char-at b byte))))
+    (when (< byte (tuatara.buffer:buffer-end b))
+      (tuatara.text:rope-check-arrived (tuatara.buffer:buffer-text b) byte (1+ byte))
+      (tuatara.buffer:buffer-char-at b byte))))
 
 (defun tuatara-user:char-before (&optional position)
   "Return the character before POSITION, point when it is not given, or NIL at
 the start of the text (of the part shown, while the buffer is narrowed)."
   (let* ((b (current-buffer))
          (byte (if position (byte-at b position :clamp t) (tuatara.buffer:buffer-point b))))
-    (and (> byte (tuatara.buffer:buffer-start b))
-         (tuatara.buffer:buffer-char-at b (tuatara.buffer:buffer-forward-char b byte -1)))))
+    (when (> byte (tuatara.buffer:buffer-start b))
+      (let ((before (tuatara.buffer:buffer-forward-char b byte -1)))
+        (tuatara.text:rope-check-arrived (tuatara.buffer:buffer-text b) before byte)
+        (tuatara.buffer:buffer-char-at b before)))))
 
 ;;; Lines
 

@@ -23,6 +23,7 @@ ends."
     (setf *package-code* (remove name *package-code* :key #'car :test #'string=)
           *loaded-packages* (remove name *loaded-packages* :test #'string=)
           *loaded-package-folders* (remove name *loaded-package-folders* :key #'first :test #'string=))
+    (setf *package-needs* (remove name *package-needs* :key #'car :test #'string=))
     (pushnew name *unloaded-packages* :test #'string=)
     (tuatara.runtime:debug-report :package "~a unloaded, ~d Lisp package~:p of its own deleted" name (length own))
     (and own t)))

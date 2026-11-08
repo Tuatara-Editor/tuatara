@@ -948,10 +948,11 @@ ended have: the frames shown, the one with no screen left out."
   ;; the buffer a window was asked to show is killed before the window comes: it shows another of the
   ;; client's buffers, never closed unasked
   (with-test-directory (dir)
-    (let ((file (namestring (put-file (merge-pathnames "moa.txt" dir) "moa text"))))
+    (let ((file (namestring (put-file (merge-pathnames "moa.txt" dir) "moa text")))
+          (other (namestring (put-file (merge-pathnames "kea.txt" dir) "kea text"))))
       (with-test-daemon (name)
         (multiple-value-bind (open opened) (window-opener name :after 1)
-          (multiple-value-bind (local runner) (attach-test-client name :directory dir :files (list file) :window t
+          (multiple-value-bind (local runner) (attach-test-client name :directory dir :files (list file other) :window t
                                                                        :another open)
             (true (shows local "moa text"))
             (type-keys local "C-x 5 2")
@@ -963,7 +964,7 @@ ended have: the frames shown, the one with no screen left out."
               (declare (ignore client))
               (when second
                 (true (wait-until (lambda () (= 2 (live-client-frames))) 10) "the window was closed")
-                (true (shows second "scratch"))
+                (true (or (shows second "kea text" 5) (shows second "scratch" 1)))
                 (type-keys local "C-x C-c")
                 (is equal '(0 nil) (client-ends runner))
                 (client-ends second-runner)))))))))
@@ -1557,3 +1558,33 @@ structure; the folder of A ended an hour after B's."
        (true (wait-until (lambda () (not (buffer-there-p "gamma.txt"))) 10) "the folder's buffers are killed")
        (true (buffer-there-p "alpha.txt") "another folder's stay")
        (true (buffer-there-p "delta.txt") "this client's stay")))))
+
+(define-test (daemon client-ends-with-its-last-buffer)
+  ;; a client whose last buffer is killed goes as C-x C-c would send it, the daemon on; one with
+  ;; another buffer left stays; one started with no files stays on its scratch buffer until a
+  ;; buffer of its own is closed
+  (with-test-directory (dir)
+    (let ((alpha (namestring (put-file (merge-pathnames "alpha.txt" dir) "alpha text")))
+          (beta (namestring (put-file (merge-pathnames "beta.txt" dir) "beta text"))))
+      (with-test-daemon (name thread)
+        (multiple-value-bind (one one-runner) (attach-test-client name :directory dir :files (list alpha))
+          (true (shows one "alpha text"))
+          (type-keys one "C-x k RET")
+          (is equal '(0 nil) (client-ends one-runner))
+          (true (sb-thread:thread-alive-p thread) "the daemon goes on"))
+        (multiple-value-bind (two two-runner) (attach-test-client name :directory dir :files (list alpha beta))
+          (true (shows two "alpha text"))
+          (type-keys two "C-x k RET")
+          (is eq :late (client-ends two-runner 1) "a buffer is left")
+          (type-keys two "C-x b b e t a RET")
+          (true (shows two "beta text"))
+          (type-keys two "C-x k RET")
+          (is equal '(0 nil) (client-ends two-runner)))
+        (multiple-value-bind (none none-runner) (attach-test-client name :directory dir)
+          (true (shows none "scratch"))
+          (is eq :late (client-ends none-runner 1) "it stays on its scratch buffer")
+          (type-keys none "C-x C-f")
+          (type-keys none (format nil "~{~a~^ ~} RET" (map 'list #'string alpha)))
+          (true (shows none "alpha text"))
+          (type-keys none "C-x k RET")
+          (is equal '(0 nil) (client-ends none-runner)))))))

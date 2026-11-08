@@ -767,6 +767,52 @@ folded; a section not in the list now keeps its fold for when it comes back."
 
 ;;; Columns
 
+(defun buffer-line-head (buffer position &optional (octets 512))
+  "The start of the line of BUFFER that octet POSITION is on, at most OCTETS
+of it (512 unless given) as a string, cut before a character the limit
+falls in: enough to tell what kind of line it is without reading a line of
+a million characters whole."
+  (let* ((start (tuatara.buffer:buffer-line-start buffer position))
+         (end (tuatara.buffer:buffer-line-end buffer position)))
+    (tuatara.buffer:buffer-string buffer :start start
+                                         :end (if (<= (- end start) octets)
+                                                  end
+                                                  (tuatara.text:rope-char-start (tuatara.buffer:buffer-text buffer) (+ start octets))))))
+
+(defun hanging-columns (head &key cells)
+  "The columns in where the text of the line beginning HEAD starts, once its
+indentation, its list bullet (-, + or *, a number and . or )) and its checkbox
+are passed: where the rows the line wraps into (\\[soft-wrap-mode]) line up.
+With CELLS, an indented line with no bullet that has a second cell, set apart
+from the first by two spaces or more, hangs under that cell, as a table's
+rows do. At most 30, so that a narrow window keeps room for its text."
+  (let* ((end (nth-value 1 (cl-ppcre:scan "^[ \\t]*(?:(?:[-+*]|[0-9]+[.)])[ \\t]+(?:\\[[ X-]\\][ \\t]+)?)?" head)))
+         (indent (or (position-if-not (lambda (c) (member c '(#\Space #\Tab))) head) (length head)))
+         (second-cell (and cells (plusp indent) (= end indent)
+                           (let ((gap (search "  " head :start2 indent)))
+                             (and gap (position #\Space head :start gap :test #'char/=))))))
+    (min 30 (tuatara.display:string-columns head :end (or second-cell end)))))
+
+(defun hanging-prefix (buffer line-start continuation)
+  "What a buffer shows before the rows a long line wraps into (\\[soft-wrap-mode]),
+its :line-prefix-function: as many spaces as its HANGING setting says, a
+number, or for :CELLS where the text of the line beginning at LINE-START
+starts (HANGING-COLUMNS); nothing before a line's first row (CONTINUATION
+false). The rows then continue under their own text."
+  (when continuation
+    (let* ((hang (tuatara.buffer:buffer-local buffer 'hanging))
+           (columns (cond ((integerp hang) (min 30 hang))
+                          (hang (hanging-columns (buffer-line-head buffer line-start 128) :cells t))
+                          (t 0))))
+      (and (plusp columns) (make-string columns :initial-element #\Space)))))
+
+(defun set-hanging (buffer hang)
+  "Make the rows a long line of BUFFER wraps into continue under their own
+text: HANG, a number, is how many columns in they start, :CELLS has each line's
+own indentation, bullet or second cell say (HANGING-PREFIX); NIL stops it."
+  (setf (tuatara.buffer:buffer-local buffer 'hanging) hang
+        (tuatara.buffer:buffer-local buffer :line-prefix-function) (and hang 'hanging-prefix)))
+
 (defun column-text (text width &key right (elide t))
   "TEXT in a column WIDTH columns wide: padded with spaces after it, or before
 it when RIGHT; when it is wider, cut, with ... for its last three, or left
@@ -811,8 +857,12 @@ the texts of its cells, and the first row's texts."
 FIRST as it gives them): the titles of COLUMNS over them, BEFORE and AFTER,
 pieces, above the titles and below the rows; the columns kept for a filter to
 try a pattern on one (KEEP-LIST-TABLE). The other OPTIONS go to
-RENDER-PIECES, FIRST-LINE counted from the titles when not given."
+RENDER-PIECES, FIRST-LINE counted from the titles when not given. A last column
+with no width continues, where a long row wraps (\\[soft-wrap-mode]), under
+its own start (SET-HANGING)."
   (keep-list-table list (map 'simple-vector (lambda (column) (string-trim " " (first column))) columns) texts first)
+  (set-hanging list (and (rest columns) (not (getf (rest (car (last columns))) :width))
+                         (1+ (table-columns-width (butlast columns) 0))))
   (apply #'render-pieces list
          (append before (table-heading-pieces columns) rows after)
          :first-line (or first-line (+ 2 (count #\Newline (pieces-text before))))

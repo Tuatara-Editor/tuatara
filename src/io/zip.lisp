@@ -10,7 +10,8 @@
 ;;;; packed size, its CRC checked; a locked or damaged archive is refused
 ;;;; with a ZIP-ERROR. ZIP-LOCKED-P tells, from the directory at its end alone,
 ;;;; whether an archive of any size holds an entry locked with a password.
-;;;; INFLATE follows Mark Adler's puff.c.
+;;;; INFLATE follows Mark Adler's puff.c. DEFLATE packs what INFLATE reads,
+;;;; for what is sent where octets cost.
 
 (in-package #:tuatara.io)
 
@@ -196,6 +197,11 @@ that is damaged or would unpack to more."
                      (symbols (make-array (length lengths) :initial-element 0)))
                  (loop for l across lengths do (incf (aref count l)))
                  (setf (aref count 0) 0)
+                 ;; more codes of a length than the codes shorter leave room for
+                 (let ((left 1))
+                   (loop for l from 1 to 15
+                         do (setf left (- (* 2 left) (aref count l)))
+                            (when (minusp left) (zip-fail "damaged packed data: more codes than their lengths hold"))))
                  (loop for l from 1 below 15 do (setf (aref offsets (1+ l)) (+ (aref offsets l) (aref count l))))
                  (loop for symbol from 0 for l across lengths
                        when (plusp l) do (setf (aref symbols (aref offsets l)) symbol) (incf (aref offsets l)))
@@ -254,6 +260,271 @@ that is damaged or would unpack to more."
             (t (zip-fail "damaged packed data: a block of no kind")))
           (when (= last 1) (return)))))
     (if (= fill (length out)) out (subseq out 0 fill))))
+
+;;; Packing: deflated data (RFC 1951), one dynamic Huffman block per stretch
+
+(defconstant +deflate-window+ 32768 "How far back in the text a match may reach.")
+(defconstant +deflate-block-tokens+ 262144 "The most literals and matches of one block.")
+(defconstant +deflate-chain+ 16 "How many earlier places with the same three octets a match is sought among.")
+
+(defparameter *deflate-length-codes*
+  (let ((codes (make-array 259 :element-type '(unsigned-byte 16) :initial-element 0)))
+    (loop for code from 0 to 28
+          do (loop for length from (aref *inflate-length-base* code)
+                     to (min 258 (+ (aref *inflate-length-base* code) (1- (ash 1 (aref *inflate-length-extra* code)))))
+                   do (setf (aref codes length) code)))
+    codes)
+  "For each length a match can have, its code (from 0, a symbol being this past 256).")
+
+(defun deflate-distance-code (distance)
+  "The code from 0 of a match going back DISTANCE octets."
+  (declare (type fixnum distance))
+  (let ((low 0) (high 29))
+    (declare (type fixnum low high))
+    (loop while (< low high)
+          do (let ((middle (ceiling (+ low high) 2)))
+               (if (<= (the fixnum (aref *inflate-distance-base* middle)) distance)
+                   (setf low middle)
+                   (setf high (1- middle)))))
+    low))
+
+(defun huffman-lengths (counts most)
+  "For each symbol of COUNTS (how often it comes), the bits of a code for it
+of at most MOST bits, 0 for one that never comes; those that come most have
+the shortest. One symbol alone gets one bit."
+  (let* ((lengths (make-array (length counts) :element-type '(unsigned-byte 8) :initial-element 0))
+         (used (sort (loop for symbol from 0 below (length counts) when (plusp (aref counts symbol)) collect symbol)
+                     #'> :key (lambda (symbol) (aref counts symbol)))))
+    (cond ((null used))
+          ((null (rest used)) (setf (aref lengths (first used)) 1))
+          (t (let* ((depths (make-array (length counts) :initial-element 0))
+                    (nodes (sort (loop for symbol in used collect (cons (aref counts symbol) (list symbol)))
+                                 #'< :key #'car)))
+               (loop while (rest nodes)
+                     do (let* ((a (pop nodes)) (b (pop nodes)) (symbols (append (cdr a) (cdr b))))
+                          (dolist (symbol symbols) (incf (aref depths symbol)))
+                          (setf nodes (merge 'list (list (cons (+ (car a) (car b)) symbols)) nodes #'< :key #'car))))
+               ;; the lengths that came out, the longest brought within MOST and paid for by others' being longer
+               (let ((how-many (make-array (+ most 2) :initial-element 0)) (total 0))
+                 (dolist (symbol used) (incf (aref how-many (min most (aref depths symbol)))))
+                 (loop for length from 1 to most
+                       do (incf total (ash (aref how-many length) (- most length))))
+                 (loop while (> total (ash 1 most))
+                       do (decf (aref how-many most))
+                          (loop for length from (1- most) downto 1
+                                do (when (plusp (aref how-many length))
+                                     (decf (aref how-many length))
+                                     (incf (aref how-many (1+ length)) 2)
+                                     (return)))
+                          (decf total))
+                 (let ((symbols used))
+                   (loop for length from 1 to most
+                         do (loop repeat (aref how-many length)
+                                  do (setf (aref lengths (pop symbols)) length))))))))
+    lengths))
+
+(defun huffman-codes (lengths)
+  "The code of each symbol of LENGTHS (HUFFMAN-LENGTHS), as deflated data has
+it, its first bit the lowest."
+  (let ((how-many (make-array 16 :initial-element 0)) (next (make-array 16 :initial-element 0))
+        (codes (make-array (length lengths) :element-type '(unsigned-byte 16) :initial-element 0)))
+    (loop for length across lengths do (incf (aref how-many length)))
+    (setf (aref how-many 0) 0)
+    (loop for length from 1 to 15
+          do (setf (aref next length) (ash (+ (aref next (1- length)) (aref how-many (1- length))) 1)))
+    (loop for symbol from 0 for length across lengths
+          when (plusp length)
+            do (let ((code (aref next length)) (reversed 0))
+                 (incf (aref next length))
+                 (dotimes (bit length) (setf reversed (logior (ash reversed 1) (ldb (byte 1 bit) code))))
+                 (setf (aref codes symbol) reversed)))
+    codes))
+
+(defstruct (bit-writer (:constructor make-bit-writer (size &aux (octets (tuatara.text:make-octets size))))
+                       (:copier nil))
+  "Deflated data being written: the first FILL of OCTETS, then the COUNT bits
+of BUFFER not yet a whole octet."
+  (octets nil :type tuatara.text:octets)
+  (fill 0 :type fixnum)
+  (buffer 0 :type (unsigned-byte 62))
+  (count 0 :type (integer 0 62)))
+
+(setf (documentation 'make-bit-writer 'function) "An empty BIT-WRITER with room for SIZE octets before it grows."
+      (documentation 'bit-writer-p 'function) "True when OBJECT is a BIT-WRITER."
+      (documentation 'bit-writer-octets 'function) "The octets WRITER has written."
+      (documentation 'bit-writer-fill 'function) "How many of WRITER's octets are written."
+      (documentation 'bit-writer-buffer 'function) "The bits WRITER holds short of a whole octet."
+      (documentation 'bit-writer-count 'function) "How many bits WRITER holds short of a whole octet.")
+
+(defun write-bits (writer value count)
+  "Add the COUNT low bits of VALUE to WRITER, the lowest first."
+  (declare (type bit-writer writer) (type (unsigned-byte 32) value) (type (integer 0 32) count))
+  (setf (bit-writer-buffer writer) (logior (bit-writer-buffer writer) (ash value (bit-writer-count writer))))
+  (incf (bit-writer-count writer) count)
+  (loop while (>= (bit-writer-count writer) 8)
+        do (when (= (bit-writer-fill writer) (length (bit-writer-octets writer)))
+             (setf (bit-writer-octets writer)
+                   (replace (tuatara.text:make-octets (* 2 (length (bit-writer-octets writer))))
+                            (bit-writer-octets writer))))
+           (setf (aref (bit-writer-octets writer) (bit-writer-fill writer)) (logand 255 (bit-writer-buffer writer)))
+           (incf (bit-writer-fill writer))
+           (setf (bit-writer-buffer writer) (ash (bit-writer-buffer writer) -8))
+           (decf (bit-writer-count writer) 8)))
+
+(defun code-length-runs (lengths)
+  "LENGTHS, a list of a block's code lengths, run-length coded as deflated
+data has them: a list of (SYMBOL . REPEATS), REPEATS NIL for a length as it is."
+  (let ((runs '()) (all lengths))
+    (loop while all
+          do (let* ((length (first all))
+                    (run (or (position-if-not (lambda (other) (= other length)) all) (length all))))
+               (setf all (nthcdr run all))
+               (loop while (plusp run)
+                     do (cond ((and (zerop length) (>= run 11))
+                               (let ((n (min run 138))) (push (cons 18 n) runs) (decf run n)))
+                              ((and (zerop length) (>= run 3))
+                               (let ((n (min run 10))) (push (cons 17 n) runs) (decf run n)))
+                              (t (push (cons length nil) runs)
+                                 (decf run)
+                                 (let ((more (min run 6)))
+                                   (when (and (plusp length) (>= more 3))
+                                     (push (cons 16 more) runs)
+                                     (decf run more))))))))
+    (nreverse runs)))
+
+(defun write-block-codes (writer literal-lengths distance-lengths final)
+  "Begin a dynamic Huffman block in WRITER, the last when FINAL, saying the
+code lengths LITERAL-LENGTHS and DISTANCE-LENGTHS."
+  (let* ((hlit (max 257 (1+ (or (position-if #'plusp literal-lengths :from-end t) 0))))
+         (hdist (max 1 (1+ (or (position-if #'plusp distance-lengths :from-end t) 0))))
+         (runs (code-length-runs (concatenate 'list (subseq literal-lengths 0 hlit) (subseq distance-lengths 0 hdist))))
+         (counts (make-array 19 :initial-element 0)))
+    (dolist (run runs) (incf (aref counts (car run))))
+    (let* ((lengths (huffman-lengths counts 7))
+           (codes (huffman-codes lengths))
+           (hclen (max 4 (1+ (or (position-if (lambda (symbol) (plusp (aref lengths symbol))) *inflate-code-order*
+                                              :from-end t)
+                                 0)))))
+      (write-bits writer (if final 1 0) 1)
+      (write-bits writer 2 2)
+      (write-bits writer (- hlit 257) 5)
+      (write-bits writer (- hdist 1) 5)
+      (write-bits writer (- hclen 4) 4)
+      (dotimes (i hclen) (write-bits writer (aref lengths (aref *inflate-code-order* i)) 3))
+      (dolist (run runs)
+        (write-bits writer (aref codes (car run)) (aref lengths (car run)))
+        (case (car run)
+          (16 (write-bits writer (- (cdr run) 3) 2))
+          (17 (write-bits writer (- (cdr run) 3) 3))
+          (18 (write-bits writer (- (cdr run) 11) 7)))))))
+
+(defun write-deflate-block (writer tokens count final)
+  "Write the first COUNT of TOKENS to WRITER as one dynamic Huffman block, the
+last when FINAL. A token below 256 is that octet; any other a match, its
+length in the bits above 16 and how far back it reaches in those below."
+  (declare (type (simple-array (unsigned-byte 32) (*)) tokens) (type fixnum count))
+  (let ((literal-counts (make-array 286 :initial-element 0))
+        (distance-counts (make-array 30 :initial-element 0)))
+    (setf (aref literal-counts 256) 1)
+    (dotimes (i count)
+      (let ((token (aref tokens i)))
+        (if (< token 256)
+            (incf (aref literal-counts token))
+            (progn (incf (aref literal-counts (+ 257 (aref *deflate-length-codes* (ash token -16)))))
+                   (incf (aref distance-counts (deflate-distance-code (logand token 65535))))))))
+    (when (every #'zerop distance-counts) (setf (aref distance-counts 0) 1))
+    (let* ((literal-lengths (huffman-lengths literal-counts 15)) (literal-codes (huffman-codes literal-lengths))
+           (distance-lengths (huffman-lengths distance-counts 15)) (distance-codes (huffman-codes distance-lengths)))
+      (write-block-codes writer literal-lengths distance-lengths final)
+      (dotimes (i count)
+        (let ((token (aref tokens i)))
+          (if (< token 256)
+              (write-bits writer (aref literal-codes token) (aref literal-lengths token))
+              (let* ((length (ash token -16)) (distance (logand token 65535))
+                     (lc (aref *deflate-length-codes* length)) (dc (deflate-distance-code distance)))
+                (write-bits writer (aref literal-codes (+ 257 lc)) (aref literal-lengths (+ 257 lc)))
+                (write-bits writer (- length (aref *inflate-length-base* lc)) (aref *inflate-length-extra* lc))
+                (write-bits writer (aref distance-codes dc) (aref distance-lengths dc))
+                (write-bits writer (- distance (aref *inflate-distance-base* dc))
+                            (aref *inflate-distance-extra* dc))))))
+      (write-bits writer (aref literal-codes 256) (aref literal-lengths 256)))))
+
+(defun deflate-stored (octets start end)
+  "OCTETS from START below END as deflated data of stored blocks, unpacked."
+  (let* ((blocks (max 1 (ceiling (- end start) 65535)))
+         (out (tuatara.text:make-octets (+ (- end start) (* 5 blocks))))
+         (fill 0) (at start))
+    (dotimes (block blocks out)
+      (let ((count (min 65535 (- end at))))
+        (setf (aref out fill) (if (= block (1- blocks)) 1 0)
+              (aref out (+ fill 1)) (logand 255 count)
+              (aref out (+ fill 2)) (ash count -8)
+              (aref out (+ fill 3)) (logand 255 (lognot count))
+              (aref out (+ fill 4)) (logand 255 (ash (lognot count) -8)))
+        (replace out octets :start1 (+ fill 5) :start2 at :end2 (+ at count))
+        (incf fill (+ 5 count))
+        (incf at count)))))
+
+(defun deflate (octets &key (start 0) (end (length octets)))
+  "OCTETS from START below END as deflated data (RFC 1951), as INFLATE takes
+it: in dynamic Huffman blocks, or stored when that would not be smaller."
+  (let* ((octets (coerce octets 'tuatara.text:octets))
+         (writer (make-bit-writer (max 1024 (ash (- end start) -2))))
+         (head (make-array 32768 :element-type 'fixnum :initial-element -1))
+         (previous (make-array 32768 :element-type 'fixnum :initial-element -1))
+         (tokens (make-array +deflate-block-tokens+ :element-type '(unsigned-byte 32)))
+         (token-count 0)
+         (at start))
+    (declare (type tuatara.text:octets octets) (type fixnum start end token-count at)
+             (type (simple-array fixnum (*)) head previous)
+             (type (simple-array (unsigned-byte 32) (*)) tokens))
+    (labels ((hash (place)
+               (declare (type fixnum place))
+               (logand 32767 (logxor (ash (aref octets place) 10) (ash (aref octets (+ place 1)) 5)
+                                     (aref octets (+ place 2)))))
+             (remember (place)
+               (declare (type fixnum place))
+               (when (<= (+ place 3) end)
+                 (let ((h (hash place)))
+                   (setf (aref previous (logand place 32767)) (aref head h)
+                         (aref head h) place))))
+             (longest-match ()
+               (let ((best 0) (distance 0) (limit (min 258 (- end at))))
+                 (declare (type fixnum best distance limit))
+                 (when (>= limit 3)
+                   (loop with from of-type fixnum = (aref head (hash at))
+                         repeat +deflate-chain+
+                         while (and (>= from start) (> from (- at +deflate-window+)))
+                         do (let ((length 0))
+                              (declare (type fixnum length))
+                              (loop while (and (< length limit)
+                                               (= (aref octets (+ from length)) (aref octets (+ at length))))
+                                    do (incf length))
+                              (when (> length best)
+                                (setf best length distance (- at from))
+                                (when (= best limit) (return))))
+                            (setf from (aref previous (logand from 32767)))))
+                 (if (>= best 3) (values best distance) (values 0 0))))
+             (token (value)
+               (setf (aref tokens token-count) value)
+               (incf token-count)
+               (when (= token-count +deflate-block-tokens+)
+                 (write-deflate-block writer tokens token-count nil)
+                 (setf token-count 0))))
+      (loop while (< at end)
+            do (multiple-value-bind (length distance) (longest-match)
+                 (declare (type fixnum length distance))
+                 (cond ((plusp length)
+                        (token (logior (ash length 16) distance))
+                        (loop repeat length do (remember at) (incf at)))
+                       (t (token (aref octets at))
+                          (remember at)
+                          (incf at)))))
+      (write-deflate-block writer tokens token-count t)
+      (write-bits writer 0 7)
+      (if (>= (bit-writer-fill writer) (- end start))
+          (deflate-stored octets start end)
+          (subseq (bit-writer-octets writer) 0 (bit-writer-fill writer))))))
 
 (defun zip-entry-octets (octets entry)
   "The unpacked octets of ENTRY (ZIP-ENTRIES) of the zip archive OCTETS,

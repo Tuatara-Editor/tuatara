@@ -72,6 +72,30 @@ list, has the frontend show pictures. Returns the frontend and the editor."
       ;; the shell's own lines, not the editor's: nothing typed into the text
       (true (tuatara.buffer:buffer-local buffer :read-only)))))
 
+(define-test (terminal stray-leaving-of-the-other-screen-ignored)
+  ;; a program saying it leaves the alternate screen when it is not on it (a login's logout): the cursor stays
+  (dolist (split '("" "sleep 0.3; "))
+    (let ((script (format nil "printf 'x\\033[?1049h\\033[?1049l\\r\\n'; printf 'one\\r\\ntwo\\r\\nthree\\r\\n'; printf '\\033[?10'; ~
+                               ~aprintf '49l'; printf 'ENDMARK'; sleep 30" split))
+          (order nil))
+      (terminal-session (list "M-x t e r m i n a l RET"
+                              (list :until (buffer-holding "ENDMARK"))
+                              (list :do (lambda (buffer)
+                                          (let ((text (tuatara.buffer:buffer-string buffer)))
+                                            (setf order (list (search "three" text) (search "ENDMARK" text)))))))
+                        :program (list "/bin/sh" "-c" script))
+      (true (and (first order) (second order) (< (first order) (second order))) "after: ~a" order))))
+
+(define-test (terminal escape-given-to-a-full-screen-program)
+  ;; with Escape as quit and *terminal-send-escape*, a program on the alternate screen gets it, as nvim needs
+  (let ((tuatara-user:*escape-quits* t) (tuatara-user:*terminal-send-escape* t))
+    (terminal-session (list "M-x t e r m i n a l RET"
+                            (list :until (buffer-holding "READY"))
+                            "ESC"
+                            (list :until (buffer-holding "GOT 1b")))
+                      :program (list "/bin/sh" "-c"
+                                     "printf '\\033[?1049h'; stty raw -echo; printf 'READY\\r\\n'; c=$(dd bs=1 count=1 2>/dev/null | od -An -tx1 | tr -d ' '); printf 'GOT %s\\r\\n' \"$c\"; sleep 30"))))
+
 (define-test (terminal typed-line-shown)
   ;; what is typed shows as it is typed, before RET (the shell's line editor echoing it)
   (multiple-value-bind (f editor)

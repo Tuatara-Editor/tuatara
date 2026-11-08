@@ -18,6 +18,10 @@ nothing to save. \\[hex-mode] opens its octets, safely; \\<image-view-mode>\\[op
 desktop's program; \\`q' closes."
   :lighter "Image" :interactive nil)
 
+(defmethod mode-wraps-p ((mode image-view-mode))
+  "A picture is drawn, not laid out in lines: its lines never wrap."
+  nil)
+
 (defvar *image-view-keymap* (mode-keymap 'image-view-mode)
   "Keys of an image file shown as its picture (image-view-mode's keymap).")
 

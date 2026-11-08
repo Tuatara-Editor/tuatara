@@ -24,7 +24,12 @@ octets a window showed last began; ASKED, the stretch (START . END) asked
 about last outside a pass (ASK-ABSENT); RELEASING, held while pieces of it
 are let go of, which closing it waits for (LET-GO-RELEASED); PIECES, of
 each piece passes reading it through hold (HOLD-PIECE), how many hold it and
-which of its pages the system held before. Of a large mapping
+which of its pages the system held before; HOLES, the stretches (START . END)
+of a file still arriving from elsewhere that are not here yet, read as
+zeros by the system, which reading them refuses (NOT-ARRIVED), a new list
+each time, never changed in place; TORN, true when the file changed where it
+was read from while it came, so that what is here is no one version of it,
+and any read of it is refused. Of a large mapping
 \(*LARGE-MAPPING-OCTETS*) the system reads in no more than is asked
 \(LARGE-MAPPING-ADVICE): its readers ask (NOTE-READ, READ-AHEAD)."
   (sap (sb-sys:int-sap 0) :type sb-sys:system-area-pointer)
@@ -37,6 +42,8 @@ which of its pages the system held before. Of a large mapping
   (wanted (cons 0 0) :type cons)
   (seen 0 :type fixnum)
   (asked (cons 0 0) :type cons)
+  (holes '() :type list)
+  (torn nil :type boolean)
   (pieces (make-hash-table :synchronized t) :read-only t)
   (releasing (sb-thread:make-mutex :name "tuatara mapping let go of") :read-only t))
 
@@ -51,8 +58,27 @@ which of its pages the system held before. Of a large mapping
       (documentation 'mapping-wanted 'function) "The stretch (START . END) of a mapping a window shows and reads ahead."
       (documentation 'mapping-seen 'function) "Where in the mapping the octets a window showed last began."
       (documentation 'mapping-asked 'function) "The stretch (START . END) of a mapping asked about last outside a pass."
+      (documentation 'mapping-holes 'function) "The stretches of a mapping's file that have not arrived, in order."
+      (documentation 'mapping-torn 'function) "True when a mapping's file changed where it came from while it arrived."
       (documentation 'mapping-releasing 'function) "Held while pieces of a mapping are let go of."
       (documentation 'mapping-pieces 'function) "The pieces of a mapping passes hold, each (HOLDERS . HELD).")
+
+(define-condition not-arrived (tuatara.runtime:refusal) ()
+  (:documentation "Signalled for a read of text that crosses a part of a file not arrived yet (MAPPING-HOLES),
+so that what the system gives for it, zeros, is never taken for the file's contents."))
+
+(defun refuse-not-arrived ()
+  "Refuse a read of a part of a file that has not arrived (NOT-ARRIVED)."
+  (error 'not-arrived :format-control "Part of the file has not arrived"))
+
+(defun check-holes (mapping start end)
+  "Refuse a read of MAPPING's octets from START below END when any of them has
+not arrived, or none can be trusted (MAPPING-TORN)."
+  (when (mapping-torn mapping)
+    (error 'not-arrived :format-control "The file changed on the server while it came"))
+  (loop for (from . to) in (mapping-holes mapping)
+        do (when (and (< from end) (> to start))
+             (refuse-not-arrived))))
 
 (defun release-resources (resources)
   "Unmap and close every (ADDRESS LENGTH file descriptor (FD)) in the car of

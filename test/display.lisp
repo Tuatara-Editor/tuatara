@@ -959,3 +959,41 @@ for each, its layout and colours left out."
           (high (typing-garbage-per-key text "txt" 60 '(tuatara.command::window-pieces) :less made-elsewhere)))
       (true (< (/ (- high low) 40) 64) "~,1f octets a key at 20 rows, ~,1f at 60: ~,1f more for each row"
             low high (/ (- high low) 40)))))
+
+(defparameter *garbage-budget-per-key* (* 64 1024)
+  "The octets a key that inserts or deletes a character, or moves point a line, may make in all: the
+window drawn again, the mode line, the screen. Measured 2026-11-08 at 40 rows of 100 columns: typing
+34 KB, moving a line 36 KB, typing in a Lisp file with colours 42 KB.")
+
+(defparameter *garbage-budget-per-page-row* (* 4 1024)
+  "The octets a key that moves the whole window (C-v, M-v) may make for each row the window shows.
+Every row is new text, so each is made, kept for the next frame to compare with, and put on the
+screen: 2.4 KB a row of plain text 100 columns wide, 3.5 KB of a CSV file.")
+
+(defun garbage-of-keys (keys &key (height 40) (before '()))
+  "The octets a session makes for each key of KEYS (a list of strings), its text of a long plain file,
+HEIGHT rows tall, found as the difference of two lengths of KEYS, the least of three runs of each."
+  (let ((text (with-output-to-string (s)
+                (dotimes (i 6000) (format s "Line ~d of a plain text, long enough to fill a row of the window.~%" i)))))
+    (flet ((octets (times)
+             (loop repeat 3
+                   minimize (progn
+                              (sb-ext:gc :full t)
+                              (let ((start (tuatara.bench::bytes-consed)))
+                                (run-keys (append before (loop repeat times append keys)) :text text :width 100
+                                                                                           :height height)
+                                (- (tuatara.bench::bytes-consed) start))))))
+      (/ (- (octets 120) (octets 40)) (* 80.0 (length keys))))))
+
+(define-test (display garbage-of-a-key-within-budget)
+  ;; the garbage of a key typed, of one that moves a line and of one that moves a page, for each added key
+  (let ((typing (garbage-of-keys '("a" "b" "c" "DEL")))
+        (line (garbage-of-keys '("C-n") :before (loop repeat 100 collect "C-n"))))
+    (true (< typing *garbage-budget-per-key*) "typing made ~,1f KB a key, over ~d" (/ typing 1024)
+          (/ *garbage-budget-per-key* 1024))
+    (true (< line *garbage-budget-per-key*) "moving a line made ~,1f KB a key, over ~d" (/ line 1024)
+          (/ *garbage-budget-per-key* 1024)))
+  (dolist (height '(20 50))
+    (let ((page (/ (garbage-of-keys '("C-v") :height height) height)))
+      (true (< page *garbage-budget-per-page-row*) "a page at ~d rows made ~,2f KB a row, over ~d" height
+            (/ page 1024) (/ *garbage-budget-per-page-row* 1024)))))

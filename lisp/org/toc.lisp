@@ -415,7 +415,7 @@ a web or mail address in the desktop's program, after asking; to a file,
 visited. True when point is on a link."
   (let* ((point (tuatara.buffer:buffer-point buffer))
          (start (tuatara.buffer:buffer-line-start buffer point))
-         (line (org-line-head buffer point (* 4 *toc-longest-line*)))
+         (line (buffer-line-head buffer point (* 4 *toc-longest-line*)))
          (column (and (<= (- point start) (tuatara.text:string-octet-length line))
                       (length (tuatara.buffer:buffer-string buffer :start start :end point)))))
     (multiple-value-bind (label target) (and column (markdown-link-at line column))

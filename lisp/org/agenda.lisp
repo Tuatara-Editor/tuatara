@@ -757,9 +757,28 @@ DAY REPEATS), REPEATS its repeater (ORG-REPEATER-OF), or NIL; :RANGES, each
                                               (if (and (/= current deadline) (/= current repeat)) nil text)
                                               (+ (if today-p (- diff) 0) (agenda-entry-priority entry)))))))))
 
-(defun org-agenda-scheduled (entries current today)
-  "The scheduled lines of ENTRIES on the day CURRENT, today being TODAY."
-  (loop for entry in entries
+(defun org-closing-replaces-scheduled-p (entry following current)
+  "True when, in log mode, the line of ENTRY's closing on the day CURRENT
+stands for its scheduled line: ENTRY is done, does not repeat, is scheduled
+with no time of day, and has no sub-task still open among FOLLOWING, the
+entries after it."
+  (and (org-done-p entry)
+       (not (org-entry-repeats-p entry))
+       (not (org-agenda-stamp-time (agenda-entry-scheduled entry)))
+       (let ((day (format-day "%F" current)))
+         (find-if (lambda (log) (and (eq (first log) :closed) (uiop:string-prefix-p day (subseq (second log) 1))))
+                  (agenda-entry-logs entry)))
+       (loop for next in following
+             while (and (equal (agenda-entry-file next) (agenda-entry-file entry))
+                        (> (agenda-entry-level next) (agenda-entry-level entry)))
+             never (eq (agenda-entry-todo-type next) 'todo))))
+
+(defun org-agenda-scheduled (entries current today &optional log)
+  "The scheduled lines of ENTRIES on the day CURRENT, today being TODAY.  With
+LOG true, a done task's closing line stands for its scheduled line
+\(ORG-CLOSING-REPLACES-SCHEDULED-P)."
+  (loop for tail on entries
+        for entry = (car tail)
         for facts = (getf (agenda-entry-facts entry) :scheduled)
         when facts
           append (destructuring-bind (schedule delay repeats) facts
@@ -772,6 +791,7 @@ DAY REPEATS), REPEATS its repeater (ORG-REPEATER-OF), or NIL; :RANGES, each
                                  (> schedule current)
                                  (and (/= current schedule) (/= current today) (/= current repeat))
                                  (and (org-done-p entry) (/= schedule current))
+                                 (and log (org-closing-replaces-scheduled-p entry (cdr tail) current))
                                  ;; its time moved: listed where it went (ORG-AGENDA-NOTED-LINES)
                                  (and (= current today) past (getf (agenda-entry-facts entry) :moved)
                                       (org-moved-from-p (getf (agenda-entry-facts entry) :moved) schedule (org-agenda-stamp-time text))))
@@ -1029,7 +1049,7 @@ read before."
                  (let ((items (append (org-agenda-deadlines entries day today)
                                       (and log (org-agenda-progress entries day))
                                       (org-agenda-repeats-done entries day)
-                                      (org-agenda-scheduled entries day today)
+                                      (org-agenda-scheduled entries day today log)
                                       (org-agenda-blocks entries day)
                                       (org-agenda-timestamps entries day today)
                                       (org-agenda-rules entries day today))))

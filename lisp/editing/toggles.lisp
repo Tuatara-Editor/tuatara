@@ -14,15 +14,16 @@
 
 (in-package #:tuatara.defaults)
 
-(defstruct (display-toggle (:constructor make-display-toggle (name label key lookup global modes values word))
+(defstruct (display-toggle (:constructor make-display-toggle (name label key lookup global modes values word never))
                            (:copier nil) (:predicate nil))
   "A way of showing text made by define-display-toggle: its NAME, the LABEL
 its messages begin with, the buffer-local KEY a buffer's own choice is kept
 under, its LOOKUP function of a buffer, the names of its GLOBAL setting and of
 its MODES list, the VALUES it takes when on, each (VALUE WORD), WORD words or
 a function of the buffer, or NIL for every buffer, that returns them, and the
-WORD the mode line shows while it is on, or NIL for none."
-  name label key lookup global modes values word)
+WORD the mode line shows while it is on, or NIL for none; NEVER, NIL or a list
+\(FUNCTION WHERE) as define-display-toggle's UNLESS, says where it cannot work."
+  name label key lookup global modes values word never)
 
 (defvar *display-toggles* '()
   "Every way of showing text define-display-toggle has made, as
@@ -53,7 +54,10 @@ buffer, or with EVERYWHERE for every buffer (its global setting, which buffers
 that chose for themselves and the modes its list names keep out of), and say
 so in one form for every toggle: Soft wrap on, Line numbers relative, Soft
 wrap off in every buffer. Every frame shows the change."
-  (let ((toggle (find-display-toggle name)))
+  (let* ((toggle (find-display-toggle name))
+         (never (display-toggle-never toggle)))
+    (when (and never value (not everywhere) (funcall (first never) (current-buffer)))
+      (refuse "~a does not work ~a." (display-toggle-label toggle) (second never)))
     (if everywhere
         (setf (symbol-value (display-toggle-global toggle)) value)
         (choose-display (current-buffer) name value))
@@ -115,13 +119,14 @@ lines of at most 78 columns, as a docstring is written."
           (incf column (length word)))))))
 
 (defmacro define-display-toggle (name label doc &key command lookup global default global-doc
-                                                     what example (values '((t "on"))) mode-line unless where)
+                                                     what example (values '((t "on"))) mode-line unless where default-modes)
   "Define NAME, a way of showing a buffer's text that is switched on and off:
 LOOKUP, a function of a buffer (the current one unless given) true where it
 is on, or the value it takes there of VALUES: the buffer's own choice, made
 with COMMAND; else what *NAME-MODES*, a list of (MODE . VALUE), says of its
 major mode or the nearest mode that mode is made from (MODE-SETTING); else
-GLOBAL, the setting for every buffer, DEFAULT unless the init file sets it
+DEFAULT-MODES, a list of (MODE . VALUE) of the same kind, for modes the list
+leaves out; else GLOBAL, the setting for every buffer, DEFAULT unless the init file sets it
 \(its docstring GLOBAL-DOC, or one made from WHAT). Never where UNLESS, a list
 \(FUNCTION WHERE), says so of the buffer, WHERE saying where in words; at
 VALUE (its first value unless given), where WHERE, a list (FUNCTION WHERE
@@ -161,8 +166,9 @@ package's name."
          ,(filled-docstring "Major modes whose buffers ~a, or not: a list of (MODE . ~:[ON), ON true or NIL~;~:*VALUE), ~
                        VALUE NIL or one of ~{~(~s~)~^, ~}~], MODE a major mode's name, with or without -mode, for ~
                        example ~a. A mode counts for the modes made from it, the nearest one listed deciding; ~
-                       it says more than ~a, and a buffer's own \\[~(~a~)] more than either."
-                  what (and valued (mapcar #'first values)) example global command))
+                       it says more than ~a, and a buffer's own \\[~(~a~)] more than either.~@[ Without an entry ~
+                       for a mode, these count: ~{~(~s~)~^, ~}.~]"
+                  what (and valued (mapcar #'first values)) example global command default-modes))
        (defun ,lookup (&optional (buffer (current-buffer)))
          ,(filled-docstring "True when BUFFER (the current buffer unless given) is set to ~a, as it chose for ~
                              itself with \\[~(~a~)], ~@[else ~a, ~]else as ~a says of its major mode, else as ~a says~
@@ -172,8 +178,8 @@ package's name."
               ,(if where
                    `(if (and (eq (tuatara.buffer:buffer-local buffer ,key '%unset) '%unset) (,(first where) buffer))
                         ',(if (cddr where) (third where) (first (first values)))
-                        (buffer-setting buffer ,key (setting-list ',modes ,modes :pairs t) ,global))
-                   `(buffer-setting buffer ,key (setting-list ',modes ,modes :pairs t) ,global))))
+                        (buffer-setting buffer ,key (setting-list ',modes ,modes :pairs t) ,global ,default-modes))
+                   `(buffer-setting buffer ,key (setting-list ',modes ,modes :pairs t) ,global ,default-modes))))
        (define-command ,command ()
          ,(filled-docstring "~a The buffer keeps its choice whatever ~a and ~a say; ~a" doc modes global count-doc)
          (switch-display ',name))
@@ -183,7 +189,7 @@ package's name."
                   what-capital global command modes count-doc)
          (switch-display ',name :everywhere t))
        (setf *display-toggles*
-             (cons (make-display-toggle ',name ,label ,key ',lookup ',global ',modes ',values ,mode-line)
+             (cons (make-display-toggle ',name ,label ,key ',lookup ',global ',modes ',values ,mode-line ',unless)
                    (remove ',name *display-toggles* :key #'display-toggle-name)))
        ',name)))
 

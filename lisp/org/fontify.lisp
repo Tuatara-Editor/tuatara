@@ -176,18 +176,6 @@ a line alone read as a newline."
   (let ((string (lone-returns-as-newlines (tuatara.buffer:buffer-string buffer :start start :end end))))
     (if (buffer-crlf-p buffer) (lf-newlines string) string)))
 
-(defun org-line-head (buffer position &optional (octets 512))
-  "The start of the line of BUFFER that octet POSITION is on, at most OCTETS
-of it (512 unless given) as a string, cut before a character the limit
-falls in: enough to tell what kind of line it is without reading a line of
-a million characters whole."
-  (let* ((start (tuatara.buffer:buffer-line-start buffer position))
-         (end (tuatara.buffer:buffer-line-end buffer position)))
-    (tuatara.buffer:buffer-string buffer :start start
-                                         :end (if (<= (- end start) octets)
-                                                  end
-                                                  (tuatara.text:rope-char-start (tuatara.buffer:buffer-text buffer) (+ start octets))))))
-
 (defun org-checkbox-line-p (line)
   "True when LINE, the start of a line of Org text, begins a list item with a
 checkbox: - [ ], 1. [X], + [-]."

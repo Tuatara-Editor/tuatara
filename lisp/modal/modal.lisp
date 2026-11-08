@@ -35,6 +35,54 @@ was indented with."
       (tuatara-normal)
       (progn (line-selection-clear) (keyboard-quit))))
 
+(defvar *insert-escape-keys* nil
+  "NIL, or a string of two characters, \"jk\" say: typed one right after the
+other in INSERT state, they leave it for NORMAL state as
+\\<insert>\\[tuatara-normal] does, and neither stays in the text. The first is
+typed into the text at once, like any key, and taken out again when the second
+follows within a fifth of a second; slower, both stay. It acts on plain typing
+in editing buffers, not in the minibuffer, in a terminal, nor at cursors or
+places; recorded keys play it back as they were typed, a pair counting as
+quick however long the recording took. NIL: off.")
+
+(defparameter *insert-escape-window* 200
+  "Milliseconds in which the second of *INSERT-ESCAPE-KEYS* must follow the first.")
+
+(defvar *insert-escape-first* (vector nil 0 nil nil 0)
+  "What *INSERT-ESCAPE-KEYS* remembers of the key typed last when it was the
+pair's first: its buffer, the time, the buffer's undo stack before it went in
+and that stack's newest group, and point before it.")
+
+(defun insert-escape-key-typed (buffer char)
+  "Answer true, with BUFFER left for NORMAL state and the first character of
+*INSERT-ESCAPE-KEYS* taken out of the text, when CHAR is the second one, typed
+right after the first in INSERT state (a hook of self-insert-command, run
+before a character goes in). Otherwise note CHAR as a possible first."
+  (let ((keys *insert-escape-keys*)
+        (first *insert-escape-first*))
+    (when (and keys (eq (modal-state buffer) :insert) (eq (buffer-modal-class buffer) :editing)
+               (not (split-here-p buffer)))
+      (cond ((and (eq (svref first 0) buffer)
+                  (char= char (char keys 1))
+                  (eq (editor-last-command *editor*) 'self-insert-command)
+                  (or (keys-playing-p)
+                      (< (- (get-internal-real-time) (svref first 1))
+                         (* *insert-escape-window* (/ internal-time-units-per-second 1000))))
+                  (= (point) (+ (svref first 4) (tuatara.text:char-octet-length (char keys 0))))
+                  (tuatara.buffer:undo-back-to-group buffer (svref first 2) (svref first 3)))
+             (setf (svref first 0) nil)
+             (goto (svref first 4))
+             (tuatara-normal)
+             t)
+            ((char= char (char keys 0))
+             (setf (svref first 0) buffer
+                   (svref first 1) (get-internal-real-time)
+                   (svref first 2) (tuatara.buffer:buffer-undo-stack buffer)
+                   (svref first 3) (car (svref first 2))
+                   (svref first 4) (point))
+             nil)
+            (t (setf (svref first 0) nil))))))
+
 (define-command tuatara-insert-after ()
   "Insert after the character at point, and enter INSERT state. Any selection
 is dropped first, as by \\<normal>\\[tuatara-insert]."
@@ -446,6 +494,7 @@ from another buffer, shown in NORMAL state."
   (pushnew 'note-selection-after (editor-post-command-functions editor))
   (pushnew 'modal-sync (editor-post-command-functions editor))
   (pushnew 'modal-sync-after-background *after-tick-functions*)
+  (pushnew 'insert-escape-key-typed *before-self-insert-functions*)
   (pushnew 'insert-undo-break *before-reload-functions*)
   (pushnew 'insert-undo-restart *after-reload-functions*)
   (pushnew 'end-insert-state *shown-again-functions*)

@@ -798,3 +798,21 @@ the tests' own keyring lacks: the folder and the key's fingerprint."
                  (list :until (lambda () (echo-says "failed")))))
           (false (trust-version-loaded))
           (is equal "unsigned" (second (tuatara.defaults::state-list-find tuatara.packages::*package-trust* where))))))))
+
+(define-test (package-trust signature-checks-off)
+  ;; with *package-check-signatures* NIL every version is taken, whoever signed it, and nothing is
+  ;; remembered; check-health says so
+  (flet ((verdict (signature) (multiple-value-list (tuatara.packages::package-trust-verdict "https://example.org/x.git" signature))))
+    (let ((signatures (list '(:status :none) '(:status :bad) '(:status :error)
+                            '(:status :unchecked :key-id "ABCD") '(:status :good :fingerprint "SHA256:abc"))))
+      (dolist (signature (rest signatures))
+        (isnt eq :take (first (verdict signature)) "checked: ~s" signature))
+      (let ((tuatara-user:*package-check-signatures* nil))
+        (dolist (signature signatures)
+          (is eq :take (first (verdict signature)) "unchecked: ~s" signature)
+          (false (third (verdict signature))))
+        (false (tuatara.packages::kept-version-check-needed-p "https://example.org/x.git" (list nil nil nil nil nil nil nil)))
+        (let ((tuatara.defaults::*health-wait* 60))
+          (true (tuatara.frontend.fake:fake-frame-showing
+                 (run-keys "M-x c h e c k - h e a l t h RET" :width 130 :height 50) "signatures are not checked")))))
+    (true (tuatara.packages::kept-version-check-needed-p "https://example.org/x.git" (list nil nil nil nil nil nil nil)))))

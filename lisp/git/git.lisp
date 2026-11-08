@@ -726,6 +726,10 @@ graph when asked for), date, author, the branches and tags at it, and its
 subject. \\<git-log-mode>\\[git-log-show] shows the commit on the line; \\[quit-window] closes."
   :lighter "Git log" :interactive nil)
 
+(defmethod mode-wraps-p ((mode git-log-mode))
+  "The log is laid out in columns, with its graph: its lines never wrap."
+  nil)
+
 (defvar *git-log-keymap* (mode-keymap 'git-log-mode)
   "Keys of a repository's log (git-log-mode's keymap).")
 

@@ -17,6 +17,10 @@
 its author and date, then the line. \\<git-blame-mode>\\[git-blame-show] shows the commit on the line; \\[quit-window] closes."
   :lighter "Git blame" :interactive nil)
 
+(defmethod mode-wraps-p ((mode git-blame-mode))
+  "The blame is laid out in columns beside the file's lines: its lines never wrap."
+  nil)
+
 (defun parse-git-blame (text)
   "TEXT, what git blame --porcelain printed, as a list of (HASH AUTHOR DATE
 LINE), a line of the file each, HASH NIL for one not committed yet, DATE the

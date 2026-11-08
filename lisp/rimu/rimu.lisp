@@ -112,6 +112,10 @@ motions by word and by expression and its other selections are not bound
 here: \\`w', \\`b', \\`W', \\`B', \\`v' and \\`%' are free."
   :lighter "Rimu" :interactive nil)
 
+(defmethod mode-wraps-p ((mode rimu-mode))
+  "A folder is listed in columns, a line each: its lines never wrap."
+  nil)
+
 (defvar *rimu-keymap* (mode-keymap 'rimu-mode)
   "Keys of rimu's lists (rimu-mode's keymap).")
 

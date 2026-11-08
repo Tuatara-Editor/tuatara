@@ -102,6 +102,15 @@ first message after its hello."
                         (tuatara.frontend::put-text box "Mono 12")))
         (message :settings #'tuatara.frontend::put-settings)
         (message :another (lambda (box) (tuatara.frontend::put-text box "W4XK2Q9")))
+        ;; a picture from a daemon on another machine, in two pieces, and letting go of it
+        (let* ((pixels (tuatara.text:make-octets 1200))
+               (packed (tuatara.io:deflate (tuatara.frontend::rows-against-above pixels 60)))
+               (half (floor (length packed) 2)))
+          (tuatara.frontend::put-picture-begin box 7 20 20 3 (length packed))
+          (message :picture-piece (lambda (box) (tuatara.frontend::put-picture-piece-of box 7 packed 0 half)))
+          (message :picture-piece
+                   (lambda (box) (tuatara.frontend::put-picture-piece-of box 7 packed half (length packed))))
+          (message :picture-forget (lambda (box) (tuatara.frontend::put-number box 7 4))))
         (message :exit (lambda (box) (tuatara.frontend::put-number box 1 1))))
       (outbox-octets box))))
 
@@ -137,6 +146,10 @@ every kind, a paste in pieces and answers."
     (tuatara.frontend::put-answer box 2 3)
     (tuatara.frontend::put-answer box 3 nil)
     (tuatara.frontend::put-no-window box "W4XK2Q9" "the client shows 32 windows, the most it opens")
+    (let ((at (tuatara.frontend::begin-message box :picture-taken)))
+      (tuatara.frontend::put-number box 7 4)
+      (tuatara.frontend::put-number box 32768 4)
+      (tuatara.frontend::end-message box at))
     (let ((at (tuatara.frontend::begin-message box :detach)))
       (tuatara.frontend::end-message box at))
     (outbox-octets box)))

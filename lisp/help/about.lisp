@@ -72,6 +72,17 @@ names, \\[forward-button] and \\[backward-button] go from one to the next,
 buffer."
   :lighter "About" :interactive nil)
 
+(defmethod mode-enter ((mode about-mode) buffer)
+  "Have the rows a long line of the page wraps into continue under their own
+text (SET-HANGING)."
+  (set-hanging buffer :cells)
+  (call-next-method))
+
+(defmethod mode-exit ((mode about-mode) buffer)
+  "Let go of the hanging rows the page has (SET-HANGING)."
+  (set-hanging buffer nil)
+  (call-next-method))
+
 (defparameter *about-name-rows*
   '("▀█▀ █ █ ▄▀▄ ▀█▀ ▄▀▄ █▀▄ ▄▀▄"
     " █  █ █ █▀█  █  █▀█ █▀▄ █▀█"
@@ -260,9 +271,8 @@ from each."
                            (list (format nil "  Tuatara says where its ideas come from.~2%")))
                      (loop for (name . lines) in *credits*
                            collect (list (format nil "  ~a" (column-text name 22 :elide nil)) :about-heading)
-                           ;; a name too long for its column has the lines below it
-                           collect (list (format nil "~:[~*~;~%~24@a~]~{~a~^~%                        ~}~%"
-                                                 (> (text-columns name) 21) "" lines))))))
+                           ;; a name too long for its column has the text below it; the text wraps under itself
+                           collect (list (format nil "~:[~*~;~%~24@a~]~{~a~^ ~}~%" (> (text-columns name) 20) "" lines))))))
       (render-pieces buffer #'credits-pieces :point :button))
     (show-buffer buffer)))
 

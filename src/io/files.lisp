@@ -491,13 +491,41 @@ meanwhile included; else NIL."
   (let ((carried (counted-so-far buffer)))
     (and carried (tuatara.text:carried-counted-lines carried (tuatara.buffer:buffer-version buffer)))))
 
+(sb-ext:defglobal **arriving-paths** '()
+  "The native paths of the files still arriving from elsewhere, which nothing is to open (BUFFER-ARRIVING-P).")
+
+(sb-ext:defglobal **arriving-paths-lock** (sb-thread:make-mutex :name "tuatara arriving files")
+  "Held while **ARRIVING-PATHS** is changed.")
+
+(defun refuse-arriving-file (path)
+  "Refuse (NOT-ARRIVED) when the file at PATH is still arriving from elsewhere:
+what has not come would read as zeros."
+  (when (and **arriving-paths** (member (native path) **arriving-paths** :test #'string=))
+    (tuatara.text:refuse-not-arrived)))
+
+(defun buffer-arriving-p (buffer)
+  "True while BUFFER's file is still being written with what comes from
+elsewhere (the rest of a file on another machine): its lines are not counted,
+it is not watched, and nothing reads it by its name, until all of it is here."
+  (tuatara.buffer:buffer-local buffer :arriving))
+
+(defun (setf buffer-arriving-p) (arriving buffer)
+  "Say whether BUFFER's file is still arriving (BUFFER-ARRIVING-P): its path
+is refused to whatever opens it (REFUSE-ARRIVING-FILE) while it is."
+  (let ((path (native (tuatara.buffer:buffer-file buffer))))
+    (sb-thread:with-mutex (**arriving-paths-lock**)
+      (setf **arriving-paths** (remove path **arriving-paths** :test #'string=))
+      (when arriving (push path **arriving-paths**))))
+  (setf (tuatara.buffer:buffer-local buffer :arriving) arriving))
+
 (defun start-indexing (buffer)
   "Start counting the lines of BUFFER's text in the background, a job, unless
-they are known or being counted, or counting this same text failed
+they are known or being counted, the file is still arriving
+\(BUFFER-ARRIVING-P), or counting this same text failed
 \(:INDEX-FAILED): on the worker pool, taking what the text counted last had
 where it is the same. Returns the job, or NIL."
   (or (index-job-of buffer)
-      (unless (or (tuatara.buffer:buffer-indexed-p buffer)
+      (unless (or (tuatara.buffer:buffer-indexed-p buffer) (buffer-arriving-p buffer)
                   (eq (tuatara.buffer:buffer-local buffer :index-failed) (tuatara.buffer:buffer-text buffer)))
         (let ((hook *index-job-hook*)
               (job (%make-index-job buffer (tuatara.buffer:buffer-text buffer)
@@ -564,6 +592,10 @@ countings run, or one waits."
             (start-indexing buffer))))
     (when waiting (return-from finish-indexing t)))
   (some (lambda (job) (eq (index-job-status job) :running)) (index-jobs)))
+
+(defun forget-arriving-file (buffer)
+  "Kill-buffer function: BUFFER's file is no longer arriving for anyone."
+  (when (buffer-arriving-p buffer) (setf (buffer-arriving-p buffer) nil)))
 
 (defun stop-indexing (buffer)
   "Stop the counting of BUFFER's lines, if one runs, and wait for its workers,
@@ -710,7 +742,8 @@ it is of a kind ACCEPT lists (a file or a directory as standard): anything
 else, a named pipe or a device, is refused without being opened, a
 FILE-SYSTEM-ERROR saying for OPERATION it is not WANTED (OPEN-EXAMINED).
 With SAFE, its access time is left alone where the system allows (your
-own files)."
+own files). Refused for a file still arriving (REFUSE-ARRIVING-FILE)."
+  (refuse-arriving-file path)
   (open-examined +at-fdcwd+ (tuatara.text:string-octets (native path)) (logior sb-posix:o-rdonly sb-posix:o-nonblock) path
                  :accept accept :safe safe :operation operation :wanted wanted))
 
@@ -798,8 +831,11 @@ What is opened is what is decided on, however a link is changed meanwhile."
                        (let ((mapping (tuatara.runtime:ignoring-errors-reported ("mapping ~a" path)
                                         (tuatara.text:map-fd fd size path))))
                          (if (null mapping)
-                             ;; a file system that cannot map this file: map a copy instead
-                             (let ((copy (copy-to-cache fd size path)))
+                             ;; a file system that cannot map this file: map a copy instead, when copies are wanted
+                             (let ((copy (if *snapshot-large-files*
+                                             (copy-to-cache fd size path)
+                                             (error 'file-system-error :operation "map" :path path
+                                                                       :reason "it could not be mapped into memory"))))
                                (let ((mapping (tuatara.text:map-fd copy size path)))
                                  (values (tuatara.text:mapping-rope mapping) mapping stamp :snapshot nil
                                          class)))
@@ -1651,7 +1687,8 @@ others, telling it only when something changed since the last call: a file
 visited, killed, saved or read again. Files of pseudo file systems (/proc) are
 not watched: they change as they are read."
   (flet ((watched-p (buffer)
-           (and (tuatara.buffer:buffer-file buffer) (not (eq (tuatara.buffer:buffer-local buffer :file-class) :pseudo))))
+           (and (tuatara.buffer:buffer-file buffer) (not (eq (tuatara.buffer:buffer-local buffer :file-class) :pseudo))
+                (not (buffer-arriving-p buffer))))
          (item (buffer)
            (list buffer (tuatara.buffer:buffer-file buffer) (buffer-file-stamp buffer)
                  (tuatara.buffer:buffer-local buffer :file-class))))
@@ -2286,6 +2323,7 @@ holds its mapping weakly and is given up once nothing reads the mapping."
         (unless (sb-ext:weak-pointer-p (lease-mapping lease))
           (setf (lease-mapping lease) (sb-ext:make-weak-pointer (lease-mapping lease))))))))
 
+(pushnew 'forget-arriving-file tuatara.buffer:*kill-buffer-functions*)
 (pushnew 'settle-file-work tuatara.buffer:*kill-buffer-functions*)
 
 ;;; Reverting

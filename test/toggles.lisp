@@ -288,3 +288,52 @@ others, to every character from START below END."
             (unexport symbol :tuatara-user)
             (unintern symbol :tuatara-user))))
       (delete-package package))))
+
+(define-test (toggles soft-wrap-in-help-buffers)
+  ;; help wraps its long lines by itself, still does after it is made again, and C-x T l stops it
+  (let ((tuatara.defaults::*help-window-select* t)
+        (tuatara.defaults::*health-wait* 60))
+    (flet ((wrapped (keys)
+             (let ((f (run-keys keys :width 130 :height 50)))
+               (loop for row below 50
+                     thereis (search "↪" (tuatara.frontend.fake:fake-screen-line f row))))))
+      (true (wrapped (list "M-x c h e c k - h e a l t h RET" :wait)))
+      (true (wrapped (list "M-x c h e c k - h e a l t h RET" :wait "M-x r e v e r t - b u f f e r RET" :wait)))
+      (false (wrapped (list "M-x c h e c k - h e a l t h RET" :wait "C-x T l" "M-x r e v e r t - b u f f e r RET" :wait)))
+      (let ((tuatara-user:*soft-wrap-modes* '((help-mode . nil))))
+        (false (wrapped (list "M-x c h e c k - h e a l t h RET" :wait))))))
+  ;; a buffer in a view laid out by the row never wraps, whatever is set for every buffer
+  (let ((tuatara-user:*global-soft-wrap-mode* t))
+    (dolist (mode '(tuatara.defaults::org-agenda-mode tuatara.defaults::calendar-mode tuatara.defaults::csv-mode))
+      (let ((buffer (tuatara.buffer:make-buffer "*unwrappable*" :text "")))
+        (tuatara.modes:set-major-mode buffer mode)
+        (false (tuatara.defaults::soft-wrap-p buffer))
+        (tuatara.buffer:kill-buffer buffer)))
+    (let ((buffer (tuatara.buffer:make-buffer "*wrappable*" :text "")))
+      (true (tuatara.defaults::soft-wrap-p buffer))
+      (tuatara.buffer:kill-buffer buffer)))
+  ;; other buffers do not wrap by default
+  (false (let ((f (run-keys "" :text (make-string 100 :initial-element #\a) :width 40 :height 8)))
+           (search "↪" (tuatara.frontend.fake:fake-screen-line f 1)))))
+
+(define-test (toggles soft-wrap-hangs-under-list-text)
+  ;; the rows a long Org list item wraps into line up after its bullet and checkbox, as far in as its text
+  (let ((tuatara-user:*fill-column* 20))
+    (flet ((rows (text &optional (width 40))
+             (let ((f (run-keys "M-x o r g - m o d e RET M-x s o f t - w r a p - m o d e RET" :text text :width width :height 8)))
+               (loop for row below 6 collect (tuatara.frontend.fake:fake-screen-line f row)))))
+      (let ((rows (rows (format nil "- [ ] aaa bbb ccc ddd eee fff ggg~%- aaa bbb ccc ddd eee fff~%  1. [X] aaa bbb ccc ddd eee~%"))))
+        (is string= "↪       ddd eee fff" (string-right-trim " " (second rows)))
+        (is string= "↪       ggg" (string-right-trim " " (third rows)))
+        (is string= "↪   eee fff" (string-right-trim " " (fifth rows))))
+      ;; a deep list's rows are set in 20 columns at most
+      (let* ((tuatara-user:*fill-column* 60)
+             (rows (rows (format nil "~30a- aaa bbb ccc ddd eee fff ggg hhh iii jjj kkk lll~%" "") 70)))
+        (true (uiop:string-prefix-p (format nil "↪ ~20a" "") (second rows)))
+        (true (char/= #\Space (char (second rows) 22)))))))
+
+(define-test (toggles soft-wrap-says-where-it-cannot-work)
+  ;; C-x T l in a view that cannot wrap says so, and leaves it unwrapped
+  (let ((f (run-keys "M-x c s v - m o d e RET C-x T l" :text (make-string 100 :initial-element #\a) :width 60 :height 6)))
+    (true (tuatara.frontend.fake:fake-frame-showing f "Soft wrap does not work"))
+    (false (search "↪" (tuatara.frontend.fake:fake-screen-line f 1)))))

@@ -1604,3 +1604,50 @@ TUATARA: what a job of its own would take from a buffer before it starts.")
   :depends-on (a-test-leaves-a-buffer)
   ;; the buffer the test before made and left is gone
   (false (tuatara.buffer:find-buffer "left by a test")))
+
+(define-test (command insert-escape-keys)
+  (let ((tuatara-user:*insert-escape-keys* "jk"))
+    (flet ((run (keys &optional (text ""))
+             (let ((editor (nth-value 1 (run-keys keys :text text :width 60 :height 8))))
+               (values (session-text editor) (tuatara.defaults:modal-state (session-buffer editor)) editor))))
+      ;; the pair leaves INSERT state and neither letter stays; what came before stays
+      (multiple-value-bind (text state) (run "i a b j k")
+        (is string= "ab" text)
+        (is eq :normal state))
+      ;; the first letter goes in at once; another key after it is no pair
+      (multiple-value-bind (text state) (run "i j a k")
+        (is string= "jak" text)
+        (is eq :insert state))
+      ;; the second letter alone, or a different order, is text
+      (is string= "kj" (run "i k j"))
+      ;; one undo takes back the session, with no step for the stray letter
+      (is string= "" (run "i a b j k u"))
+      (is string= "a" (run "i a C-g i b j k u"))
+      (is string= "" (run "i a C-g i j k u"))
+      (is string= "x" (run "i j k u" "x"))
+      ;; point is where the first letter was typed
+      (is = 1 (session-point (nth-value 2 (run "i a j k"))))
+      ;; too slow: both stay
+      (let ((tuatara.defaults::*insert-escape-window* 0))
+        (multiple-value-bind (text state) (run "i j k")
+          (is string= "jk" text)
+          (is eq :insert state)))
+      ;; the same letters twice
+      (let ((tuatara-user:*insert-escape-keys* "jj"))
+        (is string= "" (run "i j j")))
+      ;; recorded keys play back the same
+      (multiple-value-bind (text state) (run "C-x ( i a j k C-x ) C-x e")
+        (is string= "aa" text)
+        (is eq :normal state))
+      ;; a typed answer in the minibuffer takes both letters
+      (multiple-value-bind (f editor) (run-keys "M-x j k" :text "" :width 60 :height 8)
+        (declare (ignore editor))
+        (true (tuatara.frontend.fake:fake-frame-showing f "M-x jk")))
+      ;; in NORMAL state j and k are moves
+      (is string= "abab" (run "j k i a b C-g" "ab"))))
+  ;; off by default
+  (let ((tuatara-user:*insert-escape-keys* nil))
+    (multiple-value-bind (f editor) (run-keys "i j k" :text "" :width 60 :height 8)
+      (declare (ignore f))
+      (is string= "jk" (session-text editor))
+      (is eq :insert (tuatara.defaults:modal-state (session-buffer editor))))))

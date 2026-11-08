@@ -268,7 +268,7 @@ PLACE-BUFFERS call, made after the defaults."
     (is equal '("*scratch*" "*Help*") (window-buffers editor))
     (is = 0 (selected-index editor))
     (is equal '((0 0 80 10) (0 10 80 9)) (window-boxes editor))
-    (is string= "undo is a command." (tuatara.frontend.fake:fake-screen-line f 10)))
+    (is string= "  undo is a command." (tuatara.frontend.fake:fake-screen-line f 10)))
   (multiple-value-bind (f editor) (run-keys "C-h f u n d o RET C-x o q" :text *twenty-lines* :width 80 :height 20)
     (declare (ignore f))
     (is equal '("*scratch*") (window-buffers editor)))

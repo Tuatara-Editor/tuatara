@@ -81,16 +81,18 @@ report="$root/build/bumpcheck.org"
 work="$(mktemp -d)"
 trap 'rm -rf "$work"' EXIT
 
-# the newest version tag among the refs on standard input (v1.2.3, 1.2.3, ...)
+# the newest version tag among the refs on standard input (v1.2.3, 1.2.3, ...),
+# after the prefix $1 when one is given (vt-1.2.3)
 newest_tag() {
-  sed -n 's|^[0-9a-f]*\trefs/tags/\([^^]*\)$|\1|p' | { grep -E '^v?[0-9]+(\.[0-9]+)+$' || true; } | sort -V | tail -1
+  sed -n 's|^[0-9a-f]*\trefs/tags/\([^^]*\)$|\1|p' | { grep -E "^${1:-}v?[0-9]+(\.[0-9]+)+$" || true; } | sort -V | tail -1
 }
 # the newest release named by its date (20251108) among the refs on standard input
 newest_date_tag() {
   sed -n 's|^[0-9a-f]*\trefs/tags/\([0-9]\{8\}\)$|\1|p' | sort | tail -1
 }
 # one line NAME<TAB>PINNED<TAB>NEWEST for repository $2 pinned at commit $3, or
-# nothing when the pin is its newest commit
+# nothing when the pin is its newest commit; $4, when given, is the prefix of
+# the tags that count (vt-)
 check_repository() {
   local name="$1" repository="$2" commit="$3" refs head tag pinned
   if ! refs="$(GIT_TERMINAL_PROMPT=0 timeout 60 git ls-remote "$repository" 2>/dev/null)"; then
@@ -99,7 +101,7 @@ check_repository() {
   fi
   head="$(awk '$2 == "HEAD" { print $1 }' <<<"$refs")"
   [ "$head" = "$commit" ] && return
-  tag="$(newest_tag <<<"$refs")"
+  tag="$(newest_tag "${4:-}" <<<"$refs")"
   # the pin by its tag where one names it
   pinned="$(awk -v c="$commit" '$1 == c && $2 ~ /^refs\/tags\// { sub(/^refs\/tags\//, "", $2); sub(/\^\{\}$/, "", $2); print $2; exit }' <<<"$refs")"
   printf '%s\t%s\t%s\n' "$name" "${pinned:-${commit:0:12}}" "${head:0:12}${tag:+ (newest tag $tag)}"
@@ -118,7 +120,7 @@ cli_newest="$(GIT_TERMINAL_PROMPT=0 timeout 60 git ls-remote --tags https://gith
 
 pin="$root/lisp/terminal/library.pin"
 field() { awk -F'\t' -v k="$1" '$1 == k { print $2 }' "$pin"; }
-check_repository ghostty "$(field repository)" "$(field commit)" > "$work/ghostty"
+check_repository ghostty "$(field repository)" "$(field commit)" vt- > "$work/ghostty"
 zig_pinned="$(field zig)"
 zig_newest="$(GIT_TERMINAL_PROMPT=0 timeout 60 git ls-remote --tags https://codeberg.org/ziglang/zig 2>/dev/null | newest_tag || true)"
 

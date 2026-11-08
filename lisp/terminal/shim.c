@@ -1,7 +1,7 @@
 /* lisp/terminal/shim.c --- What the terminal library takes in a way Lisp cannot pass.
  * Copyright (C) 2026 Michael A Jones.  GPL-3.0-or-later; see LICENSE.
  *
- * The library's formatter takes its options, and a mouse event its position,
+ * The library takes the text of a key event, and a mouse event its position,
  * as structures passed by value, which SBCL's foreign calls cannot make;
  * these functions make them in C.
  * Built by tools/terminal-library.sh into libtuatara-terminal.so beside the
@@ -17,17 +17,16 @@
  * Into *OUT, *LENGTH octets the library allocated (free with
  * tuatara_terminal_text_free). Returns the library's result. */
 int tuatara_terminal_text(GhosttyTerminal terminal, int styled, uint8_t **out, size_t *length) {
-  GhosttyFormatterTerminalOptions options = {0};
-  options.size = sizeof options;
-  options.emit = styled ? GHOSTTY_FORMATTER_FORMAT_VT : GHOSTTY_FORMATTER_FORMAT_PLAIN;
-  options.unwrap = false;
-  options.trim = true;
-  options.extra.size = sizeof options.extra;
-  options.extra.screen.size = sizeof options.extra.screen;
-  options.selection = NULL;
   GhosttyFormatter formatter = NULL;
-  GhosttyResult result = ghostty_formatter_terminal_new(NULL, &formatter, terminal, options);
+  GhosttyResult result = ghostty_formatter_terminal_new(NULL, &formatter, terminal);
   if (result != GHOSTTY_SUCCESS) return result;
+  GhosttyFormatterFormat emit = styled ? GHOSTTY_FORMATTER_FORMAT_VT : GHOSTTY_FORMATTER_FORMAT_PLAIN;
+  GhosttyFormatterExtras extras = 0;
+  bool unwrap = false, trim = true;
+  ghostty_formatter_set(formatter, GHOSTTY_FORMATTER_OPT_EMIT, &emit);
+  ghostty_formatter_set(formatter, GHOSTTY_FORMATTER_OPT_UNWRAP, &unwrap);
+  ghostty_formatter_set(formatter, GHOSTTY_FORMATTER_OPT_TRIM, &trim);
+  ghostty_formatter_set(formatter, GHOSTTY_FORMATTER_OPT_EXTRAS, &extras);
   result = ghostty_formatter_format_alloc(formatter, NULL, out, length);
   ghostty_formatter_free(formatter);
   return result;
@@ -38,9 +37,17 @@ void tuatara_terminal_text_free(uint8_t *text, size_t length) {
   ghostty_free(NULL, text, length);
 }
 
+/* Set the text of the key EVENT to the LENGTH octets of UTF-8 at TEXT (none
+ * for a key that types nothing), which the library takes as a string passed by
+ * value. */
+void tuatara_terminal_key_text(GhosttyKeyEvent event, const uint8_t *text, size_t length) {
+  GhosttyString string = { text, length };
+  ghostty_key_event_set_utf8(event, string);
+}
+
 /* What the mouse did at cell COLUMN, ROW of a screen COLUMNS by ROWS, as the
  * program asks to hear of it (its mouse tracking and format, as ENCODER was
- * last set from the terminal with ghostty_mouse_encoder_setopt_from_terminal):
+ * last set from the terminal with ghostty_mouse_encoder_set_from_terminal):
  * ACTION a GhosttyMouseAction, BUTTON a GhosttyMouseButton (0 for none, a
  * motion), MODS GhosttyMods, PRESSED true while a button is held. The
  * library takes positions in pixels: cells are given as 10 by 20 pixels, the
@@ -57,8 +64,8 @@ int tuatara_terminal_mouse(GhosttyMouseEncoder encoder, GhosttyMouseEvent event,
   screen.screen_width = (uint32_t)columns * 10;
   screen.screen_height = (uint32_t)rows * 20;
   bool held = pressed != 0;
-  ghostty_mouse_encoder_setopt(encoder, GHOSTTY_MOUSE_ENCODER_OPT_SIZE, &screen);
-  ghostty_mouse_encoder_setopt(encoder, GHOSTTY_MOUSE_ENCODER_OPT_ANY_BUTTON_PRESSED, &held);
+  ghostty_mouse_encoder_set(encoder, GHOSTTY_MOUSE_ENCODER_OPT_SIZE, &screen);
+  ghostty_mouse_encoder_set(encoder, GHOSTTY_MOUSE_ENCODER_OPT_ANY_BUTTON_PRESSED, &held);
   ghostty_mouse_event_set_action(event, (GhosttyMouseAction)action);
   if (button) ghostty_mouse_event_set_button(event, (GhosttyMouseButton)button);
   else ghostty_mouse_event_clear_button(event);
@@ -66,7 +73,7 @@ int tuatara_terminal_mouse(GhosttyMouseEncoder encoder, GhosttyMouseEvent event,
   GhosttyMousePosition position = { column * 10.0f + 5.0f, row * 20.0f + 10.0f };
   ghostty_mouse_event_set_position(event, position);
   *length = 0;
-  return ghostty_mouse_encoder_encode(encoder, event, out, size, length);
+  return ghostty_mouse_encoder_encode(encoder, event, (uint8_t *)out, size, length);
 }
 
 /* The address of the link (OSC 8) on the cell at COLUMN, ROW of TERMINAL:
@@ -82,7 +89,6 @@ int tuatara_terminal_link(GhosttyTerminal terminal, int screen, int column, int 
   point.value.coordinate.x = (uint16_t)column;
   point.value.coordinate.y = (uint32_t)row;
   GhosttyGridRef ref = {0};
-  ref.size = sizeof ref;
   *length = 0;
   GhosttyResult result = ghostty_terminal_grid_ref(terminal, point, &ref);
   if (result != GHOSTTY_SUCCESS) return result;

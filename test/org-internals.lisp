@@ -423,9 +423,9 @@ out), a CLOCK: line, where a logged line goes, and clocking in from any key.")
   ;; the start of a long line read to its limit, cut before a character the limit falls in; a short line whole
   (let ((buffer (org-internals-buffer (concatenate 'string "a" (make-string 600 :initial-element #\é) (string #\Newline) "- [ ] x"))))
     (unwind-protect
-         (let ((head (tuatara.defaults::org-line-head buffer 0)))
+         (let ((head (tuatara.defaults::buffer-line-head buffer 0)))
            (is = 256 (length head))
-           (true (tuatara.defaults::org-checkbox-line-p (tuatara.defaults::org-line-head buffer 1205)))
+           (true (tuatara.defaults::org-checkbox-line-p (tuatara.defaults::buffer-line-head buffer 1205)))
            (false (tuatara.defaults::org-checkbox-line-p head)))
       (tuatara.buffer:kill-buffer buffer))))
 

@@ -1179,6 +1179,28 @@ name read before it is defined is the package's own, not the setting."
          (claim-package-setting ,(symbol-name name) (find-package ,owner)))
        (defvar ,(claim-package-setting (symbol-name name) *package*) ,value ,documentation))))
 
+(defvar *package-needs* '()
+  "What the packages loaded need of the system, each (NAME . NEEDS) as
+DECLARE-PACKAGE-NEEDS keeps them; \\[check-health] lists them.")
+
+(defun declare-package-needs (&rest needs)
+  "Say what the package being loaded needs of the system, for \\[check-health]
+to list as found or missing, in a section of its own. Each of NEEDS is
+\(PROGRAMS WHAT &key REQUIRED INSTALL): PROGRAMS the name of a program, or a
+list of names of which any one will do; WHAT what the package does with it;
+REQUIRED true when the package does not work without it, else it is only
+suggested; INSTALL what to do when it is not found (\"install ImageMagick\").
+A second call replaces the first. Nothing is run: the programs are only
+looked for on the PATH."
+  (unless *loading-package-name* (refuse "declare-package-needs is for a package while it loads"))
+  (setf *package-needs*
+        (acons *loading-package-name*
+               (loop for (programs what . options) in needs
+                     collect (list :programs programs :what what :required (getf options :required)
+                                   :install (getf options :install)))
+               (remove *loading-package-name* *package-needs* :key #'car :test #'string=)))
+  needs)
+
 (defun package-entry (folder name file)
   "The file a package called NAME in FOLDER is loaded by: FILE when given,
 else NAME.lisp, else load.lisp; NIL when there is none."

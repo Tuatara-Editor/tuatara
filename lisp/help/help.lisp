@@ -15,6 +15,17 @@ underlined name is a link to its description: \\[push-button] on it, or a click,
 shows that; \\[forward-button] and \\[backward-button] go from one link to the next."
   :lighter "Help" :interactive nil)
 
+(defmethod mode-enter ((mode help-mode) buffer)
+  "Have the rows a long line of help wraps into continue under their own text:
+an item's words, a table's second column (SET-HANGING)."
+  (set-hanging buffer :cells)
+  (call-next-method))
+
+(defmethod mode-exit ((mode help-mode) buffer)
+  "Let go of the hanging rows help has (SET-HANGING)."
+  (set-hanging buffer nil)
+  (call-next-method))
+
 (defvar *help-keymap* (mode-keymap 'help-mode)
   "Keys of the *Help* and *Apropos* buffers (help-mode's keymap):
 \\<help-mode>\\[quit-window] goes back, \\[push-button] follows a link.")

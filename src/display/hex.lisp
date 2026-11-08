@@ -57,16 +57,22 @@ and point at the start of the character that octet is part of."
 standing for the octet at BYTE (-1 for none), in FACE."
   (row-add row text byte (if (characterp text) 1 (length text)) face))
 
+(defun hex-octet-missing-p (holes offset)
+  "True when OFFSET lies in one of HOLES, stretches (START . END) of a file not arrived yet (ROPE-HOLES)."
+  (find-if (lambda (hole) (and (<= (car hole) offset) (< offset (cdr hole)))) holes))
+
 (defun hex-layout (rope start height &optional spares)
   "Lay out ROPE as a hex dump from byte START (a multiple of +HEX-ROW+) into at
 most HEIGHT rows (see this file's header). The hex digits and the text column
-of each octet map back to its offset, other columns to none (-1), so that the
+of each octet map back to its offset (an octet not arrived yet shows as --
+and ?), other columns to none (-1), so that the
 cursor shows on an octet's hex digits; the rows are marked MIXED, their
 characters' offsets not in order, for APPLY-HIGHLIGHTS. Rows are taken from
 SPARES, rows no longer shown, while it has any (MAKE-ROW). Complexity: O(HEIGHT)."
   (let* ((total (tuatara.text:rope-bytes rope))
          (digits (hex-offset-digits total))
-         (rows (make-array 0 :adjustable t :fill-pointer 0)))
+         (rows (make-array 0 :adjustable t :fill-pointer 0))
+         (holes (tuatara.text:rope-holes rope)))
     (loop for r from 0 below height
           for offset = (+ start (* r +hex-row+))
           while (<= offset total)
@@ -74,21 +80,26 @@ SPARES, rows no longer shown, while it has any (MAKE-ROW). Complexity: O(HEIGHT)
                     (octets (make-array +hex-row+ :element-type '(unsigned-byte 8)))
                     (row (make-row offset (+ digits 70) spares)))
                (declare (dynamic-extent octets))
-               (tuatara.text:rope-copy-into rope offset (+ offset n) octets)
+               (tuatara.text:rope-copy-into rope offset (+ offset n) octets 0 t)
                (setf (row-mixed row) t)
                (row-add-octets row (hex-digits offset digits) -1 :hex-offset)
                (row-add-octets row "  " -1 nil)
                (dotimes (k +hex-row+)
                  (if (< k n)
-                     (progn (row-add-octets row (svref tuatara.text:*hex-pairs* (aref octets k)) (+ offset k) nil)
+                     (progn (row-add-octets row (if (hex-octet-missing-p holes (+ offset k))
+                                                    "--"
+                                                    (svref tuatara.text:*hex-pairs* (aref octets k)))
+                                            (+ offset k) nil)
                             (row-add-octets row " " -1 nil))
                      (row-add-octets row "   " -1 nil))
                  (when (= k 7) (row-add-octets row " " -1 nil)))
                (row-add-octets row " " -1 nil)
                (dotimes (k n)
                  (let ((b (aref octets k)))
-                   (row-add-octets row (if (<= 32 b 126) (code-char b) #\.) (+ offset k)
-                                   (if (<= 32 b 126) nil :hex-unprintable))))
+                   (if (hex-octet-missing-p holes (+ offset k))
+                       (row-add-octets row #\? (+ offset k) :fold-ellipsis)
+                       (row-add-octets row (if (<= 32 b 126) (code-char b) #\.) (+ offset k)
+                                       (if (<= 32 b 126) nil :hex-unprintable)))))
                (setf (row-end row) (+ offset n) (row-shown-end row) (+ offset n)
                      (row-last-p row) (= (+ offset n) total))
                (vector-push-extend row rows)

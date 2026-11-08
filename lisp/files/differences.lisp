@@ -88,6 +88,8 @@ two others of the same names is left as it is."
     (tuatara.runtime:start-job-thread
      (make-differences-job buffer old new)
      (lambda (job)
+       (tuatara.io:refuse-arriving-file (differences-job-old job))
+       (tuatara.io:refuse-arriving-file (differences-job-new job))
        (setf (differences-job-rope job)
              (file-differences (differences-job-old job) (differences-job-new job)
                                :cancel (tuatara.runtime:job-cancel job))))

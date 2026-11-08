@@ -172,7 +172,7 @@ next of *ORG-CHECKBOX-CYCLE*, and bring up to date what depends on it."
 cycle it (*ORG-RETURN-CYCLES-CHECKBOXES*); true when it did."
   ;; the file parsed only for a line that holds a checkbox
   (when (and *org-return-cycles-checkboxes* (typep (buffer-major-mode buffer) 'org-mode)
-             (org-checkbox-line-p (org-line-head buffer (tuatara.buffer:buffer-point buffer))))
+             (org-checkbox-line-p (buffer-line-head buffer (tuatara.buffer:buffer-point buffer))))
     (check-writable buffer)
     (let* ((parse (org-parse-now buffer))
            (position (and parse (org-parse-point parse)))
@@ -186,7 +186,7 @@ cycle it (*ORG-RETURN-CYCLES-CHECKBOXES*); true when it did."
   "Do what Org's C-c - does where point is: in a table, a rule line below the
 row (org-table-insert-hline); in a list, the next kind of bullet
 \(org-cycle-list-bullet)."
-  (let ((line (org-line-head (current-buffer) (point))))
+  (let ((line (buffer-line-head (current-buffer) (point))))
     (if (uiop:string-prefix-p "|" (string-left-trim " 	" line))
         (org-table-insert-hline)
         (org-cycle-list-bullet))))

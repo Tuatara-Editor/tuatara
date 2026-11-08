@@ -35,6 +35,10 @@ visits no file: nothing is saved over the PDF, and \\[universal-argument] \\[fin
 its octets. The page and zoom are kept for the next time the PDF is opened."
   :lighter "PDF" :interactive nil)
 
+(defmethod mode-wraps-p ((mode pdf-view-mode))
+  "A PDF is drawn as pictures of its pages: its lines never wrap."
+  nil)
+
 (defvar *pdf-view-keymap* (mode-keymap 'pdf-view-mode)
   "Keys of a PDF shown as its pages (pdf-view-mode's keymap).")
 

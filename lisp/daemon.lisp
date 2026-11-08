@@ -365,6 +365,7 @@ CLIENT's folder and is CLIENT's."
                      first)))
     (when (client-directory client)
       (setf (buffer-given-directory buffer) (client-directory client)))
+    (setf (tuatara.buffer:buffer-local buffer :client-scratch) t)
     (join-client buffer client)
     buffer))
 
@@ -556,6 +557,43 @@ Its other buffers stay, unsaved ones too, in a folder of their own in
             (#\s (save-buffer-with-care buffer :then #'tuatara.buffer:kill-buffer))
             (#\l (tuatara.buffer:kill-buffer buffer))))))
     (end-client editor client)))
+
+;;; A client whose last buffer is closed
+
+(defvar *clients-without-buffers* '()
+  "The clients of the daemon that lost their last buffer to a kill, not yet
+ended (END-CLIENTS-WITHOUT-BUFFERS).")
+
+(defun client-has-work-in-p (client buffer)
+  "True when BUFFER is one of CLIENT's that holds something of its own: any
+but the scratch buffer CLIENT was given at its start (CLIENT-SCRATCH) while
+nothing is typed in it. A buffer a client that ended had and another took up
+is the other's alone (BUFFER-CLIENTS names the clients that have it); a
+buffer shown to everyone, as *Messages*, is no one's."
+  (and (member client (buffer-clients buffer))
+       (not (and (tuatara.buffer:buffer-local buffer :client-scratch) (not (tuatara.buffer:buffer-modified-p buffer))))))
+
+(defun note-client-without-buffers (buffer)
+  "Kill-buffer function: note each client that has BUFFER, about to be killed,
+and no other buffer holding something of its own (CLIENT-HAS-WORK-IN-P): its
+last is closed. A client started with no files is not noted until a buffer
+of its own has been closed, its scratch buffer being all it has."
+  (dolist (client (buffer-clients buffer))
+    (when (and (client-remote client) (not (client-ended client))
+               (notany (lambda (other) (and (not (eq other buffer)) (client-has-work-in-p client other)))
+                       tuatara.buffer:*buffers*))
+      (pushnew client *clients-without-buffers*))))
+
+(pushnew 'note-client-without-buffers tuatara.buffer:*kill-buffer-functions*)
+
+(defun end-clients-without-buffers (editor)
+  "Tick function of a daemon (*TICK-FUNCTIONS*): end each client whose last
+buffer was closed, as \\[save-buffers-kill-editor] does in it, with 0; the
+daemon and the other clients go on."
+  (loop while *clients-without-buffers*
+        do (let ((client (pop *clients-without-buffers*)))
+             (unless (client-ended client)
+               (end-client editor client)))))
 
 ;;; Stopping the daemon
 
@@ -779,6 +817,7 @@ ended (CLOSE-DAEMON). Returns the editor."
     (setf *daemon* daemon)
     (pushnew 'take-in-clients *tick-functions*)
     (pushnew 'end-when-asked *tick-functions*)
+    (pushnew 'end-clients-without-buffers *tick-functions*)
     (unwind-protect
          (run-editor idle
                      :setup (lambda (editor)
@@ -787,6 +826,6 @@ ended (CLOSE-DAEMON). Returns the editor."
                      :start (lambda (editor)
                               (start-taking-connections daemon editor)
                               (when ready (funcall ready))))
-      (setf *tick-functions* (remove-if (lambda (f) (member f '(take-in-clients end-when-asked))) *tick-functions*)
+      (setf *tick-functions* (remove-if (lambda (f) (member f '(take-in-clients end-when-asked end-clients-without-buffers))) *tick-functions*)
             *daemon* nil)
       (close-daemon daemon))))

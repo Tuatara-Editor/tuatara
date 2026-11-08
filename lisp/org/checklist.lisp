@@ -70,7 +70,7 @@ so that the log and the agenda's log mode keep no tick that did not stay."
 current Org buffer, call FUNCTION with its ORG-PARSE, point as a character of
 it and the item, and return true; else NIL."
   (let ((buffer (current-buffer)))
-    (when (org-checkbox-line-p (org-line-head buffer (point)))
+    (when (org-checkbox-line-p (buffer-line-head buffer (point)))
       (let* ((parse (org-parse-now buffer))
              (position (and parse (org-parse-point parse)))
              (item (and parse (org-checkbox-item-at (org-parse-tree parse) (org-parse-text parse) position))))

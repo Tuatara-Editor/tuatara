@@ -33,4 +33,5 @@ files kept in step with it, and what it knows shown in the editor (what it
 found wrong, completion, definitions, hints, symbols, folds, the code blocks
 of Org notes); a formatter run on a buffer before it is saved. The rest of the
 editor installs it and asks what tools a language has here.")
-  (:export #:install-lsp #:install-diagnostics-place #:language-tools-words))
+  (:export #:install-lsp #:install-diagnostics-place #:language-tools-words #:*brought-language-servers-folder*
+           #:language-server-program-name-p #:language-server-programs-here))

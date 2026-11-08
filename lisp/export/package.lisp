@@ -30,4 +30,5 @@
 background, with the templates, the redactions checked and the macros that
 mark them. The rest of the editor installs it and asks, for the health
 report, what the LaTeX engines and languages are here.")
-  (:export #:install-latex-export #:latex-export-words #:latex-language-words))
+  (:export #:install-latex-export #:latex-export-words #:latex-language-words
+           #:latex-engines-found))

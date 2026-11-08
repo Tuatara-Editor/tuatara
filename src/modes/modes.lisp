@@ -197,6 +197,12 @@ changed or kept.")
 its day), so that no cursor is drawn over it.")
   (:method (mode) (declare (ignore mode)) nil))
 
+(defgeneric mode-wraps-p (mode)
+  (:documentation "True when the lines of a buffer in MODE may wrap (\\[soft-wrap-mode]); false
+for a view laid out in fixed columns or by the row (the agenda, the calendar,
+a terminal, a picture), which wrapping would break.")
+  (:method (mode) (declare (ignore mode)) t))
+
 (defgeneric mode-keeps-place-p (mode)
   (:documentation "True when where point is in a file in MODE is remembered and put back
 on the next visit (*SAVE-PLACE-MODE*); false for a file written afresh each
@@ -282,15 +288,20 @@ entries."
                   (when (names-mode-p (if (consp entry) (car entry) entry) name)
                     (return-from mode-setting (values (if (consp entry) (cdr entry) t) t))))))))))
 
-(defun buffer-setting (buffer key settings global)
+(defun buffer-setting (buffer key settings global &optional defaults)
   "BUFFER's value of a setting it may choose for itself: its own, the
 buffer-local KEY, when it has one; else what SETTINGS says of its major mode
-or the nearest mode that mode is made from (MODE-SETTING); else GLOBAL."
+or the nearest mode that mode is made from (MODE-SETTING), else what DEFAULTS,
+a list of the same kind, says; else GLOBAL."
   (let ((own (tuatara.buffer:buffer-local buffer key '%unset)))
     (if (not (eq own '%unset))
         own
-        (multiple-value-bind (value found) (mode-setting (buffer-major-mode buffer) settings)
-          (if found value global)))))
+        (let ((mode (buffer-major-mode buffer)))
+          (multiple-value-bind (value found) (mode-setting mode settings)
+            (if found
+                value
+                (multiple-value-bind (value found) (mode-setting mode defaults)
+                  (if found value global))))))))
 
 (defun mode-modal-class (mode)
   "The modal class MODE gives its buffers: the nearest modal class set along

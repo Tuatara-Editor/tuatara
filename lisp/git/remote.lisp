@@ -12,13 +12,6 @@
 
 (in-package #:tuatara.git)
 
-(defun ssh-askpass-window-p ()
-  "The program ssh can ask for a passphrase in a window with, when a desktop
-is running (TUATARA.IO:DESKTOP-P): the one SSH_ASKPASS names, as
-gnome-ssh-askpass or ksshaskpass, else OpenSSH's own
-\(TUATARA.IO:ASKPASS-PROGRAM); NIL when there is none or no desktop."
-  (and (tuatara.io:desktop-p) (tuatara.io:askpass-program)))
-
 (defun git-network-environment (&rest settings)
   "What git is given to fetch or push, with SETTINGS, each (KEY VALUE), of its
 configuration besides: never to run a program an address of the ext:: kind

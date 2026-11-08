@@ -29,4 +29,5 @@ makes a package's settings, and runs a compile of a package asked for in a
 process of its own; a package repository's tests load its package through
 LOAD-PACKAGE-FOR-TEST.")
   (:export #:install-packages #:packages-directory #:call-with-start-packages #:define-package-setting
+           #:declare-package-needs #:*package-needs*
            #:claim-package-setting #:compile-package-child #:load-package-for-test))

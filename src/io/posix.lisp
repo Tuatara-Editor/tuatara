@@ -747,27 +747,36 @@ offset being after what was copied). Other failures signal."
                        (t (fail "copy" "a file"))))))
     done))
 
-(defun write-sap (fd sap length &key (path "a file"))
+(defun write-sap (fd sap length &key (path "a file") at)
   "Write LENGTH octets at SAP to the file open as file descriptor (FD) at its
-current offset, all of them, again where the system wrote fewer or was
+current offset, or at offset AT when given (pwrite(2), the descriptor's own
+offset left alone), all of them, again where the system wrote fewer or was
 interrupted."
   (let ((done 0))
     (loop while (< done length)
-          do (let ((written (sb-alien:alien-funcall
-                             (sb-alien:extern-alien "write" (function sb-alien:long sb-alien:int sb-sys:system-area-pointer
-                                                                      sb-alien:unsigned-long))
-                             fd (sb-sys:sap+ sap done) (- length done))))
+          do (let ((written (if at
+                                (sb-alien:alien-funcall
+                                 (sb-alien:extern-alien "pwrite" (function sb-alien:long sb-alien:int
+                                                                           sb-sys:system-area-pointer
+                                                                           sb-alien:unsigned-long sb-alien:long))
+                                 fd (sb-sys:sap+ sap done) (- length done) (+ at done))
+                                (sb-alien:alien-funcall
+                                 (sb-alien:extern-alien "write" (function sb-alien:long sb-alien:int
+                                                                          sb-sys:system-area-pointer
+                                                                          sb-alien:unsigned-long))
+                                 fd (sb-sys:sap+ sap done) (- length done)))))
                (cond ((plusp written) (incf done written))
                      ((= (sb-alien:get-errno) sb-posix:eintr))
                      (t (fail "write" path)))))))
 
-(defun write-octets (fd octets &key (start 0) (end (length octets)) (path "a file"))
+(defun write-octets (fd octets &key (start 0) (end (length octets)) (path "a file") at)
   "Write OCTETS from START below END to the file open as file descriptor (FD)
-at its current offset, all of them, again where the system wrote fewer or
-was interrupted; signals FILE-SYSTEM-ERROR, naming PATH, when the system
-refuses, as when a program reading from a pipe has ended."
+at its current offset, or, with AT, at that offset with pwrite(2), which
+leaves the descriptor's own offset alone; all of them, again where the system
+wrote fewer or was interrupted; signals FILE-SYSTEM-ERROR, naming PATH, when
+the system refuses, as when a program reading from a pipe has ended."
   (with-octets-sap (sap octets)
-    (write-sap fd (sb-sys:sap+ sap start) (- end start) :path path)))
+    (write-sap fd (sb-sys:sap+ sap start) (- end start) :path path :at at)))
 
 ;;; Terminals' sizes
 
@@ -1934,6 +1943,26 @@ made and renamed."
              (sync-directory (parent-path name))))))
      :writing "write")
     path))
+
+(defun open-named-pipe (path)
+  "Make a named pipe at PATH, for its owner alone, and open it both ways
+without waiting, kept from programs started: the file descriptor (FD). Opened
+both ways, it never makes another side wait to open it, and ends for the other
+side when this one is closed. A FILE-SYSTEM-ERROR when it cannot be made."
+  (handler-case
+      (progn (sb-posix:mkfifo path #o600)
+             (sb-posix:open path (logior sb-posix:o-rdwr sb-posix:o-nonblock +o-cloexec+)))
+    (sb-posix:syscall-error (condition)
+      (error 'file-system-error :operation "make a pipe" :path path
+                                :reason (sb-int:strerror (sb-posix:syscall-errno condition))
+                                :errno (sb-posix:syscall-errno condition)))))
+
+(defun close-named-pipe (fd path)
+  "Take away the named pipe at PATH, opened as the file descriptor (FD) by
+OPEN-NAMED-PIPE, and close it: nothing can open it from then on."
+  (handler-case (sb-posix:unlink path)
+    (sb-posix:syscall-error () nil))
+  (sb-posix:close fd))
 
 (defun write-private-file (path text)
   "Write TEXT, a string, as the whole of the file at PATH in UTF-8, readable

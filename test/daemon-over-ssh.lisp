@@ -62,11 +62,13 @@ of that version line would."
   (length (tuatara.io:directory-entries
            (tuatara.defaults::private-directory-in (tuatara.defaults::daemon-folder) "ssh/"))))
 
-(defun far-test-client (link options &key window another)
+(defun far-test-client (link options &key window another cell-pixels)
   "A client through LINK, an SSH-LINK, asking for what OPTIONS (READ-OPTIONS)
-ask, on a fake screen, a window when WINDOW, ANOTHER opening the windows
-the daemon asks for; three values as ATTACH-TEST-CLIENT gives them."
-  (let ((local (make-instance 'queued-fake-frontend :width 70 :height 14 :font-steps (and window 0)))
+ask, on a fake screen, a window when WINDOW, showing pictures when
+CELL-PIXELS (a cell's size) is given, ANOTHER opening the windows the
+daemon asks for; three values as ATTACH-TEST-CLIENT gives them."
+  (let ((local (make-instance 'queued-fake-frontend :width 70 :height 14 :font-steps (and window 0)
+                                                    :cell-pixels cell-pixels))
         (fd (tuatara.io:connect-to (tuatara.terminal::ssh-link-socket link))))
     (tuatara.frontend:frontend-start local)
     (let ((client (tuatara.frontend:make-remote-client
@@ -132,6 +134,29 @@ the daemon asks for; three values as ATTACH-TEST-CLIENT gives them."
               (true (search (format nil "-F~%none~%-O~%forward~%-L~%") said))
               (true (search (format nil "-F~%none~%-O~%exit~%--~%build.example~%env") said)
                     "the connection is ended"))))))))
+
+(define-test (daemon client-on-another-machine-shows-a-picture)
+  ;; a picture file opened on a daemon through ssh is shown on the client's screen, its pixels sent across
+  (when (and (tuatara.io:find-program "python3") (tuatara.defaults::find-image-decoder))
+    (with-stand-in-ssh (dir log bin)
+      (alexandria:write-byte-vector-into-file *tiny-png* (merge-pathnames "photo.png" dir))
+      (with-test-daemon (name)
+        (put-server-tuatara bin :report (test-report dir name))
+        (let ((link (tuatara.terminal::open-ssh-link "build.example" name)))
+          (true link)
+          (when link
+            (unwind-protect
+                 (multiple-value-bind (local runner)
+                     (far-test-client link (far-options (format nil "--client=build.example:~a" name) "photo.png")
+                                      :cell-pixels '(8 16))
+                   (true (tuatara.runtime:wait-until (lambda () (tuatara.frontend.fake:fake-images local)) 30)
+                         "the picture is drawn on the client")
+                   (let ((image (first (first (tuatara.frontend.fake:fake-images local)))))
+                     (true (plusp (length (tuatara.frontend:image-pixels image))) "with its pixels"))
+                   (type-keys local "C-x C-c")
+                   (is equal '(0 nil) (client-ends runner)))
+              (tuatara.terminal::close-ssh-link link))
+            (true (search "ControlMaster=yes" (uiop:read-file-string log)) "through ssh")))))))
 
 (define-test (daemon window-client-on-another-machine-opens-another-window)
   ;; C-x 5 2 in a window client of a daemon on another machine: the window connects through the same ssh
@@ -217,6 +242,50 @@ the daemon asks for; three values as ATTACH-TEST-CLIENT gives them."
           (let ((lines (uiop:split-string (uiop:read-file-string log) :separator '(#\Newline))))
             (is = (1- (count "ControlMaster=yes" lines :test #'string=)) (count "exit" lines :test #'string=))))))))
 
+(define-test (daemon another-machine-old-version-said)
+  ;; an old tuatara there: which program it found and its version, not only that it is old
+  (when (tuatara.io:find-program "python3")
+    (with-stand-in-ssh (dir log bin)
+      (with-test-daemon (name)
+        (put-program (merge-pathnames "tuatara" bin)
+                     (format nil "#!/bin/sh~%[ \"$1\" = --version ] && echo 'Tuatara 0.90.14 (abc, built 2026) on SBCL' ~
+                                  && exit 0~%echo 'not an option of tuatara' >&2~%exit 2~%"))
+        (let ((said (nth-value 1 (said-on-error-output
+                                  (lambda ()
+                                    (let ((link (tuatara.terminal::open-ssh-link "build.example" name)))
+                                      (when link (tuatara.terminal::close-ssh-link link))))))))
+          (true (search (format nil "tuatara on build.example is 0.90.14; this is ~a" (tuatara:version)) said)))))))
+
+(define-test (daemon another-machine-same-version-keeps-refusal)
+  ;; a tuatara there of this very version that was refused is not called old: the real refusal is said
+  (when (tuatara.io:find-program "python3")
+    (with-stand-in-ssh (dir log bin)
+      (with-test-daemon (name)
+        (put-program (merge-pathnames "tuatara" bin)
+                     (format nil "#!/bin/sh~%[ \"$1\" = --version ] && echo 'Tuatara ~a (abc, built 2026) on SBCL' ~
+                                  && exit 0~%echo 'not an option of tuatara' >&2~%exit 2~%"
+                             (tuatara:version)))
+        (let ((said (nth-value 1 (said-on-error-output
+                                  (lambda ()
+                                    (let ((link (tuatara.terminal::open-ssh-link "build.example" name)))
+                                      (when link (tuatara.terminal::close-ssh-link link))))))))
+          (false (search "this is" said))
+          (true (search "too old to be shown" said)))))))
+
+(define-test (daemon another-machine-program-named)
+  ;; the trust names the tuatara run there; the question to ssh for a new host is asked only when it can be answered
+  (let ((link (tuatara.terminal::make-ssh-link "box" "ssh" "/nowhere/" nil (list :program "/opt/t/tuatara"))))
+    (is string= "/opt/t/tuatara" (tuatara.terminal::link-tuatara link))
+    (is string= "tuatara" (tuatara.terminal::link-tuatara (tuatara.terminal::make-ssh-link "b" "ssh" "/n/" nil nil)))
+    (is equal "StrictHostKeyChecking=ask"
+        (third (member "ControlPersist=no" (tuatara.terminal::ssh-arguments link :master t :ask-host t)
+                       :test #'string=))
+        "ask comes before the shared options, as ssh takes the first of an option")
+    (false (member "StrictHostKeyChecking=ask" (tuatara.terminal::ssh-arguments link :master t) :test #'string=)))
+  (is eq :terminal (tuatara.terminal::master-asker :terminal t :window "/bin/ask"))
+  (is equal "/bin/ask" (tuatara.terminal::master-asker :terminal nil :window "/bin/ask"))
+  (false (tuatara.terminal::master-asker :terminal nil :window nil)))
+
 (define-test (daemon another-machine-options-read)
   ;; HOST[:NAME] names a daemon on another machine; a plain name one here; a host ssh could read as an option,
   ;; standard input and --fallback with a host are refused
@@ -265,7 +334,7 @@ the daemon asks for; three values as ATTACH-TEST-CLIENT gives them."
 
 (define-test (daemon far-client-gives-the-desk-nothing)
   ;; a client of a daemon on another machine gives it no clipboard and takes none, lends no terminal and names
-  ;; no dropped file; the daemon sends it no picture
+  ;; no dropped file
   (multiple-value-bind (mine theirs) (tuatara.io:socket-pair)
     (let* ((local (make-instance 'lending-fake-frontend :cell-pixels '(8 16)))
            (maker (progn (tuatara.frontend:frontend-start local)
@@ -279,7 +348,6 @@ the daemon asks for; three values as ATTACH-TEST-CLIENT gives them."
            (runner (sb-thread:make-thread (lambda () (tuatara.frontend:run-remote-client client))))
            (ran nil))
       (true (tuatara.frontend:request-far (tuatara.frontend:remote-request remote)))
-      (false (tuatara.frontend:frontend-images-p remote) "no pictures for a far client")
       (false (tuatara.frontend:frontend-clipboard remote) "the desk's clipboard is not given")
       (tuatara.frontend:frontend-set-clipboard remote "planted")
       (tuatara.frontend:frontend-lend-terminal remote (lambda () (setf ran t)) :words "gpg asks here")

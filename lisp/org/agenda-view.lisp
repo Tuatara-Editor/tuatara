@@ -100,6 +100,10 @@ when it shows another view or span.
 \\[copy-selection-or-char] copies them; the keys that move by words or select parts of lines are not bound here."
   :lighter "Org-Agenda" :interactive nil)
 
+(defmethod mode-wraps-p ((mode org-agenda-mode))
+  "The agenda is laid out by the row, a line each: its lines never wrap."
+  nil)
+
 (defvar *org-agenda-keymap* (mode-keymap 'org-agenda-mode)
   "Keys of the agenda (org-agenda-mode's keymap).")
 

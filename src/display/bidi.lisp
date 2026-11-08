@@ -593,7 +593,7 @@ block at a time; BODY leaves early by RETURN-FROM a block around it."
                              (,have (min ,total (+ ,stop 3)))
                              (,i 0))
                         (declare (type fixnum ,stop ,have ,i))
-                        (tuatara.text:rope-copy-into ,rope ,pos ,have ,block)
+                        (tuatara.text:rope-copy-into ,rope ,pos ,have ,block 0 t)
                         (loop while (< ,i (- ,stop ,pos))
                               do (multiple-value-bind (,code ,length)
                                      (let ((octet (aref ,block ,i)))
@@ -637,7 +637,7 @@ O(TO - FROM)."
       (loop for pos of-type fixnum from from below to by 65536
             do (let* ((stop (min to (+ pos 65536)))
                       (have (min total (+ stop 2))))
-                 (tuatara.text:rope-copy-into rope pos have block)
+                 (tuatara.text:rope-copy-into rope pos have block 0 t)
                  (loop for i of-type fixnum from 0 below (- stop pos)
                        do (when (and (= (aref block i) #xE2) (< (+ i 2) (- have pos)))
                             (let ((second (aref block (1+ i))) (third (aref block (+ i 2))))
@@ -657,7 +657,7 @@ O(TO - FROM)."
       (loop for pos of-type fixnum from from below to by 65536
             do (let* ((stop (min to (+ pos 65536)))
                       (have (min total (+ stop 3))))
-                 (tuatara.text:rope-copy-into rope pos have block)
+                 (tuatara.text:rope-copy-into rope pos have block 0 t)
                  (loop for i of-type fixnum from 0 below (- stop pos)
                        do (when (and (>= (aref block i) #xD6)
                                      (right-to-left-code-p (tuatara.text:octets-decode block i (- have pos))))
@@ -842,7 +842,7 @@ that begin one (any but #x80 to #xBF). Complexity: O(TO - FROM)."
     (tuatara.text:with-octet-block (block 65536)
       (loop for pos of-type fixnum from from below to by 65536
             do (let ((stop (min to (+ pos 65536) total)))
-                 (tuatara.text:rope-copy-into rope pos stop block)
+                 (tuatara.text:rope-copy-into rope pos stop block 0 t)
                  (loop for i of-type fixnum from 0 below (- stop pos)
                        unless (<= #x80 (aref block i) #xBF) do (incf count)))))
     count))

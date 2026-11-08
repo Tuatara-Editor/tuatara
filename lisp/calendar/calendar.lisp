@@ -155,6 +155,10 @@ which day of the year and which ISO week it is; \\[calendar-mark-days] and
 again."
   :lighter "Calendar" :interactive nil)
 
+(defmethod mode-wraps-p ((mode calendar-mode))
+  "The calendar is laid out in columns of days: its lines never wrap."
+  nil)
+
 (defun calendar-buffer ()
   "The *Calendar* buffer, made in calendar mode when there is none."
   (find-or-make-buffer "*Calendar*" :mode 'calendar-mode

@@ -8,6 +8,13 @@
 
 (in-package #:tuatara.packages)
 
+(defvar *package-check-signatures* t
+  "True to check who signed each version of a package, and take only those
+that M-x package-trust-again and the signers of a source (:signers) allow. NIL
+to check none: every version of every source is taken, signed by any key, a
+key your keyring lacks or no one, and nothing is remembered of who signed it.
+Only for a machine where the sources are trusted by other means.")
+
 (defun trust-line (entry)
   "The line of the trust file for ENTRY, (WHERE SIGNER NAME KEY)."
   (destructuring-bind (where signer name key) entry
@@ -256,7 +263,10 @@ makes its signer the one remembered. A GNU Privacy Guard (GPG) signature whose
 key your keyring lacks is refused until the key is imported, its fingerprint
 remembered for a source's first version so that only that key (or the key it
 is a subkey of) is taken then. A signature that does not hold, or one git
-could not check, is refused always."
+could not check, is refused always. With *PACKAGE-CHECK-SIGNATURES* NIL every
+version is taken, whoever signed it, and nothing is remembered."
+  (when (not *package-check-signatures*)
+    (return-from package-trust-verdict (values :take (signer-words signature) nil)))
   (let* ((status (getf signature :status))
          (fingerprint (getf signature :fingerprint))
          (good (eq status :good))

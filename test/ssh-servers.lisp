@@ -54,9 +54,20 @@
                        (line "box" "no" "-" "no" "no" "-" "yesterday")))
       (false (tuatara.defaults::parse-server-line bad) "~s" bad))
     (is equal '("box" nil () nil nil nil "2026-11-05")
-        (tuatara.defaults::parse-server-line (line "box" "no" "-" "no" "no" "-" "2026-11-05" "later"))))
+        (tuatara.defaults::parse-server-line (line "box" "no" "-" "no" "no" "-" "2026-11-05" "-" "later")))
+    ;; the tuatara to run there, a field of its own, plain or the line gives nothing
+    (is equal '("box" nil () nil nil nil "2026-11-05" "/opt/t/tuatara")
+        (tuatara.defaults::parse-server-line (line "box" "no" "-" "no" "no" "-" "2026-11-05" "/opt/t/tuatara")))
+    (dolist (bad '("a b" "$(evil)" "a;b" "-x" "../up"))
+      (false (tuatara.defaults::parse-server-line (line "box" "no" "-" "no" "no" "-" "2026-11-05" bad)) "~s" bad))
+    ;; an old file stays valid and an entry with no program writes the old line, and back
+    (is string= (line "box" "no" "-" "no" "no" "-" "2026-11-05")
+        (tuatara.defaults::server-line '("box" nil () nil nil nil "2026-11-05")))
+    (is equal '("box" nil () nil nil nil "2026-11-05" "tuatara2")
+        (tuatara.defaults::parse-server-line
+         (tuatara.defaults::server-line '("box" nil () nil nil nil "2026-11-05" "tuatara2")))))
   (true (tuatara.defaults::state-list-trust tuatara.defaults::*trusted-servers*))
-  (is = 7 (tuatara.defaults::state-list-fields tuatara.defaults::*trusted-servers*)))
+  (is = 8 (tuatara.defaults::state-list-fields tuatara.defaults::*trusted-servers*)))
 
 (defun trust-server (host &key agent destinations gpg clipboard files)
   "Put HOST on the list of trusted servers, trusted with what the keys say."

@@ -14,6 +14,13 @@
 
 (in-package #:tuatara.terminal-emulator)
 
+(defvar tuatara-user:*terminal-send-escape* nil
+  "True to give Escape to a full-screen program in a terminal (one on the
+alternate screen: nvim, less, htop) even while *ESCAPE-QUITS* is on, Escape
+then still stopping typing at a shell's prompt. C-g stops typing in both.
+NIL: *ESCAPE-QUITS* holds in a full-screen program too, and C-q ESC gives it
+its Escape.")
+
 (defvar tuatara-user:*terminal-editor-keys* '("C-x" "M-x" "C-g" "C-\\" "C-q" "C-s")
   "Keys that stay the editor's while you type into a terminal (\\[terminal]).
 Every other key goes to the program in it. C-x (and the keys after it, for
@@ -75,6 +82,10 @@ selected first); \\[terminal-send-key] sends the next key to the program whateve
 C-V (*TERMINAL-PASTE-KEYS*) pastes, as \\[terminal-paste] in the history view does; C-x
 and its keys work as anywhere."
   :lighter "Terminal" :interactive nil)
+
+(defmethod mode-wraps-p ((mode terminal-mode))
+  "The terminal is a screen of fixed rows and columns: its lines never wrap."
+  nil)
 
 (defvar *terminal-buffers* '()
   "The terminal buffers there are, newest first.")
@@ -229,10 +240,12 @@ bind-key (\"C-x\", \"S-<insert>\")."
                                  (tuatara.frontend:parse-key-sequence keys)))))
           keys)))
 
-(defun terminal-editor-key-p (key)
-  "True when KEY stays the editor's in a terminal: one of
-*TERMINAL-EDITOR-KEYS*, or Escape while *ESCAPE-QUITS* is on."
-  (or (and tuatara-user:*escape-quits* (equal (tuatara.frontend:key-spec key) '(:escape)))
+(defun terminal-editor-key-p (key emulator)
+  "True when KEY stays the editor's in EMULATOR's terminal: one of
+*TERMINAL-EDITOR-KEYS*, or Escape while *ESCAPE-QUITS* is on, unless
+*TERMINAL-SEND-ESCAPE* gives it to a program on the alternate screen."
+  (or (and tuatara-user:*escape-quits* (equal (tuatara.frontend:key-spec key) '(:escape))
+           (not (and tuatara-user:*terminal-send-escape* (emulator-alternate-screen-p emulator))))
       (key-among-p key tuatara-user:*terminal-editor-keys*)))
 
 (defun terminal-typing-p (buffer)
@@ -408,7 +421,7 @@ those stops typing there, as C-g does. True when it took KEY."
     (when (and emulator (emulator-alive-p emulator) (terminal-typing-p buffer))
       (cond ((terminal-mouse buffer emulator key))
             ((terminal-paste-key-p key) (terminal-paste) t)
-            ((terminal-editor-key-p key)
+            ((terminal-editor-key-p key emulator)
              (cond ((terminal-stop-key-p key) (terminal-stop-typing) t)
                    ((equal (tuatara.frontend:key-spec key) '(:ctrl #\s)) (terminal-search) t)))
             (t (emulator-key emulator key))))))

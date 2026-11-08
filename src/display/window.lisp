@@ -786,6 +786,16 @@ MARGIN rows of the top or the bottom of the window with text beyond that edge
           ((and (< below margin) (not (row-last-p (aref rows (1- (length rows))))))
            (rows-back window point (rows-above-when-below window point margin))))))
 
+(defun replaced-start (buffer position)
+  "POSITION, or where the stretch BUFFER's display shows something else in
+place of begins when POSITION is inside one (BUFFER-REPLACEMENTS-FUNCTION),
+which is where a window has it drawn."
+  (let* ((function (buffer-replacements-function buffer))
+         (entry (and function
+                     (find-if (lambda (entry) (<= (first entry) position (1- (second entry))))
+                              (funcall function buffer position (1+ position))))))
+    (if entry (first entry) position)))
+
 (defun keep-point-column-visible (window)
   "Scroll WINDOW sideways, its lines being cut off at the edge, so that the
 character at point shows whole: point's column inside the width, less what
@@ -793,7 +803,7 @@ the line's prefix takes, and as many times fewer columns as the line is
 drawn large."
   (let* ((buffer (window-buffer window))
          (rope (tuatara.buffer:buffer-text buffer))
-         (point (window-point window))
+         (point (replaced-start buffer (window-point window)))
          (line-start (tuatara.text:rope-line-start rope point))
          (tab-width (tab-width-of buffer))
          (crlf (tuatara.buffer:buffer-crlf-p buffer))

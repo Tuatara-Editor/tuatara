@@ -841,6 +841,9 @@ are the same."
                (from (injection-cut rope (max 0 (- start *syntax-slice-reach*))))
                (to (let ((reach (+ end *syntax-slice-reach*)))
                      (if (>= reach bytes) bytes (max end (injection-cut rope reach)))))
+               (arrived (tuatara.text:rope-arrived-around rope start from to))
+               (from (car arrived))
+               (to (cdr arrived))
                ;; the slice is parsed as a text of its own, its places then moved to the buffer's
                (slice (and (< from to) (tuatara.text:rope-slice rope from to)))
                (tree (when slice

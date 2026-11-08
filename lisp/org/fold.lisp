@@ -114,13 +114,13 @@ it; NIL when LINE begins no such note or it stands alone. As a second
 value, the line after them."
   (let* ((rope (tuatara.buffer:buffer-text buffer))
          (size (tuatara.text:rope-bytes rope))
-         (head (org-line-head buffer line)))
+         (head (buffer-line-head buffer line)))
     (when (cl-ppcre:scan *org-note-line-re* head)
       (let ((indent (or (position-if-not (lambda (c) (member c '(#\Space #\Tab))) head) 0))
             (last line))
         (loop for next = (1+ (tuatara.text:rope-line-end rope last))
               while (< next size)
-              do (let* ((text (org-line-head buffer next))
+              do (let* ((text (buffer-line-head buffer next))
                         (own (position-if-not (lambda (c) (member c '(#\Space #\Tab))) text)))
                    (if (or (cl-ppcre:scan *org-note-line-re* text)
                            (and own (> own indent) (not (eql (char text own) #\-))))
@@ -143,13 +143,13 @@ line, of the next headline, or the text's end."
   (let* ((rope (tuatara.buffer:buffer-text buffer))
          (size (tuatara.text:rope-bytes rope))
          (first-end (tuatara.buffer:buffer-line-end buffer line))
-         (head (org-line-head buffer line)))
+         (head (buffer-line-head buffer line)))
     (when (and (cl-ppcre:scan *org-drawer-line-re* head)
                (not (cl-ppcre:scan "(?i)^[ \\t]*:END:" head)))
       (loop for next = (1+ (tuatara.text:rope-line-end rope line)) then (1+ (tuatara.text:rope-line-end rope next))
             while (< next size)
             do (cond ((org-stars rope next) (return (values nil next)))
-                     ((cl-ppcre:scan "(?i)^[ \\t]*:END:[ \\t]*$" (org-line-head buffer next))
+                     ((cl-ppcre:scan "(?i)^[ \\t]*:END:[ \\t]*$" (buffer-line-head buffer next))
                       (return (values (cons first-end (tuatara.buffer:buffer-line-end buffer next)) next))))
             finally (return (values nil size))))))
 
@@ -395,7 +395,7 @@ to the next field. After a snippet's key (<s for a source block), the snippet
   (let* ((buffer (current-buffer))
          (start (tuatara.buffer:buffer-line-start buffer (point)))
          ;; the line's beginning tells what it is: a line of a million characters is not read whole
-         (line (org-line-head buffer start))
+         (line (buffer-line-head buffer start))
          (bare (string-left-trim " 	" line)))
     ;; a line that is no headline, table, template or list item to fold: indented, the file not parsed for it
     ;; a drawer's first line, the drawer folded or opened, found by its lines

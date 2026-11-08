@@ -625,7 +625,7 @@ it is not ticked or a TODO under it not done; with none other to go to, say
 what is open. True when it handled the line."
   ;; the file parsed only for a line that is a headline
   (when (and *org-return-cycles-todo* (typep (buffer-major-mode buffer) 'org-mode)
-             (cl-ppcre:scan "^\\*+ " (org-line-head buffer (tuatara.buffer:buffer-point buffer))))
+             (cl-ppcre:scan "^\\*+ " (buffer-line-head buffer (tuatara.buffer:buffer-point buffer))))
     (let* ((parse (org-parse-now buffer))
            (text (and parse (org-parse-text parse)))
            (headline (and parse (org-headline-on-line (org-parse-tree parse) text (org-parse-point parse))))
@@ -824,7 +824,7 @@ this time alone, the rest going on, noted in its log as cancelled for that
 day and passed over by the agenda and its repeats; a task's time open now
 cancelled moves on to its next, as done does. \\`s' cancels the series,
 ended, not moved on."
-  (if (org-checkbox-line-p (org-line-head (current-buffer) (point)))
+  (if (org-checkbox-line-p (buffer-line-head (current-buffer) (point)))
       (message "A list item's checkbox is ticked or cleared, not cancelled: \\<org-mode>\\[org-todo] ticks it")
       (with-org-structure (parse buffer tree text position)
         (let ((headline (org-current-headline tree position)))

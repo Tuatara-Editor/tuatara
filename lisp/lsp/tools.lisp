@@ -127,16 +127,60 @@ NIL for none."
   "The names of the files that mark the top of a project in LANGUAGE (Cargo.toml for Rust)."
   (getf (language-tools language) :roots))
 
+(defparameter *brought-language-servers-folder* ".local/share/tuatara/language-servers/"
+  "Where, from the home folder, the language servers brought to this machine
+by \\[server-bring-language-server] are kept: a folder of the editor's own,
+looked in after the PATH (BROUGHT-LANGUAGE-SERVER), so that nothing of yours
+is hidden and the commands ssh runs need no PATH of their own.")
+
+(defun language-server-program-name-p (name)
+  "True when NAME can name a language server's program in that folder: one
+to 64 ASCII letters, digits, ., _ and -, not starting with . or -."
+  (and (stringp name) (<= 1 (length name) 64)
+       (not (find (char name 0) ".-"))
+       (every (lambda (c) (and (< (char-code c) 128) (or (alphanumericp c) (find c "._-")))) name)))
+
+(defun brought-language-server (name)
+  "The full name of the program NAME in *BROUGHT-LANGUAGE-SERVERS-FOLDER*, or
+NIL when it is not there, or that folder or the file is a link, another's, or
+writable by anyone else."
+  (when (language-server-program-name-p name)
+    (let* ((folder (tuatara.io:path-join (tuatara.io:home-directory) *brought-language-servers-folder*))
+           (path (tuatara.io:path-join folder name)))
+      (flet ((yours (path kind)
+               (let ((stamp (tuatara.io:path-stamp path :follow nil :failure nil)))
+                 (and stamp (eq kind (tuatara.io:stamp-kind stamp)) (= (tuatara.io:stamp-uid stamp) (sb-posix:getuid))
+                      (not (logtest (tuatara.io:stamp-mode stamp) #o022))))))
+        (and (yours folder :directory) (yours path :regular) (tuatara.io:find-program path))))))
+
 (defun installed-program (command)
   "The program of COMMAND (a list of a program and its arguments) as found on
-the PATH, its full name, or NIL when it is not installed."
-  (and command (tuatara.io:find-program (first command))))
+the PATH, else among the language servers brought to this machine, its full
+name, or NIL when it is not installed."
+  (and command (or (tuatara.io:find-program (first command)) (brought-language-server (first command)))))
+
+(defun language-server-programs-here ()
+  "The language servers known that are installed on this machine, not counting
+those brought to it, each (PROGRAM . FULL-NAME), sorted by program, once each."
+  (let ((programs '()))
+    (maphash (lambda (name spec)
+               (declare (ignore name))
+               (let ((program (first (getf spec :command))))
+                 (when (and (language-server-program-name-p program) (not (assoc program programs :test #'string=)))
+                   (let ((path (tuatara.io:find-program program)))
+                     (when path (push (cons program path) programs))))))
+             *known-language-servers*)
+    (sort programs #'string< :key #'car)))
 
 (defun language-tools-words (language)
   "Two values saying what LANGUAGE's tools are here, for \\[check-health]: its
 formatter (its program's name, ✓ after one installed, NIL for none), and its
-servers likewise, joined by commas."
-  (flet ((word (name command) (format nil "~a~:[~; ✓~]" name (installed-program command))))
+servers likewise, joined by commas, brought after one brought here by
+\\[server-bring-language-server]."
+  (flet ((word (name command)
+           (let ((found (installed-program command)))
+             (format nil "~a~:[~; ✓~]~:[~; brought~]" name found
+                     (and found (search *brought-language-servers-folder* found))))))
     (let ((formatter (language-formatter-command language)))
       (values (and formatter (word (tuatara.io:native-file-name (first formatter)) formatter))
               (let ((servers (language-server-commands language)))

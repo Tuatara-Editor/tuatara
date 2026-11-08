@@ -5,7 +5,7 @@
   :description "Tuatara: an Emacs-shaped editor in Common Lisp."
   :author "Michael A Jones <yardquit@pm.me>"
   :license "GPL-3.0-or-later"
-  :version "0.90.17"
+  :version "0.90.18"
   :depends-on ("tuatara/core")
   :in-order-to ((test-op (test-op "tuatara/tests"))))
 
@@ -99,7 +99,7 @@
                (:file "daemon")
                (:file "servers")
                ;; files on another machine, through SFTP
-               (:module "remote"  :serial t :components ((:file "sftp") (:file "files") (:file "folders")))
+               (:module "remote"  :serial t :components ((:file "asking") (:file "sftp") (:file "files") (:file "folders") (:file "language-servers")))
                (:file "setup")
                (:file "api")))
 
@@ -250,6 +250,7 @@
                (:file "daemon-over-ssh")
                (:file "ssh-servers")
                (:file "remote-files")
+               (:file "language-servers-brought")
                (:file "tools")
                (:file "config")
                (:file "modes")

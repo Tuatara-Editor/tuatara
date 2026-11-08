@@ -14,6 +14,20 @@
 
 (in-package #:tuatara.defaults)
 
+(defun rope-octet (rope byte)
+  "The octet at offset BYTE of ROPE, a buffer's text. Refused (NOT-ARRIVED)
+for a part of a file that has not arrived: what the system gives for it, zero,
+is no octet of the file."
+  (tuatara.text:rope-check-arrived rope byte (1+ byte))
+  (tuatara.text:rope-octet rope byte))
+
+(defun rope-find-octet (rope value &key (start 0) (end (tuatara.text:rope-bytes rope)))
+  "The offset of the first octet VALUE of ROPE, a buffer's text, from START
+below END, or NIL. Refused (NOT-ARRIVED) when part of that range of a file has
+not arrived, for what is there cannot then be told."
+  (tuatara.text:rope-check-arrived rope start end)
+  (tuatara.text:rope-find-octet rope value :start start :end end))
+
 (defun (setf sentence-end-double-space-p) (value buffer)
   "Make BUFFER's sentences two spaces apart when VALUE is true, one space when
 it is NIL, whatever *SENTENCE-END-DOUBLE-SPACE* says."
@@ -112,6 +126,7 @@ its form says, as ORG-READ-RULE reads them; :HOUR, :MINUTE, :END-HOUR and
 (defparameter *api*
   '(;; defining commands, modes, keys, faces, settings and background work
     tuatara.command:define-command tuatara.modes:define-major-mode define-face tuatara.packages:define-package-setting
+    tuatara.packages:declare-package-needs
     tuatara.command:define-key tuatara.command:define-keys tuatara.command:label-keys tuatara.modes:mode-keymap
     tuatara.runtime:define-job-words tuatara.command:substitute-command-keys commands-for-mode buttons-in-mode
     tuatara.modes:fundamental-mode special-mode text-mode org-mode org-agenda-mode
@@ -128,8 +143,8 @@ its form says, as ORG-READ-RULE reads them; :HOUR, :MINUTE, :END-HOUR and
     tuatara.command:show-buffer tuatara.command:display-buffer tuatara.command:display-buffer-at tuatara.command:buffer-window tuatara.command:leave-window tuatara.display:window-point tuatara.command:pop-to-buffer tuatara.command:abbreviated-path
     tuatara.modes:find-or-make-buffer
     ;; a buffer's text as it stands, unchanged by later edits, for work in the background
-    tuatara.buffer:buffer-text tuatara.text:rope-bytes tuatara.text:rope-octet tuatara.text:rope-copy-into
-    tuatara.text:rope-find-octet tuatara.text:rope-line-start tuatara.text:rope-line-end
+    tuatara.buffer:buffer-text tuatara.text:rope-bytes rope-octet tuatara.text:rope-copy-into
+    rope-find-octet tuatara.text:rope-line-start tuatara.text:rope-line-end
     ;; asking and waiting
     tuatara.command:read-string tuatara.command:finish-minibuffer tuatara.command:quit tuatara.command:completing-read tuatara.command:completing-read-value tuatara.command:make-candidate tuatara.command:yes-or-no-p* tuatara.command:y-or-n-p*
     tuatara.command:complete-in-minibuffer tuatara.command:*question-variables* tuatara.command:*buffers-asked-about*

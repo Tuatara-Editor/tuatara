@@ -84,6 +84,13 @@ in place of the variable of its name."
   (apply #'tuatara.io:restricted-environment *ssh-variables* (format nil "PATH=~a" tuatara.io:*sandbox-path*)
          settings))
 
+(defun ssh-askpass-window-p ()
+  "The program ssh can ask for a passphrase in a window with, when a desktop
+is running (TUATARA.IO:DESKTOP-P): the one SSH_ASKPASS names, as
+gnome-ssh-askpass or ksshaskpass, else OpenSSH's own
+\(TUATARA.IO:ASKPASS-PROGRAM); NIL when there is none or no desktop."
+  (and (tuatara.io:desktop-p) (tuatara.io:askpass-program)))
+
 (defun run-bounded (program arguments &key ask (seconds 30) (environment (ssh-environment)) input)
   "Run PROGRAM, by its full path, with ARGUMENTS in ENVIRONMENT, never
 through a shell, SECONDS at most (TUATARA.IO:FILTER-THROUGH-PROGRAM). With
@@ -152,23 +159,26 @@ not for the editor's own thread."
 
 (defun server-line (entry)
   "The line of the list of trusted servers for ENTRY, (HOST AGENT
-DESTINATIONS GPG CLIPBOARD FILES ADDED)."
-  (destructuring-bind (host agent destinations gpg clipboard files added) entry
-    (format nil "~a~c~:[no~;yes~]~c~:[-~;~:*~{~a~^,~}~]~c~:[no~;yes~]~c~:[no~;yes~]~c~:[-~;~:*~a~]~c~a"
-            host #\Tab agent #\Tab destinations #\Tab gpg #\Tab clipboard #\Tab files #\Tab added)))
+DESTINATIONS GPG CLIPBOARD FILES ADDED [PROGRAM])."
+  (destructuring-bind (host agent destinations gpg clipboard files added &optional program) entry
+    (format nil "~a~c~:[no~;yes~]~c~:[-~;~:*~{~a~^,~}~]~c~:[no~;yes~]~c~:[no~;yes~]~c~:[-~;~:*~a~]~c~a~@[~c~a~]"
+            host #\Tab agent #\Tab destinations #\Tab gpg #\Tab clipboard #\Tab files #\Tab added
+            (and program #\Tab) program)))
 
 (defun parse-server-line (line)
   "The entry LINE of the list of trusted servers writes, (HOST AGENT
-DESTINATIONS GPG CLIPBOARD FILES ADDED), or NIL for a line that makes no
+DESTINATIONS GPG CLIPBOARD FILES ADDED [PROGRAM]), or NIL for a line that makes no
 sense: HOST a machine as ssh takes it (HOST-REFUSAL); AGENT, GPG and
 CLIPBOARD true for yes; DESTINATIONS the machines a key of the agent may be
 used for from there, a list; FILES the folder there dropped files go to, or
-NIL; ADDED the day it was trusted, as 2026-11-05. Every one of these fields
-must be understood, or the line gives nothing; fields after them are passed
-over (STATE-LINE-FIELDS)."
+NIL; ADDED the day it was trusted, as 2026-11-05; PROGRAM, when the line has
+it and it is not -, the tuatara to run there, a plain path (PLAIN-PATH-P), as
+it goes to the shell there. Every one of these fields must be understood, or
+the line gives nothing; fields after them are passed over
+(STATE-LINE-FIELDS)."
   (let ((fields (state-line-fields line)))
     (when (<= 7 (length fields))
-      (destructuring-bind (host agent destinations gpg clipboard files added &rest later) fields
+      (destructuring-bind (host agent destinations gpg clipboard files added &optional (program "-") &rest later) fields
         (declare (ignore later))
         (flet ((yes (field)
                  (cond ((string= field "yes") t)
@@ -179,27 +189,32 @@ over (STATE-LINE-FIELDS)."
                  (notany #'host-refusal destinations)
                  (or (string= files "-") (plain-path-p files :relative t))
                  (cl-ppcre:scan "^\\d{4}-\\d\\d-\\d\\d$" added)
-                 (list host (yes agent) destinations (yes gpg) (yes clipboard) (and (string/= files "-") files)
-                       added))))))))
+                 (or (member program '("-" "") :test #'string=) (plain-path-p program :relative t))
+                 (append (list host (yes agent) destinations (yes gpg) (yes clipboard)
+                               (and (string/= files "-") files) added)
+                         (and (not (member program '("-" "") :test #'string=)) (list program))))))))))
 
 (define-state-list *trusted-servers* "ssh-servers" 'parse-server-line 'server-line '*servers-kept*
   :header (format nil "# The machines whose daemons are trusted with more than keys and the screen, the latest~%~
                        # first: the machine as ssh takes it; the ssh agent forwarded; the machines its keys~%~
                        # may be used for from there; gpg-agent forwarded; the clipboard shared; the folder~%~
-                       # there dropped files go to; the day it was trusted. Changed by M-x server-list.~%")
-  :path-of #'first :fields 7 :trust t :line-key (field-line-key 7 0))
+                       # there dropped files go to; the day it was trusted; the tuatara to run there, when~%~
+                       # another than the one on its PATH. Changed by M-x server-list.~%")
+  :path-of #'first :fields 8 :trust t :line-key (field-line-key 7 0))
 
 (defun server-permissions (host)
   "What the machine HOST, as given to tuatara --client=, is trusted with, as
 a plist: :AGENT, the ssh agent forwarded; :DESTINATIONS, the machines its
 keys may be used for from there; :GPG, gpg-agent forwarded; :CLIPBOARD, the
 clipboard shared; :FILES, the folder there files dropped on the window go
-to, or NIL. NIL for a machine not on the list, which is given nothing."
+to, or NIL; :PROGRAM, the tuatara to run there, or NIL for the one on its
+PATH. NIL for a machine not on the list, which is given nothing."
   (let ((entry (state-list-find *trusted-servers* host)))
     (and entry
-         (destructuring-bind (host agent destinations gpg clipboard files added) entry
+         (destructuring-bind (host agent destinations gpg clipboard files added &optional program) entry
            (declare (ignore host added))
-           (list :agent agent :destinations destinations :gpg gpg :clipboard clipboard :files files)))))
+           (list* :agent agent :destinations destinations :gpg gpg :clipboard clipboard :files files
+                  (and program (list :program program)))))))
 
 (defun change-server (host change)
   "Change what HOST, a trusted server, is trusted with: CHANGE, a function of
@@ -218,7 +233,9 @@ server, or those marked, \\[server-toggle-agent] turns forwarding the ssh agent 
 \\[server-agent-destinations] names the machines its keys may be used for from there,
 \\[server-toggle-gpg] turns forwarding gpg-agent on or off, \\[server-toggle-clipboard] sharing the
 clipboard, \\[server-toggle-files] sending dropped files to a folder there; each asks before
-it gives anything. \\[list-mark-for-deletion] marks a server to forget, \\[list-execute] forgets those
+it gives anything. \\[server-tuatara-program] names the tuatara to run there.
+\\[server-bring-language-server] and \\[server-remove-language-server] take a language server there
+and away again. \\[list-mark-for-deletion] marks a server to forget, \\[list-execute] forgets those
 marked, \\[list-delete-marked] the marked ones or the one on the line, after asking;
 \\[revert-buffer] lists them again."
   :lighter "Servers" :interactive nil)
@@ -227,7 +244,8 @@ marked, \\[list-delete-marked] the marked ones or the one on the line, after ask
   "Keys of the list of trusted servers (servers-mode's keymap).")
 
 (defparameter *servers-columns* '((" M" :width 2) ("Server" :width 24) ("Agent" :width 5) ("Keys used for" :width 24)
-                                  ("GPG" :width 3) ("Clipboard" :width 9) ("Dropped files to" :width 18) ("Trusted"))
+                                  ("GPG" :width 3) ("Clipboard" :width 9) ("Dropped files to" :width 18) ("Trusted" :width 10)
+                                  ("Tuatara there"))
   "The columns of the list of trusted servers, as TABLE-HEADING-PIECES takes
 them: the mark, the machine, whether the ssh agent is forwarded and the
 machines its keys may be used for from there, whether gpg-agent is
@@ -242,11 +260,12 @@ day it was trusted.")
      buffer *servers-columns* entries
      (lambda (entry mark section)
        (declare (ignore section))
-       (destructuring-bind (host agent destinations gpg clipboard files added) entry
+       (destructuring-bind (host agent destinations gpg clipboard files added &optional program) entry
          (flet ((yes (on) (if on "yes" (cons "no" :list-dim))))
            (list (list-mark-sign mark) (cons host (list-mark-face mark)) (yes agent)
                  (if destinations (format nil "~{~a~^, ~}" destinations) (if agent "any" ""))
-                 (yes gpg) (yes clipboard) (or files (cons "no" :list-dim)) (cons added :list-date)))))
+                 (yes gpg) (yes clipboard) (or files (cons "no" :list-dim)) (cons added :list-date)
+                 (or program "")))))
      :marked-by (lambda (entry section) (declare (ignore section)) (first entry))
      :after (list (if entries
                       (format nil "~%   ~[No servers~;1 server~:;~:*~d servers~] trusted; a machine not listed is ~
@@ -374,6 +393,24 @@ later here, which refuses a key's use for any other machine."
                       (setf (third entry) hosts)
                       entry))))
 
+(define-command server-tuatara-program ()
+  "Name, in the minibuffer, the tuatara to run on the server on the line, or
+those marked, when it is not the one on the PATH of the commands ssh runs
+there: /opt/tuatara/bin/tuatara, or a name found on that PATH; empty for the
+one on that PATH. Letters, digits, /, ., _ and - only, as it goes to the
+shell on that machine."
+  (change-servers "the tuatara run there"
+                  (lambda (host entry) (declare (ignore host entry)) nil)
+                  (lambda (entry)
+                    (let ((program (string-trim " " (read-string
+                                                     (format nil "Tuatara to run on ~a (empty for its PATH's): "
+                                                             (first entry))
+                                                     :initial (or (nth 7 entry) "")))))
+                      (unless (or (string= program "") (plain-path-p program :relative t))
+                        (refuse "~a: a program is letters, digits, /, ., _ and -, no part .. or starting with -"
+                                program))
+                      (append (subseq entry 0 7) (and (string/= program "") (list program)))))))
+
 (defmethod list-entry-noun ((mode servers-mode))
   "A trusted server."
   "server")
@@ -390,32 +427,52 @@ later here, which refuses a key's use for any other machine."
 
 (defun install-servers ()
   "Bind the keys of the list of trusted servers: \\`+' trusts another,
-\\`A', \\`H', \\`G', \\`C' and \\`F' change what the servers marked are given."
+\\`A', \\`H', \\`G', \\`C' and \\`F' change what the servers marked are given,
+\\`T' the tuatara run there."
   (define-keys *servers-keymap* '(("+" server-trust) ("A" server-toggle-agent) ("H" server-agent-destinations)
-                                  ("G" server-toggle-gpg) ("C" server-toggle-clipboard) ("F" server-toggle-files)))
+                                  ("G" server-toggle-gpg) ("C" server-toggle-clipboard) ("F" server-toggle-files)
+                                  ("T" server-tuatara-program)))
   (commands-for-mode 'servers-mode "the list of trusted servers (\\[server-list])" 'server-toggle-agent
-                     'server-agent-destinations 'server-toggle-gpg 'server-toggle-clipboard 'server-toggle-files)
+                     'server-agent-destinations 'server-toggle-gpg 'server-toggle-clipboard 'server-toggle-files
+                     'server-tuatara-program 'server-bring-language-server 'server-remove-language-server)
   (commands-for-mode 'gpg-keys-mode "the list of GnuPG keys (\\[gpg-list-keys])" 'server-copy-keys))
 
 ;;; Public keys for the servers' keyrings
+
+(defun run-on-server (host arguments &key input (seconds 60))
+  "Run the command ARGUMENTS, words the shell there reads, on HOST through ssh,
+nothing asked (BatchMode), nothing forwarded and no shared connection, SECONDS
+at most: as RUN-BOUNDED, its exit code, what it wrote and what it said, the
+first *PROGRAM-SAID-LIMIT* octets of each, never to be shown raw. Refused
+when ssh is not in the system's folders of programs."
+  (let ((program (or (tuatara.io:system-program *ssh-program*)
+                     (refuse "ssh is not installed in the system's folders of programs"))))
+    (run-bounded program (append '("-T" "-o" "BatchMode=yes" "-o" "ControlMaster=no" "-o" "ControlPath=none")
+                                 (ssh-option-arguments) (list "--" host) arguments)
+                 :input input :seconds seconds)))
+
+(defun server-said-shown (said)
+  "SAID, what a server's program wrote, on one line and at most 200
+characters, as it may be shown."
+  (let ((line (escape-controls (tuatara.text:one-line (string-trim '(#\Newline) said)))))
+    (subseq line 0 (min 200 (length line)))))
+
+(defun server-unreached-words (host code said seconds)
+  "Why ssh's run of a command on HOST, with exit code CODE and SAID on its
+error output, reached nothing there within SECONDS, in words; NIL when it did."
+  (cond ((null code) (format nil "~a did not answer within ~d second~:p" host seconds))
+        ((eql code 255) (format nil "ssh could not reach ~a without asking: ~a" host (server-said-shown said)))))
 
 (defun import-on-server (host octets)
   "Import the armoured public keys OCTETS into the keyring of gpg on HOST,
 through ssh with no question asked (BatchMode) and nothing forwarded: words
 saying what was done (IMPORT-WORDS), as gpg there said it."
-  (let ((program (tuatara.io:system-program *ssh-program*)))
-    (if (null program)
-        "ssh is not installed in the system's folders of programs"
-        (multiple-value-bind (code output complained)
-            (run-bounded program (append '("-T" "-o" "BatchMode=yes") (ssh-option-arguments)
-                                         (list "--" host "gpg" "--batch" "--status-fd" "1" "--import"))
-                         :input octets :seconds 60)
-          (let ((statuses (loop for line in (uiop:split-string output :separator '(#\Newline))
-                                when (uiop:string-prefix-p "[GNUPG:] " line) collect (subseq line 9)))
-                (said (escape-controls (tuatara.text:one-line (string-trim '(#\Newline) complained)))))
-            (cond ((null code) (format nil "~a did not answer within a minute" host))
-                  ((eql code 255) (format nil "ssh could not reach ~a without asking: ~a" host said))
-                  (t (format nil "On ~a: ~a" host (import-words statuses said)))))))))
+  (multiple-value-bind (code output complained)
+      (run-on-server host '("gpg" "--batch" "--status-fd" "1" "--import") :input octets)
+    (let ((statuses (loop for line in (uiop:split-string output :separator '(#\Newline))
+                          when (uiop:string-prefix-p "[GNUPG:] " line) collect (subseq line 9))))
+      (or (server-unreached-words host code complained 60)
+          (format nil "On ~a: ~a" host (import-words statuses (server-said-shown complained)))))))
 
 (define-command server-copy-keys ()
   "Copy the public keys marked in the list of GnuPG keys (\\[gpg-list-keys]),
