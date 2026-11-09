@@ -48,8 +48,38 @@ list starts on its first line, on a screen WIDTH by HEIGHT."
                                                 (tuatara.frontend:parse-key-sequence "w")))
   (false (tuatara.command:lookup-key (tuatara.modes:mode-keymap 'tuatara.defaults::buffers-mode)
                                      (tuatara.frontend:parse-key-sequence "V")))
-  (false (tuatara.command:lookup-key (tuatara.modes:mode-keymap 'tuatara.defaults::buffers-mode)
-                                     (tuatara.frontend:parse-key-sequence "h"))))
+  (is eq 'tuatara.defaults::buffers-fold-heading
+      (tuatara.command:lookup-key (tuatara.modes:mode-keymap 'tuatara.defaults::buffers-mode)
+                                  (tuatara.frontend:parse-key-sequence "h"))))
+
+(define-test (buffers h-folds-a-heading-and-moves-nothing)
+  (let ((list (tuatara.buffer:make-buffer "sections for h" :text "")))
+    (unwind-protect
+         (labels ((draw (buffer)
+                  (multiple-value-bind (entries pieces)
+                      (tuatara.defaults::sectioned-pieces
+                       buffer '((:a "one") (:b "two"))
+                       (lambda (section) (string-capitalize section))
+                       (lambda (member section)
+                         (declare (ignore section))
+                         (list (format nil "  ~a~%" member))))
+                    (tuatara.defaults::render-pieces buffer pieces :entries entries :redraw #'draw))))
+           (draw list)
+           (run-keys (list (lambda ()
+                             (tuatara.display:set-window-buffer (tuatara.command:editor-window tuatara.command:*editor*) list)
+                             ;; on the line of a member: not folded, the cursor where it was
+                             (setf (tuatara.buffer:buffer-point list) (tuatara.buffer:buffer-goto-line list 2))
+                             (let ((at (tuatara.buffer:buffer-point list)))
+                               (tuatara.defaults::buffers-fold-heading)
+                               (false (tuatara.defaults::list-folded list))
+                               (is = at (tuatara.buffer:buffer-point list)))
+                             ;; on a heading: folded, and pressed again it stays folded
+                             (setf (tuatara.buffer:buffer-point list) 0)
+                             (tuatara.defaults::buffers-fold-heading)
+                             (is equal '(:a) (tuatara.defaults::list-folded list))
+                             (tuatara.defaults::buffers-fold-heading)
+                             (is equal '(:a) (tuatara.defaults::list-folded list))))))
+      (tuatara.buffer:kill-buffer list))))
 
 (define-test (buffers section-note-in-the-colour-of-warnings)
   ;; only the words after the heading take it, and only a section given words has them

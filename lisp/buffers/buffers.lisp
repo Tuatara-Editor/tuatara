@@ -320,6 +320,15 @@ when one of them is modified, else after asking."
   (declare (ignore list))
   (kill-listed-buffers targets :modified-only (eq mark :deletion)))
 
+(define-command buffers-fold-heading (:interactive nil)
+  "On a heading of the buffer list, fold its section when it is open, as
+\\[list-visit] opens it again; on any other line nothing happens."
+  (let* ((list (current-buffer))
+         (section (list-section-at list)))
+    (when (and section (eq (first (list-entry-at list)) :section)
+               (not (member section (list-folded list) :test #'equal)))
+      (list-toggle-section list section))))
+
 (define-command buffers-keep-client ()
   "Make the client whose folder the cursor is in, in the buffer list, the one
 that stays when its last buffer is closed, in place of the one
@@ -398,7 +407,7 @@ saying how many are modified, each modified one asked about as it goes. In
 (defun install-buffers ()
   "Bind the *Buffers* keys and the global entry points."
   (entry-list-keys 'buffers-mode "the buffer list (\\[buffers])")
-  (define-keys *buffers-keymap* '(("s" buffers-save) ("K" buffers-keep-client) ("h" nil)))
+  (define-keys *buffers-keymap* '(("s" buffers-save) ("K" buffers-keep-client) ("h" buffers-fold-heading)))
   (define-keys *global-keymap* '(("C-x C-b" buffers) ("C-x p k" kill-project-buffers))))
 
 (commands-for-mode 'buffers-mode "the buffer list (\\[buffers])" 'buffers-save)

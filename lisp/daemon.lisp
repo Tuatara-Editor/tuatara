@@ -594,8 +594,11 @@ ended (END-CLIENTS-WITHOUT-BUFFERS).")
 but the scratch buffer CLIENT was given at its start (CLIENT-SCRATCH) while
 nothing is typed in it. A buffer a client that ended had and another took up
 is the other's alone (BUFFER-CLIENTS names the clients that have it); a
-buffer shown to everyone, as *Messages*, is no one's."
+buffer shown to everyone, as *Messages*, is no one's; and the buffer list
+holds nothing of its own, so that killing a client's last buffer from it ends
+that client as \\[kill-buffer] there would."
   (and (member client (buffer-clients buffer))
+       (not (typep (buffer-major-mode buffer) 'buffers-mode))
        (not (and (tuatara.buffer:buffer-local buffer :client-scratch) (not (tuatara.buffer:buffer-modified-p buffer))))))
 
 (defun note-client-without-buffers (buffer)
@@ -778,10 +781,11 @@ terminal, where nothing can be asked, as STOP-WITH-NO-ONE-TO-ASK stops it,
 keeping every change: when a change no auto-saved copy would keep is there,
 the daemon is not stopped, and CLIENT is told which buffers hold such
 changes. Either way not stopped, the daemon goes on and CLIENT closes,
-exiting 1."
+exiting 1; stopped, CLIENT says so as it ends."
   (flet ((not-stopped (words)
            (setf (client-exit-code client) 1 (client-exit-words client) words)
            (end-client editor client)))
+    (setf (client-exit-words client) (format nil "The daemon ~a is stopped" (daemon-name *daemon*)))
     (if (null (tuatara.frontend:request-terminal request))
         (let ((refused (stop-with-no-one-to-ask editor "The daemon was stopped (tuatara --stop)"
                                                 :keep-changes t :here client)))
