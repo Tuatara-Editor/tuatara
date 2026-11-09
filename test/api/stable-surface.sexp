@@ -2,7 +2,7 @@
 ;; ARGUMENTS (REQUIRED OPTIONAL KEYS REST OTHER-KEYS); (:setting NAME); (:init NAME KIND ARGUMENTS), the init
 ;; file's functions and macros; (:keywords LOAD-PACKAGE KEYWORDS); (:flag OPTION), the command line's
 ;; options; (:command PACKAGE NAME).
-(:version "0.90.18")
+(:version "0.90.19")
 (:api "*BUFFERS-ASKED-ABOUT*" :variable)
 (:api "*BUILD*" :variable)
 (:api "*BUILT-AT*" :variable)
@@ -582,6 +582,7 @@
 (:command "TUATARA.DEFAULTS" "BOOKMARK-SET-CATEGORIES")
 (:command "TUATARA.DEFAULTS" "BUFFER-OUTLINE")
 (:command "TUATARA.DEFAULTS" "BUFFERS")
+(:command "TUATARA.DEFAULTS" "BUFFERS-KEEP-CLIENT")
 (:command "TUATARA.DEFAULTS" "BUFFERS-SAVE")
 (:command "TUATARA.DEFAULTS" "C++-MODE")
 (:command "TUATARA.DEFAULTS" "C-MODE")
@@ -1969,6 +1970,7 @@
 (:setting "*CAPTURE-TEMPLATE-DIRECTORIES*")
 (:setting "*CENTRED-TEXT-MODES*")
 (:setting "*CENTRED-TEXT-WIDTH*")
+(:setting "*CLIENT-KEPT-WITHOUT-BUFFERS*")
 (:setting "*CLIPBOARD-MAX-SIZE*")
 (:setting "*CODE-FILES-MAKE-FOLDERS*")
 (:setting "*COMPILE-COMMAND*")
@@ -2184,6 +2186,7 @@
 (:setting "*RELATIVE-AGE-LIMIT*")
 (:setting "*RELOAD-CHANGED-FILES*")
 (:setting "*REMEMBER-RECENT-FILES*")
+(:setting "*REMOTE-PREVIEW-LARGEST*")
 (:setting "*REMOTE-SECONDS*")
 (:setting "*REMOVED-SENTENCE-ABBREVIATIONS*")
 (:setting "*RIMU-DELETE-TO-TRASH*")

@@ -29,9 +29,11 @@ Returns the frontend and the editor."
                                             :buffer (tuatara.buffer:find-buffer "*scratch*")))))
 
 (defun image-forget ()
-  "Kill the image buffers earlier sessions left."
+  "Kill the image buffers earlier sessions left, and the octets shown in place of a picture."
   (dolist (b (copy-list tuatara.defaults::*image-views*))
-    (when (tuatara.buffer:live-buffer-p b) (tuatara.buffer:kill-buffer b))))
+    (when (tuatara.buffer:live-buffer-p b) (tuatara.buffer:kill-buffer b)))
+  (dolist (b (copy-list tuatara.buffer:*buffers*))
+    (when (tuatara.display:hex-view-p b) (tuatara.buffer:kill-buffer b))))
 
 (define-test (image-view shown)
   (with-test-directory (dir)
@@ -58,11 +60,11 @@ Returns the frontend and the editor."
           (true (tuatara.io:safe-visit-p buffer))
           (true (tuatara.frontend.fake:fake-frame-showing f "00000000  89 50 4e 47"))
           (tuatara.buffer:kill-buffer buffer)))
-      ;; where pictures are not shown: what it is, and how to see its octets
+      ;; where pictures are not shown: its octets, and why
       (image-forget)
-      (let ((f (image-session file nil)))
-        (true (tuatara.frontend.fake:fake-frame-showing f "photo.png: PNG image, 2 × 2"))
-        (true (tuatara.frontend.fake:fake-frame-showing f "Pictures are not shown here")))
+      (multiple-value-bind (f editor) (image-session file nil)
+        (true (tuatara.frontend.fake:fake-frame-showing f "Pictures are not shown here"))
+        (true (tuatara.display:hex-view-p (tuatara.display:window-buffer (tuatara.command:editor-window editor)))))
       ;; a safe visit: its octets
       (image-forget)
       (multiple-value-bind (f editor)
@@ -151,7 +153,7 @@ Returns the frontend and the editor."
           (true (tuatara.frontend.fake:fake-frame-showing f "photo.png opens as octets: no program for pictures (install NoSuchMagick)"))
           (tuatara.buffer:kill-buffer (tuatara.display:window-buffer (tuatara.command:editor-window editor)))))
       (tuatara.io:sandbox-status :again t)
-      ;; a picture that cannot be drawn says so, and why, where pictures are shown
+      ;; a picture that cannot be drawn says so and shows its octets
       (let ((fake (merge-pathnames "fake.png" dir)))
         (alexandria:write-byte-vector-into-file
          (concatenate '(vector (unsigned-byte 8)) #(#x89 80 78 71 13 10 26 10) (map 'vector #'char-code "garbage garbage garbage"))
@@ -160,6 +162,7 @@ Returns the frontend and the editor."
         (multiple-value-bind (f editor) (image-session fake nil :cell-pixels '(10 20))
           (true (tuatara.frontend.fake:fake-frame-showing f "damaged PNG image"))
           (true (tuatara.frontend.fake:fake-frame-showing f "The picture could not be drawn"))
+          (true (tuatara.display:hex-view-p (tuatara.display:window-buffer (tuatara.command:editor-window editor))))
           (false (tuatara.frontend.fake:fake-frame-showing f "Pictures are not shown here"))
           (tuatara.buffer:kill-buffer (tuatara.display:window-buffer (tuatara.command:editor-window editor))))
         (image-forget))

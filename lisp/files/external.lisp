@@ -185,6 +185,11 @@ not there (ENSURE-PRIVATE-DIRECTORY); its native name, ending in /."
   "The directory NAME (ending in /) in the cache directory, for you alone, made when it is not there; its native name, ending in /."
   (private-directory-in (tuatara.io:cache-directory) name))
 
+(defun remote-copy-p (path)
+  "True when PATH is in the folder of the copies of files read from another
+machine, which last only as long as their buffers: a name not worth remembering."
+  (uiop:string-prefix-p (private-cache-directory "remote/") path))
+
 (defun private-state-directory (name)
   "The directory NAME (ending in /) in the state directory, which keeps what
 lasts from one session to the next, for you alone, made when it is not

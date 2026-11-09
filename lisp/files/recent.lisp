@@ -61,10 +61,11 @@ way; empty when there is none (STATE-LIST-ENTRIES)."
   "Put PATH first in the list of recent files, remembered as visited SAFE or
 not, when *REMEMBER-RECENT-FILES* is true; visited the other way too, it stays
 there that way as well. The list on disk is written in the background, with
-what sessions side by side put there meanwhile (STATE-LIST-PUT)."
+what sessions side by side put there meanwhile (STATE-LIST-PUT). The copy of a
+file read from another machine is not remembered (REMOTE-COPY-P)."
   (when *remember-recent-files*
     (let ((native (tuatara.io:native path)))
-      (when native
+      (when (and native (not (remote-copy-p native)))
         (state-list-put *recent-files* (list (cons native (and safe t))))))))
 
 (defun remember-buffer-file (buffer)

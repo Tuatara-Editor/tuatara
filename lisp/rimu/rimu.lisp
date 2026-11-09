@@ -692,12 +692,14 @@ no rimu list."
   (:documentation "DIRECTORY, a native name ending in /, as SOURCE keeps it, a RIMU-LISTING;
 called on a thread of its own."))
 
-(defgeneric rimu-source-call-with-entry (source directory octets function)
+(defgeneric rimu-source-call-with-entry (source directory octets function &key cancel)
   (:documentation "Call FUNCTION as TUATARA.IO:CALL-WITH-ENTRY does, with a descriptor of the
-file named OCTETS in DIRECTORY as SOURCE keeps it, its name and its size."))
+file named OCTETS in DIRECTORY as SOURCE keeps it, its name and its size. CANCEL, a cons whose
+car turns true when the file is no longer wanted, stops a source that takes long to fetch it."))
 
-(defmethod rimu-source-call-with-entry ((source null) directory octets function)
+(defmethod rimu-source-call-with-entry ((source null) directory octets function &key cancel)
   "With no SOURCE, the file on the disk."
+  (declare (ignore cancel))
   (tuatara.io:call-with-entry directory octets function))
 
 (defgeneric rimu-source-open (source buffer entry)

@@ -188,8 +188,9 @@ or one holding a /) is left out."
            nil
            (and (not ok) (format nil "it was not there as ~a left it" (subseq hash 0 (min 7 (length hash)))))))))))
 
-(defmethod rimu-source-call-with-entry ((source git-rewound) directory octets function)
+(defmethod rimu-source-call-with-entry ((source git-rewound) directory octets function &key cancel)
   "The file as the commit left it, read from git into a file in memory."
+  (declare (ignore cancel))
   (let* ((top (git-rewound-top source))
          (path (concatenate 'string directory (tuatara.text:octets-string octets))))
     (multiple-value-bind (blob ok too-large)

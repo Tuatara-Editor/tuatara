@@ -130,7 +130,8 @@ nothing to draw it with, which is said)."
 
 (defun image-view-show (buffer view result)
   "Give BUFFER, VIEW's, the picture in RESULT, (IMAGE . NOTES), or say in its
-header and its text why there is none."
+header and its text why there is none. With no picture, or where pictures are
+not shown, the file's octets in its place (FILE-VIEW-FALL-TO-OCTETS)."
   (destructuring-bind (image . notes) result
     (let ((text (format nil " ~a~{~a~}" (image-view-words view) (mapcar #'car notes))))
       (setf (tuatara.display:buffer-header-line buffer)
@@ -144,7 +145,12 @@ header and its text why there is none."
                                          (tuatara.io:native-file-name (image-view-path view)) (image-view-words view)
                                          (mapcar #'car notes))))
           (setf (tuatara.buffer:buffer-local buffer :picture-pending) nil
-                (tuatara.buffer:buffer-local buffer :picture-view) nil)))))
+                (tuatara.buffer:buffer-local buffer :picture-view) nil)))
+    (cond ((null image)
+           (file-view-fall-to-octets buffer (format nil "The picture could not be drawn (~a~{~a~})" (image-view-words view)
+                                                    (mapcar #'car notes))))
+          ((not (and *editor* (tuatara.frontend:frontend-images-p (editor-frontend *editor*))))
+           (file-view-fall-to-octets buffer "Pictures are not shown here")))))
 
 (defun image-view-forget (buffer)
   "Forget BUFFER, killed, among the images shown; its drawing, a job of its, is stopped with it."

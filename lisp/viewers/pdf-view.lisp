@@ -573,9 +573,10 @@ first (STATE-LIST-ENTRIES)."
 (defun pdf-view-keep-place (view)
   "Keep VIEW's page and zoom for the next time its PDF is opened: written in
 the background, with what sessions side by side put there meanwhile
-\(STATE-LIST-PUT)."
+\(STATE-LIST-PUT); not for a copy of a file on another machine (REMOTE-COPY-P)."
   (setf (pdf-view-saved view) t)
-  (state-list-put *pdf-places* (list (list (pdf-view-path view) (pdf-view-page view) (pdf-view-zoom view) (pdf-view-factor view)))))
+  (unless (remote-copy-p (pdf-view-path view))
+    (state-list-put *pdf-places* (list (list (pdf-view-path view) (pdf-view-page view) (pdf-view-zoom view) (pdf-view-factor view))))))
 
 (defun pdf-view-changed (view)
   "Note that VIEW's page or zoom changed: kept once the view is left or next looked at."

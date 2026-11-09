@@ -19,16 +19,17 @@ went on is there for the step after, however soon another followed it.")
 it names none: a bound on a wait that never ends, never what a test waits for;
 a loaded machine, a suite running, may make a step wait long.")
 
-(defun auto-save-session (steps &key (width 100) (height 20) pending)
+(defun auto-save-session (steps &key (width 100) (height 20) pending cell-pixels)
   "Run an editor session on STEPS, each a string of keys, (:wait SECONDS), or
 \(:until FUNCTION [SECONDS]) waiting until FUNCTION of no arguments is true:
 for that, never for a time, SECONDS (*UNTIL-BOUND* when not given) only a
 bound on a wait that never ends, the test failing past it. As a step begins,
 *SESSION-MESSAGES-START* is where the step before it began. With PENDING,
 what is queued counts as typed meanwhile, as keys pressed while the editor
-waits are. Returns the frontend and the editor."
+waits are. CELL-PIXELS has the frontend show pictures. Returns the frontend
+and the editor."
   (let* ((tuatara.command:*message-log-max* most-positive-fixnum)
-         (f (tuatara.frontend.fake:make-fake-frontend :width width :height height))
+         (f (tuatara.frontend.fake:make-fake-frontend :width width :height height :cell-pixels cell-pixels))
          (log (lambda () (tuatara.buffer:buffer-size (tuatara.command::messages-buffer))))
          (begun nil)
          (step-start (funcall log)))

@@ -504,11 +504,25 @@ rimu in its place."
              (unless other
                (setf (tuatara.buffer:buffer-name buffer) (tuatara.buffer:unique-buffer-name name))))))))
 
+(defparameter *remote-file-views* '(image-view-visit pdf-view-visit office-view-visit)
+  "The views of *FILE-VIEWS* that show a file read from another machine: those
+that only show it, as a view whose changes are saved would save them here.")
+
+(defun remote-octets-taken-over (buffer)
+  "BUFFER, the octets of a file on another machine, has taken the place of the
+view that showed it (FILE-VIEW-FALL-TO-OCTETS): read again from there, as what
+it holds stands for the file there."
+  (let ((remote (buffer-remote buffer)))
+    (setf (remote-file-sent remote) (and (remote-file-attributes remote) (tuatara.buffer:buffer-content-number buffer))
+          (tuatara.buffer:buffer-local buffer :reread) #'remote-read-again)))
+
 (defun remote-visit-copy (remote path job)
   "The buffer visiting the copy JOB read of PATH, REMOTE's file: opened
-safely when the visit is safe or the file is evidence; else with only the
-find-file functions REMOTE-FIND-FILE-FUNCTIONS gives; named and placed after
-the file there, its copy's folder deleted with it."
+safely when the visit is safe or the file is evidence; else shown by one of
+*REMOTE-FILE-VIEWS* when one shows it and all of it has come; else with only
+the find-file functions REMOTE-FIND-FILE-FUNCTIONS gives; one that looks
+binary in the hex view (*HEX-VIEW-BINARY-FILES*); named and placed after the
+file there, its copy's folder deleted with it."
   (let* ((host (remote-file-host remote))
          (folder (remote-read-job-folder job))
          (copy (or (remote-read-job-copy job)
@@ -517,17 +531,25 @@ the file there, its copy's folder deleted with it."
          (final (make-remote-file host path))
          (safe (or (remote-read-job-safe job) (remote-file-evidence remote)))
          (arrival (remote-read-job-arrival job))
-         (buffer (let ((tuatara.buffer:*find-file-functions* (remote-find-file-functions (remote-file-trusted remote)))
-                       ;; read where it is being written: nothing need keep others' changes from it
-                       (tuatara.io:*lease-large-files* (and (not arrival) tuatara.io:*lease-large-files*))
-                       (tuatara.io:*clone-large-files* (and (not arrival) tuatara.io:*clone-large-files*))
-                       (tuatara.io:*snapshot-large-files* (and (not arrival) tuatara.io:*snapshot-large-files*))
-                       ;; mapped whatever the limit is now: the rest is not here to read whole
-                       (tuatara.io:*memory-read-limit* (if arrival 0 tuatara.io:*memory-read-limit*)))
-                   (handler-bind ((serious-condition (lambda (condition)
-                                                       (declare (ignore condition))
-                                                       (close-remote-copy job))))
-                     (tuatara.io:visit-file copy :safe safe)))))
+         (said nil)
+         (view (and (not safe)
+                    (not arrival)
+                    (let ((*file-view-said* nil))
+                      (prog1 (run-hook-until-done *remote-file-views* copy #'identity)
+                        (setf said *file-view-said*)))))
+         (buffer (or view
+                     (let ((tuatara.buffer:*find-file-functions* (remote-find-file-functions (remote-file-trusted remote)))
+                          ;; read where it is being written: nothing need keep others' changes from it
+                          (tuatara.io:*lease-large-files* (and (not arrival) tuatara.io:*lease-large-files*))
+                          (tuatara.io:*clone-large-files* (and (not arrival) tuatara.io:*clone-large-files*))
+                          (tuatara.io:*snapshot-large-files* (and (not arrival) tuatara.io:*snapshot-large-files*))
+                          ;; mapped whatever the limit is now: the rest is not here to read whole
+                          (tuatara.io:*memory-read-limit* (if arrival 0 tuatara.io:*memory-read-limit*)))
+                      (handler-bind ((serious-condition (lambda (condition)
+                                                          (declare (ignore condition))
+                                                          (close-remote-copy job))))
+                        (tuatara.io:visit-file copy :safe safe))))))
+    (unless view (show-binary-in-hex buffer))
     (setf (remote-file-attributes final) (remote-file-attributes remote)
           (remote-file-sum final) (remote-file-sum remote)
           (remote-file-evidence final) (remote-file-evidence remote)
@@ -535,7 +557,7 @@ the file there, its copy's folder deleted with it."
           (remote-file-sent final) (and (remote-file-attributes remote) (tuatara.buffer:buffer-content-number buffer))
           (tuatara.buffer:buffer-local buffer :remote-file) final
           (tuatara.buffer:buffer-local buffer 'private-folder) folder
-          (tuatara.buffer:buffer-local buffer :reread) #'remote-read-again
+          (tuatara.buffer:buffer-local buffer :reread) (and (not view) #'remote-read-again)
           (buffer-given-directory buffer) (remote-folder-name host path))
     (remember-file (remote-name host path) :safe safe)
     (when arrival (remote-rest-begin buffer job path))
@@ -543,7 +565,8 @@ the file there, its copy's folder deleted with it."
              (octets-words (or (getf (remote-file-attributes remote) :size) 0))
              (cond ((remote-file-evidence remote) (format nil "opened safely; ~a" (remote-file-evidence remote)))
                    (arrival "the rest is still arriving; its lines are counted when all of it is here")
-                   ((null (remote-file-attributes remote)) "a new file, made there when saved")))
+                   ((null (remote-file-attributes remote)) "a new file, made there when saved")
+                   (said)))
     buffer))
 
 (defun close-remote-copy (job)

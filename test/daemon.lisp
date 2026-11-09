@@ -1559,10 +1559,74 @@ structure; the folder of A ended an hour after B's."
        (true (buffer-there-p "alpha.txt") "another folder's stay")
        (true (buffer-there-p "delta.txt") "this client's stay")))))
 
+(defun call-keeping-clients (value function)
+  "Call FUNCTION with *CLIENT-KEPT-WITHOUT-BUFFERS* set to VALUE for every
+thread, no client chosen to keep before or after."
+  (let ((before tuatara-user:*client-kept-without-buffers*))
+    (setf tuatara-user:*client-kept-without-buffers* value
+          tuatara.defaults::*client-chosen-to-keep* nil)
+    (unwind-protect (funcall function)
+      (setf tuatara-user:*client-kept-without-buffers* before
+            tuatara.defaults::*client-chosen-to-keep* nil))))
+
+(define-test (daemon clients-kept-without-buffers)
+  ;; which client stays on when its last buffer is closed, as the setting says and as chosen in the buffer list
+  (with-test-directory (dir)
+    (let ((alpha (namestring (put-file (merge-pathnames "alpha.txt" dir) "alpha text")))
+          (beta (namestring (put-file (merge-pathnames "beta.txt" dir) "beta text"))))
+      (flet ((two-clients (value check)
+               (call-keeping-clients
+                value
+                (lambda ()
+                  (with-test-daemon (name)
+                    (multiple-value-bind (one one-runner) (attach-test-client name :directory dir :files (list alpha) :width 200)
+                      (multiple-value-bind (two two-runner) (attach-test-client name :directory dir :files (list beta) :width 200)
+                        (true (shows one "alpha text"))
+                        (true (shows two "beta text"))
+                        (funcall check one one-runner two two-runner))))))))
+        ;; said on the list's heading alone, not in a question naming the folder
+        (false (search "kept open" (tuatara.defaults::buffer-section-title (tuatara.command:make-client :number 7))))
+        ;; the one opened first stays, by default; the other goes
+        (is eq :first tuatara-user:*client-kept-without-buffers*)
+        (two-clients :first (lambda (one one-runner two two-runner)
+                              (type-keys one "C-x k RET")
+                              (is eq :late (client-ends one-runner 1) "the first stays")
+                              (type-keys two "C-x k RET")
+                              (is equal '(0 nil) (client-ends two-runner))))
+        (two-clients :last (lambda (one one-runner two two-runner)
+                             (type-keys one "C-x k RET")
+                             (is equal '(0 nil) (client-ends one-runner))
+                             (type-keys two "C-x k RET")
+                             (is eq :late (client-ends two-runner 1) "the last left stays")))
+        (two-clients :all (lambda (one one-runner two two-runner)
+                            (type-keys one "C-x k RET")
+                            (type-keys two "C-x k RET")
+                            (is eq :late (client-ends one-runner 1))
+                            (is eq :late (client-ends two-runner 1))))
+        ;; shown in the buffer list, K moves it to the client whose folder the cursor is in
+        (two-clients :first (lambda (one one-runner two two-runner)
+                              (type-keys one "C-x C-b")
+                              (true (shows one "(kept open)"))
+                              (type-keys one "C-x k RET")
+                              (true (shows one "alpha text"))
+                              (type-keys two "C-x C-b")
+                              (type-keys two "K")
+                              (true (shows two "(kept open)"))
+                              (type-keys two "C-x k RET")
+                              (true (shows two "beta text"))
+                              (type-keys one "C-x k RET")
+                              (is equal '(0 nil) (client-ends one-runner))
+                              (type-keys two "C-x k RET")
+                              (is eq :late (client-ends two-runner 1) "the one chosen stays")))))))
+
 (define-test (daemon client-ends-with-its-last-buffer)
-  ;; a client whose last buffer is killed goes as C-x C-c would send it, the daemon on; one with
+  ;; with none kept, a client whose last buffer is killed goes as C-x C-c would send it, the daemon on; one with
   ;; another buffer left stays; one started with no files stays on its scratch buffer until a
   ;; buffer of its own is closed
+  (call-keeping-clients nil #'check-client-ends-with-its-last-buffer))
+
+(defun check-client-ends-with-its-last-buffer ()
+  "The checks of the test CLIENT-ENDS-WITH-ITS-LAST-BUFFER."
   (with-test-directory (dir)
     (let ((alpha (namestring (put-file (merge-pathnames "alpha.txt" dir) "alpha text")))
           (beta (namestring (put-file (merge-pathnames "beta.txt" dir) "beta text"))))

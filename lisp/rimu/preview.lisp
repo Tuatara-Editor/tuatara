@@ -76,12 +76,14 @@ NIL when there is none.")
   "True when BUFFER is a rimu list, not one made for a preview, with its
 preview on. In a list opened safely the preview shows each file as a file
 opened safely is shown: its text with no major mode, a picture or a PDF only
-as the sandbox draws it. A list of a folder on another machine has none."
+as the sandbox draws it. A list of a folder on another machine starts with its
+preview off, as each file shown has to come from there first
+\(*REMOTE-PREVIEW-LARGEST*), and opened safely has none: nothing there is read unasked."
   (and (rimu-list-p buffer)
        (list-preview-p buffer)
        (not (tuatara.buffer:buffer-local buffer 'rimu-preview-buffer))
-       ;; a server's files are not read to be previewed
-       (not (remote-name-p (tuatara.buffer:buffer-local buffer 'rimu-directory)))))
+       (not (and (tuatara.io:safe-visit-p buffer)
+                 (remote-name-p (tuatara.buffer:buffer-local buffer 'rimu-directory))))))
 
 (defvar *rimu-quick-edit-keymap* (make-keymap :name "rimu quick edit")
   "Keys of a file being quick-edited from a rimu list (\\<rimu-mode>\\[rimu-quick-edit]),
@@ -359,7 +361,8 @@ of its own, or shown in the buffer visiting it already; the rest at once."
                                                                                          octets)))
                                                         (when text
                                                           (setf (rimu-preview-job-text job) text
-                                                                (rimu-preview-job-read-here job) t)))))))))
+                                                                (rimu-preview-job-read-here job) t))))))
+                                           :cancel (rimu-preview-job-cancel job))))
                                       (serious-condition (e) (setf (rimu-preview-job-reason job) (princ-to-string e))))
                                  ;; however it ends, the preview is over and shown
                                  (setf (rimu-preview-job-done job) t)
@@ -569,7 +572,8 @@ cursor goes there. \\<*rimu-quick-edit-normal-keymap*>\\[rimu-quick-edit-done] i
 to the list returns to the preview, asking first whether to save the changes.
 On a directory, the cursor goes into its list in the preview's window, to move
 about in. With the preview off, a window beside the list is made for it. A
-named pipe, a socket or a device is not opened."
+named pipe, a socket or a device is not opened, and a file on another machine
+is opened with \\`RET' instead."
   (let* ((list (current-buffer))
          (list-window (current-window))
          (entry (rimu-entry-at-point))
@@ -580,6 +584,8 @@ named pipe, a socket or a device is not opened."
       (rimu-close-preview)
       (setf state (setf *rimu-preview-state* (make-rimu-preview list-window))))
     (cond ((null entry) (message "No file on this line"))
+          ((remote-name-p directory)
+           (message "A file on another machine is not edited here: RET opens it"))
           ((tuatara.io:safe-visit-p list)
            (message "This list is opened safely: RET opens the file safely, nothing is edited here"))
           ((and (rimu-preview-editing state) (eq entry (rimu-preview-edit-entry state)))

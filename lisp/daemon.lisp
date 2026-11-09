@@ -588,11 +588,11 @@ of its own has been closed, its scratch buffer being all it has."
 
 (defun end-clients-without-buffers (editor)
   "Tick function of a daemon (*TICK-FUNCTIONS*): end each client whose last
-buffer was closed, as \\[save-buffers-kill-editor] does in it, with 0; the
-daemon and the other clients go on."
+buffer was closed, as \\[save-buffers-kill-editor] does in it, with 0, but one
+that is kept (CLIENT-KEPT-P); the daemon and the other clients go on."
   (loop while *clients-without-buffers*
         do (let ((client (pop *clients-without-buffers*)))
-             (unless (client-ended client)
+             (unless (or (client-ended client) (client-kept-p editor client))
                (end-client editor client)))))
 
 ;;; Stopping the daemon

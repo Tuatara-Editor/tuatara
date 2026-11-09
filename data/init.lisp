@@ -1548,11 +1548,22 @@
   ;; (setf *evidence-folders* '("~/cases/*/evidence/"
   ;;                            (:regex "^[0-9]{4}-[0-9]{4}$" :within "~/cases/" :then "evidence")))
 
+  ;;; Clients of a daemon
+
+  ;; Which clients stay when their last buffer is closed: :first, the one
+  ;; opened first of those running; :last, only the last one left; :all, every
+  ;; one; nil, none. K in C-x C-b makes another client the one that stays.
+  ;; Not set: :first.
+  ;; (setf *client-kept-without-buffers* :all)
+
   ;;; Files on another machine (/ssh:HOST:/path)
 
   ;; Seconds a server has to answer each request for its files, and ssh to
   ;; connect, before the work in hand fails. Not set: 30.
   ;; (setf *remote-seconds* 60)
+  ;; The most a file on another machine may hold to be shown in the preview
+  ;; of its list, which P turns on. Not set: 20 MB.
+  ;; (setf *remote-preview-largest* (* 50 1024 1024))
   )
 
 ;;;; ================================================================

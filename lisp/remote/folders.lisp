@@ -118,14 +118,33 @@ REMOTE-RIMU-SOURCE, is told when the folder is evidence."
       ((or tuatara.io:file-system-error tuatara.runtime:refusal) (condition)
         (make-rimu-listing directory (vector) nil (princ-to-string condition))))))
 
+(defvar *remote-preview-largest* (* 20 (expt 2 20))
+  "The most octets a file on another machine may hold to be shown in the
+preview of its list (\\<rimu-mode>\\[list-toggle-preview]), 20 MB by default: all
+of it has to come from the server first. The preview of a larger one says so.")
+
 (defmethod rimu-source-listing ((source remote-rimu-source) directory)
   "The folder as the server lists it (REMOTE-RIMU-LISTING)."
   (remote-rimu-listing source directory))
 
-(defmethod rimu-source-call-with-entry ((source remote-rimu-source) directory octets function)
-  "Refused: a server's files are not read to be previewed."
-  (declare (ignore directory octets function))
-  (refuse "files on another machine are not previewed"))
+(defmethod rimu-source-call-with-entry ((source remote-rimu-source) directory octets function &key cancel)
+  "The file read from the server into a copy here readable by you alone, gone
+when FUNCTION returns. Refused for a file of evidence, which is not read unasked,
+and one larger than *REMOTE-PREVIEW-LARGEST*."
+  (multiple-value-bind (host path)
+      (remote-name-parts (concatenate 'string directory (tuatara.text:octets-string octets)))
+    (let ((*remote-cancel* cancel))
+      (let ((evidence (or (remote-rimu-source-evidence source) (remote-evidence-words host path))))
+        (when evidence
+          (refuse "not previewed, as it is evidence~@[: ~a~]" (and (stringp evidence) evidence))))
+      (let ((folder (new-private-folder (private-cache-directory "remote/"))))
+        (unwind-protect
+             (multiple-value-bind (fd copy)
+                 (tuatara.io:create-free-file folder (lambda (n) (declare (ignore n)) "preview"))
+               (unwind-protect (remote-download host path fd :most *remote-preview-largest*)
+                 (sb-posix:close fd))
+               (tuatara.io:call-with-file copy function))
+          (delete-private-folder folder))))))
 
 (defmethod rimu-source-open ((source remote-rimu-source) buffer entry)
   "A folder listed in its place; a file read from the server and visited as
@@ -150,7 +169,7 @@ REMOTE-RIMU-SOURCE, is told when the folder is evidence."
     (format nil "~a:~a" host (if (string= path "") "" (rimu-buffer-name path)))))
 
 (defmethod rimu-source-taken ((source remote-rimu-source) buffer)
-  "No preview: a server's files are not read to be previewed."
+  "The preview off to begin with: each file it shows has to come from the server."
   (setf (list-preview-p buffer) nil))
 
 (defmethod rimu-source-changes ((source remote-rimu-source))

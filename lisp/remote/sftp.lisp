@@ -501,16 +501,26 @@ answer (SFTP-ANSWER), for OPERATION on PATH: its kind and what it says."
     (multiple-value-bind (answer said) (sftp-answer link (list id) path operation)
       (values answer said))))
 
+(defvar *remote-cancel* nil
+  "A cons whose car turns true when the work on this thread with a server is
+no longer wanted; NIL for work that is only stopped as a job is.")
+
+(defun remote-cancelled-p ()
+  "True when the work on this thread with a server is no longer wanted (*REMOTE-CANCEL*)."
+  (and *remote-cancel* (car *remote-cancel*)))
+
 (defun call-with-sftp (host path operation function)
   "Call FUNCTION with the connection to HOST's SFTP server, connected first
 when it is not, holding it alone; for OPERATION on PATH. A server that breaks
 the protocol, or does not answer in time, has its connection closed and a
 TUATARA.IO:FILE-SYSTEM-ERROR signalled saying so; so has one left with a
-request half asked or answered, the work stopped meanwhile."
+request half asked or answered, the work stopped meanwhile. Work no longer
+wanted by the time the connection is free stops there, connecting to nothing."
   (let ((link (sftp-link host)) (done nil))
     (sb-ext:atomic-incf (sftp-link-wanting link))
     (sb-thread:with-mutex ((sftp-link-lock link))
       (sb-ext:atomic-decf (sftp-link-wanting link))
+      (when (remote-cancelled-p) (error 'tuatara.runtime:job-stopped))
       (unwind-protect
            (handler-case
                (multiple-value-prog1
@@ -768,7 +778,7 @@ of no use on the new."
       (unless (and (sftp-link-fd link) (= generation (sftp-link-generation link)))
         (sftp-unreached link)))))
 
-(defun remote-download (host path fd &key arrival on-piece)
+(defun remote-download (host path fd &key arrival on-piece most)
   "Read the file at PATH on HOST into the file open as FD, each piece where
 it belongs, +SFTP-PIECE+ octets at a time, +SFTP-PIECES-AHEAD+ asked for
 before their answers come, as many octets as the server said the file holds
@@ -777,7 +787,10 @@ some waits for it; stopped between pieces when the job doing it is asked to
 stop. With ARRIVAL, an ARRIVAL of that file, the pieces are read as it says
 \(ARRIVAL-NEXT) until it has all that is asked of it, ON-PIECE, a function of
 none, called as each lot comes, and the file is refused when it is not as
-ARRIVAL has it. Its attributes then, as SFTP-TAKE-ATTRIBUTES gives them."
+ARRIVAL has it. With MOST, a file the server says holds more octets is
+refused before any is read; the work stops, as a job asked to stop does, once
+*REMOTE-CANCEL* says so. Its attributes then, as SFTP-TAKE-ATTRIBUTES gives
+them."
   (call-with-sftp
    host path "read"
    (lambda (link)
@@ -785,7 +798,11 @@ ARRIVAL has it. Its attributes then, as SFTP-TAKE-ATTRIBUTES gives them."
       link :open (list path 1 '(:attributes ())) path "read"
       (lambda (handle)
         (let* ((attributes (sftp-attributes link path :handle handle))
-               (size (or (getf attributes :size) (sftp-fail link "read" path "the server does not say its size")))
+               (size (let ((size (or (getf attributes :size)
+                                     (sftp-fail link "read" path "the server does not say its size"))))
+                       (when (and most (> size most))
+                         (sftp-refuse link "read" path "it holds ~a, more than ~a" (octets-words size) (octets-words most)))
+                       size))
                (arrival (or arrival (make-arrival size :in-order t)))
                (asked (make-hash-table)))
           (unless (eq (remote-kind attributes) :file) (sftp-fail link "read" path "it is not a file"))
@@ -802,7 +819,8 @@ ARRIVAL has it. Its attributes then, as SFTP-TAKE-ATTRIBUTES gives them."
                                 (unless offset (return))
                                 (ask offset (min +sftp-piece+ (- (arrival-end arrival) offset))))))
                    (stopping ()
-                     (and tuatara.runtime:*job* (car (tuatara.runtime:job-cancel tuatara.runtime:*job*))))
+                     (or (remote-cancelled-p)
+                         (and tuatara.runtime:*job* (car (tuatara.runtime:job-cancel tuatara.runtime:*job*)))))
                    (finished ()
                      (and (zerop (hash-table-count asked))
                           (if (arrival-opening arrival)
@@ -837,6 +855,7 @@ ARRIVAL has it. Its attributes then, as SFTP-TAKE-ATTRIBUTES gives them."
                        (when (zerop (hash-table-count asked))
                          (when on-piece (funcall on-piece))
                          (sftp-let-others-in link)))
+              (when (remote-cancelled-p) (error 'tuatara.runtime:job-stopped))
               (tuatara.runtime:job-check-stop)))
           attributes))))))
 

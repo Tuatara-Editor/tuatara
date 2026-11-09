@@ -115,13 +115,37 @@ then one for the buffers of no one's, SECTION :EVERYONE."
 (defparameter *every-client-folder* "Every client's"
   "The title of the buffer list's folder of the buffers every client is offered.")
 
+(defvar *client-kept-without-buffers* :first
+  "Which clients of a daemon stay when their last buffer is closed: :FIRST,
+the one opened first of those running; :LAST, only the last one left; :ALL,
+every one; NIL, none. The others end as \\[save-buffers-kill-editor] would end
+them. In the buffer list \\<buffers-mode>\\[buffers-keep-client] makes another
+client the one that stays, until it ends.")
+
+(defvar *client-chosen-to-keep* nil
+  "The client \\<buffers-mode>\\[buffers-keep-client] made the one that stays when its
+last buffer is closed; NIL when none has been chosen.")
+
+(defun client-kept-p (editor client)
+  "True when CLIENT, running in EDITOR, stays when its last buffer is closed:
+*CLIENT-KEPT-WITHOUT-BUFFERS* says, a client chosen with
+\\<buffers-mode>\\[buffers-keep-client] and still running taking the place of the
+one it names."
+  (let* ((running (remove-if-not (lambda (other) (and (client-remote other) (not (client-ended other))))
+                                 (editor-clients editor)))
+         (chosen (find *client-chosen-to-keep* running)))
+    (and (member client running)
+         (cond ((eq *client-kept-without-buffers* :all) t)
+               (chosen (eq client chosen))
+               ((eq *client-kept-without-buffers* :first) (eq client (first running)))
+               ((eq *client-kept-without-buffers* :last) (null (rest running)))))))
+
 (defun buffer-section-title (section &optional sections)
   "What the buffer list calls SECTION: a project's folder name, or where it
 is when another of SECTIONS (each (SECTION . BUFFERS)) has a folder of that
 name; *NO-PROJECT* for :NONE; a client's folder by when and where it began
 \(CLIENT-FOLDER-WORDS), one that ended after saying so, the one working in the
-frame called this client;
-*EVERY-CLIENT-FOLDER* for :EVERYONE."
+frame called this client; *EVERY-CLIENT-FOLDER* for :EVERYONE."
   (flet ((name (root) (tuatara.io:native-file-name root)))
     (cond ((eq section :none) *no-project*)
           ((eq section :everyone) *every-client-folder*)
@@ -132,6 +156,12 @@ frame called this client;
                     sections :key #'car)
            (abbreviated-path section))
           (t (name section)))))
+
+(defun buffer-section-heading (section sections)
+  "The heading of SECTION in the buffer list: its title (BUFFER-SECTION-TITLE),
+the client that stays when its last buffer is closed saying so (CLIENT-KEPT-P)."
+  (format nil "~a~:[~; (kept open)~]" (buffer-section-title section sections)
+          (and (client-p section) (client-kept-p *editor* section))))
 
 (defun buffer-cells (b mark)
   "The cells of the line of the buffer B, marked MARK, in the buffer list."
@@ -156,7 +186,7 @@ on a buffer killed meanwhile is dropped."
      list-buffer *buffers-columns* sections
      (lambda (b mark section) (declare (ignore section)) (buffer-cells b mark))
      :sections t
-     :section-title (lambda (section) (buffer-section-title section sections))
+     :section-title (lambda (section) (buffer-section-heading section sections))
      :section-face (lambda (section) (and (ended-folder-p section) :list-dim))
      :after (cons (string #\Newline)
                   (table-row-pieces *buffers-columns*
@@ -175,10 +205,11 @@ on a buffer killed meanwhile is dropped."
   "What *Buffers* LIST-BUFFER shows, cheaply: each live buffer in its order,
 with its name, whether it is modified and read-only, its size, its mode, its
 file and the folder it lists, and the clients whose folders they are in and
-which of them ended; another key means the list is out of date
+which of them ended or are kept; another key means the list is out of date
 \(KEEP-SHOWN-CURRENT)."
   (cons (and (client-folders-p)
-             (mapcar (lambda (client) (cons client (client-ended client))) (editor-clients *editor*)))
+             (mapcar (lambda (client) (list client (client-ended client) (client-kept-p *editor* client)))
+                     (editor-clients *editor*)))
         (mapcar (lambda (b)
                   (list b (tuatara.buffer:buffer-name b) (tuatara.buffer:buffer-modified-p b)
                         (buffer-read-only-p b) (tuatara.buffer:buffer-size b)
@@ -214,6 +245,7 @@ buffer on the line, \\[list-visit-other] in another window, \\[quit-window] or \
 buffer on the line, \\[list-mark-for-deletion] marks it for deletion,
 \\[list-unmark-entry] unmarks it, \\[list-unmark-all] unmarks them all, \\[list-toggle-marks] swaps marked and unmarked, a count
 marking as many;
+\\[buffers-keep-client] makes the client whose folder the cursor is in the one kept open;
 \\[buffers-save] saves the marked buffers (the one on the line when none is),
 \\[list-delete-marked] kills them after asking, \\[list-execute] kills those
 marked for deletion; \\[revert-buffer] lists them again, marks kept, as the
@@ -287,6 +319,22 @@ when one of them is modified, else after asking."
   (declare (ignore list))
   (kill-listed-buffers targets :modified-only (eq mark :deletion)))
 
+(define-command buffers-keep-client ()
+  "Make the client whose folder the cursor is in, in the buffer list, the one
+that stays when its last buffer is closed, in place of the one
+*CLIENT-KEPT-WITHOUT-BUFFERS* names, until it ends. Its heading says
+\"(kept open)\". With that setting :ALL every client stays, and there is
+nothing to choose."
+  (let* ((list (current-buffer))
+         (section (list-section-at list)))
+    (cond ((not (and (client-p section) (not (client-ended section))))
+           (message "The cursor is not in the folder of a running client"))
+          ((eq *client-kept-without-buffers* :all)
+           (message "Every client stays: *client-kept-without-buffers* is :all"))
+          (t (setf *client-chosen-to-keep* section)
+             (buffers-render list)
+             (message "Client ~d stays when its last buffer is closed" (client-number section))))))
+
 (define-command buffers-save ()
   "Save the marked buffers (>) that have a file, or with none marked the
 buffer on the current line."
@@ -349,7 +397,7 @@ saying how many are modified, each modified one asked about as it goes. In
 (defun install-buffers ()
   "Bind the *Buffers* keys and the global entry points."
   (entry-list-keys 'buffers-mode "the buffer list (\\[buffers])")
-  (define-keys *buffers-keymap* '(("s" buffers-save)))
+  (define-keys *buffers-keymap* '(("s" buffers-save) ("K" buffers-keep-client)))
   (define-keys *global-keymap* '(("C-x C-b" buffers) ("C-x p k" kill-project-buffers))))
 
 (commands-for-mode 'buffers-mode "the buffer list (\\[buffers])" 'buffers-save)

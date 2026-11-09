@@ -45,11 +45,12 @@ point was at; empty when there are none (STATE-LIST-ENTRIES)."
 
 (defun buffer-file-place (buffer)
   "The file BUFFER visits and where its point is, as (PATH . OFFSET); NIL for
-a buffer with no file, or one whose mode keeps no place (MODE-KEEPS-PLACE-P)."
+a buffer with no file, a copy of a file on another machine (REMOTE-COPY-P), or
+one whose mode keeps no place (MODE-KEEPS-PLACE-P)."
   (let ((file (tuatara.buffer:buffer-file buffer)))
     (and file (live-buffer-p buffer) (mode-keeps-place-p (buffer-major-mode buffer))
          (let ((path (tuatara.io:native file)))
-           (and path (cons path (tuatara.buffer:buffer-point buffer)))))))
+           (and path (not (remote-copy-p path)) (cons path (tuatara.buffer:buffer-point buffer)))))))
 
 (defun save-places (buffers)
   "Put where point is in the files of BUFFERS first among the places, when

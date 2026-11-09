@@ -567,13 +567,26 @@ once the buffer's jobs have ended (FORGET-PRIVATE-FOLDER)."
 directory, a native name ending in /; NIL when it has none."
   (tuatara.buffer:buffer-local buffer 'private-folder))
 
+(defun private-folder-heir (buffer folder)
+  "Another live buffer than BUFFER visiting a file in FOLDER, for whom it has
+to stay; NIL when there is none."
+  (find-if (lambda (other)
+             (let ((file (and (not (eq other buffer)) (tuatara.buffer:buffer-file other))))
+               (and file (uiop:string-prefix-p folder (tuatara.io:native file)))))
+           tuatara.buffer:*buffers*))
+
 (defun forget-private-folder (buffer)
   "Kill-buffer function: delete BUFFER's private folder (BUFFER-PRIVATE-FOLDER)
 and all in it, in the background, once the jobs of BUFFER, stopped as it goes,
-have ended. The folder is still named while the other kill-buffer functions
+have ended; when another buffer visits a file in it, that buffer has it from
+then on. The folder is still named while the other kill-buffer functions
 run."
-  (let ((folder (buffer-private-folder buffer))
-        (threads (remove nil (mapcar #'tuatara.runtime:job-thread (jobs-of buffer)))))
+  (let* ((folder (buffer-private-folder buffer))
+         (heir (and folder (private-folder-heir buffer folder)))
+         (threads (remove nil (mapcar #'tuatara.runtime:job-thread (jobs-of buffer)))))
+    (when heir
+      (setf (tuatara.buffer:buffer-local heir 'private-folder) folder
+            folder nil))
     (when folder
       (tuatara.runtime:make-guarded-thread
        (lambda ()
@@ -684,6 +697,29 @@ window; the view stays as it was."
     (hex-view-on octets)
     (message "~a's octets, opened safely: \\[kill-buffer] or \\[switch-to-buffer] goes back to ~a"
              (tuatara.io:native-file-name path) what)))
+
+(defun file-view-fall-to-octets (buffer words)
+  "BUFFER, a file shown by a view, has nothing to show: open the file's own
+octets, safely, in the hex view, in every window showing BUFFER, which goes,
+saying WORDS for why. A copy of a file on another machine stays as long as
+the octets do."
+  (let ((native (tuatara.buffer:buffer-local buffer :viewed-file))
+        (windows (buffer-windows buffer))
+        (name (tuatara.buffer:buffer-name buffer)))
+    (when native
+      (let ((octets (visit-path native :safe t
+                                       :show (lambda (octets)
+                                               (dolist (window windows)
+                                                 (tuatara.display:set-window-buffer window octets :remember nil))))))
+        (hex-view-on octets)
+        (dolist (kept '(private-folder :remote-file))
+          (setf (tuatara.buffer:buffer-local octets kept) (shiftf (tuatara.buffer:buffer-local buffer kept) nil)))
+        (setf (buffer-given-directory octets) (buffer-given-directory buffer))
+        (when (buffer-remote octets)
+          (remote-octets-taken-over octets))
+        (tuatara.buffer:kill-buffer buffer)
+        (setf (tuatara.buffer:buffer-name octets) name)
+        (message "~a: its octets, opened safely" words)))))
 
 (defun file-view-hex (buffer)
   "For \\[hex-mode] in BUFFER, a file shown as its pages or its picture

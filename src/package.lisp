@@ -118,4 +118,4 @@ available unqualified, and the public API of TUATARA is used.")
            #:*gui-font* #:*gui-renderer* #:*gui-title* #:*gui-padding* #:*window-colours-from-desktop* #:*tui-padding* #:*tui-pictures* #:*tui-mouse* #:*tui-colours* #:*follow-desktop-style* #:*open-dropped-files-safely*
            #:*safe-directories* #:*open-binary-files-safely* #:*evidence-folders*
            ;; files on another machine
-           #:*remote-seconds*))
+           #:*remote-seconds* #:*remote-preview-largest* #:*client-kept-without-buffers*))
