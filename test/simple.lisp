@@ -615,12 +615,12 @@ And a third." 6 3 10 51)
                                  ("Wait… what‽  Go." 1 2 3 16)
                                  ("" 0 0 0 0))
         do (let ((rope (tuatara.text:string->rope text)))
-             (is equal counts (multiple-value-list (tuatara.defaults::count-text rope 0 (tuatara.text:rope-bytes rope) :double-space t))
+             (is equal counts (multiple-value-list (tuatara.defaults::count-text rope 0 (tuatara.text:rope-octet-length rope) :double-space t))
                  "~s" text)))
   ;; one space apart, as sentences are by default, a full stop and a blank end a sentence
   (loop for (text . counts) in '(("One. Two. Three." 1 3 3 16) ("One.  Two." 1 2 2 10) ("Dr. Smith. Yes" 1 2 3 14))
         do (let ((rope (tuatara.text:string->rope text)))
-             (is equal counts (multiple-value-list (tuatara.defaults::count-text rope 0 (tuatara.text:rope-bytes rope)))
+             (is equal counts (multiple-value-list (tuatara.defaults::count-text rope 0 (tuatara.text:rope-octet-length rope)))
                  "~s" text)))
   ;; M-= says them, of the selection or the whole buffer
   (is string= "Buffer has 2 lines, 3 sentences, 9 words, and 48 characters"
@@ -643,13 +643,13 @@ And a third." 6 3 10 51)
                                    (#(#xA9 120 #xC3) 1 1 1 3)
                                    (#(120 #xF0 #x9F 32 #xFF) 1 1 1 5))
         do (let ((rope (tuatara.text:octets->rope (coerce octets '(vector (unsigned-byte 8))))))
-             (is equal counts (multiple-value-list (tuatara.defaults::count-text rope 0 (tuatara.text:rope-bytes rope)))
+             (is equal counts (multiple-value-list (tuatara.defaults::count-text rope 0 (tuatara.text:rope-octet-length rope)))
                  "~s" octets)))
   (loop for (text . counts) in '(("Dr.  Smith went home.  He slept." 1 2 6 32)
                                  ("I met Mr.  Rotorua, e.g.  at noon.  Then." 1 2 9 41)
                                  ("End.  Dr.  Ann.  Taranaki." 1 3 4 26))
         do (let ((rope (tuatara.text:string->rope text)))
-             (is equal counts (multiple-value-list (tuatara.defaults::count-text rope 0 (tuatara.text:rope-bytes rope) :double-space t))
+             (is equal counts (multiple-value-list (tuatara.defaults::count-text rope 0 (tuatara.text:rope-octet-length rope) :double-space t))
                  "~s" text))))
 
 (define-test (simple counted-alike-in-any-pieces)
@@ -689,7 +689,7 @@ thread (*rewrite-threshold* 0)."
     ;; joining lines: one space, or none by brackets
     (is string= (format nil "a b (c)d") (both "V j j j g j" (format nil "a~%  b~%(c~%)d")))
     (is string= (format nil "a b~%c") (both "V j g j" (format nil "a  ~%  b~%c")))
-    (is string= "a b c" (both "% M-x d e l e t e - i n d e n t a t i o n RET" (format nil "a~%  b~%c")))
+    (is string= "a b c" (both "% M-x j o i n - l i n e RET" (format nil "a~%  b~%c")))
     ;; commenting lines, and uncommenting them, and one undo
     (let ((mode 'tuatara.defaults::lisp-mode))
       (is string= (format nil ";; (foo)~%;;   (bar)~%") (both "V j C" (format nil "(foo)~%  (bar)~%") mode))
@@ -723,7 +723,7 @@ thread (*rewrite-threshold* 0)."
       (is string= plain (small-text '("w M-t") "hello world"))))
   ;; a paste repeated past what is kept as a string is made of the kill, not copied: the same text
   (let ((plain (small-text '("v l y C-u 3 p") "abc")))
-    (let ((tuatara.defaults::*clipboard-max-size* 2))
+    (let ((tuatara.defaults::*clipboard-size-limit* 2))
       (is string= plain (small-text '("v l y C-u 3 p") "abc"))))
   ;; pasting at every cursor more than is written at once is refused
   (with-background ()
@@ -734,7 +734,7 @@ thread (*rewrite-threshold* 0)."
   (let* ((five (format nil "a~%b~%c~%d~%e"))
          (deleted (small-text '("m l j j m l d") five))
          (pasted (small-text '("v l y" "j m l j j m l p") five)))
-    (let ((tuatara.defaults::*clipboard-max-size* 1)
+    (let ((tuatara.defaults::*clipboard-size-limit* 1)
           (tuatara.buffer:*large-edit-octets* 1))
       (multiple-value-bind (f editor) (run-keys "m l j j m l y" :text five)
         (declare (ignore f))
@@ -901,38 +901,38 @@ thread (*rewrite-threshold* 0)."
 (defparameter *comment-and-pair-cases*
   `((:lisp-mode "(a<POINT>)
 (b)
-" "C-x C-;" ";; (a)
+" "M-x t o g g l e - c o m m e n t - l i n e s - r e t RET" ";; (a)
 <POINT>(b)
 ")
     (:lisp-mode ";; (a<POINT>)
 (b)
-" "C-x C-;" "(a)
+" "M-x t o g g l e - c o m m e n t - l i n e s - r e t RET" "(a)
 <POINT>(b)
 ")
     (:lisp-mode "(x
   (a<POINT>))
-" "C-x C-;" "(x
+" "M-x t o g g l e - c o m m e n t - l i n e s - r e t RET" "(x
   ;; (a))
 <POINT>")
     (:lisp-mode "(a<POINT>)
 
   (b)
 <MARK>(c)
-" "C-x C-;" ";; (a<POINT>)
+" "M-x t o g g l e - c o m m e n t - l i n e s - r e t RET" ";; (a<POINT>)
 
 ;;   (b)
 ;; (c)
 ")
     (:lisp-mode ";; (a<POINT>)
 (b)<MARK>
-" "C-x C-;" ";; ;; (a<POINT>)
+" "M-x t o g g l e - c o m m e n t - l i n e s - r e t RET" ";; ;; (a<POINT>)
 ;; (b)
 ")
     (:bash-mode "echo a<POINT>
-" "C-x C-;" "# echo a
+" "M-x t o g g l e - c o m m e n t - l i n e s - r e t RET" "# echo a
 <POINT>")
     (:css-mode "a { b: c; }<POINT>
-" "C-x C-;" "/* a { b: c; } */
+" "M-x t o g g l e - c o m m e n t - l i n e s - r e t RET" "/* a { b: c; } */
 <POINT>")
     (:lisp-mode "<POINT>
 (b)
@@ -952,7 +952,7 @@ thread (*rewrite-threshold* 0)."
     (nil "a<POINT>b" "M-(" "a (<POINT>) b")
     (nil "x <MARK>word<POINT> y" "M-(" "x (<POINT>word) y")
     (nil "x (<MARK>word<POINT>) y" "M-(" "x <POINT>word y"))
-  "Commenting (C-x C-; and M-;) and pairs (M-(), each (MODE TEXT KEYS EXPECTED), as Emacs's
+  "Commenting (toggle-comment-lines-ret and M-;) and pairs (M-(), each (MODE TEXT KEYS EXPECTED), as Emacs's
 comment-line, comment-dwim and insert-parentheses do them (a comment at a line's end in the
 buffer's spaces or tabs, its marker followed by a space; M-( on a region a pair already
 stands around takes it off).")
@@ -963,6 +963,14 @@ stands around takes it off).")
     (unwind-protect
          (is equal '((0 . 0) (3 . 2)) (tuatara.defaults::lines-with-text buffer 0 (tuatara.buffer:buffer-size buffer)))
       (tuatara.buffer:kill-buffer buffer))))
+
+(define-test (simple comment-key-stays-on-the-line)
+  ;; C-x C-; comments the line and stays; the command that moves on has no key, and is one that works at every cursor
+  (is string= (format nil ";; a<POINT>~%b~%")
+      (text-with-marks (session-buffer (nth-value 1 (session-in :lisp-mode (format nil "a~%b~%") "C-x C-;"
+                                                                :point 1 :width 100)))))
+  (false (tuatara.command:where-is 'tuatara.defaults::toggle-comment-lines-ret (list tuatara.defaults::*global-keymap*)))
+  (true (assoc 'tuatara.defaults::toggle-comment-lines-ret tuatara.defaults::*cursor-verbs*)))
 
 (define-test (simple comments-and-pairs)
   (loop for (mode text keys expected) in *comment-and-pair-cases*

@@ -98,7 +98,7 @@ CHUNK holds ROPE's octets from CHUNK-START, read ahead."
 comment runs over it, and return SCAN."
   (declare (type lisp-scan scan) (type fixnum target) (optimize speed))
   (let* ((rope (lisp-scan-rope scan))
-         (size (tuatara.text:rope-bytes rope))
+         (size (tuatara.text:rope-octet-length rope))
          (i (lisp-scan-position scan))
          (stack (lisp-scan-stack scan))
          (prefix (lisp-scan-prefix scan))
@@ -296,7 +296,7 @@ now; and TEXT, the line without the blanks it begins with (LISP-LINE-HEAD)."
 (defun lisp-octet (line position)
   "The octet at POSITION of LINE's text, or 0 outside it."
   (let ((rope (lisp-line-rope line)))
-    (if (< -1 position (tuatara.text:rope-bytes rope))
+    (if (< -1 position (tuatara.text:rope-octet-length rope))
         (tuatara.text:rope-octet rope position)
         0)))
 
@@ -310,7 +310,7 @@ as indented (TEXT-COLUMN)."
   "The text of LINE from octet START below END, kept within the text; a
 character cut at either end shows as its octets."
   (let* ((rope (lisp-line-rope line))
-         (size (tuatara.text:rope-bytes rope))
+         (size (tuatara.text:rope-octet-length rope))
          (start (max 0 (min start size)))
          (end (max start (min end size))))
     (tuatara.text:octets-string (tuatara.text:rope-octets rope :start start :end end))))
@@ -354,7 +354,7 @@ and END where the text ends: just past its closing |#, or END."
 (defun block-comment-end (line position)
   "Where the block comment #| |# beginning at POSITION of LINE's text ends,
 the ones nested in it included (NESTED-COMMENT-END)."
-  (nested-comment-end (lambda (p) (lisp-octet line p)) position (tuatara.text:rope-bytes (lisp-line-rope line))))
+  (nested-comment-end (lambda (p) (lisp-octet line p)) position (tuatara.text:rope-octet-length (lisp-line-rope line))))
 
 (defun line-first-expression (line position)
   "Where the first expression on the line holding POSITION starts, read from
@@ -523,7 +523,7 @@ expression is no symbol."
   (when (plusp (lisp-frame-count frame))
     (let* ((start (expression-proper line (element-start frame 0)))
            (b (lisp-octet line start))
-           (size (tuatara.text:rope-bytes (lisp-line-rope line))))
+           (size (tuatara.text:rope-octet-length (lisp-line-rope line))))
       (when (and (lisp-symbol-octet-p b) (not (member b '(35 92 124))))
         (let ((end (loop with i = start
                          while (and (< i size) (lisp-symbol-octet-p (lisp-octet line i)))
@@ -540,7 +540,7 @@ before the line or after, is a keyword or a word, not a list."
           (or (= b 58) (alphanumericp (code-char b))))
         ;; the second expression comes at or after the line: look in the text
         (let* ((rope (lisp-line-rope line))
-               (size (tuatara.text:rope-bytes rope))
+               (size (tuatara.text:rope-octet-length rope))
                (p (if (= count 1) (element-end frame 0) (1+ (lisp-frame-open frame)))))
           (loop
             (when (>= p size) (return t))

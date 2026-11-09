@@ -16,7 +16,7 @@
 
 (defvar *search-results-save-files* t
   "True to save the files that lines found by \\[search-in-files] are written back
-into (\\[search-results-apply]), those that were not open too, closed again after;
+into (\\[search-results-finish]), those that were not open too, closed again after;
 NIL to leave each changed and not saved in a buffer of its own, for you to look at
 and save (\\[save-buffer]). A file open with changes of yours not saved is never
 saved by it.")
@@ -40,14 +40,14 @@ line that is not changed (cut short where it was listed, or holding a line break
   "The lines a search of files found (\\[search-files-list]), one each as path:line: text.
 \\<search-results-mode>\\[list-visit] opens the file at the line; \\[search-results-edit] makes the text after
 the path and line number changeable; the keys of the lines being changed are those of
-\\<search-results-editing-mode>\\[search-results-apply] and \\[search-results-discard]."
+\\<search-results-editing-mode>\\[search-results-finish] and \\[search-results-cancel]."
   :lighter "Found" :interactive nil)
 
 (define-major-mode search-results-editing-mode fundamental-mode
   "The lines a search of files found, being changed: type in the text after the path and line number with every
 key that changes text; the path and line number stay as they are, and a line is not split or
-joined. \\<search-results-editing-mode>\\[search-results-apply] writes the lines changed into their files, each only
-while it still holds what was found, \\[search-results-discard] throws the changes away, and
+joined. \\<search-results-editing-mode>\\[search-results-finish] writes the lines changed into their files, each only
+while it still holds what was found, \\[search-results-cancel] throws the changes away, and
 \\[list-visit] opens the file at the line."
   :lighter "Found*" :interactive nil)
 
@@ -69,8 +69,8 @@ says the lines are not all the search may find, when they are not."
                  (if cut (format nil " ~a." cut) "")
                  (substitute-command-keys
                   (if (results-editing-p buffer)
-                      (concatenate 'string " Changing: \\<search-results-editing-mode>\\[search-results-apply] writes,"
-                                   " \\[search-results-discard] throws away")
+                      (concatenate 'string " Changing: \\<search-results-editing-mode>\\[search-results-finish] writes,"
+                                   " \\[search-results-cancel] throws away")
                       " \\<search-results-mode>\\[search-results-edit] makes the lines changeable")))))
 
 (defun results-header-line (buffer)
@@ -161,8 +161,8 @@ puts a line break in it."
 (define-command search-results-edit ()
   "Make the text after the path and line number of the lines found changeable, with the keys
 that change text: the path and line number stay as they are, and a line is
-not split or joined. Then \\<search-results-editing-mode>\\[search-results-apply] writes the lines changed into
-their files and \\[search-results-discard] throws the changes away; the keys that list,
+not split or joined. Then \\<search-results-editing-mode>\\[search-results-finish] writes the lines changed into
+their files and \\[search-results-cancel] throws the changes away; the keys that list,
 revert or leave are typed text meanwhile."
   (let ((buffer (current-buffer)))
     (unless (results-editing-p buffer)
@@ -172,7 +172,7 @@ revert or leave are typed text meanwhile."
       (results-header-line buffer)
       (message "~a" (string-left-trim " " (results-header buffer))))))
 
-(define-command search-results-discard ()
+(define-command search-results-cancel ()
   "Throw away the changes made to the lines found, and make them read-only again; the files are not touched."
   (let ((buffer (current-buffer)))
     (cond ((tuatara.runtime:running-job buffer 'write-back-job)
@@ -493,13 +493,13 @@ waiting to be written."
     (message (concatenate 'string "~@[~a; ~]Wrote ~:d line~:p in ~:d file~:p"
                           "~@[; ~:d not written (*Messages* says why)~]"
                           "~:[~;; the lines still changed here wait for "
-                          "\\<search-results-editing-mode>\\[search-results-apply]~]")
+                          "\\<search-results-editing-mode>\\[search-results-finish]~]")
              (and (not (eq (tuatara.runtime:job-status job) :done)) (tuatara.runtime:job-ending-words job))
              (write-back-job-written job) (write-back-job-files-written job)
              (and (or refused unsaved) (+ (length refused) (length unsaved)))
              (and (live-buffer-p buffer) (results-editing-p buffer)))))
 
-(define-command search-results-apply ()
+(define-command search-results-finish ()
   "Write the lines changed here into their files. A line is written only while the file still holds
 the text that was found there; any other is not, and the reason is said. A file open in a buffer is
 changed there, so that undoing in it takes the change back; one with changes of yours not saved is
@@ -525,12 +525,12 @@ once."
   "Give the lines found their keys, keep the text of the lines changeable apart from what a change must
 leave, and deal with the files a job writing lines back hands over."
   (define-keys *search-results-keymap* '(("RET" list-visit) ("C-x C-q" search-results-edit)))
-  (define-keys *search-results-editing-keymap* '(("RET" list-visit) ("C-c C-c" search-results-apply)
-                                                 ("C-c C-k" search-results-discard)))
+  (define-keys *search-results-editing-keymap* '(("RET" list-visit) ("C-c C-c" search-results-finish)
+                                                 ("C-c C-k" search-results-cancel)))
   (commands-for-mode 'search-results-mode "the lines a search of files found (\\[search-files-list])"
                      'search-results-edit)
   (commands-for-mode 'search-results-editing-mode
                      "the lines a search of files found being changed (\\[search-results-edit])"
-                     'search-results-apply 'search-results-discard)
+                     'search-results-finish 'search-results-cancel)
   (pushnew 'guard-result-lines tuatara.buffer:*before-edit-functions*)
   (pushnew 'write-back-tick *tick-functions*))

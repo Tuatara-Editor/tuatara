@@ -112,7 +112,7 @@ as they are (*LSP-OUTLINE*); else the mode's headings."
             (lambda (rope tree halt)
               (declare (ignore tree halt))
               ;; one a line, the outer first, as the list shows lines
-              (let ((size (tuatara.text:rope-bytes rope)) (seen (make-hash-table)))
+              (let ((size (tuatara.text:rope-octet-length rope)) (seen (make-hash-table)))
                 (loop for (start level) in headings
                       for line = (and (<= start size) (tuatara.text:rope-line-start rope start))
                       when (and line (not (gethash line seen)))

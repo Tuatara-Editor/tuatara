@@ -64,7 +64,7 @@ the nodes in it, in order; and PARENT."
   "The start of the text whose objects are being parsed: as a line's start to
 what begins there, nothing before it seen.")
 
-(defparameter *org-deepest* 200
+(defparameter *org-depth-limit* 200
   "The most elements and objects of Org text the parser reads one within
 another: what lies deeper is read as plain text, so that a file made of
 nothing but nesting cannot exhaust the parser.")
@@ -589,12 +589,12 @@ each with its contents parsed."
 
 (defun org-parse-contents (element)
   "Parse ELEMENT's contents, when it has any: the elements of a greater
-element, the objects of one that holds text; none deeper than *ORG-DEEPEST*."
+element, the objects of one that holds text; none deeper than *ORG-DEPTH-LIMIT*."
   (let ((type (org-node-type element))
         (begin (org-node-contents-begin element))
         (end (org-node-contents-end element))
         (*org-depth* (1+ *org-depth*)))
-    (cond ((> *org-depth* *org-deepest*))
+    (cond ((> *org-depth* *org-depth-limit*))
           ((and (member type *org-greater-elements*) begin end (< begin end) (not (eq type 'table)))
            (org-adopt element (org-parse-elements begin end (org-child-mode type))))
           ((and (eq type 'table) (eq (org-property element :type) 'org) begin end)
@@ -1189,10 +1189,10 @@ place on, it is not looked for again after that place (*ORG-CLOSE-MISSES*)."
 
 (defun org-parse-objects (begin end types)
   "The objects from BEGIN below END that TYPES allow, in order, each with its
-contents parsed; none deeper than *ORG-DEEPEST*."
+contents parsed; none deeper than *ORG-DEPTH-LIMIT*."
   (let ((objects '()) (p begin) (*org-object-begin* begin) (*org-object-limit* end)
         (*org-emphasis-misses* '()) (*org-close-misses* '()) (*org-depth* (1+ *org-depth*)))
-    (when (> *org-depth* *org-deepest*)
+    (when (> *org-depth* *org-depth-limit*)
       (return-from org-parse-objects '()))
     (loop
       (multiple-value-bind (object) (org-next-object p end types)

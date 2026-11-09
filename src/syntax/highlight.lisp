@@ -505,7 +505,7 @@ second value, true when that holds for all of LAYERS."
                                                            (rich-highlights colours tree rope start end faces))
                                                          local-ranges))))))
                          (from (injection-cut rope (max 0 (- start *injection-reach*))))
-                         (to (tuatara.text:rope-char-start rope (min (tuatara.text:rope-bytes rope) (+ end *injection-reach*))))
+                         (to (tuatara.text:rope-char-start rope (min (tuatara.text:rope-octet-length rope) (+ end *injection-reach*))))
                          (found (loop for layer in wanted
                                       for tree in trees
                                       collect (let ((inner (getf layer :inner)))
@@ -558,7 +558,7 @@ language has rules for local names. See SYNTAX-HIGHLIGHTS for INJECTIONS."
   (destructuring-bind (query resolve) injections
     (let ((layers (injection-layers query tree rope start end
                                     (injection-cut rope (max 0 (- start *injection-reach*)))
-                                    (tuatara.text:rope-char-start rope (min (tuatara.text:rope-bytes rope)
+                                    (tuatara.text:rope-char-start rope (min (tuatara.text:rope-octet-length rope)
                                                                              (+ end *injection-reach*))))))
       (and layers
            (loop for colours in (layers-highlights resolve layers rope start end depth)
@@ -837,7 +837,7 @@ are the same."
      (lambda ()
         (let* ((*helper* helper)
                (*parsing-buffer* (syntax-buffer syntax))
-               (bytes (tuatara.text:rope-bytes rope))
+               (bytes (tuatara.text:rope-octet-length rope))
                (from (injection-cut rope (max 0 (- start *syntax-slice-reach*))))
                (to (let ((reach (+ end *syntax-slice-reach*)))
                      (if (>= reach bytes) bytes (max end (injection-cut rope reach)))))

@@ -468,7 +468,7 @@ or :HUNG, so that each of several sessions in a test says how it ended."
   ;; joining the part's first line to the one above does nothing; killing a line at the part's
   ;; end says so, as at the buffer's end
   (is string= *narrowing-text*
-      (session-text (nth-value 1 (narrowing-keys (list *narrow-to-two-and-three* "M-< M-x d e l e t e - i n d e n t a t i o n RET")
+      (session-text (nth-value 1 (narrowing-keys (list *narrow-to-two-and-three* "M-< M-x j o i n - l i n e RET")
                                                  :text *narrowing-text* :width 80))))
   (multiple-value-bind (f editor) (narrowing-keys (list *narrow-to-two-and-three* "M-> M-x k i l l - w h o l e - l i n e RET")
                                                   :text *narrowing-text* :width 80)
@@ -553,12 +553,12 @@ or :HUNG, so that each of several sessions in a test says how it ended."
   (with-test-directory (dir)
     (let ((path (put-file (merge-pathnames "count.lisp" dir) (format nil "a~%b~%c~%d~%"))))
       (is string= (format nil ";; a~%;; b~%;; c~%d~%")
-          (session-text (nth-value 1 (narrowing-keys "C-u 3 C-x C-;" :file path :width 80))))))
+          (session-text (nth-value 1 (narrowing-keys "C-u 3 M-x t o g g l e - c o m m e n t - l i n e s - r e t RET" :file path :width 80))))))
   (with-test-directory (dir)
     (let ((path (put-file (merge-pathnames "lines.lisp" dir) (format nil "a~%b~%c~%d~%"))))
       (is string= (format nil "a~%;; b~%;; c~%d~%")
           (session-text (nth-value 1 (narrowing-keys (list (lambda () (tuatara.buffer:narrow-buffer (tuatara.command:current-buffer) 2 6))
-                                                     "M-< C-u 5 C-x C-;")
+                                                     "M-< C-u 5 M-x t o g g l e - c o m m e n t - l i n e s - r e t RET")
                                                :file path :width 80))))))
   ;; the last line of a part ending inside a line swapped with the one before, within the part
   (let ((editor (nth-value 1 (narrowing-keys (list (lambda () (tuatara.buffer:narrow-buffer (tuatara.command:current-buffer) 4 11))

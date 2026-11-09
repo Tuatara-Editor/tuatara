@@ -197,6 +197,11 @@ is none; the cursor gone into it leaves it as it is; anywhere else, it goes
                               (setf (side-preview-shown preview) (and (side-preview-show preview buffer own) entry))
                               (close-entry-preview)))))))))
 
+(defgeneric list-preview-refusal (mode list)
+  (:documentation "Words saying why LIST, in major mode MODE, cannot have a preview now, or
+NIL when it can.")
+  (:method (mode list) (declare (ignore mode list)) nil))
+
 (define-command list-toggle-preview ()
   "Turn the preview beside this list on or off: the entry on the current line
 shown in a window beside the list, on its right when there is room, else
@@ -204,11 +209,13 @@ below it, following the cursor from line to line. It closes, its buffers
 with it, when the cursor goes anywhere but the list and the preview. A list
 that has a preview says in a setting of its own whether new lists have it
 on (*RIMU-PREVIEW* for rimu's). With a count, on when it is positive, off when
-it is zero or less."
+it is zero or less. A list that cannot have one says why and stays as it is."
   (let* ((list (current-buffer))
-         (on (switched-by-count (list-preview-p list))))
-    (setf (list-preview-p list) on)
-    (message "Preview ~:[off~;on~]" on)))
+         (on (switched-by-count (list-preview-p list)))
+         (refusal (and on (list-preview-refusal (buffer-major-mode list) list))))
+    (cond (refusal (message "~a" refusal))
+          (t (setf (list-preview-p list) on)
+             (message "Preview ~:[off~;on~]" on)))))
 
 (defun entry-preview-keys (mode where)
   "Give the lists of major MODE, WHERE in words for those elsewhere, the key

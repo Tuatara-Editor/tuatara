@@ -319,9 +319,9 @@
   (+ (* 86400 (tuatara.dates:day-number year month day)) (* 3600 hour) (* 60 minute)))
 
 (define-test (dates time-zones)
-  (let ((stockholm (tuatara.dates:zone-named "Europe/Stockholm"))
-        (auckland (tuatara.dates:zone-named "Pacific/Auckland"))
-        (santiago (tuatara.dates:zone-named "America/Santiago")))
+  (let ((stockholm (tuatara.dates:time-zone-named "Europe/Stockholm"))
+        (auckland (tuatara.dates:time-zone-named "Pacific/Auckland"))
+        (santiago (tuatara.dates:time-zone-named "America/Santiago")))
     (true (and stockholm auckland santiago) "the system's zoneinfo is read")
     (is = 3600 (tuatara.dates:zone-offset stockholm (universal-of 2026 1 15 12 0)))
     (is = 7200 (tuatara.dates:zone-offset stockholm (universal-of 2026 7 15 12 0)))
@@ -334,7 +334,7 @@
     (is = -14400 (tuatara.dates:zone-offset santiago (universal-of 2030 9 7 23 0)))
     (is = -10800 (tuatara.dates:zone-offset santiago (universal-of 2030 9 8 5 0)))
     ;; the table and the rule agree where both say
-    (dolist (zone (list stockholm auckland (tuatara.dates:zone-named "America/New_York") (tuatara.dates:zone-named "Australia/Lord_Howe")))
+    (dolist (zone (list stockholm auckland (tuatara.dates:time-zone-named "America/New_York") (tuatara.dates:time-zone-named "Australia/Lord_Howe")))
       (let ((rule (tuatara.dates:time-zone-rule zone)))
         (is equal '() (loop for time from (universal-of 2010 1 1 0 0) below (universal-of 2036 1 1 0 0) by 3601
                             unless (= (tuatara.dates:zone-offset zone time)
@@ -348,10 +348,10 @@
     (is = (universal-of 2026 7 1 9 0) (tuatara.dates:zone-local-time stockholm (universal-of 2026 7 1 7 0))))
   ;; names of a zone and no more
   (dolist (name '("Europe/Stockholm" "Etc/GMT+5" "America/Port-au-Prince" "UTC"))
-    (true (tuatara.dates:zone-name-p name) "~a" name))
+    (true (tuatara.dates:time-zone-name-p name) "~a" name))
   (dolist (name '("../etc/passwd" "Europe/../../etc/passwd" "/etc/passwd" "-x" "" "Europe//Stockholm" "Europe/Stock holm"))
-    (false (tuatara.dates:zone-name-p name) "~s" name))
-  (false (tuatara.dates:zone-named "Nowhere/Particular"))
+    (false (tuatara.dates:time-zone-name-p name) "~s" name))
+  (false (tuatara.dates:time-zone-named "Nowhere/Particular"))
   ;; rules as the TZ strings write them
   (let ((rule (tuatara.dates:read-zone-rule "NZST-12NZDT,M9.5.0,M4.1.0/3")))
     (is = 43200 (tuatara.dates:zone-rule-standard-offset rule))
@@ -378,7 +378,7 @@
        (progn
          (tuatara.runtime:set-debug t)
          (false (tuatara.dates::zoneinfo-file-octets "/nonexistent-tuatara-zones/Pacific/Nowhere"))
-         (false (tuatara.dates:zone-named "Pacific/Nowhere_Atoll"))
+         (false (tuatara.dates:time-zone-named "Pacific/Nowhere_Atoll"))
          (true (sb-concurrency:queue-empty-p tuatara.runtime:*debug-reports*))
          (false (tuatara.dates::zoneinfo-file-octets 42))
          (let ((texts (loop for report = (sb-concurrency:dequeue tuatara.runtime:*debug-reports*)

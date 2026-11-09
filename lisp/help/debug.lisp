@@ -17,7 +17,7 @@
   "True to start the editor with debug mode on, as \\[debug-mode] switches it:
 what the editor's parts do is reported in *Debug*. Set it in the init file.")
 
-(defvar *debug-log-max* 10000
+(defvar *debug-log-limit* 10000
   "The lines *Debug* keeps, the oldest going first; NIL keeps them all.")
 
 (defun debug-buffer ()
@@ -30,14 +30,14 @@ what the editor's parts do is reported in *Debug*. Set it in the init file.")
 
 (defun show-debug-reports (editor)
   "Tick function: put the reports made since it was last called at the end of
-*Debug*, keeping *DEBUG-LOG-MAX* lines; a window showing the end of *Debug*
+*Debug*, keeping *DEBUG-LOG-LIMIT* lines; a window showing the end of *Debug*
 goes on showing it. While a waiting question is about *Debug*, the reports
 wait (BUFFER-HELD-BY-QUESTION-P)."
   (declare (ignore editor))
   (let ((first (and (not (buffer-held-by-question-p (debug-buffer)))
                     (sb-concurrency:dequeue tuatara.runtime:*debug-reports*))))
     (when first
-      (add-to-log (debug-buffer) *debug-log-max*
+      (add-to-log (debug-buffer) *debug-log-limit*
                   (lambda (buffer)
                     (tuatara.buffer:buffer-insert
                      buffer (tuatara.buffer:buffer-size buffer)

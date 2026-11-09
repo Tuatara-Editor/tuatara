@@ -26,7 +26,7 @@ that it offers the one typed last. Run with your shell ($SHELL, else /bin/sh)
 from the root of the project the buffer's file is in (*PROJECT-ROOT-MARKERS*),
 else the buffer's directory.")
 
-(defvar *compile-output-most* (* 256 1024 1024)
+(defvar *compile-output-limit* (* 256 1024 1024)
   "The most octets of a command's output \\[compile] keeps in *compile*: 256 MB as
 standard. A command printing more (one that never ends, a loop gone wrong) is
 read on to its end and counted, but what comes past this is left out, and the
@@ -368,14 +368,14 @@ output is in the selected one, else in the selected one."
 (defstruct (compile-job (:include tuatara.runtime:job) (:constructor make-compile-job (buffer run environment most)) (:copier nil))
   "A compile at work in BUFFER, a job: RUN is its COMPILE-RUN, ENVIRONMENT
 what its program sees, MOST the most octets of its output kept
-\(*COMPILE-OUTPUT-MOST* as it started). PIECES are the pieces read from its output and not
+\(*COMPILE-OUTPUT-LIMIT* as it started). PIECES are the pieces read from its output and not
 yet in BUFFER, octet vectors or ropes, the latest first, WAITING octets in
 all, under LOCK; the reading waits on ROOM while too many wait. ASLEEP is
 true once the editor has taken in all there was, to be woken for the next.
 SESSION is the number of the session its command runs in (SESSION-COMMAND).
 EXIT, how its command ended, (STATUS CODE) as Steel Bank Common Lisp (SBCL)
 gives them; ENDED, the internal real time it did; LEFT-OUT, the octets past
-*COMPILE-OUTPUT-MOST* not kept; LEFT-OPEN, true when a program it started held
+*COMPILE-OUTPUT-LIMIT* not kept; LEFT-OPEN, true when a program it started held
 the output open after it ended. ENDING is true once it has ended and the rest
 of its output is being put in; THEN, a function of no arguments called once
 that is done \(the compile asked for meanwhile)."
@@ -672,7 +672,7 @@ which is written again."
   "Read JOB's output from file descriptor (FD) until its end, a piece at a
 time as it comes, each piece handed to the editor (HAND-OUTPUT) once its
 lines of note are found; a character cut by the end of a piece goes with
-the next. Past JOB's most octets (*COMPILE-OUTPUT-MOST*) the output is read
+the next. Past JOB's most octets (*COMPILE-OUTPUT-LIMIT*) the output is read
 on and counted, not kept. Once PROCESS, the command, has ended, what its
 programs still write is read for *COMPILE-OPEN-GRACE* seconds more, then
 reading stops, the output said held open, however much is still written;
@@ -754,7 +754,7 @@ ended."
   "The octets of PIECE, a piece of a compile's output: an octet vector or a
 rope; none for (:BACK N), octets to take away."
   (cond ((consp piece) 0)
-        ((tuatara.text:rope-p piece) (tuatara.text:rope-bytes piece))
+        ((tuatara.text:rope-p piece) (tuatara.text:rope-octet-length piece))
         (t (length piece))))
 
 (defun joined-octets (pieces)
@@ -762,7 +762,7 @@ rope; none for (:BACK N), octets to take away."
   (let ((all (make-array (reduce #'+ pieces :key #'piece-size) :element-type '(unsigned-byte 8))) (at 0))
     (dolist (piece pieces all)
       (if (tuatara.text:rope-p piece)
-          (tuatara.text:rope-copy-into piece 0 (tuatara.text:rope-bytes piece) all at)
+          (tuatara.text:rope-copy-into piece 0 (tuatara.text:rope-octet-length piece) all at)
           (replace all piece :start1 at))
       (incf at (piece-size piece)))))
 
@@ -887,7 +887,7 @@ true as a second value when it ended well, exit code 0."
                             (t "Compile stopped"))
                       (elapsed-words seconds) (format-time "%T" (get-universal-time))
                       (and (plusp (compile-job-left-out job))
-                           (format nil "~a more output left out, past the ~a *compile-output-most* keeps"
+                           (format nil "~a more output left out, past the ~a *compile-output-limit* keeps"
                                    (octets-words (compile-job-left-out job)) (octets-words (compile-job-most job))))
                       (compile-job-left-open job))
               well))))
@@ -1002,7 +1002,7 @@ comes, the list of places in force then."
       (use-places run)
       (let ((window (display-buffer buffer)))
         (when window (setf (tuatara.display:window-point window) (tuatara.buffer:buffer-size buffer))))
-      (tuatara.runtime:start-job-thread (make-compile-job buffer run (compile-environment) *compile-output-most*) 'run-compile-job
+      (tuatara.runtime:start-job-thread (make-compile-job buffer run (compile-environment) *compile-output-limit*) 'run-compile-job
                                         :name "tuatara compile" :details command))))
 
 (defun compile-in (command directory)

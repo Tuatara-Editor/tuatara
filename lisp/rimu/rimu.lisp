@@ -86,7 +86,7 @@ showing that it is being read; the list fills in when the reading is done.")
 opens the entry on the line, a directory in this buffer, a file as
 \\[find-file] visits it; \\[rimu-up] goes up to the directory holding this one;
 \\[rimu-quick-edit] edits the file in the preview's place, the quick edit, until
-\\<*rimu-quick-edit-normal-keymap*>\\[rimu-quick-edit-done] there, or coming back to the list, returns to the preview; \\<rimu-mode>\\[rimu-display] shows the
+\\<*rimu-quick-edit-normal-keymap*>\\[rimu-quick-edit-finish] there, or coming back to the list, returns to the preview; \\<rimu-mode>\\[rimu-display] shows the
 entry in another window, staying in the list. \\[rimu-goto-file] goes to an
 entry by name, \\[rimu-next-directory] and \\[rimu-previous-directory] to the next
 and the previous directory. \\[rimu-toggle-details] shows or hides the details,
@@ -149,7 +149,7 @@ read, for a list read again to keep that column while they are unchanged
   (multiple-value-bind (entries reason) (tuatara.io:list-directory directory :labels t)
     (make-rimu-listing directory (coerce entries 'simple-vector)
                        (and (null reason) (ignoring-errors-reported ("finding the free space of ~a" directory)
-                                             (tuatara.io:free-bytes directory)))
+                                             (tuatara.io:free-octets directory)))
                        reason)))
 
 (defun rimu-kind (entry)
@@ -204,7 +204,7 @@ narrow as a column wants, in units of 1,024, 4.1K, 12M."
 ;;; Columns
 
 (defstruct (rimu-column (:constructor make-rimu-column (name cells place align shown documentation)) (:copier nil))
-  "A column rimu can show beside the names of entries (SET-RIMU-COLUMN): NAME,
+  "A column rimu can show beside the names of entries (RIMU-SET-COLUMN): NAME,
 a keyword; CELLS, the function giving its texts; PLACE, :BEFORE or :AFTER the
 names; ALIGN, :LEFT or :RIGHT; SHOWN, a function of a list's buffer, true
 where it shows; DOCUMENTATION, what it shows."
@@ -214,7 +214,7 @@ where it shows; DOCUMENTATION, what it shows."
 
 (defvar *rimu-columns* '()
   "The columns rimu can show beside the names of entries, in the order they
-show, each a RIMU-COLUMN made by SET-RIMU-COLUMN: the details (inode,
+show, each a RIMU-COLUMN made by RIMU-SET-COLUMN: the details (inode,
 permissions, links, owner, group, size, time) before the names, and any others.")
 
 (defvar *rimu-ready* '()
@@ -227,7 +227,7 @@ each (NAME ENTRIES CELLS), for RIMU-TICK to show.")
 (defvar *rimu-editor* nil
   "The editor rimu last ran in, which RIMU-COLUMN-READY wakes.")
 
-(defun set-rimu-column (name cells &key (place :before) (align :left) (shown 'rimu-details-p) documentation)
+(defun rimu-set-column (name cells &key (place :before) (align :left) (shown 'rimu-details-p) documentation)
   "Make NAME, a keyword, a column rimu shows beside the names of entries, in
 place of the column of that name, or after the others. CELLS is a function of
 a directory (its native name, ending in /) and a vector of its entries
@@ -333,13 +333,13 @@ Sep 30  2025."
     (format-time (if (< (- now 15778476) time (1+ now)) "%b %e %R" "%b %e  %Y") time)))
 
 (defun rimu-cells-by-entry (function)
-  "A function giving a column's texts (SET-RIMU-COLUMN) by calling FUNCTION on
+  "A function giving a column's texts (RIMU-SET-COLUMN) by calling FUNCTION on
 each entry, for its text."
   (lambda (directory entries)
     (declare (ignore directory))
     (map 'simple-vector function entries)))
 
-(set-rimu-column :inode (rimu-cells-by-entry (lambda (entry)
+(rimu-set-column :inode (rimu-cells-by-entry (lambda (entry)
                                                (let ((stamp (tuatara.io:listed-stamp entry)))
                                                  (cond ((null stamp) "?")
                                                        ;; none: a folder as a commit left it, not on the disk
@@ -347,25 +347,25 @@ each entry, for its text."
                                                        (t (princ-to-string (tuatara.io:stamp-ino stamp)))))))
                  :align :right :documentation "The inode number of each entry, as ls -i writes it: which file on its file system it is; - for an entry of a folder as a commit left it.")
 
-(set-rimu-column :permissions (rimu-cells-by-entry 'rimu-permissions-cell)
+(rimu-set-column :permissions (rimu-cells-by-entry 'rimu-permissions-cell)
                  :documentation "The permissions of each entry, as ls -l writes them: drwxr-xr-x.")
 
-(set-rimu-column :links (rimu-cells-by-entry (lambda (entry)
+(rimu-set-column :links (rimu-cells-by-entry (lambda (entry)
                                                (let ((stamp (tuatara.io:listed-stamp entry)))
                                                  (if stamp (princ-to-string (tuatara.io:stamp-nlink stamp)) "?"))))
                  :align :right :documentation "How many names each entry has, its links.")
 
-(set-rimu-column :owner (rimu-cells-by-entry (lambda (entry)
+(rimu-set-column :owner (rimu-cells-by-entry (lambda (entry)
                                                (let ((stamp (tuatara.io:listed-stamp entry)))
                                                  (if stamp (or (tuatara.io:owner-name (tuatara.io:stamp-uid stamp)) (princ-to-string (tuatara.io:stamp-uid stamp))) "?"))))
                  :documentation "The account that owns each entry.")
 
-(set-rimu-column :group (rimu-cells-by-entry (lambda (entry)
+(rimu-set-column :group (rimu-cells-by-entry (lambda (entry)
                                                (let ((stamp (tuatara.io:listed-stamp entry)))
                                                  (if stamp (or (tuatara.io:owner-group-name (tuatara.io:stamp-gid stamp)) (princ-to-string (tuatara.io:stamp-gid stamp))) "?"))))
                  :documentation "The group each entry belongs to.")
 
-(set-rimu-column :size (rimu-cells-by-entry (lambda (entry)
+(rimu-set-column :size (rimu-cells-by-entry (lambda (entry)
                                               (let ((stamp (tuatara.io:listed-stamp entry))
                                                     (device (tuatara.io:listed-device entry)))
                                                 (cond ((null stamp) "?")
@@ -373,7 +373,7 @@ each entry, for its text."
                                                       (t (rimu-size-words (tuatara.io:stamp-size stamp)))))))
                  :align :right :documentation "The size of each entry as ls -h writes it, 4.1K or 12M; a device's numbers.")
 
-(set-rimu-column :time (lambda (directory entries)
+(rimu-set-column :time (lambda (directory entries)
                          (declare (ignore directory))
                          (let ((now (get-universal-time)))
                            (map 'simple-vector (lambda (entry)
@@ -730,7 +730,7 @@ one it refuses (RIMU-SOURCE-REFUSAL)."))
 
 (defvar *rimu-disk-commands*
   '(rimu-quick-edit rimu-goto-file rimu-home rimu-last-directory rimu-toggle-git rimu-toggle-sizes rimu-toggle-picture
-    rimu-diff rimu-archive-list rimu-verify-files file-metadata open-externally
+    rimu-diff rimu-archive-list rimu-verify-files show-file-metadata open-externally
     rimu-find rimu-find-text rimu-duplicates diff-files)
   "The commands refused in a rimu list of a folder as something other than
 the disk keeps it (RIMU-SOURCE), as they work on the files as the disk has
@@ -1532,7 +1532,7 @@ folder not on the disk those it does not do (RIMU-SOURCE-REFUSAL)."
   (pushnew 'rimu-preview-follow (editor-post-command-functions editor))
   (pushnew 'rimu-keep-point-on-entries (editor-post-command-functions editor))
   (dolist (command '(rimu-copy rimu-move rimu-symlink rimu-hardlink rimu-rename list-delete-marked list-execute rimu-make-directory
-                     rimu-edit-names rimu-names-apply rimu-touch rimu-make-formatted-file rimu-wipe-files
+                     rimu-edit-names rimu-names-finish rimu-touch rimu-make-formatted-file rimu-wipe-files
                      rimu-trash rimu-trash-restore rimu-trash-empty
                      rimu-encrypt-files rimu-decrypt-files rimu-sign-files
                      rimu-archive-create rimu-archive-extract rename-formatted rename-formatted-keywords))
@@ -1545,8 +1545,8 @@ folder not on the disk those it does not do (RIMU-SOURCE-REFUSAL)."
                                ("g h" rimu-home) ("g l" rimu-last-directory)))
   (entry-preview-keys 'rimu-mode "a rimu list (\\[rimu])")
   (free-list-keys *rimu-keymap*)
-  (define-key *rimu-quick-edit-keymap* "C-c C-c" 'rimu-quick-edit-done)
-  (define-key *rimu-quick-edit-normal-keymap* "q" 'rimu-quick-edit-done)
+  (define-key *rimu-quick-edit-keymap* "C-c C-c" 'rimu-quick-edit-finish)
+  (define-key *rimu-quick-edit-normal-keymap* "q" 'rimu-quick-edit-finish)
   (pushnew 'rimu-quick-edit-mode-line *mode-line-functions*)
   (define-key *global-keymap* "C-x d" 'rimu)
   (define-key *global-keymap* "C-x 5 d" 'rimu-other-frame)

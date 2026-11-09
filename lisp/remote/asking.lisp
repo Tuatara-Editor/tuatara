@@ -17,11 +17,8 @@
 
 (defconstant +ssh-most-answer+ 4096 "The most octets of an answer given to ssh; a longer one counts as none.")
 
-(defconstant +ssh-most-shown+ 240
-  "The most columns of a question for a secret shown, and of what the server said before it, so that the row typed
-on stays on the screen.")
-
-(defconstant +ssh-most-key-question+ 800 "The most columns of ssh's question about a new host key shown.")
+(defconstant +ssh-most-shown+ 60
+  "The most columns of what a server asks shown in the prompt: the question whole is in its details.")
 
 (defconstant +ssh-most-questions+ 32
   "The most questions one connection may ask, past which it is ended: a server can go on asking for ever.")
@@ -197,7 +194,7 @@ in them (TUATARA.FRONTEND:SHOWN-WORDS) and joined with a space."
 about a host key, :LOCAL, ssh asking for what unlocks a key of yours, or
 :SERVER, anything else, as what a server asks. ssh writes who a server's
 question is for before it, so that a server cannot begin one in these forms."
-  (cond ((or (cl-ppcre:scan "(?s)\\AThe authenticity of host '.*key fingerprint is .*\\(yes/no/\\[fingerprint\\]\\)\\? *\\z"
+  (cond ((or (cl-ppcre:scan "(?s)\\AThe authenticity of host '.*\\(yes/no/\\[fingerprint\\]\\)\\? *\\z"
                             text)
              (cl-ppcre:scan "(?s)\\AWarning: the \\S+ host key for '.*\\(yes/no\\)\\? *\\z" text))
          :key)
@@ -206,33 +203,36 @@ question is for before it, so that a server cannot begin one in these forms."
          :local)
         (t :server)))
 
-(defun ssh-question-prompt (host jump text said)
-  "What is shown to ask TEXT, a question of ssh's about HOST, and two more
-values: its kind (SSH-QUESTION-KIND) and for :KEY the fingerprint that may be
-typed for yes. JUMP, the machines ssh goes through, says the question may be
-for one of them. SAID, what ssh passed on from the server since the last
-question, comes before a server's question."
+(defun ssh-question-prompt (host jump text said &key warnings)
+  "What is shown to ask TEXT, a question of ssh's about HOST, as four values:
+the short prompt it is answered at, its kind (SSH-QUESTION-KIND), for :KEY the
+fingerprint that may be typed for yes, and its details: who asks, WARNINGS of
+ssh's, SAID, what ssh passed on from the server since the last question, and
+the question whole. JUMP, the machines ssh goes through, says the question may
+be for one of them."
   (let* ((kind (ssh-question-kind text))
          (words (ssh-question-words text))
-         (to (format nil "ssh to ~a~@[ (or the jump host ~a)~]: " host jump)))
-    (flet ((short (words most) (tuatara.display:shorten-string words most)))
+         (to (format nil "ssh to ~a~@[ (or the jump host ~a)~]" host jump))
+         (question (string-right-trim ": " words)))
+    (flet ((details (line)
+             (format nil "~a~%~%~{~a~%~}~@[~%~a~%~]~%~a~%" to warnings (and (plusp (length said)) said) line)))
       (ecase kind
         (:key
-         (let ((end (or (cl-ppcre:scan "\\s*\\(yes/no(/\\[fingerprint\\])?\\)\\?\\s*$" words) (length words))))
-           (values (format nil "~a~a? Type yes~:[~; or the fingerprint~] to accept, anything else refuses: "
-                           to (short (subseq words 0 end) +ssh-most-key-question+) (search "[fingerprint]" text))
+         (let ((end (or (cl-ppcre:scan "\\s*\\(yes/no(/\\[fingerprint\\])?\\)\\?\\s*$" words) (length words)))
+               (typed (search "[fingerprint]" text)))
+           (values (format nil "Accept this key (yes/no~:[~;/fingerprint~]): " typed)
                    kind
-                   (let ((found (nth-value 1 (cl-ppcre:scan-to-strings "key fingerprint is (\\S+?)\\.?(\\s|$)" words))))
-                     (and found (aref found 0))))))
+                   (let ((found (nth-value 1 (cl-ppcre:scan-to-strings "key fingerprint is:? (\\S+?)\\.?(\\s|$)" words))))
+                     (and found (aref found 0)))
+                   (details (format nil "~a?~%~%Type yes~:[~; or the fingerprint~] to accept, anything else refuses."
+                                    (subseq words 0 end) typed)))))
         (:local
-         (values (format nil "~ayour key's passphrase, stays here: ~a: "
-                         to (short (string-right-trim ": " words) +ssh-most-shown+))
-                 kind nil))
+         (values "Your key's passphrase, stays here: " kind nil
+                 (details (format nil "Your key's passphrase, which stays here: ~a" question))))
         (:server
-         (values (format nil "~a~@[~a; ~]the server asks; what you type goes to the server: ~a: "
-                         to (and (plusp (length said)) (short said +ssh-most-shown+))
-                         (short (string-right-trim ": " words) +ssh-most-shown+))
-                 kind nil))))))
+         (values (format nil "The server asks: ~a: " (tuatara.display:shorten-string question +ssh-most-shown+))
+                 kind nil
+                 (details (format nil "The server asks, and what you type goes to the server: ~a" question))))))))
 
 (defun ssh-key-answer (typed fingerprint)
   "What is answered to ssh for TYPED, typed at its question about a host key:
@@ -244,26 +244,45 @@ TYPED when it is yes or FINGERPRINT, the key's, else NIL, a refusal."
   "Put TEXT, what ASKING's ssh asks, in the minibuffer: whether to accept a
 key not seen before, its question in full, a yes typed out or its fingerprint
 the only way to accept it; else a password or passphrase, hidden and kept
-nowhere, said to be for your own key or for the server. The answer as a
-string, which the caller wipes, or NIL for none and for a question given up."
-  (multiple-value-bind (prompt kind fingerprint)
-      (ssh-question-prompt (ssh-asking-host asking) (ssh-asking-jump asking) text (ssh-new-said asking))
-    (ask-on-editor
-     (lambda ()
-       (if (eq kind :key)
-           (tuatara.command::call-asked-unasked
-            prompt (lambda () (ssh-key-answer (read-string prompt) fingerprint)))
-           (read-password prompt :fresh t))))))
+nowhere, said to be for your own key or for the server. What it says in full
+is in a buffer shown beside the short prompt (CALL-WITH-DETAILS-SHOWN), a
+warning of ssh's going to *Messages* too. The answer as a string, which the
+caller wipes, or NIL for none and for a question given up."
+  (multiple-value-bind (warnings said) (ssh-new-said asking)
+    (multiple-value-bind (prompt kind fingerprint details)
+        (ssh-question-prompt (ssh-asking-host asking) (ssh-asking-jump asking) text said :warnings warnings)
+      (ask-on-editor
+       (lambda ()
+         (dolist (warning warnings) (message "ssh to ~a: ~a" (ssh-asking-host asking) warning))
+         (call-with-details-shown
+          details
+          (lambda ()
+            (if (eq kind :key)
+                (tuatara.command::call-asked-unasked
+                 prompt (lambda () (ssh-key-answer (read-string prompt) fingerprint)))
+                (read-password prompt :fresh t)))))))))
+
+(defun ssh-said-parts (text)
+  "TEXT, what ssh wrote on its error output, in two parts as two values: its
+warnings to you (lines that begin **, as about a connection not safe against
+quantum computers), a list of lines cleaned to be shown without the stars, and
+the rest (a server's banner and instructions), cleaned, on one line."
+  (let ((warnings '()) (rest '()))
+    (dolist (line (uiop:split-string text :separator '(#\Newline #\Return)))
+      (if (uiop:string-prefix-p "** " line)
+          (push (ssh-question-words (subseq line 3)) warnings)
+          (push line rest)))
+    (values (nreverse warnings) (ssh-question-words (format nil "~{~a~%~}" (nreverse rest))))))
 
 (defun ssh-new-said (asking)
   "What ASKING's ssh has written on its error output since this was last
-asked (a server's banner and instructions), cleaned to be shown, on one line."
+asked, as two values: its warnings to you and the rest (SSH-SAID-PARTS)."
   (let ((octets (or (ignoring-errors-reported ("reading what ssh said")
                       (tuatara.io:file-octets (tuatara.io:path-join (ssh-asking-folder asking) "e")
                                               :limit tuatara.io:*program-said-limit*))
                     (tuatara.text:make-octets 0))))
-    (prog1 (ssh-question-words (tuatara.text:lenient-string (subseq octets (min (ssh-asking-said asking)
-                                                                                 (length octets)))))
+    (multiple-value-prog1 (ssh-said-parts (tuatara.text:lenient-string (subseq octets (min (ssh-asking-said asking)
+                                                                                           (length octets)))))
       (setf (ssh-asking-said asking) (length octets)))))
 
 (defun answer-ssh-question (asking)

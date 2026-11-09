@@ -6,7 +6,7 @@
 ;;;; file writes them, its streams decoded by every filter and predictor, the
 ;;;; objects packed in object streams, the %%EOF lines and cross-reference
 ;;;; tables of its saves, and the operators of its pages' content. M-x
-;;;; file-metadata reads a PDF's account of itself with it, and packages
+;;;; show-file-metadata reads a PDF's account of itself with it, and packages
 ;;;; examining PDFs use it too. Every offset and length a file gives is
 ;;;; checked against its octets, every structure held to a count, and a file
 ;;;; that names objects it does not have costs a bounded time
@@ -164,18 +164,18 @@ read, as text (with RAW, as its octets), and where it ends. No more than
                (incf j)))
     (values (if raw (coerce out '(simple-array (unsigned-byte 8) (*))) (pdf-string-text out)) j)))
 
-(defparameter *pdf-most-items* 1000
+(defparameter *pdf-item-limit* 1000
   "The most items of a PDF array read (PDF-OBJECT-AT): the rest of a longer
 one is passed over.")
 
 (defun pdf-array-at (octets i depth)
   "The [array] in OCTETS from I, nested DEPTH deep, as a list of no more than
-*PDF-MOST-ITEMS* items, and where it ends: past the closing bracket, or
+*PDF-ITEM-LIMIT* items, and where it ends: past the closing bracket, or
 where the items stopped being read."
   (let ((n (length octets)) (items '()) (count 0) (j (1+ i)))
     (loop
       (setf j (pdf-skip-space octets j))
-      (when (or (>= j n) (= (aref octets j) 93) (> count *pdf-most-items*)) (setf j (min n (1+ j))) (return))
+      (when (or (>= j n) (= (aref octets j) 93) (> count *pdf-item-limit*)) (setf j (min n (1+ j))) (return))
       (multiple-value-bind (item next) (pdf-object-at octets j (1+ depth))
         (when (<= next j) (return))
         (push item items) (incf count) (setf j next)))

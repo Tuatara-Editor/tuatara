@@ -31,7 +31,7 @@ ENDS says (RECORD-ENDS), a line each when ENDS is NIL."
   (if ends
       (funcall ends rope start)
       (let ((line-end (tuatara.text:rope-line-end rope start)))
-        (values line-end (min (tuatara.text:rope-bytes rope) (1+ line-end))))))
+        (values line-end (min (tuatara.text:rope-octet-length rope) (1+ line-end))))))
 
 (defun make-record-memo ()
   "What LINE-RECORD keeps of the last record one thread found."
@@ -87,7 +87,7 @@ it."
   "The text of BUFFER's first records, *RECORD-KEYS-LOOKED-AT* at most, its
 header left out (LIST-HEADER-P)."
   (let* ((rope (tuatara.buffer:buffer-text buffer))
-         (size (tuatara.text:rope-bytes rope))
+         (size (tuatara.text:rope-octet-length rope))
          (ends (record-ends buffer)))
     (loop repeat *record-keys-looked-at*
           for at = (records-start rope (if (list-header-p buffer) 1 0) ends) then (nth-value 1 (record-bounds rope at ends))

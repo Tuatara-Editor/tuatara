@@ -583,7 +583,7 @@ starts, CODE bound to its code and AT to where it begins, reading the text a
 block at a time; BODY leaves early by RETURN-FROM a block around it."
   (let ((block (gensym "BLOCK")) (pos (gensym "POS")) (stop (gensym "STOP")) (have (gensym "HAVE"))
         (i (gensym "I")) (length (gensym "LENGTH")) (total (gensym "TOTAL")))
-    `(let ((,total (tuatara.text:rope-bytes ,rope)))
+    `(let ((,total (tuatara.text:rope-octet-length ,rope)))
        (tuatara.text:with-octet-block (,block (+ 65536 4))
          (block nil
            (let ((,pos ,from))
@@ -632,7 +632,7 @@ the letter."
 isolate (U+202A to U+202E, U+2066 to U+2069), whose effect on the text after
 it cannot be told without it: found by their octets alone. Complexity:
 O(TO - FROM)."
-  (let ((total (tuatara.text:rope-bytes rope)))
+  (let ((total (tuatara.text:rope-octet-length rope)))
     (tuatara.text:with-octet-block (block (+ 65536 2))
       (loop for pos of-type fixnum from from below to by 65536
             do (let* ((stop (min to (+ pos 65536)))
@@ -652,7 +652,7 @@ can change the order a line is shown in (RIGHT-TO-LEFT-CODE-P). Only the
 octets that begin a character at U+0590 or above are decoded. Complexity:
 O(TO - FROM)."
   (declare (type fixnum from to))
-  (let ((total (tuatara.text:rope-bytes rope)))
+  (let ((total (tuatara.text:rope-octet-length rope)))
     (tuatara.text:with-octet-block (block (+ 65536 4))
       (loop for pos of-type fixnum from from below to by 65536
             do (let* ((stop (min to (+ pos 65536)))
@@ -837,7 +837,7 @@ CACHE's others for them."
 (defun octet-characters (rope from to)
   "About how many characters ROPE's text from FROM below TO holds: its octets
 that begin one (any but #x80 to #xBF). Complexity: O(TO - FROM)."
-  (let ((total (tuatara.text:rope-bytes rope)) (count 0))
+  (let ((total (tuatara.text:rope-octet-length rope)) (count 0))
     (declare (type fixnum count))
     (tuatara.text:with-octet-block (block 65536)
       (loop for pos of-type fixnum from from below to by 65536

@@ -469,6 +469,23 @@ TEXTS with the mode line's sign of work, P, lit in :mode-line-sign."
         (true (find 'tuatara.defaults::find-file offered :key #'tuatara.command:candidate-result))))
     (is = 0 said)))
 
+(define-test (command key-only-commands-not-offered)
+  ;; commands made for keys alone are not offered by M-x, but a key still runs them
+  (multiple-value-bind (f editor) (run-keys "" :text "")
+    (declare (ignore f))
+    (let* ((tuatara.command:*editor* editor)
+           (offered (mapcar #'tuatara.command:candidate-result (tuatara.defaults::command-candidates)))
+           (everywhere (mapcar #'tuatara.command:candidate-result
+                               (tuatara.defaults::command-candidates :everywhere t))))
+      (dolist (name (mapcar #'tuatara.command:command-symbol
+                            '("minibuffer-finish" "popup-next" "mark-run-refuse" "tuatara-normal-inert")))
+        (true (tuatara.command:key-only-command-p name) "~a" name)
+        (false (member name offered) "~a" name)
+        (true (member name everywhere) "~a" name)
+        (true (tuatara.command:find-command name) "~a" name))
+      (false (tuatara.command:key-only-command-p (tuatara.command:command-symbol "find-file")))
+      (true (member (tuatara.command:command-symbol "find-file") offered)))))
+
 (tuatara.command:define-command test-placed-nowhere ()
   "Do nothing, for the tests: a command made for places that are not there."
   nil)
@@ -666,14 +683,14 @@ TEXTS with the mode line's sign of work, P, lit in :mode-line-sign."
   ;; the modal state first, the sign of the buffer's jobs, then [-], [*] or [%], then the name
   (multiple-value-bind (f editor) (run-keys "" :text "abc")
     (declare (ignore editor))
-    (true (search " TUATARA[N] P [-] *scratch*" (tuatara.frontend.fake:fake-screen-line f 6))))
+    (true (search " TUATARA[N] PD [-] *scratch*" (tuatara.frontend.fake:fake-screen-line f 6))))
   (multiple-value-bind (f editor) (run-keys "i x C-g" :text "abc")
     (declare (ignore editor))
-    (true (search " TUATARA[N] P [*] *scratch*" (tuatara.frontend.fake:fake-screen-line f 6))))
+    (true (search " TUATARA[N] PD [*] *scratch*" (tuatara.frontend.fake:fake-screen-line f 6))))
   ;; undoing back to the text as it was: [-] again
   (multiple-value-bind (f editor) (run-keys "i x C-g C-/" :text "abc")
     (is string= "abc" (session-text editor))
-    (true (search " TUATARA[N] P [-] *scratch*" (tuatara.frontend.fake:fake-screen-line f 6))))
+    (true (search " TUATARA[N] PD [-] *scratch*" (tuatara.frontend.fake:fake-screen-line f 6))))
   ;; read-only wins
   (multiple-value-bind (f editor) (run-keys "C-x C-q" :text "abc")
     (declare (ignore editor))
@@ -742,7 +759,7 @@ TEXTS with the mode line's sign of work, P, lit in :mode-line-sign."
   ;; a kill too large for the system clipboard is kept as a rope, pasted by a
   ;; splice; a large deletion is a splice that undo swaps back: with the limits
   ;; small, a few words do what gigabytes would
-  (let ((tuatara-user:*clipboard-max-size* 8)
+  (let ((tuatara-user:*clipboard-size-limit* 8)
         (tuatara.buffer:*large-edit-octets* 10)
         (text (format nil "alpha beta gamma~%second line here~%third~%")))
     ;; V j y copies two lines: a rope, not on the clipboard; G p pastes them at the end
@@ -808,8 +825,8 @@ TEXTS with the mode line's sign of work, P, lit in :mode-line-sign."
                (let ((line (mode-line "" 150)))
                  (true (search long line))
                  (false (search "…" line)))
-               ;; *mode-line-name-max* cuts it anyway, to no fewer than 12 columns
-               (let ((tuatara-user:*mode-line-name-max* 20))
+               ;; *mode-line-name-limit* cuts it anyway, to no fewer than 12 columns
+               (let ((tuatara-user:*mode-line-name-limit* 20))
                  (let ((line (mode-line "" 150)))
                    (false (search long line))
                    (true (search "…" line))
@@ -1419,8 +1436,8 @@ from a rope later changes leave as it is.\"
      (let ((rope (buffer-text buffer)))
        (list (banked-spans buffer)
              (lambda ()
-               (let ((octets (make-array (rope-bytes rope) :element-type '(unsigned-byte 8))))
-                 (rope-copy-into rope 0 (rope-bytes rope) octets)
+               (let ((octets (make-array (rope-octet-length rope) :element-type '(unsigned-byte 8))))
+                 (rope-copy-into rope 0 (rope-octet-length rope) octets)
                  (lenient-string octets)))
              (rope-find-octet rope 10)
              (rope-line-start rope 5)
@@ -1438,7 +1455,7 @@ TUATARA: what a job of its own would take from a buffer before it starts.")
            (let ((b (tuatara.buffer:make-buffer (tuatara.buffer:unique-buffer-name "*snapshot*") :text (format nil "abc~%def~%ghi~%"))))
              (unwind-protect
                   (progn
-                    (tuatara.defaults::bank-lines b (cons 4 8))
+                    (tuatara.defaults::bank-span b (cons 4 8))
                     (destructuring-bind (banked text newline start end first)
                         (funcall (find-symbol "TEXT-AS-TAKEN" package) b)
                       (is equal '((4 . 8)) banked)
@@ -1457,7 +1474,7 @@ TUATARA: what a job of its own would take from a buffer before it starts.")
 
 (define-test (command names-for-work-on-text-exported)
   ;; what a package running a program over a buffer's text needs, in the API
-  (dolist (name '("BUFFER-TEXT" "ROPE-BYTES" "ROPE-OCTET" "ROPE-COPY-INTO" "ROPE-FIND-OCTET" "ROPE-LINE-START"
+  (dolist (name '("BUFFER-TEXT" "ROPE-OCTET-LENGTH" "ROPE-OCTET" "ROPE-COPY-INTO" "ROPE-FIND-OCTET" "ROPE-LINE-START"
                   "ROPE-LINE-END" "FIND-OR-MAKE-BUFFER" "COMPLETE-IN-MINIBUFFER" "JOB-PROGRAM-STARTED" "RUNNING-JOB"
                   "TAKE-IN-SOON" "WRITE-OCTETS" "FILE-SYSTEM-ERROR" "LENIENT-STRING" "MERGE-RANGES"
                   "SELECTION-RANGE" "BANKED-SPANS" "SPAN-LINE-COUNT" "BUFFER-BANKS"))
@@ -1528,6 +1545,35 @@ TUATARA: what a job of its own would take from a buffer before it starts.")
     (tuatara.command:run-editor f :setup #'tuatara.defaults:install-defaults)
     (is string= "pasted secret" answer)
     (true (every (lambda (c) (char= c (code-char 0))) pasted) "the pasted text wiped")))
+
+(define-test (command paste-into-a-prompt)
+  ;; C-y brings in what a password manager copied, without its line ending, and it stays out of the kill ring
+  (let ((answer nil)
+        (f (tuatara.frontend.fake:make-fake-frontend :width 40 :height 8)))
+    (setf (tuatara.frontend.fake:fake-clipboard f) (format nil "long secret~%"))
+    (tuatara.frontend.fake:fake-queue-action f (lambda () (setf answer (tuatara.command:read-password "Passphrase: "))))
+    (tuatara.frontend.fake:fake-queue-keys f "C-y RET")
+    (let ((editor (tuatara.command:run-editor f :setup #'tuatara.defaults:install-defaults)))
+      (is string= "long secret" answer)
+      (false (member "long secret" (tuatara.command:editor-kill-ring editor) :test #'equal))))
+  ;; a secret never comes from the kill ring
+  (let ((answer nil)
+        (f (tuatara.frontend.fake:make-fake-frontend :width 40 :height 8)))
+    (tuatara.frontend.fake:fake-queue-action
+     f (lambda ()
+         (push "killed" (tuatara.command:editor-kill-ring tuatara.command:*editor*))
+         (setf answer (tuatara.command:read-password "Passphrase: "))))
+    (tuatara.frontend.fake:fake-queue-keys f "C-y RET")
+    (tuatara.command:run-editor f :setup #'tuatara.defaults:install-defaults)
+    (is string= "" answer))
+  ;; any other prompt takes the clipboard, or the text killed last when there is none
+  (let ((answer nil)
+        (f (tuatara.frontend.fake:make-fake-frontend :width 40 :height 8)))
+    (setf (tuatara.frontend.fake:fake-clipboard f) "from the desk")
+    (tuatara.frontend.fake:fake-queue-action f (lambda () (setf answer (tuatara.command:read-string "Name: "))))
+    (tuatara.frontend.fake:fake-queue-keys f "C-y RET")
+    (tuatara.command:run-editor f :setup #'tuatara.defaults:install-defaults)
+    (is string= "from the desk" answer)))
 
 (define-test (command typed-passphrase-characters-wiped)
   ;; each character of a passphrase typed is left in the answer alone

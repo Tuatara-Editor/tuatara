@@ -444,7 +444,7 @@ runs PREVIOUS leaves (LINES-MATCHING), or of every record when it is NIL."
   (if (list-filtering-lines filtering)
       (< (if previous
              (runs-octets previous)
-             (tuatara.text:rope-bytes (tuatara.text:version-rope (list-filtering-source filtering))))
+             (tuatara.text:rope-octet-length (tuatara.text:version-rope (list-filtering-source filtering))))
          *search-filter-quick-characters*)
       (and (null (list-filtering-text filtering))
            (< (length (list-source-text (list-filtering-source filtering))) *search-filter-quick-characters*))))
@@ -469,7 +469,7 @@ nothing changed since, only more learnt of it (its lines counted)."
 each or as ENDS ends them (RECORD-ENDS: a CSV's header may hold a quoted
 line break): its start when it has none, its end when it has no more than
 that."
-  (let ((start 0) (total (tuatara.text:rope-bytes rope)))
+  (let ((start 0) (total (tuatara.text:rope-octet-length rope)))
     (dotimes (i header start)
       (setf start (min total (nth-value 1 (record-bounds rope start ends)))))))
 
@@ -502,7 +502,7 @@ carriage return and line feed (CRLF)) and where the line after it starts. FROM
 is a line's start at or before AT, from which the text is read: a line holding
 many matches is read once."
   (declare (type fixnum at from))
-  (let* ((total (tuatara.text:rope-bytes rope))
+  (let* ((total (tuatara.text:rope-octet-length rope))
          (first (tuatara.text:rope-find-line-end rope :start from))
          (start from) (newline first))
     (when (and first (< first at))
@@ -526,7 +526,7 @@ text before ran on to REACH, so a stretch starting at FROM has its lines
 matched up to there and its scan goes on from there. Nothing is decoded but
 where a regular expression is tried. A fourth value, the CARRY for the text
 after: when the last stretch's last match runs past its end, (END . REACH)."
-  (let* ((total (tuatara.text:rope-bytes rope))
+  (let* ((total (tuatara.text:rope-octet-length rope))
          (runs (make-array 16 :element-type 'fixnum :adjustable t :fill-pointer 0))
          (count 0) (looked 0) (onward nil)
          ;; with ENDS, the record walked to: its start (-1 before any), its text's end, the next one's start
@@ -609,7 +609,7 @@ longer than *REWRITE-LINE-LIMIT* octets on its first that many; with ENDS a
 record over several lines tried once, whole, its lines left or not with it.
 Reads a block of the text at a time, and makes nothing for a line that does
 not match."
-  (let* ((total (tuatara.text:rope-bytes rope))
+  (let* ((total (tuatara.text:rope-octet-length rope))
          (holder (list (make-string 256)))
          (runs (make-array 16 :element-type 'fixnum :adjustable t :fill-pointer 0))
          (count 0) (looked 0) (limit *rewrite-line-limit*) (since 0)
@@ -787,7 +787,7 @@ answers true. Counted on all but two cores, with EVERY on nine in ten."
 (defun all-records (rope header &optional ends)
   "Every record of ROPE as LINES-MATCHING takes stretches: from after its
 first HEADER records, ending as ENDS says (RECORDS-START), to its end."
-  (make-array 2 :element-type 'fixnum :initial-contents (list (records-start rope header ends) (tuatara.text:rope-bytes rope))))
+  (make-array 2 :element-type 'fixnum :initial-contents (list (records-start rope header ends) (tuatara.text:rope-octet-length rope))))
 
 (defun hidden-lines-bounds (rope runs crlf header &optional ends)
   "What to hide of ROPE (TUATARA.DISPLAY:HIDE-RANGES) so that only its first
@@ -797,7 +797,7 @@ line end of each line shown to the one ending the last line hidden after
 it, from the carriage return before a newline when carriage return and line
 feed (CRLF); the lines hidden at the very start, before any line shown, from
 the start to the first line shown. O(runs)."
-  (let* ((total (tuatara.text:rope-bytes rope))
+  (let* ((total (tuatara.text:rope-octet-length rope))
          (out (make-array (+ 2 (length runs)) :element-type 'fixnum :fill-pointer 0))
          (shown-end (records-start rope header ends)))
     (labels ((text-end-before (at)
@@ -840,7 +840,7 @@ many lines they hold."
                    (if window (tuatara.buffer:buffer-line-start buffer (tuatara.display:window-start window)) 0)))
          (deadline (screen-deadline)))
     (multiple-value-bind (runs count)
-        (lines-matching chain rope (make-array 2 :element-type 'fixnum :initial-contents (list top (tuatara.text:rope-bytes rope)))
+        (lines-matching chain rope (make-array 2 :element-type 'fixnum :initial-contents (list top (tuatara.text:rope-octet-length rope)))
                        (buffer-crlf-p buffer)
                        :ends (record-ends buffer)
                        :most (window-rows-of buffer)
@@ -982,7 +982,7 @@ wait."
 the text it narrows), or NIL."
   (let ((source (list-filtering-source filtering)))
     (typing-pause-left (if (list-filtering-lines filtering)
-                           (tuatara.text:rope-bytes (tuatara.text:version-rope source))
+                           (tuatara.text:rope-octet-length (tuatara.text:version-rope source))
                            (length (list-source-text source))))))
 
 (defun start-due-filter-job (buffer)
@@ -1735,7 +1735,7 @@ alone; nothing, \"whole record\" or $* for the whole line. Each column is
 offered with the first record's value beside it, by its name or by its
 number from 0 ($0, $1): a CSV or TSV by its separator, quotes taken off,
 named by its header; a log by its words, apart by spaces, named by its
-header when \\[toggle-list-header] makes its first line one; the hosts file
+header when \\[list-toggle-header] makes its first line one; the hosts file
 by address and name; the password file by user, password, uid, gid, info,
 home and shell; an environment file (.env) by name and value; a Python
 requirements file by name, version and markers; todo.txt by done,
@@ -1777,16 +1777,16 @@ window shows its text, scrolled as far to the side and coloured as it is below
 let it scroll away with the rest."
   (setf (tuatara.display:buffer-header-line buffer) (and on 'list-header-line)))
 
-(define-command toggle-list-header-lock ()
+(define-command list-toggle-header-lock ()
   "Keep the first line of a file of records, its header, at the top of the
 window as the rest scrolls under it, coloured as it is below; the same again
 lets it scroll away; with a count, kept when it is positive, let go when it
 is zero or less. A CSV's first line is its header; in a log and the other
-files of records \\[toggle-list-header] makes it one first.
+files of records \\[list-toggle-header] makes it one first.
 *LIST-HEADER-LOCK* keeps a header there wherever there is one."
   (let ((buffer (current-buffer)))
     (cond ((not (filters-hide-lines-p (buffer-major-mode buffer) buffer))
-           (message "Not a file of records (a CSV, a log): toggle-list-header-lock was not run"))
+           (message "Not a file of records (a CSV, a log): list-toggle-header-lock was not run"))
           ((not (list-header-p buffer))
            (message "No header: C-x / t makes the first line one"))
           (t (let ((on (switched-by-count (tuatara.display:buffer-header-line buffer))))
@@ -1795,13 +1795,13 @@ files of records \\[toggle-list-header] makes it one first.
 
 (defmethod mode-exit :before ((mode fundamental-mode) buffer)
   "A file of records leaving its mode: its search filters, its header lock and
-what \\[toggle-list-header] said of its first line are let go."
+what \\[list-toggle-header] said of its first line are let go."
   (when (filters-hide-lines-p mode buffer)
     (set-header-lock buffer nil)
     (drop-search-filters buffer)
     (setf (tuatara.buffer:buffer-local buffer :list-header) :mode)))
 
-(define-command toggle-list-header ()
+(define-command list-toggle-header ()
   "Take the first line of a file of records as its header, or as a record like
 the rest; the same again switches back; with a count, a header when it is
 positive, a record when it is zero or less. A header is always shown by
@@ -1813,7 +1813,7 @@ log's, a JSON Lines file's and the others' is a record. Filters set are
 worked out again at once."
   (let ((buffer (current-buffer)))
     (if (not (filters-hide-lines-p (buffer-major-mode buffer) buffer))
-        (message "Not a file of records (a CSV, a log): toggle-list-header was not run")
+        (message "Not a file of records (a CSV, a log): list-toggle-header was not run")
         (let ((on (switched-by-count (list-header-p buffer)))
               (filtering (list-filtering buffer)))
           (setf (tuatara.buffer:buffer-local buffer :list-header) on)
@@ -1857,7 +1857,7 @@ as it is, and so is what a set ([...]) or \\Q...\\E holds."
 
 (defun light-search-filters (list buffer)
   "Light in BUFFER the matches of the filters narrowing LIST, as the matches
-of a search are lit after it ends (\\[toggle-search-highlight] takes them
+of a search are lit after it ends (\\[search-toggle-highlight] takes them
 away and back): all of them at once, each ignoring case as it does, its
 groups its own (\\1 its first). Those that hide what they match, and those
 that look at one column of a record or of a table, light nothing. An empty

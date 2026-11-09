@@ -5,7 +5,7 @@
 # makes itself (tools/fuzz-pdf.lisp), from SEED (the time unless given, or
 # $FUZZ_SEED), said with the result, so that a failure is made again with
 # --seed; each read by every reader of lisp/viewers/pdf-reader.lisp and by
-# M-x file-metadata's PDF part. Fails (exit 1) on the first error escaping
+# M-x show-file-metadata's PDF part. Fails (exit 1) on the first error escaping
 # a reader, a reader running past DEADLINE seconds (10 unless given) on one
 # file, or more than 1 GB of heap left in use; the file that did it is kept
 # as build/fuzz/pdf-failed-SEED-ROUND.pdf. The run is held to 30 minutes of

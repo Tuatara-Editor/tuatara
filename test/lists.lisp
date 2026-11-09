@@ -494,7 +494,7 @@ struct S {
            (let* ((line (format nil "plain words on a line~%"))
                   (rope (tuatara.text:string->rope
                          (with-output-to-string (o) (dotimes (i (floor (* megabytes 1024 1024) (length line))) (write-string line o)))))
-                  (size (tuatara.text:rope-bytes rope)))
+                  (size (tuatara.text:rope-octet-length rope)))
              (is eq nil (tuatara.defaults::line-opener-after rope 0))
              (is eq nil (tuatara.defaults::line-opener-before rope size))
              (+ (least-bytes (lambda () (tuatara.defaults::line-opener-after rope 0)) 3)

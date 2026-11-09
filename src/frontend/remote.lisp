@@ -120,6 +120,14 @@ another build, or refuses the connection, saying why."
                              :other (shown-words other)))
     line))
 
+(defun put-exit (box code words)
+  "Add to BOX the message that tells a client to exit with CODE, from 0 to 255,
+saying WORDS."
+  (let ((at (begin-message box :exit)))
+    (put-number box code 1)
+    (put-text box words 1024)
+    (end-message box at)))
+
 (defun refuse-connection (fd words)
   "Tell the client at the other end of the new connection FD, which has said
 nothing yet, that it is refused, and why, WORDS; then close FD."
@@ -274,17 +282,19 @@ reading the client's events from it (MAKE-REMOTE-FRONTEND)."))
 unset."
   (loop for (name) in *display-settings* collect (if (boundp name) (symbol-value name) :unset)))
 
-(defun make-remote-frontend (fd &key queue)
+(defun make-remote-frontend (fd &key queue admit)
   "A frontend whose screen is the client's at the other end of the local
 socket FD, once both have said hello, the client been told how its screen is
 to be shown (*DISPLAY-SETTINGS*), and it has said what its screen is and
 what it asks for (REMOTE-REQUEST); its events go into QUEUE, the queue of
-the editor's other frames, or a queue of its own. Signals REMOTE-REFUSED
-when the client is of another build or says nothing it should; FD is then
-the caller's to close. A client may take up to *HELLO-SECONDS* to say hello,
-so this is called on the thread taking connections, never the editor's, and
-that thread bounds how many are being greeted at once. The one descriptor a
-client may pass, its standard input with its attach, is the frontend's
+the editor's other frames, or a queue of its own. ADMIT, a function of the
+request, may give words why this client is not taken: it is told them as it
+ends, before anything it sends is read. Signals REMOTE-REFUSED when the
+client is refused so, is of another build or says nothing it should; FD is
+then the caller's to close. A client may take up to *HELLO-SECONDS* to say
+hello, so this is called on the thread taking connections, never the editor's,
+and that thread bounds how many are being greeted at once. The one descriptor
+a client may pass, its standard input with its attach, is the frontend's
 request's to close once taken."
   (let ((remote (make-instance 'remote-frontend :fd fd :queue (or queue (make-event-queue))))
         (inbox (make-inbox fd :editor :deadline (tuatara.runtime:deadline-in *hello-seconds*)))
@@ -311,7 +321,13 @@ request's to close once taken."
                         (unless (= (length (inbox-descriptors inbox)) (if (request-standard-input request) 1 0))
                           (malformed "~d descriptors passed with an attach" (length (inbox-descriptors inbox))))
                         (setf (request-standard-input request) (pop (inbox-descriptors inbox))
-                              (remote-request remote) request)))
+                              (remote-request remote) request)
+                        (let ((why (and admit (funcall admit request))))
+                          (when why
+                            (let ((box (make-outbox)))
+                              (put-exit box 1 why)
+                              (send-outbox fd box 1))
+                            (error 'remote-refused :words why)))))
              (malformed-message (condition)
                (error 'remote-refused :words (format nil "The client's attach: ~a" (malformed-message-reason condition)))))
            (setf greeted t))
@@ -538,10 +554,7 @@ after the names they use; a face whose name has no number (past the
 while its client takes it, the client told to exit, and its socket closed."
   (sb-thread:with-mutex ((remote-lock f))
     (unless (remote-ended f)
-      (let* ((box (remote-unsent f)) (at (begin-message box :exit)))
-        (put-number box (max 0 (min 255 (remote-exit-code f))) 1)
-        (put-text box (or (remote-exit-words f) "") 1024)
-        (end-message box at)))
+      (put-exit (remote-unsent f) (max 0 (min 255 (remote-exit-code f))) (or (remote-exit-words f) "")))
     (setf (remote-closing f) t)
     (sb-thread:condition-broadcast (remote-moved f)))
   ;; what is left is sent while the client takes it; then both threads end with the socket

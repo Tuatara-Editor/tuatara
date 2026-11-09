@@ -163,7 +163,7 @@ it reads being the text as it was when it was taken."
 
 (defun buffer-size (buffer)
   "Number of octets in BUFFER."
-  (tuatara.text:rope-bytes (buffer-text buffer)))
+  (tuatara.text:rope-octet-length (buffer-text buffer)))
 
 (defun buffer-string (buffer &key (start 0) (end (buffer-size buffer)))
   "BUFFER's text from byte START below END as a string. The whole text by
@@ -258,8 +258,8 @@ mark, ordered, or NIL when no mark is set."
 (defun check-position (buffer byte)
   "Signal an error unless BYTE is a character boundary inside BUFFER."
   (let ((rope (buffer-text buffer)))
-    (unless (and (typep byte 'fixnum) (<= 0 byte (tuatara.text:rope-bytes rope)))
-      (refuse "Position ~a is outside buffer ~s (0..~a)." byte (buffer-name buffer) (tuatara.text:rope-bytes rope)))
+    (unless (and (typep byte 'fixnum) (<= 0 byte (tuatara.text:rope-octet-length rope)))
+      (refuse "Position ~a is outside buffer ~s (0..~a)." byte (buffer-name buffer) (tuatara.text:rope-octet-length rope)))
     (unless (tuatara.text:char-boundary-p rope byte)
       (refuse "Position ~a in buffer ~s is inside a character." byte (buffer-name buffer)))))
 
@@ -610,7 +610,7 @@ or not;
 while a command runs in a narrowed BUFFER an edit reaching outside the part shown
 (BUFFER-START, BUFFER-END) is refused, unless inside WITH-NARROWING-LIFTED."
   (check-position buffer byte)
-  (if (and (tuatara.text:rope-p text) (> (tuatara.text:rope-bytes text) *large-edit-octets*))
+  (if (and (tuatara.text:rope-p text) (> (tuatara.text:rope-octet-length text) *large-edit-octets*))
       (buffer-splice buffer byte byte text)
       (let ((octets (text-octets text)))
         (if (zerop (length octets))
@@ -628,11 +628,11 @@ narrowed.
 Returns the offset just after the text put in."
   (check-position buffer start) (check-position buffer end)
   (when (< end start) (rotatef start end))
-  (check-hex-view-size buffer (- (if rope (tuatara.text:rope-bytes rope) 0) (- end start)))
+  (check-hex-view-size buffer (- (if rope (tuatara.text:rope-octet-length rope) 0) (- end start)))
   (check-within-narrowing buffer start end)
   (ensure-indexed buffer)
   (let* ((old (buffer-text buffer))
-         (length (if rope (tuatara.text:rope-bytes rope) 0))
+         (length (if rope (tuatara.text:rope-octet-length rope) 0))
          (new (if rope (tuatara.text:splice-rope old start end rope) (tuatara.text:splice-rope old start end)))
          (shift (- length (- end start))))
     (buffer-swap-text buffer new
@@ -666,13 +666,13 @@ offset just after ROPE; NIL, nothing done, for no SPANS."
                  (refuse "The spans of a splice must be in order and apart: ~a." span))
                (setf before (cdr span)))
          spans))
-  (check-hex-view-size buffer (- (if rope (tuatara.text:rope-bytes rope) 0)
+  (check-hex-view-size buffer (- (if rope (tuatara.text:rope-octet-length rope) 0)
                                  (reduce #'+ spans :key (lambda (span) (- (cdr span) (car span))))))
   (check-within-narrowing buffer (car (elt spans 0)) (cdr (elt spans (1- (length spans)))))
   (ensure-indexed buffer)
   (let* ((spans (coerce spans 'simple-vector))
          (n (length spans))
-         (length (if rope (tuatara.text:rope-bytes rope) 0))
+         (length (if rope (tuatara.text:rope-octet-length rope) 0))
          (shift (make-array (1+ n) :initial-element 0))   ; how far the text after span I-1 moves
          (new (buffer-text buffer)))
     (loop for i from 0 below n
@@ -727,7 +727,7 @@ while a command runs in a narrowed BUFFER an edit reaching outside the part show
   (check-position buffer start) (check-position buffer end)
   (when (< end start) (rotatef start end))
   (if (or (> (- end start) *large-edit-octets*)
-          (and (tuatara.text:rope-p text) (> (tuatara.text:rope-bytes text) *large-edit-octets*)))
+          (and (tuatara.text:rope-p text) (> (tuatara.text:rope-octet-length text) *large-edit-octets*)))
       (buffer-splice buffer start end (text-rope text))
       (let ((octets (text-octets text)))
         (aref (buffer-edit buffer (vector (tuatara.text:make-edit start end (if (plusp (length octets)) octets nil)))) 0))))
@@ -766,7 +766,7 @@ whole text changed first, and may refuse it. Returns the batch."
 putting the change on the undo stack; return its batch."
   (when (buffer-read-only-p buffer)
     (refuse "Buffer ~a is read-only." (buffer-name buffer)))
-  (check-hex-view-size buffer (- (tuatara.text:rope-bytes rope) (buffer-size buffer)))
+  (check-hex-view-size buffer (- (tuatara.text:rope-octet-length rope) (buffer-size buffer)))
   (run-before-edit buffer :all)
   (let ((batch (commit-swap-without-record buffer rope forward backward)))
     (note-new-content buffer batch)
@@ -1079,7 +1079,7 @@ whole text, or the changes carried over do not lead to FINAL; true otherwise."
                   (when (plusp (length edits)) (carry-pieces-past pieces forward edits))
                   (push made batches))))
             (push batches groups)))
-        (when (= (tuatara.text:rope-bytes text) (tuatara.text:rope-bytes final))
+        (when (= (tuatara.text:rope-octet-length text) (tuatara.text:rope-octet-length final))
           (let* ((table (buffer-batch-contents buffer))
                  (began (let ((oldest (and later (car (last (car (last later)))))))
                           (and oldest (car (gethash oldest table)))))
@@ -1233,7 +1233,7 @@ them, and the carriage returns it ends with newlines, as the one after:
 TEXT ends as many lines as it has line ends. TEXT itself when nothing
 joins."
   (let* ((rope (buffer-text buffer))
-         (size (tuatara.text:rope-bytes rope))
+         (size (tuatara.text:rope-octet-length rope))
          (before (and (plusp at) (tuatara.text:rope-octet rope (1- at))))
          (after (and (< at size) (tuatara.text:rope-octet rope at)))
          (n (length text)))
@@ -1295,7 +1295,7 @@ a rope, too large for the system clipboard, goes in as it is."
                          (t (lf-newlines kill)))))
              (if at (unjoined-line-ends buffer at text) text)))))
 
-(defun detect-line-ending (rope &key (start 0) (end (tuatara.text:rope-bytes rope)))
+(defun detect-line-ending (rope &key (start 0) (end (tuatara.text:rope-octet-length rope)))
   "How the lines of ROPE's text from START below END end, judged by its first
 line end in its first 64 KB: :CRLF when it is a newline a carriage return
 comes before, :CR when it is a carriage return alone, else :LF."
@@ -1386,7 +1386,7 @@ line numbers not needed; NIL when LINE starts more than LIMIT octets in. For a
 text whose lines are still being counted: a line near the start is found at
 once. The text is read a block of a megabyte at a time."
   (let* ((rope (buffer-text buffer))
-         (size (tuatara.text:rope-bytes rope))
+         (size (tuatara.text:rope-octet-length rope))
          (last 0) (n 0))
     (block found
       (tuatara.text:map-line-slices (lambda (start &rest others)

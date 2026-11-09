@@ -122,7 +122,7 @@ TEXT has none."
 its last *FILE-LOCAL-TAIL* characters, and the octet they begin at, as two
 values."
   (let* ((rope (tuatara.buffer:buffer-text buffer))
-         (size (tuatara.text:rope-bytes rope))
+         (size (tuatara.text:rope-octet-length rope))
          (from (tuatara.text:rope-char-start rope (max 0 (- size (* 4 *file-local-tail*)))))
          (text (tuatara.text:rope-string rope :start from :end size))
          (cut (max 0 (- (length text) *file-local-tail*))))
@@ -132,7 +132,7 @@ values."
   "The settings BUFFER's file names for itself (FIRST-LINE-SETTINGS, then
 END-BLOCK-SETTINGS), each (NAME . VALUE)."
   (let* ((rope (tuatara.buffer:buffer-text buffer))
-         (head (tuatara.text:rope-string rope :start 0 :end (tuatara.text:rope-char-start rope (min (tuatara.text:rope-bytes rope) 1024))))
+         (head (tuatara.text:rope-string rope :start 0 :end (tuatara.text:rope-char-start rope (min (tuatara.text:rope-octet-length rope) 1024))))
          (lines (uiop:split-string head :separator '(#\Newline)))
          (first (if (uiop:string-prefix-p "#!" (first lines)) (second lines) (first lines))))
     (append (and first (first-line-settings first))

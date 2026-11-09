@@ -420,18 +420,18 @@ Lesson 8 -- banking, which was donkey.el's own idea
 Most editors make you copy one stretch at a time.  Tuatara lets you set
 aside lines from anywhere in the buffer and act on all of them at once.
 
-    \[bank-selected-lines] bank this line, or every line a selection touches
+    \[bank-lines] bank this line, or every line a selection touches
         (press it again on a banked line to take it back)
-        (\`C-u 3' \[bank-selected-lines] banks three lines, as selecting them would)
-    \[unbank-line] unbank this line     \[unbank-section] unbank the whole run
-    \[clear-banked-lines] discard every bank
+        (\`C-u 3' \[bank-lines] banks three lines, as selecting them would)
+    \[bank-release-line] unbank this line     \[bank-release-section] unbank the whole run
+    \[bank-clear] discard every bank
 
 Banked lines stay highlighted while you carry on moving around.  When you
 press \[copy-selection-or-char] or \[delete-selection-or-char], every banked line is taken at once, as a single
 piece, in the order they appear in the buffer -- and \[yank-over-selection] swaps the whole set
 in for whatever you copied.
 
->> Bank the first and third shopping lines below with \[bank-selected-lines], then press \[copy-selection-or-char].
+>> Bank the first and third shopping lines below with \[bank-lines], then press \[copy-selection-or-char].
    The message reads "Copied 2 lines".  Now put the cursor on the
    (paste here) line, press \[select-lines] to select it, and press \[yank-over-selection]: both
    banked lines arrive at once, and the line you had selected is gone.
@@ -634,7 +634,7 @@ ring, so a rectangle copy on its own leaves \[yank-over-selection] with nothing 
    ----> col one
    ----> col two
 
->> Now bank the "keep" line with \[bank-selected-lines], draw a rectangle over the first
+>> Now bank the "keep" line with \[bank-lines], draw a rectangle over the first
    three characters of both "col" lines, and press \[copy-selection-or-char].  The rectangle
    is copied -- and the "keep" line is STILL highlighted.  Nothing was
    spent.
@@ -656,9 +656,9 @@ still in its store.
 
 Acting on banked lines does spend them: \[copy-selection-or-char], \[delete-selection-or-char] and
 \[yank-over-selection] each empty the bank as they use it, the way any selection is
-consumed by the command that acts on it.  \[clear-banked-lines] is
+consumed by the command that acts on it.  \[bank-clear] is
 the one key that clears banks WITHOUT using them, and
-\[unbank-line] drops a single line.
+\[bank-release-line] drops a single line.
 
 
 Lesson 12 -- wrapping a selection
@@ -746,7 +746,7 @@ looked up the way a wrap key looks it up, so a pair stays a pair.
 That is the whole of it: two keys for one character, a selection first
 if you want it wrapped.  To type MANY of them, turn digraphs on with
 \[digraph-input-mode] and in INSERT state type \`&' and the two keys as you go;
-\[input-method-off] turns them off again, \[toggle-input-method] off and on.
+\[deactivate-input-method] turns them off again, \[toggle-input-method] off and on.
 
 
 Lesson 14 -- editing every match at once
@@ -858,7 +858,7 @@ Banked lines, from Lesson 8, reach lines that are not next to each
 other.  Every banked line is searched, and opening the split spends the
 bank, as \[copy-selection-or-char] and \[delete-selection-or-char] do.
 
->> Bank the two keep lines below with \[bank-selected-lines] on each, leaving the
+>> Bank the two keep lines below with \[bank-lines] on each, leaving the
    skip lines alone.  Press \[split-selection], type : and \`RET', then \`c' and
    type \`SPC' and =.  Only the banked lines change, and the bank is gone.
    \`C-g'.
@@ -1012,8 +1012,8 @@ selected it does nothing.
    ----> lily
 
 \[delete-selection-or-char] and \[kill-line] delete at every cursor and keep the
-cursors, \`V' selects every cursor's line, and \[bank-selected-lines] and
-\[unbank-line] bank and unbank those lines.
+cursors, \`V' selects every cursor's line, and \[bank-lines] and
+\[bank-release-line] bank and unbank those lines.
 
 The case keys work at the cursors too: \`M-u' upcases each selection,
 or the word at each cursor, and \`M-l' and \`M-c' lower it and

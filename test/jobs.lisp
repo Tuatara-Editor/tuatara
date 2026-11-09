@@ -47,14 +47,21 @@ the jobs and drops those marked.")
       (let ((f (run-keys "r r % a / b RET C-x b o t h e r C-j" :text "a a a" :width 150)))
         (true (processing-shown f "TUATARA[" "*scratch*"))
         ;; faint in the other, in the same place
-        (true (tuatara.frontend.fake:fake-frame-showing f "TUATARA[" " P [-] other"))
+        (true (tuatara.frontend.fake:fake-frame-showing f "TUATARA[" " PD [-] other"))
         (false (processing-shown f "TUATARA[" "other"))))))
+
+(define-test (jobs daemon-sign)
+  (is equal '("D" :mode-line-sign-idle) (tuatara.defaults::daemon-mode-line nil nil))
+  (let ((tuatara.defaults::*daemon* t))
+    (is equal '("D" :mode-line-sign) (tuatara.defaults::daemon-mode-line nil nil)))
+  (let ((tuatara-user:*daemon-indicator* nil))
+    (false (tuatara.defaults::daemon-mode-line nil nil))))
 
 (define-test (jobs sign-and-keys)
   ;; P stands first, faint while nothing runs, with or without directories kept read;
   ;; NIL shows nothing; C-x j lists the jobs, C-x J stops the buffer's
   (let ((f (run-keys "" :width 80)))
-    (true (tuatara.frontend.fake:fake-frame-showing f " P [-] *scratch*"))
+    (true (tuatara.frontend.fake:fake-frame-showing f " PD [-] *scratch*"))
     (false (processing-shown f)))
   (let ((tuatara-user:*processing-indicator* nil))
     (let ((f (run-keys "" :width 80)))

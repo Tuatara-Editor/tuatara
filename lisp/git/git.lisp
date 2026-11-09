@@ -1414,7 +1414,7 @@ ignored are folded at first, and read once opened."
           ((or (null key) (eq (car key) :ignored))
            (let ((section (list-section-at status)))
              (if section
-                 (toggle-list-section status section)
+                 (list-toggle-section status section)
                  (message "No file on this line"))))
           ((gethash key shown) (remhash key shown) (remhash key limits) (git-status-render status))
           ((eq (second entry) :untracked) (message "Not tracked: no changes to show"))
@@ -1468,7 +1468,7 @@ fold or unfold the section, as in every list in sections."
       (:commit (git-show-commit top (second entry)))
       (:stash (git-show-stash top (second entry)))
       (:submodule (git-show-status (concatenate 'string top (string-right-trim "/" (second entry)) "/")))
-      (:section (toggle-list-section (current-buffer) (second entry)))
+      (:section (list-toggle-section (current-buffer) (second entry)))
       (t (message "No file or commit on this line")))))
 
 (defun git-line-of (buffer position)
@@ -1595,7 +1595,7 @@ however it ended, else the work only reads."
                                                                                          :limit *git-shown-limit*)
                                                         'tuatara.text:octets))))
                  (lambda (rope)
-                   (if (and empty (zerop (tuatara.text:rope-bytes rope)))
+                   (if (and empty (zerop (tuatara.text:rope-octet-length rope)))
                        (message "~a" empty)
                        (pop-to-buffer (git-text-buffer name top rope :mode mode) :other t)))
                  :after after :quiet (null after)))

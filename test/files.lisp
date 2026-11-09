@@ -313,7 +313,7 @@ buffer. Returns the slice."
       (let ((mapping (with-visited (b path) (tuatara.buffer:buffer-mapping b))))
         (false (tuatara.text::mapping-live mapping)))
       ;; copying a large file's text, killing its buffer and pasting elsewhere
-      (let ((tuatara-user:*clipboard-max-size* 8))
+      (let ((tuatara-user:*clipboard-size-limit* 8))
         (dolist (splice (list nil 10))
           (let ((tuatara.buffer:*large-edit-octets* (or splice tuatara.buffer:*large-edit-octets*)))
             (multiple-value-bind (f editor) (run-keys "C-x h M-w C-x k C-x b k e p t RET C-y" :file (namestring path))

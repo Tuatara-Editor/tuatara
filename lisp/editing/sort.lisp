@@ -975,7 +975,7 @@ unless the region changed meanwhile or the buffer may no longer take it
             (message "The lines changed while ~(~a~) them; nothing was changed" (sort-job-words job)))
            ((result-refused-p buffer (format nil "the result of ~(~a~)" (sort-job-words job))
                               (- (let ((result (sort-job-result job)))
-                                   (if (tuatara.text:rope-p result) (tuatara.text:rope-bytes result) (length result)))
+                                   (if (tuatara.text:rope-p result) (tuatara.text:rope-octet-length result) (length result)))
                                  (- (sort-job-region-end job) (sort-job-region-start job)))))
            (t
              (let* ((start (sort-job-region-start job)) (end (sort-job-region-end job))
@@ -989,7 +989,7 @@ unless the region changed meanwhile or the buffer may no longer take it
                         (result (if (vectorp result) (tuatara.text:make-rope result) result)))
                     (flet ((spliced (rope from to)
                              ;; ROPE with the region FROM below TO in it sorted, and maps to and from it
-                             (let ((delta (- (tuatara.text:rope-bytes result) (- to from))))
+                             (let ((delta (- (tuatara.text:rope-octet-length result) (- to from))))
                                (values (tuatara.text:splice-rope rope from to result)
                                        (lambda (p bias) (declare (ignore bias)) (cond ((< p from) p) ((>= p to) (+ p delta)) (t from)))
                                        (lambda (p bias) (declare (ignore bias)) (cond ((< p from) p) ((>= p (+ to delta)) (- p delta)) (t from)))))))
@@ -1100,7 +1100,7 @@ the command in messages."
          (memo (make-record-memo))
          (first (if (list-header-p buffer) (records-start rope 1 ends) 0))
          ;; the whole records the lines touch
-         (low (max first (line-record memo rope start (min (tuatara.text:rope-bytes rope) (1+ (tuatara.text:rope-line-end rope start))) ends)))
+         (low (max first (line-record memo rope start (min (tuatara.text:rope-octet-length rope) (1+ (tuatara.text:rope-line-end rope start))) ends)))
          (high (max low (nth-value 2 (line-record memo rope (tuatara.text:rope-line-start rope (max start (1- end))) end ends)))))
     (if (>= low high)
         (message "No records to sort but the header: ~(~a~) was not run" (sort-command-name command))
@@ -1592,7 +1592,7 @@ a JSON Lines file and the others *LINE-RECORD-MODES* names
 rest, in a file of records, a line each: a CSV or TSV, a log, a JSON Lines
 file, todo.txt and the others *LINE-RECORD-MODES* names, the column asked
 for first as \\[search-filter-show-records] asks. The lines the selection touches, or
-every record; a header line always stays (\\[toggle-list-header]). Smart case, as in search. One step to undo; a large file
+every record; a header line always stays (\\[list-toggle-header]). Smart case, as in search. One step to undo; a large file
 is filtered in the background. \\[search-filter-show-records] hides the others
 instead, deleting nothing."
   (if (records-file-p (current-buffer))

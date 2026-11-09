@@ -143,7 +143,7 @@ narrowed buffer, the lines of the part shown, cut at its edges."
             (values (tuatara.display:visible-line-start buffer low :hidden nil) (line-after buffer last))
             (let* ((rope (tuatara.buffer:buffer-text buffer))
                    (newline (tuatara.text:rope-find-line-end rope :start last)))
-              (values (tuatara.text:rope-line-start rope low) (if newline (1+ newline) (tuatara.text:rope-bytes rope)))))
+              (values (tuatara.text:rope-line-start rope low) (if newline (1+ newline) (tuatara.text:rope-octet-length rope)))))
       (values (tuatara.buffer:within-narrowing buffer from) (tuatara.buffer:within-narrowing buffer to)))))
 
 (defun whole-lines-span (buffer start end)
@@ -245,7 +245,7 @@ fold hides, but not all of it, is not deleted: the fold is shown instead."
 characters at point, which are not saved: a character under the cursor is a
 typo being fixed, not a cut. A line selection is widened to whole lines.
 A rectangle goes to the rectangle store instead, where \\<normal>\\[yank-rectangle] pastes it from.
-With lines banked (\\[bank-selected-lines]), they are killed, with the lines of any selection, as one.
+With lines banked (\\[bank-lines]), they are killed, with the lines of any selection, as one.
 What would take part of the text a fold hides, but not all of it, is not
 deleted: the fold is shown instead, and the key pressed again deletes."
   (cond ((rectangle-live-p (current-buffer)) (delete-selected-rectangle))
@@ -258,7 +258,7 @@ A line selection is widened to whole lines, the last line given its line
 end when the text ends without one, so that it pastes as a line of its own. At the end of the buffer
 there is nothing to copy. A rectangle is copied to the rectangle store, where
 \\<normal>\\[yank-rectangle] pastes it from; the kill ring and the system clipboard are left alone.
-With lines banked (\\[bank-selected-lines]), they are copied, with the lines of any selection, as
+With lines banked (\\[bank-lines]), they are copied, with the lines of any selection, as
 one. The lines search filters hide (\\[search-filter-regex]) are left out, in
 a rectangle too: only the lines shown are copied."
   (when (rectangle-live-p (current-buffer))
@@ -285,7 +285,7 @@ its lines ending as the buffer's do; what another program copied to the system
 clipboard since counts as the last kill. A line selection is replaced as whole lines: a kill that ends
 with a newline slots in as complete lines, one that does not keeps the taken
 newline. Not over a rectangle, whose shape a kill does not have: \\<normal>\\[yank-rectangle]
-pastes the rectangle store. Lines banked (\\[bank-selected-lines]) are a selection too: the paste
+pastes the rectangle store. Lines banked (\\[bank-lines]) are a selection too: the paste
 replaces them, with the lines of any selection made. A rectangle killed or
 copied with \\[kill-region] or \\[kill-ring-save] goes in as a block, as
 \\[yank] puts it, each row COUNT times across. What would replace part of the

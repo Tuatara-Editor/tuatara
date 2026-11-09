@@ -162,7 +162,7 @@ always in the hex view, nothing, so that it changes no text."
     (unless (hex-view-here-p)
       (run-hook-until-done *enter-dwim-functions* buffer))))
 
-(define-command tuatara-normal-inert ()
+(define-command tuatara-normal-inert (:interactive nil)
   "Do nothing: NORMAL state keeps BACKSPACE and DELETE inert in editing buffers."
   nil)
 
@@ -276,8 +276,8 @@ state, while typing. Nothing in a buffer modal editing stays out of."
     ("v" start-selection) ("V" select-lines) ("%" select-whole-buffer) ("M" mark-run-toggle)
     ("m v" rectangle-mark-mode)
     ("f" split-selection) ("t" add-cursor-below) ("T" add-cursor-above)
-    ("m l" bank-selected-lines) ("m u" unbank-line) ("m U" unbank-section)
-    ("m DEL" clear-banked-lines) ("m <delete>" clear-banked-lines)
+    ("m l" bank-lines) ("m u" bank-release-line) ("m U" bank-release-section)
+    ("m DEL" bank-clear) ("m <delete>" bank-clear)
     ("m I" select-sexp-inside) ("m A" select-sexp) ("C" toggle-comment-lines)
     ("m w" select-word) ("m W" select-symbol) ("m b" select-word-backward)
     ("m B" select-symbol-backward) ("m s" select-sentence) ("m S" select-sentence-backward)

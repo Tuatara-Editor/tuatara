@@ -16,6 +16,6 @@ pattern of % specifiers, and dates and times read where a text writes them.")
            #:+day-nanoseconds+ #:ascii-digit #:fixed-digits #:short-digits #:char-at-p #:hour-minute-at #:meridiem-at #:meridiem-hour #:time-at #:time-range-at #:find-time-range
            #:read-time-range #:time-range-text #:date-time-text #:clock-at #:zone-at
            #:written-date-at #:date-time-at #:utc-moment #:moment< #:moment-after
-           #:time-zone #:time-zone-p #:time-zone-name #:time-zone-rule #:fixed-time-zone #:ruled-time-zone #:zone-named #:zone-name-p #:system-zone-name #:system-time-zone
+           #:time-zone #:time-zone-p #:time-zone-name #:time-zone-rule #:fixed-time-zone #:ruled-time-zone #:time-zone-named #:time-zone-name-p #:system-time-zone-name #:system-time-zone
            #:zone-offset #:zone-local-time #:zone-universal-time #:read-zone-rule #:rule-changes #:rule-day #:*zoneinfo-largest*
            #:zone-rule #:make-zone-rule #:zone-rule-standard-name #:zone-rule-standard-offset #:zone-rule-daylight-name #:zone-rule-daylight-offset #:zone-rule-to-daylight #:zone-rule-to-standard))

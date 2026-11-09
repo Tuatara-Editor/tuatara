@@ -69,10 +69,10 @@ PLACE-BUFFERS call, made after the defaults."
     ;; the right window, not selected, shows its point as a cursor the typing does not go to
     (is equal '((19 20 :vertical-border) (20 21 :cursor-inactive)) (aref (tuatara.frontend.fake:fake-spans f) 0))
     ;; each window's mode line in its face, the sign of work, P, faint in each
-    (is equal '((0 12 :mode-line) (12 13 (:mode-line-sign-idle :mode-line)) (13 20 :mode-line)
-                (20 32 :mode-line-inactive) (32 33 (:mode-line-sign-idle :mode-line-inactive)) (33 40 :mode-line-inactive))
+    (is equal '((0 12 :mode-line) (12 14 (:mode-line-sign-idle :mode-line)) (14 20 :mode-line)
+                (20 32 :mode-line-inactive) (32 34 (:mode-line-sign-idle :mode-line-inactive)) (34 40 :mode-line-inactive))
         (aref (tuatara.frontend.fake:fake-spans f) 6))
-    (is string= " TUATARA[N] P [-] *s TUATARA[N] P [-] *s" (tuatara.frontend.fake:fake-screen-line f 6))))
+    (is string= " TUATARA[N] PD [-] * TUATARA[N] PD [-] *" (tuatara.frontend.fake:fake-screen-line f 6))))
 
 (define-test (windows own-point)
   ;; the upper window moves; the lower one keeps its point, line and mode line

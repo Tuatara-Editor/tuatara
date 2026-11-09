@@ -489,7 +489,7 @@ what is done there on a line shorter than that column is done at its end."
         (unless (eq new :end)
           (setf (virtual-left virtual) new (virtual-right virtual) new))))))
 
-(define-command cursors-past-limit-refuse ()
+(define-command cursors-past-limit-refuse (:interactive nil)
   "Say what cursors past their limit answer, leaving them as they are: those out
 of sight move only alike (\\<*virtual-cursor-keymap*>\\[cursors-move-past-limit]
 and the line's start and end), and a motion that would take each its own way,
@@ -968,7 +968,7 @@ the bank is there for \\<normal>\\[copy-selection-or-char], \\[delete-selection-
          (spans (cursor-line-spans split))
          (unbanking (every (lambda (span) (lines-banked-p b span)) spans)))
     (setf (split-repeat split) (list :verb 'cursors-bank nil))
-    (dolist (span spans) (if unbanking (unbank-lines b span) (bank-lines b span)))
+    (dolist (span spans) (if unbanking (bank-release-span b span) (bank-span b span)))
     (message "~:[Banked~;Unbanked~] ~a (~d banked in all)" unbanking (places-phrase split (length spans))
              (banked-line-count b))))
 
@@ -976,7 +976,7 @@ the bank is there for \\<normal>\\[copy-selection-or-char], \\[delete-selection-
   "Take every cursor's line out of the bank, leaving every other bank alone."
   (let* ((split (live-split)) (b (split-buffer split)))
     (setf (split-repeat split) (list :verb 'cursors-unbank nil))
-    (dolist (span (cursor-line-spans split)) (unbank-lines b span))
+    (dolist (span (cursor-line-spans split)) (bank-release-span b span))
     (message "Unbanked at ~a (~d banked in all)" (places-phrase split (length (split-places split)))
              (banked-line-count b))))
 
@@ -1116,7 +1116,7 @@ back and forward. The run's keys that would leave the line refuse."
           (arm-cursors split *cursor-run-keymap*)
           (settle-cursors split)))))
 
-(define-command cursors-run-refuse ()
+(define-command cursors-run-refuse (:interactive nil)
   "Refuse a mark run key the cursors do not run, and keep the run: a cursor stays on its line."
   (message "~a is not run at the cursors: each stays on its line"
            (tuatara.frontend:key-sequence-description *this-command-keys*)))
@@ -1183,12 +1183,13 @@ answer again."
     (copy-selection-or-char . cursors-copy)
     (yank-over-selection . cursors-yank)
     (kill-line . cursors-kill-line)
-    (bank-selected-lines . cursors-bank)
-    (unbank-line . cursors-unbank)
+    (bank-lines . cursors-bank)
+    (bank-release-line . cursors-unbank)
     (tuatara-open-below . cursors-open-below)
     (tuatara-open-above . cursors-open-above)
     (indent-selection-or-line . cursors-indent)
     (toggle-comment-lines . cursors-comment)
+    (toggle-comment-lines-ret . cursors-comment)
     (repeat . cursors-repeat)
     (undo . cursors-undo)
     (redo . cursors-redo)

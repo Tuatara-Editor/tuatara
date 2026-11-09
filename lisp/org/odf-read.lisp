@@ -261,7 +261,7 @@ within reason, each cell taken from the room left for the note
 (defun odf-read-table (table out)
   "Write TABLE, a table of OpenDocument text or a slide, to OUT as an Org
 table, a rule under its first row, each cell no longer than
-*OFFICE-VALUE-LONGEST* characters; a cell joined over others written with
+*OFFICE-VALUE-LENGTH-LIMIT* characters; a cell joined over others written with
 empty ones after it, so that the columns line up."
   (let ((rows (loop for row in (odf-table-rows table)
                     collect (loop for cell in row
@@ -359,7 +359,7 @@ written when it shows none."
 (defun odf-sheet-write (table out left)
   "Write to OUT the cells of TABLE, a spreadsheet's sheet, as SHEET-WRITE-ROWS
 does, its formulas as written, its cells' comments after them, at most
-LEFT cells, each no longer than *OFFICE-VALUE-LONGEST* characters. Returns
+LEFT cells, each no longer than *OFFICE-VALUE-LENGTH-LIMIT* characters. Returns
 how many cells were written."
   (let ((hidden-columns (make-array 16385 :element-type 'bit :initial-element 0))
         (rows '()) (formulas '()) (comments '()) (count 0) (cut nil) (row-at 0) (column-at 0))
@@ -378,9 +378,9 @@ how many cells were written."
                  (dolist (cell (xml-children row) (nreverse cells))
                    (when (member (xml-name cell) '("table:table-cell" "table:covered-table-cell") :test #'equal)
                      (let* ((repeat (max 1 (min 16384 (or (docx-read-number cell "table:number-columns-repeated") 1))))
-                            (value (tuatara.display:shorten-string (odf-cell-value cell) *office-value-longest*))
+                            (value (tuatara.display:shorten-string (odf-cell-value cell) *office-value-length-limit*))
                             (formula (let ((f (xml-attribute cell "table:formula")))
-                                       (and f (org-safe-line (tuatara.display:shorten-string f *office-value-longest*)))))
+                                       (and f (org-safe-line (tuatara.display:shorten-string f *office-value-length-limit*)))))
                             (note (first (xml-local-children cell "annotation"))))
                        (if (or (plusp (length value)) formula note)
                            (dotimes (i repeat)
@@ -581,7 +581,7 @@ macros, embedded files or links outside it."
     (maphash (lambda (id change)
                (let ((from (getf change :from)))
                  (when from
-                   (let ((to (min (or (getf change :to) (fill-pointer *odf-inserted*)) (+ from *office-value-longest*))))
+                   (let ((to (min (or (getf change :to) (fill-pointer *odf-inserted*)) (+ from *office-value-length-limit*))))
                      (setf (getf change :text) (concatenate 'string (getf change :text) (subseq *odf-inserted* from to))
                            (gethash id *odf-changes*) change)))))
              *odf-changes*)
@@ -639,7 +639,7 @@ macros, embedded files or links outside it."
 (defun odf-read-note (path &key octets cancel)
   "The OpenDocument file at PATH (text, a spreadsheet or a presentation, by
 what it holds) as an Org note, from its OCTETS when they are given, as this
-file's header says, no larger than *OFFICE-NOTE-LARGEST* characters; CANCEL,
+file's header says, no larger than *OFFICE-NOTE-SIZE-LIMIT* characters; CANCEL,
 a cons, stops the reading when its car turns true. Signals ZIP-ERROR or an
 error when it cannot be read, or is locked with a password."
   (let ((*docx-reading* (docx-reading-of path octets cancel)))

@@ -3,7 +3,7 @@
 ;;;;
 ;;;; Editing commands of Emacs's simple.el, to Emacs's rules as its
 ;;;; test/lisp/simple-tests.el pins them down: joining a line to the one before
-;;;; (delete-indentation, M-^), the spaces around point (M-\, M-SPC), opening a
+;;;; (join-line, M-^), the spaces around point (M-\, M-SPC), opening a
 ;;;; line (C-o), going to a line's text (M-m), the blank lines about point
 ;;;; (C-x C-o) and trailing whitespace.
 
@@ -174,13 +174,13 @@ cores, a line at a time (JOINING-LINE); one change for undo."
                     :announce "Joining the lines")))
 
 (defun join-following-line (buffer)
-  "Join the line after point's line to it, as \\[delete-indentation] does with
+  "Join the line after point's line to it, as \\[join-line] does with
 \\[universal-argument]."
   (let ((bound (1- (next-line-start buffer (point)))))
     (goto (next-line-start buffer (point)))
     (join-lines-above buffer bound)))
 
-(define-command delete-indentation ()
+(define-command join-line ()
   "Join this line to the one before it: the line end between them goes, and
 the spaces about it become one space, or none where a line begins or ends,
 before a closing bracket or after an opening one. With
@@ -199,10 +199,6 @@ every line it takes in, in the background when it holds more than
                         (join-lines-above b start)))))
           (arg (join-following-line b))
           (t (join-lines-above b (1- (tuatara.buffer:buffer-line-start b (point))))))))
-
-(define-command join-line ()
-  "Join this line to the one before it: \\[delete-indentation] by another name."
-  (delete-indentation))
 
 ;;; Opening and going to lines
 
@@ -390,7 +386,7 @@ and at the mark change places."
                  (let ((second (tuatara.buffer:buffer-slice buffer (car pos2) (cdr pos2))))
                    (tuatara.buffer:buffer-splice
                     buffer (car pos1) (cdr pos2)
-                    (tuatara.text:splice-rope second (tuatara.text:rope-bytes second) (tuatara.text:rope-bytes second)
+                    (tuatara.text:splice-rope second (tuatara.text:rope-octet-length second) (tuatara.text:rope-octet-length second)
                                               (tuatara.buffer:buffer-slice buffer (cdr pos1) (car pos2))
                                               (tuatara.buffer:buffer-slice buffer (car pos1) (cdr pos1)))))
                  (let ((first (tuatara.buffer:buffer-string buffer :start (car pos1) :end (cdr pos1)))
@@ -539,7 +535,7 @@ there is none, :FAR when none was found within *TEXT-SCAN-LIMIT* octets."
          (chars (if (and fold (both-case-p char)) (list (char-downcase char) (char-upcase char)) (list char)))
          (codes (mapcar (lambda (c) (tuatara.text:string-octets (string c))) chars))
          (firsts (remove-duplicates (mapcar (lambda (o) (aref o 0)) codes)))
-         (size (tuatara.text:rope-bytes rope))
+         (size (tuatara.text:rope-octet-length rope))
          (p position) (left (abs count)))
     (flet ((match-length (q)
              (loop for code in codes
@@ -783,7 +779,3 @@ it takes time."
      :name "tuatara count" :details (format nil "octets ~:d to ~:d" start end))
     (take-in-soon job *count-wait* (format nil "Counting the ~(~a~)" what))))
 
-(define-command count-words-region ()
-  "Count the selection's lines, sentences, words and characters, or the whole
-buffer's without one: \\[count-words] by another name."
-  (count-words))

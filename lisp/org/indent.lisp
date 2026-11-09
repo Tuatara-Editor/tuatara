@@ -83,7 +83,7 @@ star (*ORG-BULLETS*), as ORG-DISPLAY-REPLACEMENTS has them."
 ORG-DISPLAY-REPLACEMENTS has them: only items the parse found, each sign put
 only where the text still holds what it stands for."
   (let* ((rope (tuatara.buffer:buffer-text buffer))
-         (size (tuatara.text:rope-bytes rope))
+         (size (tuatara.text:rope-octet-length rope))
          (found '())
          view from to)
     (labels ((octets-at (at n) (and (<= (+ at n) size) (tuatara.text:rope-string rope :start at :end (+ at n))))

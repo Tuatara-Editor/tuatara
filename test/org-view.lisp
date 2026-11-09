@@ -457,7 +457,7 @@ window draws them with (set-face :org-level-1 :height 2)."
          f (lambda ()
              (let ((rope (tuatara.buffer:buffer-text b)))
                (loop for line = 0 then (1+ (tuatara.text:rope-line-end rope line))
-                     while (< line (tuatara.text:rope-bytes rope))
+                     while (< line (tuatara.text:rope-octet-length rope))
                      when (tuatara.defaults::org-stars rope line)
                        do (flet ((steps (cycle)
                                    (tuatara.display:unfold-all b)

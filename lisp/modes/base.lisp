@@ -56,7 +56,7 @@ never changed by them (a CSV, a log).")
 
 (defgeneric record-header-lines (mode buffer)
   (:documentation "How many lines at the top of BUFFER, a file of records in major mode MODE,
-are its header unless \\[toggle-list-header] says otherwise (a CSV's one).")
+are its header unless \\[list-toggle-header] says otherwise (a CSV's one).")
   (:method (mode buffer)
     "No header: every line is a record."
     (declare (ignore mode buffer))
@@ -65,13 +65,13 @@ are its header unless \\[toggle-list-header] says otherwise (a CSV's one).")
 (defvar *list-header-lock* nil
   "True to keep the header of a file of records at the top of the window as
 the rest scrolls under it, wherever there is one: a CSV's first line, a
-log's once \\[toggle-list-header] makes it a header; as
-\\[toggle-list-header-lock] does for one buffer.")
+log's once \\[list-toggle-header] makes it a header; as
+\\[list-toggle-header-lock] does for one buffer.")
 
 (defun list-header-p (buffer)
   "True when the first line of BUFFER, a file of records, is its header,
 always shown by search filters and never deleted by \\[list-keep-records]: as
-\\[toggle-list-header] said for BUFFER, else as its mode has it
+\\[list-toggle-header] said for BUFFER, else as its mode has it
 \(RECORD-HEADER-LINES: a CSV's first line, unless *CSV-HEADER* is NIL)."
   (let ((said (tuatara.buffer:buffer-local buffer :list-header :mode)))
     (if (eq said :mode)

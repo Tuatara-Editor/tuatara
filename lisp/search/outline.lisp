@@ -53,7 +53,7 @@ a line, each as deep as LEVEL-OF, a function of the text matched, says."
            (declare (ignore end groups))
            (push (list start (funcall level-of text)) headings)
            nil)
-         rope scanner 0 (tuatara.text:rope-bytes rope) :halt halt)
+         rope scanner 0 (tuatara.text:rope-octet-length rope) :halt halt)
         (nreverse headings)))))
 
 (defun definition-captures (query)
@@ -70,7 +70,7 @@ heading: @definition, or @definition and a kind (@definition.function)."
 gives them: each node captured as a definition, WANTED saying by capture
 number which captures are, as deep as the definitions around it make it, the
 first on each line. Gives what it found so far when HALT answers true."
-  (let ((nodes '()) (matches 0) (total (tuatara.text:rope-bytes rope)))
+  (let ((nodes '()) (matches 0) (total (tuatara.text:rope-octet-length rope)))
     (block scan
       (tuatara.syntax:map-query-matches
        (lambda (pattern captures count)
@@ -150,7 +150,7 @@ megabytes, as a minified script has, is cut short.")
 (defun outline-line-end (rope line-start)
   "Where the line beginning at LINE-START in ROPE ends, or where it is cut
 short, *OUTLINE-LINE-LIMIT* octets on, at the start of a character."
-  (let ((limit (min (tuatara.text:rope-bytes rope) (+ line-start *outline-line-limit*))))
+  (let ((limit (min (tuatara.text:rope-octet-length rope) (+ line-start *outline-line-limit*))))
     (or (tuatara.text:rope-find-line-end rope :start line-start :end limit)
         (loop for end downfrom limit above line-start
               when (tuatara.text:char-boundary-p rope end) return end
@@ -382,8 +382,8 @@ type, a Markdown heading), each shown as its line after its number, in the
 order of the text. Typing narrows the
 list, and a digit and a space typed first (2 SPC) keep only the headings that
 many levels deep or less, as a prefix argument does. Moving in the list shows
-each heading in the window; \\<minibuffer>\\[minibuffer-done] goes there, leaving the mark where
-point was, and \\[minibuffer-abort] goes back. The list opens on the heading point is under.
+each heading in the window; \\<minibuffer>\\[minibuffer-finish] goes there, leaving the mark where
+point was, and \\[minibuffer-cancel] goes back. The list opens on the heading point is under.
 In a narrowed buffer, the headings of the part shown."
   (let* ((buffer (current-buffer))
          (mode (buffer-major-mode buffer))

@@ -23,7 +23,7 @@ more in memory, (* 4 1024 1024 1024) for 4 GB.")
 (defvar *search-files-min-input* 3
   "How many characters search-in-files and search-in-formatted wait for before searching.")
 
-(defvar *search-files-max-lines* 2000
+(defvar *search-files-lines-limit* 2000
   "The most matching lines search-in-files and search-in-formatted list.")
 
 (defstruct (file-corpus (:constructor make-file-corpus (rope paths starts root)) (:copier nil))
@@ -131,7 +131,7 @@ file tells it."
   (or (gethash corpus **corpus-line-endings**)
       (setf (gethash corpus **corpus-line-endings**)
             (let* ((rope (file-corpus-rope corpus)) (starts (file-corpus-starts corpus))
-                   (size (tuatara.text:rope-bytes rope))
+                   (size (tuatara.text:rope-octet-length rope))
                    (bits (make-array (length starts) :element-type 'bit)))
               (dotimes (i (length starts) bits)
                 (let ((start (aref starts i))
@@ -143,7 +143,7 @@ file tells it."
   "The least octets of text each thread searches at once for the lines of a
 search (CORPUS-LINES); a text smaller than two of them is searched on one.")
 
-(defun corpus-lines (corpus input &key (regex t) stop (most *search-files-max-lines*) (start 0) end (parallel t) carry)
+(defun corpus-lines (corpus input &key (regex t) stop (most *search-files-lines-limit*) (start 0) end (parallel t) carry)
   "The lines of CORPUS matching INPUT: with REGEX, its words (separated by
 spaces) each a regular expression, all found on the line, in any order; else
 the whole of it as literal text. A line is matched by the longest word when
@@ -154,7 +154,7 @@ words are found on it too. A list of (INDEX LINE OFFSET TEXT), the file's
 index, the line's number in it (from 1), the offset in the line where the
 longest word's first match on it begins (0 for a match coming from the line
 before), and the line, in file order, at most MOST
-\(*SEARCH-FILES-MAX-LINES*), between the octets START and END of its text
+\(*SEARCH-FILES-LINES-LIMIT*), between the octets START and END of its text
 \(all of it by default). A file whose lines end with a carriage return and a
 newline is searched as such (CORPUS-CRLF): $ matches before the carriage
 return, and the line given leaves it off. The text is cut at line starts
@@ -171,9 +171,9 @@ a second value true then."
   (let* ((rope (file-corpus-rope corpus))
          (crlf (corpus-crlf corpus))
          (starts (file-corpus-starts corpus))
-         (size (min (or end (tuatara.text:rope-bytes rope)) (tuatara.text:rope-bytes rope))))
+         (size (min (or end (tuatara.text:rope-octet-length rope)) (tuatara.text:rope-octet-length rope))))
     (labels ((file-end (index)
-               (if (< (1+ index) (length starts)) (aref starts (1+ index)) (tuatara.text:rope-bytes rope)))
+               (if (< (1+ index) (length starts)) (aref starts (1+ index)) (tuatara.text:rope-octet-length rope)))
              (scan (from to carry)
                ;; the lines from FROM below TO, in order, at most MOST, a match before having run on
                ;; to CARRY; T as a second value when stopped; where its last match ends when past TO
@@ -292,7 +292,7 @@ how much further than the octets read ahead a match is followed
 line or such a match; a longer line is searched in pieces of this size, a
 match across their edge missed.")
 
-(defun lines-on-disk (path relative root input &key (regex t) cancel (most *search-files-max-lines*) (inside "") (parallel t))
+(defun lines-on-disk (path relative root input &key (regex t) cancel (most *search-files-lines-limit*) (inside "") (parallel t))
   "Completion candidates for the lines of the file at PATH matching INPUT (a
 regular expression's words with REGEX, else literal text: CORPUS-LINES), as
 LINE-CANDIDATES makes them (RELATIVE its path from ROOT, a directory's path
@@ -362,7 +362,7 @@ car turns true."
   "An empty vector of octets twice as long as OCTETS, but no longer than LIMIT."
   (make-array (min limit (* 2 (length octets))) :element-type '(unsigned-byte 8)))
 
-(defun lines-on-disk-many (files root input &key (regex t) cancel (most *search-files-max-lines*) (inside ""))
+(defun lines-on-disk-many (files root input &key (regex t) cancel (most *search-files-lines-limit*) (inside ""))
   "LINES-ON-DISK for each of FILES, each (RELATIVE PATH), INPUT and REGEX as
 it takes them, searched a file to a core at once, a batch after another: their
 candidates, in the order of FILES, at most MOST; CANCEL, a cons, stops it when
@@ -507,7 +507,7 @@ holds none. The files of a directory lie together, as they were read."
         (values (aref starts first)
                 (if (< (1+ last) (length starts))
                     (aref starts (1+ last))
-                    (tuatara.text:rope-bytes (file-corpus-rope corpus))))))))
+                    (tuatara.text:rope-octet-length (file-corpus-rope corpus))))))))
 
 (defvar *index-searches* (list 0)
   "A cons whose car counts the searches over a directory kept read
@@ -607,10 +607,10 @@ back into their files."
 (defun found-lines-cut (count most ended)
   "What to say of COUNT lines found by a search of files when they are listed
 without all it may find, or NIL when they are all: the search stopped at MOST
-\(*SEARCH-FILES-MAX-LINES* when it began), or had not ENDED."
+\(*SEARCH-FILES-LINES-LIMIT* when it began), or had not ENDED."
   (cond ((>= count most)
          (format nil "The first ~:d lines found only: the search stops there, and more may be found ~
-(*search-files-max-lines* to see more)" count))
+(*search-files-lines-limit* to see more)" count))
         ((not ended)
          (format nil "Only the ~:d line~:p found so far: the search had not ended" count))))
 
@@ -651,7 +651,7 @@ opened safely (CALL-WITH-WINDOW-PREVIEW)."
            ;; the search of the input typed last, and the lines it found
            (searching nil) (searched-input nil) (found '())
            ;; true once the search of the input typed last has ended; the most lines it gives
-           (searched-all nil) (most *search-files-max-lines*)
+           (searched-all nil) (most *search-files-lines-limit*)
            ;; true once the lines found are to be listed in a buffer, not one of them visited
            (listing nil)
            ;; whether what is typed is a regular expression's words, else literal text;
@@ -804,7 +804,7 @@ order, ignoring case unless it has a capital) is listed as path:line: text,
 after three characters, the files read in the background as you type and
 searched as they are read; \\<pattern>\\[search-toggle-regex] switches to literal text, what
 is typed found as it stands, spaces and all, and back.
-\\<minibuffer>\\[minibuffer-done] visits the file at that line (the first, once all are
+\\<minibuffer>\\[minibuffer-finish] visits the file at that line (the first, once all are
 read, unless you moved to one), and then \\[next-place] and \\[previous-place] go to the
 lines listed after it and before it; with *preview-file-search*, the file of the line
 selected is shown meanwhile, at that line, opened safely. \\<search-files>\\[search-files-list] lists
@@ -826,7 +826,7 @@ changed."
 names are: every file under it, as search-in-files finds text in a directory;
 the lines with the words typed are listed as you type, the files read in the
 background meanwhile, \\<pattern>\\[search-toggle-regex] switching to literal text and back,
-and \\<minibuffer>\\[minibuffer-done] visits one. With
+and \\<minibuffer>\\[minibuffer-finish] visits one. With
 *preview-formatted-search*, the file of the line selected is shown meanwhile,
 at that line, opened safely."
   (search-files-as-read *formatted-file-directory* "search formatted files"

@@ -470,7 +470,7 @@ this ends before the parse has it."
       (unwind-protect
            (cond ((or (syntax-job syntax) (and (syntax-current syntax) (not fresh)) (syntax-broken syntax) (null rope)
                       (grammar-faulted (syntax-grammar syntax))))
-                 ((> (tuatara.text:rope-bytes rope) *syntax-size-limit*)
+                 ((> (tuatara.text:rope-octet-length rope) *syntax-size-limit*)
                   (unless (syntax-too-big syntax)
                     (drop-tree syntax)
                     (setf (syntax-too-big syntax) t)))
@@ -487,8 +487,8 @@ this ends before the parse has it."
                                      (make-parse-job rope old cancel tuatara.runtime:*host*))))
                     (setf (parse-job-refresh job) fresh)
                     ;; worked out here, where the editor's settings are seen
-                    (setf (parse-job-limit job) (parse-time-limit (tuatara.text:rope-bytes rope)))
-                    (setf (parse-job-budget job) (parse-memory-limit (tuatara.text:rope-bytes rope)))
+                    (setf (parse-job-limit job) (parse-time-limit (tuatara.text:rope-octet-length rope)))
+                    (setf (parse-job-budget job) (parse-memory-limit (tuatara.text:rope-octet-length rope)))
                     ;; the job's from here, with nothing between to stop it
                     (unless (sb-sys:without-interrupts
                               (setf old nil)
@@ -529,7 +529,7 @@ another parse if the tree is not current."
         (tuatara.runtime:debug-report
          :parse "~a in ~a: ~:d octets ~a in ~,1f ms~a"
          (grammar-name (syntax-grammar syntax)) (tuatara.buffer:buffer-name (syntax-buffer syntax))
-         (tuatara.text:rope-bytes (parse-job-rope job))
+         (tuatara.text:rope-octet-length (parse-job-rope job))
          (cond ((parse-job-refresh job) "parsed afresh, left alone") ((parse-job-old job) "parsed after edits") (t "parsed"))
          (/ (* 1000.0 (- (or (parse-job-ended job) (get-internal-real-time)) (parse-job-started job)))
             internal-time-units-per-second)

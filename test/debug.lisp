@@ -7,7 +7,7 @@
   :description "Debug mode: off, a report costs a look at a variable and evaluates nothing; M-x
 debug-mode switches it on, the mode line says Debug, and reports go to *Debug*, each line with
 its time, thread and topic: an error in a command with the calls under way, a collection of
-garbage; *Debug* keeps *debug-log-max* lines; C-h E shows it; *debug-mode* in the init file
+garbage; *Debug* keeps *debug-log-limit* lines; C-h E shows it; *debug-mode* in the init file
 starts the editor with it on.")
 
 (defparameter *test-debug-log*
@@ -90,7 +90,7 @@ reports not yet shown."
   (multiple-value-bind (f editor) (run-keys "" :text "" :width 80)
     (declare (ignore f))
     (unwind-protect
-         (let ((tuatara-user:*debug-log-max* 5))
+         (let ((tuatara-user:*debug-log-limit* 5))
            (tuatara.runtime:set-debug t)
            (dotimes (i 12) (tuatara.runtime:debug-report :test "report ~d" i))
            (tuatara.defaults::show-debug-reports editor)

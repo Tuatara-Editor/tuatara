@@ -30,7 +30,7 @@ octets, a line cut there read as far as that. The text is read where it is
 kept, a window at a time; only those lines are copied out of it.
 Complexity: O(the octets read)."
   (let* ((rope (tuatara.buffer:buffer-text buffer))
-         (limit (min (tuatara.text:rope-bytes rope) *org-startup-read-limit*))
+         (limit (min (tuatara.text:rope-octet-length rope) *org-startup-read-limit*))
          (keyword "#+STARTUP:")
          (window (make-array 65536 :element-type '(unsigned-byte 8)))
          ;; where the reading is: at a line's start, in KEYWORD (MATCHED octets of it), in a
@@ -181,7 +181,7 @@ a line alone read as a newline."
 checkbox: - [ ], 1. [X], + [-]."
   (and (cl-ppcre:scan "^(?:[ \\t]*(?:[-+]|[0-9]+[.)])|[ \\t]+\\*)[ \\t]+\\[[ X-]\\]" line) t))
 
-(defun org-returns-in-rope (rope &key (start 0) (end (tuatara.text:rope-bytes rope)))
+(defun org-returns-in-rope (rope &key (start 0) (end (tuatara.text:rope-octet-length rope)))
   "Where the text Org reads of ROPE from the octet START below END (all of it
 unless they are given), the carriage returns before its newlines left out,
 lost one: as ORG-STRIP-RETURNS gives them, found in one pass over the
@@ -938,7 +938,7 @@ language's colours after them when the parse is of the text as it is now."
   (let* ((rope (tuatara.buffer:buffer-text buffer))
          (text (org-view-text view))
          (from (max first (org-view-from view)))
-         (to (min last (tuatara.text:rope-bytes rope) (org-view-to view)))
+         (to (min last (tuatara.text:rope-octet-length rope) (org-view-to view)))
          (*org-buffer* buffer)
          (*org-colouring-level* style-level)
          (*org-text* text)
@@ -962,7 +962,7 @@ parses of the parts of it they show (ORG-VIEWS)."
                        (case style (:rich nil) (:none 0) (t level)))))
     (when (and (plusp (length rows)) (tuatara.text:rope-indexed-p rope))
       ;; only the text the rows show: what a fold or a search filter hides between them is not looked at
-      (loop with bytes = (tuatara.text:rope-bytes rope)
+      (loop with bytes = (tuatara.text:rope-octet-length rope)
             for (first . last) in (tuatara.display:shown-ranges rows :buffer buffer)
             nconc (loop for view in (org-views buffer first (min last bytes))
                         nconc (org-view-colours buffer view first last style-level))))))

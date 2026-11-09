@@ -1585,7 +1585,7 @@ thread, no client chosen to keep before or after."
                         (true (shows two "beta text"))
                         (funcall check one one-runner two two-runner))))))))
         ;; said on the list's heading alone, not in a question naming the folder
-        (false (search "kept open" (tuatara.defaults::buffer-section-title (tuatara.command:make-client :number 7))))
+        (false (search "persistent" (tuatara.defaults::buffer-section-title (tuatara.command:make-client :number 7))))
         ;; the one opened first stays, by default; the other goes
         (is eq :first tuatara-user:*client-kept-without-buffers*)
         (two-clients :first (lambda (one one-runner two two-runner)
@@ -1606,12 +1606,12 @@ thread, no client chosen to keep before or after."
         ;; shown in the buffer list, K moves it to the client whose folder the cursor is in
         (two-clients :first (lambda (one one-runner two two-runner)
                               (type-keys one "C-x C-b")
-                              (true (shows one "(kept open)"))
+                              (true (shows one "(persistent)"))
                               (type-keys one "C-x k RET")
                               (true (shows one "alpha text"))
                               (type-keys two "C-x C-b")
                               (type-keys two "K")
-                              (true (shows two "(kept open)"))
+                              (true (shows two "(persistent)"))
                               (type-keys two "C-x k RET")
                               (true (shows two "beta text"))
                               (type-keys one "C-x k RET")

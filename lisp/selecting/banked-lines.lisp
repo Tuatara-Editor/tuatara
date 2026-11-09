@@ -71,13 +71,13 @@ gone are forgotten."
   "How many lines of BUFFER are banked."
   (span-line-count buffer (banked-spans buffer)))
 
-(defun bank-lines (buffer span)
+(defun bank-span (buffer span)
   "Bank the whole lines of SPAN, (START . END), in BUFFER, those search
 filters hide left out (TUATARA.DISPLAY:SHOWN-PARTS)."
   (dolist (part (tuatara.display:shown-parts buffer (car span) (cdr span)))
     (push (make-bank buffer (car part) (cdr part)) (buffer-banks buffer))))
 
-(defun unbank-lines (buffer span)
+(defun bank-release-span (buffer span)
   "Take the whole lines of SPAN, (START . END), of BUFFER out of its banks,
 the banks around them kept."
   (destructuring-bind (start . end) span
@@ -119,7 +119,7 @@ filters hide left out (TUATARA.DISPLAY:SHOWN-PARTS)."
 (defun spend-banks (buffer spans)
   "Take the lines of SPANS out of BUFFER's banks: what \\<normal>\\[copy-selection-or-char],
 \\[delete-selection-or-char] or \\[yank-over-selection] acted on."
-  (dolist (span spans) (unbank-lines buffer span)))
+  (dolist (span spans) (bank-release-span buffer span)))
 
 (defun banked-highlights (editor window rows)
   "The banked lines among ROWS of WINDOW, to be shown in :banked-line."
@@ -140,7 +140,7 @@ filters hide left out (TUATARA.DISPLAY:SHOWN-PARTS)."
   "The count of BUFFER's banked lines, for the echo area."
   (format nil "(~d total)" (banked-line-count buffer)))
 
-(define-command bank-selected-lines ()
+(define-command bank-lines ()
   "Bank the lines the selection touches, or the line at point: set them aside,
 highlighted, and let go of the selection, to go on and bank more elsewhere.
 \\<normal>\\[copy-selection-or-char], \\[delete-selection-or-char] and \\[yank-over-selection] then act on
@@ -150,8 +150,8 @@ and on lines partly banked it banks the rest. With a count, it banks that many
 lines from point. A line whose end a fold hides is banked with all the fold
 hides, as a folded headline with its body; the lines search filters hide are
 not banked, and what is banked before they hide it is taken without them.
-Banked lines outlast \\[tuatara-quit]: \\[unbank-line],
-\\[unbank-section] and \\[clear-banked-lines] take them back."
+Banked lines outlast \\[tuatara-quit]: \\[bank-release-line],
+\\[bank-release-section] and \\[bank-clear] take them back."
   (let* ((b (current-buffer)) (count (prefix-argument)))
     (multiple-value-bind (start end) (selection-range)
       (cond ((or (and start (< start end)) (and count (> count 1)))
@@ -163,42 +163,42 @@ Banked lines outlast \\[tuatara-quit]: \\[unbank-line],
                     (lines (span-line-count b parts))
                     (left-out (if (rest parts) (tuatara.display:lines-left-out b (car span) (cdr span) parts) 0))
                     (unbanking (lines-banked-p b span)))
-               (if unbanking (unbank-lines b span) (bank-lines b span))
+               (if unbanking (bank-release-span b span) (bank-span b span))
                (setf (tuatara.buffer:buffer-mark-active-p b) nil)
                (line-selection-clear b)
                (message "~:[Banked~;Unbanked~] ~d line~:p ~a~a~:[: navigate, then \\<normal>\\[copy-selection-or-char]/\\[delete-selection-or-char]/\\[yank-over-selection]~;~]"
                         unbanking lines (bank-total-note b) (left-out-note left-out) unbanking)))
             ((banked-run-at b (point))
-             (unbank-lines b (whole-lines-span b (point) (point)))
+             (bank-release-span b (whole-lines-span b (point) (point)))
              (message "Unbanked this line ~a" (bank-total-note b)))
             (t
              (let ((span (whole-lines-span b (point) (point))))
                (if (>= (car span) (cdr span))
                    (message "Nothing to bank: empty final line")
-                   (progn (bank-lines b span)
+                   (progn (bank-span b span)
                           (message "Banked this line ~a: navigate, then \\<normal>\\[copy-selection-or-char]/\\[delete-selection-or-char]/\\[yank-over-selection]"
                                    (bank-total-note b))))))))))
 
-(define-command unbank-line ()
+(define-command bank-release-line ()
   "Take the line at point out of the bank, the other banked lines kept; on a
 line not banked, say so."
   (let ((b (current-buffer)))
     (if (banked-run-at b (point))
-        (progn (unbank-lines b (whole-lines-span b (point) (point)))
+        (progn (bank-release-span b (whole-lines-span b (point) (point)))
                (message "Unbanked this line ~a" (bank-total-note b)))
         (message "No banked line at point"))))
 
-(define-command unbank-section ()
+(define-command bank-release-section ()
   "Take the run of banked lines point is on out of the bank, all the lines
 beside each other at once; the banks elsewhere are kept."
   (let* ((b (current-buffer)) (run (banked-run-at b (point))))
     (if run
         (let ((lines (span-line-count b (list run))))
-          (unbank-lines b run)
+          (bank-release-span b run)
           (message "Unbanked ~d line~:p ~a" lines (bank-total-note b)))
         (message "No banked section at point"))))
 
-(define-command clear-banked-lines ()
+(define-command bank-clear ()
   "Let go of every banked line of this buffer; the text is left as it is."
   (let* ((b (current-buffer)) (count (banked-line-count b)))
     (setf (buffer-banks b) '())
@@ -241,7 +241,7 @@ shown instead, and the key pressed again replaces."
          (newline (tuatara.buffer:buffer-newline b))
          (restore (and (plusp (length text))
                        (< (car first) (cdr first))
-                       (member (char-before-position b (cdr first)) '(#\Newline #\Return))
+                       (member (buffer-char-before b (cdr first)) '(#\Newline #\Return))
                        (not (member (char text (1- (length text))) '(#\Newline #\Return)))))
          (insert (if restore (concatenate 'string text newline) text)))
     (let ((after (aref (delete-spans b spans :replacements (cons insert (make-list (length (rest spans))))

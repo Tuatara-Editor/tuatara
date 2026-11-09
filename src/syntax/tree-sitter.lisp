@@ -438,7 +438,7 @@ parse stops soon after it becomes nonzero. LIMIT is how many seconds the
 parse may take, BUDGET how many octets of memory more than the parsing
 program held before it; NIL for no limit."
   (let ((helper (parser-helper parser))
-        (input (make-parse-input rope (tuatara.text:rope-bytes rope) (parser-number parser))))
+        (input (make-parse-input rope (tuatara.text:rope-octet-length rope) (parser-number parser))))
     (unless (helper-alive helper)
       (return-from parse-rope (values nil (helper-gone-why helper) t)))
     (let ((result
@@ -1092,7 +1092,7 @@ nodes may lie far from the one that touches it."
         (predicates (query-predicates query))
         (patterns (length (query-predicates query)))
         (names (length (query-captures query)))
-        (bytes (tuatara.text:rope-bytes rope))
+        (bytes (tuatara.text:rope-octet-length rope))
         (matches-left (most-matches start end))
         (stop (+ at size))
         (*capture-text-left* (+ (* 8 (max 0 (- end start))) (* 1024 1024))))
@@ -1232,7 +1232,7 @@ tree, each (QUERY START END)."
   "Write the request of CALL to HELPER parsing PARSES, TEXT-PARSEs of ROPE's
 text, the queries of each those HELPER knows; the seconds they may take in
 all."
-  (let ((low (tuatara.text:rope-bytes rope)) (high 0) (seconds 0))
+  (let ((low (tuatara.text:rope-octet-length rope)) (high 0) (seconds 0))
     (call-u32 call (length parses))
     (dolist (parse parses)
       (let ((tree (text-parse-tree parse)))

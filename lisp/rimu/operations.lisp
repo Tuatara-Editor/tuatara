@@ -946,8 +946,8 @@ elsewhere, with those above it that are not there; the list shows it."
 
 (define-major-mode rimu-names-mode fundamental-mode
   "The names of a directory's entries as text, a line each, to rename them
-by editing (\\<rimu-mode>\\[rimu-edit-names] in a list): \\<rimu-names-mode>\\[rimu-names-apply] renames those whose line
-changed, \\[rimu-names-abort] leaves them as they are. Each line stands for its entry: lines
+by editing (\\<rimu-mode>\\[rimu-edit-names] in a list): \\<rimu-names-mode>\\[rimu-names-finish] renames those whose line
+changed, \\[rimu-names-cancel] leaves them as they are. Each line stands for its entry: lines
 are not added, taken away or joined; an empty line leaves its entry's name."
   :lighter "Rename" :interactive nil)
 
@@ -964,8 +964,8 @@ its octets are."
 
 (define-command rimu-edit-names ()
   "Edit the names of this list's entries as text, a line each, in its window,
-with every key that edits text: \\<rimu-names-mode>\\[rimu-names-apply] renames those whose line changed,
-\\[rimu-names-abort] leaves them. Names may be swapped; a name given twice, or one
+with every key that edits text: \\<rimu-names-mode>\\[rimu-names-finish] renames those whose line changed,
+\\[rimu-names-cancel] leaves them. Names may be swapped; a name given twice, or one
 another file has, is refused. Each line stays its own entry's: when a line is
 taken away, added or joined to another, nothing is renamed. A name with a
 control or invisible character in it (a line break, a tab) is left out, the
@@ -1000,7 +1000,7 @@ While search filters narrow the list, only the names it shows are edited."
                 (buffer-given-directory buffer) (tuatara.buffer:buffer-local list 'rimu-directory)
                 (tuatara.display:buffer-header-line buffer)
                 (let ((text (substitute-command-keys
-                             (format nil " Rename: \\<rimu-names-mode>\\[rimu-names-apply] renames the lines changed, \\[rimu-names-abort] leaves them~[~:;; ~:*~d name~:p with a control or invisible character left out (\\<rimu-mode>\\[rimu-rename] renames one)~]"
+                             (format nil " Rename: \\<rimu-names-mode>\\[rimu-names-finish] renames the lines changed, \\[rimu-names-cancel] leaves them~[~:;; ~:*~d name~:p with a control or invisible character left out (\\<rimu-mode>\\[rimu-rename] renames one)~]"
                                      left-out))))
                   (lambda (window) (declare (ignore window)) text)))
           (let ((line (or (position here entries) 0)))
@@ -1032,7 +1032,7 @@ has been followed to, none taken away, added or joined to another."
     (tuatara.buffer:kill-buffer buffer)
     list))
 
-(define-command rimu-names-abort ()
+(define-command rimu-names-cancel ()
   "Leave the names as they are, and go back to the list."
   (rimu-names-back (current-buffer))
   (message "No name changed"))
@@ -1056,7 +1056,7 @@ Time grows with the number of names alone."
                          (tuatara.io:path-stamp (tuatara.io:path-join directory new) :follow nil))
                     (return (format nil "~a is there already" new)))))))
 
-(define-command rimu-names-apply ()
+(define-command rimu-names-finish ()
   "Rename the entries whose line changed, and go back to the list: all or,
 when a line does not do, none, and why is said."
   (let* ((buffer (current-buffer))
@@ -1070,7 +1070,7 @@ when a line does not do, none, and why is said."
                (message "Nothing renamed: ~?" control arguments)
                (return-from apply nil)))
         (unless (rimu-names-paired-p buffer lines)
-          (refuse (substitute-command-keys "a line was added, taken away or joined (~d line~:p for ~d name~:p); \\<rimu-names-mode>\\[rimu-names-abort], then \\<rimu-mode>\\[rimu-edit-names] starts again")
+          (refuse (substitute-command-keys "a line was added, taken away or joined (~d line~:p for ~d name~:p); \\<rimu-names-mode>\\[rimu-names-cancel], then \\<rimu-mode>\\[rimu-edit-names] starts again")
                   (length lines) (length entries)))
         (let* ((names (map 'list #'tuatara.io:listed-name entries))
                (finals (loop for line in lines for name in names collect (if (string= line "") name line)))
@@ -1212,5 +1212,5 @@ list shows it, point on it."
   (commands-for-mode 'rimu-mode "a rimu list (\\[rimu])"
                      'list-mark-entry 'list-mark-for-deletion 'list-unmark-entry 'list-unmark-all 'list-toggle-marks
                      'list-execute 'list-delete-marked 'rimu-mark-master)
-  (define-keys *rimu-names-keymap* '(("C-c C-c" rimu-names-apply) ("C-c C-k" rimu-names-abort)))
+  (define-keys *rimu-names-keymap* '(("C-c C-c" rimu-names-finish) ("C-c C-k" rimu-names-cancel)))
   (install-rimu-trash))

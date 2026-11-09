@@ -133,13 +133,13 @@ program (the desktop's primary selection); the mark at its start."
 (defun send-to-primary-selection ()
   "Make the text selected in the current buffer the desktop's primary
 selection, as *USE-SYSTEM-CLIPBOARD* says: when there is some, no more than
-*CLIPBOARD-MAX-SIZE* octets, and none of an encrypted file's text."
+*CLIPBOARD-SIZE-LIMIT* octets, and none of an encrypted file's text."
   (let ((b (current-buffer)))
     (when (and *use-system-clipboard* (tuatara.buffer:buffer-mark-active-p b)
                (not (tuatara.io:buffer-plaintext-p b)))
       (let ((start (min (point) (tuatara.buffer:buffer-mark b)))
             (end (max (point) (tuatara.buffer:buffer-mark b))))
-        (when (< 0 (- end start) *clipboard-max-size*)
+        (when (< 0 (- end start) *clipboard-size-limit*)
           (tuatara.frontend:frontend-set-primary-selection
            (editor-frontend *editor*) (tuatara.buffer:buffer-string b :start start :end end)))))))
 

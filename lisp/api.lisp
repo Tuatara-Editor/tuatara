@@ -21,7 +21,7 @@ is no octet of the file."
   (tuatara.text:rope-check-arrived rope byte (1+ byte))
   (tuatara.text:rope-octet rope byte))
 
-(defun rope-find-octet (rope value &key (start 0) (end (tuatara.text:rope-bytes rope)))
+(defun rope-find-octet (rope value &key (start 0) (end (tuatara.text:rope-octet-length rope)))
   "The offset of the first octet VALUE of ROPE, a buffer's text, from START
 below END, or NIL. Refused (NOT-ARRIVED) when part of that range of a file has
 not arrived, for what is there cannot then be told."
@@ -137,13 +137,13 @@ its form says, as ORG-READ-RULE reads them; :HOUR, :MINUTE, :END-HOUR and
     tuatara.buffer:buffer-point tuatara.buffer:buffer-string tuatara.buffer:buffer-size tuatara.buffer:buffer-region
     tuatara.buffer:buffer-start tuatara.buffer:buffer-end tuatara.buffer:buffer-narrowed-p tuatara.buffer:with-narrowing-lifted
     tuatara.buffer:buffer-line-start tuatara.buffer:buffer-line-end tuatara.buffer:buffer-line-text
-    tuatara.buffer:buffer-char-at tuatara.buffer:buffer-forward-char char-before-position buffer-crlf-p
+    tuatara.buffer:buffer-char-at tuatara.buffer:buffer-forward-char buffer-char-before buffer-crlf-p
     tuatara.buffer:buffer-mark-active-p tuatara.buffer:buffer-version tuatara.buffer:buffer-local delete-spans
     tuatara.modes:buffer-major-mode tuatara.modes:set-major-mode buffer-in-mode
     tuatara.command:show-buffer tuatara.command:display-buffer tuatara.command:display-buffer-at tuatara.command:buffer-window tuatara.command:leave-window tuatara.display:window-point tuatara.command:pop-to-buffer tuatara.command:abbreviated-path
     tuatara.modes:find-or-make-buffer
     ;; a buffer's text as it stands, unchanged by later edits, for work in the background
-    tuatara.buffer:buffer-text tuatara.text:rope-bytes rope-octet tuatara.text:rope-copy-into
+    tuatara.buffer:buffer-text tuatara.text:rope-octet-length rope-octet tuatara.text:rope-copy-into
     rope-find-octet tuatara.text:rope-line-start tuatara.text:rope-line-end
     ;; asking and waiting
     tuatara.command:read-string tuatara.command:finish-minibuffer tuatara.command:quit tuatara.command:completing-read tuatara.command:completing-read-value tuatara.command:make-candidate tuatara.command:yes-or-no-p* tuatara.command:y-or-n-p*
@@ -158,7 +158,7 @@ its form says, as ORG-READ-RULE reads them; :HOUR, :MINUTE, :END-HOUR and
     set-search-filtering search-filters search-filter-p search-filter-string search-filter-where search-filter-match-p
     light-search-filters search-filter-regex search-filter-list search-filter-remove-all
     marked-list-mode sectioned-list-mode sectioned-pieces entry-member entry-mark keep-list-marks list-acted-on
-    list-mark-sign list-mark-face list-question toggle-list-section quit-window
+    list-mark-sign list-mark-face list-question list-toggle-section quit-window
     list-entries-of list-entry-noun delete-entries visit-entry list-visit list-visit-other list-execute list-delete-marked
     entry-list-keys list-step-entry list-next-entry list-previous-entry
     preview-entry entry-preview-width entry-preview-keys list-toggle-preview side-preview-note
@@ -182,7 +182,7 @@ its form says, as ORG-READ-RULE reads them; :HOUR, :MINUTE, :END-HOUR and
     visit-path visit-path-as-text image-view-visit pdf-view-visit pdf-file-p office-view-visit view-made-text tuatara.io:safe-visit-p *file-changing-commands*
     ;; files and paths
     tuatara.io:native tuatara.io:native-file-name tuatara.io:native-file-stem tuatara.io:native-file-type tuatara.io:expand-path tuatara.io:parent-path
-    tuatara.io:slash-ended tuatara.io:path-within-p tuatara.io:real-path-or-parent tuatara.io:path-join tuatara.io:path-kind tuatara.io:path-stamp tuatara.io:stamp-size tuatara.io:free-bytes
+    tuatara.io:slash-ended tuatara.io:path-within-p tuatara.io:real-path-or-parent tuatara.io:path-join tuatara.io:path-kind tuatara.io:path-stamp tuatara.io:stamp-size tuatara.io:free-octets
     tuatara.io:directory-entries walk-directory tuatara.io:call-with-file tuatara.io:file-head tuatara.io:binary-head-p tuatara.io:read-fd-start
     tuatara.io:read-fd-octets tuatara.io:write-octets tuatara.io:file-system-error tuatara.io:copy-regular-file tuatara.io:write-new-file tuatara.io:make-directory tuatara.io:remove-file tuatara.io:delete-tree
     ;; evidence, and the places nothing is written in
@@ -196,14 +196,14 @@ its form says, as ORG-READ-RULE reads them; :HOUR, :MINUTE, :END-HOUR and
     tuatara.text:string-octet-length tuatara.text:string-line-start tuatara.text:parse-decimal tuatara.text:whole-number
     tuatara.text:lenient-string tuatara.text:merge-ranges tuatara.text:string-hash
     tuatara.text:xml-entity tuatara.text:xml-tag-end tuatara.text:xml-text-value tuatara.io:fd-octets tuatara.io:file-octets tuatara.text:xml-escape
-    tuatara.text:xml-name tuatara.text:xml-attribute tuatara.text:xml-children tuatara.text:xml-child tuatara.text:xml-root
+    tuatara.text:xml-attribute tuatara.text:xml-children tuatara.text:xml-root
     tuatara.text:xml-local-name tuatara.text:xml-local-children tuatara.text:xml-find-all tuatara.text:xml-all-text
     tuatara.text:json-read tuatara.text:json-get tuatara.text:json-items tuatara.text:json-integer tuatara.text:json-text
     tuatara.dates:format-time tuatara.dates:valid-date-p tuatara.dates:time-words tuatara.dates:short-time-words tuatara.dates:utc-time-words iso-date-time
     ;; days as numbers, and time zones by name
     tuatara.dates:day-number tuatara.dates:day-date tuatara.dates:weekday tuatara.dates:month-length tuatara.dates:leap-year-p tuatara.dates:add-months
     tuatara.dates:time-zone tuatara.dates:time-zone-p tuatara.dates:time-zone-name tuatara.dates:time-zone-rule tuatara.dates:fixed-time-zone tuatara.dates:ruled-time-zone
-    tuatara.dates:zone-named tuatara.dates:zone-name-p tuatara.dates:system-zone-name tuatara.dates:system-time-zone
+    tuatara.dates:time-zone-named tuatara.dates:time-zone-name-p tuatara.dates:system-time-zone-name tuatara.dates:system-time-zone
     tuatara.dates:zone-offset tuatara.dates:zone-local-time tuatara.dates:zone-universal-time tuatara.dates:rule-day
     tuatara.dates:zone-rule tuatara.dates:make-zone-rule tuatara.dates:zone-rule-standard-name tuatara.dates:zone-rule-standard-offset
     tuatara.dates:zone-rule-daylight-name tuatara.dates:zone-rule-daylight-offset tuatara.dates:zone-rule-to-daylight tuatara.dates:zone-rule-to-standard
@@ -218,7 +218,7 @@ its form says, as ORG-READ-RULE reads them; :HOUR, :MINUTE, :END-HOUR and
     org-safe-line org-safe-line-words org-escape-block org-unescape-block
     tuatara.io:inflate tuatara.text:xml-parse xmp-fields jpeg-metadata file-sha256 shown-file
     ;; PDF objects, read from octets alone
-    pdf-object-at pdf-string-text pdf-date-words *pdf-most-items* tuatara.io:pdf-header-at pdf-white-p
+    pdf-object-at pdf-date-words *pdf-item-limit* tuatara.io:pdf-header-at pdf-white-p
     pdf-get pdf-dictionary-p pdf-ref-p pdf-array-items map-pdf-dictionary
     pdf-indirect-object-at pdf-indirect-get map-pdf-written-objects pdf-eof-lines pdf-startxref pdf-offset-base
     map-pdf-cross-reference-table map-pdf-cross-reference-stream pdf-stream-filters pdf-stream-octets
@@ -240,7 +240,7 @@ its form says, as ORG-READ-RULE reads them; :HOUR, :MINUTE, :END-HOUR and
     write-private-copy attachment-file-name
     ;; rimu, the file manager
     rimu-mode *rimu-keymap* rimu-chosen-paths rimu-paths-marked-anywhere rimu-paths-marked-apart *rimu-master-mark* rimu-mark-master rimu-chosen rimu-marks rimu-take-out rimu-mark-and-go-on rimu-each-line
-    rimu-show-paths rimu-show-file rimu-leads-to rimu-list-p rimu-list-directory rimu-path set-rimu-column
+    rimu-show-paths rimu-show-file rimu-leads-to rimu-list-p rimu-list-directory rimu-path rimu-set-column
     ;; delimited data, regular expressions, and lines changed all at once
     csv-mode tsv-mode filter-lines filter-line-matcher mode-record-fields make-record-fields csv-delimiter csv-fields csv-field-spans csv-field-bounds csv-value-bounds csv-field-value csv-header-names tuatara.syntax:compile-regex
     selected-lines rewrite-lines line-diff

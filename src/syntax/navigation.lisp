@@ -24,7 +24,7 @@ is no tree."
         (call-u32 call (tree-number tree)) (call-u32 call start) (call-u32 call end)
         (when (eql 0 (call-send call))
           ;; each node around the one before it, all within the text
-          (loop with bytes = (tuatara.text:rope-bytes (syntax-rope syntax))
+          (loop with bytes = (tuatara.text:rope-octet-length (syntax-rope syntax))
                 with low = most-positive-fixnum and high = -1
                 for i from 0 below (min +deepest+ (floor (call-in-size call) 20))
                 collect (flet ((at (k) (reply-u32 call (+ (* 5 i) k))))
@@ -51,7 +51,7 @@ node."
         (call-u32 call (ecase how (:smallest 0) (:larger 1) (:first-child 2) (:next 3) (:previous 4)))
         (when (and (eql 0 (call-send call)) (= 1 (reply-u32 call 0)))
           (let ((from (reply-u32 call 1)) (to (reply-u32 call 2)))
-            (unless (<= from to (tuatara.text:rope-bytes (syntax-rope syntax)))
+            (unless (<= from to (tuatara.text:rope-octet-length (syntax-rope syntax)))
               (reply-overrun call))
             (values from to)))))))
 
@@ -124,7 +124,7 @@ partner is not found; :TEXT when POSITION is inside a string or comment, whose
 text has no expressions, only words. Comments and punctuation between
 expressions are passed over."
   (let* ((rope (syntax-rope syntax))
-         (size (tuatara.text:rope-bytes rope))
+         (size (tuatara.text:rope-octet-length rope))
          (p position))
     (loop
       (setf p (tuatara.text:rope-skip-octets rope p *separating-octets*))
@@ -281,7 +281,7 @@ the strings, character literals and comments there, whose brackets do not count.
   "A BRACKET-SCAN of SYNTAX's text within +BRACKET-REACH+ octets of AROUND."
   (let* ((rope (syntax-rope syntax))
          (from (max 0 (- around +bracket-reach+)))
-         (to (min (tuatara.text:rope-bytes rope) (+ around +bracket-reach+))))
+         (to (min (tuatara.text:rope-octet-length rope) (+ around +bracket-reach+))))
     (%make-bracket-scan rope (coerce (opaque-spans syntax from to) 'simple-vector) from to)))
 
 (defun scan-span-at (scan p)
@@ -335,7 +335,7 @@ when there are fewer, or when their brackets do not balance."
 (defun pairs-around (scan position count)
   "The COUNT bracketed expressions around POSITION in SCAN's text, innermost
 first, as ENCLOSING-PAIRS gives them."
-  (let* ((size (tuatara.text:rope-bytes (bracket-scan-rope scan)))
+  (let* ((size (tuatara.text:rope-octet-length (bracket-scan-rope scan)))
          (p (if (and (< position size) (eql (scan-bracket-at scan position)
                                              (car (assoc (tuatara.text:rope-octet (bracket-scan-rope scan) position)
                                                          *bracket-pairs*))))
@@ -358,7 +358,7 @@ SYNTAX's text, whose strings, comments and character literals do not count,
 or when SYNTAX is NIL, ROPE, every bracket counting."
   (if syntax
       (make-bracket-scan syntax position)
-      (let ((size (tuatara.text:rope-bytes rope)))
+      (let ((size (tuatara.text:rope-octet-length rope)))
         (%make-bracket-scan rope #() (max 0 (- position +bracket-reach+)) (min size (+ position +bracket-reach+))))))
 
 (defun bracket-scan-between (rope start end)
@@ -399,7 +399,7 @@ the start of the scan."
   "True when SCAN reaches the end of its text (FORWARD) or its start, rather
 than stopping short of it at +BRACKET-REACH+."
   (if forward
-      (>= (bracket-scan-to scan) (tuatara.text:rope-bytes (bracket-scan-rope scan)))
+      (>= (bracket-scan-to scan) (tuatara.text:rope-octet-length (bracket-scan-rope scan)))
       (<= (bracket-scan-from scan) 0)))
 
 (defun next-group (scan position)

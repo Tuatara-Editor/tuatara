@@ -520,6 +520,14 @@ and which to use, IN-USE being the way the settings ask for."
                    (t (format nil "~a is the faster here: (setf *gui-renderer* ~(~s~)) in the init file"
                               (renderer-words choice) choice))))))))
 
+(define-major-mode health-mode help-mode
+  "The report of \\[check-health], its tables in columns that wrapping would
+break: a long line runs on past the window's edge."
+  :lighter "Health" :interactive nil)
+
+(defmethod mode-wraps-p ((mode health-mode))
+  nil)
+
 (defun show-health-report (check)
   "Show the report of CHECK, which is done, as help in *Health*, from its
 start; \\<help-mode>\\[revert-buffer] there checks again, the report shown
@@ -529,7 +537,7 @@ meanwhile until the new one is ready."
                         ;; made again: checked again, in the background
                         (if shown (check-health) (setf shown t))
                         pieces)
-                      :name "*Health*")))
+                      :name "*Health*" :mode 'health-mode)))
 
 (define-command check-health ()
   "Show what each language and major mode has here.

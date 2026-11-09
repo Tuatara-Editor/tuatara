@@ -205,6 +205,20 @@ its layout), or NIL when it gives none."
                                           (sb-alien:int what) (sb-sys:system-area-pointer (sb-alien:alien-sap (sb-alien:addr place)))))
          place)))
 
+(defun terminal-library-version ()
+  "The version of the terminal library (libghostty-vt), as the library loaded
+says it, such as \"1.0.0\"; NIL when there is no such library here."
+  (when (terminal-library-p)
+    (sb-alien:with-alien ((place (array (sb-alien:unsigned 64) 2)))
+      (when (eql (vt :success)
+                 (foreign-call "ghostty_build_info" sb-alien:int
+                               (sb-alien:int 5) ; GHOSTTY_BUILD_INFO_VERSION_STRING
+                               (sb-sys:system-area-pointer (sb-alien:alien-sap place))))
+        (let ((start (sb-sys:int-sap (sb-alien:deref place 0))))
+          (coerce (loop for at below (min 64 (sb-alien:deref place 1))
+                        collect (code-char (sb-sys:sap-ref-8 start at)))
+                  'string))))))
+
 (sb-alien:define-alien-callable tuatara-terminal-write-pty sb-alien:void
     ((terminal sb-sys:system-area-pointer) (userdata sb-sys:system-area-pointer)
      (data sb-sys:system-area-pointer) (size (sb-alien:unsigned 64)))

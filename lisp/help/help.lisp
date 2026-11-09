@@ -35,7 +35,7 @@ an item's words, a table's second column (SET-HANGING)."
 \\[describe-key] and the rest); \\<help-mode>\\[quit-window] there then
 closes it and goes back; NIL (the standard) leaves you where you were.")
 
-(defun show-help-pieces (pieces &key (name "*Help*"))
+(defun show-help-pieces (pieces &key (name "*Help*") (mode 'help-mode))
   "Show PIECES (as PIECES-TEXT takes them) in the buffer called NAME, *Help*
 unless given, read-only, from its start, where the rules of where buffers are
 shown put help (another window, as they are made). The keys named show in
@@ -43,13 +43,29 @@ shown put help (another window, as they are made). The keys named show in
 \\<help-mode>\\[push-button] on it, or a click, follows. PIECES may be a
 function of no arguments giving them, called again when \\[revert-buffer]
 makes the help again; given as they are, they are shown again as they are.
-With *HELP-WINDOW-SELECT* its window is selected."
-  (let ((help (buffer-in-mode name 'help-mode)))
+With *HELP-WINDOW-SELECT* its window is selected. MODE is the buffer's major
+mode, one made from HELP-MODE."
+  (let ((help (buffer-in-mode name mode)))
     (setf (buffer-kind help) :help)
     (render-pieces help (if (functionp pieces) pieces (constantly pieces)) :keys t :point :start)
     (let ((window (display-buffer help :at :start)))
       (when (and window *help-window-select*) (select-window window))
       window)))
+
+(defun call-with-details-shown (details function &key (name "*Question*"))
+  "Call FUNCTION, which asks a question at a short prompt, with DETAILS, words
+or pieces too long for that, in a buffer called NAME at the bottom of the
+frame, as tall as they need, long lines wrapped. It goes when the question
+ends, however that is. FUNCTION's values."
+  (let ((buffer (buffer-in-mode name 'help-mode)))
+    (setf (buffer-kind buffer) :help)
+    (render-pieces buffer (constantly (if (listp details) details (list details))) :point :start)
+    (let ((window (display-buffer-at buffer :bottom :size :fit)))
+      (when window
+        (setf (tuatara.display:window-start window) 0 (tuatara.display:window-point window) 0))
+      (unwind-protect (funcall function)
+        (when (and window (member window (editor-windows *editor*))) (leave-window window))
+        (tuatara.buffer:kill-buffer buffer)))))
 
 (defun show-help (text &key fill)
   "Show TEXT in the *Help* buffer (SHOW-HELP-PIECES), the keys it names
@@ -215,7 +231,7 @@ describe-command gives it, with its keys."
   "Show what a function, macro or command does: its parameters, its
 documentation, the keys that run it when it is a command, and where it is
 defined, the file a link that shows the definition. The one named at point in a Lisp buffer is the default, offered
-first: \\<minibuffer>\\[minibuffer-done] alone describes it."
+first: \\<minibuffer>\\[minibuffer-finish] alone describes it."
   (let* ((b (current-buffer))
          (here (and (typep (buffer-major-mode b) 'lisp-mode)
                     (let ((name (ignoring-errors-reported ("reading the name at point") (symbol-at-point b))))
@@ -401,19 +417,18 @@ is in it already."
   "Show TEXT in *Help* (SHOW-HELP)."
   (show-help text))
 
+(defun say-or-insert (line)
+  "Say LINE, or with \\[universal-argument] put it at point instead; LINE."
+  (if (prefix-argument)
+      (goto (tuatara.buffer:buffer-insert (current-buffer) (point) line))
+      (message "~a" line))
+  line)
+
 (define-command tuatara-version ()
   "Say which Tuatara this is: its version, the commit it was built from and
 when, the Steel Bank Common Lisp (SBCL) it runs on, and where it shows (a
 window, the terminal). With \\[universal-argument], put that at point instead."
-  (let ((line (tuatara:version-line (tuatara.frontend:frontend-description (editor-frontend *editor*)))))
-    (if (prefix-argument)
-        (goto (tuatara.buffer:buffer-insert (current-buffer) (point) line))
-        (message "~a" line))
-    line))
-
-(define-command version ()
-  "Say which Tuatara this is, as \\[tuatara-version] does."
-  (tuatara-version))
+  (say-or-insert (tuatara:version-line (tuatara.frontend:frontend-description (editor-frontend *editor*)))))
 
 (define-command view-echo-area-messages ()
   "Show the *Messages* buffer: the messages shown in the echo area so far,

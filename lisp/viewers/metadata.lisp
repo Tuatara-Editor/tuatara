@@ -1,7 +1,7 @@
-;;;; lisp/viewers/metadata.lisp --- What a file is and what it says of itself, read by Tuatara alone: M-x file-metadata.
+;;;; lisp/viewers/metadata.lisp --- What a file is and what it says of itself, read by Tuatara alone: M-x show-file-metadata.
 ;;;; Copyright (C) 2026 Michael A Jones.  GPL-3.0-or-later; see LICENSE.
 ;;;;
-;;;; M-x file-metadata shows, in a buffer of its own, an Org note of what the
+;;;; M-x show-file-metadata shows, in a buffer of its own, an Org note of what the
 ;;;; system knows of a file (its kind by its contents, size, permissions,
 ;;;; owner, its four times, its SHA-256 sum and extended attributes) and what
 ;;;; the file says of itself: a photograph's EXIF (camera, times, settings,
@@ -38,7 +38,7 @@ rest is left out, and that is said.")
 (defvar *file-metadata-functions* '()
   "Functions of a file's PATH, its kind (TUATARA.IO:OCTETS-KIND's keyword), the
 open file descriptor (FD) and its SIZE, each returning a section of an Org
-note of what the file says of itself, or NIL: the readers M-x file-metadata
+note of what the file says of itself, or NIL: the readers M-x show-file-metadata
 asks.")
 
 ;;; The note's sections
@@ -679,7 +679,7 @@ from, the SELinux label, ACLs)."
 ;;; OpenPGP: who an encrypted file is for, read from its packets
 
 (defvar *metadata-look-up-key-owners* :ask
-  "Whether M-x file-metadata looks up, in your own GnuPG keyring, whose the
+  "Whether M-x show-file-metadata looks up, in your own GnuPG keyring, whose the
 keys an encrypted file is for are, running gpg --list-keys (the file itself is
 never given to gpg): true looks them up, :ask asks each time, false (nil)
 never does, the keys then shown by their IDs alone.")
@@ -909,7 +909,7 @@ wherever it is kept."
 
 (defun file-metadata-note (path &key (cancel (list nil)) (done (list 0)) (look-up-keys (eq *metadata-look-up-key-owners* t)))
   "The Org note of what the file at PATH is and says of itself, as
-\\[file-metadata] shows it; its SHA-256 summed with CANCEL and DONE as
+\\[show-file-metadata] shows it; its SHA-256 summed with CANCEL and DONE as
 FILE-SHA256 takes them; with LOOK-UP-KEYS, the owners of the keys an
 encrypted file is for looked up in your keyring. Signals an error when it
 cannot be read."
@@ -952,7 +952,7 @@ job; DONE, the octets summed so far; TEXT, the note made."
   (show-reading-result job (metadata-job-path job) (metadata-job-text job) "The metadata of ~a could not be read: ~a~%"))
 
 (defun look-up-key-owners-p (path)
-  "True when M-x file-metadata is to look up in your keyring whose the keys the
+  "True when M-x show-file-metadata is to look up in your keyring whose the keys the
 file at PATH is encrypted to are (*METADATA-LOOK-UP-KEY-OWNERS*): asked, when
 it says :ask, only of a file encrypted to keys it names."
   (case *metadata-look-up-key-owners*
@@ -964,7 +964,7 @@ it says :ask, only of a file encrypted to keys it names."
                  (y-or-n-p* "It is encrypted to keys: look up whose in your keyring (runs gpg --list-keys)?"))))
     (t t)))
 
-(define-command file-metadata ()
+(define-command show-file-metadata ()
   "Show what the file shown is and what it says of itself, in a buffer of its
 own, which \\`q' closes: the file the buffer visits, the entry on the line in a list of a
 directory, the PDF or picture in its view; with \\[universal-argument], or
@@ -998,8 +998,8 @@ alone; gpg, when it looks up keys, is given your keyring alone, not the file."
                   :name "tuatara metadata")))))))
 
 (defun install-metadata ()
-  "Have M-x file-metadata read pictures, PDFs, sound and video, and Office and
+  "Have M-x show-file-metadata read pictures, PDFs, sound and video, and Office and
 OpenDocument files, and bind \\`g i' to it in lists of directories."
-  (define-key (symbol-value '*rimu-keymap*) "g i" 'file-metadata)
+  (define-key (symbol-value '*rimu-keymap*) "g i" 'show-file-metadata)
   (pushnew 'office-metadata-function *file-metadata-functions*)
   (pushnew 'built-in-metadata *file-metadata-functions*))

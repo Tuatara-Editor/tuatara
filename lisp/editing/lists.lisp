@@ -235,7 +235,7 @@ three values, each (START . END) or NIL: the smallest around POSITION,
 starting before it; the one ending last at or before POSITION within that,
 the outermost; and the one starting first at or after POSITION within that,
 the outermost."
-  (let ((size (tuatara.text:rope-bytes (tuatara.syntax:syntax-rope syntax)))
+  (let ((size (tuatara.text:rope-octet-length (tuatara.syntax:syntax-rope syntax)))
         (reach 65536))
     (loop
       (let* ((from (max 0 (- position reach)))
@@ -369,7 +369,7 @@ offset, is true when given; looked for no further than REACH octets on. NIL
 when there is none, with :FAR as a second value when the reach ended before
 the end of the text. Complexity: O(distance on), read in blocks of 64 KB
 into one array."
-  (let* ((size (tuatara.text:rope-bytes rope))
+  (let* ((size (tuatara.text:rope-octet-length rope))
          (ceiling (min size (+ position 1 (min reach size))))
          (low (1+ position))
          (block (and (< low ceiling)

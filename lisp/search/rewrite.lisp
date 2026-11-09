@@ -323,7 +323,7 @@ matches that count replaced; or, for a count, only count them. The text
 between matches is copied from a megabyte of it read at a time, and the
 output written a megabyte at a time."
   (let* ((rope (rewrite-rope job))
-         (total (tuatara.text:rope-bytes rope))
+         (total (tuatara.text:rope-octet-length rope))
          (start (rewrite-piece-start piece)) (end (rewrite-piece-end piece))
          (count-only (rewrite-count-only job))
          (all (rewrite-all job))
@@ -722,7 +722,7 @@ edited meanwhile as they are now, unless the buffer may no longer take it
                              (rewrite-result job))))
              ;; made read-only, or turned to the hex view, while it ran: the change is not forced on it
              (when (result-refused-p buffer (format nil "~:[the replacement ~a~;~:*~(~a~) ~a~]" (rewrite-doing job) (rewrite-words job))
-                                     (- (tuatara.text:rope-bytes final) (tuatara.buffer:buffer-size buffer)))
+                                     (- (tuatara.text:rope-octet-length final) (tuatara.buffer:buffer-size buffer)))
                (return-from rewrite-take-in 0))
              (multiple-value-bind (forward backward) (rewrite-maps job regions)
                (let ((unmoved (and (rewrite-goal job) (null edits) (eql (rewrite-point job) (tuatara.buffer:buffer-point buffer)))))
@@ -743,7 +743,7 @@ edited meanwhile as they are now, unless the buffer may no longer take it
                     forward))
                  (when unmoved
                    (setf (tuatara.buffer:buffer-point buffer)
-                         (min (funcall (rewrite-goal job) buffer) (tuatara.text:rope-bytes final))))))
+                         (min (funcall (rewrite-goal job) buffer) (tuatara.text:rope-octet-length final))))))
              (if (rewrite-report job)
                  (message "~a" (funcall (rewrite-report job) job :done (- matches taken) seconds taken))
                  (message "~a ~a ~a"
@@ -871,7 +871,7 @@ to POSITION or past it, found by halves."
   (let ((tracker (rewrite-tracker job)))
     (if (or (eq tracker :all) (null (rewrite-tracker-function job)))
         (let ((base (rewrite-base job)) (now (tuatara.buffer:buffer-version (rewrite-buffer job))))
-          (tuatara.runtime:bisect (mid 0 (tuatara.text:rope-bytes (rewrite-rope job)))
+          (tuatara.runtime:bisect (mid 0 (tuatara.text:rope-octet-length (rewrite-rope job)))
             (< (tuatara.text:map-forward mid base now :after) position)))
         (let ((delta 0))
           (dolist (d tracker (- position delta))
@@ -946,7 +946,7 @@ NIL, when the pattern is too slow on this text to tell them. The one way the
 shading of a replacement, running or waiting, finds what it marks."
   (multiple-value-bind (ranges cut)
       (tuatara.runtime:stoppable-work ((list nil) :slow tuatara.runtime:*slow-call-seconds*)
-        (let ((out '()) (size (tuatara.text:rope-bytes rope)))
+        (let ((out '()) (size (tuatara.text:rope-octet-length rope)))
           (loop for (start . end) in stretches
                 do (let ((allowed (if all start (max low (tuatara.text:rope-line-start rope start)))))
                      (funcall finder
@@ -1041,7 +1041,7 @@ file: the text PER-LINE makes of each line (carriage return and line feed
 time and written a megabyte at a time, so that no line looks anything up in
 the text."
   (let* ((rope (rewrite-rope job))
-         (total (tuatara.text:rope-bytes rope))
+         (total (tuatara.text:rope-octet-length rope))
          (start (rewrite-piece-start piece))
          (end (rewrite-piece-end piece))
          (cancel (rewrite-cancel job))
@@ -1131,7 +1131,7 @@ then waits its turn, FROM and TO followed meanwhile."
     (return-from start-line-job :queued))
   (tuatara.buffer:ensure-indexed buffer)
   (multiple-value-bind (rope from to since made) (job-begins-where-given buffer from to)
-  (let* ((total (tuatara.text:rope-bytes rope))
+  (let* ((total (tuatara.text:rope-octet-length rope))
          (crlf (buffer-crlf-p buffer))
          (high (min total (1+ (tuatara.text:rope-line-end rope to))))
          (job (%make-rewrite :buffer buffer :base (tuatara.buffer:buffer-version buffer) :rope rope

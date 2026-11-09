@@ -611,7 +611,7 @@ shown at the end of a row after a space."
           (multiple-value-bind (f editor) (rimu-session dir "g f t e x t . t x t RET o C-h b" :preview t :height 40)
             (declare (ignore f editor))
             (let ((help (tuatara.buffer:find-buffer "*Help*")))
-              (true (search "rimu-quick-edit-done" (tuatara.buffer:buffer-string help)))
+              (true (search "rimu-quick-edit-finish" (tuatara.buffer:buffer-string help)))
               (true (search "forward-word" (tuatara.buffer:buffer-string help)))))
           ;; a buffer open before keeps its changes when they are let go, and stays
           (fresh)
@@ -655,10 +655,10 @@ shown at the end of a row after a space."
           (multiple-value-bind (f editor) (rimu-session dir "g f t e x t . t x t RET o M-x r i m u - q u i c k - e d i t - d"
                                                         :preview t :width 200)
             (declare (ignore editor))
-            (true (tuatara.frontend.fake:fake-frame-showing f "rimu-quick-edit-done")))
+            (true (tuatara.frontend.fake:fake-frame-showing f "rimu-quick-edit-finish")))
           (multiple-value-bind (f editor) (rimu-session dir "M-x r i m u - q u i c k - e d i t - d" :preview t :width 200)
             (declare (ignore editor))
-            (false (tuatara.frontend.fake:fake-frame-showing f "rimu-quick-edit-done")))
+            (false (tuatara.frontend.fake:fake-frame-showing f "rimu-quick-edit-finish")))
           ;; a named pipe is not opened
           (multiple-value-bind (f editor) (rimu-session dir "g f p i p e RET o" :preview t)
             (true (tuatara.frontend.fake:fake-frame-showing f "pipe is a named pipe; rimu does not open it"))
@@ -1301,7 +1301,7 @@ and the editor."
     (unwind-protect
          (with-rimu-tree (dir)
            ;; a column after the names, lined up after the longest
-           (tuatara.defaults::set-rimu-column :test-note (tuatara.defaults::rimu-cells-by-entry
+           (tuatara.defaults::rimu-set-column :test-note (tuatara.defaults::rimu-cells-by-entry
                                                           (lambda (entry) (format nil "note-~a" (tuatara.io:listed-name entry))))
                                               :place :after :shown (constantly t))
            (multiple-value-bind (f editor) (rimu-session dir "")
@@ -1311,7 +1311,7 @@ and the editor."
                (is = (search "note-text.txt" (find-if (lambda (l) (search "note-text.txt" l)) lines))
                    (search "note-link-to-dir" (find-if (lambda (l) (search "note-link-to-dir" l)) lines)))))
            ;; one found in the background shows once it is given
-           (tuatara.defaults::set-rimu-column :test-later
+           (tuatara.defaults::rimu-set-column :test-later
                                               (lambda (directory entries)
                                                 (declare (ignore directory))
                                                 (sb-thread:make-thread
@@ -1334,7 +1334,7 @@ and the editor."
     (unwind-protect
          (with-rimu-tree (dir)
            ;; a directory that takes a while says so, then fills in
-           (tuatara.defaults::set-rimu-column :test-slow (lambda (directory entries)
+           (tuatara.defaults::rimu-set-column :test-slow (lambda (directory entries)
                                                            (declare (ignore directory))
                                                            (sleep 0.3)
                                                            (make-array (length entries) :initial-element nil))

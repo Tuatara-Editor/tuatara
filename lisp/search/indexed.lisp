@@ -296,7 +296,7 @@ anew hold about PIECE octets."
                         (starts (file-corpus-starts corpus))
                         (rope (file-corpus-rope corpus))
                         (from (aref starts i))
-                        (to (if (< (1+ i) (length starts)) (aref starts (1+ i)) (tuatara.text:rope-bytes rope))))
+                        (to (if (< (1+ i) (length starts)) (aref starts (1+ i)) (tuatara.text:rope-octet-length rope))))
                    (tuatara.text:rope-octets rope :start from :end (max from (1- to))))))
              (reusable (p k)
                ;; the old piece P, all its files as they were, from position K on
@@ -312,7 +312,7 @@ anew hold about PIECE octets."
         (loop while (< k (length texts))
               do (let* ((text (aref texts k))
                         (p (gethash (first text) starting))
-                        (bytes (and p (tuatara.text:rope-bytes (file-corpus-rope (index-piece-corpus p))))))
+                        (bytes (and p (tuatara.text:rope-octet-length (file-corpus-rope (index-piece-corpus p))))))
                    (if (and p (reusable p k)
                             (<= (+ (corpus-gatherer-total gatherer) bytes) limit))
                        ;; an old piece as it was: kept
@@ -360,7 +360,7 @@ files PATHS beginning at STARTS from ROOT: the file mapped, not read, so
 that its text is outside the heap and garbage collection never copies it;
 counted for lines on this thread. An error when it is not BYTES long."
   (let ((rope (tuatara.text:open-file-rope path)))
-    (unless (= (tuatara.text:rope-bytes rope) bytes) (refuse "piece ~a is not whole" path))
+    (unless (= (tuatara.text:rope-octet-length rope) bytes) (refuse "piece ~a is not whole" path))
     (make-file-corpus (tuatara.text:index-rope rope :threads 1) paths starts root)))
 
 (defun save-index (index directory)
@@ -387,7 +387,7 @@ left to the other when it holds the lock long."
                  ;; read from the file kept from now on: its text out of the heap
                  (setf (index-piece-corpus p)
                        (or (ignoring-errors-reported ("reading back ~a~a" directory name)
-                             (mapped-piece-corpus (concatenate 'string directory name) (tuatara.text:rope-bytes rope)
+                             (mapped-piece-corpus (concatenate 'string directory name) (tuatara.text:rope-octet-length rope)
                                                   (file-corpus-paths corpus) (file-corpus-starts corpus)
                                                   (file-corpus-root corpus)))
                            corpus))))
@@ -399,7 +399,7 @@ left to the other when it holds the lock long."
        (loop for p across (directory-index-pieces index)
              for corpus = (index-piece-corpus p)
              do (format out "P ~a ~d ~d~%" (index-piece-file p) (length (file-corpus-paths corpus))
-                        (tuatara.text:rope-bytes (file-corpus-rope corpus)))
+                        (tuatara.text:rope-octet-length (file-corpus-rope corpus)))
                 (loop for path across (file-corpus-paths corpus)
                       for start across (file-corpus-starts corpus)
                       for stamp across (index-piece-stamps p)
@@ -652,6 +652,21 @@ no indicator."
         (progn (follow-mode-line-colours)
                (list indicator :mode-line-sign-idle)))))
 
+(defvar *daemon* nil
+  "The daemon this editor runs as, in the background (DAEMON), or NIL.")
+
+(defvar *daemon-indicator* "D"
+  "What the mode line shows last among its signs before [-], always in the
+same place: in :mode-line-sign while this editor runs as a daemon (tuatara
+--daemon), in each of its clients, else faint, in :mode-line-sign-idle. D (for
+daemon) as standard, which any font has; any text; NIL to show nothing.")
+
+(defun daemon-mode-line (editor buffer)
+  "Mode line function: *DAEMON-INDICATOR*, lit while this editor runs as a
+daemon, else faint (MODE-LINE-SIGN)."
+  (declare (ignore editor buffer))
+  (mode-line-sign *daemon-indicator* *daemon*))
+
 (defun indexing-mode-line (editor buffer)
   "Mode line function: while directories are kept read, *INDEXING-INDICATOR*,
 lit while one is being read (and for a moment after, SIGN-LIT-P), else faint
@@ -673,10 +688,12 @@ faint (MODE-LINE-SIGN)."
   "Mode line function, before [-]: the sign of work for BUFFER
 \(PROCESSING-MODE-LINE), then while directories are kept read the signs of
 their reading (INDEXING-MODE-LINE) and of their searching
-\(SEARCHING-MODE-LINE), side by side, PUS; each NIL leaves its sign out."
+\(SEARCHING-MODE-LINE), and the sign of a daemon (DAEMON-MODE-LINE), side by
+side, PUSD; each NIL leaves its sign out."
   (remove nil (list (processing-mode-line editor buffer)
                     (indexing-mode-line editor buffer)
-                    (searching-mode-line editor buffer))))
+                    (searching-mode-line editor buffer)
+                    (daemon-mode-line editor buffer))))
 
 (defun signs-tick (editor)
   "Tick function: while a sign of the mode line is lit, the seconds until the

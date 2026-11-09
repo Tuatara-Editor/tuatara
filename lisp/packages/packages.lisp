@@ -1437,7 +1437,7 @@ an error for any other folder."
       (refuse "~a is no folder of the packages': not deleted" (abbreviated-path native)))
     (tuatara.io:delete-tree native)))
 
-(defparameter *package-most-octets* (* 512 1024 1024)
+(defparameter *package-size-limit* (* 512 1024 1024)
   "The most octets a package may take on disk while it is fetched, what git
 keeps of its history and its files together: a fetch that grows past it is
 ended and its files deleted.")
@@ -1446,17 +1446,17 @@ ended and its files deleted.")
   ((where :initarg :where :reader package-too-large-where))
   (:report (lambda (condition stream)
              (format stream "~a takes more than ~a: the package was not fetched"
-                     (package-too-large-where condition) (tuatara.io:octets-words *package-most-octets*))))
-  (:documentation "Signalled when a package fetched from WHERE grows past *PACKAGE-MOST-OCTETS*."))
+                     (package-too-large-where condition) (tuatara.io:octets-words *package-size-limit*))))
+  (:documentation "Signalled when a package fetched from WHERE grows past *PACKAGE-SIZE-LIMIT*."))
 
 (setf (documentation 'package-too-large-where 'function) "Where the package too large was fetched from.")
 
 (defun call-within-package-size (folder where thunk)
   "Call THUNK, which fetches into FOLDER on the thread of a job, and look at
-how much FOLDER takes every second meanwhile: past *PACKAGE-MOST-OCTETS*, the
+how much FOLDER takes every second meanwhile: past *PACKAGE-SIZE-LIMIT*, the
 program the job runs is ended and PACKAGE-TOO-LARGE signalled, also when
 THUNK has ended by then."
-  (let* ((job tuatara.runtime:*job*) (most *package-most-octets*)
+  (let* ((job tuatara.runtime:*job*) (most *package-size-limit*)
          (too-large nil)
          (too-large-p (lambda () (> (or (rimu-tree-size folder) 0) most)))
          (timer (sb-ext:make-timer (lambda ()
@@ -1542,7 +1542,7 @@ none when FLOOR is not in that history."
   "Fetch the package called NAME, VERSION of the repository at WHERE: that
 commit alone, and its folder (PACKAGE-REPOSITORY-FOLDER) alone when it has
 one, else the whole of it; a repository that gives no file by itself after
-its folders, that commit whole; never more than *PACKAGE-MOST-OCTETS*
+its folders, that commit whole; never more than *PACKAGE-SIZE-LIMIT*
 \(CALL-WITHIN-PACKAGE-SIZE), finding the commit as well as checking it out.
 When that version needs a newer Tuatara than this one (UNFITTING-VERSION,
 FILE its entry when given), older ones are tried, the newest first

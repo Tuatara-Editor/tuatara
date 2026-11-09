@@ -41,11 +41,11 @@
     roles))
 
 (defun reuse-index-packages ()
-  "The Tuatara packages the index covers, in name order: every one but the tests' and the benchmarks'."
+  "The Tuatara packages the index covers, in name order: every one but the tests', their compile gate's and the benchmarks'."
   (sort (remove-if-not (lambda (package)
                          (let ((name (package-name package)))
                            (and (>= (length name) 7) (string-equal "TUATARA" name :end2 7)
-                                (not (member name '("TUATARA.TESTS" "TUATARA.BENCH") :test #'string=)))))
+                                (not (member name '("TUATARA.TESTS" "TUATARA.BENCH" "TUATARA-COMPILE-GATE") :test #'string=)))))
                        (list-all-packages))
         #'string< :key #'package-name))
 

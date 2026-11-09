@@ -40,7 +40,7 @@ to be shown once they come while its buffer's text is still as asked of."
             (shown (lsp-doc-shown-rope doc)))
         (lsp-request server "textDocument/inlayHint"
                      (tuatara.text:json-object "textDocument" (doc-identifier doc)
-                                               "range" (lsp-range server shown 0 (tuatara.text:rope-bytes shown)))
+                                               "range" (lsp-range server shown 0 (tuatara.text:rope-octet-length shown)))
                      (lambda (result error)
                        (when (and (null error) (doc-unchanged-p doc version))
                          (let ((hints (loop for hint across (tuatara.text:json-items result)

@@ -144,7 +144,7 @@ between where that match ends and START."
   "Every match of MATCHER in ROPE as (START END), as a replacement gathers them
 in parallel (LINE-MATCHES)."
   (mapcar (lambda (m) (subseq m 0 2))
-          (tuatara.defaults::line-matches rope matcher t 0 (tuatara.text:rope-bytes rope))))
+          (tuatara.defaults::line-matches rope matcher t 0 (tuatara.text:rope-octet-length rope))))
 
 (define-test (search-agreement regex-agrees)
   :time-limit 900
@@ -155,7 +155,7 @@ in parallel (LINE-MATCHES)."
       (let* ((text (evidence-text 600 :crlf (eq crlf t) :mixed (eq crlf :mixed)))
              (scanned (make-scanned text))
              (rope (tuatara.text:string->rope text))
-             (size (tuatara.text:rope-bytes rope)))
+             (size (tuatara.text:rope-octet-length rope)))
         (dolist (pattern *agreement-patterns*)
           (let* ((matcher (tuatara.defaults::make-pattern-matcher pattern :regex t :crlf (eq crlf t)))
                  (scanner (tuatara.syntax:compile-regex pattern :crlf (eq crlf t)))
@@ -191,7 +191,7 @@ in parallel (LINE-MATCHES)."
   (with-evidence-seed
     (let* ((text (evidence-text 1500))
            (rope (tuatara.text:string->rope text))
-           (size (tuatara.text:rope-bytes rope)))
+           (size (tuatara.text:rope-octet-length rope)))
       (dolist (needle '("login" "LOGIN" "user=" "example.nz" "kōrero" "Αθήνα" "中文" "😀" "café" "aaaaaaaaaaaaaaaa"
                         "@example.org #" "2026-1" "£1" "ζωή" "kŌrero" "αθήνα" "CAFÉ" "ōtautahi"))
         (dolist (fold '(nil t))
@@ -250,7 +250,7 @@ offsets, by one scan of the whole text as a string."
                                     (make-string 20 :initial-element #\a) (make-string 65530 :initial-element #\b))
                             '("a+" "a+b" "x+a"))))
     (destructuring-bind (text patterns) case
-      (let* ((rope (tuatara.text:string->rope text)) (size (tuatara.text:rope-bytes rope)))
+      (let* ((rope (tuatara.text:string->rope text)) (size (tuatara.text:rope-octet-length rope)))
         (dolist (pattern patterns)
           (let ((oracle (matches-of-scan text pattern))
                 (matcher (tuatara.defaults::make-pattern-matcher pattern :regex t)))
@@ -265,7 +265,7 @@ offsets, by one scan of the whole text as a string."
   ;; a raw byte in a pattern finds that byte standing alone, never the same octet inside a
   ;; character: as plain text, as a pattern of no special character, and as \xA9
   (let* ((rope (tuatara.text:octets->rope (coerce #(#xC3 #xA9 32 #xA9 32 #xC3 #xA9) '(vector (unsigned-byte 8)))))
-         (size (tuatara.text:rope-bytes rope))
+         (size (tuatara.text:rope-octet-length rope))
          (raw (string (code-char #xDCA9))))
     (dolist (way (list (list raw nil) (list raw t) (list "\\xA9" t) (list (concatenate 'string " " raw) nil)))
       (destructuring-bind (pattern regex) way
@@ -279,7 +279,7 @@ offsets, by one scan of the whole text as a string."
   "Every match of MATCHER in ROPE as C-s and C-r step through them, (START
 END) each in order of the text: from one end, from each match on, one
 character on after an empty one going forward."
-  (let ((size (tuatara.text:rope-bytes rope)) (out '()) (from (if forward 0 (tuatara.text:rope-bytes rope))))
+  (let ((size (tuatara.text:rope-octet-length rope)) (out '()) (from (if forward 0 (tuatara.text:rope-octet-length rope))))
     (loop
       (multiple-value-bind (s e) (tuatara.defaults::matcher-search rope matcher from (if forward size 0) :forward forward :bound size)
         (unless s (return))
@@ -302,13 +302,13 @@ character on after an empty one going forward."
           (let ((matcher (tuatara.defaults::make-pattern-matcher pattern :regex t :crlf crlf))
                 (counted '()))
             (tuatara.defaults::stretch-matches (lambda (s e m g) (declare (ignore m g)) (push (list s e) counted) nil)
-                                               rope matcher 0 (tuatara.text:rope-bytes rope) t nil nil)
+                                               rope matcher 0 (tuatara.text:rope-octet-length rope) t nil nil)
             (setf counted (nreverse counted))
             (true counted "~s matches" pattern)
-            (is = (length counted) (tuatara.defaults::count-line-matches rope matcher 0 (tuatara.text:rope-bytes rope))
+            (is = (length counted) (tuatara.defaults::count-line-matches rope matcher 0 (tuatara.text:rope-octet-length rope))
                 "how many ~s" pattern)
             (is equal counted (stepped-matches rope matcher t) "~s stepped forward~:[~;, CRLF~]" pattern crlf)
-            (is equal (remove (tuatara.text:rope-bytes rope) counted :key #'first)
+            (is equal (remove (tuatara.text:rope-octet-length rope) counted :key #'first)
                 (stepped-matches rope matcher nil) "~s stepped backward~:[~;, CRLF~]" pattern crlf))))))
   ;; just after the last line end is no line: no empty match there, of any pattern
   (let ((rope (tuatara.text:string->rope (format nil "a~%b~%"))))
@@ -321,7 +321,7 @@ character on after an empty one going forward."
   ;; without g one match on each line, also when the first is an empty one at a line's start
   (let* ((text (format nil "foo bar~%foo bar~%bxx~%"))
          (rope (tuatara.text:string->rope text))
-         (size (tuatara.text:rope-bytes rope)))
+         (size (tuatara.text:rope-octet-length rope)))
     (dolist (case '(("\\b" ((0 0) (8 8) (16 16))) ("x*" ((0 0) (8 8) (16 16)))))
       (destructuring-bind (pattern wanted) case
         (let ((matcher (tuatara.defaults::make-pattern-matcher pattern :regex t)) (all '()))

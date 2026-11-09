@@ -378,7 +378,7 @@ read again."
                        for start = (org-part-start parts i)
                        do (dolist (offset (org-part-todo-lines part))
                             (let* ((line (+ start offset))
-                                   (end (or (tuatara.text:rope-find-line-end rope :start line) (tuatara.text:rope-bytes rope))))
+                                   (end (or (tuatara.text:rope-find-line-end rope :start line) (tuatara.text:rope-octet-length rope))))
                               ;; a CR LF line's return not one of its words
                               (write-line (string-right-trim '(#\Return) (tuatara.text:rope-string rope :start line :end end)) out)))))))
     (org-todo-keywords-of lines)))
@@ -407,8 +407,8 @@ and the lines changed."
         (if (or (null parts) (eq batches :whole))
             (let ((fresh (make-org-parts)))
               (setf (tuatara.buffer:buffer-local buffer 'org-parts) fresh
-                    (org-parts-bytes fresh) (tuatara.text:rope-bytes rope))
-              (multiple-value-bind (new held) (org-split-range rope 0 (tuatara.text:rope-bytes rope) nil changed)
+                    (org-parts-bytes fresh) (tuatara.text:rope-octet-length rope))
+              (multiple-value-bind (new held) (org-split-range rope 0 (tuatara.text:rope-octet-length rope) nil changed)
                 (setf (org-parts-starts fresh) (coerce (mapcar #'car new) '(simple-array fixnum (*)))
                       (org-parts-parts fresh) (coerce (mapcar #'cdr new) 'simple-vector)
                       (org-parts-count fresh) (length new)
@@ -872,7 +872,7 @@ parse and the characters of the text), and the parts parsed here."
                                                 (org-copy-node (first source) (- start from) parent :headline-end (third source)))
                                               (org-copy-node (first (org-node-children source)) start parent))
                                         ;; parsed alone it went deeper than the parse of the whole text may, under its headlines
-                                        (when (> (+ depth (length open)) *org-deepest*)
+                                        (when (> (+ depth (length open)) *org-depth-limit*)
                                           (setf too-deep t))
                                         copy)))
                            (adopt copy)
@@ -931,7 +931,7 @@ a new one."
                        (lines (loop for offset in (org-part-code-lines part)
                                     collect (let* ((line (+ start offset))
                                                    (end (or (tuatara.text:rope-find-line-end rope :start line)
-                                                            (tuatara.text:rope-bytes rope))))
+                                                            (tuatara.text:rope-octet-length rope))))
                                               (string-trim '(#\Space #\Tab #\Return)
                                                            (tuatara.text:rope-string rope :start line :end end)))))
                        (arguments (find-if (lambda (line) (and (plusp (length line)) (char= (char line 0) #\:))) lines)))

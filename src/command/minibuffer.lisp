@@ -75,13 +75,13 @@ For the commands of a question's own keys (READ-STRING's KEYMAP) that end it."
 
 (defun read-string (prompt &key (initial "") complete select-initial changed update keymap history)
   "Read a line of text with PROMPT in the echo area. Returns the
-string; signals QUIT when it is given up with \\<minibuffer>\\[minibuffer-abort]. Runs a
+string; signals QUIT when it is given up with \\<minibuffer>\\[minibuffer-cancel]. Runs a
 nested command loop with the minibuffer keymap. A message a key says while it
 reads is shown after the text typed, in brackets, until the next key; one
 said before is not shown. COMPLETE, when given, is a
 function of no arguments that \\[minibuffer-complete] and \\`C-M-i' call to complete the
 word at the minibuffer's cursor (COMPLETE-IN-TEXT). With SELECT-INITIAL, the
-text INITIAL offers is selected, to be taken with \\[minibuffer-done] or typed over.
+text INITIAL offers is selected, to be taken with \\[minibuffer-finish] or typed over.
 While a choice waits for candidates still coming in the background, the keys
 typed meanwhile are kept to be handled once it is made, as typed; \\`C-g'
 stops the question at once.
@@ -198,10 +198,7 @@ HISTORY, a list of earlier answers, newest first, is gone back through with
                          (keyboard-quit-signal))
                         ;; text pasted: typed into the answer, none of it taken for keys
                         (:paste
-                         (when *minibuffer-initial-selected*
-                           (setf *minibuffer-initial-selected* nil)
-                           (minibuffer-clear))
-                         (minibuffer-insert (tuatara.frontend:event-text event))
+                         (minibuffer-take-pasted (tuatara.frontend:event-text event))
                          ;; a secret pasted is left in the answer alone
                          (when *minibuffer-hidden* (wipe-string (tuatara.frontend:event-text event))))
                         (:key
@@ -221,12 +218,12 @@ HISTORY, a list of earlier answers, newest first, is gone back through with
                                   (minibuffer-clear))
                                  (binding
                                   (setf (editor-pending editor) '())
-                                  (unless (member binding '(minibuffer-done minibuffer-submit-input minibuffer-abort))
+                                  (unless (member binding '(minibuffer-finish minibuffer-submit-input minibuffer-cancel))
                                     (setf *minibuffer-initial-selected* nil))
                                   (case binding
-                                    (minibuffer-done (choose))
+                                    (minibuffer-finish (choose))
                                     (minibuffer-submit-input (return-from reading (editor-minibuffer-text editor)))
-                                    (minibuffer-abort (keyboard-quit-signal))
+                                    (minibuffer-cancel (keyboard-quit-signal))
                                     (t (funcall (find-command binding)))))
                                  ((and (null (editor-pending editor))
                                        (characterp (tuatara.frontend:key-base key))
@@ -455,10 +452,10 @@ writes over what cannot be had back asks for a typed answer instead
 arguments giving it, for a question whose words change while it is open), TABLE is a list of candidates
 (CANDIDATE objects or strings) or a function of the input returning one, and
 the panel shows the matches sorted best first with the current one marked.
-\\<minibuffer>\\[minibuffer-done] returns the current candidate's value (or the input when
+\\<minibuffer>\\[minibuffer-finish] returns the current candidate's value (or the input when
 nothing matches and REQUIRE-MATCH is false); \\[minibuffer-submit-input] returns the
 input as typed; \\[minibuffer-complete] puts the current candidate into the input;
-\\[minibuffer-next-candidate], \\[minibuffer-previous-candidate] and the arrows move; \\[minibuffer-abort] aborts.
+\\[minibuffer-next-candidate], \\[minibuffer-previous-candidate] and the arrows move; \\[minibuffer-cancel] aborts.
 HISTORY orders recent inputs first. With a function TABLE, the input is
 matched and completed after its last SEPARATOR (a slash by default, for file
 names), and with FILTER false its candidates are shown as it gives them.
@@ -471,15 +468,15 @@ while the question is open, is called on the editor's thread each time the
 editor is woken, and returns three values: true when TABLE's candidates may
 have changed, true while more may come, and how many there are so far (see
 COMPLETION); the prompt says (listing, 12 so far) meanwhile, and NONE, when
-given, once all have come and there are none. \\[minibuffer-done]
+given, once all have come and there are none. \\[minibuffer-finish]
 before anything can be chosen, more coming, chooses once it has come.
-DEFAULT, when given, is what \\[minibuffer-done] takes while nothing is
+DEFAULT, when given, is what \\[minibuffer-finish] takes while nothing is
 typed; its candidate comes first then, selected, and the prompt names it,
 Describe function (default car): . With KEEP-ORDER, the candidates that
 match stay in the order TABLE gives them, not sorted best first; with
 KEEP-ORDER :UNTIL-TYPED, only while nothing is typed to match them.
 TAKEN, a list of names not among the candidates, are taken when typed
-whole and \\[minibuffer-done] is pressed with no candidate chosen by hand.
+whole and \\[minibuffer-finish] is pressed with no candidate chosen by hand.
 KEYMAP holds the question's own keys, as READ-STRING takes it.
 Signals QUIT on abort."
   (let* ((editor *editor*)
@@ -507,7 +504,7 @@ objects: also when its name is typed and taken as typed; else what was typed."
           (if candidate (candidate-result candidate) chosen))
         chosen)))
 
-(define-command minibuffer-toggle-tall ()
+(define-command minibuffer-toggle-tall (:interactive nil)
   "Show as many candidates as the frame has room for, the windows above giving
 up their rows while the question is open; again, as many as usual
 \(*PANEL-MAX-ROWS*)."
@@ -516,14 +513,14 @@ up their rows while the question is open; again, as many as usual
       (setf (completion-tall c) (not (completion-tall c))
             (completion-tallest c) 0))))
 
-(define-command minibuffer-next-candidate ()
+(define-command minibuffer-next-candidate (:interactive nil)
   "Select the next completion candidate."
   (let ((c (editor-completion *editor*)))
     (when (and c (plusp (length (completion-candidates c))))
       (setf (completion-index c) (step-selection c 1)
             (completion-moved c) t))))
 
-(define-command minibuffer-previous-candidate ()
+(define-command minibuffer-previous-candidate (:interactive nil)
   "Select the previous completion candidate; above the first, the line typed,
 where what is typed can be taken."
   (let ((c (editor-completion *editor*)))
@@ -538,7 +535,7 @@ line typed (-1) one step above the first candidate, where it can be taken."
          (low (if (input-selectable-p completion) -1 0)))
     (+ low (mod (+ (- (completion-index completion) low) step) (- count low)))))
 
-(define-command minibuffer-complete ()
+(define-command minibuffer-complete (:interactive nil)
   "Put the selected candidate into the minibuffer input: for a file name, in
 place of the name being typed after the last slash (a directory candidate
 descends into it); for a list of words, in place of the word after the last
@@ -558,7 +555,7 @@ word beside it."
         (setf (editor-minibuffer-text *editor*) text
               (editor-minibuffer-point *editor*) (length text))))))
 
-(define-command minibuffer-submit-input ()
+(define-command minibuffer-submit-input (:interactive nil)
   "Return the minibuffer input as typed, ignoring the candidates."
   nil)
 
@@ -575,46 +572,46 @@ a leading minus negates."
         (editor-prefix-argument *editor*) :fresh)
   (echo "\\[universal-argument]-"))
 
-(define-command minibuffer-done ()
+(define-command minibuffer-finish (:interactive nil)
   "Finish minibuffer input and return the text to the command that asked."
   nil)
 
-(define-command minibuffer-abort ()
+(define-command minibuffer-cancel (:interactive nil)
   "Abandon the minibuffer input."
   nil)
 
-(define-command minibuffer-backward-delete-char ()
+(define-command minibuffer-backward-delete-char (:interactive nil)
   "Delete the character before the minibuffer cursor."
   (let ((p (editor-minibuffer-point *editor*)))
     (when (plusp p)
       (replace-minibuffer-text (1- p) p ""))))
 
-(define-command minibuffer-backward-char ()
+(define-command minibuffer-backward-char (:interactive nil)
   "Move the minibuffer cursor left a character, a letter with its accents or
 an emoji with its skin tone one."
   (setf (editor-minibuffer-point *editor*)
         (tuatara.text:string-cluster-start (editor-minibuffer-text *editor*) (editor-minibuffer-point *editor*))))
 
-(define-command minibuffer-forward-char ()
+(define-command minibuffer-forward-char (:interactive nil)
   "Move the minibuffer cursor right a character, a letter with its accents or
 an emoji with its skin tone one."
   (setf (editor-minibuffer-point *editor*)
         (tuatara.text:string-cluster-end (editor-minibuffer-text *editor*) (editor-minibuffer-point *editor*))))
 
-(define-command minibuffer-beginning ()
+(define-command minibuffer-beginning (:interactive nil)
   "Move the minibuffer cursor to the start."
   (setf (editor-minibuffer-point *editor*) 0))
 
-(define-command minibuffer-end ()
+(define-command minibuffer-end (:interactive nil)
   "Move the minibuffer cursor to the end."
   (setf (editor-minibuffer-point *editor*) (length (editor-minibuffer-text *editor*))))
 
-(define-command minibuffer-kill-line ()
+(define-command minibuffer-kill-line (:interactive nil)
   "Delete the minibuffer text after the cursor."
   (let ((p (editor-minibuffer-point *editor*)))
     (replace-minibuffer-text p (length (editor-minibuffer-text *editor*)) "")))
 
-(define-command minibuffer-clear ()
+(define-command minibuffer-clear (:interactive nil)
   "Clear the minibuffer: the text typed goes, the prompt stays, as \\`C-u' clears a shell's line."
   (replace-minibuffer-text 0 (length (editor-minibuffer-text *editor*)) ""))
 
@@ -636,18 +633,18 @@ of the newest what was typed before; say so when there is none that way."
                          (editor-minibuffer-text editor) text
                          (editor-minibuffer-point editor) (length text)))))))))
 
-(define-command minibuffer-previous-history ()
+(define-command minibuffer-previous-history (:interactive nil)
   "Put the answer given to this question before the one shown in the
 minibuffer in place of the text typed, for a question that keeps its
 answers (the patterns typed, the commands run by name)."
   (minibuffer-history-step 1))
 
-(define-command minibuffer-next-history ()
+(define-command minibuffer-next-history (:interactive nil)
   "Put the answer given to this question after the one shown in the
 minibuffer in place of the text typed; past the newest, what was typed."
   (minibuffer-history-step -1))
 
-(define-command minibuffer-backward-kill-word ()
+(define-command minibuffer-backward-kill-word (:interactive nil)
   "Delete the word before the minibuffer cursor: back over what is not a
 letter or a digit, then over the letters and digits before it."
   (let* ((editor *editor*) (text (editor-minibuffer-text editor)) (p (editor-minibuffer-point editor)) (q p))
@@ -655,11 +652,37 @@ letter or a digit, then over the letters and digits before it."
     (loop while (and (plusp q) (tuatara.text:word-char-p (char text (1- q)))) do (decf q))
     (replace-minibuffer-text q p "" editor)))
 
+(defvar tuatara-user:*use-system-clipboard* t
+  "True to put what is killed or copied on the system clipboard as well, where
+other programs paste it from, and to paste what another program copied there
+since; NIL keeps killed text to the editor.")
+
+(defun minibuffer-take-pasted (text)
+  "Put TEXT at the minibuffer cursor, as pasted: in place of the text offered
+when that is selected."
+  (when *minibuffer-initial-selected*
+    (setf *minibuffer-initial-selected* nil)
+    (minibuffer-clear))
+  (minibuffer-insert text))
+
+(define-command minibuffer-paste (:interactive nil)
+  "Put at the cursor what is on the system clipboard, without the line ending
+after it; when there is nothing there, the text killed last. A secret
+\\(READ-PASSWORD) comes from the clipboard alone and goes into the answer and
+nowhere else, not the kill ring."
+  (let* ((clipboard (and *use-system-clipboard* (tuatara.frontend:frontend-clipboard (editor-frontend *editor*))))
+         (kill (and (not *minibuffer-hidden*) (first (editor-kill-ring *editor*))))
+         (text (cond ((plusp (length clipboard)) clipboard)
+                     ((stringp kill) kill))))
+    (if text
+        (minibuffer-take-pasted (string-right-trim '(#\Newline #\Return) text))
+        (message "Nothing to paste"))))
+
 (defun install-minibuffer-keys (keymap)
   "Bind the editing keys of the minibuffer in KEYMAP."
-  (define-key keymap "RET" 'minibuffer-done)
-  (define-key keymap "C-g" 'minibuffer-abort)
-  (define-key keymap "ESC" 'minibuffer-abort)
+  (define-key keymap "RET" 'minibuffer-finish)
+  (define-key keymap "C-g" 'minibuffer-cancel)
+  (define-key keymap "ESC" 'minibuffer-cancel)
   (define-key keymap "DEL" 'minibuffer-backward-delete-char)
   (define-key keymap "C-h" 'minibuffer-backward-delete-char)
   (define-key keymap "<left>" 'minibuffer-backward-char)
@@ -671,6 +694,9 @@ letter or a digit, then over the letters and digits before it."
   (define-key keymap "C-e" 'minibuffer-end)
   (define-key keymap "<end>" 'minibuffer-end)
   (define-key keymap "C-k" 'minibuffer-kill-line)
+  (define-key keymap "C-y" 'minibuffer-paste)
+  (define-key keymap "C-V" 'minibuffer-paste)
+  (define-key keymap "S-<insert>" 'minibuffer-paste)
   (define-key keymap "C-u" 'minibuffer-clear)
   (define-key keymap "C-<backspace>" 'minibuffer-backward-kill-word)
   (define-key keymap "M-DEL" 'minibuffer-backward-kill-word)
@@ -696,7 +722,7 @@ with spaces around; any other answer, none at all too, says which answers it
 takes and asks again; \\`C-g' signals QUIT. A question whose answer is easily
 undone is answered by one key instead (Y-OR-N-P*)."
   (let ((question (format nil "~a (y or n, then ~a) " prompt
-                          (substitute-command-keys "\\<minibuffer>\\[minibuffer-done]"))))
+                          (substitute-command-keys "\\<minibuffer>\\[minibuffer-finish]"))))
     (loop for asking = question then (format nil "Answer ~a. ~a" (answer-keys-words '(#\y #\n)) question)
           do (let ((answer (string-trim '(#\Space #\Tab) (read-string asking))))
                (cond ((member answer '("y" "yes") :test #'string-equal) (return t))

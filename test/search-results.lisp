@@ -237,12 +237,12 @@ shown, by an ordinary change of the buffer."
           (is string= (format nil "alpha kiwi~%other~%kiwi two~%") (file-text a)))))))
 
 (define-test (search-results cut-list-said-so)
-  ;; lines listed past *search-files-max-lines*: the list says it holds the first ones only, in its
+  ;; lines listed past *search-files-lines-limit*: the list says it holds the first ones only, in its
   ;; text (so that a copy of it says so too), its header and the echo area; a whole list says nothing
   (with-test-directory (dir)
     (let ((a (put-file (merge-pathnames "a.txt" dir) (format nil "alpha kiwi~%other~%kiwi two~%kiwi three~%")))
           (said "The first 2 lines found only: the search stops there, and more may be found"))
-      (let ((tuatara.defaults::*search-files-max-lines* 2))
+      (let ((tuatara.defaults::*search-files-lines-limit* 2))
         (multiple-value-bind (f editor)
             (run-keys (list (format nil "C-x C-f ~a RET M-s g k i w i" (key-string (tuatara.io:native a)))
                             :wait "C-c C-l")
@@ -251,7 +251,7 @@ shown, by an ordinary change of the buffer."
             (is = 2 (length (tuatara.buffer:buffer-local buffer 'tuatara.defaults::list-entries)))
             (true (uiop:string-prefix-p said (session-text editor)) "~s" (session-text editor))
             (true (search said (tuatara.defaults::results-header buffer)))
-            (true (tuatara.frontend.fake:fake-frame-showing f "(*search-files-max-lines* to see more)"))
+            (true (tuatara.frontend.fake:fake-frame-showing f "(*search-files-lines-limit* to see more)"))
             ;; the lines below the note are still the entries, one each
             (true (search "a.txt:1: alpha kiwi" (session-text editor))))))
       (multiple-value-bind (f editor)

@@ -363,7 +363,7 @@ the buffer killed."
   ;; scan that colours the fields counts them; a one-column file looks for its separator in
   ;; its first line only, and only when that line changed
   (let ((rope (tuatara.text:string->rope (format nil "a,\"b,c\",d~%\"x~%y\",z,"))))
-    (loop for end from 0 to (tuatara.text:rope-bytes rope)
+    (loop for end from 0 to (tuatara.text:rope-octet-length rope)
           do (is equal (multiple-value-list (tuatara.defaults::csv-scan rope 0 end 44 0 nil))
                  (cons (first (multiple-value-list (tuatara.defaults::csv-scan rope 0 end 44 0 nil)))
                        (multiple-value-list (tuatara.defaults::csv-count-fields rope 0 end 44 0 nil))))))

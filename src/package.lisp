@@ -31,15 +31,15 @@ available unqualified, and the public API of TUATARA is used.")
            #:line-beginning-position #:line-end-position #:forward-line #:forward-char #:backward-char
            #:count-lines #:count-words #:line-number-at-pos #:kill-new
            ;; options an init file sets by these names, defined where they are used
-           #:*message-log-max* #:*mode-line-name-max* #:*sort-fold-case* #:*reload-changed-files* #:*line-numbers-default*
+           #:*message-log-max* #:*mode-line-name-limit* #:*sort-fold-case* #:*reload-changed-files* #:*line-numbers-default*
            #:*indent-new-lines* #:*tab-width* #:*indent-tabs-mode* #:set-tab-width #:set-indent-tabs-mode
            #:*show-paren-mode* #:*debug-on-error* #:*tab-always-indent* #:*blink-matching-paren*
-           #:*debug-mode* #:*debug-log-max* #:*idle-collection-seconds* #:*csv-separator* #:*list-header-lock* #:*csv-header*
+           #:*debug-mode* #:*debug-log-limit* #:*idle-collection-seconds* #:*csv-separator* #:*list-header-lock* #:*csv-header*
            ;; saving work and the session
-           #:*auto-save* #:*auto-save-directory* #:*auto-save-idle* #:*auto-save-interval* #:*auto-save-largest* #:*keep-session*
+           #:*auto-save* #:*auto-save-directory* #:*auto-save-idle* #:*auto-save-interval* #:*auto-save-size-limit* #:*keep-session*
            #:*keep-session-interval* #:*save-in-place*
            ;; encryption, and wiping files
-           #:*gpg-program* #:*gpg-passphrase-from* #:*metadata-look-up-key-owners* #:*wipe-passes* #:*cache-directory* #:*state-directory* #:*packages-directory* #:*package-most-octets* #:*archive-seconds* #:*archive-free-reserve* #:*archive-listing-limit* #:*differences-limit* #:*gpg-loopback-warning*
+           #:*gpg-program* #:*gpg-passphrase-from* #:*metadata-look-up-key-owners* #:*wipe-passes* #:*cache-directory* #:*state-directory* #:*packages-directory* #:*package-size-limit* #:*archive-seconds* #:*archive-free-reserve* #:*archive-listing-limit* #:*differences-limit* #:*gpg-loopback-warning*
            ;; language servers and formatters
            #:*language-servers* #:*language-formatters* #:*lsp-trusted-projects* #:*lsp-languages* #:*lsp-signature-help* #:*lsp-inlay-hints*
            #:*lsp-wait* #:*lsp-watch-files* #:*lsp-watch-skipped*
@@ -57,7 +57,7 @@ available unqualified, and the public API of TUATARA is used.")
            #:*rimu-directories-first* #:*rimu-ignored-extensions*
            #:*rimu-reuse-lists* #:*rimu-preview* #:*rimu-preview-delay* #:*rimu-preview-size* #:*rimu-follow-changes*
            ;; the directory of a buffer with no file, and what makes a project
-           #:*default-directory* #:*project-root-markers* #:*compile-command* #:*compile-output-most* #:*last-used-first* #:*complete-paths* #:*complete-paths-modes*
+           #:*default-directory* #:*project-root-markers* #:*compile-command* #:*compile-output-limit* #:*last-used-first* #:*complete-paths* #:*complete-paths-modes*
            ;; completing a word from the words in the buffers
            #:*word-completion-keep-case*
            ;; Org: notes, the agenda, capture, code files and dynamic blocks
@@ -73,7 +73,7 @@ available unqualified, and the public API of TUATARA is used.")
            #:*org-agenda-start-on-weekday* #:*org-agenda-time-grid* #:*org-agenda-category-width* #:*org-agenda-untimed-text* #:*org-agenda-event-kind-text* #:*org-agenda-task-kind-text* #:*org-agenda-date-in-title* #:*org-agenda-current-time-string*
            #:*org-agenda-custom-commands* #:*org-tags-column* #:*org-agenda-autosave-files* #:*org-agenda-refresh-minutes*
            #:*org-notify-tag* #:*org-notify-before* #:*org-notify-day-time* #:*notify-program*
-           #:*org-toc-on-save* #:*org-read-date-popup-calendar* #:*org-read-date-in-calendar* #:*org-toc-max-depth* #:*org-toc-style* #:*org-deepest* #:*org-formula-deepest*
+           #:*org-toc-on-save* #:*org-read-date-popup-calendar* #:*org-read-date-in-calendar* #:*org-toc-max-depth* #:*org-toc-style* #:*org-depth-limit* #:*org-formula-depth-limit*
            #:define-dblock-writer #:define-clocktable-formatter
            ;; Markdown
            #:*markdown-toc-on-save*
@@ -82,7 +82,7 @@ available unqualified, and the public API of TUATARA is used.")
            #:*journal-directory* #:*journal-keyword* #:*journal-title-format* #:*journal-interval*
            #:*journal-file-type* #:*journal-file-name* #:*journal-org-header*
            ;; the terminal
-           #:*kitty-keyboard* #:*terminal-send-escape* #:*terminal-editor-keys* #:*terminal-paste-keys* #:*terminal-title-max*
+           #:*kitty-keyboard* #:*terminal-send-escape* #:*terminal-editor-keys* #:*terminal-paste-keys* #:*terminal-title-limit*
            #:*terminal-compress-after* #:*terminal-picture-memory* #:*terminal-place* #:*terminal-size*
            #:*terminal-width* #:*terminal-program* #:*terminal-scrollback*
            ;; marks, places kept, input methods, help windows and Escape
@@ -90,7 +90,7 @@ available unqualified, and the public API of TUATARA is used.")
            #:*save-place-limit* #:*default-input-method* #:*input-method-keys* #:*mark-ring-max*
            #:*set-mark-command-repeat-pop*
            ;; the sandbox programs decoding files run in
-           #:*sandbox-program* #:*sandbox-seconds* #:*sandbox-memory* #:*sandbox-input-limit* #:*program-output-limit* #:*deepest-folder-tree* #:*office-note-largest* #:*office-value-longest* #:*sandbox-total-memory* #:*sandbox-seccomp* #:*picture-memory* #:*pdf-view-dark-pages* #:*office-view-pages* #:*user-full-name*
+           #:*sandbox-program* #:*sandbox-seconds* #:*sandbox-memory* #:*sandbox-input-limit* #:*program-output-limit* #:*folder-tree-depth-limit* #:*office-note-size-limit* #:*office-value-length-limit* #:*sandbox-total-memory* #:*sandbox-seccomp* #:*picture-memory* #:*pdf-view-dark-pages* #:*office-view-pages* #:*user-full-name*
            #:*open-externally-program* #:*open-externally-programs* #:*hex-view-binary-files* #:*open-externally-kinds* #:*open-externally-ask* #:*rimu-delete-to-trash* #:*latex-engines* #:*latex-main-font* #:*latex-sans-font* #:*latex-mono-font* #:*latex-redaction-commands* #:*export-trusted-folders* #:*logos-directory*
            ;; the cursor, and its look in each of the modal states
            #:*cursor-shape* #:*cursor-colour*
@@ -102,14 +102,14 @@ available unqualified, and the public API of TUATARA is used.")
            ;; files with formatted names, searching files
            #:set-formatted-file-header
            #:*formatted-file-directory* #:*formatted-file-extension* #:*formatted-file-keywords* #:*formatted-file-sort-keywords* #:*formatted-file-prompts* #:*formatted-file-type*
-           #:*formatted-file-types* #:*search-files-min-input* #:*search-files-limit* #:*indexed-directories* #:*processing-indicator* #:*indexing-indicator* #:*searching-indicator* #:*indexes-kept-on-disk* #:*preview-files* #:*preview-formatted-files* #:*preview-formatted-search* #:*preview-file-search* #:*preview-buffers* #:*search-results-save-files*
-           #:*search-files-max-lines* #:*typing-pause* #:*line-record-modes*
+           #:*formatted-file-types* #:*search-files-min-input* #:*search-files-limit* #:*indexed-directories* #:*daemon-indicator* #:*processing-indicator* #:*indexing-indicator* #:*searching-indicator* #:*indexes-kept-on-disk* #:*preview-files* #:*preview-formatted-files* #:*preview-formatted-search* #:*preview-file-search* #:*preview-buffers* #:*search-results-save-files*
+           #:*search-files-lines-limit* #:*typing-pause* #:*line-record-modes*
            ;; the kill ring and the system clipboard
-           #:*kill-ring-max* #:*undo-limit* #:*use-system-clipboard* #:*clipboard-max-size*
+           #:*kill-ring-max* #:*undo-limit* #:*use-system-clipboard* #:*clipboard-size-limit*
            #:*show-completion-count* #:*prompt-above-candidates* #:*key-hint-rows* #:*fill-column* #:*leader-key* #:*sentence-end-double-space* #:*extra-sentence-abbreviations* #:*removed-sentence-abbreviations* #:*git-commit-fill-column* #:*fill-paragraph-limit* #:*fill-ask-column* #:*global-hl-line-mode* #:*global-soft-wrap-mode* #:*soft-wrap-modes* #:*centred-text-width* #:*centred-text-modes* #:*soft-wrap-at-fill-column* #:*soft-wrap-indicator* #:*global-visual-line-mode* #:*visual-line-modes*
            #:*hl-line-modes* #:*global-cursor-column-mode* #:*cursor-column-modes* #:*global-spellcheck-mode* #:*spellcheck-modes* #:*spellcheck-languages* #:*spellcheck-excluded-faces* #:*spellcheck-comment-faces* #:*spellcheck-string-faces* #:*global-centred-text-mode* #:*line-numbers-modes* #:*global-invisible-characters-mode* #:*invisible-characters-modes* #:*invisible-characters-when-safe* #:*global-text-direction-mode* #:*text-direction-modes* #:*text-direction-when-safe*
            ;; files visited lately
-           #:*remember-recent-files* #:*recent-files-max* #:*recent-files-auto-cleanup* #:*relative-age-limit*
+           #:*remember-recent-files* #:*recent-files-limit* #:*recent-files-auto-cleanup* #:*relative-age-limit*
            ;; pairs of delimiters
            #:*pair-delimiters* #:*electric-pair-mode* #:*electric-pair-typing* #:*electric-pair-safe-exclusions*
            ;; cursors
@@ -118,4 +118,4 @@ available unqualified, and the public API of TUATARA is used.")
            #:*gui-font* #:*gui-renderer* #:*gui-title* #:*gui-padding* #:*window-colours-from-desktop* #:*tui-padding* #:*tui-pictures* #:*tui-mouse* #:*tui-colours* #:*follow-desktop-style* #:*open-dropped-files-safely*
            #:*safe-directories* #:*open-binary-files-safely* #:*evidence-folders*
            ;; files on another machine
-           #:*remote-seconds* #:*remote-preview-largest* #:*client-kept-without-buffers*))
+           #:*remote-seconds* #:*remote-preview-size-limit* #:*client-kept-without-buffers*))

@@ -172,7 +172,7 @@ now, or, in NORMAL state, once INSERT state is entered."
         (tuatara.buffer:buffer-local buffer 'input-method-last) name
         (tuatara.buffer:buffer-local buffer 'input-method-pending) nil))
 
-(defun deactivate-input-method (&optional (buffer (current-buffer)))
+(defun input-method-turn-off (&optional (buffer (current-buffer)))
   "Turn off BUFFER's input method; the keys waiting stay as they are shown."
   (setf (tuatara.buffer:buffer-local buffer :input-method) nil
         (tuatara.buffer:buffer-local buffer 'input-method-pending) nil))
@@ -186,7 +186,7 @@ now, or, in NORMAL state, once INSERT state is entered."
 
 (defun read-input-method (prompt)
   "Ask PROMPT for an input method, the default one (*DEFAULT-INPUT-METHOD*)
-offered first, taken by \\<minibuffer>\\[minibuffer-done] alone; its name, or
+offered first, taken by \\<minibuffer>\\[minibuffer-finish] alone; its name, or
 NIL when none was chosen."
   (let ((chosen (completing-read prompt (input-method-candidates) :require-match t :default *default-input-method*)))
     (and (find-input-method chosen) chosen)))
@@ -214,7 +214,7 @@ default (*default-input-method*), else one asked for (\\[set-input-method])."
   (let* ((buffer (current-buffer))
          (method (buffer-input-method buffer)))
     (if method
-        (progn (deactivate-input-method buffer)
+        (progn (input-method-turn-off buffer)
                (message "~a off" (input-method-name method)))
         (let ((name (or (and (find-input-method (tuatara.buffer:buffer-local buffer 'input-method-last))
                              (tuatara.buffer:buffer-local buffer 'input-method-last))
@@ -224,11 +224,11 @@ default (*default-input-method*), else one asked for (\\[set-input-method])."
                      (message "~a on~a" name (input-method-state-words)))
               (set-input-method))))))
 
-(define-command input-method-off ()
+(define-command deactivate-input-method ()
   "Turn off this buffer's input method, whichever it is."
   (let ((method (buffer-input-method)))
     (if method
-        (progn (deactivate-input-method)
+        (progn (input-method-turn-off)
                (message "~a off" (input-method-name method)))
         (message "No input method is on"))))
 
@@ -259,7 +259,7 @@ longer rule are shown underlined until the next key settles them.~%~%"
 (define-command digraph-input-mode ()
   "Type digraphs as you go: turn on the rfc1345 input method, so that typed
 text takes & and a digraph's keys for its character, &e' for e with an
-acute; & and keys that make none stay as typed. \\[input-method-off] or
+acute; & and keys that make none stay as typed. \\[deactivate-input-method] or
 \\[toggle-input-method] turns it off; \\[list-digraphs] lists them."
   (turn-on-input-method "rfc1345" "Digraphs"))
 

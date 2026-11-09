@@ -47,7 +47,7 @@ it), as a fixnum vector; a last line without a line end counts."
   "LINE-HASHES of ROPE's text, read a megabyte at a time rather than copied whole."
   (let ((hashes (make-array 1024 :element-type 'fixnum :adjustable t :fill-pointer 0))
         (chunk (make-array (* 1024 1024) :element-type '(unsigned-byte 8)))
-        (size (tuatara.text:rope-bytes rope))
+        (size (tuatara.text:rope-octet-length rope))
         (hash +fnv-offset+) (open nil))
     ;; an octet more than is hashed, read for a carriage return at a chunk's end
     (loop for at from 0 below size by (1- (length chunk))
@@ -207,7 +207,7 @@ last goes to its end."
          (column (- position (tuatara.text:line->byte from line)))
          (target (map-line hunks line)))
     (if (> target (tuatara.text:rope-lines to))
-        (tuatara.text:rope-bytes to)
+        (tuatara.text:rope-octet-length to)
         (let* ((start (tuatara.text:line->byte to target))
                (at (min (+ start column) (tuatara.text:rope-line-end to start))))
           (tuatara.text:rope-char-start to at)))))
@@ -222,7 +222,7 @@ keep their offsets instead.")
 same text in the rope NEW and back: through the lines that differ, when both
 are at most *RELOAD-DIFF-LIMIT* octets and indexed; else a position stays
 where it is, cut to the other text's size."
-  (let ((old-size (tuatara.text:rope-bytes old)) (new-size (tuatara.text:rope-bytes new)))
+  (let ((old-size (tuatara.text:rope-octet-length old)) (new-size (tuatara.text:rope-octet-length new)))
     (if (and (<= old-size *reload-diff-limit*) (<= new-size *reload-diff-limit*)
              (tuatara.text:rope-indexed-p old) (tuatara.text:rope-indexed-p new))
         (let* ((hunks (diff-hunks (rope-line-hashes old) (rope-line-hashes new)))
@@ -235,7 +235,7 @@ where it is, cut to the other text's size."
 (defun line-edges (rope from count)
   "The byte offsets in ROPE where its COUNT lines from the 0-based line FROM
 begin and end; past its last line, its end."
-  (flet ((at (line) (if (> line (tuatara.text:rope-lines rope)) (tuatara.text:rope-bytes rope) (tuatara.text:line->byte rope line))))
+  (flet ((at (line) (if (> line (tuatara.text:rope-lines rope)) (tuatara.text:rope-octet-length rope) (tuatara.text:line->byte rope line))))
     (values (at from) (at (+ from count)))))
 
 (defun put-text-by-lines (buffer old new)

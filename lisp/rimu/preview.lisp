@@ -72,18 +72,27 @@ then; READ-HERE true when its TEXT was read by Tuatara itself
   "The preview beside the rimu list in the selected window, a RIMU-PREVIEW;
 NIL when there is none.")
 
+(defun rimu-safe-on-server-p (buffer)
+  "True when BUFFER, a rimu list, shows a folder on another machine and is
+opened safely."
+  (and (tuatara.io:safe-visit-p buffer)
+       (remote-name-p (tuatara.buffer:buffer-local buffer 'rimu-directory))))
+
 (defun rimu-previewing-p (buffer)
   "True when BUFFER is a rimu list, not one made for a preview, with its
 preview on. In a list opened safely the preview shows each file as a file
 opened safely is shown: its text with no major mode, a picture or a PDF only
 as the sandbox draws it. A list of a folder on another machine starts with its
 preview off, as each file shown has to come from there first
-\(*REMOTE-PREVIEW-LARGEST*), and opened safely has none: nothing there is read unasked."
+\(*REMOTE-PREVIEW-SIZE-LIMIT*), and opened safely has none: nothing there is read unasked."
   (and (rimu-list-p buffer)
        (list-preview-p buffer)
        (not (tuatara.buffer:buffer-local buffer 'rimu-preview-buffer))
-       (not (and (tuatara.io:safe-visit-p buffer)
-                 (remote-name-p (tuatara.buffer:buffer-local buffer 'rimu-directory))))))
+       (not (rimu-safe-on-server-p buffer))))
+
+(defmethod list-preview-refusal ((mode rimu-mode) list)
+  (and (rimu-safe-on-server-p list)
+       "No preview here: this folder on a server is opened safely, and nothing there is read unasked"))
 
 (defvar *rimu-quick-edit-keymap* (make-keymap :name "rimu quick edit")
   "Keys of a file being quick-edited from a rimu list (\\<rimu-mode>\\[rimu-quick-edit]),
@@ -119,7 +128,7 @@ saved."
         (and modified (not goes))))))
 
 (defun rimu-quick-edit-leave (state)
-  "End the preview STATE's quick edit as \\<*rimu-quick-edit-keymap*>\\[rimu-quick-edit-done] does, asking first
+  "End the preview STATE's quick edit as \\<*rimu-quick-edit-keymap*>\\[rimu-quick-edit-finish] does, asking first
 whether to save the file's changes: saved, or let go when the quick edit
 opened the file (a buffer open before keeps them). \\[keyboard-quit] at the
 question goes on with the quick edit. True when the file was saved."
@@ -132,7 +141,7 @@ question goes on with the quick edit. True when the file was saved."
       (message "~a keeps its changes, not saved" (tuatara.buffer:buffer-name buffer)))
     save))
 
-(defun rimu-quick-edit-finish (state)
+(defun rimu-quick-edit-back-to-list (state)
   "End the preview STATE's quick edit, asking first whether to save its
 changes (RIMU-QUICK-EDIT-LEAVE), and go on in the list: read again when the file
 was saved; its preview closed when the list has none."
@@ -144,10 +153,10 @@ was saved; its preview closed when the list has none."
 
 (defun rimu-quick-edit-return (state)
   "End the preview STATE's quick edit, the cursor come back to the list, as
-RIMU-QUICK-EDIT-FINISH does; \\[keyboard-quit] at the question about the changes
+RIMU-QUICK-EDIT-BACK-TO-LIST does; \\[keyboard-quit] at the question about the changes
 takes the cursor back into the quick edit."
   (let ((window (rimu-preview-window state)))
-    (handler-case (rimu-quick-edit-finish state)
+    (handler-case (rimu-quick-edit-back-to-list state)
       (quit ()
         (when (and window (member window (editor-windows)))
           (select-window window))
@@ -536,7 +545,7 @@ room beside the list, the file is shown in the list's window."
                   (if own
                       ;; the quick edit's keys first, then the buffer's own (a PDF view's C-s)
                       (let ((keys (make-keymap :name "rimu quick edit" :parent own)))
-                        (define-key keys "C-c C-c" 'rimu-quick-edit-done)
+                        (define-key keys "C-c C-c" 'rimu-quick-edit-finish)
                         keys)
                       *rimu-quick-edit-keymap*))
                 ;; NORMAL's q back to the preview, but not in a PDF's view, whose keys are its own
@@ -556,19 +565,19 @@ room beside the list, the file is shown in the list's window."
             (cond ((pdf-view-of buffer)
                    (message "~a, all of it: the cursor back in the list shows its preview again" (tuatara.buffer:buffer-name buffer)))
                   ((and binary (buffer-read-only-p buffer))
-                   (message "~a is binary: shown in the hex view, read-only; \\[read-only-mode] lets you overwrite its octets, \\<*rimu-quick-edit-normal-keymap*>\\[rimu-quick-edit-done] goes back to the preview"
+                   (message "~a is binary: shown in the hex view, read-only; \\[read-only-mode] lets you overwrite its octets, \\<*rimu-quick-edit-normal-keymap*>\\[rimu-quick-edit-finish] goes back to the preview"
                             (tuatara.buffer:buffer-name buffer)))
                   (binary
-                   (message "~a is binary: shown in the hex view, where typing overwrites its octets; \\<*rimu-quick-edit-normal-keymap*>\\[rimu-quick-edit-done] goes back to the preview"
+                   (message "~a is binary: shown in the hex view, where typing overwrites its octets; \\<*rimu-quick-edit-normal-keymap*>\\[rimu-quick-edit-finish] goes back to the preview"
                             (tuatara.buffer:buffer-name buffer)))
                   ((not (tuatara.io:safe-visit-p buffer))
-                   (message "Quick edit: \\<*rimu-quick-edit-normal-keymap*>\\[rimu-quick-edit-done] goes back to the preview"))))))))
+                   (message "Quick edit: \\<*rimu-quick-edit-normal-keymap*>\\[rimu-quick-edit-finish] goes back to the preview"))))))))
 
 (define-command rimu-quick-edit ()
   "Edit the file on the current line where the preview shows it, the quick
 edit: the preview becomes the file itself, opened as \\[find-file] opens it
 (safely where that would be, and with \\[universal-argument] safely always), and the
-cursor goes there. \\<*rimu-quick-edit-normal-keymap*>\\[rimu-quick-edit-done] in NORMAL state, \\<*rimu-quick-edit-keymap*>\\[rimu-quick-edit-done] in any, or the cursor going back
+cursor goes there. \\<*rimu-quick-edit-normal-keymap*>\\[rimu-quick-edit-finish] in NORMAL state, \\<*rimu-quick-edit-keymap*>\\[rimu-quick-edit-finish] in any, or the cursor going back
 to the list returns to the preview, asking first whether to save the changes.
 On a directory, the cursor goes into its list in the preview's window, to move
 about in. With the preview off, a window beside the list is made for it. A
@@ -614,7 +623,7 @@ is opened with \\`RET' instead."
                    (select-window (rimu-preview-window state))))
                (rimu-quick-edit-file state entry directory (and (prefix-argument) t) place))))))
 
-(define-command rimu-quick-edit-done ()
+(define-command rimu-quick-edit-finish ()
   "Go back from the quick edit of this file to the preview beside the rimu
 list (as the cursor going back to the list does), asking first whether to save
 the changes made: \\`y' saves them; \\`n' lets them go (a buffer open before the
@@ -622,7 +631,7 @@ quick edit keeps them); \\[keyboard-quit] goes on with the quick edit."
   (let ((state *rimu-preview-state*))
     (when (rimu-quick-edit-buffer-p (current-buffer))
       (let ((list-window (rimu-preview-list-window state)))
-        (rimu-quick-edit-finish state)
+        (rimu-quick-edit-back-to-list state)
         (select-window list-window)))))
 
 (defun rimu-quick-edit-buffer-p (buffer)
@@ -631,7 +640,7 @@ quick edit keeps them); \\[keyboard-quit] goes on with the quick edit."
     (and state buffer (eq buffer (rimu-preview-editing state)))))
 
 (commands-for-buffers 'rimu-quick-edit-buffer-p "a quick edit from a rimu list (\\<rimu-mode>\\[rimu-quick-edit])"
-                      'rimu-quick-edit-done)
+                      'rimu-quick-edit-finish)
 
 (defun rimu-quick-edit-mode-line (editor buffer)
   "What the mode line of a file being quick-edited from a rimu list adds: Quick edit."

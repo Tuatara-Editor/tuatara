@@ -22,8 +22,8 @@ directory removed afterwards."
 
 (define-test (recent-files kept-on-disk)
   (with-fresh-recent-files
-    ;; the latest first, each once, at most *recent-files-max*
-    (let ((tuatara-user:*recent-files-max* 3))
+    ;; the latest first, each once, at most *recent-files-limit*
+    (let ((tuatara-user:*recent-files-limit* 3))
       (dolist (path '("/a" "/b" "/c" "/b" "/d")) (tuatara.defaults::remember-file path))
       (is equal '(("/d") ("/b") ("/c")) (tuatara.defaults::read-recent-files)))
     ;; written in the background, readable by its owner alone

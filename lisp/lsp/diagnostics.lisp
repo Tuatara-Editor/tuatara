@@ -238,7 +238,7 @@ kind said in the box under the cursor, for what is of SEVERITY."
 byte FROM to byte TO, by where each starts: a list of (LINE . SEVERITY).
 Complexity: O(log found + those there)."
   (let* ((rope (tuatara.buffer:buffer-text buffer))
-         (size (tuatara.text:rope-bytes rope))
+         (size (tuatara.text:rope-octet-length rope))
          (vector (nth-value 1 (diagnostic-table buffer)))
          (lines '()))
     (loop for i from (tuatara.runtime:bisect (mid 0 (length vector)) (< (min size (diagnostic-start (svref vector mid))) from))
@@ -399,7 +399,7 @@ the file at PATH, not open: where the server says, as it counts."
 (defun buffer-diagnostic-piece (buffer d)
   "The line of the list of diagnostics for D, a DIAGNOSTIC of BUFFER."
   (let* ((rope (tuatara.buffer:buffer-text buffer))
-         (start (min (diagnostic-start d) (tuatara.text:rope-bytes rope)))
+         (start (min (diagnostic-start d) (tuatara.text:rope-octet-length rope)))
          (line (tuatara.text:byte->line rope start)))
     (list (format nil "  ~a:~d:~d  ~a~%" (tuatara.buffer:buffer-name buffer) (1+ line)
                   (1+ (- start (tuatara.text:line->byte rope line))) (diagnostic-words d))

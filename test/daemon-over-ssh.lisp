@@ -135,6 +135,109 @@ daemon asks for; three values as ATTACH-TEST-CLIENT gives them."
               (true (search (format nil "-F~%none~%-O~%exit~%--~%build.example~%env") said)
                     "the connection is ended"))))))))
 
+(defmacro with-peers-namespace-kept-private ((by-ssh) &body body)
+  "Run BODY with the mount namespace of a process no longer to be read, as
+the system keeps sshd's, and that process started by the OpenSSH server when
+BY-SSH is true, the daemon taken to run outside any container."
+  `(let ((by-ssh ,by-ssh))
+     (unwind-protect
+          (progn (sb-int:encapsulate 'tuatara.io:mount-namespace 'kept-private
+                                     (lambda (function pid) (declare (ignore function pid)) nil))
+                 (sb-int:encapsulate 'tuatara.io:started-by-ssh-server-p 'kept-private
+                                     (lambda (function pid) (declare (ignore function pid)) by-ssh))
+                 (sb-int:encapsulate 'tuatara.defaults::daemon-knows-root-p 'kept-private
+                                     (lambda (function) (declare (ignore function)) t))
+                 ,@body)
+       (sb-int:unencapsulate 'tuatara.defaults::daemon-knows-root-p 'kept-private)
+       (sb-int:unencapsulate 'tuatara.io:started-by-ssh-server-p 'kept-private)
+       (sb-int:unencapsulate 'tuatara.io:mount-namespace 'kept-private))))
+
+(defun started-by-ssh-given (parents name user &optional (process-numbers '(7)))
+  "What TUATARA.IO:STARTED-BY-SSH-SERVER-P says of a process whose parent's
+number reads as each of PARENTS in turn, the last for good, a parent named NAME,
+run by the account USER, with PROCESS-NUMBERS its numbers in each namespace of
+processes."
+  (let ((left parents))
+    (unwind-protect
+         (progn
+           (sb-int:encapsulate 'tuatara.io::process-parent 'given
+                               (lambda (function pid)
+                                 (declare (ignore function pid))
+                                 (if (rest left) (pop left) (first left))))
+           (sb-int:encapsulate 'tuatara.io::process-name 'given
+                               (lambda (function pid) (declare (ignore function pid)) name))
+           (sb-int:encapsulate 'tuatara.io::process-status-numbers 'given
+                               (lambda (function pid field)
+                                 (declare (ignore function pid))
+                                 (if (string= field "Uid") (and user (list user)) process-numbers)))
+           (tuatara.io:started-by-ssh-server-p 42))
+      (sb-int:unencapsulate 'tuatara.io::process-status-numbers 'given)
+      (sb-int:unencapsulate 'tuatara.io::process-name 'given)
+      (sb-int:unencapsulate 'tuatara.io::process-parent 'given))))
+
+(define-test (daemon ssh-server-is-a-parent-run-by-root)
+  (true (started-by-ssh-given '(7) "sshd-session" 0))
+  (true (started-by-ssh-given '(7) "sshd" 0))
+  (false (started-by-ssh-given '(7) "sshd-session" 1000))
+  (false (started-by-ssh-given '(7) "sshd" nil))
+  (false (started-by-ssh-given '(7) "sshd" 0 '(7 1)))
+  (false (started-by-ssh-given '(7) "sshd" 0 nil))
+  (false (started-by-ssh-given '(7) "dropbear" 0))
+  (false (started-by-ssh-given '(nil) "sshd" 0))
+  (false (started-by-ssh-given '(7 1) "sshd" 0)))
+
+(define-test (daemon peer-whose-namespace-cannot-be-read)
+  ;; sshd connects for a client on another machine and the system will not say its namespace: such a client is
+  ;; taken; one on this machine is refused, its paths not known to be the daemon's
+  (when (tuatara.io:find-program "python3")
+    (with-stand-in-ssh (dir log bin)
+      (put-file (merge-pathnames "kiwi.txt" dir) "far text")
+      (with-test-daemon (name thread)
+        (put-server-tuatara bin :report (test-report dir name))
+        (with-peers-namespace-kept-private (t)
+          (let ((link (tuatara.terminal::open-ssh-link "build.example" name)))
+            (true link)
+            (when link
+              (unwind-protect
+                   (multiple-value-bind (local runner)
+                       (far-test-client link (far-options (format nil "--client=build.example:~a" name) "kiwi.txt"))
+                     (true (shows local "far text"))
+                     (type-keys local "C-x C-c")
+                     (is equal '(0 nil) (client-ends runner)))
+                (tuatara.terminal::close-ssh-link link))))
+          (multiple-value-bind (local runner) (attach-test-client name :directory dir)
+            (declare (ignore local))
+            (let ((ended (client-ends runner)))
+              (is eql 1 (first ended))
+              (true (search "container" (second ended)))))))
+      ;; one the OpenSSH server did not start is refused, whatever it says of itself
+      (with-test-daemon (name thread)
+        (with-peers-namespace-kept-private (nil)
+          (true (search "container" (handler-case (progn (attach-test-client name :directory dir :far t) "")
+                                      (tuatara.frontend:remote-refused (condition)
+                                        (tuatara.frontend:remote-refused-words condition)))))))
+      ;; nor can a daemon in a container of user ids tell root from a process that only looks like it there
+      (with-test-daemon (name thread)
+        (with-peers-namespace-kept-private (t)
+          (unwind-protect
+               (progn
+                 (sb-int:encapsulate 'tuatara.defaults::daemon-knows-root-p 'in-a-container
+                                     (lambda (function) (declare (ignore function)) nil))
+                 (true (search "container" (handler-case (progn (attach-test-client name :directory dir :far t) "")
+                                             (tuatara.frontend:remote-refused (condition)
+                                               (tuatara.frontend:remote-refused-words condition))))))
+            (sb-int:unencapsulate 'tuatara.defaults::daemon-knows-root-p 'in-a-container))))
+      ;; a namespace that can be read and differs is refused, whatever the client says of itself
+      (with-test-daemon (name thread)
+        (unwind-protect
+             (progn
+               (sb-int:encapsulate 'tuatara.io:mount-namespace 'another
+                                   (lambda (function pid) (declare (ignore function pid)) (cons 1 2)))
+               (true (search "container" (handler-case (progn (attach-test-client name :directory dir :far t) "")
+                                           (tuatara.frontend:remote-refused (condition)
+                                             (tuatara.frontend:remote-refused-words condition))))))
+          (sb-int:unencapsulate 'tuatara.io:mount-namespace 'another))))))
+
 (define-test (daemon client-on-another-machine-shows-a-picture)
   ;; a picture file opened on a daemon through ssh is shown on the client's screen, its pixels sent across
   (when (and (tuatara.io:find-program "python3") (tuatara.defaults::find-image-decoder))

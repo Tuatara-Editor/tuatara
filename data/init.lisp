@@ -131,7 +131,7 @@
   ;; (bind-key "i" nil :map :leader :label "input")
   ;; (bind-key "i &" 'insert-digraph :map :leader)
   ;; (bind-key "i ." 'digraph-input-mode :map :leader)
-  ;; (bind-key "i -" 'input-method-off :map :leader)
+  ;; (bind-key "i -" 'deactivate-input-method :map :leader)
 
   ;;; Looks: themes, fonts, colours (M-x load-theme lists the themes)
 
@@ -201,7 +201,7 @@
 
   ;; Buffer names cut to 30 columns in the mode line, … in the middle. Not set:
   ;; nil: as they fit.
-  ;; (setf *mode-line-name-max* 30)
+  ;; (setf *mode-line-name-limit* 30)
 
   ;; The mode line's sign, first, lit while a buffer's jobs run or wait: a Nerd
   ;; Font glyph. Not set: "P"; nil: none.
@@ -272,6 +272,11 @@
   ;; set: t.
   ;; (setf *modal-editing* nil)
 
+  ;; Have the keys that comment a line move on to the next line afterwards.
+  ;; Not set: the cursor stays.
+  ;; (bind-key "C-x C-;" 'toggle-comment-lines-ret)
+  ;; (bind-key "C" 'toggle-comment-lines-ret :map :normal)
+
   ;; Two keys typed quickly one after the other in INSERT state leave it for
   ;; NORMAL state, and neither stays in the text. Not set: nil.
   ;; (setf *insert-escape-keys* "jk")
@@ -292,6 +297,11 @@
   ;; With Escape as quit, give it to a full-screen program in a terminal all the
   ;; same (nvim, less, htop); at a shell's prompt it still quits. Not set: nil.
   ;; (setf *terminal-send-escape* t)
+
+  ;; A key that sends Escape to any program in a terminal, a shell at its prompt
+  ;; too; no key as standard.
+  ;; (push "C-;" *terminal-editor-keys*)
+  ;; (bind-key "C-;" 'terminal-send-escape :mode 'terminal)
 
   ;; Never the kitty keyboard protocol in a terminal. Not set: :auto: asked of the
   ;; terminal; with it Escape and Alt arrive whole.
@@ -426,7 +436,7 @@
   ;; (setf *use-system-clipboard* nil)
 
   ;; Kills of up to 32 M characters go on the clipboard. Not set: 8 M.
-  ;; (setf *clipboard-max-size* (* 32 1024 1024))
+  ;; (setf *clipboard-size-limit* (* 32 1024 1024))
 
   ;; The kill ring keeps the 60 newest kills. Not set: 120.
   ;; (setf *kill-ring-max* 60)
@@ -679,7 +689,7 @@
   ;; (setf *remember-recent-files* nil)
 
   ;; C-x C-r offers the last 100 files visited. Not set: 25.
-  ;; (setf *recent-files-max* 100)
+  ;; (setf *recent-files-limit* 100)
 
   ;; Files no longer there kept in that list, shown not found. Not set: t: taken
   ;; out.
@@ -737,7 +747,7 @@
   ;; (setf *auto-save-interval* 30)
 
   ;; Buffers of up to 1 GB copied. Not set: 256 MB.
-  ;; (setf *auto-save-largest* (* 1024 1024 1024))
+  ;; (setf *auto-save-size-limit* (* 1024 1024 1024))
 
   ;; Large files on ext4 saved by writing only what changed, into the file
   ;; itself: one changed line of a 10 GB file in a few hundredths of a second,
@@ -832,7 +842,7 @@
   ;; (setf *search-files-limit* (* 4 1024 1024 1024))
 
   ;; Up to 5,000 matching lines listed. Not set: 2,000.
-  ;; (setf *search-files-max-lines* 5000)
+  ;; (setf *search-files-lines-limit* 5000)
 
   ;; What marks a project, all of which M-s g searches. Not set: '(".git"
   ;; ".project").
@@ -844,6 +854,9 @@
 
   ;; The sign lit while they are searched. Not set: "S"; nil: none.
   ;; (setf *searching-indicator* "")
+
+  ;; The sign lit while the editor runs as a daemon. Not set: "D"; nil: none.
+  ;; (setf *daemon-indicator* "")
 
   ;;; Messages and debugging
 
@@ -860,7 +873,7 @@
   ;; (setf *idle-collection-seconds* nil)
 
   ;; Lines *Debug* keeps. Not set: 10000; nil: all.
-  ;; (setf *debug-log-max* 50000)
+  ;; (setf *debug-log-limit* 50000)
 
   ;; An error shows the calls under way in *Backtrace*. Not set: nil; M-x
   ;; toggle-debug-on-error.
@@ -1196,11 +1209,11 @@
 
   ;; Org text read up to 500 elements one within another, deeper ones as
   ;; plain text. Not set: 200.
-  ;; (setf *org-deepest* 500)
+  ;; (setf *org-depth-limit* 500)
 
   ;; A table formula nested up to 500 deep in brackets, signs and powers,
   ;; deeper ones refused. Not set: 200.
-  ;; (setf *org-formula-deepest* 500)
+  ;; (setf *org-formula-depth-limit* 500)
   )
 
 (load-package "tuatara"
@@ -1256,7 +1269,7 @@
   ;; The most of a command's output *compile* keeps; past it the output is
   ;; counted, not kept, and the end says how much was left out. Not set: 256 MB;
   ;; nil: all of it.
-  ;; (setf *compile-output-most* (* 1024 1024 1024))
+  ;; (setf *compile-output-limit* (* 1024 1024 1024))
 
   ;;; Language servers and formatting (C-c in code lists their keys)
 
@@ -1390,7 +1403,7 @@
   ;; (setf *terminal-paste-keys* '("C-V" "S-<insert>"))
 
   ;; Columns of its title in the mode line. Not set: 40; nil: none.
-  ;; (setf *terminal-title-max* 60)
+  ;; (setf *terminal-title-limit* 60)
 
   ;; Where it shows: :bottom :top :left :right, or :full, the window you are in.
   ;; Not set: :bottom.
@@ -1482,11 +1495,11 @@
   ;; A note read from an office file (Word, Excel, PowerPoint, OpenDocument)
   ;; holds up to 64 million characters, the rest left out and said so. Not
   ;; set: 16 million.
-  ;; (setf *office-note-largest* (* 64 1024 1024))
+  ;; (setf *office-note-size-limit* (* 64 1024 1024))
 
   ;; And up to 10,000 columns of one value (a cell, a formula), cut there
   ;; ending in …. Not set: 2000.
-  ;; (setf *office-value-longest* 10000)
+  ;; (setf *office-value-length-limit* 10000)
 
   ;; O opens pictures, PDFs, sound, video in the desktop's program at once. Not
   ;; set: t: asks.
@@ -1534,7 +1547,7 @@
   ;; 16 MB of them. Not set: 64 MB.
   ;; (setf *differences-limit* (* 16 1024 1024))
 
-  ;; M-x file-metadata names the owners of an encrypted file's keys from your
+  ;; M-x show-file-metadata names the owners of an encrypted file's keys from your
   ;; keyring (runs gpg --list-keys; the file is never given to it); nil: the
   ;; key IDs alone. Not set: :ask each time.
   ;; (setf *metadata-look-up-key-owners* t)
@@ -1563,7 +1576,7 @@
   ;; (setf *remote-seconds* 60)
   ;; The most a file on another machine may hold to be shown in the preview
   ;; of its list, which P turns on. Not set: 20 MB.
-  ;; (setf *remote-preview-largest* (* 50 1024 1024))
+  ;; (setf *remote-preview-size-limit* (* 50 1000 1000))
   )
 
 ;;;; ================================================================
@@ -1628,7 +1641,7 @@
 
   ;; Copying, moving and deleting folders go down through 400 folders one
   ;; inside another; deeper is refused. Not set: 200.
-  ;; (setf *deepest-folder-tree* 400)
+  ;; (setf *folder-tree-depth-limit* 400)
   )
 
 ;;; CSV files
@@ -1730,4 +1743,4 @@
 
 ;; A package fetched may take up to 2 GB on disk, its history and files
 ;; together; a larger fetch is ended and its files deleted. Not set: 512 MB.
-;; (setf *package-most-octets* (* 2 1024 1024 1024))
+;; (setf *package-size-limit* (* 2 1024 1024 1024))

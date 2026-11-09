@@ -85,7 +85,7 @@ them, and the fixnum vector of byte positions APPLY-EDITS should return."
   "Assert that ROPE holds exactly STRING with correct counts and a valid structure."
   (true (tuatara.text:check-rope rope))
   (is string= string (tuatara.text:rope-string rope))
-  (is = (length (to-octets string)) (tuatara.text:rope-bytes rope))
+  (is = (length (to-octets string)) (tuatara.text:rope-octet-length rope))
   (is = (length string) (tuatara.text:rope-chars rope))
   (is = (string-utf16 string) (tuatara.text:rope-utf16 rope))
   (is = (string-lines string) (tuatara.text:rope-lines rope)))
@@ -185,7 +185,7 @@ them, and the fixnum vector of byte positions APPLY-EDITS should return."
                         'simple-vector)))
     (multiple-value-bind (new positions) (tuatara.text:apply-edits rope edits)
       (true (tuatara.text:check-rope new))
-      (is = (+ (length octets) lines) (tuatara.text:rope-bytes new))
+      (is = (+ (length octets) lines) (tuatara.text:rope-octet-length new))
       (is = (rope-lines-oracle octets) (tuatara.text:rope-lines new))
       (let ((expected (make-array (+ (length octets) lines) :element-type '(unsigned-byte 8)))
             (src 0) (dst 0))
@@ -386,7 +386,7 @@ were before MAP-LINE-SLICES: (LINE START END START-COLUMN END-COLUMN LINE-END)."
   ;; the line short: what follows it is in the slice, the line's end its end
   (let* ((text (format nil "x~a~a" (make-string 1400 :initial-element (code-char #x200B)) "SECRET"))
          (rope (tuatara.text:string->rope text))
-         (total (tuatara.text:rope-bytes rope))
+         (total (tuatara.text:rope-octet-length rope))
          (found '()))
     (tuatara.text:map-line-slices (lambda (&rest slice) (push slice found)) rope 0 1 0 10
                                   :width (lambda (code column before) (declare (ignore column before)) (values (if (= code #x200B) 0 1) code)))
@@ -440,7 +440,7 @@ cd")
   ;; a step to the next or the previous character, or a look at one, reads the
   ;; few octets around it on the stack: nothing made for each (a new vector before)
   (let* ((rope (tuatara.text:string->rope (with-output-to-string (o) (dotimes (i 5000) (write-string "aé😀🇳🇿" o)))))
-         (total (tuatara.text:rope-bytes rope)))
+         (total (tuatara.text:rope-octet-length rope)))
     (flet ((made (steps)
              (nth-value 2 (measuring
                             (let ((p 0))
@@ -494,7 +494,7 @@ cd")
   (flet ((starts (string)
            ;; the cluster starts of STRING, forwards, and backwards from its end
            (let* ((rope (tuatara.text:string->rope string))
-                  (size (tuatara.text:rope-bytes rope))
+                  (size (tuatara.text:rope-octet-length rope))
                   (forward (loop for p = 0 then (tuatara.text:rope-next-boundary rope p t)
                                  while (< p size) collect p))
                   (backward (loop for p = size then (tuatara.text:rope-previous-boundary rope p t)

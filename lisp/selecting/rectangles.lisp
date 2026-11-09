@@ -565,7 +565,7 @@ nothing changed, when that would take part of the text a fold hides, but not
 all of it."
   (multiple-value-bind (top bottom left right) (rectangle-lines buffer)
     (let* ((rope (tuatara.buffer:buffer-text buffer))
-           (total (tuatara.text:rope-bytes rope))
+           (total (tuatara.text:rope-octet-length rope))
            (high (min total (1+ (tuatara.text:rope-line-end rope bottom))))
            (spec (make-rows-job :rope rope :top top :bottom bottom :top-line (tuatara.text:byte->line rope top)
                                 :high high :total total :left left :right right :crlf (buffer-crlf-p buffer)
@@ -814,7 +814,7 @@ it (ROWS-JOB-FOLDS); NIL at once when the text had no folds."
 to E of ROPE, a match or a rectangle's row, where it stands just outside it:
 where the change starts and ends; NIL when it does not."
   (let ((from (- s (length open))) (to (+ e (length close))))
-    (when (and (>= from 0) (<= to (tuatara.text:rope-bytes rope))
+    (when (and (>= from 0) (<= to (tuatara.text:rope-octet-length rope))
                (equalp open (tuatara.text:rope-octets rope :start from :end s))
                (equalp close (tuatara.text:rope-octets rope :start e :end to)))
       (values from to))))
@@ -1175,7 +1175,7 @@ JOINS, the undo stack of a change the job's joins (REWRITE).
 Returns the job."
   (tuatara.buffer:ensure-indexed buffer)
   (let* ((rope (tuatara.buffer:buffer-text buffer))
-         (total (tuatara.text:rope-bytes rope))
+         (total (tuatara.text:rope-octet-length rope))
          ;; after the last line's newline, its carriage return too
          (high (min total (1+ (tuatara.text:rope-line-end rope bottom))))
          (rows (if source (max rows (rectangle-source-rows source)) rows))

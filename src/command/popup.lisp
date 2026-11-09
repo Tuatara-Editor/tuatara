@@ -229,32 +229,32 @@ the list to show it."
         (cond ((< index (popup-scroll popup)) (setf (popup-scroll popup) index))
               ((>= index (+ (popup-scroll popup) rows)) (setf (popup-scroll popup) (1+ (- index rows)))))))))
 
-(define-command popup-next ()
+(define-command popup-next (:interactive nil)
   "Choose the next candidate in the list beside the cursor, the first after the last."
   (with-popup (p) (popup-choose p (1+ (popup-index p)))))
 
-(define-command popup-previous ()
+(define-command popup-previous (:interactive nil)
   "Choose the previous candidate in the list beside the cursor, the last before the first."
   (with-popup (p) (popup-choose p (if (minusp (popup-index p)) -1 (1- (popup-index p))))))
 
-(define-command popup-first ()
+(define-command popup-first (:interactive nil)
   "Choose the first candidate in the list beside the cursor."
   (with-popup (p) (popup-choose p 0)))
 
-(define-command popup-last ()
+(define-command popup-last (:interactive nil)
   "Choose the last candidate in the list beside the cursor."
   (with-popup (p) (popup-choose p (1- (length (popup-candidates p))))))
 
-(define-command popup-page-down ()
+(define-command popup-page-down (:interactive nil)
   "Choose the candidate a list's height further on in the list beside the cursor."
   (with-popup (p)
     (popup-choose p (min (1- (length (popup-candidates p))) (+ (popup-index p) *popup-rows*)))))
 
-(define-command popup-page-up ()
+(define-command popup-page-up (:interactive nil)
   "Choose the candidate a list's height back in the list beside the cursor."
   (with-popup (p) (popup-choose p (max 0 (- (popup-index p) *popup-rows*)))))
 
-(define-command popup-insert ()
+(define-command popup-insert (:interactive nil)
   "Put the chosen candidate of the list beside the cursor in place of the word,
 the first when none is chosen, and close the list."
   (with-popup (p)
@@ -262,11 +262,11 @@ the first when none is chosen, and close the list."
         (popup-put p (aref (popup-candidates p) (max 0 (popup-index p))))
         (close-popup *editor*))))
 
-(define-command popup-quit ()
+(define-command popup-quit (:interactive nil)
   "Close the list of completions beside the cursor, the word as it is."
   (with-popup (p) (close-popup *editor*)))
 
-(define-command popup-insert-separator ()
+(define-command popup-insert-separator (:interactive nil)
   "Put a space in the word being completed, which goes on past it: the words
 typed on either side match in any order, as the minibuffer matches them."
   (with-popup (p)

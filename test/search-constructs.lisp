@@ -287,7 +287,7 @@ matches in order, or (:refused WORDS)."
         (let ((rope (tuatara.text:string->rope text)) (out '()))
           (tuatara.defaults::stretch-matches
            (lambda (s e m g) (declare (ignore m g)) (push (tuatara.text:rope-string rope :start s :end e) out) nil)
-           rope matcher 0 (tuatara.text:rope-bytes rope) nil nil nil)
+           rope matcher 0 (tuatara.text:rope-octet-length rope) nil nil nil)
           (nreverse out)))))
 
 (defun construct-finds-in-string (pattern text)
@@ -361,7 +361,7 @@ question as PATTERN/REPLACEMENT."
         (let ((tuatara.syntax:*serial-window* (first sizes)) (tuatara.syntax:*parallel-piece* (second sizes)))
           (is equal (list (list start (+ start (1- (length block)))))
               (mapcar (lambda (m) (subseq m 0 2))
-                      (tuatara.defaults::line-matches rope matcher t 0 (tuatara.text:rope-bytes rope)))
+                      (tuatara.defaults::line-matches rope matcher t 0 (tuatara.text:rope-octet-length rope)))
               "a block of 19 KB at ~a" sizes)
           (is eql start (tuatara.syntax:regex-search-forward rope "[[:base64:]]" :start 0 :threads 3))))
       ;; longer than a window may grow to: read on past it, found whole all the same
@@ -370,7 +370,7 @@ question as PATTERN/REPLACEMENT."
           (let ((tuatara.syntax:*serial-window* (first sizes)) (tuatara.syntax:*parallel-piece* (second sizes)))
             (is equal (list (list start (+ start (1- (length block)))))
                 (mapcar (lambda (m) (subseq m 0 2))
-                        (tuatara.defaults::line-matches rope matcher t 0 (tuatara.text:rope-bytes rope)))
+                        (tuatara.defaults::line-matches rope matcher t 0 (tuatara.text:rope-octet-length rope)))
                 "a block of 19 KB, windows of 4 KB at most, at ~a" sizes)
             (is equal (list start (+ start (1- (length block))) (subseq block 0 (1- (length block))))
                 (subseq (multiple-value-list (tuatara.syntax:regex-search-forward rope "[[:base64:]]" :start 0 :threads 3)) 0 3)
@@ -412,7 +412,7 @@ question as PATTERN/REPLACEMENT."
                    (cl-ppcre:do-scans (s e rs re scanner text) (incf found)))
                  (in-rope ()
                    (tuatara.syntax:map-regex-matches (lambda (s e m g) (declare (ignore s e m g)) (incf found) nil)
-                                                     rope scanner 0 (tuatara.text:rope-bytes rope) :texts nil)))
+                                                     rope scanner 0 (tuatara.text:rope-octet-length rope) :texts nil)))
             (in-string)
             (true (plusp found) "~a finds something" pattern)
             ;; the least of a few readings, other threads' work left out
@@ -464,7 +464,7 @@ question as PATTERN/REPLACEMENT."
            (matcher (tuatara.defaults::make-pattern-matcher "[[:dateutc<2026-06-30T12:06Z:]]" :regex t)))
       (dolist (sizes '((700 900) (64 128)))
         (let ((tuatara.syntax:*serial-window* (first sizes)) (tuatara.syntax:*parallel-piece* (second sizes)))
-          (let ((matches (tuatara.defaults::line-matches rope matcher t 0 (tuatara.text:rope-bytes rope))))
+          (let ((matches (tuatara.defaults::line-matches rope matcher t 0 (tuatara.text:rope-octet-length rope))))
             (is = 400 (length matches) "every date at ~a" sizes)
             (true (every (lambda (m) (= 29 (- (second m) (first m)))) matches) "each whole at ~a" sizes)))))))
 

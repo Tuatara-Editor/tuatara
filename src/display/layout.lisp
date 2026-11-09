@@ -275,7 +275,7 @@ END, reading the text into CHUNK +READER-CHUNK+ octets at a time."
 
 (defconstant +reader-chunk+ 4096 "Octets a READER fetches from the rope at a time.")
 
-(defun make-reader (rope position &optional (end (tuatara.text:rope-bytes rope)) chunk)
+(defun make-reader (rope position &optional (end (tuatara.text:rope-octet-length rope)) chunk)
   "Return a reader over ROPE from byte POSITION below END, reading into CHUNK,
 octets at least +READER-CHUNK+ long (new ones when not given)."
   (%make-reader rope position end (or chunk (tuatara.text:make-octets +reader-chunk+))))
@@ -360,7 +360,7 @@ newline). Returns three values: where it stopped, the column there, and true
 when that is the line's end. Complexity: O(octets walked), read a block at a
 time, an ASCII octet looked at once."
   (declare (type fixnum from to tab-width column limit) (optimize speed))
-  (let* ((total (tuatara.text:rope-bytes rope))
+  (let* ((total (tuatara.text:rope-octet-length rope))
          (to (min to total))
          (pos from)
          (before 0)
@@ -487,7 +487,7 @@ start of the character there). Complexity: O(log n)."
 LINE-START begins, where lines wrap, however the rows before it fall
 \(WRAP-ANCHOR); NIL when that would be past the end of ROPE's text.
 Complexity: O(log n)."
-  (let ((total (tuatara.text:rope-bytes rope)))
+  (let ((total (tuatara.text:rope-octet-length rope)))
     (loop for k from (1+ (floor (- position line-start) *wrap-stretch*))
           for grid = (+ line-start (* k *wrap-stretch*))
           do (when (>= grid total) (return nil))
@@ -635,7 +635,7 @@ face. Complexity: O(the row's characters × levels)."
 (defun shown-text-end (rope text-end)
   "Where the text LAYOUT shows of ROPE ends: TEXT-END when given, no further
 than ROPE's end; else ROPE's end."
-  (if text-end (min text-end (tuatara.text:rope-bytes rope)) (tuatara.text:rope-bytes rope)))
+  (if text-end (min text-end (tuatara.text:rope-octet-length rope)) (tuatara.text:rope-octet-length rope)))
 
 (defun layout (rope start width height &key (wrap nil) wrap-column word-wrap (tab-width 8) (hscroll 0) highlights crlf hidden
                                              prefix scale until invisible spares text-end direction bidi)
@@ -693,7 +693,7 @@ O(WIDTH × HEIGHT), and for each row scrolled sideways O(*SCREEN-COLUMN-REACH*
     (let ((rows (make-array 0 :adjustable t :fill-pointer 0))
           (total (shown-text-end rope text-end))
           ;; the text shown ends before the rope does: nothing of what lies after is drawn
-          (cut (and text-end (< text-end (tuatara.text:rope-bytes rope))))
+          (cut (and text-end (< text-end (tuatara.text:rope-octet-length rope))))
           (reader (make-reader rope start (shown-text-end rope text-end) chunk))
           (position start)
           (line-start (tuatara.text:rope-line-start rope start))

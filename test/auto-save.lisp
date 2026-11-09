@@ -189,7 +189,7 @@ and the editor."
         (setf (tuatara.buffer:buffer-local buffer :read-only) t)
         (false (tuatara.defaults::auto-save-wanted-p buffer))
         (setf (tuatara.buffer:buffer-local buffer :read-only) nil)
-        (let ((tuatara-user:*auto-save-largest* 0))
+        (let ((tuatara-user:*auto-save-size-limit* 0))
           (false (tuatara.defaults::auto-save-wanted-p buffer)))
         (let ((tuatara-user:*auto-save* nil))
           (false (tuatara.defaults::auto-save-wanted-p buffer)))

@@ -419,7 +419,7 @@ of that mode's parents when the file is too large for it (MODE-FOR-SIZE),
 saying so."
   (let* ((path (tuatara.buffer:buffer-file buffer))
          (rope (tuatara.buffer:buffer-text buffer))
-         (first-line (let ((end (min (tuatara.text:rope-bytes rope) 512)))
+         (first-line (let ((end (min (tuatara.text:rope-octet-length rope) 512)))
                        (and (plusp end)
                             (let ((octets (tuatara.text:rope-octets rope :start 0 :end end)))
                               ;; a Windows file's first line ends with a carriage return too
@@ -427,7 +427,7 @@ saying so."
                                                  (tuatara.text:lenient-string octets :end (or (tuatara.text:octets-line-end-position octets 0 (length octets))
                                                                               (length octets)))))))))
     (let* ((wanted (if path (mode-for-file path first-line) 'fundamental-mode))
-           (mode (mode-for-size wanted (tuatara.text:rope-bytes rope))))
+           (mode (mode-for-size wanted (tuatara.text:rope-octet-length rope))))
       (unless (eq mode wanted)
         (tuatara.command:message "~a is larger than ~(~a~) opens (~a): opened in ~(~a~)"
                                  (tuatara.buffer:buffer-name buffer) wanted

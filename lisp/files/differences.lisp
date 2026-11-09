@@ -66,7 +66,7 @@ job; ROPE, those found."
   "Show the differences found, that there are none, or why they could not be found."
   (let ((old (differences-job-old job)) (new (differences-job-new job)) (rope (differences-job-rope job)))
     (show-reading-result job old
-                         (if (and rope (zerop (tuatara.text:rope-bytes rope)))
+                         (if (and rope (zerop (tuatara.text:rope-octet-length rope)))
                              (format nil "No differences: ~a and ~a are the same.~%" (abbreviated-path old) (abbreviated-path new))
                              rope)
                          (format nil "~~a and ~a could not be compared: ~~a~~%" (cl-ppcre:regex-replace-all "~" (abbreviated-path new) "~~")))))

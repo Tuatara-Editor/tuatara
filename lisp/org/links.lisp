@@ -81,7 +81,7 @@ begin (*LAYOUT-PROBE*), never put in place of the window's own."
            (values (remove-if-not (lambda (r) (and (> (second r) start) (< (first r) end))) (second kept))
                    (remove-if-not (lambda (c) (and (> (cdr c) start) (< (car c) end))) (third kept))))
           (t
-           (let ((end (min end (tuatara.text:rope-bytes rope)))
+           (let ((end (min end (tuatara.text:rope-octet-length rope)))
                  (ranges '()) (calls '()) (current t))
              (dolist (view (org-views buffer start end))
                (let ((from (max start (org-view-from view)))
@@ -342,7 +342,7 @@ first as a search's does (Regex match file names: ), the files MATCHING (a
 function of a regular expression and the files) gives listed as it is
 typed, the files found in the background meanwhile
 \(CALL-WITH-FORMATTED-FILES); \\<pattern>\\[search-toggle-regex] switches to literal
-text and back. \\<pattern-answer>\\[pattern-done] takes what is typed, whichever file is
+text and back. \\<pattern-answer>\\[pattern-finish] takes what is typed, whichever file is
 selected, be it a regular expression or literal text with its
 special characters escaped; a regular expression that cannot be used says
 why in the prompt, waiting for it to be mended."
@@ -350,7 +350,7 @@ why in the prompt, waiting for it to be mended."
     (call-with-formatted-files
      (lambda (listed source)
        (let ((*toggle-pattern-kind* (lambda () (setf regex (not regex))))
-             (*pattern-done* (lambda ()
+             (*pattern-finish* (lambda ()
                                (if (pattern-problem (editor-minibuffer-text *editor*) regex)
                                    (setf refused (editor-minibuffer-text *editor*))
                                    (finish-minibuffer)))))

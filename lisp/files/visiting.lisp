@@ -295,7 +295,7 @@ home folder.")
   (declare (ignore buffer))
   (and *asking-for-path* *editor* (editor-minibuffer-active *editor*) t))
 
-(define-command minibuffer-home-directory ()
+(define-command minibuffer-home-directory (:interactive nil)
   "In a question for a file or a folder, put ~/, your home folder, in place
 of the path typed, listing what is in it."
   (replace-minibuffer-text 0 (length (editor-minibuffer-text *editor*)) "~/"))
@@ -321,7 +321,7 @@ typed is selected while it names a folder (ends in /), else the first entry
 matching; a folder chosen is gone into, its entries offered in turn. With PREVIEW, a
 function as CALL-WITH-WINDOW-PREVIEW gives, the file selected is shown
 meanwhile. Returns the path, and as a second value true when it is the line
-typed, taken as it is (\\<minibuffer>\\[minibuffer-done] on it, or
+typed, taken as it is (\\<minibuffer>\\[minibuffer-finish] on it, or
 \\[minibuffer-submit-input]), NIL when it is a file chosen."
   ;; the entries of a directory read afresh for each question
   (setf *file-candidates-kept* nil)
@@ -429,8 +429,8 @@ stands in: PATH-QUESTION-START), as READ-FILE-PATH asks for a file: the
 folders in the one being typed offered, matched by any part of the name,
 those chosen lately first; a / or ~/ typed after it starts the path again.
 The line typed is selected while it names a directory (ends in /), else the
-first directory matching. \\<minibuffer>\\[minibuffer-done] or
-\\[minibuffer-complete] on a directory goes into it; \\[minibuffer-done] on the
+first directory matching. \\<minibuffer>\\[minibuffer-finish] or
+\\[minibuffer-complete] on a directory goes into it; \\[minibuffer-finish] on the
 line typed, one step above the first (\\[minibuffer-previous-candidate]), takes
 it, as \\[minibuffer-submit-input] does at any time: a directory, or a new
 name. Returns what was taken, ./ when nothing was typed, remembered as

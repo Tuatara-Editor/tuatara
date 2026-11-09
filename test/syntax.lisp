@@ -35,7 +35,7 @@ the parser. Release them with RELEASE-PARSE."
   (multiple-value-bind (tree rope parser) (parse-string grammar text)
     (unwind-protect
          (let ((query (tuatara.syntax:compile-query (tuatara.syntax:find-grammar grammar) query-source)))
-           (tuatara.syntax:rich-highlights query tree rope 0 (tuatara.text:rope-bytes rope)
+           (tuatara.syntax:rich-highlights query tree rope 0 (tuatara.text:rope-octet-length rope)
                                            (map 'vector (lambda (name)
                                                           (cond ((string= name "none") :none)
                                                                 ((char= (char name 0) #\_) nil)
@@ -318,7 +318,7 @@ what stopped the walk (NIL at a bracket)."
 (defun fresh-rich-ranges (grammar text query)
   "The rich colours of TEXT parsed from scratch with GRAMMAR."
   (multiple-value-bind (tree rope parser) (parse-string grammar text)
-    (unwind-protect (tuatara.syntax:rich-highlights query tree rope 0 (tuatara.text:rope-bytes rope)
+    (unwind-protect (tuatara.syntax:rich-highlights query tree rope 0 (tuatara.text:rope-octet-length rope)
                                                     (tuatara.defaults::query-faces query :rich 0))
       (release-parse tree parser))))
 
@@ -642,7 +642,7 @@ should not, drawn with the random state RANDOM."
          (grammar (tuatara.syntax:find-grammar "rust"))
          (query (tuatara.syntax:compile-query grammar "(identifier) @name"))
          (rope (tuatara.text:string->rope "fn main() { let x = y; }"))
-         (bytes (tuatara.text:rope-bytes rope))
+         (bytes (tuatara.text:rope-octet-length rope))
          (buffer (tuatara.buffer:make-buffer "*garbled*" :text "fn main() { let x = y; }"))
          (syntax (let ((syntax (tuatara.syntax:attach-syntax buffer grammar))) (parse-done syntax) syntax))
          (errors 0)
@@ -1244,7 +1244,7 @@ has, ended after."
   (let* ((grammar (tuatara.syntax:find-grammar "rust"))
          (query (tuatara.syntax:compile-query grammar "((identifier) @name (#match? @name \"^x\"))"))
          (rope (tuatara.text:string->rope (make-string (* 4 1024 1024) :initial-element #\x)))
-         (bytes (tuatara.text:rope-bytes rope)))
+         (bytes (tuatara.text:rope-octet-length rope)))
     (dolist (case (list (list 5000 10) (list 100 bytes)))
       (destructuring-bind (matches width) case
         (let ((reply (apply #'concatenate '(vector (unsigned-byte 8))
@@ -1515,7 +1515,7 @@ has, ended after."
                (tuatara.syntax:map-query-matches (lambda (pattern captures count)
                                                    (declare (ignore pattern captures count))
                                                    (incf seen))
-                                                 query tree rope 0 (tuatara.text:rope-bytes rope))
+                                                 query tree rope 0 (tuatara.text:rope-octet-length rope))
                (is = 0 seen)
                (true (< (tuatara.runtime:seconds-since began) 1))
                (true (tuatara.syntax:helper-alive helper))
@@ -1530,8 +1530,8 @@ has, ended after."
                (let ((held (tuatara.syntax:helper-memory helper)))
                  (dotimes (i 5)
                    (tuatara.syntax::parse-texts rope (list (tuatara.syntax::make-text-parse
-                                                            grammar (list (cons 0 (tuatara.text:rope-bytes rope))) nil
-                                                            (list (list query 0 (tuatara.text:rope-bytes rope))) 2 nil))
+                                                            grammar (list (cons 0 (tuatara.text:rope-octet-length rope))) nil
+                                                            (list (list query 0 (tuatara.text:rope-octet-length rope))) 2 nil))
                                                 (lambda (trees) (declare (ignore trees)))
                                                 :helper helper))
                  (true (< (tuatara.syntax:helper-memory helper) (+ held (* 64 1024))) "~d held, ~d before"
@@ -2771,7 +2771,7 @@ bound to the fake frontend and the editor; the file and its buffer go afterwards
                   (start (thread-cpu-time))
                   (ranges (tuatara.defaults::text-object-ranges
                            query (tuatara.syntax:syntax-tree (tuatara.syntax:buffer-syntax buffer)) rope
-                           "function.around" (- point 65536) (min (tuatara.text:rope-bytes rope) (+ point 65536)))))
+                           "function.around" (- point 65536) (min (tuatara.text:rope-octet-length rope) (+ point 65536)))))
              (true (< (- (thread-cpu-time) start) (* 1/5 internal-time-units-per-second)))
              (is string= (format nil "fn f19999(a: i32, b: i32) -> i32 {~%    // sum~%    a + b~%}")
                  (let ((r (tuatara.defaults::smallest-around ranges point point nil)))
@@ -2780,7 +2780,7 @@ bound to the fake frontend and the editor; the file and its buffer go afterwards
              (let* ((start (thread-cpu-time))
                     (tests (tuatara.defaults::text-object-ranges
                             query (tuatara.syntax:syntax-tree (tuatara.syntax:buffer-syntax buffer)) rope
-                            "test.around" (- point 65536) (min (tuatara.text:rope-bytes rope) (+ point 65536)))))
+                            "test.around" (- point 65536) (min (tuatara.text:rope-octet-length rope) (+ point 65536)))))
                (true (< (- (thread-cpu-time) start) (* 1/5 internal-time-units-per-second)))
                (true (tuatara.defaults::smallest-around tests point point nil)))))
       (tuatara.buffer:kill-buffer buffer))))
@@ -3081,12 +3081,12 @@ bound to the fake frontend and the editor; the file and its buffer go afterwards
          (grammar (tuatara.syntax:find-grammar "rust"))
          (query (tuatara.syntax:compile-query grammar (tuatara.defaults::language-rules (language-named 'rust))))
          (faces (tuatara.defaults::query-faces query :rich 0)))
-    (dolist (copies (list (ceiling (* 5/2 (expt 2 30)) (tuatara.text:rope-bytes filler))
-                          (ceiling (* 9/2 (expt 2 30)) (tuatara.text:rope-bytes filler))))
+    (dolist (copies (list (ceiling (* 5/2 (expt 2 30)) (tuatara.text:rope-octet-length filler))
+                          (ceiling (* 9/2 (expt 2 30)) (tuatara.text:rope-octet-length filler))))
       (let* ((rope (apply #'tuatara.text:splice-rope (tuatara.text:make-rope) 0 0
                           (append (make-list copies :initial-element filler)
                                   (list (tuatara.text:string->rope code) filler))))
-             (at (* copies (tuatara.text:rope-bytes filler)))
+             (at (* copies (tuatara.text:rope-octet-length filler)))
              (buffer (tuatara.buffer:make-buffer "*syntax-far*" :text rope)))
         (unwind-protect
              (let* ((syntax (tuatara.syntax:attach-syntax buffer grammar))

@@ -95,16 +95,11 @@ CONFIRM as it takes them), the risks of gpg's loopback said in a window above
 it (LOOPBACK-WARNING) while it asks, unless *GPG-LOOPBACK-WARNING* is NIL."
   (if (not *gpg-loopback-warning*)
       (read-password prompt :confirm confirm)
-      (let* ((warning (buffer-in-mode "*Passphrase warning*" 'special-mode))
-             (text (loopback-warning)))
-        (set-made-text warning text :spans (list (list 0 (position #\Newline text) :warning)))
-        (setf (tuatara.buffer:buffer-point warning) 0)
-        (let ((window (display-buffer-at warning :bottom :size :fit)))
-          (when window
-            (setf (tuatara.display:window-start window) 0 (tuatara.display:window-point window) 0))
-          (unwind-protect (read-password prompt :confirm confirm)
-            (when (and window (member window (editor-windows *editor*))) (leave-window window))
-            (tuatara.buffer:kill-buffer warning))))))
+      (let* ((text (loopback-warning))
+             (end (position #\Newline text)))
+        (call-with-details-shown (list (cons (subseq text 0 end) :warning) (subseq text end))
+                                 (lambda () (read-password prompt :confirm confirm))
+                                 :name "*Passphrase warning*"))))
 
 (defun with-gpg-terminal (words function)
   "Call FUNCTION, gpg run in it, with the terminal lent to gpg-agent's pinentry

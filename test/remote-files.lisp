@@ -548,7 +548,7 @@ with a failure and nothing after it, the other writes sent on unanswered.")
       (with-stand-in-sftp (dir log)
         (let* ((there (namestring dir))
                (keys (format nil "C-x C-f C-a C-k ~a C-j" (typed-keys (concatenate 'string "/ssh:box:" (string-right-trim "/" there)))))
-               (most tuatara-user:*remote-preview-largest*))
+               (most tuatara-user:*remote-preview-size-limit*))
           (alexandria:write-string-into-file "the-words-within" (concatenate 'string there "alpha.txt"))
           (flet ((previewing () (let ((state tuatara.defaults::*rimu-preview-state*))
                                   (and state (tuatara.defaults::rimu-preview-buffer-entry state))))
@@ -563,17 +563,20 @@ with a failure and nothing after it, the other writes sent on unanswered.")
                      (true (tuatara.defaults::list-preview-p (remote-rimu-buffer)))
                      (true (tuatara.frontend.fake:fake-frame-showing f "the-words-within")))
                    (kill-remote-lists)
-                   (setf tuatara-user:*remote-preview-largest* 3)
+                   (setf tuatara-user:*remote-preview-size-limit* 3)
                    (let ((f (remote-session keys (list :until #'remote-list-read) "P" (list :until #'previewing))))
-                     (true (search "more than" (preview-text)))
+                     (true (search "Too large to preview" (preview-text)))
+                     (false (search "Could not read" (preview-text)))
                      (false (tuatara.frontend.fake:fake-frame-showing f "the-words-within")))
-                   (setf tuatara-user:*remote-preview-largest* most)
+                   (setf tuatara-user:*remote-preview-size-limit* most)
                    (kill-remote-lists)
                    (with-evidence-folders ((list (format nil "/ssh:box:~a" there)))
                      (let ((f (remote-session keys (list :until #'remote-list-read) "P" '(:wait 1))))
                        (false (previewing) "a list opened safely has no preview")
+                       (true (tuatara.frontend.fake:fake-frame-showing f "No preview here"))
+                       (false (tuatara.frontend.fake:fake-frame-showing f "Preview on"))
                        (false (tuatara.frontend.fake:fake-frame-showing f "the-words-within")))))
-              (setf tuatara-user:*remote-preview-largest* most)
+              (setf tuatara-user:*remote-preview-size-limit* most)
               (tuatara.defaults::rimu-close-preview)
               (kill-remote-lists)))))))
 
@@ -1127,7 +1130,7 @@ through SSH_ASKPASS, writes the answer in said, and goes no further without one.
   "True while the running editor reads an answer ssh asked for in the minibuffer."
   (let ((editor (tuatara.command:running-editor)))
     (and (tuatara.command:editor-minibuffer-active editor)
-         (search "ssh to " (tuatara.command:editor-minibuffer-prompt editor)))))
+         (tuatara.buffer:find-buffer "*Question*"))))
 
 (defun failed-visits ()
   "The buffers of visits of n.txt on another machine that failed, saying why in the buffer."
@@ -1165,7 +1168,7 @@ through SSH_ASKPASS, writes the answer in said, and goes no further without one.
                           (list :until (lambda () (let ((buffer (remote-buffer-of name)))
                                                     (and buffer (search "text" (tuatara.buffer:buffer-string buffer)))))
                                 30))))
-                   (true (tuatara.frontend.fake:fake-frame-showing frontend "the server asks; what you type goes to the server: me@box's password"))
+                   (true (tuatara.frontend.fake:fake-frame-showing frontend "The server asks: me@box's password"))
                    (is string= (format nil "~a~%" secret) (said-text dir))
                    (false (search secret (tuatara.buffer:buffer-string (tuatara.command::messages-buffer))))
                    (false (search secret (format nil "~s" tuatara.command::*minibuffer-history*)))
@@ -1256,21 +1259,81 @@ through SSH_ASKPASS, writes the answer in said, and goes no further without one.
   (is eq :server (tuatara.defaults::ssh-question-kind "(me@box) continue connecting (yes/no)? "))
   (is eq :server (tuatara.defaults::ssh-question-kind "Accept updated hostkeys? (yes/no): "))
   (let ((prompt (tuatara.defaults::ssh-question-prompt "box" nil "Enter passphrase for key '/h/id': " "")))
-    (true (search "your key's passphrase, stays here" prompt)))
-  (let ((prompt (tuatara.defaults::ssh-question-prompt "box" "gate" "(me@box) Code: " "Use your token.")))
-    (true (search "the server asks; what you type goes to the server" prompt))
-    (true (search "Use your token." prompt) "the server's instructions come first")
-    (true (search "or the jump host gate" prompt)))
-  ;; a long question cannot push the row typed on off the screen
+    (true (search "Your key's passphrase, stays here" prompt)))
+  (multiple-value-bind (prompt kind fingerprint details)
+      (tuatara.defaults::ssh-question-prompt "box" "gate" "(me@box) Code: " "Use your token." :warnings '("Not quantum safe."))
+    (declare (ignore kind fingerprint))
+    (true (uiop:string-prefix-p "The server asks: " prompt) "a server's words are marked as such in the prompt")
+    (true (search "what you type goes to the server" details))
+    (true (search "Use your token." details) "the server's instructions in full")
+    (true (search "Not quantum safe." details))
+    (true (search "or the jump host gate" details))
+    (false (search "Use your token." prompt)))
+  ;; a long question stays whole in the details and cannot push the row typed on off the screen
   (let ((long (make-string 3000 :initial-element #\a)))
-    (true (< (length (tuatara.defaults::ssh-question-prompt "box" nil long long)) 700))))
+    (multiple-value-bind (prompt kind fingerprint details)
+        (tuatara.defaults::ssh-question-prompt "box" nil long long)
+      (declare (ignore kind fingerprint))
+      (true (< (length prompt) 100))
+      (true (search long details)))))
+
+(define-test (remote-files details-shown-only-while-asked)
+  ;; the details are shown beside the question and go with it, the windows as they were
+  (let ((seen nil) (windows nil) (after nil))
+    (run-keys (list (lambda ()
+                      (setf windows (length (tuatara.command:editor-windows)))
+                      (tuatara.defaults::call-with-details-shown
+                       "the whole question"
+                       (lambda ()
+                         (setf seen (list (and (tuatara.buffer:find-buffer "*Question*")
+                                               (tuatara.defaults::pieces-text
+                                                (list (tuatara.buffer:buffer-string (tuatara.buffer:find-buffer "*Question*")))))
+                                          (length (tuatara.command:editor-windows))))))
+                      (setf after (length (tuatara.command:editor-windows)))))
+              :height 30)
+    (true (search "the whole question" (first seen)) "~s" seen)
+    (is = (1+ windows) (second seen))
+    (is = windows after)
+    (false (tuatara.buffer:find-buffer "*Question*"))))
+
+(define-test (remote-files ssh-key-question-as-openssh-10-words-it)
+  ;; OpenSSH 10 writes "fingerprint is:" and adds a line about other names: it is still its own question, not hidden
+  (let ((question "The authenticity of host 'box (10.0.0.5)' can't be established.
+ED25519 key fingerprint is: SHA256:LRMTH6kEUp1dDyMPGJlAvQhgiX4cSO0JX/aPMh350Sk
+This key is not known by any other names.
+Are you sure you want to continue connecting (yes/no/[fingerprint])? "))
+    (is eq :key (tuatara.defaults::ssh-question-kind question))
+    (multiple-value-bind (prompt kind fingerprint details) (tuatara.defaults::ssh-question-prompt "box" nil question "")
+      (is eq :key kind)
+      (is string= "SHA256:LRMTH6kEUp1dDyMPGJlAvQhgiX4cSO0JX/aPMh350Sk" fingerprint)
+      (is string= "Accept this key (yes/no/fingerprint): " prompt)
+      (true (search "Type yes or the fingerprint" details)))
+    (is string= "SHA256:LRMTH6kEUp1dDyMPGJlAvQhgiX4cSO0JX/aPMh350Sk"
+        (tuatara.defaults::ssh-key-answer "SHA256:LRMTH6kEUp1dDyMPGJlAvQhgiX4cSO0JX/aPMh350Sk"
+                                          "SHA256:LRMTH6kEUp1dDyMPGJlAvQhgiX4cSO0JX/aPMh350Sk"))
+    ;; a server's question stays a server's, whatever it says
+    (is eq :server (tuatara.defaults::ssh-question-kind
+                    "(me@box) The authenticity of host 'x' (yes/no/[fingerprint])? "))))
+
+(define-test (remote-files ssh-warnings-kept-apart-from-what-a-server-says)
+  ;; OpenSSH's warning, three lines of **, is not run into a server's banner and cut short
+  (multiple-value-bind (warnings said)
+      (tuatara.defaults::ssh-said-parts
+       (format nil "** WARNING: connection is not using a post-quantum key exchange algorithm.~@
+                    ** This session may be vulnerable to \"store now, decrypt later\" attacks.~@
+                    ** The server may need to be upgraded. See https://openssh.com/pq.html~@
+                    Authorised users only.~%"))
+    (is eql 3 (length warnings))
+    (is string= "WARNING: connection is not using a post-quantum key exchange algorithm." (first warnings))
+    (is string= "Authorised users only." said))
+  (multiple-value-bind (warnings said) (tuatara.defaults::ssh-said-parts "")
+    (false warnings)
+    (is string= "" said)))
 
 (define-test (remote-files ssh-key-answer-exact)
   ;; only yes typed out, or the key's own fingerprint, accepts a new key
-  (is equal (multiple-value-list
-             (tuatara.defaults::ssh-question-prompt "box" nil *key-question* ""))
-      (list (first (multiple-value-list (tuatara.defaults::ssh-question-prompt "box" nil *key-question* "")))
-            :key "SHA256:Xq9pLq3TgJzqK2w8mYb7Lk0dQmZp5nR1vYt3sJk0aB4"))
+  (is equal '(:key "SHA256:Xq9pLq3TgJzqK2w8mYb7Lk0dQmZp5nR1vYt3sJk0aB4")
+      (subseq (multiple-value-list (tuatara.defaults::ssh-question-prompt "box" nil *key-question* "")) 1 3))
   (is string= "yes" (tuatara.defaults::ssh-key-answer " yes " "SHA256:x"))
   (is string= "SHA256:x" (tuatara.defaults::ssh-key-answer "SHA256:x" "SHA256:x"))
   (dolist (refused '("y" "Y" "YES" "no" "" "SHA256:y"))

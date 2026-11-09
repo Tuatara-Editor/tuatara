@@ -187,7 +187,7 @@ end of its #+END: line, where they stand now."
   (let* ((buffer (dblock-job-buffer job))
          (version (tuatara.buffer:buffer-version buffer))
          (rope (tuatara.buffer:buffer-text buffer))
-         (size (tuatara.text:rope-bytes rope)))
+         (size (tuatara.text:rope-octet-length rope)))
     (loop for (begin nil end) in (dblock-job-pieces job)
           for b = (tuatara.text:anchor-position begin version)
           for e = (tuatara.text:anchor-position end version)

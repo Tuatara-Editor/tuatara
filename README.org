@@ -48,7 +48,7 @@ rope up to the init file.
   request); a file opened safely is never decrypted.
 - The session kept, as an option (=*keep-session*=): the files, directories and
   windows opened again as they were at the next start.
-- =M-x file-metadata= shows what a file is and says of itself, read by Tuatara
+- =M-x show-file-metadata= shows what a file is and says of itself, read by Tuatara
   alone (no other program): kind by contents, owner, permissions, its four times,
   SHA-256, extended attributes (where a download came from); a photograph's
   EXIF with its GPS position and thumbnail (JPEG, HEIC, PNG, WebP, TIFF),
@@ -288,7 +288,7 @@ redefine any of it.
 
 * Status
 
-Version 0.90.19, a pre-release: in daily use by its author, its parts tested
+Version 0.90.20, a pre-release: in daily use by its author, its parts tested
 (=tools/test.sh=, about 225,000 checks), its interfaces still changing until
 1.0.0, the first stable release.
 
@@ -400,7 +400,7 @@ Tuatara says where its ideas come from:
   (=lisp/help/notifications.lisp=).
 - The file program :: a file's kind told by its first octets, never by its
   name (=src/io/kinds.lisp=).
-- PDF (ISO 32000) :: the structure of a PDF read by =M-x file-metadata=: its
+- PDF (ISO 32000) :: the structure of a PDF read by =M-x show-file-metadata=: its
   objects, cross-reference tables, streams and filters, and page content
   (=lisp/viewers/pdf-reader.lisp=).
 - RARLAB's RAR 5.0 format description :: the rar archives the tests make, laid

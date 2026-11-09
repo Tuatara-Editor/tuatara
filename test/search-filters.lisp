@@ -919,7 +919,7 @@ tiny pieces, a few lines each, so that a small text exercises it."
   ;; not a file of records: said, nothing changed
   (multiple-value-bind (f editor) (run-keys "C-x / t" :text "a b c" :width 100)
     (is string= "a b c" (session-text editor))
-    (true (tuatara.frontend.fake:fake-frame-showing f "Not a file of records (a CSV, a log): toggle-list-header was not run"))))
+    (true (tuatara.frontend.fake:fake-frame-showing f "Not a file of records (a CSV, a log): list-toggle-header was not run"))))
 
 (defun by-column (mode text column pattern &optional (keys "C-x / k"))
   "TEXT in MODE after KEYS (keep records) on COLUMN with PATTERN."
@@ -1008,7 +1008,7 @@ tiny pieces, a few lines each, so that a small text exercises it."
     ;; not a file of records: said
     (multiple-value-bind (f editor) (run-keys "C-x / L" :text "a b c" :width 100)
       (declare (ignore editor))
-      (true (tuatara.frontend.fake:fake-frame-showing f "Not a file of records (a CSV, a log): toggle-list-header-lock was not run")))))
+      (true (tuatara.frontend.fake:fake-frame-showing f "Not a file of records (a CSV, a log): list-toggle-header-lock was not run")))))
 
 (define-test (search-filters columns-of-lists)
   ;; a table list asks for a column, by its title, the first row's value beside it, and tries the cell alone
@@ -1079,7 +1079,7 @@ tiny pieces, a few lines each, so that a small text exercises it."
   "Every record of ROPE, a line each or as ENDS ends them (RECORD-ENDS), as
 \(START TEXT-END AFTER): where it starts, where its text ends (before a
 carriage return too with CRLF) and where the next starts."
-  (let ((total (tuatara.text:rope-bytes rope)))
+  (let ((total (tuatara.text:rope-octet-length rope)))
     (loop for at = 0 then after
           while (< at total)
           for (text-end after) = (multiple-value-list (tuatara.defaults::record-bounds rope at ends))
@@ -1091,7 +1091,7 @@ from one scan of the whole text: a record is matched when any part of a
 match lies in it, its line end included, or an empty match is in it no
 further on than the end of its text. Only the records starting in RANGES, a
 list of (START END), when given; with HIDE, those not matched."
-  (let ((matches (tuatara.defaults::line-matches rope matcher t 0 (tuatara.text:rope-bytes rope))))
+  (let ((matches (tuatara.defaults::line-matches rope matcher t 0 (tuatara.text:rope-octet-length rope))))
     (loop for (start text-end after) in (filter-units rope crlf ends)
           when (and (or (null ranges) (loop for (a b) in ranges thereis (<= a start (1- b))))
                     (eq (not hide)
@@ -1120,7 +1120,7 @@ report."
   (let* ((rope (tuatara.text:string->rope text))
          (filter (tuatara.defaults::make-search-filter pattern :crlf crlf :hide hide))
          (matcher (tuatara.defaults::search-filter-matcher filter))
-         (ranges (or ranges (list (list 0 (tuatara.text:rope-bytes rope)))))
+         (ranges (or ranges (list (list 0 (tuatara.text:rope-octet-length rope)))))
          (oracle (scan-kept-starts rope matcher crlf :ends ends :ranges ranges :hide hide)))
     (multiple-value-bind (runs count)
         (if everywhere
@@ -1161,7 +1161,7 @@ for, anchors, empty matches, line ends, and matches running over them.")
         ;; lines a filter before left: the runs it leaves, others hidden
         (let* ((rope (tuatara.text:string->rope text))
                (runs (tuatara.defaults::lines-matching (list (tuatara.defaults::make-search-filter "e" :crlf crlf)) rope
-                                                      (runs-of (list (list 0 (tuatara.text:rope-bytes rope)))) crlf))
+                                                      (runs-of (list (list 0 (tuatara.text:rope-octet-length rope)))) crlf))
                (ranges (loop for i from 0 below (length runs) by 2 collect (list (aref runs i) (aref runs (1+ i))))))
           (dolist (pattern *line-bound-filter-patterns*)
             (is eq t (filter-scan-agrees text pattern :crlf crlf :ranges ranges))
@@ -1245,14 +1245,14 @@ for, anchors, empty matches, line ends, and matches running over them.")
                    (format o "2026-10-01 10:~2,'0d:~2,'0d ~a request ~d took ~dms~%"
                            (mod i 60) (mod (* 7 i) 60) (if (zerop (mod i 97)) "ERROR" "INFO") i (mod (* 13 i) 1000)))))
          (rope (tuatara.text:string->rope text))
-         (all (runs-of (list (list 0 (tuatara.text:rope-bytes rope))))))
+         (all (runs-of (list (list 0 (tuatara.text:rope-octet-length rope))))))
     (dolist (pattern '("ERROR" "error" "took 9\\d\\dms"))
       (let* ((filter (tuatara.defaults::make-search-filter pattern))
              (matcher (tuatara.defaults::search-filter-matcher filter))
              (scan (least-seconds (lambda ()
                                     (let ((n 0))
                                       (tuatara.defaults::map-matcher-matches (lambda (s e m g) (declare (ignore s e m g)) (incf n) nil)
-                                                                             rope matcher 0 (tuatara.text:rope-bytes rope))
+                                                                             rope matcher 0 (tuatara.text:rope-octet-length rope))
                                       n))))
              (filter-time (least-seconds (lambda () (tuatara.defaults::lines-matching (list filter) rope all nil)))))
         (true (< filter-time (+ 0.002 (* 3 scan))) "~a: filtered in ~,4fs, scanned in ~,4fs" pattern filter-time scan)))))
@@ -1303,7 +1303,7 @@ JSON and the value looked up in what is read: the oracle of the JSON Lines filte
     (unwind-protect
          (let ((tuatara.defaults::*filter-piece* 300))
            (setf count (nth-value 1 (tuatara.defaults::lines-matching-everywhere
-                                     filter rope (runs-of (list (list 0 (tuatara.text:rope-bytes rope)))) nil nil nil nil))))
+                                     filter rope (runs-of (list (list 0 (tuatara.text:rope-octet-length rope)))) nil nil nil nil))))
       (sb-int:unencapsulate 'uiop:split-string 'slowed))
     (is = 111 oracle)
     (is = oracle count)))

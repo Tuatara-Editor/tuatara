@@ -94,7 +94,7 @@ run starting mid-line first takes the start of that line."
             (tuatara.buffer:buffer-mark-active-p b) t)
       (goto m))))
 
-(define-command mark-run-refuse ()
+(define-command mark-run-refuse (:interactive nil)
   "Refuse a key that would take the mark run's selection from it
 (\\<*mark-run-keymap*>\\`v', \\[mark-run-refuse]): leave the run
 first, with \\[mark-run-cancel] or \\[tuatara-quit]."

@@ -42,7 +42,7 @@ octets beginning with a newline or ending with a carriage return, which could
 meet a carriage return or a newline beside it (JOINING-RETURNS-P).
 Complexity: O(number of edits)."
   (declare (type simple-vector edits))
-  (let ((total (rope-bytes rope)) (previous-end -1) (previous-inserts nil) (meeting nil) (edges nil)
+  (let ((total (rope-octet-length rope)) (previous-end -1) (previous-inserts nil) (meeting nil) (edges nil)
         ;; edits made at many places at once share their insert: looked at once
         (looked-at nil))
     (declare (type fixnum total previous-end))
@@ -264,7 +264,7 @@ not finish."
 
 (defun continuation-at-p (rope byte)
   "True when the octet at BYTE of ROPE is a continuation octet; NIL at the end."
-  (and (< byte (rope-bytes rope)) (continuation-byte-p (rope-octet rope byte))))
+  (and (< byte (rope-octet-length rope)) (continuation-byte-p (rope-octet rope byte))))
 
 (defun rope-pending-before (rope byte)
   "How many octets just before BYTE of ROPE begin a sequence not finished there (0 to 3)."
@@ -274,7 +274,7 @@ not finish."
 (defun past-continuations (rope byte)
   "BYTE of ROPE moved past the continuation octets there, at most three, and
 on to where a character starts."
-  (let ((total (rope-bytes rope)) (end byte))
+  (let ((total (rope-octet-length rope)) (end byte))
     (loop while (and (< end total) (< (- end byte) 3) (continuation-at-p rope end)) do (incf end))
     (loop while (and (< end total) (not (char-boundary-p rope end))) do (incf end))
     end))
@@ -298,7 +298,7 @@ joins the unfinished start of a sequence to octets that continue it, nor a
 carriage return to a newline: over the unfinished octets before it and the
 continuation octets after it, and over the carriage return before it or the
 newline after it. True when it widened."
-  (let ((widened nil) (total (rope-bytes rope)))
+  (let ((widened nil) (total (rope-octet-length rope)))
     (loop
       (destructuring-bind (start end members) group
         (let* ((octets (group-replacement rope edits members start end))
@@ -333,7 +333,7 @@ together across an edge: one that inserts a newline first or a carriage
 return last, or deletes alone, next to a carriage return before it or a
 newline after it in ROPE, or next to another edit."
   (declare (type simple-vector edits) (optimize speed))
-  (let ((n (length edits)) (total (rope-bytes rope)))
+  (let ((n (length edits)) (total (rope-octet-length rope)))
     (declare (type fixnum n total))
     ;; the octets around read only for an edit that could join them
     (flet ((return-before (k s)

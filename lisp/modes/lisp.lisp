@@ -103,7 +103,7 @@ start of the nearest line at or before it that begins with an open bracket,
 taken to be where a top-level form begins (LINE-OPENER-BEFORE, reading into
 BLOCK when given); else the text's start. With REACH, looked for no further
 than REACH octets back: NIL when it is not found there."
-  (or (line-opener-before rope (1+ (min position (1- (tuatara.text:rope-bytes rope)))) :openers '(40)
+  (or (line-opener-before rope (1+ (min position (1- (tuatara.text:rope-octet-length rope)))) :openers '(40)
                                                                                     :reach (or reach most-positive-fixnum)
                                                                                     :block block)
       (and (null reach) 0)))
@@ -123,8 +123,8 @@ Strings, comments and #\( are told apart."
   "Two values: START and the end of the Lisp form of ROPE opening with the
 bracket at START, looked for in the 4 MB after it; NIL when no open bracket is
 at START, or the form is not closed there."
-  (when (and (< start (tuatara.text:rope-bytes rope)) (= (tuatara.text:rope-octet rope start) 40))
-    (let* ((end (min (tuatara.text:rope-bytes rope) (+ start (* 4 1024 1024))))
+  (when (and (< start (tuatara.text:rope-octet-length rope)) (= (tuatara.text:rope-octet rope start) 40))
+    (let* ((end (min (tuatara.text:rope-octet-length rope) (+ start (* 4 1024 1024))))
            (form (find-if (lambda (e) (and (zerop (first e)) (zerop (third e))))
                           (lisp-elements (tuatara.text:rope-octets rope :start start :end end)))))
       (when form (values start (+ start (second form)))))))

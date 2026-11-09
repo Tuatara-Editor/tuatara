@@ -44,7 +44,7 @@ the buffer shown at the end."
   ;; C-x T t: the modal state alone in the mode line, [N]; again, after TUATARA
   (let ((tuatara-user:*mode-line-tuatara* t))
     (let ((f (run-keys "C-x T t" :width 60 :height 8)))
-      (true (uiop:string-prefix-p " [N] P [-] *scratch*" (mode-line-row f)))
+      (true (uiop:string-prefix-p " [N] PD [-] *scratch*" (mode-line-row f)))
       (true (tuatara.frontend.fake:fake-frame-showing f "The mode line's state alone"))))
   (let ((tuatara-user:*mode-line-tuatara* t))
     (true (uiop:string-prefix-p " TUATARA[N] " (mode-line-row (run-keys "C-x T t C-x T t" :width 60 :height 8)))))
@@ -292,16 +292,17 @@ others, to every character from START below END."
 (define-test (toggles soft-wrap-in-help-buffers)
   ;; help wraps its long lines by itself, still does after it is made again, and C-x T l stops it
   (let ((tuatara.defaults::*help-window-select* t)
-        (tuatara.defaults::*health-wait* 60))
-    (flet ((wrapped (keys)
-             (let ((f (run-keys keys :width 130 :height 50)))
+        (help (lambda ()
+                (tuatara.defaults::show-help-pieces (lambda () (list (make-string 400 :initial-element #\x)))))))
+    (flet ((wrapped (&rest keys)
+             (let ((f (run-keys (cons help keys) :width 130 :height 50)))
                (loop for row below 50
                      thereis (search "↪" (tuatara.frontend.fake:fake-screen-line f row))))))
-      (true (wrapped (list "M-x c h e c k - h e a l t h RET" :wait)))
-      (true (wrapped (list "M-x c h e c k - h e a l t h RET" :wait "M-x r e v e r t - b u f f e r RET" :wait)))
-      (false (wrapped (list "M-x c h e c k - h e a l t h RET" :wait "C-x T l" "M-x r e v e r t - b u f f e r RET" :wait)))
+      (true (wrapped))
+      (true (wrapped "M-x r e v e r t - b u f f e r RET"))
+      (false (wrapped "C-x T l" "M-x r e v e r t - b u f f e r RET"))
       (let ((tuatara-user:*soft-wrap-modes* '((help-mode . nil))))
-        (false (wrapped (list "M-x c h e c k - h e a l t h RET" :wait))))))
+        (false (wrapped)))))
   ;; a buffer in a view laid out by the row never wraps, whatever is set for every buffer
   (let ((tuatara-user:*global-soft-wrap-mode* t))
     (dolist (mode '(tuatara.defaults::org-agenda-mode tuatara.defaults::calendar-mode tuatara.defaults::csv-mode))

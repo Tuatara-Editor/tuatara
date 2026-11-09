@@ -46,10 +46,10 @@ last changed.")
 regular expression and literal text, for \\[search-toggle-regex].")
 (pushnew '*toggle-pattern-kind* *question-variables*)
 
-(defvar *pattern-done* nil
+(defvar *pattern-finish* nil
   "While READ-PATTERN asks: a function of no arguments that ends its question
 when what is typed can be used, and otherwise says why in the prompt.")
-(pushnew '*pattern-done* *question-variables*)
+(pushnew '*pattern-finish* *question-variables*)
 
 (defvar *pattern-keymap* (make-keymap :name "pattern")
   "The keys of every question that takes a pattern, before the minibuffer's:
@@ -59,16 +59,16 @@ when what is typed can be used, and otherwise says why in the prompt.")
 
 (defvar *pattern-answer-keymap* (make-keymap :name "pattern-answer" :parent *pattern-keymap*)
   "The keys of a question that takes a pattern as its answer (READ-PATTERN):
-those of *PATTERN-KEYMAP*, and \\<pattern-answer>\\[pattern-done], which waits for a
+those of *PATTERN-KEYMAP*, and \\<pattern-answer>\\[pattern-finish], which waits for a
 pattern that can be used.")
 
-(define-command pattern-done ()
+(define-command pattern-finish ()
   "In a question that takes a pattern: take what is typed, or when it cannot
 be used, say why in the prompt and wait for it to be mended
-\(\\<minibuffer>\\[minibuffer-abort] gives up)."
-  (if *pattern-done* (funcall *pattern-done*) (finish-minibuffer)))
+\(\\<minibuffer>\\[minibuffer-cancel] gives up)."
+  (if *pattern-finish* (funcall *pattern-finish*) (finish-minibuffer)))
 
-(define-keys *pattern-answer-keymap* '(("RET" pattern-done) ("C-j" pattern-done)))
+(define-keys *pattern-answer-keymap* '(("RET" pattern-finish) ("C-j" pattern-finish)))
 
 (defun pattern-kind-words (regex)
   "How a question that takes a pattern names it, first in its prompt: literal
@@ -105,7 +105,7 @@ WORDS says is done with it, PROBLEM why what is typed cannot be used
   (pattern-prompt regex words
                   (and problem
                        (if refused
-                           (refused-pattern-words problem (substitute-command-keys "\\<minibuffer>\\[minibuffer-abort]"))
+                           (refused-pattern-words problem (substitute-command-keys "\\<minibuffer>\\[minibuffer-cancel]"))
                            problem))))
 
 (defun pattern-regex (text regex)
@@ -119,7 +119,7 @@ prompt naming its kind first as a search's does (Regex keep lines: );
 \\<pattern>\\[search-toggle-regex] switches between a regular expression and literal text,
 \\<minibuffer>\\[minibuffer-previous-history] and \\[minibuffer-next-history] bring back the patterns typed before
 \(*PATTERN-HISTORY*), and a regular expression that cannot be used says why
-in the prompt, \\<pattern-answer>\\[pattern-done] waiting for it to be mended. INITIAL is offered to
+in the prompt, \\<pattern-answer>\\[pattern-finish] waiting for it to be mended. INITIAL is offered to
 begin with. COUNT, a function of what is typed and whether it is a regular
 expression, keeps a count up to date as it is typed and returns two values,
 as PATTERN-COUNT-UPDATE does: true while it counts, and what to show before
@@ -136,7 +136,7 @@ and as a second value whether it is a regular expression."
                      (cdr (setf checked (cons key (pattern-problem text regex)))))))
              (prompt (text) (refusable-pattern-prompt regex words (problem text) refused)))
       (let ((text (let ((*toggle-pattern-kind* (lambda () (setf regex (not regex) refused nil)))
-                        (*pattern-done* (lambda ()
+                        (*pattern-finish* (lambda ()
                                           (if (problem (typed))
                                               (setf refused t)
                                               (finish-minibuffer)))))
@@ -200,7 +200,7 @@ others are not hindered."
 (apply #'commands-for-buffers 'minibuffer-active-p "the minibuffer, while it asks something"
        (mapcar (lambda (name) (find-symbol name '#:tuatara.command))
                '("MINIBUFFER-NEXT-CANDIDATE" "MINIBUFFER-PREVIOUS-CANDIDATE" "MINIBUFFER-COMPLETE" "MINIBUFFER-SUBMIT-INPUT"
-                 "MINIBUFFER-DONE" "MINIBUFFER-ABORT" "MINIBUFFER-BACKWARD-DELETE-CHAR" "MINIBUFFER-BACKWARD-CHAR"
+                 "MINIBUFFER-FINISH" "MINIBUFFER-CANCEL" "MINIBUFFER-BACKWARD-DELETE-CHAR" "MINIBUFFER-BACKWARD-CHAR"
                  "MINIBUFFER-FORWARD-CHAR" "MINIBUFFER-BEGINNING" "MINIBUFFER-END" "MINIBUFFER-KILL-LINE"
                  "MINIBUFFER-CLEAR" "MINIBUFFER-BACKWARD-KILL-WORD")))
 
@@ -262,12 +262,12 @@ changes files in a buffer opened safely (MODE-COMMAND-REFUSAL)."
 
 (defun command-candidates (&key everywhere)
   "Completion candidates for every command that can run here (not those made
-for another kind of buffer), or with EVERYWHERE for every command there is:
+for another kind of buffer or for keys alone), or with EVERYWHERE for every command there is:
 its key bindings in brackets right after its name, and the first sentence of
 its docstring at the right."
   (let ((keymaps (active-keymaps *editor*)))
     (loop for symbol being the hash-keys of *commands*
-          unless (and (not everywhere) (command-refusal-reason symbol))
+          unless (and (not everywhere) (or (key-only-command-p symbol) (command-refusal-reason symbol)))
           collect (let ((name (string-downcase (symbol-name symbol)))
                         (keys (where-is symbol keymaps)))
                     (make-candidate name

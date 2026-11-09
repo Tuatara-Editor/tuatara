@@ -95,7 +95,8 @@ Tuatara's commands."
       (when (fboundp symbol) (push (api-row symbol (symbol-name symbol) :init) rows)))
     (loop for symbol being the hash-keys of tuatara.command::*commands*
           for home = (package-name (symbol-package symbol))
-          when (and (uiop:string-prefix-p "TUATARA" home) (string/= home "TUATARA.TESTS"))
+          when (and (uiop:string-prefix-p "TUATARA" home) (string/= home "TUATARA.TESTS")
+                    (not (tuatara.command:key-only-command-p symbol)))
             do (push (list :command home (symbol-name symbol)) rows))
     (sort rows #'string< :key (lambda (row) (format nil "~{~a~^ ~}" (row-name row))))))
 

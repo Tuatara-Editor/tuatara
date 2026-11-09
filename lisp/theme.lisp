@@ -87,7 +87,7 @@ text; dim where the mode line's colours are not known." :dim t)
 ;;; Editing
 
 (define-face :region "The active region (selection)." :reverse t)
-(define-face :banked-line "Lines banked with NORMAL state's \\<normal>\\[bank-selected-lines],
+(define-face :banked-line "Lines banked with NORMAL state's \\<normal>\\[bank-lines],
 set aside for \\[copy-selection-or-char], \\[delete-selection-or-char] or \\[yank-over-selection] to take together."
   :fg :white :bg :blue :extend t)
 (define-face :cursor "The cursor in a window of Tuatara's own when no colour is set for it
@@ -249,7 +249,7 @@ warning colour, so that it is never taken for a repository you work in."
   :inherit :warning :reverse t)
 (define-face :git-look-only "The line at the top of a git status of a repository looked at only,
 saying why and that git only reads it." :inherit :warning)
-(define-face :mode-line-sign "The mode line's signs before [-] while their work goes on: P while a job of the buffer runs or waits its turn (*processing-indicator*), U while a directory of *indexed-directories* is being read (*indexing-indicator*), S while one is searched (*searching-indicator*); in the theme's warning colour, to stand out." :inherit :warning)
+(define-face :mode-line-sign "The mode line's signs before [-] while their work goes on: P while a job of the buffer runs or waits its turn (*processing-indicator*), U while a directory of *indexed-directories* is being read (*indexing-indicator*), S while one is searched (*searching-indicator*), D while the editor runs as a daemon (*daemon-indicator*); in the theme's warning colour, to stand out." :inherit :warning)
 (define-face :mode-line-recording "Rec in the mode line while keys are recorded (\\[start-recording-keys]), and how many plays are done while recorded keys play over and over (\\[play-recorded-keys]); as the signs of work, in the theme's warning colour." :inherit :mode-line-sign)
 (define-face :terminal-bold "Text a program in a terminal set in bold." :bold t)
 (define-face :terminal-italic "Text a program in a terminal set in italics." :italic t)

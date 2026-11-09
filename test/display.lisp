@@ -594,7 +594,7 @@
     (is string= " 漢漢漢漢b" (tuatara.display:row-string (aref rows 1)))
     (is = 10 (tuatara.display:row-columns (aref rows 1)))
     ;; the b is in the column it has unscrolled, less the scroll
-    (multiple-value-bind (r c) (tuatara.display:point-row-column rows (- (tuatara.text:rope-bytes rope) 2))
+    (multiple-value-bind (r c) (tuatara.display:point-row-column rows (- (tuatara.text:rope-octet-length rope) 2))
       (is = 1 r) (is = 9 c))))
 
 (define-test (display marks-take-no-column)
@@ -720,8 +720,8 @@
                   (rope (tuatara.text:string->rope text))
                   (rows (tuatara.display:layout rope 0 20 2)))
              (is = 3 (tuatara.display:row-columns (aref rows 0)) "~a lays out in three columns" text)
-             (is equal '(0 2) (multiple-value-list (tuatara.display:point-row-column rows (1- (tuatara.text:rope-bytes rope)))))
-             (is = 2 (tuatara.display:display-column rope 0 (1- (tuatara.text:rope-bytes rope))))))
+             (is equal '(0 2) (multiple-value-list (tuatara.display:point-row-column rows (1- (tuatara.text:rope-octet-length rope)))))
+             (is = 2 (tuatara.display:display-column rope 0 (1- (tuatara.text:rope-octet-length rope))))))
   ;; both columns of a heart made a picture stand for the heart, and the selector is shown on it
   (let ((rows (tuatara.display:layout (tuatara.text:string->rope (codes #x2764 #xFE0F #x78)) 0 20 2)))
     (is equal '(0 0 6) (coerce (tuatara.display:row-bytes (aref rows 0)) 'list))
@@ -775,12 +775,12 @@
   ;; counting a few columns of a long text reads about as much of it, not a block of 64 KB
   (let ((rope (tuatara.text:string->rope (make-string 200000 :initial-element #\a))))
     (flet ((consed (columns)
-             (tuatara.display::scan-columns rope 0 (tuatara.text:rope-bytes rope) 8 :limit columns)
+             (tuatara.display::scan-columns rope 0 (tuatara.text:rope-octet-length rope) 8 :limit columns)
              (nth-value 2 (tuatara.bench::measuring
-                            (tuatara.display::scan-columns rope 0 (tuatara.text:rope-bytes rope) 8 :limit columns)))))
+                            (tuatara.display::scan-columns rope 0 (tuatara.text:rope-octet-length rope) 8 :limit columns)))))
       (true (< (consed 10) 1000))
       (true (< (consed 100) 1000))
-      (is = 100 (nth-value 1 (tuatara.display::scan-columns rope 0 (tuatara.text:rope-bytes rope) 8 :limit 100)))
+      (is = 100 (nth-value 1 (tuatara.display::scan-columns rope 0 (tuatara.text:rope-octet-length rope) 8 :limit 100)))
       (is = 150000 (nth-value 1 (tuatara.display::scan-columns rope 0 150000 8))))))
 
 (define-test (display padded-to-columns)

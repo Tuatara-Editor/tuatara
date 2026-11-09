@@ -161,7 +161,7 @@ HOST-COMMAND-REFUSAL says instead of running its command."
         for why = (and command (host-command-refusal tuatara.runtime:*host* command))
         when why collect (cons entry why)))
 
-(define-command menu-entry-refused ()
+(define-command menu-entry-refused (:interactive nil)
   "Say why the action of the open menu whose key was typed cannot run here;
 the menu stays open."
   (let* ((open (editor-menu *editor*))
@@ -241,7 +241,7 @@ those it was opened with."
   (let ((now (second open)) (opened (third open)))
     (not (and (subsetp now opened :test #'string=) (subsetp opened now :test #'string=)))))
 
-(define-command menu-key-not-here ()
+(define-command menu-key-not-here (:interactive nil)
   "Say that the key just typed is not in the open menu, which stays open, and
 that \\`C-g' leaves it."
   (message "~a is not in this menu: C-g leaves it" (tuatara.frontend:key-sequence-description *this-command-keys*)))
@@ -257,7 +257,7 @@ open unless the answer is yes."
           (progn (clear-transient-map *editor*) (message "Quit"))
           (message "Still in ~a" (menu-title (first open)))))))
 
-(define-command menu-entry-left-out ()
+(define-command menu-entry-left-out (:interactive nil)
   "Say that the entry of the open menu whose key was typed is left out of it
 now, and how to see it; the menu stays open."
   (let ((open (editor-menu *editor*))

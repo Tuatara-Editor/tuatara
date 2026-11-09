@@ -527,7 +527,7 @@ before it has room for fewer than it keeps (*ARCHIVE-LEAST-FILES-LEFT*, or
 (defun archive-room-left (directory)
   "The octets unpacking may still write on the drive holding DIRECTORY before
 it has less than *ARCHIVE-FREE-RESERVE* free."
-  (- (or (tuatara.io:free-bytes directory) most-positive-fixnum) *archive-free-reserve*))
+  (- (or (tuatara.io:free-octets directory) most-positive-fixnum) *archive-free-reserve*))
 
 (defun unpack-archive (program kind archive directory cancel password)
   "Unpack ARCHIVE, of KIND (*ARCHIVE-KINDS*), into DIRECTORY, a new empty

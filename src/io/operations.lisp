@@ -444,7 +444,7 @@ true car first (the copy then holds part of it)."
                (sb-posix:close out))))
       (sb-posix:close in))))
 
-(defparameter *deepest-folder-tree* 200
+(defparameter *folder-tree-depth-limit* 200
   "The most folders, one inside another, that copying, moving or deleting a
 folder goes down through. Each holds a descriptor open while what is in it is
 dealt with, so a tree nested deeper, as a damaged file system or a hostile
@@ -453,10 +453,10 @@ run out half-way.")
 
 (defun check-tree-depth (depth path)
   "Signal a FILE-SYSTEM-ERROR for PATH when DEPTH, the folders above it within
-the tree being copied or deleted, passes *DEEPEST-FOLDER-TREE*."
-  (when (> depth *deepest-folder-tree*)
+the tree being copied or deleted, passes *FOLDER-TREE-DEPTH-LIMIT*."
+  (when (> depth *folder-tree-depth-limit*)
     (error 'file-system-error :operation "go into" :path path
-                              :reason (format nil "it is nested more than ~d folders deep" *deepest-folder-tree*))))
+                              :reason (format nil "it is nested more than ~d folders deep" *folder-tree-depth-limit*))))
 
 (defun copy-entry-at (from-dirfd from-name to-dirfd to-name path to-path cancel progress skipped &optional (depth 0))
   "COPY-PATH-TREE for the entry FROM-NAME of the directory open as FROM-DIRFD,

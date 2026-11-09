@@ -449,7 +449,7 @@ helper (REPLY-OVERRUN)."
   (reply-has call at length)
   (foreign-string (sb-sys:sap+ (call-in call) at) length))
 
-(defstruct (parse-input (:constructor make-parse-input (rope &optional (end (tuatara.text:rope-bytes rope)) (number 0)
+(defstruct (parse-input (:constructor make-parse-input (rope &optional (end (tuatara.text:rope-octet-length rope)) (number 0)
                                                                        (size end)))
                         (:copier nil))
   "The text a parse reads: ROPE, up to octet END (the end of the last range of
@@ -500,7 +500,7 @@ none past its end, by DEADLINE; as TRANSFER says."
     (handler-case
         (tuatara.runtime:reporting-errors ("giving the syntax helper text from octet ~d" byte)
           (let* ((rope (parse-input-rope input))
-                 (total (min (parse-input-end input) (tuatara.text:rope-bytes rope))))
+                 (total (min (parse-input-end input) (tuatara.text:rope-octet-length rope))))
             (when (and (< byte total) (not (parse-input-over input)))
               (setf size (tuatara.text:rope-copy-to-sap rope byte (min total (+ byte +read-size+))
                                                         (sb-sys:sap+ out 12))))))
@@ -572,7 +572,7 @@ reads."
                              (byte (sb-sys:sap-ref-32 (call-in call) 4)))
                          (unless (and (= number (parse-input-number input))
                                       (<= byte (min (parse-input-end input)
-                                                    (tuatara.text:rope-bytes (parse-input-rope input)))))
+                                                    (tuatara.text:rope-octet-length (parse-input-rope input)))))
                            (dead :broken))
                          ;; past what a parse reads: no more text, its end taken as the text's
                          (when (> (parse-input-given input) (read-back-most input))
@@ -731,7 +731,7 @@ a buffer, or what an export of a text is known by (TEXT-KEY); NIL for none.")
   "A 64-bit digest (FNV-1a) of the octets of ROPE, the same for the same text."
   (let ((hash #xcbf29ce484222325)
         (window (make-array 65536 :element-type '(unsigned-byte 8)))
-        (bytes (tuatara.text:rope-bytes rope)))
+        (bytes (tuatara.text:rope-octet-length rope)))
     (declare (type (unsigned-byte 64) hash))
     (loop for from from 0 below bytes by 65536
           for to = (min bytes (+ from 65536))

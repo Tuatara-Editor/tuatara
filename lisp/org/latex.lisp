@@ -787,7 +787,7 @@ NIL where no face is; NIL when the language is not known or not coloured."
           (let ((*rules-quiet* t))
             (language-compiled-query language :colouring) (language-compiled-query language :injection) (language-compiled-query language :locals)
             (let* ((rope (tuatara.text:make-rope code))
-                   (bytes (tuatara.text:rope-bytes rope))
+                   (bytes (tuatara.text:rope-octet-length rope))
                    (faces (make-array (length code) :initial-element nil)))
               ;; outer ranges first: the innermost face of a character is its last
               (loop for (start end face) in (ignoring-errors-reported ("colouring the code of a ~a block" name)

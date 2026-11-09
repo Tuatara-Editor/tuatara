@@ -135,13 +135,13 @@ the buffer killed afterwards."
                             (tuatara.text:string-octets (format nil "~cx = é;" #\Tab))
                             #(27 255 32 32)))))
     (multiple-value-bind (text spans)
-        (tuatara.defaults::outline-line-text rope 0 (tuatara.text:rope-bytes rope) 4
+        (tuatara.defaults::outline-line-text rope 0 (tuatara.text:rope-octet-length rope) 4
                                              '((0 10 :none) (1 2 :variable) (5 7 :string)))
       (is string= "    x = é;^[\\xFF" text)
       (is equal '((4 5 :variable) (8 9 :string)) spans)))
   ;; a C1 control character written out as the text shows it
   (let ((rope (tuatara.text:string->rope (format nil "a~cb" (code-char #x85)))))
-    (is string= "a\\x85b" (tuatara.defaults::outline-line-text rope 0 (tuatara.text:rope-bytes rope) 4 '()))))
+    (is string= "a\\x85b" (tuatara.defaults::outline-line-text rope 0 (tuatara.text:rope-octet-length rope) 4 '()))))
 
 (define-test (outline no-headings)
   (multiple-value-bind (f editor) (run-keys "M-g o" :text "hello" :width 80)

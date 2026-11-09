@@ -215,7 +215,7 @@ TAB-WIDTH NIL characters."
     (destructuring-bind (top bottom &rest more) positions
       (declare (ignore more))
       (let* ((rope (tuatara.buffer:buffer-text buffer))
-             (start (max top (tuatara.text:rope-line-start rope (min from (tuatara.text:rope-bytes rope)))))
+             (start (max top (tuatara.text:rope-line-start rope (min from (tuatara.text:rope-octet-length rope)))))
              (end (min (1+ bottom) to))
              (ranges '()))
         (when (< start end)

@@ -21,7 +21,7 @@
    #:mapping-path #:mapping-length #:mapping-live #:mapping-fd #:mapping-sap #:mapping-rope #:map-rope-sources
    ;; ropes
    #:rope #:rope-p #:make-rope #:string->rope #:octets->rope #:open-file-rope #:index-rope
-   #:rope-bytes #:rope-chars #:rope-utf16 #:rope-lines #:rope-indexed-p #:rope-holds-return-p
+   #:rope-octet-length #:rope-chars #:rope-utf16 #:rope-lines #:rope-indexed-p #:rope-holds-return-p
    #:rope-statistics
    ;; conversions
    #:byte->char #:char->byte #:byte->utf16 #:utf16->byte #:byte->line #:line->byte #:byte->row #:row->byte #:char-boundary-p

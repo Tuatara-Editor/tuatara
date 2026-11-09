@@ -10,8 +10,9 @@
 
 (in-package #:tuatara.defaults)
 
-(define-face :button "A button: text that does something when \\`RET' is pressed on it or it is clicked."
-  :underline t)
+(define-face :button "A button: text that does something when \\`RET' is pressed on it or it is clicked: the
+source file a command's help names, say. In the colour of links."
+  :inherit :link)
 
 (define-face :about-name "Tuatara's name in large letters in *About Tuatara*." :inherit :function :bold t)
 
@@ -235,7 +236,7 @@ version)."
     ("freedesktop.org's desktop notifications" "notifications told on the desktop, the agenda's and"
                                                "packages', through libnotify's notify-send")
     ("The file program" "a file's kind told by its first octets, never by its name")
-    ("PDF (ISO 32000)" "the structure of a PDF read by file-metadata: its objects, cross-reference"
+    ("PDF (ISO 32000)" "the structure of a PDF read by show-file-metadata: its objects, cross-reference"
                        "tables, streams and filters, and page content")
     ("RARLAB's RAR 5.0 format description" "the rar archives the tests make, laid out as it describes"
                                           "(test/rimu-operations.lisp)")

@@ -125,7 +125,7 @@ much after it."
         (if (char= (char dir (1- (length dir))) #\/) dir (concatenate 'string dir "/"))
         "/usr/share/zoneinfo/")))
 
-(defun zone-name-p (name)
+(defun time-zone-name-p (name)
   "True when NAME can be a zone's name in the zoneinfo: parts apart by /,
 each of letters, digits, _ + and -, none beginning with a dot or a -."
   (and (stringp name) (< 0 (length name) 256)
@@ -242,10 +242,10 @@ when it says none this reads."
 (defvar *zones* (make-hash-table :test 'equal :synchronized t)
   "The time zones read from the zoneinfo, by name; NIL for a name that is none.")
 
-(defun zone-named (name)
+(defun time-zone-named (name)
   "The time zone the system's zoneinfo names NAME (Europe/Stockholm, UTC), or
 NIL when there is none by that name. Read once, then kept."
-  (when (zone-name-p name)
+  (when (time-zone-name-p name)
     (multiple-value-bind (zone known) (gethash name *zones*)
       (if known
           zone
@@ -253,24 +253,24 @@ NIL when there is none by that name. Read once, then kept."
                 (let ((octets (zoneinfo-file-octets (concatenate 'string (zoneinfo-directory) name))))
                   (and octets (read-zoneinfo octets name))))))))
 
-(defun system-zone-name ()
+(defun system-time-zone-name ()
   "The name of the time zone the system keeps its clock in: TZ when it names
 a zone of the zoneinfo, else the zone /etc/localtime leads to; NIL when
 neither names one."
   (let ((tz (tuatara.io:own-variable "TZ")))
-    (or (and tz (let ((name (string-left-trim ":" tz))) (and (zone-named name) name)))
+    (or (and tz (let ((name (string-left-trim ":" tz))) (and (time-zone-named name) name)))
         ;; the link followed to its end: a toolbox's leads through /run/host
         (let* ((path (handler-case (namestring (truename "/etc/localtime")) (file-error () nil)))
                (at (and path (search "zoneinfo/" path)))
                (name (and at (subseq path (+ at 9))))
                (name (if (and name (eql 0 (search "posix/" name))) (subseq name 6) name)))
-          (and name (zone-name-p name) (zone-named name) name)))))
+          (and name (time-zone-name-p name) (time-zone-named name) name)))))
 
 (defun system-time-zone ()
-  "The time zone the system keeps its clock in: by name (SYSTEM-ZONE-NAME),
+  "The time zone the system keeps its clock in: by name (SYSTEM-TIME-ZONE-NAME),
 else as /etc/localtime holds it, else TZ read as a rule, else as far as the
 clock's offset now tells it."
-  (or (let ((name (system-zone-name))) (and name (zone-named name)))
+  (or (let ((name (system-time-zone-name))) (and name (time-zone-named name)))
       (let ((octets (zoneinfo-file-octets "/etc/localtime"))) (and octets (read-zoneinfo octets nil)))
       (let* ((tz (tuatara.io:own-variable "TZ")) (rule (and tz (read-zone-rule tz))))
         (and rule (%make-time-zone nil #() #() (zone-rule-standard-offset rule) rule)))

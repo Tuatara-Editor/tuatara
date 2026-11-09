@@ -42,7 +42,7 @@ with an accented letter."
           (is = (tuatara.text:rope-lines fresh) (tuatara.text:rope-lines again))
           (is = (tuatara.text:rope-chars fresh) (tuatara.text:rope-chars again))
           (is = (tuatara.text:rope-utf16 fresh) (tuatara.text:rope-utf16 again))
-          (loop for byte from 0 below (tuatara.text:rope-bytes edited) by 4099
+          (loop for byte from 0 below (tuatara.text:rope-octet-length edited) by 4099
                 do (is = (tuatara.text:byte->line fresh byte) (tuatara.text:byte->line again byte))
                    (is = (tuatara.text:byte->char fresh byte) (tuatara.text:byte->char again byte)))
           ;; what the donor had counted was not read again: the pieces at the changes, a tenth of it at most
@@ -65,7 +65,7 @@ a file of evidence may hold, drawn by RANDOM, a random state."
 
 (defun random-boundary (rope random)
   "A character boundary of ROPE drawn by RANDOM."
-  (loop for byte from (random (1+ (tuatara.text:rope-bytes rope)) random)
+  (loop for byte from (random (1+ (tuatara.text:rope-octet-length rope)) random)
         when (tuatara.text:char-boundary-p rope byte) return byte))
 
 (defun edited-octets (octets edits)
@@ -129,7 +129,7 @@ RANDOM: deletions, insertions of characters of every width, or both."
   ;; counted by reading, across the 64 KB blocks, the same as the counts say
   (let* ((text (sample-lines 8000))
          (rope (tuatara.text:string->rope text)))
-    (dolist (range (list (list 0 (tuatara.text:rope-bytes rope)) (list 65530 65550) (list 1000 170000)))
+    (dolist (range (list (list 0 (tuatara.text:rope-octet-length rope)) (list 65530 65550) (list 1000 170000)))
       (destructuring-bind (start end) range
         (let ((start (loop for b from start when (tuatara.text:char-boundary-p rope b) return b))
               (end (loop for b from end when (tuatara.text:char-boundary-p rope b) return b)))
@@ -241,7 +241,7 @@ begins."
                  (tuatara.buffer:kill-buffer b)))
              ;; nor does a copy too large for the system clipboard: the text not yet counted is
              ;; kept as it is, and a buffer it is pasted into counts it in the background
-             (let ((tuatara-user:*clipboard-max-size* 8)
+             (let ((tuatara-user:*clipboard-size-limit* 8)
                    (tuatara.buffer:*large-edit-octets* 10))
                (multiple-value-bind (f editor) (run-keys "C-x h M-w C-x b n e w RET C-y" :file path :width 100 :height 12)
                  (let ((b (tuatara.display:window-buffer (tuatara.command:editor-window editor))))
@@ -414,7 +414,7 @@ and the editor."
       ;; counted through: every line's start and every place's line, as the counted text has them
       (loop for line from 0 to (tuatara.text:rope-lines counted) by 37
             do (is = (tuatara.text:line->byte counted line) (tuatara.text:tally-line-start tally rope line)))
-      (is = (tuatara.text:rope-bytes counted)
+      (is = (tuatara.text:rope-octet-length counted)
           (tuatara.text:tally-line-start tally rope (tuatara.text:rope-lines counted)))
       (loop for line from 0 below (tuatara.text:rope-lines counted) by 41
             for byte = (tuatara.text:line->byte counted line)
@@ -424,14 +424,14 @@ and the editor."
       ;; before when that is nearer, as the rows of a window are
       (let ((state (sb-ext:seed-random-state 7)))
         (loop repeat 300
-              for byte = (random (tuatara.text:rope-bytes counted) state)
+              for byte = (random (tuatara.text:rope-octet-length counted) state)
               do (is = (tuatara.text:byte->line counted byte) (tuatara.text:tally-line-number tally rope byte))))
       ;; newlines counted where they lie, before the text is counted and after, as reading them one by one does
       (let ((text (tuatara.text:rope-octets rope))
             (state (sb-ext:seed-random-state 11)))
         (loop repeat 200
-              for a = (random (tuatara.text:rope-bytes rope) state)
-              for b = (+ a (random (- (tuatara.text:rope-bytes rope) a -1) state))
+              for a = (random (tuatara.text:rope-octet-length rope) state)
+              for b = (+ a (random (- (tuatara.text:rope-octet-length rope) a -1) state))
               do (is = (count 10 text :start a :end b) (tuatara.text:rope-count-newlines rope a b))
                  (is = (count 10 text :start a :end b) (tuatara.text:rope-count-newlines counted a b))))
       ;; counted only so far from the start: known there, not past it
@@ -491,7 +491,7 @@ a carriage return alone, in turn."
                    (tuatara.buffer:buffer-replace b start end (elt pieces (random (length pieces) state)))))
                (let* ((version (tuatara.buffer:buffer-version b))
                       (counted (tuatara.text:index-rope (tuatara.buffer:buffer-text b)))
-                      (size (tuatara.text:rope-bytes counted)))
+                      (size (tuatara.text:rope-octet-length counted)))
                  (dotimes (i 25)
                    (let ((byte (if (evenp i) (random (1+ size) state) (min size (+ 19990 (random 80 state))))))
                      (is = (tuatara.text:byte->line counted byte)
@@ -867,12 +867,12 @@ go; return what FUNCTION returned."
           (let ((cell (tuatara.runtime:start-background-result
                        (lambda ()
                          (let ((block (tuatara.text:make-octets 65536)))
-                           (loop for at from 0 below (tuatara.text:rope-bytes rope) by 65536
+                           (loop for at from 0 below (tuatara.text:rope-octet-length rope) by 65536
                                  sum (tuatara.text:rope-copy-into
-                                                      rope at (min (tuatara.text:rope-bytes rope) (+ at 65536)) block))))
+                                                      rope at (min (tuatara.text:rope-octet-length rope) (+ at 65536)) block))))
                        "a test reading" nil)))
             (loop repeat 500 until (car cell) do (sleep 0.01))
-            (is = (tuatara.text:rope-bytes rope) (car cell))
+            (is = (tuatara.text:rope-octet-length rope) (car cell))
             (tuatara.text:close-mapping mapping)
             (few-pages-held path)))))))
 
@@ -1056,8 +1056,8 @@ it touched, as /proc counts them."
     (with-test-directory (dir)
       (with-large-file (path dir)
         (multiple-value-bind (rope mapping) (tuatara.text:open-file-rope path)
-          (let ((slice (tuatara.text:rope-slice rope 0 (tuatara.text:rope-bytes rope))))
-            (is = (tuatara.text:rope-bytes rope) (tuatara.text:rope-bytes slice))
+          (let ((slice (tuatara.text:rope-slice rope 0 (tuatara.text:rope-octet-length rope))))
+            (is = (tuatara.text:rope-octet-length rope) (tuatara.text:rope-octet-length slice))
             (true (< (pages-held path) 8) "~d pages held" (pages-held path)))
           (tuatara.text:close-mapping mapping))))))
 
@@ -1070,7 +1070,7 @@ it touched, as /proc counts them."
     (with-test-directory (dir)
       (with-large-file (path dir)
         (multiple-value-bind (rope mapping) (tuatara.text:open-file-rope path)
-          (let ((size (tuatara.text:rope-bytes rope)))
+          (let ((size (tuatara.text:rope-octet-length rope)))
             (dotimes (round 40)
               (let* ((cancel (list nil))
                      (reader (sb-thread:make-thread

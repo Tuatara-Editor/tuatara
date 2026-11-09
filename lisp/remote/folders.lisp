@@ -118,7 +118,7 @@ REMOTE-RIMU-SOURCE, is told when the folder is evidence."
       ((or tuatara.io:file-system-error tuatara.runtime:refusal) (condition)
         (make-rimu-listing directory (vector) nil (princ-to-string condition))))))
 
-(defvar *remote-preview-largest* (* 20 (expt 2 20))
+(defvar *remote-preview-size-limit* (* 20 1000 1000)
   "The most octets a file on another machine may hold to be shown in the
 preview of its list (\\<rimu-mode>\\[list-toggle-preview]), 20 MB by default: all
 of it has to come from the server first. The preview of a larger one says so.")
@@ -130,7 +130,7 @@ of it has to come from the server first. The preview of a larger one says so.")
 (defmethod rimu-source-call-with-entry ((source remote-rimu-source) directory octets function &key cancel)
   "The file read from the server into a copy here readable by you alone, gone
 when FUNCTION returns. Refused for a file of evidence, which is not read unasked,
-and one larger than *REMOTE-PREVIEW-LARGEST*."
+and one larger than *REMOTE-PREVIEW-SIZE-LIMIT*."
   (multiple-value-bind (host path)
       (remote-name-parts (concatenate 'string directory (tuatara.text:octets-string octets)))
     (let ((*remote-cancel* cancel))
@@ -141,7 +141,12 @@ and one larger than *REMOTE-PREVIEW-LARGEST*."
         (unwind-protect
              (multiple-value-bind (fd copy)
                  (tuatara.io:create-free-file folder (lambda (n) (declare (ignore n)) "preview"))
-               (unwind-protect (remote-download host path fd :most *remote-preview-largest*)
+               (unwind-protect
+                    (handler-case (remote-download host path fd :most *remote-preview-size-limit*)
+                      (remote-too-large (condition)
+                        (refuse "Too large to preview: ~a, the limit is ~a (*remote-preview-size-limit*). ~
+                                 RET opens all of it"
+                                (octets-words (remote-too-large-size condition)) (octets-words *remote-preview-size-limit*))))
                  (sb-posix:close fd))
                (tuatara.io:call-with-file copy function))
           (delete-private-folder folder))))))

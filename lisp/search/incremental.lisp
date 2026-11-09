@@ -776,7 +776,7 @@ scope and the case flags. Typing into the replacement changes none of it."
 
 (defvar *search-lit-shown* nil
   "True while the matches of the last search (*SEARCH-LIT*) are lit: from its
-\\<search>\\[search-exit] till \\[keyboard-quit]; \\[toggle-search-highlight] turns it.")
+\\<search>\\[search-exit] till \\[keyboard-quit]; \\[search-toggle-highlight] turns it.")
 
 (defun search-highlights (editor window rows)
   "Highlight function: while a search runs, its matches in ROWS (SEARCH-RANGES),
@@ -824,10 +824,10 @@ its text is let go."
     (setf *search-lit* nil *search-lit-shown* nil)))
 
 (defun unlight-search ()
-  "Let the matches of the last search go unlit, \\[toggle-search-highlight] lighting them again."
+  "Let the matches of the last search go unlit, \\[search-toggle-highlight] lighting them again."
   (setf *search-lit-shown* nil))
 
-(define-command toggle-search-highlight ()
+(define-command search-toggle-highlight ()
   "Light the matches of the last search that ended at a match again, in its
 buffer, or take them away when they are lit, as \\[keyboard-quit] does."
   (cond ((null *search-lit*) (message "No search to light the matches of"))

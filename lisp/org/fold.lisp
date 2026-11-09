@@ -113,7 +113,7 @@ last of them, the lines going on a note (set in deeper than its dash) with
 it; NIL when LINE begins no such note or it stands alone. As a second
 value, the line after them."
   (let* ((rope (tuatara.buffer:buffer-text buffer))
-         (size (tuatara.text:rope-bytes rope))
+         (size (tuatara.text:rope-octet-length rope))
          (head (buffer-line-head buffer line)))
     (when (cl-ppcre:scan *org-note-line-re* head)
       (let ((indent (or (position-if-not (lambda (c) (member c '(#\Space #\Tab))) head) 0))
@@ -141,7 +141,7 @@ NIL when LINE begins no drawer that ends before the next headline. As a
 second value, where the search for its end stopped: the start of the :END:
 line, of the next headline, or the text's end."
   (let* ((rope (tuatara.buffer:buffer-text buffer))
-         (size (tuatara.text:rope-bytes rope))
+         (size (tuatara.text:rope-octet-length rope))
          (first-end (tuatara.buffer:buffer-line-end buffer line))
          (head (buffer-line-head buffer line)))
     (when (and (cl-ppcre:scan *org-drawer-line-re* head)
@@ -159,7 +159,7 @@ END, and each run of a task's notes (ORG-NOTES-RANGE), each line looked at
 once: what follows a drawer that is never ended holds no drawer's end
 either, up to the next headline."
   (let* ((rope (tuatara.buffer:buffer-text buffer))
-         (size (tuatara.text:rope-bytes rope))
+         (size (tuatara.text:rope-octet-length rope))
          (line (tuatara.buffer:buffer-line-start buffer start)))
     (loop while (and (< line end) (< line size))
           do (let ((next (1+ (tuatara.text:rope-line-end rope line)))
@@ -238,7 +238,7 @@ buffer; NIL for none."
   "The level of the headline whose line starts at the octet LINE of ROPE (how
 many stars begin it, a space or the line's end after them), or NIL when the
 line is no headline."
-  (let ((size (tuatara.text:rope-bytes rope)))
+  (let ((size (tuatara.text:rope-octet-length rope)))
     (loop for i from line below size
           for octet = (tuatara.text:rope-octet rope i)
           while (= octet 42)
@@ -307,7 +307,7 @@ direct children are the headlines in it with no shallower one before them.
 True when it did; NIL, nothing done, when the subtree is longer than
 *ORG-CYCLE-UNPARSED-MOST*."
   (let* ((rope (tuatara.buffer:buffer-text buffer))
-         (size (tuatara.text:rope-bytes rope))
+         (size (tuatara.text:rope-octet-length rope))
          (bound (min size (+ line *org-cycle-unparsed-most*)))
          (level (org-stars rope line))
          (start (tuatara.buffer:buffer-line-end buffer line))
@@ -486,7 +486,7 @@ file parsed only when one of the first two does."
 saying; with neither, as *ORG-FOLD-METADATA* says."
   (let ((choice (org-startup-choice options '("hidedrawers" "showdrawers"))))
     (when (if choice (string= choice "hidedrawers") *org-fold-metadata*)
-      (org-fold-drawers-in buffer 0 (tuatara.text:rope-bytes (tuatara.buffer:buffer-text buffer))))))
+      (org-fold-drawers-in buffer 0 (tuatara.text:rope-octet-length (tuatara.buffer:buffer-text buffer))))))
 
 (defmethod mode-enter ((mode org-mode) buffer)
   "Show BUFFER as its #+STARTUP: lines say: folded or open, indented or not,

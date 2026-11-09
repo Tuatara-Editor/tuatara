@@ -917,11 +917,11 @@ In its text, search as \\`C-s' does in any text."
         (message "Nothing to search for")
         (multiple-value-bind (found end)
             (matcher-search rope (make-pattern-matcher query :regex nil)
-                            (min (tuatara.text:rope-bytes rope)
+                            (min (tuatara.text:rope-octet-length rope)
                                  (if (and last (string= query (car last)) (string= typed ""))
                                      (1+ (cdr last))
                                      (or (pdf-view-page-start view (pdf-view-page view)) 0)))
-                            (tuatara.text:rope-bytes rope)
+                            (tuatara.text:rope-octet-length rope)
                             :stop (octets-stopper))
           (cond ((eq end :stopped) (message "Search stopped"))
                 (found

@@ -122,7 +122,7 @@ ampersand in front of it while digraphs are on.~%~%")
                     "  1. Press \\[digraph-input-mode] (or \\[set-input-method] and rfc1345): digraphs are on~%~
      where you type text, from the next INSERT state in NORMAL state.~%~
   2. Type an ampersand and the digraph: &e' gives é, &e shown underlined until the '.~%~
-  \\[toggle-input-method] turns them off and on again, \\[input-method-off] off.~%~%~
+  \\[toggle-input-method] turns them off and on again, \\[deactivate-input-method] off.~%~%~
   For just one character, \\[insert-digraph] asks for the keys and types it, in either state;~%~
   with a selection, it wraps it. Or copy the character from the table below.~%~%"
                     :marks t :for-format t))

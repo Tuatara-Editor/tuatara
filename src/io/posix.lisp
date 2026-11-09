@@ -670,7 +670,7 @@ does not say."
                     (native path) sap))
         (mapcar (lambda (offset) (octets-integer buffer offset 8)) offsets)))))
 
-(defun free-bytes (path)
+(defun free-octets (path)
   "Octets an unprivileged user may still write on the file system holding PATH,
 or NIL when the system does not say."
   (let ((fields (statvfs-fields path 32 8)))            ; f_bavail, f_frsize
@@ -1301,8 +1301,10 @@ then :UNSUPPORTED as a second value when this kernel has no such question
 (defun mount-namespace (pid)
   "The mount namespace the process PID runs in, as (DEVICE . INODE) of its
 /proc/PID/ns/mnt: two processes see the same files at the same paths when
-these are EQUAL. NIL when it cannot be read."
-  (let ((stamp (path-stamp (format nil "/proc/~d/ns/mnt" pid) :failure nil)))
+these are EQUAL. NIL when it cannot be read, as the system keeps that of a
+program such as sshd to itself."
+  (let ((stamp (handler-case (path-stamp (format nil "/proc/~d/ns/mnt" pid))
+                 (file-system-error () nil))))
     (and stamp (cons (stamp-dev stamp) (stamp-ino stamp)))))
 
 ;;; Local sockets, and descriptors passed over them

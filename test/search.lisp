@@ -161,7 +161,7 @@ newlines and some multibyte characters."
         (dolist (sizes '((4000000 8000000) (5000 7000)))
           (let ((tuatara.syntax:*serial-window* (first sizes)) (tuatara.syntax:*parallel-piece* (second sizes)))
             (loop repeat 8
-                  for start = (tuatara.text:rope-char-start rope (random (tuatara.text:rope-bytes rope)))
+                  for start = (tuatara.text:rope-char-start rope (random (tuatara.text:rope-octet-length rope)))
                   do (let ((fwd (find-if (lambda (m) (>= (first m) start)) all))
                            (bwd (find-if (lambda (m) (< (first m) start)) all :from-end t)))
                        (is eql (first fwd) (tuatara.syntax:regex-search-forward rope p :start start :threads 3)
@@ -306,7 +306,7 @@ newlines and some multibyte characters."
                (loop repeat 3
                      minimize (let ((start (get-internal-real-time)))
                                 (tuatara.syntax:map-regex-matches (lambda (s e m g) (declare (ignore s e m g)) nil)
-                                                                  rope scanner 0 (tuatara.text:rope-bytes rope)
+                                                                  rope scanner 0 (tuatara.text:rope-octet-length rope)
                                                                   :texts nil)
                                 (- (get-internal-real-time) start))))))
       (let ((begun (fastest "kea error the")))
@@ -344,11 +344,11 @@ newlines and some multibyte characters."
           (flet ((mapper (function from to halt)
                    (tuatara.syntax:map-regex-matches function rope scanner from to :halt halt)))
             (is equal (regex-oracle s p)
-                (triples (tuatara.syntax:collect-matches #'mapper 0 (tuatara.text:rope-bytes rope) :threads 4))
+                (triples (tuatara.syntax:collect-matches #'mapper 0 (tuatara.text:rope-octet-length rope) :threads 4))
                 "pattern ~s" p)
             ;; only counted, nothing kept: the same number
             (is = (length (regex-oracle s p))
-                (nth-value 2 (tuatara.syntax:collect-matches #'mapper 0 (tuatara.text:rope-bytes rope) :threads 4 :keep nil))
+                (nth-value 2 (tuatara.syntax:collect-matches #'mapper 0 (tuatara.text:rope-octet-length rope) :threads 4 :keep nil))
                 "count of ~s" p)))))
     ;; a needle that overlaps itself, in runs longer than a piece
     (let* ((s (with-output-to-string (o) (loop repeat 300 do (write-string (make-string (+ 1 (random 2500)) :initial-element #\a) o)
@@ -356,22 +356,22 @@ newlines and some multibyte characters."
            (rope (tuatara.text:string->rope s))
            (serial '()))
       (tuatara.syntax:map-literal-matches (lambda (a b m g) (declare (ignore m g)) (push (list a b) serial) nil)
-                                          rope "aa" 0 (tuatara.text:rope-bytes rope))
+                                          rope "aa" 0 (tuatara.text:rope-octet-length rope))
       (flet ((mapper (function from to halt)
                (tuatara.syntax:map-literal-matches function rope "aa" from to :halt halt)))
         (setf serial (nreverse serial))
         (is equal serial
             (mapcar (lambda (m) (subseq m 0 2))
-                    (tuatara.syntax:collect-matches #'mapper 0 (tuatara.text:rope-bytes rope) :threads 4)))
+                    (tuatara.syntax:collect-matches #'mapper 0 (tuatara.text:rope-octet-length rope) :threads 4)))
         (is = (length serial)
-            (nth-value 2 (tuatara.syntax:collect-matches #'mapper 0 (tuatara.text:rope-bytes rope) :threads 4 :keep nil))))
+            (nth-value 2 (tuatara.syntax:collect-matches #'mapper 0 (tuatara.text:rope-octet-length rope) :threads 4 :keep nil))))
       ;; a match longer than a piece, counted without keeping it
       (let ((scanner (tuatara.syntax:compile-regex "a+")))
         (is = (length (regex-oracle s "a+"))
             (nth-value 2 (tuatara.syntax:collect-matches
                           (lambda (function from to halt)
                             (tuatara.syntax:map-regex-matches function rope scanner from to :halt halt))
-                          0 (tuatara.text:rope-bytes rope) :threads 4 :keep nil))))))
+                          0 (tuatara.text:rope-octet-length rope) :threads 4 :keep nil))))))
   ;; a literal match must end by BOUND; TEXTS gives the text matched
   (let ((rope (tuatara.text:string->rope "abcabcabc")) (found '()))
     (tuatara.syntax:map-literal-matches (lambda (a b m g) (declare (ignore g)) (push (list a b m) found) nil)

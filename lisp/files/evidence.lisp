@@ -41,7 +41,7 @@ Names are compared without regard to case. A file is evidence when the
 folder it really is in, links followed, is one of these or below one, and a
 drive mounted in a second place is evidence under both names. An entry that
 cannot be read is said in *Messages* and by \\[check-health], and left out.
-\\[evidence-folder-p] says whether a file is evidence and by which entry;
+\\[describe-evidence] says whether a file is evidence and by which entry;
 \\[copy-from-evidence] copies files out of one, each checked by its SHA-256.")
 
 ;;; The entries as read
@@ -922,7 +922,7 @@ or BUFFER's file."
       (let ((file (tuatara.buffer:buffer-file buffer)))
         (and file (tuatara.io:native file)))))
 
-(define-command evidence-folder-p ()
+(define-command describe-evidence ()
   "Say whether the file or folder here is evidence, and by which entry of
 *EVIDENCE-FOLDERS*: a rimu list's entry on the line, a path written at
 point, or the buffer's file. Evidence opens safely, and nothing is written

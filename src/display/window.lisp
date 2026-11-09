@@ -163,7 +163,7 @@ the line its first character went to, so that each stays on the same text."
             for top in tops
             do (let ((rope (tuatara.buffer:buffer-text (window-buffer window))))
                  (setf (window-start window)
-                       (tuatara.text:rope-line-start rope (min (funcall forward top :before) (tuatara.text:rope-bytes rope)))))))))
+                       (tuatara.text:rope-line-start rope (min (funcall forward top :before) (tuatara.text:rope-octet-length rope)))))))))
 
 (defun call-keeping-window-lines (windows start end function)
   "Call FUNCTION, which puts other lines in place of the lines of a buffer from
@@ -173,7 +173,7 @@ those lines and at the same column as before, and anything after them as far
 past them as it was: each window stays where it was, however the lines moved."
   (when (null windows) (return-from call-keeping-window-lines (funcall function)))
   (let* ((old (tuatara.buffer:buffer-text (window-buffer (first windows))))
-         (old-bytes (tuatara.text:rope-bytes old)))
+         (old-bytes (tuatara.text:rope-octet-length old)))
     (flet ((place (p)
              (cond ((< p start) (list :before p))
                    ((>= p end) (list :after (- old-bytes p)))
@@ -185,7 +185,7 @@ past them as it was: each window stays where it was, however the lines moved."
                            windows)))
         (multiple-value-prog1 (funcall function)
           (let* ((new (tuatara.buffer:buffer-text (window-buffer (first windows))))
-                 (new-bytes (tuatara.text:rope-bytes new))
+                 (new-bytes (tuatara.text:rope-octet-length new))
                  (new-end (+ end (- new-bytes old-bytes))))
             (flet ((back (spot)
                      (destructuring-bind (kind a &optional b) spot
@@ -727,7 +727,7 @@ a time."
   "The start of the line N lines after (or before, if negative) the line
 containing START in ROPE, found a line at a time: the first or last line when
 there are fewer."
-  (let ((line (tuatara.text:rope-line-start rope start)) (size (tuatara.text:rope-bytes rope)))
+  (let ((line (tuatara.text:rope-line-start rope start)) (size (tuatara.text:rope-octet-length rope)))
     (if (minusp n)
         (loop repeat (- n)
               while (plusp line)
@@ -854,7 +854,7 @@ long it is."
     (when (hex-view-p buffer)
       (return-from window-ensure-point-visible (hex-ensure-point-visible window)))
     ;; keep start valid after edits
-    (setf (window-start window) (min (window-start window) (tuatara.text:rope-bytes rope)))
+    (setf (window-start window) (min (window-start window) (tuatara.text:rope-octet-length rope)))
     ;; a line's start, or where lines wrap, a row's, unless nothing has changed since it was one
     (if (window-wraps-p window)
         (unless (equal (window-row-start-seen window) (row-start-state window))
@@ -955,7 +955,7 @@ before the character there, after a tab, wide character or grapheme cluster
 when it is shorter."
   (let* ((rope (tuatara.buffer:buffer-text buffer))
          (at (nth-value 1 (buffer-screen-slice buffer line-start column column)))
-         (cluster (if (or (= at line-start) (>= at (tuatara.text:rope-bytes rope)))
+         (cluster (if (or (= at line-start) (>= at (tuatara.text:rope-octet-length rope)))
                       at
                       (tuatara.text:rope-previous-boundary rope (tuatara.text:rope-next-boundary rope at) t))))
     (if (< cluster at) (tuatara.text:rope-next-boundary rope cluster t) at)))

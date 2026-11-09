@@ -99,6 +99,21 @@ a moment.")
       (false (tuatara.defaults::health-check-running))
       (true (search "Tuatara health" (health-text))))))
 
+(define-test (health report-keeps-its-columns)
+  ;; its tables are laid out in columns, so its lines never wrap, soft wrapping on or off
+  (unwind-protect
+       (progn
+         (sb-int:encapsulate 'tuatara.defaults::health-pieces 'plain
+                             (lambda (function check) (declare (ignore function check)) (list "x")))
+         (let ((editor (nth-value 1 (run-keys (list (lambda () (tuatara.defaults::show-health-report nil)))))))
+           (declare (ignorable editor))
+           (let ((report (tuatara.buffer:find-buffer "*Health*")))
+             (true report)
+             (true (typep (tuatara.modes:buffer-major-mode report) 'tuatara.defaults::health-mode))
+             (false (tuatara.modes:mode-wraps-p (tuatara.modes:buffer-major-mode report))))))
+    (sb-int:unencapsulate 'tuatara.defaults::health-pieces 'plain)
+    (let ((report (tuatara.buffer:find-buffer "*Health*"))) (when report (tuatara.buffer:kill-buffer report)))))
+
 (define-test (health report-keys)
   (let ((tuatara.defaults::*health-wait* 60))
     ;; q in the report closes its window; r checks again

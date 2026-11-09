@@ -333,7 +333,7 @@ transfer at a known point.")
 (defun remote-check-room (copy wanted)
   "Refuse to go on reading into COPY when the file system holding it would be
 left with less than TUATARA.IO:*SNAPSHOT-FREE-MARGIN* free, WANTED octets more being written."
-  (let ((free (tuatara.io:free-bytes (tuatara.io:parent-path copy))))
+  (let ((free (tuatara.io:free-octets (tuatara.io:parent-path copy))))
     (when (and free (< free (+ wanted tuatara.io:*snapshot-free-margin*)))
       (refuse "there is no room for the rest here: ~a free, ~a more to come"
               (octets-words free) (octets-words wanted)))))

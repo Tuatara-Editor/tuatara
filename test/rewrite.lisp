@@ -11,14 +11,14 @@
          (b (tuatara.text:string->rope (random-text 3000)))
          (sa (tuatara.text:rope-string a)) (sb (tuatara.text:rope-string b)))
     (loop repeat 20
-          do (let* ((i (tuatara.text:rope-char-start a (random (1+ (tuatara.text:rope-bytes a)))))
-                    (j (tuatara.text:rope-char-start a (+ i (random (1+ (- (tuatara.text:rope-bytes a) i))))))
+          do (let* ((i (tuatara.text:rope-char-start a (random (1+ (tuatara.text:rope-octet-length a)))))
+                    (j (tuatara.text:rope-char-start a (+ i (random (1+ (- (tuatara.text:rope-octet-length a) i))))))
                     (spliced (tuatara.text:splice-rope a i j b b)))
                (true (tuatara.text:check-rope spliced))
                (is equalp (concatenate '(vector (unsigned-byte 8))
                                        (subseq (to-octets sa) 0 i) (to-octets sb) (to-octets sb) (subseq (to-octets sa) j))
                    (tuatara.text:rope-octets spliced))))
-    (is string= "" (tuatara.text:rope-string (tuatara.text:splice-rope a 0 (tuatara.text:rope-bytes a))))))
+    (is string= "" (tuatara.text:rope-string (tuatara.text:splice-rope a 0 (tuatara.text:rope-octet-length a))))))
 
 (define-test (rewrite swap)
   ;; a whole-text swap: anchors follow the position maps; undo and redo swap back and forth

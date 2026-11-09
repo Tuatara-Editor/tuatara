@@ -173,9 +173,6 @@ ask (ASK-DAEMON-TO-END)."
       "The mount namespace DAEMON runs in, as TUATARA.IO:MOUNT-NAMESPACE gives it."
       (documentation 'daemon-ending 'function) "True once DAEMON was asked to end with no one to ask.")
 
-(defvar *daemon* nil
-  "The daemon this editor runs as, in the background (DAEMON), or NIL.")
-
 (defun open-daemon (name)
   "Make this process the daemon NAME: take its lock, so that no other daemon
 of the name runs, take away a socket a daemon that ended left, and listen on
@@ -241,55 +238,83 @@ be run by the same account, and see the same files at the same paths."
   "How many clients show EDITOR now."
   (count-if (lambda (client) (and (client-remote client) (not (client-ended client)))) (editor-clients editor)))
 
+(defun daemon-knows-root-p ()
+  "True when a process shown as run by root here is the system's root: this
+editor runs in the system's own namespace of user ids (OUTSIDE-OWNER), and not
+as root itself."
+  (and (null (outside-owner)) (plusp (sb-posix:geteuid))))
+
 (defun peer-namespace (fd)
   "The mount namespace of the process at the other end of the connection FD,
 as TUATARA.IO:MOUNT-NAMESPACE gives it, and its process id (PID), two
 values: read through /proc while a pidfd of that very process
 \(TUATARA.IO:PEER-PROCESS) says it still runs under that number, so that no
-other process given its number meanwhile answers for it. NIL when the system
-cannot say, or the process ended; with :UNSUPPORTED as a second value when
-this kernel cannot give the pidfd."
+other process given its number meanwhile answers for it. The namespace is NIL
+beside the PID when the system keeps it to itself, as it does sshd's, which
+is the process connecting for a client on another machine; a third value is
+then true when the OpenSSH server started that process
+\(TUATARA.IO:STARTED-BY-SSH-SERVER-P) and this daemon can tell
+\(DAEMON-KNOWS-ROOT-P). Namespace and PID are NIL when the
+system cannot say, or the process ended; with :UNSUPPORTED as a second value
+when this kernel cannot give the pidfd."
   (multiple-value-bind (pidfd pid) (tuatara.io:peer-process fd)
     (if (null pidfd)
         (values nil pid)
         (unwind-protect
-             (let ((namespace (tuatara.io:mount-namespace pid)))
-               (and namespace (eql pid (tuatara.io:pidfd-process pidfd)) (values namespace pid)))
+             (let* ((namespace (tuatara.io:mount-namespace pid))
+                    (by-ssh (and (null namespace)
+                                 (daemon-knows-root-p)
+                                 (tuatara.io:started-by-ssh-server-p pid))))
+               (and (eql pid (tuatara.io:pidfd-process pidfd)) (values namespace pid by-ssh)))
           (sb-posix:close pidfd)))))
 
 (defun take-connection (daemon editor fd)
   "Take the new connection FD to DAEMON, whose editor is EDITOR: refused,
-saying why, when its peer may not be a client (PEER-REFUSAL), its mount
-namespace read as PEER-NAMESPACE reads it, when as many are greeted as may
-be at once (*MOST-GREETING*); else greeted on a thread of its own (GREET)."
-  (multiple-value-bind (namespace pid) (peer-namespace fd)
+saying why, when its peer is another account's or in another mount namespace
+\(PEER-REFUSAL), or that namespace cannot be read and OpenSSH's server did not
+start it (PEER-NAMESPACE), or as many are greeted as may be at once
+\(*MOST-GREETING*); else greeted on a thread of its own (GREET), told when
+OpenSSH's server carries it, for only a client on another machine may then be
+taken."
+  (multiple-value-bind (namespace pid by-ssh) (peer-namespace fd)
     (let* ((uid (nth-value 1 (tuatara.io:peer-credentials fd)))
+           (own (daemon-namespace daemon))
+           (elsewhere (and by-ssh (peer-refusal uid nil :own-namespace own)))
            (why (cond ((eq pid :unsupported)
                        "This kernel cannot tell the daemon who connected (Linux 6.5 or newer is needed)")
                       ((or (null pid) (null uid)) "The daemon could not tell who connected")
-                      ((peer-refusal uid namespace :own-namespace (daemon-namespace daemon)))
+                      ((peer-refusal uid (if by-ssh own namespace) :own-namespace own))
                       ((>= (daemon-greeting daemon) *most-greeting*)
                        "Too many clients are attaching at once: try again"))))
       (if why
           (progn (tuatara.runtime:debug-report :daemon "a connection refused (process ~a, user ~a): ~a" pid uid why)
                  (tuatara.frontend:refuse-connection fd why))
           (progn (sb-thread:with-mutex ((daemon-mutex daemon)) (incf (daemon-greeting daemon)))
-                 (tuatara.runtime:make-guarded-thread (lambda () (greet daemon editor fd pid))
+                 (tuatara.runtime:make-guarded-thread (lambda () (greet daemon editor fd pid elsewhere))
                                                       :name "tuatara daemon greeting"))))))
 
-(defun greet (daemon editor fd pid)
+(defun greet (daemon editor fd pid &optional elsewhere)
   "Greet the new connection FD to DAEMON, whose editor is EDITOR, from the
 process PID (TUATARA.FRONTEND:MAKE-REMOTE-FRONTEND), and hand its frontend to
 the editor, woken for it; a client refused or that says nothing it should
-has its connection closed. A connection that says it is another window of a
-client, asked for by the editor from that client's process, is handed on as
-that window (TUATARA.FRONTEND:TAKE-WINDOW-ASKED-FOR); it brings nothing to
-open, the terminal it names is kept only when it may be lent
+has its connection closed. With ELSEWHERE, words saying the process is not
+known to see the files the daemon does, a new client is refused with them
+before anything it sends is read, unless it says it is on another machine,
+whose paths are the daemon's anyway. A connection that says it is another
+window of a client, asked for by the editor from that client's process, is
+handed on as that window (TUATARA.FRONTEND:TAKE-WINDOW-ASKED-FOR); it brings
+nothing to open, the terminal it names is kept only when it may be lent
 \(CHECKED-TERMINAL), and it is let go when no such window is waited for.
 A new client is let go when as many show the editor as may (*MOST-CLIENTS*)."
   (unwind-protect
        (handler-case
-           (let* ((remote (tuatara.frontend:make-remote-frontend fd :queue (daemon-queue daemon)))
+           (let* ((remote (tuatara.frontend:make-remote-frontend
+                           fd :queue (daemon-queue daemon)
+                              :admit (lambda (request)
+                                       (and elsewhere
+                                            (not (tuatara.frontend:request-far request))
+                                            (not (tuatara.frontend:request-joins request))
+                                            elsewhere))))
                   (request (tuatara.frontend:remote-request remote))
                   (word (tuatara.frontend:request-joins request)))
              (flet ((let-go (words)

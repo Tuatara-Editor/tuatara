@@ -348,7 +348,7 @@ those left out written empty, then a field of its own."
   ;; changes to a file that cannot be read wait, made fewer, and it is said once
   (with-fresh-state
     (let* ((list tuatara.defaults::*recent-files*)
-           (tuatara-user:*recent-files-max* 10)
+           (tuatara-user:*recent-files-limit* 10)
            (path (tuatara.defaults::state-list-path list)))
       (put-state-file list (format nil "file /notes/first.txt~%"))
       (sb-posix:chmod path 0)
@@ -410,7 +410,7 @@ those left out written empty, then a field of its own."
       (let* ((tuatara.defaults::*modal-editing* nil)
              (tuatara.defaults::*bookmark-set-asks-categories* nil)
              (tuatara-user:*bookmarks-kept* 3)
-             (tuatara-user:*recent-files-max* 3)
+             (tuatara-user:*recent-files-limit* 3)
              (list tuatara.defaults::*bookmarks*)
              (path (tuatara.defaults::state-list-path list))
              (file (namestring (put-file (merge-pathnames "notes.txt" dir) (format nil "one~%two~%")))))

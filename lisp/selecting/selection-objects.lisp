@@ -75,9 +75,9 @@ words (WORD-CHAR-P) read by their octets; refused past *TEXT-SCAN-LIMIT*."
           (when (and (= p scan) (plusp scan)) (refuse "No start of the word within ~a" (scan-limit-words)))
           p)
         (let ((p position))
-          (loop while (and (> p scan) (funcall test (char-before-position buffer p)))
+          (loop while (and (> p scan) (funcall test (buffer-char-before buffer p)))
                 do (setf p (tuatara.buffer:buffer-forward-char buffer p -1)))
-          (when (and (<= p scan) (plusp p) (funcall test (char-before-position buffer p)))
+          (when (and (<= p scan) (plusp p) (funcall test (buffer-char-before buffer p)))
             (refuse "No start of the symbol within ~a" (scan-limit-words)))
           p))))
 
@@ -113,7 +113,7 @@ within *TEXT-SCAN-LIMIT* either way."
                  (let ((p (word-run-start buffer position nil scan)))
                    (and (> p scan) (tuatara.buffer:buffer-forward-char buffer p -1)))
                  (let ((p position))
-                   (loop while (and (> p scan) (not (funcall test (char-before-position buffer p))))
+                   (loop while (and (> p scan) (not (funcall test (buffer-char-before buffer p))))
                          do (setf p (tuatara.buffer:buffer-forward-char buffer p -1)))
                    (and (> p scan) (tuatara.buffer:buffer-forward-char buffer p -1)))))))
     (if (funcall test (tuatara.buffer:buffer-char-at buffer position))
@@ -171,7 +171,7 @@ selects \"text that is\"."
 full stop after a name in prose), never back past START."
   (let ((p end))
     (loop while (and (> p start)
-                     (let ((c (char-before-position buffer p)))
+                     (let ((c (buffer-char-before buffer p)))
                        (and c (or (find c ",.")
                                   (and (not (symbol-char-p c buffer)) (not (blank-char-p c))
                                        (not (find c "()[]{}\"'`")))))))
@@ -227,7 +227,7 @@ expression. With a count, that many."
                  (start (let ((s (object-start-at b on test)))
                           ;; in Lisp, the quote or # before a symbol is part of it
                           (when (lisp-buffer-p b)
-                            (loop while (and (plusp s) (find (char-before-position b s) "'`#,@"))
+                            (loop while (and (plusp s) (find (buffer-char-before b s) "'`#,@"))
                                   do (setf s (tuatara.buffer:buffer-forward-char b s -1))))
                           s)))
             (if (plusp n)
@@ -263,7 +263,7 @@ answer when that is not enough."
                  (if within (return-from paragraphs-forward nil) (paragraph-too-far)))))
       ;; at the end of the text it stops at once, whatever is left of COUNT
       (loop repeat count
-            until (>= p (tuatara.text:rope-bytes text))
+            until (>= p (tuatara.text:rope-octet-length text))
             do (setf p (downward p nil) p (downward p t))))
     p))
 
@@ -366,7 +366,7 @@ than that many octets (PARAGRAPHS-FORWARD)."
   (let ((end (paragraphs-forward buffer position 1 within)))
     (when end
       (let ((p end))
-        (loop while (and (> p position) (blank-char-p (char-before-position buffer p)))
+        (loop while (and (> p position) (blank-char-p (buffer-char-before buffer p)))
               do (setf p (tuatara.buffer:buffer-forward-char buffer p -1)))
         (max p position)))))
 
@@ -384,7 +384,7 @@ reading more than that many octets (PARAGRAPHS-BACKWARD)."
   "Where the first sentence ending after POSITION ends (SENTENCE-END-AT), a
 paragraph's end aside; NIL when none does within *TEXT-SCAN-LIMIT* octets."
   (let* ((text (tuatara.buffer:buffer-text buffer))
-         (limit (min (tuatara.text:rope-bytes text) (+ position *text-scan-limit*))))
+         (limit (min (tuatara.text:rope-octet-length text) (+ position *text-scan-limit*))))
     (loop with q = position
           do (let ((candidate (tuatara.text:rope-find-any-octet text *sentence-end-octets* :start q :end limit)))
                (unless candidate (return nil))

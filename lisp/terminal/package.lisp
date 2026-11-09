@@ -13,7 +13,7 @@
   (:import-from #:tuatara.defaults
                 #:address-scheme #:centred-text #:choose-display #:cursor-column #:decode-picture #:evidence-path-p
                 #:evidence-visit-reason #:hl-line #:kill-ring-save #:line-numbers #:modal-sync #:mouse-set-point
-                #:open-address #:picture-cell-pixels #:pieces-text #:regex-search-forward #:safe-directory-of
+                #:open-address #:picture-cell-pixels #:pieces-text #:regex-search-forward #:safe-directory-of #:say-or-insert
                 #:set-made-text #:set-modal-state #:soft-wrap #:special-mode #:spellcheck #:take-in-clipboard
                 #:theme-terminal-colour #:uri-path #:visit-path #:visual-line)
   (:documentation "The terminal in a buffer: a program run on a pseudo-terminal, its screen

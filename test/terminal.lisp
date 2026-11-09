@@ -96,6 +96,34 @@ list, has the frontend show pictures. Returns the frontend and the editor."
                       :program (list "/bin/sh" "-c"
                                      "printf '\\033[?1049h'; stty raw -echo; printf 'READY\\r\\n'; c=$(dd bs=1 count=1 2>/dev/null | od -An -tx1 | tr -d ' '); printf 'GOT %s\\r\\n' \"$c\"; sleep 30"))))
 
+(define-test (terminal send-escape-from-a-key-of-your-own)
+  ;; bound as its documentation says, it gives Escape to a program not on the alternate screen,
+  ;; with Escape itself quitting
+  (let ((tuatara-user:*escape-quits* t)
+        (tuatara-user:*terminal-editor-keys* (cons "C-;" tuatara-user:*terminal-editor-keys*)))
+    (unwind-protect
+         (progn
+           (tuatara-user:bind-key "C-;" 'tuatara-user::terminal-send-escape :mode 'tuatara-user::terminal)
+           (terminal-session (list "M-x t e r m i n a l RET"
+                                   (list :until (buffer-holding "READY"))
+                                   "C-;"
+                                   (list :until (buffer-holding "GOT 1b")))
+                             :program (list "/bin/sh" "-c"
+                                            "stty raw -echo; printf 'READY\\r\\n'; c=$(dd bs=1 count=1 2>/dev/null | od -An -tx1 | tr -d ' '); printf 'GOT %s\\r\\n' \"$c\"; sleep 30")))
+      (tuatara-user:unbind-key "C-;" :mode 'tuatara-user::terminal))))
+
+(define-test (terminal library-version-said)
+  ;; what the loaded library says of itself is what the pin builds
+  (when (tuatara.terminal-emulator::terminal-library-p)
+    (let ((pinned (loop for line in (uiop:read-file-lines
+                                     (asdf:system-relative-pathname :tuatara "lisp/terminal/library.pin"))
+                        when (uiop:string-prefix-p "version" line)
+                          return (string-trim '(#\Space #\Tab) (subseq line 7)))))
+      (is string= pinned (tuatara.terminal-emulator::terminal-library-version))
+      (true (tuatara.frontend.fake:fake-frame-showing
+             (run-keys "M-x t e r m i n a l - v e r s i o n RET" :width 80)
+             (format nil "libghostty-vt ~a" pinned))))))
+
 (define-test (terminal typed-line-shown)
   ;; what is typed shows as it is typed, before RET (the shell's line editor echoing it)
   (multiple-value-bind (f editor)
@@ -809,7 +837,7 @@ be shown 4 columns by 2 rows, then prints ready and waits."
   ;; a title of wide characters is cut to the columns it may take, not to as many characters
   (let ((b (tuatara.buffer:make-buffer "*terminal title test*")))
     (unwind-protect
-         (let ((tuatara-user:*terminal-title-max* 5))
+         (let ((tuatara-user:*terminal-title-limit* 5))
            (setf (tuatara.buffer:buffer-local b 'tuatara.terminal-emulator::terminal-title) "漢字漢字")
            (is string= "漢字…" (tuatara.terminal-emulator::terminal-mode-line-title nil b))
            (setf (tuatara.buffer:buffer-local b 'tuatara.terminal-emulator::terminal-title) "short")

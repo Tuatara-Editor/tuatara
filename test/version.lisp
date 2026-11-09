@@ -41,8 +41,8 @@ each with the documented rules."
         (multiple-value-bind (edits expected) (random-batch s)
           (declare (ignore expected))
           (multiple-value-bind (v1 batch) (tuatara.text:version-commit v0 edits)
-            (let ((old-len (tuatara.text:rope-bytes (tuatara.text:version-rope v0)))
-                  (new-len (tuatara.text:rope-bytes (tuatara.text:version-rope v1)))
+            (let ((old-len (tuatara.text:rope-octet-length (tuatara.text:version-rope v0)))
+                  (new-len (tuatara.text:rope-octet-length (tuatara.text:version-rope v1)))
                   (last-before -1) (last-after -1))
               (loop for p from 0 to old-len
                     do (let ((b (tuatara.text:map-position p batch :before))
@@ -114,7 +114,7 @@ each with the documented rules."
                                   p))
                       (resolved (tuatara.text:anchor-position a current)))
                  (is = stepwise resolved)
-                 (true (<= 0 resolved (tuatara.text:rope-bytes (tuatara.text:version-rope current))))
+                 (true (<= 0 resolved (tuatara.text:rope-octet-length (tuatara.text:version-rope current))))
                  (true (tuatara.text:char-boundary-p (tuatara.text:version-rope current) resolved)))))))
 
 (define-test (version anchors-hold-no-text)

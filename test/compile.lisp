@@ -4,7 +4,7 @@
 (in-package #:tuatara.tests)
 
 (define-test compiling
-  :description "M-x compile runs a command from the project's root, in a session of its own, its output shown as it comes in *compile*, kept to *compile-output-most*, with how it ended and how long it took; the lines naming a file and line are places RET opens, error, warning and note lines in faces of their own; r runs it again, C-c C-k stops all it started; a second waits for the first; only for a project trusted; M-g n and M-g p go through the list of places used last: a compile's, a search of files', a buffer's diagnostics.")
+  :description "M-x compile runs a command from the project's root, in a session of its own, its output shown as it comes in *compile*, kept to *compile-output-limit*, with how it ended and how long it took; the lines naming a file and line are places RET opens, error, warning and note lines in faces of their own; r runs it again, C-c C-k stops all it started; a second waits for the first; only for a project trusted; M-g n and M-g p go through the list of places used last: a compile's, a search of files', a buffer's diagnostics.")
 
 (defun compile-buffer ()
   "The buffer of a compile's output, when there is one."
@@ -280,7 +280,7 @@ force; *compile* killed afterwards."
 
 (define-test (compiling output-kept-whole-and-to-its-most)
   ;; output of a few megabytes, many-octet characters among it, comes into the buffer as it was
-  ;; printed; past *compile-output-most* it is left out, and the end says how much
+  ;; printed; past *compile-output-limit* it is left out, and the end says how much
   (with-compile-session (dir (format nil "cat big.txt~%"))
     (let ((text (with-output-to-string (out)
                   (loop for i below 60000 do (format out "line ~d of the output, kōwhai and tūī ~a~%" i (make-string (mod i 7) :initial-element #\x))))))
@@ -290,7 +290,7 @@ force; *compile* killed afterwards."
              (start (search "line 0 of" output)))
         (true start)
         (is string= text (subseq output start (min (length output) (+ start (length text))))))
-      (let ((tuatara-user:*compile-output-most* 100000))
+      (let ((tuatara-user:*compile-output-limit* 100000))
         (auto-save-session (compile-steps dir (list :until #'compile-ended-p)) :width 100 :height 30)
         (true (< (tuatara.buffer:buffer-size (compile-buffer)) (+ 100000 70000)))
         (true (search "more output left out" (compile-output)))))))

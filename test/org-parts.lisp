@@ -88,7 +88,7 @@ the carriage returns before newlines left out only where lines end in CR LF."
             (unwind-protect
                  (dotimes (step 120)
                    (let* ((rope (tuatara.buffer:buffer-text buffer))
-                          (size (tuatara.text:rope-bytes rope))
+                          (size (tuatara.text:rope-octet-length rope))
                           (edits (sort (loop repeat (1+ (random 3))
                                              collect (let* ((start (tuatara.text:rope-char-start rope (random (1+ size))))
                                                             (end (if (zerop (random 3))
@@ -186,7 +186,7 @@ headline's title objects too), to tell two parses apart."
 (defun org-parts-random-edits (buffer pieces)
   "Make one batch of one to three random edits in BUFFER, each putting one of PIECES somewhere."
   (let* ((rope (tuatara.buffer:buffer-text buffer))
-         (size (tuatara.text:rope-bytes rope))
+         (size (tuatara.text:rope-octet-length rope))
          (edits (sort (loop repeat (1+ (random 3))
                             collect (let* ((start (tuatara.text:rope-char-start rope (random (1+ size))))
                                            (end (if (zerop (random 3))
@@ -311,7 +311,7 @@ headline's title objects too), to tell two parses apart."
            (tuatara.defaults::org-returns-of buffer)
            (tuatara.buffer:buffer-edit buffer (vector (tuatara.text:make-edit 200000 200000 (tuatara.text:string-octets "x"))))
            (with-functions-replaced ((tuatara.defaults::org-returns-in-rope
-                                      (lambda (rope &rest arguments &key (start 0) (end (tuatara.text:rope-bytes rope)))
+                                      (lambda (rope &rest arguments &key (start 0) (end (tuatara.text:rope-octet-length rope)))
                                         (incf read (- end start))
                                         (apply find rope arguments))))
              (is equalp (nth-value 1 (tuatara.defaults::org-strip-returns (tuatara.buffer:buffer-string buffer)))

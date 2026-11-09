@@ -4,7 +4,7 @@
 (defpackage #:tuatara.command
   (:use #:cl #:alexandria)
   (:import-from #:tuatara.runtime #:refuse)
-  (:import-from #:tuatara-user #:*cursor-shape* #:*cursor-colour* #:message #:current-buffer #:*message-log-max* #:*mode-line-name-max* #:*gui-title* #:place-buffers #:*split-height-threshold* #:*split-width-threshold*
+  (:import-from #:tuatara-user #:*use-system-clipboard* #:*cursor-shape* #:*cursor-colour* #:message #:current-buffer #:*message-log-max* #:*mode-line-name-limit* #:*gui-title* #:place-buffers #:*split-height-threshold* #:*split-width-threshold*
                 #:*show-completion-count* #:*prompt-above-candidates* #:*key-hint-rows* #:*debug-on-error*)
   (:import-from #:tuatara.buffer #:live-buffer-p)
   (:documentation "Events, keymaps and key-sequence reading in precedence order, interactive calls, hooks, the minibuffer core, the modal state slot.")
@@ -12,7 +12,7 @@
   (:export #:buffer-override-keymap #:buffer-given-directory #:buffer-mode-name #:buffer-kind)
   (:import-from #:tuatara.runtime #:quit #:quit-words)
   (:export #:keymap #:keymap-p #:make-keymap #:define-key #:define-keys #:label-keys #:lookup-key #:keymaps-lookup #:map-keymap-bindings #:keymap-parent #:keymap-entries #:keymap-name #:unbind-commands-if
-           #:define-command #:find-command #:command-symbol #:command-names #:*commands* #:forget-command
+           #:define-command #:key-only-command-p #:find-command #:command-symbol #:command-names #:*commands* #:forget-command
            #:quit #:keyboard-quit-signal #:editor #:editor-p #:make-editor #:*editor* #:current-buffer #:*current-buffer* #:host-command-refusal #:sandbox-outcome-words #:editor-host #:current-window
            #:message #:say-with-command-messages #:*messages-kept* #:*exit-functions* #:*exit-code* #:cursor-look #:*cursor-colour-functions* #:echo #:*message-log-max* #:log-message #:add-to-log #:messages-buffer #:host-messages-made #:read-string #:finish-minibuffer #:minibuffer-previous-history #:minibuffer-next-history #:echo-question-p #:yes-or-no-p* #:y-or-n-p* #:read-password #:wipe-string #:*minibuffer-hidden* #:show-buffer #:run-editor #:visit-startup-files #:host-visit-file #:host-visit-standard-input #:command-loop #:redisplay #:redisplay-or-say
            #:quit-key-p #:*keys-as-typed* #:wait-interruptibly #:wait-until-interruptibly #:wait-while-interruptibly #:editor-unread #:editor-deferred #:running-editor #:defer-action #:call-with-editor-held #:away-from-editor-p #:wake-editor

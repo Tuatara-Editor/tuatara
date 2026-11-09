@@ -46,7 +46,7 @@ GROUP, part of the step made last (the second half of an octet typed in hex
 digits, with its first)."
   (let* ((b (current-buffer))
          (rope (tuatara.buffer:buffer-text b))
-         (size (tuatara.text:rope-bytes rope))
+         (size (tuatara.text:rope-octet-length rope))
          (p (tuatara.display:hex-point b))
          (end (+ p (length octets)))
          (from (tuatara.text:rope-char-start rope p))
@@ -99,7 +99,7 @@ octet so typed one step to undo. Refused in a buffer that may not be written
                      (return (message "~a is no hex digit: 0-9 and a-f write here (\\`TAB' for the text)" c))
                      (let* ((p (tuatara.display:hex-point b))
                             (rope (tuatara.buffer:buffer-text b))
-                            (old (if (< p (tuatara.text:rope-bytes rope))
+                            (old (if (< p (tuatara.text:rope-octet-length rope))
                                      (aref (tuatara.text:rope-octets rope :start p :end (1+ p)) 0)
                                      0)))
                        (if (let ((half (tuatara.buffer:buffer-local b :hex-nibble)))
@@ -197,7 +197,7 @@ after it that holds them, or with BACKWARD the last before it."
           (multiple-value-bind (hit end)
               (if backward
                   (tuatara.syntax:search-backward rope needle :start p :case-fold nil :stop stop)
-                  (tuatara.syntax:search-forward rope needle :start (min (1+ p) (tuatara.text:rope-bytes rope))
+                  (tuatara.syntax:search-forward rope needle :start (min (1+ p) (tuatara.text:rope-octet-length rope))
                                                              :case-fold nil :stop stop))
             (cond ((eq end :stopped) (message "Search stopped"))
                   (hit (setf (tuatara.display:hex-view-p b) t

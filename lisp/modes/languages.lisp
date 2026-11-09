@@ -809,7 +809,7 @@ half way keep what they took until it starts again.")
 (defmethod tuatara.syntax:host-say-syntax-slow ((host defaults-host) syntax)
   "Say that parsing the text of SYNTAX's buffer took too long, or too much
 memory, or that memory ran short, and it was given up."
-  (let ((bytes (tuatara.text:rope-bytes (tuatara.syntax:syntax-rope syntax)))
+  (let ((bytes (tuatara.text:rope-octet-length (tuatara.syntax:syntax-rope syntax)))
         (grammar (tuatara.syntax:grammar-name (tuatara.syntax:syntax-grammar syntax)))
         (buffer (tuatara.buffer:buffer-name (tuatara.syntax:syntax-buffer syntax))))
     (case (tuatara.syntax:syntax-broken syntax)

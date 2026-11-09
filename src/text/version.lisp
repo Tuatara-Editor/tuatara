@@ -413,13 +413,13 @@ carried + windows + the octets of the windows the edits reached)."
                          (declare (type fixnum old-start old-end new-start new-end))
                          (let ((start (max 0 (1- old-start))))
                            (if (and (>= from 0) (< start to))
-                               (setf to (min (rope-bytes old) (1+ old-end))
-                                     new-to (min (rope-bytes new) (1+ new-end)))
+                               (setf to (min (rope-octet-length old) (1+ old-end))
+                                     new-to (min (rope-octet-length new) (1+ new-end)))
                                (progn (when (>= from 0) (finish))
                                       (setf from start
-                                            to (min (rope-bytes old) (1+ old-end))
+                                            to (min (rope-octet-length old) (1+ old-end))
                                             new-from (max 0 (1- new-start))
-                                            new-to (min (rope-bytes new) (1+ new-end))))))))
+                                            new-to (min (rope-octet-length new) (1+ new-end))))))))
                      (when (>= from 0) (finish)))
                    (setf windows (nreverse windows))
                    (let ((gained 0))
@@ -531,8 +531,8 @@ the result. BIAS is :BEFORE (stays before text inserted at it) or :AFTER
 (defun make-anchor (version position &key (bias :before))
   "Return an anchor at byte POSITION of VERSION with BIAS (:BEFORE by default)."
   (declare (type fixnum position))
-  (unless (<= 0 position (rope-bytes (version-rope version)))
-    (error "Anchor position ~a is outside the text (0..~a)." position (rope-bytes (version-rope version))))
+  (unless (<= 0 position (rope-octet-length (version-rope version)))
+    (error "Anchor position ~a is outside the text (0..~a)." position (rope-octet-length (version-rope version))))
   (%make-anchor (version-link version) position bias))
 
 (defun anchor-position (anchor version)
@@ -549,8 +549,8 @@ a successor of it."
 (defun anchor-move (anchor version position)
   "Set ANCHOR to byte POSITION of VERSION."
   (declare (type fixnum position))
-  (unless (<= 0 position (rope-bytes (version-rope version)))
-    (error "Anchor position ~a is outside the text (0..~a)." position (rope-bytes (version-rope version))))
+  (unless (<= 0 position (rope-octet-length (version-rope version)))
+    (error "Anchor position ~a is outside the text (0..~a)." position (rope-octet-length (version-rope version))))
   (setf (anchor-cached anchor) position
         (anchor-link anchor) (version-link version))
   anchor)

@@ -36,7 +36,7 @@ list pairs nothing).")
   "The delimiters :safe leaves out: ordinary text far more often than a
 delimiter, such as the apostrophe in don't, a colon, less-than.")
 
-(defun char-before-position (buffer position)
+(defun buffer-char-before (buffer position)
   "The character before POSITION in BUFFER, or NIL at its start."
   (and (plusp position)
        (tuatara.buffer:buffer-char-at buffer (tuatara.buffer:buffer-forward-char buffer position -1))))
@@ -109,7 +109,7 @@ a pair, write the closing half after point."
 True when it did."
   (when *electric-pair-mode*
     (let* ((p (point))
-           (before (char-before-position buffer p))
+           (before (buffer-char-before buffer p))
            (after (tuatara.buffer:buffer-char-at buffer p)))
       (when (and before after (member before (pair-typing-openers)) (eql after (pair-closer before)))
         (let ((start (tuatara.buffer:buffer-forward-char buffer p -1))
@@ -132,7 +132,7 @@ times and paired with none. With a count it is on when it is positive and off wh
 (defun already-wrapped-p (buffer start end open close)
   "True when OPEN stands just before START and CLOSE just at END, unescaped."
   (and (plusp start) (< end (tuatara.buffer:buffer-size buffer))
-       (eql (char-before-position buffer start) open)
+       (eql (buffer-char-before buffer start) open)
        (eql (tuatara.buffer:buffer-char-at buffer end) close)
        (not (tuatara.text:rope-escaped-p (tuatara.buffer:buffer-text buffer) (tuatara.buffer:buffer-forward-char buffer start -1)))))
 
@@ -175,7 +175,7 @@ are *PAIR-DELIMITERS*."
         (let* ((p (point))
                (open (string char))
                (close (string (pair-closer char)))
-               (before (and (pair-needs-space-p (char-before-position buffer p)) " "))
+               (before (and (pair-needs-space-p (buffer-char-before buffer p)) " "))
                (after (and (pair-needs-space-p (tuatara.buffer:buffer-char-at buffer p)) " "))
                (text (format nil "~@[~a~]~a~a~@[~a~]" before open close after)))
           (tuatara.buffer:buffer-insert buffer p text)

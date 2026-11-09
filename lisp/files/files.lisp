@@ -544,7 +544,7 @@ HOSTS name (in any case); only file:///PATH and file://HOST/PATH are taken."
   "The environment that has a program shut in the sandbox write times in
 your time zone, a list of (NAME VALUE): TZ as yours is set, or as the zone
 /etc/localtime names; NIL when neither says one."
-  (let ((zone (or (tuatara.io:own-variable "TZ") (system-zone-name))))
+  (let ((zone (or (tuatara.io:own-variable "TZ") (system-time-zone-name))))
     (and zone (plusp (length zone)) (list (list "TZ" zone)))))
 
 (defun safe-directories ()

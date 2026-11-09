@@ -1,7 +1,7 @@
 ;;;; lisp/editing/comments.lisp --- Lines commented and uncommented, and comments at the ends of lines.
 ;;;; Copyright (C) 2026 Michael A Jones.  GPL-3.0-or-later; see LICENSE.
 ;;;;
-;;;; comment-line (C-x C-;) comments the lines of the region, or the line
+;;;; toggle-comment-lines-ret comments the lines of the region, or the line
 ;;;; point is on and then goes to the next, or uncomments them when they all
 ;;;; are, with the language's marker at their smallest indentation, as
 ;;;; Emacs's comment-line. comment-dwim (M-;) does that with a region; on a
@@ -225,14 +225,17 @@ language has no comments."
                                texts))
                   :commented))))))))
 
-(define-command comment-line ()
+(define-command toggle-comment-lines-ret ()
   "Comment the lines the region touches, or the line point is on, then going
-to the next line, or uncomment them when they are all commented
-\(\\`C-x C-;'). It puts the language's marker (;; in Lisp, // in Rust, # in
+to the next line, or uncomment them when they are all commented; it has no
+key of its own. It puts the language's marker (;; in Lisp, // in Rust, # in
 shell scripts) at their smallest indentation or, where a comment has an end
 \(/* */ in CSS), each line between the two. A count comments as many lines,
 no further than the end of the buffer, or of the part shown when it is
-narrowed."
+narrowed. To have \\`C-x C-;' or C in NORMAL state move on as this does, in
+your init file:
+  (bind-key \"C-x C-;\" 'toggle-comment-lines-ret)
+  (bind-key \"C\" 'toggle-comment-lines-ret :map :normal)"
   (let* ((b (current-buffer))
          (active (and (tuatara.buffer:buffer-mark-active-p b)
                       (multiple-value-bind (s e) (tuatara.buffer:buffer-region b) (< s e)))))
@@ -269,7 +272,7 @@ begins starts, or NIL: MARKER at the line's start or after white space."
 
 (define-command comment-dwim ()
   "Comment what suits where point is (\\`M-;'): with a region, its lines, or
-uncomment them when they all are (as \\[comment-line]); on a line with a
+uncomment them when they all are (as \\[toggle-comment-lines-ret]); on a line with a
 comment, go into it; on a blank line, begin a comment; after code, begin one at
 the line's end, at *COMMENT-COLUMN*."
   (let* ((b (current-buffer))

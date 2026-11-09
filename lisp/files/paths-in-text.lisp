@@ -90,7 +90,7 @@ folder on another machine: only a question for a file reads one there."
     (when (and (member (editor-last-command editor) '(self-insert-command popup-insert))
                (null (editor-popup editor))
                (not (editor-minibuffer-active editor))
-               (eql (char-before-position buffer (tuatara.buffer:buffer-point buffer)) #\/)
+               (eql (buffer-char-before buffer (tuatara.buffer:buffer-point buffer)) #\/)
                (not (buffer-read-only-p buffer))
                (not (tuatara.display:hex-view-p buffer))
                (complete-paths-p buffer))

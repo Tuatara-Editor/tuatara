@@ -28,7 +28,7 @@ the hex view's own motion has moved point."
   "Put the hex view's cursor on octet BYTE of BUFFER (kept within the text),
 and point at the start of the character that octet is part of."
   (let* ((rope (tuatara.buffer:buffer-text buffer))
-         (byte (max 0 (min byte (tuatara.text:rope-bytes rope))))
+         (byte (max 0 (min byte (tuatara.text:rope-octet-length rope))))
          (start (tuatara.text:rope-char-start rope byte)))
     (setf (tuatara.buffer:buffer-point buffer) start
           (tuatara.buffer:buffer-local buffer :hex-anchor)
@@ -69,7 +69,7 @@ and ?), other columns to none (-1), so that the
 cursor shows on an octet's hex digits; the rows are marked MIXED, their
 characters' offsets not in order, for APPLY-HIGHLIGHTS. Rows are taken from
 SPARES, rows no longer shown, while it has any (MAKE-ROW). Complexity: O(HEIGHT)."
-  (let* ((total (tuatara.text:rope-bytes rope))
+  (let* ((total (tuatara.text:rope-octet-length rope))
          (digits (hex-offset-digits total))
          (rows (make-array 0 :adjustable t :fill-pointer 0))
          (holes (tuatara.text:rope-holes rope)))

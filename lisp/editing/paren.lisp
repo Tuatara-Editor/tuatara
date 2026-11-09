@@ -123,7 +123,7 @@ for the side looked through only). Two values: the partner's octet and whether
 it is of AT's kind; or NIL and :END when the text ended first, NIL and NIL
 when the reach did."
   (let* ((rope (tuatara.buffer:buffer-text buffer))
-         (size (tuatara.text:rope-bytes rope))
+         (size (tuatara.text:rope-octet-length rope))
          (from (if forward at (max 0 (- at *show-paren-reach*))))
          (to (if forward (min size (+ at 1 *show-paren-reach*)) (1+ at)))
          (spans (if syntax (coerce (tuatara.syntax:opaque-spans syntax from to) 'simple-vector) #())))
@@ -141,7 +141,7 @@ BUFFER's language has a grammar the tree says where the partner is
 (TREE-BRACKET-PARTNER); else, and where the tree has an error around the
 bracket, the brackets are counted within *SHOW-PAREN-REACH* octets."
   (let* ((rope (tuatara.buffer:buffer-text buffer))
-         (size (tuatara.text:rope-bytes rope))
+         (size (tuatara.text:rope-octet-length rope))
          (before (and (plusp point) (tuatara.text:rope-octet rope (1- point))))
          (after (and (< point size) (tuatara.text:rope-octet rope point)))
          (at (cond ((and (member before tuatara.text:*closing-octets*) (not (tuatara.text:rope-escaped-p rope (1- point)))) (1- point))

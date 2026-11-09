@@ -189,7 +189,7 @@
           (tuatara:version-line "in the terminal (kitty)")))
     (let ((tuatara:*build* '("a1b2c3d" t "2026-10-02")))
       (true (search "(a1b2c3d+, built 2026-10-02)" (tuatara:version-line))))
-    (multiple-value-bind (f editor) (run-keys "M-x v e r s i o n RET" :text "x" :width 120)
+    (multiple-value-bind (f editor) (run-keys "M-x t u a t a r a - v e r s i o n RET" :text "x" :width 120)
       (declare (ignore editor))
       (true (tuatara.frontend.fake:fake-frame-showing f (format nil "Tuatara ~a" (tuatara:version)))))
     (multiple-value-bind (f editor) (run-keys "C-u M-x t u a t a r a - v e r s i o n RET" :text "" :width 120)
@@ -363,6 +363,10 @@
     (true (every (lambda (s) (let ((p (symbol-package s)))
                                (or (eq p (find-package :tuatara-user)) (member p (tuatara.defaults::editor-packages)))))
                  variables))))
+
+(define-test (help buttons-in-the-colour-of-links)
+  (true (tuatara.display::face-attribute :link :fg))
+  (is equal (tuatara.display::face-attribute :link :fg) (tuatara.display::face-attribute :button :fg)))
 
 (define-test (help source-paths-from-the-tree)
   ;; where a command is defined is named within the source tree, never by the folders the

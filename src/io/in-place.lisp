@@ -432,7 +432,7 @@ MAPPINGS reads it; else NIL. MAPPINGS are those reading the file's own
 octets."
   (unless (read-elsewhere-p mappings existing)
     (let* ((changes (rope-changes rope (in-place-test mappings existing)))
-           (size (tuatara.text:rope-bytes rope))
+           (size (tuatara.text:rope-octet-length rope))
            (ranges (journal-ranges changes (stamp-size existing) size)))
       (when (and (< (+ (ranges-octets changes) (ranges-octets ranges)) (* *in-place-most* (max 1 size)))
                  (< (+ 4096 (length (journal-header existing 0 0 size ranges 0))) +journal-header-most+))
@@ -450,7 +450,7 @@ was replaced, changed or about to be written by another program meanwhile.
 A failure puts the file back as it was before it is signalled."
   (let* ((directory (parent-path target))
          (changes (getf plan :changes)) (ranges (getf plan :ranges))
-         (size (tuatara.text:rope-bytes rope))
+         (size (tuatara.text:rope-octet-length rope))
          (journalled (ranges-octets ranges))
          (changed (ranges-octets changes))
          (file (open-for-reading target t :accept '(:regular) :operation "save"))

@@ -272,7 +272,7 @@ strings beginning @ or $), names, operators and brackets."
                           (t (org-formula-fail "~a is not understood in a formula" c))))))))
     (nreverse tokens)))
 
-(defparameter *org-formula-deepest* 200
+(defparameter *org-formula-depth-limit* 200
   "The most a formula's parts may be nested, within brackets, signs and
 powers: a formula nested deeper is refused.")
 
@@ -280,7 +280,7 @@ powers: a formula nested deeper is refused.")
   "TEXT, a formula's right-hand side, read into a tree to work out: numbers,
 (:REF TEXT), (:RANGE FROM TO), (:CALL NAME ARGUMENTS), (:OP OPERATOR A B),
 (:NEG A), (:NOT A), (:NAME TEXT). One nested deeper than
-*ORG-FORMULA-DEEPEST* is refused."
+*ORG-FORMULA-DEPTH-LIMIT* is refused."
   (let ((tokens (org-formula-tokens text)) (depth 0))
     (labels ((peek () (first tokens))
              (operator-p (op) (and (eq (first (peek)) :operator) (string= (second (peek)) op)))
@@ -300,7 +300,7 @@ powers: a formula nested deeper is refused.")
              (div-level () (binary #'mul-level '("/" "\\")))
              (mul-level () (binary #'unary '("*")))
              (unary ()
-               (when (> (incf depth) *org-formula-deepest*)
+               (when (> (incf depth) *org-formula-depth-limit*)
                  (org-formula-fail "~a is nested too deeply" text))
                (prog1 (cond ((operator-p "-") (take) (list :neg (unary)))
                             ((operator-p "+") (take) (unary))

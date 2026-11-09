@@ -623,6 +623,35 @@ gives it, its first 15 octets; an empty string when there is no such process."
 there is no such process."
   (tuatara.text:whole-number (second (process-stat pid))))
 
+(defun process-status-numbers (pid field)
+  "The numbers on the line FIELD (\"Uid\", \"NSpid\") of /proc/PID/status, the
+process with process id (PID), in order; NIL when there is no such process or
+line."
+  (let* ((status (proc-text (format nil "/proc/~d/status" pid)))
+         (at (and status (search (format nil "~%~a:" field) status)))
+         (start (and at (+ at (length field) 2)))
+         (end (and at (or (position #\Newline status :start start) (length status)))))
+    (and at
+         (mapcar #'parse-integer
+                 (remove "" (uiop:split-string (subseq status start end) :separator '(#\Space #\Tab)) :test #'string=)))))
+
+(defparameter *ssh-server-names* '("sshd" "sshd-session")
+  "The names under which the OpenSSH server runs, as PROCESS-NAME gives them.")
+
+(defun started-by-ssh-server-p (pid)
+  "True when the parent of the process with process id (PID) is the OpenSSH
+server (*SSH-SERVER-NAMES*) run by root in this system's own namespace of
+processes, as it is of the process that carries a connection for a client on
+another machine. A program run by an ordinary account cannot have such a
+parent, and a container with its own processes shows none. False when the
+parent changes while it is looked at."
+  (let ((parent (process-parent pid)))
+    (and parent
+         (member (process-name parent) *ssh-server-names* :test #'string=)
+         (eql 0 (first (process-status-numbers parent "Uid")))
+         (= 1 (length (process-status-numbers parent "NSpid")))
+         (eql parent (process-parent pid)))))
+
 (defun process-group-and-session (pid buffer)
   "The process group and the session of the process with process id (PID), as
 two values, read from /proc into BUFFER, octets enough for the line it
@@ -1418,12 +1447,9 @@ bwrap's go-ahead before it makes the sandbox; bwrap ended before it gives
 it, it waits for ever, and the kernel lets no signal but SIGKILL end it."
   (and (string= "bwrap" (process-name pid))
        (process-marked-p pid)
-       (let* ((status (proc-text (format nil "/proc/~d/status" pid)))
-              (line (and status (find-if (lambda (line) (uiop:string-prefix-p "NSpid:" line))
-                                         (uiop:split-string status :separator '(#\Newline)))))
-              (numbers (and line (remove "" (uiop:split-string (subseq line 6) :separator '(#\Space #\Tab)) :test #'string=))))
+       (let ((numbers (process-status-numbers pid "NSpid")))
          ;; its number in its own namespace, the last, is 1
-         (and (> (length numbers) 1) (string= "1" (car (last numbers)))))
+         (and (> (length numbers) 1) (eql 1 (car (last numbers)))))
        (let ((parent (process-parent pid)))
          (and parent (not (process-marked-p parent))))))
 

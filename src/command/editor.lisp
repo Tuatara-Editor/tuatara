@@ -312,7 +312,7 @@ lone minus; NIL for none, or with no editor."
                        (:copier nil))
   "State of a completing read. TABLE is a list of CANDIDATE or a function of
 the input returning one; ANNOTATE is a function of a candidate returning an
-annotation string or NIL; REQUIRE-MATCH true means \\<minibuffer>\\[minibuffer-done] must pick a candidate;
+annotation string or NIL; REQUIRE-MATCH true means \\<minibuffer>\\[minibuffer-finish] must pick a candidate;
 HISTORY is a list of previous inputs, most recent first (or a function of no
 arguments returning one, for a list still growing); SEPARATOR, for a
 TABLE that is a function, the character after whose last occurrence the input
@@ -333,14 +333,14 @@ true when the candidates may have changed (STALE is set then, and they are
 worked out again, the selected one kept), true while more may come
 (WORKING), and how many things it has listed so far, or NIL for nothing to
 tell (LISTED), which the prompt tells while more come (SHOWN-PROMPT).
-DEFAULT, when not NIL, is what \\[minibuffer-done] takes while nothing is
+DEFAULT, when not NIL, is what \\[minibuffer-finish] takes while nothing is
 typed, its candidate offered first then, and named in the prompt; KEEP-ORDER
 true keeps the candidates matching in the order TABLE gives them, not sorted
 best first; NONE, words the prompt says once all have come and there are
 none; TAKEN, a list of names the read takes when they are typed whole,
 though they are not among its candidates; PROMPT, the question as asked,
 before those words are added to it (or a function of no arguments giving it).
-DONE-PENDING is true when \\[minibuffer-done] came while nothing could be
+DONE-PENDING is true when \\[minibuffer-finish] came while nothing could be
 chosen yet and more was coming, to be done once it has come; MOVED
 is true once a candidate was selected by hand for the input typed, which
 stays selected as more come (else the best match is); TALLEST, the most rows

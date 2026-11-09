@@ -197,13 +197,13 @@ LocalWords: lines) is looked for.")
 FROM, a version before it, did from START on, and these are its last
 *LOCAL-WORDS-REACH* octets (or the whole of it): no change made between them
 touched them."
-  (let ((span (cons start (tuatara.text:rope-bytes (tuatara.text:version-rope from)))))
+  (let ((span (cons start (tuatara.text:rope-octet-length (tuatara.text:version-rope from)))))
     (loop for version = from then next
           for next = (tuatara.text:version-next version)
           until (eq version to)
           do (unless (and next (setf span (tuatara.buffer:span-after-batch span (tuatara.text:version-batch next))))
                (return-from tail-kept-p nil)))
-    (let ((size (tuatara.text:rope-bytes (tuatara.text:version-rope to))))
+    (let ((size (tuatara.text:rope-octet-length (tuatara.text:version-rope to))))
       (and (= (cdr span) size) (= (car span) (max 0 (- size *local-words-reach*)))))))
 
 (defun local-words (buffer)

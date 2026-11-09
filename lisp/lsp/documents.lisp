@@ -499,7 +499,7 @@ more than it and one such range (DOC-CHANGES).")
 carriage return and its line feed, where no position of a line a server
 counts stands: each such edge taken over the return or the feed. NIL when a
 change would then reach into the one before it."
-  (let ((size (tuatara.text:rope-bytes rope)) (reach 0))
+  (let ((size (tuatara.text:rope-octet-length rope)) (reach 0))
     (flet ((octet (at) (and (< -1 at size) (tuatara.text:rope-octet rope at))))
       (map 'simple-vector
            (lambda (change)
@@ -550,7 +550,7 @@ lines of the blocks changed."
                            for octets = (tuatara.text:string-octet-length text)
                            sum (+ octets +lsp-change-octets+) into taken
                            sum (- octets (- end start)) into grown
-                           finally (return (<= taken (+ (tuatara.text:rope-bytes shown) grown +lsp-change-octets+)))))
+                           finally (return (<= taken (+ (tuatara.text:rope-octet-length shown) grown +lsp-change-octets+)))))
             (values changes skipped)))))))
 
 (defun changes-json (server rope changes)
@@ -649,14 +649,14 @@ nothing either when its text is as last sent."
           (setf (values changes skipped) (doc-changes doc)))
         (flet ((too-large-p (size) (> size *lsp-largest-document*)))
           (when (too-large-p (cond ((null (lsp-doc-shadow doc)) (tuatara.buffer:buffer-size (lsp-doc-buffer doc)))
-                                   (changes (+ (tuatara.text:rope-bytes shown) (changes-growth changes)))
+                                   (changes (+ (tuatara.text:rope-octet-length shown) (changes-growth changes)))
                                    (t 0)))
             (return-from lsp-send-doc (lsp-close-too-large doc)))
           ;; only what changed, to each server that takes it so; else the whole text, made once
           (let ((text (and (or (null changes) (some (lambda (s) (/= 2 (lsp-sync-kind s))) servers))
                            (lsp-doc-text doc)))
                 (version (1+ (lsp-doc-version doc))))
-            (when (and text (lsp-doc-shadow doc) (too-large-p (tuatara.text:rope-bytes (lsp-doc-rope doc))))
+            (when (and text (lsp-doc-shadow doc) (too-large-p (tuatara.text:rope-octet-length (lsp-doc-rope doc))))
               (return-from lsp-send-doc (lsp-close-too-large doc)))
             (setf (lsp-doc-version doc) version)
             (loop for server in servers

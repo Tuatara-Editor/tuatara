@@ -340,7 +340,7 @@ it: the home directory written ~, a / at the end."
       (abbreviated-path (buffer-directory buffer))
       (shown-default-directory)))
 
-(defvar *mode-line-name-max* nil
+(defvar *mode-line-name-limit* nil
   "The most columns a buffer's name takes in the mode line, or NIL for as many
 as it has: a longer name keeps its start and its end, … standing for its
 middle. Whatever this says, a name is cut so that the mode line shows whole in
@@ -348,10 +348,10 @@ its window, all but the directory at its end, down to 12 columns.")
 
 (defun mode-line-name (name room)
   "NAME as the mode line shows it with ROOM columns for it: whole when it fits
-and is no longer than *MODE-LINE-NAME-MAX*; else cut in its middle to the
+and is no longer than *MODE-LINE-NAME-LIMIT*; else cut in its middle to the
 smaller of the two, … standing for what is cut, but to no fewer than 12
 columns."
-  (let ((limit (max 12 (min room (or *mode-line-name-max* room)))))
+  (let ((limit (max 12 (min room (or *mode-line-name-limit* room)))))
     (if (<= (panel-columns name) limit)
         name
         (values (tuatara.display:fit-columns name '() limit :middle t :width #'panel-char-columns)))))

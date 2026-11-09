@@ -704,7 +704,7 @@ tracking on, an attached template, a comment and macros besides."
                          `(("word/document.xml" . ,(format nil "<w:document ~a><w:body><w:tbl>~{~a~}</w:tbl></w:body></w:document>"
                                                            *docx-report-w* (make-list 20000 :initial-element row)))))
                         out))
-      (let ((note (let ((tuatara.defaults::*office-note-largest* 100000)) (tuatara.defaults::docx-read-note path))))
+      (let ((note (let ((tuatara.defaults::*office-note-size-limit* 100000)) (tuatara.defaults::docx-read-note path))))
         (true (search "The rest is left out: the note reached 100,000 characters" note))
         (true (< (length note) 300000) "~:d characters" (length note))))))
 

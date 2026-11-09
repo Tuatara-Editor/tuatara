@@ -2,7 +2,7 @@
 ;; a list kept between sessions, with :trust t :fields N after them for a list of trust; (:file FOLDER PATH
 ;; CLASS VERSION), the other files of its folders. CLASS :kept, :remembered or :rebuilt; VERSION that of
 ;; the format, NIL where the file says none.
-(:version "0.90.19")
+(:version "0.90.20")
 (:state "bookmarks" :kept 1)
 (:state "chosen-paths" :remembered 1)
 (:state "grammars" :remembered 1 :trust t :fields 2)

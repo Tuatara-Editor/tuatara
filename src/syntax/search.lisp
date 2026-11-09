@@ -215,7 +215,7 @@ filled and the index below which a place must start, gives the index in
 CHUNK of the first, or NIL. NIL when none; NIL and :STOPPED when HALT, a
 function asked every +HALT-CHUNKS+ chunks, answers true."
   (declare (type fixnum start end n) (type tuatara.text:octets chunk) (type function look))
-  (let ((total (tuatara.text:rope-bytes rope)))
+  (let ((total (tuatara.text:rope-octet-length rope)))
     (loop for pos of-type fixnum from start below end by +search-chunk+
           for k of-type fixnum from 1
           do (when (and halt (zerop (mod k +halt-chunks+)) (funcall halt))
@@ -259,7 +259,7 @@ sets, stands whole, reading through CHUNK; NIL when none."
     (declare (dynamic-extent #'look))
     (scan-chunks-forward rope start end chunk (length shape) #'look)))
 
-(defun search-forward (rope string &key (start 0) (end (tuatara.text:rope-bytes rope)) (case-fold (case-fold-p string))
+(defun search-forward (rope string &key (start 0) (end (tuatara.text:rope-octet-length rope)) (case-fold (case-fold-p string))
                                         (threads (tuatara.runtime:cpu-count)) stop)
   "Byte offset of the first occurrence of STRING in ROPE starting at or after
 START and ending at or before END, and the offset after it, as two values; NIL
@@ -306,7 +306,7 @@ Complexity: O(distance scanned)."
 through CHUNK; NIL when none; NIL and :STOPPED when HALT, a function asked
 every +HALT-CHUNKS+ chunks, answers true."
   (declare (type fixnum start end) (type tuatara.text:octets needle chunk))
-  (let ((n (length needle)) (total (tuatara.text:rope-bytes rope)))
+  (let ((n (length needle)) (total (tuatara.text:rope-octet-length rope)))
     (when (< end start)
       (loop for pos of-type fixnum = (max end (- start +search-chunk+)) then (max end (- pos +search-chunk+))
             for k of-type fixnum from 1
@@ -318,7 +318,7 @@ every +HALT-CHUNKS+ chunks, answers true."
                  (when hit (return (+ pos hit)))
                  (when (= pos end) (return nil)))))))
 
-(defun search-backward (rope string &key (start (tuatara.text:rope-bytes rope)) (end 0) (case-fold (case-fold-p string))
+(defun search-backward (rope string &key (start (tuatara.text:rope-octet-length rope)) (end 0) (case-fold (case-fold-p string))
                                          (threads (tuatara.runtime:cpu-count)) stop)
   "Byte offset of the last occurrence of STRING in ROPE that starts before START
 and at or after END, and the offset after it, as two values; NIL when none.
@@ -351,7 +351,7 @@ parallel, and STOP, as SEARCH-FORWARD."
                              (found (values found (+ found n)))
                              (t nil)))))))))))
 
-(defun search-all (rope string &key (start 0) (end (tuatara.text:rope-bytes rope)) (case-fold (case-fold-p string))
+(defun search-all (rope string &key (start 0) (end (tuatara.text:rope-octet-length rope)) (case-fold (case-fold-p string))
                                     (threads (tuatara.runtime:cpu-count)) (limit most-positive-fixnum))
   "All non-overlapping occurrences of STRING in ROPE between START and END as a
 sorted vector of byte offsets (fixnums), searched in parallel on up to THREADS
@@ -1626,7 +1626,7 @@ new buffers."
     (return-from map-regex-matches
       (with-decoder (spare)
         (map-regex-matches function rope scanner start end :bound bound :decoder spare :halt halt :texts texts :empty empty))))
-  (let* ((total (tuatara.text:rope-bytes rope))
+  (let* ((total (tuatara.text:rope-octet-length rope))
          (bound (if bound (tuatara.text:rope-char-start rope (min bound total)) total))
          (end (min end bound))
          (pos (tuatara.text:rope-char-start rope (min start total)))
@@ -1818,7 +1818,7 @@ most a mebibyte, since a pattern without fixed text scans at tens of megabytes
 a second."
   (min *serial-window* (* 1024 1024)))
 
-(defun regex-search-forward (rope regex &key (start 0) (end (tuatara.text:rope-bytes rope)) bound
+(defun regex-search-forward (rope regex &key (start 0) (end (tuatara.text:rope-octet-length rope)) bound
                                               (case-fold (and (stringp regex) (regex-case-fold-p regex)))
                                               (threads (tuatara.runtime:cpu-count)) stop empty)
   "The first match of REGEX (a pattern string or a compiled scanner) in ROPE
@@ -1853,7 +1853,7 @@ milliseconds; when it answers true the search gives up and returns NIL and
                        (found (values-list found))
                        (t nil))))))))
 
-(defun regex-search-backward (rope regex &key (start (tuatara.text:rope-bytes rope)) (end 0) bound
+(defun regex-search-backward (rope regex &key (start (tuatara.text:rope-octet-length rope)) (end 0) bound
                                                (case-fold (and (stringp regex) (regex-case-fold-p regex)))
                                                (threads (tuatara.runtime:cpu-count)) stop empty)
   "The last match of REGEX in ROPE that starts before START and at or after END
@@ -1882,7 +1882,7 @@ SEARCH-FORWARD."
                        (found (values-list found))
                        (t nil))))))))
 
-(defun regex-search-all (rope regex &key (start 0) (end (tuatara.text:rope-bytes rope)) bound
+(defun regex-search-all (rope regex &key (start 0) (end (tuatara.text:rope-octet-length rope)) bound
                                           (case-fold (and (stringp regex) (regex-case-fold-p regex)))
                                           (limit most-positive-fixnum))
   "All non-empty, non-overlapping matches of REGEX in ROPE that start at or
@@ -1920,7 +1920,7 @@ one before, so that billions of matches of a few texts make nothing each."
                          :bound bound :halt halt :texts texts)))
   (with-decoder (decoder)
     (let* ((needle (needle-octets string case-fold)) (n (length needle))
-           (total (tuatara.text:rope-bytes rope))
+           (total (tuatara.text:rope-octet-length rope))
            (end (min end (1+ (- (min (or bound total) total) n)))) ; the last start that fits, exclusive
            (chunk (progn (when (< (length (decoder-skip decoder)) (+ +search-chunk+ n))
                            (setf (decoder-skip decoder) (tuatara.text:make-octets (+ +search-chunk+ n))))

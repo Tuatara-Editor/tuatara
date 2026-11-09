@@ -16,7 +16,7 @@
 \\<support>\\[next-line] and \\[previous-line] move, \\<buffers-mode>\\[list-visit] or \\`RET' opens the buffer
 on the line (on a heading, folds or unfolds its section; on that of a client that ended,
 takes its buffers up into this client), \\[list-visit-other] in another
-window, \\[quit-window] or \\`h' returns; \\[list-toggle-fold] folds or unfolds the section, \\[list-toggle-all-folds] all of them; \\[list-mark-entry] marks a buffer (>),
+window, \\[quit-window] returns; \\[list-toggle-fold] folds or unfolds the section, \\[list-toggle-all-folds] all of them; \\[list-mark-entry] marks a buffer (>),
 \\[list-mark-for-deletion] marks it for deletion (D; on the heading of a client that ended, every
 buffer of its folder), \\[list-unmark-entry] unmarks it,
 \\[list-unmark-all] unmarks them all, \\[list-toggle-marks] swaps marked and unmarked; \\[buffers-save] saves the marked buffers,
@@ -157,11 +157,11 @@ frame called this client; *EVERY-CLIENT-FOLDER* for :EVERYONE."
            (abbreviated-path section))
           (t (name section)))))
 
-(defun buffer-section-heading (section sections)
-  "The heading of SECTION in the buffer list: its title (BUFFER-SECTION-TITLE),
-the client that stays when its last buffer is closed saying so (CLIENT-KEPT-P)."
-  (format nil "~a~:[~; (kept open)~]" (buffer-section-title section sections)
-          (and (client-p section) (client-kept-p *editor* section))))
+(defun buffer-section-note (section)
+  "The words after the heading of SECTION in the buffer list: \"(persistent)\"
+for the client that stays when its last buffer is closed (CLIENT-KEPT-P), else
+NIL."
+  (and (client-p section) (client-kept-p *editor* section) "(persistent)"))
 
 (defun buffer-cells (b mark)
   "The cells of the line of the buffer B, marked MARK, in the buffer list."
@@ -186,7 +186,8 @@ on a buffer killed meanwhile is dropped."
      list-buffer *buffers-columns* sections
      (lambda (b mark section) (declare (ignore section)) (buffer-cells b mark))
      :sections t
-     :section-title (lambda (section) (buffer-section-heading section sections))
+     :section-title (lambda (section) (buffer-section-title section sections))
+     :section-note #'buffer-section-note
      :section-face (lambda (section) (and (ended-folder-p section) :list-dim))
      :after (cons (string #\Newline)
                   (table-row-pieces *buffers-columns*
@@ -241,11 +242,11 @@ stars (*Messages*), read-only buffers, help and marked names each set apart
 in a face of their own; the number of buffers, their size and files summed
 up at the end. \\<support>\\[next-line] and
 \\[previous-line] move, \\<buffers-mode>\\[list-visit] or \\`RET' opens the
-buffer on the line, \\[list-visit-other] in another window, \\[quit-window] or \\`h' returns; \\[list-mark-entry] marks the
+buffer on the line, \\[list-visit-other] in another window, \\[quit-window] returns; \\[list-mark-entry] marks the
 buffer on the line, \\[list-mark-for-deletion] marks it for deletion,
 \\[list-unmark-entry] unmarks it, \\[list-unmark-all] unmarks them all, \\[list-toggle-marks] swaps marked and unmarked, a count
 marking as many;
-\\[buffers-keep-client] makes the client whose folder the cursor is in the one kept open;
+\\[buffers-keep-client] makes the client whose folder the cursor is in the persistent one;
 \\[buffers-save] saves the marked buffers (the one on the line when none is),
 \\[list-delete-marked] kills them after asking, \\[list-execute] kills those
 marked for deletion; \\[revert-buffer] lists them again, marks kept, as the
@@ -323,7 +324,7 @@ when one of them is modified, else after asking."
   "Make the client whose folder the cursor is in, in the buffer list, the one
 that stays when its last buffer is closed, in place of the one
 *CLIENT-KEPT-WITHOUT-BUFFERS* names, until it ends. Its heading says
-\"(kept open)\". With that setting :ALL every client stays, and there is
+\"(persistent)\". With that setting :ALL every client stays, and there is
 nothing to choose."
   (let* ((list (current-buffer))
          (section (list-section-at list)))
@@ -397,7 +398,7 @@ saying how many are modified, each modified one asked about as it goes. In
 (defun install-buffers ()
   "Bind the *Buffers* keys and the global entry points."
   (entry-list-keys 'buffers-mode "the buffer list (\\[buffers])")
-  (define-keys *buffers-keymap* '(("s" buffers-save) ("K" buffers-keep-client)))
+  (define-keys *buffers-keymap* '(("s" buffers-save) ("K" buffers-keep-client) ("h" nil)))
   (define-keys *global-keymap* '(("C-x C-b" buffers) ("C-x p k" kill-project-buffers))))
 
 (commands-for-mode 'buffers-mode "the buffer list (\\[buffers])" 'buffers-save)

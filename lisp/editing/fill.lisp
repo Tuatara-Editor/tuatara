@@ -74,7 +74,7 @@ offered."
 and \\[fill-region], wrapped at by \\[soft-wrap-mode] and marked by
 \\[visual-line-mode], while the editor runs: a count given first
 (\\[universal-argument] 72 \\[set-fill-column]), or else the column asked for,
-the buffer's offered, which \\<minibuffer>\\[minibuffer-done] alone keeps."
+the buffer's offered, which \\<minibuffer>\\[minibuffer-finish] alone keeps."
   (let* ((b (current-buffer))
          (was (buffer-fill-column b))
          (n (prefix-argument))
@@ -480,7 +480,7 @@ on, while the editor runs, and say so; true when it was."
 (defvar *fill-ask-column* t
   "True to ask for the column each time \\[fill-paragraph] or \\[fill-region] fills
 (\\<normal>\\[fill-paragraph] and \\[fill-region] too), the buffer's fill column
-offered: \\<minibuffer>\\[minibuffer-done] fills to it, and another number typed
+offered: \\<minibuffer>\\[minibuffer-finish] fills to it, and another number typed
 fills to that column and makes it the buffer's from then on, while the editor
 runs. A count given first (\\[universal-argument] 72 \\[fill-paragraph]) answers
 the question. NIL fills at once.")

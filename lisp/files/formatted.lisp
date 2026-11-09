@@ -590,7 +590,7 @@ date, its title and its keywords, with its size and when it changed at the
 right; listed in the background as you type, the list growing as they are
 found (at once, when the directory is one of *INDEXED-DIRECTORIES*), the
 prompt saying NONE (\"none in\" the directory as standard) when there are
-none. \\<minibuffer>\\[minibuffer-done] takes the best match once all are
+none. \\<minibuffer>\\[minibuffer-finish] takes the best match once all are
 listed, or at once the one you moved to. With PREVIEW and
 *PREVIEW-FORMATTED-FILES*, the file selected is shown meanwhile, opened
 safely. Returns the path of the one chosen from that directory, or NIL and
@@ -630,7 +630,7 @@ finding them in the background."
 keywords offered: *FORMATTED-FILE-KEYWORDS*, then those in the names of your
 files with formatted names, each once, those found in the background while
 the question is open (LISTING, what LIST-FORMATTED-KEYWORDS gives as a list,
-when started before). \\<minibuffer>\\[minibuffer-done] takes the
+when started before). \\<minibuffer>\\[minibuffer-finish] takes the
 selected one, \\[minibuffer-complete] puts it in, \\[minibuffer-submit-input]
 takes what is typed. While no keyword is begun, an empty line comes first,
 selected: no keywords, or no more. Returns a list of strings."
@@ -909,7 +909,7 @@ under their subdirectory or their kind, the ones changed last first, each as
 its date, its title and its keywords, with its size and when it changed at
 the right. The files are listed in the background as you type, the list
 growing as they are found (at once, when the directory is one of
-*indexed-directories*); \\<minibuffer>\\[minibuffer-done] takes the best match
+*indexed-directories*); \\<minibuffer>\\[minibuffer-finish] takes the best match
 once all are listed, or at once the one you moved to; with
 *preview-formatted-files*, the file selected is shown meanwhile, opened
 safely. It makes no file:

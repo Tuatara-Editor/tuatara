@@ -478,7 +478,7 @@ before POSITION begins: the next character that ends a symbol
 (SEXP-BOUNDARY-P), or the end of the text. Refused when *TEXT-SCAN-LIMIT*
 comes first."
   (let* ((rope (tuatara.buffer:buffer-text buffer))
-         (size (tuatara.text:rope-bytes rope))
+         (size (tuatara.text:rope-octet-length rope))
          (scan (if backward (max 0 (- position *text-scan-limit*)) (min size (+ position *text-scan-limit*))))
          (found (if backward
                     (tuatara.text:rope-find-any-octet rope *sexp-boundary-octets* :start scan :end position :from-end t)
@@ -977,13 +977,13 @@ spans."
     (when before (funcall before))
     (if (and (every #'null (rest replacements))
              (or (> (loop for (s . e) in spans sum (- e s)) tuatara.buffer:*large-edit-octets*)
-                 (and (tuatara.text:rope-p first) (> (tuatara.text:rope-bytes first) tuatara.buffer:*large-edit-octets*))))
+                 (and (tuatara.text:rope-p first) (> (tuatara.text:rope-octet-length first) tuatara.buffer:*large-edit-octets*))))
         (let ((rope (etypecase first
                       (null nil)
                       (tuatara.text:rope first)
                       (string (tuatara.text:string->rope first))
                       ((array (unsigned-byte 8) (*)) (tuatara.text:octets->rope (coerce first 'tuatara.text:octets))))))
-          (vector (tuatara.buffer:buffer-splice-spans buffer spans (and rope (plusp (tuatara.text:rope-bytes rope)) rope))))
+          (vector (tuatara.buffer:buffer-splice-spans buffer spans (and rope (plusp (tuatara.text:rope-octet-length rope)) rope))))
         (let ((edits (loop for (s . e) in spans
                            for rest = replacements then (rest rest)
                            for octets = (let ((text (first rest)))
@@ -1037,12 +1037,7 @@ unseen: the fold is shown instead, and the key pressed again deletes."
   "True for commands that add to the kill ring, so consecutive kills append."
   (member command '(kill-line kill-region kill-whole-line kill-sexp backward-kill-sexp zap-to-char zap-up-to-char)))
 
-(defvar *use-system-clipboard* t
-  "True to put what is killed or copied on the system clipboard as well, where
-other programs paste it from, and to paste what another program copied there
-since; NIL keeps killed text to the editor.")
-
-(defvar *clipboard-max-size* (* 8 1024 1024)
+(defvar *clipboard-size-limit* (* 8 1024 1024)
   "The most characters a kill may have and still go on the system clipboard.")
 
 (defvar *kill-ring-max* 120
@@ -1074,7 +1069,7 @@ another program copied from what is there already.")
   "Put TEXT on the system clipboard, as *USE-SYSTEM-CLIPBOARD* says: a kill
 kept as a rope (too large for it) is not, nor one from an encrypted file's
 text, which \\[gpg-copy-to-clipboard] puts there on request."
-  (when (and *use-system-clipboard* *editor* (stringp text) (<= (length text) *clipboard-max-size*)
+  (when (and *use-system-clipboard* *editor* (stringp text) (<= (length text) *clipboard-size-limit*)
              (not (tuatara.io:buffer-plaintext-p (current-buffer)))
              (tuatara.frontend:frontend-set-clipboard (editor-frontend *editor*) text))
     (setf *clipboard-sent* text)))
@@ -1092,11 +1087,11 @@ clipboard since, put it first on the kill ring."
 
 (defun span-texts (buffer spans &key string)
   "The text of SPANS of BUFFER, each (START . END), one after another, as a
-kill: a string, or when more octets than *CLIPBOARD-MAX-SIZE* and STRING is
+kill: a string, or when more octets than *CLIPBOARD-SIZE-LIMIT* and STRING is
 false, a rope sharing the buffer's own (TUATARA.BUFFER:BUFFER-SLICE), made at
 once and copying nothing whatever its size. Such a kill stays good after its
 buffer is killed."
-  (if (and (not string) (> (loop for (start . end) in spans sum (- end start)) *clipboard-max-size*))
+  (if (and (not string) (> (loop for (start . end) in spans sum (- end start)) *clipboard-size-limit*))
       (reduce #'kill-join (mapcar (lambda (span) (tuatara.buffer:buffer-slice buffer (car span) (cdr span))) spans))
       (apply #'concatenate 'string
              (mapcar (lambda (span) (tuatara.buffer:buffer-string buffer :start (car span) :end (cdr span))) spans))))
@@ -1106,7 +1101,7 @@ buffer is killed."
 kill or hand on: the lines search filters hide there are left out whole
 \(TUATARA.DISPLAY:SHOWN-PARTS), everything else taken as it is, the text of
 folds included. A string, or a rope when it is more octets than
-*CLIPBOARD-MAX-SIZE* and STRING is false (SPAN-TEXTS). The second value is
+*CLIPBOARD-SIZE-LIMIT* and STRING is false (SPAN-TEXTS). The second value is
 how many lines were left out, 0 when none were."
   (let* ((low (min start end)) (high (max start end))
          (parts (tuatara.display:shown-parts buffer low high)))
@@ -1124,7 +1119,7 @@ search filters hide were left out of it; empty when none were."
 
 (defun kill-size (kill)
   "The characters of KILL, a string, or the octets of a kill kept as a rope."
-  (if (stringp kill) (length kill) (tuatara.text:rope-bytes kill)))
+  (if (stringp kill) (length kill) (tuatara.text:rope-octet-length kill)))
 
 (defun kill-join (a b)
   "The kills A and B as one: a string when both are strings, else a rope."
@@ -1132,13 +1127,13 @@ search filters hide were left out of it; empty when none were."
       (concatenate 'string a b)
       (flet ((as-rope (kill) (if (stringp kill) (tuatara.text:string->rope kill) kill)))
         (let ((head (as-rope a)))
-          (tuatara.text:splice-rope head (tuatara.text:rope-bytes head) (tuatara.text:rope-bytes head) (as-rope b))))))
+          (tuatara.text:splice-rope head (tuatara.text:rope-octet-length head) (tuatara.text:rope-octet-length head) (as-rope b))))))
 
 (defun kill-copies (kill n)
   "KILL N times over, as one kill. A rope is doubled, not joined N times over,
-and so is a text that would come to more than *CLIPBOARD-MAX-SIZE* octets
+and so is a text that would come to more than *CLIPBOARD-SIZE-LIMIT* octets
 made a string."
-  (cond ((and (stringp kill) (> (* n (length kill)) *clipboard-max-size*))
+  (cond ((and (stringp kill) (> (* n (length kill)) *clipboard-size-limit*))
          (kill-copies (tuatara.text:string->rope kill) n))
         ((stringp kill) (with-output-to-string (out) (dotimes (i n) (write-string kill out))))
         ((<= n 1) kill)
@@ -1150,8 +1145,8 @@ made a string."
   "True when KILL ends with a line end: a newline, or a carriage return."
   (if (stringp kill)
       (and (plusp (length kill)) (member (char kill (1- (length kill))) '(#\Newline #\Return)))
-      (and (plusp (tuatara.text:rope-bytes kill))
-           (member (tuatara.text:rope-octet kill (1- (tuatara.text:rope-bytes kill))) '(10 13)))))
+      (and (plusp (tuatara.text:rope-octet-length kill))
+           (member (tuatara.text:rope-octet kill (1- (tuatara.text:rope-octet-length kill))) '(10 13)))))
 
 (defvar *plaintext-kills* (make-hash-table :test 'eq :weakness :key)
   "The kills taken from a decrypted file's text (TUATARA.IO:BUFFER-PLAINTEXT-P),
@@ -1528,7 +1523,7 @@ further than about REACH octets either way; both POSITION when there are
 none. Whole characters are taken, however many octets each is."
   (let* ((rope (tuatara.buffer:buffer-text buffer))
          (from (tuatara.text:rope-char-start rope (max 0 (- position reach))))
-         (to (tuatara.text:rope-char-start rope (min (tuatara.text:rope-bytes rope) (+ position reach))))
+         (to (tuatara.text:rope-char-start rope (min (tuatara.text:rope-octet-length rope) (+ position reach))))
          (text (tuatara.buffer:buffer-string buffer :start from :end (max to position)))
          (here (loop with at = from
                      for i from 0
@@ -1568,7 +1563,7 @@ saved."
 (defun recent-buffer-names ()
   "The names of the buffers used before the current one, the latest first:
 the history that puts them first among the candidates, so that
-\\<minibuffer>\\[minibuffer-done] alone goes back to the buffer used last."
+\\<minibuffer>\\[minibuffer-finish] alone goes back to the buffer used last."
   (loop with client = (current-client)
         for b in *buffer-order*
         unless (or (eq b (current-buffer)) (not (live-buffer-p b)) (not (client-sees-buffer-p client b)))
@@ -1583,10 +1578,10 @@ the history that puts them first among the candidates, so that
   "Ask with PROMPT for several of the choices OFFERED gives, separated by
 commas, completing each in turn: OFFERED, a function of no arguments, gives
 them as they are now, each a string or (STRING . ANNOTATION), none chosen
-twice. \\<minibuffer>\\[minibuffer-done] adds the selected one and asks for the
+twice. \\<minibuffer>\\[minibuffer-finish] adds the selected one and asks for the
 next, \\[minibuffer-complete] puts it in, \\[minibuffer-submit-input] adds what
 is typed. While no choice is begun, an empty line comes first, selected,
-saying NONE (nothing chosen yet) or MORE: \\[minibuffer-done] there ends the
+saying NONE (nothing chosen yet) or MORE: \\[minibuffer-finish] there ends the
 question. INITIAL is the text it begins with; SOURCE, for choices found in
 the background meanwhile, as COMPLETING-READ takes it. Returns the strings
 chosen, in order."
@@ -1618,7 +1613,7 @@ chosen, in order."
 (defun read-buffer (prompt &key require-match)
   "Ask PROMPT for a buffer, completing on the live buffers other than the
 current one (BUFFER-CANDIDATES), the ones used lately first, so that
-\\<minibuffer>\\[minibuffer-done] alone takes the one used last. With
+\\<minibuffer>\\[minibuffer-finish] alone takes the one used last. With
 *PREVIEW-BUFFERS*, the buffer selected is shown meanwhile in the window you
 are in, what it showed coming back when the question ends. With
 REQUIRE-MATCH, one of them must be chosen; else a new name is taken as typed.
@@ -1636,7 +1631,7 @@ Returns the name."
 
 (define-command switch-to-buffer ()
   "Show another buffer, completing on the live buffers, the ones used lately
-first (\\<minibuffer>\\[minibuffer-done] alone goes back to the one used
+first (\\<minibuffer>\\[minibuffer-finish] alone goes back to the one used
 last); a new name creates one. With *preview-buffers*, the buffer selected is
 shown meanwhile."
   (let ((name (read-buffer "Switch to buffer: ")))

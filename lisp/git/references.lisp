@@ -211,7 +211,7 @@ on a section's heading, fold or unfold the section."
          (ref (entry-member entry)))
     (cond (ref (let ((name (second ref)))
                  (git-show-log (git-here) (format nil "Log of ~a" name) (list (format nil "--max-count=~d" *git-log-length*) name "--"))))
-          ((eq (first entry) :section) (toggle-list-section list (second entry)))
+          ((eq (first entry) :section) (list-toggle-section list (second entry)))
           (t (message "No branch or tag on this line")))))
 
 (commands-for-mode 'git-refs-mode "a repository's references (\\[git-show-refs])"

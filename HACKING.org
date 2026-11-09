@@ -80,7 +80,7 @@ the helper ending, the last requests sent in =build/fuzz/helper.log.last=;
 over one connection, then over two, the second using what the first uses.
 =tools/fuzz-pdf.sh [-n ROUNDS] [--seed SEED] [--deadline SECONDS]= spoils PDFs
 it makes itself (=tools/fuzz-pdf.lisp=) and reads each with every reader of
-=lisp/viewers/pdf-reader.lisp= and file-metadata's PDF part; it fails on an
+=lisp/viewers/pdf-reader.lisp= and show-file-metadata's PDF part; it fails on an
 error escaping a reader, a reader running past the deadline on one file or
 too much memory kept, the file that did it kept in =build/fuzz/=.
 
@@ -365,9 +365,9 @@ package most often needs:
   file already open, reads a file whole and refuses one larger than the
   limit, however large it turns out to be as it is read.
 - XML :: =xml-parse= (bounded in depth and size; =:most= sets how many
-  elements), then =xml-name=, =xml-attribute=, =xml-children=,
-  =xml-child=, =xml-local-name=, =xml-local-children=, =xml-find-all= and
-  =xml-all-text= to walk the tree; =xml-escape= writes text into XML or
+  elements), then =xml-attribute=, =xml-children=, =xml-local-name=,
+  =xml-local-children=, =xml-find-all= and =xml-all-text= to walk the
+  tree; =xml-escape= writes text into XML or
   HTML.
 - Octets, text and dates :: the type =octets= and its readers,
   =string-octets=, =octets-string=, =utf-16-text=; =time-words=,

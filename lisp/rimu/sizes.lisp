@@ -75,6 +75,6 @@ whether new lists show it."
 
 (defun install-rimu-sizes ()
   "Make the sizes column, and bind S to show or hide it."
-  (set-rimu-column :sizes 'rimu-size-cells :place :before :align :right :shown 'rimu-sizes-p
+  (rimu-set-column :sizes 'rimu-size-cells :place :before :align :right :shown 'rimu-sizes-p
                    :documentation "How much the entry takes: a directory with everything under it.")
   (define-key *rimu-keymap* "S" 'rimu-toggle-sizes))

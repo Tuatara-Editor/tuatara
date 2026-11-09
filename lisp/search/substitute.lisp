@@ -242,7 +242,7 @@ HALT, when given, answers true, or the stretch is done."
 ROPE, the end of a stretch searched, where a scan of the stretch does not
 reach; never just after a text's last newline, on the empty line that is no
 line."
-  (let ((size (tuatara.text:rope-bytes rope)))
+  (let ((size (tuatara.text:rope-octet-length rope)))
     (and (eq (matcher-kind matcher) :regex)
          (not (and (= end size) (plusp size) (= end (tuatara.text:rope-line-start rope end))))
          (rope-empty-match-at-p rope (matcher-scanner matcher) end))))
@@ -440,7 +440,7 @@ pkg:name)."
 (defun symbol-at (rope byte &optional (buffer (current-buffer)))
   "Two values: the start and end of the symbol in ROPE, BUFFER's text, at byte
 offset BYTE, or just before it when BYTE ends one; NIL when there is none."
-  (let* ((total (tuatara.text:rope-bytes rope))
+  (let* ((total (tuatara.text:rope-octet-length rope))
          (at (cond ((and (< byte total) (symbol-char-p (tuatara.text:rope-char-at rope byte) buffer)) byte)
                    ((and (plusp byte)
                          (symbol-char-p (tuatara.text:rope-char-at rope (tuatara.text:rope-previous-boundary rope byte)) buffer))

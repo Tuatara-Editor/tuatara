@@ -439,7 +439,7 @@ nothing is."
                (values (tuatara.text:merge-ranges
                         (sort (append (mapcar (lambda (span)
                                                 (cons (car span)
-                                                      (if (member (char-before-position b (cdr span)) '(#\Newline #\Return))
+                                                      (if (member (buffer-char-before b (cdr span)) '(#\Newline #\Return))
                                                           (tuatara.buffer:buffer-forward-char b (cdr span) -1)
                                                           (cdr span))))
                                               banked)
@@ -846,7 +846,7 @@ starts after a match passes over those before it). True when FUNCTION stopped
 it."
   (if (block-scope-p scope)
       (let ((wide (block-scope-wide scope))
-            (size (tuatara.text:rope-bytes rope))
+            (size (tuatara.text:rope-octet-length rope))
             (rows 0))
         (declare (type fixnum rows))
         (block each-row
@@ -1184,7 +1184,7 @@ text deleted beside the place it was typed at is not there beside this one."
          (start (- from (length back)))
          (end (+ to (length forward))))
     (declare (type fixnum from to start end))
-    (when (and (>= start 0) (<= end (tuatara.text:rope-bytes rope))
+    (when (and (>= start 0) (<= end (tuatara.text:rope-octet-length rope))
                (loop for i of-type fixnum from 0 below (length back)
                      always (= (tuatara.text:rope-octet rope (+ start i)) (aref back i)))
                (loop for i of-type fixnum from 0 below (length forward)

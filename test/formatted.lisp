@@ -822,7 +822,8 @@ file sets them."
       (let ((tuatara.defaults::*directory-indexes* (list index))
             (tuatara-user:*indexed-directories* (list (namestring dir)))
             (tuatara.defaults::*sign-lit-seconds* 0)
-            (tuatara-user:*processing-indicator* nil))
+            (tuatara-user:*processing-indicator* nil)
+            (tuatara-user:*daemon-indicator* nil))
         (is equal '("U" :mode-line-sign) (tuatara.defaults::indexing-mode-line nil nil))
         (is equal '(("U" :mode-line-sign) ("S" :mode-line-sign-idle)) (tuatara.defaults::mode-line-signs nil nil))
         (let ((tuatara-user:*indexing-indicator* nil))
@@ -863,7 +864,7 @@ file sets them."
     ;; first in the mode line, US between the modal state and [-], so that nothing coming and going moves them
     (let ((tuatara-user:*indexed-directories* (list (namestring dir))))
       (let ((f (run-keys "" :width 100 :height 10)))
-        (true (tuatara.frontend.fake:fake-frame-showing f " TUATARA[N] PUS [-] *scratch*  L"))))
+        (true (tuatara.frontend.fake:fake-frame-showing f " TUATARA[N] PUSD [-] *scratch*  L"))))
     (setf tuatara.defaults::*directory-indexes* '())
     (clrhash tuatara.defaults::*signs-lit-until*)))
 

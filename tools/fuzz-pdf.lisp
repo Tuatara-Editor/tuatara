@@ -4,7 +4,7 @@
 ;;;; Loaded by tools/fuzz-pdf.sh, which sets the limits. Makes a handful of
 ;;;; PDFs of its own (pages, saves, object streams, every filter and
 ;;;; predictor), spoils copies of them ROUNDS times from SEED, and reads each
-;;;; with every reader of lisp/viewers/pdf-reader.lisp and M-x file-metadata's
+;;;; with every reader of lisp/viewers/pdf-reader.lisp and M-x show-file-metadata's
 ;;;; PDF part: objects, their fields, streams decoded, object streams, content,
 ;;;; saves, cross-reference tables and dictionaries, the bound on
 ;;;; cross-reference entries set low so that a seed passes it. A failure is an error
@@ -281,7 +281,7 @@ leaves more than *HEAP-CAP* octets in use."
              :words (format nil "~a: ~a" label (cl-ppcre:regex-replace-all "\\s+" (princ-to-string e) " "))))))
 
 (defun read-every-way (octets)
-  "Read OCTETS with every reader of the PDF reader, and file-metadata's PDF part."
+  "Read OCTETS with every reader of the PDF reader, and show-file-metadata's PDF part."
   (let ((objects '()))
     (checked "map-pdf-written-objects"
              (lambda () (tuatara:map-pdf-written-objects (lambda (o) (push o objects) nil) octets)))

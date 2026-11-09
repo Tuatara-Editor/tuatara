@@ -194,7 +194,7 @@ are rewritten at once."
               (unwind-protect
                    ;; a pattern no filter can use is counted by none
                    (is eql (and filter (length (scan-kept-starts rope (tuatara.defaults::search-filter-matcher filter) crlf)))
-                       (and filter (tuatara.defaults::stretch-count buffer (list (cons 0 (tuatara.text:rope-bytes rope))) filter))
+                       (and filter (tuatara.defaults::stretch-count buffer (list (cons 0 (tuatara.text:rope-octet-length rope))) filter))
                        "~a: ~a on ~s~:[~;, CRLF~]" written pattern (subseq text 0 (min 60 (length text))) crlf)
                 (tuatara.buffer:kill-buffer buffer))))))))
   (let ((buffer (tuatara.buffer:make-buffer (tuatara.buffer:unique-buffer-name "count")

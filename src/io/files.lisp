@@ -131,7 +131,7 @@ reads the file where it is."
 MAPPING, into an unnamed file in DIRECTORY in the background, a job, where
 its file system has room. The copy reads through a descriptor of its own.
 Returns the snapshot, or NIL."
-  (let ((free (free-bytes directory)))
+  (let ((free (free-octets directory)))
     (when (and free (> free (+ (stamp-size stamp) *snapshot-free-margin*)))
       (let* ((source (sb-posix:dup fd))
              (snapshot (%make-snapshot :mapping mapping :source source :path path :stamp stamp)))
@@ -640,7 +640,7 @@ LOCAL and takes new files; else the cache directory. Never /tmp, which may be
 memory."
   (cond ((not (and directory local (writable-p directory))) (cache-directory))
         ((shares-blocks-p directory) directory)
-        ((let ((free (free-bytes (cache-directory))))
+        ((let ((free (free-octets (cache-directory))))
            (and free (> free (+ room *snapshot-free-margin*))))
          (cache-directory))
         (t directory)))
@@ -1243,7 +1243,7 @@ later as the same file grown by appending (APPEND-FROM-DISK).")
 
 (defun note-file-tail (buffer rope)
   "Keep the last octets of ROPE, the text of BUFFER's file as read or saved, for APPEND-FROM-DISK."
-  (let ((size (tuatara.text:rope-bytes rope)))
+  (let ((size (tuatara.text:rope-octet-length rope)))
     (setf (tuatara.buffer:buffer-local buffer :file-tail)
           (tuatara.text:rope-octets rope :start (max 0 (- size +tail-sample+)) :end size))))
 
@@ -1792,7 +1792,7 @@ stretch from a mapped file (its MAPPING, the OFFSET in it, its LENGTH and the
 POSITION it goes to) giving whether the file holds its first octets already
 where they go, and how many from there are alike: those it holds are passed
 over, not written. Returns true, or NIL when CANCEL's car turned true first."
-  (let ((done 0) (total (tuatara.text:rope-bytes rope))
+  (let ((done 0) (total (tuatara.text:rope-octet-length rope))
         (out (make-write-out fd 0)))
     (flet ((move-on ()
              (let ((there (write-out-step out done)))
@@ -1867,7 +1867,7 @@ refuses the rename or the naming, for the caller to write in place."
           (abandon)
           (return-from write-by-rename :stopped))
         (flush-fd fd target)
-        (when progress (funcall progress (tuatara.text:rope-bytes rope) (tuatara.text:rope-bytes rope)))
+        (when progress (funcall progress (tuatara.text:rope-octet-length rope) (tuatara.text:rope-octet-length rope)))
         (when existing
           ;; the owner first: changing it may clear set-id bits the mode then restores
           (handler-case (sb-posix:fchown fd (stamp-uid existing) (stamp-gid existing)) (sb-posix:syscall-error () nil))
@@ -2004,12 +2004,12 @@ the file itself is touched. Returns :DONE, or :STOPPED."
                          (write-octets fd (tuatara.text:rope-octets rope) :path target)
                          (write-rope fd rope :path target :progress progress))
                      (when (and existing backup)
-                       (handler-case (sb-posix:ftruncate fd (tuatara.text:rope-bytes rope))
+                       (handler-case (sb-posix:ftruncate fd (tuatara.text:rope-octet-length rope))
                          (sb-posix:syscall-error (e) (fail "shorten" target (sb-posix:syscall-errno e)))))
                      (when mode
                        (sb-posix:fchmod fd (funcall mode (logand (stamp-mode (fd-stamp fd target)) #o7777))))
                      (when sync (flush-fd fd target))
-                     (when progress (funcall progress (tuatara.text:rope-bytes rope) (tuatara.text:rope-bytes rope))))
+                     (when progress (funcall progress (tuatara.text:rope-octet-length rope) (tuatara.text:rope-octet-length rope))))
                 (sb-posix:close fd)))
           (writing-refused (e)
             (drop-backup)
@@ -2261,7 +2261,7 @@ SAVE-BUFFER-FILE does. Returns the job; FINISH-SAVES takes it in."
            (transform (host-save-transform tuatara.runtime:*host* buffer path))
            (job (%make-save-job :buffer buffer :path path :version version
                                 :content (tuatara.buffer:buffer-content-number buffer)
-                                :total (tuatara.text:rope-bytes (tuatara.text:version-rope version))))
+                                :total (tuatara.text:rope-octet-length (tuatara.text:version-rope version))))
            (mappings (protected-mappings buffer)))
       (tuatara.runtime:start-job-thread
        job (lambda (job)
@@ -2362,7 +2362,7 @@ BUFFER."
       (when reason
         (setf safe t
               (safe-visit-p buffer) reason))
-      (let ((new-size (tuatara.text:rope-bytes rope)) (done nil))
+      (let ((new-size (tuatara.text:rope-octet-length rope)) (done nil))
         ;; the file's own text coming back: a read-only buffer takes it too
         (tuatara.buffer:with-read-only-lifted (buffer :after (if done (or safe read-only) (or stale read-only)))
           (multiple-value-bind (forward backward)

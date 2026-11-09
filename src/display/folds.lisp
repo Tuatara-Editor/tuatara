@@ -116,7 +116,7 @@ shown are sorted."
         (and inserts
              (or (< start a end)
                  (and (= a end) (not (member (aref insert 0) '(10 13))))))
-        (let ((reach (if (< end (tuatara.text:rope-bytes rope)) (1+ end) end)))
+        (let ((reach (if (< end (tuatara.text:rope-octet-length rope)) (1+ end) end)))
           (and (< a reach) (> z start)
                (not (and (= z (1+ start)) (< 0 a start)
                          (= (1- a) (tuatara.text:rope-line-end rope (1- a)))
@@ -325,7 +325,7 @@ also where point goes when no line follows them."
       (setf (tuatara.buffer:buffer-point buffer)
             (if (and previous (<= previous (car fold)))
                 (let* ((rope (tuatara.buffer:buffer-text buffer))
-                       (size (tuatara.text:rope-bytes rope))
+                       (size (tuatara.text:rope-octet-length rope))
                        (end (cdr fold)))
                   (cond ((and (< end size) (= end (tuatara.text:rope-line-end rope end))) (1+ end))
                         ((tuatara.text:rope-crlf-p rope end)

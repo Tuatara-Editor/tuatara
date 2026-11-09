@@ -16,7 +16,7 @@ find-recent-file (\\[find-recent-file], \\<normal>\\[find-recent-file]) to offer
 NIL adds nothing to it. The list is the file recent-files in
 $XDG_STATE_HOME/tuatara/ (~/.local/state/tuatara/), readable by you alone.")
 
-(defvar *recent-files-max* 25
+(defvar *recent-files-limit* 25
   "How many files the list of recent files keeps.")
 
 (defvar *recent-files-auto-cleanup* t
@@ -46,7 +46,7 @@ a line that makes no sense."
   "The line of the list of recent files for ENTRY, (PATH . SAFE)."
   (format nil "~:[file~;safe~] ~a" (cdr entry) (escape-path (car entry))))
 
-(define-state-list *recent-files* "recent-files" 'parse-recent-file-line 'recent-file-line '*recent-files-max*
+(define-state-list *recent-files* "recent-files" 'parse-recent-file-line 'recent-file-line '*recent-files-limit*
   :header (format nil "# The files Tuatara visited lately, the latest first: file, or safe for one~%~
                        # opened safely, then its path (\\\\, \\n and \\r stand for \\, a newline and a return).~%")
   :path-of #'car :key #'identity :line-key (spaced-line-key 1 (lambda (word) (member word '("file" "safe") :test #'string=))))
@@ -99,7 +99,7 @@ each is examined once."
 size and when it last changed beside it. A file opened safely is marked safe
 and opened safely again; one opened both ways is there twice, so either way
 can be chosen. The file of the current buffer is left out, so that
-\\<minibuffer>\\[minibuffer-done] alone goes back to the one before. With *preview-files*, the
+\\<minibuffer>\\[minibuffer-finish] alone goes back to the one before. With *preview-files*, the
 file selected is shown meanwhile, opened safely."
   (let* ((current (let ((file (tuatara.buffer:buffer-file (current-buffer))))
                     (or (buffer-remote-name (current-buffer)) (and file (tuatara.io:native file)))))

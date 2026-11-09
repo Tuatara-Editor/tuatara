@@ -485,7 +485,7 @@ whose spaces kept for the cursor changed."
                (incf octets (length row-octets)))
       (values text (nreverse spans)))))
 
-(defvar tuatara-user:*terminal-title-max* 40
+(defvar tuatara-user:*terminal-title-limit* 40
   "The most columns of a terminal's title (as the shell gives it, user@host:~/dir
 in many) the mode line shows; NIL shows none.")
 
@@ -502,11 +502,11 @@ the title the program gave its terminal for the mode line."
 
 (defun terminal-mode-line-title (editor buffer)
   "Mode line function: the title the program in BUFFER, a terminal, gave it,
-cut to *TERMINAL-TITLE-MAX* columns."
+cut to *TERMINAL-TITLE-LIMIT* columns."
   (declare (ignore editor))
-  (let ((title (and tuatara-user:*terminal-title-max* (tuatara.buffer:buffer-local buffer 'terminal-title))))
+  (let ((title (and tuatara-user:*terminal-title-limit* (tuatara.buffer:buffer-local buffer 'terminal-title))))
     (when (and title (plusp (length title)))
-      (values (tuatara.display:fit-columns (escape-controls title) '() tuatara-user:*terminal-title-max*)))))
+      (values (tuatara.display:fit-columns (escape-controls title) '() tuatara-user:*terminal-title-limit*)))))
 
 (defun terminal-refresh (buffer emulator &key all)
   "Show in BUFFER what changed on EMULATOR's screen, or with ALL the whole of
@@ -858,6 +858,22 @@ of those that stay the editor's (C-g, C-x, M-x, C-q), say."
       (echo "")
       (unless (emulator-key emulator key)
         (message "~a means nothing to a terminal" (tuatara.frontend:key-description (tuatara.frontend:key-spec key)))))))
+
+(define-command terminal-send-escape ()
+  "Send Escape to the program in this terminal, at a shell's prompt too,
+whatever *ESCAPE-QUITS* and *TERMINAL-SEND-ESCAPE* say. It has no key of its
+own. To give it one that stays the editor's while you type, in your init file:
+  (push \"C-;\" *terminal-editor-keys*)
+  (bind-key \"C-;\" 'terminal-send-escape :mode 'terminal)"
+  (emulator-key (live-emulator (current-buffer)) (tuatara.frontend:make-key :escape)))
+
+(define-command terminal-version ()
+  "Say which version of the terminal library (libghostty-vt, from Ghostty)
+\\[terminal] runs on. With \\[universal-argument], put that at point instead."
+  (let ((version (terminal-library-version)))
+    (say-or-insert (if version
+                       (format nil "libghostty-vt ~a" version)
+                       "The terminal library is not available here"))))
 
 (defun forget-terminal (buffer)
   "End the program of BUFFER, a terminal being killed (*KILL-BUFFER-FUNCTIONS*)."

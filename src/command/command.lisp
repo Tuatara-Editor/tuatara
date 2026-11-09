@@ -6,15 +6,27 @@
 (defvar *commands* (make-hash-table :test 'eq)
   "All commands, keyed by symbol.")
 
-(defmacro define-command (name (&key) doc &body body)
+(defvar *key-only-commands* (make-hash-table :test 'eq)
+  "The commands made with :INTERACTIVE NIL, keyed by symbol.")
+
+(defun key-only-command-p (name)
+  "True when the command NAME is made for a key to run, not to be named: it
+is not offered by \\[execute-extended-command] and is outside the stable surface."
+  (gethash name *key-only-commands*))
+
+(defmacro define-command (name (&key (interactive t)) doc &body body)
   "Define NAME as an interactive command with docstring DOC (required) whose BODY
 runs with the editor context bound: (current-buffer), (current-window),
 *editor*. Commands take no arguments; they read what they need from the
-context and the prefix argument. Registered for key bindings, \\[execute-extended-command] and help."
+context and the prefix argument. Registered for key bindings, \\[execute-extended-command] and help.
+With :INTERACTIVE NIL the command is for keys alone: \\[execute-extended-command] does not offer it."
   (check-type doc string "a docstring; every command documents itself")
   `(progn
      (defun ,name () ,doc ,@body)
      (setf (gethash ',name *commands*) #',name)
+     ,(if interactive
+          `(remhash ',name *key-only-commands*)
+          `(setf (gethash ',name *key-only-commands*) t))
      ',name))
 
 (defvar *command-names* (cons -1 nil)

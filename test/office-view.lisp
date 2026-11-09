@@ -554,11 +554,11 @@ manifest's entries for its text when given."
                                   :|xl/sharedStrings.xml| (format nil "<sst xmlns='http://schemas.openxmlformats.org/spreadsheetml/2006/main'><si><t>~a</t></si></sst>" long)
                                   :|xl/worksheets/sheet1.xml| (format nil "<worksheet xmlns='http://schemas.openxmlformats.org/spreadsheetml/2006/main'><sheetData>~{<row r='~d'><c r='A~:*~d' t='s'><v>0</v></c></row>~}</sheetData></worksheet>"
                                                                       (loop for i from 1 to 200 collect i))))))
-      (let* ((tuatara.defaults::*office-value-longest* 100)
+      (let* ((tuatara.defaults::*office-value-length-limit* 100)
              (note (tuatara.defaults::xlsx-read-note xlsx)))
         (false (search (make-string 101 :initial-element #\k) note))
         (true (< (length note) 50000)))
-      (let ((note (let ((tuatara.defaults::*office-note-largest* 3000)) (tuatara.defaults::xlsx-read-note xlsx))))
+      (let ((note (let ((tuatara.defaults::*office-note-size-limit* 3000)) (tuatara.defaults::xlsx-read-note xlsx))))
         (note-has note "The rest is left out: the note reached 3,000 characters")
         (true (< (length note) 20000)))
       (fail (tuatara.defaults::xlsx-read-note xlsx :cancel (list t)) 'tuatara.runtime:job-stopped)
@@ -575,7 +575,7 @@ manifest's entries for its text when given."
                    (merge-pathnames "repeated.ods" dir)
                    (odf-test-parts "spreadsheet"
                                    (format nil "<table:table table:name='Copies'><table:table-row table:number-rows-repeated='1000'><table:table-cell table:number-columns-repeated='16384' office:value-type='string'><text:p>~a</text:p></table:table-cell></table:table-row></table:table>" long))))
-             (note (let ((tuatara.defaults::*office-note-largest* 100000)) (tuatara.defaults::odf-read-note ods))))
+             (note (let ((tuatara.defaults::*office-note-size-limit* 100000)) (tuatara.defaults::odf-read-note ods))))
         (note-has note "The rest is left out: the note reached 100,000 characters")
         (true (< (length note) 150000)))
       ;; an insertion begun and never ended: its text in the list of changes held to a value's length
@@ -584,7 +584,7 @@ manifest's entries for its text when given."
                    (odf-test-parts "text"
                                    (format nil "<text:tracked-changes><text:changed-region text:id='c1'><text:insertion><office:change-info><dc:creator>Bo</dc:creator></office:change-info></text:insertion></text:changed-region></text:tracked-changes><text:p>Was <text:change-start text:change-id='c1'/>new</text:p>~{<text:p>~a</text:p>~}"
                                            (make-list 50 :initial-element "more words after the change began")))))
-             (note (let ((tuatara.defaults::*office-value-longest* 40)) (tuatara.defaults::odf-read-note odt))))
+             (note (let ((tuatara.defaults::*office-value-length-limit* 40)) (tuatara.defaults::odf-read-note odt))))
         (note-has note "- Inserted by Bo :: newmore words after the change began")
         (false (cl-ppcre:scan "Inserted by Bo :: [^\\n]{60}" note))))))
 
@@ -613,14 +613,14 @@ manifest's entries for its text when given."
            (odt (write-office-test-file
                  (merge-pathnames "covered.odt" dir)
                  (odf-test-parts "text" (format nil "<table:table table:name='Wide'>~{~a~}</table:table>" (make-list 300 :initial-element row)))))
-           (note (let ((tuatara.defaults::*office-note-largest* 100000)) (tuatara.defaults::odf-read-note odt))))
+           (note (let ((tuatara.defaults::*office-note-size-limit* 100000)) (tuatara.defaults::odf-read-note odt))))
       (note-has note "The rest is left out: the note reached 100,000 characters")
       (true (< (length note) 300000) "~:d characters" (length note)))
     (let* ((odt (write-office-test-file
                  (merge-pathnames "spaces.odt" dir)
                  (odf-test-parts "text" (format nil "<text:p>a~{~a~}b</text:p>" (make-list 4000 :initial-element "<text:s text:c='1000'/>")))))
            (before (sb-ext:get-bytes-consed))
-           (note (let ((tuatara.defaults::*office-note-largest* 100000)) (tuatara.defaults::odf-read-note odt)))
+           (note (let ((tuatara.defaults::*office-note-size-limit* 100000)) (tuatara.defaults::odf-read-note odt)))
            (consed (- (sb-ext:get-bytes-consed) before)))
       (note-has note "The rest is left out: the note reached 100,000 characters")
       (true (< consed (* 8 1024 1024)) "~:d octets" consed))))

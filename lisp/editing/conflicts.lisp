@@ -59,7 +59,7 @@ and END (>>>>>>>)."
 
 ;;; Finding them
 
-(defun conflict-map-markers (rope function &key (start 0) (end (tuatara.text:rope-bytes rope)) cancel)
+(defun conflict-map-markers (rope function &key (start 0) (end (tuatara.text:rope-octet-length rope)) cancel)
   "Call FUNCTION with the character of each marker line of ROPE (the
 character <, |, = or >) from octet START, a line's start, below END, a
 line's start or the end of ROPE, and the octet it starts at, in order: a
@@ -68,7 +68,7 @@ a space and a name. Read 64 KB at a time into a block on the stack, so that
 none of it is garbage; stopped, returning NIL, once CANCEL's car turns true,
 else T.
 Complexity: O(END - START), little more than finding the newlines."
-  (let ((size (tuatara.text:rope-bytes rope))
+  (let ((size (tuatara.text:rope-octet-length rope))
         (block (make-array 65536 :element-type '(unsigned-byte 8)))
         ;; octets of the marker so far on the line, -1 for a line that is none, 8 after a carriage
         ;; return after a marker, -2 after one on a line that is none
@@ -113,7 +113,7 @@ Complexity: O(END - START), little more than finding the newlines."
       (when (and (= end size) (>= column +conflict-marker-length+)) (found))
       t)))
 
-(defun conflict-find-all (rope &key (start 0) (end (tuatara.text:rope-bytes rope)) cancel)
+(defun conflict-find-all (rope &key (start 0) (end (tuatara.text:rope-octet-length rope)) cancel)
   "The whole conflicts in ROPE from octet START below END, both lines'
 starts, in order, each (START BASE SEPARATOR END), the octets their marker
 lines start at, BASE NIL where there is none: a <<<<<<< line, then a
@@ -138,7 +138,7 @@ before it; a <<<<<<< line begins again. NIL too when stopped by CANCEL
 (defun conflict-marker-line-p (rope at kind)
   "True when the line of ROPE starting at octet AT is a marker line of KIND,
 the character it is made of (CONFLICT-MAP-MARKERS)."
-  (let ((size (tuatara.text:rope-bytes rope))
+  (let ((size (tuatara.text:rope-octet-length rope))
         (octet (char-code kind)))
     (flet ((octet (i) (and (< i size) (tuatara.text:rope-octet rope i))))
       (and (or (zerop at) (= (1- at) (tuatara.text:rope-line-end rope (1- at))))

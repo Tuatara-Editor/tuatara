@@ -108,7 +108,7 @@ out."
             (let ((ranges (text-object-ranges query (tuatara.syntax:syntax-tree syntax) rope
                                               (format nil "~a.~:[around~;inside~]" object inner)
                                               (max 0 (- start 65536))
-                                              (min (tuatara.text:rope-bytes rope) (+ end 65536))))
+                                              (min (tuatara.text:rope-octet-length rope) (+ end 65536))))
                   (found nil))
               (dotimes (i (max 1 (prefix)))
                 (let ((next (smallest-around ranges start end (or active found))))

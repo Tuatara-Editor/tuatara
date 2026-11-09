@@ -31,10 +31,9 @@ is filled again only when the jobs have changed.")
     (is eq 'tuatara.defaults::revert-buffer (list-key-binding mode "r") "r in ~(~a~)" mode)
     (is eq 'tuatara.defaults::revert-buffer (list-key-binding mode "g r") "g r in ~(~a~)" mode)
     (is eq 'tuatara.defaults::quit-window (list-key-binding mode "q") "q in ~(~a~)" mode))
-  (is eq 'tuatara.defaults::quit-window (list-key-binding 'buffers-mode "h"))
   (is eq 'tuatara.defaults::quit-window (list-key-binding 'jobs-mode "h"))
   ;; every list whose entries are opened goes back with h
-  (dolist (mode '(buffers-mode packages-mode face-list-mode latex-errors-mode redactions-mode))
+  (dolist (mode '(packages-mode face-list-mode latex-errors-mode redactions-mode))
     (is eq 'tuatara.defaults::quit-window (list-key-binding mode "h") "h in ~(~a~)" mode))
   (dolist (gone '("BUFFERS-QUIT" "JOBS-QUIT" "HELP-QUIT" "ORG-AGENDA-QUIT" "CALENDAR-EXIT" "RIMU-QUIT"
                   "BUFFERS-REFRESH" "JOBS-REFRESH" "FONT-LIST-REFRESH" "RIMU-REFRESH" "RIMU-TRASH-REFRESH"
@@ -141,9 +140,8 @@ is filled again only when the jobs have changed.")
                  (true (uiop:string-prefix-p ">" (list-line editor "one")) "~a keeps >" refresh)
                  (true (uiop:string-prefix-p "D" (list-line editor "two")) "~a keeps D: ~a" refresh (session-text editor))
                  (false (search "visits no file" (or (tuatara.command:editor-message editor) ""))))))
-           ;; q and h leave it alike
-           (dolist (keys '("C-x C-b q" "C-x C-b h"))
-             (is string= "*scratch*" (current-name (nth-value 1 (fresh-list-session keys))))))
+           ;; q leaves it
+           (is string= "*scratch*" (current-name (nth-value 1 (fresh-list-session "C-x C-b q")))))
       (dolist (b (list one two)) (when (tuatara.command:live-buffer-p b) (tuatara.buffer:kill-buffer b)))
       (let ((l (tuatara.buffer:find-buffer "*Buffers*"))) (when l (tuatara.buffer:kill-buffer l))))))
 

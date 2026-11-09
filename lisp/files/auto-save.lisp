@@ -14,7 +14,7 @@
 ;;;;
 ;;;; Nothing opened safely is copied (a file from evidence, or in
 ;;;; *SAFE-DIRECTORIES*), nor a buffer that cannot change, nor one larger than
-;;;; *AUTO-SAVE-LARGEST*, nor the made-up files of /proc. The copies belong to
+;;;; *AUTO-SAVE-SIZE-LIMIT*, nor the made-up files of /proc. The copies belong to
 ;;;; the files, not to windows or frames.
 
 (in-package #:tuatara.defaults)
@@ -37,7 +37,7 @@ auto-saved (*AUTO-SAVE*).")
   "The most seconds changes not saved go without an auto-save while they go
 on without a pause (*AUTO-SAVE*).")
 
-(defvar *auto-save-largest* (* 256 1024 1024)
+(defvar *auto-save-size-limit* (* 256 1024 1024)
   "The largest buffer auto-saved, in octets: a larger one is not copied (each
 copy would be written whole).")
 
@@ -58,7 +58,7 @@ name then kept beside it in NAME.path."
 
 (defun auto-save-wanted-p (buffer)
   "True when BUFFER's changes not saved may be auto-saved: it visits a file, was
-not opened safely, is not an encrypted file's text, can change, is no larger than *AUTO-SAVE-LARGEST*, and is
+not opened safely, is not an encrypted file's text, can change, is no larger than *AUTO-SAVE-SIZE-LIMIT*, and is
 not one of the system's made-up files."
   (and *auto-save*
        (tuatara.buffer:buffer-file buffer)
@@ -66,7 +66,7 @@ not one of the system's made-up files."
        (not (tuatara.io:buffer-plaintext-p buffer))
        (not (buffer-read-only-p buffer))
        (not (eq (tuatara.buffer:buffer-local buffer :file-class) :pseudo))
-       (<= (tuatara.buffer:buffer-size buffer) *auto-save-largest*)))
+       (<= (tuatara.buffer:buffer-size buffer) *auto-save-size-limit*)))
 
 (defun delete-auto-save-of (file)
   "Delete the auto-saved copy of the native FILE, and its name kept beside it,

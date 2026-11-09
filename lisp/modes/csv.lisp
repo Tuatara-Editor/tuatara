@@ -19,7 +19,7 @@ the column at point with its header in the mode line, counted from 0 (col 0
 the first).
 Fields are separated by *CSV-SEPARATOR*, a comma unless set;
 \\<csv-mode>\\[csv-define-separator] sets the separator for the buffer.
-\\[toggle-list-header-lock] keeps the first line, the header, at the top of the
+\\[list-toggle-header-lock] keeps the first line, the header, at the top of the
 window as the rest scrolls under it. \\[search-filter-regex] hides the records
 a pattern does not match, the mode line saying how many it leaves."
   :lighter "CSV" :extensions ("csv"))
@@ -86,7 +86,7 @@ leaves the whole with RETURN, whose value the form then has; else NIL."
   "The octet that separates fields in ROPE: whichever of comma, semicolon, tab
 and pipe occurs most often outside quotes in the first line (up to 64 KB);
 comma when none does. True as a second value when one does."
-  (let* ((reach (min (tuatara.text:rope-bytes rope) 65536))
+  (let* ((reach (min (tuatara.text:rope-octet-length rope) 65536))
          (end (or (tuatara.text:rope-find-line-end rope :end reach) reach))
          (counts (list (cons 44 0) (cons 59 0) (cons 9 0) (cons 124 0)))
          (quoted nil))
@@ -110,7 +110,7 @@ separator for one buffer.")
 naming the columns: always shown by search filters, never deleted by
 \\[list-keep-records], its names offered for a column. NIL takes it as a
 record like the rest, the columns offered by their numbers.
-\\[toggle-list-header] says so for one buffer.")
+\\[list-toggle-header] says so for one buffer.")
 
 (defparameter *csv-separator-names*
   '(("comma" . #\,) ("semicolon" . #\;) ("tab" . #\Tab) ("pipe" . #\|) ("colon" . #\:) ("space" . #\Space))
@@ -152,7 +152,7 @@ it has none."
 (defun first-line-touched-p (rope batch)
   "True when BATCH, the change that made ROPE, touched its first line."
   (or (tuatara.text:batch-swap batch)
-      (let ((first-end (or (tuatara.text:rope-find-line-end rope) (tuatara.text:rope-bytes rope))))
+      (let ((first-end (or (tuatara.text:rope-find-line-end rope) (tuatara.text:rope-octet-length rope))))
         (some (lambda (edit) (<= (tuatara.text:edit-start edit) first-end)) (tuatara.text:batch-edits batch)))))
 
 (defun csv-note-change (buffer batch)
@@ -340,7 +340,7 @@ values: that line end (the end of the text when there is none), and the start
 of the line after it. No more than +CSV-SCAN-LIMIT+ octets are read: a record
 not ended within them ends with its first line."
   (declare (type fixnum start))
-  (let* ((size (tuatara.text:rope-bytes rope))
+  (let* ((size (tuatara.text:rope-octet-length rope))
          (stop (min size (+ start +csv-scan-limit+)))
          (quoted nil)
          ;; a carriage return outside quotes just read: a line end unless a newline comes next
@@ -360,7 +360,7 @@ not ended within them ends with its first line."
 
 (defun csv-comment-line-p (rope line-start)
   "True when the line of ROPE starting at LINE-START starts with #."
-  (and (< line-start (tuatara.text:rope-bytes rope))
+  (and (< line-start (tuatara.text:rope-octet-length rope))
        (= (tuatara.text:rope-octet rope line-start) 35)))
 
 (defmethod mode-syntax-highlights ((mode csv-mode) buffer rows)

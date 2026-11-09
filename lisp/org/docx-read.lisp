@@ -43,13 +43,13 @@ octets together."
 document's text, styles, notes; a workbook's sheet; a slide); a picture is
 held only to *ZIP-LARGEST-ENTRY*.")
 
-(defparameter *office-note-largest* (* 16 1024 1024)
+(defparameter *office-note-size-limit* (* 16 1024 1024)
   "The most characters a note read from a Word document, an Excel workbook, a
 PowerPoint presentation or an OpenDocument file may have: past them the rest
 of its text is left out, and the note says so, so that a file whose few
 octets stand for text copied many times cannot fill the memory.")
 
-(defparameter *office-value-longest* 2000
+(defparameter *office-value-length-limit* 2000
   "The most characters of one value an office file's note shows (a cell of a
 sheet or a table, a formula): a longer one is cut after a word, with ...")
 
@@ -81,9 +81,9 @@ level), FOOTNOTES (endnotes as eID) and COMMENTS by id, CHANGES, the tracked
 changes met, each (KIND AUTHOR DATE TEXT); UNPACKED, the octets of its parts
 unpacked so far, held to *DOCX-LARGEST-UNPACKED*; ELEMENTS, the XML elements
 of its parts read so far, held to *XML-MOST-ELEMENTS*; ROOM, the characters
-its note may still take (*OFFICE-NOTE-LARGEST*); CANCEL, a cons whose car
+its note may still take (*OFFICE-NOTE-SIZE-LIMIT*); CANCEL, a cons whose car
 turns true to stop the reading, or NIL."
-  octets entries cancel (unpacked 0) (elements 0) (room *office-note-largest*)
+  octets entries cancel (unpacked 0) (elements 0) (room *office-note-size-limit*)
   by-name by-lower-name
   (parts (make-hash-table :test 'equal)) (relations (make-hash-table :test 'equal))
   (styles (make-hash-table :test 'equal)) (numbering (make-hash-table :test 'equal))
@@ -91,8 +91,8 @@ turns true to stop the reading, or NIL."
   (changes '()) (comment-order '()))
 
 (define-condition office-note-full (error) ()
-  (:report "The note has as many characters as *OFFICE-NOTE-LARGEST* allows")
-  (:documentation "Signalled when the note read from an office file would take more than *OFFICE-NOTE-LARGEST* characters."))
+  (:report "The note has as many characters as *OFFICE-NOTE-SIZE-LIMIT* allows")
+  (:documentation "Signalled when the note read from an office file would take more than *OFFICE-NOTE-SIZE-LIMIT* characters."))
 
 (defvar *docx-read-writing* nil
   "True while a Word document is read as a note to write in rather than to
@@ -149,20 +149,20 @@ reading there, TUATARA.RUNTIME:JOB-STOPPED, when it has been asked to stop."
 
 (defun office-value (text)
   "TEXT, a value an office file holds (a cell's, a formula), no longer than
-*OFFICE-VALUE-LONGEST* characters, its length taken from the room left for
+*OFFICE-VALUE-LENGTH-LIMIT* characters, its length taken from the room left for
 the note (OFFICE-SPEND)."
-  (let ((text (tuatara.display:shorten-string text *office-value-longest*)))
+  (let ((text (tuatara.display:shorten-string text *office-value-length-limit*)))
     (office-spend (length text))
     text))
 
 (defun office-written-text (writer)
   "What WRITER, a function of a stream, writes to it, as a string: the text of
 an office file's note, or of a part of it; cut where the note reached
-*OFFICE-NOTE-LARGEST* characters (OFFICE-NOTE-FULL), and said there."
+*OFFICE-NOTE-SIZE-LIMIT* characters (OFFICE-NOTE-FULL), and said there."
   (let ((out (make-string-output-stream)))
     (handler-case (funcall writer out)
       (office-note-full ()
-        (format out "~&~%The rest is left out: the note reached ~:d characters (*office-note-largest*).~%~%" *office-note-largest*)))
+        (format out "~&~%The rest is left out: the note reached ~:d characters (*office-note-size-limit*).~%~%" *office-note-size-limit*)))
     (get-output-stream-string out)))
 
 (defun docx-main-tree (path usual root what)
@@ -1042,7 +1042,7 @@ footnotes; true when there was one."
 
 (defun docx-read-note (path &key octets cancel)
   "The Word document at PATH as an Org note, read as this file's header says,
-from its OCTETS when they are given, no larger than *OFFICE-NOTE-LARGEST*
+from its OCTETS when they are given, no larger than *OFFICE-NOTE-SIZE-LIMIT*
 characters; CANCEL, a cons, stops the reading when its car turns true.
 Signals ZIP-ERROR or an error when it cannot be read."
   (let ((*docx-reading* (docx-reading-of path octets cancel)))

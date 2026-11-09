@@ -47,7 +47,26 @@ list starts on its first line, on a screen WIDTH by HEIGHT."
   (is eq :undefined (tuatara.command:lookup-key (tuatara.modes:mode-keymap 'tuatara.defaults::jobs-mode)
                                                 (tuatara.frontend:parse-key-sequence "w")))
   (false (tuatara.command:lookup-key (tuatara.modes:mode-keymap 'tuatara.defaults::buffers-mode)
-                                     (tuatara.frontend:parse-key-sequence "V"))))
+                                     (tuatara.frontend:parse-key-sequence "V")))
+  (false (tuatara.command:lookup-key (tuatara.modes:mode-keymap 'tuatara.defaults::buffers-mode)
+                                     (tuatara.frontend:parse-key-sequence "h"))))
+
+(define-test (buffers section-note-in-the-colour-of-warnings)
+  ;; only the words after the heading take it, and only a section given words has them
+  (let* ((list (tuatara.buffer:make-buffer "sections with a note" :text ""))
+         (pieces (nth-value 1 (tuatara.defaults::sectioned-pieces
+                               list '((:a "one") (:b "two"))
+                               (lambda (section) (string-capitalize section))
+                               (lambda (member section)
+                                 (declare (ignore section))
+                                 (list (format nil "  ~a~%" member)))
+                               :section-note (lambda (section) (and (eq section :a) "(persistent)"))))))
+    (unwind-protect
+         (progn
+           (is equal '((" (persistent)" . :warning))
+               (remove-if-not (lambda (piece) (and (consp piece) (eq (cdr piece) :warning))) pieces))
+           (true (find '("▾ A (1)" . :heading) pieces :test #'equal)))
+      (tuatara.buffer:kill-buffer list))))
 
 (define-test (buffers list)
   ;; start from a known set of buffers: earlier tests may have left some behind
@@ -83,7 +102,7 @@ list starts on its first line, on a screen WIDTH by HEIGHT."
                    (tuatara.buffer:buffer-line-number list (session-point editor)))
                (true (tuatara.defaults::list-member-at list))))
            ;; h and q go back
-           (multiple-value-bind (f editor) (fresh-list-session "C-x C-b h")
+           (multiple-value-bind (f editor) (fresh-list-session "C-x C-b q")
              (declare (ignore f))
              (is string= "*scratch*" (current-name editor)))
            (multiple-value-bind (f editor) (fresh-list-session "C-x C-b q")
@@ -386,7 +405,7 @@ list starts on its first line, on a screen WIDTH by HEIGHT."
              (is eq :a (section-of-line 5))
              (is eq nil (section-of-line 6))
              (is eq :b (section-of-line 9))
-             (tuatara.defaults::toggle-list-section list :a)
+             (tuatara.defaults::list-toggle-section list :a)
              (is string= (format nil "▸ A (5)~%▾ B (1)~%  three~%    more of three~%") (tuatara.buffer:buffer-string list)))
         (tuatara.buffer:kill-buffer list)))))
 

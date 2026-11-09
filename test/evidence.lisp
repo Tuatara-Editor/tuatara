@@ -232,13 +232,13 @@ cases/2026-0001/work/ (WORK), each bound to its native name ending in /."
                  (run-keys (format nil "C-x C-f C-a C-k ~a RET M-x e n d - s a f e - v i s i t RET" (key-string a)) :width 700 :height 12)
                  "a.txt stays opened safely: it is in the evidence folder"))
           (kill-buffers-visiting root)
-          ;; M-x evidence-folder-p says yes, and by which entry; no for a file beside it
-          (let ((f (run-keys (format nil "C-x C-f C-a C-k ~a RET M-x e v i d e n c e - f o l d e r - p RET" (key-string a)) :width 700 :height 12)))
+          ;; M-x describe-evidence says yes, and by which entry; no for a file beside it
+          (let ((f (run-keys (format nil "C-x C-f C-a C-k ~a RET M-x d e s c r i b e - e v i d e n c e RET" (key-string a)) :width 700 :height 12)))
             (true (tuatara.frontend.fake:fake-frame-showing f "Yes: "))
             (true (tuatara.frontend.fake:fake-frame-showing f "cases/*/evidence/\")")))
           (kill-buffers-visiting root)
           (true (tuatara.frontend.fake:fake-frame-showing
-                 (run-keys "M-x e v i d e n c e - f o l d e r - p RET" :file (namestring (put-file (concatenate 'string work "w.txt") "w"))
+                 (run-keys "M-x d e s c r i b e - e v i d e n c e RET" :file (namestring (put-file (concatenate 'string work "w.txt") "w"))
                                                                          :width 700 :height 12)
                  "is in no evidence folder"))
           (kill-buffers-visiting root)

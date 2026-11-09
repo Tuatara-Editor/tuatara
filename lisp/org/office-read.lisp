@@ -165,7 +165,7 @@ NIL for one that names none, or a place past the largest sheet."
   "Write to OUT the cells of TREE, a workbook's sheet, as SHEET-WRITE-ROWS
 does: values as SHEET-CELL-VALUE gives them from STRINGS, STYLES and
 DATE1904, formulas as written, at most LEFT cells, each no longer than
-*OFFICE-VALUE-LONGEST* characters. Returns how many cells were written."
+*OFFICE-VALUE-LENGTH-LIMIT* characters. Returns how many cells were written."
   (let ((hidden-columns (make-array 16385 :element-type 'bit :initial-element 0))
         (masters (make-hash-table :test 'equal))
         (rows '()) (formulas '()) (count 0) (cut nil) (row-at 0))
@@ -195,7 +195,7 @@ DATE1904, formulas as written, at most LEFT cells, each no longer than
                   (incf count)
                   (push (cons column value) cells)
                   (when formula
-                    (let ((text (office-value (xml-all-text formula *office-value-longest*))) (shared (xml-attribute formula "si")))
+                    (let ((text (office-value (xml-all-text formula *office-value-length-limit*))) (shared (xml-attribute formula "si")))
                       (when (and shared (plusp (length text))) (setf (gethash shared masters) place))
                       (push (cons place (cond ((plusp (length text)) (format nil "=~a" (org-safe-line text)))
                                               (shared (format nil "as ~a's, shared" (or (gethash shared masters) "another cell")))
@@ -253,7 +253,7 @@ run); its cells as an Org table and its formulas as written, as
 SHEET-WRITE writes them. Values are those last saved with the file, no
 formula worked out; a number is shown as written, or as the day or time it
 stands for when its cell's format shows a date or a time; at most
-*SHEET-MOST-CELLS* cells, the note no larger than *OFFICE-NOTE-LARGEST*
+*SHEET-MOST-CELLS* cells, the note no larger than *OFFICE-NOTE-SIZE-LIMIT*
 characters. Sheets the file holds that its list of sheets does not name are
 read at the end. CANCEL, a cons, stops the reading when its car turns true.
 Signals ZIP-ERROR or an error when it cannot be read."
@@ -408,7 +408,7 @@ the show; its text in the order of its shapes, as SLIDE-WRITE-SHAPES writes
 it; its speaker notes under a heading of their own. A slide its list names
 again is said to be the one named before, not written again. Slides the file
 holds that its list of slides does not name are read at the end. The note is
-no larger than *OFFICE-NOTE-LARGEST* characters; CANCEL, a cons, stops the
+no larger than *OFFICE-NOTE-SIZE-LIMIT* characters; CANCEL, a cons, stops the
 reading when its car turns true. Signals ZIP-ERROR or an error when it
 cannot be read."
   (let* ((*docx-reading* (docx-reading-of path octets cancel))

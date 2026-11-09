@@ -612,8 +612,8 @@ after."
   ;; a repository growing past the most a package may take is ended and deleted, not loaded
   (with-package-repository (dir where)
     (let ((tuatara-user:*package-ask-before-loading* nil)
-          (most tuatara.defaults::*package-most-octets*))
-      (setf tuatara.defaults::*package-most-octets* 1000)
+          (most tuatara.defaults::*package-size-limit*))
+      (setf tuatara.defaults::*package-size-limit* 1000)
       (unwind-protect
            (let ((f (auto-save-session
                      (list (list :until (lambda () (tuatara-user:load-package "pkgone" :source where) t))
@@ -622,7 +622,7 @@ after."
              (true (tuatara.frontend.fake:fake-frame-showing f "takes more than 1.0 kB: the package was not fetched"))
              (false (package-test-version))
              (false (directory (merge-pathnames ".fetching-*/" (tuatara.packages:packages-directory)))))
-        (setf tuatara.defaults::*package-most-octets* most)))))
+        (setf tuatara.defaults::*package-size-limit* most)))))
 
 (define-test (packages arguments-checked)
   ;; what could be taken for one of git's options, or a file outside the package's folder
@@ -1101,9 +1101,9 @@ no Lisp package any more, each (COMMAND . PLACE)."
   ;; finding which commit to fetch is held to the most a package may take as well: past it,
   ;; nothing is checked out
   (with-package-repository (dir where)
-    (let ((most tuatara.defaults::*package-most-octets*)
+    (let ((most tuatara.defaults::*package-size-limit*)
           (folders '()))
-      (setf tuatara.defaults::*package-most-octets* 1)
+      (setf tuatara.defaults::*package-size-limit* 1)
       (sb-int:encapsulate 'tuatara.packages::package-git 'probe-size-bounded
                           (lambda (function directory &rest arguments)
                             (push directory folders)
@@ -1111,7 +1111,7 @@ no Lisp package any more, each (COMMAND . PLACE)."
       (unwind-protect
            (fail (tuatara.packages::fetch-package "pkgone" where nil) 'tuatara.packages::package-too-large)
         (sb-int:unencapsulate 'tuatara.packages::package-git 'probe-size-bounded)
-        (setf tuatara.defaults::*package-most-octets* most))
+        (setf tuatara.defaults::*package-size-limit* most))
       (true (find-if (lambda (folder) (search "/probe/" folder)) folders))
       (false (find-if-not (lambda (folder) (search "/probe/" folder)) folders))
       (false (directory (merge-pathnames ".fetching-*/" (tuatara.packages:packages-directory)))))))

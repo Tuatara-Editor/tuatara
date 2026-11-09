@@ -285,7 +285,7 @@ was on (RIMU-SHOW-NEAREST)."
 (defun install-rimu-git ()
   "Make the git column, and bind G to show or hide it; refuse in a list of a
 folder not on the disk git's commands on the files as they are now."
-  (set-rimu-column :git 'rimu-git-cells :place :after :shown 'rimu-git-p
+  (rimu-set-column :git 'rimu-git-cells :place :after :shown 'rimu-git-p
                    :documentation "The entry's last commit: when, and the first line of its message.")
   (define-key *rimu-keymap* "G" 'rimu-toggle-git)
   (dolist (command '(git-file-menu git-blame git-log-file git-diff-file))

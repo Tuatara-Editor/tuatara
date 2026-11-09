@@ -1,10 +1,10 @@
-;;;; test/metadata.lisp --- M-x file-metadata: what a file is and says of itself, read by Tuatara alone.
+;;;; test/metadata.lisp --- M-x show-file-metadata: what a file is and says of itself, read by Tuatara alone.
 ;;;; Copyright (C) 2026 Michael A Jones.  GPL-3.0-or-later; see LICENSE.
 
 (in-package #:tuatara.tests)
 
 (define-test metadata
-  :description "M-x file-metadata shows what the system knows of a file (kind by contents, size,
+  :description "M-x show-file-metadata shows what the system knows of a file (kind by contents, size,
 permissions, owner, its four times, SHA-256, extended attributes) and what it says of itself, read
 by Tuatara alone: a photograph's EXIF and GPS position and thumbnail in JPEG, PNG, WebP, TIFF and
 HEIF; PNG text; XMP and its edit history; a PDF's information, saves and what could act in it, from
@@ -100,7 +100,7 @@ integers (SHORT, LONG) or of fractions (N . D) (RATIONAL), or octets."
   (namestring path))
 
 (defun metadata-of (path)
-  "The note M-x file-metadata makes of the file at PATH."
+  "The note M-x show-file-metadata makes of the file at PATH."
   (tuatara.defaults::install-metadata)
   (tuatara.defaults::file-metadata-note path))
 
@@ -744,11 +744,11 @@ OPERANDS FROM END), and how many it counted, as two values."
       (note-has note "* About this workbook")
       (note-has note "- Made by :: Bo Kaikoura")
       (false (search "* Sheet 1" note)))
-    ;; M-x file-metadata in a buffer visiting the file: its own buffer, read in the background, the file's
+    ;; M-x show-file-metadata in a buffer visiting the file: its own buffer, read in the background, the file's
     ;; access time as it was
     (let ((path (write-test-octets-file (merge-pathnames "kea.jpg" dir) (jpeg-test-octets))))
       (sb-posix:utimes path 946681200 946681200)
-      (docx-session path (list (format nil "M-x ~a RET" (rimu-typed "file-metadata")) ""))
+      (docx-session path (list (format nil "M-x ~a RET" (rimu-typed "show-file-metadata")) ""))
       (let ((visited (tuatara.buffer:find-buffer "kea.jpg")))
         (when visited (tuatara.buffer:kill-buffer visited)))
       (let ((shown (tuatara.buffer:find-buffer "*Metadata: kea.jpg*")))
@@ -877,12 +877,12 @@ OPERANDS FROM END), and how many it counted, as two values."
             (false (tuatara.defaults::look-up-key-owners-p path)))
           (let ((tuatara-user:*metadata-look-up-key-owners* t))
             (true (tuatara.defaults::look-up-key-owners-p path))))
-        ;; asked by M-x file-metadata, the answer y: a key not in the keyring said to be so
+        ;; asked by M-x show-file-metadata, the answer y: a key not in the keyring said to be so
         (let ((path (write-test-octets-file (merge-pathnames "message.dat" dir)
                                             (octets-of (openpgp-test-packet 1 (octets-of 3 (be-octets #x0123456789ABCDEF 8) 1 0 8 #xAB))
                                                        (openpgp-test-packet 18 (octets-of 1 2 3)))))
               (tuatara-user:*metadata-look-up-key-owners* :ask))
-          (let ((f (docx-session path (list (format nil "M-x ~a RET" (rimu-typed "file-metadata")) "y RET" ""))))
+          (let ((f (docx-session path (list (format nil "M-x ~a RET" (rimu-typed "show-file-metadata")) "y RET" ""))))
             (true (tuatara.frontend.fake:fake-frame-showing f "look up whose in your keyring")))
           (let ((shown (tuatara.buffer:find-buffer "*Metadata: message.dat*")))
             (true shown)

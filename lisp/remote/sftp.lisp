@@ -325,6 +325,10 @@ connected again when next used."
 (define-condition sftp-refusal (tuatara.io:file-system-error) ()
   (:documentation "Signalled when a server refuses a request, saying why: the connection stays good."))
 
+(define-condition remote-too-large (sftp-refusal)
+  ((size :initarg :size :reader remote-too-large-size))
+  (:documentation "Signalled when a file holds SIZE octets, more than the work asked for may take."))
+
 (defun sftp-refuse (link operation path reason &rest arguments)
   "Signal an SFTP-REFUSAL: OPERATION on PATH, a path on LINK's server,
 refused for the REASON FORMAT makes of ARGUMENTS, the connection still good."
@@ -778,6 +782,18 @@ of no use on the new."
       (unless (and (sftp-link-fd link) (= generation (sftp-link-generation link)))
         (sftp-unreached link)))))
 
+(defun sftp-size-to-read (link path attributes most)
+  "How many octets ATTRIBUTES say the file at PATH holds, on the connection
+LINK. Refused when they do not say, and with REMOTE-TOO-LARGE when MOST is given
+and the file holds more."
+  (let ((size (or (getf attributes :size)
+                  (sftp-fail link "read" path "the server does not say its size"))))
+    (when (and most (> size most))
+      (error 'remote-too-large
+             :size size :operation "read" :path (remote-name (sftp-link-host link) path)
+             :reason (format nil "it holds ~a, more than ~a" (octets-words size) (octets-words most))))
+    size))
+
 (defun remote-download (host path fd &key arrival on-piece most)
   "Read the file at PATH on HOST into the file open as FD, each piece where
 it belongs, +SFTP-PIECE+ octets at a time, +SFTP-PIECES-AHEAD+ asked for
@@ -798,11 +814,7 @@ them."
       link :open (list path 1 '(:attributes ())) path "read"
       (lambda (handle)
         (let* ((attributes (sftp-attributes link path :handle handle))
-               (size (let ((size (or (getf attributes :size)
-                                     (sftp-fail link "read" path "the server does not say its size"))))
-                       (when (and most (> size most))
-                         (sftp-refuse link "read" path "it holds ~a, more than ~a" (octets-words size) (octets-words most)))
-                       size))
+               (size (sftp-size-to-read link path attributes most))
                (arrival (or arrival (make-arrival size :in-order t)))
                (asked (make-hash-table)))
           (unless (eq (remote-kind attributes) :file) (sftp-fail link "read" path "it is not a file"))
