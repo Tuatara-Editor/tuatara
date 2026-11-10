@@ -13,7 +13,7 @@
 <div class="site">
 <nav class="toc" id="contents" aria-label="Contents">
 <strong>Tuatara Manual</strong>
-<small>for version 0.90.22</small>
+<small>for version 0.90.23</small>
 <p class="tools"><a href="all.html">All on one page</a>
 <button type="button" class="theme" hidden>Dark</button></p>
 <input type="search" placeholder="Find a heading" aria-label="Find a heading">
@@ -297,7 +297,7 @@ the commands. They are described under searching, above.</p>
 <tr><th>Modal</th><th>Non-modal</th><th>Command</th><th>What it does</th></tr>
 </thead>
 <tbody>
-<tr><td><kbd>r r</kbd></td><td>none</td><td><code>replace-regexp</code></td><td>Replace a regular expression, as one edit, in the region when one is active, else in the whole buffer: pattern/replacement, typed on one line or in two parts, as RET after the pattern types the / before the replacement.</td></tr>
+<tr><td><kbd>r r</kbd></td><td>none</td><td><code>replace-regexp</code></td><td>Replace a regular expression, as one edit: pattern/replacement, typed on one line or in two parts, as RET after the pattern types the / before the replacement.</td></tr>
 <tr><td>none</td><td><kbd>M-%</kbd></td><td><code>query-replace</code></td><td>Replace literal text, asking at each match: y replaces, n skips, ! replaces all the rest, .</td></tr>
 <tr><td><kbd>r q</kbd></td><td><kbd>C-M-%</kbd></td><td><code>query-replace-regexp</code></td><td>Replace a regular expression as r r does, asking at each match: y replaces, n leaves it and goes to the next, ! replaces all the rest, .</td></tr>
 <tr><td>none</td><td><kbd>M-x replace-regexp-thorough</kbd></td><td><code>replace-regexp-thorough</code></td><td>Replace a regular expression as replace-regexp does (the first match on each line, every match after a leading %), finding every match of up to a megabyte whole however many lines it spans, with the cost and the limit of regex-search-forward-thorough: a match of more than a megabyte is still cut short, or missed when it needs text further on.</td></tr>
@@ -548,6 +548,6 @@ types. Otherwise it uses the headings Tuatara finds itself.</p>
 </article>
 </main>
 </div>
-<a class="to-contents" href="#contents">Contents</a>
+<a class="to-contents" href="index.html">Contents</a>
 </body>
 </html>

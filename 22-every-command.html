@@ -13,7 +13,7 @@
 <div class="site">
 <nav class="toc" id="contents" aria-label="Contents">
 <strong>Tuatara Manual</strong>
-<small>for version 0.90.22</small>
+<small>for version 0.90.23</small>
 <p class="tools"><a href="all.html">All on one page</a>
 <button type="button" class="theme" hidden>Dark</button></p>
 <input type="search" placeholder="Find a heading" aria-label="Find a heading">
@@ -804,7 +804,7 @@ the commands that mention a word, press <kbd>C-h a</kbd> and type the word.</p>
 <tr><td><kbd>.</kbd></td><td>none</td><td><code>repeat</code></td><td>Run the last command again, other than repeat itself, with the prefix argument it had (one given to repeat is used instead) and as the key that ran it (C-x C– shrinks again, it does not grow); repeat again, and it runs that command once more, as often as you like.</td></tr>
 <tr><td>none</td><td><kbd>M-x repeat-menu</kbd></td><td><code>repeat-menu</code></td><td>Open the menu of a repeat: its start, time, how it repeats and when it ends, what they come to shown under it; RET writes it.</td></tr>
 <tr><td>none</td><td><kbd>M-x repeat-menu-write</kbd></td><td><code>repeat-menu-write</code></td><td>Write the repeat of the open repeat menu where the date prompt it came from would have written its date; say why when it cannot be written.</td></tr>
-<tr><td><kbd>r r</kbd></td><td>none</td><td><code>replace-regexp</code></td><td>Replace a regular expression, as one edit, in the region when one is active, else in the whole buffer: pattern/replacement, typed on one line or in two parts, as RET after the pattern types the / before the replacement.</td></tr>
+<tr><td><kbd>r r</kbd></td><td>none</td><td><code>replace-regexp</code></td><td>Replace a regular expression, as one edit: pattern/replacement, typed on one line or in two parts, as RET after the pattern types the / before the replacement.</td></tr>
 <tr><td>none</td><td><kbd>M-x replace-regexp-thorough</kbd></td><td><code>replace-regexp-thorough</code></td><td>Replace a regular expression as replace-regexp does (the first match on each line, every match after a leading %), finding every match of up to a megabyte whole however many lines it spans, with the cost and the limit of regex-search-forward-thorough: a match of more than a megabyte is still cut short, or missed when it needs text further on.</td></tr>
 <tr><td>none</td><td><kbd>M-x reverse-region</kbd></td><td><code>reverse-region</code></td><td>Reverse the order of the lines the selection touches.</td></tr>
 <tr><td>none</td><td><kbd>r</kbd>, <kbd>g r</kbd>, <kbd>C-c r</kbd></td><td><code>revert-buffer</code></td><td>Read the current buffer's file again, replacing its text: one step that undo takes back, unless the text could no longer be trusted (then the history goes too).</td></tr>
@@ -1393,6 +1393,6 @@ listed here, apart from the rest, so that the table above can be read through.</
 </article>
 </main>
 </div>
-<a class="to-contents" href="#contents">Contents</a>
+<a class="to-contents" href="index.html">Contents</a>
 </body>
 </html>
