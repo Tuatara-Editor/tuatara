@@ -8,11 +8,10 @@
 ;;;; takes a picture of the whole window as GTK renders it, drawn as the
 ;;;; graphics card is given it, then another of the same window painted whole,
 ;;;; and writes to OUT how many textures the first held, how many octets the
-;;;; two differ in, and in how many by more than 16.
+;;;; two differ in, and in how many by more than 16; or, when a step failed or
+;;;; it all took longer than ninety seconds, why, as :ERROR or :TIMED-OUT.
 
-(load (merge-pathnames "../../tools/quicklisp.lisp" *load-truename*))
-(push (merge-pathnames "../../" (make-pathname :name nil :type nil :defaults *load-truename*)) asdf:*central-registry*)
-(ql:quickload :tuatara/terminal :silent t)
+(load (merge-pathnames "steps.lisp" *load-truename*))
 
 (defmacro c (name result &rest arguments)
   "Call the C function NAME, which returns RESULT, with ARGUMENTS, alternately
@@ -23,7 +22,8 @@ a type and a value, of the types TUATARA.IO:C-TYPE knows."
 
 (defun window-picture (window)
   "The pixels of WINDOW as GTK renders it now, as a vector of octets, 32 bits a
-pixel, and the texture nodes it was drawn with, by count."
+pixel, and the texture nodes it was drawn with, by count; NIL while it has
+drawn nothing yet."
   (let* ((width (c "gtk_widget_get_width" :int :pointer window))
          (height (c "gtk_widget_get_height" :int :pointer window))
          (paintable (c "gtk_widget_paintable_new" :pointer :pointer window))
@@ -31,7 +31,7 @@ pixel, and the texture nodes it was drawn with, by count."
     (c "gdk_paintable_snapshot" :void :pointer paintable :pointer snapshot
        :double (float width 1d0) :double (float height 1d0))
     (let* ((node (let ((node (c "gtk_snapshot_free_to_node" :pointer :pointer snapshot)))
-                   (if (tuatara.io:null-pointer-p node) (error "the window drew nothing") node)))
+                   (if (tuatara.io:null-pointer-p node) (return-from window-picture nil) node)))
            (renderer (c "gsk_cairo_renderer_new" :pointer))
            (textures (let ((bytes (c "gsk_render_node_serialize" :pointer :pointer node)))
                        (sb-alien:with-alien ((size sb-alien:unsigned-long 0))
@@ -50,60 +50,95 @@ pixel, and the texture nodes it was drawn with, by count."
           (c "gdk_texture_download" :void :pointer texture :pointer data :size (* 4 width)))
         (values pixels textures)))))
 
-(defun window ()
-  "The frontend of the window open, or NIL before it is."
-  (first (tuatara.frontend.gtk::open-windows)))
+(defvar *pictures* '()
+  "The pictures of the window taken so far, the newest first: each its pixels
+and the texture nodes it was drawn with, by count.")
 
-(defvar *on-card* nil
-  "The picture of the window drawn as pictures the graphics card is given, and its textures by count.")
+(defvar *steps-done* 0
+  "How many of the steps run in GTK's own thread have finished.")
 
-(tuatara.frontend.gtk::define-callback show-on-card :boolean ((data :pointer))
-  (tuatara.frontend.gtk::redraw (window))
-  nil)
+(defvar *window* nil
+  "The frontend of the window the steps are run on.")
 
-(tuatara.frontend.gtk::define-callback picture-on-card :boolean ((data :pointer))
-  (let ((f (window)))
-    (setf *on-card* (multiple-value-list (window-picture (tuatara.frontend.gtk::gtk-window f))))
-    ;; then the same window painted whole
-    (tuatara.frontend.gtk::drawn-on-card f nil))
-  nil)
+(defmacro define-step (name &body body)
+  "Define NAME as a callback running BODY in GTK's own thread, once it is
+idle; what BODY signals is seen as :ERROR, named for the step, and
+*STEPS-DONE* counts it run."
+  `(tuatara.frontend.gtk::define-callback ,name :boolean ((data :pointer))
+     (declare (ignore data))
+     (handler-case (progn ,@body)
+       (error (e) (see :error (format nil "~(~a~): ~a" ',name e))))
+     (incf *steps-done*)
+     nil))
 
-(tuatara.frontend.gtk::define-callback picture-painted-whole :boolean ((data :pointer))
-  (let ((whole (window-picture (tuatara.frontend.gtk::gtk-window (window)))))
-    (destructuring-bind (on-card textures) *on-card*
-      (with-open-file (o (second (uiop:command-line-arguments)) :direction :output :if-exists :supersede)
-        (with-standard-io-syntax
-          (prin1 (list :textures textures
-                       :octets (length whole)
-                       :differing (if (= (length on-card) (length whole))
-                                      (count nil (map 'list #'= on-card whole))
-                                      (length whole))
-                       :differing-much (if (= (length on-card) (length whole))
-                                           (count-if (lambda (d) (> (abs d) 16)) (map 'list #'- on-card whole))
-                                           (length whole)))
-                 o)))))
-  (sb-ext:exit :code 0 :abort t))
+(define-step show-on-card
+  (tuatara.frontend.gtk::redraw *window*))
 
-(sb-thread:make-thread
- (lambda ()
-   (loop until (and (window) (tuatara.frontend.gtk::gtk-shown (window)))
-         do (sleep 0.1))
-   ;; a picture: once it shows, in as many windows as asked for
-   (flet ((pictures-shown ()
-            (let ((frame (sb-thread:with-mutex ((tuatara.frontend.gtk::gtk-lock (window)))
-                           (tuatara.frontend.gtk::gtk-shown (window)))))
-              (if frame (length (tuatara.frontend.gtk::frame-images frame)) 0))))
-     (when (member (third (uiop:command-line-arguments)) '("picture" "pictures-beside") :test #'equal)
-       (loop repeat 600 until (plusp (pictures-shown)) do (sleep 0.1)))
-     (when (equal (third (uiop:command-line-arguments)) "pictures-beside")
-       (dolist (key (list (tuatara.frontend:make-key #\x :ctrl t) (tuatara.frontend:make-key #\3)))
-         (tuatara.frontend.gtk::push-key (window) key))
-       (loop repeat 600 until (= 2 (pictures-shown)) do (sleep 0.1))))
-   ;; the file's text laid out and coloured, then each step once GTK has laid out the one before
-   (sleep 2)
-   (dolist (step (list (tuatara.gtk:callback show-on-card) (tuatara.gtk:callback picture-on-card)
-                       (tuatara.gtk:callback picture-painted-whole)))
-     (tuatara.frontend.gtk::g-idle-add step (tuatara.io:null-pointer))
-     (sleep 1))))
+(defun take-picture ()
+  "Push a picture of the window onto *PICTURES*, and true; NIL while it has
+drawn nothing yet."
+  (let ((picture (multiple-value-list (window-picture (tuatara.frontend.gtk::gtk-window *window*)))))
+    (when (first picture)
+      (push picture *pictures*))))
+
+(define-step picture-on-card
+  ;; then the same window painted whole
+  (when (take-picture)
+    (tuatara.frontend.gtk::drawn-on-card *window* nil)))
+
+(define-step picture-painted-whole
+  (take-picture))
+
+(defun run-in-gtk (step)
+  "Run STEP, a callback defined by DEFINE-STEP, in GTK's own thread, and wait
+up to 30 seconds for it to finish; what it signalled is an error here."
+  (let ((before *steps-done*))
+    (tuatara.frontend.gtk::g-idle-add step (tuatara.io:null-pointer))
+    (unless (wait-until (lambda () (> *steps-done* before)) 30)
+      (error "GTK did not run ~a within 30 seconds" step))
+    (let ((failed (getf *seen* :error)))
+      (when failed (error "~a" failed)))))
+
+(defun picture-in-gtk (step)
+  "Run STEP, a callback defined by DEFINE-STEP that takes a picture, in GTK's
+own thread until it has taken one, for up to 30 seconds."
+  (let ((before (length *pictures*)))
+    (unless (wait-until (lambda () (run-in-gtk step) (> (length *pictures*) before)) 30 :interval 1/10)
+      (error "the window drew nothing within 30 seconds"))))
+
+(defun steps ()
+  "Wait for the window to show what was asked for, take its two pictures and
+note what they hold and how they differ."
+  (let ((how (third (uiop:command-line-arguments))))
+    (setf *window* (or (first-window-shown 30) (error "no window showed within 30 seconds")))
+    ;; a picture: once it shows, in as many windows as asked for; else the file's text
+    (cond ((member how '("picture" "pictures-beside") :test #'equal)
+           (unless (wait-until (lambda () (plusp (shown-pictures *window*))) 60)
+             (error "the picture did not show within 60 seconds"))
+           (when (equal how "pictures-beside")
+             (type-keys *window* "C-x 3")
+             (unless (wait-until (lambda () (= 2 (shown-pictures *window*))) 60)
+               (error "the picture did not show twice within 60 seconds"))))
+          ((not (wait-until (lambda () (search "lazy dog" (shown-text *window*))) 30))
+           (error "the file's text did not show within 30 seconds")))
+    ;; the file's text laid out and coloured, then each step once GTK has laid out the one before
+    (sleep 2)
+    (run-in-gtk (tuatara.gtk:callback show-on-card))
+    (sleep 1)
+    (picture-in-gtk (tuatara.gtk:callback picture-on-card))
+    (sleep 1)
+    (picture-in-gtk (tuatara.gtk:callback picture-painted-whole))
+    (destructuring-bind ((whole textures-whole) (on-card textures)) *pictures*
+      (declare (ignore textures-whole))
+      (let ((same-size (= (length on-card) (length whole))))
+        (see :textures textures)
+        (see :octets (length whole))
+        (see :differing (if same-size (count nil (map 'list #'= on-card whole)) (length whole)))
+        (see :differing-much (if same-size
+                                 (count-if (lambda (d) (> (abs d) 16)) (map 'list #'- on-card whole))
+                                 (length whole)))))))
+
+;; given up on after ninety seconds, what was seen written all the same
+(run-steps #'steps (second (uiop:command-line-arguments)) :give-up 90)
 
 (tuatara.terminal:main (list "--gui" (first (uiop:command-line-arguments))))

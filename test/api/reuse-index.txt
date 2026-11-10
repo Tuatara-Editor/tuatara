@@ -1770,7 +1770,7 @@ tuatara.defaults:change-server (internal)  function  Change what HOST, a trusted
 tuatara.defaults:change-servers (internal)  function  Change the servers marked in the list of trusted servers, or the one on the line: ASK, a function of a host and its entry, gives the question asked before the change, or NIL for none, and CHANGE, a function of the entry, the changed one; NOUN says what changed, for the message.  lisp/servers.lisp
 tuatara.defaults:changes-by-file (internal)  function  CHANGES, each (ENTRY .  lisp/search/results.lisp
 tuatara.defaults:changes-for (internal)  function  The changes among CHANGES (each (FILE .  lisp/editing/state.lisp
-tuatara.defaults:changes-in-view (internal)  function  What a replacement changes within STRETCHES, (START .  lisp/search/rewrite.lisp
+tuatara.defaults:changes-in-view (internal)  function  What a job at matches changes within STRETCHES, (START .  lisp/search/rewrite.lisp
 tuatara.defaults:char-codes-text (internal)  function  The code of CHAR in decimal, octal and hexadecimal, as (97, #o141, #x61); for a raw octet, that it is one, and its value.  lisp/help/char.lisp
 tuatara.defaults:char-motion (internal)  function  Move point COUNT characters on, back when negative, across lines, a letter with its accents or an emoji with its skin tone one character (CLUSTER-FORWARD); in the hex view, COUNT octets.  lisp/editing/commands.lisp
 tuatara.defaults:char-mover (internal)  function  Where COUNT characters on from POSITION of BUFFER is, back when COUNT is negative; past either end, an error: "End of buffer" or "Beginning of buffer".  lisp/editing/simple.lisp
@@ -6275,7 +6275,7 @@ tuatara.defaults:scope-at (internal)  function  SCOPE as its SCOPE-POSITIONS sta
 tuatara.defaults:scope-extent (internal)  function  The octets SCOPE, a list of (START .  lisp/selecting/split.lisp
 tuatara.defaults:scope-groups (internal)  function  SCOPE, a list of (START .  lisp/selecting/split.lisp
 tuatara.defaults:scope-positions (internal)  function  What SCOPE, a list of (START .  lisp/selecting/split.lisp
-tuatara.defaults:scope-shade (internal)  function  The SHADE of a job over SCOPE of BUFFER waiting its turn: its stretches, or a block's columns row by row.  lisp/selecting/split.lisp
+tuatara.defaults:scope-shade (internal)  function  The SHADE of a job over SCOPE of BUFFER waiting its turn: a block's columns row by row, or its stretches; with MATCHER, only the matches of it in them as the text stands now (CHANGES-IN-VIEW), the whole stretch when the pattern is too slow on this text to light them.  lisp/selecting/split.lisp
 tuatara.defaults:screen-deadline (internal)  function  The internal real time by which the work at a key typed shows what it found.  lisp/search/filters.lisp
 tuatara.defaults:scroll-by-count (internal)  function  Scroll WINDOW as a scroll command does, DIRECTION 1 forward or -1 back: with a prefix argument, that many rows, the other way when it is negative; else by nearly a screenful, the rows it shows, where long lines wrap.  lisp/editing/commands.lisp
 tuatara.defaults:scroll-by-wheel (internal)  function  Scroll the window under the mouse, else the selected one, as the mouse wheel turned: *WHEEL-SCROLL-LINES* lines on for \`<wheel-down>', back for \`<wheel-up>'; that window's point stays in view.  lisp/editing/commands.lisp

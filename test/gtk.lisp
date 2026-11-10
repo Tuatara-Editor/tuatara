@@ -426,7 +426,12 @@ wrote nothing."
                                      :wait nil :output nil :error nil)))
     (unwind-protect
          (progn
-           (sleep 0.5)
+           ;; the server ready once its socket, named for the display after its own, takes a connection
+           (wait-until (lambda ()
+                         (let ((fd (tuatara.io:connect-to (format nil "~a/broadway~d.socket"
+                                                                  (uiop:getenv "XDG_RUNTIME_DIR") (1+ display)))))
+                           (when fd (sb-posix:close fd) t)))
+                       10)
            (ignore-errors (delete-file out))
            (sb-ext:run-program sb-ext:*runtime-pathname*
                                (list* "--dynamic-space-size"
@@ -491,7 +496,9 @@ windows side by side."
             (dotimes (i 200) (format o "2026-01-01T00:00:00Z,~d,The quick brown fox jumps over the lazy dog.,abc~d~%" (+ 1700000000 i) i)))
           (let ((drawn (window-drawn dir sample)))
             (true drawn "the window wrote nothing")
-            (when drawn
+            (false (getf drawn :error) "~a" (getf drawn :error))
+            (false (getf drawn :timed-out) "the window gave up waiting")
+            (when (getf drawn :octets)
               ;; a texture for each row's part at least
               (true (> (getf drawn :textures) 20) "~d textures" (getf drawn :textures))
               (true (plusp (getf drawn :octets)))
@@ -512,7 +519,9 @@ windows side by side."
             (tuatara.frontend.gtk::cairo-surface-destroy surface))
           (let ((drawn (window-drawn dir picture "picture")))
             (true drawn "the window with a picture wrote nothing")
-            (when drawn
+            (false (getf drawn :error) "~a" (getf drawn :error))
+            (false (getf drawn :timed-out) "the window gave up waiting")
+            (when (getf drawn :octets)
               (true (> (getf drawn :textures) 1) "~d textures" (getf drawn :textures))
               (true (< (getf drawn :differing-much) (/ (getf drawn :octets) 200))
                     "~:d of ~:d octets far from painted whole"
@@ -520,7 +529,9 @@ windows side by side."
           ;; the same picture in two windows side by side: drawn in both
           (let ((drawn (window-drawn dir picture "pictures-beside")))
             (true drawn "the window with a picture beside itself wrote nothing")
-            (when drawn
+            (false (getf drawn :error) "~a" (getf drawn :error))
+            (false (getf drawn :timed-out) "the window gave up waiting")
+            (when (getf drawn :octets)
               (true (< (getf drawn :differing-much) (/ (getf drawn :octets) 200))
                     "~:d of ~:d octets far from painted whole"
                     (getf drawn :differing-much) (getf drawn :octets))))))))

@@ -12,63 +12,10 @@
 ;;;; with C-x C-c; it writes to OUT what it saw at each step, and the exit code
 ;;;; the client ended with, as a property list.
 
-(load (merge-pathnames "../../tools/quicklisp.lisp" *load-truename*))
-(push (merge-pathnames "../../" (make-pathname :name nil :type nil :defaults *load-truename*)) asdf:*central-registry*)
-(ql:quickload :tuatara/terminal :silent t)
-(import 'tuatara.runtime:wait-until)
+(load (merge-pathnames "steps.lisp" *load-truename*))
 
 (defvar *arguments* (uiop:command-line-arguments)
   "NAME RUNTIME FILE DROPPED PICTURE OUT, as the test gives them.")
-
-(defvar *seen* '()
-  "What was seen at each step, newest first, as a property list.")
-
-(defvar *seen-lock* (sb-thread:make-mutex :name "seen")
-  "Held while *SEEN* is written, or written out.")
-
-(defun see (key value)
-  "Note VALUE as what was seen of KEY."
-  (sb-thread:with-mutex (*seen-lock*) (setf (getf *seen* key) value)))
-
-(defun write-seen-and-exit ()
-  "Write what was seen to OUT and end this program."
-  (sb-thread:with-mutex (*seen-lock*)
-    (with-open-file (o (sixth *arguments*) :direction :output :if-exists :supersede)
-      (with-standard-io-syntax
-        (prin1 *seen* o))))
-  (sb-ext:exit :code 0 :abort t))
-
-(defun windows ()
-  "The frontends of the windows open, the oldest first."
-  (tuatara.frontend.gtk::open-windows))
-
-(defun shown-text (f)
-  "The rows F's window shows now, as one string."
-  (let ((frame (sb-thread:with-mutex ((tuatara.frontend.gtk::gtk-lock f)) (tuatara.frontend.gtk::gtk-shown f))))
-    (if frame
-        (format nil "~{~a~^~%~}" (loop for row across (tuatara.frontend.gtk::frame-rows frame)
-                                       when row collect (first row)))
-        "")))
-
-(defun shown-pictures (f)
-  "How many pictures F's window shows now."
-  (let ((frame (sb-thread:with-mutex ((tuatara.frontend.gtk::gtk-lock f)) (tuatara.frontend.gtk::gtk-shown f))))
-    (if frame (length (tuatara.frontend.gtk::frame-images frame)) 0)))
-
-(defun type-keys (f keys)
-  "Type KEYS, a key sequence as written (\"C-x 5 2\"), in F's window."
-  (dolist (spec (tuatara.frontend:parse-key-sequence keys))
-    (tuatara.frontend.gtk::push-key f (tuatara.frontend:spec-key spec))))
-
-(defvar *to-close* nil
-  "The window whose close button is pressed next (ON-CLOSE-PRESSED).")
-
-(tuatara.frontend.gtk::define-callback on-close-pressed :boolean ((data :pointer))
-  (declare (ignore data))
-  ;; as the window's close button does: GTK asks the window to close
-  (tuatara.runtime:foreign-call "gtk_window_close" sb-alien:void
-                                (sb-sys:system-area-pointer (tuatara.frontend.gtk::gtk-window *to-close*)))
-  nil)
 
 (defun font-steps (f)
   "The steps F's window's font is scaled by."
@@ -76,8 +23,7 @@
 
 (defun steps ()
   "Go through the steps, noting what is seen."
-  (let ((first (wait-until (lambda () (let ((open (windows))) (and open (tuatara.frontend.gtk::gtk-shown (first open))
-                                                                  (first open)))) 30)))
+  (let ((first (first-window-shown 30)))
     (see :window (and first t))
     (when first
       (see :shows-file (and (wait-until (lambda () (search "kiwi window" (shown-text first))) 30) t))
@@ -120,13 +66,7 @@
 (setf tuatara.defaults::*runtime-directory* (second *arguments*))
 
 ;; given up on after four minutes, what was seen written all the same
-(sb-thread:make-thread (lambda () (sleep 240) (see :timed-out t) (write-seen-and-exit)) :name "watchdog")
-
-(defvar *steps*
-  (sb-thread:make-thread (lambda ()
-                           (handler-case (steps)
-                             (error (e) (see :error (princ-to-string e)) (write-seen-and-exit))))
-                         :name "steps")
+(defvar *steps* (run-steps #'steps (sixth *arguments*) :exit nil)
   "The thread going through the steps.")
 
 (let ((code (tuatara.terminal:main (list (format nil "--client=~a" (first *arguments*)) "--gui" (third *arguments*)))))

@@ -808,16 +808,32 @@ text by, as (OFFSET . BIAS) for anchors to follow while a job over it waits."
                         (block-scope-wide scope) (block-scope-crlf scope) (block-scope-tab-width scope))
       (loop for (start end) on positions by #'cddr collect (cons start end))))
 
-(defun scope-shade (buffer scope)
-  "The SHADE of a job over SCOPE of BUFFER waiting its turn: its stretches, or
-a block's columns row by row."
-  (if (block-scope-p scope)
-      (let ((rows (block-shade buffer (block-scope-left scope) (block-scope-right scope)
-                               :tab-width (block-scope-tab-width scope) :wide (block-scope-wide scope))))
-        ;; a block reaches past its last row's end; its rows are the lines starting before that
-        (lambda (positions from to)
-          (funcall rows (list (first positions) (max (first positions) (1- (second positions)))) from to)))
-      #'ranges-shade))
+(defun scope-shade (buffer scope &key matcher)
+  "The SHADE of a job over SCOPE of BUFFER waiting its turn: a block's columns
+row by row, or its stretches; with MATCHER, only the matches of it in them as
+the text stands now (CHANGES-IN-VIEW), the whole stretch when the pattern is
+too slow on this text to light them."
+  (cond ((block-scope-p scope)
+         (let ((rows (block-shade buffer (block-scope-left scope) (block-scope-right scope)
+                                  :tab-width (block-scope-tab-width scope) :wide (block-scope-wide scope))))
+           ;; a block reaches past its last row's end; its rows are the lines starting before that
+           (lambda (positions from to)
+             (funcall rows (list (first positions) (max (first positions) (1- (second positions)))) from to))))
+        (matcher
+         (lambda (positions from to)
+           (let ((rope (tuatara.buffer:buffer-text buffer))
+                 (stretches (loop for (start end) in (ranges-shade positions from to) collect (cons start end))))
+             (when stretches
+               (multiple-value-bind (ranges slow)
+                   (changes-in-view rope (lambda (function from to)
+                                           (stretch-matches (lambda (a z m g)
+                                                              (declare (ignore m g))
+                                                              (funcall function a z)
+                                                              nil)
+                                                            rope matcher from to nil nil nil))
+                                    stretches t)
+                 (if slow (loop for (start . end) in stretches collect (list start end)) ranges))))))
+        (t #'ranges-shade)))
 
 (defun scope-groups (rope scope)
   "SCOPE, a list of (START . END) stretches or a BLOCK-SCOPE, cut into pieces for
@@ -1245,7 +1261,8 @@ given, finds REGEXP as SPLIT-MATCHER made it for the split. Returns the job,
 or :QUEUED when another job runs or waits in the buffer, or its lines are
 still being counted: it then waits its turn, the matches' stretches and SKIP's
 places followed meanwhile."
-  (let ((what (job-words kind :doing (format nil "every other match of ~a in ~a" regexp words))))
+  (let ((what (job-words kind :doing (format nil "every other match of ~a in ~a" regexp words)))
+        (matcher (or matcher (split-matcher regexp (block-scope-p scope) buffer))))
     (when (or (job-busy-p buffer) (queued-in buffer) (lines-uncounted-p buffer))
       (let ((followed (and skip (spans-followed buffer skip))))
         (when (queue-if-busy buffer what (scope-positions scope)
@@ -1254,14 +1271,14 @@ places followed meanwhile."
                                                       :typed typed :open open :close close
                                                       :report report :matcher matcher
                                                       :skip (and followed (funcall followed))))
-                             :shade (scope-shade buffer scope)
+                             :shade (scope-shade buffer scope :matcher matcher)
                              :counted t)
           (return-from start-every-match-job :queued))))
     (tuatara.buffer:ensure-indexed buffer)
     (let* ((rope (tuatara.buffer:buffer-text buffer))
            (groups (scope-groups rope scope))
            (spec (make-matches-job :rope rope :scope scope :groups groups :high (cdr (car (car (last groups))))
-                                   :matcher (or matcher (split-matcher regexp (block-scope-p scope) buffer))
+                                   :matcher matcher
                                    :kind kind :texts (eq kind :wrap)
                                    :mode (getf typed :mode) :text (getf typed :text)
                                    :back (getf typed :back-octets *no-octets*)
@@ -1276,7 +1293,7 @@ places followed meanwhile."
                                :joins joins :hidden-left (matches-job-left spec)
                                :mapper (lambda (function from to halt) (every-match-edits spec function from to halt))
                                :expand (lambda (m g) (declare (ignore m)) g)
-                               :all t :doing (job-words kind :doing)
+                               :all t :lights-matches t :doing (job-words kind :doing)
                                :verb (job-words kind :verb (format nil "the matches of ~a out of sight" regexp))
                                :leaves "the matches out of sight are as they were"
                                :report (or report (job-report kind
@@ -1291,18 +1308,18 @@ places followed meanwhile."
                                                         (scope-extent scope) (length (rewrite-pieces job)) (length skip)))
       job)))
 
-(defun match-change (spec s e m)
+(defun match-change (spec s e m &optional count)
   "What SPEC, a MATCHES-JOB, writes at the match from S below E, M its text when
 SPEC reads it. It returns three values: the stretch from A below Z it writes
 over and the octets it puts there. It returns NIL when that match cannot be
 changed: what was typed beside the places is not there beside it (counted in
-REFUSED), or there is no pair around it to take off."
+REFUSED when COUNT is true), or there is no pair around it to take off."
   (let ((rope (matches-job-rope spec)) (open (matches-job-open spec)) (close (matches-job-close spec)))
     (ecase (matches-job-kind spec)
       (:type (multiple-value-bind (a z octets)
                  (typed-match rope s e (matches-job-mode spec) (matches-job-text spec)
                               (matches-job-back spec) (matches-job-forward spec))
-               (unless a (tally (matches-job-refused spec)))
+               (when (and count (not a)) (tally (matches-job-refused spec)))
                (values a z octets)))
       (:delete (values s e *no-octets*))
       (:wrap (values s e (tuatara.text:string-octets (concatenate 'string (tuatara.text:octets-string open)
@@ -1316,8 +1333,8 @@ FUNCTION with (A Z NIL OCTETS) for each change MATCH-CHANGE makes to a match
 starting from FROM below TO, in order (PIECE-MATCHES). A match that is left as
 it is gets told as passed over (PASS-OVER). A match whose change would overlap
 the one before, or run past the scope, is left as it is too. What folds keep it
-from is counted as the pieces are written (HALT given), not as its result is
-mapped."
+from, and what MATCH-CHANGE refuses, is counted as the pieces are written (HALT
+given), not as its result is mapped or its matches lit."
   (let ((previous from) (skip (matches-job-skip spec)) (folds (matches-job-folds spec)))
     (piece-matches
      (lambda (s e m g)
@@ -1328,7 +1345,7 @@ mapped."
           (when halt (tally (matches-job-left spec)))
           (pass-over function s e))
          (t
-          (multiple-value-bind (a z octets) (match-change spec s e m)
+          (multiple-value-bind (a z octets) (match-change spec s e m halt)
             (cond ((not (and a (>= a previous) (<= z (matches-job-high spec))))
                    (pass-over function s e))
                   ((and folds (tuatara.display:folds-cut folds a z))

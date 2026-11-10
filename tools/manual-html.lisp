@@ -42,12 +42,15 @@ files whose names begin with a number."
   "The title of a chapter from its PARTS: that of its first heading, as HTML."
   (third (first (getf parts :headings))))
 
-(defun contents-list (entries)
+(defun contents-list (entries &key (front t))
   "The manual's contents as a list of chapters, each with its sections under it,
 ENTRIES its (CHAPTER . PARTS) in order: all of them in every page, for the
-filter to look through, and folded but for the chapter a page shows."
+filter to look through, and folded but for the chapter a page shows. With
+FRONT, the contents page itself comes first, as 0 Contents."
   (with-output-to-string (out)
     (write-string "<ol class=\"chapters\">" out)
+    (when front
+      (write-string "<li id=\"nav-index\"><a href=\"index.html\">0 Contents</a></li>" out))
     (loop for (chapter . parts) in entries
           do (format out "<li id=\"nav-~a\"><a href=\"~a\">~d ~a</a>~a</li>"
                      (getf chapter :stem) (page-name chapter) (getf chapter :number) (chapter-title parts)
@@ -82,7 +85,7 @@ each (CHAPTER . PARTS) or NIL, and up to the contents."
 (defun site (contents version main &key whole)
   "The HTML of a page's layout: the contents column, named CONTENTS, and MAIN beside it, for VERSION.
 The column links to the whole manual on one page, or with WHOLE back to the chapters, and holds the
-button that changes between light and dark colours; a link in the corner opens the contents page."
+button that changes between light and dark colours."
   (format nil "<div class=\"site\">
 <nav class=\"toc\" id=\"contents\" aria-label=\"Contents\">
 <strong>Tuatara Manual</strong>
@@ -95,7 +98,6 @@ button that changes between light and dark colours; a link in the corner opens t
 <main>
 ~a</main>
 </div>
-<a class=\"to-contents\" href=\"index.html\">Contents</a>
 " version whole contents main))
 
 (defun write-page (out title body)
@@ -112,8 +114,6 @@ nav.toc .tools { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 1
 nav.toc .tools a { color: var(--accent); }
 button.theme { font-size: 13px; padding: 2px 10px; color: var(--fg); background: var(--bg);
   border: 1px solid var(--rule); border-radius: 4px; cursor: pointer; }
-.to-contents { position: fixed; right: 16px; bottom: 16px; padding: 6px 12px; font: 14px var(--head); color: var(--fg);
-  background: var(--panel); border: 1px solid var(--rule); border-radius: 4px; text-decoration: none; }
 section.chapter + section.chapter { border-top: 1px solid var(--rule); margin-top: 48px; padding-top: 8px; }
 @media (min-width: 761px) {
   nav.toc { position: sticky; top: 0; align-self: start; max-height: 100vh; overflow-y: auto; box-sizing: border-box;
@@ -121,7 +121,7 @@ section.chapter + section.chapter { border-top: 1px solid var(--rule); margin-to
   .site main { border-left: 1px solid var(--rule); }
 }
 @media print {
-  nav.toc, .node, .to-contents { display: none; }
+  nav.toc, .node { display: none; }
   .site { display: block; max-width: none; }
   a { color: inherit; text-decoration: none; }
   section.chapter + section.chapter { break-before: page; border-top: 0; margin-top: 0; }
@@ -129,8 +129,8 @@ section.chapter + section.chapter { border-top: 1px solid var(--rule); margin-to
 "
   "The manual's own rules after the export's stylesheet: every text in a monospaced font, the first of
 these the reader has, as the pages load no font from elsewhere; links in the contents not underlined;
-the contents column kept in view on a wide screen, a link to the contents page in the corner, the
-colour button; and on paper the text alone, each chapter of the whole manual from a new page.")
+the contents column kept in view on a wide screen, the colour button; and on paper the text alone,
+each chapter of the whole manual from a new page.")
 
 (defparameter *one-page-ids* (cl-ppcre:create-scanner "\\b(id|href)=\"(#?)([^\"]*)\"")
   "An id or href attribute of a chapter's HTML, with any # its value begins with.")
@@ -200,10 +200,10 @@ stylesheet, nothing loaded from elsewhere."
                                          (node-links previous next) (getf parts :body)
                                          (node-links previous next :end t))))))
     (write-page (merge-pathnames "index.html" out) "Tuatara Manual"
-                (site contents version
+                (site (here-marked contents "index") version
                       (format nil "<article>~%<h1>Tuatara Manual</h1>~%<p class=\"lead\">for version ~a</p>~%~
                                    <p>~a</p>~%<nav class=\"contents\">~a</nav>~%</article>~%"
-                              version *modal-editing-note* contents)))
+                              version *modal-editing-note* (contents-list entries :front nil))))
     (write-page (merge-pathnames "all.html" out) "Tuatara Manual, all chapters" (whole-page entries contents version))
     (format t "~&~d chapters in ~a~%" (length chapters) (namestring out))))
 

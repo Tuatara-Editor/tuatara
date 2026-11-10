@@ -9,44 +9,7 @@
 ;;;; painting as check-health does, and writes to OUT what it saw at each step,
 ;;;; as a property list. Every event a window hands on names its frame.
 
-(load (merge-pathnames "../../tools/quicklisp.lisp" *load-truename*))
-(push (merge-pathnames "../../" (make-pathname :name nil :type nil :defaults *load-truename*)) asdf:*central-registry*)
-(ql:quickload :tuatara/terminal :silent t)
-(import 'tuatara.runtime:wait-until)
-
-(defvar *seen* '()
-  "What was seen at each step, newest first, as a property list.")
-
-(defun see (key value)
-  "Note VALUE as what was seen of KEY."
-  (setf (getf *seen* key) value))
-
-(defun windows ()
-  "The frontends of the windows open, the oldest first."
-  (tuatara.frontend.gtk::open-windows))
-
-(defun shown-text (f)
-  "The rows F's window shows now, as one string."
-  (let ((frame (sb-thread:with-mutex ((tuatara.frontend.gtk::gtk-lock f)) (tuatara.frontend.gtk::gtk-shown f))))
-    (if frame
-        (format nil "~{~a~^~%~}" (loop for row across (tuatara.frontend.gtk::frame-rows frame)
-                                       when row collect (first row)))
-        "")))
-
-(defun type-keys (f keys)
-  "Type KEYS, a key sequence as written (\"C-x 5 2\"), in F's window."
-  (dolist (spec (tuatara.frontend:parse-key-sequence keys))
-    (tuatara.frontend.gtk::push-key f (tuatara.frontend:spec-key spec))))
-
-(defvar *to-close* nil
-  "The window whose close button is pressed next (ON-CLOSE-PRESSED).")
-
-(tuatara.frontend.gtk::define-callback on-close-pressed :boolean ((data :pointer))
-  (declare (ignore data))
-  ;; as the window's close button does: GTK asks the window to close
-  (tuatara.runtime:foreign-call "gtk_window_close" sb-alien:void
-                                (sb-sys:system-area-pointer (tuatara.frontend.gtk::gtk-window *to-close*)))
-  nil)
+(load (merge-pathnames "steps.lisp" *load-truename*))
 
 (defvar *to-present* nil
   "The window given the keyboard next (ON-PRESENT).")
@@ -128,14 +91,7 @@
         (see :frames-measured (and (wait-until (lambda () (plusp (length (aref measured 2)))) 10) t)))
       (see :unnamed *unnamed*))))
 
-(sb-thread:make-thread
- (lambda ()
-   (handler-case (steps)
-     (error (e) (see :error (princ-to-string e))))
-   (with-open-file (o (third (uiop:command-line-arguments)) :direction :output :if-exists :supersede)
-     (with-standard-io-syntax
-       (prin1 *seen* o)))
-   (sb-ext:exit :code 0 :abort t)))
+(run-steps #'steps (third (uiop:command-line-arguments)))
 
 (tuatara.terminal:main (list "--gui" "--frames" "2" (first (uiop:command-line-arguments))
                              (second (uiop:command-line-arguments))))

@@ -260,6 +260,25 @@ FACE)) in a job's face, as (ROW START END FACE)."
         (true (every (lambda (span) (<= (- (third span) (second span)) 2)) spans))
         (false (job-spans (car (first (tuatara.frontend.fake::fake-face-history f)))))))))
 
+(define-test (rewrite split-job-shading)
+  ;; a split past its limit, its matches out of sight deleted in the background, shades only
+  ;; the matches it has still to delete, never the lines between them
+  (let ((tuatara-user:*split-limit* 2)
+        (tuatara.defaults::*rewrite-piece-hook* (lambda () (sleep 0.3)))
+        (text (format nil "~{x~2,'0d,y,a~%~}" (loop for i below 60 collect i))))
+    (with-background ()
+      (multiple-value-bind (f editor) (run-keys-in-turns (list "f % a RET" "d" "") :text text :width 60 :height 16)
+        (let ((spans (painted-job-spans f)))
+          (true (find :job-queued spans :key #'fourth))
+          (true (every (lambda (span) (<= (- (third span) (second span)) 1)) spans)))
+        (false (search "a" (session-text editor))))))
+  ;; and the same while it waits its turn behind another job
+  (let* ((b (tuatara.buffer:make-buffer "*split-shade-test*" :text (format nil "x0,y,a~%x1,y,a~%")))
+         (shade (tuatara.defaults::scope-shade b '((0 . 14))
+                                               :matcher (tuatara.defaults::split-matcher "a" nil b))))
+    (unwind-protect (is equal '((5 6) (12 13)) (funcall shade '(0 14) 0 14))
+      (tuatara.buffer:kill-buffer b))))
+
 (define-test (rewrite undo-stands-where-begun)
   ;; a job's change stands in the undo history where it began: an edit made while it ran is
   ;; undone first, then the whole replacement, the part made in sight with it

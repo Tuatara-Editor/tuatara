@@ -112,9 +112,9 @@ job's text taken in, gives where point goes then, as the same work done at once
 leaves it; only when point is still at POINT, where it was when the job began,
 and nothing was edited meanwhile. HIDDEN-LEFT, when not NIL, is a cons whose car
 counts the matches left alone because a fold hides them (HIDDEN-LEFT-WORDS).
-LIGHTS-MATCHES, true for a replacement whose MAPPER only finds matches, keeping
-no count of its own, has the matches still to change shaded rather than the
-whole stretch (JOB-MATCH-SHADING)."
+LIGHTS-MATCHES, true for a job whose MAPPER only finds matches, keeping no count
+of its own (a replacement, a split's job at every match), has the matches still
+to change shaded rather than the whole stretch (JOB-MATCH-SHADING)."
   base rope (low 0) (high 0) words what verb leaves joins since session prepare goal point hidden-left
   mapper expand all count-only doing report runner (lights-matches nil)
   (pieces #()) (counting nil) (shade nil)
@@ -824,12 +824,12 @@ before the change till then."
 (defun job-match-shading (job stretches)
   "What JOB will change within STRETCHES, (START . END) of the text shown, as
 ranges in :JOB-QUEUED (CHANGES-IN-VIEW, by the job's own mapper, in the text
-it reads), and as a second value true when that could be told: for a
-replacement only (REWRITE-LIGHTS-MATCHES), not when the pattern is too slow on
-this text to light it. After edits made since the job began, the stretches
-are taken back to the text it reads (JOB-POSITION-READ) and its matches
-followed forward to the text now (JOB-POSITION-NOW), a match an edit reached
-into left out, so that only what will change is lit whatever was typed
+it reads), and as a second value true when that could be told: only for a job
+that lights its matches (REWRITE-LIGHTS-MATCHES), not when the pattern is too
+slow on this text to light it. After edits made since the job began, the
+stretches are taken back to the text it reads (JOB-POSITION-READ) and its
+matches followed forward to the text now (JOB-POSITION-NOW), a match an edit
+reached into left out, so that only what will change is lit whatever was typed
 meanwhile, at a cost that does not grow with the typing."
   (when (rewrite-lights-matches job)
     (let ((edited (job-edited-p job)))
@@ -950,14 +950,15 @@ stretch from S to E, the ends of both included."
     (and (< i (length spans)) (<= (car (aref spans i)) e))))
 
 (defun changes-in-view (rope finder stretches all &key (low 0))
-  "What a replacement changes within STRETCHES, (START . END) of ROPE's text
+  "What a job at matches changes within STRETCHES, (START . END) of ROPE's text
 shown, as (START END) ranges in order. They are the matches FINDER finds, a
 function of (FUNCTION FROM TO) calling FUNCTION with each match's start and end
 from FROM below TO. Without ALL, only the first on each line is shown, looked
 for from the line's start (not before LOW, where the replacement begins). A
 match of no length is shown on the character after it. As a second value :SLOW,
 the ranges NIL, when the pattern is too slow on this text to tell them. The one
-way the shading of a replacement, running or waiting, finds what it marks."
+way the shading of a replacement or a split's job, running or waiting, finds
+what it marks."
   (multiple-value-bind (ranges cut)
       (tuatara.runtime:stoppable-work ((list nil) :slow tuatara.runtime:*slow-call-seconds*)
         (let ((out '()) (size (tuatara.text:rope-octet-length rope)))
